@@ -5,10 +5,33 @@
 INSERT INTO organizations (id, name, slug, settings) VALUES
   ('a0000000-0000-0000-0000-000000000001', 'NPP Phuc Thinh', 'phuc-thinh', '{"approval_threshold_auto": 20000000, "approval_threshold_manager": 50000000, "expiry_warning_days": 30}');
 
--- Note: Users need to be created via Supabase Auth first, then linked here.
--- These are placeholder UUIDs for demo. In production, use actual auth.users IDs.
--- Demo accounts (password: Demo@123456)
--- owner@demo.com, manager@demo.com, accountant@demo.com, sales@demo.com, warehouse@demo.com, driver@demo.com
+-- Demo Auth Users (password: Demo@123456)
+-- Create users in auth.users first, then link to public.users
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'owner@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Nguyen Van An"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'manager@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Tran Thi Bich"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', 'accountant@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Le Van Cuong"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', 'sales@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Pham Thi Dung"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'warehouse@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Hoang Van Em"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'driver@demo.com', crypt('Demo@123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Vo Van Phuc"}', now(), now());
+
+-- Auth Identities (required for email login)
+INSERT INTO auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at) VALUES
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000001', 'owner@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000001', 'email', 'owner@demo.com'), 'email', now(), now(), now()),
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000002', 'manager@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000002', 'email', 'manager@demo.com'), 'email', now(), now(), now()),
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000003', 'accountant@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000003', 'email', 'accountant@demo.com'), 'email', now(), now(), now()),
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000004', 'sales@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000004', 'email', 'sales@demo.com'), 'email', now(), now(), now()),
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000005', 'warehouse@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000005', 'email', 'warehouse@demo.com'), 'email', now(), now(), now()),
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000006', 'driver@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000006', 'email', 'driver@demo.com'), 'email', now(), now(), now());
+
+-- Public Users (linked to auth users above)
+INSERT INTO users (id, org_id, full_name, role, phone) VALUES
+  ('e0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Nguyen Van An', 'owner', '0900000001'),
+  ('e0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'Tran Thi Bich', 'manager', '0900000002'),
+  ('e0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'Le Van Cuong', 'accountant', '0900000003'),
+  ('e0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'Pham Thi Dung', 'sales', '0900000004'),
+  ('e0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'Hoang Van Em', 'warehouse', '0900000005'),
+  ('e0000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001', 'Vo Van Phuc', 'driver', '0900000006');
 
 -- Customer Groups
 INSERT INTO customer_groups (id, org_id, name, description) VALUES
@@ -167,6 +190,10 @@ INSERT INTO customers (id, org_id, store_name, owner_name, phone, address, provi
   ('d0000000-0000-0000-0000-000000000019', 'a0000000-0000-0000-0000-000000000001', 'Tap hoa Co Ut', 'Dang Thi Ut', '0901000019', '99 Ba Thang Hai', 'TP HCM', 'Quan 10', 'P.14', 'GT', 'b0000000-0000-0000-0000-000000000003', 12000000, 'COD', 'active'),
   ('d0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000001', 'Dai ly Phuong Nam', 'Le Phuong Nam', '0901000020', '567 Kinh Duong Vuong', 'TP HCM', 'Binh Tan', 'P.An Lac', 'GT', 'b0000000-0000-0000-0000-000000000001', 80000000, 'NET30', 'active');
 
--- Note: Sales orders, batches, and other transactional data require user IDs from auth.
--- These will be created after users are set up via Supabase Auth.
--- For development, you can manually insert after creating auth users.
+-- Customer Assignments (assign sales user to customers)
+INSERT INTO customer_assignments (customer_id, user_id, status) VALUES
+  ('d0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000004', 'active'),
+  ('d0000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-000000000004', 'active'),
+  ('d0000000-0000-0000-0000-000000000003', 'e0000000-0000-0000-0000-000000000004', 'active'),
+  ('d0000000-0000-0000-0000-000000000004', 'e0000000-0000-0000-0000-000000000004', 'active'),
+  ('d0000000-0000-0000-0000-000000000005', 'e0000000-0000-0000-0000-000000000004', 'active');

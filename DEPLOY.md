@@ -35,11 +35,24 @@ Vao **SQL Editor** trong Supabase Dashboard, chay lan luot 3 file theo thu tu:
 
 **File 2: Thiet lap RLS** - Copy noi dung `supabase/migrations/002_rls_policies.sql` va chay
 
-**File 3: Du lieu mau** - Copy noi dung `supabase/migrations/003_seed.sql` va chay
+**File 3: Du lieu mau + Tai khoan demo** - Copy noi dung `supabase/migrations/003_seed.sql` va chay
 
 > **Luu y**: Phai chay dung thu tu 001 → 002 → 003. Neu bi loi, kiem tra lai tung file mot.
 
-### 1.4 Cau hinh Authentication
+### 1.4 Tai khoan demo
+
+File seed da tu dong tao 6 tai khoan demo voi mat khau `Demo@123456`:
+
+| Email               | Role       | Ten            |
+| ------------------- | ---------- | -------------- |
+| owner@demo.com      | owner      | Nguyen Van An  |
+| manager@demo.com    | manager    | Tran Thi Bich  |
+| accountant@demo.com | accountant | Le Van Cuong   |
+| sales@demo.com      | sales      | Pham Thi Dung  |
+| warehouse@demo.com  | warehouse  | Hoang Van Em   |
+| driver@demo.com     | driver     | Vo Van Phuc    |
+
+### 1.5 Cau hinh Authentication
 
 1. Vao **Authentication** > **Providers**
 2. Dam bao **Email** provider da duoc bat

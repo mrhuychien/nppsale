@@ -3,15 +3,29 @@
 
 -- Helper function to get user org_id
 CREATE OR REPLACE FUNCTION public.user_org_id()
-RETURNS uuid AS $$
-  SELECT org_id FROM public.users WHERE id = auth.uid()
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+BEGIN
+  RETURN (SELECT org_id FROM public.users WHERE id = (SELECT auth.uid()));
+END;
+$$;
 
 -- Helper function to get user role
 CREATE OR REPLACE FUNCTION public.user_role()
-RETURNS text AS $$
-  SELECT role FROM public.users WHERE id = auth.uid()
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+BEGIN
+  RETURN (SELECT role FROM public.users WHERE id = (SELECT auth.uid()));
+END;
+$$;
 
 -- ==========================================
 -- ORGANIZATIONS

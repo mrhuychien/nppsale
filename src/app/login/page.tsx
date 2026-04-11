@@ -28,7 +28,7 @@ export default function LoginPage() {
       })
 
       if (authError) {
-        setError("Email hoac mat khau khong dung")
+        setError(authError.message)
         return
       }
 

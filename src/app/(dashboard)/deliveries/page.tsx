@@ -1,24 +1,28 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
-import { Truck } from "lucide-react"
+import { Truck, Plus } from "lucide-react"
 import Link from "next/link"
 import type { Delivery } from "@/types"
 
 export default function DeliveriesPage() {
-  const { loading: authLoading } = useRoleGuard("deliveries")
+  const { user, loading: authLoading } = useRoleGuard("deliveries")
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     async function fetch() {
@@ -36,7 +40,11 @@ export default function DeliveriesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Giao hang" description={`${deliveries.length} chuyen giao`} />
+      <PageHeader title="Giao hang" description={`${deliveries.length} chuyen giao`}>
+        {user && hasPermission(user.role, "deliveries", "create") && (
+          <Button onClick={() => router.push("/deliveries/new")}><Plus className="mr-2 h-4 w-4" /> Tao phieu giao</Button>
+        )}
+      </PageHeader>
 
       {deliveries.length === 0 ? (
         <EmptyState icon={<Truck className="h-8 w-8 text-muted-foreground" />} title="Chua co chuyen giao" description="Chuyen giao se duoc tao tu don hang da duyet" />

@@ -1,19 +1,23 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { FileText } from "lucide-react"
+import { FileText, Plus } from "lucide-react"
 import type { Invoice } from "@/types"
 
 export default function InvoicesPage() {
-  const { loading: authLoading } = useRoleGuard("invoices")
+  const { user, loading: authLoading } = useRoleGuard("invoices")
+  const router = useRouter()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
@@ -36,7 +40,11 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Hoa don dien tu" description={`${invoices.length} hoa don`} />
+      <PageHeader title="Hoa don dien tu" description={`${invoices.length} hoa don`}>
+        {user && hasPermission(user.role, "invoices", "create") && (
+          <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tao hoa don</Button>
+        )}
+      </PageHeader>
 
       {invoices.length === 0 ? (
         <EmptyState icon={<FileText className="h-8 w-8 text-muted-foreground" />} title="Chua co hoa don" description="Hoa don duoc tao tu don hang da giao" />

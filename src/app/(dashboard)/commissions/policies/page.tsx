@@ -1,23 +1,29 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
 import { COMMISSION_TYPES } from "@/lib/constants"
-import { Settings2 } from "lucide-react"
+import { Settings2, Plus } from "lucide-react"
 import type { CommissionPolicy } from "@/types"
 
 export default function CommissionPoliciesPage() {
+  const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("commissions")
   const [policies, setPolicies] = useState<CommissionPolicy[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     async function fetch() {
@@ -34,7 +40,11 @@ export default function CommissionPoliciesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Chinh sach hoa hong" description={`${policies.length} chinh sach`} />
+      <PageHeader title="Chinh sach hoa hong" description={`${policies.length} chinh sach`}>
+        {user && hasPermission(user.role, "commissions", "create") && (
+          <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tao chinh sach</Button>
+        )}
+      </PageHeader>
 
       {policies.length === 0 ? (
         <EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title="Chua co chinh sach hoa hong" />

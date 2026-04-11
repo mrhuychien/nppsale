@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { PROMOTION_TYPES } from "@/lib/constants"
 
 export default function NewPromotionPage() {
+  const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("promotions")
   const [name, setName] = useState("")
   const [type, setType] = useState("trade_discount")
@@ -46,6 +48,7 @@ export default function NewPromotionPage() {
         starts_at: startsAt || null,
         ends_at: endsAt || null,
         is_active: true,
+        org_id: user?.org_id,
       })
       if (error) throw error
       toast({ title: "Da tao chuong trinh khuyen mai" })

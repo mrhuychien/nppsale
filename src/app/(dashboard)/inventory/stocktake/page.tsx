@@ -52,7 +52,7 @@ export default function StocktakePage() {
       const entryCode = `WH-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`
       const { data: entry, error: entryErr } = await supabase
         .from("stock_entries")
-        .insert({ entry_code: entryCode, type: entryType, created_by: user?.id, notes: notes || null })
+        .insert({ entry_code: entryCode, type: entryType, created_by: user?.id, notes: notes || null, org_id: user?.org_id })
         .select()
         .single()
       if (entryErr) throw entryErr
@@ -67,6 +67,7 @@ export default function StocktakePage() {
           location: location || null,
           qty_initial: qty,
           qty_on_hand: qty,
+          org_id: user?.org_id,
         })
         if (batchErr) throw batchErr
       }

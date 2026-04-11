@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +20,7 @@ interface CustomerFormProps {
 }
 
 export function CustomerForm({ customer, groups }: CustomerFormProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Record<string, string>>({
     store_name: customer?.store_name || "",
@@ -77,7 +79,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         if (error) throw error
         toast({ title: "Da cap nhat khach hang" })
       } else {
-        const { error } = await supabase.from("customers").insert(payload)
+        const { error } = await supabase.from("customers").insert({ ...payload, org_id: user?.org_id })
         if (error) throw error
         toast({ title: "Da tao khach hang moi" })
       }

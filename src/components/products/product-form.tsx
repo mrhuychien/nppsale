@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,6 +18,7 @@ interface ProductFormProps {
 }
 
 export function ProductForm({ product, onSaved }: ProductFormProps) {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     sku: product?.sku || "",
@@ -55,7 +57,7 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
         if (error) throw error
         toast({ title: "Da cap nhat san pham" })
       } else {
-        const { error } = await supabase.from("products").insert(payload)
+        const { error } = await supabase.from("products").insert({ ...payload, org_id: user?.org_id })
         if (error) throw error
         toast({ title: "Da tao san pham moi" })
       }

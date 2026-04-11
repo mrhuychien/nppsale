@@ -52,6 +52,7 @@ export default function NewReturnPage() {
         reason,
         notes: notes || null,
         credit_note_amount: creditAmount ? parseInt(creditAmount) : null,
+        org_id: user?.org_id,
       })
       if (error) throw error
       toast({ title: "Da tao yeu cau tra hang" })

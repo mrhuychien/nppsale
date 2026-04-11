@@ -4,19 +4,14 @@
 
 -- ==========================================
 -- CLEANUP (xoa du lieu cu neu co)
+-- Xoa org se CASCADE xoa tat ca bang con (users, customers, products, ...)
+-- Sau do xoa auth users rieng vi khong lien ket voi org
 -- ==========================================
-DELETE FROM customer_assignments WHERE customer_id IN (SELECT id FROM customers WHERE org_id = 'a0000000-0000-0000-0000-000000000001');
-DELETE FROM price_lists WHERE product_id IN (SELECT id FROM products WHERE org_id = 'a0000000-0000-0000-0000-000000000001');
-DELETE FROM product_units WHERE product_id IN (SELECT id FROM products WHERE org_id = 'a0000000-0000-0000-0000-000000000001');
-DELETE FROM customers WHERE org_id = 'a0000000-0000-0000-0000-000000000001';
-DELETE FROM customer_groups WHERE org_id = 'a0000000-0000-0000-0000-000000000001';
-DELETE FROM products WHERE org_id = 'a0000000-0000-0000-0000-000000000001';
-DELETE FROM users WHERE org_id = 'a0000000-0000-0000-0000-000000000001';
+DELETE FROM organizations WHERE id = 'a0000000-0000-0000-0000-000000000001';
 DELETE FROM auth.identities WHERE user_id IN (
   SELECT id FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com','driver@demo.com')
 );
 DELETE FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com','driver@demo.com');
-DELETE FROM organizations WHERE id = 'a0000000-0000-0000-0000-000000000001';
 
 -- ==========================================
 -- SEED DATA

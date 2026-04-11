@@ -62,9 +62,12 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
         toast({ title: "Da tao san pham moi" })
       }
 
-      onSaved?.()
-      router.push("/products")
-      router.refresh()
+      if (onSaved) {
+        onSaved()
+      } else {
+        router.push("/products")
+        router.refresh()
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Co loi xay ra"
       toast({ title: "Loi", description: message, variant: "destructive" })

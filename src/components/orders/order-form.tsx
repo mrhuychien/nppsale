@@ -24,6 +24,7 @@ interface OrderLine {
   unit_price: number
   line_discount: number
   line_total: number
+  vat_rate: number
 }
 
 export function OrderForm() {
@@ -68,6 +69,7 @@ export function OrderForm() {
       unit_price: price,
       line_discount: 0,
       line_total: price,
+      vat_rate: product.vat_rate ?? 0,
     }])
   }
 
@@ -84,7 +86,7 @@ export function OrderForm() {
   }
 
   const subtotal = lines.reduce((sum, l) => sum + l.line_total, 0)
-  const vat = Math.round(subtotal * 0.1)
+  const vat = Math.round(lines.reduce((sum, l) => sum + l.line_total * l.vat_rate, 0))
   const total = subtotal + vat
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -217,7 +219,7 @@ export function OrderForm() {
 
           <div className="mt-4 space-y-1 text-right">
             <p>Tam tinh: <span className="font-medium">{formatCurrency(subtotal)}</span></p>
-            <p>VAT (10%): <span className="font-medium">{formatCurrency(vat)}</span></p>
+            <p>VAT: <span className="font-medium">{formatCurrency(vat)}</span></p>
             <p className="text-lg font-bold">Tong: {formatCurrency(total)}</p>
           </div>
         </CardContent>

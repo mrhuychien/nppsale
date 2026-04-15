@@ -17,7 +17,7 @@ interface MobileNavItem {
 }
 
 const MOBILE_NAV_ITEMS: MobileNavItem[] = [
-  { label: "Don", href: "/orders", icon: ShoppingCart, module: "orders" },
+  { label: "Đơn", href: "/orders", icon: ShoppingCart, module: "orders" },
   { label: "KH", href: "/customers", icon: Users, module: "customers" },
   { label: "SP", href: "/products", icon: Package, module: "products" },
   { label: "Kho", href: "/inventory", icon: Boxes, module: "inventory" },

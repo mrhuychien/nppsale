@@ -23,18 +23,18 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "reports" },
-  { label: "Don hang", href: "/orders", icon: ShoppingCart, module: "orders" },
-  { label: "Khach hang", href: "/customers", icon: Users, module: "customers" },
-  { label: "San pham", href: "/products", icon: Package, module: "products" },
-  { label: "Kho hang", href: "/inventory", icon: Boxes, module: "inventory" },
-  { label: "Hoa hong", href: "/commissions", icon: Award, module: "commissions" },
-  { label: "Cong no", href: "/receivables", icon: CreditCard, module: "receivables" },
-  { label: "Giao hang", href: "/deliveries", icon: Truck, module: "deliveries" },
-  { label: "Khuyen mai", href: "/promotions", icon: Tag, module: "promotions" },
-  { label: "Hoa don", href: "/invoices", icon: FileText, module: "invoices" },
-  { label: "Tra hang", href: "/returns", icon: RotateCcw, module: "returns" },
-  { label: "Bao cao", href: "/reports", icon: BarChart3, module: "reports" },
-  { label: "Cai dat", href: "/settings", icon: Settings, module: "settings" },
+  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
+  { label: "Khách hàng", href: "/customers", icon: Users, module: "customers" },
+  { label: "Sản phẩm", href: "/products", icon: Package, module: "products" },
+  { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory" },
+  { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions" },
+  { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
+  { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries" },
+  { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions" },
+  { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices" },
+  { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns" },
+  { label: "Báo cáo", href: "/reports", icon: BarChart3, module: "reports" },
+  { label: "Cài đặt", href: "/settings", icon: Settings, module: "settings" },
 ]
 
 interface SidebarProps {
@@ -62,7 +62,7 @@ export function Sidebar({ role }: SidebarProps) {
         </div>
         <div>
           <h1 className="text-base font-black text-primary leading-none">npp.sale</h1>
-          <p className="text-[10px] text-muted-foreground font-medium tracking-wider mt-1">PHAN PHOI FMCG</p>
+          <p className="text-[10px] text-muted-foreground font-medium tracking-wider mt-1">PHÂN PHỐI FMCG</p>
         </div>
       </div>
 
@@ -74,7 +74,7 @@ export function Sidebar({ role }: SidebarProps) {
             className="w-full bg-gradient-primary text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 shadow-ambient-md hover:scale-[0.98] transition-all"
           >
             <Plus className="h-5 w-5" />
-            Tao don moi
+            Tạo đơn mới
           </Link>
         </div>
       )}
@@ -107,14 +107,14 @@ export function Sidebar({ role }: SidebarProps) {
       <div className="p-4 mt-auto space-y-1">
         <button className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg">
           <HelpCircle className="h-4 w-4" />
-          Ho tro
+          Hỗ trợ
         </button>
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-destructive transition-colors text-sm rounded-lg"
         >
           <LogOut className="h-4 w-4" />
-          Dang xuat
+          Đăng xuất
         </button>
       </div>
     </aside>

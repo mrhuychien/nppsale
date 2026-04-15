@@ -8,92 +8,92 @@ export const ROLES = {
 } as const
 
 export const ROLE_LABELS: Record<string, string> = {
-  owner: "Chu NPP",
-  manager: "Quan ly ban hang",
-  accountant: "Ke toan",
-  sales: "NV ban hang",
+  owner: "Chủ NPP",
+  manager: "Quản lý bán hàng",
+  accountant: "Kế toán",
+  sales: "NV bán hàng",
   warehouse: "NV kho",
-  driver: "Tai xe",
+  driver: "Tài xế",
 }
 
 export const CHANNELS = [
-  { value: "GT", label: "GT - Truyen thong" },
-  { value: "MT", label: "MT - Hien dai" },
+  { value: "GT", label: "GT - Truyền thống" },
+  { value: "MT", label: "MT - Hiện đại" },
   { value: "HORECA", label: "HORECA" },
 ] as const
 
 export const PAYMENT_TERMS = [
-  { value: "COD", label: "COD - Thanh toan khi giao" },
-  { value: "NET7", label: "Cong no 7 ngay" },
-  { value: "NET15", label: "Cong no 15 ngay" },
-  { value: "NET30", label: "Cong no 30 ngay" },
-  { value: "NET45", label: "Cong no 45 ngay" },
-  { value: "NET60", label: "Cong no 60 ngay" },
+  { value: "COD", label: "COD - Thanh toán khi giao" },
+  { value: "NET7", label: "Công nợ 7 ngày" },
+  { value: "NET15", label: "Công nợ 15 ngày" },
+  { value: "NET30", label: "Công nợ 30 ngày" },
+  { value: "NET45", label: "Công nợ 45 ngày" },
+  { value: "NET60", label: "Công nợ 60 ngày" },
 ] as const
 
 export const PAYMENT_METHODS = [
-  { value: "cash", label: "Tien mat" },
-  { value: "transfer", label: "Chuyen khoan" },
-  { value: "ewallet", label: "Vi dien tu" },
+  { value: "cash", label: "Tiền mặt" },
+  { value: "transfer", label: "Chuyển khoản" },
+  { value: "ewallet", label: "Ví điện tử" },
 ] as const
 
 export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  draft: { label: "Nhap", variant: "secondary" },
-  confirmed: { label: "Da duyet", variant: "default" },
-  picking: { label: "Dang lay hang", variant: "warning" },
-  delivering: { label: "Dang giao", variant: "warning" },
-  delivered: { label: "Da giao", variant: "success" },
-  cancelled: { label: "Da huy", variant: "danger" },
+  draft: { label: "Nháp", variant: "secondary" },
+  confirmed: { label: "Đã duyệt", variant: "default" },
+  picking: { label: "Đang lấy hàng", variant: "warning" },
+  delivering: { label: "Đang giao", variant: "warning" },
+  delivered: { label: "Đã giao", variant: "success" },
+  cancelled: { label: "Đã hủy", variant: "danger" },
 }
 
 export const CUSTOMER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  active: { label: "Hoat dong", variant: "success" },
-  suspended: { label: "Tam ngung", variant: "warning" },
-  locked: { label: "Khoa", variant: "danger" },
+  active: { label: "Hoạt động", variant: "success" },
+  suspended: { label: "Tạm ngưng", variant: "warning" },
+  locked: { label: "Khóa", variant: "danger" },
 }
 
 export const DELIVERY_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  pending: { label: "Cho giao", variant: "secondary" },
-  in_transit: { label: "Dang giao", variant: "warning" },
-  delivered: { label: "Da giao", variant: "success" },
-  partial: { label: "Giao 1 phan", variant: "warning" },
-  failed: { label: "That bai", variant: "danger" },
+  pending: { label: "Chờ giao", variant: "secondary" },
+  in_transit: { label: "Đang giao", variant: "warning" },
+  delivered: { label: "Đã giao", variant: "success" },
+  partial: { label: "Giao 1 phần", variant: "warning" },
+  failed: { label: "Thất bại", variant: "danger" },
 }
 
 export const RETURN_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  pending: { label: "Cho duyet", variant: "secondary" },
-  approved: { label: "Da duyet", variant: "success" },
-  rejected: { label: "Tu choi", variant: "danger" },
-  completed: { label: "Hoan tat", variant: "default" },
+  pending: { label: "Chờ duyệt", variant: "secondary" },
+  approved: { label: "Đã duyệt", variant: "success" },
+  rejected: { label: "Từ chối", variant: "danger" },
+  completed: { label: "Hoàn tất", variant: "default" },
 }
 
 export const RETURN_REASONS = [
-  { value: "damaged", label: "Hang hu hong" },
-  { value: "wrong_item", label: "Sai hang" },
-  { value: "near_expiry", label: "Gan het han" },
-  { value: "expired", label: "Het han su dung" },
-  { value: "refused", label: "Khach tu choi nhan" },
+  { value: "damaged", label: "Hàng hư hỏng" },
+  { value: "wrong_item", label: "Sai hàng" },
+  { value: "near_expiry", label: "Gần hết hạn" },
+  { value: "expired", label: "Hết hạn sử dụng" },
+  { value: "refused", label: "Khách từ chối nhận" },
 ] as const
 
 export const PROMOTION_TYPES = [
-  { value: "trade_discount", label: "Chiet khau thuong mai" },
-  { value: "buy_x_get_y", label: "Mua X tang Y" },
-  { value: "payment_discount", label: "Chiet khau thanh toan" },
-  { value: "cumulative", label: "Luy ke" },
-  { value: "display", label: "Trung bay" },
+  { value: "trade_discount", label: "Chiết khấu thương mại" },
+  { value: "buy_x_get_y", label: "Mua X tặng Y" },
+  { value: "payment_discount", label: "Chiết khấu thanh toán" },
+  { value: "cumulative", label: "Lũy kế" },
+  { value: "display", label: "Trưng bày" },
 ] as const
 
 export const COMMISSION_TYPES = [
-  { value: "percentage", label: "Phan tram (%)" },
-  { value: "fixed", label: "Co dinh" },
-  { value: "tiered", label: "Bac luy ke" },
+  { value: "percentage", label: "Phần trăm (%)" },
+  { value: "fixed", label: "Cố định" },
+  { value: "tiered", label: "Bậc lũy kế" },
 ] as const
 
 export const STOCK_ENTRY_TYPES = [
-  { value: "import", label: "Nhap kho" },
-  { value: "export", label: "Xuat kho" },
-  { value: "transfer", label: "Chuyen kho" },
-  { value: "stocktake", label: "Kiem ke" },
+  { value: "import", label: "Nhập kho" },
+  { value: "export", label: "Xuất kho" },
+  { value: "transfer", label: "Chuyển kho" },
+  { value: "stocktake", label: "Kiểm kê" },
 ] as const
 
 export const APPROVAL_THRESHOLDS = {

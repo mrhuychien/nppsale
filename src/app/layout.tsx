@@ -10,8 +10,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "npp.sale - Mini ERP cho Nha Phan Phoi",
-  description: "Quan ly don hang, kho, khach hang, cong no, hoa hong trong mot he thong duy nhat",
+  title: "npp.sale - Mini ERP cho Nhà Phân Phối",
+  description: "Quản lý đơn hàng, kho, khách hàng, công nợ, hoa hồng trong một hệ thống duy nhất",
 }
 
 export default function RootLayout({

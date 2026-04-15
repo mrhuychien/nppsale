@@ -16,19 +16,19 @@ interface HeaderProps {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "Tong quan kinh doanh",
-  "/orders": "Quan ly don hang",
-  "/customers": "Quan ly khach hang",
-  "/products": "Quan ly san pham",
-  "/inventory": "Quan ly kho hang",
-  "/commissions": "Quan ly hoa hong",
-  "/receivables": "Quan ly cong no",
-  "/deliveries": "Quan ly giao hang",
-  "/promotions": "Quan ly khuyen mai",
-  "/invoices": "Quan ly hoa don",
-  "/returns": "Quan ly tra hang",
-  "/reports": "Bao cao",
-  "/settings": "Cai dat",
+  "/dashboard": "Tổng quan kinh doanh",
+  "/orders": "Quản lý đơn hàng",
+  "/customers": "Quản lý khách hàng",
+  "/products": "Quản lý sản phẩm",
+  "/inventory": "Quản lý kho hàng",
+  "/commissions": "Quản lý hoa hồng",
+  "/receivables": "Quản lý công nợ",
+  "/deliveries": "Quản lý giao hàng",
+  "/promotions": "Quản lý khuyến mãi",
+  "/invoices": "Quản lý hóa đơn",
+  "/returns": "Quản lý trả hàng",
+  "/reports": "Báo cáo",
+  "/settings": "Cài đặt",
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
@@ -75,7 +75,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <input
             type="text"
-            placeholder="Tim kiem nhanh..."
+            placeholder="Tìm kiếm nhanh..."
             className="pl-10 pr-4 py-2 bg-surface-low border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none w-56"
           />
         </div>
@@ -115,7 +115,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
               <LogOut className="mr-2 h-4 w-4" />
-              Dang xuat
+              Đăng xuất
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

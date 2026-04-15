@@ -20,7 +20,7 @@ interface ConfirmDialogProps {
 
 export function ConfirmDialog({
   open, onOpenChange, title, description,
-  confirmLabel = "Xac nhan", cancelLabel = "Huy",
+  confirmLabel = "Xác nhận", cancelLabel = "Hủy",
   variant = "default", onConfirm, loading,
 }: ConfirmDialogProps) {
   return (
@@ -35,7 +35,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button variant={variant === "destructive" ? "destructive" : "default"} onClick={onConfirm} disabled={loading}>
-            {loading ? "Dang xu ly..." : confirmLabel}
+            {loading ? "Đang xử lý..." : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

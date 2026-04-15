@@ -34,7 +34,7 @@ export default function LoginPage() {
       router.push("/orders")
       router.refresh()
     } catch {
-      setError("Co loi xay ra. Vui long thu lai.")
+      setError("Có lỗi xảy ra. Vui lòng thử lại.")
     } finally {
       setLoading(false)
     }
@@ -55,13 +55,13 @@ export default function LoginPage() {
             N
           </div>
           <h1 className="text-3xl font-black text-primary">npp.sale</h1>
-          <p className="text-sm text-muted-foreground mt-1">Mini ERP cho Nha Phan Phoi</p>
+          <p className="text-sm text-muted-foreground mt-1">Mini ERP cho Nhà Phân Phối</p>
         </div>
 
         {/* Form Card */}
         <div className="bg-card rounded-2xl shadow-ambient p-8">
-          <h2 className="text-xl font-bold mb-1">Dang nhap</h2>
-          <p className="text-sm text-muted-foreground mb-6">Truy cap he thong quan ly</p>
+          <h2 className="text-xl font-bold mb-1">Đăng nhập</h2>
+          <p className="text-sm text-muted-foreground mb-6">Truy cập hệ thống quản lý</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -79,12 +79,12 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Mat khau
+                Mật khẩu
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Nhap mat khau"
+                placeholder="Nhập mật khẩu"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -96,12 +96,12 @@ export default function LoginPage() {
               </div>
             )}
             <Button type="submit" className="w-full h-12 text-base mt-6" disabled={loading}>
-              {loading ? "Dang dang nhap..." : "Dang nhap"}
+              {loading ? "Đang đăng nhập..." : "Đăng nhập"}
             </Button>
           </form>
 
           <div className="mt-6 pt-6 border-t border-border/50 text-center">
-            <p className="text-xs text-muted-foreground mb-1">Tai khoan demo</p>
+            <p className="text-xs text-muted-foreground mb-1">Tài khoản demo</p>
             <p className="text-xs font-mono text-foreground">owner@demo.com / Demo@123456</p>
           </div>
         </div>

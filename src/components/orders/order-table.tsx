@@ -15,12 +15,12 @@ export function OrderTable({ orders }: OrderTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Ma don</TableHead>
-          <TableHead>Khach hang</TableHead>
-          <TableHead className="hidden sm:table-cell">NV ban hang</TableHead>
-          <TableHead className="hidden md:table-cell">Ngay dat</TableHead>
-          <TableHead className="text-right">Tong tien</TableHead>
-          <TableHead>Trang thai</TableHead>
+          <TableHead>Mã đơn</TableHead>
+          <TableHead>Khách hàng</TableHead>
+          <TableHead className="hidden sm:table-cell">NV bán hàng</TableHead>
+          <TableHead className="hidden md:table-cell">Ngày đặt</TableHead>
+          <TableHead className="text-right">Tổng tiền</TableHead>
+          <TableHead>Trạng thái</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

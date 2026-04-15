@@ -45,12 +45,12 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  draft: "Moi tao",
-  confirmed: "Da duyet",
-  picking: "Dang lay hang",
-  delivering: "Dang giao",
-  delivered: "Da giao",
-  cancelled: "Da huy",
+  draft: "Mới tạo",
+  confirmed: "Đã duyệt",
+  picking: "Đang lấy hàng",
+  delivering: "Đang giao",
+  delivered: "Đã giao",
+  cancelled: "Đã hủy",
 }
 
 export default function DashboardPage() {
@@ -198,8 +198,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Tong quan kinh doanh"
-        description={`Cap nhat ${formatDate(new Date())}`}
+        title="Tổng quan kinh doanh"
+        description={`Cập nhật ${formatDate(new Date())}`}
       />
 
       {/* KPI Cards */}
@@ -208,7 +208,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-primary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Doanh thu thang
+              Doanh thu tháng
             </p>
             <span className="text-primary bg-primary/10 p-2 rounded-lg inline-flex">
               <Wallet className="h-5 w-5" />

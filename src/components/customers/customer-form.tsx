@@ -53,7 +53,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
           .eq("phone", form.phone)
           .limit(1)
         if (existing && existing.length > 0) {
-          toast({ title: "Loi", description: "So dien thoai da ton tai", variant: "destructive" })
+          toast({ title: "Lỗi", description: "Số điện thoại đã tồn tại", variant: "destructive" })
           setLoading(false)
           return
         }
@@ -77,18 +77,18 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
       if (customer) {
         const { error } = await supabase.from("customers").update(payload).eq("id", customer.id)
         if (error) throw error
-        toast({ title: "Da cap nhat khach hang" })
+        toast({ title: "Đã cập nhật khách hàng" })
       } else {
         const { error } = await supabase.from("customers").insert({ ...payload, org_id: user?.org_id })
         if (error) throw error
-        toast({ title: "Da tao khach hang moi" })
+        toast({ title: "Đã tạo khách hàng mới" })
       }
 
       router.push("/customers")
       router.refresh()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -97,59 +97,59 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{customer ? "Cap nhat khach hang" : "Them khach hang moi"}</CardTitle>
+        <CardTitle>{customer ? "Cập nhật khách hàng" : "Thêm khách hàng mới"}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Ten cua hang *</Label>
-              <Input value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} required placeholder="VD: Tap hoa Ba Hai" />
+              <Label>Tên cửa hàng *</Label>
+              <Input value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} required placeholder="VD: Tạp hóa Bà Hai" />
             </div>
             <div className="space-y-2">
-              <Label>Ten chu cua hang *</Label>
+              <Label>Tên chủ cửa hàng *</Label>
               <Input value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} required />
             </div>
             <div className="space-y-2">
-              <Label>So dien thoai *</Label>
+              <Label>Số điện thoại *</Label>
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="0901000001" />
             </div>
             <div className="space-y-2">
-              <Label>Kenh ban hang</Label>
+              <Label>Kênh bán hàng</Label>
               <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v })}>
-                <SelectTrigger><SelectValue placeholder="Chon kenh" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Chọn kênh" /></SelectTrigger>
                 <SelectContent>
                   {CHANNELS.map((ch) => <SelectItem key={ch.value} value={ch.value}>{ch.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Dia chi *</Label>
-              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} required placeholder="So nha, ten duong" />
+              <Label>Địa chỉ *</Label>
+              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} required placeholder="Số nhà, tên đường" />
             </div>
             <div className="space-y-2">
-              <Label>Tinh/Thanh</Label>
+              <Label>Tỉnh/Thành</Label>
               <Input value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} placeholder="VD: TP HCM" />
             </div>
             <div className="space-y-2">
-              <Label>Quan/Huyen</Label>
+              <Label>Quận/Huyện</Label>
               <Input value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Nhom khach hang</Label>
+              <Label>Nhóm khách hàng</Label>
               <Select value={form.group_id} onValueChange={(v) => setForm({ ...form, group_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Chon nhom" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Chọn nhóm" /></SelectTrigger>
                 <SelectContent>
                   {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Han muc cong no (VND)</Label>
+              <Label>Hạn mức công nợ (VND)</Label>
               <Input type="number" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Dieu khoan thanh toan</Label>
+              <Label>Điều khoản thanh toán</Label>
               <Select value={form.payment_terms} onValueChange={(v) => setForm({ ...form, payment_terms: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -158,20 +158,20 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Trang thai</Label>
+              <Label>Trạng thái</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Hoat dong</SelectItem>
-                  <SelectItem value="suspended">Tam ngung</SelectItem>
-                  <SelectItem value="locked">Khoa</SelectItem>
+                  <SelectItem value="active">Hoạt động</SelectItem>
+                  <SelectItem value="suspended">Tạm ngưng</SelectItem>
+                  <SelectItem value="locked">Khóa</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-            <Button type="submit" disabled={loading}>{loading ? "Dang luu..." : (customer ? "Cap nhat" : "Tao moi")}</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+            <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : (customer ? "Cập nhật" : "Tạo mới")}</Button>
           </div>
         </form>
       </CardContent>

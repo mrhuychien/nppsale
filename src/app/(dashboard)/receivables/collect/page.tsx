@@ -64,11 +64,11 @@ export default function CollectPaymentPage() {
       const newStatus = newPaid >= (selected?.amount || 0) ? "paid" : "partial"
       await supabase.from("receivables").update({ paid: newPaid, status: newStatus }).eq("id", selectedId)
 
-      toast({ title: `Da thu ${formatCurrency(parseInt(amount))}` })
+      toast({ title: `Đã thu ${formatCurrency(parseInt(amount))}` })
       router.push("/receivables")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -76,27 +76,27 @@ export default function CollectPaymentPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Thu tien tai hien truong" />
+      <PageHeader title="Thu tiền tại hiện trường" />
       <Card>
-        <CardHeader><CardTitle>Thong tin thu tien</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin thu tiền</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Cong no *</Label>
+                <Label>Công nợ *</Label>
                 <Select value={selectedId} onValueChange={setSelectedId}>
-                  <SelectTrigger><SelectValue placeholder="Chon cong no" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Chọn công nợ" /></SelectTrigger>
                   <SelectContent>
                     {receivables.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.customer?.store_name} - Con no: {formatCurrency(r.amount - r.paid)}
+                        {r.customer?.store_name} - Còn nợ: {formatCurrency(r.amount - r.paid)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Hinh thuc *</Label>
+                <Label>Hình thức *</Label>
                 <Select value={method} onValueChange={setMethod}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -105,14 +105,14 @@ export default function CollectPaymentPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>So tien thu *</Label>
-                <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} max={remaining} required placeholder="Nhap so tien" />
-                {selected && <p className="text-xs text-muted-foreground">Con no: {formatCurrency(remaining)}</p>}
+                <Label>Số tiền thu *</Label>
+                <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} max={remaining} required placeholder="Nhập số tiền" />
+                {selected && <p className="text-xs text-muted-foreground">Còn nợ: {formatCurrency(remaining)}</p>}
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-              <Button type="submit" disabled={loading}>{loading ? "Dang xu ly..." : "Xac nhan thu tien"}</Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Đang xử lý..." : "Xác nhận thu tiền"}</Button>
             </div>
           </form>
         </CardContent>

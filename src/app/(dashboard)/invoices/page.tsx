@@ -36,27 +36,27 @@ export default function InvoicesPage() {
   const statusVariant = (s: string): "default" | "success" | "danger" | "secondary" => {
     switch (s) { case "issued": return "success"; case "cancelled": return "danger"; default: return "secondary" }
   }
-  const statusLabel = (s: string) => { switch (s) { case "issued": return "Da phat hanh"; case "cancelled": return "Da huy"; default: return "Nhap" } }
+  const statusLabel = (s: string) => { switch (s) { case "issued": return "Đã phát hành"; case "cancelled": return "Đã hủy"; default: return "Nháp" } }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Hoa don dien tu" description={`${invoices.length} hoa don`}>
+      <PageHeader title="Hóa đơn điện tử" description={`${invoices.length} hóa đơn`}>
         {user && hasPermission(user.role, "invoices", "create") && (
-          <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tao hoa don</Button>
+          <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tạo hóa đơn</Button>
         )}
       </PageHeader>
 
       {invoices.length === 0 ? (
-        <EmptyState icon={<FileText className="h-8 w-8 text-muted-foreground" />} title="Chua co hoa don" description="Hoa don duoc tao tu don hang da giao" />
+        <EmptyState icon={<FileText className="h-8 w-8 text-muted-foreground" />} title="Chưa có hóa đơn" description="Hóa đơn được tạo từ đơn hàng đã giao" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>So hoa don</TableHead>
-              <TableHead>Khach hang</TableHead>
-              <TableHead className="text-right">Tong tien</TableHead>
-              <TableHead>Ngay phat hanh</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Số hóa đơn</TableHead>
+              <TableHead>Khách hàng</TableHead>
+              <TableHead className="text-right">Tổng tiền</TableHead>
+              <TableHead>Ngày phát hành</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

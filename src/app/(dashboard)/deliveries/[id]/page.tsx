@@ -43,32 +43,32 @@ export default function DeliveryDetailPage() {
       delivered_at: new Date().toISOString(),
     }).eq("id", lineId)
     if (!error) {
-      toast({ title: "Da xac nhan giao hang" })
+      toast({ title: "Đã xác nhận giao hàng" })
       fetchData()
     }
   }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
-  if (!delivery) return <div>Khong tim thay chuyen giao</div>
+  if (!delivery) return <div>Không tìm thấy chuyến giao</div>
 
   const statusConfig = DELIVERY_STATUS_MAP[delivery.status] || { label: delivery.status, variant: "outline" as const }
 
   return (
     <div className="space-y-4">
-      <PageHeader title={delivery.route_name || "Chi tiet chuyen giao"}>
+      <PageHeader title={delivery.route_name || "Chi tiết chuyến giao"}>
         <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle>Danh sach don hang</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Danh sách đơn hàng</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ma don</TableHead>
-                  <TableHead>Khach hang</TableHead>
-                  <TableHead>Trang thai</TableHead>
+                  <TableHead>Mã đơn</TableHead>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead>Trạng thái</TableHead>
                   <TableHead>POD</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -80,7 +80,7 @@ export default function DeliveryDetailPage() {
                     <TableCell>{line.order?.customer?.store_name}</TableCell>
                     <TableCell>
                       <Badge variant={line.status === "delivered" ? "success" : line.status === "failed" ? "danger" : "secondary"}>
-                        {line.status === "delivered" ? "Da giao" : line.status === "failed" ? "That bai" : "Cho giao"}
+                        {line.status === "delivered" ? "Đã giao" : line.status === "failed" ? "Thất bại" : "Chờ giao"}
                       </Badge>
                     </TableCell>
                     <TableCell className="flex gap-1">
@@ -89,7 +89,7 @@ export default function DeliveryDetailPage() {
                     </TableCell>
                     <TableCell>
                       {line.status === "pending" && (
-                        <Button size="sm" onClick={() => handleConfirmDelivery(line.id)}>Xac nhan</Button>
+                        <Button size="sm" onClick={() => handleConfirmDelivery(line.id)}>Xác nhận</Button>
                       )}
                     </TableCell>
                   </TableRow>
@@ -100,11 +100,11 @@ export default function DeliveryDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Thong tin chuyen</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Thông tin chuyến</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p><span className="text-muted-foreground">Tai xe:</span> {delivery.driver?.full_name || "-"}</p>
-            <p><span className="text-muted-foreground">Phuong tien:</span> {delivery.vehicle || "-"}</p>
-            <p><span className="text-muted-foreground">So don:</span> {lines.length}</p>
+            <p><span className="text-muted-foreground">Tài xế:</span> {delivery.driver?.full_name || "-"}</p>
+            <p><span className="text-muted-foreground">Phương tiện:</span> {delivery.vehicle || "-"}</p>
+            <p><span className="text-muted-foreground">Số đơn:</span> {lines.length}</p>
           </CardContent>
         </Card>
       </div>

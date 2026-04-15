@@ -47,27 +47,27 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Don hang" description={`${orders.length} don hang`}>
+      <PageHeader title="Đơn hàng" description={`${orders.length} đơn hàng`}>
         {user && hasPermission(user.role, "orders", "create") && (
-          <Button onClick={() => router.push("/orders/new")}><Plus className="mr-2 h-4 w-4" /> Tao don</Button>
+          <Button onClick={() => router.push("/orders/new")}><Plus className="mr-2 h-4 w-4" /> Tạo đơn</Button>
         )}
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Tim ma don hang..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Tìm mã đơn hàng..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Trang thai" /></SelectTrigger>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tat ca</SelectItem>
-            <SelectItem value="draft">Nhap</SelectItem>
-            <SelectItem value="confirmed">Da duyet</SelectItem>
-            <SelectItem value="picking">Dang lay hang</SelectItem>
-            <SelectItem value="delivering">Dang giao</SelectItem>
-            <SelectItem value="delivered">Da giao</SelectItem>
-            <SelectItem value="cancelled">Da huy</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
+            <SelectItem value="draft">Nháp</SelectItem>
+            <SelectItem value="confirmed">Đã duyệt</SelectItem>
+            <SelectItem value="picking">Đang lấy hàng</SelectItem>
+            <SelectItem value="delivering">Đang giao</SelectItem>
+            <SelectItem value="delivered">Đã giao</SelectItem>
+            <SelectItem value="cancelled">Đã hủy</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -75,7 +75,7 @@ export default function OrdersPage() {
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />} title="Chua co don hang" description="Tao don hang dau tien" />
+        <EmptyState icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />} title="Chưa có đơn hàng" description="Tạo đơn hàng đầu tiên" />
       ) : (
         <OrderTable orders={filtered} />
       )}

@@ -39,11 +39,11 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Kho hang" description="Quan ly ton kho va lo hang">
+      <PageHeader title="Kho hàng" description="Quản lý tồn kho và lô hàng">
         <div className="flex gap-2">
-          <Button variant="outline" asChild><Link href="/inventory/batches">Lo hang</Link></Button>
-          <Button variant="outline" asChild><Link href="/inventory/entries">Phieu kho</Link></Button>
-          <Button variant="outline" asChild><Link href="/inventory/stocktake">Kiem ke</Link></Button>
+          <Button variant="outline" asChild><Link href="/inventory/batches">Lô hàng</Link></Button>
+          <Button variant="outline" asChild><Link href="/inventory/entries">Phiếu kho</Link></Button>
+          <Button variant="outline" asChild><Link href="/inventory/stocktake">Kiểm kê</Link></Button>
         </div>
       </PageHeader>
 
@@ -51,11 +51,11 @@ export default function InventoryPage() {
         <Card className="border-amber-200 bg-amber-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-amber-800">
-              <AlertTriangle className="h-4 w-4" /> Canh bao han su dung
+              <AlertTriangle className="h-4 w-4" /> Cảnh báo hạn sử dụng
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-amber-700">{expiringBatches.length} lo hang sap het han hoac gan het han</p>
+            <p className="text-sm text-amber-700">{expiringBatches.length} lô hàng sắp hết hạn hoặc gần hết hạn</p>
           </CardContent>
         </Card>
       )}
@@ -63,20 +63,20 @@ export default function InventoryPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <BoxesIcon className="h-5 w-5" /> Ton kho hien tai
+            <BoxesIcon className="h-5 w-5" /> Tồn kho hiện tại
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? <Skeleton className="h-48" /> : batches.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Chua co du lieu ton kho</p>
+            <p className="text-center text-muted-foreground py-8">Chưa có dữ liệu tồn kho</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>San pham</TableHead>
-                  <TableHead>Ma lo</TableHead>
-                  <TableHead>Vi tri</TableHead>
-                  <TableHead className="text-right">Ton</TableHead>
+                  <TableHead>Sản phẩm</TableHead>
+                  <TableHead>Mã lô</TableHead>
+                  <TableHead>Vị trí</TableHead>
+                  <TableHead className="text-right">Tồn</TableHead>
                   <TableHead>HSD</TableHead>
                 </TableRow>
               </TableHeader>

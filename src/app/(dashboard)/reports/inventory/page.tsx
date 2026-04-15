@@ -35,26 +35,26 @@ export default function InventoryReportPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Bao cao kho hang" />
+      <PageHeader title="Báo cáo kho hàng" />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Tong ton kho</CardTitle>
+            <CardTitle className="text-sm">Tổng tồn kho</CardTitle>
             <BoxesIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold">{totalItems}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">San pham co ton</CardTitle>
+            <CardTitle className="text-sm">Sản phẩm có tồn</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold">{uniqueProducts}</div></CardContent>
         </Card>
         <Card className={expiringCount > 0 ? "border-amber-200" : ""}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Canh bao HSD</CardTitle>
+            <CardTitle className="text-sm">Cảnh báo HSD</CardTitle>
             <AlertTriangle className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold text-amber-600">{expiringCount}</div></CardContent>
@@ -62,17 +62,17 @@ export default function InventoryReportPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Lo hang sap het han</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Lô hàng sắp hết hạn</CardTitle></CardHeader>
         <CardContent>
           {expiringCount === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">Khong co lo hang sap het han</p>
+            <p className="text-center py-8 text-muted-foreground">Không có lô hàng sắp hết hạn</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>San pham</TableHead>
-                  <TableHead>Ma lo</TableHead>
-                  <TableHead className="text-right">Ton</TableHead>
+                  <TableHead>Sản phẩm</TableHead>
+                  <TableHead>Mã lô</TableHead>
+                  <TableHead className="text-right">Tồn</TableHead>
                   <TableHead>HSD</TableHead>
                 </TableRow>
               </TableHeader>

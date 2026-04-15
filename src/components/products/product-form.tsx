@@ -55,11 +55,11 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
       if (product) {
         const { error } = await supabase.from("products").update(payload).eq("id", product.id)
         if (error) throw error
-        toast({ title: "Da cap nhat san pham" })
+        toast({ title: "Đã cập nhật sản phẩm" })
       } else {
         const { error } = await supabase.from("products").insert({ ...payload, org_id: user?.org_id })
         if (error) throw error
-        toast({ title: "Da tao san pham moi" })
+        toast({ title: "Đã tạo sản phẩm mới" })
       }
 
       if (onSaved) {
@@ -69,8 +69,8 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
         router.refresh()
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -79,37 +79,37 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{product ? "Cap nhat san pham" : "Them san pham moi"}</CardTitle>
+        <CardTitle>{product ? "Cập nhật sản phẩm" : "Thêm sản phẩm mới"}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="sku">Ma SKU *</Label>
+              <Label htmlFor="sku">Mã SKU *</Label>
               <Input id="sku" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} required placeholder="VD: SNP-001" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Ten san pham *</Label>
-              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="VD: Nuoc ngot Coca Cola 330ml" />
+              <Label htmlFor="name">Tên sản phẩm *</Label>
+              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="VD: Nước ngọt Coca Cola 330ml" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="category">Danh muc</Label>
-              <Input id="category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="VD: Nuoc giai khat" />
+              <Label htmlFor="category">Danh mục</Label>
+              <Input id="category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="VD: Nước giải khát" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="brand">Nha hang</Label>
+              <Label htmlFor="brand">Nhãn hàng</Label>
               <Input id="brand" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} placeholder="VD: Coca Cola" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="base_unit">Don vi tinh co ban *</Label>
-              <Input id="base_unit" value={form.base_unit} onChange={(e) => setForm({ ...form, base_unit: e.target.value })} required placeholder="VD: lon, chai, goi" />
+              <Label htmlFor="base_unit">Đơn vị tính cơ bản *</Label>
+              <Input id="base_unit" value={form.base_unit} onChange={(e) => setForm({ ...form, base_unit: e.target.value })} required placeholder="VD: lon, chai, gói" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="barcode">Ma vach</Label>
+              <Label htmlFor="barcode">Mã vạch</Label>
               <Input id="barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="VD: 8934588012345" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="vat_rate">Thue VAT</Label>
+              <Label htmlFor="vat_rate">Thuế VAT</Label>
               <Select value={form.vat_rate} onValueChange={(v) => setForm({ ...form, vat_rate: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -121,24 +121,24 @@ export function ProductForm({ product, onSaved }: ProductFormProps) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="shelf_life">Han su dung (ngay)</Label>
+              <Label htmlFor="shelf_life">Hạn sử dụng (ngày)</Label>
               <Input id="shelf_life" type="number" value={form.shelf_life_days} onChange={(e) => setForm({ ...form, shelf_life_days: e.target.value })} placeholder="VD: 365" />
             </div>
             <div className="space-y-2">
-              <Label>Trang thai</Label>
+              <Label>Trạng thái</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Dang ban</SelectItem>
-                  <SelectItem value="inactive">Ngung ban</SelectItem>
+                  <SelectItem value="active">Đang bán</SelectItem>
+                  <SelectItem value="inactive">Ngừng bán</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Dang luu..." : (product ? "Cap nhat" : "Tao moi")}
+              {loading ? "Đang lưu..." : (product ? "Cập nhật" : "Tạo mới")}
             </Button>
           </div>
         </form>

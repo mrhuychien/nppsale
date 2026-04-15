@@ -61,7 +61,7 @@ export default function NewCommissionPolicyPage() {
     if (type === "percentage") {
       const rate = parseFloat(percentageRate)
       if (isNaN(rate) || rate <= 0) {
-        toast({ title: "Ty le phan tram khong hop le", variant: "destructive" })
+        toast({ title: "Tỷ lệ phần trăm không hợp lệ", variant: "destructive" })
         return null
       }
       return [{ rate: rate / 100 }]
@@ -69,7 +69,7 @@ export default function NewCommissionPolicyPage() {
     if (type === "fixed") {
       const amount = parseFloat(fixedAmount)
       if (isNaN(amount) || amount <= 0) {
-        toast({ title: "So tien co dinh khong hop le", variant: "destructive" })
+        toast({ title: "Số tiền cố định không hợp lệ", variant: "destructive" })
         return null
       }
       return [{ amount }]
@@ -82,7 +82,7 @@ export default function NewCommissionPolicyPage() {
       }))
       const invalid = parsed.some((t) => isNaN(t.min) || isNaN(t.max) || isNaN(t.rate) || t.rate <= 0)
       if (invalid) {
-        toast({ title: "Cac bac luy ke khong hop le", description: "Vui long kiem tra lai gia tri min, max va ty le", variant: "destructive" })
+        toast({ title: "Các bậc lũy kế không hợp lệ", description: "Vui lòng kiểm tra lại giá trị min, max và tỷ lệ", variant: "destructive" })
         return null
       }
       return parsed
@@ -112,11 +112,11 @@ export default function NewCommissionPolicyPage() {
         org_id: user?.org_id,
       })
       if (error) throw error
-      toast({ title: "Da tao chinh sach hoa hong" })
+      toast({ title: "Đã tạo chính sách hoa hồng" })
       router.push("/commissions/policies")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -124,18 +124,18 @@ export default function NewCommissionPolicyPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao chinh sach hoa hong" />
+      <PageHeader title="Tạo chính sách hoa hồng" />
       <Card>
-        <CardHeader><CardTitle>Thong tin chinh sach</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin chính sách</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Ten chinh sach *</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="VD: Hoa hong theo doanh so" />
+                <Label>Tên chính sách *</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="VD: Hoa hồng theo doanh số" />
               </div>
               <div className="space-y-2">
-                <Label>Loai hoa hong *</Label>
+                <Label>Loại hoa hồng *</Label>
                 <Select value={type} onValueChange={setType}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -144,26 +144,26 @@ export default function NewCommissionPolicyPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Ap dung cho</Label>
+                <Label>Áp dụng cho</Label>
                 <Input value={appliesTo} onChange={(e) => setAppliesTo(e.target.value)} placeholder="all" />
               </div>
               <div className="space-y-2">
-                <Label>Hieu luc tu</Label>
+                <Label>Hiệu lực từ</Label>
                 <Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Hieu luc den</Label>
+                <Label>Hiệu lực đến</Label>
                 <Input type="date" value={effectiveTo} onChange={(e) => setEffectiveTo(e.target.value)} />
               </div>
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={isActive} onCheckedChange={setIsActive} id="is-active" />
-                <Label htmlFor="is-active">Kich hoat ngay</Label>
+                <Label htmlFor="is-active">Kích hoạt ngay</Label>
               </div>
             </div>
 
             {type === "percentage" && (
               <div className="space-y-2">
-                <Label>Ty le hoa hong (%) *</Label>
+                <Label>Tỷ lệ hoa hồng (%) *</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -172,14 +172,14 @@ export default function NewCommissionPolicyPage() {
                   value={percentageRate}
                   onChange={(e) => setPercentageRate(e.target.value)}
                   required
-                  placeholder="VD: 5 (tuong duong 5%)"
+                  placeholder="VD: 5 (tương đương 5%)"
                 />
               </div>
             )}
 
             {type === "fixed" && (
               <div className="space-y-2">
-                <Label>So tien co dinh (VND) *</Label>
+                <Label>Số tiền cố định (VND) *</Label>
                 <Input
                   type="number"
                   step="1"
@@ -194,11 +194,11 @@ export default function NewCommissionPolicyPage() {
 
             {type === "tiered" && (
               <div className="space-y-3">
-                <Label>Cac bac luy ke *</Label>
+                <Label>Các bậc lũy kế *</Label>
                 {tiers.map((tier, index) => (
                   <div key={index} className="flex items-end gap-2">
                     <div className="space-y-1 flex-1">
-                      {index === 0 && <Label className="text-xs text-muted-foreground">Gia tri min</Label>}
+                      {index === 0 && <Label className="text-xs text-muted-foreground">Giá trị min</Label>}
                       <Input
                         type="number"
                         step="1"
@@ -210,7 +210,7 @@ export default function NewCommissionPolicyPage() {
                       />
                     </div>
                     <div className="space-y-1 flex-1">
-                      {index === 0 && <Label className="text-xs text-muted-foreground">Gia tri max</Label>}
+                      {index === 0 && <Label className="text-xs text-muted-foreground">Giá trị max</Label>}
                       <Input
                         type="number"
                         step="1"
@@ -222,7 +222,7 @@ export default function NewCommissionPolicyPage() {
                       />
                     </div>
                     <div className="space-y-1 flex-1">
-                      {index === 0 && <Label className="text-xs text-muted-foreground">Ty le (%)</Label>}
+                      {index === 0 && <Label className="text-xs text-muted-foreground">Tỷ lệ (%)</Label>}
                       <Input
                         type="number"
                         step="0.01"
@@ -240,14 +240,14 @@ export default function NewCommissionPolicyPage() {
                   </div>
                 ))}
                 <Button type="button" variant="outline" size="sm" onClick={addTier}>
-                  <Plus className="mr-2 h-4 w-4" /> Them bac
+                  <Plus className="mr-2 h-4 w-4" /> Thêm bậc
                 </Button>
               </div>
             )}
 
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-              <Button type="submit" disabled={loading}>{loading ? "Dang luu..." : "Tao chinh sach"}</Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : "Tạo chính sách"}</Button>
             </div>
           </form>
         </CardContent>

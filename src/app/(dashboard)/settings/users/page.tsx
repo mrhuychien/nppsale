@@ -31,18 +31,18 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quan ly nguoi dung" description={`${users.length} nguoi dung`} />
+      <PageHeader title="Quản lý người dùng" description={`${users.length} người dùng`} />
 
       {users.length === 0 ? (
-        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chua co nguoi dung" description="Tao nguoi dung qua Supabase Auth" />
+        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chưa có người dùng" description="Tạo người dùng qua Supabase Auth" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ho ten</TableHead>
-              <TableHead>Vai tro</TableHead>
+              <TableHead>Họ tên</TableHead>
+              <TableHead>Vai trò</TableHead>
               <TableHead className="hidden sm:table-cell">SĐT</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -53,7 +53,7 @@ export default function UsersPage() {
                 <TableCell className="hidden sm:table-cell">{u.phone || "-"}</TableCell>
                 <TableCell>
                   <Badge variant={u.is_active ? "success" : "secondary"}>
-                    {u.is_active ? "Hoat dong" : "Vo hieu"}
+                    {u.is_active ? "Hoạt động" : "Vô hiệu"}
                   </Badge>
                 </TableCell>
               </TableRow>

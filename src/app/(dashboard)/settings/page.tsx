@@ -13,18 +13,18 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Cai dat" description="Quan ly nguoi dung va cau hinh he thong" />
+      <PageHeader title="Cài đặt" description="Quản lý người dùng và cấu hình hệ thống" />
       <div className="grid gap-4 sm:grid-cols-2">
         <Link href="/settings/users">
           <Card className="hover:border-primary transition-colors cursor-pointer">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Nguoi dung</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Quan ly tai khoan, phan quyen</p></CardContent>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Người dùng</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Quản lý tài khoản, phân quyền</p></CardContent>
           </Card>
         </Link>
         <Link href="/settings/org">
           <Card className="hover:border-primary transition-colors cursor-pointer">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> To chuc</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Cau hinh NPP, nguong duyet, canh bao</p></CardContent>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Tổ chức</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Cấu hình NPP, ngưỡng duyệt, cảnh báo</p></CardContent>
           </Card>
         </Link>
       </div>

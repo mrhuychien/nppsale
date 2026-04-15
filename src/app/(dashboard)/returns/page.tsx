@@ -41,24 +41,24 @@ export default function ReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tra hang" description={`${returns.length} yeu cau`}>
+      <PageHeader title="Trả hàng" description={`${returns.length} yêu cầu`}>
         {user && hasPermission(user.role, "returns", "create") && (
-          <Button onClick={() => router.push("/returns/new")}><Plus className="mr-2 h-4 w-4" /> Tao yeu cau</Button>
+          <Button onClick={() => router.push("/returns/new")}><Plus className="mr-2 h-4 w-4" /> Tạo yêu cầu</Button>
         )}
       </PageHeader>
 
       {returns.length === 0 ? (
-        <EmptyState icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />} title="Chua co yeu cau tra hang" />
+        <EmptyState icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />} title="Chưa có yêu cầu trả hàng" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Khach hang</TableHead>
-              <TableHead>Ly do</TableHead>
-              <TableHead>Nguoi yeu cau</TableHead>
+              <TableHead>Khách hàng</TableHead>
+              <TableHead>Lý do</TableHead>
+              <TableHead>Người yêu cầu</TableHead>
               <TableHead className="text-right">Credit Note</TableHead>
-              <TableHead>Ngay</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Ngày</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

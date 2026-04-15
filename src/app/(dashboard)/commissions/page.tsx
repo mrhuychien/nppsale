@@ -36,30 +36,30 @@ export default function CommissionsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Hoa hong" description="Tu thuong va bang xep hang NV">
+      <PageHeader title="Hoa hồng" description="Tự thưởng và bảng xếp hạng NV">
         <Button variant="outline" asChild>
-          <Link href="/commissions/policies">Chinh sach hoa hong</Link>
+          <Link href="/commissions/policies">Chính sách hoa hồng</Link>
         </Button>
       </PageHeader>
 
       {wallets.length === 0 ? (
-        <EmptyState icon={<Award className="h-8 w-8 text-muted-foreground" />} title="Chua co du lieu hoa hong" description="Hoa hong se duoc tinh tu don hang da giao" />
+        <EmptyState icon={<Award className="h-8 w-8 text-muted-foreground" />} title="Chưa có dữ liệu hoa hồng" description="Hoa hồng sẽ được tính từ đơn hàng đã giao" />
       ) : (
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" /> Bang xep hang</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" /> Bảng xếp hạng</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
-                    <TableHead>Nhan vien</TableHead>
-                    <TableHead>Ky</TableHead>
-                    <TableHead className="text-right">Hoa hong</TableHead>
-                    <TableHead className="text-right">Da chi</TableHead>
-                    <TableHead className="text-right">Con lai</TableHead>
+                    <TableHead>Nhân viên</TableHead>
+                    <TableHead>Kỳ</TableHead>
+                    <TableHead className="text-right">Hoa hồng</TableHead>
+                    <TableHead className="text-right">Đã chi</TableHead>
+                    <TableHead className="text-right">Còn lại</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

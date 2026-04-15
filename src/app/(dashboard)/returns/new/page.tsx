@@ -55,11 +55,11 @@ export default function NewReturnPage() {
         org_id: user?.org_id,
       })
       if (error) throw error
-      toast({ title: "Da tao yeu cau tra hang" })
+      toast({ title: "Đã tạo yêu cầu trả hàng" })
       router.push("/returns")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -67,42 +67,42 @@ export default function NewReturnPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao yeu cau tra hang" />
+      <PageHeader title="Tạo yêu cầu trả hàng" />
       <Card>
-        <CardHeader><CardTitle>Thong tin tra hang</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin trả hàng</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Khach hang *</Label>
+                <Label>Khách hàng *</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger><SelectValue placeholder="Chon khach hang" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.store_name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Ly do *</Label>
+                <Label>Lý do *</Label>
                 <Select value={reason} onValueChange={setReason}>
-                  <SelectTrigger><SelectValue placeholder="Chon ly do" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Chọn lý do" /></SelectTrigger>
                   <SelectContent>
                     {RETURN_REASONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Gia tri Credit Note (VND)</Label>
+                <Label>Giá trị Credit Note (VND)</Label>
                 <Input type="number" value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} placeholder="0" />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Ghi chu</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Mo ta chi tiet..." />
+              <Label>Ghi chú</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Mô tả chi tiết..." />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-              <Button type="submit" disabled={loading}>{loading ? "Dang gui..." : "Gui yeu cau"}</Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Đang gửi..." : "Gửi yêu cầu"}</Button>
             </div>
           </form>
         </CardContent>

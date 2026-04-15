@@ -42,59 +42,59 @@ export default function SalesReportPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Bao cao doanh so" />
+      <PageHeader title="Báo cáo doanh số" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tong doanh thu</CardTitle>
+            <CardTitle className="text-sm font-medium">Tổng doanh thu</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">Tu don da giao</p>
+            <p className="text-xs text-muted-foreground">Từ đơn đã giao</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tong don hang</CardTitle>
+            <CardTitle className="text-sm font-medium">Tổng đơn hàng</CardTitle>
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalOrders}</div>
-            <p className="text-xs text-muted-foreground">{deliveredOrders} da giao</p>
+            <p className="text-xs text-muted-foreground">{deliveredOrders} đã giao</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Khach hang</CardTitle>
+            <CardTitle className="text-sm font-medium">Khách hàng</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{customerCount}</div>
-            <p className="text-xs text-muted-foreground">Tong so khach hang</p>
+            <p className="text-xs text-muted-foreground">Tổng số khách hàng</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Gia tri TB/don</CardTitle>
+            <CardTitle className="text-sm font-medium">Giá trị TB/đơn</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(avgOrderValue)}</div>
-            <p className="text-xs text-muted-foreground">{productCount} san pham</p>
+            <p className="text-xs text-muted-foreground">{productCount} sản phẩm</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Don hang gan day</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Đơn hàng gần đây</CardTitle></CardHeader>
         <CardContent>
           {orders.length === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">Chua co du lieu</p>
+            <p className="text-center py-8 text-muted-foreground">Chưa có dữ liệu</p>
           ) : (
             <div className="space-y-2">
               {orders.slice(0, 10).map((o) => (

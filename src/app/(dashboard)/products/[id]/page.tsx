@@ -47,13 +47,13 @@ export default function ProductDetailPage() {
   if (id === "new") {
     return (
       <div className="space-y-4">
-        <PageHeader title="Them san pham moi" />
+        <PageHeader title="Thêm sản phẩm mới" />
         <ProductForm />
       </div>
     )
   }
 
-  if (!product) return <div>Khong tim thay san pham</div>
+  if (!product) return <div>Không tìm thấy sản phẩm</div>
 
   return (
     <div className="space-y-4">
@@ -61,9 +61,9 @@ export default function ProductDetailPage() {
 
       <Tabs defaultValue="info">
         <TabsList>
-          <TabsTrigger value="info">Thong tin</TabsTrigger>
-          <TabsTrigger value="units">Don vi tinh ({units.length})</TabsTrigger>
-          <TabsTrigger value="prices">Bang gia ({priceLists.length})</TabsTrigger>
+          <TabsTrigger value="info">Thông tin</TabsTrigger>
+          <TabsTrigger value="units">Đơn vị tính ({units.length})</TabsTrigger>
+          <TabsTrigger value="prices">Bảng giá ({priceLists.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="info">
           <ProductForm product={product} />

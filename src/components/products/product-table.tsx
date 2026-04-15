@@ -16,12 +16,12 @@ export function ProductTable({ products }: ProductTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead>SKU</TableHead>
-          <TableHead>Ten san pham</TableHead>
-          <TableHead className="hidden sm:table-cell">Danh muc</TableHead>
-          <TableHead className="hidden md:table-cell">Nha hang</TableHead>
-          <TableHead>DVT</TableHead>
-          <TableHead className="text-right">Gia ban</TableHead>
-          <TableHead>Trang thai</TableHead>
+          <TableHead>Tên sản phẩm</TableHead>
+          <TableHead className="hidden sm:table-cell">Danh mục</TableHead>
+          <TableHead className="hidden md:table-cell">Nhãn hàng</TableHead>
+          <TableHead>ĐVT</TableHead>
+          <TableHead className="text-right">Giá bán</TableHead>
+          <TableHead>Trạng thái</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -43,7 +43,7 @@ export function ProductTable({ products }: ProductTableProps) {
               </TableCell>
               <TableCell>
                 <Badge variant={product.status === "active" ? "success" : "secondary"}>
-                  {product.status === "active" ? "Dang ban" : "Ngung"}
+                  {product.status === "active" ? "Đang bán" : "Ngừng"}
                 </Badge>
               </TableCell>
             </TableRow>

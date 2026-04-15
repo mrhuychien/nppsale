@@ -45,10 +45,10 @@ export function PriceListManager({
       })
       if (error) throw error
       setPrice("")
-      toast({ title: "Da them gia" })
+      toast({ title: "Đã thêm giá" })
       onUpdate()
     } catch {
-      toast({ title: "Loi", description: "Khong the them gia", variant: "destructive" })
+      toast({ title: "Lỗi", description: "Không thể thêm giá", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -57,7 +57,7 @@ export function PriceListManager({
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("price_lists").delete().eq("id", id)
     if (!error) {
-      toast({ title: "Da xoa" })
+      toast({ title: "Đã xóa" })
       onUpdate()
     }
   }
@@ -67,17 +67,17 @@ export function PriceListManager({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Nhom KH</TableHead>
-            <TableHead>DVT</TableHead>
-            <TableHead className="text-right">Gia ban</TableHead>
-            <TableHead>Hieu luc</TableHead>
+            <TableHead>Nhóm KH</TableHead>
+            <TableHead>ĐVT</TableHead>
+            <TableHead className="text-right">Giá bán</TableHead>
+            <TableHead>Hiệu lực</TableHead>
             <TableHead className="w-16"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {priceLists.map((pl) => (
             <TableRow key={pl.id}>
-              <TableCell>{pl.group ? pl.group.name : "Tat ca"}</TableCell>
+              <TableCell>{pl.group ? pl.group.name : "Tất cả"}</TableCell>
               <TableCell>{pl.unit_name}</TableCell>
               <TableCell className="text-right font-medium">{formatCurrency(pl.price)}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{pl.effective_from || "-"}</TableCell>
@@ -93,9 +93,9 @@ export function PriceListManager({
 
       <div className="flex flex-wrap gap-2">
         <Select value={groupId} onValueChange={setGroupId}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Nhom KH" /></SelectTrigger>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Nhóm KH" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tat ca</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
             {customerGroups.map((g) => (
               <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
             ))}
@@ -109,9 +109,9 @@ export function PriceListManager({
             ))}
           </SelectContent>
         </Select>
-        <Input type="number" placeholder="Gia ban (VND)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-40" />
+        <Input type="number" placeholder="Giá bán (VND)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-40" />
         <Button onClick={handleAdd} disabled={loading}>
-          <Plus className="mr-2 h-4 w-4" /> Them gia
+          <Plus className="mr-2 h-4 w-4" /> Thêm giá
         </Button>
       </div>
     </div>

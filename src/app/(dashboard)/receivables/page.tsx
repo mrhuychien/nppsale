@@ -41,26 +41,26 @@ export default function ReceivablesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Cong no" description={`Tong cong no: ${formatCurrency(totalOutstanding)}`}>
+      <PageHeader title="Công nợ" description={`Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link href="/receivables/aging">Aging Report</Link></Button>
-          <Button variant="outline" asChild><Link href="/receivables/collect">Thu tien</Link></Button>
+          <Button variant="outline" asChild><Link href="/receivables/collect">Thu tiền</Link></Button>
         </div>
       </PageHeader>
 
       {receivables.length === 0 ? (
-        <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chua co cong no" />
+        <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chưa có công nợ" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Khach hang</TableHead>
-              <TableHead className="hidden sm:table-cell">NV phu trach</TableHead>
-              <TableHead className="text-right">Phai thu</TableHead>
-              <TableHead className="text-right">Da thu</TableHead>
-              <TableHead className="text-right">Con lai</TableHead>
-              <TableHead>Han</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Khách hàng</TableHead>
+              <TableHead className="hidden sm:table-cell">NV phụ trách</TableHead>
+              <TableHead className="text-right">Phải thu</TableHead>
+              <TableHead className="text-right">Đã thu</TableHead>
+              <TableHead className="text-right">Còn lại</TableHead>
+              <TableHead>Hạn</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

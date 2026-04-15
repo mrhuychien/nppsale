@@ -40,23 +40,23 @@ export default function CommissionPoliciesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Chinh sach hoa hong" description={`${policies.length} chinh sach`}>
+      <PageHeader title="Chính sách hoa hồng" description={`${policies.length} chính sách`}>
         {user && hasPermission(user.role, "commissions", "create") && (
-          <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tao chinh sach</Button>
+          <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
         )}
       </PageHeader>
 
       {policies.length === 0 ? (
-        <EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title="Chua co chinh sach hoa hong" />
+        <EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title="Chưa có chính sách hoa hồng" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ten chinh sach</TableHead>
-              <TableHead>Loai</TableHead>
-              <TableHead>Ap dung cho</TableHead>
-              <TableHead>Hieu luc</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Tên chính sách</TableHead>
+              <TableHead>Loại</TableHead>
+              <TableHead>Áp dụng cho</TableHead>
+              <TableHead>Hiệu lực</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -64,11 +64,11 @@ export default function CommissionPoliciesPage() {
               <TableRow key={p.id}>
                 <TableCell className="font-medium">{p.name}</TableCell>
                 <TableCell>{getTypeLabel(p.type)}</TableCell>
-                <TableCell>{p.applies_to === "all" ? "Tat ca" : p.applies_to}</TableCell>
+                <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>
                 <TableCell className="text-sm">{p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}</TableCell>
                 <TableCell>
                   <Badge variant={p.is_active ? "success" : "secondary"}>
-                    {p.is_active ? "Dang ap dung" : "Ngung"}
+                    {p.is_active ? "Đang áp dụng" : "Ngừng"}
                   </Badge>
                 </TableCell>
               </TableRow>

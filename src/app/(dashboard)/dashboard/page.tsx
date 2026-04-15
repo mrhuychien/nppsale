@@ -234,7 +234,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-secondary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Don hang hom nay
+              Đơn hàng hôm nay
             </p>
             <span className="text-secondary bg-secondary/10 p-2 rounded-lg inline-flex">
               <ShoppingBasket className="h-5 w-5" />
@@ -245,7 +245,7 @@ export default function DashboardPage() {
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
             <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-            Don moi trong ngay
+            Đơn mới trong ngày
           </p>
         </div>
 
@@ -253,7 +253,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-destructive">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Cong no mo
+              Công nợ mở
             </p>
             <span className="text-destructive bg-destructive/10 p-2 rounded-lg inline-flex">
               <AlertTriangle className="h-5 w-5" />
@@ -263,7 +263,7 @@ export default function DashboardPage() {
             {formatCurrency(stats.openReceivables)}
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium">
-            {stats.overdueCount} khoan qua han
+            {stats.overdueCount} khoản quá hạn
           </p>
         </div>
 
@@ -271,7 +271,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-amber-500">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Ton kho canh bao
+              Tồn kho cảnh báo
             </p>
             <span className="text-amber-600 bg-amber-100 p-2 rounded-lg inline-flex">
               <Warehouse className="h-5 w-5" />
@@ -281,7 +281,7 @@ export default function DashboardPage() {
             {stats.lowStockCount} SKU
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium">
-            Can nhap hang ngay lap tuc
+            Cần nhập hàng ngay lập tức
           </p>
         </div>
       </div>
@@ -293,10 +293,10 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h4 className="text-xl lg:text-2xl font-bold text-foreground tracking-tight">
-                Hieu suat tai chinh
+                Hiệu suất tài chính
               </h4>
               <p className="text-sm text-muted-foreground">
-                Doanh thu trong thang
+                Doanh thu trong tháng
               </p>
             </div>
             <div className="flex gap-4">
@@ -306,7 +306,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-secondary" />
-                <span className="text-xs font-semibold">Loi nhuan</span>
+                <span className="text-xs font-semibold">Lợi nhuận</span>
               </div>
             </div>
           </div>
@@ -331,7 +331,7 @@ export default function DashboardPage() {
             <div className="absolute inset-0 bg-gradient-to-t from-card/20 to-transparent pointer-events-none" />
             <div className="relative z-10 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Bieu do se som cap nhat du lieu thuc
+              Biểu đồ sẽ sớm cập nhật dữ liệu thực
             </div>
           </div>
         </div>
@@ -340,12 +340,12 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl p-6 lg:p-8 shadow-ambient">
           <div className="flex items-center justify-between mb-6">
             <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Top khach hang
+              Top khách hàng
             </h4>
             <Users className="h-5 w-5 text-muted-foreground" />
           </div>
           {topCustomers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chua co du lieu</p>
+            <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
           ) : (
             <div className="space-y-5">
               {topCustomers.map((c) => {
@@ -380,10 +380,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Canh bao quan trong
+              Cảnh báo quan trọng
             </h4>
             <span className="px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-black rounded uppercase">
-              Can xu ly
+              Cần xử lý
             </span>
           </div>
           <div className="space-y-3">
@@ -393,16 +393,16 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Lo hang sap het han
+                  Lô hàng sắp hết hạn
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {stats.expiringSoonCount} lo con han duoi 30 ngay
+                  {stats.expiringSoonCount} lô còn hạn dưới 30 ngày
                 </p>
                 <Link
                   href="/inventory"
                   className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1"
                 >
-                  Xem chi tiet <ArrowRight className="h-3 w-3" />
+                  Xem chi tiết <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
             </div>
@@ -412,16 +412,16 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Vuot han muc no
+                  Vượt hạn mức nợ
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {stats.overdueCount} khach hang co cong no qua han
+                  {stats.overdueCount} khách hàng có công nợ quá hạn
                 </p>
                 <Link
                   href="/receivables"
                   className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1"
                 >
-                  Nhac no ngay <ArrowRight className="h-3 w-3" />
+                  Nhắc nợ ngay <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
             </div>
@@ -431,10 +431,10 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Ton kho thap
+                  Tồn kho thấp
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {stats.lowStockCount} lo co ton kho duoi 10 don vi
+                  {stats.lowStockCount} lô có tồn kho dưới 10 đơn vị
                 </p>
                 <Link
                   href="/inventory"
@@ -451,29 +451,29 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Hoat dong gan day
+              Hoạt động gần đây
             </h4>
             <Link
               href="/orders"
               className="text-sm font-semibold text-primary inline-flex items-center gap-1"
             >
-              Tat ca <ArrowRight className="h-4 w-4" />
+              Tất cả <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="bg-card rounded-2xl overflow-hidden shadow-ambient">
             {recentOrders.length === 0 ? (
               <p className="text-center py-8 text-muted-foreground text-sm">
-                Chua co don hang
+                Chưa có đơn hàng
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-surface-low text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                      <th className="px-6 py-4">Ma don</th>
-                      <th className="px-6 py-4">Khach hang</th>
-                      <th className="px-6 py-4 text-right">Gia tri</th>
-                      <th className="px-6 py-4 text-center">Trang thai</th>
+                      <th className="px-6 py-4">Mã đơn</th>
+                      <th className="px-6 py-4">Khách hàng</th>
+                      <th className="px-6 py-4 text-right">Giá trị</th>
+                      <th className="px-6 py-4 text-center">Trạng thái</th>
                     </tr>
                   </thead>
                   <tbody className="text-sm">

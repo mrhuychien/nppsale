@@ -11,7 +11,7 @@ export default function NewOrderPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao don hang moi" />
+      <PageHeader title="Tạo đơn hàng mới" />
       <OrderForm />
     </div>
   )

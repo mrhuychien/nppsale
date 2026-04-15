@@ -35,10 +35,10 @@ export function UnitManager({ productId, baseUnit, units, onUpdate }: UnitManage
       if (error) throw error
       setNewUnit("")
       setNewConversion("")
-      toast({ title: "Da them don vi tinh" })
+      toast({ title: "Đã thêm đơn vị tính" })
       onUpdate()
     } catch {
-      toast({ title: "Loi", description: "Khong the them don vi tinh", variant: "destructive" })
+      toast({ title: "Lỗi", description: "Không thể thêm đơn vị tính", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -47,10 +47,10 @@ export function UnitManager({ productId, baseUnit, units, onUpdate }: UnitManage
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("product_units").delete().eq("id", id)
     if (error) {
-      toast({ title: "Loi", description: "Khong the xoa", variant: "destructive" })
+      toast({ title: "Lỗi", description: "Không thể xóa", variant: "destructive" })
       return
     }
-    toast({ title: "Da xoa don vi tinh" })
+    toast({ title: "Đã xóa đơn vị tính" })
     onUpdate()
   }
 
@@ -59,15 +59,15 @@ export function UnitManager({ productId, baseUnit, units, onUpdate }: UnitManage
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Don vi</TableHead>
-            <TableHead>Quy doi</TableHead>
+            <TableHead>Đơn vị</TableHead>
+            <TableHead>Quy đổi</TableHead>
             <TableHead className="w-16"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           <TableRow>
             <TableCell className="font-medium">{baseUnit}</TableCell>
-            <TableCell>1 (co ban)</TableCell>
+            <TableCell>1 (cơ bản)</TableCell>
             <TableCell></TableCell>
           </TableRow>
           {units.map((unit) => (
@@ -85,8 +85,8 @@ export function UnitManager({ productId, baseUnit, units, onUpdate }: UnitManage
       </Table>
 
       <div className="flex gap-2">
-        <Input placeholder="Ten DVT (VD: Thung)" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
-        <Input type="number" placeholder="Quy doi" value={newConversion} onChange={(e) => setNewConversion(e.target.value)} className="w-32" />
+        <Input placeholder="Tên ĐVT (VD: Thùng)" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
+        <Input type="number" placeholder="Quy đổi" value={newConversion} onChange={(e) => setNewConversion(e.target.value)} className="w-32" />
         <Button onClick={handleAdd} disabled={loading} size="icon">
           <Plus className="h-4 w-4" />
         </Button>

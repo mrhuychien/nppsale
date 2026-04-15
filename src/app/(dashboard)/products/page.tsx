@@ -47,10 +47,10 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="San pham" description={`${products.length} san pham`}>
+      <PageHeader title="Sản phẩm" description={`${products.length} sản phẩm`}>
         {user && hasPermission(user.role, "products", "create") && (
           <Button onClick={() => router.push("/products/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Them san pham
+            <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
           </Button>
         )}
       </PageHeader>
@@ -58,16 +58,16 @@ export default function ProductsPage() {
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Tim kiem theo ten, SKU, nha hang..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Tìm kiếm theo tên, SKU, nhãn hàng..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
       </div>
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Package className="h-8 w-8 text-muted-foreground" />} title="Chua co san pham" description="Bat dau bang cach them san pham dau tien">
+        <EmptyState icon={<Package className="h-8 w-8 text-muted-foreground" />} title="Chưa có sản phẩm" description="Bắt đầu bằng cách thêm sản phẩm đầu tiên">
           {user && hasPermission(user.role, "products", "create") && (
-            <Button onClick={() => router.push("/products/new")}><Plus className="mr-2 h-4 w-4" /> Them san pham</Button>
+            <Button onClick={() => router.push("/products/new")}><Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm</Button>
           )}
         </EmptyState>
       ) : (

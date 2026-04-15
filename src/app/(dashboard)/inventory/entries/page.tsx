@@ -48,23 +48,23 @@ export default function StockEntriesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Phieu kho" description={`${entries.length} phieu`}>
+      <PageHeader title="Phiếu kho" description={`${entries.length} phiếu`}>
         {user && hasPermission(user.role, "inventory", "create") && (
-          <Button asChild><Link href="/inventory/stocktake"><Plus className="mr-2 h-4 w-4" /> Tao phieu</Link></Button>
+          <Button asChild><Link href="/inventory/stocktake"><Plus className="mr-2 h-4 w-4" /> Tạo phiếu</Link></Button>
         )}
       </PageHeader>
 
       {entries.length === 0 ? (
-        <EmptyState icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />} title="Chua co phieu kho" />
+        <EmptyState icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />} title="Chưa có phiếu kho" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ma phieu</TableHead>
-              <TableHead>Loai</TableHead>
-              <TableHead>Nguoi tao</TableHead>
-              <TableHead>Ghi chu</TableHead>
-              <TableHead>Ngay</TableHead>
+              <TableHead>Mã phiếu</TableHead>
+              <TableHead>Loại</TableHead>
+              <TableHead>Người tạo</TableHead>
+              <TableHead>Ghi chú</TableHead>
+              <TableHead>Ngày</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

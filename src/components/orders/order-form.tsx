@@ -92,7 +92,7 @@ export function OrderForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerId || lines.length === 0) {
-      toast({ title: "Vui long chon khach hang va them san pham", variant: "destructive" })
+      toast({ title: "Vui lòng chọn khách hàng và thêm sản phẩm", variant: "destructive" })
       return
     }
     setLoading(true)
@@ -129,11 +129,11 @@ export function OrderForm() {
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) throw linesErr
 
-      toast({ title: `Da tao don hang ${orderCode}` })
+      toast({ title: `Đã tạo đơn hàng ${orderCode}` })
       router.push("/orders")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -142,31 +142,31 @@ export function OrderForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>Thong tin don hang</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin đơn hàng</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Khach hang *</Label>
+              <Label>Khách hàng *</Label>
               <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger><SelectValue placeholder="Chon khach hang" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
                 <SelectContent>
                   {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.store_name} - {c.phone}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>NV ban hang</Label>
+              <Label>NV bán hàng</Label>
               <Input value={user?.full_name || ""} disabled />
             </div>
           </div>
           {selectedCustomer && (
             <div className="text-sm text-muted-foreground">
-              Dieu khoan: {selectedCustomer.payment_terms} | Han muc: {formatCurrency(selectedCustomer.credit_limit)}
+              Điều khoản: {selectedCustomer.payment_terms} | Hạn mức: {formatCurrency(selectedCustomer.credit_limit)}
             </div>
           )}
           <div className="space-y-2">
-            <Label>Ghi chu</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chu cho don hang..." />
+            <Label>Ghi chú</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú cho đơn hàng..." />
           </div>
         </CardContent>
       </Card>
@@ -174,9 +174,9 @@ export function OrderForm() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>San pham ({lines.length})</CardTitle>
+            <CardTitle>Sản phẩm ({lines.length})</CardTitle>
             <Select onValueChange={addLine}>
-              <SelectTrigger className="w-64"><SelectValue placeholder="Them san pham..." /></SelectTrigger>
+              <SelectTrigger className="w-64"><SelectValue placeholder="Thêm sản phẩm..." /></SelectTrigger>
               <SelectContent>
                 {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.sku} - {p.name}</SelectItem>)}
               </SelectContent>
@@ -188,10 +188,10 @@ export function OrderForm() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>San pham</TableHead>
+                  <TableHead>Sản phẩm</TableHead>
                   <TableHead className="w-24">SL</TableHead>
-                  <TableHead className="w-32">Don gia</TableHead>
-                  <TableHead className="w-32 text-right">Thanh tien</TableHead>
+                  <TableHead className="w-32">Đơn giá</TableHead>
+                  <TableHead className="w-32 text-right">Thành tiền</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -214,20 +214,20 @@ export function OrderForm() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">Chua co san pham. Chon tu danh sach phia tren.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">Chưa có sản phẩm. Chọn từ danh sách phía trên.</p>
           )}
 
           <div className="mt-4 space-y-1 text-right">
-            <p>Tam tinh: <span className="font-medium">{formatCurrency(subtotal)}</span></p>
+            <p>Tạm tính: <span className="font-medium">{formatCurrency(subtotal)}</span></p>
             <p>VAT: <span className="font-medium">{formatCurrency(vat)}</span></p>
-            <p className="text-lg font-bold">Tong: {formatCurrency(total)}</p>
+            <p className="text-lg font-bold">Tổng: {formatCurrency(total)}</p>
           </div>
         </CardContent>
       </Card>
 
       <div className="flex gap-2 justify-end">
-        <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-        <Button type="submit" disabled={loading}>{loading ? "Dang luu..." : "Tao don hang"}</Button>
+        <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+        <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : "Tạo đơn hàng"}</Button>
       </div>
     </form>
   )

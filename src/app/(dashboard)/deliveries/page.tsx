@@ -40,23 +40,23 @@ export default function DeliveriesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Giao hang" description={`${deliveries.length} chuyen giao`}>
+      <PageHeader title="Giao hàng" description={`${deliveries.length} chuyến giao`}>
         {user && hasPermission(user.role, "deliveries", "create") && (
-          <Button onClick={() => router.push("/deliveries/new")}><Plus className="mr-2 h-4 w-4" /> Tao phieu giao</Button>
+          <Button onClick={() => router.push("/deliveries/new")}><Plus className="mr-2 h-4 w-4" /> Tạo phiếu giao</Button>
         )}
       </PageHeader>
 
       {deliveries.length === 0 ? (
-        <EmptyState icon={<Truck className="h-8 w-8 text-muted-foreground" />} title="Chua co chuyen giao" description="Chuyen giao se duoc tao tu don hang da duyet" />
+        <EmptyState icon={<Truck className="h-8 w-8 text-muted-foreground" />} title="Chưa có chuyến giao" description="Chuyến giao sẽ được tạo từ đơn hàng đã duyệt" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Tuyen</TableHead>
-              <TableHead>Tai xe</TableHead>
-              <TableHead>Phuong tien</TableHead>
-              <TableHead>Bat dau</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Tuyến</TableHead>
+              <TableHead>Tài xế</TableHead>
+              <TableHead>Phương tiện</TableHead>
+              <TableHead>Bắt đầu</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -66,7 +66,7 @@ export default function DeliveriesPage() {
                 <TableRow key={d.id}>
                   <TableCell>
                     <Link href={`/deliveries/${d.id}`} className="font-medium text-primary hover:underline">
-                      {d.route_name || "Chuyen giao"}
+                      {d.route_name || "Chuyến giao"}
                     </Link>
                   </TableCell>
                   <TableCell>{d.driver?.full_name || "-"}</TableCell>

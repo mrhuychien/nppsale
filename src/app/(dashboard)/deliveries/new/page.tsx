@@ -76,7 +76,7 @@ export default function NewDeliveryPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (selectedOrderIds.size === 0) {
-      toast({ title: "Vui long chon it nhat mot don hang", variant: "destructive" })
+      toast({ title: "Vui lòng chọn ít nhất một đơn hàng", variant: "destructive" })
       return
     }
     setSubmitting(true)
@@ -105,11 +105,11 @@ export default function NewDeliveryPage() {
       const { error: linesErr } = await supabase.from("delivery_lines").insert(deliveryLines)
       if (linesErr) throw linesErr
 
-      toast({ title: "Da tao phieu giao hang" })
+      toast({ title: "Đã tạo phiếu giao hàng" })
       router.push("/deliveries")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSubmitting(false)
     }
@@ -119,17 +119,17 @@ export default function NewDeliveryPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao phieu giao hang" />
+      <PageHeader title="Tạo phiếu giao hàng" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Card>
-          <CardHeader><CardTitle>Thong tin chuyen giao</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Thông tin chuyến giao</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Tai xe</Label>
+                <Label>Tài xế</Label>
                 <Select value={driverId} onValueChange={setDriverId}>
-                  <SelectTrigger><SelectValue placeholder="Chon tai xe" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
                   <SelectContent>
                     {drivers.map((d) => (
                       <SelectItem key={d.id} value={d.id}>{d.full_name}</SelectItem>
@@ -138,7 +138,7 @@ export default function NewDeliveryPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Phuong tien</Label>
+                <Label>Phương tiện</Label>
                 <Input
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
@@ -146,11 +146,11 @@ export default function NewDeliveryPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Ten tuyen</Label>
+                <Label>Tên tuyến</Label>
                 <Input
                   value={routeName}
                   onChange={(e) => setRouteName(e.target.value)}
-                  placeholder="VD: Tuyen Q1-Q3"
+                  placeholder="VD: Tuyến Q1-Q3"
                 />
               </div>
             </div>
@@ -160,7 +160,7 @@ export default function NewDeliveryPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Don hang da duyet ({selectedOrderIds.size}/{orders.length})</CardTitle>
+              <CardTitle>Đơn hàng đã duyệt ({selectedOrderIds.size}/{orders.length})</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
@@ -174,10 +174,10 @@ export default function NewDeliveryPage() {
                         onCheckedChange={toggleAll}
                       />
                     </TableHead>
-                    <TableHead>Ma don</TableHead>
-                    <TableHead>Khach hang</TableHead>
-                    <TableHead className="text-right">Tong tien</TableHead>
-                    <TableHead>Ngay tao</TableHead>
+                    <TableHead>Mã đơn</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead className="text-right">Tổng tiền</TableHead>
+                    <TableHead>Ngày tạo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -201,16 +201,16 @@ export default function NewDeliveryPage() {
               </Table>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Khong co don hang da duyet de giao.
+                Không có đơn hàng đã duyệt để giao.
               </p>
             )}
           </CardContent>
         </Card>
 
         <div className="flex gap-2 justify-end">
-          <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
           <Button type="submit" disabled={submitting}>
-            {submitting ? "Dang luu..." : "Tao phieu giao"}
+            {submitting ? "Đang lưu..." : "Tạo phiếu giao"}
           </Button>
         </div>
       </form>

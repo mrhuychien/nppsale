@@ -38,7 +38,7 @@ export default function NewPromotionPage() {
 
     try {
       let rules = {}
-      try { rules = JSON.parse(rulesJson) } catch { toast({ title: "JSON rules khong hop le", variant: "destructive" }); setLoading(false); return }
+      try { rules = JSON.parse(rulesJson) } catch { toast({ title: "JSON rules không hợp lệ", variant: "destructive" }); setLoading(false); return }
 
       const { error } = await supabase.from("promotions").insert({
         name,
@@ -51,11 +51,11 @@ export default function NewPromotionPage() {
         org_id: user?.org_id,
       })
       if (error) throw error
-      toast({ title: "Da tao chuong trinh khuyen mai" })
+      toast({ title: "Đã tạo chương trình khuyến mãi" })
       router.push("/promotions")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -63,18 +63,18 @@ export default function NewPromotionPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao chuong trinh khuyen mai" />
+      <PageHeader title="Tạo chương trình khuyến mãi" />
       <Card>
-        <CardHeader><CardTitle>Thong tin khuyen mai</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin khuyến mãi</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Ten chuong trinh *</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="VD: Chiet khau mua tet" />
+                <Label>Tên chương trình *</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="VD: Chiết khấu mùa tết" />
               </div>
               <div className="space-y-2">
-                <Label>Loai KM *</Label>
+                <Label>Loại KM *</Label>
                 <Select value={type} onValueChange={setType}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -83,15 +83,15 @@ export default function NewPromotionPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Do uu tien</Label>
+                <Label>Độ ưu tiên</Label>
                 <Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Bat dau</Label>
+                <Label>Bắt đầu</Label>
                 <Input type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Ket thuc</Label>
+                <Label>Kết thúc</Label>
                 <Input type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
               </div>
             </div>
@@ -100,8 +100,8 @@ export default function NewPromotionPage() {
               <Textarea value={rulesJson} onChange={(e) => setRulesJson(e.target.value)} rows={4} className="font-mono text-sm" />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-              <Button type="submit" disabled={loading}>{loading ? "Dang luu..." : "Tao khuyen mai"}</Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : "Tạo khuyến mãi"}</Button>
             </div>
           </form>
         </CardContent>

@@ -42,11 +42,11 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
         role: assignRole,
       })
       if (error) throw error
-      toast({ title: "Da phan cong nhan vien" })
+      toast({ title: "Đã phân công nhân viên" })
       setSelectedUser("")
       onUpdate()
     } catch {
-      toast({ title: "Loi", description: "Khong the phan cong", variant: "destructive" })
+      toast({ title: "Lỗi", description: "Không thể phân công", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -55,7 +55,7 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
   const handleRemove = async (id: string) => {
     const { error } = await supabase.from("customer_assignments").delete().eq("id", id)
     if (!error) {
-      toast({ title: "Da xoa phan cong" })
+      toast({ title: "Đã xóa phân công" })
       onUpdate()
     }
   }
@@ -65,9 +65,9 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Nhan vien</TableHead>
-            <TableHead>Vai tro</TableHead>
-            <TableHead>Ngay phan cong</TableHead>
+            <TableHead>Nhân viên</TableHead>
+            <TableHead>Vai trò</TableHead>
+            <TableHead>Ngày phân công</TableHead>
             <TableHead className="w-16"></TableHead>
           </TableRow>
         </TableHeader>
@@ -77,7 +77,7 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
               <TableCell className="font-medium">{a.user?.full_name || a.user_id}</TableCell>
               <TableCell>
                 <Badge variant={a.role === "primary" ? "default" : "secondary"}>
-                  {a.role === "primary" ? "Chinh" : "Phu"}
+                  {a.role === "primary" ? "Chính" : "Phụ"}
                 </Badge>
               </TableCell>
               <TableCell className="text-sm">{a.assigned_at}</TableCell>
@@ -93,7 +93,7 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
 
       <div className="flex flex-wrap gap-2">
         <Select value={selectedUser} onValueChange={setSelectedUser}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Chon NV Sales" /></SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue placeholder="Chọn NV Sales" /></SelectTrigger>
           <SelectContent>
             {salesUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
           </SelectContent>
@@ -101,12 +101,12 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
         <Select value={assignRole} onValueChange={setAssignRole}>
           <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="primary">Chinh</SelectItem>
-            <SelectItem value="secondary">Phu</SelectItem>
+            <SelectItem value="primary">Chính</SelectItem>
+            <SelectItem value="secondary">Phụ</SelectItem>
           </SelectContent>
         </Select>
         <Button onClick={handleAssign} disabled={loading || !selectedUser}>
-          <Plus className="mr-2 h-4 w-4" /> Phan cong
+          <Plus className="mr-2 h-4 w-4" /> Phân công
         </Button>
       </div>
     </div>

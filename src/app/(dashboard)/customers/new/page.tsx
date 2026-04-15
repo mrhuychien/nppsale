@@ -27,7 +27,7 @@ export default function NewCustomerPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Them khach hang moi" />
+      <PageHeader title="Thêm khách hàng mới" />
       <CustomerForm groups={groups} />
     </div>
   )

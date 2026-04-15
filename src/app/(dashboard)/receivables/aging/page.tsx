@@ -38,11 +38,11 @@ export default function AgingReportPage() {
   })
 
   const colorMap = { current: "bg-green-100 text-green-800", warning: "bg-amber-100 text-amber-800", overdue: "bg-orange-100 text-orange-800", critical: "bg-red-100 text-red-800" }
-  const labelMap = { current: "Chua den han", warning: "Qua han 1-30 ngay", overdue: "Qua han 31-60 ngay", critical: "Qua han > 60 ngay" }
+  const labelMap = { current: "Chưa đến hạn", warning: "Quá hạn 1-30 ngày", overdue: "Quá hạn 31-60 ngày", critical: "Quá hạn > 60 ngày" }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Aging Report" description="Phan tich tuoi cong no" />
+      <PageHeader title="Aging Report" description="Phân tích tuổi công nợ" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {(Object.keys(buckets) as Array<keyof typeof buckets>).map((key) => (
@@ -60,14 +60,14 @@ export default function AgingReportPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Chi tiet</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Chi tiết</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Khach hang</TableHead>
-                <TableHead className="text-right">Con no</TableHead>
-                <TableHead>Tinh trang</TableHead>
+                <TableHead>Khách hàng</TableHead>
+                <TableHead className="text-right">Còn nợ</TableHead>
+                <TableHead>Tình trạng</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -32,9 +32,9 @@ export default function OrgSettingsPage() {
     try {
       const { error } = await supabase.from("organizations").update({ name }).eq("id", org.id)
       if (error) throw error
-      toast({ title: "Da cap nhat thong tin to chuc" })
+      toast({ title: "Đã cập nhật thông tin tổ chức" })
     } catch {
-      toast({ title: "Loi", variant: "destructive" })
+      toast({ title: "Lỗi", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -42,15 +42,15 @@ export default function OrgSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Cau hinh to chuc" />
+      <PageHeader title="Cấu hình tổ chức" />
       <Card>
-        <CardHeader><CardTitle>Thong tin NPP</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin NPP</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Ten NPP</Label>
+            <Label>Tên NPP</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <Button onClick={handleSave} disabled={loading}>{loading ? "Dang luu..." : "Luu thay doi"}</Button>
+          <Button onClick={handleSave} disabled={loading}>{loading ? "Đang lưu..." : "Lưu thay đổi"}</Button>
         </CardContent>
       </Card>
     </div>

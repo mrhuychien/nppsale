@@ -31,19 +31,19 @@ export default function BatchesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quan ly lo hang" description={`${batches.length} lo hang`} />
+      <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} />
 
       {batches.length === 0 ? (
-        <EmptyState icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />} title="Chua co lo hang" description="Lo hang se duoc tao khi nhap kho" />
+        <EmptyState icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />} title="Chưa có lô hàng" description="Lô hàng sẽ được tạo khi nhập kho" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>San pham</TableHead>
-              <TableHead>Ma lo</TableHead>
-              <TableHead>Vi tri</TableHead>
-              <TableHead className="text-right">Ban dau</TableHead>
-              <TableHead className="text-right">Ton</TableHead>
+              <TableHead>Sản phẩm</TableHead>
+              <TableHead>Mã lô</TableHead>
+              <TableHead>Vị trí</TableHead>
+              <TableHead className="text-right">Ban đầu</TableHead>
+              <TableHead className="text-right">Tồn</TableHead>
               <TableHead>NSX</TableHead>
               <TableHead>HSD</TableHead>
             </TableRow>

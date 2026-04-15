@@ -38,23 +38,23 @@ export default function PromotionsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Khuyen mai" description={`${promotions.length} chuong trinh`}>
+      <PageHeader title="Khuyến mãi" description={`${promotions.length} chương trình`}>
         {user && hasPermission(user.role, "promotions", "create") && (
-          <Button onClick={() => router.push("/promotions/new")}><Plus className="mr-2 h-4 w-4" /> Tao KM</Button>
+          <Button onClick={() => router.push("/promotions/new")}><Plus className="mr-2 h-4 w-4" /> Tạo KM</Button>
         )}
       </PageHeader>
 
       {promotions.length === 0 ? (
-        <EmptyState icon={<Tag className="h-8 w-8 text-muted-foreground" />} title="Chua co chuong trinh khuyen mai" />
+        <EmptyState icon={<Tag className="h-8 w-8 text-muted-foreground" />} title="Chưa có chương trình khuyến mãi" />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ten chuong trinh</TableHead>
-              <TableHead>Loai</TableHead>
-              <TableHead>Uu tien</TableHead>
-              <TableHead>Thoi gian</TableHead>
-              <TableHead>Trang thai</TableHead>
+              <TableHead>Tên chương trình</TableHead>
+              <TableHead>Loại</TableHead>
+              <TableHead>Ưu tiên</TableHead>
+              <TableHead>Thời gian</TableHead>
+              <TableHead>Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -66,7 +66,7 @@ export default function PromotionsPage() {
                 <TableCell className="text-sm">{p.starts_at ? formatDate(p.starts_at) : "?"} - {p.ends_at ? formatDate(p.ends_at) : "∞"}</TableCell>
                 <TableCell>
                   <Badge variant={p.is_active ? "success" : "secondary"}>
-                    {p.is_active ? "Dang chay" : "Ngung"}
+                    {p.is_active ? "Đang chạy" : "Ngừng"}
                   </Badge>
                 </TableCell>
               </TableRow>

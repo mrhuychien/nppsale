@@ -49,21 +49,21 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Khach hang" description={`${customers.length} khach hang`}>
+      <PageHeader title="Khách hàng" description={`${customers.length} khách hàng`}>
         {user && hasPermission(user.role, "customers", "create") && (
-          <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Them KH</Button>
+          <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Thêm KH</Button>
         )}
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Tim ten, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          <Input placeholder="Tìm tên, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="Kenh" /></SelectTrigger>
+          <SelectTrigger className="w-32"><SelectValue placeholder="Kênh" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tat ca</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
             <SelectItem value="GT">GT</SelectItem>
             <SelectItem value="MT">MT</SelectItem>
             <SelectItem value="HORECA">HORECA</SelectItem>
@@ -74,7 +74,7 @@ export default function CustomersPage() {
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chua co khach hang" description="Bat dau bang cach them khach hang dau tien" />
+        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chưa có khách hàng" description="Bắt đầu bằng cách thêm khách hàng đầu tiên" />
       ) : (
         <CustomerTable customers={filtered} />
       )}

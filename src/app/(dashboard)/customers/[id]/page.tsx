@@ -37,7 +37,7 @@ export default function CustomerDetailPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   if (authLoading || loading) return <Skeleton className="h-96" />
-  if (!customer) return <div>Khong tim thay khach hang</div>
+  if (!customer) return <div>Không tìm thấy khách hàng</div>
 
   return (
     <div className="space-y-4">
@@ -47,8 +47,8 @@ export default function CustomerDetailPage() {
 
       <Tabs defaultValue="info">
         <TabsList>
-          <TabsTrigger value="info">Thong tin</TabsTrigger>
-          <TabsTrigger value="assignments">Phan cong NV ({assignments.length})</TabsTrigger>
+          <TabsTrigger value="info">Thông tin</TabsTrigger>
+          <TabsTrigger value="assignments">Phân công NV ({assignments.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="info">
           <CustomerForm customer={customer} groups={groups} />

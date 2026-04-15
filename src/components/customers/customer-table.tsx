@@ -16,13 +16,13 @@ export function CustomerTable({ customers }: CustomerTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Cua hang</TableHead>
-          <TableHead className="hidden sm:table-cell">Chu cua hang</TableHead>
+          <TableHead>Cửa hàng</TableHead>
+          <TableHead className="hidden sm:table-cell">Chủ cửa hàng</TableHead>
           <TableHead>SĐT</TableHead>
-          <TableHead className="hidden md:table-cell">Kenh</TableHead>
-          <TableHead className="hidden lg:table-cell">Nhom</TableHead>
-          <TableHead className="hidden lg:table-cell text-right">Han muc</TableHead>
-          <TableHead>Trang thai</TableHead>
+          <TableHead className="hidden md:table-cell">Kênh</TableHead>
+          <TableHead className="hidden lg:table-cell">Nhóm</TableHead>
+          <TableHead className="hidden lg:table-cell text-right">Hạn mức</TableHead>
+          <TableHead>Trạng thái</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

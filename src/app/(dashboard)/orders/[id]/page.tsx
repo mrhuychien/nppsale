@@ -56,7 +56,7 @@ export default function OrderDetailPage() {
         (user.role === "owner")
 
       if (!canApprove) {
-        toast({ title: "Khong co quyen duyet don hang nay", variant: "destructive" })
+        toast({ title: "Không có quyền duyệt đơn hàng này", variant: "destructive" })
         return
       }
 
@@ -67,11 +67,11 @@ export default function OrderDetailPage() {
       }).eq("id", order.id)
 
       if (error) throw error
-      toast({ title: "Da duyet don hang" })
+      toast({ title: "Đã duyệt đơn hàng" })
       setApproveOpen(false)
       fetchData()
     } catch {
-      toast({ title: "Loi khi duyet don", variant: "destructive" })
+      toast({ title: "Lỗi khi duyệt đơn", variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -83,38 +83,38 @@ export default function OrderDetailPage() {
     try {
       const { error } = await supabase.from("sales_orders").update({ status: "cancelled" }).eq("id", order.id)
       if (error) throw error
-      toast({ title: "Da huy don hang" })
+      toast({ title: "Đã hủy đơn hàng" })
       setCancelOpen(false)
       fetchData()
     } catch {
-      toast({ title: "Loi", variant: "destructive" })
+      toast({ title: "Lỗi", variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
   }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
-  if (!order) return <div>Khong tim thay don hang</div>
+  if (!order) return <div>Không tìm thấy đơn hàng</div>
 
   return (
     <div className="space-y-4">
-      <PageHeader title={order.order_code} description={`Ngay dat: ${formatDate(order.order_date)}`}>
+      <PageHeader title={order.order_code} description={`Ngày đặt: ${formatDate(order.order_date)}`}>
         <StatusBadge status={order.status} type="order" />
         <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle>Chi tiet san pham</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Chi tiết sản phẩm</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>San pham</TableHead>
-                  <TableHead>DVT</TableHead>
+                  <TableHead>Sản phẩm</TableHead>
+                  <TableHead>ĐVT</TableHead>
                   <TableHead className="text-right">SL</TableHead>
-                  <TableHead className="text-right">Don gia</TableHead>
-                  <TableHead className="text-right">Thanh tien</TableHead>
+                  <TableHead className="text-right">Đơn giá</TableHead>
+                  <TableHead className="text-right">Thành tiền</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -130,17 +130,17 @@ export default function OrderDetailPage() {
               </TableBody>
             </Table>
             <div className="mt-4 space-y-1 text-right border-t pt-4">
-              <p>Tam tinh: {formatCurrency(order.subtotal)}</p>
-              <p>Chiet khau: {formatCurrency(order.discount)}</p>
+              <p>Tạm tính: {formatCurrency(order.subtotal)}</p>
+              <p>Chiết khấu: {formatCurrency(order.discount)}</p>
               <p>VAT: {formatCurrency(order.vat)}</p>
-              <p className="text-lg font-bold">Tong: {formatCurrency(order.total)}</p>
+              <p className="text-lg font-bold">Tổng: {formatCurrency(order.total)}</p>
             </div>
           </CardContent>
         </Card>
 
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Khach hang</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Khách hàng</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <p className="font-medium">{order.customer?.store_name}</p>
               <p>{order.customer?.phone}</p>
@@ -149,24 +149,24 @@ export default function OrderDetailPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Thao tac</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {order.status === "draft" && user && hasPermission(user.role, "orders", "approve") && (
-                <Button className="w-full" onClick={() => setApproveOpen(true)}>Duyet don hang</Button>
+                <Button className="w-full" onClick={() => setApproveOpen(true)}>Duyệt đơn hàng</Button>
               )}
               {order.status === "draft" && (
-                <Button variant="destructive" className="w-full" onClick={() => setCancelOpen(true)}>Huy don hang</Button>
+                <Button variant="destructive" className="w-full" onClick={() => setCancelOpen(true)}>Hủy đơn hàng</Button>
               )}
               {order.status === "confirmed" && (
-                <Button variant="outline" className="w-full" onClick={() => router.push("/deliveries")}>Tao chuyen giao</Button>
+                <Button variant="outline" className="w-full" onClick={() => router.push("/deliveries")}>Tạo chuyến giao</Button>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      <ConfirmDialog open={approveOpen} onOpenChange={setApproveOpen} title="Duyet don hang?" description={`Xac nhan duyet don ${order.order_code} voi tong gia tri ${formatCurrency(order.total)}`} onConfirm={handleApprove} loading={actionLoading} />
-      <ConfirmDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Huy don hang?" description="Don hang se bi huy va khong the khoi phuc" variant="destructive" confirmLabel="Huy don" onConfirm={handleCancel} loading={actionLoading} />
+      <ConfirmDialog open={approveOpen} onOpenChange={setApproveOpen} title="Duyệt đơn hàng?" description={`Xác nhận duyệt đơn ${order.order_code} với tổng giá trị ${formatCurrency(order.total)}`} onConfirm={handleApprove} loading={actionLoading} />
+      <ConfirmDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Hủy đơn hàng?" description="Đơn hàng sẽ bị hủy và không thể khôi phục" variant="destructive" confirmLabel="Hủy đơn" onConfirm={handleCancel} loading={actionLoading} />
     </div>
   )
 }

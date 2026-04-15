@@ -81,11 +81,11 @@ export default function StocktakePage() {
       })
       if (lineErr) throw lineErr
 
-      toast({ title: `Da tao phieu ${entryCode}` })
+      toast({ title: `Đã tạo phiếu ${entryCode}` })
       router.push("/inventory/entries")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -93,14 +93,14 @@ export default function StocktakePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao phieu kho" />
+      <PageHeader title="Tạo phiếu kho" />
       <Card>
-        <CardHeader><CardTitle>Thong tin phieu kho</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Thông tin phiếu kho</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Loai phieu *</Label>
+                <Label>Loại phiếu *</Label>
                 <Select value={entryType} onValueChange={setEntryType}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -109,42 +109,42 @@ export default function StocktakePage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>San pham *</Label>
+                <Label>Sản phẩm *</Label>
                 <Select value={productId} onValueChange={setProductId}>
-                  <SelectTrigger><SelectValue placeholder="Chon san pham" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Chọn sản phẩm" /></SelectTrigger>
                   <SelectContent>
                     {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.sku} - {p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>So luong *</Label>
+                <Label>Số lượng *</Label>
                 <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
               </div>
               {entryType === "import" && (
                 <>
                   <div className="space-y-2">
-                    <Label>Ma lo hang</Label>
+                    <Label>Mã lô hàng</Label>
                     <Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="VD: LOT-2026-001" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Han su dung</Label>
+                    <Label>Hạn sử dụng</Label>
                     <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Vi tri kho</Label>
+                    <Label>Vị trí kho</Label>
                     <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="VD: T2-K3-05" />
                   </div>
                 </>
               )}
             </div>
             <div className="space-y-2">
-              <Label>Ghi chu</Label>
+              <Label>Ghi chú</Label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-              <Button type="submit" disabled={loading}>{loading ? "Dang luu..." : "Tao phieu"}</Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : "Tạo phiếu"}</Button>
             </div>
           </form>
         </CardContent>

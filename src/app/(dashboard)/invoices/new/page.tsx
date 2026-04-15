@@ -75,7 +75,7 @@ export default function NewInvoicePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerName.trim()) {
-      toast({ title: "Vui long nhap ten khach hang", variant: "destructive" })
+      toast({ title: "Vui lòng nhập tên khách hàng", variant: "destructive" })
       return
     }
     setSubmitting(true)
@@ -96,11 +96,11 @@ export default function NewInvoicePage() {
 
       if (error) throw error
 
-      toast({ title: `Da tao hoa don ${invoiceNumber}` })
+      toast({ title: `Đã tạo hóa đơn ${invoiceNumber}` })
       router.push("/invoices")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Co loi xay ra"
-      toast({ title: "Loi", description: message, variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSubmitting(false)
     }
@@ -110,16 +110,16 @@ export default function NewInvoicePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tao hoa don moi" />
+      <PageHeader title="Tạo hóa đơn mới" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Card>
-          <CardHeader><CardTitle>Don hang</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Đơn hàng</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Chon don hang da giao</Label>
+              <Label>Chọn đơn hàng đã giao</Label>
               <Select value={orderId} onValueChange={handleOrderChange}>
-                <SelectTrigger><SelectValue placeholder="Chon don hang (khong bat buoc)" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Chọn đơn hàng (không bắt buộc)" /></SelectTrigger>
                 <SelectContent>
                   {orders.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
@@ -128,41 +128,41 @@ export default function NewInvoicePage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Chon don hang de tu dong dien thong tin khach hang va so tien</p>
+              <p className="text-xs text-muted-foreground">Chọn đơn hàng để tự động điền thông tin khách hàng và số tiền</p>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Thong tin hoa don</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Thông tin hóa đơn</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>So hoa don *</Label>
+                <Label>Số hóa đơn *</Label>
                 <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="INV-YYYYMMDD-XXXX" />
               </div>
               <div className="space-y-2">
-                <Label>Ma so thue</Label>
-                <Input value={customerTaxCode} onChange={(e) => setCustomerTaxCode(e.target.value)} placeholder="Nhap ma so thue" />
+                <Label>Mã số thuế</Label>
+                <Input value={customerTaxCode} onChange={(e) => setCustomerTaxCode(e.target.value)} placeholder="Nhập mã số thuế" />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Ten khach hang *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nhap ten khach hang" />
+              <Label>Tên khách hàng *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nhập tên khách hàng" />
             </div>
             <div className="space-y-2">
-              <Label>Dia chi</Label>
-              <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Nhap dia chi khach hang" />
+              <Label>Địa chỉ</Label>
+              <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Nhập địa chỉ khách hàng" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>So tien</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Số tiền</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Tam tinh</Label>
+                <Label>Tạm tính</Label>
                 <Input
                   type="number"
                   value={subtotal}
@@ -178,19 +178,19 @@ export default function NewInvoicePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tong cong</Label>
+                <Label>Tổng cộng</Label>
                 <Input type="number" value={total} disabled className="font-bold" />
               </div>
             </div>
             <div className="text-right text-lg font-bold">
-              Tong: {formatCurrency(total)}
+              Tổng: {formatCurrency(total)}
             </div>
           </CardContent>
         </Card>
 
         <div className="flex gap-2 justify-end">
-          <Button type="button" variant="outline" onClick={() => router.back()}>Huy</Button>
-          <Button type="submit" disabled={submitting}>{submitting ? "Dang luu..." : "Tao hoa don"}</Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+          <Button type="submit" disabled={submitting}>{submitting ? "Đang lưu..." : "Tạo hóa đơn"}</Button>
         </div>
       </form>
     </div>

@@ -16,6 +16,7 @@ interface HeaderProps {
 }
 
 const PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Tong quan kinh doanh",
   "/orders": "Quan ly don hang",
   "/customers": "Quan ly khach hang",
   "/products": "Quan ly san pham",

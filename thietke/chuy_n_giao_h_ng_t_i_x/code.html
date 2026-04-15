@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>M8 Dispatch - Driver Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed-dim": "#b4c5ff",
+                    "outline": "#737686",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed-dim": "#bec6e0",
+                    "tertiary-fixed": "#dae2fd",
+                    "surface-container-highest": "#dce2f3",
+                    "secondary": "#515f74",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed-variant": "#3a485b",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#131b2e",
+                    "inverse-surface": "#2a313d",
+                    "surface-container-high": "#e2e8f8",
+                    "on-surface": "#151c27",
+                    "inverse-primary": "#b4c5ff",
+                    "secondary-fixed-dim": "#b9c7df",
+                    "tertiary": "#4d556b",
+                    "secondary-fixed": "#d5e3fc",
+                    "on-secondary": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-low": "#f0f3ff",
+                    "on-error-container": "#93000a",
+                    "on-error": "#ffffff",
+                    "on-surface-variant": "#434655",
+                    "on-background": "#151c27",
+                    "surface-variant": "#dce2f3",
+                    "on-tertiary-container": "#eef0ff",
+                    "surface-container": "#e7eefe",
+                    "on-secondary-container": "#57657a",
+                    "on-tertiary-fixed-variant": "#3f465c",
+                    "error": "#ba1a1a",
+                    "surface-bright": "#f9f9ff",
+                    "surface": "#f9f9ff",
+                    "primary-container": "#2563eb",
+                    "secondary-container": "#d5e3fc",
+                    "on-secondary-fixed": "#0d1c2e",
+                    "inverse-on-surface": "#ebf1ff",
+                    "outline-variant": "#c3c6d7",
+                    "primary-fixed": "#dbe1ff",
+                    "primary": "#004ac6",
+                    "on-primary-container": "#eeefff",
+                    "background": "#f9f9ff",
+                    "surface-tint": "#0053db",
+                    "tertiary-container": "#656d84",
+                    "on-primary-fixed": "#00174b",
+                    "surface-dim": "#d3daea"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface">
+<!-- TopAppBar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-[#f9f9ff]/80 dark:bg-slate-950/80 backdrop-blur-xl shadow-[0_10px_30px_-10px_rgba(0,74,198,0.04)]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center overflow-hidden">
+<img alt="Driver Profile" class="w-full h-full object-cover" data-alt="Professional headshot of a friendly delivery driver wearing a clean uniform, warm lighting, studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDR26MIHmMD-27OyPRmf3Ss2hA-9Cg6LqmEKYgnMgFlLK9BgcHADpUE-zE7xe64BGUk8nK7em7_I7MyUt7h5tEYjS2qQ7_MAl_vl4vP4TGTlcx-jkwLG0p3pphM942l2fIMmuy_1F1OlBpqPkQrUKMnt0-cKdxKQr6kGQluiDIEED8zxR9Vb02lIdsouNBSHvLXe-4nhzqkQ4SB2dm811ULelxdu07UP3ECY_-mB3VpiKbTPLXpDjsxm9mEy1DMkO96uRv7NVkhWDU"/>
+</div>
+<span class="text-xl font-black text-[#151c27] dark:text-slate-100 tracking-tight">M8 Dispatch</span>
+</div>
+<button class="text-[#004ac6] dark:text-blue-400 p-2 hover:bg-[#004ac6]/5 transition-colors active:scale-95 transition-transform">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</nav>
+<main class="pt-20 pb-28 px-4 max-w-2xl mx-auto">
+<!-- Title Section -->
+<div class="mb-6 px-2">
+<h1 class="text-3xl font-black text-on-surface tracking-tight leading-tight">Chuyến giao hôm nay</h1>
+<p class="text-on-surface-variant text-sm mt-1">Thứ Ba, 24 Tháng 10, 2023</p>
+</div>
+<!-- Summary KPI Bento Card -->
+<div class="bg-primary bg-gradient-to-br from-primary to-primary-container p-6 rounded-full shadow-lg shadow-blue-500/20 mb-8 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+<div class="grid grid-cols-2 gap-4 relative z-10">
+<div class="flex flex-col">
+<span class="text-primary-fixed text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Điểm giao</span>
+<div class="flex items-baseline gap-1">
+<span class="text-4xl font-black text-white">12</span>
+<span class="text-primary-fixed text-sm">cửa hàng</span>
+</div>
+</div>
+<div class="flex flex-col text-right">
+<span class="text-primary-fixed text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Quãng đường</span>
+<div class="flex items-baseline justify-end gap-1">
+<span class="text-4xl font-black text-white">42.5</span>
+<span class="text-primary-fixed text-sm">km</span>
+</div>
+</div>
+</div>
+<div class="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-white text-sm">schedule</span>
+<span class="text-white/90 text-sm font-medium">Dự kiến hoàn thành: 17:30</span>
+</div>
+<div class="bg-white/20 px-3 py-1 rounded-full">
+<span class="text-white text-[10px] font-bold">CA SÁNG</span>
+</div>
+</div>
+</div>
+<!-- Delivery List Section -->
+<div class="space-y-4">
+<div class="flex items-center justify-between px-2 mb-2">
+<h2 class="text-lg font-bold text-on-surface">Lộ trình chi tiết</h2>
+<span class="text-primary text-sm font-bold">Xem bản đồ</span>
+</div>
+<!-- Active Point Card -->
+<div class="group relative bg-surface-container-lowest p-5 rounded-full shadow-sm hover:shadow-md transition-all border-l-4 border-primary">
+<div class="flex items-start gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary font-black text-xl">
+                        01
+                    </div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-on-surface text-lg leading-tight">Cửa hàng WinMart+</h3>
+<span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Đang giao</span>
+</div>
+<p class="text-on-surface-variant text-sm mt-1 leading-snug">123 Đường Lê Lợi, Phường Bến Thành, Quận 1, TP. HCM</p>
+<div class="mt-4 flex gap-2">
+<button class="flex-1 bg-primary text-white h-12 rounded-full font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-lg shadow-blue-500/20">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">directions</span>
+                                Dẫn đường
+                            </button>
+<button class="w-12 h-12 bg-surface-container-high rounded-full flex items-center justify-center text-on-surface active:scale-95 transition-transform">
+<span class="material-symbols-outlined">call</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Pending Point Card -->
+<div class="bg-surface-container-low p-5 rounded-full shadow-none hover:bg-surface-container transition-colors border-l-4 border-outline-variant/30">
+<div class="flex items-start gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-surface-variant rounded-full flex items-center justify-center text-on-surface-variant font-bold text-lg opacity-60">
+                        02
+                    </div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-on-surface/70 text-lg leading-tight">Bách Hóa Xanh - CN2</h3>
+<span class="bg-outline-variant/20 text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Chờ giao</span>
+</div>
+<p class="text-on-surface-variant/70 text-sm mt-1">456 Cách Mạng Tháng Tám, Quận 3, TP. HCM</p>
+</div>
+</div>
+</div>
+<!-- Completed Point Card -->
+<div class="bg-surface-container-low p-5 rounded-full shadow-none opacity-60 border-l-4 border-green-500/50">
+<div class="flex items-start gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold text-lg">
+<span class="material-symbols-outlined text-green-600">check_circle</span>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-on-surface/50 text-lg leading-tight line-through decoration-on-surface/20">Co.op Food - Nguyễn Trãi</h3>
+<span class="bg-green-100 text-green-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Đã xong</span>
+</div>
+<p class="text-on-surface-variant/50 text-sm mt-1">789 Nguyễn Trãi, Quận 5, TP. HCM</p>
+</div>
+</div>
+</div>
+<!-- Pending Point Card 2 -->
+<div class="bg-surface-container-low p-5 rounded-full shadow-none hover:bg-surface-container transition-colors border-l-4 border-outline-variant/30">
+<div class="flex items-start gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-surface-variant rounded-full flex items-center justify-center text-on-surface-variant font-bold text-lg opacity-60">
+                        03
+                    </div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-on-surface/70 text-lg leading-tight">Tiệm Tạp Hóa Cô Lan</h3>
+<span class="bg-outline-variant/20 text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter">Chờ giao</span>
+</div>
+<p class="text-on-surface-variant/70 text-sm mt-1">12 Hẻm 40 Trần Hưng Đạo, Quận 1</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<footer class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 h-24 bg-[#f9f9ff]/80 dark:bg-slate-950/80 backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,74,198,0.06)] z-50 rounded-t-full">
+<!-- Deliveries Tab (Active) -->
+<button class="flex flex-col items-center justify-center bg-[#004ac6] text-white rounded-full px-6 py-2 shadow-lg shadow-blue-500/20 active:scale-90 transition-all duration-300 ease-out">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">Deliveries</span>
+</button>
+<!-- Map Tab -->
+<button class="flex flex-col items-center justify-center text-[#151c27]/60 dark:text-slate-400 px-6 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 rounded-full active:scale-90 transition-all duration-300 ease-out">
+<span class="material-symbols-outlined">explore</span>
+<span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-wider mt-1">Map</span>
+</button>
+<!-- Archive Tab -->
+<button class="flex flex-col items-center justify-center text-[#151c27]/60 dark:text-slate-400 px-6 py-2 hover:bg-slate-200/50 dark:hover:bg-slate-800 rounded-full active:scale-90 transition-all duration-300 ease-out">
+<span class="material-symbols-outlined">history</span>
+<span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-wider mt-1">Archive</span>
+</button>
+</footer>
+</body></html>

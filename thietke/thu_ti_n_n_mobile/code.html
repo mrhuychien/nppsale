@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#dbe1ff",
+                        "background": "#f9f9ff",
+                        "outline-variant": "#c3c6d7",
+                        "secondary-fixed": "#d5e3fc",
+                        "on-secondary-fixed": "#0d1c2e",
+                        "outline": "#737686",
+                        "secondary": "#515f74",
+                        "on-primary-container": "#eeefff",
+                        "error": "#ba1a1a",
+                        "on-surface": "#151c27",
+                        "on-tertiary-fixed": "#131b2e",
+                        "secondary-fixed-dim": "#b9c7df",
+                        "surface": "#f9f9ff",
+                        "on-background": "#151c27",
+                        "inverse-on-surface": "#ebf1ff",
+                        "surface-dim": "#d3daea",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#656d84",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#00174b",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "inverse-surface": "#2a313d",
+                        "surface-container-highest": "#dce2f3",
+                        "on-surface-variant": "#434655",
+                        "tertiary-fixed": "#dae2fd",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "tertiary": "#4d556b",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-low": "#f0f3ff",
+                        "on-secondary-fixed-variant": "#3a485b",
+                        "secondary-container": "#d5e3fc",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-bright": "#f9f9ff",
+                        "on-error": "#ffffff",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "on-tertiary-container": "#eef0ff",
+                        "on-secondary-container": "#57657a",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "surface-container": "#e7eefe",
+                        "surface-container-high": "#e2e8f8",
+                        "primary": "#004ac6",
+                        "inverse-primary": "#b4c5ff",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#0053db",
+                        "surface-variant": "#dce2f3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        .tonal-transition { transition: background-color 0.3s ease; }
+        .no-line { border: none !important; }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface antialiased min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm dark:shadow-none flex items-center justify-between px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<button class="active:scale-95 duration-200 text-on-surface">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="font-inter tracking-tight font-bold text-lg text-blue-700 dark:text-blue-400">Thu tiền công nợ</h1>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-slate-500">search</span>
+<span class="material-symbols-outlined text-slate-500">notifications</span>
+</div>
+</header>
+<main class="pt-20 px-4 max-w-md mx-auto space-y-6">
+<!-- Customer Info Section (Asymmetric Bento Style) -->
+<section class="grid grid-cols-1 gap-4">
+<div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-primary"></div>
+<div class="flex justify-between items-start">
+<div>
+<p class="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant mb-1">Khách hàng</p>
+<h2 class="text-xl font-bold tracking-tight text-on-surface">Tạp hoá Lan Anh</h2>
+</div>
+<div class="bg-primary-fixed p-2 rounded-full">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">store</span>
+</div>
+</div>
+<div class="mt-6">
+<p class="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Nợ hiện tại</p>
+<div class="flex items-baseline gap-1">
+<span class="text-3xl font-black tracking-tighter text-error">5.000.000</span>
+<span class="text-sm font-bold text-error">đ</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Payment Input Section -->
+<section class="space-y-4">
+<div class="bg-surface-container-low rounded-xl p-5 transition-all focus-within:bg-surface-container-lowest focus-within:ring-2 focus-within:ring-primary/20">
+<label class="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Số tiền thu</label>
+<div class="flex items-center gap-3">
+<span class="text-2xl font-bold text-primary">₫</span>
+<input class="w-full bg-transparent border-none p-0 text-3xl font-black tracking-tighter focus:ring-0 placeholder:text-outline-variant" inputmode="numeric" placeholder="0" type="number"/>
+</div>
+</div>
+<!-- Payment Methods (Tonal Layering Cards) -->
+<div class="space-y-3">
+<p class="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant px-1">Phương thức thanh toán</p>
+<div class="grid grid-cols-3 gap-3">
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-primary-container text-on-primary-container rounded-xl active:scale-95 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">payments</span>
+<span class="text-[10px] font-bold uppercase tracking-tight">Tiền mặt</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined">account_balance</span>
+<span class="text-[10px] font-bold uppercase tracking-tight">C.Khoản</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="text-[10px] font-bold uppercase tracking-tight">Ví Đ.Tử</span>
+</button>
+</div>
+</div>
+<!-- Evidence Upload (Glassmorphism inspired) -->
+<div class="space-y-3">
+<p class="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant px-1">Ảnh chứng từ/phiếu thu</p>
+<label class="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-outline-variant rounded-xl bg-surface-container-lowest/50 hover:bg-white transition-all group cursor-pointer">
+<div class="flex flex-col items-center justify-center pt-5 pb-6">
+<span class="material-symbols-outlined text-4xl text-outline mb-2 group-hover:text-primary transition-colors">add_a_photo</span>
+<p class="text-sm font-medium text-outline group-hover:text-primary">Chụp ảnh hoặc Tải lên</p>
+</div>
+<input class="hidden" type="file"/>
+</label>
+</div>
+</section>
+</main>
+<!-- Bottom Action Bar (The "Data Dock") -->
+<div class="fixed bottom-0 left-0 w-full p-4 z-50">
+<div class="max-w-md mx-auto bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-t border-white/20">
+<button class="w-full h-14 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-lg rounded-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">verified</span>
+                Xác nhận thu tiền
+            </button>
+</div>
+</div>
+<!-- Secondary Bottom Navigation (Suppressed based on Transactional Rule, but BottomNavBar data used to create a minimalist helper if needed - here we prioritize the CTA) -->
+<!-- Optional: Floating Action Metadata (Asymmetry Example) -->
+<div class="fixed bottom-32 right-6">
+<div class="bg-surface-container-high/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-white/50">
+<span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase">ID: TXN-8829-01</span>
+</div>
+</div>
+</body></html>

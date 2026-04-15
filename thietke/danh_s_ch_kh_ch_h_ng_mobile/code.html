@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#dbe1ff",
+                        "background": "#f9f9ff",
+                        "outline-variant": "#c3c6d7",
+                        "secondary-fixed": "#d5e3fc",
+                        "on-secondary-fixed": "#0d1c2e",
+                        "outline": "#737686",
+                        "secondary": "#515f74",
+                        "on-primary-container": "#eeefff",
+                        "error": "#ba1a1a",
+                        "on-surface": "#151c27",
+                        "on-tertiary-fixed": "#131b2e",
+                        "secondary-fixed-dim": "#b9c7df",
+                        "surface": "#f9f9ff",
+                        "on-background": "#151c27",
+                        "inverse-on-surface": "#ebf1ff",
+                        "surface-dim": "#d3daea",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#656d84",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#00174b",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "inverse-surface": "#2a313d",
+                        "surface-container-highest": "#dce2f3",
+                        "on-surface-variant": "#434655",
+                        "tertiary-fixed": "#dae2fd",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "tertiary": "#4d556b",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-low": "#f0f3ff",
+                        "on-secondary-fixed-variant": "#3a485b",
+                        "secondary-container": "#d5e3fc",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-bright": "#f9f9ff",
+                        "on-error": "#ffffff",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "on-tertiary-container": "#eef0ff",
+                        "on-secondary-container": "#57657a",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "surface-container": "#e7eefe",
+                        "surface-container-high": "#e2e8f8",
+                        "primary": "#004ac6",
+                        "inverse-primary": "#b4c5ff",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#0053db",
+                        "surface-variant": "#dce2f3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-header { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        .status-bar-accent { position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 4px 4px 0; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- Top Navigation Anchor (Shared Component: TopAppBar) -->
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm dark:shadow-none flex items-center justify-between px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-blue-700 dark:text-blue-400">search</span>
+<h1 class="text-xl font-black tracking-tighter text-blue-800 dark:text-blue-200">Nexus ERP</h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="active:scale-95 duration-200 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-full">
+<span class="material-symbols-outlined text-slate-500">notifications</span>
+</div>
+</div>
+</header>
+<main class="pt-20 pb-32 px-4 max-w-lg mx-auto">
+<!-- Search and Filter Section -->
+<section class="mb-8 space-y-4">
+<div class="relative group">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline text-lg">search</span>
+</div>
+<input class="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-4 text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all shadow-sm" placeholder="Search by store or phone..." type="text"/>
+</div>
+<!-- Filter Tabs (Asymmetric Editorial Style) -->
+<div class="flex gap-2 overflow-x-auto no-scrollbar py-2 -mx-4 px-4">
+<button class="whitespace-nowrap px-6 py-2.5 rounded-full bg-primary text-on-primary font-bold text-sm shadow-md shadow-primary/20">
+                    Tất cả
+                </button>
+<button class="whitespace-nowrap px-6 py-2.5 rounded-full bg-surface-container text-on-surface-variant font-semibold text-sm hover:bg-surface-container-high transition-colors">
+                    Cần ghé thăm
+                </button>
+<button class="whitespace-nowrap px-6 py-2.5 rounded-full bg-surface-container text-on-surface-variant font-semibold text-sm hover:bg-surface-container-high transition-colors">
+                    Đã ghé thăm
+                </button>
+<button class="whitespace-nowrap px-6 py-2.5 rounded-full bg-surface-container text-on-surface-variant font-semibold text-sm hover:bg-surface-container-high transition-colors">
+                    Nợ quá hạn
+                </button>
+</div>
+</section>
+<!-- Metrics Ticker (Asymmetry & Precision) -->
+<div class="grid grid-cols-2 gap-3 mb-8">
+<div class="bg-primary-container p-4 rounded-xl text-on-primary-container">
+<p class="text-[10px] font-bold uppercase tracking-widest opacity-80">Route Progress</p>
+<div class="flex items-baseline gap-1 mt-1">
+<span class="text-3xl font-black tracking-tighter">12</span>
+<span class="text-sm font-medium opacity-70">/ 20 stores</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm">
+<p class="text-[10px] font-bold uppercase tracking-widest text-outline">Outstanding</p>
+<div class="flex items-baseline gap-1 mt-1">
+<span class="text-2xl font-black tracking-tighter text-error">42.5</span>
+<span class="text-xs font-bold text-error">M</span>
+</div>
+</div>
+</div>
+<!-- Customer List (Surface Nesting & Tonal Layering) -->
+<div class="space-y-3">
+<!-- Customer Item 1 -->
+<div class="relative bg-surface-container-lowest p-5 rounded-xl transition-all active:scale-[0.98] group">
+<div class="status-bar-accent bg-primary"></div>
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight">Tạp Hóa Minh Anh</h3>
+<p class="text-sm font-semibold text-primary/80">Nguyễn Văn Minh</p>
+</div>
+<span class="bg-primary-fixed text-on-primary-fixed text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-wider">Hôm nay</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant mb-4">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-xs font-medium truncate">124 Đường 3/2, Quận 10, TP.HCM</p>
+</div>
+<div class="flex justify-between items-center pt-4 border-t border-surface-container">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">call</span>
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">directions</span>
+</div>
+<span class="text-[11px] font-bold text-outline uppercase tracking-tighter">Last visit: 2 days ago</span>
+</div>
+</div>
+<!-- Customer Item 2 (Warning State) -->
+<div class="relative bg-surface-container-lowest p-5 rounded-xl transition-all active:scale-[0.98] group">
+<div class="status-bar-accent bg-error"></div>
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight">Siêu Thị Mini Co-op</h3>
+<p class="text-sm font-semibold text-primary/80">Chị Hạnh</p>
+</div>
+<span class="bg-error-container text-on-error-container text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-wider">Nợ xấu</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant mb-4">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-xs font-medium truncate">45 Lý Tự Trọng, Bến Nghé, Quận 1</p>
+</div>
+<div class="flex justify-between items-center pt-4 border-t border-surface-container">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">call</span>
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">directions</span>
+</div>
+<span class="text-[11px] font-bold text-error uppercase tracking-tighter">Overdue: 15.2M</span>
+</div>
+</div>
+<!-- Customer Item 3 -->
+<div class="relative bg-surface-container-lowest p-5 rounded-xl transition-all active:scale-[0.98] group opacity-75">
+<div class="status-bar-accent bg-outline-variant"></div>
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight">Bách Hóa Tổng Hợp</h3>
+<p class="text-sm font-semibold text-primary/80">Anh Tuấn</p>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-wider">Hoàn thành</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant mb-4">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-xs font-medium truncate">Ki-ốt 4, Chợ Bến Thành</p>
+</div>
+<div class="flex justify-between items-center pt-4 border-t border-surface-container">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">call</span>
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">directions</span>
+</div>
+<span class="text-[11px] font-bold text-outline uppercase tracking-tighter">Visited at 09:15 AM</span>
+</div>
+</div>
+<!-- Customer Item 4 -->
+<div class="relative bg-surface-container-lowest p-5 rounded-xl transition-all active:scale-[0.98] group">
+<div class="status-bar-accent bg-primary"></div>
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight">Đại Lý Sữa Kim Chi</h3>
+<p class="text-sm font-semibold text-primary/80">Chị Chi</p>
+</div>
+<span class="bg-primary-fixed text-on-primary-fixed text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-wider">Sắp tới</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant mb-4">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-xs font-medium truncate">88 Nguyễn Huệ, Quận 1</p>
+</div>
+<div class="flex justify-between items-center pt-4 border-t border-surface-container">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">call</span>
+<span class="material-symbols-outlined text-outline hover:text-primary transition-colors">directions</span>
+</div>
+<span class="text-[11px] font-bold text-outline uppercase tracking-tighter">Est. time: 2:00 PM</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Button -->
+<button class="fixed bottom-28 right-6 w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary-container text-white shadow-xl shadow-primary/30 flex items-center justify-center active:scale-90 transition-transform z-40">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+<!-- Bottom Navigation Shell (Shared Component: BottomNavBar) -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl z-50 rounded-t-3xl" style="box-shadow:0_-10px_30px_-10px_rgba(0,74,198,0.04)">
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-blue-500 transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">home</span>
+<span class="font-inter text-[11px] font-semibold uppercase tracking-wider mt-1">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-xl px-5 py-2 active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">group</span>
+<span class="font-inter text-[11px] font-semibold uppercase tracking-wider mt-1">Customers</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-blue-500 transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">shopping_cart</span>
+<span class="font-inter text-[11px] font-semibold uppercase tracking-wider mt-1">Orders</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-blue-500 transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">person</span>
+<span class="font-inter text-[11px] font-semibold uppercase tracking-wider mt-1">Profile</span>
+</div>
+</nav>
+</body></html>

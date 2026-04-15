@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quản lý Khuyến mãi (M9) | Architect ERP</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-container": "#eef0ff",
+                    "tertiary-container": "#656d84",
+                    "tertiary-fixed-dim": "#bec6e0",
+                    "secondary-fixed-dim": "#b9c7df",
+                    "on-error-container": "#93000a",
+                    "surface-container-highest": "#dce2f3",
+                    "primary-fixed": "#dbe1ff",
+                    "on-error": "#ffffff",
+                    "primary-container": "#2563eb",
+                    "surface-container-low": "#f0f3ff",
+                    "surface-container": "#e7eefe",
+                    "surface-dim": "#d3daea",
+                    "surface-bright": "#f9f9ff",
+                    "surface": "#f9f9ff",
+                    "primary": "#004ac6",
+                    "on-primary": "#ffffff",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#00174b",
+                    "on-surface-variant": "#434655",
+                    "on-secondary-container": "#57657a",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "on-background": "#151c27",
+                    "on-secondary-fixed": "#0d1c2e",
+                    "inverse-primary": "#b4c5ff",
+                    "secondary": "#515f74",
+                    "on-primary-container": "#eeefff",
+                    "secondary-fixed": "#d5e3fc",
+                    "inverse-on-surface": "#ebf1ff",
+                    "error": "#ba1a1a",
+                    "surface-container-high": "#e2e8f8",
+                    "on-secondary-fixed-variant": "#3a485b",
+                    "surface-variant": "#dce2f3",
+                    "surface-tint": "#0053db",
+                    "on-tertiary-fixed-variant": "#3f465c",
+                    "tertiary": "#4d556b",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-surface": "#151c27",
+                    "secondary-container": "#d5e3fc",
+                    "background": "#f9f9ff",
+                    "inverse-surface": "#2a313d",
+                    "outline-variant": "#c3c6d7",
+                    "surface-container-lowest": "#ffffff",
+                    "outline": "#737686",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#131b2e",
+                    "tertiary-fixed": "#dae2fd"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-layering { background-color: #f0f3ff; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #dce2f3; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased flex">
+<!-- SideNavBar (Shared Component) -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 gap-2 font-inter text-sm leading-relaxed z-50">
+<div class="mb-8 px-2 flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm">architecture</span>
+</div>
+<div>
+<h1 class="text-lg font-black tracking-tighter text-blue-700 dark:text-blue-400">Precision Architect</h1>
+<p class="text-[10px] uppercase tracking-widest text-slate-400">Promotion Mgmt M9</p>
+</div>
+</div>
+<nav class="flex-1 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<!-- ACTIVE TAB: Campaigns (Quản lý Khuyến mãi) -->
+<a class="flex items-center gap-3 px-3 py-2 text-blue-700 dark:text-blue-400 font-bold bg-white dark:bg-slate-900 rounded-lg shadow-sm hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">campaign</span>
+<span>Campaigns</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span>Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span>Analytics</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="mt-auto flex flex-col gap-1 pt-4 border-t border-slate-200 dark:border-slate-800">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">headset_mic</span>
+<span>Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:translate-x-1 duration-200 cursor-pointer transition-all" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 flex-1 min-h-screen p-8">
+<!-- Header & Action Row -->
+<header class="flex justify-between items-end mb-10">
+<div>
+<h2 class="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Quản lý Khuyến mãi</h2>
+<p class="text-on-surface-variant font-medium">Chiến dịch Marketing &amp; Điều phối phân phối (M9)</p>
+</div>
+<button class="flex items-center gap-2 bg-gradient-to-br from-primary to-primary-container text-white px-6 py-3 rounded-full font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+<span>Tạo chương trình mới</span>
+</button>
+</header>
+<!-- Bento Grid: Campaign Overview (KPIs) -->
+<section class="grid grid-cols-12 gap-6 mb-10">
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest p-6 rounded-xl border-l-4 border-primary">
+<div class="flex justify-between items-start mb-4">
+<span class="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Chương trình đang chạy</span>
+<span class="material-symbols-outlined text-primary">rocket_launch</span>
+</div>
+<div class="text-5xl font-black text-on-surface mb-1">12</div>
+<p class="text-xs text-on-surface-variant">+2 so với tháng trước</p>
+</div>
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest p-6 rounded-xl border-l-4 border-tertiary">
+<div class="flex justify-between items-start mb-4">
+<span class="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Ngân sách đã dùng</span>
+<span class="material-symbols-outlined text-tertiary">payments</span>
+</div>
+<div class="text-4xl font-black text-on-surface mb-1">1.240 <span class="text-xl">Tr. VNĐ</span></div>
+<div class="w-full bg-surface-container-low h-1.5 rounded-full mt-4 overflow-hidden">
+<div class="bg-primary h-full w-[72%]"></div>
+</div>
+<p class="text-[10px] mt-2 text-on-surface-variant">72% hạn mức Quý III</p>
+</div>
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest p-6 rounded-xl border-l-4 border-success">
+<div class="flex justify-between items-start mb-4">
+<span class="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Hiệu quả KM</span>
+<span class="material-symbols-outlined text-green-600">trending_up</span>
+</div>
+<div class="text-5xl font-black text-on-surface mb-1">18.4%</div>
+<p class="text-xs text-green-600 font-medium">Tăng trưởng doanh thu từ KM</p>
+</div>
+</section>
+<!-- Main Layout: 70/30 Split -->
+<div class="grid grid-cols-12 gap-8 items-start">
+<!-- Promotion List -->
+<div class="col-span-12 lg:col-span-8">
+<div class="bg-surface-container-low p-1 rounded-full flex gap-1 mb-6 w-fit">
+<button class="px-5 py-1.5 rounded-full bg-white shadow-sm text-sm font-bold text-primary">Tất cả</button>
+<button class="px-5 py-1.5 rounded-full text-sm font-medium text-on-surface-variant hover:bg-white/50 transition-colors">Đang chạy</button>
+<button class="px-5 py-1.5 rounded-full text-sm font-medium text-on-surface-variant hover:bg-white/50 transition-colors">Sắp diễn ra</button>
+</div>
+<div class="space-y-4">
+<!-- Item 1 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container-high p-5 rounded-xl transition-all duration-300 relative overflow-hidden">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-2">
+<span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Trade Discount</span>
+<span class="flex items-center gap-1 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                        01/10/2023 - 31/10/2023
+                                    </span>
+</div>
+<h3 class="text-lg font-bold text-on-surface group-hover:text-primary transition-colors">Mua 10 Thùng tặng 1 Thùng (Bia Saigon Chill)</h3>
+<div class="flex items-center gap-4 mt-2">
+<span class="flex items-center gap-1 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">group</span>
+                                        Đại lý Cấp 1, Key Accounts
+                                    </span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<div class="text-sm font-bold text-on-surface">64% Hoàn thành</div>
+<div class="w-24 bg-surface-container-low h-1 rounded-full mt-1 overflow-hidden">
+<div class="bg-primary h-full w-[64%]"></div>
+</div>
+</div>
+<span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">Đang chạy</span>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">more_vert</button>
+</div>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container-high p-5 rounded-xl transition-all duration-300 relative overflow-hidden">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-2">
+<span class="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Cumulative</span>
+<span class="flex items-center gap-1 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                        15/10/2023 - 15/11/2023
+                                    </span>
+</div>
+<h3 class="text-lg font-bold text-on-surface group-hover:text-primary transition-colors">Thưởng doanh số tích lũy Tháng 10</h3>
+<div class="flex items-center gap-4 mt-2">
+<span class="flex items-center gap-1 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">group</span>
+                                        Toàn bộ hệ thống GT
+                                    </span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<div class="text-sm font-bold text-on-surface">Dự kiến</div>
+<div class="text-[10px] text-on-surface-variant italic">Chờ kích hoạt</div>
+</div>
+<span class="bg-amber-100 text-amber-700 text-xs font-bold px-3 py-1 rounded-full">Sắp diễn ra</span>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">more_vert</button>
+</div>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container-high p-5 rounded-xl transition-all duration-300 relative overflow-hidden opacity-80">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-2">
+<span class="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Buy X Get Y</span>
+<span class="flex items-center gap-1 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                        01/09/2023 - 30/09/2023
+                                    </span>
+</div>
+<h3 class="text-lg font-bold text-on-surface group-hover:text-primary transition-colors">Xả hàng tồn kho Pepsi 330ml</h3>
+<div class="flex items-center gap-4 mt-2">
+<span class="flex items-center gap-1 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">group</span>
+                                        Khu vực Miền Trung
+                                    </span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<div class="text-sm font-bold text-on-surface">100% Đạt</div>
+<div class="w-24 bg-surface-container-low h-1 rounded-full mt-1">
+<div class="bg-slate-400 h-full w-full"></div>
+</div>
+</div>
+<span class="bg-slate-100 text-slate-500 text-xs font-bold px-3 py-1 rounded-full">Kết thúc</span>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">more_vert</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Promotion Rules Summary Sidebar -->
+<aside class="col-span-12 lg:col-span-4 sticky top-8">
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-sm">
+<div class="flex items-center justify-between mb-6">
+<h4 class="text-lg font-bold text-on-surface">Chi tiết quy tắc</h4>
+<span class="text-[10px] font-bold text-primary uppercase bg-primary/5 px-2 py-1 rounded">M9-PRM-2023-012</span>
+</div>
+<div class="space-y-6">
+<div class="flex gap-4">
+<div class="bg-surface-container-low w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">priority_high</span>
+</div>
+<div>
+<p class="text-xs font-bold text-on-surface-variant uppercase tracking-tight">Độ ưu tiên</p>
+<p class="text-sm font-semibold text-on-surface">Cấp độ 1 (Cao nhất)</p>
+<p class="text-[11px] text-on-surface-variant">Áp dụng trước tất cả các KM chiết khấu khác.</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="bg-surface-container-low w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">layers</span>
+</div>
+<div>
+<p class="text-xs font-bold text-on-surface-variant uppercase tracking-tight">Logic cộng dồn</p>
+<p class="text-sm font-semibold text-on-surface">Cho phép cộng dồn</p>
+<p class="text-[11px] text-on-surface-variant">Có thể kết hợp với chương trình "Thưởng doanh số quý".</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="bg-surface-container-low w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">my_location</span>
+</div>
+<div>
+<p class="text-xs font-bold text-on-surface-variant uppercase tracking-tight">Đối tượng mục tiêu</p>
+<ul class="mt-1 space-y-1">
+<li class="text-sm text-on-surface flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> 
+                                        Khu vực: Hồ Chí Minh, Đồng Nai
+                                    </li>
+<li class="text-sm text-on-surface flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> 
+                                        Kênh: GT (General Trade)
+                                    </li>
+<li class="text-sm text-on-surface flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> 
+                                        Hạng: Platinum, Gold
+                                    </li>
+</ul>
+</div>
+</div>
+<div class="pt-6 border-t border-surface-container-low">
+<p class="text-xs font-bold text-on-surface-variant uppercase mb-3">Hiệu suất nhanh</p>
+<div class="flex justify-between items-center bg-surface-container-low p-3 rounded-xl">
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Đơn hàng áp dụng</p>
+<p class="text-lg font-black text-primary">1,452</p>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Quà tặng đã xuất</p>
+<p class="text-lg font-black text-primary">840</p>
+</div>
+</div>
+</div>
+<button class="w-full py-3 bg-surface-container-high text-on-surface font-bold rounded-xl hover:bg-surface-container-highest transition-colors active:scale-95 duration-200">
+                            Chỉnh sửa quy tắc
+                        </button>
+</div>
+</div>
+<!-- Small Aesthetic Graphic -->
+<div class="mt-6 rounded-2xl h-32 relative overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-900 flex items-center p-6 text-white shadow-lg">
+<div class="relative z-10">
+<p class="text-xs font-bold opacity-80 uppercase tracking-widest mb-1">M9 Insights</p>
+<h5 class="text-sm font-medium leading-tight">Xu hướng "Trade Discount" đang mang lại ROI cao hơn 12% so với "Cumulative".</h5>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-10">
+<span class="material-symbols-outlined text-[120px]" style="font-variation-settings: 'FILL' 1;">insights</span>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</body></html>

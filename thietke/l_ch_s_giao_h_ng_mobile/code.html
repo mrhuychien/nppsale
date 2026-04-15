@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Delivery History - Driver App</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "outline-variant": "#c3c6d7",
+                      "on-secondary-fixed-variant": "#3a485b",
+                      "inverse-primary": "#b4c5ff",
+                      "on-tertiary-fixed-variant": "#3f465c",
+                      "on-primary-container": "#eeefff",
+                      "surface-dim": "#d3daea",
+                      "on-primary-fixed-variant": "#003ea8",
+                      "on-error-container": "#93000a",
+                      "on-tertiary": "#ffffff",
+                      "on-tertiary-fixed": "#131b2e",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container": "#e7eefe",
+                      "surface-bright": "#f9f9ff",
+                      "primary": "#004ac6",
+                      "on-tertiary-container": "#eef0ff",
+                      "on-primary-fixed": "#00174b",
+                      "on-error": "#ffffff",
+                      "tertiary-fixed": "#dae2fd",
+                      "primary-fixed": "#dbe1ff",
+                      "surface-container-low": "#f0f3ff",
+                      "secondary-container": "#d5e3fc",
+                      "on-secondary-fixed": "#0d1c2e",
+                      "inverse-surface": "#2a313d",
+                      "on-primary": "#ffffff",
+                      "primary-fixed-dim": "#b4c5ff",
+                      "on-surface-variant": "#434655",
+                      "primary-container": "#2563eb",
+                      "surface-tint": "#0053db",
+                      "tertiary": "#4d556b",
+                      "error": "#ba1a1a",
+                      "surface": "#f9f9ff",
+                      "on-secondary": "#ffffff",
+                      "surface-container-high": "#e2e8f8",
+                      "tertiary-fixed-dim": "#bec6e0",
+                      "tertiary-container": "#656d84",
+                      "surface-variant": "#dce2f3",
+                      "error-container": "#ffdad6",
+                      "secondary-fixed-dim": "#b9c7df",
+                      "on-background": "#151c27",
+                      "secondary": "#515f74",
+                      "on-secondary-container": "#57657a",
+                      "background": "#f9f9ff",
+                      "outline": "#737686",
+                      "inverse-on-surface": "#ebf1ff",
+                      "surface-container-highest": "#dce2f3",
+                      "secondary-fixed": "#d5e3fc",
+                      "on-surface": "#151c27"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "fontFamily": {
+                      "headline": ["Inter"],
+                      "body": ["Inter"],
+                      "label": ["Inter"]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-background antialiased pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 dark:bg-slate-950/80 backdrop-blur-md shadow-[0_10_30px_-10px_rgba(0,74,198,0.04)]">
+<div class="flex items-center justify-between px-6 h-16 w-full">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-blue-700 dark:text-blue-400 cursor-pointer active:scale-95 duration-200" data-icon="menu">menu</span>
+<h1 class="text-xl font-bold tracking-tighter text-blue-800 dark:text-blue-300 font-inter tracking-tight">Delivery History</h1>
+</div>
+<span class="material-symbols-outlined text-blue-700 dark:text-blue-400 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors p-2 rounded-full" data-icon="search">search</span>
+</div>
+</header>
+<main class="pt-20 px-4 space-y-6">
+<!-- Search & Filter Area -->
+<section class="space-y-4">
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline" data-icon="search">search</span>
+</div>
+<input class="block w-full pl-10 pr-3 py-3 bg-surface-container-low border-none rounded-xl text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all" placeholder="Tìm mã đơn hoặc tên cửa hàng..." type="text"/>
+</div>
+<div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+<button class="whitespace-nowrap px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-medium shadow-sm">Hôm nay</button>
+<button class="whitespace-nowrap px-4 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors">7 ngày qua</button>
+<button class="whitespace-nowrap px-4 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors">Tháng này</button>
+</div>
+</section>
+<!-- KPI Bento Grid -->
+<section class="grid grid-cols-2 gap-3">
+<div class="col-span-2 bg-surface-container-lowest p-5 rounded-xl border-l-4 border-primary shadow-sm">
+<p class="text-label text-outline text-xs uppercase tracking-widest mb-1">Thu hộ (COD)</p>
+<h2 class="text-3xl font-extrabold text-primary tracking-tighter">45.5M</h2>
+<div class="mt-2 flex items-center text-xs text-success font-medium">
+<span class="material-symbols-outlined text-[14px] mr-1" data-icon="trending_up">trending_up</span>
+<span>+12% so với hôm qua</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl">
+<p class="text-outline text-[10px] uppercase tracking-wider mb-1">Tổng chuyến</p>
+<h3 class="text-2xl font-bold text-on-surface">124</h3>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl">
+<p class="text-outline text-[10px] uppercase tracking-wider mb-1">Thành công</p>
+<h3 class="text-2xl font-bold text-success">98%</h3>
+</div>
+</section>
+<!-- Delivery List -->
+<section class="space-y-4">
+<h4 class="text-sm font-bold text-outline uppercase tracking-widest px-1">Lịch sử chi tiết</h4>
+<!-- Item 1 -->
+<div class="group bg-surface-container-lowest rounded-xl p-4 transition-all hover:shadow-md border-l-4 border-success">
+<div class="flex justify-between items-start mb-3">
+<div>
+<h5 class="text-base font-bold text-on-surface">Cửa hàng WinMart+</h5>
+<p class="text-xs text-outline font-mono mt-0.5">SO-20231023-001</p>
+</div>
+<div class="bg-success/10 text-success px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Đã giao</div>
+</div>
+<div class="flex items-center text-xs text-on-surface-variant gap-4 mb-4">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="schedule">schedule</span>
+                        23/10/2023 10:30
+                    </div>
+<div class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-[14px]" data-icon="payments">payments</span>
+                        1.250.000đ
+                    </div>
+</div>
+<div class="flex justify-end pt-3 border-t border-surface-container">
+<button class="flex items-center gap-1.5 text-primary text-xs font-bold uppercase tracking-wider hover:underline transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="photo_library">photo_library</span>
+                        Xem POD
+                    </button>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group bg-surface-container-lowest rounded-xl p-4 transition-all hover:shadow-md border-l-4 border-success">
+<div class="flex justify-between items-start mb-3">
+<div>
+<h5 class="text-base font-bold text-on-surface">Bách Hóa Xanh - CN2</h5>
+<p class="text-xs text-outline font-mono mt-0.5">SO-20231022-045</p>
+</div>
+<div class="bg-success/10 text-success px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Đã giao</div>
+</div>
+<div class="flex items-center text-xs text-on-surface-variant gap-4 mb-4">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="schedule">schedule</span>
+                        22/10/2023 15:20
+                    </div>
+<div class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-[14px]" data-icon="payments">payments</span>
+                        850.000đ
+                    </div>
+</div>
+<div class="flex justify-end pt-3 border-t border-surface-container">
+<button class="flex items-center gap-1.5 text-primary text-xs font-bold uppercase tracking-wider hover:underline transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="photo_library">photo_library</span>
+                        Xem POD
+                    </button>
+</div>
+</div>
+<!-- Item 3 - Failed -->
+<div class="group bg-surface-container-lowest rounded-xl p-4 transition-all hover:shadow-md border-l-4 border-error">
+<div class="flex justify-between items-start mb-3">
+<div>
+<h5 class="text-base font-bold text-on-surface">Tạp Hóa Cô Lan</h5>
+<p class="text-xs text-outline font-mono mt-0.5">SO-20231021-089</p>
+</div>
+<div class="bg-error/10 text-error px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Giao thất bại</div>
+</div>
+<div class="mb-3 p-2 rounded bg-error-container/30 border-l-2 border-error">
+<p class="text-[11px] text-error flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="warning">warning</span>
+                        Lý do: Cửa hàng đóng cửa
+                    </p>
+</div>
+<div class="flex items-center text-xs text-on-surface-variant gap-4 mb-4">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="schedule">schedule</span>
+                        21/10/2023 09:15
+                    </div>
+<div class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-[14px]" data-icon="payments">payments</span>
+                        2.100.000đ
+                    </div>
+</div>
+<div class="flex justify-end pt-3 border-t border-surface-container">
+<button class="flex items-center gap-1.5 text-outline text-xs font-bold uppercase tracking-wider hover:text-primary transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="history">history</span>
+                        Thử lại sau
+                    </button>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-2 bg-surface/80 dark:bg-slate-950/80 backdrop-blur-md rounded-t-3xl z-50 shadow-[0_-10px_30px_-10px_rgba(0,74,198,0.08)]">
+<!-- Route -->
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-2 px-4 hover:text-blue-600 active:scale-90 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span>
+<span class="text-[11px] font-medium font-inter uppercase tracking-widest mt-1">Route</span>
+</a>
+<!-- History - ACTIVE -->
+<a class="flex flex-col items-center justify-center bg-blue-600 dark:bg-blue-500 text-white rounded-xl py-2 px-4 scale-110 active:scale-90 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="text-[11px] font-medium font-inter uppercase tracking-widest mt-1">History</span>
+</a>
+<!-- Scan -->
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-2 px-4 hover:text-blue-600 active:scale-90 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="qr_code_scanner">qr_code_scanner</span>
+<span class="text-[11px] font-medium font-inter uppercase tracking-widest mt-1">Scan</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-2 px-4 hover:text-blue-600 active:scale-90 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="person_outline">person_outline</span>
+<span class="text-[11px] font-medium font-inter uppercase tracking-widest mt-1">Profile</span>
+</a>
+</nav>
+<!-- Decorative Canvas Gradient -->
+<div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+<div class="absolute top-[-10%] right-[-10%] w-[50%] h-[40%] bg-primary/5 blur-[120px] rounded-full"></div>
+<div class="absolute bottom-[-10%] left-[-10%] w-[50%] h-[40%] bg-secondary/5 blur-[120px] rounded-full"></div>
+</div>
+</body></html>

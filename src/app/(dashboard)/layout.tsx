@@ -38,23 +38,23 @@ export default function DashboardLayout({
   if (!user) return null
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen bg-background">
       <Sidebar role={user.role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="w-72 p-0 bg-surface-low border-0">
           <Sidebar role={user.role} />
         </SheetContent>
       </Sheet>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 pb-20 lg:p-6 lg:pb-6">
+        <main className="flex-1 p-4 pb-24 lg:p-6 lg:pb-6">
           {children}
         </main>
       </div>
 
-      <MobileNav role={user.role} />
+      <MobileNav role={user.role} onMenuClick={() => setMobileOpen(true)} />
     </div>
   )
 }

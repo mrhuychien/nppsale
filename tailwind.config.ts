@@ -50,9 +50,19 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        success: "#22C55E",
-        warning: "#F59E0B",
-        danger: "#EF4444",
+        // Surface layering tokens
+        "surface-lowest": "hsl(var(--surface-container-lowest))",
+        "surface-low": "hsl(var(--surface-container-low))",
+        "surface-container": "hsl(var(--surface-container))",
+        "surface-high": "hsl(var(--surface-container-high))",
+        "surface-highest": "hsl(var(--surface-container-highest))",
+        success: "#22c55e",
+        warning: "#f59e0b",
+        danger: "#ba1a1a",
+      },
+      fontFamily: {
+        sans: ["Inter", "system-ui", "sans-serif"],
+        inter: ["Inter", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",

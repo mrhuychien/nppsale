@@ -13,66 +13,69 @@ export function useAuth() {
 
   useEffect(() => {
     let mounted = true
-    // Safety timeout: if auth check hangs for more than 8s, give up
-    const timeoutId = setTimeout(() => {
-      if (mounted) {
-        console.error("[useAuth] Auth check timed out after 8s")
-        setAuthError("Không thể kết nối tới máy chủ")
-        setLoading(false)
-      }
-    }, 8000)
 
-    async function getUser() {
+    async function fetchProfile(userId: string) {
       try {
-        const { data: authData, error: authErr } = await supabase.auth.getUser()
-        if (authErr) {
-          console.error("[useAuth] getUser error:", authErr)
-          if (mounted) setAuthError(authErr.message)
+        const { data: profile, error: profErr } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle()
+        if (profErr) {
+          console.error("[useAuth] profile error:", profErr)
+          return null
+        }
+        return profile as User | null
+      } catch (err) {
+        console.error("[useAuth] profile unexpected error:", err)
+        return null
+      }
+    }
+
+    async function init() {
+      try {
+        // getSession() reads local storage, does NOT call the network.
+        // This is instant and never hangs.
+        const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+        if (sessionErr) {
+          console.error("[useAuth] getSession error:", sessionErr)
+          if (mounted) setAuthError(sessionErr.message)
           return
         }
-        const au = authData?.user
-        if (au && mounted) {
-          setAuthUser({ id: au.id, email: au.email || "" })
-          const { data: profile, error: profErr } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", au.id)
-            .maybeSingle()
-          if (profErr) {
-            console.error("[useAuth] profile error:", profErr)
-            if (mounted) setAuthError(profErr.message)
-          } else if (profile && mounted) {
-            setUser(profile as User)
-          }
+        const session = sessionData?.session
+        if (!session?.user) {
+          // No session -> not logged in, done.
+          return
         }
+        const au = session.user
+        if (mounted) {
+          setAuthUser({ id: au.id, email: au.email || "" })
+        }
+        // Fetch profile with 5s timeout
+        const profilePromise = fetchProfile(au.id)
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 5000)
+        )
+        const profile = await Promise.race([profilePromise, timeoutPromise])
+        if (profile && mounted) setUser(profile)
       } catch (err) {
-        console.error("[useAuth] unexpected error:", err)
+        console.error("[useAuth] init error:", err)
         if (mounted) {
           setAuthError(err instanceof Error ? err.message : "Lỗi không xác định")
         }
       } finally {
-        if (mounted) {
-          clearTimeout(timeoutId)
-          setLoading(false)
-        }
+        if (mounted) setLoading(false)
       }
     }
-    getUser()
+
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return
       if (session?.user) {
         setAuthUser({ id: session.user.id, email: session.user.email || "" })
-        try {
-          const { data: profile } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", session.user.id)
-            .maybeSingle()
-          if (profile && mounted) setUser(profile as User)
-        } catch (err) {
-          console.error("[useAuth] onAuthStateChange error:", err)
-        }
+        const profile = await fetchProfile(session.user.id)
+        if (profile && mounted) setUser(profile)
       } else {
         setUser(null)
         setAuthUser(null)
@@ -81,7 +84,6 @@ export function useAuth() {
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

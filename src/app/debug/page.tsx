@@ -11,7 +11,7 @@ interface DiagnosticResult {
 }
 
 // Build ID changes on every deploy - use to verify latest deployment
-const BUILD_VERSION = "v6-getSession-20260416"
+const BUILD_VERSION = "v7-extended-tests-20260416"
 
 export default function DebugPage() {
   const [results, setResults] = useState<DiagnosticResult[]>([])
@@ -37,8 +37,12 @@ export default function DebugPage() {
         { name: "1. Env vars co san", status: "pending" },
         { name: "2. Ping Supabase auth endpoint", status: "pending" },
         { name: "3. Doc session tu local storage", status: "pending" },
-        { name: "4. Query bang users (public)", status: "pending" },
-        { name: "5. Goi auth.getUser() (co the treo)", status: "pending" },
+        { name: "4. Query users table (simple)", status: "pending" },
+        { name: "5. Query sales_orders (simple)", status: "pending" },
+        { name: "6. Query sales_orders voi JOIN users", status: "pending" },
+        { name: "7. Query sales_orders voi JOIN customers", status: "pending" },
+        { name: "8. Goi RPC user_org_id()", status: "pending" },
+        { name: "9. Goi RPC user_role()", status: "pending" },
       ]
       setResults([...tests])
 
@@ -111,15 +115,16 @@ export default function DebugPage() {
       }
       setResults([...tests])
 
-      // Test 4: Query users table (will fail if not logged in, that's expected)
+      const supabase = createClient()
+
+      // Test 4: Query users (simple, no join)
       const t3 = performance.now()
       try {
-        const supabase = createClient()
-        const { error } = await supabase.from("users").select("id").limit(1)
+        const { data, error } = await supabase.from("users").select("id, role, full_name").limit(1)
         tests[3] = {
           ...tests[3],
           status: error ? "error" : "success",
-          message: error ? error.message : "Query thanh cong",
+          message: error ? `${error.code || ""} ${error.message}` : `Got ${data?.length || 0} rows`,
           duration: performance.now() - t3,
         }
       } catch (err) {
@@ -132,19 +137,14 @@ export default function DebugPage() {
       }
       setResults([...tests])
 
-      // Test 5: getUser (this was the hanging one)
+      // Test 5: Query sales_orders (no joins)
       const t4 = performance.now()
       try {
-        const supabase = createClient()
-        const { data, error } = await supabase.auth.getUser()
+        const { data, error } = await supabase.from("sales_orders").select("id, order_code, total").limit(1)
         tests[4] = {
           ...tests[4],
           status: error ? "error" : "success",
-          message: error
-            ? error.message
-            : data.user
-              ? `User: ${data.user.email}`
-              : "Khong co user",
+          message: error ? `${error.code || ""} ${error.message}` : `Got ${data?.length || 0} rows`,
           duration: performance.now() - t4,
         }
       } catch (err) {
@@ -153,6 +153,92 @@ export default function DebugPage() {
           status: "error",
           message: err instanceof Error ? err.message : String(err),
           duration: performance.now() - t4,
+        }
+      }
+      setResults([...tests])
+
+      // Test 6: Query sales_orders with JOIN users
+      const t5 = performance.now()
+      try {
+        const { data, error } = await supabase
+          .from("sales_orders")
+          .select("id, sales_user:users!sales_orders_sales_user_id_fkey(full_name)")
+          .limit(1)
+        tests[5] = {
+          ...tests[5],
+          status: error ? "error" : "success",
+          message: error ? `${error.code || ""} ${error.message}` : `Got ${data?.length || 0} rows`,
+          duration: performance.now() - t5,
+        }
+      } catch (err) {
+        tests[5] = {
+          ...tests[5],
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+          duration: performance.now() - t5,
+        }
+      }
+      setResults([...tests])
+
+      // Test 7: Query sales_orders with JOIN customers
+      const t6 = performance.now()
+      try {
+        const { data, error } = await supabase
+          .from("sales_orders")
+          .select("id, customer:customers(store_name)")
+          .limit(1)
+        tests[6] = {
+          ...tests[6],
+          status: error ? "error" : "success",
+          message: error ? `${error.code || ""} ${error.message}` : `Got ${data?.length || 0} rows`,
+          duration: performance.now() - t6,
+        }
+      } catch (err) {
+        tests[6] = {
+          ...tests[6],
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+          duration: performance.now() - t6,
+        }
+      }
+      setResults([...tests])
+
+      // Test 8: RPC user_org_id
+      const t7 = performance.now()
+      try {
+        const { data, error } = await supabase.rpc("user_org_id")
+        tests[7] = {
+          ...tests[7],
+          status: error ? "error" : "success",
+          message: error ? `${error.code || ""} ${error.message}` : `org_id: ${data || "NULL"}`,
+          duration: performance.now() - t7,
+        }
+      } catch (err) {
+        tests[7] = {
+          ...tests[7],
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+          duration: performance.now() - t7,
+        }
+      }
+      setResults([...tests])
+
+      // Test 9: RPC user_role
+      const t8 = performance.now()
+      try {
+        const { data, error } = await supabase.rpc("user_role")
+        tests[8] = {
+          ...tests[8],
+          status: error ? "error" : "success",
+          message: error ? `${error.code || ""} ${error.message}` : `role: ${data || "NULL"}`,
+          duration: performance.now() - t8,
+        }
+      } catch (err) {
+        tests[8] = {
+          ...tests[8],
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+          duration: performance.now() - t8,
         }
       }
       setResults([...tests])

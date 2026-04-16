@@ -13,15 +13,16 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading, authError } = useAuth()
+  const { user, authUser, loading, authError } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !user && !authError) {
+    // Only redirect to login if we're sure there's no session at all
+    if (!loading && !authUser && !authError) {
       router.replace("/login")
     }
-  }, [loading, user, authError, router])
+  }, [loading, authUser, authError, router])
 
   if (loading) {
     return (
@@ -66,15 +67,13 @@ export default function DashboardLayout({
     )
   }
 
-  if (!user) {
+  // No session at all -> redirecting to login (handled by useEffect above)
+  if (!authUser) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center space-y-3 max-w-sm px-4">
-          <div className="w-12 h-12 mx-auto bg-destructive/10 rounded-2xl flex items-center justify-center text-destructive">
-            ⚠
-          </div>
           <p className="text-sm text-muted-foreground">
-            Phiên đăng nhập đã hết hạn. Đang chuyển đến trang đăng nhập...
+            Đang chuyển đến trang đăng nhập...
           </p>
           <button
             onClick={() => router.push("/login")}
@@ -87,13 +86,17 @@ export default function DashboardLayout({
     )
   }
 
+  // authUser exists but user profile is still loading OR doesn't exist.
+  // Use a safe fallback role "sales" for sidebar so user can at least see the app.
+  const role = user?.role ?? "sales"
+
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar role={user.role} />
+      <Sidebar role={role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 p-0 bg-surface-low border-0">
-          <Sidebar role={user.role} />
+          <Sidebar role={role} />
         </SheetContent>
       </Sheet>
 
@@ -104,7 +107,7 @@ export default function DashboardLayout({
         </main>
       </div>
 
-      <MobileNav role={user.role} onMenuClick={() => setMobileOpen(true)} />
+      <MobileNav role={role} onMenuClick={() => setMobileOpen(true)} />
     </div>
   )
 }

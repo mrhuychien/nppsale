@@ -61,7 +61,7 @@ export default function CommissionPoliciesPage() {
           </TableHeader>
           <TableBody>
             {policies.map((p) => (
-              <TableRow key={p.id}>
+              <TableRow key={p.id} className="cursor-pointer" onClick={() => router.push(`/commissions/policies/${p.id}`)}>
                 <TableCell className="font-medium">{p.name}</TableCell>
                 <TableCell>{getTypeLabel(p.type)}</TableCell>
                 <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>

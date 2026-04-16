@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
-import { CreditCard } from "lucide-react"
+import { CreditCard, Eye } from "lucide-react"
 import Link from "next/link"
 import type { Receivable } from "@/types"
 
@@ -19,6 +20,7 @@ export default function ReceivablesPage() {
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     async function fetch() {
@@ -61,6 +63,7 @@ export default function ReceivablesPage() {
               <TableHead className="text-right">Còn lại</TableHead>
               <TableHead>Hạn</TableHead>
               <TableHead>Trạng thái</TableHead>
+              <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -68,7 +71,11 @@ export default function ReceivablesPage() {
               const remaining = r.amount - r.paid
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
               return (
-                <TableRow key={r.id}>
+                <TableRow
+                  key={r.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/receivables/${r.id}`)}
+                >
                   <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
                   <TableCell className="hidden sm:table-cell">{r.sales_user?.full_name || "-"}</TableCell>
                   <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
@@ -76,6 +83,9 @@ export default function ReceivablesPage() {
                   <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
                   <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>
                   <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>
+                  <TableCell>
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  </TableCell>
                 </TableRow>
               )
             })}

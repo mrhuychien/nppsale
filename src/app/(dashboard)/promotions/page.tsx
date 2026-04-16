@@ -59,7 +59,7 @@ export default function PromotionsPage() {
           </TableHeader>
           <TableBody>
             {promotions.map((p) => (
-              <TableRow key={p.id}>
+              <TableRow key={p.id} className="cursor-pointer" onClick={() => router.push(`/promotions/${p.id}`)}>
                 <TableCell className="font-medium">{p.name}</TableCell>
                 <TableCell><Badge variant="outline">{getTypeLabel(p.type)}</Badge></TableCell>
                 <TableCell>{p.priority}</TableCell>

@@ -61,7 +61,7 @@ export default function InvoicesPage() {
           </TableHeader>
           <TableBody>
             {invoices.map((inv) => (
-              <TableRow key={inv.id}>
+              <TableRow key={inv.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${inv.id}`)}>
                 <TableCell className="font-mono text-sm">{inv.invoice_number || "-"}</TableCell>
                 <TableCell className="font-medium">{inv.customer_name}</TableCell>
                 <TableCell className="text-right">{formatCurrency(inv.total)}</TableCell>

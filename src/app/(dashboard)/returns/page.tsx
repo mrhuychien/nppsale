@@ -63,7 +63,7 @@ export default function ReturnsPage() {
           </TableHeader>
           <TableBody>
             {returns.map((r) => (
-              <TableRow key={r.id}>
+              <TableRow key={r.id} className="cursor-pointer" onClick={() => router.push(`/returns/${r.id}`)}>
                 <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
                 <TableCell>{getReasonLabel(r.reason)}</TableCell>
                 <TableCell>{r.requester?.full_name || "-"}</TableCell>

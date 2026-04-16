@@ -102,6 +102,7 @@ export function OrderForm() {
       const { data: order, error: orderErr } = await supabase
         .from("sales_orders")
         .insert({
+          org_id: user?.org_id,
           order_code: orderCode,
           customer_id: customerId,
           sales_user_id: user?.id,

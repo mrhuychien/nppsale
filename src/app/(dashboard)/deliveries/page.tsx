@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
-import { Truck, Plus } from "lucide-react"
+import { Truck, Plus, Eye } from "lucide-react"
 import Link from "next/link"
 import type { Delivery } from "@/types"
 
@@ -57,15 +57,24 @@ export default function DeliveriesPage() {
               <TableHead>Phương tiện</TableHead>
               <TableHead>Bắt đầu</TableHead>
               <TableHead>Trạng thái</TableHead>
+              <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {deliveries.map((d) => {
               const statusConfig = DELIVERY_STATUS_MAP[d.status] || { label: d.status, variant: "outline" as const }
               return (
-                <TableRow key={d.id}>
+                <TableRow
+                  key={d.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/deliveries/${d.id}`)}
+                >
                   <TableCell>
-                    <Link href={`/deliveries/${d.id}`} className="font-medium text-primary hover:underline">
+                    <Link
+                      href={`/deliveries/${d.id}`}
+                      className="font-bold text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {d.route_name || "Chuyến giao"}
                     </Link>
                   </TableCell>
@@ -73,6 +82,7 @@ export default function DeliveriesPage() {
                   <TableCell>{d.vehicle || "-"}</TableCell>
                   <TableCell>{d.started_at ? formatDate(d.started_at) : "-"}</TableCell>
                   <TableCell><Badge variant={statusConfig.variant}>{statusConfig.label}</Badge></TableCell>
+                  <TableCell><Eye className="h-4 w-4 text-muted-foreground" /></TableCell>
                 </TableRow>
               )
             })}

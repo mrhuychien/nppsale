@@ -105,10 +105,13 @@ export function Sidebar({ role }: SidebarProps) {
 
       {/* Footer Links */}
       <div className="p-4 mt-auto space-y-1">
-        <button className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg">
+        <Link
+          href="/help"
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg"
+        >
           <HelpCircle className="h-4 w-4" />
           Hỗ trợ
-        </button>
+        </Link>
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-destructive transition-colors text-sm rounded-lg"

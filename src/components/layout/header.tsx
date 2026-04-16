@@ -29,6 +29,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/returns": "Quản lý trả hàng",
   "/reports": "Báo cáo",
   "/settings": "Cài đặt",
+  "/help": "Trợ giúp & Hướng dẫn",
 }
 
 export function Header({ onMenuClick }: HeaderProps) {

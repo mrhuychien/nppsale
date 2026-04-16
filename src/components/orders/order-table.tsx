@@ -1,9 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { Eye } from "lucide-react"
 import type { SalesOrder } from "@/types"
 
 interface OrderTableProps {
@@ -11,6 +13,8 @@ interface OrderTableProps {
 }
 
 export function OrderTable({ orders }: OrderTableProps) {
+  const router = useRouter()
+
   return (
     <Table>
       <TableHeader>
@@ -21,13 +25,22 @@ export function OrderTable({ orders }: OrderTableProps) {
           <TableHead className="hidden md:table-cell">Ngày đặt</TableHead>
           <TableHead className="text-right">Tổng tiền</TableHead>
           <TableHead>Trạng thái</TableHead>
+          <TableHead className="w-12"></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {orders.map((order) => (
-          <TableRow key={order.id}>
+          <TableRow
+            key={order.id}
+            className="cursor-pointer"
+            onClick={() => router.push(`/orders/${order.id}`)}
+          >
             <TableCell>
-              <Link href={`/orders/${order.id}`} className="font-mono text-sm text-primary hover:underline">
+              <Link
+                href={`/orders/${order.id}`}
+                className="font-mono text-sm text-primary font-bold hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {order.order_code}
               </Link>
             </TableCell>
@@ -37,6 +50,9 @@ export function OrderTable({ orders }: OrderTableProps) {
             <TableCell className="text-right font-medium">{formatCurrency(order.total)}</TableCell>
             <TableCell>
               <StatusBadge status={order.status} type="order" />
+            </TableCell>
+            <TableCell>
+              <Eye className="h-4 w-4 text-muted-foreground" />
             </TableCell>
           </TableRow>
         ))}

@@ -13,15 +13,15 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading } = useAuth()
+  const { user, loading, authError } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !authError) {
       router.replace("/login")
     }
-  }, [loading, user, router])
+  }, [loading, user, authError, router])
 
   if (loading) {
     return (
@@ -31,6 +31,36 @@ export default function DashboardLayout({
             N
           </div>
           <p className="text-sm text-muted-foreground">Đang tải...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (authError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background p-4">
+        <div className="bg-card rounded-2xl shadow-ambient p-8 max-w-md w-full text-center space-y-4">
+          <div className="w-12 h-12 mx-auto bg-destructive/10 rounded-2xl flex items-center justify-center text-destructive text-2xl font-black">
+            ⚠
+          </div>
+          <div>
+            <h2 className="text-lg font-bold mb-1">Không thể kết nối</h2>
+            <p className="text-sm text-muted-foreground">{authError}</p>
+          </div>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-gradient-primary text-white px-4 py-2 rounded-xl text-sm font-semibold"
+            >
+              Thử lại
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="bg-surface-low text-foreground px-4 py-2 rounded-xl text-sm font-semibold"
+            >
+              Đăng nhập lại
+            </button>
+          </div>
         </div>
       </div>
     )

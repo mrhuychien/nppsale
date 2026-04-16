@@ -42,7 +42,7 @@ export default function AgingReportPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Aging Report" description="Phân tích tuổi công nợ" />
+      <PageHeader title="Báo cáo tuổi nợ" description="Phân tích tuổi công nợ" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {(Object.keys(buckets) as Array<keyof typeof buckets>).map((key) => (
@@ -59,32 +59,30 @@ export default function AgingReportPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>Chi tiết</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead className="text-right">Còn nợ</TableHead>
-                <TableHead>Tình trạng</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {receivables.map((r) => {
-                const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.customer?.store_name}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(r.amount - r.paid)}</TableCell>
-                    <TableCell><span className={`px-2 py-0.5 rounded text-xs font-medium ${colorMap[aging]}`}>{labelMap[aging]}</span></TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        <h2 className="text-lg font-bold">Chi tiết</h2>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Khách hàng</TableHead>
+              <TableHead className="text-right">Còn nợ</TableHead>
+              <TableHead>Tình trạng</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {receivables.map((r) => {
+              const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium">{r.customer?.store_name}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(r.amount - r.paid)}</TableCell>
+                  <TableCell><span className={`px-2 py-0.5 rounded text-xs font-medium ${colorMap[aging]}`}>{labelMap[aging]}</span></TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

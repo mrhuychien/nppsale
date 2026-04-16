@@ -91,7 +91,7 @@ export function Sidebar({ role }: SidebarProps) {
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all",
                   isActive
-                    ? "bg-surface-lowest text-primary font-semibold shadow-sm"
+                    ? "bg-surface-lowest text-primary font-semibold shadow-ambient"
                     : "text-muted-foreground hover:bg-surface-container/50 font-medium"
                 )}
               >

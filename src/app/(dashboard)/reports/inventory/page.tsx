@@ -43,21 +43,21 @@ export default function InventoryReportPage() {
             <CardTitle className="text-sm">Tổng tồn kho</CardTitle>
             <BoxesIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold">{totalItems}</div></CardContent>
+          <CardContent><div className="text-3xl font-black">{totalItems}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm">Sản phẩm có tồn</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold">{uniqueProducts}</div></CardContent>
+          <CardContent><div className="text-3xl font-black">{uniqueProducts}</div></CardContent>
         </Card>
         <Card className={expiringCount > 0 ? "border-amber-200" : ""}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm">Cảnh báo HSD</CardTitle>
             <AlertTriangle className="h-4 w-4 text-amber-500" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold text-amber-600">{expiringCount}</div></CardContent>
+          <CardContent><div className="text-3xl font-black text-amber-600">{expiringCount}</div></CardContent>
         </Card>
       </div>
 
@@ -83,7 +83,7 @@ export default function InventoryReportPage() {
                     const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
                     return (
                       <TableRow key={b.id}>
-                        <TableCell className="font-medium">{b.product?.name}</TableCell>
+                        <TableCell className="font-medium">{b.product?.name || "—"}</TableCell>
                         <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>
                         <TableCell className="text-right">{b.qty_on_hand}</TableCell>
                         <TableCell>

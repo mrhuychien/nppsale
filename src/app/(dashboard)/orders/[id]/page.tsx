@@ -70,8 +70,8 @@ export default function OrderDetailPage() {
       toast({ title: "Đã duyệt đơn hàng" })
       setApproveOpen(false)
       fetchData()
-    } catch {
-      toast({ title: "Lỗi khi duyệt đơn", variant: "destructive" })
+    } catch (error) {
+      toast({ title: "Lỗi khi duyệt đơn", description: (error as Error).message, variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -86,8 +86,8 @@ export default function OrderDetailPage() {
       toast({ title: "Đã hủy đơn hàng" })
       setCancelOpen(false)
       fetchData()
-    } catch {
-      toast({ title: "Lỗi", variant: "destructive" })
+    } catch (error) {
+      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

@@ -51,7 +51,7 @@ export default function SalesReportPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
+            <div className="text-3xl font-black">{formatCurrency(totalRevenue)}</div>
             <p className="text-xs text-muted-foreground">Từ đơn đã giao</p>
           </CardContent>
         </Card>
@@ -62,7 +62,7 @@ export default function SalesReportPage() {
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalOrders}</div>
+            <div className="text-3xl font-black">{totalOrders}</div>
             <p className="text-xs text-muted-foreground">{deliveredOrders} đã giao</p>
           </CardContent>
         </Card>
@@ -73,7 +73,7 @@ export default function SalesReportPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{customerCount}</div>
+            <div className="text-3xl font-black">{customerCount}</div>
             <p className="text-xs text-muted-foreground">Tổng số khách hàng</p>
           </CardContent>
         </Card>
@@ -84,7 +84,7 @@ export default function SalesReportPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(avgOrderValue)}</div>
+            <div className="text-3xl font-black">{formatCurrency(avgOrderValue)}</div>
             <p className="text-xs text-muted-foreground">{productCount} sản phẩm</p>
           </CardContent>
         </Card>

@@ -292,7 +292,7 @@ export default function DashboardPage() {
         <div className="xl:col-span-2 bg-surface-low rounded-2xl p-6 lg:p-8 relative overflow-hidden">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h4 className="text-xl lg:text-2xl font-bold text-foreground tracking-tight">
+              <h4 className="text-xl lg:text-2xl font-black text-foreground tracking-tight">
                 Hiệu suất tài chính
               </h4>
               <p className="text-sm text-muted-foreground">

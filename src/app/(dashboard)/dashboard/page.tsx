@@ -5,7 +5,6 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
-import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   Wallet,
@@ -56,6 +55,8 @@ const STATUS_LABEL: Record<string, string> = {
 export default function DashboardPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [today, setToday] = useState<string>("")
   const [stats, setStats] = useState<DashboardStats>({
     todayOrders: 0,
     monthRevenue: 0,
@@ -70,111 +71,119 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetch() {
-      setLoading(true)
-      const today = new Date()
-      const todayStr = today.toISOString().slice(0, 10)
-      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-        .toISOString()
-        .slice(0, 10)
-      const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10)
+      try {
+        setLoading(true)
+        setError(null)
+        const now = new Date()
+        setToday(formatDate(now))
+        const todayStr = now.toISOString().slice(0, 10)
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+          .toISOString()
+          .slice(0, 10)
+        const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10)
 
-      const [
-        todayOrdersRes,
-        monthOrdersRes,
-        receivablesRes,
-        overdueRes,
-        lowStockRes,
-        expiringRes,
-        recentRes,
-        topCustRes,
-      ] = await Promise.all([
-        supabase
-          .from("sales_orders")
-          .select("id", { count: "exact", head: true })
-          .eq("order_date", todayStr),
-        supabase
-          .from("sales_orders")
-          .select("total")
-          .gte("order_date", firstDayOfMonth),
-        supabase
-          .from("receivables")
-          .select("amount, paid, status")
-          .neq("status", "paid"),
-        supabase
-          .from("receivables")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "overdue"),
-        supabase
-          .from("batches")
-          .select("id", { count: "exact", head: true })
-          .lt("qty_on_hand", 10),
-        supabase
-          .from("batches")
-          .select("id", { count: "exact", head: true })
-          .lte("expires_at", in30Days)
-          .gte("expires_at", todayStr),
-        supabase
-          .from("sales_orders")
-          .select("*, customer:customers(store_name, phone)")
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase
-          .from("sales_orders")
-          .select("customer_id, total, customer:customers(store_name)")
-          .gte("order_date", firstDayOfMonth),
-      ])
+        const [
+          todayOrdersRes,
+          monthOrdersRes,
+          receivablesRes,
+          overdueRes,
+          lowStockRes,
+          expiringRes,
+          recentRes,
+          topCustRes,
+        ] = await Promise.all([
+          supabase
+            .from("sales_orders")
+            .select("id", { count: "exact", head: true })
+            .eq("order_date", todayStr),
+          supabase
+            .from("sales_orders")
+            .select("total")
+            .gte("order_date", firstDayOfMonth),
+          supabase
+            .from("receivables")
+            .select("amount, paid, status")
+            .neq("status", "paid"),
+          supabase
+            .from("receivables")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "overdue"),
+          supabase
+            .from("batches")
+            .select("id", { count: "exact", head: true })
+            .lt("qty_on_hand", 10),
+          supabase
+            .from("batches")
+            .select("id", { count: "exact", head: true })
+            .lte("expires_at", in30Days)
+            .gte("expires_at", todayStr),
+          supabase
+            .from("sales_orders")
+            .select("*, customer:customers(store_name, phone)")
+            .order("created_at", { ascending: false })
+            .limit(5),
+          supabase
+            .from("sales_orders")
+            .select("customer_id, total, customer:customers(store_name)")
+            .gte("order_date", firstDayOfMonth),
+        ])
 
-      const monthRevenue = (monthOrdersRes.data || []).reduce(
-        (sum, o: { total: number }) => sum + (o.total || 0),
-        0
-      )
-      const openReceivables = (receivablesRes.data || []).reduce(
-        (sum, r: { amount: number; paid: number }) =>
-          sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
-        0
-      )
+        const monthRevenue = (monthOrdersRes.data || []).reduce(
+          (sum, o: { total: number }) => sum + (o.total || 0),
+          0
+        )
+        const openReceivables = (receivablesRes.data || []).reduce(
+          (sum, r: { amount: number; paid: number }) =>
+            sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
+          0
+        )
 
-      // Group top customers
-      const custMap = new Map<string, TopCustomer>()
-      const topRows = (topCustRes.data || []) as unknown as Array<{
-        customer_id: string
-        total: number
-        customer: { store_name: string } | { store_name: string }[] | null
-      }>
-      for (const row of topRows) {
-        const id = row.customer_id
-        if (!id) continue
-        const cust = Array.isArray(row.customer) ? row.customer[0] : row.customer
-        const existing = custMap.get(id)
-        if (existing) {
-          existing.total += row.total || 0
-          existing.order_count += 1
-        } else {
-          custMap.set(id, {
-            customer_id: id,
-            store_name: cust?.store_name || "N/A",
-            total: row.total || 0,
-            order_count: 1,
-          })
+        // Group top customers
+        const custMap = new Map<string, TopCustomer>()
+        const topRows = (topCustRes.data || []) as unknown as Array<{
+          customer_id: string
+          total: number
+          customer: { store_name: string } | { store_name: string }[] | null
+        }>
+        for (const row of topRows) {
+          const id = row.customer_id
+          if (!id) continue
+          const cust = Array.isArray(row.customer) ? row.customer[0] : row.customer
+          const existing = custMap.get(id)
+          if (existing) {
+            existing.total += row.total || 0
+            existing.order_count += 1
+          } else {
+            custMap.set(id, {
+              customer_id: id,
+              store_name: cust?.store_name || "N/A",
+              total: row.total || 0,
+              order_count: 1,
+            })
+          }
         }
-      }
-      const topList = Array.from(custMap.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5)
+        const topList = Array.from(custMap.values())
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5)
 
-      setStats({
-        todayOrders: todayOrdersRes.count || 0,
-        monthRevenue,
-        openReceivables,
-        overdueCount: overdueRes.count || 0,
-        lowStockCount: lowStockRes.count || 0,
-        expiringSoonCount: expiringRes.count || 0,
-      })
-      setRecentOrders((recentRes.data as SalesOrder[]) || [])
-      setTopCustomers(topList)
-      setLoading(false)
+        setStats({
+          todayOrders: todayOrdersRes.count || 0,
+          monthRevenue,
+          openReceivables,
+          overdueCount: overdueRes.count || 0,
+          lowStockCount: lowStockRes.count || 0,
+          expiringSoonCount: expiringRes.count || 0,
+        })
+        setRecentOrders((recentRes.data as SalesOrder[]) || [])
+        setTopCustomers(topList)
+      } catch (err) {
+        console.error("Dashboard fetch error:", err)
+        setError(err instanceof Error ? err.message : "Không thể tải dữ liệu")
+      } finally {
+        setLoading(false)
+      }
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -182,13 +191,34 @@ export default function DashboardPage() {
   if (authLoading || loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-16 w-64" />
+        <div className="space-y-2">
+          <div className="h-8 w-64 bg-surface-container rounded-lg animate-pulse" />
+          <div className="h-4 w-40 bg-surface-low rounded animate-pulse" />
+        </div>
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-40" />
+            <div key={i} className="h-40 bg-surface-container rounded-2xl animate-pulse" />
           ))}
         </div>
-        <Skeleton className="h-72" />
+        <div className="h-72 bg-surface-container rounded-2xl animate-pulse" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Tổng quan kinh doanh" />
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive p-6 rounded-2xl">
+          <p className="font-semibold mb-1">Không thể tải dữ liệu</p>
+          <p className="text-sm">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 text-sm font-semibold underline"
+          >
+            Thử lại
+          </button>
+        </div>
       </div>
     )
   }
@@ -199,7 +229,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <PageHeader
         title="Tổng quan kinh doanh"
-        description={`Cập nhật ${formatDate(new Date())}`}
+        description={today ? `Cập nhật ${today}` : undefined}
       />
 
       {/* KPI Cards */}

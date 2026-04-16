@@ -7,7 +7,6 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardLayout({
   children,
@@ -26,16 +25,37 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="space-y-4 w-64">
-          <Skeleton className="h-8 w-32 mx-auto" />
-          <Skeleton className="h-4 w-48 mx-auto" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 mx-auto bg-gradient-primary rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-ambient animate-pulse">
+            N
+          </div>
+          <p className="text-sm text-muted-foreground">Đang tải...</p>
         </div>
       </div>
     )
   }
 
-  if (!user) return null
+  if (!user) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-3 max-w-sm px-4">
+          <div className="w-12 h-12 mx-auto bg-destructive/10 rounded-2xl flex items-center justify-center text-destructive">
+            ⚠
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Phiên đăng nhập đã hết hạn. Đang chuyển đến trang đăng nhập...
+          </p>
+          <button
+            onClick={() => router.push("/login")}
+            className="text-sm font-semibold text-primary underline"
+          >
+            Đăng nhập ngay
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

@@ -250,17 +250,17 @@ Sau khi đăng nhập bạn sẽ thấy:
 
 | Tài liệu | Mô tả | Trạng thái |
 | --- | --- | --- |
-| `HUONG_DAN.md` (file này) | Tổng quan + vai trò + luồng cơ bản | ✅ Đã có |
-| `HUONG_DAN_OWNER.md` | Hướng dẫn chi tiết cho Chủ sở hữu | 🔜 Bước 2 |
-| `HUONG_DAN_MANAGER.md` | Hướng dẫn cho Quản lý | 🔜 Bước 2 |
-| `HUONG_DAN_ACCOUNTANT.md` | Hướng dẫn cho Kế toán | 🔜 Bước 2 |
-| `HUONG_DAN_SALES.md` | Hướng dẫn cho Sales | 🔜 Bước 2 |
-| `HUONG_DAN_WAREHOUSE.md` | Hướng dẫn cho Kho | 🔜 Bước 2 |
-| `HUONG_DAN_DRIVER.md` | Hướng dẫn cho Tài xế | 🔜 Bước 2 |
-| `HUONG_DAN_MODULES.md` | Chi tiết 12 module + ảnh chụp | 🔜 Bước 3 |
-| `/help` (in-app) | Trang trợ giúp trong ứng dụng | 🔜 Bước 4 |
-| `DEPLOY.md` | Hướng dẫn cài đặt & deploy | ✅ Đã có |
-| `README.md` | Tóm tắt project | ✅ Đã có |
+| [`HUONG_DAN.md`](HUONG_DAN.md) (file này) | Tổng quan + vai trò + luồng cơ bản | ✅ |
+| [`HUONG_DAN_OWNER.md`](HUONG_DAN_OWNER.md) | Hướng dẫn chi tiết cho Chủ sở hữu | ✅ |
+| [`HUONG_DAN_MANAGER.md`](HUONG_DAN_MANAGER.md) | Hướng dẫn cho Quản lý | ✅ |
+| [`HUONG_DAN_ACCOUNTANT.md`](HUONG_DAN_ACCOUNTANT.md) | Hướng dẫn cho Kế toán | ✅ |
+| [`HUONG_DAN_SALES.md`](HUONG_DAN_SALES.md) | Hướng dẫn cho Sales | ✅ |
+| [`HUONG_DAN_WAREHOUSE.md`](HUONG_DAN_WAREHOUSE.md) | Hướng dẫn cho Kho | ✅ |
+| [`HUONG_DAN_DRIVER.md`](HUONG_DAN_DRIVER.md) | Hướng dẫn cho Tài xế | ✅ |
+| [`HUONG_DAN_MODULES.md`](HUONG_DAN_MODULES.md) | Chi tiết 12 module | ✅ |
+| `/help` (in-app) | Trang trợ giúp trong ứng dụng | ✅ |
+| [`DEPLOY.md`](DEPLOY.md) | Hướng dẫn cài đặt & deploy | ✅ |
+| [`README.md`](README.md) | Tóm tắt project | ✅ |
 
 ---
 

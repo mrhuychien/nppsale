@@ -16,7 +16,7 @@ import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink } from "lucide-react"
 import Link from "next/link"
-import type { Customer, Product, PriceList } from "@/types"
+import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
   product_id: string
@@ -33,7 +33,7 @@ interface OrderLine {
 export function OrderForm() {
   const { user } = useAuth()
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [products, setProducts] = useState<(Product & { price_lists?: PriceList[] })[]>([])
+  const [products, setProducts] = useState<(Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]>([])
   const [customerId, setCustomerId] = useState("")
   const [paymentTerms, setPaymentTerms] = useState("COD")
   const [expectedDelivery, setExpectedDelivery] = useState("")
@@ -49,10 +49,10 @@ export function OrderForm() {
     async function fetch() {
       const [custRes, prodRes] = await Promise.all([
         supabase.from("customers").select("*, group:customer_groups(*)").eq("status", "active").order("store_name"),
-        supabase.from("products").select("*, price_lists(*)").eq("status", "active").order("name"),
+        supabase.from("products").select("*, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
       ])
       setCustomers((custRes.data as Customer[]) || [])
-      setProducts((prodRes.data as (Product & { price_lists?: PriceList[] })[]) || [])
+      setProducts((prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || [])
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,14 +90,37 @@ export function OrderForm() {
     setProductSearch("")
   }
 
-  const updateLine = (index: number, field: keyof OrderLine, value: number) => {
+  const updateLine = (index: number, field: keyof OrderLine, value: number | string) => {
     const updated = [...lines]
-    const line = { ...updated[index], [field]: value }
+    const line = { ...updated[index], [field]: value } as OrderLine
+    // If unit changed, recalculate unit_price from price_lists matching new unit
+    if (field === "unit_name") {
+      const product = products.find((p) => p.id === line.product_id)
+      if (product) {
+        const groupId = selectedCustomer?.group_id
+        const priceEntry = product.price_lists?.find(
+          (pl) => pl.unit_name === value && (pl.group_id === groupId || !pl.group_id)
+        )
+        if (priceEntry) {
+          line.unit_price = priceEntry.price
+        }
+      }
+    }
     const gross = line.quantity * line.unit_price
     const discountAmount = gross * (line.line_discount_percent / 100)
     line.line_total = gross - discountAmount
     updated[index] = line
     setLines(updated)
+  }
+
+  const getAvailableUnits = (line: OrderLine): string[] => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return [line.unit_name]
+    const units = [product.base_unit]
+    ;(product.units || []).forEach((u) => {
+      if (!units.includes(u.unit_name)) units.push(u.unit_name)
+    })
+    return units
   }
 
   const removeLine = (index: number) => {
@@ -380,7 +403,7 @@ export function OrderForm() {
                     <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                       Sản phẩm
                     </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-28">
                       ĐVT
                     </th>
                     <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
@@ -410,7 +433,29 @@ export function OrderForm() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">{line.unit_name}</td>
+                      <td className="px-3 py-2">
+                        {(() => {
+                          const units = getAvailableUnits(line)
+                          if (units.length <= 1) {
+                            return <span className="text-muted-foreground">{line.unit_name}</span>
+                          }
+                          return (
+                            <Select
+                              value={line.unit_name}
+                              onValueChange={(v) => updateLine(i, "unit_name", v)}
+                            >
+                              <SelectTrigger className="h-8 w-full min-w-[90px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {units.map((u) => (
+                                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )
+                        })()}
+                      </td>
                       <td className="px-3 py-2">
                         <Input
                           type="number"

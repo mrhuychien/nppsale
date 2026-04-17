@@ -93,7 +93,7 @@ export default function StocktakePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo phiếu kho" />
+      <PageHeader title="Tạo phiếu kho" backHref="/inventory" />
       <Card>
         <CardHeader><CardTitle>Thông tin phiếu kho</CardTitle></CardHeader>
         <CardContent>

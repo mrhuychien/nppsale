@@ -146,6 +146,7 @@ export default function InventoryReportPage() {
       <PageHeader
         title="Báo cáo Chi tiết Kho hàng"
         description="Phân tích chuyên sâu hiệu suất và giá trị hàng tồn (Module M12)"
+        backHref="/reports"
       >
         <button
           onClick={() => typeof window !== "undefined" && window.print()}

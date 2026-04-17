@@ -99,7 +99,7 @@ export default function UserDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={target.full_name} description={`Vai trò hiện tại: ${ROLE_LABELS[target.role] || target.role}`}>
+      <PageHeader title={target.full_name} description={`Vai trò hiện tại: ${ROLE_LABELS[target.role] || target.role}`} backHref="/settings/users">
         <Badge variant={target.is_active ? "success" : "secondary"}>
           {target.is_active ? "Đang hoạt động" : "Tạm khóa"}
         </Badge>

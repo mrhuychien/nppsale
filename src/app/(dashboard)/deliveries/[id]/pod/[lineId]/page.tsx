@@ -13,8 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { PageHeader } from "@/components/ui/page-header"
 import {
-  ArrowLeft,
   Camera,
   CheckCircle2,
   ImageIcon,
@@ -331,28 +331,15 @@ export default function PodConfirmationPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href={`/deliveries/${deliveryId}`}
-          className="w-10 h-10 rounded-xl bg-surface-low text-foreground flex items-center justify-center active:scale-95 transition-transform"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground truncate">
-            Xác nhận POD
-          </h1>
-          <p className="text-sm text-muted-foreground truncate">
-            {delivery.route_name
-              ? `Chuyến ${delivery.route_name}`
-              : "Xác nhận giao hàng"}
-          </p>
-        </div>
+      <PageHeader
+        title="Xác nhận POD"
+        description={delivery.route_name ? `Chuyến ${delivery.route_name}` : "Xác nhận giao hàng"}
+        backHref=""
+      >
         <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full shrink-0">
           {line.order?.order_code || "—"}
         </span>
-      </div>
+      </PageHeader>
 
       {isLocked && (
         <div className="bg-amber-100 border border-amber-200 text-amber-800 p-4 rounded-2xl text-sm">

@@ -69,7 +69,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý người dùng" description={`${users.length} người dùng`} />
+      <PageHeader title="Quản lý người dùng" description={`${users.length} người dùng`} backHref="/settings" />
 
       <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-xs text-muted-foreground">
         Người dùng được tạo qua Supabase Auth. Tại đây chỉ có thể chỉnh sửa thông tin hồ sơ và bật/tắt trạng thái hoạt động.

@@ -42,7 +42,7 @@ export default function OrgSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Cấu hình tổ chức" />
+      <PageHeader title="Cấu hình tổ chức" backHref="/settings" />
       <Card>
         <CardHeader><CardTitle>Thông tin NPP</CardTitle></CardHeader>
         <CardContent className="space-y-4">

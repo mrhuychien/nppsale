@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
+import { PageHeader } from "@/components/ui/page-header"
 import {
   Truck,
   Phone,
@@ -144,6 +145,7 @@ export default function DriverTripPage() {
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
+      <PageHeader title={delivery.route_name || "Chuyến giao"} backHref="/deliveries" />
       {/* Header */}
       <div className="rounded-xl bg-gradient-to-br from-primary to-primary/80 p-5 text-primary-foreground shadow-lg">
         <div className="flex items-start justify-between gap-3 mb-3">

@@ -163,6 +163,7 @@ export default function SalesReportPage() {
       <PageHeader
         title="Báo cáo Doanh số"
         description="Phân tích doanh thu, top sản phẩm và hiệu suất nhân viên kinh doanh"
+        backHref="/reports"
       >
         <button
           onClick={() => typeof window !== "undefined" && window.print()}

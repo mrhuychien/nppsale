@@ -48,7 +48,7 @@ export default function StockEntriesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Phiếu kho" description={`${entries.length} phiếu`}>
+      <PageHeader title="Phiếu kho" description={`${entries.length} phiếu`} backHref="/inventory">
         {user && hasPermission(user.role, "inventory", "create") && (
           <Button asChild><Link href="/inventory/stocktake"><Plus className="mr-2 h-4 w-4" /> Tạo phiếu</Link></Button>
         )}

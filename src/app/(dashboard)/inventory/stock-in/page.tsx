@@ -17,14 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import Link from "next/link"
@@ -33,32 +25,46 @@ import {
   Info,
   Plus,
   Trash2,
-  Package,
   ArrowDownToLine,
   ExternalLink,
 } from "lucide-react"
-import type { Product, Supplier } from "@/types"
+import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 
 interface LineItem {
   id: string
   product_id: string
+  product_name: string
+  sku: string
+  unit_name: string
   quantity: string
   unit_price: string
+  vat_rate: number
   batch_code: string
   manufactured_at: string
   expires_at: string
+  available_units: string[]
 }
 
 function newLine(): LineItem {
   return {
     id: Math.random().toString(36).slice(2, 10),
     product_id: "",
+    product_name: "",
+    sku: "",
+    unit_name: "",
     quantity: "",
     unit_price: "",
+    vat_rate: 0,
     batch_code: "",
     manufactured_at: "",
     expires_at: "",
+    available_units: [],
   }
+}
+
+type ProductWithRelations = Product & {
+  price_lists?: PriceList[]
+  units?: ProductUnit[]
 }
 
 export default function StockInPage() {
@@ -68,7 +74,7 @@ export default function StockInPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductWithRelations[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [saving, setSaving] = useState(false)
@@ -81,23 +87,28 @@ export default function StockInPage() {
   )
   const [warehouse, setWarehouse] = useState("Kho chính")
   const [lines, setLines] = useState<LineItem[]>([newLine()])
+  const [productSearch, setProductSearch] = useState("")
 
   useEffect(() => {
-    async function fetch() {
+    async function fetchData() {
       const [prodRes, supRes] = await Promise.all([
-        supabase.from("products").select("*").eq("status", "active").order("name"),
+        supabase
+          .from("products")
+          .select("*, price_lists(*), units:product_units(*)")
+          .eq("status", "active")
+          .order("name"),
         supabase.from("suppliers").select("*").eq("is_active", true).order("name"),
       ])
-      setProducts((prodRes.data as Product[]) || [])
+      setProducts((prodRes.data as ProductWithRelations[]) || [])
       // Suppliers might fail silently if migration 006 not yet run - that's OK
       if (supRes.data) setSuppliers(supRes.data as Supplier[])
       setProductsLoading(false)
     }
-    fetch()
+    fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const productMap = useMemo(() => {
-    const map = new Map<string, Product>()
+    const map = new Map<string, ProductWithRelations>()
     products.forEach((p) => map.set(p.id, p))
     return map
   }, [products])
@@ -105,27 +116,118 @@ export default function StockInPage() {
   const summary = useMemo(() => {
     let qtyTotal = 0
     let subtotal = 0
+    let vat = 0
     lines.forEach((l) => {
       const qty = parseFloat(l.quantity) || 0
       const price = parseFloat(l.unit_price) || 0
+      const lineTotal = qty * price
       qtyTotal += qty
-      subtotal += qty * price
+      subtotal += lineTotal
+      vat += lineTotal * (l.vat_rate || 0)
     })
-    const vat = Math.round(subtotal * 0.1)
-    const total = subtotal + vat
-    return { qtyTotal, subtotal, vat, total }
+    const vatRounded = Math.round(vat)
+    const total = subtotal + vatRounded
+    return { qtyTotal, subtotal, vat: vatRounded, total }
+  }, [lines])
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return []
+    const q = productSearch.toLowerCase()
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+    )
+  }, [productSearch, products])
+
+  // Auto-add empty row when last row is filled
+  useEffect(() => {
+    if (lines.length === 0) {
+      setLines([newLine()])
+      return
+    }
+    const last = lines[lines.length - 1]
+    if (last.product_id) {
+      setLines((prev) => {
+        const tail = prev[prev.length - 1]
+        if (tail && tail.product_id) return [...prev, newLine()]
+        return prev
+      })
+    }
   }, [lines])
 
   if (authLoading || productsLoading) return <Skeleton className="h-96" />
 
+  function getAvailableUnits(product: ProductWithRelations): string[] {
+    const units = [product.base_unit]
+    ;(product.units || []).forEach((u) => {
+      if (!units.includes(u.unit_name)) units.push(u.unit_name)
+    })
+    return units
+  }
+
+  function getDefaultUnitPrice(product: ProductWithRelations, unitName: string): number {
+    const match = product.price_lists?.find(
+      (pl) => pl.unit_name === unitName && !pl.group_id
+    )
+    if (match) return match.price
+    const anyMatch = product.price_lists?.find((pl) => pl.unit_name === unitName)
+    return anyMatch?.price ?? 0
+  }
+
+  function addProductLine(productId: string) {
+    const product = productMap.get(productId)
+    if (!product) return
+    const availableUnits = getAvailableUnits(product)
+    const unitName = product.base_unit
+    const price = getDefaultUnitPrice(product, unitName)
+    const newItem: LineItem = {
+      id: Math.random().toString(36).slice(2, 10),
+      product_id: product.id,
+      product_name: product.name,
+      sku: product.sku,
+      unit_name: unitName,
+      quantity: "1",
+      unit_price: price > 0 ? String(price) : "",
+      vat_rate: product.vat_rate ?? 0,
+      batch_code: "",
+      manufactured_at: "",
+      expires_at: "",
+      available_units: availableUnits,
+    }
+    setLines((prev) => {
+      // Replace last empty line if it exists, else append
+      if (prev.length > 0 && !prev[prev.length - 1].product_id) {
+        const copy = [...prev]
+        copy[copy.length - 1] = newItem
+        return copy
+      }
+      return [...prev, newItem]
+    })
+    setProductSearch("")
+  }
+
   function updateLine(id: string, patch: Partial<LineItem>) {
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l
+        const next = { ...l, ...patch }
+        // If unit changed, refresh price suggestion
+        if (patch.unit_name && patch.unit_name !== l.unit_name) {
+          const product = productMap.get(l.product_id)
+          if (product) {
+            const newPrice = getDefaultUnitPrice(product, patch.unit_name)
+            if (newPrice > 0) next.unit_price = String(newPrice)
+          }
+        }
+        return next
+      })
+    )
   }
 
   function removeLine(id: string) {
-    setLines((prev) =>
-      prev.length <= 1 ? prev : prev.filter((l) => l.id !== id)
-    )
+    setLines((prev) => {
+      const filtered = prev.filter((l) => l.id !== id)
+      return filtered.length === 0 ? [newLine()] : filtered
+    })
   }
 
   function addLine() {
@@ -134,10 +236,12 @@ export default function StockInPage() {
 
   function discardDraft() {
     setSupplier("")
+    setSupplierId("")
     setInvoiceNo("")
     setEntryDate(new Date().toISOString().slice(0, 10))
     setWarehouse("Kho chính")
     setLines([newLine()])
+    setProductSearch("")
     toast({ title: "Đã hủy bản nháp" })
   }
 
@@ -154,19 +258,10 @@ export default function StockInPage() {
     if (validLines.length === 0) {
       toast({
         title: "Cần ít nhất 1 dòng hàng hợp lệ",
+        description: "Mỗi dòng cần sản phẩm và số lượng > 0",
         variant: "destructive",
       })
       return
-    }
-    for (const l of validLines) {
-      if (!l.batch_code.trim() || !l.expires_at) {
-        toast({
-          title: "Thiếu thông tin lô hàng",
-          description: "Mỗi dòng cần mã lô và HSD để áp dụng FEFO",
-          variant: "destructive",
-        })
-        return
-      }
     }
 
     setSaving(true)
@@ -197,15 +292,16 @@ export default function StockInPage() {
         .single()
       if (entryErr) throw entryErr
 
-      // Create batches in bulk
-      const batchPayload = validLines.map((l) => {
+      // Create batches in bulk - auto-generate batch_code if empty
+      const batchPayload = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
+        const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
         return {
           org_id: user.org_id,
           product_id: l.product_id,
-          batch_code: l.batch_code.trim(),
+          batch_code: batchCode,
           manufactured_at: l.manufactured_at || null,
-          expires_at: l.expires_at,
+          expires_at: l.expires_at || null,
           qty_initial: qty,
           qty_on_hand: qty,
         }
@@ -219,12 +315,11 @@ export default function StockInPage() {
       // Create stock entry lines linked to the new batches (preserve order)
       const entryLines = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
-        const product = productMap.get(l.product_id)
         return {
           entry_id: entry.id,
           product_id: l.product_id,
           batch_id: insertedBatches?.[idx]?.id ?? null,
-          unit_name: product?.base_unit || "",
+          unit_name: l.unit_name || productMap.get(l.product_id)?.base_unit || "",
           quantity: qty,
         }
       })
@@ -284,14 +379,16 @@ export default function StockInPage() {
 
       {/* Bento grid: 2 + 1 */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 rounded-2xl shadow-ambient bg-card">
           <CardHeader>
-            <CardTitle>Thông tin chung</CardTitle>
+            <CardTitle className="text-base font-bold">Thông tin chung</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Nhà cung cấp</Label>
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Nhà cung cấp
+                </Label>
                 {suppliers.length > 0 ? (
                   <>
                     <Select
@@ -355,7 +452,9 @@ export default function StockInPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label>Số hóa đơn</Label>
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Số hóa đơn
+                </Label>
                 <Input
                   value={invoiceNo}
                   onChange={(e) => setInvoiceNo(e.target.value)}
@@ -363,7 +462,9 @@ export default function StockInPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Ngày nhập</Label>
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Ngày nhập
+                </Label>
                 <Input
                   type="date"
                   value={entryDate}
@@ -371,7 +472,9 @@ export default function StockInPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Kho nhận</Label>
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Kho nhận
+                </Label>
                 <Input
                   value={warehouse}
                   onChange={(e) => setWarehouse(e.target.value)}
@@ -382,9 +485,9 @@ export default function StockInPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-primary text-white shadow-ambient-md">
+        <Card className="bg-gradient-primary text-white shadow-ambient-md rounded-2xl">
           <CardHeader>
-            <CardTitle className="text-white">Giá trị nhập kho</CardTitle>
+            <CardTitle className="text-white text-base font-bold">Giá trị nhập kho</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between text-sm text-white/80">
@@ -394,7 +497,7 @@ export default function StockInPage() {
               </span>
             </div>
             <div className="flex items-center justify-between text-sm text-white/80">
-              <span>Thuế VAT (10%)</span>
+              <span>Thuế VAT</span>
               <span className="font-semibold text-white">
                 {formatCurrency(summary.vat)}
               </span>
@@ -419,74 +522,137 @@ export default function StockInPage() {
       </div>
 
       {/* Line items */}
-      <Card>
+      <Card className="rounded-2xl shadow-ambient bg-card">
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <div>
-            <CardTitle>Line Items & Lot Tracking</CardTitle>
+            <CardTitle className="text-base font-bold">Line Items &amp; Lot Tracking</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              Mỗi dòng sẽ tạo 1 lô hàng mới để theo dõi HSD
+              Mỗi dòng tạo 1 lô hàng. Mã lô và HSD không bắt buộc - hệ thống sẽ tự sinh mã nếu để trống.
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={addLine}>
-            <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
+            <Plus className="mr-2 h-4 w-4" /> Thêm dòng trống
           </Button>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="space-y-4">
+          {/* Inline product search - ABOVE table to avoid overflow clipping */}
+          <div className="relative">
+            <Input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Tìm nhanh: gõ tên hoặc mã SKU sản phẩm..."
+              className="h-10"
+            />
+            {filteredProducts.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-ambient-md max-h-72 overflow-y-auto">
+                {filteredProducts.slice(0, 10).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => addProductLine(p.id)}
+                    className="w-full text-left px-4 py-3 hover:bg-surface-low transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
+                  >
+                    <div>
+                      <p className="font-semibold text-sm">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        SKU: {p.sku} • {p.base_unit}
+                      </p>
+                    </div>
+                    <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </button>
+                ))}
+                <div className="border-t border-border/50 p-2">
+                  <Link
+                    href="/products/new"
+                    target="_blank"
+                    className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                  >
+                    <Plus className="h-3 w-3" /> Tạo sản phẩm mới
+                    <ExternalLink className="h-3 w-3 ml-auto" />
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[220px]">Sản phẩm / SKU</TableHead>
-                  <TableHead>ĐVT</TableHead>
-                  <TableHead className="w-24">SL</TableHead>
-                  <TableHead className="w-32">Đơn giá</TableHead>
-                  <TableHead className="min-w-[320px]">
-                    Thông tin Lô hàng (FEFO)
-                  </TableHead>
-                  <TableHead className="w-32 text-right">Thành tiền</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line) => {
-                  const product = productMap.get(line.product_id)
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-surface-low text-left">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10">
+                    #
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[200px]">
+                    Sản phẩm
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-28">
+                    ĐVT
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                    SL
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
+                    Đơn giá
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                    VAT %
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[280px]">
+                    Lô hàng (tùy chọn)
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32 text-right">
+                    Thành tiền
+                  </th>
+                  <th className="px-3 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {lines.map((line, i) => {
                   const qty = parseFloat(line.quantity) || 0
                   const price = parseFloat(line.unit_price) || 0
-                  const subtotal = qty * price
+                  const lineTotal = qty * price
+                  const hasProduct = !!line.product_id
                   return (
-                    <TableRow key={line.id}>
-                      <TableCell>
-                        <Select
-                          value={line.product_id}
-                          onValueChange={(v) =>
-                            updateLine(line.id, { product_id: v })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Chọn sản phẩm" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                <span className="font-mono text-xs text-muted-foreground">
-                                  {p.sku}
-                                </span>{" "}
-                                - {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {product && (
-                          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                            <Package className="h-3 w-3" />
-                            <span className="font-mono">{product.sku}</span>
+                    <tr key={line.id} className="hover:bg-surface-low/40 transition-colors">
+                      <td className="px-3 py-2 text-muted-foreground font-medium">{i + 1}</td>
+                      <td className="px-3 py-2">
+                        {hasProduct ? (
+                          <div className="flex flex-col">
+                            <span className="font-bold text-primary">{line.product_name}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono uppercase">
+                              SKU: {line.sku}
+                            </span>
                           </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">
+                            Tìm sản phẩm ở ô trên để thêm vào dòng này...
+                          </span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {product?.base_unit || "—"}
-                      </TableCell>
-                      <TableCell>
+                      </td>
+                      <td className="px-3 py-2">
+                        {hasProduct ? (
+                          line.available_units.length <= 1 ? (
+                            <span className="text-muted-foreground">{line.unit_name}</span>
+                          ) : (
+                            <Select
+                              value={line.unit_name}
+                              onValueChange={(v) => updateLine(line.id, { unit_name: v })}
+                            >
+                              <SelectTrigger className="h-8 w-full min-w-[90px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {line.available_units.map((u) => (
+                                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
                         <Input
                           type="number"
                           min={0}
@@ -495,9 +661,11 @@ export default function StockInPage() {
                             updateLine(line.id, { quantity: e.target.value })
                           }
                           placeholder="0"
+                          className="h-8 text-center"
+                          disabled={!hasProduct}
                         />
-                      </TableCell>
-                      <TableCell>
+                      </td>
+                      <td className="px-3 py-2">
                         <Input
                           type="number"
                           min={0}
@@ -506,9 +674,27 @@ export default function StockInPage() {
                             updateLine(line.id, { unit_price: e.target.value })
                           }
                           placeholder="0"
+                          className="h-8"
+                          disabled={!hasProduct}
                         />
-                      </TableCell>
-                      <TableCell>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.1"
+                          value={hasProduct ? String(Math.round(line.vat_rate * 1000) / 10) : ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 0
+                            const clamped = Math.max(0, Math.min(100, v))
+                            updateLine(line.id, { vat_rate: clamped / 100 })
+                          }}
+                          className="h-8 text-center"
+                          disabled={!hasProduct}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
                         <div className="grid gap-2 sm:grid-cols-3">
                           <div>
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -517,12 +703,11 @@ export default function StockInPage() {
                             <Input
                               value={line.batch_code}
                               onChange={(e) =>
-                                updateLine(line.id, {
-                                  batch_code: e.target.value,
-                                })
+                                updateLine(line.id, { batch_code: e.target.value })
                               }
-                              placeholder="LOT-001"
-                              className="font-mono text-xs"
+                              placeholder="Tự sinh"
+                              className="font-mono text-xs h-8"
+                              disabled={!hasProduct}
                             />
                           </div>
                           <div>
@@ -533,11 +718,10 @@ export default function StockInPage() {
                               type="date"
                               value={line.manufactured_at}
                               onChange={(e) =>
-                                updateLine(line.id, {
-                                  manufactured_at: e.target.value,
-                                })
+                                updateLine(line.id, { manufactured_at: e.target.value })
                               }
-                              className="text-xs"
+                              className="text-xs h-8"
+                              disabled={!hasProduct}
                             />
                           </div>
                           <div>
@@ -548,40 +732,39 @@ export default function StockInPage() {
                               type="date"
                               value={line.expires_at}
                               onChange={(e) =>
-                                updateLine(line.id, {
-                                  expires_at: e.target.value,
-                                })
+                                updateLine(line.id, { expires_at: e.target.value })
                               }
-                              className="text-xs"
+                              className="text-xs h-8"
+                              disabled={!hasProduct}
                             />
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(subtotal)}
-                      </TableCell>
-                      <TableCell>
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {formatCurrency(lineTotal)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={() => removeLine(line.id)}
-                          disabled={lines.length <= 1}
                         >
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   )
                 })}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>
 
       {/* Bottom summary strip */}
-      <Card className="bg-surface-low">
+      <Card className="bg-surface-low rounded-2xl">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-6">
             <div>

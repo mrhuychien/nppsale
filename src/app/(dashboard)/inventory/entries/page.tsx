@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
@@ -12,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
-import { ClipboardList, Plus } from "lucide-react"
+import { ClipboardList, Plus, Eye } from "lucide-react"
 import Link from "next/link"
 import type { StockEntry } from "@/types"
 
@@ -21,6 +22,7 @@ export default function StockEntriesPage() {
   const [entries, setEntries] = useState<StockEntry[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     async function fetch() {
@@ -65,16 +67,30 @@ export default function StockEntriesPage() {
               <TableHead>Người tạo</TableHead>
               <TableHead>Ghi chú</TableHead>
               <TableHead>Ngày</TableHead>
+              <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {entries.map((e) => (
-              <TableRow key={e.id}>
-                <TableCell className="font-mono text-sm">{e.entry_code}</TableCell>
+              <TableRow
+                key={e.id}
+                className="cursor-pointer"
+                onClick={() => router.push(`/inventory/entries/${e.id}`)}
+              >
+                <TableCell>
+                  <Link
+                    href={`/inventory/entries/${e.id}`}
+                    className="font-mono text-sm text-primary font-bold hover:underline"
+                    onClick={(ev) => ev.stopPropagation()}
+                  >
+                    {e.entry_code}
+                  </Link>
+                </TableCell>
                 <TableCell><Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge></TableCell>
                 <TableCell>{e.creator?.full_name || "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{e.notes || "-"}</TableCell>
+                <TableCell className="text-muted-foreground truncate max-w-xs">{e.notes || "-"}</TableCell>
                 <TableCell>{formatDate(e.created_at)}</TableCell>
+                <TableCell><Eye className="h-4 w-4 text-muted-foreground" /></TableCell>
               </TableRow>
             ))}
           </TableBody>

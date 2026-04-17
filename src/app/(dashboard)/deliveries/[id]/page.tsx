@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
 import { formatDate } from "@/lib/utils"
+import { ensureReceivableForOrder } from "@/lib/receivables"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
   CheckCheck, AlertCircle, ClipboardCheck,
@@ -158,13 +159,15 @@ export default function DeliveryDetailPage() {
       if (error) throw error
 
       // If delivered successfully, also mark the sales_order as delivered
+      // and auto-create receivable
       if (newStatus === "delivered") {
         const line = lines.find((l) => l.id === lineId)
         if (line?.order_id) {
           await supabase.from("sales_orders").update({ status: "delivered" }).eq("id", line.order_id)
+          await ensureReceivableForOrder(supabase, line.order_id)
         }
       }
-      toast({ title: newStatus === "delivered" ? "Đã xác nhận giao hàng" : "Đã đánh dấu giao thất bại" })
+      toast({ title: newStatus === "delivered" ? "Đã xác nhận giao hàng + công nợ" : "Đã đánh dấu giao thất bại" })
       fetchData()
     } catch (error) {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })

@@ -19,8 +19,10 @@ import { ApprovalBadge } from "@/components/orders/approval-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { ensureReceivableForOrder } from "@/lib/receivables"
 import { APPROVAL_THRESHOLDS, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink } from "lucide-react"
+import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus } from "@/types"
 
 type NextStatus = {
@@ -56,11 +58,12 @@ export default function OrderDetailPage() {
   const { loading: authLoading } = useRoleGuard("orders")
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
+  const [receivableId, setReceivableId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
-  const [editForm, setEditForm] = useState({ notes: "", payment_terms: "COD" })
+  const [editForm, setEditForm] = useState({ notes: "", payment_terms: "COD", expected_delivery: "" })
   const [actionLoading, setActionLoading] = useState(false)
   const supabase = createClient()
   const router = useRouter()
@@ -68,18 +71,41 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes] = await Promise.all([
+    const [orderRes, linesRes, recRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
+      supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
     ])
     if (orderRes.data) {
       const o = orderRes.data as SalesOrder
       setOrder(o)
-      setEditForm({ notes: o.notes || "", payment_terms: o.payment_terms || "COD" })
+      setEditForm({
+        notes: o.notes || "",
+        payment_terms: o.payment_terms || "COD",
+        expected_delivery: o.expected_delivery || "",
+      })
     }
     setLines((linesRes.data as SalesOrderLine[]) || [])
+    setReceivableId(recRes.data?.id || null)
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCreateReceivable = async () => {
+    if (!order) return
+    setActionLoading(true)
+    try {
+      const { created, error: recErr } = await ensureReceivableForOrder(supabase, order.id)
+      if (recErr) throw new Error(recErr)
+      toast({
+        title: created ? "Đã ghi nhận công nợ" : "Công nợ đã tồn tại",
+      })
+      fetchData()
+    } catch (error) {
+      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -107,6 +133,20 @@ export default function OrderDetailPage() {
 
       const { error } = await supabase.from("sales_orders").update(updates).eq("id", order.id)
       if (error) throw error
+
+      // Auto-create receivable when order becomes delivered
+      if (newStatus === "delivered") {
+        const { created, error: recErr } = await ensureReceivableForOrder(supabase, order.id)
+        if (recErr) {
+          toast({ title: "Cập nhật công nợ thất bại", description: recErr, variant: "destructive" })
+        } else if (created) {
+          toast({ title: `Đã chuyển trạng thái: ${newStatus} • Đã ghi nhận công nợ` })
+          setConfirmOpen(null)
+          fetchData()
+          return
+        }
+      }
+
       toast({ title: `Đã chuyển trạng thái: ${newStatus}` })
       setConfirmOpen(null)
       fetchData()
@@ -136,12 +176,18 @@ export default function OrderDetailPage() {
     if (!order) return
     setActionLoading(true)
     try {
+      // Build update payload based on order status
+      const updates: Record<string, unknown> = {
+        notes: editForm.notes || null,
+      }
+      // Only allow terms + delivery date changes when still editable
+      if (order.status === "draft" || order.status === "confirmed") {
+        updates.payment_terms = editForm.payment_terms
+        updates.expected_delivery = editForm.expected_delivery || null
+      }
       const { error } = await supabase
         .from("sales_orders")
-        .update({
-          notes: editForm.notes || null,
-          payment_terms: editForm.payment_terms,
-        })
+        .update(updates)
         .eq("id", order.id)
       if (error) throw error
       toast({ title: "Đã cập nhật đơn hàng" })
@@ -158,7 +204,10 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy đơn hàng</div>
 
   const availableTransitions = STATUS_FLOW[order.status] || []
-  const canEdit = user && hasPermission(user.role, "orders", "update") && order.status === "draft"
+  // Allow edit for all non-terminal statuses. Draft/confirmed get full edit;
+  // picking/delivering can edit notes only; delivered/cancelled cannot edit
+  const canEdit = !!(user && hasPermission(user.role, "orders", "update") && !["delivered", "cancelled"].includes(order.status))
+  const fullEdit = canEdit && ["draft", "confirmed"].includes(order.status)
   const canDelete = user && hasPermission(user.role, "orders", "delete") && ["draft", "cancelled"].includes(order.status)
 
   return (
@@ -248,7 +297,11 @@ export default function OrderDetailPage() {
               {editMode && (
                 <Button size="sm" variant="ghost" onClick={() => {
                   setEditMode(false)
-                  setEditForm({ notes: order.notes || "", payment_terms: order.payment_terms || "COD" })
+                  setEditForm({
+                    notes: order.notes || "",
+                    payment_terms: order.payment_terms || "COD",
+                    expected_delivery: order.expected_delivery || "",
+                  })
                 }}>
                   <X className="h-4 w-4" />
                 </Button>
@@ -262,23 +315,45 @@ export default function OrderDetailPage() {
                     <p className="font-semibold">{order.payment_terms || "-"}</p>
                   </div>
                   <div>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ngày giao dự kiến</Label>
+                    <p className="font-semibold">{order.expected_delivery ? formatDate(order.expected_delivery) : "-"}</p>
+                  </div>
+                  <div>
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú</Label>
                     <p className="whitespace-pre-wrap">{order.notes || <span className="text-muted-foreground">Không có</span>}</p>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="space-y-1">
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Điều khoản TT</Label>
-                    <Select value={editForm.payment_terms} onValueChange={(v) => setEditForm({ ...editForm, payment_terms: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {PAYMENT_TERMS.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {fullEdit && (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Điều khoản TT</Label>
+                        <Select value={editForm.payment_terms} onValueChange={(v) => setEditForm({ ...editForm, payment_terms: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_TERMS.map((p) => (
+                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ngày giao dự kiến</Label>
+                        <input
+                          type="date"
+                          value={editForm.expected_delivery}
+                          onChange={(e) => setEditForm({ ...editForm, expected_delivery: e.target.value })}
+                          className="flex h-11 w-full rounded-xl border-0 bg-surface-low px-4 py-2 text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {!fullEdit && (
+                    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                      Đơn đã được duyệt - chỉ cho phép sửa ghi chú. Các trường khác chỉ sửa được khi ở trạng thái nháp hoặc đã duyệt.
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú</Label>
                     <Textarea
@@ -294,6 +369,45 @@ export default function OrderDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Receivable status */}
+          {order.status === "delivered" && (
+            <Card>
+              <CardHeader><CardTitle>Công nợ</CardTitle></CardHeader>
+              <CardContent>
+                {receivableId ? (
+                  <Link
+                    href={`/receivables/${receivableId}`}
+                    className="flex items-center justify-between rounded-lg bg-surface-low p-3 hover:bg-surface-container transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-primary" />
+                      <div className="text-sm">
+                        <p className="font-semibold">Đã ghi nhận công nợ</p>
+                        <p className="text-xs text-muted-foreground">Nhấn để xem chi tiết</p>
+                      </div>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                  </Link>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Đơn đã giao nhưng chưa ghi nhận công nợ.
+                    </p>
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={handleCreateReceivable}
+                      disabled={actionLoading}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      {actionLoading ? "Đang tạo..." : "Ghi nhận công nợ"}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Status transitions */}
           {(availableTransitions.length > 0 || canDelete) && (

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { ensureReceivableForOrder } from "@/lib/receivables"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   Camera,
@@ -226,6 +227,11 @@ export default function PodConfirmationPage() {
           .eq("id", line.order_id)
         if (orderErr) {
           console.warn("[pod] failed to update sales_order:", orderErr.message)
+        }
+        // Auto-create receivable
+        const recResult = await ensureReceivableForOrder(supabase, line.order_id)
+        if (recResult.error) {
+          console.warn("[pod] failed to create receivable:", recResult.error)
         }
       }
       toast({ title: "Đã xác nhận giao hàng" })

@@ -244,6 +244,7 @@ export default function CommissionPolicyDetailPage() {
       <PageHeader
         title={policy.name}
         description={`${typeLabel} • Tạo: ${formatDate(policy.created_at)}`}
+        backHref="/commissions/policies"
       >
         <Badge variant={policy.is_active ? "success" : "secondary"}>
           {policy.is_active ? "Đang áp dụng" : "Ngừng"}

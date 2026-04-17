@@ -67,7 +67,7 @@ export default function NewReturnPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo yêu cầu trả hàng" />
+      <PageHeader title="Tạo yêu cầu trả hàng" backHref="/returns" />
       <Card>
         <CardHeader><CardTitle>Thông tin trả hàng</CardTitle></CardHeader>
         <CardContent>

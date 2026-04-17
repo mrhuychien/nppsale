@@ -104,7 +104,7 @@ export default function NewBatchPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo lô hàng mới" description="Nhập thông tin lô hàng để theo dõi tồn kho và HSD" />
+      <PageHeader title="Tạo lô hàng mới" description="Nhập thông tin lô hàng để theo dõi tồn kho và HSD" backHref="/inventory/batches" />
       <Card>
         <CardHeader>
           <CardTitle>Thông tin lô hàng</CardTitle>

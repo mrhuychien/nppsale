@@ -130,6 +130,7 @@ export default function PromotionDetailPage() {
       <PageHeader
         title={promotion.name}
         description={`${typeLabel} • Tạo: ${formatDate(promotion.created_at)}`}
+        backHref="/promotions"
       >
         <Badge variant={promotion.is_active ? "success" : "secondary"}>
           {promotion.is_active ? "Đang chạy" : "Ngừng"}

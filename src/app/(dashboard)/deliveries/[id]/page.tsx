@@ -198,6 +198,7 @@ export default function DeliveryDetailPage() {
       <PageHeader
         title={delivery.route_name || "Chi tiết chuyến giao"}
         description={`Tạo: ${formatDate(delivery.created_at)}${delivery.started_at ? ` • Xuất phát: ${formatDate(delivery.started_at)}` : ""}${delivery.completed_at ? ` • Hoàn tất: ${formatDate(delivery.completed_at)}` : ""}`}
+        backHref="/deliveries"
       >
         <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
       </PageHeader>

@@ -110,7 +110,7 @@ export default function NewInvoicePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo hóa đơn mới" />
+      <PageHeader title="Tạo hóa đơn mới" backHref="/invoices" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Card>

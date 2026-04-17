@@ -76,7 +76,7 @@ export default function CollectPaymentPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Thu tiền tại hiện trường" />
+      <PageHeader title="Thu tiền tại hiện trường" backHref="/receivables" />
       <Card>
         <CardHeader><CardTitle>Thông tin thu tiền</CardTitle></CardHeader>
         <CardContent>

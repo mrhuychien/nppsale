@@ -204,7 +204,7 @@ export default function NewPromotionPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo chương trình khuyến mãi" />
+      <PageHeader title="Tạo chương trình khuyến mãi" backHref="/promotions" />
 
       <Card className="rounded-2xl shadow-ambient">
         <CardHeader>

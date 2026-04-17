@@ -136,6 +136,7 @@ export default function BatchDetailPage() {
       <PageHeader
         title={batch.batch_code}
         description={`Lô của ${batch.product?.name || "sản phẩm"}${batch.product?.sku ? ` (SKU: ${batch.product.sku})` : ""}`}
+        backHref="/inventory/batches"
       >
         <Badge variant={expiryVariant}>{EXPIRY_LABEL[expiryStatus]}</Badge>
       </PageHeader>

@@ -124,7 +124,7 @@ export default function NewCommissionPolicyPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo chính sách hoa hồng" />
+      <PageHeader title="Tạo chính sách hoa hồng" backHref="/commissions/policies" />
       <Card>
         <CardHeader><CardTitle>Thông tin chính sách</CardTitle></CardHeader>
         <CardContent>

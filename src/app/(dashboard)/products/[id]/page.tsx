@@ -77,7 +77,7 @@ export default function ProductDetailPage() {
   if (id === "new") {
     return (
       <div className="space-y-4">
-        <PageHeader title="Thêm sản phẩm mới" />
+        <PageHeader title="Thêm sản phẩm mới" backHref="/products" />
         <ProductForm />
       </div>
     )
@@ -89,7 +89,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={product.name} description={`SKU: ${product.sku}`} />
+      <PageHeader title={product.name} description={`SKU: ${product.sku}`} backHref="/products" />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">

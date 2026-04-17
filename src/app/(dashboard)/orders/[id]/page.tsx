@@ -166,6 +166,7 @@ export default function OrderDetailPage() {
       <PageHeader
         title={order.order_code}
         description={`Ngày đặt: ${formatDate(order.order_date)}${order.approved_at ? ` • Duyệt: ${formatDate(order.approved_at)}` : ""}`}
+        backHref="/orders"
       >
         <StatusBadge status={order.status} type="order" />
         <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />

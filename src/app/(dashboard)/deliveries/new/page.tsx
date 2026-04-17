@@ -119,7 +119,7 @@ export default function NewDeliveryPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Tạo phiếu giao hàng" />
+      <PageHeader title="Tạo phiếu giao hàng" backHref="/deliveries" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Card>

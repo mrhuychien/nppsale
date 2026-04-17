@@ -40,7 +40,7 @@ export default function CommissionPoliciesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Chính sách hoa hồng" description={`${policies.length} chính sách`}>
+      <PageHeader title="Chính sách hoa hồng" description={`${policies.length} chính sách`} backHref="/commissions">
         {user && hasPermission(user.role, "commissions", "create") && (
           <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
         )}

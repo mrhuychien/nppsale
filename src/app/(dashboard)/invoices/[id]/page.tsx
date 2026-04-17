@@ -161,6 +161,7 @@ export default function InvoiceDetailPage() {
       <PageHeader
         title={invoice.invoice_number || "Hóa đơn"}
         description={`Tạo: ${formatDate(invoice.created_at)}${invoice.issued_at ? ` • Phát hành: ${formatDate(invoice.issued_at)}` : ""}`}
+        backHref="/invoices"
       >
         <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
       </PageHeader>

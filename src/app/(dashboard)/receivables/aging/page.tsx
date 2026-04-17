@@ -142,7 +142,7 @@ export default function AccountantLedgerPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Sổ chi tiết Công nợ" description="Phân tích công nợ theo khách hàng">
+      <PageHeader title="Sổ chi tiết Công nợ" description="Phân tích công nợ theo khách hàng" backHref="/receivables">
         <Button variant="outline" onClick={handlePrint} disabled={!selectedId}>
           <Printer className="mr-2 h-4 w-4" />
           In bản kê

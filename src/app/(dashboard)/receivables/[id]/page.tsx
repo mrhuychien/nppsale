@@ -203,6 +203,7 @@ export default function ReceivableDetailPage() {
       <PageHeader
         title={`Công nợ #${receivable.id.slice(0, 8)}`}
         description={`Tạo: ${formatDate(receivable.created_at)}${receivable.due_date ? ` • Hạn: ${formatDate(receivable.due_date)}` : ""}${receivable.order?.order_code ? ` • Đơn: ${receivable.order.order_code}` : ""}`}
+        backHref="/receivables"
       >
         <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
       </PageHeader>

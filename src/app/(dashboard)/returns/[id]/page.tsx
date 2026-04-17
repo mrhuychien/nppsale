@@ -151,6 +151,7 @@ export default function ReturnDetailPage() {
       <PageHeader
         title={`Trả hàng - ${ret.customer?.store_name || "N/A"}`}
         description={`Tạo: ${formatDate(ret.created_at)} • Lý do: ${reasonLabel}`}
+        backHref="/returns"
       >
         <StatusBadge status={ret.status} type="return" />
       </PageHeader>

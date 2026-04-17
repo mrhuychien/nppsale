@@ -73,7 +73,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={customer.store_name} description={customer.address}>
+      <PageHeader title={customer.store_name} description={customer.address} backHref="/customers">
         <StatusBadge status={customer.status} type="customer" />
       </PageHeader>
 

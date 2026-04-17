@@ -137,7 +137,7 @@ export default function BatchesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`}>
+      <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} backHref="/inventory">
         {canCreate && (
           <Button asChild>
             <Link href="/inventory/batches/new">

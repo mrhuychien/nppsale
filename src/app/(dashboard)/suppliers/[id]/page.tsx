@@ -163,48 +163,56 @@ export default function SupplierDetailPage() {
       <PageHeader title="" backHref="/suppliers" />
 
       {/* Overview header card */}
-      <div className="rounded-2xl bg-surface-low shadow-ambient overflow-hidden">
-        <div className="bg-gradient-primary h-24 relative" />
-        <div className="px-6 pb-6 -mt-12">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-            {/* Avatar initial */}
-            <div className="w-20 h-20 rounded-2xl bg-card shadow-ambient flex items-center justify-center text-3xl font-black text-primary border-4 border-white shrink-0">
-              {initial}
-            </div>
-            <div className="flex-1 min-w-0 pt-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-3xl font-black tracking-tight text-foreground">{supplier.name}</h1>
-                {supplier.is_verified && (
-                  <Badge variant="success" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Đã xác minh
-                  </Badge>
-                )}
+      <div className="rounded-2xl bg-card shadow-ambient overflow-hidden">
+        {/* Decorative gradient strip */}
+        <div className="bg-gradient-primary h-20" />
+        {/* Content area below the strip - avatar overlaps upward */}
+        <div className="px-6 pb-6">
+          <div className="flex flex-col lg:flex-row gap-4 lg:items-end lg:justify-between">
+            {/* Avatar + main info */}
+            <div className="flex flex-col sm:flex-row gap-4 sm:items-end min-w-0 flex-1">
+              {/* Avatar initial - overlaps banner upward */}
+              <div className="w-20 h-20 rounded-2xl bg-card shadow-ambient flex items-center justify-center text-3xl font-black text-primary border-4 border-white shrink-0 -mt-12">
+                {initial}
               </div>
-              {supplier.notes && (
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{supplier.notes}</p>
-              )}
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                {supplier.category && (
-                  <Badge variant="outline" className="gap-1">
-                    <Tag className="h-3 w-3" />
-                    {supplier.category}
-                  </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-foreground break-words">
+                    {supplier.name}
+                  </h1>
+                  {supplier.is_verified && (
+                    <Badge variant="success" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Đã xác minh
+                    </Badge>
+                  )}
+                </div>
+                {supplier.notes && (
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{supplier.notes}</p>
                 )}
-                {supplier.rating > 0 && (
-                  <Badge variant="warning" className="gap-1">
-                    <Star className="h-3 w-3" />
-                    {supplier.rating}
-                  </Badge>
-                )}
-                {supplier.email && (
-                  <Badge variant="secondary" className="gap-1">
-                    <Mail className="h-3 w-3" />
-                    {supplier.email}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  {supplier.category && (
+                    <Badge variant="outline" className="gap-1">
+                      <Tag className="h-3 w-3" />
+                      {supplier.category}
+                    </Badge>
+                  )}
+                  {supplier.rating > 0 && (
+                    <Badge variant="warning" className="gap-1">
+                      <Star className="h-3 w-3" />
+                      {supplier.rating}
+                    </Badge>
+                  )}
+                  {supplier.email && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Mail className="h-3 w-3" />
+                      {supplier.email}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
+            {/* Action buttons */}
             <div className="flex items-center gap-2 shrink-0">
               <Button variant="outline" size="sm" className="gap-1.5">
                 <MessageSquare className="h-4 w-4" />

@@ -35,8 +35,9 @@ import {
   Trash2,
   Package,
   ArrowDownToLine,
+  ExternalLink,
 } from "lucide-react"
-import type { Product } from "@/types"
+import type { Product, Supplier } from "@/types"
 
 interface LineItem {
   id: string
@@ -69,8 +70,10 @@ export default function StockInPage() {
 
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [saving, setSaving] = useState(false)
 
+  const [supplierId, setSupplierId] = useState("")
   const [supplier, setSupplier] = useState("")
   const [invoiceNo, setInvoiceNo] = useState("")
   const [entryDate, setEntryDate] = useState<string>(
@@ -81,12 +84,13 @@ export default function StockInPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
-        .from("products")
-        .select("*")
-        .eq("status", "active")
-        .order("name")
-      setProducts((data as Product[]) || [])
+      const [prodRes, supRes] = await Promise.all([
+        supabase.from("products").select("*").eq("status", "active").order("name"),
+        supabase.from("suppliers").select("*").eq("is_active", true).order("name"),
+      ])
+      setProducts((prodRes.data as Product[]) || [])
+      // Suppliers might fail silently if migration 006 not yet run - that's OK
+      if (supRes.data) setSuppliers(supRes.data as Supplier[])
       setProductsLoading(false)
     }
     fetch()
@@ -177,15 +181,18 @@ export default function StockInPage() {
       if (warehouse.trim()) notesParts.push(`Kho: ${warehouse.trim()}`)
       const notes = notesParts.join(" • ") || null
 
+      const insertPayload: Record<string, unknown> = {
+        org_id: user.org_id,
+        entry_code: entryCode,
+        type: "import",
+        created_by: user.id,
+        notes,
+      }
+      if (supplierId) insertPayload.supplier_id = supplierId
+
       const { data: entry, error: entryErr } = await supabase
         .from("stock_entries")
-        .insert({
-          org_id: user.org_id,
-          entry_code: entryCode,
-          type: "import",
-          created_by: user.id,
-          notes,
-        })
+        .insert(insertPayload)
         .select()
         .single()
       if (entryErr) throw entryErr
@@ -285,11 +292,67 @@ export default function StockInPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Nhà cung cấp</Label>
-                <Input
-                  value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
-                  placeholder="Tên nhà cung cấp"
-                />
+                {suppliers.length > 0 ? (
+                  <>
+                    <Select
+                      value={supplierId || "_manual"}
+                      onValueChange={(v) => {
+                        if (v === "_manual") {
+                          setSupplierId("")
+                          setSupplier("")
+                          return
+                        }
+                        setSupplierId(v)
+                        const s = suppliers.find((x) => x.id === v)
+                        setSupplier(s?.name || "")
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn nhà cung cấp..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_manual">— Nhập tay —</SelectItem>
+                        {suppliers.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.code ? `${s.code} - ` : ""}{s.name}
+                          </SelectItem>
+                        ))}
+                        <div className="border-t border-border/50 mt-1 pt-1 px-2 pb-1">
+                          <Link
+                            href="/suppliers/new"
+                            target="_blank"
+                            className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                          >
+                            <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
+                            <ExternalLink className="h-3 w-3 ml-auto" />
+                          </Link>
+                        </div>
+                      </SelectContent>
+                    </Select>
+                    {!supplierId && (
+                      <Input
+                        value={supplier}
+                        onChange={(e) => setSupplier(e.target.value)}
+                        placeholder="Nhập tên nhà cung cấp tự do"
+                        className="mt-2"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      value={supplier}
+                      onChange={(e) => setSupplier(e.target.value)}
+                      placeholder="Tên nhà cung cấp"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Chưa có NCC nào.{" "}
+                      <Link href="/suppliers/new" target="_blank" className="text-primary font-semibold underline">
+                        Tạo NCC mới
+                      </Link>
+                    </p>
+                  </>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Số hóa đơn</Label>

@@ -8,7 +8,7 @@ import type { Role } from "@/types"
 import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
-  Plus, HelpCircle, LogOut, LayoutDashboard, Home,
+  Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Khách hàng", href: "/customers", icon: Users, module: "customers" },
   { label: "Sản phẩm", href: "/products", icon: Package, module: "products" },
   { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory" },
+  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory" },
   { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions" },
   { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
   { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries" },

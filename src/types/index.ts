@@ -132,12 +132,14 @@ export interface StockEntry {
   org_id: string
   entry_code: string
   type: StockEntryType
+  supplier_id: string | null
   created_by: string | null
   notes: string | null
   created_at: string
   // Joined
   lines?: StockEntryLine[]
   creator?: User
+  supplier?: Supplier
 }
 
 export interface StockEntryLine {
@@ -314,6 +316,27 @@ export interface Invoice {
   created_at: string
   // Joined
   order?: SalesOrder
+}
+
+export interface Supplier {
+  id: string
+  org_id: string
+  name: string
+  code: string
+  category: string | null
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  tax_code: string | null
+  bank_account: string | null
+  bank_name: string | null
+  payment_terms: string
+  rating: number
+  notes: string | null
+  is_verified: boolean
+  is_active: boolean
+  created_at: string
 }
 
 export interface Return {

@@ -69,10 +69,7 @@ export function OrderForm() {
     const product = products.find((p) => p.id === productId)
     if (!product) return
     const groupId = selectedCustomer?.group_id
-    const priceEntry = product.price_lists?.find(
-      (pl) => pl.unit_name === product.base_unit && (pl.group_id === groupId || !pl.group_id)
-    )
-    const price = priceEntry?.price || 0
+    const price = getUnitPrice(product, product.base_unit, groupId)
     setLines((prev) => [
       ...prev,
       {
@@ -90,19 +87,46 @@ export function OrderForm() {
     setProductSearch("")
   }
 
+  const getUnitPrice = (
+    product: Product & { price_lists?: PriceList[]; units?: ProductUnit[] },
+    unitName: string,
+    groupId: string | null | undefined
+  ): number => {
+    // 1. Try exact match on group + unit
+    if (groupId) {
+      const groupMatch = product.price_lists?.find(
+        (pl) => pl.unit_name === unitName && pl.group_id === groupId
+      )
+      if (groupMatch) return groupMatch.price
+    }
+    // 2. Try default price (no group) for this unit
+    const defaultMatch = product.price_lists?.find(
+      (pl) => pl.unit_name === unitName && !pl.group_id
+    )
+    if (defaultMatch) return defaultMatch.price
+
+    // 3. Fallback: calculate from base_unit price × conversion
+    if (unitName !== product.base_unit) {
+      const unitInfo = product.units?.find((u) => u.unit_name === unitName)
+      if (unitInfo) {
+        const basePrice = getUnitPrice(product, product.base_unit, groupId)
+        if (basePrice > 0) return basePrice * unitInfo.conversion
+      }
+    }
+    return 0
+  }
+
   const updateLine = (index: number, field: keyof OrderLine, value: number | string) => {
     const updated = [...lines]
     const line = { ...updated[index], [field]: value } as OrderLine
-    // If unit changed, recalculate unit_price from price_lists matching new unit
+    // If unit changed, recalculate unit_price
     if (field === "unit_name") {
       const product = products.find((p) => p.id === line.product_id)
       if (product) {
         const groupId = selectedCustomer?.group_id
-        const priceEntry = product.price_lists?.find(
-          (pl) => pl.unit_name === value && (pl.group_id === groupId || !pl.group_id)
-        )
-        if (priceEntry) {
-          line.unit_price = priceEntry.price
+        const newPrice = getUnitPrice(product, String(value), groupId)
+        if (newPrice > 0) {
+          line.unit_price = newPrice
         }
       }
     }

@@ -219,6 +219,7 @@ export default function HomePage() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, supabase])
 
   const firstName =

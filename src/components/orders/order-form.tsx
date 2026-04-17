@@ -12,9 +12,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, generateOrderCode, cn } from "@/lib/utils"
+import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus } from "lucide-react"
+import { Trash2, Plus, ExternalLink } from "lucide-react"
+import Link from "next/link"
 import type { Customer, Product, PriceList } from "@/types"
 
 interface OrderLine {
@@ -200,8 +201,27 @@ export function OrderForm() {
                       {c.store_name} - {c.phone}
                     </SelectItem>
                   ))}
+                  <div className="border-t border-border/50 mt-1 pt-1 px-2 pb-1">
+                    <Link
+                      href="/customers/new"
+                      target="_blank"
+                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                    >
+                      <Plus className="h-3 w-3" /> Tạo khách hàng mới
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </Link>
+                  </div>
                 </SelectContent>
               </Select>
+              {selectedCustomer && (
+                <Link
+                  href={`/customers/${selectedCustomer.id}`}
+                  target="_blank"
+                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                >
+                  Xem / Sửa khách hàng <ExternalLink className="h-3 w-3" />
+                </Link>
+              )}
             </div>
 
             {selectedCustomer && (
@@ -279,18 +299,77 @@ export function OrderForm() {
                     <Plus className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="Thêm sản phẩm" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {products.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.sku} - {p.name}
                       </SelectItem>
                     ))}
+                    <div className="border-t border-border/50 mt-1 pt-1 px-2 pb-1">
+                      <Link
+                        href="/products/new"
+                        target="_blank"
+                        className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                      >
+                        <Plus className="h-3 w-3" /> Tạo sản phẩm mới
+                        <ExternalLink className="h-3 w-3 ml-auto" />
+                      </Link>
+                    </div>
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Inline product search - ABOVE table to avoid overflow clipping */}
+            <div className="relative">
+              <Input
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Tìm nhanh: gõ tên hoặc mã SKU sản phẩm..."
+                className="h-10"
+              />
+              {filteredProducts.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-ambient-md max-h-72 overflow-y-auto">
+                  {filteredProducts.slice(0, 10).map((p) => {
+                    const groupId = selectedCustomer?.group_id
+                    const priceEntry = p.price_lists?.find(
+                      (pl) => pl.unit_name === p.base_unit && (pl.group_id === groupId || !pl.group_id)
+                    )
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => addLine(p.id)}
+                        className="w-full text-left px-4 py-3 hover:bg-surface-low transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
+                      >
+                        <div>
+                          <p className="font-semibold text-sm">{p.name}</p>
+                          <p className="text-xs text-muted-foreground">SKU: {p.sku} • {p.base_unit}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-primary text-sm">
+                            {priceEntry ? formatCurrency(priceEntry.price) : "—"}
+                          </p>
+                          <Plus className="h-4 w-4 text-muted-foreground ml-auto" />
+                        </div>
+                      </button>
+                    )
+                  })}
+                  <div className="border-t border-border/50 p-2">
+                    <Link
+                      href="/products/new"
+                      target="_blank"
+                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                    >
+                      <Plus className="h-3 w-3" /> Tạo sản phẩm mới
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -383,45 +462,13 @@ export function OrderForm() {
                       </td>
                     </tr>
                   ))}
-                  {/* Empty / search row */}
-                  <tr>
-                    <td className="px-3 py-2 text-muted-foreground font-medium">
-                      {lines.length + 1}
-                    </td>
-                    <td className="px-3 py-2" colSpan={7}>
-                      <div className="relative">
-                        <Input
-                          value={productSearch}
-                          onChange={(e) => setProductSearch(e.target.value)}
-                          placeholder="Quét SKU hoặc gõ tên sản phẩm..."
-                          className={cn(
-                            "h-9 bg-surface-low border-dashed",
-                            productSearch && "border-solid"
-                          )}
-                        />
-                        {filteredProducts.length > 0 && (
-                          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-ambient-md max-h-64 overflow-y-auto">
-                            {filteredProducts.slice(0, 8).map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => addLine(p.id)}
-                                className="w-full text-left px-4 py-2 hover:bg-surface-low transition-colors flex items-center justify-between gap-3"
-                              >
-                                <div>
-                                  <p className="font-semibold text-sm">{p.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    SKU: {p.sku}
-                                  </p>
-                                </div>
-                                <Plus className="h-4 w-4 text-primary" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  {lines.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground text-sm">
+                        Chưa có sản phẩm. Tìm bằng ô tìm kiếm phía trên hoặc dùng nút &quot;Thêm sản phẩm&quot;.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

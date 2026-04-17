@@ -297,6 +297,42 @@ export default function StockOutPage() {
     setSubmitting(true)
     try {
       const ids = selectedOrders.map((o) => o.id)
+
+      // 1) Create a stock_entry (type='export') to formally persist the picking command
+      const customerNames = Array.from(
+        new Set(
+          selectedOrders.map((o) => o.customer?.store_name).filter(Boolean)
+        )
+      ).join(", ")
+      const { data: stockEntry, error: stockErr } = await supabase
+        .from("stock_entries")
+        .insert({
+          org_id: user.org_id,
+          entry_code: mergeCode,
+          type: "export",
+          created_by: user.id,
+          notes: `Lệnh xuất kho gộp ${ids.length} đơn cho KH: ${customerNames}`,
+        })
+        .select()
+        .single()
+      if (stockErr) throw stockErr
+
+      // 2) Insert stock_entry_lines - one row per SKU in pick list
+      const entryLines = pickList.map((p) => ({
+        entry_id: stockEntry.id,
+        product_id: p.product_id,
+        unit_name: p.unit,
+        quantity: p.qty,
+        notes: `Vị trí: ${p.location}`,
+      }))
+      if (entryLines.length > 0) {
+        const { error: linesErr } = await supabase
+          .from("stock_entry_lines")
+          .insert(entryLines)
+        if (linesErr) throw linesErr
+      }
+
+      // 3) Update orders to 'picking'
       const { error: updateErr } = await supabase
         .from("sales_orders")
         .update({ status: "picking" })
@@ -336,10 +372,10 @@ export default function StockOutPage() {
 
       toast({
         title: `Đã tạo lệnh xuất kho ${mergeCode}`,
-        description: `${ids.length} đơn chuyển sang trạng thái soạn hàng.`,
+        description: `${ids.length} đơn chuyển sang trạng thái soạn hàng. Xem phiếu tại /inventory/entries`,
       })
       clearSelection()
-      router.push("/orders?status=picking")
+      router.push("/inventory/entries")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({

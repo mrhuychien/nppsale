@@ -10,19 +10,21 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, generateOrderCode } from "@/lib/utils"
-import { Trash2 } from "lucide-react"
+import { formatCurrency, generateOrderCode, cn } from "@/lib/utils"
+import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
+import { Trash2, Plus } from "lucide-react"
 import type { Customer, Product, PriceList } from "@/types"
 
 interface OrderLine {
   product_id: string
   product_name: string
+  sku: string
   unit_name: string
   quantity: number
   unit_price: number
-  line_discount: number
+  line_discount_percent: number
   line_total: number
   vat_rate: number
 }
@@ -32,8 +34,11 @@ export function OrderForm() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<(Product & { price_lists?: PriceList[] })[]>([])
   const [customerId, setCustomerId] = useState("")
+  const [paymentTerms, setPaymentTerms] = useState("COD")
+  const [expectedDelivery, setExpectedDelivery] = useState("")
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<OrderLine[]>([])
+  const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
   const router = useRouter()
@@ -53,6 +58,12 @@ export function OrderForm() {
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
+  useEffect(() => {
+    if (selectedCustomer?.payment_terms) {
+      setPaymentTerms(selectedCustomer.payment_terms)
+    }
+  }, [selectedCustomer])
+
   const addLine = (productId: string) => {
     const product = products.find((p) => p.id === productId)
     if (!product) return
@@ -61,22 +72,29 @@ export function OrderForm() {
       (pl) => pl.unit_name === product.base_unit && (pl.group_id === groupId || !pl.group_id)
     )
     const price = priceEntry?.price || 0
-    setLines([...lines, {
-      product_id: product.id,
-      product_name: product.name,
-      unit_name: product.base_unit,
-      quantity: 1,
-      unit_price: price,
-      line_discount: 0,
-      line_total: price,
-      vat_rate: product.vat_rate ?? 0,
-    }])
+    setLines((prev) => [
+      ...prev,
+      {
+        product_id: product.id,
+        product_name: product.name,
+        sku: product.sku,
+        unit_name: product.base_unit,
+        quantity: 1,
+        unit_price: price,
+        line_discount_percent: 0,
+        line_total: price,
+        vat_rate: product.vat_rate ?? 0,
+      },
+    ])
+    setProductSearch("")
   }
 
   const updateLine = (index: number, field: keyof OrderLine, value: number) => {
     const updated = [...lines]
     const line = { ...updated[index], [field]: value }
-    line.line_total = (line.quantity * line.unit_price) - line.line_discount
+    const gross = line.quantity * line.unit_price
+    const discountAmount = gross * (line.line_discount_percent / 100)
+    line.line_total = gross - discountAmount
     updated[index] = line
     setLines(updated)
   }
@@ -85,9 +103,22 @@ export function OrderForm() {
     setLines(lines.filter((_, i) => i !== index))
   }
 
-  const subtotal = lines.reduce((sum, l) => sum + l.line_total, 0)
-  const vat = Math.round(lines.reduce((sum, l) => sum + l.line_total * l.vat_rate, 0))
-  const total = subtotal + vat
+  const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
+  const total_discount = lines.reduce(
+    (sum, l) => sum + l.quantity * l.unit_price * (l.line_discount_percent / 100),
+    0
+  )
+  const netAfterDiscount = subtotal - total_discount
+  const vat = Math.round(
+    lines.reduce((sum, l) => sum + l.line_total * l.vat_rate, 0)
+  )
+  const total = netAfterDiscount + vat
+
+  const filteredProducts = products.filter((p) => {
+    if (!productSearch.trim()) return false
+    const q = productSearch.toLowerCase()
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -106,8 +137,9 @@ export function OrderForm() {
           order_code: orderCode,
           customer_id: customerId,
           sales_user_id: user?.id,
-          payment_terms: selectedCustomer?.payment_terms || "COD",
-          subtotal,
+          payment_terms: paymentTerms || selectedCustomer?.payment_terms || "COD",
+          expected_delivery: expectedDelivery || null,
+          subtotal: netAfterDiscount,
           vat,
           total,
           notes: notes || null,
@@ -123,7 +155,7 @@ export function OrderForm() {
         unit_name: l.unit_name,
         quantity: l.quantity,
         unit_price: l.unit_price,
-        line_discount: l.line_discount,
+        line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
         line_total: l.line_total,
       }))
 
@@ -140,95 +172,326 @@ export function OrderForm() {
     }
   }
 
+  const customerStatusConfig = selectedCustomer
+    ? CUSTOMER_STATUS_MAP[selectedCustomer.status] ?? { label: selectedCustomer.status, variant: "outline" as const }
+    : null
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <Card>
-        <CardHeader><CardTitle>Thông tin đơn hàng</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6 items-start">
+      {/* LEFT COLUMN */}
+      <div className="w-full lg:w-[320px] lg:shrink-0 space-y-6">
+        {/* Customer info card */}
+        <Card className="rounded-2xl shadow-ambient bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-bold">Thông tin khách hàng</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Khách hàng *</Label>
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Khách hàng *
+              </Label>
               <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tìm tên hoặc mã KH..." />
+                </SelectTrigger>
                 <SelectContent>
-                  {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.store_name} - {c.phone}</SelectItem>)}
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.store_name} - {c.phone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedCustomer && (
+              <div className="rounded-xl bg-surface-low p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-bold text-foreground">{selectedCustomer.store_name}</p>
+                  {customerStatusConfig && (
+                    <Badge variant={customerStatusConfig.variant}>
+                      {customerStatusConfig.label}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
+                {selectedCustomer.address && (
+                  <p className="text-sm text-muted-foreground">{selectedCustomer.address}</p>
+                )}
+                <div className="pt-2 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground">Hạn mức công nợ</p>
+                  <p className="font-bold text-foreground">
+                    {formatCurrency(selectedCustomer.credit_limit)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Terms & delivery card */}
+        <Card className="rounded-2xl shadow-ambient bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Điều khoản thanh toán
+              </Label>
+              <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn điều khoản" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_TERMS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>NV bán hàng</Label>
-              <Input value={user?.full_name || ""} disabled />
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Ngày giao dự kiến
+              </Label>
+              <Input
+                type="date"
+                value={expectedDelivery}
+                onChange={(e) => setExpectedDelivery(e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* MAIN COLUMN */}
+      <div className="flex-1 w-full space-y-6 min-w-0">
+        {/* Products card */}
+        <Card className="rounded-2xl shadow-ambient bg-card flex-1">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base font-bold">Sản phẩm</CardTitle>
+              <div className="relative w-64">
+                <Select onValueChange={addLine}>
+                  <SelectTrigger>
+                    <Plus className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Thêm sản phẩm" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.sku} - {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-surface-low text-left">
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10">
+                      #
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Sản phẩm
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                      ĐVT
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                      SL
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
+                      Đơn giá
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                      CK %
+                    </th>
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32 text-right">
+                      Thành tiền
+                    </th>
+                    <th className="px-3 py-3 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {lines.map((line, i) => (
+                    <tr key={i} className="hover:bg-surface-low/40 transition-colors">
+                      <td className="px-3 py-2 text-muted-foreground font-medium">{i + 1}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-primary">{line.product_name}</span>
+                          <span className="text-[10px] text-muted-foreground font-medium uppercase">
+                            SKU: {line.sku}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{line.unit_name}</td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={line.quantity}
+                          onChange={(e) =>
+                            updateLine(i, "quantity", parseInt(e.target.value) || 1)
+                          }
+                          className="h-8 text-center"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          value={line.unit_price}
+                          onChange={(e) =>
+                            updateLine(i, "unit_price", parseInt(e.target.value) || 0)
+                          }
+                          className="h-8"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={line.line_discount_percent}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 0
+                            const clamped = Math.max(0, Math.min(100, v))
+                            updateLine(i, "line_discount_percent", clamped)
+                          }}
+                          className="h-8 text-center"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {formatCurrency(line.line_total)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => removeLine(i)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Empty / search row */}
+                  <tr>
+                    <td className="px-3 py-2 text-muted-foreground font-medium">
+                      {lines.length + 1}
+                    </td>
+                    <td className="px-3 py-2" colSpan={7}>
+                      <div className="relative">
+                        <Input
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          placeholder="Quét SKU hoặc gõ tên sản phẩm..."
+                          className={cn(
+                            "h-9 bg-surface-low border-dashed",
+                            productSearch && "border-solid"
+                          )}
+                        />
+                        {filteredProducts.length > 0 && (
+                          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-ambient-md max-h-64 overflow-y-auto">
+                            {filteredProducts.slice(0, 8).map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => addLine(p.id)}
+                                className="w-full text-left px-4 py-2 hover:bg-surface-low transition-colors flex items-center justify-between gap-3"
+                              >
+                                <div>
+                                  <p className="font-semibold text-sm">{p.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    SKU: {p.sku}
+                                  </p>
+                                </div>
+                                <Plus className="h-4 w-4 text-primary" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Notes + Summary row */}
+        <div className="flex flex-col lg:flex-row justify-between gap-6">
+          <div className="w-full lg:w-1/2">
+            <Card className="rounded-2xl shadow-ambient bg-card h-full">
+              <CardHeader>
+                <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Yêu cầu đặc biệt về đóng gói, thời gian giao, ghi chú kế toán..."
+                  rows={6}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="w-full lg:w-80">
+            <div className="bg-gradient-primary text-white rounded-2xl shadow-ambient-md p-6 relative overflow-hidden">
+              <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-3xl pointer-events-none" />
+              <div className="relative space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white/80 font-medium">Tạm tính</span>
+                  <span className="font-bold">{formatCurrency(subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white/80 font-medium">Tổng chiết khấu</span>
+                  <span className="font-bold">-{formatCurrency(total_discount)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white/80 font-medium">VAT</span>
+                  <span className="font-bold">+{formatCurrency(vat)}</span>
+                </div>
+                <div className="h-px bg-white/20" />
+                <div className="flex items-end justify-between">
+                  <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                    Tổng cộng
+                  </span>
+                  <span className="text-3xl font-black tracking-tight">
+                    {formatCurrency(total)}
+                  </span>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    type="button"
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white border-0 font-bold"
+                    onClick={() => router.back()}
+                  >
+                    Lưu nháp
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-[2] bg-white hover:bg-white/90 text-primary font-bold border-0"
+                  >
+                    {loading ? "Đang lưu..." : "Tạo đơn hàng"}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-          {selectedCustomer && (
-            <div className="text-sm text-muted-foreground">
-              Điều khoản: {selectedCustomer.payment_terms} | Hạn mức: {formatCurrency(selectedCustomer.credit_limit)}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label>Ghi chú</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú cho đơn hàng..." />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Sản phẩm ({lines.length})</CardTitle>
-            <Select onValueChange={addLine}>
-              <SelectTrigger className="w-64"><SelectValue placeholder="Thêm sản phẩm..." /></SelectTrigger>
-              <SelectContent>
-                {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.sku} - {p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {lines.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sản phẩm</TableHead>
-                  <TableHead className="w-24">SL</TableHead>
-                  <TableHead className="w-32">Đơn giá</TableHead>
-                  <TableHead className="w-32 text-right">Thành tiền</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line, i) => (
-                  <TableRow key={i}>
-                    <TableCell>{line.product_name}<br /><span className="text-xs text-muted-foreground">{line.unit_name}</span></TableCell>
-                    <TableCell>
-                      <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)} className="w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Input type="number" value={line.unit_price} onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)} className="w-28" />
-                    </TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => removeLine(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">Chưa có sản phẩm. Chọn từ danh sách phía trên.</p>
-          )}
-
-          <div className="mt-4 space-y-1 text-right">
-            <p>Tạm tính: <span className="font-medium">{formatCurrency(subtotal)}</span></p>
-            <p>VAT: <span className="font-medium">{formatCurrency(vat)}</span></p>
-            <p className="text-lg font-bold">Tổng: {formatCurrency(total)}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex gap-2 justify-end">
-        <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
-        <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : "Tạo đơn hàng"}</Button>
+        </div>
       </div>
     </form>
   )

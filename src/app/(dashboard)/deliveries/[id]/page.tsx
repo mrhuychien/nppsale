@@ -23,7 +23,7 @@ import { DELIVERY_STATUS_MAP } from "@/lib/constants"
 import { formatDate } from "@/lib/utils"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
-  CheckCheck, AlertCircle,
+  CheckCheck, AlertCircle, ClipboardCheck,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryStatus, User } from "@/types"
 
@@ -266,7 +266,12 @@ export default function DeliveryDetailPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {canMarkLines && line.status === "pending" ? (
-                          <div className="flex gap-1 justify-end">
+                          <div className="flex gap-1 justify-end flex-wrap">
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href={`/deliveries/${delivery.id}/pod/${line.id}`}>
+                                <ClipboardCheck className="h-3 w-3 mr-1" /> Xác nhận POD
+                              </Link>
+                            </Button>
                             <Button size="sm" onClick={() => handleLineAction(line.id, "delivered")} disabled={actionLoading}>
                               <CheckCheck className="h-3 w-3 mr-1" /> Giao OK
                             </Button>
@@ -274,13 +279,13 @@ export default function DeliveryDetailPage() {
                               <AlertCircle className="h-3 w-3 mr-1" /> Thất bại
                             </Button>
                           </div>
-                        ) : (
+                        ) : line.status === "pending" ? (
                           user && ["owner", "manager"].includes(user.role) && delivery.status === "pending" && (
                             <Button size="sm" variant="ghost" onClick={() => handleRemoveLine(line.id)}>
                               <X className="h-4 w-4 text-destructive" />
                             </Button>
                           )
-                        )}
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   )

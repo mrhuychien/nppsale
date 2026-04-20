@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
@@ -54,6 +55,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function DashboardPage() {
   const { loading: authLoading } = useRoleGuard("reports")
+  const { user } = useAuth()
+  const isSales = user?.role === "sales"
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [today, setToday] = useState<string>("")
@@ -228,9 +231,16 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Tổng quan kinh doanh"
+        title={isSales ? "Tổng quan của tôi" : "Tổng quan kinh doanh"}
         description={today ? `Cập nhật ${today}` : undefined}
       />
+
+      {isSales && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          Bạn đang xem dữ liệu của chính bạn (đơn hàng bạn tạo, khách hàng bạn phụ trách, công nợ bạn theo dõi)
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -238,7 +248,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-primary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Doanh thu tháng
+              {isSales ? "Doanh số của tôi (tháng)" : "Doanh thu tháng"}
             </p>
             <span className="text-primary bg-primary/10 p-2 rounded-lg inline-flex">
               <Wallet className="h-5 w-5" />
@@ -264,7 +274,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-secondary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Đơn hàng hôm nay
+              {isSales ? "Đơn tôi tạo hôm nay" : "Đơn hàng hôm nay"}
             </p>
             <span className="text-secondary bg-secondary/10 p-2 rounded-lg inline-flex">
               <ShoppingBasket className="h-5 w-5" />
@@ -283,7 +293,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-destructive">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              Công nợ mở
+              {isSales ? "Công nợ KH của tôi" : "Công nợ mở"}
             </p>
             <span className="text-destructive bg-destructive/10 p-2 rounded-lg inline-flex">
               <AlertTriangle className="h-5 w-5" />

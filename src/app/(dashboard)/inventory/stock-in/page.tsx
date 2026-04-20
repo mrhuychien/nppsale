@@ -296,12 +296,14 @@ export default function StockInPage() {
       const batchPayload = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
         const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
+        // expires_at is NOT NULL in DB - use far-future if user leaves empty
+        const expiresAt = l.expires_at || "2099-12-31"
         return {
           org_id: user.org_id,
           product_id: l.product_id,
           batch_code: batchCode,
           manufactured_at: l.manufactured_at || null,
-          expires_at: l.expires_at || null,
+          expires_at: expiresAt,
           qty_initial: qty,
           qty_on_hand: qty,
         }

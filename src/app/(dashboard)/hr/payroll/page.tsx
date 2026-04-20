@@ -298,7 +298,7 @@ export default function PayrollPage() {
       // Upsert all payrolls
       await supabase
         .from("hr_payroll")
-        .upsert(payrollRows, { onConflict: "org_id,user_id,period" })
+        .upsert(payrollRows, { onConflict: "user_id,period" })
 
       await fetchPayrolls()
     } catch (err) {

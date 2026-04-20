@@ -74,7 +74,10 @@ export default function NewUserPage() {
         body: JSON.stringify({ email, password, full_name: fullName, role, phone }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Tạo người dùng thất bại")
+      if (!res.ok) {
+        const msg = data.error || "Tạo người dùng thất bại"
+        throw new Error(data.hint ? `${msg}\n${data.hint}` : msg)
+      }
       toast({
         title: "Đã tạo người dùng",
         description: `${fullName} (${ROLE_LABELS[role] || role}) - email: ${email}`,

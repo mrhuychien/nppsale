@@ -107,7 +107,7 @@ export default function AttendancePage() {
           work_date: dateStr,
           status: nextStatus,
         },
-        { onConflict: "org_id,user_id,work_date" }
+        { onConflict: "user_id,work_date" }
       )
       .select()
       .single()

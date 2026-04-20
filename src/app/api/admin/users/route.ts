@@ -71,7 +71,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, id: created.user.id })
   } catch (err) {
+    console.error("[/api/admin/users] error:", err)
     const message = err instanceof Error ? err.message : "Lỗi không xác định"
-    return NextResponse.json({ error: message }, { status: 500 })
+    const hint = message.includes("SUPABASE_SERVICE_ROLE_KEY")
+      ? "Vercel chưa có env var SUPABASE_SERVICE_ROLE_KEY. Thêm trong Vercel → Settings → Environment Variables."
+      : undefined
+    return NextResponse.json({ error: message, hint }, { status: 500 })
   }
 }

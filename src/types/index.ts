@@ -13,6 +13,8 @@ export type ReturnReason = "damaged" | "wrong_item" | "near_expiry" | "expired" 
 export type ReturnStatus = "pending" | "approved" | "rejected" | "completed"
 export type CommissionType = "percentage" | "fixed" | "tiered"
 export type AssignmentRole = "primary" | "secondary"
+export type AttendanceStatus = "present" | "absent" | "half_day" | "leave" | "holiday"
+export type PayrollStatus = "draft" | "confirmed" | "paid"
 
 export interface Organization {
   id: string
@@ -370,4 +372,71 @@ export interface ReturnLine {
   line_total: number
   // Joined
   product?: Product
+}
+
+// HR Module
+export interface HrSalaryConfig {
+  id: string
+  org_id: string
+  name: string
+  base_salary: number
+  gas_allowance: number
+  phone_allowance: number
+  working_days_per_month: number
+  target_tiers: { min_percent: number; bonus: number; label: string }[]
+  over_target_percent: number
+  under_70_rule: string
+  under_60_percent: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface HrMonthlyBonus {
+  id: string
+  org_id: string
+  period: string
+  tiers: { min_revenue: number; bonus: number }[]
+  notes: string | null
+  created_at: string
+}
+
+export interface HrAttendance {
+  id: string
+  org_id: string
+  user_id: string
+  work_date: string
+  status: AttendanceStatus
+  check_in: string | null
+  check_out: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface HrPayroll {
+  id: string
+  org_id: string
+  user_id: string
+  period: string
+  working_days: number
+  absent_days: number
+  total_revenue: number
+  target_amount: number
+  target_percent: number
+  base_salary: number
+  gas_allowance: number
+  phone_allowance: number
+  target_bonus: number
+  over_target_bonus: number
+  monthly_revenue_bonus: number
+  deductions: number
+  total_salary: number
+  breakdown: Record<string, unknown>
+  status: PayrollStatus
+  confirmed_by: string | null
+  confirmed_at: string | null
+  paid_at: string | null
+  notes: string | null
+  created_at: string
+  // Joined
+  user?: User
 }

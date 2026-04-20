@@ -31,6 +31,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/returns": "Quản lý trả hàng",
   "/reports": "Báo cáo",
   "/settings": "Cài đặt",
+  "/hr": "Nhân sự",
   "/help": "Trợ giúp & Hướng dẫn",
 }
 

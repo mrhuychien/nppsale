@@ -69,6 +69,21 @@
     background: linear-gradient(135deg, #004ac6 0%, #2563eb 100%);
   }
 
+  /* Safe area for iOS notch/home indicator */
+  .safe-area-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+  }
+
+  /* Improve touch targets on mobile */
+  @media (max-width: 1024px) {
+    button, a, [role="button"] {
+      min-height: 44px;
+    }
+    input, select, textarea {
+      font-size: 16px !important; /* prevent iOS zoom on focus */
+    }
+  }
+
   /* Surface layering */
   .bg-surface-lowest { background-color: hsl(var(--surface-container-lowest)); }
   .bg-surface-low { background-color: hsl(var(--surface-container-low)); }

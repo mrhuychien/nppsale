@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import {
@@ -41,6 +42,8 @@ import type { Return } from "@/types"
 
 export default function ReturnsPage() {
   const { user, loading: authLoading } = useRoleGuard("returns")
+  const { user: authUser } = useAuth()
+  const isSales = authUser?.role === "sales"
   const [returns, setReturns] = useState<Return[]>([])
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
@@ -101,13 +104,20 @@ export default function ReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Trả hàng" description={`${returns.length} yêu cầu`}>
+      <PageHeader title={isSales ? "Yêu cầu trả hàng của tôi" : "Trả hàng"} description={`${returns.length} yêu cầu`}>
         {user && hasPermission(user.role, "returns", "create") && (
           <Button onClick={() => router.push("/returns/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo yêu cầu
           </Button>
         )}
       </PageHeader>
+
+      {isSales && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          Bạn chỉ thấy yêu cầu trả hàng do bạn tạo.
+        </div>
+      )}
 
       {/* Stats cards */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -53,6 +54,8 @@ type MobileTabRange = "today" | "7days" | "month"
 
 export default function DeliveriesPage() {
   const { user, loading: authLoading } = useRoleGuard("deliveries")
+  const { user: authUser } = useAuth()
+  const isDriver = authUser?.role === "driver"
   const { toast } = useToast()
   const [deliveries, setDeliveries] = useState<DeliveryWithStats[]>([])
   const [drivers, setDrivers] = useState<Pick<User, "id" | "full_name">[]>([])
@@ -169,13 +172,20 @@ export default function DeliveriesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Giao hàng" description={`${deliveries.length} chuyến giao`}>
+      <PageHeader title={isDriver ? "Chuyến giao của tôi" : "Giao hàng"} description={`${deliveries.length} chuyến giao`}>
         {canCreate && (
           <Button onClick={() => router.push("/deliveries/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo phiếu giao
           </Button>
         )}
       </PageHeader>
+
+      {isDriver && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          Bạn chỉ thấy chuyến giao được giao cho bạn.
+        </div>
+      )}
 
       {/* Desktop: existing rich UI */}
       <div className="hidden lg:block space-y-4">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -20,6 +21,9 @@ type BucketKey = "current" | "warning" | "overdue" | "critical"
 
 export default function ReceivablesPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
+  const { user: authUser } = useAuth()
+  const isSales = authUser?.role === "sales"
+  const isDriver = authUser?.role === "driver"
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
@@ -89,12 +93,21 @@ export default function ReceivablesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Công nợ" description={`Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
+      <PageHeader title={isSales ? "Công nợ của tôi" : "Công nợ"} description={`Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link href="/receivables/aging">Sổ chi tiết</Link></Button>
           <Button variant="outline" asChild><Link href="/receivables/collect">Thu tiền</Link></Button>
         </div>
       </PageHeader>
+
+      {(isSales || isDriver) && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          {isSales
+            ? "Bạn chỉ thấy công nợ từ các đơn do bạn tạo."
+            : "Bạn thấy công nợ thuộc các đơn giao của bạn (COD)."}
+        </div>
+      )}
 
       {/* Aging Chart */}
       <Card>

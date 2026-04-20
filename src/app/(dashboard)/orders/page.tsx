@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -47,6 +48,9 @@ import type { Customer, SalesOrder, User } from "@/types"
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
+  const { user: authUser } = useAuth()
+  const isSales = authUser?.role === "sales"
+  const isDriver = authUser?.role === "driver"
   const { toast } = useToast()
   const [orders, setOrders] = useState<SalesOrder[]>([])
   const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
@@ -194,13 +198,22 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Đơn hàng" description={`${orders.length} đơn hàng`}>
+      <PageHeader title={isSales ? "Đơn của tôi" : "Đơn hàng"} description={`${orders.length} đơn hàng`}>
         {user && hasPermission(user.role, "orders", "create") && (
           <Button onClick={() => router.push("/orders/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn
           </Button>
         )}
       </PageHeader>
+
+      {(isSales || isDriver) && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          {isSales
+            ? "Bạn chỉ thấy đơn do bạn tạo. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
+            : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 max-w-sm">

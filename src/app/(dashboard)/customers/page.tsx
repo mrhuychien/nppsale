@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -19,6 +20,8 @@ import type { Customer, Receivable, SalesOrder } from "@/types"
 
 export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
+  const { user: authUser } = useAuth()
+  const isSales = authUser?.role === "sales"
   const [customers, setCustomers] = useState<Customer[]>([])
   const [debts, setDebts] = useState<Record<string, number>>({})
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
@@ -94,11 +97,18 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Khách hàng" description={`${customers.length} khách hàng`}>
+      <PageHeader title={isSales ? "Khách hàng của tôi" : "Khách hàng"} description={`${customers.length} khách hàng`}>
         {user && hasPermission(user.role, "customers", "create") && (
           <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Thêm KH</Button>
         )}
       </PageHeader>
+
+      {isSales && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          Bạn chỉ thấy KH được phân công cho bạn. Liên hệ Quản lý nếu cần phân công thêm.
+        </div>
+      )}
 
       {/* Route progress (visible on all sizes; prominent on mobile) */}
       <div className="rounded-xl border bg-card p-4">

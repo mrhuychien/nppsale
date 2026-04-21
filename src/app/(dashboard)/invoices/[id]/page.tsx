@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink } from "lucide-react"
+import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 
 type NextStatus = {
@@ -163,7 +163,16 @@ export default function InvoiceDetailPage() {
         description={`Tạo: ${formatDate(invoice.created_at)}${invoice.issued_at ? ` • Phát hành: ${formatDate(invoice.issued_at)}` : ""}`}
         backHref="/invoices"
       >
-        <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={statusVariant(invoice.status)}>{statusLabel(invoice.status)}</Badge>
+          {(invoice.status === "draft" || invoice.status === "issued") && (
+            <Link href={`/invoices/${id}/print`}>
+              <Button size="sm" variant="outline">
+                <Printer className="h-4 w-4 mr-1" /> Xuất hóa đơn VAT
+              </Button>
+            </Link>
+          )}
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">

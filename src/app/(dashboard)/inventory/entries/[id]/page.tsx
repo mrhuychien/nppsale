@@ -270,6 +270,75 @@ export default function StockEntryDetailPage() {
         onConfirm={handleDelete}
         loading={actionLoading}
       />
+
+      {/* Print-only section */}
+      <div className="print-only">
+        <div className="p-8">
+          <h1 className="text-2xl font-black text-center uppercase mb-6">
+            {entry.type === "export" ? "Phiếu xuất kho" : entry.type === "import" ? "Phiếu nhập kho" : entry.type === "transfer" ? "Phiếu chuyển kho" : "Phiếu kiểm kê"}
+          </h1>
+
+          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+            <div>
+              <p><span className="text-gray-500">Mã phiếu:</span> <span className="font-bold font-mono">{entry.entry_code}</span></p>
+              <p><span className="text-gray-500">Ngày tạo:</span> <span className="font-semibold">{formatDate(entry.created_at)}</span></p>
+            </div>
+            <div>
+              <p><span className="text-gray-500">Người lập:</span> <span className="font-semibold">{entry.creator?.full_name || "-"}</span></p>
+              {entry.notes && <p><span className="text-gray-500">Ghi chú:</span> {entry.notes}</p>}
+            </div>
+          </div>
+
+          <table className="w-full text-sm border-collapse mb-8">
+            <thead>
+              <tr className="border-b-2 border-gray-300">
+                <th className="py-2 text-left font-bold w-12">STT</th>
+                <th className="py-2 text-left font-bold">Sản phẩm</th>
+                <th className="py-2 text-left font-bold w-24">SKU</th>
+                <th className="py-2 text-center font-bold w-16">ĐVT</th>
+                <th className="py-2 text-right font-bold w-20">Số lượng</th>
+                <th className="py-2 text-left font-bold w-28">Lô hàng</th>
+                <th className="py-2 text-left font-bold">Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line, index) => (
+                <tr key={line.id} className="border-b border-gray-200">
+                  <td className="py-2">{index + 1}</td>
+                  <td className="py-2 font-medium">{line.product?.name || "-"}</td>
+                  <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
+                  <td className="py-2 text-center">{line.unit_name}</td>
+                  <td className="py-2 text-right font-bold">{line.quantity}</td>
+                  <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
+                  <td className="py-2 text-xs">{line.notes || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300">
+                <td colSpan={4} className="py-2 text-right font-bold">Tổng cộng:</td>
+                <td className="py-2 text-right font-black">{totalQty}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div className="grid grid-cols-3 gap-8 text-center text-sm mt-16">
+            <div>
+              <p className="font-bold">Người lập phiếu</p>
+              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+            </div>
+            <div>
+              <p className="font-bold">Thủ kho</p>
+              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+            </div>
+            <div>
+              <p className="font-bold">Người nhận</p>
+              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

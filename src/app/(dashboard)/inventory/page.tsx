@@ -216,6 +216,12 @@ export default function InventoryPage() {
               Xuất kho
             </Link>
           </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/stocktake-check">
+              <ClipboardCheck className="mr-2 h-4 w-4" />
+              Kiểm kê
+            </Link>
+          </Button>
           <Button asChild>
             <Link href="/inventory/stocktake">
               <ClipboardCheck className="mr-2 h-4 w-4" />

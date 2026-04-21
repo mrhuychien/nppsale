@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -75,17 +75,30 @@ export function OrderForm() {
   }
 
   const handleBarcodeScan = () => {
-    // Use prompt as simple fallback for barcode input
-    const barcode = window.prompt("Quét hoặc nhập mã vạch sản phẩm:")
-    if (!barcode) return
-    const product = products.find((p) => p.barcode === barcode || p.sku === barcode)
+    setBarcodeInput("")
+    setBarcodeOpen(true)
+    setTimeout(() => barcodeRef.current?.focus(), 100)
+  }
+
+  const processBarcodeInput = (code: string) => {
+    if (!code.trim()) return
+    const product = products.find((p) => p.barcode === code.trim() || p.sku === code.trim())
     if (product) {
       addLine(product.id)
       toast({ title: `Đã thêm: ${product.name}` })
+      setBarcodeInput("")
+      // Keep scanner open for continuous scanning
     } else {
-      toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${barcode}`, variant: "destructive" })
+      toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${code}`, variant: "destructive" })
+      setBarcodeInput("")
     }
+    barcodeRef.current?.focus()
   }
+
+  const isSalesRole = user?.role === "sales"
+  const barcodeRef = useRef<HTMLInputElement>(null)
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const [barcodeInput, setBarcodeInput] = useState("")
 
   useEffect(() => {
     if (selectedCustomer?.payment_terms) {
@@ -491,129 +504,112 @@ export function OrderForm() {
               </Button>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* DESKTOP: Table view */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-muted/30 text-left">
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10">
-                      #
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Sản phẩm
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-28">
-                      ĐVT
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
-                      SL
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
-                      Đơn giá
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
-                      CK %
-                    </th>
-                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32 text-right">
-                      Thành tiền
-                    </th>
-                    <th className="px-3 py-3 w-10"></th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-10">#</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Sản phẩm</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">ĐVT</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">SL</th>
+                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">Đơn giá</th>}
+                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28 text-right">Thành tiền</th>
+                    <th className="px-3 py-2 w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
-                  {lines.map((line, i) => (
-                    <tr key={i} className="hover:bg-muted/30/40 transition-colors">
-                      <td className="px-3 py-2 text-muted-foreground font-medium">{i + 1}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-primary">{line.product_name}</span>
-                          <span className="text-[10px] text-muted-foreground font-medium uppercase">
-                            SKU: {line.sku}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {(() => {
-                          const units = getAvailableUnits(line)
-                          if (units.length <= 1) {
-                            return <span className="text-muted-foreground">{line.unit_name}</span>
-                          }
-                          return (
-                            <Select
-                              value={line.unit_name}
-                              onValueChange={(v) => updateLine(i, "unit_name", v)}
-                            >
-                              <SelectTrigger className="h-8 w-full min-w-[90px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {units.map((u) => (
-                                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                                ))}
-                              </SelectContent>
+                <tbody className="divide-y divide-border/30">
+                  {lines.map((line, i) => {
+                    const units = getAvailableUnits(line)
+                    return (
+                      <tr key={i} className="hover:bg-muted/20">
+                        <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{line.product_name}</span>
+                          <span className="text-[10px] text-muted-foreground ml-2">SKU: {line.sku}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {units.length <= 1 ? (
+                            <span className="text-muted-foreground">{line.unit_name}</span>
+                          ) : (
+                            <Select value={line.unit_name} onValueChange={(v) => updateLine(i, "unit_name", v)}>
+                              <SelectTrigger className="h-8 min-w-[80px]"><SelectValue /></SelectTrigger>
+                              <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
-                          )
-                        })()}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={line.quantity}
-                          onChange={(e) =>
-                            updateLine(i, "quantity", parseInt(e.target.value) || 1)
-                          }
-                          className="h-8 text-center"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          value={line.unit_price}
-                          onChange={(e) =>
-                            updateLine(i, "unit_price", parseInt(e.target.value) || 0)
-                          }
-                          className="h-8"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={line.line_discount_percent}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value) || 0
-                            const clamped = Math.max(0, Math.min(100, v))
-                            updateLine(i, "line_discount_percent", clamped)
-                          }}
-                          className="h-8 text-center"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right font-bold">
-                        {formatCurrency(line.line_total)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => removeLine(i)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)} className="h-8 w-20 text-center" />
+                        </td>
+                        {!isSalesRole && (
+                          <td className="px-3 py-2">
+                            <Input type="number" value={line.unit_price} onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)} className="h-8 w-24" />
+                          </td>
+                        )}
+                        {!isSalesRole && (
+                          <td className="px-3 py-2">
+                            <Input type="number" min={0} max={100} value={line.line_discount_percent} onChange={(e) => updateLine(i, "line_discount_percent", Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))} className="h-8 w-16 text-center" />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 text-right font-bold">{formatCurrency(line.line_total)}</td>
+                        <td className="px-3 py-2"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeLine(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td>
+                      </tr>
+                    )
+                  })}
                   {lines.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground text-sm">
-                        Chưa có sản phẩm. Tìm bằng ô tìm kiếm phía trên hoặc dùng nút &quot;Thêm sản phẩm&quot;.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={isSalesRole ? 6 : 8} className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</td></tr>
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* MOBILE: Card view */}
+            <div className="lg:hidden space-y-2">
+              {lines.length === 0 && (
+                <div className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</div>
+              )}
+              {lines.map((line, i) => {
+                const units = getAvailableUnits(line)
+                return (
+                  <div key={i} className="border border-border/40 rounded-xl p-3 bg-card">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{line.product_name}</p>
+                        <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeLine(i)}>
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* Unit selector */}
+                      {units.length <= 1 ? (
+                        <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">{line.unit_name}</span>
+                      ) : (
+                        <Select value={line.unit_name} onValueChange={(v) => updateLine(i, "unit_name", v)}>
+                          <SelectTrigger className="h-8 w-24 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
+                      {/* Quantity */}
+                      <div className="flex items-center gap-1 flex-1">
+                        <button type="button" onClick={() => updateLine(i, "quantity", Math.max(1, line.quantity - 1))} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">−</button>
+                        <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)} className="h-8 text-center flex-1" />
+                        <button type="button" onClick={() => updateLine(i, "quantity", line.quantity + 1)} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">+</button>
+                      </div>
+                      {/* Total */}
+                      <span className="text-sm font-bold text-primary shrink-0">{formatCurrency(line.line_total)}</span>
+                    </div>
+                    {!isSalesRole && (
+                      <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
+                        <span>Giá: {formatCurrency(line.unit_price)}</span>
+                        {line.line_discount_percent > 0 && <span>CK: {line.line_discount_percent}%</span>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -686,6 +682,42 @@ export function OrderForm() {
       {/* Click-outside to close customer dropdown */}
       {customerDropdownOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setCustomerDropdownOpen(false)} />
+      )}
+
+      {/* Barcode scanner modal */}
+      {barcodeOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setBarcodeOpen(false)}>
+          <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <ScanBarcode className="h-5 w-5 text-primary" />
+                Quét mã vạch
+              </h3>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setBarcodeOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Quét mã vạch bằng máy quét hoặc nhập mã thủ công</p>
+            <Input
+              ref={barcodeRef}
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  processBarcodeInput(barcodeInput)
+                }
+              }}
+              placeholder="Quét hoặc nhập mã vạch..."
+              className="text-center text-lg font-mono"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setBarcodeOpen(false)}>Đóng</Button>
+              <Button type="button" className="flex-1" onClick={() => processBarcodeInput(barcodeInput)}>Thêm sản phẩm</Button>
+            </div>
+          </div>
+        </div>
       )}
     </form>
   )

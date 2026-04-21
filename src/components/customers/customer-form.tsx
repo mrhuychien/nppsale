@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { CHANNELS, PAYMENT_TERMS } from "@/lib/constants"
+import { MapPin, Navigation, ExternalLink } from "lucide-react"
 import type { Customer, CustomerGroup } from "@/types"
 
 interface CustomerFormProps {
@@ -19,26 +20,100 @@ interface CustomerFormProps {
   groups: CustomerGroup[]
 }
 
+interface PjpRouteDisplay {
+  id: string
+  day_of_week: number
+  sales_user?: { full_name: string } | null
+}
+
+const DAY_LABELS: Record<number, string> = {
+  0: "Chủ nhật",
+  1: "Thứ 2",
+  2: "Thứ 3",
+  3: "Thứ 4",
+  4: "Thứ 5",
+  5: "Thứ 6",
+  6: "Thứ 7",
+}
+
 export function CustomerForm({ customer, groups }: CustomerFormProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [gpsLoading, setGpsLoading] = useState(false)
+  const [pjpRoutes, setPjpRoutes] = useState<PjpRouteDisplay[]>([])
   const [form, setForm] = useState<Record<string, string>>({
     store_name: customer?.store_name || "",
     owner_name: customer?.owner_name || "",
     phone: customer?.phone || "",
     address: customer?.address || "",
-    province: customer?.province || "",
-    district: customer?.district || "",
-    ward: customer?.ward || "",
     channel: customer?.channel || "",
     group_id: customer?.group_id || "",
     credit_limit: customer?.credit_limit?.toString() || "0",
     payment_terms: customer?.payment_terms || "COD",
     status: customer?.status || "active",
+    gps_lat: customer?.gps_lat?.toString() || "",
+    gps_lng: customer?.gps_lng?.toString() || "",
   })
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+
+  // Fetch PJP routes for this customer
+  useEffect(() => {
+    if (!customer?.id) return
+    async function fetchPjp() {
+      const { data } = await createClient()
+        .from("pjp_routes")
+        .select("id, day_of_week, sales_user:users(full_name)")
+        .eq("customer_id", customer!.id)
+        .eq("is_active", true)
+        .order("day_of_week")
+      if (data) {
+        setPjpRoutes(
+          data.map((r: Record<string, unknown>) => ({
+            id: r.id as string,
+            day_of_week: r.day_of_week as number,
+            sales_user: r.sales_user as { full_name: string } | null,
+          }))
+        )
+      }
+    }
+    fetchPjp()
+  }, [customer?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGetGps = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Lỗi", description: "Trình duyệt không hỗ trợ định vị GPS", variant: "destructive" })
+      return
+    }
+    setGpsLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude.toString()
+        const lng = position.coords.longitude.toString()
+        setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
+
+        // Save immediately if editing
+        if (customer) {
+          const { error } = await supabase
+            .from("customers")
+            .update({ gps_lat: parseFloat(lat), gps_lng: parseFloat(lng) })
+            .eq("id", customer.id)
+          if (error) {
+            toast({ title: "Lỗi", description: "Không thể lưu tọa độ GPS", variant: "destructive" })
+          } else {
+            toast({ title: "Đã lưu tọa độ GPS" })
+          }
+        }
+        setGpsLoading(false)
+      },
+      (err) => {
+        toast({ title: "Lỗi", description: `Không thể lấy vị trí: ${err.message}`, variant: "destructive" })
+        setGpsLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,19 +134,22 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         }
       }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         store_name: form.store_name,
         owner_name: form.owner_name,
         phone: form.phone,
         address: form.address,
-        province: form.province || null,
-        district: form.district || null,
-        ward: form.ward || null,
         channel: form.channel || null,
         group_id: form.group_id || null,
         credit_limit: parseInt(form.credit_limit) || 0,
         payment_terms: form.payment_terms,
         status: form.status,
+      }
+
+      // Include GPS if set
+      if (form.gps_lat && form.gps_lng) {
+        payload.gps_lat = parseFloat(form.gps_lat)
+        payload.gps_lng = parseFloat(form.gps_lng)
       }
 
       if (customer) {
@@ -93,6 +171,8 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
       setLoading(false)
     }
   }
+
+  const hasGps = form.gps_lat && form.gps_lng
 
   return (
     <Card>
@@ -123,18 +203,69 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Address with GPS button */}
             <div className="space-y-2 sm:col-span-2">
-              <Label>Địa chỉ *</Label>
+              <div className="flex items-center justify-between">
+                <Label>Địa chỉ *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGetGps}
+                  disabled={gpsLoading}
+                  className="h-7 text-xs gap-1"
+                >
+                  <Navigation className="h-3 w-3" />
+                  {gpsLoading ? "Đang định vị..." : "Định vị"}
+                </Button>
+              </div>
               <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} required placeholder="Số nhà, tên đường" />
+              {hasGps && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3 text-primary" />
+                  <span>{parseFloat(form.gps_lat).toFixed(6)}, {parseFloat(form.gps_lng).toFixed(6)}</span>
+                  <a
+                    href={`https://maps.google.com/?q=${form.gps_lat},${form.gps_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary font-semibold hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Xem trên Google Maps <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Tỉnh/Thành</Label>
-              <Input value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} placeholder="VD: TP HCM" />
-            </div>
-            <div className="space-y-2">
-              <Label>Quận/Huyện</Label>
-              <Input value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
-            </div>
+
+            {/* PJP Routes display */}
+            {customer && pjpRoutes.length > 0 && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Tuyến bán hàng (PJP)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {pjpRoutes.map((r) => {
+                    const salesName = Array.isArray(r.sales_user)
+                      ? (r.sales_user as Array<{ full_name: string }>)[0]?.full_name
+                      : r.sales_user?.full_name
+                    return (
+                      <span
+                        key={r.id}
+                        className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2.5 py-1 rounded-full text-xs font-semibold"
+                      >
+                        {DAY_LABELS[r.day_of_week] || `Ngày ${r.day_of_week}`}
+                        {salesName && <span className="text-muted-foreground">• {salesName}</span>}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {customer && pjpRoutes.length === 0 && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Tuyến bán hàng (PJP)</Label>
+                <p className="text-sm text-muted-foreground">Chưa được phân tuyến</p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Nhóm khách hàng</Label>
               <Select value={form.group_id} onValueChange={(v) => setForm({ ...form, group_id: v })}>

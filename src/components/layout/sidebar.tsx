@@ -36,6 +36,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
       { label: "Khách hàng", href: "/customers", icon: Users, module: "customers" },
+      { label: "Phân tích KH", href: "/customers/analytics", icon: BarChart3, module: "customers" },
+      { label: "Bảng giá", href: "/products/price-lists", icon: FileText, module: "products" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions" },
       { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions" },
     ],

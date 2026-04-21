@@ -182,7 +182,7 @@ export default function DeliveriesPage() {
 
       {isDriver && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
           Bạn chỉ thấy chuyến giao được giao cho bạn.
         </div>
       )}
@@ -192,7 +192,7 @@ export default function DeliveriesPage() {
         {/* Sticky glass stats */}
         <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur-md bg-background/70 border-b">
           <div className="grid grid-cols-3 gap-3">
-            <Card className="rounded-2xl shadow-ambient">
+            <Card className="rounded-2xl shadow-sm">
               <CardContent className="flex items-center gap-3 pt-6">
                 <div className="rounded-xl bg-amber-100 p-3 text-amber-700">
                   <Truck className="h-5 w-5" />
@@ -203,7 +203,7 @@ export default function DeliveriesPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-2xl shadow-ambient">
+            <Card className="rounded-2xl shadow-sm">
               <CardContent className="flex items-center gap-3 pt-6">
                 <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
                   <Navigation className="h-5 w-5" />
@@ -214,7 +214,7 @@ export default function DeliveriesPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-2xl shadow-ambient">
+            <Card className="rounded-2xl shadow-sm">
               <CardContent className="flex items-center gap-3 pt-6">
                 <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
                   <CheckCircle2 className="h-5 w-5" />
@@ -230,7 +230,7 @@ export default function DeliveriesPage() {
 
         {/* Dispatch card */}
         {canDispatch && unassigned.length > 0 && (
-          <Card className="rounded-2xl border-primary/30 bg-gradient-to-br from-primary/5 to-background shadow-ambient">
+          <Card className="rounded-2xl border-primary/30 bg-gradient-to-br from-primary/5 to-background shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Users className="h-4 w-4 text-primary" />
@@ -331,7 +331,7 @@ export default function DeliveriesPage() {
             )}
           </TabsContent>
           <TabsContent value="map" className="mt-4">
-            <Card className="rounded-2xl shadow-ambient">
+            <Card className="rounded-2xl shadow-sm">
               <CardContent className="flex flex-col items-center justify-center gap-3 py-20 text-center">
                 <div className="rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 p-6">
                   <MapIcon className="h-12 w-12 text-primary" />
@@ -412,19 +412,19 @@ export default function DeliveriesPage() {
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                         Điểm
                       </p>
-                      <p className="text-lg font-black">{st.total}</p>
+                      <p className="text-lg font-bold">{st.total}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                         Đã giao
                       </p>
-                      <p className="text-lg font-black text-success">{st.delivered}</p>
+                      <p className="text-lg font-bold text-success">{st.delivered}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                         Thất bại
                       </p>
-                      <p className="text-lg font-black text-danger">{st.failed}</p>
+                      <p className="text-lg font-bold text-danger">{st.failed}</p>
                     </div>
                   </div>
                 </CardContent>

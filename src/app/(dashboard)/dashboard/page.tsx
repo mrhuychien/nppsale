@@ -36,7 +36,7 @@ interface TopCustomer {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: "bg-surface-container text-foreground",
+  draft: "bg-muted/50 text-foreground",
   confirmed: "bg-green-100 text-green-700",
   picking: "bg-amber-100 text-amber-700",
   delivering: "bg-amber-100 text-amber-700",
@@ -247,15 +247,15 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="h-8 w-64 bg-surface-container rounded-lg animate-pulse" />
-          <div className="h-4 w-40 bg-surface-low rounded animate-pulse" />
+          <div className="h-8 w-64 bg-muted/50 rounded-lg animate-pulse" />
+          <div className="h-4 w-40 bg-muted/30 rounded animate-pulse" />
         </div>
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-40 bg-surface-container rounded-2xl animate-pulse" />
+            <div key={i} className="h-40 bg-muted/50 rounded-2xl animate-pulse" />
           ))}
         </div>
-        <div className="h-72 bg-surface-container rounded-2xl animate-pulse" />
+        <div className="h-72 bg-muted/50 rounded-2xl animate-pulse" />
       </div>
     )
   }
@@ -301,7 +301,7 @@ export default function DashboardPage() {
             className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
               period === p.value
                 ? "bg-primary text-primary-foreground"
-                : "bg-surface-container text-muted-foreground hover:bg-surface-low"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted/30"
             }`}
           >
             {p.label}
@@ -311,7 +311,7 @@ export default function DashboardPage() {
 
       {isSales && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
           Bạn đang xem dữ liệu của chính bạn (đơn hàng bạn tạo, khách hàng bạn phụ trách, công nợ bạn theo dõi)
         </div>
       )}
@@ -319,7 +319,7 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
         {/* Revenue */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-primary">
+        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-primary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
               {isSales ? "Doanh số của tôi" : "Doanh thu"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần" : period === "quarter" ? "quý" : "tháng"})
@@ -329,7 +329,7 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex items-end gap-3 mb-4">
-            <h3 className="text-2xl xl:text-3xl font-black text-foreground tracking-tight">
+            <h3 className="text-2xl xl:text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(stats.monthRevenue)}
             </h3>
           </div>
@@ -345,7 +345,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Today's Orders */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-secondary">
+        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-secondary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
               {isSales ? "Đơn tôi tạo" : "Đơn hàng"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"})
@@ -354,7 +354,7 @@ export default function DashboardPage() {
               <ShoppingBasket className="h-5 w-5" />
             </span>
           </div>
-          <h3 className="text-3xl font-black text-foreground tracking-tight">
+          <h3 className="text-2xl font-bold text-foreground tracking-tight">
             {stats.todayOrders}
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
@@ -364,7 +364,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Overdue Receivables */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-destructive">
+        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-destructive">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
               {isSales ? "Công nợ KH của tôi" : "Công nợ mở"}
@@ -373,7 +373,7 @@ export default function DashboardPage() {
               <AlertTriangle className="h-5 w-5" />
             </span>
           </div>
-          <h3 className="text-2xl xl:text-3xl font-black text-destructive tracking-tight">
+          <h3 className="text-2xl xl:text-2xl font-bold text-destructive tracking-tight">
             {formatCurrency(stats.openReceivables)}
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium">
@@ -382,7 +382,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Inventory Alert */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-amber-500">
+        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-amber-500">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
               Tồn kho cảnh báo
@@ -391,7 +391,7 @@ export default function DashboardPage() {
               <Warehouse className="h-5 w-5" />
             </span>
           </div>
-          <h3 className="text-3xl font-black text-foreground tracking-tight">
+          <h3 className="text-2xl font-bold text-foreground tracking-tight">
             {stats.lowStockCount} SKU
           </h3>
           <p className="text-xs text-muted-foreground mt-2 font-medium">
@@ -402,7 +402,7 @@ export default function DashboardPage() {
 
       {/* Channel Breakdown */}
       {channelBreakdown.length > 0 && (
-        <div className="bg-card rounded-2xl shadow-ambient p-6">
+        <div className="bg-card rounded-2xl shadow-sm p-6">
           <h4 className="text-lg font-bold text-foreground mb-4">Doanh thu theo kênh</h4>
           <div className="space-y-4">
             {channelBreakdown.map((ch) => (
@@ -411,9 +411,9 @@ export default function DashboardPage() {
                   <span className="font-semibold">{ch.channel}</span>
                   <span className="text-muted-foreground">{formatCurrency(ch.revenue)} ({ch.percent}%)</span>
                 </div>
-                <div className="h-3 bg-surface-low rounded-full overflow-hidden">
+                <div className="h-3 bg-muted/30 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-primary rounded-full transition-all duration-500"
+                    className="h-full bg-primary rounded-full transition-all duration-500"
                     style={{ width: `${Math.max(ch.percent, 2)}%` }}
                   />
                 </div>
@@ -426,10 +426,10 @@ export default function DashboardPage() {
       {/* Charts + Top Customers */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Performance (2/3) */}
-        <div className="xl:col-span-2 bg-surface-low rounded-2xl p-6 lg:p-8 relative overflow-hidden">
+        <div className="xl:col-span-2 bg-muted/30 rounded-2xl p-6 lg:p-8 relative overflow-hidden">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h4 className="text-xl lg:text-2xl font-black text-foreground tracking-tight">
+              <h4 className="text-xl lg:text-xl font-bold text-foreground tracking-tight">
                 Hiệu suất tài chính
               </h4>
               <p className="text-sm text-muted-foreground">
@@ -474,7 +474,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Top Customers (1/3) */}
-        <div className="bg-card rounded-2xl p-6 lg:p-8 shadow-ambient">
+        <div className="bg-card rounded-2xl p-6 lg:p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h4 className="text-lg lg:text-xl font-bold text-foreground">
               Top khách hàng
@@ -497,9 +497,9 @@ export default function DashboardPage() {
                         {formatCurrency(c.total)}
                       </span>
                     </div>
-                    <div className="h-2 bg-surface-low rounded-full overflow-hidden">
+                    <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-primary rounded-full"
+                        className="h-full bg-primary rounded-full"
                         style={{ width: `${Math.max(pct, 4)}%` }}
                       />
                     </div>
@@ -519,12 +519,12 @@ export default function DashboardPage() {
             <h4 className="text-lg lg:text-xl font-bold text-foreground">
               Cảnh báo quan trọng
             </h4>
-            <span className="px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-black rounded uppercase">
+            <span className="px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-bold rounded uppercase">
               Cần xử lý
             </span>
           </div>
           <div className="space-y-3">
-            <div className="p-4 bg-card rounded-2xl shadow-ambient flex gap-4 hover:shadow-ambient-md transition-shadow">
+            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
               <div className="shrink-0 w-10 h-10 bg-destructive/10 text-destructive rounded-full flex items-center justify-center">
                 <Hourglass className="h-5 w-5" />
               </div>
@@ -543,7 +543,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
             </div>
-            <div className="p-4 bg-card rounded-2xl shadow-ambient flex gap-4 hover:shadow-ambient-md transition-shadow">
+            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
               <div className="shrink-0 w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
                 <AlertTriangle className="h-5 w-5" />
               </div>
@@ -562,7 +562,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
             </div>
-            <div className="p-4 bg-card rounded-2xl shadow-ambient flex gap-4 hover:shadow-ambient-md transition-shadow">
+            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
               <div className="shrink-0 w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
                 <Warehouse className="h-5 w-5" />
               </div>
@@ -597,7 +597,7 @@ export default function DashboardPage() {
               Tất cả <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-          <div className="bg-card rounded-2xl overflow-hidden shadow-ambient">
+          <div className="bg-card rounded-2xl overflow-hidden shadow-sm">
             {recentOrders.length === 0 ? (
               <p className="text-center py-8 text-muted-foreground text-sm">
                 Chưa có đơn hàng
@@ -606,7 +606,7 @@ export default function DashboardPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-surface-low text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                    <tr className="bg-muted/30 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
                       <th className="px-6 py-4">Mã đơn</th>
                       <th className="px-6 py-4">Khách hàng</th>
                       <th className="px-6 py-4 text-right">Giá trị</th>
@@ -617,7 +617,7 @@ export default function DashboardPage() {
                     {recentOrders.map((o) => (
                       <tr
                         key={o.id}
-                        className="hover:bg-surface-low/50 transition-colors"
+                        className="hover:bg-muted/30/50 transition-colors"
                       >
                         <td className="px-6 py-4 font-bold text-primary">
                           <Link href={`/orders/${o.id}`}>{o.order_code}</Link>
@@ -632,7 +632,7 @@ export default function DashboardPage() {
                           <span
                             className={`px-2 py-1 text-[10px] font-bold rounded-full ${
                               STATUS_BADGE[o.status] ||
-                              "bg-surface-container text-foreground"
+                              "bg-muted/50 text-foreground"
                             }`}
                           >
                             {STATUS_LABEL[o.status] || o.status}

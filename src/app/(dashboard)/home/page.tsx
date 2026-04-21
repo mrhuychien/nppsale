@@ -365,19 +365,19 @@ export default function HomePage() {
     return (
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="h-10 w-2/3 bg-surface-container rounded-xl animate-pulse" />
-          <div className="h-4 w-1/2 bg-surface-low rounded animate-pulse" />
+          <div className="h-10 w-2/3 bg-muted/50 rounded-xl animate-pulse" />
+          <div className="h-4 w-1/2 bg-muted/30 rounded animate-pulse" />
         </div>
-        <div className="h-32 bg-surface-container rounded-2xl animate-pulse" />
+        <div className="h-32 bg-muted/50 rounded-2xl animate-pulse" />
         <div className="grid grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="h-24 bg-surface-container rounded-2xl animate-pulse"
+              className="h-24 bg-muted/50 rounded-2xl animate-pulse"
             />
           ))}
         </div>
-        <div className="h-40 bg-surface-container rounded-2xl animate-pulse" />
+        <div className="h-40 bg-muted/50 rounded-2xl animate-pulse" />
       </div>
     )
   }
@@ -403,7 +403,7 @@ export default function HomePage() {
     <div className="space-y-6 pb-4">
       {/* Greeting */}
       <section className="space-y-1">
-        <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-foreground">
+        <h1 className="text-2xl lg:text-2xl font-bold tracking-tight text-foreground">
           {greeting}, {firstName}!
         </h1>
         <p className="text-sm text-muted-foreground font-medium">
@@ -414,7 +414,7 @@ export default function HomePage() {
       </section>
 
       {/* Route card */}
-      <section className="bg-card rounded-2xl shadow-ambient p-5 lg:p-6 space-y-4">
+      <section className="bg-card rounded-2xl shadow-sm p-5 lg:p-6 space-y-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
@@ -441,9 +441,9 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-2">
-          <div className="h-2 w-full bg-surface-low rounded-full overflow-hidden">
+          <div className="h-2 w-full bg-muted/30 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-primary rounded-full transition-all"
+              className="h-full bg-primary rounded-full transition-all"
               style={{ width: `${Math.max(progressPct, totalAssigned ? 4 : 0)}%` }}
             />
           </div>
@@ -459,7 +459,7 @@ export default function HomePage() {
               <Link
                 key={c.customer_id}
                 href={`/customers/${c.customer_id}`}
-                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-surface-low/70 active:bg-surface-container transition-colors"
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-muted/30/70 active:bg-muted/50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div
@@ -507,7 +507,7 @@ export default function HomePage() {
       <section className="grid grid-cols-2 gap-3">
         <Link
           href="/orders/new"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-gradient-primary text-white rounded-2xl shadow-ambient-md active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-start justify-between gap-3 p-5 bg-primary text-white rounded-2xl shadow-md active:scale-[0.98] transition-transform min-h-[112px]"
         >
           <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
             <Plus className="h-5 w-5" />
@@ -516,7 +516,7 @@ export default function HomePage() {
         </Link>
         <Link
           href="/receivables/collect"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-ambient active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
         >
           <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
             <Wallet className="h-5 w-5" />
@@ -527,7 +527,7 @@ export default function HomePage() {
         </Link>
         <Link
           href="/customers"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-ambient active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
         >
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
             <Users className="h-5 w-5" />
@@ -538,7 +538,7 @@ export default function HomePage() {
         </Link>
         <Link
           href="/orders"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-ambient active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
         >
           <div className="w-10 h-10 rounded-xl bg-green-100 text-green-600 flex items-center justify-center">
             <ClipboardList className="h-5 w-5" />
@@ -556,42 +556,42 @@ export default function HomePage() {
           Kết quả hôm nay
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-primary">
+          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-primary">
             <div className="flex items-start justify-between mb-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Số đơn tạo
               </p>
               <ShoppingBasket className="h-4 w-4 text-primary" />
             </div>
-            <p className="text-2xl font-black text-foreground tracking-tight">
+            <p className="text-xl font-bold text-foreground tracking-tight">
               {stats.todayOrderCount}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
               Đơn hàng tạo hôm nay
             </p>
           </div>
-          <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-green-500">
+          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-green-500">
             <div className="flex items-start justify-between mb-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Doanh thu
               </p>
               <Wallet className="h-4 w-4 text-green-600" />
             </div>
-            <p className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+            <p className="text-xl sm:text-xl font-bold text-foreground tracking-tight">
               {formatCurrency(stats.todayRevenue)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
               Tổng giá trị đơn hôm nay
             </p>
           </div>
-          <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-destructive">
+          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-destructive">
             <div className="flex items-start justify-between mb-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Công nợ cần thu
               </p>
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </div>
-            <p className="text-xl sm:text-2xl font-black text-destructive tracking-tight">
+            <p className="text-xl sm:text-xl font-bold text-destructive tracking-tight">
               {formatCurrency(stats.openReceivables)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
@@ -615,7 +615,7 @@ export default function HomePage() {
             Tất cả
           </Link>
         </div>
-        <div className="bg-card rounded-2xl shadow-ambient divide-y divide-border overflow-hidden">
+        <div className="bg-card rounded-2xl shadow-sm divide-y divide-border overflow-hidden">
           {topProducts.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground">
               Chưa có dữ liệu bán hàng trong tháng
@@ -627,7 +627,7 @@ export default function HomePage() {
                 className="flex items-center gap-3 p-4"
               >
                 <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
                     idx === 0
                       ? "bg-primary text-white"
                       : "bg-primary/10 text-primary"

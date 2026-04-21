@@ -102,7 +102,7 @@ export default function ReceivablesPage() {
 
       {(isSales || isDriver) && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
           {isSales
             ? "Bạn chỉ thấy công nợ từ các đơn do bạn tạo."
             : "Bạn thấy công nợ thuộc các đơn giao của bạn (COD)."}
@@ -137,7 +137,7 @@ export default function ReceivablesPage() {
                       {cfg.sub}
                     </span>
                   </div>
-                  <div className={`mt-2 text-xl font-black ${cfg.textClass}`}>
+                  <div className={`mt-2 text-xl font-bold ${cfg.textClass}`}>
                     {formatCurrency(b.amount)}
                   </div>
                   <div className="text-xs text-muted-foreground">

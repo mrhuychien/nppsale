@@ -165,7 +165,7 @@ export default function ReportsPage() {
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
               Hệ thống báo cáo
             </p>
-            <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-foreground">
+            <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-foreground">
               Hệ thống Báo cáo M12
             </h1>
             <p className="text-sm text-muted-foreground max-w-xl">
@@ -173,7 +173,7 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 rounded-full bg-surface-low p-1.5">
+            <div className="flex items-center gap-1 rounded-full bg-muted/30 p-1.5">
               {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
                 <button
                   key={p}
@@ -181,7 +181,7 @@ export default function ReportsPage() {
                   className={cn(
                     "px-3 py-1.5 text-xs font-semibold rounded-full transition-colors",
                     period === p
-                      ? "bg-surface-lowest text-primary shadow-sm"
+                      ? "bg-muted/30est text-primary shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -264,7 +264,7 @@ export default function ReportsPage() {
           </div>
           <Link
             href="/reports/sales"
-            className="group flex items-center justify-between rounded-2xl border border-border/40 bg-surface-lowest p-5 hover:border-primary transition-colors"
+            className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
           >
             <div>
               <p className="font-bold text-foreground">Xem báo cáo chi tiết Bán hàng</p>
@@ -311,7 +311,7 @@ export default function ReportsPage() {
           </div>
           <Link
             href="/reports/inventory"
-            className="group flex items-center justify-between rounded-2xl border border-border/40 bg-surface-lowest p-5 hover:border-primary transition-colors"
+            className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
           >
             <div>
               <p className="font-bold text-foreground">Xem báo cáo chi tiết Kho hàng</p>
@@ -365,7 +365,7 @@ export default function ReportsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Link
               href="/receivables/aging"
-              className="group flex items-center justify-between rounded-2xl border border-border/40 bg-surface-lowest p-5 hover:border-primary transition-colors"
+              className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
             >
               <div>
                 <p className="font-bold text-foreground">Báo cáo Aging công nợ</p>
@@ -375,7 +375,7 @@ export default function ReportsPage() {
             </Link>
             <Link
               href="/commissions"
-              className="group flex items-center justify-between rounded-2xl border border-border/40 bg-surface-lowest p-5 hover:border-primary transition-colors"
+              className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
             >
               <div>
                 <p className="font-bold text-foreground">Hoa hồng nhân viên</p>
@@ -419,7 +419,7 @@ export default function ReportsPage() {
               hint="Giao vận"
             />
           </div>
-          <Card className="border border-border/40 bg-surface-lowest">
+          <Card className="border border-border/40 bg-muted/30est">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-5">
                 <div>
@@ -442,7 +442,7 @@ export default function ReportsPage() {
                       <div key={i} className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-high text-xs font-black text-primary">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-high text-xs font-bold text-primary">
                               {String(i + 1).padStart(2, "0")}
                             </div>
                             <div className="flex items-center gap-2">
@@ -503,7 +503,7 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border/40 border-l-4 bg-surface-lowest p-5 shadow-sm transition-transform hover:-translate-y-0.5",
+        "rounded-2xl border border-border/40 border-l-4 bg-muted/30est p-5 shadow-sm transition-transform hover:-translate-y-0.5",
         ACCENT_BORDER[accent]
       )}
     >
@@ -513,7 +513,7 @@ function KpiCard({
         </span>
       </div>
       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <h3 className="mt-1 text-2xl font-black text-foreground">{value}</h3>
+      <h3 className="mt-1 text-xl font-bold text-foreground">{value}</h3>
       {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
     </div>
   )

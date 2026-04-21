@@ -191,7 +191,7 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
-          <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-foreground">
+          <h1 className="text-2xl lg:text-2xl font-bold tracking-tight text-foreground">
             Quản lý Kho hàng
           </h1>
           <div className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
@@ -303,7 +303,7 @@ export default function InventoryPage() {
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Sắp hết hạn
                     </div>
-                    <div className="mt-2 text-3xl font-black text-destructive">
+                    <div className="mt-2 text-2xl font-bold text-destructive">
                       {stats.expiringSoon}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
@@ -324,7 +324,7 @@ export default function InventoryPage() {
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Cần đẩy hàng
                     </div>
-                    <div className="mt-2 text-3xl font-black text-primary">
+                    <div className="mt-2 text-2xl font-bold text-primary">
                       {stats.needsPush}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
@@ -345,7 +345,7 @@ export default function InventoryPage() {
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Tổng giá trị tồn kho
                     </div>
-                    <div className="mt-2 text-2xl font-black text-green-700">
+                    <div className="mt-2 text-xl font-bold text-green-700">
                       {formatCurrency(stats.totalValue)}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
@@ -460,7 +460,7 @@ export default function InventoryPage() {
                         <TableRow key={b.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-low text-muted-foreground">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/30 text-muted-foreground">
                                 <Package className="h-5 w-5" />
                               </div>
                               <div className="min-w-0">
@@ -474,7 +474,7 @@ export default function InventoryPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="inline-flex items-center rounded-md bg-surface-low px-2 py-1 font-mono text-xs">
+                            <span className="inline-flex items-center rounded-md bg-muted/30 px-2 py-1 font-mono text-xs">
                               {b.batch_code}
                             </span>
                           </TableCell>

@@ -105,7 +105,7 @@ export default function CustomersPage() {
 
       {isSales && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
           Bạn chỉ thấy KH được phân công cho bạn. Liên hệ Quản lý nếu cần phân công thêm.
         </div>
       )}
@@ -115,7 +115,7 @@ export default function CustomersPage() {
         <div className="flex items-baseline justify-between mb-2">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Lộ trình hôm nay</p>
-            <p className="text-xl font-black tracking-tight">
+            <p className="text-xl font-bold tracking-tight">
               {visitedCount}
               <span className="text-sm font-medium text-muted-foreground"> / {totalRoute} điểm đã ghé</span>
             </p>

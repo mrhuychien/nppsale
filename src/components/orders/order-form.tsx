@@ -229,7 +229,7 @@ export function OrderForm() {
       {/* LEFT COLUMN */}
       <div className="w-full lg:w-[320px] lg:shrink-0 space-y-6">
         {/* Customer info card */}
-        <Card className="rounded-2xl shadow-ambient bg-card">
+        <Card className="rounded-2xl shadow-sm bg-card">
           <CardHeader>
             <CardTitle className="text-base font-bold">Thông tin khách hàng</CardTitle>
           </CardHeader>
@@ -252,7 +252,7 @@ export function OrderForm() {
                     <Link
                       href="/customers/new"
                       target="_blank"
-                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-muted/30 rounded-lg transition-colors"
                     >
                       <Plus className="h-3 w-3" /> Tạo khách hàng mới
                       <ExternalLink className="h-3 w-3 ml-auto" />
@@ -272,7 +272,7 @@ export function OrderForm() {
             </div>
 
             {selectedCustomer && (
-              <div className="rounded-xl bg-surface-low p-4 space-y-2">
+              <div className="rounded-xl bg-muted/30 p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-bold text-foreground">{selectedCustomer.store_name}</p>
                   {customerStatusConfig && (
@@ -297,7 +297,7 @@ export function OrderForm() {
         </Card>
 
         {/* Terms & delivery card */}
-        <Card className="rounded-2xl shadow-ambient bg-card">
+        <Card className="rounded-2xl shadow-sm bg-card">
           <CardHeader>
             <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
           </CardHeader>
@@ -336,7 +336,7 @@ export function OrderForm() {
       {/* MAIN COLUMN */}
       <div className="flex-1 w-full space-y-6 min-w-0">
         {/* Products card */}
-        <Card className="rounded-2xl shadow-ambient bg-card flex-1">
+        <Card className="rounded-2xl shadow-sm bg-card flex-1">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base font-bold">Sản phẩm</CardTitle>
@@ -356,7 +356,7 @@ export function OrderForm() {
                       <Link
                         href="/products/new"
                         target="_blank"
-                        className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                        className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-muted/30 rounded-lg transition-colors"
                       >
                         <Plus className="h-3 w-3" /> Tạo sản phẩm mới
                         <ExternalLink className="h-3 w-3 ml-auto" />
@@ -377,7 +377,7 @@ export function OrderForm() {
                 className="h-10"
               />
               {filteredProducts.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-ambient-md max-h-72 overflow-y-auto">
+                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-md max-h-72 overflow-y-auto">
                   {filteredProducts.slice(0, 10).map((p) => {
                     const groupId = selectedCustomer?.group_id
                     const priceEntry = p.price_lists?.find(
@@ -388,7 +388,7 @@ export function OrderForm() {
                         key={p.id}
                         type="button"
                         onClick={() => addLine(p.id)}
-                        className="w-full text-left px-4 py-3 hover:bg-surface-low transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
+                        className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
                       >
                         <div>
                           <p className="font-semibold text-sm">{p.name}</p>
@@ -407,7 +407,7 @@ export function OrderForm() {
                     <Link
                       href="/products/new"
                       target="_blank"
-                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-muted/30 rounded-lg transition-colors"
                     >
                       <Plus className="h-3 w-3" /> Tạo sản phẩm mới
                       <ExternalLink className="h-3 w-3 ml-auto" />
@@ -420,7 +420,7 @@ export function OrderForm() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-surface-low text-left">
+                  <tr className="bg-muted/30 text-left">
                     <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10">
                       #
                     </th>
@@ -447,7 +447,7 @@ export function OrderForm() {
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {lines.map((line, i) => (
-                    <tr key={i} className="hover:bg-surface-low/40 transition-colors">
+                    <tr key={i} className="hover:bg-muted/30/40 transition-colors">
                       <td className="px-3 py-2 text-muted-foreground font-medium">{i + 1}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col">
@@ -547,7 +547,7 @@ export function OrderForm() {
         {/* Notes + Summary row */}
         <div className="flex flex-col lg:flex-row justify-between gap-6">
           <div className="w-full lg:w-1/2">
-            <Card className="rounded-2xl shadow-ambient bg-card h-full">
+            <Card className="rounded-2xl shadow-sm bg-card h-full">
               <CardHeader>
                 <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
               </CardHeader>
@@ -563,7 +563,7 @@ export function OrderForm() {
           </div>
 
           <div className="w-full lg:w-80">
-            <div className="bg-gradient-primary text-white rounded-2xl shadow-ambient-md p-6 relative overflow-hidden">
+            <div className="bg-primary text-white rounded-2xl shadow-md p-6 relative overflow-hidden">
               <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-3xl pointer-events-none" />
               <div className="relative space-y-4">
                 <div className="flex items-center justify-between text-sm">
@@ -583,7 +583,7 @@ export function OrderForm() {
                   <span className="text-xs font-bold uppercase tracking-widest text-white/80">
                     Tổng cộng
                   </span>
-                  <span className="text-3xl font-black tracking-tight">
+                  <span className="text-2xl font-bold tracking-tight">
                     {formatCurrency(total)}
                   </span>
                 </div>

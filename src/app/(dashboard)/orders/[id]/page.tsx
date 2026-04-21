@@ -319,7 +319,7 @@ export default function OrderDetailPage() {
               <p className="text-sm">Tạm tính: {formatCurrency(order.subtotal)}</p>
               <p className="text-sm">Chiết khấu: {formatCurrency(order.discount)}</p>
               <p className="text-sm">VAT: {formatCurrency(order.vat)}</p>
-              <p className="text-lg font-black">Tổng: {formatCurrency(order.total)}</p>
+              <p className="text-lg font-bold">Tổng: {formatCurrency(order.total)}</p>
             </div>
           </CardContent>
         </Card>
@@ -402,7 +402,7 @@ export default function OrderDetailPage() {
                           type="date"
                           value={editForm.expected_delivery}
                           onChange={(e) => setEditForm({ ...editForm, expected_delivery: e.target.value })}
-                          className="flex h-11 w-full rounded-xl border-0 bg-surface-low px-4 py-2 text-sm"
+                          className="flex h-11 w-full rounded-xl border-0 bg-muted/30 px-4 py-2 text-sm"
                         />
                       </div>
                     </>
@@ -436,7 +436,7 @@ export default function OrderDetailPage() {
                 {receivableId ? (
                   <Link
                     href={`/receivables/${receivableId}`}
-                    className="flex items-center justify-between rounded-lg bg-surface-low p-3 hover:bg-surface-container transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <CreditCard className="h-4 w-4 text-primary" />

@@ -287,7 +287,7 @@ export default function OrdersPage() {
 
       {(isSales || isDriver) && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
           {isSales
             ? "Bạn chỉ thấy đơn do bạn tạo. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
             : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
@@ -400,7 +400,7 @@ export default function OrdersPage() {
       )}
 
       {selectedIds.size > 0 && (
-        <Card className="rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-ambient">
+        <Card className="rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-sm">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
             <div className="text-sm font-semibold text-primary">
               {selectedIds.size} đơn đã chọn

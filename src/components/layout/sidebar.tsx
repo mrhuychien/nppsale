@@ -152,50 +152,50 @@ export function Sidebar({ role }: SidebarProps) {
   }
 
   return (
-    <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-surface-low h-screen sticky top-0">
+    <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-card border-r border-border/50 h-screen sticky top-0">
       {/* Logo */}
-      <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-black text-xl shadow-ambient">
+      <div className="px-5 py-4 flex items-center gap-3">
+        <div className="w-9 h-9 bg-primary rounded-[10px] flex items-center justify-center text-white font-black text-lg">
           N
         </div>
         <div>
-          <h1 className="text-base font-black text-primary leading-none">npp.sale</h1>
-          <p className="text-[10px] text-muted-foreground font-medium tracking-wider mt-1">PHÂN PHỐI FMCG</p>
+          <h1 className="text-sm font-bold text-primary leading-none">npp.sale</h1>
+          <p className="text-[10px] text-muted-foreground font-medium mt-0.5">PHÂN PHỐI FMCG</p>
         </div>
       </div>
 
       {/* Quick CTA */}
       {canCreateOrder && (
-        <div className="px-4 mb-4">
+        <div className="px-4 mb-3">
           <Link
             href="/orders/new"
-            className="w-full bg-gradient-primary text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 shadow-ambient-md hover:scale-[0.98] transition-all"
+            className="w-full bg-primary text-white py-2.5 px-4 rounded-[10px] font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-primary/90 transition-colors"
           >
-            <Plus className="h-5 w-5" />
+            <Plus className="h-4 w-4" />
             Tạo đơn mới
           </Link>
         </div>
       )}
 
       {/* Home shortcut (always visible, pinned) */}
-      <div className="px-3 mb-2">
+      <div className="px-3 mb-1">
         <Link
           href="/home"
           className={cn(
-            "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all",
+            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
             pathname === "/home"
-              ? "bg-surface-lowest text-primary font-semibold shadow-ambient"
-              : "text-muted-foreground hover:bg-surface-container/50 font-medium"
+              ? "bg-primary/[0.08] text-primary font-medium"
+              : "text-muted-foreground hover:bg-muted/50 font-medium"
           )}
         >
-          <Home className="h-5 w-5 shrink-0" />
+          <Home className="h-4 w-4 shrink-0" />
           <span>Trang chủ</span>
         </Link>
       </div>
 
       {/* Module groups */}
       <ScrollArea className="flex-1 px-3">
-        <nav className="space-y-1">
+        <nav className="space-y-0.5">
           {visibleGroups.map((group, groupIdx) => {
             const isExpanded = expandedGroups.has(groupIdx)
             const hasActiveChild = group.items.some(
@@ -209,19 +209,19 @@ export function Sidebar({ role }: SidebarProps) {
                 <button
                   onClick={() => toggleGroup(groupIdx)}
                   className={cn(
-                    "w-full flex items-center justify-between px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                    "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors",
                     hasActiveChild
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <GroupIcon className="h-4 w-4" />
+                    <GroupIcon className="h-3.5 w-3.5" />
                     <span>{group.label}</span>
                   </div>
                   <ChevronRight
                     className={cn(
-                      "h-3.5 w-3.5 transition-transform duration-200",
+                      "h-3 w-3 transition-transform duration-200",
                       isExpanded && "rotate-90"
                     )}
                   />
@@ -229,7 +229,7 @@ export function Sidebar({ role }: SidebarProps) {
 
                 {/* Group items */}
                 {isExpanded && (
-                  <div className="ml-3 pl-3 border-l border-border/50 space-y-0.5 mb-2">
+                  <div className="ml-3 pl-3 border-l border-border/40 space-y-0.5 mb-1.5">
                     {group.items.map((item) => {
                       const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
                       return (
@@ -237,10 +237,10 @@ export function Sidebar({ role }: SidebarProps) {
                           key={item.href}
                           href={item.href}
                           className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all",
+                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                             isActive
-                              ? "bg-surface-lowest text-primary font-semibold shadow-sm"
-                              : "text-muted-foreground hover:bg-surface-container/50 font-medium"
+                              ? "bg-primary/[0.08] text-primary font-medium"
+                              : "text-muted-foreground hover:bg-muted/50 font-medium"
                           )}
                         >
                           <item.icon className="h-4 w-4 shrink-0" />
@@ -257,17 +257,17 @@ export function Sidebar({ role }: SidebarProps) {
       </ScrollArea>
 
       {/* Footer Links */}
-      <div className="p-4 mt-auto space-y-1 border-t border-border/30">
+      <div className="p-3 mt-auto space-y-0.5 border-t border-border/40">
         <Link
           href="/help"
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg"
+          className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg"
         >
           <HelpCircle className="h-4 w-4" />
           Hỗ trợ
         </Link>
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-muted-foreground font-medium hover:text-destructive transition-colors text-sm rounded-lg"
+          className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground font-medium hover:text-destructive transition-colors text-sm rounded-lg"
         >
           <LogOut className="h-4 w-4" />
           Đăng xuất

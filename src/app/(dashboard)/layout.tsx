@@ -28,7 +28,7 @@ export default function DashboardLayout({
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center space-y-3">
-          <div className="w-12 h-12 mx-auto bg-gradient-primary rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-ambient animate-pulse">
+          <div className="w-12 h-12 mx-auto bg-primary rounded-[10px] flex items-center justify-center text-white font-black text-2xl animate-pulse">
             N
           </div>
           <p className="text-sm text-muted-foreground">Đang tải...</p>
@@ -40,24 +40,24 @@ export default function DashboardLayout({
   if (authError) {
     return (
       <div className="flex h-screen items-center justify-center bg-background p-4">
-        <div className="bg-card rounded-2xl shadow-ambient p-8 max-w-md w-full text-center space-y-4">
+        <div className="bg-card rounded-2xl border border-border/40 p-8 max-w-md w-full text-center space-y-4">
           <div className="w-12 h-12 mx-auto bg-destructive/10 rounded-2xl flex items-center justify-center text-destructive text-2xl font-black">
-            ⚠
+            !
           </div>
           <div>
-            <h2 className="text-lg font-bold mb-1">Không thể kết nối</h2>
+            <h2 className="text-lg font-semibold mb-1">Không thể kết nối</h2>
             <p className="text-sm text-muted-foreground">{authError}</p>
           </div>
           <div className="flex gap-2 justify-center">
             <button
               onClick={() => window.location.reload()}
-              className="bg-gradient-primary text-white px-4 py-2 rounded-xl text-sm font-semibold"
+              className="bg-primary text-white px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
               Thử lại
             </button>
             <button
               onClick={() => router.push("/login")}
-              className="bg-surface-low text-foreground px-4 py-2 rounded-xl text-sm font-semibold"
+              className="bg-muted text-foreground px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-muted/80 transition-colors"
             >
               Đăng nhập lại
             </button>
@@ -95,14 +95,14 @@ export default function DashboardLayout({
       <Sidebar role={role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 bg-surface-low border-0">
+        <SheetContent side="left" className="w-72 p-0 bg-card border-0">
           <Sidebar role={role} />
         </SheetContent>
       </Sheet>
 
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 pb-24 lg:p-6 lg:pb-6">
+        <main className="flex-1 p-6 pb-24 lg:pb-6">
           {children}
         </main>
       </div>

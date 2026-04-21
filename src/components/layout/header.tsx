@@ -62,7 +62,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "Dashboard"
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel px-4 lg:px-6 py-3 flex items-center justify-between shadow-ambient">
+    <header className="sticky top-0 z-40 w-full bg-card/80 backdrop-blur border-b border-border/50 px-4 lg:px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-4 min-w-0 flex-1">
         <Button
           variant="ghost"
@@ -72,7 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h2 className="text-base lg:text-xl font-bold tracking-tight text-foreground truncate">
+        <h2 className="text-base lg:text-lg font-semibold tracking-tight text-foreground truncate">
           {pageTitle}
         </h2>
       </div>
@@ -84,29 +84,29 @@ export function Header({ onMenuClick }: HeaderProps) {
           <input
             type="text"
             placeholder="Tìm kiếm nhanh..."
-            className="pl-10 pr-4 py-2 bg-surface-low border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none w-56"
+            className="pl-10 pr-4 py-2 bg-card border border-border/60 rounded-[10px] text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none w-56"
           />
         </div>
 
         {/* Notifications */}
-        <button className="p-2 text-muted-foreground hover:bg-surface-low rounded-full transition-colors relative">
+        <button className="p-2 text-muted-foreground hover:bg-muted/50 rounded-lg transition-colors relative">
           <Bell className="h-5 w-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full"></span>
+          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-destructive rounded-full"></span>
         </button>
 
-        <div className="hidden sm:block h-8 w-px bg-border mx-1"></div>
+        <div className="hidden sm:block h-6 w-px bg-border/50 mx-1"></div>
 
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 hover:bg-surface-low rounded-full pl-1 pr-3 py-1 transition-colors">
-              <Avatar className="h-8 w-8 border-2 border-white shadow-sm">
+            <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg pl-1 pr-3 py-1 transition-colors">
+              <Avatar className="h-8 w-8 border border-border/40">
                 <AvatarFallback className="text-xs bg-primary text-white font-semibold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden lg:block text-left">
-                <p className="text-sm font-semibold leading-none">{user?.full_name}</p>
+                <p className="text-sm font-medium leading-none">{user?.full_name}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   {user?.role ? ROLE_LABELS[user.role] : ""}
                 </p>

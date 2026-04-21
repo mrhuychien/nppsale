@@ -328,7 +328,7 @@ export default function PjpPage() {
         </div>
       ) : dayRoutes.length === 0 ? (
         <EmptyState
-          icon={MapPin}
+          icon={<MapPin className="h-8 w-8 text-muted-foreground" />}
           title="Chưa có tuyến"
           description={isManager ? "Thêm khách hàng vào tuyến cho ngày này" : "Chưa có tuyến. Liên hệ quản lý."}
         />

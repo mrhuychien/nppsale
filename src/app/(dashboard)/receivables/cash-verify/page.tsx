@@ -142,7 +142,7 @@ export default function CashVerifyPage() {
         </div>
       ) : collections.length === 0 ? (
         <EmptyState
-          icon={Wallet}
+          icon={<Wallet className="h-8 w-8 text-muted-foreground" />}
           title="Chưa có phiếu nộp tiền"
           description="Không có phiếu nộp tiền nào cho ngày đã chọn"
         />

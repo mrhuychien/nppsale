@@ -24,7 +24,7 @@ import { formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
-  CheckCheck, AlertCircle, ClipboardCheck,
+  CheckCheck, AlertCircle, ClipboardCheck, PackageCheck,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, User } from "@/types"
 
@@ -434,7 +434,7 @@ export default function DeliveryDetailPage() {
           {/* Handoff card */}
           {delivery.status === "pending" || (delivery.warehouse_confirmed_at && delivery.driver_confirmed_at) ? (
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> Bàn giao</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><PackageCheck className="h-4 w-4" /> Bàn giao</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {delivery.warehouse_confirmed_at && delivery.driver_confirmed_at ? (
                   <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg p-3">

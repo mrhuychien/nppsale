@@ -68,6 +68,42 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Server-side role check for admin routes
+  if (user && request.nextUrl.pathname.startsWith("/settings")) {
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle()
+      if (profile && !["owner", "manager"].includes(profile.role)) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/dashboard"
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // Let client-side handle if query fails
+    }
+  }
+
+  // Server-side role check for HR routes
+  if (user && request.nextUrl.pathname.startsWith("/hr")) {
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle()
+      if (profile && !["owner", "manager", "accountant"].includes(profile.role)) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/dashboard"
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // Let client-side handle
+    }
+  }
+
   // Redirect authenticated users away from login
   if (user && request.nextUrl.pathname.startsWith("/login")) {
     const url = request.nextUrl.clone()

@@ -104,9 +104,10 @@ const NAV_GROUPS: NavGroup[] = [
 
 interface SidebarProps {
   role: Role
+  mobile?: boolean
 }
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, mobile }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { signOut } = useAuth()
@@ -152,7 +153,10 @@ export function Sidebar({ role }: SidebarProps) {
   }
 
   return (
-    <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-card border-r border-border/50 h-screen sticky top-0">
+    <aside className={cn(
+      "flex flex-col bg-card h-screen",
+      mobile ? "w-full" : "hidden lg:flex lg:w-64 border-r border-border/50 sticky top-0"
+    )}>
       {/* Logo */}
       <div className="px-5 py-4 flex items-center gap-3">
         <div className="w-9 h-9 bg-primary rounded-[10px] flex items-center justify-center text-white font-black text-lg">

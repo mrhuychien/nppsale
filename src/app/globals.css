@@ -4,35 +4,43 @@
 
 @layer base {
   :root {
-    /* "Precision Architect" Design System - Material Design 3 tokens */
-    --background: 240 100% 98.8%;        /* #f9f9ff - Surface bright */
-    --foreground: 217 28% 12%;           /* #151c27 - On surface */
-    --card: 0 0% 100%;                   /* #ffffff - Surface container lowest */
-    --card-foreground: 217 28% 12%;
+    /* Claude Design System - Premium ERP */
+    --background: 220 20% 97%;
+    --foreground: 220 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 30% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 217 28% 12%;
-    --primary: 219 100% 39%;             /* #004ac6 - Primary command */
+    --popover-foreground: 220 30% 10%;
+    --primary: 220 90% 45%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 18% 38%;            /* #515f74 - Secondary */
+    --secondary: 220 15% 40%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 222 78% 96%;                /* #f0f3ff - Surface container low */
-    --muted-foreground: 224 13% 30%;     /* #434655 - On surface variant */
-    --accent: 220 50% 95%;               /* #e7eefe - Surface container */
-    --accent-foreground: 217 28% 12%;
-    --destructive: 0 75% 41%;            /* #ba1a1a - Error */
+    --muted: 220 20% 95%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 220 30% 94%;
+    --accent-foreground: 220 30% 10%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 230 19% 80%;               /* #c3c6d7 - Outline variant */
-    --input: 222 78% 96%;                /* surface-container-low for inputs */
-    --ring: 219 100% 39%;
-    --radius: 0.5rem;
+    --border: 220 15% 90%;
+    --input: 220 20% 95%;
+    --ring: 220 90% 45%;
+    --radius: 0.625rem;
 
-    /* Custom tokens for the design */
-    --surface-container-lowest: 0 0% 100%;     /* #ffffff */
-    --surface-container-low: 222 78% 96%;      /* #f0f3ff */
-    --surface-container: 220 89% 94%;          /* #e7eefe */
-    --surface-container-high: 222 64% 93%;     /* #e2e8f8 */
-    --surface-container-highest: 220 50% 91%;  /* #dce2f3 */
-    --surface-dim: 222 35% 87%;                /* #d3daea */
+    /* Surface layers */
+    --surface-container-lowest: 0 0% 100%;
+    --surface-container-low: 220 25% 97%;
+    --surface-container: 220 25% 95%;
+    --surface-container-high: 220 20% 93%;
+    --surface-container-highest: 220 15% 91%;
+    --surface-dim: 220 15% 87%;
+
+    /* Semantic colors */
+    --success: 152 60% 40%;
+    --success-light: 152 60% 95%;
+    --warning: 38 95% 50%;
+    --warning-light: 38 95% 95%;
+    --info: 210 90% 55%;
+    --info-light: 210 90% 95%;
   }
 }
 
@@ -44,6 +52,35 @@
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Better scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+
+  /* Selection color */
+  ::selection {
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
   }
 }
 
@@ -58,46 +95,126 @@
 }
 
 @layer utilities {
-  /* Glassmorphism for floating elements */
+  /* Glassmorphism */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
   }
 
-  /* Ambient shadow tinted with primary */
+  /* Shadows - layered for depth */
   .shadow-ambient {
-    box-shadow: 0 10px 30px -10px rgba(0, 74, 198, 0.04);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.03),
+      0 4px 12px rgba(0, 0, 0, 0.04);
   }
 
   .shadow-ambient-md {
-    box-shadow: 0 10px 30px -10px rgba(0, 74, 198, 0.08);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(0, 0, 0, 0.06);
   }
 
-  /* Gradient for primary CTAs */
+  .shadow-ambient-lg {
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 16px 48px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Primary gradient - richer */
   .bg-gradient-primary {
-    background: linear-gradient(135deg, #004ac6 0%, #2563eb 100%);
+    background: linear-gradient(135deg, hsl(220 90% 42%) 0%, hsl(220 90% 55%) 100%);
   }
 
-  /* Safe area for iOS notch/home indicator */
+  /* Hover card lift */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 16px 48px rgba(0, 0, 0, 0.08);
+  }
+
+  /* iOS safe area */
   .safe-area-bottom {
     padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
   }
 
-  /* Improve touch targets on mobile */
+  /* Mobile touch targets */
   @media (max-width: 1024px) {
-    button, a, [role="button"] {
-      min-height: 44px;
-    }
     input, select, textarea {
-      font-size: 16px !important; /* prevent iOS zoom on focus */
+      font-size: 16px !important;
     }
   }
 
-  /* Surface layering */
+  /* Surface layers */
   .bg-surface-lowest { background-color: hsl(var(--surface-container-lowest)); }
   .bg-surface-low { background-color: hsl(var(--surface-container-low)); }
   .bg-surface-container { background-color: hsl(var(--surface-container)); }
   .bg-surface-high { background-color: hsl(var(--surface-container-high)); }
   .bg-surface-highest { background-color: hsl(var(--surface-container-highest)); }
+
+  /* Semantic utilities */
+  .text-success { color: hsl(var(--success)); }
+  .bg-success-light { background-color: hsl(var(--success-light)); }
+  .text-warning { color: hsl(var(--warning)); }
+  .bg-warning-light { background-color: hsl(var(--warning-light)); }
+
+  /* Smooth page transitions */
+  .page-enter {
+    animation: fadeInUp 0.3s ease-out;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Component layer - consistent patterns */
+@layer components {
+  /* Stat card pattern */
+  .stat-card {
+    @apply bg-card rounded-2xl shadow-ambient p-5 relative overflow-hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.3));
+    border-radius: 999px 999px 0 0;
+  }
+
+  /* Section header pattern */
+  .section-header {
+    @apply text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3;
+  }
+
+  /* Data table pattern */
+  .data-table {
+    @apply bg-card rounded-2xl shadow-ambient overflow-hidden;
+  }
+  .data-table thead {
+    @apply bg-muted/50;
+  }
+  .data-table th {
+    @apply px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground text-left;
+  }
+  .data-table td {
+    @apply px-4 py-3 text-sm;
+  }
+  .data-table tbody tr {
+    @apply border-t border-border/30 transition-colors hover:bg-muted/30;
+  }
 }

@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink } from "lucide-react"
+import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X } from "lucide-react"
 import Link from "next/link"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
@@ -35,6 +35,8 @@ export function OrderForm() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<(Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]>([])
   const [customerId, setCustomerId] = useState("")
+  const [customerSearch, setCustomerSearch] = useState("")
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false)
   const [paymentTerms, setPaymentTerms] = useState("COD")
   const [expectedDelivery, setExpectedDelivery] = useState("")
   const [notes, setNotes] = useState("")
@@ -58,6 +60,32 @@ export function OrderForm() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
+
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearch.trim()) return true
+    const q = customerSearch.toLowerCase()
+    return c.store_name.toLowerCase().includes(q) || c.phone.includes(q) || c.owner_name.toLowerCase().includes(q)
+  }).slice(0, 8)
+
+  const selectCustomer = (id: string) => {
+    setCustomerId(id)
+    const c = customers.find((x) => x.id === id)
+    if (c) setCustomerSearch(c.store_name)
+    setCustomerDropdownOpen(false)
+  }
+
+  const handleBarcodeScan = () => {
+    // Use prompt as simple fallback for barcode input
+    const barcode = window.prompt("Quét hoặc nhập mã vạch sản phẩm:")
+    if (!barcode) return
+    const product = products.find((p) => p.barcode === barcode || p.sku === barcode)
+    if (product) {
+      addLine(product.id)
+      toast({ title: `Đã thêm: ${product.name}` })
+    } else {
+      toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${barcode}`, variant: "destructive" })
+    }
+  }
 
   useEffect(() => {
     if (selectedCustomer?.payment_terms) {
@@ -235,36 +263,69 @@ export function OrderForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Khách hàng *
-              </Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Tìm tên hoặc mã KH..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.store_name} - {c.phone}
-                    </SelectItem>
-                  ))}
-                  <div className="border-t border-border/50 mt-1 pt-1 px-2 pb-1">
-                    <Link
-                      href="/customers/new"
-                      target="_blank"
-                      className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-muted/30 rounded-lg transition-colors"
-                    >
-                      <Plus className="h-3 w-3" /> Tạo khách hàng mới
-                      <ExternalLink className="h-3 w-3 ml-auto" />
-                    </Link>
+              <Label className="text-sm font-medium">Khách hàng *</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={customerSearch}
+                  onChange={(e) => {
+                    setCustomerSearch(e.target.value)
+                    setCustomerDropdownOpen(true)
+                    if (!e.target.value) setCustomerId("")
+                  }}
+                  onFocus={() => setCustomerDropdownOpen(true)}
+                  placeholder="Gõ tên, SĐT hoặc chủ cửa hàng..."
+                  className="pl-9 pr-8"
+                />
+                {customerSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setCustomerSearch(""); setCustomerId(""); setCustomerDropdownOpen(false) }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                {customerDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-md max-h-64 overflow-y-auto">
+                    {filteredCustomers.length === 0 ? (
+                      <div className="p-3 text-sm text-muted-foreground text-center">Không tìm thấy</div>
+                    ) : (
+                      filteredCustomers.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCustomer(c.id)}
+                          className={`w-full text-left px-3 py-2.5 hover:bg-muted/30 transition-colors flex items-center justify-between ${
+                            c.id === customerId ? "bg-primary/5 text-primary" : ""
+                          }`}
+                        >
+                          <div>
+                            <p className="font-medium text-sm">{c.store_name}</p>
+                            <p className="text-xs text-muted-foreground">{c.phone} • {c.owner_name}</p>
+                          </div>
+                          {c.id === customerId && <span className="text-primary text-xs font-bold">✓</span>}
+                        </button>
+                      ))
+                    )}
+                    <div className="border-t border-border/30 p-1.5">
+                      <Link
+                        href="/customers/new"
+                        target="_blank"
+                        className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-muted/30 rounded-lg"
+                      >
+                        <Plus className="h-3 w-3" /> Tạo khách hàng mới
+                        <ExternalLink className="h-3 w-3 ml-auto" />
+                      </Link>
+                    </div>
                   </div>
-                </SelectContent>
-              </Select>
+                )}
+              </div>
               {selectedCustomer && (
                 <Link
                   href={`/customers/${selectedCustomer.id}`}
                   target="_blank"
-                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
                 >
                   Xem / Sửa khách hàng <ExternalLink className="h-3 w-3" />
                 </Link>
@@ -368,14 +429,16 @@ export function OrderForm() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Inline product search - ABOVE table to avoid overflow clipping */}
-            <div className="relative">
-              <Input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Tìm nhanh: gõ tên hoặc mã SKU sản phẩm..."
-                className="h-10"
-              />
+            {/* Product search + barcode scan */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Tìm tên hoặc mã SKU..."
+                  className="pl-9"
+                />
               {filteredProducts.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-md max-h-72 overflow-y-auto">
                   {filteredProducts.slice(0, 10).map((p) => {
@@ -415,6 +478,17 @@ export function OrderForm() {
                   </div>
                 </div>
               )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleBarcodeScan}
+                title="Quét mã vạch"
+                className="shrink-0 h-10 w-10"
+              >
+                <ScanBarcode className="h-5 w-5" />
+              </Button>
             </div>
 
             <div className="overflow-x-auto">
@@ -609,6 +683,10 @@ export function OrderForm() {
           </div>
         </div>
       </div>
+      {/* Click-outside to close customer dropdown */}
+      {customerDropdownOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setCustomerDropdownOpen(false)} />
+      )}
     </form>
   )
 }

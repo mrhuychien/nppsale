@@ -9,6 +9,7 @@ export type DeliveryStatus = "pending" | "in_transit" | "completed" | "cancelled
 export type DeliveryLineStatus = "pending" | "delivered" | "partial" | "failed"
 export type PromotionType = "trade_discount" | "buy_x_get_y" | "payment_discount" | "cumulative" | "display"
 export type InvoiceStatus = "draft" | "issued" | "cancelled"
+export type MisaStatus = "pending" | "sent" | "signed" | "error"
 export type ReturnReason = "damaged" | "wrong_item" | "near_expiry" | "expired" | "refused"
 export type ReturnStatus = "pending" | "approved" | "rejected" | "completed"
 export type CommissionType = "percentage" | "fixed" | "tiered"
@@ -60,6 +61,12 @@ export interface Customer {
   gps_lat: number | null
   gps_lng: number | null
   created_at: string
+  // Billing fields for VAT invoice
+  billing_name: string | null
+  tax_code: string | null
+  billing_address: string | null
+  billing_email: string | null
+  payment_method_label: string | null
   // Joined
   group?: CustomerGroup
   assignments?: CustomerAssignment[]
@@ -337,6 +344,13 @@ export interface Invoice {
   status: InvoiceStatus
   issued_at: string | null
   created_at: string
+  // MISA meInvoice integration
+  misa_invoice_id: string | null
+  misa_invoice_url: string | null
+  misa_status: MisaStatus | null
+  misa_error: string | null
+  misa_sent_at: string | null
+  misa_signed_at: string | null
   // Joined
   order?: SalesOrder
 }

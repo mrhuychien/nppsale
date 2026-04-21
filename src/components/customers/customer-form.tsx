@@ -53,6 +53,11 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
     status: customer?.status || "active",
     gps_lat: customer?.gps_lat?.toString() || "",
     gps_lng: customer?.gps_lng?.toString() || "",
+    billing_name: customer?.billing_name || "",
+    tax_code: customer?.tax_code || "",
+    billing_address: customer?.billing_address || "",
+    billing_email: customer?.billing_email || "",
+    payment_method_label: customer?.payment_method_label || "Chuyển khoản",
   })
   const supabase = createClient()
   const router = useRouter()
@@ -144,6 +149,11 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         credit_limit: parseInt(form.credit_limit) || 0,
         payment_terms: form.payment_terms,
         status: form.status,
+        billing_name: form.billing_name || null,
+        tax_code: form.tax_code || null,
+        billing_address: form.billing_address || null,
+        billing_email: form.billing_email || null,
+        payment_method_label: form.payment_method_label || "Chuyển khoản",
       }
 
       // Include GPS if set
@@ -235,6 +245,57 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
                   </a>
                 </div>
               )}
+            </div>
+
+            {/* Thông tin xuất hóa đơn */}
+            <div className="sm:col-span-2 space-y-3 rounded-xl border border-border/40 bg-surface-low/50 p-4">
+              <Label className="text-sm font-bold">Thông tin xuất hóa đơn</Label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Tên xuất HĐ</Label>
+                  <Input
+                    value={form.billing_name}
+                    onChange={(e) => setForm({ ...form, billing_name: e.target.value })}
+                    placeholder="Tên trên hóa đơn VAT"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mã số thuế</Label>
+                  <Input
+                    value={form.tax_code}
+                    onChange={(e) => setForm({ ...form, tax_code: e.target.value })}
+                    placeholder="VD: 0102345678"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Địa chỉ xuất HĐ</Label>
+                  <Input
+                    value={form.billing_address}
+                    onChange={(e) => setForm({ ...form, billing_address: e.target.value })}
+                    placeholder="Địa chỉ trên hóa đơn"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email nhận HĐ</Label>
+                  <Input
+                    type="email"
+                    value={form.billing_email}
+                    onChange={(e) => setForm({ ...form, billing_email: e.target.value })}
+                    placeholder="email@company.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Hình thức TT</Label>
+                  <Select value={form.payment_method_label} onValueChange={(v) => setForm({ ...form, payment_method_label: v })}>
+                    <SelectTrigger><SelectValue placeholder="Chọn hình thức" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Chuyển khoản">Chuyển khoản</SelectItem>
+                      <SelectItem value="Tiền mặt">Tiền mặt</SelectItem>
+                      <SelectItem value="TM/CK">TM/CK</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             {/* PJP Routes display */}

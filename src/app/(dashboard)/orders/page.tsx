@@ -38,13 +38,14 @@ import {
   ChevronUp,
   Download,
   Eye,
+  FileText,
   Filter,
   Plus,
   Search,
   ShoppingCart,
   X,
 } from "lucide-react"
-import type { Customer, SalesOrder, User } from "@/types"
+import type { Customer, Invoice, SalesOrder, User } from "@/types"
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
@@ -53,9 +54,11 @@ export default function OrdersPage() {
   const isDriver = authUser?.role === "driver"
   const { toast } = useToast()
   const [orders, setOrders] = useState<SalesOrder[]>([])
+  const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice>>({})
   const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name">[]>([])
   const [loading, setLoading] = useState(true)
+  const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -83,9 +86,28 @@ export default function OrdersPage() {
         supabase.from("customers").select("id, store_name").order("store_name"),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
       ])
-      setOrders((ordersRes.data as SalesOrder[]) || [])
+      const allOrders = (ordersRes.data as SalesOrder[]) || []
+      setOrders(allOrders)
       setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
+
+      // Fetch invoices for delivered orders
+      const deliveredIds = allOrders
+        .filter((o) => o.status === "delivered")
+        .map((o) => o.id)
+      if (deliveredIds.length > 0) {
+        const { data: invoicesData } = await supabase
+          .from("invoices")
+          .select("*")
+          .in("order_id", deliveredIds)
+        if (invoicesData) {
+          const map: Record<string, Invoice> = {}
+          for (const inv of invoicesData as Invoice[]) {
+            if (inv.order_id) map[inv.order_id] = inv
+          }
+          setInvoiceMap(map)
+        }
+      }
       setLoading(false)
     }
     fetch()
@@ -194,6 +216,63 @@ export default function OrdersPage() {
     setSalesFilter("all")
     setAmountMin("")
     setAmountMax("")
+  }
+
+  const handleXuatHoaDonList = async (order: SalesOrder) => {
+    setMisaLoadingId(order.id)
+    try {
+      // Auto-create invoice if none exists
+      let invoiceId = invoiceMap[order.id]?.id
+      if (!invoiceId) {
+        const customer = order.customer as Record<string, unknown> | undefined
+        const { data: newInvoice, error: invErr } = await supabase
+          .from("invoices")
+          .insert({
+            org_id: order.org_id,
+            order_id: order.id,
+            invoice_number: null,
+            customer_name: (customer?.billing_name as string) || (customer?.store_name as string) || "",
+            customer_address: (customer?.billing_address as string) || (customer?.address as string) || null,
+            customer_tax_code: (customer?.tax_code as string) || null,
+            subtotal: order.subtotal,
+            vat: order.vat,
+            total: order.total,
+            status: "draft",
+            misa_status: "pending",
+          })
+          .select("id")
+          .single()
+        if (invErr || !newInvoice) throw new Error(invErr?.message || "Không thể tạo hóa đơn")
+        invoiceId = newInvoice.id
+      }
+
+      const res = await fetch("/api/invoice/misa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, invoiceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Gửi MISA thất bại")
+
+      toast({
+        title: "Xuất hóa đơn thành công",
+        description: `Số HĐ: ${data.invoice_number}${data.mock ? " (thử nghiệm)" : ""}`,
+      })
+
+      // Refresh invoice map
+      const { data: updatedInv } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("id", invoiceId)
+        .single()
+      if (updatedInv) {
+        setInvoiceMap((prev) => ({ ...prev, [order.id]: updatedInv as Invoice }))
+      }
+    } catch (error) {
+      toast({ title: "Lỗi xuất HĐ", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setMisaLoadingId(null)
+    }
   }
 
   return (
@@ -418,8 +497,28 @@ export default function OrdersPage() {
                     <TableCell>
                       <StatusBadge status={order.status} type="order" />
                     </TableCell>
-                    <TableCell>
-                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        {order.status === "delivered" && (
+                          invoiceMap[order.id]?.misa_status === "signed" ? (
+                            <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-green-100 text-green-600">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              disabled={misaLoadingId === order.id}
+                              onClick={() => handleXuatHoaDonList(order)}
+                            >
+                              <FileText className="h-3 w-3 mr-1" />
+                              {misaLoadingId === order.id ? "..." : "HĐ"}
+                            </Button>
+                          )
+                        )}
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

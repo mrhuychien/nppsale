@@ -21,9 +21,10 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { APPROVAL_THRESHOLDS, ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory } from "@/types"
+import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
 
 type NextStatus = {
   value: OrderStatus
@@ -59,6 +60,8 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
   const [receivableId, setReceivableId] = useState<string | null>(null)
+  const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [misaLoading, setMisaLoading] = useState(false)
   const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
@@ -72,12 +75,14 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes, historyRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes, invoiceRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
       supabase.from("order_status_history").select("*, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
+      supabase.from("invoices").select("*").eq("order_id", id).maybeSingle(),
     ])
+    setInvoice((invoiceRes.data as Invoice) || null)
     if (orderRes.data) {
       const o = orderRes.data as SalesOrder
       setOrder(o)
@@ -107,6 +112,56 @@ export default function OrderDetailPage() {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  const handleXuatHoaDon = async () => {
+    if (!order || !user) return
+    setMisaLoading(true)
+    try {
+      // Auto-create invoice if none exists
+      let currentInvoiceId = invoice?.id
+      if (!currentInvoiceId) {
+        const customer = order.customer
+        const { data: newInvoice, error: invErr } = await supabase
+          .from("invoices")
+          .insert({
+            org_id: order.org_id,
+            order_id: order.id,
+            invoice_number: null,
+            customer_name: customer?.billing_name || customer?.store_name || "",
+            customer_address: customer?.billing_address || customer?.address || null,
+            customer_tax_code: customer?.tax_code || null,
+            subtotal: order.subtotal,
+            vat: order.vat,
+            total: order.total,
+            status: "draft",
+            misa_status: "pending",
+          })
+          .select("id")
+          .single()
+        if (invErr || !newInvoice) throw new Error(invErr?.message || "Không thể tạo hóa đơn")
+        currentInvoiceId = newInvoice.id
+      }
+
+      // Call MISA API
+      const res = await fetch("/api/invoice/misa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, invoiceId: currentInvoiceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Gửi MISA thất bại")
+
+      toast({
+        title: "Xuất hóa đơn thành công",
+        description: `Số HĐ: ${data.invoice_number}${data.mock ? " (chế độ thử nghiệm)" : ""}`,
+      })
+      fetchData()
+    } catch (error) {
+      toast({ title: "Lỗi xuất hóa đơn", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setMisaLoading(false)
     }
   }
 
@@ -407,6 +462,82 @@ export default function OrderDetailPage() {
                       {actionLoading ? "Đang tạo..." : "Ghi nhận công nợ"}
                     </Button>
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Hóa đơn MISA */}
+          {order.status === "delivered" && (
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Hóa đơn</CardTitle></CardHeader>
+              <CardContent>
+                {invoice ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Số HĐ</span>
+                      <span className="font-mono font-bold text-sm">{invoice.misa_invoice_id || invoice.invoice_number || "Chưa có"}</span>
+                    </div>
+                    {invoice.misa_status && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Trạng thái MISA</span>
+                        <Badge variant={
+                          invoice.misa_status === "signed" ? "success"
+                          : invoice.misa_status === "error" ? "danger"
+                          : invoice.misa_status === "sent" ? "default"
+                          : "warning"
+                        }>
+                          {invoice.misa_status === "signed" ? "Đã ký"
+                          : invoice.misa_status === "error" ? "Lỗi"
+                          : invoice.misa_status === "sent" ? "Đã gửi"
+                          : "Đang chờ"}
+                        </Badge>
+                      </div>
+                    )}
+                    {invoice.misa_invoice_url && (
+                      <a
+                        href={invoice.misa_invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Tra cứu hóa đơn
+                      </a>
+                    )}
+                    {invoice.misa_status === "error" && (
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                          <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                          <span>{invoice.misa_error || "Lỗi không xác định"}</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={handleXuatHoaDon}
+                          disabled={misaLoading}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                          {misaLoading ? "Đang gửi lại..." : "Gửi lại"}
+                        </Button>
+                      </div>
+                    )}
+                    <Link
+                      href={`/invoices/${invoice.id}`}
+                      className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Xem chi tiết hóa đơn
+                    </Link>
+                  </div>
+                ) : (
+                  <Button
+                    className="w-full bg-gradient-to-r from-primary to-primary/80"
+                    onClick={handleXuatHoaDon}
+                    disabled={misaLoading}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    {misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn"}
+                  </Button>
                 )}
               </CardContent>
             </Card>

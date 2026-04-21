@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer } from "lucide-react"
+import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, RefreshCw, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 
 type NextStatus = {
@@ -61,6 +61,7 @@ export default function InvoiceDetailPage() {
     total: 0,
   })
   const [actionLoading, setActionLoading] = useState(false)
+  const [misaLoading, setMisaLoading] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -142,6 +143,29 @@ export default function InvoiceDetailPage() {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  const handleMisaRetry = async () => {
+    if (!invoice || !invoice.order_id) return
+    setMisaLoading(true)
+    try {
+      const res = await fetch("/api/invoice/misa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: invoice.order_id, invoiceId: invoice.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Gửi MISA thất bại")
+      toast({
+        title: "Gửi MISA thành công",
+        description: `Số HĐ: ${data.invoice_number}${data.mock ? " (thử nghiệm)" : ""}`,
+      })
+      fetchData()
+    } catch (error) {
+      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setMisaLoading(false)
     }
   }
 
@@ -321,6 +345,91 @@ export default function InvoiceDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* MISA meInvoice integration */}
+          {invoice.misa_status && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Tích hợp MISA meInvoice
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Trạng thái</span>
+                  <Badge variant={
+                    invoice.misa_status === "signed" ? "success"
+                    : invoice.misa_status === "error" ? "danger"
+                    : invoice.misa_status === "sent" ? "default"
+                    : "warning"
+                  }>
+                    {invoice.misa_status === "signed" ? "Đã ký số"
+                    : invoice.misa_status === "error" ? "Lỗi"
+                    : invoice.misa_status === "sent" ? "Đã gửi"
+                    : "Đang chờ"}
+                  </Badge>
+                </div>
+                {invoice.misa_invoice_id && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Số HĐ MISA</span>
+                    <span className="font-mono font-bold text-sm">{invoice.misa_invoice_id}</span>
+                  </div>
+                )}
+                {invoice.misa_sent_at && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Gửi lúc</span>
+                    <span className="text-sm">{formatDate(invoice.misa_sent_at)}</span>
+                  </div>
+                )}
+                {invoice.misa_signed_at && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Ký lúc</span>
+                    <span className="text-sm">{formatDate(invoice.misa_signed_at)}</span>
+                  </div>
+                )}
+                {invoice.misa_invoice_url && (
+                  <a
+                    href={invoice.misa_invoice_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Tra cứu hóa đơn
+                  </a>
+                )}
+                {invoice.misa_status === "error" && (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{invoice.misa_error || "Lỗi không xác định"}</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={handleMisaRetry}
+                      disabled={misaLoading}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      {misaLoading ? "Đang gửi lại..." : "Gửi lại"}
+                    </Button>
+                  </div>
+                )}
+                {invoice.misa_status === "pending" && invoice.order_id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleMisaRetry}
+                    disabled={misaLoading}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    {misaLoading ? "Đang kiểm tra..." : "Kiểm tra trạng thái"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Status transitions */}
           {(availableTransitions.length > 0 || canDelete) && (

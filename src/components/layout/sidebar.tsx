@@ -10,7 +10,7 @@ import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
-  ChevronRight, UserCog,
+  ChevronRight, UserCog, ClipboardList,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -51,12 +51,21 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Mua hàng",
+    icon: ClipboardList,
+    items: [
+      { label: "Đơn mua hàng", href: "/purchasing/orders", icon: ShoppingCart, module: "inventory" },
+      { label: "HĐ mua hàng", href: "/purchasing/invoices", icon: FileText, module: "inventory" },
+      { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory" },
+      { label: "CN nhà cung cấp", href: "/payables", icon: CreditCard, module: "receivables" },
+    ],
+  },
+  {
     label: "Kho vận",
     icon: Boxes,
     items: [
       { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory" },
       { label: "Sản phẩm", href: "/products", icon: Package, module: "products" },
-      { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory" },
     ],
   },
   {
@@ -66,7 +75,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
       { label: "CN theo KH", href: "/receivables/by-customer", icon: Users, module: "receivables" },
       { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog, module: "receivables" },
-      { label: "CN nhà cung cấp", href: "/payables", icon: Factory, module: "receivables" },
       { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices" },
     ],
   },

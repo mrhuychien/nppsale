@@ -445,6 +445,67 @@ export interface PayablePayment {
   verifier?: User
 }
 
+// Purchase Orders
+export type PurchaseOrderStatus = "draft" | "confirmed" | "received" | "partial" | "cancelled"
+export type PurchaseInvoiceStatus = "draft" | "confirmed" | "paid" | "cancelled"
+
+export interface PurchaseOrder {
+  id: string
+  org_id: string
+  po_code: string
+  supplier_id: string
+  order_date: string
+  expected_delivery: string | null
+  status: PurchaseOrderStatus
+  payment_terms: string | null
+  subtotal: number
+  vat: number
+  total: number
+  notes: string | null
+  approved_by: string | null
+  approved_at: string | null
+  created_by: string | null
+  created_at: string
+  // Joined
+  supplier?: Supplier
+  lines?: PurchaseOrderLine[]
+  creator?: User
+}
+
+export interface PurchaseOrderLine {
+  id: string
+  po_id: string
+  product_id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  vat_rate: number
+  line_discount: number
+  line_total: number
+  received_qty: number
+  // Joined
+  product?: Product
+}
+
+export interface PurchaseInvoice {
+  id: string
+  org_id: string
+  po_id: string | null
+  supplier_id: string
+  invoice_number: string | null
+  invoice_date: string
+  subtotal: number
+  vat: number
+  total: number
+  status: PurchaseInvoiceStatus
+  payable_id: string | null
+  notes: string | null
+  created_at: string
+  // Joined
+  supplier?: Supplier
+  purchase_order?: PurchaseOrder
+}
+
 // HR Module
 export interface HrSalaryConfig {
   id: string

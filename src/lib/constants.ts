@@ -60,6 +60,21 @@ export const DELIVERY_STATUS_MAP: Record<string, { label: string; variant: "defa
   failed: { label: "Thất bại", variant: "danger" },
 }
 
+export const PO_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
+  draft: { label: "Nháp", variant: "secondary" },
+  confirmed: { label: "Đã duyệt", variant: "default" },
+  received: { label: "Đã nhập kho", variant: "success" },
+  partial: { label: "Nhập 1 phần", variant: "warning" },
+  cancelled: { label: "Đã hủy", variant: "danger" },
+}
+
+export const PURCHASE_INVOICE_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
+  draft: { label: "Nháp", variant: "secondary" },
+  confirmed: { label: "Đã xác nhận", variant: "default" },
+  paid: { label: "Đã thanh toán", variant: "success" },
+  cancelled: { label: "Đã hủy", variant: "danger" },
+}
+
 export const RETURN_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   pending: { label: "Chờ duyệt", variant: "secondary" },
   approved: { label: "Đã duyệt", variant: "success" },

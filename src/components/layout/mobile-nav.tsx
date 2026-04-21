@@ -83,15 +83,15 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
       {fab && (
         <button
           onClick={() => router.push(fab.href)}
-          className="fixed right-5 bottom-[88px] z-50 lg:hidden w-14 h-14 bg-gradient-primary text-white rounded-full shadow-[0_8px_30px_-4px_rgba(0,74,198,0.5)] flex items-center justify-center active:scale-95 transition-transform"
+          className="fixed right-5 bottom-[88px] z-50 lg:hidden w-12 h-12 bg-primary text-white rounded-xl shadow-md flex items-center justify-center active:scale-95 transition-transform"
           title={fab.label}
         >
-          <Plus className="h-6 w-6" />
+          <Plus className="h-5 w-5" />
         </button>
       )}
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden glass-panel rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.05)] safe-area-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-card/90 backdrop-blur-xl border-t border-border/50 rounded-t-2xl safe-area-bottom">
         <div className="flex items-center justify-around px-2 pt-2 pb-5">
           {items.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
@@ -100,13 +100,13 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center justify-center rounded-2xl px-3 py-1.5 transition-all min-w-[60px]",
+                  "flex flex-col items-center justify-center rounded-[10px] px-3 py-1.5 transition-all min-w-[60px]",
                   isActive
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/8 text-primary"
                     : "text-muted-foreground active:scale-95"
                 )}
               >
-                <item.icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
+                <item.icon className={cn("h-[18px] w-[18px]", isActive && "stroke-[2.5px]")} />
                 <span className={cn(
                   "text-[10px] mt-0.5 font-medium",
                   isActive && "font-bold"
@@ -118,9 +118,9 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
           })}
           <button
             onClick={onMenuClick}
-            className="flex flex-col items-center justify-center rounded-2xl px-3 py-1.5 transition-all min-w-[60px] text-muted-foreground active:scale-95"
+            className="flex flex-col items-center justify-center rounded-[10px] px-3 py-1.5 transition-all min-w-[60px] text-muted-foreground active:scale-95"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-[18px] w-[18px]" />
             <span className="text-[10px] mt-0.5 font-medium">Menu</span>
           </button>
         </div>

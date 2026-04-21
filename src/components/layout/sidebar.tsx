@@ -62,6 +62,8 @@ const NAV_GROUPS: NavGroup[] = [
     icon: CreditCard,
     items: [
       { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
+      { label: "CN theo KH", href: "/receivables/by-customer", icon: Users, module: "receivables" },
+      { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog, module: "receivables" },
       { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices" },
     ],
   },

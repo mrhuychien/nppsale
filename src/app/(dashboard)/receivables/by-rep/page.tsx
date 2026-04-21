@@ -1,0 +1,235 @@
+"use client"
+
+import { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { useRoleGuard } from "@/hooks/use-role-guard"
+import { PageHeader } from "@/components/ui/page-header"
+import { Card, CardContent } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
+import { formatCurrency } from "@/lib/utils"
+import { UserCog } from "lucide-react"
+import type { Receivable } from "@/types"
+
+interface RepDebtRow {
+  userId: string
+  fullName: string
+  customerCount: number
+  customersWithDebt: number
+  totalDebt: number
+  totalPaid: number
+  totalAmount: number
+  overdueAmount: number
+  collectionRate: number
+  dso: number
+}
+
+export default function ReceivablesByRepPage() {
+  const { loading: authLoading } = useRoleGuard("receivables")
+  const [receivables, setReceivables] = useState<Receivable[]>([])
+  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
+  const router = useRouter()
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data } = await supabase
+        .from("receivables")
+        .select("*, sales_user:users!receivables_sales_user_id_fkey(id, full_name)")
+        .not("sales_user_id", "is", null)
+      setReceivables((data as Receivable[]) || [])
+      setLoading(false)
+    }
+    fetchData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rows: RepDebtRow[] = useMemo(() => {
+    const map = new Map<string, {
+      userId: string
+      fullName: string
+      customers: Set<string>
+      customersWithDebt: Set<string>
+      totalDebt: number
+      totalPaid: number
+      totalAmount: number
+      overdueAmount: number
+      agingDaysSum: number
+      agingCount: number
+    }>()
+
+    receivables.forEach((r) => {
+      if (!r.sales_user_id) return
+      const existing = map.get(r.sales_user_id)
+      const remaining = r.amount - r.paid
+      const isOverdue = r.status === "overdue"
+      const hasDebt = r.status !== "paid"
+
+      // Calculate aging days for DSO
+      let agingDays = 0
+      if (r.due_date) {
+        const now = new Date()
+        const due = new Date(r.due_date)
+        agingDays = Math.max(0, Math.ceil((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)))
+      }
+
+      if (existing) {
+        existing.customers.add(r.customer_id)
+        if (hasDebt) existing.customersWithDebt.add(r.customer_id)
+        existing.totalDebt += remaining
+        existing.totalPaid += r.paid
+        existing.totalAmount += r.amount
+        if (isOverdue) existing.overdueAmount += remaining
+        if (hasDebt) {
+          existing.agingDaysSum += agingDays
+          existing.agingCount += 1
+        }
+      } else {
+        const customers = new Set<string>()
+        customers.add(r.customer_id)
+        const customersWithDebt = new Set<string>()
+        if (hasDebt) customersWithDebt.add(r.customer_id)
+        map.set(r.sales_user_id, {
+          userId: r.sales_user_id,
+          fullName: r.sales_user?.full_name || "-",
+          customers,
+          customersWithDebt,
+          totalDebt: remaining,
+          totalPaid: r.paid,
+          totalAmount: r.amount,
+          overdueAmount: isOverdue ? remaining : 0,
+          agingDaysSum: hasDebt ? agingDays : 0,
+          agingCount: hasDebt ? 1 : 0,
+        })
+      }
+    })
+
+    const result: RepDebtRow[] = Array.from(map.values()).map((v) => ({
+      userId: v.userId,
+      fullName: v.fullName,
+      customerCount: v.customers.size,
+      customersWithDebt: v.customersWithDebt.size,
+      totalDebt: v.totalDebt,
+      totalPaid: v.totalPaid,
+      totalAmount: v.totalAmount,
+      overdueAmount: v.overdueAmount,
+      collectionRate: v.totalAmount > 0 ? Math.round((v.totalPaid / v.totalAmount) * 100) : 0,
+      dso: v.agingCount > 0 ? Math.round(v.agingDaysSum / v.agingCount) : 0,
+    }))
+
+    result.sort((a, b) => b.totalDebt - a.totalDebt)
+    return result
+  }, [receivables])
+
+  const totalOutstanding = rows.reduce((s, r) => s + r.totalDebt, 0)
+  const repsWithDebt = rows.filter((r) => r.totalDebt > 0).length
+  const worstRep = rows.reduce<RepDebtRow | null>((worst, r) => {
+    if (!worst || r.overdueAmount > worst.overdueAmount) return r
+    return worst
+  }, null)
+
+  if (authLoading || loading) return <Skeleton className="h-96" />
+
+  const rateColor = (rate: number) => {
+    if (rate >= 80) return "text-green-700"
+    if (rate >= 60) return "text-amber-600"
+    return "text-destructive"
+  }
+
+  const rateBadge = (rate: number) => {
+    if (rate >= 80) return <Badge variant="success">{rate}%</Badge>
+    if (rate >= 60) return <Badge variant="warning">{rate}%</Badge>
+    return <Badge variant="danger">{rate}%</Badge>
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Công nợ theo nhân viên bán hàng" backHref="/receivables" />
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tổng nợ NPP</p>
+            <p className="text-xl font-black mt-1">{formatCurrency(totalOutstanding)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Số NVBH có nợ</p>
+            <p className="text-xl font-black mt-1">{repsWithDebt}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">NVBH nợ quá hạn nhiều nhất</p>
+            <p className="text-xl font-black mt-1">
+              {worstRep && worstRep.overdueAmount > 0
+                ? `${worstRep.fullName} (${formatCurrency(worstRep.overdueAmount)})`
+                : "-"
+              }
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Table */}
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<UserCog className="h-8 w-8 text-muted-foreground" />}
+          title="Không có dữ liệu"
+          description="Chưa có công nợ nào gắn với nhân viên bán hàng"
+        />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>NVBH</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">Số KH phụ trách</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">Số KH đang nợ</TableHead>
+                    <TableHead className="text-right">Tổng nợ</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">Quá hạn</TableHead>
+                    <TableHead className="text-center">Tỷ lệ thu hồi</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">DSO</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow
+                      key={row.userId}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
+                    >
+                      <TableCell className="font-medium">{row.fullName}</TableCell>
+                      <TableCell className="text-right hidden sm:table-cell">{row.customerCount}</TableCell>
+                      <TableCell className="text-right hidden sm:table-cell">{row.customersWithDebt}</TableCell>
+                      <TableCell className="text-right font-bold">{formatCurrency(row.totalDebt)}</TableCell>
+                      <TableCell className="text-right hidden md:table-cell">
+                        {row.overdueAmount > 0 ? (
+                          <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">{rateBadge(row.collectionRate)}</TableCell>
+                      <TableCell className="text-right hidden md:table-cell">
+                        <span className={rateColor(100 - Math.min(row.dso, 100))}>
+                          {row.dso > 0 ? `${row.dso} ngày` : "-"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

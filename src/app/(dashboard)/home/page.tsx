@@ -25,6 +25,15 @@ interface HomeStats {
   openReceivables: number
 }
 
+interface PjpStop {
+  customer_id: string
+  store_name: string
+  address: string | null
+  visit_order: number
+  visit_status: "pending" | "checked_in" | "visited" | "skipped"
+  visit_log_id?: string
+}
+
 interface AssignedCustomer {
   customer_id: string
   store_name: string
@@ -59,6 +68,12 @@ export default function HomePage() {
     openReceivables: 0,
   })
   const [assignedCustomers, setAssignedCustomers] = useState<AssignedCustomer[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [pjpStops, setPjpStops] = useState<PjpStop[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [hasPjp, setHasPjp] = useState<boolean | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [greeting, setGreeting] = useState<string>("Chào bạn")
   const supabase = useMemo(() => createClient(), [])
@@ -216,6 +231,69 @@ export default function HomePage() {
     }
 
     fetchData()
+
+    // Fetch PJP route for today
+    async function fetchPjp() {
+      const myUserId = currentUser!.id
+      const jsDay = new Date().getDay()
+      const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1
+      const todayStr = new Date().toISOString().slice(0, 10)
+
+      const { data: pjpData } = await supabase
+        .from("pjp_routes")
+        .select("customer_id, visit_order, customer:customers(id, store_name, address)")
+        .eq("sales_user_id", myUserId)
+        .eq("day_of_week", dayOfWeek)
+        .eq("is_active", true)
+        .order("visit_order", { ascending: true })
+
+      if (cancelled) return
+
+      if (!pjpData || pjpData.length === 0) {
+        setHasPjp(false)
+        return
+      }
+
+      setHasPjp(true)
+
+      // Fetch today visit logs
+      const { data: visitLogs } = await supabase
+        .from("visit_logs")
+        .select("id, customer_id, check_in_at, check_out_at, result")
+        .eq("sales_user_id", myUserId)
+        .eq("visit_date", todayStr)
+
+      if (cancelled) return
+
+      const logMap = new Map((visitLogs || []).map((v: { id: string; customer_id: string; check_in_at: string | null; check_out_at: string | null; result: string | null }) => [v.customer_id, v]))
+
+      const stops: PjpStop[] = (pjpData as unknown as Array<{
+        customer_id: string
+        visit_order: number
+        customer: { id: string; store_name: string; address: string | null } | { id: string; store_name: string; address: string | null }[] | null
+      }>).map((r) => {
+        const c = Array.isArray(r.customer) ? r.customer[0] : r.customer
+        const log = logMap.get(r.customer_id) as { id: string; check_in_at: string | null; check_out_at: string | null; result: string | null } | undefined
+        let visit_status: PjpStop["visit_status"] = "pending"
+        if (log) {
+          if (log.check_out_at || log.result) visit_status = "visited"
+          else if (log.check_in_at) visit_status = "checked_in"
+        }
+        return {
+          customer_id: r.customer_id,
+          store_name: c?.store_name || "N/A",
+          address: c?.address || null,
+          visit_order: r.visit_order,
+          visit_status,
+          visit_log_id: log?.id,
+        }
+      })
+
+      setPjpStops(stops)
+    }
+
+    fetchPjp()
+
     return () => {
       cancelled = true
     }
@@ -225,11 +303,63 @@ export default function HomePage() {
   const firstName =
     currentUser?.full_name?.trim().split(/\s+/).slice(-1)[0] || "bạn"
 
+  // PJP-based progress
+  const pjpVisitedCount = pjpStops.filter((s) => s.visit_status === "visited").length
+  const pjpTotal = pjpStops.length
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const pjpProgressPct = pjpTotal ? Math.round((pjpVisitedCount / pjpTotal) * 100) : 0
+
   const visitedCount = assignedCustomers.filter((c) => c.visited).length
   const totalAssigned = assignedCustomers.length
   const progressPct = totalAssigned
     ? Math.round((visitedCount / totalAssigned) * 100)
     : 0
+
+  // PJP Check-in handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handlePjpCheckIn = async (customerId: string) => {
+    if (!currentUser) return
+    setCheckingIn(customerId)
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+      })
+      const todayStr = new Date().toISOString().slice(0, 10)
+      await supabase.from("visit_logs").insert({
+        sales_user_id: currentUser.id,
+        customer_id: customerId,
+        visit_date: todayStr,
+        check_in_at: new Date().toISOString(),
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        result: null,
+      })
+      setPjpStops((prev) =>
+        prev.map((s) =>
+          s.customer_id === customerId ? { ...s, visit_status: "checked_in" as const } : s
+        )
+      )
+    } catch {
+      alert("Không thể lấy vị trí GPS. Vui lòng bật định vị.")
+    }
+    setCheckingIn(null)
+  }
+
+  // PJP mark no order
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handlePjpNoOrder = async (customerId: string) => {
+    const stop = pjpStops.find((s) => s.customer_id === customerId)
+    if (!stop?.visit_log_id) return
+    await supabase
+      .from("visit_logs")
+      .update({ result: "no_order", check_out_at: new Date().toISOString() })
+      .eq("id", stop.visit_log_id)
+    setPjpStops((prev) =>
+      prev.map((s) =>
+        s.customer_id === customerId ? { ...s, visit_status: "visited" as const } : s
+      )
+    )
+  }
 
   if (authLoading || (loading && !error)) {
     return (

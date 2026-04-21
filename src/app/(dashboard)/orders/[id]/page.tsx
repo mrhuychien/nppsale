@@ -20,10 +20,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
-import { APPROVAL_THRESHOLDS, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink } from "lucide-react"
+import { APPROVAL_THRESHOLDS, ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock } from "lucide-react"
 import Link from "next/link"
-import type { SalesOrder, SalesOrderLine, OrderStatus } from "@/types"
+import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory } from "@/types"
 
 type NextStatus = {
   value: OrderStatus
@@ -59,6 +59,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
   const [receivableId, setReceivableId] = useState<string | null>(null)
+  const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -71,10 +72,11 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
+      supabase.from("order_status_history").select("*, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
     ])
     if (orderRes.data) {
       const o = orderRes.data as SalesOrder
@@ -87,6 +89,7 @@ export default function OrderDetailPage() {
     }
     setLines((linesRes.data as SalesOrderLine[]) || [])
     setReceivableId(recRes.data?.id || null)
+    setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -443,6 +446,46 @@ export default function OrderDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Status History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Lịch sử trạng thái
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {statusHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Chưa có thay đổi trạng thái</p>
+          ) : (
+            <div className="relative pl-6">
+              {/* Vertical line */}
+              <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-border" />
+              <div className="space-y-4">
+                {statusHistory.map((entry) => {
+                  const fromLabel = entry.from_status ? (ORDER_STATUS_MAP[entry.from_status]?.label || entry.from_status) : "Mới tạo"
+                  const toLabel = ORDER_STATUS_MAP[entry.to_status]?.label || entry.to_status
+                  const changerName = (entry.changer as unknown as { full_name: string })?.full_name || "Hệ thống"
+                  return (
+                    <div key={entry.id} className="relative flex items-start gap-3">
+                      {/* Dot */}
+                      <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-primary border-2 border-background" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          {fromLabel} <span className="text-muted-foreground mx-1">&rarr;</span> {toLabel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {changerName} &bull; {formatDate(entry.changed_at)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Status change confirm */}
       <ConfirmDialog

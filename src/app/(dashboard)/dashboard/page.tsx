@@ -53,6 +53,14 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Đã hủy",
 }
 
+type Period = "today" | "week" | "month" | "quarter"
+
+interface ChannelBreakdown {
+  channel: string
+  revenue: number
+  percent: number
+}
+
 export default function DashboardPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
@@ -60,6 +68,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [today, setToday] = useState<string>("")
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [period, setPeriod] = useState<Period>("month")
   const [stats, setStats] = useState<DashboardStats>({
     todayOrders: 0,
     monthRevenue: 0,
@@ -70,6 +80,8 @@ export default function DashboardPage() {
   })
   const [recentOrders, setRecentOrders] = useState<SalesOrder[]>([])
   const [topCustomers, setTopCustomers] = useState<TopCustomer[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [channelBreakdown, setChannelBreakdown] = useState<ChannelBreakdown[]>([])
   const supabase = createClient()
 
   useEffect(() => {
@@ -80,12 +92,25 @@ export default function DashboardPage() {
         const now = new Date()
         setToday(formatDate(now))
         const todayStr = now.toISOString().slice(0, 10)
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-          .toISOString()
-          .slice(0, 10)
         const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
           .toISOString()
           .slice(0, 10)
+
+        // Period-based date range
+        let periodStart: string
+        if (period === "today") {
+          periodStart = todayStr
+        } else if (period === "week") {
+          const dayOfWeek = now.getDay() || 7
+          const monday = new Date(now)
+          monday.setDate(now.getDate() - dayOfWeek + 1)
+          periodStart = monday.toISOString().slice(0, 10)
+        } else if (period === "quarter") {
+          const qMonth = Math.floor(now.getMonth() / 3) * 3
+          periodStart = new Date(now.getFullYear(), qMonth, 1).toISOString().slice(0, 10)
+        } else {
+          periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+        }
 
         const [
           todayOrdersRes,
@@ -96,15 +121,16 @@ export default function DashboardPage() {
           expiringRes,
           recentRes,
           topCustRes,
+          channelRes,
         ] = await Promise.all([
           supabase
             .from("sales_orders")
             .select("id", { count: "exact", head: true })
-            .eq("order_date", todayStr),
+            .gte("order_date", periodStart),
           supabase
             .from("sales_orders")
             .select("total")
-            .gte("order_date", firstDayOfMonth),
+            .gte("order_date", periodStart),
           supabase
             .from("receivables")
             .select("amount, paid, status")
@@ -130,7 +156,11 @@ export default function DashboardPage() {
           supabase
             .from("sales_orders")
             .select("customer_id, total, customer:customers(store_name)")
-            .gte("order_date", firstDayOfMonth),
+            .gte("order_date", periodStart),
+          supabase
+            .from("sales_orders")
+            .select("total, customer:customers(channel)")
+            .gte("order_date", periodStart),
         ])
 
         const monthRevenue = (monthOrdersRes.data || []).reduce(
@@ -171,6 +201,27 @@ export default function DashboardPage() {
           .sort((a, b) => b.total - a.total)
           .slice(0, 5)
 
+        // Channel breakdown
+        const channelMap = new Map<string, number>()
+        const channelRows = (channelRes.data || []) as unknown as Array<{
+          total: number
+          customer: { channel: string | null } | { channel: string | null }[] | null
+        }>
+        let channelTotal = 0
+        for (const row of channelRows) {
+          const cust = Array.isArray(row.customer) ? row.customer[0] : row.customer
+          const ch = cust?.channel || "Khác"
+          channelMap.set(ch, (channelMap.get(ch) || 0) + (row.total || 0))
+          channelTotal += row.total || 0
+        }
+        const channelList: ChannelBreakdown[] = Array.from(channelMap.entries())
+          .map(([channel, revenue]) => ({
+            channel,
+            revenue,
+            percent: channelTotal > 0 ? Math.round((revenue / channelTotal) * 100) : 0,
+          }))
+          .sort((a, b) => b.revenue - a.revenue)
+
         setStats({
           todayOrders: todayOrdersRes.count || 0,
           monthRevenue,
@@ -181,6 +232,7 @@ export default function DashboardPage() {
         })
         setRecentOrders((recentRes.data as SalesOrder[]) || [])
         setTopCustomers(topList)
+        setChannelBreakdown(channelList)
       } catch (err) {
         console.error("Dashboard fetch error:", err)
         setError(err instanceof Error ? err.message : "Không thể tải dữ liệu")
@@ -189,7 +241,7 @@ export default function DashboardPage() {
       }
     }
     fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading || loading) {
     return (
@@ -235,6 +287,28 @@ export default function DashboardPage() {
         description={today ? `Cập nhật ${today}` : undefined}
       />
 
+      {/* Period filter pills */}
+      <div className="flex gap-2 flex-wrap">
+        {([
+          { value: "today", label: "Hôm nay" },
+          { value: "week", label: "Tuần này" },
+          { value: "month", label: "Tháng này" },
+          { value: "quarter", label: "Quý này" },
+        ] as const).map((p) => (
+          <button
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+              period === p.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-surface-container text-muted-foreground hover:bg-surface-low"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {isSales && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
           <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
@@ -248,7 +322,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-primary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              {isSales ? "Doanh số của tôi (tháng)" : "Doanh thu tháng"}
+              {isSales ? "Doanh số của tôi" : "Doanh thu"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần" : period === "quarter" ? "quý" : "tháng"})
             </p>
             <span className="text-primary bg-primary/10 p-2 rounded-lg inline-flex">
               <Wallet className="h-5 w-5" />
@@ -274,7 +348,7 @@ export default function DashboardPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-6 border-l-4 border-secondary">
           <div className="flex justify-between items-start mb-4">
             <p className="text-sm font-semibold text-muted-foreground">
-              {isSales ? "Đơn tôi tạo hôm nay" : "Đơn hàng hôm nay"}
+              {isSales ? "Đơn tôi tạo" : "Đơn hàng"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"})
             </p>
             <span className="text-secondary bg-secondary/10 p-2 rounded-lg inline-flex">
               <ShoppingBasket className="h-5 w-5" />
@@ -325,6 +399,29 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* Channel Breakdown */}
+      {channelBreakdown.length > 0 && (
+        <div className="bg-card rounded-2xl shadow-ambient p-6">
+          <h4 className="text-lg font-bold text-foreground mb-4">Doanh thu theo kênh</h4>
+          <div className="space-y-4">
+            {channelBreakdown.map((ch) => (
+              <div key={ch.channel} className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">{ch.channel}</span>
+                  <span className="text-muted-foreground">{formatCurrency(ch.revenue)} ({ch.percent}%)</span>
+                </div>
+                <div className="h-3 bg-surface-low rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-primary rounded-full transition-all duration-500"
+                    style={{ width: `${Math.max(ch.percent, 2)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Charts + Top Customers */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">

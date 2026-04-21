@@ -26,7 +26,7 @@ import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
   CheckCheck, AlertCircle, ClipboardCheck,
 } from "lucide-react"
-import type { Delivery, DeliveryLine, DeliveryStatus, User } from "@/types"
+import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, User } from "@/types"
 
 type NextStatus = {
   value: DeliveryStatus
@@ -61,6 +61,9 @@ export default function DeliveryDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ driver_id: "", vehicle: "", route_name: "" })
   const [lineNoteMap, setLineNoteMap] = useState<Record<string, string>>({})
+  const [linePaymentMethodMap, setLinePaymentMethodMap] = useState<Record<string, DeliveryPaymentMethod>>({})
+  const [lineAmountCollectedMap, setLineAmountCollectedMap] = useState<Record<string, string>>({})
+  const [handoffLoading, setHandoffLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const supabase = createClient()
   const router = useRouter()
@@ -69,7 +72,7 @@ export default function DeliveryDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [delRes, linesRes, driversRes] = await Promise.all([
-      supabase.from("deliveries").select("*, driver:users!deliveries_driver_id_fkey(*)").eq("id", id).single(),
+      supabase.from("deliveries").select("*, driver:users!deliveries_driver_id_fkey(*), warehouse_confirmer:users!deliveries_warehouse_confirmed_by_fkey(*), driver_confirmer:users!deliveries_driver_confirmed_by_fkey(*)").eq("id", id).single(),
       supabase.from("delivery_lines").select("*, order:sales_orders(order_code, total, customer:customers(store_name, phone, address))").eq("delivery_id", id),
       supabase.from("users").select("*").eq("role", "driver").eq("is_active", true).order("full_name"),
     ])
@@ -91,6 +94,11 @@ export default function DeliveryDetailPage() {
 
   const handleChangeStatus = async (newStatus: DeliveryStatus) => {
     if (!delivery) return
+    if (newStatus === "in_transit" && (!delivery.warehouse_confirmed_at || !delivery.driver_confirmed_at)) {
+      toast({ title: "Chưa hoàn tất bàn giao", description: "Kho và tài xế đều phải xác nhận trước khi bắt đầu giao.", variant: "destructive" })
+      setConfirmOpen(null)
+      return
+    }
     setActionLoading(true)
     try {
       const updates: Record<string, unknown> = { status: newStatus }
@@ -145,6 +153,42 @@ export default function DeliveryDetailPage() {
     }
   }
 
+  const handleWarehouseConfirm = async () => {
+    if (!delivery || !user) return
+    setHandoffLoading(true)
+    try {
+      const { error } = await supabase.from("deliveries").update({
+        warehouse_confirmed_by: user.id,
+        warehouse_confirmed_at: new Date().toISOString(),
+      }).eq("id", delivery.id)
+      if (error) throw error
+      toast({ title: "Kho đã xác nhận xuất hàng" })
+      fetchData()
+    } catch (error) {
+      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setHandoffLoading(false)
+    }
+  }
+
+  const handleDriverConfirm = async () => {
+    if (!delivery || !user) return
+    setHandoffLoading(true)
+    try {
+      const { error } = await supabase.from("deliveries").update({
+        driver_confirmed_by: user.id,
+        driver_confirmed_at: new Date().toISOString(),
+      }).eq("id", delivery.id)
+      if (error) throw error
+      toast({ title: "Tài xế đã xác nhận nhận hàng" })
+      fetchData()
+    } catch (error) {
+      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setHandoffLoading(false)
+    }
+  }
+
   const handleLineAction = async (lineId: string, newStatus: "delivered" | "failed") => {
     setActionLoading(true)
     try {
@@ -154,6 +198,13 @@ export default function DeliveryDetailPage() {
       }
       if (lineNoteMap[lineId]) {
         updates.notes = lineNoteMap[lineId]
+      }
+      if (linePaymentMethodMap[lineId]) {
+        updates.payment_method = linePaymentMethodMap[lineId]
+      }
+      const collected = parseFloat(lineAmountCollectedMap[lineId] || "0")
+      if (collected > 0) {
+        updates.amount_collected = collected
       }
       const { error } = await supabase.from("delivery_lines").update(updates).eq("id", lineId)
       if (error) throw error
@@ -380,6 +431,58 @@ export default function DeliveryDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Handoff card */}
+          {delivery.status === "pending" || (delivery.warehouse_confirmed_at && delivery.driver_confirmed_at) ? (
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> Bàn giao</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {delivery.warehouse_confirmed_at && delivery.driver_confirmed_at ? (
+                  <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg p-3">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <div>
+                      <p className="font-semibold">Đã bàn giao</p>
+                      <p className="text-xs text-green-600">Kho: {formatDate(delivery.warehouse_confirmed_at)}</p>
+                      <p className="text-xs text-green-600">Tài xế: {formatDate(delivery.driver_confirmed_at)}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">Kho xuất hàng</Label>
+                      {delivery.warehouse_confirmed_at ? (
+                        <p className="text-green-700 font-medium flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Đã xác nhận ({formatDate(delivery.warehouse_confirmed_at)})
+                        </p>
+                      ) : user && ["warehouse", "owner"].includes(user.role) ? (
+                        <Button size="sm" className="w-full" onClick={handleWarehouseConfirm} disabled={handoffLoading}>
+                          {handoffLoading ? "Đang xử lý..." : "Kho xác nhận xuất"}
+                        </Button>
+                      ) : (
+                        <p className="text-muted-foreground">Chờ kho xác nhận</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">Tài xế nhận hàng</Label>
+                      {delivery.driver_confirmed_at ? (
+                        <p className="text-green-700 font-medium flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Đã xác nhận ({formatDate(delivery.driver_confirmed_at)})
+                        </p>
+                      ) : !delivery.warehouse_confirmed_at ? (
+                        <p className="text-muted-foreground">Chờ kho xác nhận trước</p>
+                      ) : user && ["driver", "owner"].includes(user.role) ? (
+                        <Button size="sm" className="w-full" onClick={handleDriverConfirm} disabled={handoffLoading}>
+                          {handoffLoading ? "Đang xử lý..." : "Tài xế xác nhận nhận hàng"}
+                        </Button>
+                      ) : (
+                        <p className="text-muted-foreground">Chờ tài xế xác nhận</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {/* Status actions */}
           {(availableTransitions.length > 0 || canDelete) && (
             <Card>
@@ -413,17 +516,45 @@ export default function DeliveryDetailPage() {
             </Card>
           )}
 
-          {/* Notes for line during transit */}
+          {/* Payment + Notes for line during transit */}
           {canMarkLines && lines.some((l) => l.status === "pending") && (
             <Card>
-              <CardHeader><CardTitle className="text-sm">Ghi chú giao hàng</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-xs text-muted-foreground mb-2">
-                  Ghi chú chi tiết cho từng đơn (tùy chọn). Nhập trước khi bấm &quot;Giao OK&quot; hoặc &quot;Thất bại&quot;.
+              <CardHeader><CardTitle className="text-sm">Thu tiền & ghi chú</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Chọn hình thức thu tiền và ghi chú cho từng đơn trước khi bấm &quot;Giao OK&quot;.
                 </p>
                 {lines.filter((l) => l.status === "pending").map((line) => (
-                  <div key={line.id} className="space-y-1">
-                    <Label className="text-xs">{line.order?.order_code}</Label>
+                  <div key={line.id} className="space-y-2 border-b border-border/40 pb-3 last:border-0">
+                    <Label className="text-xs font-bold">{line.order?.order_code}</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Hình thức thu</Label>
+                      <Select
+                        value={linePaymentMethodMap[line.id] || "_none"}
+                        onValueChange={(v) => setLinePaymentMethodMap({ ...linePaymentMethodMap, [line.id]: v === "_none" ? undefined as unknown as DeliveryPaymentMethod : v as DeliveryPaymentMethod })}
+                      >
+                        <SelectTrigger className="h-9"><SelectValue placeholder="Chọn" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">-- Chọn --</SelectItem>
+                          <SelectItem value="cod_cash">COD tiền mặt</SelectItem>
+                          <SelectItem value="cod_transfer">COD chuyển khoản</SelectItem>
+                          <SelectItem value="credit">Công nợ</SelectItem>
+                          <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {linePaymentMethodMap[line.id] && linePaymentMethodMap[line.id] !== "credit" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Số tiền thu</Label>
+                        <Input
+                          type="number"
+                          className="h-9"
+                          placeholder="0"
+                          value={lineAmountCollectedMap[line.id] || ""}
+                          onChange={(e) => setLineAmountCollectedMap({ ...lineAmountCollectedMap, [line.id]: e.target.value })}
+                        />
+                      </div>
+                    )}
                     <Textarea
                       rows={2}
                       placeholder="vd: Khách vắng, hẹn giao lại sáng mai"

@@ -267,13 +267,21 @@ export interface Delivery {
   vehicle: string | null
   route_name: string | null
   status: DeliveryStatus
+  warehouse_confirmed_by: string | null
+  warehouse_confirmed_at: string | null
+  driver_confirmed_by: string | null
+  driver_confirmed_at: string | null
   started_at: string | null
   completed_at: string | null
   created_at: string
   // Joined
   driver?: User
   lines?: DeliveryLine[]
+  warehouse_confirmer?: User
+  driver_confirmer?: User
 }
+
+export type DeliveryPaymentMethod = "cod_cash" | "cod_transfer" | "credit" | "partial"
 
 export interface DeliveryLine {
   id: string
@@ -284,8 +292,21 @@ export interface DeliveryLine {
   pod_signature: string | null
   delivered_at: string | null
   notes: string | null
+  payment_method: DeliveryPaymentMethod | null
+  amount_collected: number | null
   // Joined
   order?: SalesOrder
+}
+
+export interface OrderStatusHistory {
+  id: string
+  order_id: string
+  from_status: string | null
+  to_status: string
+  changed_by: string
+  changed_at: string
+  // Joined
+  changer?: User
 }
 
 export interface Promotion {

@@ -25,6 +25,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/suppliers": "Nhà cung cấp",
   "/commissions": "Quản lý hoa hồng",
   "/receivables": "Quản lý công nợ",
+  "/payables": "Công nợ nhà cung cấp",
   "/deliveries": "Quản lý giao hàng",
   "/promotions": "Quản lý khuyến mãi",
   "/invoices": "Quản lý hóa đơn",

@@ -395,6 +395,42 @@ export interface ReturnLine {
   product?: Product
 }
 
+// Supplier Payables
+export type PayableStatus = "open" | "partial" | "paid" | "overdue"
+export type PayablePaymentMethod = "cash" | "transfer" | "offset"
+
+export interface Payable {
+  id: string
+  org_id: string
+  supplier_id: string
+  stock_entry_id: string | null
+  invoice_number: string | null
+  amount: number
+  paid: number
+  due_date: string | null
+  status: PayableStatus
+  notes: string | null
+  created_at: string
+  // Joined
+  supplier?: Supplier
+  stock_entry?: StockEntry
+}
+
+export interface PayablePayment {
+  id: string
+  payable_id: string
+  amount: number
+  method: PayablePaymentMethod
+  paid_by: string
+  paid_at: string
+  verified_by: string | null
+  verified_at: string | null
+  notes: string | null
+  // Joined
+  payer?: User
+  verifier?: User
+}
+
 // HR Module
 export interface HrSalaryConfig {
   id: string

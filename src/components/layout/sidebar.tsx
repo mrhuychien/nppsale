@@ -213,7 +213,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
                 <button
                   onClick={() => toggleGroup(groupIdx)}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors",
+                    "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                     hasActiveChild
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"

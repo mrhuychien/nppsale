@@ -240,7 +240,7 @@ export default function InventoryPage() {
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/inventory/stocktake">
+            <Link href="/inventory/stocktake-adjust">
               <ClipboardCheck className="mr-2 h-4 w-4" />
               Điều chỉnh
             </Link>

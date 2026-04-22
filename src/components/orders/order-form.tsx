@@ -44,18 +44,25 @@ export function OrderForm() {
   const [lines, setLines] = useState<OrderLine[]>([])
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
+  const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
     async function fetch() {
-      const [custRes, prodRes] = await Promise.all([
+      const [custRes, prodRes, batchRes] = await Promise.all([
         supabase.from("customers").select("*, group:customer_groups(*)").eq("status", "active").order("store_name"),
         supabase.from("products").select("*, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
+        supabase.from("batches").select("product_id, qty_on_hand").gt("qty_on_hand", 0),
       ])
       setCustomers((custRes.data as Customer[]) || [])
       setProducts((prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || [])
+      const stockMap: Record<string, number> = {}
+      for (const b of (batchRes.data as Array<{ product_id: string; qty_on_hand: number }>) || []) {
+        stockMap[b.product_id] = (stockMap[b.product_id] || 0) + Number(b.qty_on_hand || 0)
+      }
+      setStockByProduct(stockMap)
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -102,6 +109,15 @@ export function OrderForm() {
   const addLine = (productId: string) => {
     const product = products.find((p) => p.id === productId)
     if (!product) return
+    const onHand = stockByProduct[productId] ?? 0
+    if (onHand <= 0) {
+      toast({
+        title: "Hết hàng",
+        description: `${product.name} không còn tồn kho`,
+        variant: "destructive",
+      })
+      return
+    }
     const groupId = selectedCustomer?.group_id
     const price = getUnitPrice(product, product.base_unit, groupId)
     setLines((prev) => [
@@ -149,6 +165,44 @@ export function OrderForm() {
     }
     return 0
   }
+
+  // Convert a line's quantity into base-unit terms for stock comparison.
+  const baseQty = (line: OrderLine): number => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return line.quantity
+    if (line.unit_name === product.base_unit) return line.quantity
+    const u = product.units?.find((x) => x.unit_name === line.unit_name)
+    return line.quantity * (u?.conversion || 1)
+  }
+
+  // For a given line, return on-hand minus everything already ordered on OTHER
+  // lines for the same product (so a split order doesn't accidentally double-count).
+  const availableForLine = (line: OrderLine, index: number): number => {
+    const onHand = stockByProduct[line.product_id] ?? 0
+    const otherQty = lines.reduce((sum, l, i) => {
+      if (i === index) return sum
+      if (l.product_id !== line.product_id) return sum
+      return sum + baseQty(l)
+    }, 0)
+    return onHand - otherQty
+  }
+
+  // Check if a specific line exceeds stock
+  const lineOverstock = (line: OrderLine, index: number): boolean => {
+    return baseQty(line) > availableForLine(line, index)
+  }
+
+  // Aggregated check — true if any product across all lines exceeds on-hand.
+  const hasOverstock = (() => {
+    const totals: Record<string, number> = {}
+    for (const l of lines) {
+      totals[l.product_id] = (totals[l.product_id] || 0) + baseQty(l)
+    }
+    for (const [pid, total] of Object.entries(totals)) {
+      if (total > (stockByProduct[pid] ?? 0)) return true
+    }
+    return false
+  })()
 
   const updateLine = (index: number, field: keyof OrderLine, value: number | string) => {
     const updated = [...lines]
@@ -208,6 +262,32 @@ export function OrderForm() {
       toast({ title: "Vui lòng chọn khách hàng và thêm sản phẩm", variant: "destructive" })
       return
     }
+
+    // Block orders that exceed current on-hand stock. Aggregated across
+    // lines so two lines for the same SKU can't bypass the check.
+    const totalsByProduct: Record<string, number> = {}
+    for (const l of lines) {
+      totalsByProduct[l.product_id] = (totalsByProduct[l.product_id] || 0) + baseQty(l)
+    }
+    const overstock: string[] = []
+    for (const [productId, total] of Object.entries(totalsByProduct)) {
+      const onHand = stockByProduct[productId] ?? 0
+      if (total > onHand) {
+        const p = products.find((x) => x.id === productId)
+        overstock.push(
+          `${p?.name || productId}: cần ${total} ${p?.base_unit || ""}, chỉ còn ${onHand}`
+        )
+      }
+    }
+    if (overstock.length > 0) {
+      toast({
+        title: "Số lượng vượt tồn kho",
+        description: overstock.join(" • "),
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -595,12 +675,18 @@ export function OrderForm() {
                 <tbody className="divide-y divide-border/30">
                   {lines.map((line, i) => {
                     const units = getAvailableUnits(line)
+                    const product = products.find((p) => p.id === line.product_id)
+                    const onHand = stockByProduct[line.product_id] ?? 0
+                    const over = lineOverstock(line, i)
                     return (
-                      <tr key={i} className="hover:bg-muted/20">
+                      <tr key={i} className={`hover:bg-muted/20 ${over ? "bg-red-50" : ""}`}>
                         <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-2">
                           <span className="font-medium">{line.product_name}</span>
                           <span className="text-[10px] text-muted-foreground ml-2">SKU: {line.sku}</span>
+                          <div className={`text-[10px] ${over ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
+                            Tồn: {onHand} {product?.base_unit}
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           {units.length <= 1 ? (
@@ -613,7 +699,13 @@ export function OrderForm() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)} className="h-8 w-20 text-center" />
+                          <Input
+                            type="number"
+                            min={1}
+                            value={line.quantity}
+                            onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
+                            className={`h-8 w-20 text-center ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                          />
                         </td>
                         {!isSalesRole && (
                           <td className="px-3 py-2">
@@ -644,12 +736,21 @@ export function OrderForm() {
               )}
               {lines.map((line, i) => {
                 const units = getAvailableUnits(line)
+                const product = products.find((p) => p.id === line.product_id)
+                const onHand = stockByProduct[line.product_id] ?? 0
+                const over = lineOverstock(line, i)
                 return (
-                  <div key={i} className="border border-border/40 rounded-xl p-3 bg-card">
+                  <div
+                    key={i}
+                    className={`border rounded-xl p-3 ${over ? "border-red-500 bg-red-50" : "border-border/40 bg-card"}`}
+                  >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-sm truncate">{line.product_name}</p>
                         <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
+                        <p className={`text-[10px] ${over ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
+                          Tồn: {onHand} {product?.base_unit}
+                        </p>
                       </div>
                       <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeLine(i)}>
                         <X className="h-4 w-4 text-muted-foreground" />
@@ -668,12 +769,23 @@ export function OrderForm() {
                       {/* Quantity */}
                       <div className="flex items-center gap-1 flex-1">
                         <button type="button" onClick={() => updateLine(i, "quantity", Math.max(1, line.quantity - 1))} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">−</button>
-                        <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)} className="h-8 text-center flex-1" />
+                        <Input
+                          type="number"
+                          min={1}
+                          value={line.quantity}
+                          onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
+                          className={`h-8 text-center flex-1 ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                        />
                         <button type="button" onClick={() => updateLine(i, "quantity", line.quantity + 1)} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">+</button>
                       </div>
                       {/* Total */}
                       <span className="text-sm font-bold text-primary shrink-0">{formatCurrency(line.line_total)}</span>
                     </div>
+                    {over && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-2">
+                        Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
+                      </p>
+                    )}
                     {!isSalesRole && (
                       <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
                         <span>Giá: {formatCurrency(line.unit_price)}</span>
@@ -741,10 +853,10 @@ export function OrderForm() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || hasOverstock}
                     className="flex-[2] bg-white hover:bg-white/90 text-primary font-bold border-0"
                   >
-                    {loading ? "Đang lưu..." : "Tạo đơn hàng"}
+                    {loading ? "Đang lưu..." : hasOverstock ? "Vượt tồn kho" : "Tạo đơn hàng"}
                   </Button>
                 </div>
               </div>

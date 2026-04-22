@@ -38,9 +38,11 @@ import {
   Package,
   PackageCheck,
   Route,
+  ScanBarcode,
   Sparkles,
   Truck,
 } from "lucide-react"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import type {
   Batch,
   Customer,
@@ -116,6 +118,8 @@ export default function StockOutPage() {
   const [mergeCode] = useState<string>(generateMergeCode())
   const [submitting, setSubmitting] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
 
   const canUpdate =
     !!user &&
@@ -261,6 +265,28 @@ export default function StockOutPage() {
     })
     return c
   }, [filtered])
+
+  const processBarcodeResult = (code: string) => {
+    const matchedProduct = orders
+      .flatMap((o) => o.lines || [])
+      .map((l) => l.product)
+      .find((p) => p && (p.sku === code))
+    if (!matchedProduct) {
+      toast({ title: "Không tìm thấy", description: `Mã: ${code}`, variant: "destructive" })
+      setHighlightedProductId(null)
+      return
+    }
+    const containingOrders = filtered.filter((o) =>
+      (o.lines || []).some((l) => l.product_id === matchedProduct.id)
+    )
+    if (containingOrders.length === 0) {
+      toast({ title: "Không có đơn nào chứa sản phẩm này", description: matchedProduct.name, variant: "destructive" })
+      setHighlightedProductId(null)
+    } else {
+      setHighlightedProductId(matchedProduct.id)
+      toast({ title: `Tìm thấy trong ${containingOrders.length} đơn`, description: matchedProduct.name })
+    }
+  }
 
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds)
@@ -442,14 +468,24 @@ export default function StockOutPage() {
                     Chỉ hiển thị đơn đã duyệt (confirmed)
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowFilter((v) => !v)}
-                  className="gap-2"
-                >
-                  <Filter className="h-4 w-4" /> Filter
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setBarcodeOpen(true)}
+                    title="Quét mã vạch tìm đơn"
+                  >
+                    <ScanBarcode className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowFilter((v) => !v)}
+                    className="gap-2"
+                  >
+                    <Filter className="h-4 w-4" /> Filter
+                  </Button>
+                </div>
               </div>
 
               {showFilter && (
@@ -541,13 +577,16 @@ export default function StockOutPage() {
                           o.customer_id
                         )
                         const route = deriveRoute(o.customer)
+                        const isHighlighted = highlightedProductId
+                          ? (o.lines || []).some((l) => l.product_id === highlightedProductId)
+                          : false
                         return (
                           <TableRow
                             key={o.id}
                             data-state={checked ? "selected" : undefined}
                             onClick={() => toggleOne(o.id)}
                             className={`cursor-pointer border-l-4 ${
-                              groupColor || "border-l-transparent"
+                              isHighlighted ? "border-l-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : groupColor || "border-l-transparent"
                             }`}
                           >
                             <TableCell
@@ -721,6 +760,8 @@ export default function StockOutPage() {
           </Card>
         </div>
       </div>
+
+      <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
 
       {/* Bottom system log */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground font-mono border-t pt-3">

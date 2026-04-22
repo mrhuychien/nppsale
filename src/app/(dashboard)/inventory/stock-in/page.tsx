@@ -27,7 +27,9 @@ import {
   Trash2,
   ArrowDownToLine,
   ExternalLink,
+  ScanBarcode,
 } from "lucide-react"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 
 interface LineItem {
@@ -88,6 +90,7 @@ export default function StockInPage() {
   const [warehouse, setWarehouse] = useState("Kho chính")
   const [lines, setLines] = useState<LineItem[]>([newLine()])
   const [productSearch, setProductSearch] = useState("")
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -203,6 +206,16 @@ export default function StockInPage() {
       return [...prev, newItem]
     })
     setProductSearch("")
+  }
+
+  function processBarcodeResult(code: string) {
+    const product = products.find((p) => p.barcode === code || p.sku === code)
+    if (product) {
+      addProductLine(product.id)
+      toast({ title: `Đã thêm: ${product.name}` })
+    } else {
+      toast({ title: "Không tìm thấy", description: `Mã: ${code}`, variant: "destructive" })
+    }
   }
 
   function updateLine(id: string, patch: Partial<LineItem>) {
@@ -538,7 +551,8 @@ export default function StockInPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Inline product search - ABOVE table to avoid overflow clipping */}
-          <div className="relative">
+          <div className="relative flex gap-2">
+            <div className="relative flex-1">
             <Input
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
@@ -575,6 +589,17 @@ export default function StockInPage() {
                 </div>
               </div>
             )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0"
+              onClick={() => setBarcodeOpen(true)}
+              title="Quét mã vạch"
+            >
+              <ScanBarcode className="h-5 w-5" />
+            </Button>
           </div>
 
           <div className="overflow-x-auto">
@@ -796,6 +821,8 @@ export default function StockInPage() {
           </div>
         </CardContent>
       </Card>
+
+      <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
     </div>
   )
 }

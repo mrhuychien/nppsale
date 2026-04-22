@@ -22,7 +22,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generatePOCode } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink } from "lucide-react"
+import { Trash2, Plus, ExternalLink, ScanBarcode } from "lucide-react"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import Link from "next/link"
 import type { Supplier, Product, ProductUnit } from "@/types"
 
@@ -51,6 +52,7 @@ export default function NewPurchaseOrderPage() {
   const [lines, setLines] = useState<POLine[]>([])
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -102,6 +104,16 @@ export default function NewPurchaseOrderPage() {
       },
     ])
     setProductSearch("")
+  }
+
+  const processBarcodeResult = (code: string) => {
+    const product = products.find((p) => p.barcode === code || p.sku === code)
+    if (product) {
+      addLine(product.id)
+      toast({ title: `Đã thêm: ${product.name}` })
+    } else {
+      toast({ title: "Không tìm thấy", description: `Mã: ${code}`, variant: "destructive" })
+    }
   }
 
   const getAvailableUnits = (line: POLine): string[] => {
@@ -338,7 +350,8 @@ export default function NewPurchaseOrderPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Inline product search */}
-              <div className="relative">
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
                 <Input
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
@@ -365,6 +378,17 @@ export default function NewPurchaseOrderPage() {
                     ))}
                   </div>
                 )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  onClick={() => setBarcodeOpen(true)}
+                  title="Quét mã vạch"
+                >
+                  <ScanBarcode className="h-5 w-5" />
+                </Button>
               </div>
 
               <div className="overflow-x-auto">
@@ -588,6 +612,8 @@ export default function NewPurchaseOrderPage() {
           </div>
         </div>
       </form>
+
+      <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
     </div>
   )
 }

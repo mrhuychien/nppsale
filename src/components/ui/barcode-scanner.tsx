@@ -24,7 +24,7 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
   useEffect(() => {
     if (!open || mode !== "camera") return
 
-    let scanner: { clear: () => Promise<void>; stop: () => Promise<void> } | null = null
+    let scanner: { clear: () => void | Promise<void>; stop: () => Promise<void> } | null = null
 
     async function startScanner() {
       try {
@@ -37,7 +37,7 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
 
         const html5QrCode = new Html5Qrcode(scannerId)
         html5QrCodeRef.current = html5QrCode
-        scanner = html5QrCode
+        scanner = html5QrCode as { clear: () => void | Promise<void>; stop: () => Promise<void> }
 
         await html5QrCode.start(
           { facingMode: "environment" },
@@ -69,7 +69,10 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
       clearTimeout(timer)
       if (scanner) {
         scanner.stop().catch(() => {})
-        scanner.clear().catch(() => {})
+        const clearResult = scanner.clear()
+        if (clearResult && typeof (clearResult as Promise<void>).catch === "function") {
+          (clearResult as Promise<void>).catch(() => {})
+        }
       }
     }
   }, [open, mode]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -84,9 +87,12 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
   // Cleanup on close
   useEffect(() => {
     if (!open && html5QrCodeRef.current) {
-      const s = html5QrCodeRef.current as { stop: () => Promise<void>; clear: () => Promise<void> }
+      const s = html5QrCodeRef.current as { stop: () => Promise<void>; clear: () => void | Promise<void> }
       s.stop().catch(() => {})
-      s.clear().catch(() => {})
+      const clearResult = s.clear()
+      if (clearResult && typeof (clearResult as Promise<void>).catch === "function") {
+        (clearResult as Promise<void>).catch(() => {})
+      }
       html5QrCodeRef.current = null
     }
   }, [open])

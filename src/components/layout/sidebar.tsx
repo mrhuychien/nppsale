@@ -10,7 +10,7 @@ import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
-  ChevronRight, UserCog, ClipboardList,
+  ChevronRight, UserCog, ClipboardList, Navigation,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -37,6 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
       { label: "Khách hàng", href: "/customers", icon: Users, module: "customers" },
       { label: "Phân tích KH", href: "/customers/analytics", icon: BarChart3, module: "customers" },
+      { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers" },
       { label: "Bảng giá", href: "/products/price-lists", icon: FileText, module: "products" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions" },
       { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions" },

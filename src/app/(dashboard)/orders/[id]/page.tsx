@@ -33,6 +33,41 @@ type NextStatus = {
   roles: string[]
 }
 
+type DeliveryLineWithDetails = {
+  id: string
+  status: "pending" | "delivered" | "partial" | "failed"
+  pod_photo_url: string | null
+  delivered_at: string | null
+  notes: string | null
+  delivery?: {
+    id: string
+    route_name: string | null
+    driver?: { full_name?: string } | null
+    started_at: string | null
+    completed_at: string | null
+    status: string
+  } | null
+}
+
+type OrderStockEntry = {
+  id: string
+  entry_code: string
+  type: "import" | "export" | "transfer" | "stocktake"
+  status: string
+  posted_at: string | null
+  created_at: string
+  notes: string | null
+  creator?: { full_name?: string } | null
+  lines?: Array<{
+    id: string
+    product_id: string
+    quantity: number
+    unit_name: string
+    unit_cost: number
+    product?: { name: string; sku: string } | null
+  }>
+}
+
 const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   draft: [
     { value: "confirmed", label: "Duyệt đơn", icon: CheckCircle2, roles: ["owner", "manager"] },
@@ -63,6 +98,8 @@ export default function OrderDetailPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [misaLoading, setMisaLoading] = useState(false)
   const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
+  const [deliveryLines, setDeliveryLines] = useState<DeliveryLineWithDetails[]>([])
+  const [stockEntries, setStockEntries] = useState<OrderStockEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -75,12 +112,21 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes, historyRes, invoiceRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
       supabase.from("order_status_history").select("*, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
       supabase.from("invoices").select("*").eq("order_id", id).maybeSingle(),
+      supabase
+        .from("delivery_lines")
+        .select("id, status, pod_photo_url, delivered_at, notes, delivery:deliveries(id, route_name, driver:users!deliveries_driver_id_fkey(full_name), started_at, completed_at, status)")
+        .eq("order_id", id),
+      supabase
+        .from("stock_entries")
+        .select("id, entry_code, type, status, posted_at, created_at, notes, creator:users!stock_entries_created_by_fkey(full_name), lines:stock_entry_lines(id, product_id, quantity, unit_name, unit_cost, product:products(name, sku))")
+        .contains("ref_order_ids", [id])
+        .order("created_at", { ascending: false }),
     ])
     setInvoice((invoiceRes.data as Invoice) || null)
     if (orderRes.data) {
@@ -95,6 +141,8 @@ export default function OrderDetailPage() {
     setLines((linesRes.data as SalesOrderLine[]) || [])
     setReceivableId(recRes.data?.id || null)
     setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
+    setDeliveryLines(((deliveryLinesRes.data as unknown) as DeliveryLineWithDetails[]) || [])
+    setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -233,6 +281,32 @@ export default function OrderDetailPage() {
 
       const { error } = await supabase.from("sales_orders").update(updates).eq("id", order.id)
       if (error) throw error
+
+      // Notifications for status change (fire-and-forget)
+      if (user.org_id && order.sales_user_id && order.sales_user_id !== user.id) {
+        const { createNotification } = await import("@/lib/notifications")
+        if (newStatus === "confirmed") {
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: order.sales_user_id,
+            type: "order_approved",
+            title: `Đơn ${order.order_code} đã được duyệt`,
+            body: `Bởi ${user.full_name || "Quản lý"}`,
+            linkUrl: `/orders/${order.id}`,
+            metadata: { order_id: order.id, order_code: order.order_code },
+          })
+        } else if (newStatus === "cancelled") {
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: order.sales_user_id,
+            type: "order_cancelled",
+            title: `Đơn ${order.order_code} đã bị hủy`,
+            body: `Bởi ${user.full_name || "Quản lý"}`,
+            linkUrl: `/orders/${order.id}`,
+            metadata: { order_id: order.id, order_code: order.order_code },
+          })
+        }
+      }
 
       // Auto-create receivable when order becomes delivered
       if (newStatus === "delivered") {
@@ -665,6 +739,133 @@ export default function OrderDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Stock History */}
+      {(deliveryLines.length > 0 || stockEntries.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package2 className="h-4 w-4" /> Lịch sử kho
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Deliveries */}
+            {deliveryLines.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Giao hàng ({deliveryLines.length})
+                </p>
+                <div className="space-y-2">
+                  {deliveryLines.map((dl) => {
+                    const statusMeta: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }> = {
+                      pending: { label: "Chờ giao", variant: "secondary" },
+                      delivered: { label: "Đã giao", variant: "success" },
+                      partial: { label: "Giao một phần", variant: "warning" },
+                      failed: { label: "Thất bại", variant: "danger" },
+                    }
+                    const st = statusMeta[dl.status] || statusMeta.pending
+                    return (
+                      <div key={dl.id} className="rounded-xl border bg-muted/10 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {dl.delivery && (
+                                <Link
+                                  href={`/deliveries/${dl.delivery.id}`}
+                                  className="text-sm font-semibold text-primary hover:underline"
+                                >
+                                  {dl.delivery.route_name || "Chuyến giao"}
+                                </Link>
+                              )}
+                              <Badge variant={st.variant}>{st.label}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {dl.delivery?.driver?.full_name ? `Tài xế: ${dl.delivery.driver.full_name} • ` : ""}
+                              {dl.delivered_at ? `Giao: ${formatDate(dl.delivered_at)}` : dl.delivery?.started_at ? `Khởi hành: ${formatDate(dl.delivery.started_at)}` : "Chưa khởi hành"}
+                            </p>
+                            {dl.notes && (
+                              <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">
+                                &ldquo;{dl.notes}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                          {dl.pod_photo_url && (
+                            <a
+                              href={dl.pod_photo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 rounded-lg overflow-hidden border w-16 h-16 bg-muted"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={dl.pod_photo_url}
+                                alt="POD"
+                                className="w-full h-full object-cover"
+                              />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Stock entries linked to this order */}
+            {stockEntries.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Phiếu kho liên quan ({stockEntries.length})
+                </p>
+                <div className="space-y-2">
+                  {stockEntries.map((e) => {
+                    const typeMeta: Record<string, { label: string; color: string }> = {
+                      import: { label: "Nhập", color: "bg-emerald-100 text-emerald-800" },
+                      export: { label: "Xuất", color: "bg-red-100 text-red-800" },
+                      transfer: { label: "Chuyển", color: "bg-blue-100 text-blue-800" },
+                      stocktake: { label: "Kiểm kê", color: "bg-primary/10 text-primary" },
+                    }
+                    const tm = typeMeta[e.type] || typeMeta.export
+                    const totalQty = (e.lines || []).reduce((s, l) => s + Number(l.quantity || 0), 0)
+                    return (
+                      <div key={e.id} className="rounded-xl border bg-muted/10 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link
+                                href={`/inventory/entries/${e.id}`}
+                                className="text-sm font-mono font-bold text-primary hover:underline"
+                              >
+                                {e.entry_code}
+                              </Link>
+                              <span className={`text-[10px] font-bold uppercase rounded px-1.5 py-0.5 ${tm.color}`}>
+                                {tm.label}
+                              </span>
+                              {e.status === "draft" && <Badge variant="warning">Nháp</Badge>}
+                              {e.status === "cancelled" && <Badge variant="secondary">Đã hủy</Badge>}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {e.posted_at ? formatDate(e.posted_at) : formatDate(e.created_at)}
+                              {e.creator?.full_name ? ` • Bởi ${e.creator.full_name}` : ""}
+                              {` • ${e.lines?.length || 0} SP, tổng ${totalQty}`}
+                            </p>
+                            {e.lines && e.lines.length > 0 && (
+                              <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                                {e.lines.map((l) => `${l.product?.sku || "?"}×${l.quantity}`).join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status History */}
       <Card>

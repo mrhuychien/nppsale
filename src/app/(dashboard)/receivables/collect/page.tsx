@@ -103,6 +103,29 @@ export default function CollectPaymentPage() {
       const newStatus = newPaid >= (selected?.amount || 0) ? "paid" : "partial"
       await supabase.from("receivables").update({ paid: newPaid, status: newStatus }).eq("id", selectedId)
 
+      // Notify the sales rep who owns the receivable (if different from collector)
+      if (selected && user?.org_id) {
+        const { data: recFull } = await supabase
+          .from("receivables")
+          .select("sales_user_id, customer:customers(store_name)")
+          .eq("id", selectedId)
+          .maybeSingle()
+        const repId = (recFull as { sales_user_id?: string } | null)?.sales_user_id
+        const storeName = (recFull as { customer?: { store_name?: string } } | null)?.customer?.store_name
+        if (repId && repId !== user.id) {
+          const { createNotification } = await import("@/lib/notifications")
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: repId,
+            type: "payment_received",
+            title: `Đã thu ${formatCurrency(parseInt(amount))}`,
+            body: `${storeName || "Khách hàng"}${newStatus === "paid" ? " — đã thanh toán đủ" : ""}`,
+            linkUrl: `/receivables/${selectedId}`,
+            metadata: { receivable_id: selectedId, amount: parseInt(amount), method },
+          })
+        }
+      }
+
       toast({ title: `Đã thu ${formatCurrency(parseInt(amount))}` })
       if (customerIdParam) {
         router.push(`/customers/${customerIdParam}`)

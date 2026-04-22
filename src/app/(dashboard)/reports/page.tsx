@@ -362,7 +362,37 @@ export default function ReportsPage() {
               hint="Trên tổng phiếu"
             />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Link
+              href="/reports/finance/pnl"
+              className="group flex items-center justify-between rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 hover:border-primary transition-colors"
+            >
+              <div>
+                <p className="font-bold text-foreground">Báo cáo Lãi Lỗ (P&L)</p>
+                <p className="text-sm text-muted-foreground">Doanh thu − COGS − chi phí</p>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            </Link>
+            <Link
+              href="/reports/finance/balance-sheet"
+              className="group flex items-center justify-between rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 hover:border-primary transition-colors"
+            >
+              <div>
+                <p className="font-bold text-foreground">Bảng cân đối tài sản</p>
+                <p className="text-sm text-muted-foreground">Tài sản, nợ, vốn tại một thời điểm</p>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            </Link>
+            <Link
+              href="/reports/finance/cash-flow"
+              className="group flex items-center justify-between rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 hover:border-primary transition-colors"
+            >
+              <div>
+                <p className="font-bold text-foreground">Báo cáo dòng tiền</p>
+                <p className="text-sm text-muted-foreground">Thu/chi thực tế theo hoạt động</p>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            </Link>
             <Link
               href="/receivables/aging"
               className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
@@ -370,6 +400,16 @@ export default function ReportsPage() {
               <div>
                 <p className="font-bold text-foreground">Báo cáo Aging công nợ</p>
                 <p className="text-sm text-muted-foreground">Phân tích công nợ theo tuổi nợ</p>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            </Link>
+            <Link
+              href="/finance/expenses"
+              className="group flex items-center justify-between rounded-2xl border border-border/40 bg-muted/30est p-5 hover:border-primary transition-colors"
+            >
+              <div>
+                <p className="font-bold text-foreground">Quản lý chi phí</p>
+                <p className="text-sm text-muted-foreground">Thêm/xem chi phí vận hành</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
             </Link>

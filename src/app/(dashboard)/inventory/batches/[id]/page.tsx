@@ -41,6 +41,7 @@ export default function BatchDetailPage() {
     expires_at: "",
     location: "",
     qty_on_hand: 0,
+    unit_cost: 0,
   })
   const [actionLoading, setActionLoading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -66,6 +67,7 @@ export default function BatchDetailPage() {
         expires_at: b.expires_at ? b.expires_at.slice(0, 10) : "",
         location: b.location || "",
         qty_on_hand: b.qty_on_hand,
+        unit_cost: Number(b.unit_cost) || 0,
       })
     }
     setEntryLines((linesRes.data as StockEntryLine[]) || [])
@@ -90,6 +92,7 @@ export default function BatchDetailPage() {
           expires_at: editForm.expires_at,
           location: editForm.location.trim() || null,
           qty_on_hand: Number(editForm.qty_on_hand),
+          unit_cost: Number(editForm.unit_cost) || 0,
         })
         .eq("id", batch.id)
       if (error) throw error
@@ -161,6 +164,7 @@ export default function BatchDetailPage() {
                     expires_at: batch.expires_at ? batch.expires_at.slice(0, 10) : "",
                     location: batch.location || "",
                     qty_on_hand: batch.qty_on_hand,
+                    unit_cost: Number(batch.unit_cost) || 0,
                   })
                 }}>
                   <X className="h-4 w-4" />
@@ -245,6 +249,16 @@ export default function BatchDetailPage() {
                         min={0}
                         value={editForm.qty_on_hand}
                         onChange={(e) => setEditForm({ ...editForm, qty_on_hand: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Giá vốn (trên ĐVT cơ bản)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editForm.unit_cost}
+                        onChange={(e) => setEditForm({ ...editForm, unit_cost: Number(e.target.value) })}
+                        placeholder="0"
                       />
                     </div>
                   </div>

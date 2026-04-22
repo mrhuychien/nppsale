@@ -16,7 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Trash2 } from "lucide-react"
+import Link from "next/link"
+import { Trash2, ClipboardList } from "lucide-react"
 import type { Product, ProductUnit, PriceList, CustomerGroup } from "@/types"
 
 export default function ProductDetailPage() {
@@ -89,7 +90,13 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={product.name} description={`SKU: ${product.sku}`} backHref="/products" />
+      <PageHeader title={product.name} description={`SKU: ${product.sku}`} backHref="/products">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/inventory/stock-card/${product.id}`}>
+            <ClipboardList className="h-4 w-4 mr-1.5" /> Thẻ kho
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">

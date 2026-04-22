@@ -295,6 +295,28 @@ export function OrderForm() {
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) throw linesErr
 
+      // Fire-and-forget notifications
+      if (user?.org_id) {
+        const { createNotificationForUsers, fetchApproversForOrg } = await import("@/lib/notifications")
+        if (decision.autoApprove) {
+          // Notify the sales rep (creator) — only useful if another user placed this on behalf
+          // Skip: creator already sees the toast.
+        } else {
+          const approvers = await fetchApproversForOrg(supabase, user.org_id)
+          if (approvers.length > 0) {
+            createNotificationForUsers(supabase, {
+              orgId: user.org_id,
+              userIds: approvers,
+              type: "order_pending_approval",
+              title: `Đơn ${orderCode} cần duyệt`,
+              body: `${selectedCustomer?.store_name || ""} • ${new Intl.NumberFormat("vi-VN").format(total)}₫ — ${decision.reason}`,
+              linkUrl: `/orders/${order.id}`,
+              metadata: { order_id: order.id, order_code: orderCode, total },
+            })
+          }
+        }
+      }
+
       if (decision.autoApprove) {
         toast({ title: `Đã tạo và tự động duyệt đơn ${orderCode}` })
       } else {

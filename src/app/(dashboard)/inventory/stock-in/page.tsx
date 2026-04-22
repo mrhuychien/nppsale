@@ -40,6 +40,7 @@ interface LineItem {
   unit_name: string
   quantity: string
   unit_price: string
+  unit_cost: string
   vat_rate: number
   batch_code: string
   manufactured_at: string
@@ -56,6 +57,7 @@ function newLine(): LineItem {
     unit_name: "",
     quantity: "",
     unit_price: "",
+    unit_cost: "",
     vat_rate: 0,
     batch_code: "",
     manufactured_at: "",
@@ -190,6 +192,7 @@ export default function StockInPage() {
       unit_name: unitName,
       quantity: "1",
       unit_price: price > 0 ? String(price) : "",
+      unit_cost: price > 0 ? String(price) : "",
       vat_rate: product.vat_rate ?? 0,
       batch_code: "",
       manufactured_at: "",
@@ -305,12 +308,13 @@ export default function StockInPage() {
         .single()
       if (entryErr) throw entryErr
 
-      // Create batches in bulk - auto-generate batch_code if empty
+      // Create batches in bulk - auto-generate batch_code if empty.
+      // unit_cost defaults to unit_price when the user doesn't override.
       const batchPayload = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
         const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
-        // expires_at is NOT NULL in DB - use far-future if user leaves empty
         const expiresAt = l.expires_at || "2099-12-31"
+        const cost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
         return {
           org_id: user.org_id,
           product_id: l.product_id,
@@ -319,6 +323,7 @@ export default function StockInPage() {
           expires_at: expiresAt,
           qty_initial: qty,
           qty_on_hand: qty,
+          unit_cost: cost,
         }
       })
       const { data: insertedBatches, error: batchErr } = await supabase
@@ -330,12 +335,14 @@ export default function StockInPage() {
       // Create stock entry lines linked to the new batches (preserve order)
       const entryLines = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
+        const cost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
         return {
           entry_id: entry.id,
           product_id: l.product_id,
           batch_id: insertedBatches?.[idx]?.id ?? null,
           unit_name: l.unit_name || productMap.get(l.product_id)?.base_unit || "",
           quantity: qty,
+          unit_cost: cost,
         }
       })
       const { error: lineErr } = await supabase
@@ -622,6 +629,9 @@ export default function StockInPage() {
                   <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
                     Đơn giá
                   </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
+                    Giá vốn
+                  </th>
                   <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
                     VAT %
                   </th>
@@ -702,6 +712,19 @@ export default function StockInPage() {
                             updateLine(line.id, { unit_price: e.target.value })
                           }
                           placeholder="0"
+                          className="h-8"
+                          disabled={!hasProduct}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={line.unit_cost}
+                          onChange={(e) =>
+                            updateLine(line.id, { unit_cost: e.target.value })
+                          }
+                          placeholder={line.unit_price || "0"}
                           className="h-8"
                           disabled={!hasProduct}
                         />
@@ -863,6 +886,18 @@ export default function StockInPage() {
                         value={line.unit_price}
                         onChange={(e) => updateLine(line.id, { unit_price: e.target.value })}
                         placeholder="0"
+                        className="h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Giá vốn</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={line.unit_cost}
+                        onChange={(e) => updateLine(line.id, { unit_cost: e.target.value })}
+                        placeholder={line.unit_price || "0"}
                         className="h-9"
                         disabled={!hasProduct}
                       />

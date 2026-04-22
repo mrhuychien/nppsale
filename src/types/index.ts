@@ -130,6 +130,7 @@ export interface Batch {
   location: string | null
   qty_initial: number
   qty_on_hand: number
+  unit_cost: number
   status: string
   created_at: string
   // Joined
@@ -141,6 +142,8 @@ export interface StockEntry {
   org_id: string
   entry_code: string
   type: StockEntryType
+  status: StockEntryStatus
+  posted_at: string | null
   supplier_id: string | null
   created_by: string | null
   notes: string | null
@@ -158,10 +161,12 @@ export interface StockEntryLine {
   batch_id: string | null
   unit_name: string
   quantity: number
+  unit_cost: number
   notes: string | null
   // Joined
   product?: Product
   batch?: Batch
+  entry?: StockEntry
 }
 
 export interface SalesOrder {
@@ -205,6 +210,39 @@ export interface ApprovalRules {
   updated_by: string | null
   created_at: string
   updated_at: string
+}
+
+export type StockEntryStatus = "draft" | "posted" | "cancelled"
+export type ExpenseBucket = "cogs" | "operating" | "hr" | "financial" | "tax" | "other"
+
+export interface ExpenseCategory {
+  id: string
+  org_id: string
+  code: string
+  name: string
+  bucket: ExpenseBucket
+  is_active: boolean
+  created_at: string
+}
+
+export interface Expense {
+  id: string
+  org_id: string
+  category_id: string | null
+  expense_date: string
+  amount: number
+  description: string | null
+  reference_code: string | null
+  source_type: string | null
+  source_id: string | null
+  is_paid: boolean
+  paid_at: string | null
+  payment_method: "cash" | "transfer" | "ewallet" | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // Joined
+  category?: ExpenseCategory
 }
 
 export type NotificationType =

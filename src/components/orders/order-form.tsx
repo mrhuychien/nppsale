@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -16,6 +16,7 @@ import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X } from "lucide-react"
 import Link from "next/link"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
@@ -74,31 +75,23 @@ export function OrderForm() {
     setCustomerDropdownOpen(false)
   }
 
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
+
   const handleBarcodeScan = () => {
-    setBarcodeInput("")
     setBarcodeOpen(true)
-    setTimeout(() => barcodeRef.current?.focus(), 100)
   }
 
-  const processBarcodeInput = (code: string) => {
-    if (!code.trim()) return
-    const product = products.find((p) => p.barcode === code.trim() || p.sku === code.trim())
+  const processBarcodeResult = (code: string) => {
+    const product = products.find((p) => p.barcode === code || p.sku === code)
     if (product) {
       addLine(product.id)
       toast({ title: `Đã thêm: ${product.name}` })
-      setBarcodeInput("")
-      // Keep scanner open for continuous scanning
     } else {
       toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${code}`, variant: "destructive" })
-      setBarcodeInput("")
     }
-    barcodeRef.current?.focus()
   }
 
   const isSalesRole = user?.role === "sales"
-  const barcodeRef = useRef<HTMLInputElement>(null)
-  const [barcodeOpen, setBarcodeOpen] = useState(false)
-  const [barcodeInput, setBarcodeInput] = useState("")
 
   useEffect(() => {
     if (selectedCustomer?.payment_terms) {
@@ -684,41 +677,12 @@ export function OrderForm() {
         <div className="fixed inset-0 z-40" onClick={() => setCustomerDropdownOpen(false)} />
       )}
 
-      {/* Barcode scanner modal */}
-      {barcodeOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setBarcodeOpen(false)}>
-          <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                <ScanBarcode className="h-5 w-5 text-primary" />
-                Quét mã vạch
-              </h3>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setBarcodeOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Quét mã vạch bằng máy quét hoặc nhập mã thủ công</p>
-            <Input
-              ref={barcodeRef}
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  processBarcodeInput(barcodeInput)
-                }
-              }}
-              placeholder="Quét hoặc nhập mã vạch..."
-              className="text-center text-lg font-mono"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setBarcodeOpen(false)}>Đóng</Button>
-              <Button type="button" className="flex-1" onClick={() => processBarcodeInput(barcodeInput)}>Thêm sản phẩm</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Barcode scanner (camera + manual) */}
+      <BarcodeScanner
+        open={barcodeOpen}
+        onClose={() => setBarcodeOpen(false)}
+        onScan={processBarcodeResult}
+      />
     </form>
   )
 }

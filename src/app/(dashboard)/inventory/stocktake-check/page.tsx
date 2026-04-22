@@ -272,63 +272,132 @@ export default function StocktakeCheckPage() {
               Không có sản phẩm tồn kho để kiểm kê
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sản phẩm</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Tồn hệ thống</TableHead>
-                    <TableHead className="text-right w-32">Tồn thực tế</TableHead>
-                    <TableHead className="text-right">Chênh lệch</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row, index) => {
-                    const actual = row.actualQty !== "" ? parseFloat(row.actualQty) : null
-                    const diff = actual !== null && !isNaN(actual) ? actual - row.systemQty : null
-                    const hasDiff = diff !== null && diff !== 0
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sản phẩm</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead className="text-right">Tồn hệ thống</TableHead>
+                      <TableHead className="text-right w-32">Tồn thực tế</TableHead>
+                      <TableHead className="text-right">Chênh lệch</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, index) => {
+                      const actual = row.actualQty !== "" ? parseFloat(row.actualQty) : null
+                      const diff = actual !== null && !isNaN(actual) ? actual - row.systemQty : null
+                      const hasDiff = diff !== null && diff !== 0
 
-                    return (
-                      <TableRow key={row.productId} className={hasDiff ? "bg-destructive/5" : ""}>
-                        <TableCell className="font-medium">{row.productName}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.sku}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {row.systemQty} {row.baseUnit}
-                        </TableCell>
-                        <TableCell className="text-right">
+                      return (
+                        <TableRow key={row.productId} className={hasDiff ? "bg-destructive/5" : ""}>
+                          <TableCell className="font-medium">{row.productName}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.sku}</TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {row.systemQty} {row.baseUnit}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              value={row.actualQty}
+                              onChange={(e) => handleActualQtyChange(index, e.target.value)}
+                              placeholder="-"
+                              className="w-24 text-right ml-auto"
+                              disabled={saved}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            {diff !== null && !isNaN(diff) ? (
+                              <span
+                                className={
+                                  diff > 0
+                                    ? "text-green-700"
+                                    : diff < 0
+                                      ? "text-destructive"
+                                      : "text-muted-foreground"
+                                }
+                              >
+                                {diff > 0 ? "+" : ""}{diff}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="md:hidden space-y-2">
+                {rows.map((row, index) => {
+                  const actual = row.actualQty !== "" ? parseFloat(row.actualQty) : null
+                  const diff = actual !== null && !isNaN(actual) ? actual - row.systemQty : null
+                  const hasDiff = diff !== null && diff !== 0
+
+                  return (
+                    <div
+                      key={row.productId}
+                      className={`rounded-xl border p-3 ${hasDiff ? "bg-destructive/5 border-destructive/40" : "bg-card"}`}
+                    >
+                      <div className="mb-2">
+                        <p className="font-semibold text-sm leading-tight">{row.productName}</p>
+                        <p className="font-mono text-xs text-muted-foreground mt-0.5">SKU: {row.sku}</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 items-end">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Tồn hệ thống
+                          </p>
+                          <p className="font-semibold text-sm mt-0.5">
+                            {row.systemQty} {row.baseUnit}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                            Tồn thực tế
+                          </p>
                           <Input
                             type="number"
                             value={row.actualQty}
                             onChange={(e) => handleActualQtyChange(index, e.target.value)}
                             placeholder="-"
-                            className="w-24 text-right ml-auto"
+                            className="h-9 text-center"
                             disabled={saved}
                           />
-                        </TableCell>
-                        <TableCell className="text-right font-bold">
-                          {diff !== null && !isNaN(diff) ? (
-                            <span
-                              className={
-                                diff > 0
-                                  ? "text-green-700"
-                                  : diff < 0
-                                    ? "text-destructive"
-                                    : "text-muted-foreground"
-                              }
-                            >
-                              {diff > 0 ? "+" : ""}{diff}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Chênh lệch
+                          </p>
+                          <p className="font-bold text-sm mt-0.5">
+                            {diff !== null && !isNaN(diff) ? (
+                              <span
+                                className={
+                                  diff > 0
+                                    ? "text-green-700"
+                                    : diff < 0
+                                      ? "text-destructive"
+                                      : "text-muted-foreground"
+                                }
+                              >
+                                {diff > 0 ? "+" : ""}{diff}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

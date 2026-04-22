@@ -602,7 +602,8 @@ export default function StockInPage() {
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-surface-low text-left">
@@ -786,6 +787,143 @@ export default function StockInPage() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {lines.map((line, i) => {
+              const qty = parseFloat(line.quantity) || 0
+              const price = parseFloat(line.unit_price) || 0
+              const lineTotal = qty * price
+              const hasProduct = !!line.product_id
+              return (
+                <div key={line.id} className="rounded-xl border bg-card p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
+                        <span className="font-semibold">#{i + 1}</span>
+                        {hasProduct && <span className="font-mono">SKU: {line.sku}</span>}
+                      </div>
+                      {hasProduct ? (
+                        <p className="font-bold text-primary text-sm leading-tight">{line.product_name}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">Tìm sản phẩm ở ô trên để thêm…</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => removeLine(line.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={line.quantity}
+                        onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                        placeholder="0"
+                        className="h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">ĐVT</Label>
+                      {hasProduct && line.available_units.length > 1 ? (
+                        <Select
+                          value={line.unit_name}
+                          onValueChange={(v) => updateLine(line.id, { unit_name: v })}
+                        >
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {line.available_units.map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={hasProduct ? line.unit_name : "—"}
+                          disabled
+                          className="h-9"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={line.unit_price}
+                        onChange={(e) => updateLine(line.id, { unit_price: e.target.value })}
+                        placeholder="0"
+                        className="h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT %</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.1"
+                        value={hasProduct ? String(Math.round(line.vat_rate * 1000) / 10) : ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0
+                          const clamped = Math.max(0, Math.min(100, v))
+                          updateLine(line.id, { vat_rate: clamped / 100 })
+                        }}
+                        className="h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-border/40">
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Mã lô</Label>
+                      <Input
+                        value={line.batch_code}
+                        onChange={(e) => updateLine(line.id, { batch_code: e.target.value })}
+                        placeholder="Tự sinh"
+                        className="font-mono text-xs h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">NSX</Label>
+                      <Input
+                        type="date"
+                        value={line.manufactured_at}
+                        onChange={(e) => updateLine(line.id, { manufactured_at: e.target.value })}
+                        className="text-xs h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">HSD</Label>
+                      <Input
+                        type="date"
+                        value={line.expires_at}
+                        onChange={(e) => updateLine(line.id, { expires_at: e.target.value })}
+                        className="text-xs h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-border/40">
+                    <span className="text-xs text-muted-foreground">Thành tiền</span>
+                    <span className="font-bold">{formatCurrency(lineTotal)}</span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>

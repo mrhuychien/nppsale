@@ -234,6 +234,32 @@ export default function OrderDetailPage() {
       const { error } = await supabase.from("sales_orders").update(updates).eq("id", order.id)
       if (error) throw error
 
+      // Notifications for status change (fire-and-forget)
+      if (user.org_id && order.sales_user_id && order.sales_user_id !== user.id) {
+        const { createNotification } = await import("@/lib/notifications")
+        if (newStatus === "confirmed") {
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: order.sales_user_id,
+            type: "order_approved",
+            title: `Đơn ${order.order_code} đã được duyệt`,
+            body: `Bởi ${user.full_name || "Quản lý"}`,
+            linkUrl: `/orders/${order.id}`,
+            metadata: { order_id: order.id, order_code: order.order_code },
+          })
+        } else if (newStatus === "cancelled") {
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: order.sales_user_id,
+            type: "order_cancelled",
+            title: `Đơn ${order.order_code} đã bị hủy`,
+            body: `Bởi ${user.full_name || "Quản lý"}`,
+            linkUrl: `/orders/${order.id}`,
+            metadata: { order_id: order.id, order_code: order.order_code },
+          })
+        }
+      }
+
       // Auto-create receivable when order becomes delivered
       if (newStatus === "delivered") {
         const { created, error: recErr } = await ensureReceivableForOrder(supabase, order.id)

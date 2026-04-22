@@ -187,6 +187,26 @@ export default function OrdersPage() {
         })
         .in("id", ids)
       if (error) throw error
+
+      // Notify each sales rep (fire-and-forget)
+      const approvedOrders = orders.filter(
+        (o) => ids.includes(o.id) && o.sales_user_id && o.sales_user_id !== user.id
+      )
+      if (approvedOrders.length > 0 && user.org_id) {
+        const { createNotification } = await import("@/lib/notifications")
+        for (const o of approvedOrders) {
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: o.sales_user_id,
+            type: "order_approved",
+            title: `Đơn ${o.order_code} đã được duyệt`,
+            body: `Bởi ${user.full_name || "Quản lý"}`,
+            linkUrl: `/orders/${o.id}`,
+            metadata: { order_id: o.id, order_code: o.order_code },
+          })
+        }
+      }
+
       setOrders((prev) =>
         prev.map((o) =>
           ids.includes(o.id)

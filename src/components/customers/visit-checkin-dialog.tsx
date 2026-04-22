@@ -137,6 +137,34 @@ export function VisitCheckinDialog({
       })
       if (insertErr) throw insertErr
 
+      // 3. Notify the primary assignee (if different from the visiting user)
+      //    This is useful for managers overseeing the rep's portfolio.
+      const { data: primaryAssignment } = await supabase
+        .from("customer_assignments")
+        .select("user_id")
+        .eq("customer_id", customerId)
+        .eq("role", "primary")
+        .maybeSingle()
+      const primaryRepId = (primaryAssignment as { user_id?: string } | null)?.user_id
+      if (primaryRepId && primaryRepId !== user.id) {
+        const { createNotification } = await import("@/lib/notifications")
+        const resultLabels: Record<string, string> = {
+          order_placed: "đã đặt đơn",
+          no_order: "không đặt đơn",
+          closed: "cửa hàng đóng",
+          not_visited: "chưa ghé",
+        }
+        createNotification(supabase, {
+          orgId: user.org_id,
+          userId: primaryRepId,
+          type: "visit_logged",
+          title: `Có lượt ghé thăm ${customerName}`,
+          body: `${user.full_name || "NV"} đã ghé • ${resultLabels[result] || result}`,
+          linkUrl: `/customers/${customerId}`,
+          metadata: { customer_id: customerId, result, by: user.id },
+        })
+      }
+
       toast({ title: `Đã ghi nhận ghé thăm: ${customerName}` })
       onSuccess?.()
       onOpenChange(false)

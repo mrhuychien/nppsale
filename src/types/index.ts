@@ -207,6 +207,29 @@ export interface ApprovalRules {
   updated_at: string
 }
 
+export type NotificationType =
+  | "order_pending_approval"
+  | "order_approved"
+  | "order_cancelled"
+  | "payment_received"
+  | "receivable_overdue"
+  | "visit_logged"
+  | "info"
+
+export interface Notification {
+  id: string
+  org_id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string | null
+  link_url: string | null
+  is_read: boolean
+  read_at: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
 export interface SalesOrderLine {
   id: string
   order_id: string

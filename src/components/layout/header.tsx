@@ -7,8 +7,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { NotificationBell } from "@/components/layout/notification-bell"
 import { ROLE_LABELS } from "@/lib/constants"
-import { LogOut, Menu, Bell, Search } from "lucide-react"
+import { LogOut, Menu, Search } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 
 interface HeaderProps {
@@ -88,11 +89,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           />
         </div>
 
-        {/* Notifications */}
-        <button className="p-2 text-muted-foreground hover:bg-muted/50 rounded-lg transition-colors relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-destructive rounded-full"></span>
-        </button>
+        <NotificationBell />
 
         <div className="hidden sm:block h-6 w-px bg-border/50 mx-1"></div>
 

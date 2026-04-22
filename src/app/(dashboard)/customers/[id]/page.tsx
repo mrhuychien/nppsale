@@ -305,35 +305,65 @@ export default function CustomerDetailPage() {
                   {recentOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">Chưa có đơn hàng nào</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Mã đơn</TableHead>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Tổng tiền</TableHead>
-                          <TableHead>Trạng thái</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Mã đơn</TableHead>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Tổng tiền</TableHead>
+                              <TableHead>Trạng thái</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {recentOrders.map((o) => {
+                              const st = ORDER_STATUS_MAP[o.status]
+                              return (
+                                <TableRow key={o.id}>
+                                  <TableCell>
+                                    <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
+                                      {o.order_code}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
+                                  <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
+                                  <TableCell>
+                                    {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {recentOrders.map((o) => {
                           const st = ORDER_STATUS_MAP[o.status]
                           return (
-                            <TableRow key={o.id}>
-                              <TableCell>
-                                <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
-                                  {o.order_code}
-                                </Link>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
-                              <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
-                              <TableCell>
-                                {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
-                              </TableCell>
-                            </TableRow>
+                            <Link
+                              key={o.id}
+                              href={`/orders/${o.id}`}
+                              className="block rounded-xl border bg-muted/20 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-mono text-xs font-bold text-primary">{o.order_code}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(o.order_date)}</p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-bold text-sm">{formatCurrency(o.total)}</p>
+                                  {st && <Badge variant={st.variant} className="mt-1">{st.label}</Badge>}
+                                </div>
+                              </div>
+                            </Link>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -347,24 +377,42 @@ export default function CustomerDetailPage() {
                   {recentPayments.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">Chưa có thanh toán nào</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Số tiền</TableHead>
-                          <TableHead>Phương thức</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Số tiền</TableHead>
+                              <TableHead>Phương thức</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {recentPayments.map((p) => (
+                              <TableRow key={p.id}>
+                                <TableCell className="text-muted-foreground">{formatDate(p.collected_at)}</TableCell>
+                                <TableCell className="text-right font-semibold">{formatCurrency(p.amount)}</TableCell>
+                                <TableCell>{paymentMethodLabel[p.method] || p.method}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {recentPayments.map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="text-muted-foreground">{formatDate(p.collected_at)}</TableCell>
-                            <TableCell className="text-right font-semibold">{formatCurrency(p.amount)}</TableCell>
-                            <TableCell>{paymentMethodLabel[p.method] || p.method}</TableCell>
-                          </TableRow>
+                          <div key={p.id} className="rounded-xl border bg-muted/20 p-3 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs text-muted-foreground">{formatDate(p.collected_at)}</p>
+                              <p className="text-xs mt-0.5">{paymentMethodLabel[p.method] || p.method}</p>
+                            </div>
+                            <p className="font-bold text-sm">{formatCurrency(p.amount)}</p>
+                          </div>
                         ))}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -380,35 +428,65 @@ export default function CustomerDetailPage() {
                   {allOrders.length === 0 ? (
                     <EmptyState title="Chưa có đơn hàng" description="Khách hàng này chưa có đơn hàng nào" />
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Mã đơn</TableHead>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Tổng tiền</TableHead>
-                          <TableHead>Trạng thái</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Mã đơn</TableHead>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Tổng tiền</TableHead>
+                              <TableHead>Trạng thái</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {allOrders.map((o) => {
+                              const st = ORDER_STATUS_MAP[o.status]
+                              return (
+                                <TableRow key={o.id}>
+                                  <TableCell>
+                                    <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
+                                      {o.order_code}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
+                                  <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
+                                  <TableCell>
+                                    {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {allOrders.map((o) => {
                           const st = ORDER_STATUS_MAP[o.status]
                           return (
-                            <TableRow key={o.id}>
-                              <TableCell>
-                                <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
-                                  {o.order_code}
-                                </Link>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
-                              <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
-                              <TableCell>
-                                {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
-                              </TableCell>
-                            </TableRow>
+                            <Link
+                              key={o.id}
+                              href={`/orders/${o.id}`}
+                              className="block rounded-xl border bg-muted/20 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-mono text-xs font-bold text-primary">{o.order_code}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(o.order_date)}</p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-bold text-sm">{formatCurrency(o.total)}</p>
+                                  {st && <Badge variant={st.variant} className="mt-1">{st.label}</Badge>}
+                                </div>
+                              </div>
+                            </Link>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -424,40 +502,74 @@ export default function CustomerDetailPage() {
                   {priceRows.length === 0 ? (
                     <EmptyState title="Chưa có bảng giá" description="Chưa có giá nào được thiết lập cho nhóm khách hàng này" />
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Sản phẩm</TableHead>
-                          <TableHead>SKU</TableHead>
-                          <TableHead>ĐVT</TableHead>
-                          <TableHead className="text-right">Giá (nhóm KH)</TableHead>
-                          <TableHead className="text-right">Giá mặc định</TableHead>
-                          <TableHead>Hiệu lực</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Sản phẩm</TableHead>
+                              <TableHead>SKU</TableHead>
+                              <TableHead>ĐVT</TableHead>
+                              <TableHead className="text-right">Giá (nhóm KH)</TableHead>
+                              <TableHead className="text-right">Giá mặc định</TableHead>
+                              <TableHead>Hiệu lực</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {priceRows.map((p) => {
+                              const isGroupPrice = !!p.group_id
+                              const effectiveRange = p.effective_from || p.effective_to
+                                ? `${p.effective_from ? formatDate(p.effective_from) : "..."} - ${p.effective_to ? formatDate(p.effective_to) : "..."}`
+                                : "Không giới hạn"
+                              return (
+                                <TableRow key={p.id}>
+                                  <TableCell className="font-medium">{p.product?.name || "—"}</TableCell>
+                                  <TableCell className="text-muted-foreground">{p.product?.sku || "—"}</TableCell>
+                                  <TableCell>{p.unit_name || p.product?.base_unit || "—"}</TableCell>
+                                  <TableCell className="text-right font-semibold">
+                                    {isGroupPrice ? formatCurrency(p.price) : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    {!isGroupPrice ? formatCurrency(p.price) : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground text-xs">{effectiveRange}</TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {priceRows.map((p) => {
                           const isGroupPrice = !!p.group_id
                           const effectiveRange = p.effective_from || p.effective_to
                             ? `${p.effective_from ? formatDate(p.effective_from) : "..."} - ${p.effective_to ? formatDate(p.effective_to) : "..."}`
                             : "Không giới hạn"
                           return (
-                            <TableRow key={p.id}>
-                              <TableCell className="font-medium">{p.product?.name || "—"}</TableCell>
-                              <TableCell className="text-muted-foreground">{p.product?.sku || "—"}</TableCell>
-                              <TableCell>{p.unit_name || p.product?.base_unit || "—"}</TableCell>
-                              <TableCell className="text-right font-semibold">
-                                {isGroupPrice ? formatCurrency(p.price) : "—"}
-                              </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
-                                {!isGroupPrice ? formatCurrency(p.price) : "—"}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-xs">{effectiveRange}</TableCell>
-                            </TableRow>
+                            <div key={p.id} className="rounded-xl border bg-muted/20 p-3">
+                              <div className="flex justify-between items-start gap-2 mb-1">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-sm leading-tight">{p.product?.name || "—"}</p>
+                                  <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                                    SKU: {p.product?.sku || "—"} • ĐVT: {p.unit_name || p.product?.base_unit || "—"}
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="font-bold text-sm">{formatCurrency(p.price)}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {isGroupPrice ? "Giá nhóm" : "Giá mặc định"}
+                                  </p>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground">Hiệu lực: {effectiveRange}</p>
+                            </div>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>

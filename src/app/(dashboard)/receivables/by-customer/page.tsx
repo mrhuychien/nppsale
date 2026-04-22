@@ -215,50 +215,95 @@ export default function ReceivablesByCustomerPage() {
           description={search || filter !== "all" ? "Thử thay đổi bộ lọc" : "Chưa có khách hàng nào đang nợ"}
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead className="hidden sm:table-cell">SĐT</TableHead>
-                    <TableHead className="hidden md:table-cell">NVBH phụ trách</TableHead>
-                    <TableHead className="text-right">Tổng nợ</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Đã trả</TableHead>
-                    <TableHead className="text-right">Còn lại</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">Quá hạn</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRows.map((row) => (
-                    <TableRow
-                      key={row.customerId}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/receivables/by-customer/${row.customerId}`)}
-                    >
-                      <TableCell className="font-medium">{row.storeName}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{row.phone}</TableCell>
-                      <TableCell className="hidden md:table-cell">{row.repName}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
-                      <TableCell className="text-right hidden sm:table-cell">{formatCurrency(row.totalPaid)}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
-                      <TableCell className="text-right hidden md:table-cell">
-                        {row.overdueAmount > 0 ? (
-                          <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>{statusBadge(row.status)}</TableCell>
+        <>
+          {/* Desktop table */}
+          <Card className="hidden lg:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>SĐT</TableHead>
+                      <TableHead>NVBH phụ trách</TableHead>
+                      <TableHead className="text-right">Tổng nợ</TableHead>
+                      <TableHead className="text-right">Đã trả</TableHead>
+                      <TableHead className="text-right">Còn lại</TableHead>
+                      <TableHead className="text-right">Quá hạn</TableHead>
+                      <TableHead>Trạng thái</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => (
+                      <TableRow
+                        key={row.customerId}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/receivables/by-customer/${row.customerId}`)}
+                      >
+                        <TableCell className="font-medium">{row.storeName}</TableCell>
+                        <TableCell>{row.phone}</TableCell>
+                        <TableCell>{row.repName}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.totalPaid)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
+                        <TableCell className="text-right">
+                          {row.overdueAmount > 0 ? (
+                            <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>{statusBadge(row.status)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {filteredRows.map((row) => (
+              <div
+                key={row.customerId}
+                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/receivables/by-customer/${row.customerId}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-base leading-tight truncate">{row.storeName}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">SĐT: {row.phone}</p>
+                      <p className="text-xs text-muted-foreground truncate">NVBH: {row.repName}</p>
+                    </div>
+                    <div className="shrink-0">{statusBadge(row.status)}</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Tổng nợ</p>
+                      <p className="font-medium">{formatCurrency(row.totalDebt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Đã trả</p>
+                      <p className="font-medium">{formatCurrency(row.totalPaid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Còn lại</p>
+                      <p className="font-bold text-destructive">{formatCurrency(row.remaining)}</p>
+                    </div>
+                  </div>
+                  {row.overdueAmount > 0 && (
+                    <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t text-xs">
+                      <span className="text-muted-foreground">Quá hạn</span>
+                      <span className="font-bold text-destructive">{formatCurrency(row.overdueAmount)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

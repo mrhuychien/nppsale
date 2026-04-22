@@ -286,35 +286,66 @@ export default function OrderDetailPage() {
             <CardTitle>Chi tiết sản phẩm</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sản phẩm</TableHead>
-                  <TableHead>ĐVT</TableHead>
-                  <TableHead className="text-right">SL</TableHead>
-                  <TableHead className="text-right">Đơn giá</TableHead>
-                  <TableHead className="text-right">Thành tiền</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
-                    <TableCell>{line.unit_name}</TableCell>
-                    <TableCell className="text-right">{line.quantity}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
-                  </TableRow>
-                ))}
-                {lines.length === 0 && (
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                      Chưa có sản phẩm
-                    </TableCell>
+                    <TableHead>Sản phẩm</TableHead>
+                    <TableHead>ĐVT</TableHead>
+                    <TableHead className="text-right">SL</TableHead>
+                    <TableHead className="text-right">Đơn giá</TableHead>
+                    <TableHead className="text-right">Thành tiền</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((line) => (
+                    <TableRow key={line.id}>
+                      <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
+                      <TableCell>{line.unit_name}</TableCell>
+                      <TableCell className="text-right">{line.quantity}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {lines.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                        Chưa có sản phẩm
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden space-y-2">
+              {lines.length === 0 ? (
+                <p className="text-center text-muted-foreground py-6 text-sm">Chưa có sản phẩm</p>
+              ) : (
+                lines.map((line) => (
+                  <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
+                    <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">SL ({line.unit_name})</p>
+                        <p className="font-medium">{line.quantity}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Đơn giá</p>
+                        <p className="font-medium">{formatCurrency(line.unit_price)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-muted-foreground">Thành tiền</p>
+                        <p className="font-bold">{formatCurrency(line.line_total)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
             <div className="mt-4 space-y-1 text-right border-t border-border/40 pt-4">
               <p className="text-sm">Tạm tính: {formatCurrency(order.subtotal)}</p>
               <p className="text-sm">Chiết khấu: {formatCurrency(order.discount)}</p>

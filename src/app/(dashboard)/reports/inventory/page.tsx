@@ -364,71 +364,114 @@ export default function InventoryReportPage() {
               Không có SKU cần chú ý
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã SKU</TableHead>
-                  <TableHead>Tên sản phẩm</TableHead>
-                  <TableHead>Đơn vị</TableHead>
-                  <TableHead className="text-right">Tồn thực tế</TableHead>
-                  <TableHead>Lô hàng (HSD)</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop table */}
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mã SKU</TableHead>
+                      <TableHead>Tên sản phẩm</TableHead>
+                      <TableHead>Đơn vị</TableHead>
+                      <TableHead className="text-right">Tồn thực tế</TableHead>
+                      <TableHead>Lô hàng (HSD)</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attentionRows.map((r) => {
+                      const status = getExpiryStatus(r.expiry)
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-bold text-primary">{r.sku}</TableCell>
+                          <TableCell>
+                            <div className="text-sm font-semibold text-foreground">{r.name}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              Nhóm: {r.category}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{r.unit}</TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-right font-bold",
+                              r.qty <= 20 ? "text-danger" : ""
+                            )}
+                          >
+                            {r.qty}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm font-mono">{r.batchCode}</div>
+                            <div
+                              className={cn(
+                                "text-[10px] font-bold",
+                                status !== "ok" ? "text-danger" : "text-muted-foreground"
+                              )}
+                            >
+                              HSD: {formatDate(r.expiry)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                r.tag === "Cận date"
+                                  ? "danger"
+                                  : r.qty <= 20
+                                    ? "warning"
+                                    : "default"
+                              }
+                            >
+                              {r.tag === "Cận date"
+                                ? "Cận date"
+                                : r.qty <= 20
+                                  ? "Tồn thấp"
+                                  : "Bán chậm"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="lg:hidden space-y-3">
                 {attentionRows.map((r) => {
                   const status = getExpiryStatus(r.expiry)
+                  const variant = r.tag === "Cận date" ? "danger" : r.qty <= 20 ? "warning" : "default"
+                  const label = r.tag === "Cận date" ? "Cận date" : r.qty <= 20 ? "Tồn thấp" : "Bán chậm"
                   return (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-bold text-primary">{r.sku}</TableCell>
-                      <TableCell>
-                        <div className="text-sm font-semibold text-foreground">{r.name}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          Nhóm: {r.category}
+                    <div key={r.id} className="rounded-2xl border bg-card p-4 shadow-ambient">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-xs font-bold text-primary">{r.sku}</p>
+                          <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                            {r.name}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Nhóm: {r.category} • ĐVT: {r.unit}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-sm">{r.unit}</TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-right font-bold",
-                          r.qty <= 20 ? "text-danger" : ""
-                        )}
-                      >
-                        {r.qty}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm font-mono">{r.batchCode}</div>
-                        <div
-                          className={cn(
-                            "text-[10px] font-bold",
-                            status !== "ok" ? "text-danger" : "text-muted-foreground"
-                          )}
-                        >
-                          HSD: {formatDate(r.expiry)}
+                        <Badge variant={variant} className="shrink-0">{label}</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t text-xs">
+                        <div>
+                          <p className="text-muted-foreground">Tồn thực tế</p>
+                          <p className={cn("font-bold", r.qty <= 20 ? "text-danger" : "")}>{r.qty}</p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            r.tag === "Cận date"
-                              ? "danger"
-                              : r.qty <= 20
-                                ? "warning"
-                                : "default"
-                          }
-                        >
-                          {r.tag === "Cận date"
-                            ? "Cận date"
-                            : r.qty <= 20
-                              ? "Tồn thấp"
-                              : "Bán chậm"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
+                        <div>
+                          <p className="text-muted-foreground">Lô (HSD)</p>
+                          <p className="font-mono text-xs">{r.batchCode}</p>
+                          <p className={cn("text-[10px] font-bold", status !== "ok" ? "text-danger" : "text-muted-foreground")}>
+                            HSD: {formatDate(r.expiry)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

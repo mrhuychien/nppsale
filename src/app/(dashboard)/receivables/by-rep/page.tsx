@@ -183,52 +183,96 @@ export default function ReceivablesByRepPage() {
           description="Chưa có công nợ nào gắn với nhân viên bán hàng"
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NVBH</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Số KH phụ trách</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Số KH đang nợ</TableHead>
-                    <TableHead className="text-right">Tổng nợ</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">Quá hạn</TableHead>
-                    <TableHead className="text-center">Tỷ lệ thu hồi</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">DSO</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow
-                      key={row.userId}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
-                    >
-                      <TableCell className="font-medium">{row.fullName}</TableCell>
-                      <TableCell className="text-right hidden sm:table-cell">{row.customerCount}</TableCell>
-                      <TableCell className="text-right hidden sm:table-cell">{row.customersWithDebt}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(row.totalDebt)}</TableCell>
-                      <TableCell className="text-right hidden md:table-cell">
-                        {row.overdueAmount > 0 ? (
-                          <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">{rateBadge(row.collectionRate)}</TableCell>
-                      <TableCell className="text-right hidden md:table-cell">
-                        <span className={rateColor(100 - Math.min(row.dso, 100))}>
-                          {row.dso > 0 ? `${row.dso} ngày` : "-"}
-                        </span>
-                      </TableCell>
+        <>
+          {/* Desktop table */}
+          <Card className="hidden lg:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>NVBH</TableHead>
+                      <TableHead className="text-right">Số KH phụ trách</TableHead>
+                      <TableHead className="text-right">Số KH đang nợ</TableHead>
+                      <TableHead className="text-right">Tổng nợ</TableHead>
+                      <TableHead className="text-right">Quá hạn</TableHead>
+                      <TableHead className="text-center">Tỷ lệ thu hồi</TableHead>
+                      <TableHead className="text-right">DSO</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow
+                        key={row.userId}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
+                      >
+                        <TableCell className="font-medium">{row.fullName}</TableCell>
+                        <TableCell className="text-right">{row.customerCount}</TableCell>
+                        <TableCell className="text-right">{row.customersWithDebt}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(row.totalDebt)}</TableCell>
+                        <TableCell className="text-right">
+                          {row.overdueAmount > 0 ? (
+                            <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">{rateBadge(row.collectionRate)}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={rateColor(100 - Math.min(row.dso, 100))}>
+                            {row.dso > 0 ? `${row.dso} ngày` : "-"}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {rows.map((row) => (
+              <div
+                key={row.userId}
+                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-base leading-tight truncate">{row.fullName}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Phụ trách: {row.customerCount} KH • Đang nợ: {row.customersWithDebt} KH
+                      </p>
+                    </div>
+                    <div className="shrink-0">{rateBadge(row.collectionRate)}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Tổng nợ</p>
+                      <p className="font-bold">{formatCurrency(row.totalDebt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Quá hạn</p>
+                      <p className={row.overdueAmount > 0 ? "font-bold text-destructive" : "font-medium"}>
+                        {row.overdueAmount > 0 ? formatCurrency(row.overdueAmount) : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">DSO</p>
+                      <p className={`font-medium ${rateColor(100 - Math.min(row.dso, 100))}`}>
+                        {row.dso > 0 ? `${row.dso} ngày` : "-"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

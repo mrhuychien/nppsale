@@ -323,21 +323,56 @@ export default function CustomerAnalyticsPage() {
               {topCustomers.length === 0 ? (
                 <EmptyState title="Chưa có dữ liệu" description="Chưa có đơn hàng nào trong tháng này" />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead className="text-right">Doanh thu</TableHead>
-                      <TableHead className="text-right">Số đơn</TableHead>
-                      <TableHead className="text-right">TB/đơn</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Khách hàng</TableHead>
+                          <TableHead className="text-right">Doanh thu</TableHead>
+                          <TableHead className="text-right">Số đơn</TableHead>
+                          <TableHead className="text-right">TB/đơn</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {topCustomers.map((c, idx) => (
+                          <TableRow key={c.customer_id}>
+                            <TableCell>
+                              <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-black ${
+                                idx === 0 ? "bg-amber-100 text-amber-700" :
+                                idx === 1 ? "bg-slate-200 text-slate-600" :
+                                idx === 2 ? "bg-orange-100 text-orange-700" :
+                                "bg-surface-container text-muted-foreground"
+                              }`}>
+                                {idx + 1}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Link href={`/customers/${c.customer_id}`} className="text-primary font-semibold hover:underline">
+                                {c.store_name}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(c.revenue)}</TableCell>
+                            <TableCell className="text-right">{c.order_count}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{formatCurrency(c.avg_order)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile card list */}
+                  <div className="md:hidden space-y-2">
                     {topCustomers.map((c, idx) => (
-                      <TableRow key={c.customer_id}>
-                        <TableCell>
-                          <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-black ${
+                      <Link
+                        key={c.customer_id}
+                        href={`/customers/${c.customer_id}`}
+                        className="block rounded-xl border bg-muted/20 p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-black shrink-0 ${
                             idx === 0 ? "bg-amber-100 text-amber-700" :
                             idx === 1 ? "bg-slate-200 text-slate-600" :
                             idx === 2 ? "bg-orange-100 text-orange-700" :
@@ -345,19 +380,28 @@ export default function CustomerAnalyticsPage() {
                           }`}>
                             {idx + 1}
                           </span>
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/customers/${c.customer_id}`} className="text-primary font-semibold hover:underline">
-                            {c.store_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(c.revenue)}</TableCell>
-                        <TableCell className="text-right">{c.order_count}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{formatCurrency(c.avg_order)}</TableCell>
-                      </TableRow>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate">{c.store_name}</p>
+                            <div className="grid grid-cols-3 gap-2 mt-1 text-xs">
+                              <div>
+                                <p className="text-muted-foreground">Doanh thu</p>
+                                <p className="font-bold">{formatCurrency(c.revenue)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Số đơn</p>
+                                <p className="font-medium">{c.order_count}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">TB/đơn</p>
+                                <p className="font-medium">{formatCurrency(c.avg_order)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -373,40 +417,69 @@ export default function CustomerAnalyticsPage() {
               {churnCustomers.length === 0 ? (
                 <EmptyState title="Không có KH ngừng mua" description="Tất cả khách hàng đều đặt hàng trong 30 ngày qua" />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead>Đơn cuối</TableHead>
-                      <TableHead>Ngày</TableHead>
-                      <TableHead>NVBH</TableHead>
-                      <TableHead>Liên hệ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Khách hàng</TableHead>
+                          <TableHead>Đơn cuối</TableHead>
+                          <TableHead>Ngày</TableHead>
+                          <TableHead>NVBH</TableHead>
+                          <TableHead>Liên hệ</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {churnCustomers.map((c) => (
+                          <TableRow key={c.customer_id}>
+                            <TableCell>
+                              <Link href={`/customers/${c.customer_id}`} className="text-primary font-semibold hover:underline">
+                                {c.store_name}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{c.last_order_code}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {c.last_order_date !== "—" ? formatDate(c.last_order_date) : "—"}
+                            </TableCell>
+                            <TableCell>{c.sales_user_name}</TableCell>
+                            <TableCell>
+                              {c.phone ? (
+                                <a href={`tel:${c.phone}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                                  <Phone className="h-3 w-3" /> {c.phone}
+                                </a>
+                              ) : "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile card list */}
+                  <div className="md:hidden space-y-2">
                     {churnCustomers.map((c) => (
-                      <TableRow key={c.customer_id}>
-                        <TableCell>
-                          <Link href={`/customers/${c.customer_id}`} className="text-primary font-semibold hover:underline">
+                      <div key={c.customer_id} className="rounded-xl border bg-muted/20 p-3">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <Link href={`/customers/${c.customer_id}`} className="text-primary font-semibold text-sm hover:underline truncate">
                             {c.store_name}
                           </Link>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{c.last_order_code}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {c.last_order_date !== "—" ? formatDate(c.last_order_date) : "—"}
-                        </TableCell>
-                        <TableCell>{c.sales_user_name}</TableCell>
-                        <TableCell>
-                          {c.phone ? (
-                            <a href={`tel:${c.phone}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                          {c.phone && (
+                            <a href={`tel:${c.phone}`} className="text-primary text-xs hover:underline inline-flex items-center gap-1 shrink-0">
                               <Phone className="h-3 w-3" /> {c.phone}
                             </a>
-                          ) : "—"}
-                        </TableCell>
-                      </TableRow>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          NVBH: {c.sales_user_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Đơn cuối: {c.last_order_code} • {c.last_order_date !== "—" ? formatDate(c.last_order_date) : "—"}
+                        </p>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -422,36 +495,64 @@ export default function CustomerAnalyticsPage() {
               {newCustomers.length === 0 ? (
                 <EmptyState title="Chưa có KH mới" description="Chưa có khách hàng mới nào trong tháng này" />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead>Ngày tạo</TableHead>
-                      <TableHead>NVBH phụ trách</TableHead>
-                      <TableHead>Đơn đầu tiên</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Khách hàng</TableHead>
+                          <TableHead>Ngày tạo</TableHead>
+                          <TableHead>NVBH phụ trách</TableHead>
+                          <TableHead>Đơn đầu tiên</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {newCustomers.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell>
+                              <Link href={`/customers/${c.id}`} className="text-primary font-semibold hover:underline">
+                                {c.store_name}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{formatDate(c.created_at)}</TableCell>
+                            <TableCell>{c.sales_user_name}</TableCell>
+                            <TableCell>
+                              {c.first_order_code ? (
+                                <span className="text-green-600 font-semibold">{c.first_order_code}</span>
+                              ) : (
+                                <span className="text-muted-foreground">Chưa có đơn</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile card list */}
+                  <div className="md:hidden space-y-2">
                     {newCustomers.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell>
-                          <Link href={`/customers/${c.id}`} className="text-primary font-semibold hover:underline">
-                            {c.store_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{formatDate(c.created_at)}</TableCell>
-                        <TableCell>{c.sales_user_name}</TableCell>
-                        <TableCell>
+                      <Link
+                        key={c.id}
+                        href={`/customers/${c.id}`}
+                        className="block rounded-xl border bg-muted/20 p-3"
+                      >
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <p className="text-primary font-semibold text-sm truncate">{c.store_name}</p>
                           {c.first_order_code ? (
-                            <span className="text-green-600 font-semibold">{c.first_order_code}</span>
+                            <span className="text-green-600 font-semibold text-xs shrink-0">{c.first_order_code}</span>
                           ) : (
-                            <span className="text-muted-foreground">Chưa có đơn</span>
+                            <span className="text-muted-foreground text-xs shrink-0">Chưa có đơn</span>
                           )}
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          NVBH: {c.sales_user_name} • Tạo: {formatDate(c.created_at)}
+                        </p>
+                      </Link>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

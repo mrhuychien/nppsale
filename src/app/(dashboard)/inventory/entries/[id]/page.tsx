@@ -132,43 +132,73 @@ export default function StockEntryDetailPage() {
                 Phiếu chưa có chi tiết sản phẩm
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sản phẩm</TableHead>
-                    <TableHead>Lô / SKU</TableHead>
-                    <TableHead>ĐVT</TableHead>
-                    <TableHead className="text-right">Số lượng</TableHead>
-                    <TableHead>Ghi chú</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Sản phẩm</TableHead>
+                        <TableHead>Lô / SKU</TableHead>
+                        <TableHead>ĐVT</TableHead>
+                        <TableHead className="text-right">Số lượng</TableHead>
+                        <TableHead>Ghi chú</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lines.map((line) => (
+                        <TableRow key={line.id}>
+                          <TableCell>
+                            <div className="font-semibold">{line.product?.name || "-"}</div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              SKU: {line.product?.sku}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {line.batch?.batch_code ? (
+                              <span className="font-mono text-xs bg-surface-container px-2 py-1 rounded">
+                                {line.batch.batch_code}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{line.unit_name}</TableCell>
+                          <TableCell className="text-right font-bold">{line.quantity}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
+                            {line.notes || "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="md:hidden space-y-2">
                   {lines.map((line) => (
-                    <TableRow key={line.id}>
-                      <TableCell>
-                        <div className="font-semibold">{line.product?.name || "-"}</div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          SKU: {line.product?.sku}
+                    <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                          <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                            SKU: {line.product?.sku}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {line.batch?.batch_code ? (
-                          <span className="font-mono text-xs bg-surface-container px-2 py-1 rounded">
-                            {line.batch.batch_code}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{line.unit_name}</TableCell>
-                      <TableCell className="text-right font-bold">{line.quantity}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
-                        {line.notes || "-"}
-                      </TableCell>
-                    </TableRow>
+                        <span className="shrink-0 font-bold text-base">{line.quantity} {line.unit_name}</span>
+                      </div>
+                      {line.batch?.batch_code && (
+                        <span className="font-mono text-xs bg-surface-container px-2 py-0.5 rounded inline-block">
+                          Lô: {line.batch.batch_code}
+                        </span>
+                      )}
+                      {line.notes && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{line.notes}</p>
+                      )}
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              </>
             )}
             <div className="mt-4 pt-4 border-t border-border/40 flex justify-between text-sm">
               <span className="text-muted-foreground">Tổng số lượng</span>

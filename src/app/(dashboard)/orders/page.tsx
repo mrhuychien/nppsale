@@ -33,6 +33,7 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -44,6 +45,7 @@ import {
   Search,
   ShoppingCart,
   X,
+  XCircle,
 } from "lucide-react"
 import type { Customer, Invoice, SalesOrder, User } from "@/types"
 
@@ -146,6 +148,17 @@ export default function OrdersPage() {
     [orders]
   )
 
+  // Counts per status for the quick filter chips
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {
+      all: orders.length,
+      pending_approval: pendingApprovalCount,
+      draft: 0, confirmed: 0, picking: 0, delivering: 0, delivered: 0, cancelled: 0,
+    }
+    for (const o of orders) c[o.status] = (c[o.status] || 0) + 1
+    return c
+  }, [orders, pendingApprovalCount])
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const allSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id))
@@ -215,6 +228,108 @@ export default function OrdersPage() {
         )
       )
       toast({ title: `Đã duyệt ${ids.length} đơn hàng` })
+      clearSelection()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  // Bulk cancel — only applies to orders not yet delivered/cancelled
+  const handleBulkCancel = async () => {
+    if (!user) return
+    const selected = orders.filter((o) => selectedIds.has(o.id))
+    const cancellable = selected.filter(
+      (o) => o.status !== "delivered" && o.status !== "cancelled"
+    )
+    if (cancellable.length === 0) {
+      toast({ title: "Không có đơn nào hủy được", variant: "destructive" })
+      return
+    }
+    if (!confirm(`Hủy ${cancellable.length} đơn hàng? Không thể hoàn tác.`)) return
+    const ids = cancellable.map((o) => o.id)
+    setBulkLoading(true)
+    try {
+      const { error } = await supabase
+        .from("sales_orders")
+        .update({ status: "cancelled" })
+        .in("id", ids)
+      if (error) throw error
+
+      if (user.org_id) {
+        const { createNotification } = await import("@/lib/notifications")
+        for (const o of cancellable) {
+          if (o.sales_user_id && o.sales_user_id !== user.id) {
+            createNotification(supabase, {
+              orgId: user.org_id,
+              userId: o.sales_user_id,
+              type: "order_cancelled",
+              title: `Đơn ${o.order_code} đã bị hủy`,
+              body: `Bởi ${user.full_name || "Quản lý"}`,
+              linkUrl: `/orders/${o.id}`,
+              metadata: { order_id: o.id, order_code: o.order_code },
+            })
+          }
+        }
+      }
+
+      setOrders((prev) =>
+        prev.map((o) => (ids.includes(o.id) ? { ...o, status: "cancelled" as const } : o))
+      )
+      toast({ title: `Đã hủy ${ids.length} đơn` })
+      clearSelection()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  // Bulk transition — advance selected orders to the next status. Only enabled
+  // when all selected share the same status.
+  const NEXT_STATUS: Partial<Record<string, { to: "picking" | "delivering" | "delivered"; label: string }>> = {
+    confirmed: { to: "picking", label: "Bắt đầu lấy hàng" },
+    picking: { to: "delivering", label: "Xuất kho giao hàng" },
+    delivering: { to: "delivered", label: "Xác nhận đã giao" },
+  }
+
+  const handleBulkAdvance = async () => {
+    if (!user) return
+    const selected = orders.filter((o) => selectedIds.has(o.id))
+    if (selected.length === 0) return
+    const firstStatus = selected[0].status
+    const allSame = selected.every((o) => o.status === firstStatus)
+    if (!allSame) {
+      toast({
+        title: "Trạng thái không đồng nhất",
+        description: "Chọn các đơn cùng trạng thái để chuyển sang bước tiếp theo",
+        variant: "destructive",
+      })
+      return
+    }
+    const next = NEXT_STATUS[firstStatus]
+    if (!next) {
+      toast({ title: "Không có bước tiếp theo", variant: "destructive" })
+      return
+    }
+    if (!confirm(`${next.label} cho ${selected.length} đơn?`)) return
+
+    const ids = selected.map((o) => o.id)
+    setBulkLoading(true)
+    try {
+      const { error } = await supabase
+        .from("sales_orders")
+        .update({ status: next.to })
+        .in("id", ids)
+      if (error) throw error
+
+      setOrders((prev) =>
+        prev.map((o) => (ids.includes(o.id) ? { ...o, status: next.to } : o))
+      )
+      toast({ title: `Đã chuyển ${ids.length} đơn → ${next.label}` })
       clearSelection()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
@@ -333,6 +448,44 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Status quick filter chips */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          { value: "all", label: "Tất cả", color: "" },
+          { value: "pending_approval", label: "Chờ duyệt", color: "border-amber-400 text-amber-800 bg-amber-50" },
+          { value: "draft", label: "Nháp", color: "" },
+          { value: "confirmed", label: "Đã duyệt", color: "border-blue-300 text-blue-800 bg-blue-50" },
+          { value: "picking", label: "Đang lấy", color: "border-indigo-300 text-indigo-800 bg-indigo-50" },
+          { value: "delivering", label: "Đang giao", color: "border-purple-300 text-purple-800 bg-purple-50" },
+          { value: "delivered", label: "Đã giao", color: "border-emerald-300 text-emerald-800 bg-emerald-50" },
+          { value: "cancelled", label: "Đã hủy", color: "border-red-300 text-red-800 bg-red-50" },
+        ] as const).map((s) => {
+          const count = statusCounts[s.value] || 0
+          const active = statusFilter === s.value
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setStatusFilter(s.value)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-primary text-white border-primary"
+                  : s.color || "bg-card text-muted-foreground hover:bg-muted/60"
+              }`}
+            >
+              {s.label}
+              {count > 0 && (
+                <span className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                  active ? "bg-white/20 text-white" : "bg-background/70"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -343,23 +496,6 @@ export default function OrdersPage() {
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả</SelectItem>
-            <SelectItem value="pending_approval">
-              Chờ duyệt{pendingApprovalCount > 0 ? ` (${pendingApprovalCount})` : ""}
-            </SelectItem>
-            <SelectItem value="draft">Nháp</SelectItem>
-            <SelectItem value="confirmed">Đã duyệt</SelectItem>
-            <SelectItem value="picking">Đang lấy hàng</SelectItem>
-            <SelectItem value="delivering">Đang giao</SelectItem>
-            <SelectItem value="delivered">Đã giao</SelectItem>
-            <SelectItem value="cancelled">Đã hủy</SelectItem>
-          </SelectContent>
-        </Select>
         <Button
           variant="outline"
           onClick={() => setShowAdvanced((v) => !v)}
@@ -441,31 +577,71 @@ export default function OrdersPage() {
         </Card>
       )}
 
-      {selectedIds.size > 0 && (
-        <Card className="rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-sm">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <div className="text-sm font-semibold text-primary">
-              {selectedIds.size} đơn đã chọn
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {canApprove && (
-                <Button size="sm" onClick={handleBulkApprove} disabled={bulkLoading}>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Duyệt tất cả
+      {selectedIds.size > 0 && (() => {
+        const selectedOrders = orders.filter((o) => selectedIds.has(o.id))
+        const allSameStatus = selectedOrders.length > 0 &&
+          selectedOrders.every((o) => o.status === selectedOrders[0].status)
+        const sharedStatus = allSameStatus ? selectedOrders[0].status : null
+        const next = sharedStatus ? NEXT_STATUS[sharedStatus] : null
+        const cancellableCount = selectedOrders.filter(
+          (o) => o.status !== "delivered" && o.status !== "cancelled"
+        ).length
+        const hasDraftNeedingApproval = selectedOrders.some((o) => o.status === "draft")
+
+        return (
+          <Card className="rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-sm sticky top-16 z-20">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+              <div className="text-sm font-semibold text-primary">
+                {selectedIds.size} đơn đã chọn
+                {allSameStatus && sharedStatus && (
+                  <span className="ml-2 text-xs text-muted-foreground font-normal">
+                    • cùng trạng thái: {sharedStatus}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canApprove && hasDraftNeedingApproval && (
+                  <Button size="sm" onClick={handleBulkApprove} disabled={bulkLoading}>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Duyệt đơn nháp
+                  </Button>
+                )}
+                {next && (
+                  <Button
+                    size="sm"
+                    onClick={handleBulkAdvance}
+                    disabled={bulkLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                    {next.label}
+                  </Button>
+                )}
+                {cancellableCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleBulkCancel}
+                    disabled={bulkLoading}
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hủy {cancellableCount} đơn
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={handleExportCsv}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Xuất CSV
                 </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={handleExportCsv}>
-                <Download className="mr-2 h-4 w-4" />
-                Xuất file
-              </Button>
-              <Button size="sm" variant="ghost" onClick={clearSelection}>
-                <X className="mr-2 h-4 w-4" />
-                Hủy chọn
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                <Button size="sm" variant="ghost" onClick={clearSelection}>
+                  <X className="mr-2 h-4 w-4" />
+                  Hủy chọn
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {loading ? (
         <div className="space-y-2">

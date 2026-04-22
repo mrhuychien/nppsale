@@ -173,20 +173,62 @@ export default function OrderDetailPage() {
     try {
       const updates: Record<string, unknown> = { status: newStatus }
 
-      // If confirming an order, check threshold and set approval fields
+      // If confirming an order, evaluate rules + check permission
       if (newStatus === "confirmed") {
-        const canApprove =
-          order.total < APPROVAL_THRESHOLDS.AUTO_APPROVE ||
-          (order.total < APPROVAL_THRESHOLDS.MANAGER_APPROVE && ["owner", "manager"].includes(user.role)) ||
-          user.role === "owner"
+        const { evaluateApproval, canApproveForLevel } = await import("@/lib/approval")
 
-        if (!canApprove) {
-          toast({ title: "Không có quyền duyệt đơn này", variant: "destructive" })
+        const { data: rulesData } = await supabase
+          .from("approval_rules")
+          .select("*")
+          .eq("org_id", user.org_id)
+          .maybeSingle()
+
+        // Fetch customer debt context
+        const { data: recData } = await supabase
+          .from("receivables")
+          .select("amount, paid, due_date")
+          .eq("customer_id", order.customer_id)
+          .neq("status", "paid")
+        type RecRow = { amount: number; paid: number; due_date: string | null }
+        const recRows = (recData as RecRow[]) || []
+        const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+        const now = Date.now()
+        const customerOverdue = recRows
+          .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
+          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+
+        const { data: repDebt } = await supabase
+          .from("receivables")
+          .select("amount, paid")
+          .eq("sales_user_id", order.sales_user_id)
+          .neq("status", "paid")
+        const repPortfolioDebt = ((repDebt as Array<{ amount: number; paid: number }>) || [])
+          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+
+        const decision = evaluateApproval(rulesData ?? null, {
+          orderTotal: order.total,
+          customer: order.customer
+            ? { id: order.customer.id, credit_limit: order.customer.credit_limit }
+            : null,
+          customerDebt,
+          customerOverdue,
+          repPortfolioDebt,
+          role: user.role,
+        })
+
+        if (!decision.autoApprove && !canApproveForLevel(user.role, decision.expectedApprover)) {
+          toast({
+            title: "Không có quyền duyệt đơn này",
+            description: decision.reason,
+            variant: "destructive",
+          })
           setActionLoading(false)
           return
         }
+
         updates.approved_by = user.id
         updates.approved_at = new Date().toISOString()
+        updates.approval_reason = null
       }
 
       const { error } = await supabase.from("sales_orders").update(updates).eq("id", order.id)
@@ -278,6 +320,21 @@ export default function OrderDetailPage() {
         <StatusBadge status={order.status} type="order" />
         <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
       </PageHeader>
+
+      {/* Approval reason callout — only for draft orders awaiting manual approval */}
+      {order.status === "draft" && order.approval_reason && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+          <div className="shrink-0 h-8 w-8 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-sm">
+            !
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-amber-900 text-sm">Đơn đang chờ duyệt</p>
+            <p className="text-xs text-amber-800 mt-0.5 whitespace-pre-wrap">
+              {order.approval_reason}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column - details */}

@@ -211,6 +211,53 @@ export function OrderForm() {
     setLoading(true)
 
     try {
+      // Evaluate approval rules for this org
+      const { evaluateApproval } = await import("@/lib/approval")
+
+      const { data: rulesData } = await supabase
+        .from("approval_rules")
+        .select("*")
+        .eq("org_id", user?.org_id)
+        .maybeSingle()
+
+      // Customer debt (open receivables)
+      const { data: recData } = await supabase
+        .from("receivables")
+        .select("amount, paid, due_date, status")
+        .eq("customer_id", customerId)
+        .neq("status", "paid")
+
+      type RecRow = { amount: number; paid: number; due_date: string | null; status: string }
+      const recRows = (recData as RecRow[]) || []
+      const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+      const now = Date.now()
+      const customerOverdue = recRows
+        .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
+        .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+
+      // Rep portfolio debt
+      let repPortfolioDebt = 0
+      if (user?.id) {
+        const { data: repDebt } = await supabase
+          .from("receivables")
+          .select("amount, paid")
+          .eq("sales_user_id", user.id)
+          .neq("status", "paid")
+        repPortfolioDebt = ((repDebt as Array<{ amount: number; paid: number }>) || [])
+          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+      }
+
+      const decision = evaluateApproval(rulesData ?? null, {
+        orderTotal: total,
+        customer: selectedCustomer
+          ? { id: selectedCustomer.id, credit_limit: selectedCustomer.credit_limit }
+          : null,
+        customerDebt,
+        customerOverdue,
+        repPortfolioDebt,
+        role: user?.role || "sales",
+      })
+
       const orderCode = generateOrderCode()
       const { data: order, error: orderErr } = await supabase
         .from("sales_orders")
@@ -225,6 +272,10 @@ export function OrderForm() {
           vat,
           total,
           notes: notes || null,
+          status: decision.autoApprove ? "confirmed" : "draft",
+          approved_by: decision.autoApprove ? user?.id : null,
+          approved_at: decision.autoApprove ? new Date().toISOString() : null,
+          approval_reason: decision.autoApprove ? null : decision.reason,
         })
         .select()
         .single()
@@ -244,7 +295,14 @@ export function OrderForm() {
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) throw linesErr
 
-      toast({ title: `Đã tạo đơn hàng ${orderCode}` })
+      if (decision.autoApprove) {
+        toast({ title: `Đã tạo và tự động duyệt đơn ${orderCode}` })
+      } else {
+        toast({
+          title: `Đã tạo đơn ${orderCode} — chờ duyệt`,
+          description: decision.reason,
+        })
+      }
       router.push("/orders")
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"

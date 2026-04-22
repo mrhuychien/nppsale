@@ -116,7 +116,12 @@ export default function OrdersPage() {
   const filtered = useMemo(() => {
     return orders.filter((o) => {
       const matchSearch = o.order_code.toLowerCase().includes(search.toLowerCase())
-      const matchStatus = statusFilter === "all" || o.status === statusFilter
+      const matchStatus =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "pending_approval"
+            ? o.status === "draft" && !!o.approval_reason
+            : o.status === statusFilter
       const matchCustomer = customerFilter === "all" || o.customer_id === customerFilter
       const matchSales = salesFilter === "all" || o.sales_user_id === salesFilter
       const matchFrom = !dateFrom || new Date(o.order_date) >= new Date(dateFrom)
@@ -135,6 +140,11 @@ export default function OrdersPage() {
       )
     })
   }, [orders, search, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax])
+
+  const pendingApprovalCount = useMemo(
+    () => orders.filter((o) => o.status === "draft" && !!o.approval_reason).length,
+    [orders]
+  )
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -169,11 +179,20 @@ export default function OrdersPage() {
     try {
       const { error } = await supabase
         .from("sales_orders")
-        .update({ status: "confirmed", approved_by: user.id, approved_at: new Date().toISOString() })
+        .update({
+          status: "confirmed",
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          approval_reason: null,
+        })
         .in("id", ids)
       if (error) throw error
       setOrders((prev) =>
-        prev.map((o) => (ids.includes(o.id) ? { ...o, status: "confirmed" } : o))
+        prev.map((o) =>
+          ids.includes(o.id)
+            ? { ...o, status: "confirmed", approved_by: user.id, approval_reason: null }
+            : o
+        )
       )
       toast({ title: `Đã duyệt ${ids.length} đơn hàng` })
       clearSelection()
@@ -305,11 +324,14 @@ export default function OrdersPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <SelectValue placeholder="Trạng thái" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả</SelectItem>
+            <SelectItem value="pending_approval">
+              Chờ duyệt{pendingApprovalCount > 0 ? ` (${pendingApprovalCount})` : ""}
+            </SelectItem>
             <SelectItem value="draft">Nháp</SelectItem>
             <SelectItem value="confirmed">Đã duyệt</SelectItem>
             <SelectItem value="picking">Đang lấy hàng</SelectItem>
@@ -497,7 +519,17 @@ export default function OrdersPage() {
                         {formatCurrency(order.total)}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={order.status} type="order" />
+                        <div className="flex flex-col gap-0.5">
+                          <StatusBadge status={order.status} type="order" />
+                          {order.status === "draft" && order.approval_reason && (
+                            <span
+                              className="text-[10px] text-amber-700 font-semibold"
+                              title={order.approval_reason}
+                            >
+                              Cần duyệt
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
@@ -548,12 +580,13 @@ export default function OrdersPage() {
               const checked = selectedIds.has(order.id)
               const invoice = invoiceMap[order.id]
               const showInvoiceAction = order.status === "delivered"
+              const isPendingApproval = order.status === "draft" && !!order.approval_reason
               return (
                 <div
                   key={order.id}
                   className={`relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
                     checked ? "border-primary bg-primary/5" : ""
-                  }`}
+                  } ${isPendingApproval ? "border-l-4 border-l-amber-400" : ""}`}
                   onClick={() => router.push(`/orders/${order.id}`)}
                 >
                   <div className="p-4">
@@ -579,6 +612,17 @@ export default function OrdersPage() {
                         </p>
                       </div>
                     </div>
+
+                    {isPendingApproval && (
+                      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2">
+                        <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-0.5">
+                          Cần duyệt
+                        </p>
+                        <p className="text-[11px] text-amber-800 leading-snug whitespace-pre-wrap line-clamp-3">
+                          {order.approval_reason}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t">
                       <span className="text-xs text-muted-foreground">Tổng tiền</span>

@@ -10,7 +10,7 @@ import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
-  ChevronRight, UserCog, ClipboardList,
+  ChevronRight, UserCog, ClipboardList, Navigation,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -37,6 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
       { label: "Khách hàng", href: "/customers", icon: Users, module: "customers" },
       { label: "Phân tích KH", href: "/customers/analytics", icon: BarChart3, module: "customers" },
+      { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers" },
       { label: "Bảng giá", href: "/products/price-lists", icon: FileText, module: "products" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions" },
       { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions" },
@@ -105,9 +106,10 @@ const NAV_GROUPS: NavGroup[] = [
 interface SidebarProps {
   role: Role
   mobile?: boolean
+  onNavigate?: () => void
 }
 
-export function Sidebar({ role, mobile }: SidebarProps) {
+export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { signOut } = useAuth()
@@ -148,6 +150,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
   }
 
   const handleSignOut = async () => {
+    onNavigate?.()
     await signOut()
     router.push("/login")
   }
@@ -173,6 +176,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
         <div className="px-4 mb-3">
           <Link
             href="/orders/new"
+            onClick={onNavigate}
             className="w-full bg-primary text-white py-2.5 px-4 rounded-[10px] font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" />
@@ -185,6 +189,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
       <div className="px-3 mb-1">
         <Link
           href="/home"
+          onClick={onNavigate}
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
             pathname === "/home"
@@ -240,6 +245,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
                         <Link
                           key={item.href}
                           href={item.href}
+                          onClick={onNavigate}
                           className={cn(
                             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                             isActive
@@ -264,6 +270,7 @@ export function Sidebar({ role, mobile }: SidebarProps) {
       <div className="p-3 mt-auto space-y-0.5 border-t border-border/40">
         <Link
           href="/help"
+          onClick={onNavigate}
           className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg"
         >
           <HelpCircle className="h-4 w-4" />

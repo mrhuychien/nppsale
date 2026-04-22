@@ -22,9 +22,10 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
+import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
-  ArrowRight,
+  ArrowRight, Banknote, Navigation, MapPin, Camera,
 } from "lucide-react"
 import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
 
@@ -70,6 +71,19 @@ export default function CustomerDetailPage() {
   const [recentPayments, setRecentPayments] = useState<Array<{ id: string; amount: number; method: string; collected_at: string }>>([])
   const [allOrders, setAllOrders] = useState<OrderRow[]>([])
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
+  const [visits, setVisits] = useState<Array<{
+    id: string
+    visit_date: string
+    check_in_at: string | null
+    check_out_at: string | null
+    check_in_lat: number | null
+    check_in_lng: number | null
+    result: string | null
+    notes: string | null
+    photo_url: string | null
+    sales_user?: { full_name?: string } | null
+  }>>([])
+  const [visitDialogOpen, setVisitDialogOpen] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -173,6 +187,30 @@ export default function CustomerDetailPage() {
     const priceRes = await priceQuery
     setPriceRows((priceRes.data || []) as PriceRow[])
 
+    // Visit history
+    const { data: visitData } = await supabase
+      .from("visit_logs")
+      .select(
+        "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user:users!visit_logs_sales_user_id_fkey(full_name)"
+      )
+      .eq("customer_id", id)
+      .order("visit_date", { ascending: false })
+      .order("check_in_at", { ascending: false })
+    setVisits(
+      ((visitData as Array<{
+        id: string
+        visit_date: string
+        check_in_at: string | null
+        check_out_at: string | null
+        check_in_lat: number | null
+        check_in_lng: number | null
+        result: string | null
+        notes: string | null
+        photo_url: string | null
+        sales_user?: { full_name?: string } | null
+      }>) || [])
+    )
+
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,7 +248,29 @@ export default function CustomerDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={customer.store_name} description={customer.address} backHref="/customers">
-        <StatusBadge status={customer.status} type="customer" />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={customer.status} type="customer" />
+          {user && hasPermission(user.role, "customers", "update") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setVisitDialogOpen(true)}
+            >
+              <Navigation className="h-4 w-4 mr-1.5" />
+              Ghé thăm
+            </Button>
+          )}
+          {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
+            <Button
+              size="sm"
+              className="bg-gradient-primary text-white"
+              onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
+            >
+              <Banknote className="h-4 w-4 mr-1.5" />
+              Thu tiền
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       {/* KPI Cards */}
@@ -246,11 +306,22 @@ export default function CustomerDetailPage() {
               <CreditCard className="h-4 w-4" />
             </span>
           </div>
-          <h3 className="text-xl font-black tracking-tight" style={{ color: currentDebt > 0 ? undefined : undefined }}>
+          <h3 className="text-xl font-black tracking-tight">
             {currentDebt > 0
               ? <span className="text-destructive">{formatCurrency(currentDebt)}</span>
               : <span className="text-muted-foreground">0đ</span>}
           </h3>
+          {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
+            >
+              <Banknote className="h-4 w-4 mr-1.5" />
+              Thu tiền ngay
+            </Button>
+          )}
         </div>
 
         <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-amber-500">
@@ -272,9 +343,10 @@ export default function CustomerDetailPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Tabs defaultValue="overview">
-            <TabsList>
+            <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
               <TabsTrigger value="orders">Lịch sử đơn hàng</TabsTrigger>
+              <TabsTrigger value="visits">Ghé thăm ({visits.length})</TabsTrigger>
               <TabsTrigger value="prices">Bảng giá áp dụng</TabsTrigger>
               <TabsTrigger value="info">Thông tin</TabsTrigger>
               <TabsTrigger value="assignments">Phân công ({assignments.length})</TabsTrigger>
@@ -305,35 +377,65 @@ export default function CustomerDetailPage() {
                   {recentOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">Chưa có đơn hàng nào</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Mã đơn</TableHead>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Tổng tiền</TableHead>
-                          <TableHead>Trạng thái</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Mã đơn</TableHead>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Tổng tiền</TableHead>
+                              <TableHead>Trạng thái</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {recentOrders.map((o) => {
+                              const st = ORDER_STATUS_MAP[o.status]
+                              return (
+                                <TableRow key={o.id}>
+                                  <TableCell>
+                                    <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
+                                      {o.order_code}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
+                                  <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
+                                  <TableCell>
+                                    {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {recentOrders.map((o) => {
                           const st = ORDER_STATUS_MAP[o.status]
                           return (
-                            <TableRow key={o.id}>
-                              <TableCell>
-                                <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
-                                  {o.order_code}
-                                </Link>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
-                              <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
-                              <TableCell>
-                                {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
-                              </TableCell>
-                            </TableRow>
+                            <Link
+                              key={o.id}
+                              href={`/orders/${o.id}`}
+                              className="block rounded-xl border bg-muted/20 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-mono text-xs font-bold text-primary">{o.order_code}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(o.order_date)}</p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-bold text-sm">{formatCurrency(o.total)}</p>
+                                  {st && <Badge variant={st.variant} className="mt-1">{st.label}</Badge>}
+                                </div>
+                              </div>
+                            </Link>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -347,24 +449,42 @@ export default function CustomerDetailPage() {
                   {recentPayments.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">Chưa có thanh toán nào</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Số tiền</TableHead>
-                          <TableHead>Phương thức</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Số tiền</TableHead>
+                              <TableHead>Phương thức</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {recentPayments.map((p) => (
+                              <TableRow key={p.id}>
+                                <TableCell className="text-muted-foreground">{formatDate(p.collected_at)}</TableCell>
+                                <TableCell className="text-right font-semibold">{formatCurrency(p.amount)}</TableCell>
+                                <TableCell>{paymentMethodLabel[p.method] || p.method}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {recentPayments.map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="text-muted-foreground">{formatDate(p.collected_at)}</TableCell>
-                            <TableCell className="text-right font-semibold">{formatCurrency(p.amount)}</TableCell>
-                            <TableCell>{paymentMethodLabel[p.method] || p.method}</TableCell>
-                          </TableRow>
+                          <div key={p.id} className="rounded-xl border bg-muted/20 p-3 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs text-muted-foreground">{formatDate(p.collected_at)}</p>
+                              <p className="text-xs mt-0.5">{paymentMethodLabel[p.method] || p.method}</p>
+                            </div>
+                            <p className="font-bold text-sm">{formatCurrency(p.amount)}</p>
+                          </div>
                         ))}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -380,35 +500,155 @@ export default function CustomerDetailPage() {
                   {allOrders.length === 0 ? (
                     <EmptyState title="Chưa có đơn hàng" description="Khách hàng này chưa có đơn hàng nào" />
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Mã đơn</TableHead>
-                          <TableHead>Ngày</TableHead>
-                          <TableHead className="text-right">Tổng tiền</TableHead>
-                          <TableHead>Trạng thái</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Mã đơn</TableHead>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead className="text-right">Tổng tiền</TableHead>
+                              <TableHead>Trạng thái</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {allOrders.map((o) => {
+                              const st = ORDER_STATUS_MAP[o.status]
+                              return (
+                                <TableRow key={o.id}>
+                                  <TableCell>
+                                    <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
+                                      {o.order_code}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
+                                  <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
+                                  <TableCell>
+                                    {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {allOrders.map((o) => {
                           const st = ORDER_STATUS_MAP[o.status]
                           return (
-                            <TableRow key={o.id}>
-                              <TableCell>
-                                <Link href={`/orders/${o.id}`} className="text-primary font-semibold hover:underline">
-                                  {o.order_code}
-                                </Link>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">{formatDate(o.order_date)}</TableCell>
-                              <TableCell className="text-right font-semibold">{formatCurrency(o.total)}</TableCell>
-                              <TableCell>
-                                {st ? <Badge variant={st.variant}>{st.label}</Badge> : o.status}
-                              </TableCell>
-                            </TableRow>
+                            <Link
+                              key={o.id}
+                              href={`/orders/${o.id}`}
+                              className="block rounded-xl border bg-muted/20 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-mono text-xs font-bold text-primary">{o.order_code}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(o.order_date)}</p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-bold text-sm">{formatCurrency(o.total)}</p>
+                                  {st && <Badge variant={st.variant} className="mt-1">{st.label}</Badge>}
+                                </div>
+                              </div>
+                            </Link>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Ghé thăm */}
+            <TabsContent value="visits" className="mt-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">Lịch sử ghé thăm ({visits.length})</CardTitle>
+                  {user && hasPermission(user.role, "customers", "update") && (
+                    <Button size="sm" variant="outline" onClick={() => setVisitDialogOpen(true)}>
+                      <Navigation className="h-3.5 w-3.5 mr-1.5" /> Ghé thăm mới
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {visits.length === 0 ? (
+                    <EmptyState title="Chưa có ghé thăm" description="Ghi nhận ghé thăm đầu tiên từ nút phía trên" />
+                  ) : (
+                    <div className="space-y-3">
+                      {visits.map((v) => {
+                        const resultLabel: Record<string, { label: string; variant: "default" | "success" | "warning" | "secondary" | "danger" }> = {
+                          order_placed: { label: "Đã đặt đơn", variant: "success" },
+                          no_order: { label: "Không đặt đơn", variant: "secondary" },
+                          closed: { label: "Đóng cửa", variant: "warning" },
+                          not_visited: { label: "Chưa ghé", variant: "danger" },
+                        }
+                        const r = v.result ? resultLabel[v.result] : null
+                        const mapsUrl = v.check_in_lat && v.check_in_lng
+                          ? `https://www.google.com/maps?q=${v.check_in_lat},${v.check_in_lng}`
+                          : null
+                        return (
+                          <div key={v.id} className="rounded-xl border bg-muted/10 p-3">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold">{formatDate(v.visit_date)}</span>
+                                  {v.check_in_at && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(v.check_in_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                  )}
+                                  {r && <Badge variant={r.variant}>{r.label}</Badge>}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  NV: {v.sales_user?.full_name || "-"}
+                                </p>
+                                {mapsUrl && (
+                                  <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                                  >
+                                    <MapPin className="h-3 w-3" />
+                                    {v.check_in_lat?.toFixed(5)}, {v.check_in_lng?.toFixed(5)}
+                                  </a>
+                                )}
+                                {v.notes && (
+                                  <p className="text-xs mt-2 text-muted-foreground italic line-clamp-2">
+                                    &ldquo;{v.notes}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                              {v.photo_url && (
+                                <a
+                                  href={v.photo_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 rounded-lg overflow-hidden border w-20 h-20 bg-muted"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={v.photo_url}
+                                    alt="Ảnh cửa hàng"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </a>
+                              )}
+                              {!v.photo_url && (
+                                <div className="shrink-0 w-20 h-20 rounded-lg border border-dashed flex items-center justify-center text-muted-foreground">
+                                  <Camera className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -424,40 +664,74 @@ export default function CustomerDetailPage() {
                   {priceRows.length === 0 ? (
                     <EmptyState title="Chưa có bảng giá" description="Chưa có giá nào được thiết lập cho nhóm khách hàng này" />
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Sản phẩm</TableHead>
-                          <TableHead>SKU</TableHead>
-                          <TableHead>ĐVT</TableHead>
-                          <TableHead className="text-right">Giá (nhóm KH)</TableHead>
-                          <TableHead className="text-right">Giá mặc định</TableHead>
-                          <TableHead>Hiệu lực</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                    <>
+                      {/* Desktop table */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Sản phẩm</TableHead>
+                              <TableHead>SKU</TableHead>
+                              <TableHead>ĐVT</TableHead>
+                              <TableHead className="text-right">Giá (nhóm KH)</TableHead>
+                              <TableHead className="text-right">Giá mặc định</TableHead>
+                              <TableHead>Hiệu lực</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {priceRows.map((p) => {
+                              const isGroupPrice = !!p.group_id
+                              const effectiveRange = p.effective_from || p.effective_to
+                                ? `${p.effective_from ? formatDate(p.effective_from) : "..."} - ${p.effective_to ? formatDate(p.effective_to) : "..."}`
+                                : "Không giới hạn"
+                              return (
+                                <TableRow key={p.id}>
+                                  <TableCell className="font-medium">{p.product?.name || "—"}</TableCell>
+                                  <TableCell className="text-muted-foreground">{p.product?.sku || "—"}</TableCell>
+                                  <TableCell>{p.unit_name || p.product?.base_unit || "—"}</TableCell>
+                                  <TableCell className="text-right font-semibold">
+                                    {isGroupPrice ? formatCurrency(p.price) : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    {!isGroupPrice ? formatCurrency(p.price) : "—"}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground text-xs">{effectiveRange}</TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile card list */}
+                      <div className="md:hidden space-y-2">
                         {priceRows.map((p) => {
                           const isGroupPrice = !!p.group_id
                           const effectiveRange = p.effective_from || p.effective_to
                             ? `${p.effective_from ? formatDate(p.effective_from) : "..."} - ${p.effective_to ? formatDate(p.effective_to) : "..."}`
                             : "Không giới hạn"
                           return (
-                            <TableRow key={p.id}>
-                              <TableCell className="font-medium">{p.product?.name || "—"}</TableCell>
-                              <TableCell className="text-muted-foreground">{p.product?.sku || "—"}</TableCell>
-                              <TableCell>{p.unit_name || p.product?.base_unit || "—"}</TableCell>
-                              <TableCell className="text-right font-semibold">
-                                {isGroupPrice ? formatCurrency(p.price) : "—"}
-                              </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
-                                {!isGroupPrice ? formatCurrency(p.price) : "—"}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-xs">{effectiveRange}</TableCell>
-                            </TableRow>
+                            <div key={p.id} className="rounded-xl border bg-muted/20 p-3">
+                              <div className="flex justify-between items-start gap-2 mb-1">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-sm leading-tight">{p.product?.name || "—"}</p>
+                                  <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                                    SKU: {p.product?.sku || "—"} • ĐVT: {p.unit_name || p.product?.base_unit || "—"}
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="font-bold text-sm">{formatCurrency(p.price)}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {isGroupPrice ? "Giá nhóm" : "Giá mặc định"}
+                                  </p>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground">Hiệu lực: {effectiveRange}</p>
+                            </div>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -507,6 +781,14 @@ export default function CustomerDetailPage() {
         confirmLabel="Xóa vĩnh viễn"
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      <VisitCheckinDialog
+        open={visitDialogOpen}
+        onOpenChange={setVisitDialogOpen}
+        customerId={customer.id}
+        customerName={customer.store_name}
+        onSuccess={fetchData}
       />
     </div>
   )

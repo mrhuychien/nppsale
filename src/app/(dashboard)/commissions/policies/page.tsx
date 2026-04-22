@@ -49,32 +49,70 @@ export default function CommissionPoliciesPage() {
       {policies.length === 0 ? (
         <EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title="Chưa có chính sách hoa hồng" />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tên chính sách</TableHead>
-              <TableHead>Loại</TableHead>
-              <TableHead>Áp dụng cho</TableHead>
-              <TableHead>Hiệu lực</TableHead>
-              <TableHead>Trạng thái</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tên chính sách</TableHead>
+                  <TableHead>Loại</TableHead>
+                  <TableHead>Áp dụng cho</TableHead>
+                  <TableHead>Hiệu lực</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {policies.map((p) => (
+                  <TableRow key={p.id} className="cursor-pointer" onClick={() => router.push(`/commissions/policies/${p.id}`)}>
+                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell>{getTypeLabel(p.type)}</TableCell>
+                    <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>
+                    <TableCell className="text-sm">{p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}</TableCell>
+                    <TableCell>
+                      <Badge variant={p.is_active ? "success" : "secondary"}>
+                        {p.is_active ? "Đang áp dụng" : "Ngừng"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
             {policies.map((p) => (
-              <TableRow key={p.id} className="cursor-pointer" onClick={() => router.push(`/commissions/policies/${p.id}`)}>
-                <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell>{getTypeLabel(p.type)}</TableCell>
-                <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>
-                <TableCell className="text-sm">{p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}</TableCell>
-                <TableCell>
-                  <Badge variant={p.is_active ? "success" : "secondary"}>
-                    {p.is_active ? "Đang áp dụng" : "Ngừng"}
-                  </Badge>
-                </TableCell>
-              </TableRow>
+              <div
+                key={p.id}
+                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/commissions/policies/${p.id}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-base leading-tight">{p.name}</h3>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <Badge variant="outline" className="text-xs">{getTypeLabel(p.type)}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {p.applies_to === "all" ? "Tất cả" : p.applies_to}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <Badge variant={p.is_active ? "success" : "secondary"}>
+                        {p.is_active ? "Đang áp dụng" : "Ngừng"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="pt-2 mt-2 border-t text-xs text-muted-foreground">
+                    Hiệu lực: {p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}
+                  </div>
+                </div>
+              </div>
             ))}
-          </TableBody>
-        </Table>
+          </div>
+        </>
       )}
     </div>
   )

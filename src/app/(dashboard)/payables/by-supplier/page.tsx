@@ -144,48 +144,97 @@ export default function PayablesBySupplierPage() {
           description={search ? "Thử thay đổi từ khóa tìm kiếm" : "Chưa có NCC nào đang nợ"}
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mã NCC</TableHead>
-                    <TableHead>Nhà cung cấp</TableHead>
-                    <TableHead className="text-right">Số HĐ</TableHead>
-                    <TableHead className="text-right">Tổng nợ</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Đã trả</TableHead>
-                    <TableHead className="text-right">Còn lại</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">QH</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRows.map((row) => (
-                    <TableRow
-                      key={row.supplierId}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
-                    >
-                      <TableCell className="font-mono text-xs text-primary font-bold">{row.supplierCode}</TableCell>
-                      <TableCell className="font-medium">{row.supplierName}</TableCell>
-                      <TableCell className="text-right">{row.invoiceCount}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
-                      <TableCell className="text-right hidden sm:table-cell">{formatCurrency(row.totalPaid)}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
-                      <TableCell className="text-right hidden md:table-cell">
-                        {row.overdueCount > 0 ? (
-                          <Badge variant="danger">{row.overdueCount}</Badge>
-                        ) : (
-                          <Badge variant="success">0</Badge>
-                        )}
-                      </TableCell>
+        <>
+          {/* Desktop table */}
+          <Card className="hidden lg:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mã NCC</TableHead>
+                      <TableHead>Nhà cung cấp</TableHead>
+                      <TableHead className="text-right">Số HĐ</TableHead>
+                      <TableHead className="text-right">Tổng nợ</TableHead>
+                      <TableHead className="text-right">Đã trả</TableHead>
+                      <TableHead className="text-right">Còn lại</TableHead>
+                      <TableHead className="text-right">QH</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => (
+                      <TableRow
+                        key={row.supplierId}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
+                      >
+                        <TableCell className="font-mono text-xs text-primary font-bold">{row.supplierCode}</TableCell>
+                        <TableCell className="font-medium">{row.supplierName}</TableCell>
+                        <TableCell className="text-right">{row.invoiceCount}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.totalPaid)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
+                        <TableCell className="text-right">
+                          {row.overdueCount > 0 ? (
+                            <Badge variant="danger">{row.overdueCount}</Badge>
+                          ) : (
+                            <Badge variant="success">0</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {filteredRows.map((row) => (
+              <div
+                key={row.supplierId}
+                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs font-bold text-primary">{row.supplierCode}</p>
+                      <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                        {row.supplierName}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {row.invoiceCount} hóa đơn
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      {row.overdueCount > 0 ? (
+                        <Badge variant="danger">{row.overdueCount} QH</Badge>
+                      ) : (
+                        <Badge variant="success">Đúng hạn</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Tổng nợ</p>
+                      <p className="font-medium">{formatCurrency(row.totalDebt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Đã trả</p>
+                      <p className="font-medium">{formatCurrency(row.totalPaid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Còn lại</p>
+                      <p className="font-bold text-destructive">{formatCurrency(row.remaining)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

@@ -138,59 +138,113 @@ export default function InvoicesPage() {
           description={invoices.length === 0 ? "Hóa đơn được tạo từ đơn hàng đã giao" : "Thử đổi bộ lọc"}
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Số HĐ</TableHead>
-              <TableHead>Khách hàng</TableHead>
-              <TableHead className="text-right">Tổng tiền</TableHead>
-              <TableHead>Ngày</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead>MISA</TableHead>
-              <TableHead>Tra cứu</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Số HĐ</TableHead>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead className="text-right">Tổng tiền</TableHead>
+                  <TableHead>Ngày</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead>MISA</TableHead>
+                  <TableHead>Tra cứu</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((inv) => {
+                  const misa = inv.misa_status ? MISA_BADGE[inv.misa_status] : null
+                  return (
+                    <TableRow key={inv.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${inv.id}`)}>
+                      <TableCell className="font-mono text-sm font-medium">
+                        {inv.misa_invoice_id || inv.invoice_number || "-"}
+                      </TableCell>
+                      <TableCell className="font-medium">{inv.customer_name}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
+                      <TableCell className="text-muted-foreground">{inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {misa ? (
+                          <Badge variant={misa.variant}>{misa.label}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {inv.misa_invoice_url ? (
+                          <a
+                            href={inv.misa_invoice_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-primary hover:underline text-xs flex items-center gap-1"
+                          >
+                            Xem HĐ <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
             {filtered.map((inv) => {
               const misa = inv.misa_status ? MISA_BADGE[inv.misa_status] : null
               return (
-                <TableRow key={inv.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${inv.id}`)}>
-                  <TableCell className="font-mono text-sm font-medium">
-                    {inv.misa_invoice_id || inv.invoice_number || "-"}
-                  </TableCell>
-                  <TableCell className="font-medium">{inv.customer_name}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
-                  <TableCell className="text-muted-foreground">{inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {misa ? (
-                      <Badge variant={misa.variant}>{misa.label}</Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {inv.misa_invoice_url ? (
+                <div
+                  key={inv.id}
+                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  onClick={() => router.push(`/invoices/${inv.id}`)}
+                >
+                  <div className="p-4">
+                    <div className="flex justify-between items-start gap-3 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-xs font-bold text-primary">
+                          {inv.misa_invoice_id || inv.invoice_number || "-"}
+                        </p>
+                        <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                          {inv.customer_name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}
+                        </p>
+                      </div>
+                      <div className="shrink-0 flex flex-col items-end gap-1">
+                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        {misa && <Badge variant={misa.variant}>{misa.label}</Badge>}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                      <span className="text-xs text-muted-foreground">Tổng tiền</span>
+                      <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
+                    </div>
+                    {inv.misa_invoice_url && (
                       <a
                         href={inv.misa_invoice_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-primary hover:underline text-xs flex items-center gap-1"
+                        className="text-primary hover:underline text-xs flex items-center gap-1 mt-2"
                       >
-                        Xem HĐ <ExternalLink className="h-3 w-3" />
+                        Xem HĐ trên MISA <ExternalLink className="h-3 w-3" />
                       </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
                     )}
-                  </TableCell>
-                </TableRow>
+                  </div>
+                </div>
               )
             })}
-          </TableBody>
-        </Table>
+          </div>
+        </>
       )}
     </div>
   )

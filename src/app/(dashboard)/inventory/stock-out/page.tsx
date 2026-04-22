@@ -556,71 +556,113 @@ export default function StockOutPage() {
                   description="Chưa có đơn ở trạng thái đã duyệt."
                 />
               ) : (
-                <div className="overflow-hidden rounded-xl border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10"></TableHead>
-                        <TableHead>Mã đơn</TableHead>
-                        <TableHead>Khách hàng</TableHead>
-                        <TableHead className="hidden md:table-cell">
-                          Ngày đặt
-                        </TableHead>
-                        <TableHead className="text-right">Tổng tiền</TableHead>
-                        <TableHead>Lộ trình</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filtered.map((o) => {
-                        const checked = selectedIds.has(o.id)
-                        const groupColor = customerGroupColor.get(
-                          o.customer_id
-                        )
-                        const route = deriveRoute(o.customer)
-                        const isHighlighted = highlightedProductId
-                          ? (o.lines || []).some((l) => l.product_id === highlightedProductId)
-                          : false
-                        return (
-                          <TableRow
-                            key={o.id}
-                            data-state={checked ? "selected" : undefined}
-                            onClick={() => toggleOne(o.id)}
-                            className={`cursor-pointer border-l-4 ${
-                              isHighlighted ? "border-l-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : groupColor || "border-l-transparent"
-                            }`}
-                          >
-                            <TableCell
-                              onClick={(e) => e.stopPropagation()}
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-hidden rounded-xl border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead>Mã đơn</TableHead>
+                          <TableHead>Khách hàng</TableHead>
+                          <TableHead>Ngày đặt</TableHead>
+                          <TableHead className="text-right">Tổng tiền</TableHead>
+                          <TableHead>Lộ trình</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filtered.map((o) => {
+                          const checked = selectedIds.has(o.id)
+                          const groupColor = customerGroupColor.get(
+                            o.customer_id
+                          )
+                          const route = deriveRoute(o.customer)
+                          const isHighlighted = highlightedProductId
+                            ? (o.lines || []).some((l) => l.product_id === highlightedProductId)
+                            : false
+                          return (
+                            <TableRow
+                              key={o.id}
+                              data-state={checked ? "selected" : undefined}
+                              onClick={() => toggleOne(o.id)}
+                              className={`cursor-pointer border-l-4 ${
+                                isHighlighted ? "border-l-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : groupColor || "border-l-transparent"
+                              }`}
                             >
+                              <TableCell
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={() => toggleOne(o.id)}
+                                  aria-label={`Chọn ${o.order_code}`}
+                                />
+                              </TableCell>
+                              <TableCell className="font-mono text-sm font-bold text-primary">
+                                {o.order_code}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {o.customer?.store_name || "-"}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {formatDate(o.order_date)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(o.total)}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">
+                                  LỘ TRÌNH {route}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile card list */}
+                  <div className="md:hidden space-y-2">
+                    {filtered.map((o) => {
+                      const checked = selectedIds.has(o.id)
+                      const route = deriveRoute(o.customer)
+                      const isHighlighted = highlightedProductId
+                        ? (o.lines || []).some((l) => l.product_id === highlightedProductId)
+                        : false
+                      return (
+                        <div
+                          key={o.id}
+                          onClick={() => toggleOne(o.id)}
+                          className={`rounded-xl border p-3 cursor-pointer active:scale-[0.99] transition-transform ${
+                            checked ? "bg-primary/5 border-primary" : ""
+                          } ${isHighlighted ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : ""}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
                               <Checkbox
                                 checked={checked}
                                 onCheckedChange={() => toggleOne(o.id)}
                                 aria-label={`Chọn ${o.order_code}`}
                               />
-                            </TableCell>
-                            <TableCell className="font-mono text-sm font-bold text-primary">
-                              {o.order_code}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {o.customer?.store_name || "-"}
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell text-sm">
-                              {formatDate(o.order_date)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(o.total)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">
-                                LỘ TRÌNH {route}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <p className="font-mono text-xs font-bold text-primary">{o.order_code}</p>
+                                <Badge variant="secondary" className="text-[10px]">LT {route}</Badge>
+                              </div>
+                              <p className="font-medium text-sm truncate">{o.customer?.store_name || "-"}</p>
+                              <div className="flex items-center justify-between gap-2 mt-1">
+                                <span className="text-xs text-muted-foreground">{formatDate(o.order_date)}</span>
+                                <span className="text-sm font-bold">{formatCurrency(o.total)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

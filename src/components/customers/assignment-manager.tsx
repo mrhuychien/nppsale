@@ -62,50 +62,77 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
 
   return (
     <div className="space-y-4">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nhân viên</TableHead>
-            <TableHead>Vai trò</TableHead>
-            <TableHead>Ngày phân công</TableHead>
-            <TableHead className="w-16"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {assignments.map((a) => (
-            <TableRow key={a.id}>
-              <TableCell className="font-medium">{a.user?.full_name || a.user_id}</TableCell>
-              <TableCell>
-                <Badge variant={a.role === "primary" ? "default" : "secondary"}>
-                  {a.role === "primary" ? "Chính" : "Phụ"}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-sm">{a.assigned_at}</TableCell>
-              <TableCell>
-                <Button variant="ghost" size="icon" onClick={() => handleRemove(a.id)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </TableCell>
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nhân viên</TableHead>
+              <TableHead>Vai trò</TableHead>
+              <TableHead>Ngày phân công</TableHead>
+              <TableHead className="w-16"></TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {assignments.map((a) => (
+              <TableRow key={a.id}>
+                <TableCell className="font-medium">{a.user?.full_name || a.user_id}</TableCell>
+                <TableCell>
+                  <Badge variant={a.role === "primary" ? "default" : "secondary"}>
+                    {a.role === "primary" ? "Chính" : "Phụ"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-sm">{a.assigned_at}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemove(a.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {assignments.length === 0 ? (
+          <p className="text-center text-muted-foreground py-4 text-sm">Chưa có phân công</p>
+        ) : (
+          assignments.map((a) => (
+            <div key={a.id} className="rounded-xl border bg-muted/20 p-3 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate">{a.user?.full_name || a.user_id}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant={a.role === "primary" ? "default" : "secondary"} className="text-xs">
+                    {a.role === "primary" ? "Chính" : "Phụ"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{a.assigned_at}</span>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleRemove(a.id)}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Select value={selectedUser} onValueChange={setSelectedUser}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Chọn NV Sales" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Chọn NV Sales" /></SelectTrigger>
           <SelectContent>
             {salesUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={assignRole} onValueChange={setAssignRole}>
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="primary">Chính</SelectItem>
             <SelectItem value="secondary">Phụ</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={handleAssign} disabled={loading || !selectedUser}>
+        <Button onClick={handleAssign} disabled={loading || !selectedUser} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" /> Phân công
         </Button>
       </div>

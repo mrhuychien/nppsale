@@ -391,7 +391,8 @@ export default function NewPurchaseOrderPage() {
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Desktop table */}
+              <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-surface-low text-left">
@@ -544,6 +545,102 @@ export default function NewPurchaseOrderPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="lg:hidden space-y-3">
+                {lines.length === 0 ? (
+                  <p className="py-8 text-center text-muted-foreground text-sm">
+                    Chưa có sản phẩm. Tìm bằng ô tìm kiếm phía trên hoặc dùng nút &quot;Thêm sản phẩm&quot;.
+                  </p>
+                ) : (
+                  lines.map((line, i) => {
+                    const units = getAvailableUnits(line)
+                    return (
+                      <div key={i} className="rounded-xl border bg-card p-3">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
+                              <span className="font-semibold">#{i + 1}</span>
+                              <span className="font-mono">SKU: {line.sku}</span>
+                            </div>
+                            <p className="font-bold text-primary text-sm leading-tight">{line.product_name}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => removeLine(i)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={line.quantity}
+                              onChange={(e) =>
+                                updateLine(i, "quantity", parseInt(e.target.value) || 1)
+                              }
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">ĐVT</Label>
+                            {units.length > 1 ? (
+                              <Select
+                                value={line.unit_name}
+                                onValueChange={(v) => updateLine(i, "unit_name", v)}
+                              >
+                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {units.map((u) => (
+                                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input value={line.unit_name} disabled className="h-9" />
+                            )}
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
+                            <Input
+                              type="number"
+                              value={line.unit_price}
+                              onChange={(e) =>
+                                updateLine(i, "unit_price", parseInt(e.target.value) || 0)
+                              }
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT %</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={Math.round(line.vat_rate * 100)}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value) || 0
+                                updateLine(i, "vat_rate", Math.max(0, Math.min(100, v)) / 100)
+                              }}
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-border/40">
+                          <span className="text-xs text-muted-foreground">Thành tiền</span>
+                          <span className="font-bold">{formatCurrency(line.line_total)}</span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>

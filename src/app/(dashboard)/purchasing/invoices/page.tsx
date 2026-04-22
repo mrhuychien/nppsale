@@ -114,75 +114,115 @@ export default function PurchaseInvoicesPage() {
           description="Hóa đơn mua sẽ được tạo từ đơn mua hàng đã duyệt"
         />
       ) : (
-        <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Số HĐ</TableHead>
-                <TableHead>NCC</TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  Liên kết PO
-                </TableHead>
-                <TableHead className="hidden md:table-cell">Ngày</TableHead>
-                <TableHead className="text-right">Tổng tiền</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((inv) => (
-                <TableRow
-                  key={inv.id}
-                  className="cursor-pointer"
-                  onClick={() =>
-                    router.push(`/purchasing/invoices/${inv.id}`)
-                  }
-                >
-                  <TableCell>
-                    <Link
-                      href={`/purchasing/invoices/${inv.id}`}
-                      className="font-mono text-sm text-primary font-bold hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {inv.invoice_number || "Chưa có"}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {inv.supplier?.name || "-"}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {inv.purchase_order?.po_code ? (
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Số HĐ</TableHead>
+                  <TableHead>NCC</TableHead>
+                  <TableHead>Liên kết PO</TableHead>
+                  <TableHead>Ngày</TableHead>
+                  <TableHead className="text-right">Tổng tiền</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((inv) => (
+                  <TableRow
+                    key={inv.id}
+                    className="cursor-pointer"
+                    onClick={() =>
+                      router.push(`/purchasing/invoices/${inv.id}`)
+                    }
+                  >
+                    <TableCell>
                       <Link
-                        href={`/purchasing/orders/${inv.po_id}`}
-                        className="text-sm text-primary hover:underline font-mono"
+                        href={`/purchasing/invoices/${inv.id}`}
+                        className="font-mono text-sm text-primary font-bold hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {inv.purchase_order.po_code}
+                        {inv.invoice_number || "Chưa có"}
                       </Link>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {formatDate(inv.invoice_date)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(inv.total)}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      status={inv.status}
-                      type="purchase_invoice"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {inv.supplier?.name || "-"}
+                    </TableCell>
+                    <TableCell>
+                      {inv.purchase_order?.po_code ? (
+                        <Link
+                          href={`/purchasing/orders/${inv.po_id}`}
+                          className="text-sm text-primary hover:underline font-mono"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {inv.purchase_order.po_code}
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(inv.invoice_date)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(inv.total)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        status={inv.status}
+                        type="purchase_invoice"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {filtered.map((inv) => (
+              <div
+                key={inv.id}
+                className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/purchasing/invoices/${inv.id}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs font-bold text-primary">
+                        {inv.invoice_number || "Chưa có số HĐ"}
+                      </p>
+                      <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                        {inv.supplier?.name || "-"}
+                      </h3>
+                      {inv.purchase_order?.po_code && (
+                        <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                          PO: {inv.purchase_order.po_code}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatDate(inv.invoice_date)}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      <StatusBadge status={inv.status} type="purchase_invoice" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                    <span className="text-xs text-muted-foreground">Tổng tiền</span>
+                    <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

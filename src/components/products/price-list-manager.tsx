@@ -64,36 +64,65 @@ export function PriceListManager({
 
   return (
     <div className="space-y-4">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nhóm KH</TableHead>
-            <TableHead>ĐVT</TableHead>
-            <TableHead className="text-right">Giá bán</TableHead>
-            <TableHead>Hiệu lực</TableHead>
-            <TableHead className="w-16"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {priceLists.map((pl) => (
-            <TableRow key={pl.id}>
-              <TableCell>{pl.group ? pl.group.name : "Tất cả"}</TableCell>
-              <TableCell>{pl.unit_name}</TableCell>
-              <TableCell className="text-right font-medium">{formatCurrency(pl.price)}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{pl.effective_from || "-"}</TableCell>
-              <TableCell>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(pl.id)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </TableCell>
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nhóm KH</TableHead>
+              <TableHead>ĐVT</TableHead>
+              <TableHead className="text-right">Giá bán</TableHead>
+              <TableHead>Hiệu lực</TableHead>
+              <TableHead className="w-16"></TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {priceLists.map((pl) => (
+              <TableRow key={pl.id}>
+                <TableCell>{pl.group ? pl.group.name : "Tất cả"}</TableCell>
+                <TableCell>{pl.unit_name}</TableCell>
+                <TableCell className="text-right font-medium">{formatCurrency(pl.price)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{pl.effective_from || "-"}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(pl.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {priceLists.length === 0 ? (
+          <p className="text-center text-muted-foreground py-4 text-sm">Chưa có giá nào</p>
+        ) : (
+          priceLists.map((pl) => (
+            <div key={pl.id} className="rounded-xl border bg-muted/20 p-3 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate">
+                  {pl.group ? pl.group.name : "Tất cả"} • {pl.unit_name}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Hiệu lực: {pl.effective_from || "-"}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-bold text-sm">{formatCurrency(pl.price)}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleDelete(pl.id)}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Select value={groupId} onValueChange={setGroupId}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Nhóm KH" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Nhóm KH" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả</SelectItem>
             {customerGroups.map((g) => (
@@ -102,15 +131,15 @@ export function PriceListManager({
           </SelectContent>
         </Select>
         <Select value={unitName} onValueChange={setUnitName}>
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
             {allUnits.map((u) => (
               <SelectItem key={u} value={u}>{u}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Input type="number" placeholder="Giá bán (VND)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-40" />
-        <Button onClick={handleAdd} disabled={loading}>
+        <Input type="number" placeholder="Giá bán (VND)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full sm:w-40" />
+        <Button onClick={handleAdd} disabled={loading} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" /> Thêm giá
         </Button>
       </div>

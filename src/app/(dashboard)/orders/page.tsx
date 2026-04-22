@@ -116,7 +116,12 @@ export default function OrdersPage() {
   const filtered = useMemo(() => {
     return orders.filter((o) => {
       const matchSearch = o.order_code.toLowerCase().includes(search.toLowerCase())
-      const matchStatus = statusFilter === "all" || o.status === statusFilter
+      const matchStatus =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "pending_approval"
+            ? o.status === "draft" && !!o.approval_reason
+            : o.status === statusFilter
       const matchCustomer = customerFilter === "all" || o.customer_id === customerFilter
       const matchSales = salesFilter === "all" || o.sales_user_id === salesFilter
       const matchFrom = !dateFrom || new Date(o.order_date) >= new Date(dateFrom)
@@ -135,6 +140,11 @@ export default function OrdersPage() {
       )
     })
   }, [orders, search, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax])
+
+  const pendingApprovalCount = useMemo(
+    () => orders.filter((o) => o.status === "draft" && !!o.approval_reason).length,
+    [orders]
+  )
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -169,11 +179,20 @@ export default function OrdersPage() {
     try {
       const { error } = await supabase
         .from("sales_orders")
-        .update({ status: "confirmed", approved_by: user.id, approved_at: new Date().toISOString() })
+        .update({
+          status: "confirmed",
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          approval_reason: null,
+        })
         .in("id", ids)
       if (error) throw error
       setOrders((prev) =>
-        prev.map((o) => (ids.includes(o.id) ? { ...o, status: "confirmed" } : o))
+        prev.map((o) =>
+          ids.includes(o.id)
+            ? { ...o, status: "confirmed", approved_by: user.id, approval_reason: null }
+            : o
+        )
       )
       toast({ title: `Đã duyệt ${ids.length} đơn hàng` })
       clearSelection()
@@ -305,11 +324,14 @@ export default function OrdersPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <SelectValue placeholder="Trạng thái" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả</SelectItem>
+            <SelectItem value="pending_approval">
+              Chờ duyệt{pendingApprovalCount > 0 ? ` (${pendingApprovalCount})` : ""}
+            </SelectItem>
             <SelectItem value="draft">Nháp</SelectItem>
             <SelectItem value="confirmed">Đã duyệt</SelectItem>
             <SelectItem value="picking">Đang lấy hàng</SelectItem>
@@ -438,94 +460,202 @@ export default function OrdersPage() {
           description="Tạo đơn hàng đầu tiên"
         />
       ) : (
-        <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    onCheckedChange={toggleAll}
-                    aria-label="Chọn tất cả"
-                  />
-                </TableHead>
-                <TableHead>Mã đơn</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead className="hidden sm:table-cell">NV bán hàng</TableHead>
-                <TableHead className="hidden md:table-cell">Ngày đặt</TableHead>
-                <TableHead className="text-right">Tổng tiền</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((order) => {
-                const checked = selectedIds.has(order.id)
-                return (
-                  <TableRow
-                    key={order.id}
-                    data-state={checked ? "selected" : undefined}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/orders/${order.id}`)}
-                  >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() => toggleOne(order.id)}
-                        aria-label={`Chọn ${order.order_code}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/orders/${order.id}`}
-                        className="font-mono text-sm text-primary font-bold hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {order.order_code}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-medium">{order.customer?.store_name || "-"}</TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      {order.sales_user?.full_name || "-"}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {formatDate(order.order_date)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(order.total)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={order.status} type="order" />
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
-                        {order.status === "delivered" && (
-                          invoiceMap[order.id]?.misa_status === "signed" ? (
-                            <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-green-100 text-green-600">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            </span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              disabled={misaLoadingId === order.id}
-                              onClick={() => handleXuatHoaDonList(order)}
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                      onCheckedChange={toggleAll}
+                      aria-label="Chọn tất cả"
+                    />
+                  </TableHead>
+                  <TableHead>Mã đơn</TableHead>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead>NV bán hàng</TableHead>
+                  <TableHead>Ngày đặt</TableHead>
+                  <TableHead className="text-right">Tổng tiền</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((order) => {
+                  const checked = selectedIds.has(order.id)
+                  return (
+                    <TableRow
+                      key={order.id}
+                      data-state={checked ? "selected" : undefined}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/orders/${order.id}`)}
+                    >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleOne(order.id)}
+                          aria-label={`Chọn ${order.order_code}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/orders/${order.id}`}
+                          className="font-mono text-sm text-primary font-bold hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {order.order_code}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="font-medium">{order.customer?.store_name || "-"}</TableCell>
+                      <TableCell>
+                        {order.sales_user?.full_name || "-"}
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(order.order_date)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(order.total)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <StatusBadge status={order.status} type="order" />
+                          {order.status === "draft" && order.approval_reason && (
+                            <span
+                              className="text-[10px] text-amber-700 font-semibold"
+                              title={order.approval_reason}
                             >
-                              <FileText className="h-3 w-3 mr-1" />
-                              {misaLoadingId === order.id ? "..." : "HĐ"}
-                            </Button>
-                          )
-                        )}
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+                              Cần duyệt
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          {order.status === "delivered" && (
+                            invoiceMap[order.id]?.misa_status === "signed" ? (
+                              <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-green-100 text-green-600">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                disabled={misaLoadingId === order.id}
+                                onClick={() => handleXuatHoaDonList(order)}
+                              >
+                                <FileText className="h-3 w-3 mr-1" />
+                                {misaLoadingId === order.id ? "..." : "HĐ"}
+                              </Button>
+                            )
+                          )}
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {/* Select all bar (mobile) */}
+            <div className="flex items-center gap-2 px-1">
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={toggleAll}
+                aria-label="Chọn tất cả"
+                id="orders-select-all-mobile"
+              />
+              <label htmlFor="orders-select-all-mobile" className="text-xs font-medium text-muted-foreground">
+                Chọn tất cả ({filtered.length})
+              </label>
+            </div>
+
+            {filtered.map((order) => {
+              const checked = selectedIds.has(order.id)
+              const invoice = invoiceMap[order.id]
+              const showInvoiceAction = order.status === "delivered"
+              const isPendingApproval = order.status === "draft" && !!order.approval_reason
+              return (
+                <div
+                  key={order.id}
+                  className={`relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
+                    checked ? "border-primary bg-primary/5" : ""
+                  } ${isPendingApproval ? "border-l-4 border-l-amber-400" : ""}`}
+                  onClick={() => router.push(`/orders/${order.id}`)}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start gap-2">
+                      <div onClick={(e) => e.stopPropagation()} className="pt-0.5 shrink-0">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleOne(order.id)}
+                          aria-label={`Chọn ${order.order_code}`}
+                        />
                       </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <p className="font-mono text-xs font-bold text-primary">{order.order_code}</p>
+                          <StatusBadge status={order.status} type="order" />
+                        </div>
+                        <h3 className="font-extrabold text-base leading-tight truncate">
+                          {order.customer?.store_name || "-"}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                          {order.sales_user?.full_name ? `NV: ${order.sales_user.full_name} • ` : ""}
+                          {formatDate(order.order_date)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isPendingApproval && (
+                      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2">
+                        <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-0.5">
+                          Cần duyệt
+                        </p>
+                        <p className="text-[11px] text-amber-800 leading-snug whitespace-pre-wrap line-clamp-3">
+                          {order.approval_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t">
+                      <span className="text-xs text-muted-foreground">Tổng tiền</span>
+                      <span className="font-bold text-base">{formatCurrency(order.total)}</span>
+                    </div>
+
+                    {showInvoiceAction && (
+                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                        {invoice?.misa_status === "signed" ? (
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg py-2">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Đã xuất hóa đơn
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full"
+                            disabled={misaLoadingId === order.id}
+                            onClick={() => handleXuatHoaDonList(order)}
+                          >
+                            <FileText className="h-3.5 w-3.5 mr-2" />
+                            {misaLoadingId === order.id ? "Đang xuất..." : "Xuất hóa đơn"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

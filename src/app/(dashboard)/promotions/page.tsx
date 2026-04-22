@@ -72,43 +72,79 @@ export default function PromotionsPage() {
               title="Chưa có chương trình khuyến mãi"
             />
           ) : (
-            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tên chương trình</TableHead>
-                    <TableHead>Loại</TableHead>
-                    <TableHead>Ưu tiên</TableHead>
-                    <TableHead>Thời gian</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {promotions.map((p) => (
-                    <TableRow
-                      key={p.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/promotions/${p.id}`)}
-                    >
-                      <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getTypeLabel(p.type)}</Badge>
-                      </TableCell>
-                      <TableCell>{p.priority}</TableCell>
-                      <TableCell className="text-sm">
-                        {p.starts_at ? formatDate(p.starts_at) : "?"} -{" "}
-                        {p.ends_at ? formatDate(p.ends_at) : "∞"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={p.is_active ? "success" : "secondary"}>
-                          {p.is_active ? "Đang chạy" : "Ngừng"}
-                        </Badge>
-                      </TableCell>
+            <>
+              {/* Desktop table */}
+              <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tên chương trình</TableHead>
+                      <TableHead>Loại</TableHead>
+                      <TableHead>Ưu tiên</TableHead>
+                      <TableHead>Thời gian</TableHead>
+                      <TableHead>Trạng thái</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {promotions.map((p) => (
+                      <TableRow
+                        key={p.id}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/promotions/${p.id}`)}
+                      >
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{getTypeLabel(p.type)}</Badge>
+                        </TableCell>
+                        <TableCell>{p.priority}</TableCell>
+                        <TableCell className="text-sm">
+                          {p.starts_at ? formatDate(p.starts_at) : "?"} -{" "}
+                          {p.ends_at ? formatDate(p.ends_at) : "∞"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={p.is_active ? "success" : "secondary"}>
+                            {p.is_active ? "Đang chạy" : "Ngừng"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="lg:hidden space-y-3">
+                {promotions.map((p) => (
+                  <div
+                    key={p.id}
+                    className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                    onClick={() => router.push(`/promotions/${p.id}`)}
+                  >
+                    <div className="p-4">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-extrabold text-base leading-tight">
+                            {p.name}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <Badge variant="outline" className="text-xs">{getTypeLabel(p.type)}</Badge>
+                            <Badge variant="outline" className="text-xs">Ưu tiên: P{p.priority}</Badge>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          <Badge variant={p.is_active ? "success" : "secondary"}>
+                            {p.is_active ? "Đang chạy" : "Ngừng"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="pt-2 mt-2 border-t text-xs text-muted-foreground">
+                        {p.starts_at ? formatDate(p.starts_at) : "?"} - {p.ends_at ? formatDate(p.ends_at) : "∞"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

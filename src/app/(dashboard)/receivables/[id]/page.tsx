@@ -250,54 +250,96 @@ export default function ReceivableDetailPage() {
               <CardTitle>Lịch sử thanh toán ({payments.length})</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ngày thu</TableHead>
-                    <TableHead>Người thu</TableHead>
-                    <TableHead>Hình thức</TableHead>
-                    <TableHead className="text-right">Số tiền</TableHead>
-                    <TableHead>Xác nhận</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments.map((p) => {
-                    const isUnverified = !p.verified_at
-                    return (
-                      <TableRow
-                        key={p.id}
-                        className={isUnverified && canVerify ? "cursor-pointer hover:bg-muted/50" : ""}
-                        onClick={() => isUnverified && canVerify && setVerifyTarget(p)}
-                      >
-                        <TableCell className="text-sm">{formatDate(p.collected_at)}</TableCell>
-                        <TableCell>{p.collector?.full_name || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{PAYMENT_METHOD_LABEL[p.method] || p.method}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(p.amount)}</TableCell>
-                        <TableCell>
-                          {p.verified_at ? (
-                            <Badge variant="success">
-                              Đã xác nhận
-                            </Badge>
-                          ) : canVerify ? (
-                            <Badge variant="warning">Chờ xác nhận</Badge>
-                          ) : (
-                            <Badge variant="secondary">Chờ xác nhận</Badge>
-                          )}
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ngày thu</TableHead>
+                      <TableHead>Người thu</TableHead>
+                      <TableHead>Hình thức</TableHead>
+                      <TableHead className="text-right">Số tiền</TableHead>
+                      <TableHead>Xác nhận</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payments.map((p) => {
+                      const isUnverified = !p.verified_at
+                      return (
+                        <TableRow
+                          key={p.id}
+                          className={isUnverified && canVerify ? "cursor-pointer hover:bg-muted/50" : ""}
+                          onClick={() => isUnverified && canVerify && setVerifyTarget(p)}
+                        >
+                          <TableCell className="text-sm">{formatDate(p.collected_at)}</TableCell>
+                          <TableCell>{p.collector?.full_name || "-"}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{PAYMENT_METHOD_LABEL[p.method] || p.method}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(p.amount)}</TableCell>
+                          <TableCell>
+                            {p.verified_at ? (
+                              <Badge variant="success">
+                                Đã xác nhận
+                              </Badge>
+                            ) : canVerify ? (
+                              <Badge variant="warning">Chờ xác nhận</Badge>
+                            ) : (
+                              <Badge variant="secondary">Chờ xác nhận</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                    {payments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          Chưa có thanh toán
                         </TableCell>
                       </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="md:hidden space-y-2">
+                {payments.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6 text-sm">Chưa có thanh toán</p>
+                ) : (
+                  payments.map((p) => {
+                    const isUnverified = !p.verified_at
+                    const clickable = isUnverified && canVerify
+                    return (
+                      <div
+                        key={p.id}
+                        className={`rounded-xl border bg-muted/20 p-3 ${clickable ? "cursor-pointer active:scale-[0.99] transition-transform" : ""}`}
+                        onClick={() => clickable && setVerifyTarget(p)}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-muted-foreground">{formatDate(p.collected_at)}</p>
+                            <p className="text-sm font-medium mt-0.5 truncate">{p.collector?.full_name || "-"}</p>
+                            <Badge variant="secondary" className="mt-1">
+                              {PAYMENT_METHOD_LABEL[p.method] || p.method}
+                            </Badge>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold text-sm">{formatCurrency(p.amount)}</p>
+                            <Badge
+                              variant={p.verified_at ? "success" : canVerify ? "warning" : "secondary"}
+                              className="mt-1"
+                            >
+                              {p.verified_at ? "Đã xác nhận" : "Chờ xác nhận"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
                     )
-                  })}
-                  {payments.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        Chưa có thanh toán
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  })
+                )}
+              </div>
+
               {canVerify && payments.some((p) => !p.verified_at) && (
                 <p className="mt-3 text-xs text-muted-foreground">
                   Bấm vào dòng thanh toán chưa xác nhận để xác nhận.

@@ -65,74 +65,154 @@ export default function BatchesPage() {
     user && ["warehouse", "owner"].includes(user.role) && hasPermission(user.role, "inventory", "create")
 
   const renderTable = (rows: (Batch & { product?: Product })[], showCountdown = false) => (
-    <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Sản phẩm</TableHead>
-            <TableHead>Mã lô</TableHead>
-            <TableHead>Vị trí</TableHead>
-            <TableHead className="text-right">Ban đầu</TableHead>
-            <TableHead className="text-right">Tồn</TableHead>
-            <TableHead>NSX</TableHead>
-            <TableHead>HSD</TableHead>
-            {showCountdown && <TableHead>Còn lại</TableHead>}
-            <TableHead className="w-12"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((b) => {
-            const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
-            const days = daysUntil(b.expires_at)
-            const isCritical = days < 30
-            return (
-              <TableRow
-                key={b.id}
-                className={`cursor-pointer ${isCritical && showCountdown ? "bg-red-50/50 hover:bg-red-50" : ""}`}
-                onClick={() => router.push(`/inventory/batches/${b.id}`)}
-              >
-                <TableCell className="font-medium">{b.product?.name}</TableCell>
-                <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>
-                <TableCell>{b.location || "-"}</TableCell>
-                <TableCell className="text-right">{b.qty_initial}</TableCell>
-                <TableCell className="text-right font-medium">{b.qty_on_hand}</TableCell>
-                <TableCell>{b.manufactured_at ? formatDate(b.manufactured_at) : "-"}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
-                    }
-                  >
-                    {formatDate(b.expires_at)}
-                  </Badge>
-                </TableCell>
-                {showCountdown && (
+    <>
+      {/* Desktop table */}
+      <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Sản phẩm</TableHead>
+              <TableHead>Mã lô</TableHead>
+              <TableHead>Vị trí</TableHead>
+              <TableHead className="text-right">Ban đầu</TableHead>
+              <TableHead className="text-right">Tồn</TableHead>
+              <TableHead>NSX</TableHead>
+              <TableHead>HSD</TableHead>
+              {showCountdown && <TableHead>Còn lại</TableHead>}
+              <TableHead className="w-12"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((b) => {
+              const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
+              const days = daysUntil(b.expires_at)
+              const isCritical = days < 30
+              return (
+                <TableRow
+                  key={b.id}
+                  className={`cursor-pointer ${isCritical && showCountdown ? "bg-red-50/50 hover:bg-red-50" : ""}`}
+                  onClick={() => router.push(`/inventory/batches/${b.id}`)}
+                >
+                  <TableCell className="font-medium">{b.product?.name}</TableCell>
+                  <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>
+                  <TableCell>{b.location || "-"}</TableCell>
+                  <TableCell className="text-right">{b.qty_initial}</TableCell>
+                  <TableCell className="text-right font-medium">{b.qty_on_hand}</TableCell>
+                  <TableCell>{b.manufactured_at ? formatDate(b.manufactured_at) : "-"}</TableCell>
                   <TableCell>
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs font-semibold ${
-                        days < 0
-                          ? "text-red-600"
-                          : days < 30
-                          ? "text-red-600"
-                          : days < 90
-                          ? "text-amber-600"
-                          : "text-muted-foreground"
-                      }`}
+                    <Badge
+                      variant={
+                        status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
+                      }
                     >
-                      <Clock className="h-3 w-3" />
-                      {days < 0 ? `Đã hết hạn ${Math.abs(days)}d` : `${days} ngày`}
-                    </span>
+                      {formatDate(b.expires_at)}
+                    </Badge>
                   </TableCell>
-                )}
-                <TableCell>
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
+                  {showCountdown && (
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-semibold ${
+                          days < 0
+                            ? "text-red-600"
+                            : days < 30
+                            ? "text-red-600"
+                            : days < 90
+                            ? "text-amber-600"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        <Clock className="h-3 w-3" />
+                        {days < 0 ? `Đã hết hạn ${Math.abs(days)}d` : `${days} ngày`}
+                      </span>
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="lg:hidden space-y-3">
+        {rows.map((b) => {
+          const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
+          const days = daysUntil(b.expires_at)
+          const isCritical = days < 30
+          return (
+            <div
+              key={b.id}
+              className={`relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
+                isCritical && showCountdown ? "border-red-300 bg-red-50/30" : ""
+              }`}
+              onClick={() => router.push(`/inventory/batches/${b.id}`)}
+            >
+              <div className="p-4">
+                <div className="flex justify-between items-start gap-3 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-extrabold text-base leading-tight truncate">
+                      {b.product?.name}
+                    </h3>
+                    <p className="font-mono text-xs text-primary mt-0.5">
+                      Lô: {b.batch_code}
+                    </p>
+                    {b.location && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Vị trí: {b.location}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <Badge
+                      variant={
+                        status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
+                      }
+                    >
+                      HSD: {formatDate(b.expires_at)}
+                    </Badge>
+                    {showCountdown && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-semibold ${
+                          days < 0
+                            ? "text-red-600"
+                            : days < 30
+                            ? "text-red-600"
+                            : days < 90
+                            ? "text-amber-600"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        <Clock className="h-3 w-3" />
+                        {days < 0 ? `Hết hạn ${Math.abs(days)}d` : `${days} ngày`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Ban đầu</p>
+                    <p className="font-medium">{b.qty_initial}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Tồn</p>
+                    <p className="font-bold">{b.qty_on_hand}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">NSX</p>
+                    <p className="font-medium">
+                      {b.manufactured_at ? formatDate(b.manufactured_at) : "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
   )
 
   return (

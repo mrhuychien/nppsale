@@ -263,54 +263,99 @@ export default function AccountantLedgerPage() {
               description="Khách hàng chưa có đơn hàng đã giao hoặc thanh toán nào"
             />
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Ngày</TableHead>
-                        <TableHead>Mã chứng từ</TableHead>
-                        <TableHead>Loại</TableHead>
-                        <TableHead className="text-right">Phát sinh Nợ</TableHead>
-                        <TableHead className="text-right">Phát sinh Có</TableHead>
-                        <TableHead className="text-right">Tồn cuối</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {ledger.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell className="text-sm">{formatDate(row.date)}</TableCell>
-                          <TableCell className="text-sm font-bold text-primary">
-                            {row.code}
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                row.type === "invoice"
-                                  ? "bg-blue-50 text-blue-700"
-                                  : "bg-green-50 text-green-700"
-                              }`}
-                            >
-                              {row.typeLabel}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {row.debit > 0 ? formatCurrency(row.debit) : "-"}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-green-600">
-                            {row.credit > 0 ? formatCurrency(row.credit) : "-"}
-                          </TableCell>
-                          <TableCell className="text-right font-black">
-                            {formatCurrency(row.balance)}
-                          </TableCell>
+            <>
+              {/* Desktop table */}
+              <Card className="hidden lg:block">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Ngày</TableHead>
+                          <TableHead>Mã chứng từ</TableHead>
+                          <TableHead>Loại</TableHead>
+                          <TableHead className="text-right">Phát sinh Nợ</TableHead>
+                          <TableHead className="text-right">Phát sinh Có</TableHead>
+                          <TableHead className="text-right">Tồn cuối</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {ledger.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="text-sm">{formatDate(row.date)}</TableCell>
+                            <TableCell className="text-sm font-bold text-primary">
+                              {row.code}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                  row.type === "invoice"
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "bg-green-50 text-green-700"
+                                }`}
+                              >
+                                {row.typeLabel}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {row.debit > 0 ? formatCurrency(row.debit) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-green-600">
+                              {row.credit > 0 ? formatCurrency(row.credit) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right font-black">
+                              {formatCurrency(row.balance)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Mobile card list */}
+              <div className="lg:hidden space-y-3">
+                {ledger.map((row) => (
+                  <div
+                    key={row.id}
+                    className="rounded-2xl border bg-card shadow-ambient overflow-hidden"
+                  >
+                    <div className="p-4">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-muted-foreground">{formatDate(row.date)}</p>
+                          <p className="font-mono text-sm font-bold text-primary mt-0.5">{row.code}</p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            row.type === "invoice"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-green-50 text-green-700"
+                          }`}
+                        >
+                          {row.typeLabel}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                        <div>
+                          <p className="text-muted-foreground">PS Nợ</p>
+                          <p className="font-semibold">{row.debit > 0 ? formatCurrency(row.debit) : "-"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">PS Có</p>
+                          <p className="font-semibold text-green-600">{row.credit > 0 ? formatCurrency(row.credit) : "-"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Tồn cuối</p>
+                          <p className="font-black">{formatCurrency(row.balance)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </>
       )}

@@ -182,12 +182,29 @@ export interface SalesOrder {
   notes: string | null
   approved_by: string | null
   approved_at: string | null
+  approval_reason: string | null
   created_at: string
   // Joined
   customer?: Customer
   sales_user?: User
   lines?: SalesOrderLine[]
   approver?: User
+}
+
+export interface ApprovalRules {
+  id: string
+  org_id: string
+  auto_approve_max: number
+  manager_approve_max: number
+  customer_debt_max: number
+  customer_overdue_max: number
+  rep_portfolio_debt_max: number
+  enforce_credit_limit: boolean
+  notes: string | null
+  is_active: boolean
+  updated_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface SalesOrderLine {

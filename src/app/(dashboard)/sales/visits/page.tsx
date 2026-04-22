@@ -13,12 +13,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
 import {
-  Navigation, MapPin, Clock, CheckCircle2, XCircle, TrendingUp, User as UserIcon,
+  Navigation, MapPin, Clock, CheckCircle2, TrendingUp, User as UserIcon,
   Camera,
 } from "lucide-react"
 import type { User } from "@/types"
@@ -47,7 +46,7 @@ const RESULT_META: Record<string, { label: string; variant: "success" | "seconda
 }
 
 export default function VisitsHistoryPage() {
-  const { user, loading: authLoading } = useRoleGuard("customers")
+  const { loading: authLoading } = useRoleGuard("customers")
   const { user: authUser } = useAuth()
   const supabase = createClient()
 

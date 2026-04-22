@@ -24,7 +24,7 @@ import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
-  ArrowRight,
+  ArrowRight, Banknote,
 } from "lucide-react"
 import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
 
@@ -210,7 +210,19 @@ export default function CustomerDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={customer.store_name} description={customer.address} backHref="/customers">
-        <StatusBadge status={customer.status} type="customer" />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={customer.status} type="customer" />
+          {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
+            <Button
+              size="sm"
+              className="bg-gradient-primary text-white"
+              onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
+            >
+              <Banknote className="h-4 w-4 mr-1.5" />
+              Thu tiền
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       {/* KPI Cards */}
@@ -246,11 +258,22 @@ export default function CustomerDetailPage() {
               <CreditCard className="h-4 w-4" />
             </span>
           </div>
-          <h3 className="text-xl font-black tracking-tight" style={{ color: currentDebt > 0 ? undefined : undefined }}>
+          <h3 className="text-xl font-black tracking-tight">
             {currentDebt > 0
               ? <span className="text-destructive">{formatCurrency(currentDebt)}</span>
               : <span className="text-muted-foreground">0đ</span>}
           </h3>
+          {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
+            >
+              <Banknote className="h-4 w-4 mr-1.5" />
+              Thu tiền ngay
+            </Button>
+          )}
         </div>
 
         <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-amber-500">

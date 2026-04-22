@@ -9,6 +9,7 @@ import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CustomerTable } from "@/components/customers/customer-table"
+import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -43,6 +44,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState("all")
+  const [visitTarget, setVisitTarget] = useState<Customer | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -141,7 +143,29 @@ export default function CustomersPage() {
   const progressPct = totalRoute > 0 ? Math.round((visitedCount / totalRoute) * 100) : 0
 
   const handleCheckIn = (c: Customer) => {
-    alert(`Đã ghé thăm ${c.store_name}`)
+    setVisitTarget(c)
+  }
+
+  const handleVisitSuccess = async () => {
+    // Refresh last visits after check-in
+    const { data: latestVisits } = await supabase
+      .from("visit_logs")
+      .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
+      .order("visit_date", { ascending: false })
+      .order("check_in_at", { ascending: false })
+      .limit(500)
+    const visitMap: Record<string, LastVisitInfo> = {}
+    for (const v of (latestVisits as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
+      if (v.customer_id && !visitMap[v.customer_id]) {
+        visitMap[v.customer_id] = {
+          visit_date: v.visit_date,
+          check_in_at: v.check_in_at,
+          result: v.result,
+          sales_user_name: v.sales_user?.full_name || null,
+        }
+      }
+    }
+    setLastVisits(visitMap)
   }
 
   const handleInventoryCheck = () => {
@@ -347,6 +371,16 @@ export default function CustomersPage() {
             })}
           </div>
         </>
+      )}
+
+      {visitTarget && (
+        <VisitCheckinDialog
+          open={!!visitTarget}
+          onOpenChange={(open) => !open && setVisitTarget(null)}
+          customerId={visitTarget.id}
+          customerName={visitTarget.store_name}
+          onSuccess={handleVisitSuccess}
+        />
       )}
     </div>
   )

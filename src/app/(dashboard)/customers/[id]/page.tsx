@@ -22,9 +22,10 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
+import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
-  ArrowRight, Banknote,
+  ArrowRight, Banknote, Navigation, MapPin, Camera,
 } from "lucide-react"
 import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
 
@@ -70,6 +71,19 @@ export default function CustomerDetailPage() {
   const [recentPayments, setRecentPayments] = useState<Array<{ id: string; amount: number; method: string; collected_at: string }>>([])
   const [allOrders, setAllOrders] = useState<OrderRow[]>([])
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
+  const [visits, setVisits] = useState<Array<{
+    id: string
+    visit_date: string
+    check_in_at: string | null
+    check_out_at: string | null
+    check_in_lat: number | null
+    check_in_lng: number | null
+    result: string | null
+    notes: string | null
+    photo_url: string | null
+    sales_user?: { full_name?: string } | null
+  }>>([])
+  const [visitDialogOpen, setVisitDialogOpen] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -173,6 +187,30 @@ export default function CustomerDetailPage() {
     const priceRes = await priceQuery
     setPriceRows((priceRes.data || []) as PriceRow[])
 
+    // Visit history
+    const { data: visitData } = await supabase
+      .from("visit_logs")
+      .select(
+        "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user:users!visit_logs_sales_user_id_fkey(full_name)"
+      )
+      .eq("customer_id", id)
+      .order("visit_date", { ascending: false })
+      .order("check_in_at", { ascending: false })
+    setVisits(
+      ((visitData as Array<{
+        id: string
+        visit_date: string
+        check_in_at: string | null
+        check_out_at: string | null
+        check_in_lat: number | null
+        check_in_lng: number | null
+        result: string | null
+        notes: string | null
+        photo_url: string | null
+        sales_user?: { full_name?: string } | null
+      }>) || [])
+    )
+
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,8 +248,18 @@ export default function CustomerDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={customer.store_name} description={customer.address} backHref="/customers">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={customer.status} type="customer" />
+          {user && hasPermission(user.role, "customers", "update") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setVisitDialogOpen(true)}
+            >
+              <Navigation className="h-4 w-4 mr-1.5" />
+              Ghé thăm
+            </Button>
+          )}
           {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
             <Button
               size="sm"
@@ -295,9 +343,10 @@ export default function CustomerDetailPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Tabs defaultValue="overview">
-            <TabsList>
+            <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
               <TabsTrigger value="orders">Lịch sử đơn hàng</TabsTrigger>
+              <TabsTrigger value="visits">Ghé thăm ({visits.length})</TabsTrigger>
               <TabsTrigger value="prices">Bảng giá áp dụng</TabsTrigger>
               <TabsTrigger value="info">Thông tin</TabsTrigger>
               <TabsTrigger value="assignments">Phân công ({assignments.length})</TabsTrigger>
@@ -515,6 +564,96 @@ export default function CustomerDetailPage() {
               </Card>
             </TabsContent>
 
+            {/* Tab: Ghé thăm */}
+            <TabsContent value="visits" className="mt-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">Lịch sử ghé thăm ({visits.length})</CardTitle>
+                  {user && hasPermission(user.role, "customers", "update") && (
+                    <Button size="sm" variant="outline" onClick={() => setVisitDialogOpen(true)}>
+                      <Navigation className="h-3.5 w-3.5 mr-1.5" /> Ghé thăm mới
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {visits.length === 0 ? (
+                    <EmptyState title="Chưa có ghé thăm" description="Ghi nhận ghé thăm đầu tiên từ nút phía trên" />
+                  ) : (
+                    <div className="space-y-3">
+                      {visits.map((v) => {
+                        const resultLabel: Record<string, { label: string; variant: "default" | "success" | "warning" | "secondary" | "danger" }> = {
+                          order_placed: { label: "Đã đặt đơn", variant: "success" },
+                          no_order: { label: "Không đặt đơn", variant: "secondary" },
+                          closed: { label: "Đóng cửa", variant: "warning" },
+                          not_visited: { label: "Chưa ghé", variant: "danger" },
+                        }
+                        const r = v.result ? resultLabel[v.result] : null
+                        const mapsUrl = v.check_in_lat && v.check_in_lng
+                          ? `https://www.google.com/maps?q=${v.check_in_lat},${v.check_in_lng}`
+                          : null
+                        return (
+                          <div key={v.id} className="rounded-xl border bg-muted/10 p-3">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold">{formatDate(v.visit_date)}</span>
+                                  {v.check_in_at && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(v.check_in_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                  )}
+                                  {r && <Badge variant={r.variant}>{r.label}</Badge>}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  NV: {v.sales_user?.full_name || "-"}
+                                </p>
+                                {mapsUrl && (
+                                  <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                                  >
+                                    <MapPin className="h-3 w-3" />
+                                    {v.check_in_lat?.toFixed(5)}, {v.check_in_lng?.toFixed(5)}
+                                  </a>
+                                )}
+                                {v.notes && (
+                                  <p className="text-xs mt-2 text-muted-foreground italic line-clamp-2">
+                                    &ldquo;{v.notes}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                              {v.photo_url && (
+                                <a
+                                  href={v.photo_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 rounded-lg overflow-hidden border w-20 h-20 bg-muted"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={v.photo_url}
+                                    alt="Ảnh cửa hàng"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </a>
+                              )}
+                              {!v.photo_url && (
+                                <div className="shrink-0 w-20 h-20 rounded-lg border border-dashed flex items-center justify-center text-muted-foreground">
+                                  <Camera className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* Tab: Bảng giá áp dụng */}
             <TabsContent value="prices" className="mt-4">
               <Card>
@@ -642,6 +781,14 @@ export default function CustomerDetailPage() {
         confirmLabel="Xóa vĩnh viễn"
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      <VisitCheckinDialog
+        open={visitDialogOpen}
+        onOpenChange={setVisitDialogOpen}
+        customerId={customer.id}
+        customerName={customer.store_name}
+        onSuccess={fetchData}
       />
     </div>
   )

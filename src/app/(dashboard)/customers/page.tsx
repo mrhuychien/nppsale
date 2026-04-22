@@ -14,9 +14,22 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation } from "lucide-react"
-import { formatCurrency } from "@/lib/utils"
+import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag } from "lucide-react"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
+
+interface LastOrderInfo {
+  order_code: string
+  order_date: string
+  total: number
+}
+
+interface LastVisitInfo {
+  visit_date: string
+  check_in_at: string | null
+  result: string | null
+  sales_user_name: string | null
+}
 
 export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
@@ -25,6 +38,8 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [debts, setDebts] = useState<Record<string, number>>({})
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
+  const [lastOrders, setLastOrders] = useState<Record<string, LastOrderInfo>>({})
+  const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState("all")
@@ -67,6 +82,44 @@ export default function CustomersPage() {
         if (o.customer_id) visits.add(o.customer_id)
       }
       setVisitedToday(visits)
+
+      // Latest order per customer (any time)
+      const { data: latestOrders } = await supabase
+        .from("sales_orders")
+        .select("customer_id, order_code, order_date, total")
+        .order("order_date", { ascending: false })
+        .limit(500)
+      const orderMap: Record<string, LastOrderInfo> = {}
+      for (const o of (latestOrders as Array<Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">>) || []) {
+        if (o.customer_id && !orderMap[o.customer_id]) {
+          orderMap[o.customer_id] = {
+            order_code: o.order_code,
+            order_date: o.order_date,
+            total: o.total,
+          }
+        }
+      }
+      setLastOrders(orderMap)
+
+      // Latest visit per customer
+      const { data: latestVisits } = await supabase
+        .from("visit_logs")
+        .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
+        .order("visit_date", { ascending: false })
+        .order("check_in_at", { ascending: false })
+        .limit(500)
+      const visitMap: Record<string, LastVisitInfo> = {}
+      for (const v of (latestVisits as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
+        if (v.customer_id && !visitMap[v.customer_id]) {
+          visitMap[v.customer_id] = {
+            visit_date: v.visit_date,
+            check_in_at: v.check_in_at,
+            result: v.result,
+            sales_user_name: v.sales_user?.full_name || null,
+          }
+        }
+      }
+      setLastVisits(visitMap)
 
       setLoading(false)
     }
@@ -154,7 +207,13 @@ export default function CustomersPage() {
         <>
           {/* Desktop: existing table */}
           <div className="hidden lg:block">
-            <CustomerTable customers={filtered} />
+            <CustomerTable
+              customers={filtered}
+              debts={debts}
+              lastOrders={lastOrders}
+              lastVisits={lastVisits}
+              canCollect={!!user && hasPermission(user.role, "receivables", "create")}
+            />
           </div>
 
           {/* Mobile: card list */}
@@ -163,6 +222,8 @@ export default function CustomersPage() {
               const debt = debts[c.id] || 0
               const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
               const hasVisited = visitedToday.has(c.id)
+              const lastOrder = lastOrders[c.id]
+              const lastVisit = lastVisits[c.id]
               return (
                 <div
                   key={c.id}
@@ -194,19 +255,56 @@ export default function CustomersPage() {
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        {debt > 0 ? (
-                          <Badge variant={isBadDebt ? "danger" : "warning"} className="whitespace-nowrap">
-                            {isBadDebt ? "Nợ xấu" : formatCurrency(debt)}
-                          </Badge>
-                        ) : hasVisited ? (
-                          <Badge variant="success" className="whitespace-nowrap">Đã ghé</Badge>
-                        ) : (
-                          c.channel && <Badge variant="outline">{c.channel}</Badge>
+                        {hasVisited && (
+                          <Badge variant="success" className="whitespace-nowrap mb-1">Đã ghé hôm nay</Badge>
                         )}
-                        {debt > 0 && isBadDebt && (
-                          <p className="text-[10px] font-bold text-danger mt-1">
+                        {c.channel && <Badge variant="outline">{c.channel}</Badge>}
+                      </div>
+                    </div>
+
+                    {/* Summary row: last visit, last order, debt */}
+                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                      <div>
+                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+                          <Navigation className="h-3 w-3 shrink-0" />
+                          <span>Ghé thăm</span>
+                        </div>
+                        {lastVisit ? (
+                          <p className="font-medium">{formatDate(lastVisit.visit_date)}</p>
+                        ) : (
+                          <p className="text-muted-foreground italic">Chưa có</p>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+                          <ShoppingBag className="h-3 w-3 shrink-0" />
+                          <span>Đơn gần nhất</span>
+                        </div>
+                        {lastOrder ? (
+                          <>
+                            <p className="font-medium truncate">{formatDate(lastOrder.order_date)}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {formatCurrency(lastOrder.total)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground italic">Chưa có</p>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
+                          <Calendar className="h-3 w-3 shrink-0" />
+                          <span>Công nợ</span>
+                        </div>
+                        {debt > 0 ? (
+                          <p className={`font-bold ${isBadDebt ? "text-danger" : "text-warning-foreground"}`}>
                             {formatCurrency(debt)}
                           </p>
+                        ) : (
+                          <p className="text-muted-foreground">0đ</p>
+                        )}
+                        {isBadDebt && (
+                          <p className="text-[10px] font-bold text-danger">Nợ xấu</p>
                         )}
                       </div>
                     </div>
@@ -224,10 +322,11 @@ export default function CustomersPage() {
                     </button>
                     <button
                       type="button"
-                      className="flex items-center justify-center gap-1 py-2.5 text-xs font-semibold text-primary hover:bg-muted/50 active:scale-95 transition"
+                      disabled={debt <= 0}
+                      className="flex items-center justify-center gap-1 py-2.5 text-xs font-semibold text-primary hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                       onClick={(e) => {
                         e.stopPropagation()
-                        router.push(`/receivables/collect?customer=${c.id}`)
+                        router.push(`/receivables/collect?customerId=${c.id}`)
                       }}
                     >
                       <HandCoins className="h-3.5 w-3.5" /> Thu tiền

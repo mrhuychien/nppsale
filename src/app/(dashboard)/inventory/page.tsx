@@ -73,6 +73,7 @@ export default function InventoryPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const [batches, setBatches] = useState<BatchWithProduct[]>([])
   const [entries, setEntries] = useState<StockEntry[]>([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState("fefo")
   const [search, setSearch] = useState("")
@@ -89,7 +90,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     async function fetchAll() {
-      const [batchesRes, entriesRes] = await Promise.all([
+      const [batchesRes, entriesRes, pendingRes] = await Promise.all([
         supabase
           .from("batches")
           .select("*, product:products(*)")
@@ -99,9 +100,14 @@ export default function InventoryPage() {
           .from("stock_entries")
           .select("*, creator:users!stock_entries_created_by_fkey(*)")
           .order("created_at", { ascending: false }),
+        supabase
+          .from("stock_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "draft"),
       ])
       setBatches((batchesRes.data as BatchWithProduct[]) || [])
       setEntries((entriesRes.data as StockEntry[]) || [])
+      setPendingCount(pendingRes.count ?? 0)
       setLoading(false)
     }
     fetchAll()
@@ -214,6 +220,17 @@ export default function InventoryPage() {
             <Link href="/inventory/stock-out">
               <ArrowUpFromLine className="mr-2 h-4 w-4" />
               Xuất kho
+            </Link>
+          </Button>
+          <Button variant="outline" asChild className="relative">
+            <Link href="/inventory/pending">
+              <Clock className="mr-2 h-4 w-4" />
+              Chờ xử lý
+              {pendingCount > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold h-5 min-w-[20px] px-1">
+                  {pendingCount}
+                </span>
+              )}
             </Link>
           </Button>
           <Button variant="outline" asChild>

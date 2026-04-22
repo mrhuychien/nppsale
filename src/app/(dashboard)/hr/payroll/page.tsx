@@ -342,63 +342,129 @@ export default function PayrollPage() {
           description={`Nhấn "Tính lương tháng" để tính lương kỳ ${period}`}
         />
       ) : (
-        <div className="overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>STT</TableHead>
-                <TableHead>Tên NV</TableHead>
-                <TableHead>Vai trò</TableHead>
-                <TableHead className="text-right">Ngày công</TableHead>
-                <TableHead className="text-right">Doanh số</TableHead>
-                <TableHead className="text-right">% KPI</TableHead>
-                <TableHead className="text-right">Lương CB</TableHead>
-                <TableHead className="text-right">Phụ cấp</TableHead>
-                <TableHead className="text-right">Thưởng KPI</TableHead>
-                <TableHead className="text-right">Thưởng DS</TableHead>
-                <TableHead className="text-right">Tổng lương</TableHead>
-                <TableHead>Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payrolls.map((p, idx) => {
-                const status = STATUS_MAP[p.status] || STATUS_MAP.draft
-                return (
-                  <TableRow
-                    key={p.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/hr/payroll/${p.id}`)}
-                  >
-                    <TableCell>{idx + 1}</TableCell>
-                    <TableCell className="font-semibold">{p.user?.full_name || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.user?.role ? ROLE_LABELS[p.user.role] : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">{p.working_days}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(p.total_revenue)}</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {p.target_percent > 0 ? `${p.target_percent}%` : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(p.base_salary)}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(p.gas_allowance + p.phone_allowance)}
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(p.target_bonus)}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(p.monthly_revenue_bonus + p.over_target_bonus)}
-                    </TableCell>
-                    <TableCell className="text-right font-black text-primary">
-                      {formatCurrency(p.total_salary)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>STT</TableHead>
+                  <TableHead>Tên NV</TableHead>
+                  <TableHead>Vai trò</TableHead>
+                  <TableHead className="text-right">Ngày công</TableHead>
+                  <TableHead className="text-right">Doanh số</TableHead>
+                  <TableHead className="text-right">% KPI</TableHead>
+                  <TableHead className="text-right">Lương CB</TableHead>
+                  <TableHead className="text-right">Phụ cấp</TableHead>
+                  <TableHead className="text-right">Thưởng KPI</TableHead>
+                  <TableHead className="text-right">Thưởng DS</TableHead>
+                  <TableHead className="text-right">Tổng lương</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payrolls.map((p, idx) => {
+                  const status = STATUS_MAP[p.status] || STATUS_MAP.draft
+                  return (
+                    <TableRow
+                      key={p.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/hr/payroll/${p.id}`)}
+                    >
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell className="font-semibold">{p.user?.full_name || "-"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.user?.role ? ROLE_LABELS[p.user.role] : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">{p.working_days}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.total_revenue)}</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {p.target_percent > 0 ? `${p.target_percent}%` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.base_salary)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(p.gas_allowance + p.phone_allowance)}
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.target_bonus)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(p.monthly_revenue_bonus + p.over_target_bonus)}
+                      </TableCell>
+                      <TableCell className="text-right font-black text-primary">
+                        {formatCurrency(p.total_salary)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {payrolls.map((p, idx) => {
+              const status = STATUS_MAP[p.status] || STATUS_MAP.draft
+              return (
+                <div
+                  key={p.id}
+                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  onClick={() => router.push(`/hr/payroll/${p.id}`)}
+                >
+                  <div className="p-4">
+                    <div className="flex justify-between items-start gap-3 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-muted-foreground">#{idx + 1}</span>
+                          <h3 className="font-extrabold text-base leading-tight truncate">
+                            {p.user?.full_name || "-"}
+                          </h3>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {p.user?.role ? ROLE_LABELS[p.user.role] : "-"} • {p.working_days} công
+                        </p>
+                      </div>
+                      <div className="shrink-0">
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Doanh số</p>
+                        <p className="font-medium">{formatCurrency(p.total_revenue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">% KPI</p>
+                        <p className="font-medium">{p.target_percent > 0 ? `${p.target_percent}%` : "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Lương CB</p>
+                        <p className="font-medium">{formatCurrency(p.base_salary)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Phụ cấp</p>
+                        <p className="font-medium">{formatCurrency(p.gas_allowance + p.phone_allowance)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Thưởng KPI</p>
+                        <p className="font-medium">{formatCurrency(p.target_bonus)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Thưởng DS</p>
+                        <p className="font-medium">{formatCurrency(p.monthly_revenue_bonus + p.over_target_bonus)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                      <span className="text-xs text-muted-foreground">Tổng lương</span>
+                      <span className="font-black text-base text-primary">{formatCurrency(p.total_salary)}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
 
       {/* Summary */}

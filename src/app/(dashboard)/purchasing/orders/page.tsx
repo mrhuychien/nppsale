@@ -119,54 +119,89 @@ export default function PurchaseOrdersPage() {
           description="Tạo đơn mua hàng đầu tiên từ nhà cung cấp"
         />
       ) : (
-        <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã PO</TableHead>
-                <TableHead>NCC</TableHead>
-                <TableHead className="hidden sm:table-cell">Ngày</TableHead>
-                <TableHead className="text-right">Tổng tiền</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((order) => (
-                <TableRow
-                  key={order.id}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/purchasing/orders/${order.id}`)}
-                >
-                  <TableCell>
-                    <Link
-                      href={`/purchasing/orders/${order.id}`}
-                      className="font-mono text-sm text-primary font-bold hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {order.po_code}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {order.supplier?.name || "-"}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {formatDate(order.order_date)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(order.total)}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={order.status} type="po" />
-                  </TableCell>
-                  <TableCell>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </TableCell>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mã PO</TableHead>
+                  <TableHead>NCC</TableHead>
+                  <TableHead>Ngày</TableHead>
+                  <TableHead className="text-right">Tổng tiền</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((order) => (
+                  <TableRow
+                    key={order.id}
+                    className="cursor-pointer"
+                    onClick={() => router.push(`/purchasing/orders/${order.id}`)}
+                  >
+                    <TableCell>
+                      <Link
+                        href={`/purchasing/orders/${order.id}`}
+                        className="font-mono text-sm text-primary font-bold hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {order.po_code}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {order.supplier?.name || "-"}
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(order.order_date)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(order.total)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={order.status} type="po" />
+                    </TableCell>
+                    <TableCell>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {filtered.map((order) => (
+              <div
+                key={order.id}
+                className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                onClick={() => router.push(`/purchasing/orders/${order.id}`)}
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs font-bold text-primary">{order.po_code}</p>
+                      <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                        {order.supplier?.name || "-"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatDate(order.order_date)}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      <StatusBadge status={order.status} type="po" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                    <span className="text-xs text-muted-foreground">Tổng tiền</span>
+                    <span className="font-bold text-base">{formatCurrency(order.total)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

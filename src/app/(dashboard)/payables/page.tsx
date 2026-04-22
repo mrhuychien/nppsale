@@ -188,58 +188,116 @@ export default function PayablesPage() {
           description={search || statusFilter !== "all" ? "Thử thay đổi bộ lọc" : "Tạo công nợ nhà cung cấp đầu tiên"}
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nhà cung cấp</TableHead>
-                    <TableHead className="hidden sm:table-cell">Mã HĐ</TableHead>
-                    <TableHead className="text-right">Số tiền</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Đã trả</TableHead>
-                    <TableHead className="text-right">Còn lại</TableHead>
-                    <TableHead className="hidden md:table-cell">Hạn trả</TableHead>
-                    <TableHead className="hidden md:table-cell">Tuổi nợ</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((p) => {
-                    const remaining = p.amount - p.paid
-                    const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-                    const daysOverdue = getDaysOverdue(p.due_date)
-                    const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
-                    return (
-                      <TableRow
-                        key={p.id}
-                        className="cursor-pointer"
-                        onClick={() => router.push(`/payables/${p.id}`)}
-                      >
-                        <TableCell className="font-medium">{p.supplier?.name || "-"}</TableCell>
-                        <TableCell className="hidden sm:table-cell font-mono text-xs">{p.invoice_number || "-"}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(p.amount)}</TableCell>
-                        <TableCell className="text-right hidden sm:table-cell">{formatCurrency(p.paid)}</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(remaining)}</TableCell>
-                        <TableCell className="hidden md:table-cell">{p.due_date ? formatDate(p.due_date) : "-"}</TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          {p.status !== "paid" && p.due_date ? (
-                            <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          {/* Desktop table */}
+          <Card className="hidden lg:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nhà cung cấp</TableHead>
+                      <TableHead>Mã HĐ</TableHead>
+                      <TableHead className="text-right">Số tiền</TableHead>
+                      <TableHead className="text-right">Đã trả</TableHead>
+                      <TableHead className="text-right">Còn lại</TableHead>
+                      <TableHead>Hạn trả</TableHead>
+                      <TableHead>Tuổi nợ</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((p) => {
+                      const remaining = p.amount - p.paid
+                      const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
+                      const daysOverdue = getDaysOverdue(p.due_date)
+                      const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
+                      return (
+                        <TableRow
+                          key={p.id}
+                          className="cursor-pointer"
+                          onClick={() => router.push(`/payables/${p.id}`)}
+                        >
+                          <TableCell className="font-medium">{p.supplier?.name || "-"}</TableCell>
+                          <TableCell className="font-mono text-xs">{p.invoice_number || "-"}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(p.amount)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(p.paid)}</TableCell>
+                          <TableCell className="text-right font-bold">{formatCurrency(remaining)}</TableCell>
+                          <TableCell>{p.due_date ? formatDate(p.due_date) : "-"}</TableCell>
+                          <TableCell>
+                            {p.status !== "paid" && p.due_date ? (
+                              <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
+            {filtered.map((p) => {
+              const remaining = p.amount - p.paid
+              const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
+              const daysOverdue = getDaysOverdue(p.due_date)
+              const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
+              return (
+                <div
+                  key={p.id}
+                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  onClick={() => router.push(`/payables/${p.id}`)}
+                >
+                  <div className="p-4">
+                    <div className="flex justify-between items-start gap-3 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-extrabold text-base leading-tight truncate">
+                          {p.supplier?.name || "-"}
+                        </h3>
+                        {p.invoice_number && (
+                          <p className="font-mono text-xs text-muted-foreground mt-0.5 truncate">
+                            HĐ: {p.invoice_number}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Hạn: {p.due_date ? formatDate(p.due_date) : "-"}
+                        </p>
+                      </div>
+                      <div className="shrink-0 flex flex-col items-end gap-1">
+                        <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                        {p.status !== "paid" && p.due_date && (
+                          <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Số tiền</p>
+                        <p className="font-medium">{formatCurrency(p.amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Đã trả</p>
+                        <p className="font-medium">{formatCurrency(p.paid)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Còn lại</p>
+                        <p className="font-bold text-destructive">{formatCurrency(remaining)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

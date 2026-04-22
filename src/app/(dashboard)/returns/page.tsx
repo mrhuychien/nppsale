@@ -199,42 +199,86 @@ export default function ReturnsPage() {
               title="Chưa có yêu cầu trả hàng"
             />
           ) : (
-            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Lý do</TableHead>
-                    <TableHead>Người yêu cầu</TableHead>
-                    <TableHead className="text-right">Credit Note</TableHead>
-                    <TableHead>Ngày</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/returns/${r.id}`)}
-                    >
-                      <TableCell className="font-medium">
-                        {r.customer?.store_name || "-"}
-                      </TableCell>
-                      <TableCell>{getReasonLabel(r.reason)}</TableCell>
-                      <TableCell>{r.requester?.full_name || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "-"}
-                      </TableCell>
-                      <TableCell>{formatDate(r.created_at)}</TableCell>
-                      <TableCell>
-                        <StatusBadge status={r.status} type="return" />
-                      </TableCell>
+            <>
+              {/* Desktop table */}
+              <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Lý do</TableHead>
+                      <TableHead>Người yêu cầu</TableHead>
+                      <TableHead className="text-right">Credit Note</TableHead>
+                      <TableHead>Ngày</TableHead>
+                      <TableHead>Trạng thái</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((r) => (
+                      <TableRow
+                        key={r.id}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/returns/${r.id}`)}
+                      >
+                        <TableCell className="font-medium">
+                          {r.customer?.store_name || "-"}
+                        </TableCell>
+                        <TableCell>{getReasonLabel(r.reason)}</TableCell>
+                        <TableCell>{r.requester?.full_name || "-"}</TableCell>
+                        <TableCell className="text-right">
+                          {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "-"}
+                        </TableCell>
+                        <TableCell>{formatDate(r.created_at)}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={r.status} type="return" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="lg:hidden space-y-3">
+                {filtered.map((r) => (
+                  <div
+                    key={r.id}
+                    className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                    onClick={() => router.push(`/returns/${r.id}`)}
+                  >
+                    <div className="p-4">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-extrabold text-base leading-tight truncate">
+                            {r.customer?.store_name || "-"}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Lý do: <span className="font-medium text-foreground">{getReasonLabel(r.reason)}</span>
+                          </p>
+                          {r.requester?.full_name && (
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                              Người YC: {r.requester.full_name}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(r.created_at)}
+                          </p>
+                        </div>
+                        <div className="shrink-0">
+                          <StatusBadge status={r.status} type="return" />
+                        </div>
+                      </div>
+                      {r.credit_note_amount && (
+                        <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                          <span className="text-xs text-muted-foreground">Credit Note</span>
+                          <span className="font-bold text-base">{formatCurrency(r.credit_note_amount)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

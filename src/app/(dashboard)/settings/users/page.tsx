@@ -103,33 +103,112 @@ export default function UsersPage() {
       {users.length === 0 ? (
         <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chưa có người dùng" description="Tạo người dùng qua Supabase Auth" />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Họ tên</TableHead>
-              <TableHead>Vai trò</TableHead>
-              <TableHead className="hidden sm:table-cell">SĐT</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Họ tên</TableHead>
+                  <TableHead>Vai trò</TableHead>
+                  <TableHead>SĐT</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="text-right">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-medium">{u.full_name}</TableCell>
+                    <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
+                    <TableCell>{u.phone || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.is_active ? "success" : "secondary"}>
+                        {u.is_active ? "Đang hoạt động" : "Tạm khóa"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {canManage ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setToggleTarget(u)}
+                          >
+                            {u.is_active ? (
+                              <>
+                                <Lock className="h-4 w-4 mr-1" /> Tạm khóa
+                              </>
+                            ) : (
+                              <>
+                                <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.push(`/settings/users/${u.id}`)}
+                          >
+                            <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
+                          </Button>
+                          {isOwner && u.id !== currentUser?.id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:bg-destructive/10"
+                              onClick={() => setDeleteTarget(u)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
             {users.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.full_name}</TableCell>
-                <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
-                <TableCell className="hidden sm:table-cell">{u.phone || "-"}</TableCell>
-                <TableCell>
-                  <Badge variant={u.is_active ? "success" : "secondary"}>
-                    {u.is_active ? "Đang hoạt động" : "Tạm khóa"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {canManage ? (
-                    <div className="flex items-center justify-end gap-2">
+              <div
+                key={u.id}
+                className="rounded-2xl border bg-card shadow-ambient overflow-hidden"
+              >
+                <div className="p-4">
+                  <div className="flex justify-between items-start gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-base leading-tight truncate">
+                        {u.full_name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          {ROLE_LABELS[u.role] || u.role}
+                        </Badge>
+                        {u.phone && (
+                          <span className="text-xs text-muted-foreground">
+                            SĐT: {u.phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <Badge variant={u.is_active ? "success" : "secondary"}>
+                        {u.is_active ? "Hoạt động" : "Tạm khóa"}
+                      </Badge>
+                    </div>
+                  </div>
+                  {canManage && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t">
                       <Button
                         size="sm"
                         variant="outline"
+                        className="flex-1"
                         onClick={() => setToggleTarget(u)}
                       >
                         {u.is_active ? (
@@ -145,9 +224,10 @@ export default function UsersPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="flex-1"
                         onClick={() => router.push(`/settings/users/${u.id}`)}
                       >
-                        <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
+                        <Pencil className="h-4 w-4 mr-1" /> Sửa
                       </Button>
                       {isOwner && u.id !== currentUser?.id && (
                         <Button
@@ -160,14 +240,12 @@ export default function UsersPage() {
                         </Button>
                       )}
                     </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">-</span>
                   )}
-                </TableCell>
-              </TableRow>
+                </div>
+              </div>
             ))}
-          </TableBody>
-        </Table>
+          </div>
+        </>
       )}
 
       <ConfirmDialog

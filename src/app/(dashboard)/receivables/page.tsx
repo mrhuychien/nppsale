@@ -161,55 +161,121 @@ export default function ReceivablesPage() {
       {receivables.length === 0 ? (
         <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chưa có công nợ" />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Khách hàng</TableHead>
-              <TableHead className="hidden sm:table-cell">NV phụ trách</TableHead>
-              <TableHead className="text-right">Phải thu</TableHead>
-              <TableHead className="text-right">Đã thu</TableHead>
-              <TableHead className="text-right">Còn lại</TableHead>
-              <TableHead>Hạn</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-              <TableHead className="w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Desktop table */}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead>NV phụ trách</TableHead>
+                  <TableHead className="text-right">Phải thu</TableHead>
+                  <TableHead className="text-right">Đã thu</TableHead>
+                  <TableHead className="text-right">Còn lại</TableHead>
+                  <TableHead>Hạn</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="text-right">Thao tác</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {receivables.map((r) => {
+                  const remaining = r.amount - r.paid
+                  const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
+                  return (
+                    <TableRow
+                      key={r.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/receivables/${r.id}`)}
+                    >
+                      <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
+                      <TableCell>{r.sales_user?.full_name || "-"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.paid)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
+                      <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>
+                      <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleExportStatement(r)}
+                        >
+                          <FileText className="mr-1 h-3.5 w-3.5" />
+                          Xuất bản kê
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="lg:hidden space-y-3">
             {receivables.map((r) => {
               const remaining = r.amount - r.paid
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
               return (
-                <TableRow
+                <div
                   key={r.id}
-                  className="cursor-pointer"
+                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                   onClick={() => router.push(`/receivables/${r.id}`)}
                 >
-                  <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{r.sales_user?.full_name || "-"}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.paid)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
-                  <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>
-                  <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleExportStatement(r)}
-                    >
-                      <FileText className="mr-1 h-3.5 w-3.5" />
-                      Xuất bản kê
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
+                  <div className="p-4">
+                    <div className="flex justify-between items-start gap-3 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-extrabold text-base leading-tight truncate">
+                          {r.customer?.store_name || "-"}
+                        </h3>
+                        {r.sales_user?.full_name && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            NV: {r.sales_user.full_name}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Hạn: {r.due_date ? formatDate(r.due_date) : "-"}
+                        </p>
+                      </div>
+                      <div className="shrink-0">
+                        <Badge variant={agingVariant(aging)}>{r.status}</Badge>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Phải thu</p>
+                        <p className="font-medium">{formatCurrency(r.amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Đã thu</p>
+                        <p className="font-medium">{formatCurrency(r.paid)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Còn lại</p>
+                        <p className="font-bold text-destructive">{formatCurrency(remaining)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => handleExportStatement(r)}
+                      >
+                        <FileText className="mr-1 h-3.5 w-3.5" />
+                        Xuất bản kê
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               )
             })}
-          </TableBody>
-        </Table>
+          </div>
+        </>
       )}
     </div>
   )

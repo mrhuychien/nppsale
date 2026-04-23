@@ -12,220 +12,386 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatDate } from "@/lib/utils"
-import { useToast } from "@/hooks/use-toast"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import {
-  ArrowDownToLine, ArrowUpFromLine, ClipboardList, Eye, Package,
-  CircleCheck, AlertCircle,
+  ArrowDownToLine, ArrowUpFromLine, ClipboardList, Truck, AlertCircle,
+  Package, CircleX, RotateCcw,
 } from "lucide-react"
-import type { StockEntry, StockEntryLine, Product } from "@/types"
+import { RETURN_REASONS } from "@/lib/constants"
 
-type PendingEntry = StockEntry & {
-  lines?: Array<StockEntryLine & { product?: Product }>
+// --- Đơn chờ xuất (confirmed sales orders) ---
+type ConfirmedOrder = {
+  id: string
+  order_code: string
+  order_date: string
+  total: number
+  customer?: { id: string; store_name: string; phone: string | null } | null
+  sales_user?: { full_name?: string } | null
 }
 
-const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string }> = {
-  import: { icon: ArrowDownToLine, label: "Nhập kho", color: "text-emerald-600 bg-emerald-100" },
-  export: { icon: ArrowUpFromLine, label: "Xuất kho", color: "text-amber-600 bg-amber-100" },
-  transfer: { icon: Package, label: "Chuyển kho", color: "text-blue-600 bg-blue-100" },
-  stocktake: { icon: ClipboardList, label: "Kiểm kê", color: "text-primary bg-primary/10" },
+// --- Đơn chờ nhập: approved returns + failed delivery lines ---
+type ApprovedReturn = {
+  id: string
+  reason: string | null
+  credit_note_amount: number | null
+  notes: string | null
+  created_at: string
+  customer?: { id: string; store_name: string } | null
+  order?: { id: string; order_code: string } | null
+  lines_count: number
+}
+
+type FailedDeliveryLine = {
+  id: string
+  notes: string | null
+  delivered_at: string | null
+  order_id: string
+  order?: {
+    id: string
+    order_code: string
+    customer?: { store_name: string } | null
+  } | null
+  delivery?: {
+    id: string
+    driver?: { full_name?: string } | null
+  } | null
 }
 
 export default function PendingStockPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const supabase = createClient()
   const router = useRouter()
-  const { toast } = useToast()
 
-  const [entries, setEntries] = useState<PendingEntry[]>([])
+  const [confirmedOrders, setConfirmedOrders] = useState<ConfirmedOrder[]>([])
+  const [approvedReturns, setApprovedReturns] = useState<ApprovedReturn[]>([])
+  const [failedDeliveries, setFailedDeliveries] = useState<FailedDeliveryLine[]>([])
   const [loading, setLoading] = useState(true)
-  const [posting, setPosting] = useState<string | null>(null)
-
-  const fetchPending = async () => {
-    setLoading(true)
-    const { data } = await supabase
-      .from("stock_entries")
-      .select("*, lines:stock_entry_lines(*, product:products(id, name, sku, base_unit))")
-      .eq("status", "draft")
-      .order("created_at", { ascending: false })
-    setEntries((data as PendingEntry[]) || [])
-    setLoading(false)
-  }
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetchPending()
+    async function fetchAll() {
+      setLoading(true)
+      const [confirmedRes, returnsRes, failedRes] = await Promise.all([
+        // Confirmed orders awaiting stock-out
+        supabase
+          .from("sales_orders")
+          .select(
+            "id, order_code, order_date, total, customer:customers(id, store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+          )
+          .eq("status", "confirmed")
+          .order("order_date", { ascending: true }),
+        // Approved returns awaiting physical restock
+        supabase
+          .from("returns")
+          .select(
+            "id, reason, credit_note_amount, notes, created_at, customer:customers(id, store_name), order:sales_orders(id, order_code), lines:return_lines(id)"
+          )
+          .eq("status", "approved")
+          .order("created_at", { ascending: false }),
+        // Failed delivery lines — goods came back with the driver
+        supabase
+          .from("delivery_lines")
+          .select(
+            "id, notes, delivered_at, order_id, order:sales_orders(id, order_code, customer:customers(store_name)), delivery:deliveries(id, driver:users!deliveries_driver_id_fkey(full_name))"
+          )
+          .eq("status", "failed")
+          .order("delivered_at", { ascending: false }),
+      ])
+      setConfirmedOrders(((confirmedRes.data as unknown) as ConfirmedOrder[]) || [])
+      setApprovedReturns(
+        (((returnsRes.data as unknown) as Array<ApprovedReturn & { lines?: { id: string }[] }>) || []).map(
+          (r) => ({ ...r, lines_count: r.lines?.length || 0 })
+        )
+      )
+      setFailedDeliveries(((failedRes.data as unknown) as FailedDeliveryLine[]) || [])
+      setLoading(false)
+    }
+    fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const imports = useMemo(() => entries.filter((e) => e.type === "import"), [entries])
-  const exports = useMemo(() => entries.filter((e) => e.type === "export"), [entries])
-  const transfers = useMemo(() => entries.filter((e) => e.type === "transfer"), [entries])
-
-  const totalQty = (entry: PendingEntry) =>
-    (entry.lines || []).reduce((s, l) => s + (Number(l.quantity) || 0), 0)
-
-  const handlePost = async (entry: PendingEntry) => {
-    setPosting(entry.id)
-    try {
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", entry.id)
-      if (error) throw error
-      toast({ title: `Đã đăng phiếu ${entry.entry_code}` })
-      fetchPending()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Lỗi"
-      toast({ title: "Lỗi", description: message, variant: "destructive" })
-    } finally {
-      setPosting(null)
-    }
+  const toggleOne = (id: string) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelected(next)
+  }
+  const toggleAll = () => {
+    if (selected.size === confirmedOrders.length) setSelected(new Set())
+    else setSelected(new Set(confirmedOrders.map((o) => o.id)))
   }
 
-  const handleCancel = async (entry: PendingEntry) => {
-    setPosting(entry.id)
-    try {
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ status: "cancelled" })
-        .eq("id", entry.id)
-      if (error) throw error
-      toast({ title: `Đã hủy phiếu ${entry.entry_code}` })
-      fetchPending()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Lỗi"
-      toast({ title: "Lỗi", description: message, variant: "destructive" })
-    } finally {
-      setPosting(null)
-    }
+  const totalSelected = useMemo(
+    () => confirmedOrders.filter((o) => selected.has(o.id)).reduce((s, o) => s + o.total, 0),
+    [confirmedOrders, selected]
+  )
+
+  const handleDispatch = () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    router.push(`/inventory/stock-out?orderIds=${ids.join(",")}`)
   }
 
-  const renderList = (list: PendingEntry[]) => {
-    if (list.length === 0) {
-      return (
-        <EmptyState
-          icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
-          title="Không có phiếu chờ"
-          description="Phiếu sẽ hiển thị ở đây khi có tài liệu nháp (status = draft)"
-        />
-      )
-    }
-    return (
-      <div className="space-y-3">
-        {list.map((e) => {
-          const meta = TYPE_META[e.type] || TYPE_META.import
-          const Icon = meta.icon
-          const qty = totalQty(e)
-          return (
-            <Card key={e.id}>
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${meta.color}`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Link
-                          href={`/inventory/entries/${e.id}`}
-                          className="font-mono text-sm font-bold text-primary hover:underline"
-                        >
-                          {e.entry_code}
-                        </Link>
-                        <Badge variant="warning">Nháp</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {meta.label} • {formatDate(e.created_at)} • {e.lines?.length || 0} SP • SL: <span className="font-bold">{qty}</span>
-                      </p>
-                      {e.notes && (
-                        <p className="text-xs text-muted-foreground mt-1 italic line-clamp-1">
-                          &ldquo;{e.notes}&rdquo;
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 flex flex-wrap gap-2 justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => router.push(`/inventory/entries/${e.id}`)}
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1" /> Xem
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handlePost(e)}
-                      disabled={posting === e.id}
-                    >
-                      <CircleCheck className="h-3.5 w-3.5 mr-1" />
-                      {posting === e.id ? "Đang đăng..." : "Đăng"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive"
-                      onClick={() => handleCancel(e)}
-                      disabled={posting === e.id}
-                    >
-                      Hủy
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-    )
-  }
+  const reasonLabel = (code: string | null) =>
+    RETURN_REASONS.find((r) => r.value === code)?.label || code || "-"
 
   if (authLoading) return <Skeleton className="h-96" />
+
+  const inboundCount = approvedReturns.length + failedDeliveries.length
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Phiếu kho chờ xử lý"
-        description={`${entries.length} phiếu đang ở trạng thái nháp, chưa ảnh hưởng tồn`}
+        description="Đơn chờ nhập (trả hàng, giao thất bại) • Đơn chờ xuất (đã duyệt)"
         backHref="/inventory"
       />
-
-      {entries.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-900">
-            <p className="font-semibold">Các phiếu nháp không ảnh hưởng tồn kho</p>
-            <p className="text-xs mt-0.5">
-              Chỉ khi đăng (post), tồn kho thực mới được cập nhật. Phiếu bị hủy giữ nguyên lịch sử để kiểm toán.
-            </p>
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <Skeleton className="h-64" />
       ) : (
-        <Tabs defaultValue="import">
-          <TabsList>
-            <TabsTrigger value="import">
-              Chờ nhập ({imports.length})
+        <Tabs defaultValue="outbound">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="inbound" className="flex-1 sm:flex-none">
+              <ArrowDownToLine className="h-3.5 w-3.5 mr-1.5" />
+              Đơn chờ nhập ({inboundCount})
             </TabsTrigger>
-            <TabsTrigger value="export">
-              Chờ xuất ({exports.length})
-            </TabsTrigger>
-            <TabsTrigger value="transfer">
-              Chuyển kho ({transfers.length})
+            <TabsTrigger value="outbound" className="flex-1 sm:flex-none">
+              <ArrowUpFromLine className="h-3.5 w-3.5 mr-1.5" />
+              Đơn chờ xuất ({confirmedOrders.length})
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="import" className="mt-4">
-            {renderList(imports)}
+
+          {/* ================= ĐƠN CHỜ NHẬP ================= */}
+          <TabsContent value="inbound" className="mt-4 space-y-4">
+            {inboundCount === 0 ? (
+              <EmptyState
+                icon={<ArrowDownToLine className="h-8 w-8 text-muted-foreground" />}
+                title="Không có đơn chờ nhập"
+                description="Hàng trả đã duyệt và đơn giao thất bại sẽ xuất hiện ở đây"
+              />
+            ) : (
+              <>
+                {/* Approved returns */}
+                {approvedReturns.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">
+                      Trả hàng đã duyệt ({approvedReturns.length})
+                    </p>
+                    {approvedReturns.map((r) => (
+                      <Card key={r.id}>
+                        <CardContent className="p-4 flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                              <RotateCcw className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Link
+                                  href={`/returns/${r.id}`}
+                                  className="font-semibold text-primary hover:underline"
+                                >
+                                  {r.customer?.store_name || "-"}
+                                </Link>
+                                <Badge variant="warning">Trả hàng</Badge>
+                                {r.order?.order_code && (
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    {r.order.order_code}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {reasonLabel(r.reason)} • {r.lines_count} SP
+                                {" • "}{formatDate(r.created_at)}
+                              </p>
+                              {r.notes && (
+                                <p className="text-xs text-muted-foreground italic line-clamp-1 mt-1">
+                                  &ldquo;{r.notes}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex flex-col items-end gap-2">
+                            {r.credit_note_amount && (
+                              <p className="text-sm font-bold">
+                                {formatCurrency(r.credit_note_amount)}
+                              </p>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              asChild
+                            >
+                              <Link href={`/returns/${r.id}`}>
+                                <Package className="h-3.5 w-3.5 mr-1" /> Xử lý
+                              </Link>
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {/* Failed deliveries */}
+                {failedDeliveries.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">
+                      Giao thất bại ({failedDeliveries.length})
+                    </p>
+                    {failedDeliveries.map((d) => (
+                      <Card key={d.id}>
+                        <CardContent className="p-4 flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="shrink-0 w-10 h-10 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
+                              <CircleX className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Link
+                                  href={`/orders/${d.order_id}`}
+                                  className="font-semibold text-primary hover:underline"
+                                >
+                                  {d.order?.customer?.store_name || "-"}
+                                </Link>
+                                <Badge variant="danger">Thất bại</Badge>
+                                <span className="text-xs text-muted-foreground font-mono">
+                                  {d.order?.order_code}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {d.delivery?.driver?.full_name ? `Tài xế: ${d.delivery.driver.full_name} • ` : ""}
+                                {d.delivered_at ? formatDate(d.delivered_at) : "-"}
+                              </p>
+                              {d.notes && (
+                                <p className="text-xs text-muted-foreground italic line-clamp-1 mt-1">
+                                  &ldquo;{d.notes}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {d.delivery?.id && (
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href={`/deliveries/${d.delivery.id}`}>Xem chuyến</Link>
+                            </Button>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </TabsContent>
-          <TabsContent value="export" className="mt-4">
-            {renderList(exports)}
-          </TabsContent>
-          <TabsContent value="transfer" className="mt-4">
-            {renderList(transfers)}
+
+          {/* ================= ĐƠN CHỜ XUẤT ================= */}
+          <TabsContent value="outbound" className="mt-4 space-y-3">
+            {confirmedOrders.length === 0 ? (
+              <EmptyState
+                icon={<ArrowUpFromLine className="h-8 w-8 text-muted-foreground" />}
+                title="Không có đơn chờ xuất"
+                description="Đơn đã duyệt sẽ xuất hiện ở đây, chờ thủ kho chọn và xuất"
+              />
+            ) : (
+              <>
+                {/* Sticky action bar when selection > 0 */}
+                {selected.size > 0 && (
+                  <Card className="sticky top-16 z-10 rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-sm">
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                      <div>
+                        <p className="font-bold text-primary text-sm">
+                          {selected.size} đơn đã chọn
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Tổng: {formatCurrency(totalSelected)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                          Bỏ chọn
+                        </Button>
+                        <Button size="sm" onClick={handleDispatch}>
+                          <Truck className="h-4 w-4 mr-1.5" />
+                          Xuất hàng ({selected.size})
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="flex items-center gap-2 px-1">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selected.size === confirmedOrders.length && confirmedOrders.length > 0}
+                      onChange={toggleAll}
+                      className="h-4 w-4"
+                    />
+                    Chọn tất cả ({confirmedOrders.length})
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  {confirmedOrders.map((o) => {
+                    const checked = selected.has(o.id)
+                    return (
+                      <Card key={o.id} className={checked ? "border-primary bg-primary/5" : ""}>
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleOne(o.id)}
+                            className="h-4 w-4 shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link
+                                href={`/orders/${o.id}`}
+                                className="font-mono text-sm font-bold text-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {o.order_code}
+                              </Link>
+                              <span className="font-semibold text-sm truncate">
+                                {o.customer?.store_name || "-"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {o.sales_user?.full_name ? `NV: ${o.sales_user.full_name} • ` : ""}
+                              {formatDate(o.order_date)}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="font-bold text-sm">{formatCurrency(o.total)}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Info footer — explains the flow */}
+      <div className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/20 p-3 flex items-start gap-2">
+        <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <strong>Luồng:</strong> Đơn <code>confirmed</code> hiện ở đây → Thủ kho chọn → &ldquo;Xuất hàng&rdquo; → vào màn hình xuất + bàn giao lái xe. Khi bàn giao xong, đơn sẽ sang &ldquo;Đơn chờ giao&rdquo; của{" "}
+          <Link href="/deliveries" className="text-primary font-semibold underline">Giao hàng</Link>.
+        </p>
+      </div>
+
+      {/* Quick link to the old draft-entries view */}
+      <div className="flex justify-center">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/inventory/entries">
+            <ClipboardList className="h-3.5 w-3.5 mr-1.5" />
+            Xem tất cả phiếu kho
+          </Link>
+        </Button>
+      </div>
     </div>
   )
 }

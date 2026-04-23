@@ -121,8 +121,11 @@ export default function InventoryPage() {
       const state = getBatchExpiryState(b.expires_at, b.product?.shelf_life_days ?? undefined)
       if (state === "critical" || state === "expired") expiringSoon++
       if (state === "push") needsPush++
-      const price = typeof b.avg_price === "number" ? b.avg_price : 0
-      totalValue += (b.qty_on_hand || 0) * price
+      // batches.unit_cost (migration 016) is the source of truth for
+      // valuation. Fall back to the legacy avg_price shape just in case a
+      // row is loaded from an older codepath.
+      const cost = Number(b.unit_cost ?? 0) || (typeof b.avg_price === "number" ? b.avg_price : 0)
+      totalValue += (Number(b.qty_on_hand) || 0) * cost
     }
     return { expiringSoon, needsPush, totalValue }
   }, [batches])

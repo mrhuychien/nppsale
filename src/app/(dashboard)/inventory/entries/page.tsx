@@ -35,6 +35,7 @@ export default function StockEntriesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [deleteTarget, setDeleteTarget] = useState<StockEntry | null>(null)
   const [deleting, setDeleting] = useState(false)
   const supabase = createClient()
@@ -90,17 +91,32 @@ export default function StockEntriesPage() {
     const matchSearch = e.entry_code.toLowerCase().includes(search.toLowerCase()) ||
       (e.notes || "").toLowerCase().includes(search.toLowerCase())
     const matchType = typeFilter === "all" || e.type === typeFilter
-    return matchSearch && matchType
+    const matchStatus = statusFilter === "all" || (e.status || "posted") === statusFilter
+    return matchSearch && matchType && matchStatus
   })
 
   // Stats
   const importCount = entries.filter((e) => e.type === "import").length
   const exportCount = entries.filter((e) => e.type === "export").length
   const stocktakeCount = entries.filter((e) => e.type === "stocktake").length
+  const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length
+
+  const getStatusMeta = (status: string): { label: string; variant: "success" | "warning" | "secondary" | "danger" } => {
+    switch (status) {
+      case "draft": return { label: "Nháp", variant: "warning" }
+      case "posted": return { label: "Đã duyệt", variant: "success" }
+      case "cancelled": return { label: "Đã hủy", variant: "secondary" }
+      default: return { label: status, variant: "secondary" }
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Phiếu nhập/xuất kho" description={`${entries.length} phiếu`} backHref="/inventory">
+      <PageHeader
+        title="Phiếu kho"
+        description={`${entries.length} phiếu • ${draftCount} chờ duyệt`}
+        backHref="/inventory"
+      >
         {canCreate && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -118,9 +134,13 @@ export default function StockEntriesPage() {
                 Xuất kho
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/inventory/stocktake")}>
+              <DropdownMenuItem onClick={() => router.push("/inventory/stocktake-adjust")}>
                 <ClipboardCheck className="mr-2 h-4 w-4 text-primary" />
-                Kiểm kê / Điều chỉnh
+                Kiểm kê
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/inventory/adjustments")}>
+                <ClipboardCheck className="mr-2 h-4 w-4 text-amber-600" />
+                Duyệt điều chỉnh kiểm kê
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -128,7 +148,7 @@ export default function StockEntriesPage() {
       </PageHeader>
 
       {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-green-500">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Nhập kho</p>
           <p className="text-2xl font-black text-foreground mt-1">{importCount}</p>
@@ -140,6 +160,10 @@ export default function StockEntriesPage() {
         <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-primary">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Kiểm kê</p>
           <p className="text-2xl font-black text-foreground mt-1">{stocktakeCount}</p>
+        </div>
+        <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-orange-400">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Phiếu nháp</p>
+          <p className="text-2xl font-black text-foreground mt-1">{draftCount}</p>
         </div>
       </div>
 
@@ -163,6 +187,15 @@ export default function StockEntriesPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả trạng thái</SelectItem>
+            <SelectItem value="draft">Nháp</SelectItem>
+            <SelectItem value="posted">Đã duyệt</SelectItem>
+            <SelectItem value="cancelled">Đã hủy</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {filtered.length === 0 ? (
@@ -177,6 +210,7 @@ export default function StockEntriesPage() {
             <TableRow>
               <TableHead>Mã phiếu</TableHead>
               <TableHead>Loại</TableHead>
+              <TableHead>Trạng thái</TableHead>
               <TableHead>Người tạo</TableHead>
               <TableHead>Ghi chú</TableHead>
               <TableHead>Ngày</TableHead>
@@ -200,6 +234,12 @@ export default function StockEntriesPage() {
                   </Link>
                 </TableCell>
                 <TableCell><Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge></TableCell>
+                <TableCell>
+                  {(() => {
+                    const s = getStatusMeta(e.status || "posted")
+                    return <Badge variant={s.variant}>{s.label}</Badge>
+                  })()}
+                </TableCell>
                 <TableCell>{e.creator?.full_name || "-"}</TableCell>
                 <TableCell className="text-muted-foreground truncate max-w-xs">{e.notes || "-"}</TableCell>
                 <TableCell>{formatDate(e.created_at)}</TableCell>

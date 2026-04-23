@@ -121,8 +121,11 @@ export default function InventoryPage() {
       const state = getBatchExpiryState(b.expires_at, b.product?.shelf_life_days ?? undefined)
       if (state === "critical" || state === "expired") expiringSoon++
       if (state === "push") needsPush++
-      const price = typeof b.avg_price === "number" ? b.avg_price : 0
-      totalValue += (b.qty_on_hand || 0) * price
+      // batches.unit_cost (migration 016) is the source of truth for
+      // valuation. Fall back to the legacy avg_price shape just in case a
+      // row is loaded from an older codepath.
+      const cost = Number(b.unit_cost ?? 0) || (typeof b.avg_price === "number" ? b.avg_price : 0)
+      totalValue += (Number(b.qty_on_hand) || 0) * cost
     }
     return { expiringSoon, needsPush, totalValue }
   }, [batches])
@@ -245,6 +248,12 @@ export default function InventoryPage() {
               Duyệt điều chỉnh
             </Link>
           </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/audit">
+              <Search className="mr-2 h-4 w-4" />
+              Tra soát
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -253,7 +262,7 @@ export default function InventoryPage() {
           <TabsList className="w-full overflow-x-auto justify-start gap-1 h-auto flex-wrap">
             <TabsTrigger value="current">Tồn kho hiện tại</TabsTrigger>
             <TabsTrigger value="fefo">Theo lô hàng (FEFO)</TabsTrigger>
-            <TabsTrigger value="entries">Phiếu nhập/xuất</TabsTrigger>
+            <TabsTrigger value="entries">Phiếu kho</TabsTrigger>
             <TabsTrigger value="stocktake">Kiểm kê</TabsTrigger>
           </TabsList>
         </div>

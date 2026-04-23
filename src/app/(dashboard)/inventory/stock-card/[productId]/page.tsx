@@ -36,6 +36,7 @@ type MovementRow = {
   unit_cost: number
   notes: string | null
   source: string
+  creator_name: string | null
 }
 
 const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: "in" | "out" | "adjust" }> = {
@@ -66,7 +67,7 @@ export default function StockCardPage() {
       supabase
         .from("stock_entry_lines")
         .select(
-          "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at)"
+          "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, creator:users!stock_entries_created_by_fkey(full_name))"
         )
         .eq("product_id", productId),
     ])
@@ -89,6 +90,7 @@ export default function StockCardPage() {
         status: string
         posted_at: string | null
         created_at: string
+        creator?: { full_name?: string } | null
       } | null
     }
 
@@ -109,6 +111,7 @@ export default function StockCardPage() {
         unit_cost: Number(l.unit_cost) || 0,
         notes: l.notes,
         source: l.entry!.entry_code,
+        creator_name: l.entry!.creator?.full_name || null,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -299,6 +302,7 @@ export default function StockCardPage() {
                   <TableHead>Ngày</TableHead>
                   <TableHead>Phiếu</TableHead>
                   <TableHead>Loại</TableHead>
+                  <TableHead>Người tạo</TableHead>
                   <TableHead>Lô</TableHead>
                   <TableHead className="text-right">Nhập</TableHead>
                   <TableHead className="text-right">Xuất</TableHead>
@@ -325,6 +329,9 @@ export default function StockCardPage() {
                         <Badge className={`${meta.color} border-0`} variant="outline">
                           {meta.label}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {m.creator_name || "-"}
                       </TableCell>
                       <TableCell className="font-mono text-xs">
                         {m.batch_code || "-"}

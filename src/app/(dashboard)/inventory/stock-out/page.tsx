@@ -336,8 +336,11 @@ export default function StockOutPage() {
           org_id: user.org_id,
           entry_code: mergeCode,
           type: "export",
-          status: "posted",
-          posted_at: new Date().toISOString(),
+          // Draft until a delivery is handed over; batches stay untouched so
+          // inventory reflects reality (goods are still physically in the
+          // warehouse until the driver takes them).
+          status: "draft",
+          posted_at: null,
           created_by: user.id,
           notes: `Lệnh xuất kho gộp ${ids.length} đơn cho KH: ${customerNames}`,
           ref_order_ids: ids,

@@ -27,6 +27,12 @@ export default function StockEntryDetailPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const [entry, setEntry] = useState<StockEntry | null>(null)
   const [lines, setLines] = useState<StockEntryLine[]>([])
+  const [refOrders, setRefOrders] = useState<Array<{
+    id: string
+    order_code: string
+    customer?: { store_name?: string } | null
+    lines?: Array<{ product_id: string; unit_name: string; quantity: number; product?: { name: string; sku: string } | null }>
+  }>>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -49,12 +55,36 @@ export default function StockEntryDetailPage() {
         .select("*, product:products(*), batch:batches(*)")
         .eq("entry_id", id),
     ])
+    let entryData: StockEntry | null = null
     if (entryRes.data) {
       const e = entryRes.data as StockEntry
+      entryData = e
       setEntry(e)
       setEditNotes(e.notes || "")
     }
     setLines((linesRes.data as StockEntryLine[]) || [])
+
+    // For export entries that wrap multiple orders, load the source orders
+    // with their lines so the warehouse can see how to split the aggregate.
+    type RefOrder = {
+      id: string
+      order_code: string
+      customer?: { store_name?: string } | null
+      lines?: Array<{ product_id: string; unit_name: string; quantity: number; product?: { name: string; sku: string } | null }>
+    }
+    const refOrderIds =
+      (entryData?.type === "export" && Array.isArray(entryData.ref_order_ids))
+        ? (entryData.ref_order_ids as string[])
+        : []
+    if (refOrderIds.length > 0) {
+      const { data: orderRows } = await supabase
+        .from("sales_orders")
+        .select("id, order_code, customer:customers(store_name), lines:sales_order_lines(product_id, unit_name, quantity, product:products(name, sku))")
+        .in("id", refOrderIds)
+      setRefOrders(((orderRows as unknown) as RefOrder[]) || [])
+    } else {
+      setRefOrders([])
+    }
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -206,6 +236,61 @@ export default function StockEntryDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Per-order breakdown (warehouse splits the aggregate by order) */}
+        {refOrders.length > 0 && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Chi tiết theo đơn ({refOrders.length})
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Dùng để chia hàng đã gộp theo từng khách hàng khi bàn giao.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {refOrders.map((o) => (
+                <div key={o.id} className="rounded-xl border bg-muted/10 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div>
+                      <a
+                        href={`/orders/${o.id}`}
+                        className="font-mono text-sm font-bold text-primary hover:underline"
+                      >
+                        {o.order_code}
+                      </a>
+                      <p className="text-xs text-muted-foreground">
+                        {o.customer?.store_name || "-"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-muted-foreground">
+                        <tr>
+                          <th className="text-left py-1 font-semibold">SKU</th>
+                          <th className="text-left py-1 font-semibold">Sản phẩm</th>
+                          <th className="text-right py-1 font-semibold w-24">SL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(o.lines || []).map((l, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="py-1.5 font-mono">{l.product?.sku || "-"}</td>
+                            <td className="py-1.5">{l.product?.name || "-"}</td>
+                            <td className="py-1.5 text-right font-semibold">
+                              {l.quantity} {l.unit_name}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Right - info + actions */}
         <div className="space-y-4">

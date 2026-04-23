@@ -100,6 +100,19 @@ export function OrderForm() {
 
   const isSalesRole = user?.role === "sales"
 
+  // Round an arbitrary VAT rate (stored as decimal 0-1) to the nearest
+  // Vietnamese-standard tier the selector lets users pick: 0, 5, 8, 10%.
+  const snapVat = (rate: number): number => {
+    const tiers = [0, 0.05, 0.08, 0.1]
+    let best = tiers[0]
+    let bestDiff = Math.abs(rate - tiers[0])
+    for (const t of tiers) {
+      const d = Math.abs(rate - t)
+      if (d < bestDiff) { best = t; bestDiff = d }
+    }
+    return best
+  }
+
   useEffect(() => {
     if (selectedCustomer?.payment_terms) {
       setPaymentTerms(selectedCustomer.payment_terms)
@@ -131,7 +144,8 @@ export function OrderForm() {
         unit_price: price,
         line_discount_percent: 0,
         line_total: price,
-        vat_rate: product.vat_rate ?? 0,
+        // Snap to the VN-standard VAT tiers the selector offers
+        vat_rate: snapVat(product.vat_rate ?? 0),
       },
     ])
     setProductSearch("")
@@ -668,6 +682,7 @@ export function OrderForm() {
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">SL</th>
                     {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">Đơn giá</th>}
                     {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">VAT</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28 text-right">Thành tiền</th>
                     <th className="px-3 py-2 w-10"></th>
                   </tr>
@@ -717,13 +732,27 @@ export function OrderForm() {
                             <Input type="number" min={0} max={100} value={line.line_discount_percent} onChange={(e) => updateLine(i, "line_discount_percent", Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))} className="h-8 w-16 text-center" />
                           </td>
                         )}
+                        <td className="px-3 py-2">
+                          <Select
+                            value={String(Math.round(line.vat_rate * 100))}
+                            onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
+                          >
+                            <SelectTrigger className="h-8 w-18"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="5">5%</SelectItem>
+                              <SelectItem value="8">8%</SelectItem>
+                              <SelectItem value="10">10%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
                         <td className="px-3 py-2 text-right font-bold">{formatCurrency(line.line_total)}</td>
                         <td className="px-3 py-2"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeLine(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td>
                       </tr>
                     )
                   })}
                   {lines.length === 0 && (
-                    <tr><td colSpan={isSalesRole ? 6 : 8} className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</td></tr>
+                    <tr><td colSpan={isSalesRole ? 7 : 9} className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</td></tr>
                   )}
                 </tbody>
               </table>
@@ -786,12 +815,29 @@ export function OrderForm() {
                         Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
                       </p>
                     )}
-                    {!isSalesRole && (
-                      <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-                        <span>Giá: {formatCurrency(line.unit_price)}</span>
-                        {line.line_discount_percent > 0 && <span>CK: {line.line_discount_percent}%</span>}
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
+                      {!isSalesRole && (
+                        <>
+                          <span>Giá: {formatCurrency(line.unit_price)}</span>
+                          {line.line_discount_percent > 0 && <span>CK: {line.line_discount_percent}%</span>}
+                        </>
+                      )}
+                      <div className="ml-auto flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold uppercase">VAT</span>
+                        <Select
+                          value={String(Math.round(line.vat_rate * 100))}
+                          onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
+                        >
+                          <SelectTrigger className="h-7 w-[72px] text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0%</SelectItem>
+                            <SelectItem value="5">5%</SelectItem>
+                            <SelectItem value="8">8%</SelectItem>
+                            <SelectItem value="10">10%</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )
               })}

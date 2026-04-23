@@ -145,6 +145,7 @@ export interface StockEntry {
   status: StockEntryStatus
   posted_at: string | null
   supplier_id: string | null
+  ref_order_ids: string[]
   created_by: string | null
   notes: string | null
   created_at: string

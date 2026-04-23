@@ -75,9 +75,10 @@ TRUNCATE TABLE hr_monthly_bonus RESTART IDENTITY CASCADE;
 TRUNCATE TABLE hr_payroll RESTART IDENTITY CASCADE;
 TRUNCATE TABLE hr_attendance RESTART IDENTITY CASCADE;
 
--- 13. Commission wallets — reset số dư
+-- 13. Commission wallets — reset số tiền thưởng tích luỹ về 0.
+--     (balance là cột GENERATED từ earned - paid, không set trực tiếp)
 UPDATE commission_wallets
-SET total_earned = 0, total_withdrawn = 0, balance = 0;
+SET earned = 0, paid = 0;
 
 -- Kiểm tra lại: tất cả bảng giao dịch phải rỗng.
 -- Nếu CÒN dòng nào, TRUNCATE ... CASCADE sẽ báo lỗi ở lần chạy

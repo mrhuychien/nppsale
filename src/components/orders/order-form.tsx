@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X } from "lucide-react"
+import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
@@ -432,8 +432,47 @@ export function OrderForm() {
     ? CUSTOMER_STATUS_MAP[selectedCustomer.status] ?? { label: selectedCustomer.status, variant: "outline" as const }
     : null
 
+  const lineCount = lines.length
+  const summaryHasContent = !!customerId && lineCount > 0
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6 items-start">
+    <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6 items-start pb-24 lg:pb-6">
+      {/* Mobile step indicator */}
+      <div className="w-full lg:hidden flex items-center gap-2 px-1 pb-1">
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+            customerId ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+          }`}>
+            1
+          </span>
+          <span className={`text-xs font-semibold ${customerId ? "text-primary" : "text-muted-foreground"}`}>
+            Khách hàng
+          </span>
+        </div>
+        <div className="h-px flex-1 bg-border" />
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+            lineCount > 0 ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+          }`}>
+            2
+          </span>
+          <span className={`text-xs font-semibold ${lineCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
+            Sản phẩm ({lineCount})
+          </span>
+        </div>
+        <div className="h-px flex-1 bg-border" />
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+            summaryHasContent ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+          }`}>
+            3
+          </span>
+          <span className={`text-xs font-semibold ${summaryHasContent ? "text-primary" : "text-muted-foreground"}`}>
+            Xác nhận
+          </span>
+        </div>
+      </div>
+
       {/* LEFT COLUMN */}
       <div className="w-full lg:w-[320px] lg:shrink-0 space-y-6">
         {/* Customer info card */}
@@ -921,6 +960,39 @@ export function OrderForm() {
         onClose={() => setBarcodeOpen(false)}
         onScan={processBarcodeResult}
       />
+
+      {/* Mobile floating summary dock */}
+      {lineCount > 0 && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 lg:hidden px-4 pointer-events-none">
+          <div className="pointer-events-auto mx-auto max-w-md rounded-2xl bg-card/95 backdrop-blur-xl p-3 flex items-center justify-between gap-3 shadow-2xl border border-border">
+            <div className="pl-2 min-w-0">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase tracking-widest">
+                <span className="relative inline-flex items-center justify-center">
+                  <ShoppingCart className="h-3.5 w-3.5" />
+                </span>
+                {lineCount} sản phẩm
+              </div>
+              <p className="text-base font-black leading-tight truncate">
+                {formatCurrency(total)}
+              </p>
+            </div>
+            <Button
+              type="submit"
+              disabled={loading || hasOverstock || !customerId}
+              className="h-11 px-5 rounded-full shrink-0 bg-gradient-primary text-white font-bold"
+            >
+              {loading
+                ? "Đang lưu..."
+                : hasOverstock
+                  ? "Vượt tồn"
+                  : !customerId
+                    ? "Chọn KH"
+                    : "Tiếp tục"}
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

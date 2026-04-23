@@ -25,6 +25,7 @@ import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
+  CheckCircle2, CircleX,
 } from "lucide-react"
 import Link from "next/link"
 import type { StockEntry } from "@/types"
@@ -69,6 +70,39 @@ export default function StockEntriesPage() {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {
       setDeleting(false)
+    }
+  }
+
+  // Quick status transitions. Stocktake drafts are handled at
+  // /inventory/adjustments because they touch inventory + expenses;
+  // for import / export / transfer drafts we just flip status here.
+  const handleApprove = async (e: StockEntry) => {
+    if (!confirm(`Duyệt phiếu ${e.entry_code}?`)) return
+    try {
+      const { error } = await supabase
+        .from("stock_entries")
+        .update({ status: "posted", posted_at: new Date().toISOString() })
+        .eq("id", e.id)
+      if (error) throw error
+      toast({ title: `Đã duyệt phiếu ${e.entry_code}` })
+      fetchData()
+    } catch (err) {
+      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+    }
+  }
+
+  const handleCancel = async (e: StockEntry) => {
+    if (!confirm(`Hủy phiếu ${e.entry_code}? Phiếu sẽ được đánh dấu đã hủy, giữ lại để kiểm toán.`)) return
+    try {
+      const { error } = await supabase
+        .from("stock_entries")
+        .update({ status: "cancelled" })
+        .eq("id", e.id)
+      if (error) throw error
+      toast({ title: `Đã hủy phiếu ${e.entry_code}` })
+      fetchData()
+    } catch (err) {
+      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     }
   }
 
@@ -262,8 +296,38 @@ export default function StockEntriesPage() {
                           router.push(`/inventory/entries/${e.id}`)
                         }}
                       >
-                        <Eye className="mr-2 h-4 w-4" /> Xem chi tiết
+                        <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
                       </DropdownMenuItem>
+                      {(e.status || "posted") === "draft" && e.type !== "stocktake" && (
+                        <DropdownMenuItem
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            handleApprove(e)
+                          }}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt
+                        </DropdownMenuItem>
+                      )}
+                      {(e.status || "posted") === "draft" && e.type === "stocktake" && (
+                        <DropdownMenuItem
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            router.push(`/inventory/adjustments`)
+                          }}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt tại trang điều chỉnh
+                        </DropdownMenuItem>
+                      )}
+                      {(e.status || "posted") === "posted" && (
+                        <DropdownMenuItem
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            handleCancel(e)
+                          }}
+                        >
+                          <CircleX className="mr-2 h-4 w-4 text-amber-600" /> Hủy phiếu
+                        </DropdownMenuItem>
+                      )}
                       {canDelete && (
                         <>
                           <DropdownMenuSeparator />

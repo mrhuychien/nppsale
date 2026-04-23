@@ -69,7 +69,7 @@ BEGIN
   FROM ins_batches ib
   JOIN products p ON p.id = ib.product_id;
 
-  RAISE NOTICE 'Part 4 OK: 1 phiếu nhập + 10 batches × 500 qty', entry_id;
+  RAISE NOTICE 'Part 4 OK: 1 phiếu nhập (id %) + 10 batches × 500 qty', entry_id;
 END $$;
 
 COMMIT;

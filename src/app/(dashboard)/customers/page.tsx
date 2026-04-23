@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -15,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag } from "lucide-react"
+import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
 
@@ -44,6 +45,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState("all")
+  const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [visitTarget, setVisitTarget] = useState<Customer | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -126,6 +128,19 @@ export default function CustomersPage() {
       setLoading(false)
     }
     fetchData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load sales routes for the filter dropdown
+  useEffect(() => {
+    async function loadRoutes() {
+      const { data } = await supabase
+        .from("sales_routes")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("sort_order")
+      setRoutes((data as Array<{ code: string; name: string }>) || [])
+    }
+    loadRoutes()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
@@ -213,14 +228,19 @@ export default function CustomersPage() {
           <Input placeholder="Tìm tên, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="Kênh" /></SelectTrigger>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Tuyến" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tất cả</SelectItem>
-            <SelectItem value="GT">GT</SelectItem>
-            <SelectItem value="MT">MT</SelectItem>
-            <SelectItem value="HORECA">HORECA</SelectItem>
+            <SelectItem value="all">Tất cả tuyến</SelectItem>
+            {routes.map((r) => (
+              <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/customers/routes">
+            <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
+          </Link>
+        </Button>
       </div>
 
       {loading ? (

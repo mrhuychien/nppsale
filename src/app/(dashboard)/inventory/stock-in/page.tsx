@@ -616,225 +616,10 @@ export default function StockInPage() {
             </Button>
           </div>
 
-          {/* Desktop table */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-surface-low text-left">
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-10">
-                    #
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[200px]">
-                    Sản phẩm
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-28">
-                    ĐVT
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-24">
-                    SL
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[140px]">
-                    Đơn giá
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[140px]">
-                    Giá vốn
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-24">
-                    VAT %
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[360px]">
-                    Lô hàng + vị trí (tùy chọn)
-                  </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32 text-right">
-                    Thành tiền
-                  </th>
-                  <th className="px-3 py-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {lines.map((line, i) => {
-                  const qty = parseFloat(line.quantity) || 0
-                  const price = parseFloat(line.unit_price) || 0
-                  const lineTotal = qty * price
-                  const hasProduct = !!line.product_id
-                  return (
-                    <tr key={line.id} className="hover:bg-surface-low/40 transition-colors">
-                      <td className="px-3 py-2 text-muted-foreground font-medium">{i + 1}</td>
-                      <td className="px-3 py-2">
-                        {hasProduct ? (
-                          <div className="flex flex-col">
-                            <span className="font-bold text-primary">{line.product_name}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                              SKU: {line.sku}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">
-                            Tìm sản phẩm ở ô trên để thêm vào dòng này...
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {hasProduct ? (
-                          line.available_units.length <= 1 ? (
-                            <span className="text-muted-foreground">{line.unit_name}</span>
-                          ) : (
-                            <Select
-                              value={line.unit_name}
-                              onValueChange={(v) => updateLine(line.id, { unit_name: v })}
-                            >
-                              <SelectTrigger className="h-8 w-full min-w-[90px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {line.available_units.map((u) => (
-                                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={line.quantity}
-                          onChange={(e) =>
-                            updateLine(line.id, { quantity: e.target.value })
-                          }
-                          placeholder="0"
-                          className="h-8 w-full text-center"
-                          disabled={!hasProduct}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={line.unit_price}
-                          onChange={(e) =>
-                            updateLine(line.id, { unit_price: e.target.value })
-                          }
-                          placeholder="0"
-                          className="h-8 w-full text-right tabular-nums"
-                          disabled={!hasProduct}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={line.unit_cost}
-                          onChange={(e) =>
-                            updateLine(line.id, { unit_cost: e.target.value })
-                          }
-                          placeholder={line.unit_price || "0"}
-                          className="h-8 w-full text-right tabular-nums"
-                          disabled={!hasProduct}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step="0.1"
-                          value={hasProduct ? String(Math.round(line.vat_rate * 1000) / 10) : ""}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value) || 0
-                            const clamped = Math.max(0, Math.min(100, v))
-                            updateLine(line.id, { vat_rate: clamped / 100 })
-                          }}
-                          className="h-8 w-full text-center"
-                          disabled={!hasProduct}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          <div>
-                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              Mã lô
-                            </Label>
-                            <Input
-                              value={line.batch_code}
-                              onChange={(e) =>
-                                updateLine(line.id, { batch_code: e.target.value })
-                              }
-                              placeholder="Tự sinh"
-                              className="font-mono text-xs h-8"
-                              disabled={!hasProduct}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              Vị trí
-                            </Label>
-                            <Input
-                              value={line.location}
-                              onChange={(e) =>
-                                updateLine(line.id, { location: e.target.value })
-                              }
-                              placeholder={warehouse || "VD: A1-B3"}
-                              className="text-xs h-8"
-                              disabled={!hasProduct}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              NSX
-                            </Label>
-                            <Input
-                              type="date"
-                              value={line.manufactured_at}
-                              onChange={(e) =>
-                                updateLine(line.id, { manufactured_at: e.target.value })
-                              }
-                              className="text-xs h-8"
-                              disabled={!hasProduct}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              HSD
-                            </Label>
-                            <Input
-                              type="date"
-                              value={line.expires_at}
-                              onChange={(e) =>
-                                updateLine(line.id, { expires_at: e.target.value })
-                              }
-                              className="text-xs h-8"
-                              disabled={!hasProduct}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right font-bold">
-                        {formatCurrency(lineTotal)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => removeLine(line.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
 
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
+          {/* Line items — card layout on all screens. Number inputs get full
+              width, grid collapses 2 cols on mobile, 5 on lg for density. */}
+          <div className="space-y-3">
             {lines.map((line, i) => {
               const qty = parseFloat(line.quantity) || 0
               const price = parseFloat(line.unit_price) || 0
@@ -864,7 +649,7 @@ export default function StockInPage() {
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</Label>
                       <Input
@@ -873,7 +658,7 @@ export default function StockInPage() {
                         value={line.quantity}
                         onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
                         placeholder="0"
-                        className="h-9"
+                        className="h-9 text-center tabular-nums"
                         disabled={!hasProduct}
                       />
                     </div>
@@ -907,7 +692,7 @@ export default function StockInPage() {
                         value={line.unit_price}
                         onChange={(e) => updateLine(line.id, { unit_price: e.target.value })}
                         placeholder="0"
-                        className="h-9"
+                        className="h-9 text-right tabular-nums"
                         disabled={!hasProduct}
                       />
                     </div>
@@ -919,7 +704,7 @@ export default function StockInPage() {
                         value={line.unit_cost}
                         onChange={(e) => updateLine(line.id, { unit_cost: e.target.value })}
                         placeholder={line.unit_price || "0"}
-                        className="h-9"
+                        className="h-9 text-right tabular-nums"
                         disabled={!hasProduct}
                       />
                     </div>
@@ -936,12 +721,12 @@ export default function StockInPage() {
                           const clamped = Math.max(0, Math.min(100, v))
                           updateLine(line.id, { vat_rate: clamped / 100 })
                         }}
-                        className="h-9"
+                        className="h-9 text-center tabular-nums"
                         disabled={!hasProduct}
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-border/40">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2 pt-2 border-t border-border/40">
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Mã lô</Label>
                       <Input

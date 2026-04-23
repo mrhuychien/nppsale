@@ -73,7 +73,9 @@ export default function StocktakeAdjustPage() {
     loadCategories()
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Search products
+  // Search products. Use a left-join so products without active batches
+  // (new SKUs, items that fell to 0) still surface — operator needs to be
+  // able to record a surplus for them.
   useEffect(() => {
     if (search.trim().length < 2) {
       setMatches([])
@@ -81,13 +83,20 @@ export default function StocktakeAdjustPage() {
     }
     const controller = new AbortController()
     const run = async () => {
-      const { data } = await supabase
+      const q = search.trim()
+      const { data, error } = await supabase
         .from("products")
-        .select("*, batches!inner(id, batch_code, qty_on_hand, unit_cost)")
-        .or(`sku.ilike.%${search}%,name.ilike.%${search}%`)
-        .gt("batches.qty_on_hand", 0)
-        .limit(10)
+        .select("*, batches(id, batch_code, qty_on_hand, unit_cost, expires_at)")
+        .or(`sku.ilike.%${q}%,name.ilike.%${q}%`)
+        .eq("status", "active")
+        .order("name")
+        .limit(15)
         .abortSignal(controller.signal)
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.warn("[stocktake search]", error.message)
+        return
+      }
       setMatches((data as Array<Product & { batches?: Batch[] }>) || [])
     }
     run()
@@ -125,15 +134,33 @@ export default function StocktakeAdjustPage() {
   // Load the full on-hand product list so the operator can tick qty for
   // every SKU the org currently holds, instead of searching one by one.
   const loadAllStock = async () => {
-    const { data } = await supabase
-      .from("products")
-      .select("*, batches!inner(id, batch_code, qty_on_hand, unit_cost)")
-      .eq("status", "active")
-      .gt("batches.qty_on_hand", 0)
-      .order("name")
-    const list = (data as Array<Product & { batches?: Batch[] }>) || []
+    // Two-step load so products without any batch still show up (operator
+    // can record a positive/negative adjustment against them).
+    const [{ data: prodData }, { data: batchData }] = await Promise.all([
+      supabase
+        .from("products")
+        .select("*")
+        .eq("status", "active")
+        .order("name"),
+      supabase
+        .from("batches")
+        .select("id, product_id, batch_code, qty_on_hand, unit_cost, expires_at")
+        .gt("qty_on_hand", 0),
+    ])
+    const batchesByProduct: Record<string, Batch[]> = {}
+    for (const b of (batchData as Batch[]) || []) {
+      if (!batchesByProduct[b.product_id]) batchesByProduct[b.product_id] = []
+      batchesByProduct[b.product_id].push(b)
+    }
+    const list: Array<Product & { batches?: Batch[] }> = ((prodData as Product[]) || []).map((p) => ({
+      ...p,
+      batches: batchesByProduct[p.id] || [],
+    }))
+    // Only include products that have stock on hand for the bulk load —
+    // operator can still add zero-stock SKUs via search afterwards.
+    const withStock = list.filter((p) => (p.batches || []).some((b) => Number(b.qty_on_hand) > 0))
     const existing = new Set(rows.map((r) => r.productId))
-    const newRows = list
+    const newRows = withStock
       .filter((p) => !existing.has(p.id))
       .map((product) => {
         const primaryBatch = (product.batches || [])
@@ -157,7 +184,7 @@ export default function StocktakeAdjustPage() {
         }
       })
     if (newRows.length === 0) {
-      toast({ title: "Đã có đủ sản phẩm trong phiếu" })
+      toast({ title: "Không có sản phẩm mới để thêm" })
       return
     }
     setRows((prev) => [...prev, ...newRows])

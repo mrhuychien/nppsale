@@ -7,16 +7,14 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { formatCurrency } from "@/lib/utils"
 import {
-  Plus,
   Wallet,
   Users,
-  ClipboardList,
   MapPin,
-  TrendingUp,
-  ShoppingBasket,
-  AlertTriangle,
   ArrowRight,
   Package,
+  Search,
+  ShoppingCart,
+  UserPlus,
 } from "lucide-react"
 
 interface HomeStats {
@@ -401,16 +399,27 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6 pb-4">
-      {/* Greeting */}
-      <section className="space-y-1">
-        <h1 className="text-2xl lg:text-2xl font-bold tracking-tight text-foreground">
-          {greeting}, {firstName}!
-        </h1>
-        <p className="text-sm text-muted-foreground font-medium">
-          {totalAssigned > 0
-            ? `Hôm nay bạn có ${totalAssigned} điểm ghé thăm được phân công.`
-            : "Chưa có khách hàng nào được phân công cho bạn."}
-        </p>
+      {/* Hero greeting + search */}
+      <section className="space-y-4">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-foreground">
+            {greeting}, {firstName}!
+          </h1>
+          <p className="text-sm text-muted-foreground font-medium mt-1">
+            {totalAssigned > 0
+              ? `Hôm nay bạn có ${totalAssigned} điểm ghé thăm.`
+              : "Chưa có khách hàng nào được phân công cho bạn."}
+          </p>
+        </div>
+        <Link
+          href="/customers"
+          className="relative block"
+        >
+          <div className="w-full h-12 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors flex items-center gap-3 pl-11 pr-4">
+            <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Tìm khách hàng hoặc sản phẩm...</span>
+          </div>
+        </Link>
       </section>
 
       {/* Route card */}
@@ -503,102 +512,110 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Quick actions 2x2 */}
-      <section className="grid grid-cols-2 gap-3">
+      {/* Quick actions grid (3 circle buttons) */}
+      <section className="grid grid-cols-3 gap-3">
         <Link
           href="/orders/new"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-primary text-white rounded-2xl shadow-md active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
         >
-          <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
-            <Plus className="h-5 w-5" />
+          <div className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center">
+            <ShoppingCart className="h-5 w-5 text-primary" />
           </div>
-          <span className="text-sm font-bold leading-tight">Tạo đơn</span>
+          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
+            Tạo đơn mới
+          </span>
+        </Link>
+        <Link
+          href="/customers/new"
+          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
+        >
+          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+            <UserPlus className="h-5 w-5 text-blue-700" />
+          </div>
+          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
+            Thêm khách hàng
+          </span>
         </Link>
         <Link
           href="/receivables/collect"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
+          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
         >
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
-            <Wallet className="h-5 w-5" />
+          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <Wallet className="h-5 w-5 text-red-700" />
           </div>
-          <span className="text-sm font-bold leading-tight text-foreground">
-            Thu tiền
-          </span>
-        </Link>
-        <Link
-          href="/customers"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
-        >
-          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-            <Users className="h-5 w-5" />
-          </div>
-          <span className="text-sm font-bold leading-tight text-foreground">
-            Khách hàng
-          </span>
-        </Link>
-        <Link
-          href="/orders"
-          className="flex flex-col items-start justify-between gap-3 p-5 bg-card rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[112px]"
-        >
-          <div className="w-10 h-10 rounded-xl bg-green-100 text-green-600 flex items-center justify-center">
-            <ClipboardList className="h-5 w-5" />
-          </div>
-          <span className="text-sm font-bold leading-tight text-foreground">
-            Đơn của tôi
+          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
+            Thu tiền nợ
           </span>
         </Link>
       </section>
 
-      {/* KPI cards */}
-      <section className="space-y-3">
-        <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          Kết quả hôm nay
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-primary">
-            <div className="flex items-start justify-between mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Số đơn tạo
-              </p>
-              <ShoppingBasket className="h-4 w-4 text-primary" />
-            </div>
-            <p className="text-xl font-bold text-foreground tracking-tight">
-              {stats.todayOrderCount}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Đơn hàng tạo hôm nay
-            </p>
-          </div>
-          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-green-500">
-            <div className="flex items-start justify-between mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Doanh thu
-              </p>
-              <Wallet className="h-4 w-4 text-green-600" />
-            </div>
-            <p className="text-xl sm:text-xl font-bold text-foreground tracking-tight">
+      {/* KPI asymmetric bento */}
+      <section className="grid grid-cols-2 gap-3">
+        {/* Hero: today's revenue */}
+        <div className="col-span-2 bg-gradient-to-br from-primary to-indigo-600 p-6 rounded-2xl shadow-lg text-white">
+          <p className="text-xs font-medium opacity-80 uppercase tracking-widest">
+            Doanh thu hôm nay
+          </p>
+          <div className="flex items-baseline gap-2 mt-2">
+            <h2 className="text-3xl font-black tracking-tight">
               {formatCurrency(stats.todayRevenue)}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Tổng giá trị đơn hôm nay
-            </p>
+            </h2>
           </div>
-          <div className="bg-card rounded-2xl shadow-sm p-5 border-l-4 border-destructive">
-            <div className="flex items-start justify-between mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Công nợ cần thu
-              </p>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </div>
-            <p className="text-xl sm:text-xl font-bold text-destructive tracking-tight">
-              {formatCurrency(stats.openReceivables)}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Khoản chưa tất toán
-            </p>
+          <div className="mt-4 h-1 w-full bg-white/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white rounded-full transition-all"
+              style={{ width: `${Math.min(100, Math.max(progressPct, 0))}%` }}
+            />
           </div>
+          <p className="text-xs mt-2 font-semibold opacity-90">
+            Tiến độ lộ trình: {progressPct}% • {stats.todayOrderCount} đơn hôm nay
+          </p>
         </div>
+
+        <div className="bg-card p-5 rounded-2xl border-l-4 border-primary shadow-sm">
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
+            Chỉ tiêu (KPI)
+          </p>
+          <p className="text-2xl font-black text-foreground mt-1 tracking-tight">
+            {stats.todayOrderCount}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1 font-medium">
+            Đơn hàng hoàn tất hôm nay
+          </p>
+        </div>
+
+        <div className="bg-card p-5 rounded-2xl border-l-4 border-green-500 shadow-sm">
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
+            Ghé thăm
+          </p>
+          <p className="text-2xl font-black text-foreground mt-1 tracking-tight">
+            {visitedCount}/{totalAssigned || 0}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1 font-medium">
+            Khách hàng hôm nay
+          </p>
+        </div>
+
+        {stats.openReceivables > 0 && (
+          <div className="col-span-2 bg-card p-5 rounded-2xl border-l-4 border-destructive shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
+                  Công nợ cần thu
+                </p>
+                <p className="text-xl font-black text-destructive mt-1 tracking-tight">
+                  {formatCurrency(stats.openReceivables)}
+                </p>
+              </div>
+              <Link
+                href="/receivables"
+                className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+              >
+                Xem <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Top products */}

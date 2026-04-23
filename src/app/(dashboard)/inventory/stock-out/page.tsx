@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -105,10 +105,13 @@ export default function StockOutPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const { toast } = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [orders, setOrders] = useState<OrderWithRelations[]>([])
   const [batches, setBatches] = useState<BatchLite[]>([])
+  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([])
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showFilter, setShowFilter] = useState(false)
@@ -131,16 +134,28 @@ export default function StockOutPage() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
-      const { data: ordersData } = await supabase
-        .from("sales_orders")
-        .select(
-          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit))"
-        )
-        .eq("status", "confirmed")
-        .order("created_at", { ascending: false })
+      const [ordersRes, driversRes] = await Promise.all([
+        supabase
+          .from("sales_orders")
+          .select(
+            "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit))"
+          )
+          .eq("status", "confirmed")
+          .order("created_at", { ascending: false }),
+        supabase.from("users").select("id, full_name").eq("role", "driver").order("full_name"),
+      ])
 
-      const typed = (ordersData as OrderWithRelations[]) || []
+      const typed = (ordersRes.data as OrderWithRelations[]) || []
       setOrders(typed)
+      setDrivers((driversRes.data as Array<{ id: string; full_name: string }>) || [])
+
+      // Pre-select orders from ?orderIds= (from /inventory/pending)
+      const preIds = searchParams.get("orderIds")
+      if (preIds) {
+        const idSet = new Set(preIds.split(",").filter(Boolean))
+        const valid = typed.filter((o) => idSet.has(o.id)).map((o) => o.id)
+        if (valid.length > 0) setSelectedIds(new Set(valid))
+      }
 
       const productIds = Array.from(
         new Set(
@@ -400,6 +415,97 @@ export default function StockOutPage() {
           .from("merged_orders")
           .insert(mergedRows)
         if (mergeErr) throw mergeErr
+      }
+
+      // 4) If a driver was selected, handover in the same action:
+      //    create delivery → post entry → FEFO deduct → orders to delivering
+      if (selectedDriverId) {
+        const { data: delivery, error: delErr } = await supabase
+          .from("deliveries")
+          .insert({
+            org_id: user.org_id,
+            driver_id: selectedDriverId,
+            route_name:
+              selectedOrders.length === 1
+                ? `Giao ${selectedOrders[0].customer?.store_name || "KH"}`
+                : `Giao ${selectedOrders.length} đơn`,
+            status: "in_transit",
+            started_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single()
+        if (delErr || !delivery) throw delErr || new Error("Không tạo được chuyến giao")
+
+        const deliveryLineRows = selectedOrders.map((o) => ({
+          delivery_id: delivery.id,
+          order_id: o.id,
+          status: "pending" as const,
+        }))
+        const { error: dLineErr } = await supabase
+          .from("delivery_lines")
+          .insert(deliveryLineRows)
+        if (dLineErr) throw dLineErr
+
+        // FEFO deduct for each aggregated pickList entry
+        for (const p of pickList) {
+          let remaining = Number(p.qty)
+          if (remaining <= 0) continue
+          const { data: prodBatches } = await supabase
+            .from("batches")
+            .select("id, qty_on_hand")
+            .eq("product_id", p.product_id)
+            .gt("qty_on_hand", 0)
+            .order("expires_at", { ascending: true })
+          for (const b of (prodBatches as Array<{ id: string; qty_on_hand: number }>) || []) {
+            if (remaining <= 0) break
+            const take = Math.min(remaining, Number(b.qty_on_hand))
+            await supabase
+              .from("batches")
+              .update({ qty_on_hand: Number(b.qty_on_hand) - take })
+              .eq("id", b.id)
+            remaining -= take
+          }
+          if (remaining > 0) {
+            // eslint-disable-next-line no-console
+            console.warn("[handover] short stock product", p.product_id, "remaining", remaining)
+          }
+        }
+
+        // Post the stock entry
+        await supabase
+          .from("stock_entries")
+          .update({ status: "posted", posted_at: new Date().toISOString() })
+          .eq("id", stockEntry.id)
+
+        // Orders → delivering
+        await supabase.from("sales_orders").update({ status: "delivering" }).in("id", ids)
+
+        // Notify driver
+        if (selectedDriverId !== user.id) {
+          const { createNotification } = await import("@/lib/notifications")
+          const driverName = drivers.find((d) => d.id === selectedDriverId)?.full_name || "Tài xế"
+          createNotification(supabase, {
+            orgId: user.org_id,
+            userId: selectedDriverId,
+            type: "info",
+            title: `Đã bàn giao ${selectedOrders.length} đơn`,
+            body: `Phiếu xuất ${mergeCode} — ${customerNames}`,
+            linkUrl: `/deliveries/${delivery.id}`,
+            metadata: { delivery_id: delivery.id, order_ids: ids, entry_id: stockEntry.id },
+          })
+          toast({
+            title: `Đã bàn giao ${selectedOrders.length} đơn cho ${driverName}`,
+            description: `Phiếu ${mergeCode} đã post. Tồn kho đã trừ.`,
+          })
+        } else {
+          toast({
+            title: `Đã bàn giao ${selectedOrders.length} đơn`,
+            description: `Phiếu ${mergeCode} đã post. Tồn kho đã trừ.`,
+          })
+        }
+        clearSelection()
+        router.push("/deliveries")
+        return
       }
 
       toast({
@@ -762,6 +868,33 @@ export default function StockOutPage() {
               )}
             </div>
 
+            {/* Driver handover section (in-place) */}
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-2 mb-3">
+              <div className="flex items-center gap-2">
+                <Truck className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-[11px] uppercase font-bold tracking-wider text-gray-300">
+                  Bàn giao lái xe
+                </span>
+              </div>
+              <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Chọn tài xế (tùy chọn)..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {drivers.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-gray-400">
+                {selectedDriverId
+                  ? "Sẽ tạo phiếu xuất + chuyến giao + trừ tồn kho trong 1 thao tác"
+                  : "Chỉ tạo phiếu xuất (nháp). Bàn giao sau ở trang Giao hàng"}
+              </p>
+            </div>
+
             <Button
               className="w-full h-12 text-base"
               onClick={handleMerge}
@@ -772,7 +905,9 @@ export default function StockOutPage() {
               <Truck className="mr-2 h-5 w-5" />
               {submitting
                 ? "Đang xử lý..."
-                : "Gộp đơn & Tạo lệnh xuất kho"}
+                : selectedDriverId
+                  ? "Bàn giao hàng"
+                  : "Xuất kho (chưa bàn giao)"}
             </Button>
             {!canUpdate && (
               <p className="text-xs text-amber-300 mt-2 text-center">

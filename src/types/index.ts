@@ -1,5 +1,19 @@
 export type Role = "owner" | "manager" | "accountant" | "sales" | "warehouse" | "driver"
-export type Channel = "GT" | "MT" | "HORECA"
+// Legacy: kept for back-compat in status-badge variants.
+// Use SalesRoute from the sales_routes table for new code.
+export type Channel = string
+
+export interface SalesRoute {
+  id: string
+  org_id: string
+  code: string
+  name: string
+  description: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
 export type CustomerStatus = "active" | "suspended" | "locked"
 export type OrderStatus = "draft" | "confirmed" | "picking" | "delivering" | "delivered" | "cancelled"
 export type StockEntryType = "import" | "export" | "transfer" | "stocktake"

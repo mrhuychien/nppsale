@@ -10,6 +10,10 @@ import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -17,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList, Truck, AlertCircle,
-  Package, CircleX, RotateCcw,
+  Package, CircleX, RotateCcw, Search,
 } from "lucide-react"
 import { RETURN_REASONS } from "@/lib/constants"
 
@@ -27,7 +31,7 @@ type ConfirmedOrder = {
   order_code: string
   order_date: string
   total: number
-  customer?: { id: string; store_name: string; phone: string | null } | null
+  customer?: { id: string; store_name: string; phone: string | null; channel: string | null } | null
   sales_user?: { full_name?: string } | null
 }
 
@@ -38,7 +42,7 @@ type ApprovedReturn = {
   credit_note_amount: number | null
   notes: string | null
   created_at: string
-  customer?: { id: string; store_name: string } | null
+  customer?: { id: string; store_name: string; channel: string | null } | null
   order?: { id: string; order_code: string } | null
   lines_count: number
 }
@@ -51,7 +55,7 @@ type FailedDeliveryLine = {
   order?: {
     id: string
     order_code: string
-    customer?: { store_name: string } | null
+    customer?: { store_name: string; channel: string | null } | null
   } | null
   delivery?: {
     id: string
@@ -75,6 +79,13 @@ export default function PendingStockPage() {
   const [selectedFailedLines, setSelectedFailedLines] = useState<Set<string>>(new Set())
   const [restocking, setRestocking] = useState(false)
 
+  // Filters (shared across both tabs)
+  const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
+  const [routeFilter, setRouteFilter] = useState<string>("all")
+  const [searchText, setSearchText] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+
   useEffect(() => {
     async function fetchAll() {
       setLoading(true)
@@ -83,7 +94,7 @@ export default function PendingStockPage() {
         supabase
           .from("sales_orders")
           .select(
-            "id, order_code, order_date, total, customer:customers(id, store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+            "id, order_code, order_date, total, customer:customers(id, store_name, phone, channel), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
           )
           .eq("status", "confirmed")
           .order("order_date", { ascending: true }),
@@ -91,7 +102,7 @@ export default function PendingStockPage() {
         supabase
           .from("returns")
           .select(
-            "id, reason, credit_note_amount, notes, created_at, customer:customers(id, store_name), order:sales_orders(id, order_code), lines:return_lines(id)"
+            "id, reason, credit_note_amount, notes, created_at, customer:customers(id, store_name, channel), order:sales_orders(id, order_code), lines:return_lines(id)"
           )
           .eq("status", "approved")
           .order("created_at", { ascending: false }),
@@ -99,7 +110,7 @@ export default function PendingStockPage() {
         supabase
           .from("delivery_lines")
           .select(
-            "id, notes, delivered_at, order_id, order:sales_orders(id, order_code, customer:customers(store_name)), delivery:deliveries(id, driver:users!deliveries_driver_id_fkey(full_name))"
+            "id, notes, delivered_at, order_id, order:sales_orders(id, order_code, customer:customers(store_name, channel)), delivery:deliveries(id, driver:users!deliveries_driver_id_fkey(full_name))"
           )
           .eq("status", "failed")
           .order("delivered_at", { ascending: false }),
@@ -116,6 +127,54 @@ export default function PendingStockPage() {
     fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load sales routes once
+  useEffect(() => {
+    async function loadRoutes() {
+      const { data } = await supabase
+        .from("sales_routes")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("sort_order")
+      setRoutes((data as Array<{ code: string; name: string }>) || [])
+    }
+    loadRoutes()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply shared filters to each list
+  const matchesFilters = (
+    route: string | null | undefined,
+    storeName: string | undefined,
+    date: string | undefined,
+  ): boolean => {
+    if (routeFilter !== "all" && route !== routeFilter) return false
+    if (searchText) {
+      const q = searchText.trim().toLowerCase()
+      if (!(storeName || "").toLowerCase().includes(q)) return false
+    }
+    if (date && dateFrom && date.slice(0, 10) < dateFrom) return false
+    if (date && dateTo && date.slice(0, 10) > dateTo) return false
+    return true
+  }
+
+  const filteredConfirmed = useMemo(
+    () => confirmedOrders.filter((o) =>
+      matchesFilters(o.customer?.channel, o.customer?.store_name, o.order_date)
+    ),
+    [confirmedOrders, routeFilter, searchText, dateFrom, dateTo] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const filteredReturns = useMemo(
+    () => approvedReturns.filter((r) =>
+      matchesFilters(r.customer?.channel, r.customer?.store_name, r.created_at)
+    ),
+    [approvedReturns, routeFilter, searchText, dateFrom, dateTo] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const filteredFailed = useMemo(
+    () => failedDeliveries.filter((d) =>
+      matchesFilters(d.order?.customer?.channel, d.order?.customer?.store_name, d.delivered_at || undefined)
+    ),
+    [failedDeliveries, routeFilter, searchText, dateFrom, dateTo] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
   const toggleOne = (id: string) => {
     const next = new Set(selected)
     if (next.has(id)) next.delete(id)
@@ -123,8 +182,8 @@ export default function PendingStockPage() {
     setSelected(next)
   }
   const toggleAll = () => {
-    if (selected.size === confirmedOrders.length) setSelected(new Set())
-    else setSelected(new Set(confirmedOrders.map((o) => o.id)))
+    if (selected.size === filteredConfirmed.length) setSelected(new Set())
+    else setSelected(new Set(filteredConfirmed.map((o) => o.id)))
   }
 
   const totalSelected = useMemo(
@@ -339,6 +398,48 @@ export default function PendingStockPage() {
             </TabsTrigger>
           </TabsList>
 
+          {/* Shared filter bar (applies to both tabs) */}
+          <Card className="mt-4">
+            <CardContent className="grid gap-2 p-3 sm:grid-cols-4">
+              <div className="relative sm:col-span-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm khách hàng..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+              <Select value={routeFilter} onValueChange={setRouteFilter}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Tuyến" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả tuyến</SelectItem>
+                  {routes.map((r) => (
+                    <SelectItem key={r.code} value={r.code}>
+                      {r.code} — {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                placeholder="Từ ngày"
+                className="h-9"
+              />
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                placeholder="Đến ngày"
+                className="h-9"
+              />
+            </CardContent>
+          </Card>
+
           {/* ================= ĐƠN CHỜ NHẬP ================= */}
           <TabsContent value="inbound" className="mt-4 space-y-4">
             {inboundCount === 0 ? (
@@ -382,7 +483,7 @@ export default function PendingStockPage() {
                 )}
 
                 {/* Approved returns */}
-                {approvedReturns.length > 0 && (
+                {filteredReturns.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -391,12 +492,12 @@ export default function PendingStockPage() {
                       <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={selectedReturns.size === approvedReturns.length && approvedReturns.length > 0}
+                          checked={selectedReturns.size === filteredReturns.length && filteredReturns.length > 0}
                           onChange={() => {
-                            if (selectedReturns.size === approvedReturns.length) {
+                            if (selectedReturns.size === filteredReturns.length) {
                               setSelectedReturns(new Set())
                             } else {
-                              setSelectedReturns(new Set(approvedReturns.map((r) => r.id)))
+                              setSelectedReturns(new Set(filteredReturns.map((r) => r.id)))
                             }
                           }}
                           className="h-4 w-4"
@@ -404,7 +505,7 @@ export default function PendingStockPage() {
                         Chọn tất cả
                       </label>
                     </div>
-                    {approvedReturns.map((r) => (
+                    {filteredReturns.map((r) => (
                       <Card key={r.id} className={selectedReturns.has(r.id) ? "border-primary bg-primary/5" : ""}>
                         <CardContent className="p-4 flex items-start justify-between gap-3">
                           <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -467,7 +568,7 @@ export default function PendingStockPage() {
                 )}
 
                 {/* Failed deliveries */}
-                {failedDeliveries.length > 0 && (
+                {filteredFailed.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -476,12 +577,12 @@ export default function PendingStockPage() {
                       <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={selectedFailedLines.size === failedDeliveries.length && failedDeliveries.length > 0}
+                          checked={selectedFailedLines.size === filteredFailed.length && filteredFailed.length > 0}
                           onChange={() => {
-                            if (selectedFailedLines.size === failedDeliveries.length) {
+                            if (selectedFailedLines.size === filteredFailed.length) {
                               setSelectedFailedLines(new Set())
                             } else {
-                              setSelectedFailedLines(new Set(failedDeliveries.map((d) => d.id)))
+                              setSelectedFailedLines(new Set(filteredFailed.map((d) => d.id)))
                             }
                           }}
                           className="h-4 w-4"
@@ -489,7 +590,7 @@ export default function PendingStockPage() {
                         Chọn tất cả
                       </label>
                     </div>
-                    {failedDeliveries.map((d) => (
+                    {filteredFailed.map((d) => (
                       <Card key={d.id} className={selectedFailedLines.has(d.id) ? "border-primary bg-primary/5" : ""}>
                         <CardContent className="p-4 flex items-start justify-between gap-3">
                           <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -580,7 +681,7 @@ export default function PendingStockPage() {
                   <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={selected.size === confirmedOrders.length && confirmedOrders.length > 0}
+                      checked={selected.size === filteredConfirmed.length && confirmedOrders.length > 0}
                       onChange={toggleAll}
                       className="h-4 w-4"
                     />
@@ -589,7 +690,7 @@ export default function PendingStockPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {confirmedOrders.map((o) => {
+                  {filteredConfirmed.map((o) => {
                     const checked = selected.has(o.id)
                     return (
                       <Card key={o.id} className={checked ? "border-primary bg-primary/5" : ""}>

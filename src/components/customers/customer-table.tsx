@@ -52,7 +52,7 @@ export function CustomerTable({
               <TableHead>Cửa hàng</TableHead>
               <TableHead>Chủ cửa hàng</TableHead>
               <TableHead>SĐT</TableHead>
-              <TableHead>Kênh</TableHead>
+              <TableHead>Tuyến</TableHead>
               {showEnrichment && <TableHead>Ghé thăm</TableHead>}
               {showEnrichment && <TableHead>Đơn gần nhất</TableHead>}
               {showEnrichment && <TableHead className="text-right">Công nợ</TableHead>}

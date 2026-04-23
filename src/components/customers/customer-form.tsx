@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { CHANNELS, PAYMENT_TERMS } from "@/lib/constants"
+import { PAYMENT_TERMS } from "@/lib/constants"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
 import type { Customer, CustomerGroup } from "@/types"
 
@@ -41,6 +42,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
   const [loading, setLoading] = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [pjpRoutes, setPjpRoutes] = useState<PjpRouteDisplay[]>([])
+  const [salesRoutes, setSalesRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [form, setForm] = useState<Record<string, string>>({
     store_name: customer?.store_name || "",
     owner_name: customer?.owner_name || "",
@@ -62,6 +64,20 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+
+  // Load sales routes (tuyến bán hàng) once
+  useEffect(() => {
+    async function fetchRoutes() {
+      const { data } = await createClient()
+        .from("sales_routes")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("code")
+      setSalesRoutes((data as Array<{ code: string; name: string }>) || [])
+    }
+    fetchRoutes()
+  }, [])
 
   // Fetch PJP routes for this customer
   useEffect(() => {
@@ -205,13 +221,29 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="0901000001" />
             </div>
             <div className="space-y-2">
-              <Label>Kênh bán hàng</Label>
-              <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v })}>
-                <SelectTrigger><SelectValue placeholder="Chọn kênh" /></SelectTrigger>
-                <SelectContent>
-                  {CHANNELS.map((ch) => <SelectItem key={ch.value} value={ch.value}>{ch.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <Label>Tuyến bán hàng</Label>
+                <Link
+                  href="/customers/routes"
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  Quản lý tuyến
+                </Link>
+              </div>
+              {salesRoutes.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Chưa có tuyến. <Link href="/customers/routes" className="text-primary font-semibold hover:underline">Thêm tuyến</Link>
+                </p>
+              ) : (
+                <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v })}>
+                  <SelectTrigger><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                  <SelectContent>
+                    {salesRoutes.map((r) => (
+                      <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Address with GPS button */}

@@ -383,12 +383,18 @@ export default function PendingStockPage() {
         </p>
       </div>
 
-      {/* Quick link to the old draft-entries view */}
-      <div className="flex justify-center">
+      {/* Quick links */}
+      <div className="flex flex-wrap justify-center gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/inventory/entries">
             <ClipboardList className="h-3.5 w-3.5 mr-1.5" />
             Xem tất cả phiếu kho
+          </Link>
+        </Button>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/inventory/adjustments">
+            <Package className="h-3.5 w-3.5 mr-1.5" />
+            Điều chỉnh kiểm kê
           </Link>
         </Button>
       </div>

@@ -188,8 +188,11 @@ export default function StocktakeAdjustPage() {
           org_id: user.org_id,
           entry_code: entryCode,
           type: "stocktake",
-          status: "posted",
-          posted_at: new Date().toISOString(),
+          // Save as draft. A manager will review and approve the adjustment
+          // at /inventory/adjustments; that step is what moves stock and
+          // posts the expense.
+          status: "draft",
+          posted_at: null,
           created_by: user.id,
           notes: notes || null,
         })
@@ -197,7 +200,8 @@ export default function StocktakeAdjustPage() {
         .single()
       if (entryErr || !entry) throw entryErr || new Error("Không tạo được phiếu")
 
-      // 2. Insert lines and update batches
+      // 2. Insert lines ONLY — do NOT touch batches or expenses. The
+      //    adjustment workflow will do that after approval.
       for (const r of diffRows) {
         await supabase.from("stock_entry_lines").insert({
           entry_id: entry.id,
@@ -208,42 +212,13 @@ export default function StocktakeAdjustPage() {
           unit_cost: r.batchCost,
           notes: r.notes || null,
         })
-
-        if (r.batchId) {
-          // Update batch qty_on_hand to the new actual value
-          // We assume the scanned batch holds the entire adjustment; in reality the
-          // discrepancy might split across batches, but this keeps the flow simple.
-          await supabase
-            .from("batches")
-            .update({ qty_on_hand: r.systemQty + r.diff })
-            .eq("id", r.batchId)
-        }
-      }
-
-      // 3. Post shrinkage to expenses (cost of lost inventory)
-      if (summary.shrinkageValue > 0) {
-        const cogsCategory = categories.find((c) => c.code === "COGS_ADJ") || categories[0]
-        await supabase.from("expenses").insert({
-          org_id: user.org_id,
-          category_id: cogsCategory?.id ?? null,
-          expense_date: new Date().toISOString().slice(0, 10),
-          amount: summary.shrinkageValue,
-          description: `Hao hụt từ phiếu kiểm kê ${entryCode}`,
-          reference_code: entryCode,
-          source_type: "stocktake",
-          source_id: entry.id,
-          created_by: user.id,
-        })
       }
 
       toast({
         title: `Đã lưu phiếu kiểm kê ${entryCode}`,
-        description:
-          summary.shrinkageValue > 0
-            ? `Đã ghi chi phí hao hụt ${formatCurrency(summary.shrinkageValue)}`
-            : undefined,
+        description: "Chênh lệch đang chờ duyệt điều chỉnh để cập nhật kho + chi phí.",
       })
-      router.push(`/inventory/entries/${entry.id}`)
+      router.push(`/inventory/adjustments`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Lỗi khi lưu"
       toast({ title: "Lỗi", description: message, variant: "destructive" })
@@ -456,10 +431,12 @@ export default function StocktakeAdjustPage() {
           <AlertCircle className="h-4 w-4 text-amber-800 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-900">
             <p className="font-semibold">
-              Hao hụt {formatCurrency(summary.shrinkageValue)} sẽ được ghi vào chi phí
+              Hao hụt {formatCurrency(summary.shrinkageValue)} sẽ ghi vào chi phí khi duyệt điều chỉnh
             </p>
             <p className="text-xs mt-0.5">
-              Danh mục:{" "}
+              Phiếu sẽ được tạo ở trạng thái <strong>Nháp</strong>. Vào{" "}
+              <span className="font-mono">/inventory/adjustments</span> để duyệt, tồn kho sẽ cập nhật sau khi duyệt.
+              {" "}Danh mục chi phí:{" "}
               <span className="font-mono">
                 {categories.find((c) => c.code === "COGS_ADJ")?.name || "Điều chỉnh kiểm kê"}
               </span>

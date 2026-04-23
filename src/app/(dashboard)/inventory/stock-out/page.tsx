@@ -336,8 +336,11 @@ export default function StockOutPage() {
           org_id: user.org_id,
           entry_code: mergeCode,
           type: "export",
+          status: "posted",
+          posted_at: new Date().toISOString(),
           created_by: user.id,
           notes: `Lệnh xuất kho gộp ${ids.length} đơn cho KH: ${customerNames}`,
+          ref_order_ids: ids,
         })
         .select()
         .single()

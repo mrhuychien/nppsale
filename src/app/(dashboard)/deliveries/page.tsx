@@ -44,10 +44,14 @@ import {
   Calendar,
   User as UserIcon,
 } from "lucide-react"
-import type { Delivery, DeliveryLine, User } from "@/types"
+import type { Delivery, DeliveryLine, SalesOrder, User } from "@/types"
 
 type DeliveryWithStats = Delivery & {
   _stats?: { total: number; delivered: number; failed: number }
+}
+
+type PickedOrder = SalesOrder & {
+  _entry?: { id: string; entry_code: string; posted_at: string | null }
 }
 
 type MobileTabRange = "today" | "7days" | "month"
@@ -63,50 +67,115 @@ export default function DeliveriesPage() {
   const [selectedDriverId, setSelectedDriverId] = useState("")
   const [assigning, setAssigning] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTabRange>("today")
+  const [pickedOrders, setPickedOrders] = useState<PickedOrder[]>([])
+  const [selectedPickedIds, setSelectedPickedIds] = useState<Set<string>>(new Set())
+  const [assigningFromPicked, setAssigningFromPicked] = useState(false)
+  const [pickedDriverId, setPickedDriverId] = useState<string>("")
   const supabase = createClient()
   const router = useRouter()
 
-  useEffect(() => {
-    async function fetch() {
-      const [deliveriesRes, driversRes] = await Promise.all([
-        supabase
-          .from("deliveries")
-          .select("*, driver:users!deliveries_driver_id_fkey(full_name)")
-          .order("created_at", { ascending: false }),
-        supabase.from("users").select("id, full_name, role").eq("role", "driver").order("full_name"),
-      ])
-      const list = (deliveriesRes.data as Delivery[]) || []
+  const fetchAll = async () => {
+    const [deliveriesRes, driversRes] = await Promise.all([
+      supabase
+        .from("deliveries")
+        .select("*, driver:users!deliveries_driver_id_fkey(full_name)")
+        .order("created_at", { ascending: false }),
+      supabase.from("users").select("id, full_name, role").eq("role", "driver").order("full_name"),
+    ])
+    const list = (deliveriesRes.data as Delivery[]) || []
 
-      const ids = list.map((d) => d.id)
-      let byDelivery: Record<string, { total: number; delivered: number; failed: number }> = {}
-      if (ids.length > 0) {
-        const { data: linesData } = await supabase
-          .from("delivery_lines")
-          .select("delivery_id, status")
-          .in("delivery_id", ids)
-        byDelivery = ((linesData as Pick<DeliveryLine, "delivery_id" | "status">[]) || []).reduce(
-          (acc, l) => {
-            const entry = acc[l.delivery_id] || { total: 0, delivered: 0, failed: 0 }
-            entry.total += 1
-            if (l.status === "delivered" || l.status === "partial") entry.delivered += 1
-            if (l.status === "failed") entry.failed += 1
-            acc[l.delivery_id] = entry
-            return acc
-          },
-          {} as Record<string, { total: number; delivered: number; failed: number }>
-        )
-      }
-
-      setDeliveries(
-        list.map((d) => ({
-          ...d,
-          _stats: byDelivery[d.id] || { total: 0, delivered: 0, failed: 0 },
-        }))
+    const ids = list.map((d) => d.id)
+    let byDelivery: Record<string, { total: number; delivered: number; failed: number }> = {}
+    if (ids.length > 0) {
+      const { data: linesData } = await supabase
+        .from("delivery_lines")
+        .select("delivery_id, status")
+        .in("delivery_id", ids)
+      byDelivery = ((linesData as Pick<DeliveryLine, "delivery_id" | "status">[]) || []).reduce(
+        (acc, l) => {
+          const entry = acc[l.delivery_id] || { total: 0, delivered: 0, failed: 0 }
+          entry.total += 1
+          if (l.status === "delivered" || l.status === "partial") entry.delivered += 1
+          if (l.status === "failed") entry.failed += 1
+          acc[l.delivery_id] = entry
+          return acc
+        },
+        {} as Record<string, { total: number; delivered: number; failed: number }>
       )
-      setDrivers((driversRes.data as Pick<User, "id" | "full_name">[]) || [])
-      setLoading(false)
     }
-    fetch()
+
+    setDeliveries(
+      list.map((d) => ({
+        ...d,
+        _stats: byDelivery[d.id] || { total: 0, delivered: 0, failed: 0 },
+      }))
+    )
+    setDrivers((driversRes.data as Pick<User, "id" | "full_name">[]) || [])
+
+    // Orders with status='picking' that haven't been attached to a delivery yet
+    const { data: pickingOrdersData } = await supabase
+      .from("sales_orders")
+      .select(
+        "*, customer:customers(id, store_name, phone, address, gps_lat, gps_lng), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+      )
+      .eq("status", "picking")
+      .order("created_at", { ascending: false })
+    const pickingOrders = (pickingOrdersData as SalesOrder[]) || []
+
+    // Exclude orders already in an open (non-completed/non-cancelled) delivery
+    let awaitingOrders: PickedOrder[] = pickingOrders
+    if (pickingOrders.length > 0) {
+      const pickingIds = pickingOrders.map((o) => o.id)
+      const { data: existingLines } = await supabase
+        .from("delivery_lines")
+        .select("order_id, delivery:deliveries(status)")
+        .in("order_id", pickingIds)
+      type LineRow = { order_id: string; delivery?: { status?: string } | null }
+      const attached = new Set(
+        (((existingLines as unknown) as LineRow[]) || [])
+          .filter((l) => l.delivery && ["pending", "in_transit"].includes(l.delivery.status || ""))
+          .map((l) => l.order_id)
+      )
+      awaitingOrders = pickingOrders.filter((o) => !attached.has(o.id))
+
+      // Attach the stock_entries row (entry_code + date) that picked these orders
+      if (awaitingOrders.length > 0) {
+        const awaitingIds = awaitingOrders.map((o) => o.id)
+        const { data: entryRows } = await supabase
+          .from("stock_entries")
+          .select("id, entry_code, posted_at, created_at, ref_order_ids")
+          .eq("type", "export")
+          .eq("status", "posted")
+          .overlaps("ref_order_ids", awaitingIds)
+          .order("posted_at", { ascending: false })
+        type EntryRow = {
+          id: string
+          entry_code: string
+          posted_at: string | null
+          created_at: string
+          ref_order_ids: string[]
+        }
+        const entriesByOrder: Record<string, EntryRow> = {}
+        for (const e of ((entryRows as unknown) as EntryRow[]) || []) {
+          for (const oid of e.ref_order_ids || []) {
+            if (!entriesByOrder[oid]) entriesByOrder[oid] = e
+          }
+        }
+        awaitingOrders = awaitingOrders.map((o) => {
+          const entry = entriesByOrder[o.id]
+          return entry
+            ? { ...o, _entry: { id: entry.id, entry_code: entry.entry_code, posted_at: entry.posted_at || entry.created_at } }
+            : o
+        })
+      }
+    }
+
+    setPickedOrders(awaitingOrders)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
@@ -170,6 +239,78 @@ export default function DeliveriesPage() {
     }
   }
 
+  // Create a delivery from selected picked orders
+  const handleCreateDeliveryFromPicked = async () => {
+    if (!user?.org_id || selectedPickedIds.size === 0) return
+    const selected = pickedOrders.filter((o) => selectedPickedIds.has(o.id))
+    setAssigningFromPicked(true)
+    try {
+      const routeName = selected.length === 1
+        ? `Giao ${selected[0].customer?.store_name || "KH"}`
+        : `Giao ${selected.length} đơn`
+      const { data: delivery, error: delErr } = await supabase
+        .from("deliveries")
+        .insert({
+          org_id: user.org_id,
+          driver_id: pickedDriverId || null,
+          route_name: routeName,
+          status: pickedDriverId ? "pending" : "pending",
+        })
+        .select("id")
+        .single()
+      if (delErr || !delivery) throw delErr || new Error("Không tạo được chuyến giao")
+
+      const lines = selected.map((o) => ({
+        delivery_id: delivery.id,
+        order_id: o.id,
+        status: "pending" as const,
+      }))
+      const { error: linesErr } = await supabase.from("delivery_lines").insert(lines)
+      if (linesErr) throw linesErr
+
+      // Notify driver if assigned
+      if (pickedDriverId && pickedDriverId !== user.id) {
+        const { createNotification } = await import("@/lib/notifications")
+        createNotification(supabase, {
+          orgId: user.org_id,
+          userId: pickedDriverId,
+          type: "info",
+          title: `${selected.length} đơn cần giao`,
+          body: routeName,
+          linkUrl: `/deliveries/${delivery.id}`,
+          metadata: { delivery_id: delivery.id, order_ids: selected.map((o) => o.id) },
+        })
+      }
+
+      toast({
+        title: `Đã tạo chuyến giao`,
+        description: `${selected.length} đơn${pickedDriverId ? ` → ${drivers.find((d) => d.id === pickedDriverId)?.full_name || "tài xế"}` : ", chưa phân công tài xế"}`,
+      })
+      setSelectedPickedIds(new Set())
+      setPickedDriverId("")
+      await fetchAll()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({ title: "Lỗi", description: message, variant: "destructive" })
+    } finally {
+      setAssigningFromPicked(false)
+    }
+  }
+
+  const togglePickedOne = (id: string) => {
+    const next = new Set(selectedPickedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedPickedIds(next)
+  }
+  const togglePickedAll = () => {
+    if (selectedPickedIds.size === pickedOrders.length) {
+      setSelectedPickedIds(new Set())
+    } else {
+      setSelectedPickedIds(new Set(pickedOrders.map((o) => o.id)))
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title={isDriver ? "Chuyến giao của tôi" : "Giao hàng"} description={`${deliveries.length} chuyến giao`}>
@@ -227,6 +368,134 @@ export default function DeliveriesPage() {
             </Card>
           </div>
         </div>
+
+        {/* Đơn đã xuất kho, chờ gán chuyến giao */}
+        {canDispatch && pickedOrders.length > 0 && (
+          <Card className="rounded-2xl border-amber-300 bg-gradient-to-br from-amber-50 to-background shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Truck className="h-4 w-4 text-amber-700" />
+                    Đơn đã xuất kho chờ giao ({pickedOrders.length})
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Thủ kho đã xuất nhưng chưa có chuyến giao. Chọn đơn → gán tài xế → tạo chuyến.
+                  </p>
+                </div>
+                {selectedPickedIds.size > 0 && (
+                  <Badge variant="default" className="shrink-0">
+                    {selectedPickedIds.size} đã chọn
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPickedIds.size === pickedOrders.length && pickedOrders.length > 0}
+                    onChange={togglePickedAll}
+                    className="h-4 w-4"
+                  />
+                  Chọn tất cả ({pickedOrders.length})
+                </label>
+                <div className="rounded-xl border bg-card overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10"></TableHead>
+                        <TableHead>Mã đơn</TableHead>
+                        <TableHead>Khách hàng</TableHead>
+                        <TableHead>NV bán</TableHead>
+                        <TableHead>Phiếu xuất</TableHead>
+                        <TableHead>Ngày xuất</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pickedOrders.map((o) => {
+                        const checked = selectedPickedIds.has(o.id)
+                        return (
+                          <TableRow
+                            key={o.id}
+                            className={`cursor-pointer ${checked ? "bg-primary/5" : ""}`}
+                            onClick={() => togglePickedOne(o.id)}
+                          >
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => togglePickedOne(o.id)}
+                                className="h-4 w-4"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Link
+                                href={`/orders/${o.id}`}
+                                className="font-mono text-xs font-bold text-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {o.order_code}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="font-medium text-sm">
+                              {o.customer?.store_name || "-"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {o.sales_user?.full_name || "-"}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {o._entry ? (
+                                <Link
+                                  href={`/inventory/entries/${o._entry.id}`}
+                                  className="text-primary hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {o._entry.entry_code}
+                                </Link>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {o._entry?.posted_at ? formatDate(o._entry.posted_at) : "-"}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {selectedPickedIds.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+                  <div className="flex-1 min-w-[200px]">
+                    <Select value={pickedDriverId} onValueChange={setPickedDriverId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn tài xế (tùy chọn)..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {drivers.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.full_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleCreateDeliveryFromPicked}
+                    disabled={assigningFromPicked}
+                  >
+                    {assigningFromPicked ? "Đang tạo..." : `Tạo chuyến (${selectedPickedIds.size} đơn)`}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Dispatch card */}
         {canDispatch && unassigned.length > 0 && (
@@ -348,6 +617,79 @@ export default function DeliveriesPage() {
 
       {/* Mobile: card history with date tabs */}
       <div className="lg:hidden space-y-3">
+        {canDispatch && pickedOrders.length > 0 && (
+          <Card className="rounded-2xl border-amber-300 bg-amber-50 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-2 mb-2">
+                <Truck className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm text-amber-900">
+                    {pickedOrders.length} đơn chờ giao
+                  </p>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Đã xuất kho, chưa có chuyến giao
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1.5 max-h-56 overflow-y-auto mb-3">
+                {pickedOrders.map((o) => {
+                  const checked = selectedPickedIds.has(o.id)
+                  return (
+                    <label
+                      key={o.id}
+                      className={`flex items-start gap-2 rounded-lg border p-2 text-xs cursor-pointer ${
+                        checked ? "bg-primary/10 border-primary" : "bg-card"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePickedOne(o.id)}
+                        className="h-4 w-4 mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono font-bold text-primary">{o.order_code}</p>
+                        <p className="truncate font-medium">{o.customer?.store_name || "-"}</p>
+                        {o._entry && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Phiếu xuất: {o._entry.entry_code}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+              {selectedPickedIds.size > 0 && (
+                <div className="space-y-2">
+                  <Select value={pickedDriverId} onValueChange={setPickedDriverId}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Chọn tài xế (tùy chọn)..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {drivers.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleCreateDeliveryFromPicked}
+                    disabled={assigningFromPicked}
+                  >
+                    {assigningFromPicked
+                      ? "Đang tạo..."
+                      : `Tạo chuyến (${selectedPickedIds.size} đơn)`}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Tabs value={mobileTab} onValueChange={(v) => setMobileTab(v as MobileTabRange)}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="today">Hôm nay</TabsTrigger>

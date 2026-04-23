@@ -45,6 +45,7 @@ interface LineItem {
   batch_code: string
   manufactured_at: string
   expires_at: string
+  location: string
   available_units: string[]
 }
 
@@ -62,6 +63,7 @@ function newLine(): LineItem {
     batch_code: "",
     manufactured_at: "",
     expires_at: "",
+    location: "",
     available_units: [],
   }
 }
@@ -197,6 +199,9 @@ export default function StockInPage() {
       batch_code: "",
       manufactured_at: "",
       expires_at: "",
+      // Default per-line location to the entry-level warehouse note so
+      // single-location imports only need to type it once at the top.
+      location: warehouse.trim(),
       available_units: availableUnits,
     }
     setLines((prev) => {
@@ -315,12 +320,14 @@ export default function StockInPage() {
         const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
         const expiresAt = l.expires_at || "2099-12-31"
         const cost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const lineLocation = l.location.trim() || warehouse.trim() || null
         return {
           org_id: user.org_id,
           product_id: l.product_id,
           batch_code: batchCode,
           manufactured_at: l.manufactured_at || null,
           expires_at: expiresAt,
+          location: lineLocation,
           qty_initial: qty,
           qty_on_hand: qty,
           unit_cost: cost,
@@ -623,20 +630,20 @@ export default function StockInPage() {
                   <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-28">
                     ĐVT
                   </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-24">
                     SL
                   </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[140px]">
                     Đơn giá
                   </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[140px]">
                     Giá vốn
                   </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-20">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-24">
                     VAT %
                   </th>
-                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[280px]">
-                    Lô hàng (tùy chọn)
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[360px]">
+                    Lô hàng + vị trí (tùy chọn)
                   </th>
                   <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground w-32 text-right">
                     Thành tiền
@@ -699,7 +706,7 @@ export default function StockInPage() {
                             updateLine(line.id, { quantity: e.target.value })
                           }
                           placeholder="0"
-                          className="h-8 text-center"
+                          className="h-8 w-full text-center"
                           disabled={!hasProduct}
                         />
                       </td>
@@ -712,7 +719,7 @@ export default function StockInPage() {
                             updateLine(line.id, { unit_price: e.target.value })
                           }
                           placeholder="0"
-                          className="h-8"
+                          className="h-8 w-full text-right tabular-nums"
                           disabled={!hasProduct}
                         />
                       </td>
@@ -725,7 +732,7 @@ export default function StockInPage() {
                             updateLine(line.id, { unit_cost: e.target.value })
                           }
                           placeholder={line.unit_price || "0"}
-                          className="h-8"
+                          className="h-8 w-full text-right tabular-nums"
                           disabled={!hasProduct}
                         />
                       </td>
@@ -741,12 +748,12 @@ export default function StockInPage() {
                             const clamped = Math.max(0, Math.min(100, v))
                             updateLine(line.id, { vat_rate: clamped / 100 })
                           }}
-                          className="h-8 text-center"
+                          className="h-8 w-full text-center"
                           disabled={!hasProduct}
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="grid gap-2 sm:grid-cols-4">
                           <div>
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                               Mã lô
@@ -758,6 +765,20 @@ export default function StockInPage() {
                               }
                               placeholder="Tự sinh"
                               className="font-mono text-xs h-8"
+                              disabled={!hasProduct}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                              Vị trí
+                            </Label>
+                            <Input
+                              value={line.location}
+                              onChange={(e) =>
+                                updateLine(line.id, { location: e.target.value })
+                              }
+                              placeholder={warehouse || "VD: A1-B3"}
+                              className="text-xs h-8"
                               disabled={!hasProduct}
                             />
                           </div>
@@ -920,7 +941,7 @@ export default function StockInPage() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-border/40">
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-border/40">
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Mã lô</Label>
                       <Input
@@ -928,6 +949,16 @@ export default function StockInPage() {
                         onChange={(e) => updateLine(line.id, { batch_code: e.target.value })}
                         placeholder="Tự sinh"
                         className="font-mono text-xs h-9"
+                        disabled={!hasProduct}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vị trí</Label>
+                      <Input
+                        value={line.location}
+                        onChange={(e) => updateLine(line.id, { location: e.target.value })}
+                        placeholder={warehouse || "VD: A1-B3"}
+                        className="text-xs h-9"
                         disabled={!hasProduct}
                       />
                     </div>

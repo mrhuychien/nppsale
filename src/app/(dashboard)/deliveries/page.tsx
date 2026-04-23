@@ -138,16 +138,18 @@ export default function DeliveriesPage() {
       )
       awaitingOrders = pickingOrders.filter((o) => !attached.has(o.id))
 
-      // Attach the stock_entries row (entry_code + date) that picked these orders
+      // Attach the stock_entries row (entry_code + date) that picked these
+      // orders. ref_order_ids is jsonb → Supabase .overlaps() can't match
+      // it, so load all recent draft/posted exports and filter in JS.
       if (awaitingOrders.length > 0) {
-        const awaitingIds = awaitingOrders.map((o) => o.id)
+        const awaitingIdSet = new Set(awaitingOrders.map((o) => o.id))
         const { data: entryRows } = await supabase
           .from("stock_entries")
           .select("id, entry_code, posted_at, created_at, ref_order_ids")
           .eq("type", "export")
           .in("status", ["draft", "posted"])
-          .overlaps("ref_order_ids", awaitingIds)
           .order("created_at", { ascending: false })
+          .limit(200)
         type EntryRow = {
           id: string
           entry_code: string
@@ -155,10 +157,13 @@ export default function DeliveriesPage() {
           created_at: string
           ref_order_ids: string[]
         }
+        const allEntries = ((entryRows as unknown) as EntryRow[]) || []
         const entriesByOrder: Record<string, EntryRow> = {}
-        for (const e of ((entryRows as unknown) as EntryRow[]) || []) {
+        for (const e of allEntries) {
           for (const oid of e.ref_order_ids || []) {
-            if (!entriesByOrder[oid]) entriesByOrder[oid] = e
+            if (awaitingIdSet.has(oid) && !entriesByOrder[oid]) {
+              entriesByOrder[oid] = e
+            }
           }
         }
         awaitingOrders = awaitingOrders.map((o) => {
@@ -284,18 +289,23 @@ export default function DeliveriesPage() {
       if (linesErr) throw linesErr
 
       // 3. Find the draft export stock_entries that cover these orders
+      // 3. Find the draft export stock_entries that cover these orders.
+      //    ref_order_ids is jsonb, so Supabase .overlaps() (array &&) does
+      //    not match. Load all draft exports and filter in JS.
       const { data: draftEntries } = await supabase
         .from("stock_entries")
         .select("id, ref_order_ids, lines:stock_entry_lines(id, product_id, quantity, batch_id)")
         .eq("type", "export")
         .eq("status", "draft")
-        .overlaps("ref_order_ids", selectedIdList)
       type EntryRow = {
         id: string
         ref_order_ids: string[]
         lines?: Array<{ id: string; product_id: string; quantity: number; batch_id: string | null }>
       }
-      const entries = ((draftEntries as unknown) as EntryRow[]) || []
+      const allDrafts = ((draftEntries as unknown) as EntryRow[]) || []
+      const entries = allDrafts.filter((e) =>
+        (e.ref_order_ids || []).some((id) => selectedIdList.includes(id))
+      )
 
       // 4. Post each entry + deduct batches FEFO for lines without batch_id
       const postedAt = new Date().toISOString()

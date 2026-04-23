@@ -248,6 +248,12 @@ export default function InventoryPage() {
               Duyệt điều chỉnh
             </Link>
           </Button>
+          <Button variant="outline" asChild>
+            <Link href="/inventory/audit">
+              <Search className="mr-2 h-4 w-4" />
+              Tra soát
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -256,7 +262,7 @@ export default function InventoryPage() {
           <TabsList className="w-full overflow-x-auto justify-start gap-1 h-auto flex-wrap">
             <TabsTrigger value="current">Tồn kho hiện tại</TabsTrigger>
             <TabsTrigger value="fefo">Theo lô hàng (FEFO)</TabsTrigger>
-            <TabsTrigger value="entries">Phiếu nhập/xuất</TabsTrigger>
+            <TabsTrigger value="entries">Phiếu kho</TabsTrigger>
             <TabsTrigger value="stocktake">Kiểm kê</TabsTrigger>
           </TabsList>
         </div>

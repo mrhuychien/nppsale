@@ -122,6 +122,51 @@ export default function StocktakeAdjustPage() {
     searchRef.current?.focus()
   }
 
+  // Load the full on-hand product list so the operator can tick qty for
+  // every SKU the org currently holds, instead of searching one by one.
+  const loadAllStock = async () => {
+    const { data } = await supabase
+      .from("products")
+      .select("*, batches!inner(id, batch_code, qty_on_hand, unit_cost)")
+      .eq("status", "active")
+      .gt("batches.qty_on_hand", 0)
+      .order("name")
+    const list = (data as Array<Product & { batches?: Batch[] }>) || []
+    const existing = new Set(rows.map((r) => r.productId))
+    const newRows = list
+      .filter((p) => !existing.has(p.id))
+      .map((product) => {
+        const primaryBatch = (product.batches || [])
+          .slice()
+          .sort((a, b) => (b.qty_on_hand || 0) - (a.qty_on_hand || 0))[0]
+        const systemQty = (product.batches || []).reduce(
+          (s, b) => s + Number(b.qty_on_hand || 0), 0
+        )
+        return {
+          key: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          baseUnit: product.base_unit,
+          batchId: primaryBatch?.id || null,
+          batchCode: primaryBatch?.batch_code || null,
+          batchCost: Number(primaryBatch?.unit_cost) || 0,
+          systemQty,
+          actualQty: "",
+          notes: "",
+        }
+      })
+    if (newRows.length === 0) {
+      toast({ title: "Đã có đủ sản phẩm trong phiếu" })
+      return
+    }
+    setRows((prev) => [...prev, ...newRows])
+    toast({
+      title: `Đã tải ${newRows.length} sản phẩm`,
+      description: "Nhập tồn thực tế cho từng dòng",
+    })
+  }
+
   const updateRow = (key: string, patch: Partial<AdjustRow>) => {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   }
@@ -271,8 +316,12 @@ export default function StocktakeAdjustPage() {
 
       {/* Search bar */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Thêm sản phẩm</CardTitle>
+          <Button variant="outline" size="sm" onClick={loadAllStock}>
+            <ClipboardList className="h-3.5 w-3.5 mr-1.5" />
+            Tải toàn bộ tồn kho
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="relative">

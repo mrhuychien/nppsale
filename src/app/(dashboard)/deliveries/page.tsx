@@ -145,9 +145,9 @@ export default function DeliveriesPage() {
           .from("stock_entries")
           .select("id, entry_code, posted_at, created_at, ref_order_ids")
           .eq("type", "export")
-          .eq("status", "posted")
+          .in("status", ["draft", "posted"])
           .overlaps("ref_order_ids", awaitingIds)
-          .order("posted_at", { ascending: false })
+          .order("created_at", { ascending: false })
         type EntryRow = {
           id: string
           entry_code: string
@@ -240,26 +240,41 @@ export default function DeliveriesPage() {
   }
 
   // Create a delivery from selected picked orders
+  // Handover goods to a driver: creates a delivery, posts the related stock
+  // entries (draft → posted), deducts batch on-hand FEFO, then flips orders
+  // to 'delivering'. Driver is required for a handover.
   const handleCreateDeliveryFromPicked = async () => {
     if (!user?.org_id || selectedPickedIds.size === 0) return
+    if (!pickedDriverId) {
+      toast({
+        title: "Chọn tài xế trước khi bàn giao",
+        variant: "destructive",
+      })
+      return
+    }
     const selected = pickedOrders.filter((o) => selectedPickedIds.has(o.id))
+    const selectedIdList = selected.map((o) => o.id)
     setAssigningFromPicked(true)
     try {
       const routeName = selected.length === 1
         ? `Giao ${selected[0].customer?.store_name || "KH"}`
         : `Giao ${selected.length} đơn`
+
+      // 1. Create delivery in transit (handover = truck has goods)
       const { data: delivery, error: delErr } = await supabase
         .from("deliveries")
         .insert({
           org_id: user.org_id,
-          driver_id: pickedDriverId || null,
+          driver_id: pickedDriverId,
           route_name: routeName,
-          status: pickedDriverId ? "pending" : "pending",
+          status: "in_transit",
+          started_at: new Date().toISOString(),
         })
         .select("id")
         .single()
       if (delErr || !delivery) throw delErr || new Error("Không tạo được chuyến giao")
 
+      // 2. Insert delivery_lines
       const lines = selected.map((o) => ({
         delivery_id: delivery.id,
         order_id: o.id,
@@ -268,23 +283,109 @@ export default function DeliveriesPage() {
       const { error: linesErr } = await supabase.from("delivery_lines").insert(lines)
       if (linesErr) throw linesErr
 
-      // Notify driver if assigned
-      if (pickedDriverId && pickedDriverId !== user.id) {
+      // 3. Find the draft export stock_entries that cover these orders
+      const { data: draftEntries } = await supabase
+        .from("stock_entries")
+        .select("id, ref_order_ids, lines:stock_entry_lines(id, product_id, quantity, batch_id)")
+        .eq("type", "export")
+        .eq("status", "draft")
+        .overlaps("ref_order_ids", selectedIdList)
+      type EntryRow = {
+        id: string
+        ref_order_ids: string[]
+        lines?: Array<{ id: string; product_id: string; quantity: number; batch_id: string | null }>
+      }
+      const entries = ((draftEntries as unknown) as EntryRow[]) || []
+
+      // 4. Post each entry + deduct batches FEFO for lines without batch_id
+      const postedAt = new Date().toISOString()
+      for (const entry of entries) {
+        // Skip if entry's ref_order_ids are not fully covered by this handover —
+        // don't post partial entries. This is a common case when warehouse
+        // picked two orders together but driver only takes one; warn and keep
+        // entry as draft.
+        const fullyCovered = (entry.ref_order_ids || []).every((id) =>
+          selectedIdList.includes(id)
+        )
+        if (!fullyCovered) continue
+
+        // Deduct stock for each aggregated line, FEFO across batches
+        for (const line of entry.lines || []) {
+          let remaining = Number(line.quantity)
+          if (remaining <= 0) continue
+
+          if (line.batch_id) {
+            // Explicit batch on the line → just deduct from that batch
+            const { data: b } = await supabase
+              .from("batches")
+              .select("qty_on_hand")
+              .eq("id", line.batch_id)
+              .maybeSingle()
+            const onHand = Number((b as { qty_on_hand?: number } | null)?.qty_on_hand) || 0
+            const take = Math.min(remaining, onHand)
+            if (take > 0) {
+              await supabase
+                .from("batches")
+                .update({ qty_on_hand: onHand - take })
+                .eq("id", line.batch_id)
+              remaining -= take
+            }
+          } else {
+            // Aggregate line → FEFO across this product's batches
+            const { data: batches } = await supabase
+              .from("batches")
+              .select("id, qty_on_hand, expires_at")
+              .eq("product_id", line.product_id)
+              .gt("qty_on_hand", 0)
+              .order("expires_at", { ascending: true })
+            for (const b of (batches as Array<{ id: string; qty_on_hand: number }>) || []) {
+              if (remaining <= 0) break
+              const take = Math.min(remaining, Number(b.qty_on_hand))
+              await supabase
+                .from("batches")
+                .update({ qty_on_hand: Number(b.qty_on_hand) - take })
+                .eq("id", b.id)
+              remaining -= take
+            }
+          }
+          // If remaining > 0 after all batches, inventory is short — still
+          // proceed (goods left warehouse physically); warn in console.
+          if (remaining > 0) {
+            // eslint-disable-next-line no-console
+            console.warn("[handover] short stock for line", line.id, "remaining", remaining)
+          }
+        }
+
+        // Post the entry
+        await supabase
+          .from("stock_entries")
+          .update({ status: "posted", posted_at: postedAt })
+          .eq("id", entry.id)
+      }
+
+      // 5. Advance orders: picking → delivering
+      await supabase
+        .from("sales_orders")
+        .update({ status: "delivering" })
+        .in("id", selectedIdList)
+
+      // 6. Notify the driver
+      if (pickedDriverId !== user.id) {
         const { createNotification } = await import("@/lib/notifications")
         createNotification(supabase, {
           orgId: user.org_id,
           userId: pickedDriverId,
           type: "info",
-          title: `${selected.length} đơn cần giao`,
+          title: `Đã bàn giao ${selected.length} đơn`,
           body: routeName,
           linkUrl: `/deliveries/${delivery.id}`,
-          metadata: { delivery_id: delivery.id, order_ids: selected.map((o) => o.id) },
+          metadata: { delivery_id: delivery.id, order_ids: selectedIdList },
         })
       }
 
       toast({
-        title: `Đã tạo chuyến giao`,
-        description: `${selected.length} đơn${pickedDriverId ? ` → ${drivers.find((d) => d.id === pickedDriverId)?.full_name || "tài xế"}` : ", chưa phân công tài xế"}`,
+        title: `Đã bàn giao ${selected.length} đơn`,
+        description: `→ ${drivers.find((d) => d.id === pickedDriverId)?.full_name || "tài xế"} • Đã trừ tồn kho`,
       })
       setSelectedPickedIds(new Set())
       setPickedDriverId("")
@@ -377,10 +478,10 @@ export default function DeliveriesPage() {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Truck className="h-4 w-4 text-amber-700" />
-                    Đơn đã xuất kho chờ giao ({pickedOrders.length})
+                    Đơn chờ bàn giao ({pickedOrders.length})
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Thủ kho đã xuất nhưng chưa có chuyến giao. Chọn đơn → gán tài xế → tạo chuyến.
+                    Thủ kho đã tạo phiếu xuất (nháp). Chọn đơn, chọn tài xế, nhấn Bàn giao. Khi bàn giao: phiếu xuất được post và tồn kho bị trừ theo FEFO.
                   </p>
                 </div>
                 {selectedPickedIds.size > 0 && (
@@ -487,9 +588,13 @@ export default function DeliveriesPage() {
                   </div>
                   <Button
                     onClick={handleCreateDeliveryFromPicked}
-                    disabled={assigningFromPicked}
+                    disabled={assigningFromPicked || !pickedDriverId}
                   >
-                    {assigningFromPicked ? "Đang tạo..." : `Tạo chuyến (${selectedPickedIds.size} đơn)`}
+                    {assigningFromPicked
+                      ? "Đang bàn giao..."
+                      : !pickedDriverId
+                        ? "Chọn tài xế trước"
+                        : `Bàn giao ${selectedPickedIds.size} đơn`}
                   </Button>
                 </div>
               )}
@@ -624,10 +729,10 @@ export default function DeliveriesPage() {
                 <Truck className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
                 <div className="flex-1">
                   <p className="font-bold text-sm text-amber-900">
-                    {pickedOrders.length} đơn chờ giao
+                    {pickedOrders.length} đơn chờ bàn giao
                   </p>
                   <p className="text-xs text-amber-800 mt-0.5">
-                    Đã xuất kho, chưa có chuyến giao
+                    Chọn đơn + tài xế → Bàn giao (trừ tồn)
                   </p>
                 </div>
               </div>
@@ -678,11 +783,13 @@ export default function DeliveriesPage() {
                     size="sm"
                     className="w-full"
                     onClick={handleCreateDeliveryFromPicked}
-                    disabled={assigningFromPicked}
+                    disabled={assigningFromPicked || !pickedDriverId}
                   >
                     {assigningFromPicked
-                      ? "Đang tạo..."
-                      : `Tạo chuyến (${selectedPickedIds.size} đơn)`}
+                      ? "Đang bàn giao..."
+                      : !pickedDriverId
+                        ? "Chọn tài xế trước"
+                        : `Bàn giao ${selectedPickedIds.size} đơn`}
                   </Button>
                 </div>
               )}

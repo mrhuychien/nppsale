@@ -10,7 +10,7 @@ import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
-  ChevronRight, UserCog, ClipboardList, Navigation, Wallet,
+  ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -76,6 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
       { label: "CN theo KH", href: "/receivables/by-customer", icon: Users, module: "receivables" },
       { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog, module: "receivables" },
+      { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, module: "receivables" },
       { label: "Chi phí", href: "/finance/expenses", icon: Wallet, module: "settings" },
       { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices" },
     ],

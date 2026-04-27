@@ -47,6 +47,15 @@ function isCodTerms(terms: string | null | undefined): boolean {
   return t === "" || t === "COD" || t.startsWith("COD")
 }
 
+function generateReceiptCode(): string {
+  const now = new Date()
+  const yy = String(now.getFullYear()).slice(-2)
+  const mm = String(now.getMonth() + 1).padStart(2, "0")
+  const dd = String(now.getDate()).padStart(2, "0")
+  const rand = Math.floor(1 + Math.random() * 9999).toString().padStart(4, "0")
+  return `PT-${yy}${mm}${dd}-${rand}`
+}
+
 export default function DeliverySettlePage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -61,11 +70,14 @@ export default function DeliverySettlePage() {
     status: string
     settled_at: string | null
     settled_amount: number | null
+    driver_id: string | null
     driver?: { full_name: string } | null
   } | null>(null)
   const [lines, setLines] = useState<SettleLine[]>([])
+  const [editedAmounts, setEditedAmounts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [submittedAmount, setSubmittedAmount] = useState<string>("")
+  const [notes, setNotes] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -73,7 +85,9 @@ export default function DeliverySettlePage() {
     const [delRes, linesRes] = await Promise.all([
       supabase
         .from("deliveries")
-        .select("id, route_name, status, settled_at, settled_amount, driver:users!deliveries_driver_id_fkey(full_name)")
+        .select(
+          "id, route_name, status, settled_at, settled_amount, driver_id, driver:users!deliveries_driver_id_fkey(full_name)"
+        )
         .eq("id", id)
         .single(),
       supabase
@@ -84,16 +98,30 @@ export default function DeliverySettlePage() {
         .eq("delivery_id", id),
     ])
     if (delRes.data) setDelivery(delRes.data as unknown as typeof delivery)
-    setLines(((linesRes.data as unknown) as SettleLine[]) || [])
+    const linesData = ((linesRes.data as unknown) as SettleLine[]) || []
+    setLines(linesData)
+
+    // Pre-fill editable amounts: existing amount_collected, otherwise order.total for COD lines
+    const initial: Record<string, string> = {}
+    linesData.forEach((l) => {
+      const cod = isCodTerms(l.order?.payment_terms)
+      const delivered = l.status === "delivered"
+      if (!delivered || !cod) {
+        initial[l.id] = ""
+        return
+      }
+      const collected = Number(l.amount_collected || 0)
+      initial[l.id] = collected > 0 ? String(collected) : String(l.order?.total ?? "")
+    })
+    setEditedAmounts(initial)
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Expected = sum of (amount_collected if set, else order.total) for delivered lines on COD terms
+  // Expected = sum of (edited amount) for delivered COD lines
   const summary = useMemo(() => {
     let expected = 0
-    let totalDelivered = 0
     let codCount = 0
     let creditCount = 0
     const rows = lines.map((l) => {
@@ -101,18 +129,18 @@ export default function DeliverySettlePage() {
       const orderTotal = Number(o?.total || 0)
       const cod = isCodTerms(o?.payment_terms)
       const delivered = l.status === "delivered"
-      const collected = Number(l.amount_collected || 0)
-      const expectedForLine = cod ? (collected > 0 ? collected : orderTotal) : 0
-      if (delivered) totalDelivered += orderTotal
+      const editedRaw = editedAmounts[l.id] ?? ""
+      const editedNum = parseFloat(editedRaw || "0") || 0
+      const expectedForLine = delivered && cod ? editedNum : 0
       if (delivered && cod) {
         expected += expectedForLine
         codCount += 1
       }
       if (delivered && !cod) creditCount += 1
-      return { ...l, cod, delivered, expectedForLine, orderTotal }
+      return { ...l, cod, delivered, editedAmount: editedNum, expectedForLine, orderTotal }
     })
-    return { expected, totalDelivered, codCount, creditCount, rows }
-  }, [lines])
+    return { expected, codCount, creditCount, rows }
+  }, [lines, editedAmounts])
 
   const submittedNum = parseFloat(submittedAmount || "0") || 0
   const diff = submittedNum - summary.expected
@@ -120,6 +148,10 @@ export default function DeliverySettlePage() {
   const isShort = diff < -0.5
 
   const alreadySettled = !!delivery?.settled_at
+
+  const setLineAmount = (lineId: string, value: string) => {
+    setEditedAmounts((prev) => ({ ...prev, [lineId]: value }))
+  }
 
   const handleSettle = async () => {
     if (!delivery || !user) return
@@ -133,13 +165,53 @@ export default function DeliverySettlePage() {
     }
     setSubmitting(true)
     try {
-      // 1) For each delivered COD line, ensure receivable exists, then create payment
+      // Persist edited amount_collected back to delivery_lines first
+      for (const r of summary.rows) {
+        if (!r.delivered || !r.cod) continue
+        const newAmt = r.editedAmount
+        if (Number(r.amount_collected || 0) !== newAmt) {
+          await supabase
+            .from("delivery_lines")
+            .update({ amount_collected: newAmt })
+            .eq("id", r.id)
+        }
+      }
+
+      // Create cash receipt header
+      const receiptCode = generateReceiptCode()
+      const { data: receipt, error: receiptErr } = await supabase
+        .from("cash_receipts")
+        .insert({
+          org_id: user.org_id,
+          receipt_code: receiptCode,
+          source_type: "delivery_settle",
+          source_id: delivery.id,
+          collected_by: delivery.driver_id || null,
+          submitted_amount: submittedNum,
+          expected_amount: summary.expected,
+          notes: notes.trim() || null,
+          status: "pending",
+          created_by: user.id,
+        })
+        .select("id")
+        .single()
+      if (receiptErr || !receipt) throw receiptErr || new Error("Không tạo được phiếu thu")
+
+      const receiptLineRows: Array<{
+        receipt_id: string
+        order_id: string
+        receivable_id: string | null
+        payment_id: string | null
+        amount: number
+        notes: string | null
+      }> = []
+
+      // For each delivered COD line: ensure receivable, create payment, update receivable, queue receipt line
       for (const r of summary.rows) {
         if (!r.delivered || !r.cod || !r.order) continue
-        const amountForLine = r.expectedForLine
+        const amountForLine = r.editedAmount
         if (amountForLine <= 0) continue
 
-        // ensure receivable
         await ensureReceivableForOrder(supabase, r.order.id)
         const { data: rec } = await supabase
           .from("receivables")
@@ -152,26 +224,42 @@ export default function DeliverySettlePage() {
         const recAmount = Number(rec.amount || 0)
         const status =
           newPaid >= recAmount ? "paid" : newPaid > 0 ? "partial" : "open"
-
         const method =
           r.payment_method === "cod_transfer" ? "transfer" : "cash"
 
-        await supabase.from("payments").insert({
-          receivable_id: rec.id,
-          collected_by: user.id,
-          amount: amountForLine,
-          method,
-          collected_at: new Date().toISOString(),
-          verified_at: new Date().toISOString(),
-        })
+        const { data: payment } = await supabase
+          .from("payments")
+          .insert({
+            receivable_id: rec.id,
+            collected_by: user.id,
+            amount: amountForLine,
+            method,
+            collected_at: new Date().toISOString(),
+            verified_at: null,
+          })
+          .select("id")
+          .single()
 
         await supabase
           .from("receivables")
           .update({ paid: newPaid, status })
           .eq("id", rec.id)
+
+        receiptLineRows.push({
+          receipt_id: receipt.id,
+          order_id: r.order.id,
+          receivable_id: rec.id,
+          payment_id: payment?.id || null,
+          amount: amountForLine,
+          notes: null,
+        })
       }
 
-      // 2) Mark delivery as settled
+      if (receiptLineRows.length > 0) {
+        await supabase.from("cash_receipt_lines").insert(receiptLineRows)
+      }
+
+      // Mark delivery as settled
       await supabase
         .from("deliveries")
         .update({
@@ -183,12 +271,12 @@ export default function DeliverySettlePage() {
       toast({
         title: "Đã quyết toán",
         description: isMatch
-          ? "Số tiền lái xe nộp khớp với tổng đơn COD."
+          ? `Đã lập phiếu thu ${receiptCode}. Số tiền khớp.`
           : isShort
-            ? `Thiếu ${formatCurrency(Math.abs(diff))}. Đã ghi nhận theo số nộp.`
-            : `Dư ${formatCurrency(diff)}. Đã ghi nhận theo số nộp.`,
+            ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
+            : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`,
       })
-      router.push(`/deliveries/${delivery.id}`)
+      router.push(`/finance/cash-receipts/${receipt.id}`)
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {
@@ -216,7 +304,7 @@ export default function DeliverySettlePage() {
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Left: orders list */}
+        {/* Left: orders list with editable đã thu */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -224,7 +312,7 @@ export default function DeliverySettlePage() {
               Danh sách đơn ({summary.rows.length})
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Chỉ đơn COD được tính vào số tiền tài xế nộp. Đơn công nợ chỉ ghi nhận giao thành công.
+              Có thể chỉnh sửa số tiền đã thu của từng đơn COD trước khi quyết toán. Đơn công nợ chỉ ghi nhận giao thành công.
             </p>
           </CardHeader>
           <CardContent>
@@ -237,6 +325,8 @@ export default function DeliverySettlePage() {
               <div className="space-y-2">
                 {summary.rows.map((r) => {
                   const o = r.order
+                  const editable = !alreadySettled && r.delivered && r.cod
+                  const lineDiff = r.editedAmount - r.orderTotal
                   return (
                     <div
                       key={r.id}
@@ -248,9 +338,9 @@ export default function DeliverySettlePage() {
                           : "bg-muted/20"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <Link
                               href={`/orders/${o?.id || ""}`}
                               className="font-mono text-xs font-bold text-primary hover:underline"
@@ -258,9 +348,7 @@ export default function DeliverySettlePage() {
                               {o?.order_code}
                             </Link>
                             {r.cod ? (
-                              <Badge variant="success" className="text-[10px]">
-                                COD
-                              </Badge>
+                              <Badge variant="success" className="text-[10px]">COD</Badge>
                             ) : (
                               <Badge variant="secondary" className="text-[10px]">
                                 {o?.payment_terms || "Công nợ"}
@@ -280,23 +368,46 @@ export default function DeliverySettlePage() {
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold">
-                            {formatCurrency(r.orderTotal)}
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                            Tiền đơn
                           </p>
-                          {r.cod && r.delivered && (
-                            <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mt-0.5">
-                              Tài xế nộp
-                            </p>
-                          )}
-                          {r.delivered && r.amount_collected != null &&
-                            Number(r.amount_collected) > 0 &&
-                            Number(r.amount_collected) !== r.orderTotal && (
-                              <p className="text-[10px] text-amber-700 font-semibold mt-0.5">
-                                Đã thu: {formatCurrency(Number(r.amount_collected))}
-                              </p>
-                            )}
+                          <p className="text-sm font-bold">{formatCurrency(r.orderTotal)}</p>
                         </div>
                       </div>
+
+                      {editable && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Label className="text-xs text-muted-foreground shrink-0">
+                            Đã thu
+                          </Label>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            className="h-9"
+                            value={editedAmounts[r.id] ?? ""}
+                            onChange={(e) => setLineAmount(r.id, e.target.value)}
+                            disabled={submitting}
+                          />
+                          {lineDiff !== 0 && (
+                            <span
+                              className={`text-[11px] font-semibold whitespace-nowrap ${
+                                lineDiff < 0 ? "text-rose-700" : "text-amber-700"
+                              }`}
+                            >
+                              {lineDiff < 0 ? "Thiếu " : "Dư "}
+                              {formatCurrency(Math.abs(lineDiff))}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!editable && r.delivered && r.cod && (
+                        <p className="text-xs mt-1">
+                          Đã thu:{" "}
+                          <span className="font-semibold">
+                            {formatCurrency(Number(r.amount_collected || 0))}
+                          </span>
+                        </p>
+                      )}
                     </div>
                   )
                 })}
@@ -332,7 +443,7 @@ export default function DeliverySettlePage() {
 
               <div className="rounded-lg bg-white/60 p-3 border">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                  Tổng đơn COD cần nộp
+                  Tổng đã thu (theo từng đơn)
                 </p>
                 <p className="text-2xl font-black mt-1 text-primary">
                   {formatCurrency(summary.expected)}
@@ -359,6 +470,21 @@ export default function DeliverySettlePage() {
                   disabled={alreadySettled || submitting}
                 />
               </div>
+
+              {!alreadySettled && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="notes" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Ghi chú
+                  </Label>
+                  <Input
+                    id="notes"
+                    placeholder="vd: Tài xế nộp thiếu 50k vì khách thanh toán chuyển khoản"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+              )}
 
               {!alreadySettled && submittedAmount !== "" && (
                 <div
@@ -407,7 +533,7 @@ export default function DeliverySettlePage() {
                   disabled={submitting || submittedAmount === "" || summary.codCount === 0}
                 >
                   <ArrowRightCircle className="h-4 w-4 mr-2" />
-                  {submitting ? "Đang xử lý..." : "Xác nhận quyết toán"}
+                  {submitting ? "Đang xử lý..." : "Lập phiếu thu"}
                 </Button>
               )}
             </CardContent>

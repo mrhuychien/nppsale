@@ -92,6 +92,10 @@
   main { margin: 0 !important; padding: 0 !important; }
   body { background: white !important; }
   .print-only { display: block !important; }
+  .print-page { page-break-after: always; break-after: page; }
+  .print-page:last-child { page-break-after: auto; break-after: auto; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
 }
 
 @layer utilities {

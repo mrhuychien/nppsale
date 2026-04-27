@@ -665,3 +665,43 @@ export interface HrPayroll {
   // Joined
   user?: User
 }
+
+export type CashReceiptStatus = "pending" | "received" | "voided"
+export type CashReceiptSourceType = "delivery_settle" | "manual"
+
+export interface CashReceipt {
+  id: string
+  org_id: string
+  receipt_code: string
+  receipt_date: string
+  source_type: CashReceiptSourceType
+  source_id: string | null
+  collected_by: string | null
+  submitted_amount: number
+  expected_amount: number
+  notes: string | null
+  status: CashReceiptStatus
+  received_by: string | null
+  received_at: string | null
+  created_by: string | null
+  created_at: string
+  // Joined
+  collector?: { full_name?: string | null } | null
+  receiver?: { full_name?: string | null } | null
+  creator?: { full_name?: string | null } | null
+}
+
+export interface CashReceiptLine {
+  id: string
+  receipt_id: string
+  order_id: string | null
+  receivable_id: string | null
+  payment_id: string | null
+  amount: number
+  notes: string | null
+  // Joined
+  order?: {
+    order_code?: string
+    customer?: { store_name?: string | null } | null
+  } | null
+}

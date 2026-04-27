@@ -237,6 +237,12 @@ export default function InventoryPage() {
             </Link>
           </Button>
           <Button variant="outline" asChild>
+            <Link href="/inventory/entries">
+              <ClipboardList className="mr-2 h-4 w-4" />
+              Danh sách phiếu
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link href="/inventory/stocktake-adjust">
               <ClipboardCheck className="mr-2 h-4 w-4" />
               Kiểm kê
@@ -556,7 +562,17 @@ export default function InventoryPage() {
         </TabsContent>
 
         {/* Tab 3: stock entries */}
-        <TabsContent value="entries" className="mt-4">
+        <TabsContent value="entries" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              {entries.length} phiếu gần nhất
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/inventory/entries">
+                <ClipboardList className="mr-2 h-4 w-4" /> Xem tất cả phiếu
+              </Link>
+            </Button>
+          </div>
           <Card>
             <CardContent className="p-0">
               {loading ? (
@@ -577,6 +593,7 @@ export default function InventoryPage() {
                       <TableHead>Người tạo</TableHead>
                       <TableHead>Ghi chú</TableHead>
                       <TableHead>Ngày</TableHead>
+                      <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -591,18 +608,25 @@ export default function InventoryPage() {
                               ? "default"
                               : "secondary"
                       return (
-                        <TableRow key={e.id}>
-                          <TableCell className="font-mono text-sm">
+                        <TableRow
+                          key={e.id}
+                          className="cursor-pointer hover:bg-muted/30"
+                          onClick={() => router.push(`/inventory/entries/${e.id}`)}
+                        >
+                          <TableCell className="font-mono text-sm font-bold text-primary">
                             {e.entry_code}
                           </TableCell>
                           <TableCell>
                             <Badge variant={variant}>{t?.label || e.type}</Badge>
                           </TableCell>
                           <TableCell>{e.creator?.full_name || "—"}</TableCell>
-                          <TableCell className="text-muted-foreground">
+                          <TableCell className="text-muted-foreground max-w-xs truncate">
                             {e.notes || "—"}
                           </TableCell>
                           <TableCell>{formatDate(e.created_at)}</TableCell>
+                          <TableCell>
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          </TableCell>
                         </TableRow>
                       )
                     })}

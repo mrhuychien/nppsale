@@ -18,15 +18,29 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
-import { formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
   CheckCheck, AlertCircle, ClipboardCheck, PackageCheck, Wallet,
+  Eye, Banknote,
 } from "lucide-react"
-import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, User } from "@/types"
+import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, SalesOrder, SalesOrderLine, User } from "@/types"
+
+type OrderDetail = SalesOrder & {
+  customer?: SalesOrder["customer"] & { address?: string | null; ward?: string | null; district?: string | null; province?: string | null }
+  lines?: (SalesOrderLine & { product?: { name?: string; sku?: string; base_unit?: string } })[]
+}
 
 type NextStatus = {
   value: DeliveryStatus
@@ -60,11 +74,20 @@ export default function DeliveryDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ driver_id: "", vehicle: "", route_name: "" })
-  const [lineNoteMap, setLineNoteMap] = useState<Record<string, string>>({})
-  const [linePaymentMethodMap, setLinePaymentMethodMap] = useState<Record<string, DeliveryPaymentMethod>>({})
-  const [lineAmountCollectedMap, setLineAmountCollectedMap] = useState<Record<string, string>>({})
   const [handoffLoading, setHandoffLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+
+  const [orderDetailOpen, setOrderDetailOpen] = useState(false)
+  const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false)
+
+  const [collectOpen, setCollectOpen] = useState(false)
+  const [collectLine, setCollectLine] = useState<DeliveryLine | null>(null)
+  const [collectMethod, setCollectMethod] = useState<DeliveryPaymentMethod | "">("")
+  const [collectAmount, setCollectAmount] = useState<string>("")
+  const [collectNote, setCollectNote] = useState<string>("")
+  const [collectSaving, setCollectSaving] = useState(false)
+
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -200,16 +223,6 @@ export default function DeliveryDetailPage() {
         status: newStatus,
         delivered_at: new Date().toISOString(),
       }
-      if (lineNoteMap[lineId]) {
-        updates.notes = lineNoteMap[lineId]
-      }
-      if (linePaymentMethodMap[lineId]) {
-        updates.payment_method = linePaymentMethodMap[lineId]
-      }
-      const collected = parseFloat(lineAmountCollectedMap[lineId] || "0")
-      if (collected > 0) {
-        updates.amount_collected = collected
-      }
       const { error } = await supabase.from("delivery_lines").update(updates).eq("id", lineId)
       if (error) throw error
 
@@ -228,6 +241,64 @@ export default function DeliveryDetailPage() {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  const openOrderDetail = async (orderId: string) => {
+    setOrderDetailOpen(true)
+    setOrderDetail(null)
+    setOrderDetailLoading(true)
+    try {
+      const { data } = await supabase
+        .from("sales_orders")
+        .select(
+          "*, customer:customers(*), lines:sales_order_lines(*, product:products(name, sku, base_unit))"
+        )
+        .eq("id", orderId)
+        .single()
+      setOrderDetail((data as unknown as OrderDetail) || null)
+    } finally {
+      setOrderDetailLoading(false)
+    }
+  }
+
+  const openCollect = (line: DeliveryLine) => {
+    setCollectLine(line)
+    setCollectMethod((line.payment_method as DeliveryPaymentMethod) || "cod_cash")
+    setCollectAmount(
+      line.amount_collected != null && Number(line.amount_collected) > 0
+        ? String(line.amount_collected)
+        : String(line.order?.total ?? "")
+    )
+    setCollectNote(line.notes || "")
+    setCollectOpen(true)
+  }
+
+  const handleSaveCollect = async () => {
+    if (!collectLine) return
+    setCollectSaving(true)
+    try {
+      const updates: Record<string, unknown> = {}
+      if (collectMethod) updates.payment_method = collectMethod
+      const amt = parseFloat(collectAmount || "0")
+      if (!Number.isNaN(amt) && amt >= 0) updates.amount_collected = amt
+      if (collectNote.trim() !== "") updates.notes = collectNote.trim()
+      if (Object.keys(updates).length === 0) {
+        setCollectOpen(false)
+        return
+      }
+      const { error } = await supabase
+        .from("delivery_lines")
+        .update(updates)
+        .eq("id", collectLine.id)
+      if (error) throw error
+      toast({ title: "Đã lưu thu tiền" })
+      setCollectOpen(false)
+      fetchData()
+    } catch (err) {
+      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+    } finally {
+      setCollectSaving(false)
     }
   }
 
@@ -324,27 +395,42 @@ export default function DeliveryDetailPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        {canMarkLines && line.status === "pending" ? (
-                          <div className="flex gap-1 justify-end flex-wrap">
-                            <Button size="sm" variant="outline" asChild>
-                              <Link href={`/deliveries/${delivery.id}/pod/${line.id}`}>
-                                <ClipboardCheck className="h-3 w-3 mr-1" /> Xác nhận POD
-                              </Link>
-                            </Button>
-                            <Button size="sm" onClick={() => handleLineAction(line.id, "delivered")} disabled={actionLoading}>
-                              <CheckCheck className="h-3 w-3 mr-1" /> Giao OK
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleLineAction(line.id, "failed")} disabled={actionLoading}>
-                              <AlertCircle className="h-3 w-3 mr-1" /> Thất bại
-                            </Button>
-                          </div>
-                        ) : line.status === "pending" ? (
-                          user && ["owner", "manager"].includes(user.role) && delivery.status === "pending" && (
-                            <Button size="sm" variant="ghost" onClick={() => handleRemoveLine(line.id)}>
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )
-                        ) : null}
+                        <div className="flex gap-1 justify-end flex-wrap">
+                          <Button size="sm" variant="ghost" onClick={() => openOrderDetail(line.order_id)} title="Xem chi tiết đơn">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          {canMarkLines && line.status === "pending" && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => openCollect(line)}>
+                                <Banknote className="h-3 w-3 mr-1" />
+                                {line.amount_collected != null && Number(line.amount_collected) > 0 ? "Sửa thu tiền" : "Thu tiền"}
+                              </Button>
+                              <Button size="sm" variant="outline" asChild>
+                                <Link href={`/deliveries/${delivery.id}/pod/${line.id}`}>
+                                  <ClipboardCheck className="h-3 w-3 mr-1" /> POD
+                                </Link>
+                              </Button>
+                              <Button size="sm" onClick={() => handleLineAction(line.id, "delivered")} disabled={actionLoading}>
+                                <CheckCheck className="h-3 w-3 mr-1" /> Giao OK
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleLineAction(line.id, "failed")} disabled={actionLoading}>
+                                <AlertCircle className="h-3 w-3 mr-1" /> Thất bại
+                              </Button>
+                            </>
+                          )}
+                          {line.status === "pending" &&
+                            user && ["owner", "manager"].includes(user.role) &&
+                            delivery.status === "pending" && (
+                              <Button size="sm" variant="ghost" onClick={() => handleRemoveLine(line.id)} title="Xóa khỏi chuyến">
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                        </div>
+                        {line.amount_collected != null && Number(line.amount_collected) > 0 && (
+                          <p className="text-[10px] text-emerald-700 font-semibold mt-1">
+                            Đã thu: {formatCurrency(Number(line.amount_collected))}
+                          </p>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -541,58 +627,162 @@ export default function DeliveryDetailPage() {
             </Card>
           )}
 
-          {/* Payment + Notes for line during transit */}
-          {canMarkLines && lines.some((l) => l.status === "pending") && (
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Thu tiền & ghi chú</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Chọn hình thức thu tiền và ghi chú cho từng đơn trước khi bấm &quot;Giao OK&quot;.
-                </p>
-                {lines.filter((l) => l.status === "pending").map((line) => (
-                  <div key={line.id} className="space-y-2 border-b border-border/40 pb-3 last:border-0">
-                    <Label className="text-xs font-bold">{line.order?.order_code}</Label>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Hình thức thu</Label>
-                      <Select
-                        value={linePaymentMethodMap[line.id] || "_none"}
-                        onValueChange={(v) => setLinePaymentMethodMap({ ...linePaymentMethodMap, [line.id]: v === "_none" ? undefined as unknown as DeliveryPaymentMethod : v as DeliveryPaymentMethod })}
-                      >
-                        <SelectTrigger className="h-9"><SelectValue placeholder="Chọn" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_none">-- Chọn --</SelectItem>
-                          <SelectItem value="cod_cash">COD tiền mặt</SelectItem>
-                          <SelectItem value="cod_transfer">COD chuyển khoản</SelectItem>
-                          <SelectItem value="credit">Công nợ</SelectItem>
-                          <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {linePaymentMethodMap[line.id] && linePaymentMethodMap[line.id] !== "credit" && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Số tiền thu</Label>
-                        <Input
-                          type="number"
-                          className="h-9"
-                          placeholder="0"
-                          value={lineAmountCollectedMap[line.id] || ""}
-                          onChange={(e) => setLineAmountCollectedMap({ ...lineAmountCollectedMap, [line.id]: e.target.value })}
-                        />
-                      </div>
-                    )}
-                    <Textarea
-                      rows={2}
-                      placeholder="vd: Khách vắng, hẹn giao lại sáng mai"
-                      value={lineNoteMap[line.id] || ""}
-                      onChange={(e) => setLineNoteMap({ ...lineNoteMap, [line.id]: e.target.value })}
-                    />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
+
+      {/* Order detail modal */}
+      <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {orderDetail ? `Đơn ${orderDetail.order_code}` : "Chi tiết đơn"}
+            </DialogTitle>
+            {orderDetail && (
+              <DialogDescription>
+                Khách: {orderDetail.customer?.store_name || "-"}
+                {orderDetail.customer?.phone ? ` • ${orderDetail.customer.phone}` : ""}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {orderDetailLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : orderDetail ? (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Ngày đặt</p>
+                  <p className="font-semibold">{formatDate(orderDetail.order_date)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Hình thức thanh toán</p>
+                  <p className="font-semibold">{orderDetail.payment_terms || "COD"}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Địa chỉ giao</p>
+                  <p className="font-medium">
+                    {[orderDetail.customer?.address, orderDetail.customer?.ward, orderDetail.customer?.district, orderDetail.customer?.province]
+                      .filter(Boolean)
+                      .join(", ") || "-"}
+                  </p>
+                </div>
+                {orderDetail.notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Ghi chú đơn</p>
+                    <p className="whitespace-pre-wrap">{orderDetail.notes}</p>
+                  </div>
+                )}
+              </div>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="text-left px-2 py-2 font-semibold">SKU</th>
+                      <th className="text-left px-2 py-2 font-semibold">Sản phẩm</th>
+                      <th className="text-center px-2 py-2 font-semibold w-12">ĐVT</th>
+                      <th className="text-right px-2 py-2 font-semibold w-12">SL</th>
+                      <th className="text-right px-2 py-2 font-semibold w-24">Đơn giá</th>
+                      <th className="text-right px-2 py-2 font-semibold w-28">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(orderDetail.lines || []).map((l) => (
+                      <tr key={l.id} className="border-t">
+                        <td className="px-2 py-1.5 font-mono">{l.product?.sku || "-"}</td>
+                        <td className="px-2 py-1.5">{l.product?.name || "-"}</td>
+                        <td className="px-2 py-1.5 text-center">{l.unit_name}</td>
+                        <td className="px-2 py-1.5 text-right font-semibold">{l.quantity}</td>
+                        <td className="px-2 py-1.5 text-right">{formatCurrency(Number(l.unit_price || 0))}</td>
+                        <td className="px-2 py-1.5 text-right font-semibold">{formatCurrency(Number(l.line_total || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end gap-6 text-sm border-t pt-3">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Tạm tính</p>
+                  <p className="font-semibold">{formatCurrency(Number(orderDetail.subtotal || 0))}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">VAT</p>
+                  <p className="font-semibold">{formatCurrency(Number(orderDetail.vat || 0))}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Tổng tiền</p>
+                  <p className="text-lg font-black text-primary">{formatCurrency(Number(orderDetail.total || 0))}</p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/orders/${orderDetail.id}`}>Mở trang đơn</Link>
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Không tìm thấy đơn.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Collect-cash modal */}
+      <Dialog open={collectOpen} onOpenChange={setCollectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Thu tiền {collectLine?.order?.order_code}</DialogTitle>
+            <DialogDescription>
+              {collectLine?.order?.customer?.store_name} • Tổng đơn {formatCurrency(Number(collectLine?.order?.total || 0))}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hình thức thu</Label>
+              <Select
+                value={collectMethod || "_none"}
+                onValueChange={(v) => setCollectMethod(v === "_none" ? "" : (v as DeliveryPaymentMethod))}
+              >
+                <SelectTrigger><SelectValue placeholder="Chọn" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">-- Chọn --</SelectItem>
+                  <SelectItem value="cod_cash">COD tiền mặt</SelectItem>
+                  <SelectItem value="cod_transfer">COD chuyển khoản</SelectItem>
+                  <SelectItem value="credit">Công nợ</SelectItem>
+                  <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Số tiền thu</Label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                placeholder="0"
+                value={collectAmount}
+                onChange={(e) => setCollectAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Ghi chú</Label>
+              <Textarea
+                rows={2}
+                placeholder="vd: Khách thanh toán đủ"
+                value={collectNote}
+                onChange={(e) => setCollectNote(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCollectOpen(false)} disabled={collectSaving}>
+              Hủy
+            </Button>
+            <Button onClick={handleSaveCollect} disabled={collectSaving}>
+              {collectSaving ? "Đang lưu..." : "Lưu"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialogs */}
       <ConfirmDialog

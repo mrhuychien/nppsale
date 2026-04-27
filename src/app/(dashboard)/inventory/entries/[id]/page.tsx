@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Printer, Package, Truck } from "lucide-react"
 import type { StockEntry, StockEntryLine } from "@/types"
@@ -37,8 +37,28 @@ export default function StockEntryDetailPage() {
   const [refOrders, setRefOrders] = useState<Array<{
     id: string
     order_code: string
-    customer?: { store_name?: string } | null
-    lines?: Array<{ product_id: string; unit_name: string; quantity: number; product?: { name: string; sku: string } | null }>
+    order_date?: string | null
+    total?: number | null
+    subtotal?: number | null
+    vat?: number | null
+    payment_terms?: string | null
+    notes?: string | null
+    customer?: {
+      store_name?: string | null
+      phone?: string | null
+      address?: string | null
+      ward?: string | null
+      district?: string | null
+      province?: string | null
+    } | null
+    lines?: Array<{
+      product_id: string
+      unit_name: string
+      quantity: number
+      unit_price?: number | null
+      line_total?: number | null
+      product?: { name: string; sku: string } | null
+    }>
   }>>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -76,12 +96,7 @@ export default function StockEntryDetailPage() {
 
     // For export entries that wrap multiple orders, load the source orders
     // with their lines so the warehouse can see how to split the aggregate.
-    type RefOrder = {
-      id: string
-      order_code: string
-      customer?: { store_name?: string } | null
-      lines?: Array<{ product_id: string; unit_name: string; quantity: number; product?: { name: string; sku: string } | null }>
-    }
+    type RefOrder = typeof refOrders extends Array<infer U> ? U : never
     const refOrderIds =
       (entryData?.type === "export" && Array.isArray(entryData.ref_order_ids))
         ? (entryData.ref_order_ids as string[])
@@ -89,7 +104,9 @@ export default function StockEntryDetailPage() {
     if (refOrderIds.length > 0) {
       const { data: orderRows } = await supabase
         .from("sales_orders")
-        .select("id, order_code, customer:customers(store_name), lines:sales_order_lines(product_id, unit_name, quantity, product:products(name, sku))")
+        .select(
+          "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+        )
         .in("id", refOrderIds)
       setRefOrders(((orderRows as unknown) as RefOrder[]) || [])
     } else {
@@ -576,9 +593,10 @@ export default function StockEntryDetailPage() {
         loading={actionLoading}
       />
 
-      {/* Print-only section */}
+      {/* Print-only section: 1 trang phiếu xuất tổng + 1 trang/đơn chi tiết */}
       <div className="print-only">
-        <div className="p-8">
+        {/* Page 1: aggregate stock entry */}
+        <div className="print-page p-8">
           <h1 className="text-2xl font-black text-center uppercase mb-6">
             {entry.type === "export" ? "Phiếu xuất kho" : entry.type === "import" ? "Phiếu nhập kho" : entry.type === "transfer" ? "Phiếu chuyển kho" : "Phiếu kiểm kê"}
           </h1>
@@ -587,6 +605,9 @@ export default function StockEntryDetailPage() {
             <div>
               <p><span className="text-gray-500">Mã phiếu:</span> <span className="font-bold font-mono">{entry.entry_code}</span></p>
               <p><span className="text-gray-500">Ngày tạo:</span> <span className="font-semibold">{formatDate(entry.created_at)}</span></p>
+              {refOrders.length > 0 && (
+                <p><span className="text-gray-500">Số đơn gộp:</span> <span className="font-semibold">{refOrders.length}</span></p>
+              )}
             </div>
             <div>
               <p><span className="text-gray-500">Người lập:</span> <span className="font-semibold">{entry.creator?.full_name || "-"}</span></p>
@@ -643,6 +664,103 @@ export default function StockEntryDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Pages 2..n: per-order delivery slip */}
+        {refOrders.map((o, idx) => {
+          const orderLines = o.lines || []
+          const orderQty = orderLines.reduce((s, l) => s + Number(l.quantity || 0), 0)
+          const orderTotal = orderLines.reduce(
+            (s, l) => s + Number(l.line_total || Number(l.unit_price || 0) * Number(l.quantity || 0)),
+            0
+          )
+          const fullAddress = [o.customer?.address, o.customer?.ward, o.customer?.district, o.customer?.province]
+            .filter(Boolean)
+            .join(", ")
+          return (
+            <div key={o.id} className="print-page p-8">
+              <div className="flex justify-between items-start mb-4 text-xs text-gray-500">
+                <span>Phiếu giao hàng — {entry.entry_code}</span>
+                <span>{idx + 1}/{refOrders.length}</span>
+              </div>
+              <h1 className="text-2xl font-black text-center uppercase mb-1">
+                Phiếu giao hàng
+              </h1>
+              <p className="text-center font-mono font-bold mb-6">{o.order_code}</p>
+
+              <div className="grid grid-cols-2 gap-4 mb-5 text-sm">
+                <div className="space-y-1">
+                  <p><span className="text-gray-500">Khách hàng:</span> <span className="font-bold">{o.customer?.store_name || "-"}</span></p>
+                  {o.customer?.phone && (
+                    <p><span className="text-gray-500">SĐT:</span> <span className="font-semibold">{o.customer.phone}</span></p>
+                  )}
+                  {fullAddress && (
+                    <p><span className="text-gray-500">Địa chỉ:</span> <span className="font-semibold">{fullAddress}</span></p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p><span className="text-gray-500">Ngày đặt:</span> <span className="font-semibold">{o.order_date ? formatDate(o.order_date) : "-"}</span></p>
+                  <p><span className="text-gray-500">Hình thức:</span> <span className="font-semibold">{o.payment_terms || "COD"}</span></p>
+                  {o.notes && <p><span className="text-gray-500">Ghi chú:</span> {o.notes}</p>}
+                </div>
+              </div>
+
+              <table className="w-full text-sm border-collapse mb-6">
+                <thead>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="py-2 text-left font-bold w-10">STT</th>
+                    <th className="py-2 text-left font-bold">Sản phẩm</th>
+                    <th className="py-2 text-left font-bold w-24">SKU</th>
+                    <th className="py-2 text-center font-bold w-14">ĐVT</th>
+                    <th className="py-2 text-right font-bold w-16">SL</th>
+                    <th className="py-2 text-right font-bold w-24">Đơn giá</th>
+                    <th className="py-2 text-right font-bold w-28">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderLines.map((l, i) => {
+                    const lineTotal = Number(l.line_total || Number(l.unit_price || 0) * Number(l.quantity || 0))
+                    return (
+                      <tr key={i} className="border-b border-gray-200">
+                        <td className="py-1.5">{i + 1}</td>
+                        <td className="py-1.5 font-medium">{l.product?.name || "-"}</td>
+                        <td className="py-1.5 font-mono text-xs">{l.product?.sku || "-"}</td>
+                        <td className="py-1.5 text-center">{l.unit_name}</td>
+                        <td className="py-1.5 text-right font-bold">{l.quantity}</td>
+                        <td className="py-1.5 text-right">{l.unit_price ? formatCurrency(Number(l.unit_price)) : "-"}</td>
+                        <td className="py-1.5 text-right font-semibold">{lineTotal ? formatCurrency(lineTotal) : "-"}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300">
+                    <td colSpan={4} className="py-2 text-right font-bold">Tổng cộng:</td>
+                    <td className="py-2 text-right font-black">{orderQty}</td>
+                    <td className="py-2 text-right text-gray-500 text-xs">Tổng tiền</td>
+                    <td className="py-2 text-right font-black">
+                      {formatCurrency(Number(o.total || orderTotal))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+
+              <div className="grid grid-cols-3 gap-8 text-center text-sm mt-12">
+                <div>
+                  <p className="font-bold">Thủ kho</p>
+                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                </div>
+                <div>
+                  <p className="font-bold">Lái xe / Giao hàng</p>
+                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                </div>
+                <div>
+                  <p className="font-bold">Khách hàng</p>
+                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

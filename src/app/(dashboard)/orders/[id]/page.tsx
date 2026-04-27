@@ -217,6 +217,16 @@ export default function OrderDetailPage() {
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
     if (!order || !user) return
+
+    // Confirmed → picking goes through the stock-out screen so the warehouse
+    // can review the pick list and create the export entry before the order
+    // flips to "picking".
+    if (newStatus === "picking" && order.status === "confirmed") {
+      setConfirmOpen(null)
+      router.push(`/inventory/stock-out?orderIds=${order.id}`)
+      return
+    }
+
     setActionLoading(true)
     try {
       const updates: Record<string, unknown> = { status: newStatus }

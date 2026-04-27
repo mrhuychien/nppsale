@@ -315,6 +315,16 @@ export default function OrdersPage() {
       toast({ title: "Không có bước tiếp theo", variant: "destructive" })
       return
     }
+
+    // Confirmed → picking goes through the stock-out screen so the warehouse
+    // can review the pick list, scan barcodes, and create the export entry
+    // before the orders flip to "picking".
+    if (firstStatus === "confirmed") {
+      const ids = selected.map((o) => o.id)
+      router.push(`/inventory/stock-out?orderIds=${ids.join(",")}`)
+      return
+    }
+
     if (!confirm(`${next.label} cho ${selected.length} đơn?`)) return
 
     const ids = selected.map((o) => o.id)

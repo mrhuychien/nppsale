@@ -24,7 +24,7 @@ import { formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
-  CheckCheck, AlertCircle, ClipboardCheck, PackageCheck,
+  CheckCheck, AlertCircle, ClipboardCheck, PackageCheck, Wallet,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, User } from "@/types"
 
@@ -111,6 +111,10 @@ export default function DeliveryDetailPage() {
       if (error) throw error
       toast({ title: `Đã chuyển trạng thái: ${newStatus}` })
       setConfirmOpen(null)
+      if (newStatus === "completed") {
+        router.push(`/deliveries/${delivery.id}/settle`)
+        return
+      }
       fetchData()
     } catch (error) {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
@@ -359,6 +363,27 @@ export default function DeliveryDetailPage() {
 
         {/* Right - info + actions */}
         <div className="space-y-4">
+          {delivery.status === "completed" && (
+            <Card className="border-emerald-500/40 bg-emerald-500/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base text-emerald-700">
+                  <Wallet className="h-5 w-5" />
+                  Quyết toán chuyến giao
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Tài xế nộp tiền thu được. Hệ thống sẽ kiểm khớp với tổng đơn COD.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <Button asChild className="w-full h-11">
+                  <Link href={`/deliveries/${delivery.id}/settle`}>
+                    <Wallet className="h-4 w-4 mr-2" /> Vào màn hình trả tiền
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Info card */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">

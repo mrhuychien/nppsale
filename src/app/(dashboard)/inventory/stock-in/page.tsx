@@ -21,6 +21,13 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import Link from "next/link"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   ArrowLeft,
   Info,
   Plus,
@@ -30,6 +37,7 @@ import {
   ScanBarcode,
 } from "lucide-react"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import { ProductForm } from "@/components/products/product-form"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 
 interface LineItem {
@@ -95,6 +103,24 @@ export default function StockInPage() {
   const [lines, setLines] = useState<LineItem[]>([newLine()])
   const [productSearch, setProductSearch] = useState("")
   const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const [createProductOpen, setCreateProductOpen] = useState(false)
+  const [pendingProductSearch, setPendingProductSearch] = useState("")
+
+  // Refetch products and add the newest one to the next empty line so the
+  // user can immediately keep filling the import.
+  const refetchProductsAndPickLatest = async () => {
+    const { data } = await supabase
+      .from("products")
+      .select("*, price_lists(*), units:product_units(*)")
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+    const list = (data as ProductWithRelations[]) || []
+    setProducts(list)
+    if (list.length > 0) {
+      addProductLine(list[0].id)
+    }
+    setProductSearch("")
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -592,14 +618,16 @@ export default function StockInPage() {
                   </button>
                 ))}
                 <div className="border-t border-border/50 p-2">
-                  <Link
-                    href="/products/new"
-                    target="_blank"
-                    className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingProductSearch(productSearch)
+                      setCreateProductOpen(true)
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
                   >
                     <Plus className="h-3 w-3" /> Tạo sản phẩm mới
-                    <ExternalLink className="h-3 w-3 ml-auto" />
-                  </Link>
+                  </button>
                 </div>
               </div>
             )}
@@ -613,6 +641,19 @@ export default function StockInPage() {
               title="Quét mã vạch"
             >
               <ScanBarcode className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0"
+              onClick={() => {
+                setPendingProductSearch(productSearch)
+                setCreateProductOpen(true)
+              }}
+              title="Tạo sản phẩm mới"
+            >
+              <Plus className="h-5 w-5" />
             </Button>
           </div>
 
@@ -812,6 +853,25 @@ export default function StockInPage() {
       </Card>
 
       <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
+
+      <Dialog open={createProductOpen} onOpenChange={setCreateProductOpen}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Tạo sản phẩm mới</DialogTitle>
+            <DialogDescription>
+              {pendingProductSearch
+                ? `Sản phẩm vừa tạo sẽ được tự động thêm vào phiếu nhập (đang tìm: "${pendingProductSearch}")`
+                : "Sản phẩm vừa tạo sẽ được tự động thêm vào phiếu nhập."}
+            </DialogDescription>
+          </DialogHeader>
+          <ProductForm
+            onSaved={async () => {
+              setCreateProductOpen(false)
+              await refetchProductsAndPickLatest()
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

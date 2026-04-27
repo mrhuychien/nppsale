@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { Camera, MapPin, RotateCcw, Loader2, Check } from "lucide-react"
+import { Camera, MapPin, RotateCcw, Loader2, Check, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 interface VisitCheckinDialogProps {
   open: boolean
@@ -22,6 +22,29 @@ interface VisitCheckinDialogProps {
   customerName: string
   onSuccess?: () => void
 }
+
+// Haversine distance in metres between two lat/lng points.
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000 // metres
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// Threshold in metres: warn the rep if their check-in is further than this
+// from the customer's stored location.
+const PROXIMITY_WARN_METERS = 100
+const PROXIMITY_BLOCK_METERS = 500
 
 type VisitResult = "order_placed" | "no_order" | "closed" | "not_visited"
 
@@ -51,8 +74,30 @@ export function VisitCheckinDialog({
   const [result, setResult] = useState<VisitResult>("no_order")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
+  const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Load customer's stored GPS so we can compare with the check-in coordinates
+  useEffect(() => {
+    if (!open || !customerId) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from("customers")
+        .select("gps_lat, gps_lng")
+        .eq("id", customerId)
+        .maybeSingle()
+      if (cancelled) return
+      const row = data as { gps_lat: number | null; gps_lng: number | null } | null
+      if (row && row.gps_lat != null && row.gps_lng != null) {
+        setCustomerCoords({ lat: Number(row.gps_lat), lng: Number(row.gps_lng) })
+      } else {
+        setCustomerCoords(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [open, customerId, supabase])
 
   // Capture GPS when dialog opens
   useEffect(() => {
@@ -64,6 +109,7 @@ export function VisitCheckinDialog({
       setGpsError(null)
       setResult("no_order")
       setNotes("")
+      setCustomerCoords(null)
       return
     }
     if (!navigator.geolocation) {
@@ -84,6 +130,11 @@ export function VisitCheckinDialog({
     )
   }, [open])
 
+  const distanceMeters =
+    coords && customerCoords
+      ? haversineMeters(coords.lat, coords.lng, customerCoords.lat, customerCoords.lng)
+      : null
+
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
@@ -102,6 +153,19 @@ export function VisitCheckinDialog({
     if (!user?.org_id || !user.id) {
       toast({ title: "Chưa đăng nhập", variant: "destructive" })
       return
+    }
+    // Block obvious mismatches (>500m) unless the rep explicitly chose
+    // "not_visited" (used for off-route notes).
+    if (
+      distanceMeters != null &&
+      distanceMeters > PROXIMITY_BLOCK_METERS &&
+      result !== "not_visited"
+    ) {
+      const km = (distanceMeters / 1000).toFixed(2)
+      const ok = window.confirm(
+        `Bạn đang cách điểm bán ${km} km — vẫn ghi nhận?`
+      )
+      if (!ok) return
     }
     setSaving(true)
     try {
@@ -226,8 +290,8 @@ export function VisitCheckinDialog({
           </div>
 
           {/* GPS */}
-          <div className="rounded-xl border p-3 bg-muted/20">
-            <div className="flex items-center gap-2 mb-1">
+          <div className="rounded-xl border p-3 bg-muted/20 space-y-2">
+            <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Vị trí check-in</p>
             </div>
@@ -241,6 +305,37 @@ export function VisitCheckinDialog({
               </p>
             ) : (
               <p className="text-xs text-destructive">{gpsError || "Chưa có"}</p>
+            )}
+
+            {/* Proximity check */}
+            {coords && !customerCoords && (
+              <p className="text-[11px] text-muted-foreground">
+                Điểm bán chưa lưu vị trí → không thể đối chiếu khoảng cách.
+              </p>
+            )}
+            {coords && customerCoords && distanceMeters != null && (
+              distanceMeters <= PROXIMITY_WARN_METERS ? (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-800 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Đúng vị trí điểm bán ({Math.round(distanceMeters)} m)
+                  </span>
+                </div>
+              ) : distanceMeters <= PROXIMITY_BLOCK_METERS ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Cách điểm bán {Math.round(distanceMeters)} m — kiểm tra lại bạn có đang ở đúng cửa hàng không.
+                  </span>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-rose-300 bg-rose-50 p-2 text-xs text-rose-800 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Cách điểm bán {(distanceMeters / 1000).toFixed(2)} km — quá xa, hệ thống sẽ yêu cầu xác nhận.
+                  </span>
+                </div>
+              )
             )}
           </div>
 

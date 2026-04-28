@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
 import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, PackageCheck } from "lucide-react"
+import { processApprovedReturn } from "@/lib/returns"
 import type { Return, ReturnLine, ReturnStatus } from "@/types"
 
 type NextStatus = {
@@ -86,10 +87,44 @@ export default function ReturnDetailPage() {
     if (!ret || !user) return
     setActionLoading(true)
     try {
-      const updates: Record<string, unknown> = { status: newStatus }
+      // Approving the return triggers the full processing pipeline:
+      // restock the goods, net the credit against the linked order's
+      // receivable, then mark the return 'completed' so warehouse doesn't
+      // have to repeat the action at /inventory/pending.
       if (newStatus === "approved") {
-        updates.approved_by = user.id
+        const { error: approveErr } = await supabase
+          .from("returns")
+          .update({ status: "approved", approved_by: user.id })
+          .eq("id", ret.id)
+        if (approveErr) throw approveErr
+
+        const result = await processApprovedReturn(supabase, ret.id, user.id)
+        if (!result.ok) {
+          throw new Error(result.error || "Không xử lý được phiếu trả")
+        }
+        toast({
+          title: "Đã duyệt và nhập lại kho",
+          description: result.entryId
+            ? `Phiếu nhập đã tạo. Công nợ đã được trừ.`
+            : `Đã ghi nhận credit note. Công nợ đã được trừ.`,
+        })
+        setConfirmOpen(null)
+        fetchData()
+        return
       }
+
+      // approved → completed (legacy: returns left in 'approved' before this
+      // codepath auto-processed). Run the same pipeline so AR/stock stay in sync.
+      if (newStatus === "completed" && ret.status === "approved") {
+        const result = await processApprovedReturn(supabase, ret.id, user.id)
+        if (!result.ok) throw new Error(result.error || "Không xử lý được phiếu trả")
+        toast({ title: "Đã hoàn tất phiếu trả + nhập lại kho" })
+        setConfirmOpen(null)
+        fetchData()
+        return
+      }
+
+      const updates: Record<string, unknown> = { status: newStatus }
       const { error } = await supabase.from("returns").update(updates).eq("id", ret.id)
       if (error) throw error
       toast({ title: `Đã chuyển trạng thái: ${newStatus}` })

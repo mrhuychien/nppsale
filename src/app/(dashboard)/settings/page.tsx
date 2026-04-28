@@ -4,7 +4,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Users, Building2, CheckCircle2, Tag } from "lucide-react"
+import { Users, Building2, CheckCircle2, Tag, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 
 export default function SettingsPage() {
@@ -18,7 +18,13 @@ export default function SettingsPage() {
         <Link href="/settings/users">
           <Card className="hover:border-primary transition-colors cursor-pointer h-full">
             <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Người dùng</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Quản lý tài khoản, phân quyền</p></CardContent>
+            <CardContent><p className="text-sm text-muted-foreground">Quản lý tài khoản, gán vai trò</p></CardContent>
+          </Card>
+        </Link>
+        <Link href="/settings/permissions">
+          <Card className="hover:border-primary transition-colors cursor-pointer h-full">
+            <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Phân quyền</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Cấu hình quyền chi tiết: Xem, Tạo, Cập nhật, Xóa, Duyệt, Xuất</p></CardContent>
           </Card>
         </Link>
         <Link href="/settings/approval-rules">

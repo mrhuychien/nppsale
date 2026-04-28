@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { PermissionsLoader } from "@/components/permissions-loader"
 
 export default function DashboardLayout({
   children,
@@ -92,6 +93,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-background">
+      <PermissionsLoader />
       <Sidebar role={role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

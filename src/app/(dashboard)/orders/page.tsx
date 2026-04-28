@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { StatusBadge } from "@/components/ui/status-badge"
+import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   ArrowRight,
@@ -59,6 +59,9 @@ export default function OrdersPage() {
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice>>({})
   const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name">[]>([])
+  const [receivablesByOrder, setReceivablesByOrder] = useState<
+    Record<string, { amount: number; paid: number; status: string; due_date: string | null }>
+  >({})
   const [loading, setLoading] = useState(true)
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -78,7 +81,7 @@ export default function OrdersPage() {
   useEffect(() => {
     async function fetch() {
       setLoading(true)
-      const [ordersRes, customersRes, usersRes] = await Promise.all([
+      const [ordersRes, customersRes, usersRes, receivablesRes] = await Promise.all([
         supabase
           .from("sales_orders")
           .select(
@@ -87,11 +90,19 @@ export default function OrdersPage() {
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, store_name").order("store_name"),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
+        supabase
+          .from("receivables")
+          .select("order_id, amount, paid, status, due_date"),
       ])
       const allOrders = (ordersRes.data as SalesOrder[]) || []
       setOrders(allOrders)
       setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
+      const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
+      for (const r of (receivablesRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || []) {
+        if (r.order_id) recvMap[r.order_id] = { amount: r.amount, paid: r.paid, status: r.status, due_date: r.due_date }
+      }
+      setReceivablesByOrder(recvMap)
 
       // Fetch invoices for delivered orders
       const deliveredIds = allOrders
@@ -727,6 +738,7 @@ export default function OrdersPage() {
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
                           <StatusBadge status={order.status} type="order" />
+                          <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
                           {order.status === "draft" && order.approval_reason && (
                             <span
                               className="text-[10px] text-amber-700 font-semibold"
@@ -808,6 +820,7 @@ export default function OrdersPage() {
                         <div className="flex justify-between items-start gap-2 mb-1">
                           <p className="font-mono text-xs font-bold text-primary">{order.order_code}</p>
                           <StatusBadge status={order.status} type="order" />
+                          <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
                         </div>
                         <h3 className="font-extrabold text-base leading-tight truncate">
                           {order.customer?.store_name || "-"}

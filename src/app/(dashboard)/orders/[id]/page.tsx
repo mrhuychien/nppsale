@@ -9,12 +9,13 @@ import { hasPermission } from "@/lib/permissions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
-import { StatusBadge } from "@/components/ui/status-badge"
+import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { ApprovalBadge } from "@/components/orders/approval-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -95,6 +96,9 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
   const [receivableId, setReceivableId] = useState<string | null>(null)
+  const [receivable, setReceivable] = useState<
+    { amount: number; paid: number; status: string; due_date: string | null } | null
+  >(null)
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [misaLoading, setMisaLoading] = useState(false)
   const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
@@ -121,6 +125,12 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  // Edit-line state for draft/confirmed orders.
+  const [linesEditMode, setLinesEditMode] = useState(false)
+  const [editedLines, setEditedLines] = useState<
+    { id: string; quantity: number; unit_price: number; line_discount: number }[]
+  >([])
+  const [savingLines, setSavingLines] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", payment_terms: "COD", expected_delivery: "" })
   const [actionLoading, setActionLoading] = useState(false)
@@ -133,7 +143,7 @@ export default function OrderDetailPage() {
     const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
-      supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
+      supabase.from("receivables").select("id, amount, paid, status, due_date").eq("order_id", id).maybeSingle(),
       supabase.from("order_status_history").select("*, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
       supabase.from("invoices").select("*").eq("order_id", id).maybeSingle(),
       supabase
@@ -164,7 +174,15 @@ export default function OrderDetailPage() {
       })
     }
     setLines((linesRes.data as SalesOrderLine[]) || [])
-    setReceivableId(recRes.data?.id || null)
+    const recRow = recRes.data as
+      | { id: string; amount: number; paid: number; status: string; due_date: string | null }
+      | null
+    setReceivableId(recRow?.id || null)
+    setReceivable(
+      recRow
+        ? { amount: recRow.amount, paid: recRow.paid, status: recRow.status, due_date: recRow.due_date }
+        : null
+    )
     setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
     setDeliveryLines(((deliveryLinesRes.data as unknown) as DeliveryLineWithDetails[]) || [])
     setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
@@ -382,6 +400,87 @@ export default function OrderDetailPage() {
     }
   }
 
+  const startLinesEdit = () => {
+    setEditedLines(
+      lines.map((l) => ({
+        id: l.id,
+        quantity: Number(l.quantity || 0),
+        unit_price: Number(l.unit_price || 0),
+        line_discount: Number(l.line_discount || 0),
+      }))
+    )
+    setLinesEditMode(true)
+  }
+
+  const cancelLinesEdit = () => {
+    setLinesEditMode(false)
+    setEditedLines([])
+  }
+
+  const setEditedLineField = (
+    id: string,
+    field: "quantity" | "unit_price",
+    value: number
+  ) => {
+    setEditedLines((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, [field]: value } : l))
+    )
+  }
+
+  const editedLinesTotal = editedLines.reduce(
+    (s, l) =>
+      s + Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0)),
+    0
+  )
+
+  const saveLineEdits = async () => {
+    if (!order) return
+    setSavingLines(true)
+    try {
+      // Cập nhật từng line. Tính line_total = qty*price - discount.
+      for (const l of editedLines) {
+        const lineTotal = Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0))
+        const { error } = await supabase
+          .from("sales_order_lines")
+          .update({
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: lineTotal,
+          })
+          .eq("id", l.id)
+        if (error) throw error
+      }
+
+      // Tính lại tổng đơn — discount + vat giữ nguyên tỷ lệ tương đối
+      // dựa trên subtotal mới so với subtotal cũ. Cách đơn giản: subtotal
+      // = sum line_total; total = subtotal - discount + vat (giữ discount
+      // và vat hiện tại).
+      const subtotal = editedLinesTotal
+      const total = Math.max(0, subtotal - Number(order.discount || 0) + Number(order.vat || 0))
+      const { error: orderErr } = await supabase
+        .from("sales_orders")
+        .update({ subtotal, total })
+        .eq("id", order.id)
+      if (orderErr) throw orderErr
+
+      toast({
+        title: "Đã cập nhật dòng đơn hàng",
+        description: `Tổng đơn mới: ${formatCurrency(total)}`,
+      })
+      setLinesEditMode(false)
+      setEditedLines([])
+      fetchData()
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: (err as Error).message,
+        variant: "destructive",
+      })
+    } finally {
+      setSavingLines(false)
+    }
+  }
+
   const handleSaveEdit = async () => {
     if (!order) return
     setActionLoading(true)
@@ -428,6 +527,7 @@ export default function OrderDetailPage() {
         backHref="/orders"
       >
         <StatusBadge status={order.status} type="order" />
+        <PaymentStatusBadge receivable={receivable} />
         <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
       </PageHeader>
 
@@ -449,8 +549,29 @@ export default function OrderDetailPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column - details */}
         <Card className="lg:col-span-2">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle>Chi tiết sản phẩm</CardTitle>
+            {fullEdit && lines.length > 0 ? (
+              linesEditMode ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={cancelLinesEdit}
+                    disabled={savingLines}
+                  >
+                    Hủy
+                  </Button>
+                  <Button size="sm" onClick={saveLineEdits} disabled={savingLines}>
+                    {savingLines ? "Đang lưu..." : "Lưu dòng đơn"}
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" variant="ghost" onClick={startLinesEdit}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa SL & đơn giá
+                </Button>
+              )
+            ) : null}
           </CardHeader>
           <CardContent>
             {/* Desktop table */}
@@ -466,15 +587,57 @@ export default function OrderDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.map((line) => (
-                    <TableRow key={line.id}>
-                      <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
-                      <TableCell>{line.unit_name}</TableCell>
-                      <TableCell className="text-right">{line.quantity}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {lines.map((line) => {
+                    const edited = editedLines.find((e) => e.id === line.id)
+                    const inEdit = linesEditMode && !!edited
+                    const liveQty = edited?.quantity ?? line.quantity
+                    const livePrice = edited?.unit_price ?? line.unit_price
+                    const liveDiscount = edited?.line_discount ?? Number(line.line_discount || 0)
+                    const liveTotal = inEdit
+                      ? Math.max(0, liveQty * livePrice - liveDiscount)
+                      : line.line_total
+                    return (
+                      <TableRow key={line.id}>
+                        <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
+                        <TableCell>{line.unit_name}</TableCell>
+                        <TableCell className="text-right">
+                          {inEdit ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={liveQty}
+                              onChange={(e) =>
+                                setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
+                              }
+                              className="ml-auto h-8 w-24 text-right tabular-nums"
+                            />
+                          ) : (
+                            line.quantity
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {inEdit ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={livePrice}
+                              onChange={(e) =>
+                                setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
+                              }
+                              className="ml-auto h-8 w-32 text-right tabular-nums"
+                            />
+                          ) : (
+                            formatCurrency(line.unit_price)
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatCurrency(liveTotal)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                   {lines.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
@@ -491,33 +654,86 @@ export default function OrderDetailPage() {
               {lines.length === 0 ? (
                 <p className="text-center text-muted-foreground py-6 text-sm">Chưa có sản phẩm</p>
               ) : (
-                lines.map((line) => (
-                  <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
-                    <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
-                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                      <div>
-                        <p className="text-muted-foreground">SL ({line.unit_name})</p>
-                        <p className="font-medium">{line.quantity}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Đơn giá</p>
-                        <p className="font-medium">{formatCurrency(line.unit_price)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-muted-foreground">Thành tiền</p>
-                        <p className="font-bold">{formatCurrency(line.line_total)}</p>
+                lines.map((line) => {
+                  const edited = editedLines.find((e) => e.id === line.id)
+                  const inEdit = linesEditMode && !!edited
+                  const liveQty = edited?.quantity ?? line.quantity
+                  const livePrice = edited?.unit_price ?? line.unit_price
+                  const liveDiscount = edited?.line_discount ?? Number(line.line_discount || 0)
+                  const liveTotal = inEdit
+                    ? Math.max(0, liveQty * livePrice - liveDiscount)
+                    : line.line_total
+                  return (
+                    <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
+                      <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                      <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                        <div>
+                          <p className="text-muted-foreground">SL ({line.unit_name})</p>
+                          {inEdit ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={liveQty}
+                              onChange={(e) =>
+                                setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
+                              }
+                              className="h-8 mt-0.5"
+                            />
+                          ) : (
+                            <p className="font-medium">{line.quantity}</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Đơn giá</p>
+                          {inEdit ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={livePrice}
+                              onChange={(e) =>
+                                setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
+                              }
+                              className="h-8 mt-0.5"
+                            />
+                          ) : (
+                            <p className="font-medium">{formatCurrency(line.unit_price)}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-muted-foreground">Thành tiền</p>
+                          <p className="font-bold tabular-nums">{formatCurrency(liveTotal)}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
 
             <div className="mt-4 space-y-1 text-right border-t border-border/40 pt-4">
-              <p className="text-sm">Tạm tính: {formatCurrency(order.subtotal)}</p>
+              <p className="text-sm">
+                Tạm tính:{" "}
+                {linesEditMode
+                  ? formatCurrency(editedLinesTotal)
+                  : formatCurrency(order.subtotal)}
+              </p>
               <p className="text-sm">Chiết khấu: {formatCurrency(order.discount)}</p>
               <p className="text-sm">VAT: {formatCurrency(order.vat)}</p>
-              <p className="text-lg font-bold">Tổng: {formatCurrency(order.total)}</p>
+              <p className="text-lg font-bold">
+                Tổng:{" "}
+                {linesEditMode
+                  ? formatCurrency(
+                      Math.max(0, editedLinesTotal - Number(order.discount || 0) + Number(order.vat || 0))
+                    )
+                  : formatCurrency(order.total)}
+              </p>
+              {linesEditMode ? (
+                <p className="text-xs text-muted-foreground">
+                  Đang ở chế độ chỉnh sửa — tổng sẽ cập nhật khi bấm <span className="font-semibold">Lưu dòng đơn</span>.
+                </p>
+              ) : null}
             </div>
           </CardContent>
         </Card>

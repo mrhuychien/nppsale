@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   Filter,
+  HandCoins,
   Inbox,
   MapPin,
   Package,
@@ -428,6 +429,151 @@ export default function StockOutPage() {
     }
   }
 
+  /**
+   * "Tự giao hàng": chủ kho / NPP giao hàng trực tiếp (lái xe lowtech
+   * không dùng phần mềm). Đây là biến thể của handleMerge nhưng:
+   *   - Stock entry post luôn (status='posted', posted_at=now())
+   *   - Tự FEFO trừ batches để tồn kho đúng
+   *   - Đơn hàng nhảy thẳng sang 'delivered' (bỏ qua bước driver xác nhận)
+   *   - Tự tạo receivable cho từng đơn để kế toán có chỗ ghi sổ
+   *   - Chuyển sang trang thu tiền /inventory/stock-out/collect/{entryId}
+   */
+  const handleSelfDeliver = async () => {
+    if (!user || !canUpdate) {
+      toast({
+        title: "Không đủ quyền",
+        description: "Bạn không có quyền xuất kho.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (selectedOrders.length === 0) {
+      toast({
+        title: "Chưa chọn đơn nào",
+        description: "Vui lòng chọn ít nhất một đơn hàng.",
+        variant: "destructive",
+      })
+      return
+    }
+    setSubmitting(true)
+    try {
+      const ids = selectedOrders.map((o) => o.id)
+      const customerNames = Array.from(
+        new Set(
+          selectedOrders.map((o) => o.customer?.store_name).filter(Boolean)
+        )
+      ).join(", ")
+
+      // 1) Stock entry — posted ngay
+      const nowIso = new Date().toISOString()
+      const { data: stockEntry, error: stockErr } = await supabase
+        .from("stock_entries")
+        .insert({
+          org_id: user.org_id,
+          entry_code: mergeCode,
+          type: "export",
+          status: "posted",
+          posted_at: nowIso,
+          created_by: user.id,
+          notes: `Tự giao hàng — gộp ${ids.length} đơn cho KH: ${customerNames}`,
+          ref_order_ids: ids,
+        })
+        .select()
+        .single()
+      if (stockErr) throw stockErr
+
+      // 2) Stock entry lines (1 row / SKU). Đồng thời FEFO trừ batches —
+      // tính giá vốn TB theo trọng số để stamp lên line cho COGS report.
+      for (const p of pickList) {
+        let remaining = Number(p.qty || 0)
+        if (remaining <= 0) continue
+        const { data: prodBatches } = await supabase
+          .from("batches")
+          .select("id, qty_on_hand, unit_cost")
+          .eq("product_id", p.product_id)
+          .gt("qty_on_hand", 0)
+          .order("expires_at", { ascending: true })
+        let costSum = 0
+        let qtyTaken = 0
+        for (const b of (prodBatches as Array<{ id: string; qty_on_hand: number; unit_cost: number }>) || []) {
+          if (remaining <= 0) break
+          const take = Math.min(remaining, Number(b.qty_on_hand))
+          await supabase
+            .from("batches")
+            .update({ qty_on_hand: Number(b.qty_on_hand) - take })
+            .eq("id", b.id)
+          costSum += take * Number(b.unit_cost || 0)
+          qtyTaken += take
+          remaining -= take
+        }
+        const avgCost = qtyTaken > 0 ? costSum / qtyTaken : 0
+        await supabase.from("stock_entry_lines").insert({
+          entry_id: stockEntry.id,
+          product_id: p.product_id,
+          unit_name: p.unit,
+          quantity: p.qty,
+          unit_cost: avgCost,
+          notes: `Vị trí: ${p.location}`,
+        })
+        if (remaining > 0) {
+          // Không đủ tồn để giao đủ — vẫn cho phép nhưng cảnh báo.
+          console.warn(
+            `[self-deliver] không đủ tồn cho product ${p.product_id}: thiếu ${remaining}`
+          )
+        }
+      }
+
+      // 3) Đơn → 'delivered'
+      const { error: updateErr } = await supabase
+        .from("sales_orders")
+        .update({ status: "delivered" })
+        .in("id", ids)
+      if (updateErr) throw updateErr
+
+      // 4) Merge metadata (cho UI gộp đơn cùng KH)
+      const byCustomer = new Map<string, string[]>()
+      selectedOrders.forEach((o) => {
+        const arr = byCustomer.get(o.customer_id) || []
+        arr.push(o.id)
+        byCustomer.set(o.customer_id, arr)
+      })
+      const mergedRows: { merged_order_id: string; source_order_id: string }[] = []
+      byCustomer.forEach((orderIds) => {
+        if (orderIds.length >= 2) {
+          const parent = orderIds[0]
+          orderIds.slice(1).forEach((sid) => {
+            mergedRows.push({ merged_order_id: parent, source_order_id: sid })
+          })
+        }
+      })
+      if (mergedRows.length > 0) {
+        await supabase.from("merged_orders").insert(mergedRows)
+      }
+
+      // 5) Tạo receivable cho từng đơn (idempotent)
+      const { ensureReceivableForOrder } = await import("@/lib/receivables")
+      for (const orderId of ids) {
+        await ensureReceivableForOrder(supabase, orderId)
+      }
+
+      toast({
+        title: `Đã tự giao ${ids.length} đơn`,
+        description: "Đã trừ kho. Tiếp tục bước thu tiền.",
+      })
+      clearSelection()
+      router.push(`/inventory/stock-out/collect/${stockEntry.id}`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      toast({
+        title: "Lỗi",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const pendingCount = orders.length
@@ -772,8 +918,11 @@ export default function StockOutPage() {
 
             <div className="rounded-xl bg-white/5 border border-white/10 p-3 mb-3">
               <p className="text-[11px] text-gray-300">
-                Bước tiếp theo: sau khi bấm <span className="font-bold">Xuất kho</span>, hệ thống sẽ
-                tạo phiếu xuất nháp và chuyển bạn sang trang phiếu để phân công lái xe & bàn giao.
+                <span className="font-bold">Xuất kho</span>: tạo phiếu nháp để phân công lái xe & bàn
+                giao theo quy trình chuẩn.
+                <br />
+                <span className="font-bold">Tự giao hàng</span>: trừ kho luôn rồi chuyển sang trang
+                thu tiền — dùng khi NPP / chủ xe trực tiếp giao mà lái xe không dùng phần mềm.
               </p>
             </div>
 
@@ -786,6 +935,17 @@ export default function StockOutPage() {
             >
               <Package className="mr-2 h-5 w-5" />
               {submitting ? "Đang xử lý..." : "Xuất kho"}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full mt-2 h-12 text-base bg-emerald-500/15 border-emerald-400/30 text-emerald-50 hover:bg-emerald-500/25"
+              onClick={handleSelfDeliver}
+              disabled={
+                submitting || selectedOrders.length === 0 || !canUpdate
+              }
+            >
+              <HandCoins className="mr-2 h-5 w-5" />
+              {submitting ? "Đang xử lý..." : "Tự giao hàng"}
             </Button>
             {!canUpdate && (
               <p className="text-xs text-amber-300 mt-2 text-center">

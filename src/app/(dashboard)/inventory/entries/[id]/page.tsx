@@ -25,7 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
-import { Pencil, Trash2, X, Printer, Package, Truck } from "lucide-react"
+import { Pencil, Trash2, X, Printer, Package, Truck, HandCoins } from "lucide-react"
 import type { StockEntry, StockEntryLine } from "@/types"
 
 export default function StockEntryDetailPage() {
@@ -68,6 +68,7 @@ export default function StockEntryDetailPage() {
   const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([])
   const [selectedDriverId, setSelectedDriverId] = useState<string>("")
   const [handingOver, setHandingOver] = useState(false)
+  const [selfDelivering, setSelfDelivering] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -233,6 +234,103 @@ export default function StockEntryDetailPage() {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {
       setHandingOver(false)
+    }
+  }
+
+  /**
+   * "Tự giao hàng": chủ xe / NPP giao trực tiếp khi lái xe không dùng
+   * phần mềm. Bỏ qua bước tạo delivery + driver xác nhận:
+   *   - FEFO trừ batches + stamp unit_cost trung bình lên entry_lines
+   *   - Stock entry → posted (posted_at = now)
+   *   - Đơn → delivered
+   *   - Tạo receivable cho từng đơn
+   *   - Chuyển sang trang thu tiền /inventory/stock-out/collect/{entryId}
+   */
+  const handleSelfDeliver = async () => {
+    if (!entry || !user) return
+    const orderIds = (entry.ref_order_ids || []) as string[]
+    if (orderIds.length === 0) {
+      toast({
+        title: "Phiếu này không có đơn tham chiếu",
+        description: "Không thể tự giao do thiếu liên kết với đơn hàng.",
+        variant: "destructive",
+      })
+      return
+    }
+    setSelfDelivering(true)
+    try {
+      // 1) FEFO trừ batches + stamp unit_cost lên từng line
+      for (const l of lines) {
+        let remaining = Number(l.quantity || 0)
+        if (remaining <= 0) continue
+        const { data: prodBatches } = await supabase
+          .from("batches")
+          .select("id, qty_on_hand, unit_cost")
+          .eq("product_id", l.product_id)
+          .gt("qty_on_hand", 0)
+          .order("expires_at", { ascending: true })
+        let costSum = 0
+        let qtyTaken = 0
+        for (const b of (prodBatches as Array<{
+          id: string
+          qty_on_hand: number
+          unit_cost: number
+        }>) || []) {
+          if (remaining <= 0) break
+          const take = Math.min(remaining, Number(b.qty_on_hand))
+          await supabase
+            .from("batches")
+            .update({ qty_on_hand: Number(b.qty_on_hand) - take })
+            .eq("id", b.id)
+          costSum += take * Number(b.unit_cost || 0)
+          qtyTaken += take
+          remaining -= take
+        }
+        const avgCost = qtyTaken > 0 ? costSum / qtyTaken : 0
+        if (avgCost > 0) {
+          await supabase
+            .from("stock_entry_lines")
+            .update({ unit_cost: avgCost })
+            .eq("id", l.id)
+        }
+        if (remaining > 0) {
+          console.warn(
+            `[self-deliver] không đủ tồn cho product ${l.product_id}: thiếu ${remaining}`
+          )
+        }
+      }
+
+      // 2) Post phiếu xuất
+      await supabase
+        .from("stock_entries")
+        .update({ status: "posted", posted_at: new Date().toISOString() })
+        .eq("id", entry.id)
+
+      // 3) Đơn → delivered (tự giao luôn nên không qua bước delivering)
+      await supabase
+        .from("sales_orders")
+        .update({ status: "delivered" })
+        .in("id", orderIds)
+
+      // 4) Tạo receivable cho từng đơn (idempotent)
+      const { ensureReceivableForOrder } = await import("@/lib/receivables")
+      for (const orderId of orderIds) {
+        await ensureReceivableForOrder(supabase, orderId)
+      }
+
+      toast({
+        title: `Đã tự giao ${orderIds.length} đơn`,
+        description: "Đã trừ kho. Tiếp tục bước thu tiền.",
+      })
+      router.push(`/inventory/stock-out/collect/${entry.id}`)
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: (err as Error).message,
+        variant: "destructive",
+      })
+    } finally {
+      setSelfDelivering(false)
     }
   }
 
@@ -442,6 +540,32 @@ export default function StockEntryDetailPage() {
         {/* Right - info + actions */}
         <div className="space-y-4">
           {entry.type === "export" && entry.status === "draft" && (
+            <Card className="border-emerald-500/40 bg-emerald-500/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <HandCoins className="h-5 w-5 text-emerald-600" />
+                  Tự giao hàng
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Dùng khi NPP / chủ xe trực tiếp giao mà lái xe không dùng phần mềm.
+                  Sau khi bấm, tồn kho sẽ trừ ngay, đơn chuyển trạng thái{" "}
+                  <span className="font-semibold">đã giao</span> rồi chuyển sang trang thu tiền.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-600/90 text-white"
+                  onClick={handleSelfDeliver}
+                  disabled={selfDelivering || handingOver || lines.length === 0}
+                >
+                  <HandCoins className="h-4 w-4 mr-2" />
+                  {selfDelivering ? "Đang xử lý..." : "Tự giao hàng & thu tiền"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {entry.type === "export" && entry.status === "draft" && (
             <Card className="border-primary/40 bg-primary/5">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -479,7 +603,7 @@ export default function StockEntryDetailPage() {
                 <Button
                   className="w-full h-11"
                   onClick={handleHandover}
-                  disabled={handingOver || !selectedDriverId}
+                  disabled={handingOver || selfDelivering || !selectedDriverId}
                 >
                   <Truck className="h-4 w-4 mr-2" />
                   {handingOver ? "Đang bàn giao..." : "Bàn giao"}

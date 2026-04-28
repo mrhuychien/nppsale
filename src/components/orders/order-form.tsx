@@ -14,9 +14,19 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight } from "lucide-react"
+import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import {
+  DEFAULT_PRICING_RULES,
+  loadPricingRules,
+  saleFloor,
+  returnCeiling,
+  validateSalePrice,
+  validateReturnPrice,
+  type PricingRules,
+} from "@/lib/pricing"
+import { RETURN_REASONS } from "@/lib/constants"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
@@ -30,6 +40,18 @@ interface OrderLine {
   line_total: number
   vat_rate: number
 }
+
+interface ReturnLineDraft {
+  product_id: string
+  product_name: string
+  sku: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  line_total: number
+}
+
+type ReturnReason = (typeof RETURN_REASONS)[number]["value"]
 
 export function OrderForm() {
   const { user } = useAuth()
@@ -45,6 +67,18 @@ export function OrderForm() {
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
+  const [pricingRules, setPricingRules] = useState<PricingRules>(DEFAULT_PRICING_RULES)
+
+  // Optional "hàng trả lại" companion to this order. The sales rep can record
+  // goods the customer is returning at the same visit; on submit we create a
+  // returns row + return_lines linked to this order_id, status='pending' so
+  // the manager can approve at /returns.
+  const [returnOpen, setReturnOpen] = useState(false)
+  const [returnLines, setReturnLines] = useState<ReturnLineDraft[]>([])
+  const [returnReason, setReturnReason] = useState<ReturnReason>("damaged")
+  const [returnNotes, setReturnNotes] = useState("")
+  const [returnSearch, setReturnSearch] = useState("")
+
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -66,6 +100,18 @@ export function OrderForm() {
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pricing rules drive whether the sales rep can edit unit_price and how
+  // far they can deviate from the default price-list value.
+  useEffect(() => {
+    if (!user?.org_id) return
+    let cancelled = false
+    ;(async () => {
+      const r = await loadPricingRules(supabase, user.org_id)
+      if (!cancelled) setPricingRules(r)
+    })()
+    return () => { cancelled = true }
+  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
@@ -99,6 +145,27 @@ export function OrderForm() {
   }
 
   const isSalesRole = user?.role === "sales"
+  // Sales rep may only edit price when the org allows it.
+  // Manager/owner always see the input (their authority overrides rules).
+  const canEditPrice = !isSalesRole || pricingRules.allow_sales_override
+  // Discount % stays manager-only.
+  const canEditDiscount = !isSalesRole
+
+  // Default price for a line according to current price lists + customer group.
+  const getLineDefaultPrice = (line: OrderLine): number => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return 0
+    return getUnitPrice(product, line.unit_name, selectedCustomer?.group_id)
+  }
+
+  // Sales-rep override check. Returns null when the line is fine.
+  const getLinePriceWarning = (line: OrderLine): string | null => {
+    if (!isSalesRole) return null
+    const def = getLineDefaultPrice(line)
+    if (def <= 0) return null
+    const check = validateSalePrice(line.unit_price, def, pricingRules)
+    return check.ok ? null : check.message
+  }
 
   // Round an arbitrary VAT rate (stored as decimal 0-1) to the nearest
   // Vietnamese-standard tier the selector lets users pick: 0, 5, 8, 10%.
@@ -253,6 +320,92 @@ export function OrderForm() {
     setLines(lines.filter((_, i) => i !== index))
   }
 
+  // ---- Return-line helpers (companion to the sale order) ----
+
+  const getReturnLineDefault = (line: ReturnLineDraft): number => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return 0
+    return getUnitPrice(product, line.unit_name, selectedCustomer?.group_id)
+  }
+
+  const getReturnLinePriceWarning = (line: ReturnLineDraft): string | null => {
+    if (!isSalesRole) return null
+    const def = getReturnLineDefault(line)
+    if (def <= 0) return null
+    const check = validateReturnPrice(line.unit_price, def, pricingRules)
+    return check.ok ? null : check.message
+  }
+
+  const addReturnLine = (productId: string) => {
+    const product = products.find((p) => p.id === productId)
+    if (!product) return
+    const groupId = selectedCustomer?.group_id
+    const price = getUnitPrice(product, product.base_unit, groupId)
+    setReturnLines((prev) => [
+      ...prev,
+      {
+        product_id: product.id,
+        product_name: product.name,
+        sku: product.sku,
+        unit_name: product.base_unit,
+        quantity: 1,
+        unit_price: price,
+        line_total: price,
+      },
+    ])
+    setReturnSearch("")
+  }
+
+  const updateReturnLine = (
+    index: number,
+    field: keyof ReturnLineDraft,
+    value: number | string
+  ) => {
+    setReturnLines((prev) => {
+      const updated = [...prev]
+      const line = { ...updated[index], [field]: value } as ReturnLineDraft
+      if (field === "unit_name") {
+        const product = products.find((p) => p.id === line.product_id)
+        if (product) {
+          const groupId = selectedCustomer?.group_id
+          const newPrice = getUnitPrice(product, String(value), groupId)
+          if (newPrice > 0) line.unit_price = newPrice
+        }
+      }
+      line.line_total = Number(line.quantity || 0) * Number(line.unit_price || 0)
+      updated[index] = line
+      return updated
+    })
+  }
+
+  const removeReturnLine = (index: number) => {
+    setReturnLines((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const returnAvailableUnits = (line: ReturnLineDraft): string[] => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return [line.unit_name]
+    const units = [product.base_unit]
+    ;(product.units || []).forEach((u) => {
+      if (!units.includes(u.unit_name)) units.push(u.unit_name)
+    })
+    return units
+  }
+
+  const filteredReturnProducts = products.filter((p) => {
+    if (!returnSearch.trim()) return false
+    const q = returnSearch.toLowerCase()
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+  })
+
+  const returnSubtotal = returnLines.reduce(
+    (s, l) => s + Number(l.quantity || 0) * Number(l.unit_price || 0),
+    0
+  )
+
+  const hasReturnPriceViolation =
+    isSalesRole && returnLines.some((l) => getReturnLinePriceWarning(l) != null)
+
   const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
   const total_discount = lines.reduce(
     (sum, l) => sum + l.quantity * l.unit_price * (l.line_discount_percent / 100),
@@ -263,6 +416,11 @@ export function OrderForm() {
     lines.reduce((sum, l) => sum + l.line_total * l.vat_rate, 0)
   )
   const total = netAfterDiscount + vat
+
+  // Aggregated price violation across lines (sales role only).
+  const hasPriceViolation =
+    (isSalesRole && lines.some((l) => getLinePriceWarning(l) != null)) ||
+    hasReturnPriceViolation
 
   const filteredProducts = products.filter((p) => {
     if (!productSearch.trim()) return false
@@ -300,6 +458,28 @@ export function OrderForm() {
         variant: "destructive",
       })
       return
+    }
+
+    // Sales-rep price floor (when allowed at all). Block submit if any line
+    // is below the floor — manager/owner skip this since they have authority.
+    if (isSalesRole) {
+      const violations: string[] = []
+      for (const l of lines) {
+        const w = getLinePriceWarning(l)
+        if (w) violations.push(`${l.product_name}: ${w}`)
+      }
+      for (const l of returnLines) {
+        const w = getReturnLinePriceWarning(l)
+        if (w) violations.push(`Trả ${l.product_name}: ${w}`)
+      }
+      if (violations.length > 0) {
+        toast({
+          title: "Giá ngoài giới hạn cho phép",
+          description: violations.join(" • "),
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     setLoading(true)
@@ -388,6 +568,41 @@ export function OrderForm() {
 
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) throw linesErr
+
+      // Companion return record (if the rep filled the "Hàng trả lại" section).
+      // The return stays 'pending' so a manager can review at /returns; on
+      // approval the helper auto-restocks the goods and nets the credit
+      // against this order's receivable.
+      if (returnLines.length > 0) {
+        const { data: returnRow, error: returnErr } = await supabase
+          .from("returns")
+          .insert({
+            org_id: user?.org_id,
+            order_id: order.id,
+            customer_id: customerId,
+            requested_by: user?.id,
+            reason: returnReason,
+            status: "pending",
+            credit_note_amount: returnSubtotal,
+            notes: returnNotes || null,
+          })
+          .select("id")
+          .single()
+        if (returnErr) throw returnErr
+        const returnId = (returnRow as { id: string }).id
+        const returnLineRows = returnLines.map((l) => ({
+          return_id: returnId,
+          product_id: l.product_id,
+          unit_name: l.unit_name,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+        }))
+        const { error: rLinesErr } = await supabase
+          .from("return_lines")
+          .insert(returnLineRows)
+        if (rLinesErr) throw rLinesErr
+      }
 
       // Fire-and-forget notifications
       if (user?.org_id) {
@@ -719,8 +934,8 @@ export function OrderForm() {
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Sản phẩm</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">ĐVT</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">SL</th>
-                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">Đơn giá</th>}
-                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
+                    {canEditPrice && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-32">Đơn giá</th>}
+                    {canEditDiscount && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">VAT</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28 text-right">Thành tiền</th>
                     <th className="px-3 py-2 w-10"></th>
@@ -761,12 +976,31 @@ export function OrderForm() {
                             className={`h-8 w-20 text-center ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                           />
                         </td>
-                        {!isSalesRole && (
-                          <td className="px-3 py-2">
-                            <Input type="number" value={line.unit_price} onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)} className="h-8 w-24" />
-                          </td>
-                        )}
-                        {!isSalesRole && (
+                        {canEditPrice && (() => {
+                          const warning = getLinePriceWarning(line)
+                          const def = isSalesRole ? getLineDefaultPrice(line) : 0
+                          return (
+                            <td className="px-3 py-2 align-top">
+                              <Input
+                                type="number"
+                                value={line.unit_price}
+                                onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                                className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              />
+                              {isSalesRole && def > 0 && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  Mặc định: {formatCurrency(def)} • Tối thiểu: {formatCurrency(saleFloor(def, pricingRules))}
+                                </p>
+                              )}
+                              {warning && (
+                                <p className="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1">
+                                  <AlertTriangle className="h-3 w-3" /> {warning}
+                                </p>
+                              )}
+                            </td>
+                          )
+                        })()}
+                        {canEditDiscount && (
                           <td className="px-3 py-2">
                             <Input type="number" min={0} max={100} value={line.line_discount_percent} onChange={(e) => updateLine(i, "line_discount_percent", Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))} className="h-8 w-16 text-center" />
                           </td>
@@ -791,7 +1025,14 @@ export function OrderForm() {
                     )
                   })}
                   {lines.length === 0 && (
-                    <tr><td colSpan={isSalesRole ? 7 : 9} className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</td></tr>
+                    <tr>
+                      <td
+                        colSpan={5 + (canEditPrice ? 1 : 0) + (canEditDiscount ? 1 : 0) + 2}
+                        className="py-8 text-center text-muted-foreground text-sm"
+                      >
+                        Tìm hoặc quét sản phẩm phía trên
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -854,12 +1095,38 @@ export function OrderForm() {
                         Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
                       </p>
                     )}
+                    {canEditPrice && (() => {
+                      const warning = getLinePriceWarning(line)
+                      const def = isSalesRole ? getLineDefaultPrice(line) : 0
+                      return (
+                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
+                              Giá
+                            </Label>
+                            <Input
+                              type="number"
+                              value={line.unit_price}
+                              onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            />
+                          </div>
+                          {isSalesRole && def > 0 && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Mặc định {formatCurrency(def)} • Tối thiểu {formatCurrency(saleFloor(def, pricingRules))}
+                            </p>
+                          )}
+                          {warning && (
+                            <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> {warning}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-                      {!isSalesRole && (
-                        <>
-                          <span>Giá: {formatCurrency(line.unit_price)}</span>
-                          {line.line_discount_percent > 0 && <span>CK: {line.line_discount_percent}%</span>}
-                        </>
+                      {canEditDiscount && line.line_discount_percent > 0 && (
+                        <span>CK: {line.line_discount_percent}%</span>
                       )}
                       <div className="ml-auto flex items-center gap-1.5">
                         <span className="text-[10px] font-semibold uppercase">VAT</span>
@@ -882,6 +1149,192 @@ export function OrderForm() {
               })}
             </div>
           </CardContent>
+        </Card>
+
+        {/* Hàng trả lại (tuỳ chọn) — companion return tied to this order */}
+        <Card className="rounded-2xl shadow-sm bg-card border-l-4 border-l-amber-400">
+          <CardHeader>
+            <button
+              type="button"
+              onClick={() => setReturnOpen((v) => !v)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-amber-600" />
+                <div>
+                  <CardTitle className="text-base font-bold">
+                    Hàng trả lại {returnLines.length > 0 ? `(${returnLines.length})` : "(tuỳ chọn)"}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Ghi nhận hàng khách trả tại lượt giao này. Số tiền sẽ trừ vào số phải thu.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {returnLines.length > 0 && (
+                  <Badge variant="warning">−{formatCurrency(returnSubtotal)}</Badge>
+                )}
+                {returnOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              </div>
+            </button>
+          </CardHeader>
+          {returnOpen && (
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Lý do trả</Label>
+                  <Select value={returnReason} onValueChange={(v) => setReturnReason(v as ReturnReason)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {RETURN_REASONS.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Ghi chú đơn trả</Label>
+                  <Input
+                    value={returnNotes}
+                    onChange={(e) => setReturnNotes(e.target.value)}
+                    placeholder="vd: 5 hộp móp, bán không hết hạn"
+                  />
+                </div>
+              </div>
+
+              {/* Product picker */}
+              <div className="relative">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={returnSearch}
+                    onChange={(e) => setReturnSearch(e.target.value)}
+                    placeholder="Tìm sản phẩm để thêm vào đơn trả..."
+                    className="pl-10 h-10"
+                  />
+                </div>
+                {filteredReturnProducts.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-card border rounded-xl shadow-lg max-h-72 overflow-y-auto">
+                    {filteredReturnProducts.slice(0, 10).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => addReturnLine(p.id)}
+                        className="w-full text-left px-4 py-2.5 hover:bg-muted/30 flex items-center justify-between border-b border-border/20 last:border-0"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold">{p.name}</p>
+                          <p className="text-xs text-muted-foreground">SKU: {p.sku} • {p.base_unit}</p>
+                        </div>
+                        <Plus className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Return lines */}
+              {returnLines.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Chưa có sản phẩm trả. Tìm và chọn ở ô trên.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {returnLines.map((line, i) => {
+                    const units = returnAvailableUnits(line)
+                    const def = isSalesRole ? getReturnLineDefault(line) : 0
+                    const warning = getReturnLinePriceWarning(line)
+                    const ceilingValue = isSalesRole && def > 0 ? returnCeiling(def, pricingRules) : null
+                    return (
+                      <div key={i} className="rounded-xl border bg-amber-50/30 p-3">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm truncate">{line.product_name}</p>
+                            <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => removeReturnLine(i)}
+                          >
+                            <X className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {units.length <= 1 ? (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">ĐVT</Label>
+                              <div className="h-9 px-3 flex items-center text-sm bg-muted/50 rounded-md">
+                                {line.unit_name}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">ĐVT</Label>
+                              <Select value={line.unit_name} onValueChange={(v) => updateReturnLine(i, "unit_name", v)}>
+                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={line.quantity}
+                              onChange={(e) => updateReturnLine(i, "quantity", parseInt(e.target.value) || 1)}
+                              className="h-9 text-center"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
+                            <Input
+                              type="number"
+                              value={line.unit_price}
+                              onChange={(e) => updateReturnLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              className={`h-9 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Thành tiền</Label>
+                            <div className="h-9 px-3 flex items-center justify-end font-bold text-amber-700">
+                              {formatCurrency(line.line_total)}
+                            </div>
+                          </div>
+                        </div>
+                        {isSalesRole && def > 0 && (
+                          <p className="text-[10px] text-muted-foreground mt-1.5">
+                            Mặc định {formatCurrency(def)} {ceilingValue != null ? `• Tối đa ${formatCurrency(ceilingValue)}` : ""}
+                          </p>
+                        )}
+                        {warning && (
+                          <p className="text-[10px] text-red-600 font-semibold mt-1.5 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> {warning}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {returnLines.length > 0 && (
+                <div className="flex items-center justify-between pt-3 border-t border-border/40">
+                  <span className="text-sm text-muted-foreground">Tổng tiền trả</span>
+                  <span className="text-lg font-bold text-amber-700">
+                    −{formatCurrency(returnSubtotal)}
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
 
         {/* Notes + Summary row */}
@@ -921,12 +1374,30 @@ export function OrderForm() {
                 <div className="h-px bg-white/20" />
                 <div className="flex items-end justify-between">
                   <span className="text-xs font-bold uppercase tracking-widest text-white/80">
-                    Tổng cộng
+                    Tổng đơn
                   </span>
                   <span className="text-2xl font-bold tracking-tight">
                     {formatCurrency(total)}
                   </span>
                 </div>
+
+                {returnLines.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-white/80 font-medium">Trừ hàng trả</span>
+                      <span className="font-bold">-{formatCurrency(returnSubtotal)}</span>
+                    </div>
+                    <div className="h-px bg-white/20" />
+                    <div className="flex items-end justify-between">
+                      <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                        Phải thu
+                      </span>
+                      <span className="text-2xl font-bold tracking-tight text-amber-200">
+                        {formatCurrency(Math.max(0, total - returnSubtotal))}
+                      </span>
+                    </div>
+                  </>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button
@@ -938,10 +1409,16 @@ export function OrderForm() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={loading || hasOverstock}
+                    disabled={loading || hasOverstock || hasPriceViolation}
                     className="flex-[2] bg-white hover:bg-white/90 text-primary font-bold border-0"
                   >
-                    {loading ? "Đang lưu..." : hasOverstock ? "Vượt tồn kho" : "Tạo đơn hàng"}
+                    {loading
+                      ? "Đang lưu..."
+                      : hasOverstock
+                        ? "Vượt tồn kho"
+                        : hasPriceViolation
+                          ? "Giá thấp hơn cho phép"
+                          : "Tạo đơn hàng"}
                   </Button>
                 </div>
               </div>
@@ -978,16 +1455,18 @@ export function OrderForm() {
             </div>
             <Button
               type="submit"
-              disabled={loading || hasOverstock || !customerId}
+              disabled={loading || hasOverstock || hasPriceViolation || !customerId}
               className="h-11 px-5 rounded-full shrink-0 bg-gradient-primary text-white font-bold"
             >
               {loading
                 ? "Đang lưu..."
                 : hasOverstock
                   ? "Vượt tồn"
-                  : !customerId
-                    ? "Chọn KH"
-                    : "Tiếp tục"}
+                  : hasPriceViolation
+                    ? "Giá thấp"
+                    : !customerId
+                      ? "Chọn KH"
+                      : "Tiếp tục"}
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>

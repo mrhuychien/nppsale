@@ -100,6 +100,24 @@ export default function OrderDetailPage() {
   const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
   const [deliveryLines, setDeliveryLines] = useState<DeliveryLineWithDetails[]>([])
   const [stockEntries, setStockEntries] = useState<OrderStockEntry[]>([])
+  const [linkedReturns, setLinkedReturns] = useState<Array<{
+    id: string
+    status: string
+    reason: string
+    credit_note_amount: number | null
+    notes: string | null
+    created_at: string
+    requester?: { full_name?: string | null } | null
+    lines?: Array<{
+      id: string
+      product_id: string
+      unit_name: string
+      quantity: number
+      unit_price: number
+      line_total: number
+      product?: { name?: string; sku?: string } | null
+    }>
+  }>>([])
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -112,7 +130,7 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id").eq("order_id", id).maybeSingle(),
@@ -126,6 +144,13 @@ export default function OrderDetailPage() {
         .from("stock_entries")
         .select("id, entry_code, type, status, posted_at, created_at, notes, creator:users!stock_entries_created_by_fkey(full_name), lines:stock_entry_lines(id, product_id, quantity, unit_name, unit_cost, product:products(name, sku))")
         .contains("ref_order_ids", [id])
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("returns")
+        .select(
+          "id, status, reason, credit_note_amount, notes, created_at, requester:users!returns_requested_by_fkey(full_name), lines:return_lines(id, product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+        )
+        .eq("order_id", id)
         .order("created_at", { ascending: false }),
     ])
     setInvoice((invoiceRes.data as Invoice) || null)
@@ -143,6 +168,7 @@ export default function OrderDetailPage() {
     setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
     setDeliveryLines(((deliveryLinesRes.data as unknown) as DeliveryLineWithDetails[]) || [])
     setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
+    setLinkedReturns(((returnsRes.data as unknown) as typeof linkedReturns) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -872,6 +898,139 @@ export default function OrderDetailPage() {
                   })}
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Linked returns: companion returns recorded with this order */}
+      {linkedReturns.length > 0 && (
+        <Card className="border-l-4 border-l-amber-400">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Hàng trả kèm đơn này ({linkedReturns.length})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Sau khi quản lý duyệt, hàng sẽ tự nhập lại kho và số tiền trả sẽ trừ vào công nợ của đơn này.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {linkedReturns.map((r) => {
+              const reasonLabel =
+                {
+                  damaged: "Hư hỏng",
+                  wrong_item: "Sai hàng",
+                  near_expiry: "Gần hết hạn",
+                  expired: "Hết hạn",
+                  refused: "Khách từ chối",
+                }[r.reason] || r.reason
+              const statusVariant: "warning" | "success" | "danger" | "secondary" =
+                r.status === "approved" || r.status === "completed"
+                  ? "success"
+                  : r.status === "rejected"
+                    ? "danger"
+                    : r.status === "pending"
+                      ? "warning"
+                      : "secondary"
+              const statusLabel =
+                {
+                  pending: "Chờ duyệt",
+                  approved: "Đã duyệt",
+                  completed: "Đã hoàn tất",
+                  rejected: "Từ chối",
+                }[r.status] || r.status
+              return (
+                <div key={r.id} className="rounded-xl border bg-amber-50/30 p-3">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <Badge variant={statusVariant}>{statusLabel}</Badge>
+                        <span className="text-xs text-muted-foreground">{reasonLabel}</span>
+                        {r.requester?.full_name && (
+                          <span className="text-xs text-muted-foreground">
+                            • {r.requester.full_name}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{formatDate(r.created_at)}</p>
+                      {r.notes && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{r.notes}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-lg font-bold text-amber-700">
+                        −{formatCurrency(Number(r.credit_note_amount || 0))}
+                      </p>
+                      <Link
+                        href={`/returns/${r.id}`}
+                        className="text-[11px] text-primary hover:underline"
+                      >
+                        Mở chi tiết →
+                      </Link>
+                    </div>
+                  </div>
+                  {r.lines && r.lines.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-amber-200/50">
+                      <div className="space-y-1 text-xs">
+                        {r.lines.map((l) => (
+                          <div key={l.id} className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              <span className="font-mono text-[10px] text-muted-foreground mr-1">
+                                {l.product?.sku}
+                              </span>
+                              {l.product?.name}
+                            </span>
+                            <span className="font-semibold whitespace-nowrap">
+                              {l.quantity} {l.unit_name} • {formatCurrency(Number(l.line_total || 0))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Net amount summary */}
+            {order && (
+              (() => {
+                const credits = linkedReturns
+                  .filter((r) => r.status === "approved" || r.status === "completed")
+                  .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
+                const pending = linkedReturns
+                  .filter((r) => r.status === "pending")
+                  .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
+                if (credits === 0 && pending === 0) return null
+                const net = Math.max(0, Number(order.total || 0) - credits)
+                return (
+                  <div className="rounded-lg bg-muted/40 border p-3 space-y-1.5 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Tổng đơn</span>
+                      <span className="font-semibold">{formatCurrency(Number(order.total || 0))}</span>
+                    </div>
+                    {credits > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Trừ đơn trả đã duyệt</span>
+                        <span className="font-semibold text-amber-700">−{formatCurrency(credits)}</span>
+                      </div>
+                    )}
+                    {pending > 0 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Đơn trả chờ duyệt</span>
+                        <span className="font-medium">−{formatCurrency(pending)}</span>
+                      </div>
+                    )}
+                    <div className="h-px bg-border" />
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Phải thu khách</span>
+                      <span className="text-lg font-black text-primary">
+                        {formatCurrency(net)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()
             )}
           </CardContent>
         </Card>

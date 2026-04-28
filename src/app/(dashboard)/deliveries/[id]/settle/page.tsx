@@ -97,15 +97,24 @@ export default function DeliverySettlePage() {
         )
         .eq("delivery_id", id),
     ])
-    if (delRes.data) setDelivery(delRes.data as unknown as typeof delivery)
+    const delData = (delRes.data as unknown as typeof delivery) || null
+    if (delData) setDelivery(delData)
     const linesData = ((linesRes.data as unknown) as SettleLine[]) || []
     setLines(linesData)
 
-    // Pre-fill editable amounts: existing amount_collected, otherwise order.total for COD lines
+    // A line is considered "delivered" for settlement if:
+    //   - it was explicitly marked delivered, OR
+    //   - the parent delivery is completed and the line was not failed
+    // (the driver may finish the route in one click without per-line marks).
+    const deliveryCompleted = delData?.status === "completed"
+    const isDelivered = (status: string) =>
+      status === "delivered" || (deliveryCompleted && status !== "failed" && status !== "cancelled")
+
+    // Pre-fill editable amounts for delivered COD lines
     const initial: Record<string, string> = {}
     linesData.forEach((l) => {
       const cod = isCodTerms(l.order?.payment_terms)
-      const delivered = l.status === "delivered"
+      const delivered = isDelivered(l.status)
       if (!delivered || !cod) {
         initial[l.id] = ""
         return
@@ -119,28 +128,51 @@ export default function DeliverySettlePage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Expected = sum of (edited amount) for delivered COD lines
+  // Expected = sum of (edited amount) for delivered COD lines.
+  // Same "delivered" rule as fetchData so completing a route in one click
+  // still flows through to the settle screen.
   const summary = useMemo(() => {
     let expected = 0
     let codCount = 0
     let creditCount = 0
+    let totalOrderValue = 0
+    let creditValue = 0
+    let deliveredCount = 0
+    const deliveryCompleted = delivery?.status === "completed"
+    const isDelivered = (status: string) =>
+      status === "delivered" || (deliveryCompleted && status !== "failed" && status !== "cancelled")
     const rows = lines.map((l) => {
       const o = l.order
       const orderTotal = Number(o?.total || 0)
       const cod = isCodTerms(o?.payment_terms)
-      const delivered = l.status === "delivered"
+      const delivered = isDelivered(l.status)
       const editedRaw = editedAmounts[l.id] ?? ""
       const editedNum = parseFloat(editedRaw || "0") || 0
       const expectedForLine = delivered && cod ? editedNum : 0
+      if (delivered) {
+        deliveredCount += 1
+        totalOrderValue += orderTotal
+      }
       if (delivered && cod) {
         expected += expectedForLine
         codCount += 1
       }
-      if (delivered && !cod) creditCount += 1
+      if (delivered && !cod) {
+        creditCount += 1
+        creditValue += orderTotal
+      }
       return { ...l, cod, delivered, editedAmount: editedNum, expectedForLine, orderTotal }
     })
-    return { expected, codCount, creditCount, rows }
-  }, [lines, editedAmounts])
+    return {
+      expected,
+      codCount,
+      creditCount,
+      creditValue,
+      totalOrderValue,
+      deliveredCount,
+      rows,
+    }
+  }, [lines, editedAmounts, delivery?.status])
 
   const submittedNum = parseFloat(submittedAmount || "0") || 0
   const diff = submittedNum - summary.expected
@@ -156,15 +188,25 @@ export default function DeliverySettlePage() {
   const handleSettle = async () => {
     if (!delivery || !user) return
     if (alreadySettled) return
-    if (summary.codCount === 0) {
-      toast({
-        title: "Không có đơn COD",
-        description: "Chuyến này chỉ có công nợ. Không cần nộp tiền.",
-      })
-      return
-    }
     setSubmitting(true)
     try {
+      // 0 COD orders → just mark the delivery settled, no cash receipt
+      if (summary.codCount === 0) {
+        await supabase
+          .from("deliveries")
+          .update({
+            settled_at: new Date().toISOString(),
+            settled_amount: 0,
+          })
+          .eq("id", delivery.id)
+        toast({
+          title: "Đã hoàn tất chuyến",
+          description: "Chuyến chỉ có đơn công nợ — không cần lập phiếu thu.",
+        })
+        router.push(`/deliveries/${delivery.id}`)
+        return
+      }
+
       // Persist edited amount_collected back to delivery_lines first
       for (const r of summary.rows) {
         if (!r.delivered || !r.cod) continue
@@ -426,16 +468,22 @@ export default function DeliverySettlePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-3 gap-2 text-sm">
                 <div className="rounded-lg bg-white/60 p-2.5 border">
                   <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                    Số đơn COD
+                    Đã giao
+                  </p>
+                  <p className="text-xl font-black mt-0.5">{summary.deliveredCount}</p>
+                </div>
+                <div className="rounded-lg bg-white/60 p-2.5 border">
+                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                    Đơn COD
                   </p>
                   <p className="text-xl font-black mt-0.5">{summary.codCount}</p>
                 </div>
                 <div className="rounded-lg bg-white/60 p-2.5 border">
                   <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                    Đơn công nợ
+                    Công nợ
                   </p>
                   <p className="text-xl font-black mt-0.5">{summary.creditCount}</p>
                 </div>
@@ -443,33 +491,55 @@ export default function DeliverySettlePage() {
 
               <div className="rounded-lg bg-white/60 p-3 border">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                  Tổng đã thu (theo từng đơn)
+                  Tổng giá trị đơn (đã giao)
+                </p>
+                <p className="text-lg font-bold mt-0.5">
+                  {formatCurrency(summary.totalOrderValue)}
+                </p>
+                {summary.creditCount > 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Trong đó công nợ: {formatCurrency(summary.creditValue)}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-lg bg-white/60 p-3 border">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  Tổng cần nộp (đơn COD)
                 </p>
                 <p className="text-2xl font-black mt-1 text-primary">
                   {formatCurrency(summary.expected)}
                 </p>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="submitted" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  <Banknote className="h-3 w-3 inline mr-1" />
-                  Số tiền tài xế nộp
-                </Label>
-                <Input
-                  id="submitted"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0"
-                  className="h-12 text-lg font-bold"
-                  value={
-                    alreadySettled
-                      ? String(delivery.settled_amount || 0)
-                      : submittedAmount
-                  }
-                  onChange={(e) => setSubmittedAmount(e.target.value)}
-                  disabled={alreadySettled || submitting}
-                />
-              </div>
+              {summary.codCount > 0 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="submitted" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <Banknote className="h-3 w-3 inline mr-1" />
+                    Số tiền tài xế nộp
+                  </Label>
+                  <Input
+                    id="submitted"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    className="h-12 text-lg font-bold"
+                    value={
+                      alreadySettled
+                        ? String(delivery.settled_amount || 0)
+                        : submittedAmount
+                    }
+                    onChange={(e) => setSubmittedAmount(e.target.value)}
+                    disabled={alreadySettled || submitting}
+                  />
+                </div>
+              )}
+
+              {!alreadySettled && summary.codCount === 0 && summary.creditCount > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 p-3 text-xs">
+                  Chuyến này chỉ có đơn công nợ — không cần nộp tiền mặt. Bạn có thể bấm <span className="font-semibold">Hoàn tất chuyến</span> để đánh dấu đã quyết toán.
+                </div>
+              )}
 
               {!alreadySettled && (
                 <div className="space-y-1.5">
@@ -526,11 +596,20 @@ export default function DeliverySettlePage() {
                     Đã quyết toán {formatDate(delivery.settled_at!)}
                   </div>
                 </div>
+              ) : summary.codCount === 0 ? (
+                <Button
+                  className="w-full h-11"
+                  onClick={handleSettle}
+                  disabled={submitting || summary.deliveredCount === 0}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {submitting ? "Đang xử lý..." : "Hoàn tất chuyến"}
+                </Button>
               ) : (
                 <Button
                   className="w-full h-11"
                   onClick={handleSettle}
-                  disabled={submitting || submittedAmount === "" || summary.codCount === 0}
+                  disabled={submitting || submittedAmount === ""}
                 >
                   <ArrowRightCircle className="h-4 w-4 mr-2" />
                   {submitting ? "Đang xử lý..." : "Lập phiếu thu"}

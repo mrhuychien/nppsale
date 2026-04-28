@@ -45,7 +45,10 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState("all")
+  const [salesUserFilter, setSalesUserFilter] = useState("all")
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
+  const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])
+  const [primaryRepMap, setPrimaryRepMap] = useState<Record<string, string>>({})
   const [visitTarget, setVisitTarget] = useState<Customer | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -125,10 +128,37 @@ export default function CustomersPage() {
       }
       setLastVisits(visitMap)
 
+      // Primary sales rep per customer (for filter "Nhân viên phụ trách")
+      const { data: assignmentRows } = await supabase
+        .from("customer_assignments")
+        .select("customer_id, user_id, role, status")
+        .eq("role", "primary")
+        .eq("status", "active")
+      const repMap: Record<string, string> = {}
+      for (const a of (assignmentRows as Array<{ customer_id: string; user_id: string }>) || []) {
+        if (!repMap[a.customer_id]) repMap[a.customer_id] = a.user_id
+      }
+      setPrimaryRepMap(repMap)
+
       setLoading(false)
     }
     fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load active sales users for the rep filter
+  useEffect(() => {
+    if (isSales) return // sales only see their own customers, no need for filter
+    async function loadReps() {
+      const { data } = await supabase
+        .from("users")
+        .select("id, full_name, role")
+        .in("role", ["sales", "manager", "owner"])
+        .eq("is_active", true)
+        .order("full_name")
+      setSalesUsers((data as Array<{ id: string; full_name: string }>) || [])
+    }
+    loadReps()
+  }, [isSales]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load sales routes for the filter dropdown
   useEffect(() => {
@@ -150,7 +180,12 @@ export default function CustomersPage() {
       c.owner_name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search)
     const matchChannel = channelFilter === "all" || c.channel === channelFilter
-    return matchSearch && matchChannel
+    const matchRep =
+      salesUserFilter === "all" ||
+      (salesUserFilter === "_none"
+        ? !primaryRepMap[c.id]
+        : primaryRepMap[c.id] === salesUserFilter)
+    return matchSearch && matchChannel && matchRep
   })
 
   const totalRoute = customers.length
@@ -236,6 +271,18 @@ export default function CustomersPage() {
             ))}
           </SelectContent>
         </Select>
+        {!isSales && (
+          <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả nhân viên</SelectItem>
+              <SelectItem value="_none">Chưa phân công</SelectItem>
+              {salesUsers.map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button variant="outline" size="sm" asChild>
           <Link href="/customers/routes">
             <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến

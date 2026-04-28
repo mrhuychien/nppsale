@@ -119,6 +119,7 @@ const NAV: NavSection[] = [
         label: "Tài chính",
         icon: Wallet,
         items: [
+          { label: "Kết quả HĐKD", href: "/reports/finance" },
           { label: "Lãi lỗ (P&L)", href: "/reports/finance/pnl" },
           { label: "Bảng cân đối", href: "/reports/finance/balance-sheet" },
           { label: "Dòng tiền", href: "/reports/finance/cash-flow" },

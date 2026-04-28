@@ -22,8 +22,9 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generatePOCode } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink, ScanBarcode } from "lucide-react"
+import { Trash2, Plus, ExternalLink, ScanBarcode, PackagePlus } from "lucide-react"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import { ProductCreateDialog } from "@/components/products/product-create-dialog"
 import Link from "next/link"
 import type { Supplier, Product, ProductUnit } from "@/types"
 
@@ -53,6 +54,7 @@ export default function NewPurchaseOrderPage() {
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const [createProductOpen, setCreateProductOpen] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -389,6 +391,16 @@ export default function NewPurchaseOrderPage() {
                 >
                   <ScanBarcode className="h-5 w-5" />
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 shrink-0 gap-1.5"
+                  onClick={() => setCreateProductOpen(true)}
+                  title="Tạo sản phẩm mới"
+                >
+                  <PackagePlus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Tạo sản phẩm</span>
+                </Button>
               </div>
 
               {/* Desktop table */}
@@ -711,6 +723,39 @@ export default function NewPurchaseOrderPage() {
       </form>
 
       <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
+
+      <ProductCreateDialog
+        open={createProductOpen}
+        onOpenChange={setCreateProductOpen}
+        onCreated={(p) => {
+          // Inject the new product into the picker list…
+          setProducts((prev) => {
+            const exists = prev.some((x) => x.id === p.id)
+            return exists
+              ? prev
+              : [{ ...p, units: [] } as Product & { units?: ProductUnit[] }, ...prev]
+          })
+          // …and add it to the order directly (don't depend on the stale `products` closure).
+          setLines((prev) => [
+            ...prev,
+            {
+              product_id: p.id,
+              product_name: p.name,
+              sku: p.sku,
+              unit_name: p.base_unit,
+              quantity: 1,
+              unit_price: Number(p.cost_price ?? 0),
+              vat_rate: p.vat_rate ?? 0.1,
+              line_total: Number(p.cost_price ?? 0),
+            },
+          ])
+          setProductSearch("")
+          toast({
+            title: "Đã tạo sản phẩm",
+            description: `${p.sku} — ${p.name} đã được thêm vào đơn.`,
+          })
+        }}
+      />
     </div>
   )
 }

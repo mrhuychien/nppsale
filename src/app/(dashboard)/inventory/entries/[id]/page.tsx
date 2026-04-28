@@ -284,6 +284,7 @@ export default function StockEntryDetailPage() {
 
   return (
     <div className="space-y-4">
+      <div className="no-print space-y-4">
       <PageHeader
         title={entry.entry_code}
         description={`${typeLabel} • Ngày tạo: ${formatDate(entry.created_at)}`}
@@ -592,6 +593,7 @@ export default function StockEntryDetailPage() {
         onConfirm={handleDelete}
         loading={actionLoading}
       />
+      </div>
 
       {/* Print-only section: 1 trang phiếu xuất tổng + 1 trang/đơn chi tiết */}
       <div className="print-only">

@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { PermissionsLoader } from "@/components/permissions-loader"
 
 export default function DashboardLayout({
   children,
@@ -16,6 +17,10 @@ export default function DashboardLayout({
   const { user, authUser, loading, authError } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
+  // Frappe-style launcher takes over the full viewport on /home — hide
+  // the dashboard chrome (sidebar, header, mobile nav).
+  const isLauncher = pathname === "/home"
 
   useEffect(() => {
     // Only redirect to login if we're sure there's no session at all
@@ -90,8 +95,18 @@ export default function DashboardLayout({
   // Use a safe fallback role "sales" for sidebar so user can at least see the app.
   const role = user?.role ?? "sales"
 
+  if (isLauncher) {
+    return (
+      <>
+        <PermissionsLoader />
+        {children}
+      </>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
+      <PermissionsLoader />
       <Sidebar role={role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

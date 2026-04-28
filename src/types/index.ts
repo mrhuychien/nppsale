@@ -110,6 +110,19 @@ export interface Product {
   shelf_life_days: number | null
   status: string
   created_at: string
+  // Extras (migration 023)
+  description?: string | null
+  warranty_info?: string | null
+  cost_price?: number
+  sell_price?: number
+  track_serial?: boolean
+  min_stock?: number
+  max_stock?: number | null
+  shelf_location?: string | null
+  weight?: number | null
+  weight_unit?: string
+  direct_sale?: boolean
+  images?: string[]
   // Joined
   units?: ProductUnit[]
   price_lists?: PriceList[]

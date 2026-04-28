@@ -1,675 +1,302 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
-import { useRoleGuard } from "@/hooks/use-role-guard"
-import { formatCurrency } from "@/lib/utils"
+import { canAccessModule, type Module } from "@/lib/permissions"
 import {
-  Wallet,
-  Users,
-  MapPin,
-  ArrowRight,
-  Package,
-  Search,
   ShoppingCart,
-  UserPlus,
+  Users,
+  Package,
+  Boxes,
+  Truck,
+  RotateCcw,
+  Tag,
+  FileText,
+  CreditCard,
+  Receipt,
+  Wallet,
+  Award,
+  TrendingUp,
+  BarChart3,
+  Factory,
+  UserCog,
+  Settings,
+  ShieldCheck,
+  HelpCircle,
+  LogOut,
+  Search,
+  Navigation,
+  ClipboardList,
+  PieChart,
+  type LucideIcon,
 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
 
-interface HomeStats {
-  todayOrderCount: number
-  todayRevenue: number
-  openReceivables: number
+type TileColor =
+  | "blue"
+  | "indigo"
+  | "green"
+  | "emerald"
+  | "orange"
+  | "amber"
+  | "purple"
+  | "pink"
+  | "red"
+  | "rose"
+  | "yellow"
+  | "slate"
+  | "zinc"
+
+const COLOR_CLASS: Record<TileColor, string> = {
+  blue: "bg-blue-500 text-white",
+  indigo: "bg-indigo-500 text-white",
+  green: "bg-green-500 text-white",
+  emerald: "bg-emerald-500 text-white",
+  orange: "bg-orange-500 text-white",
+  amber: "bg-amber-500 text-white",
+  purple: "bg-purple-500 text-white",
+  pink: "bg-pink-500 text-white",
+  red: "bg-red-500 text-white",
+  rose: "bg-rose-500 text-white",
+  yellow: "bg-yellow-500 text-white",
+  slate: "bg-slate-500 text-white",
+  zinc: "bg-zinc-700 text-white",
 }
 
-interface PjpStop {
-  customer_id: string
-  store_name: string
-  address: string | null
-  visit_order: number
-  visit_status: "pending" | "checked_in" | "visited" | "skipped"
-  visit_log_id?: string
+interface Tile {
+  label: string
+  href: string
+  icon: LucideIcon
+  color: TileColor
+  module: Module
+  /** Small caption shown below the label (e.g. "10 Workspaces"). */
+  caption?: string
 }
 
-interface AssignedCustomer {
-  customer_id: string
-  store_name: string
-  address: string | null
-  visited: boolean
-}
+const TILES: Tile[] = [
+  // Bán hàng
+  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "blue", module: "orders" },
+  { label: "Khách hàng", href: "/customers", icon: Users, color: "green", module: "customers" },
+  { label: "Sản phẩm", href: "/products", icon: Package, color: "orange", module: "products" },
+  { label: "Bảng giá", href: "/products/price-lists", icon: Tag, color: "amber", module: "products" },
+  { label: "Khuyến mãi", href: "/promotions", icon: Tag, color: "pink", module: "promotions" },
+  { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, color: "indigo", module: "customers" },
 
-interface TopProduct {
-  product_id: string
-  name: string
-  sku: string
-  quantity: number
-  revenue: number
-}
+  // Vận hành
+  { label: "Kho hàng", href: "/inventory", icon: Boxes, color: "blue", module: "inventory" },
+  { label: "Giao hàng", href: "/deliveries", icon: Truck, color: "indigo", module: "deliveries" },
+  { label: "Trả hàng", href: "/returns", icon: RotateCcw, color: "rose", module: "returns" },
 
-function getGreeting(hour: number): string {
-  if (hour >= 5 && hour < 11) return "Chào buổi sáng"
-  if (hour >= 11 && hour < 13) return "Chào buổi trưa"
-  if (hour >= 13 && hour < 18) return "Chào buổi chiều"
-  return "Chào buổi tối"
-}
+  // Mua hàng
+  { label: "Đơn mua hàng", href: "/purchasing/orders", icon: ClipboardList, color: "purple", module: "inventory" },
+  { label: "Hóa đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple", module: "inventory" },
+  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "slate", module: "inventory" },
 
-export default function HomePage() {
-  const { loading: authLoading, user } = useRoleGuard("orders")
-  const { user: authedUser } = useAuth()
-  const currentUser = user ?? authedUser
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState<HomeStats>({
-    todayOrderCount: 0,
-    todayRevenue: 0,
-    openReceivables: 0,
-  })
-  const [assignedCustomers, setAssignedCustomers] = useState<AssignedCustomer[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [pjpStops, setPjpStops] = useState<PjpStop[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [hasPjp, setHasPjp] = useState<boolean | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [checkingIn, setCheckingIn] = useState<string | null>(null)
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
-  const [greeting, setGreeting] = useState<string>("Chào bạn")
-  const supabase = useMemo(() => createClient(), [])
+  // Kế toán & Tài chính
+  { label: "Hóa đơn bán", href: "/invoices", icon: FileText, color: "blue", module: "invoices" },
+  { label: "Công nợ KH", href: "/receivables", icon: CreditCard, color: "red", module: "receivables" },
+  { label: "Công nợ NCC", href: "/payables", icon: CreditCard, color: "rose", module: "receivables" },
+  { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, color: "emerald", module: "receivables" },
+  { label: "Chi phí", href: "/finance/expenses", icon: Wallet, color: "amber", module: "settings" },
+  { label: "Hoa hồng", href: "/commissions", icon: Award, color: "yellow", module: "commissions" },
 
+  // Báo cáo & Phân tích
+  { label: "Phân tích", href: "/analytics/business/overview", icon: TrendingUp, color: "purple", module: "reports" },
+  { label: "Báo cáo", href: "/reports", icon: BarChart3, color: "blue", module: "reports" },
+  { label: "Tài chính", href: "/reports/finance", icon: PieChart, color: "emerald", module: "reports" },
+
+  // Hệ thống
+  { label: "Nhân sự", href: "/hr", icon: UserCog, color: "orange", module: "settings" },
+  { label: "Cài đặt", href: "/settings", icon: Settings, color: "slate", module: "settings" },
+  { label: "Phân quyền", href: "/settings/permissions", icon: ShieldCheck, color: "zinc", module: "settings" },
+  { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue", module: "settings" },
+]
+
+export default function HomeLauncherPage() {
+  const { user, signOut } = useAuth()
+  const router = useRouter()
+  const [search, setSearch] = useState("")
+  const [orgName, setOrgName] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch org name (used in profile dropdown caption)
   useEffect(() => {
-    setGreeting(getGreeting(new Date().getHours()))
-  }, [])
-
-  useEffect(() => {
-    if (!currentUser?.id) return
+    if (!user?.org_id) return
     let cancelled = false
-
-    async function fetchData() {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const now = new Date()
-        const todayStr = now.toISOString().slice(0, 10)
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-          .toISOString()
-          .slice(0, 10)
-        const myUserId = currentUser!.id
-
-        const [
-          assignmentsRes,
-          todayOrdersRes,
-          receivablesRes,
-          monthOrdersRes,
-        ] = await Promise.all([
-          supabase
-            .from("customer_assignments")
-            .select(
-              "customer_id, customer:customers(id, store_name, address)"
-            )
-            .eq("user_id", myUserId)
-            .eq("status", "active"),
-          supabase
-            .from("sales_orders")
-            .select("id, total, customer_id, created_at")
-            .eq("sales_user_id", myUserId)
-            .eq("order_date", todayStr),
-          supabase
-            .from("receivables")
-            .select("amount, paid, status")
-            .eq("sales_user_id", myUserId)
-            .neq("status", "paid"),
-          supabase
-            .from("sales_orders")
-            .select(
-              "id, order_date, lines:sales_order_lines(product_id, quantity, line_total, product:products(id, sku, name))"
-            )
-            .eq("sales_user_id", myUserId)
-            .gte("order_date", firstDayOfMonth),
-        ])
-
-        if (cancelled) return
-
-        // Assigned customers + today's visits
-        const rawAssignments =
-          (assignmentsRes.data as unknown as Array<{
-            customer_id: string
-            customer:
-              | { id: string; store_name: string; address: string | null }
-              | { id: string; store_name: string; address: string | null }[]
-              | null
-          }>) || []
-
-        const custRows: AssignedCustomer[] = rawAssignments.map((r) => {
-          const c = Array.isArray(r.customer) ? r.customer[0] : r.customer
-          return {
-            customer_id: r.customer_id,
-            store_name: c?.store_name || "N/A",
-            address: c?.address || null,
-            visited: false,
-          }
-        })
-
-        const todayOrders =
-          (todayOrdersRes.data as Array<{
-            id: string
-            total: number
-            customer_id: string
-          }>) || []
-        const visitedCustomerIds = new Set(
-          todayOrders.map((o) => o.customer_id).filter(Boolean)
-        )
-        for (const row of custRows) {
-          if (visitedCustomerIds.has(row.customer_id)) row.visited = true
-        }
-
-        // KPIs
-        const todayRevenue = todayOrders.reduce(
-          (s, o) => s + (o.total || 0),
-          0
-        )
-        const openReceivables = (
-          (receivablesRes.data as Array<{ amount: number; paid: number }>) || []
-        ).reduce(
-          (s, r) => s + Math.max(0, (r.amount || 0) - (r.paid || 0)),
-          0
-        )
-
-        // Top products from user's month orders
-        type LineRow = {
-          product_id: string
-          quantity: number
-          line_total: number
-          product:
-            | { id: string; sku: string; name: string }
-            | { id: string; sku: string; name: string }[]
-            | null
-        }
-        type OrderRow = { lines: LineRow[] | null }
-        const monthOrders =
-          (monthOrdersRes.data as unknown as OrderRow[]) || []
-        const prodMap = new Map<string, TopProduct>()
-        for (const o of monthOrders) {
-          for (const ln of o.lines || []) {
-            const p = Array.isArray(ln.product) ? ln.product[0] : ln.product
-            if (!p?.id) continue
-            const existing = prodMap.get(p.id)
-            if (existing) {
-              existing.quantity += ln.quantity || 0
-              existing.revenue += ln.line_total || 0
-            } else {
-              prodMap.set(p.id, {
-                product_id: p.id,
-                sku: p.sku,
-                name: p.name,
-                quantity: ln.quantity || 0,
-                revenue: ln.line_total || 0,
-              })
-            }
-          }
-        }
-        const topList = Array.from(prodMap.values())
-          .sort((a, b) => b.quantity - a.quantity)
-          .slice(0, 5)
-
-        setStats({
-          todayOrderCount: todayOrders.length,
-          todayRevenue,
-          openReceivables,
-        })
-        setAssignedCustomers(custRows)
-        setTopProducts(topList)
-      } catch (err) {
-        if (cancelled) return
-        console.error("[home] fetch error:", err)
-        setError(err instanceof Error ? err.message : "Không thể tải dữ liệu")
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchData()
-
-    // Fetch PJP route for today
-    async function fetchPjp() {
-      const myUserId = currentUser!.id
-      const jsDay = new Date().getDay()
-      const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1
-      const todayStr = new Date().toISOString().slice(0, 10)
-
-      const { data: pjpData } = await supabase
-        .from("pjp_routes")
-        .select("customer_id, visit_order, customer:customers(id, store_name, address)")
-        .eq("sales_user_id", myUserId)
-        .eq("day_of_week", dayOfWeek)
-        .eq("is_active", true)
-        .order("visit_order", { ascending: true })
-
-      if (cancelled) return
-
-      if (!pjpData || pjpData.length === 0) {
-        setHasPjp(false)
-        return
-      }
-
-      setHasPjp(true)
-
-      // Fetch today visit logs
-      const { data: visitLogs } = await supabase
-        .from("visit_logs")
-        .select("id, customer_id, check_in_at, check_out_at, result")
-        .eq("sales_user_id", myUserId)
-        .eq("visit_date", todayStr)
-
-      if (cancelled) return
-
-      const logMap = new Map((visitLogs || []).map((v: { id: string; customer_id: string; check_in_at: string | null; check_out_at: string | null; result: string | null }) => [v.customer_id, v]))
-
-      const stops: PjpStop[] = (pjpData as unknown as Array<{
-        customer_id: string
-        visit_order: number
-        customer: { id: string; store_name: string; address: string | null } | { id: string; store_name: string; address: string | null }[] | null
-      }>).map((r) => {
-        const c = Array.isArray(r.customer) ? r.customer[0] : r.customer
-        const log = logMap.get(r.customer_id) as { id: string; check_in_at: string | null; check_out_at: string | null; result: string | null } | undefined
-        let visit_status: PjpStop["visit_status"] = "pending"
-        if (log) {
-          if (log.check_out_at || log.result) visit_status = "visited"
-          else if (log.check_in_at) visit_status = "checked_in"
-        }
-        return {
-          customer_id: r.customer_id,
-          store_name: c?.store_name || "N/A",
-          address: c?.address || null,
-          visit_order: r.visit_order,
-          visit_status,
-          visit_log_id: log?.id,
-        }
+    const supabase = createClient()
+    supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", user.org_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setOrgName((data as { name?: string } | null)?.name ?? null)
       })
-
-      setPjpStops(stops)
-    }
-
-    fetchPjp()
-
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, supabase])
+  }, [user?.org_id])
 
-  const firstName =
-    currentUser?.full_name?.trim().split(/\s+/).slice(-1)[0] || "bạn"
-
-  // PJP-based progress
-  const pjpVisitedCount = pjpStops.filter((s) => s.visit_status === "visited").length
-  const pjpTotal = pjpStops.length
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const pjpProgressPct = pjpTotal ? Math.round((pjpVisitedCount / pjpTotal) * 100) : 0
-
-  const visitedCount = assignedCustomers.filter((c) => c.visited).length
-  const totalAssigned = assignedCustomers.length
-  const progressPct = totalAssigned
-    ? Math.round((visitedCount / totalAssigned) * 100)
-    : 0
-
-  // PJP Check-in handler
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePjpCheckIn = async (customerId: string) => {
-    if (!currentUser) return
-    setCheckingIn(customerId)
-    try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
-      })
-      const todayStr = new Date().toISOString().slice(0, 10)
-      await supabase.from("visit_logs").insert({
-        sales_user_id: currentUser.id,
-        customer_id: customerId,
-        visit_date: todayStr,
-        check_in_at: new Date().toISOString(),
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        result: null,
-      })
-      setPjpStops((prev) =>
-        prev.map((s) =>
-          s.customer_id === customerId ? { ...s, visit_status: "checked_in" as const } : s
-        )
-      )
-    } catch {
-      alert("Không thể lấy vị trí GPS. Vui lòng bật định vị.")
+  // Cmd/Ctrl + K focuses the search box
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
     }
-    setCheckingIn(null)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  const role = user?.role
+  const visibleTiles = useMemo(() => {
+    if (!role) return TILES
+    return TILES.filter((t) => canAccessModule(role, t.module))
+  }, [role])
+
+  const filteredTiles = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return visibleTiles
+    return visibleTiles.filter(
+      (t) => t.label.toLowerCase().includes(q) || t.href.toLowerCase().includes(q)
+    )
+  }, [search, visibleTiles])
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (filteredTiles.length > 0) router.push(filteredTiles[0].href)
   }
 
-  // PJP mark no order
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePjpNoOrder = async (customerId: string) => {
-    const stop = pjpStops.find((s) => s.customer_id === customerId)
-    if (!stop?.visit_log_id) return
-    await supabase
-      .from("visit_logs")
-      .update({ result: "no_order", check_out_at: new Date().toISOString() })
-      .eq("id", stop.visit_log_id)
-    setPjpStops((prev) =>
-      prev.map((s) =>
-        s.customer_id === customerId ? { ...s, visit_status: "visited" as const } : s
-      )
-    )
-  }
-
-  if (authLoading || (loading && !error)) {
-    return (
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <div className="h-10 w-2/3 bg-muted/50 rounded-xl animate-pulse" />
-          <div className="h-4 w-1/2 bg-muted/30 rounded animate-pulse" />
-        </div>
-        <div className="h-32 bg-muted/50 rounded-2xl animate-pulse" />
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-24 bg-muted/50 rounded-2xl animate-pulse"
-            />
-          ))}
-        </div>
-        <div className="h-40 bg-muted/50 rounded-2xl animate-pulse" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="bg-destructive/10 border border-destructive/20 text-destructive p-6 rounded-2xl">
-          <p className="font-semibold mb-1">Không thể tải dữ liệu</p>
-          <p className="text-sm">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-3 text-sm font-semibold underline"
-          >
-            Thử lại
-          </button>
-        </div>
-      </div>
-    )
-  }
+  const userInitials = useMemo(() => {
+    const name = user?.full_name || ""
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    if (parts.length === 0) return "U"
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "U"
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  }, [user?.full_name])
 
   return (
-    <div className="space-y-6 pb-4">
-      {/* Hero greeting + search */}
-      <section className="space-y-4">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-foreground">
-            {greeting}, {firstName}!
-          </h1>
-          <p className="text-sm text-muted-foreground font-medium mt-1">
-            {totalAssigned > 0
-              ? `Hôm nay bạn có ${totalAssigned} điểm ghé thăm.`
-              : "Chưa có khách hàng nào được phân công cho bạn."}
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* Top bar */}
+      <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-6 py-4 backdrop-blur-md">
         <Link
-          href="/customers"
-          className="relative block"
+          href="/home"
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-200 text-zinc-700 transition-colors hover:bg-zinc-300"
+          title="Trang chủ"
         >
-          <div className="w-full h-12 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors flex items-center gap-3 pl-11 pr-4">
-            <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Tìm khách hàng hoặc sản phẩm...</span>
-          </div>
+          <span className="text-lg font-black">N</span>
         </Link>
-      </section>
 
-      {/* Route card */}
-      <section className="bg-card rounded-2xl shadow-sm p-5 lg:p-6 space-y-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <MapPin className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-foreground leading-tight">
-                Lộ trình hôm nay
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {visitedCount}/{totalAssigned} khách hàng đã ghé thăm
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              alert("Tích hợp bản đồ sẽ được bổ sung trong phiên bản sau.")
-            }
-            className="text-xs font-bold text-primary hover:underline shrink-0"
-          >
-            Xem bản đồ
-          </button>
-        </div>
+        <form onSubmit={handleSearchSubmit} className="relative mx-4 w-full max-w-xl">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm tính năng…"
+            className="h-10 w-full rounded-full border border-border/40 bg-card pl-10 pr-16 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10"
+          />
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-flex">
+            <span className="text-xs">⌘</span>
+            <span>K</span>
+          </kbd>
+        </form>
 
-        <div className="space-y-2">
-          <div className="h-2 w-full bg-muted/30 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all"
-              style={{ width: `${Math.max(progressPct, totalAssigned ? 4 : 0)}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
-            <span>Tiến độ: {progressPct}%</span>
-            <span>{totalAssigned - visitedCount} còn lại</span>
-          </div>
-        </div>
-
-        {assignedCustomers.length > 0 && (
-          <div className="space-y-2 pt-1">
-            {assignedCustomers.slice(0, 3).map((c) => (
-              <Link
-                key={c.customer_id}
-                href={`/customers/${c.customer_id}`}
-                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-muted/30/70 active:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                      c.visited
-                        ? "bg-green-100 text-green-600"
-                        : "bg-primary/10 text-primary"
-                    }`}
-                  >
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-foreground truncate">
-                      {c.store_name}
-                    </p>
-                    {c.address && (
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {c.address}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {c.visited ? (
-                  <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full shrink-0">
-                    Đã ghé
-                  </span>
-                ) : (
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
-              </Link>
-            ))}
-            {assignedCustomers.length > 3 && (
-              <Link
-                href="/customers"
-                className="block text-center text-xs font-semibold text-primary py-2"
-              >
-                Xem tất cả {assignedCustomers.length} khách hàng
-              </Link>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Quick actions grid (3 circle buttons) */}
-      <section className="grid grid-cols-3 gap-3">
-        <Link
-          href="/orders/new"
-          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
-        >
-          <div className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center">
-            <ShoppingCart className="h-5 w-5 text-primary" />
-          </div>
-          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
-            Tạo đơn mới
-          </span>
-        </Link>
-        <Link
-          href="/customers/new"
-          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
-        >
-          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-            <UserPlus className="h-5 w-5 text-blue-700" />
-          </div>
-          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
-            Thêm khách hàng
-          </span>
-        </Link>
-        <Link
-          href="/receivables/collect"
-          className="flex flex-col items-center justify-center gap-2 p-4 bg-card rounded-2xl shadow-sm active:scale-95 transition-transform"
-        >
-          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-            <Wallet className="h-5 w-5 text-red-700" />
-          </div>
-          <span className="text-[11px] font-bold text-foreground text-center leading-tight">
-            Thu tiền nợ
-          </span>
-        </Link>
-      </section>
-
-      {/* KPI asymmetric bento */}
-      <section className="grid grid-cols-2 gap-3">
-        {/* Hero: today's revenue */}
-        <div className="col-span-2 bg-gradient-to-br from-primary to-indigo-600 p-6 rounded-2xl shadow-lg text-white">
-          <p className="text-xs font-medium opacity-80 uppercase tracking-widest">
-            Doanh thu hôm nay
-          </p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <h2 className="text-3xl font-black tracking-tight">
-              {formatCurrency(stats.todayRevenue)}
-            </h2>
-          </div>
-          <div className="mt-4 h-1 w-full bg-white/20 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-all"
-              style={{ width: `${Math.min(100, Math.max(progressPct, 0))}%` }}
-            />
-          </div>
-          <p className="text-xs mt-2 font-semibold opacity-90">
-            Tiến độ lộ trình: {progressPct}% • {stats.todayOrderCount} đơn hôm nay
-          </p>
-        </div>
-
-        <div className="bg-card p-5 rounded-2xl border-l-4 border-primary shadow-sm">
-          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
-            Chỉ tiêu (KPI)
-          </p>
-          <p className="text-2xl font-black text-foreground mt-1 tracking-tight">
-            {stats.todayOrderCount}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-1 font-medium">
-            Đơn hàng hoàn tất hôm nay
-          </p>
-        </div>
-
-        <div className="bg-card p-5 rounded-2xl border-l-4 border-green-500 shadow-sm">
-          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
-            Ghé thăm
-          </p>
-          <p className="text-2xl font-black text-foreground mt-1 tracking-tight">
-            {visitedCount}/{totalAssigned || 0}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-1 font-medium">
-            Khách hàng hôm nay
-          </p>
-        </div>
-
-        {stats.openReceivables > 0 && (
-          <div className="col-span-2 bg-card p-5 rounded-2xl border-l-4 border-destructive shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter">
-                  Công nợ cần thu
-                </p>
-                <p className="text-xl font-black text-destructive mt-1 tracking-tight">
-                  {formatCurrency(stats.openReceivables)}
-                </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground transition-transform hover:scale-105">
+              {userInitials}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuLabel>
+              <div className="font-semibold">{user?.full_name || "Người dùng"}</div>
+              <div className="text-xs font-normal text-muted-foreground">
+                {user?.role ?? "—"}
+                {orgName ? ` · ${orgName}` : ""}
               </div>
-              <Link
-                href="/receivables"
-                className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
-              >
-                Xem <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-          </div>
-        )}
-      </section>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              <span>Tổng quan</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
+              <span>Cài đặt</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/help")}>
+              <HelpCircle className="mr-2 h-4 w-4" />
+              <span>Trợ giúp</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={async () => {
+                await signOut()
+                router.push("/login")
+              }}
+              className="text-destructive focus:text-destructive"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Đăng xuất</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
 
-      {/* Top products */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Package className="h-4 w-4 text-primary" />
-            Mặt hàng bán chạy tháng này
-          </h3>
-          <Link
-            href="/products"
-            className="text-xs font-semibold text-primary"
-          >
-            Tất cả
-          </Link>
-        </div>
-        <div className="bg-card rounded-2xl shadow-sm divide-y divide-border overflow-hidden">
-          {topProducts.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              Chưa có dữ liệu bán hàng trong tháng
-            </div>
-          ) : (
-            topProducts.map((p, idx) => (
-              <div
-                key={p.product_id}
-                className="flex items-center gap-3 p-4"
-              >
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
-                    idx === 0
-                      ? "bg-primary text-white"
-                      : "bg-primary/10 text-primary"
-                  }`}
+      {/* App grid */}
+      <main className="mx-auto max-w-6xl px-6 py-12 lg:py-20">
+        {filteredTiles.length === 0 ? (
+          <div className="py-24 text-center">
+            <p className="text-base font-medium text-foreground">Không tìm thấy tính năng</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Thử từ khóa khác hoặc xóa ô tìm kiếm.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-x-6 gap-y-10 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            {filteredTiles.map((t) => {
+              const Icon = t.icon
+              return (
+                <Link
+                  key={t.href}
+                  href={t.href}
+                  className="group flex flex-col items-center gap-2.5 text-center"
                 >
-                  {idx + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-foreground truncate">
-                    {p.name}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    SKU: {p.sku} • SL: {p.quantity}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-foreground">
-                    {formatCurrency(p.revenue)}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+                  <div
+                    className={cn(
+                      "flex h-16 w-16 items-center justify-center rounded-2xl shadow-sm transition-all group-hover:-translate-y-0.5 group-hover:shadow-md",
+                      COLOR_CLASS[t.color]
+                    )}
+                  >
+                    <Icon className="h-7 w-7" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{t.label}</p>
+                    {t.caption ? (
+                      <p className="text-[11px] text-muted-foreground">{t.caption}</p>
+                    ) : null}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </main>
     </div>
   )
 }

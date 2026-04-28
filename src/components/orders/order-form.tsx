@@ -14,9 +14,16 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight } from "lucide-react"
+import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import {
+  DEFAULT_PRICING_RULES,
+  loadPricingRules,
+  saleFloor,
+  validateSalePrice,
+  type PricingRules,
+} from "@/lib/pricing"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
@@ -45,6 +52,7 @@ export function OrderForm() {
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
+  const [pricingRules, setPricingRules] = useState<PricingRules>(DEFAULT_PRICING_RULES)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -66,6 +74,18 @@ export function OrderForm() {
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pricing rules drive whether the sales rep can edit unit_price and how
+  // far they can deviate from the default price-list value.
+  useEffect(() => {
+    if (!user?.org_id) return
+    let cancelled = false
+    ;(async () => {
+      const r = await loadPricingRules(supabase, user.org_id)
+      if (!cancelled) setPricingRules(r)
+    })()
+    return () => { cancelled = true }
+  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
@@ -99,6 +119,27 @@ export function OrderForm() {
   }
 
   const isSalesRole = user?.role === "sales"
+  // Sales rep may only edit price when the org allows it.
+  // Manager/owner always see the input (their authority overrides rules).
+  const canEditPrice = !isSalesRole || pricingRules.allow_sales_override
+  // Discount % stays manager-only.
+  const canEditDiscount = !isSalesRole
+
+  // Default price for a line according to current price lists + customer group.
+  const getLineDefaultPrice = (line: OrderLine): number => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return 0
+    return getUnitPrice(product, line.unit_name, selectedCustomer?.group_id)
+  }
+
+  // Sales-rep override check. Returns null when the line is fine.
+  const getLinePriceWarning = (line: OrderLine): string | null => {
+    if (!isSalesRole) return null
+    const def = getLineDefaultPrice(line)
+    if (def <= 0) return null
+    const check = validateSalePrice(line.unit_price, def, pricingRules)
+    return check.ok ? null : check.message
+  }
 
   // Round an arbitrary VAT rate (stored as decimal 0-1) to the nearest
   // Vietnamese-standard tier the selector lets users pick: 0, 5, 8, 10%.
@@ -264,6 +305,9 @@ export function OrderForm() {
   )
   const total = netAfterDiscount + vat
 
+  // Aggregated price violation across lines (sales role only).
+  const hasPriceViolation = isSalesRole && lines.some((l) => getLinePriceWarning(l) != null)
+
   const filteredProducts = products.filter((p) => {
     if (!productSearch.trim()) return false
     const q = productSearch.toLowerCase()
@@ -300,6 +344,24 @@ export function OrderForm() {
         variant: "destructive",
       })
       return
+    }
+
+    // Sales-rep price floor (when allowed at all). Block submit if any line
+    // is below the floor — manager/owner skip this since they have authority.
+    if (isSalesRole) {
+      const violations: string[] = []
+      for (const l of lines) {
+        const w = getLinePriceWarning(l)
+        if (w) violations.push(`${l.product_name}: ${w}`)
+      }
+      if (violations.length > 0) {
+        toast({
+          title: "Giá thấp hơn cho phép",
+          description: violations.join(" • "),
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     setLoading(true)
@@ -719,8 +781,8 @@ export function OrderForm() {
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Sản phẩm</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">ĐVT</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">SL</th>
-                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">Đơn giá</th>}
-                    {!isSalesRole && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
+                    {canEditPrice && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-32">Đơn giá</th>}
+                    {canEditDiscount && <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">CK %</th>}
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">VAT</th>
                     <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28 text-right">Thành tiền</th>
                     <th className="px-3 py-2 w-10"></th>
@@ -761,12 +823,31 @@ export function OrderForm() {
                             className={`h-8 w-20 text-center ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                           />
                         </td>
-                        {!isSalesRole && (
-                          <td className="px-3 py-2">
-                            <Input type="number" value={line.unit_price} onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)} className="h-8 w-24" />
-                          </td>
-                        )}
-                        {!isSalesRole && (
+                        {canEditPrice && (() => {
+                          const warning = getLinePriceWarning(line)
+                          const def = isSalesRole ? getLineDefaultPrice(line) : 0
+                          return (
+                            <td className="px-3 py-2 align-top">
+                              <Input
+                                type="number"
+                                value={line.unit_price}
+                                onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                                className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              />
+                              {isSalesRole && def > 0 && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  Mặc định: {formatCurrency(def)} • Tối thiểu: {formatCurrency(saleFloor(def, pricingRules))}
+                                </p>
+                              )}
+                              {warning && (
+                                <p className="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1">
+                                  <AlertTriangle className="h-3 w-3" /> {warning}
+                                </p>
+                              )}
+                            </td>
+                          )
+                        })()}
+                        {canEditDiscount && (
                           <td className="px-3 py-2">
                             <Input type="number" min={0} max={100} value={line.line_discount_percent} onChange={(e) => updateLine(i, "line_discount_percent", Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))} className="h-8 w-16 text-center" />
                           </td>
@@ -791,7 +872,14 @@ export function OrderForm() {
                     )
                   })}
                   {lines.length === 0 && (
-                    <tr><td colSpan={isSalesRole ? 7 : 9} className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</td></tr>
+                    <tr>
+                      <td
+                        colSpan={5 + (canEditPrice ? 1 : 0) + (canEditDiscount ? 1 : 0) + 2}
+                        className="py-8 text-center text-muted-foreground text-sm"
+                      >
+                        Tìm hoặc quét sản phẩm phía trên
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -854,12 +942,38 @@ export function OrderForm() {
                         Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
                       </p>
                     )}
+                    {canEditPrice && (() => {
+                      const warning = getLinePriceWarning(line)
+                      const def = isSalesRole ? getLineDefaultPrice(line) : 0
+                      return (
+                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
+                              Giá
+                            </Label>
+                            <Input
+                              type="number"
+                              value={line.unit_price}
+                              onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            />
+                          </div>
+                          {isSalesRole && def > 0 && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Mặc định {formatCurrency(def)} • Tối thiểu {formatCurrency(saleFloor(def, pricingRules))}
+                            </p>
+                          )}
+                          {warning && (
+                            <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> {warning}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-                      {!isSalesRole && (
-                        <>
-                          <span>Giá: {formatCurrency(line.unit_price)}</span>
-                          {line.line_discount_percent > 0 && <span>CK: {line.line_discount_percent}%</span>}
-                        </>
+                      {canEditDiscount && line.line_discount_percent > 0 && (
+                        <span>CK: {line.line_discount_percent}%</span>
                       )}
                       <div className="ml-auto flex items-center gap-1.5">
                         <span className="text-[10px] font-semibold uppercase">VAT</span>
@@ -938,10 +1052,16 @@ export function OrderForm() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={loading || hasOverstock}
+                    disabled={loading || hasOverstock || hasPriceViolation}
                     className="flex-[2] bg-white hover:bg-white/90 text-primary font-bold border-0"
                   >
-                    {loading ? "Đang lưu..." : hasOverstock ? "Vượt tồn kho" : "Tạo đơn hàng"}
+                    {loading
+                      ? "Đang lưu..."
+                      : hasOverstock
+                        ? "Vượt tồn kho"
+                        : hasPriceViolation
+                          ? "Giá thấp hơn cho phép"
+                          : "Tạo đơn hàng"}
                   </Button>
                 </div>
               </div>
@@ -978,16 +1098,18 @@ export function OrderForm() {
             </div>
             <Button
               type="submit"
-              disabled={loading || hasOverstock || !customerId}
+              disabled={loading || hasOverstock || hasPriceViolation || !customerId}
               className="h-11 px-5 rounded-full shrink-0 bg-gradient-primary text-white font-bold"
             >
               {loading
                 ? "Đang lưu..."
                 : hasOverstock
                   ? "Vượt tồn"
-                  : !customerId
-                    ? "Chọn KH"
-                    : "Tiếp tục"}
+                  : hasPriceViolation
+                    ? "Giá thấp"
+                    : !customerId
+                      ? "Chọn KH"
+                      : "Tiếp tục"}
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>

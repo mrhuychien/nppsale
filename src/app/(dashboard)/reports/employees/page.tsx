@@ -24,12 +24,13 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 
-type Variant = "sales" | "profit" | "products"
+type Variant = "sales" | "profit" | "by_customer" | "products"
 
 const VARIANTS = [
   { key: "sales" as const, label: "Bán hàng" },
   { key: "profit" as const, label: "Lợi nhuận" },
-  { key: "products" as const, label: "Hàng bán theo nhân viên" },
+  { key: "by_customer" as const, label: "Theo khách hàng" },
+  { key: "products" as const, label: "Theo sản phẩm" },
 ] as const
 
 interface UserRow {
@@ -395,6 +396,78 @@ export default function EmployeesReportPage() {
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
 
+  // ============== Theo khách hàng (NV → KH → mặt hàng) ==============
+  type EmployeeCustomerRow = {
+    id: string
+    name: string
+    role: string
+    revenue: number
+    qty: number
+    customers: {
+      id: string
+      store_name: string
+      orders: number
+      qty: number
+      revenue: number
+      products: { id: string; sku: string; name: string; qty: number; revenue: number }[]
+    }[]
+  }
+  const employeeCustomerRows: EmployeeCustomerRow[] = useMemo(() => {
+    const m = new Map<string, EmployeeCustomerRow>()
+    for (const o of orders) {
+      if (!matchSearchUser(o.sales_user_id)) continue
+      const u = userMap.get(o.sales_user_id)
+      const e =
+        m.get(o.sales_user_id) ||
+        ({
+          id: o.sales_user_id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          qty: 0,
+          customers: [],
+        } as EmployeeCustomerRow)
+      e.revenue += Number(o.total || 0)
+
+      let cust = e.customers.find((x) => x.id === o.customer_id)
+      if (!cust) {
+        const c = customerMap.get(o.customer_id)
+        cust = {
+          id: o.customer_id,
+          store_name: c?.store_name || "—",
+          orders: 0,
+          qty: 0,
+          revenue: 0,
+          products: [],
+        }
+        e.customers.push(cust)
+      }
+      cust.orders += 1
+      cust.revenue += Number(o.total || 0)
+
+      const ls = linesByOrder.get(o.id) || []
+      for (const l of ls) {
+        const prod = productMap.get(l.product_id)
+        if (!prod) continue
+        cust.qty += Number(l.quantity || 0)
+        e.qty += Number(l.quantity || 0)
+        let pr = cust.products.find((x) => x.id === l.product_id)
+        if (!pr) {
+          pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0 }
+          cust.products.push(pr)
+        }
+        pr.qty += Number(l.quantity || 0)
+        pr.revenue += Number(l.line_total || 0)
+      }
+      m.set(o.sales_user_id, e)
+    }
+    for (const e of Array.from(m.values())) {
+      e.customers.sort((a, b) => b.revenue - a.revenue)
+      for (const c of e.customers) c.products.sort((a, b) => b.revenue - a.revenue)
+    }
+    return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
+  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
+
   const handleExport = () => {
     if (variant === "sales") {
       const out: (string | number)[][] = [
@@ -410,6 +483,18 @@ export default function EmployeesReportPage() {
       for (const r of profitRows)
         out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
       downloadCsv(`bao-cao-nv-loinhuan-${range.from}-${range.to}.csv`, out)
+    } else if (variant === "by_customer") {
+      const out: (string | number)[][] = [
+        ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "SL", "Doanh thu"],
+      ]
+      for (const e of employeeCustomerRows) {
+        for (const c of e.customers) {
+          for (const p of c.products) {
+            out.push([e.name, c.store_name, p.sku, p.name, p.qty, p.revenue])
+          }
+        }
+      }
+      downloadCsv(`bao-cao-nv-theo-khach-${range.from}-${range.to}.csv`, out)
     } else {
       const out: (string | number)[][] = [
         ["Nhân viên", "Mã hàng", "Tên hàng", "Khách hàng", "SL", "Doanh thu"],
@@ -421,7 +506,7 @@ export default function EmployeesReportPage() {
           }
         }
       }
-      downloadCsv(`bao-cao-nv-hangban-${range.from}-${range.to}.csv`, out)
+      downloadCsv(`bao-cao-nv-theo-sanpham-${range.from}-${range.to}.csv`, out)
     }
   }
 
@@ -450,6 +535,14 @@ export default function EmployeesReportPage() {
   const totalsProducts = employeeProductRows.reduce(
     (acc, r) => ({ qty: acc.qty + r.qty, revenue: acc.revenue + r.revenue }),
     { qty: 0, revenue: 0 }
+  )
+  const totalsByCustomer = employeeCustomerRows.reduce(
+    (acc, r) => ({
+      qty: acc.qty + r.qty,
+      revenue: acc.revenue + r.revenue,
+      customers: acc.customers + r.customers.length,
+    }),
+    { qty: 0, revenue: 0, customers: 0 }
   )
 
   return (
@@ -579,6 +672,106 @@ export default function EmployeesReportPage() {
               ]}
             />
           }
+        />
+      ) : variant === "by_customer" ? (
+        <ReportTable
+          rows={employeeCustomerRows}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
+            { key: "role", label: "Vai trò", render: (r) => r.role },
+            { key: "ck", label: "Số khách", align: "right", render: (r) => r.customers.length },
+            { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
+          ]}
+          totalsRow={
+            <TotalsRow
+              cells={[
+                { content: `SL người bán: ${employeeCustomerRows.length}`, colSpan: 2 },
+                { content: totalsByCustomer.customers, align: "right" },
+                { content: totalsByCustomer.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: formatCurrency(totalsByCustomer.revenue), align: "right", className: "text-primary" },
+              ]}
+            />
+          }
+          expandable={(r) => (
+            <div className="space-y-2">
+              {r.customers.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Nhân viên này chưa có khách hàng
+                </p>
+              ) : (
+                r.customers.map((c) => (
+                  <div key={c.id} className="rounded-md border border-border/40 bg-background/60">
+                    <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{c.store_name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({c.orders} đơn)
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        SL:{" "}
+                        <span className="font-semibold text-foreground">
+                          {c.qty.toLocaleString("vi-VN")}
+                        </span>
+                        <span className="mx-2">·</span>
+                        Doanh thu:{" "}
+                        <span className="font-semibold text-primary">
+                          {formatCurrency(c.revenue)}
+                        </span>
+                      </div>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30">
+                          <th className="px-3 py-1.5 text-left text-xs font-semibold uppercase">
+                            Mã hàng
+                          </th>
+                          <th className="px-3 py-1.5 text-left text-xs font-semibold uppercase">
+                            Tên hàng
+                          </th>
+                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">
+                            SL
+                          </th>
+                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">
+                            Doanh thu
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.products.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={4}
+                              className="px-3 py-2 text-center text-xs text-muted-foreground"
+                            >
+                              Không có dòng hàng
+                            </td>
+                          </tr>
+                        ) : (
+                          c.products.map((p) => (
+                            <tr key={p.id} className="border-t border-border/30">
+                              <td className="px-3 py-1.5 font-mono text-xs text-primary">
+                                {p.sku}
+                              </td>
+                              <td className="px-3 py-1.5">{p.name}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {p.qty.toLocaleString("vi-VN")}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {formatCurrency(p.revenue)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         />
       ) : (
         <ReportTable

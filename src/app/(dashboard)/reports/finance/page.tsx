@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   type DateRange,
   type PeriodPreset,
@@ -247,7 +247,7 @@ export default function FinanceReportPage() {
       }
       out.push(["Tổng chi phí (6)", operatingExpenses])
       out.push(["Lợi nhuận thuần (7=5-6)", netProfit])
-      downloadCsv(`bao-cao-tai-chinh-kqhdkd-${effectiveRange.from}-${effectiveRange.to}.csv`, out)
+      downloadXlsx(`bao-cao-tai-chinh-kqhdkd-${effectiveRange.from}-${effectiveRange.to}`, out)
     } else if (variant === "balance") {
       const out: (string | number)[][] = [
         ["Mục", "Giá trị"],
@@ -258,7 +258,7 @@ export default function FinanceReportPage() {
         ["NGUỒN VỐN", ""],
         ["  Công nợ phải trả NCC", payOpen],
       ]
-      downloadCsv(`bao-cao-tai-chinh-cdts-${effectiveRange.from}-${effectiveRange.to}.csv`, out)
+      downloadXlsx(`bao-cao-tai-chinh-cdts-${effectiveRange.from}-${effectiveRange.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Mục", "Giá trị"],
@@ -268,7 +268,7 @@ export default function FinanceReportPage() {
         ["  Chi phí đã thanh toán", cashOutPaid],
         ["Chênh lệch dòng tiền", cashIn - cashOutPaid],
       ]
-      downloadCsv(`bao-cao-tai-chinh-dongtien-${effectiveRange.from}-${effectiveRange.to}.csv`, out)
+      downloadXlsx(`bao-cao-tai-chinh-dongtien-${effectiveRange.from}-${effectiveRange.to}`, out)
     }
   }
 

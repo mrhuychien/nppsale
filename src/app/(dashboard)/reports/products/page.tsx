@@ -10,7 +10,7 @@ import {
   FilterCheckbox,
   FilterField,
 } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   fetchDeliveredOrders,
   fetchOrderLines,
@@ -414,7 +414,7 @@ export default function ProductsReportPage() {
       for (const r of salesRows) {
         out.push([r.sku, r.name, r.qty, r.revenue, r.returnQty, -r.returnValue, r.netRevenue])
       }
-      downloadCsv(`bao-cao-hh-banhang-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-hh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
         ["Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
@@ -422,7 +422,7 @@ export default function ProductsReportPage() {
       for (const r of profitRows) {
         out.push([r.sku, r.name, r.qty, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
       }
-      downloadCsv(`bao-cao-hh-loinhuan-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-hh-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "stock_value") {
       const out: (string | number)[][] = [
         ["Mã hàng", "Tên hàng", "Nhóm", "SL tồn", "Giá vốn TB", "Giá trị tồn", "Số lô"],
@@ -430,7 +430,7 @@ export default function ProductsReportPage() {
       for (const r of stockValueRows) {
         out.push([r.sku, r.name, r.category, r.qty, r.unit_cost, r.value, r.batches])
       }
-      downloadCsv(`bao-cao-hh-giatrikho-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-hh-giatrikho-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Mã hàng", "Tên hàng", "Tồn đầu", "SL nhập", "Giá trị nhập", "SL xuất", "Giá trị xuất", "Tồn cuối"],
@@ -438,7 +438,7 @@ export default function ProductsReportPage() {
       for (const r of movementData.rows) {
         out.push([r.sku, r.name, r.beginQty, r.importQty, r.importValue, r.exportQty, r.exportValue, r.endQty])
       }
-      downloadCsv(`bao-cao-hh-xnt-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-hh-xnt-${range.from}-${range.to}`, out)
     }
   }
 

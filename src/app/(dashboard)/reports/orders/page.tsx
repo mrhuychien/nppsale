@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField, FilterCheckbox, FilterSelect } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   ReportTable,
   TotalsRow,
@@ -215,14 +215,14 @@ export default function OrdersReportPage() {
     if (variant === "by_product") {
       const out: (string | number)[][] = [["Mã hàng", "Tên hàng", "SL đặt", "Giá trị hàng đặt"]]
       for (const r of byProductRows) out.push([r.sku, r.name, r.qty, r.value])
-      downloadCsv(`bao-cao-dathang-hanghoa-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-dathang-hanghoa-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Mã đơn", "Ngày đặt", "Khách hàng", "Nhân viên", "Trạng thái", "Tổng SL", "Tổng tiền"],
       ]
       for (const r of txRows)
         out.push([r.order_code, r.order_date, r.customer, r.sales_user, r.status, r.qty, r.total])
-      downloadCsv(`bao-cao-dathang-giaodich-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-dathang-giaodich-${range.from}-${range.to}`, out)
     }
   }
 

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
   type DateRange,
@@ -362,14 +362,14 @@ export default function SuppliersReportPage() {
       ]
       for (const r of purchaseRows)
         out.push([r.code, r.name, r.category, r.invoiceCount, r.purchaseValue])
-      downloadCsv(`bao-cao-ncc-nhaphang-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-ncc-nhaphang-${range.from}-${range.to}`, out)
     } else if (variant === "payable") {
       const out: (string | number)[][] = [
         ["Mã NCC", "Tên NCC", "Số phiếu", "Công nợ", "Tuổi nợ tối đa (ngày)"],
       ]
       for (const r of payableRows)
         out.push([r.code, r.name, r.invoices, r.outstanding, r.overdueDays])
-      downloadCsv(`bao-cao-ncc-congno-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-ncc-congno-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Mã NCC", "Tên NCC", "Mã hàng", "Tên hàng", "SL", "Giá trị"],
@@ -379,7 +379,7 @@ export default function SuppliersReportPage() {
           out.push([r.code, r.name, p.sku, p.name, p.qty, p.value])
         }
       }
-      downloadCsv(`bao-cao-ncc-hangnhap-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-ncc-hangnhap-${range.from}-${range.to}`, out)
     }
   }
 

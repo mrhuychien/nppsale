@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
   fetchDeliveredOrders,
@@ -475,14 +475,14 @@ export default function EmployeesReportPage() {
       ]
       for (const r of salesRows)
         out.push([r.name, r.role, r.revenue, -r.returnValue, r.netRevenue])
-      downloadCsv(`bao-cao-nv-banhang-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-nv-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
         ["Người bán", "Vai trò", "Số đơn", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows)
         out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
-      downloadCsv(`bao-cao-nv-loinhuan-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-nv-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "by_customer") {
       const out: (string | number)[][] = [
         ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "SL", "Doanh thu"],
@@ -494,7 +494,7 @@ export default function EmployeesReportPage() {
           }
         }
       }
-      downloadCsv(`bao-cao-nv-theo-khach-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-nv-theo-khach-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Nhân viên", "Mã hàng", "Tên hàng", "Khách hàng", "SL", "Doanh thu"],
@@ -506,7 +506,7 @@ export default function EmployeesReportPage() {
           }
         }
       }
-      downloadCsv(`bao-cao-nv-theo-sanpham-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-nv-theo-sanpham-${range.from}-${range.to}`, out)
     }
   }
 

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
   fetchDeliveredOrders,
@@ -413,21 +413,21 @@ export default function CustomersReportPage() {
       ]
       for (const r of salesRows)
         out.push([r.name, r.channel, r.orders, r.revenue, -r.returnValue, r.netRevenue])
-      downloadCsv(`bao-cao-kh-banhang-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-kh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
         ["Khách hàng", "Kênh", "Số đơn", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows)
         out.push([r.name, r.channel, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
-      downloadCsv(`bao-cao-kh-loinhuan-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-kh-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "receivables") {
       const out: (string | number)[][] = [
         ["Khách hàng", "Kênh", "Hạn mức", "Số phiếu", "Công nợ", "Tuổi nợ tối đa (ngày)"],
       ]
       for (const r of recvRows)
         out.push([r.name, r.channel, r.creditLimit, r.invoices, r.outstanding, r.overdueDays])
-      downloadCsv(`bao-cao-kh-congno-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-kh-congno-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Khách hàng", "Kênh", "Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "SL trả", "Giá trị trả"],
@@ -437,7 +437,7 @@ export default function CustomersReportPage() {
           out.push([c.name, c.channel, p.sku, p.name, p.qty, p.revenue, p.returnQty, p.returnValue])
         }
       }
-      downloadCsv(`bao-cao-kh-hangban-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-kh-hangban-${range.from}-${range.to}`, out)
     }
   }
 

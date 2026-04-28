@@ -157,14 +157,18 @@ export const DEFAULT_PERMISSION_MAP: Record<Role, Record<Module, Action[]>> = {
 }
 
 /**
- * Compact map structure for runtime checks: role -> module -> Set<Action>.
+ * Compact map structure for runtime checks. Keyed by role -> permission
+ * key -> Set<Action>. The permission key can be either a Module name
+ * ("orders") OR a feature key ("customers.analytics"). Feature-specific
+ * entries override the parent module when present; otherwise the
+ * runtime falls back to the module-level entry.
  */
-export type PermissionsCache = Record<Role, Partial<Record<Module, Set<Action>>>>
+export type PermissionsCache = Record<Role, Record<string, Set<Action>>>
 
 function buildCacheFromMap(map: Record<Role, Record<Module, Action[]>>): PermissionsCache {
   const out = {} as PermissionsCache
   for (const role of ROLES) {
-    const m: Partial<Record<Module, Set<Action>>> = {}
+    const m: Record<string, Set<Action>> = {}
     for (const mod of MODULES) {
       m[mod] = new Set(map[role]?.[mod] ?? [])
     }
@@ -197,6 +201,40 @@ export function hasPermission(role: Role, module: Module, action: Action): boole
   if (role === "owner") return true
   const cache = getPermissionsCache()
   return cache[role]?.[module]?.has(action) ?? false
+}
+
+/**
+ * Like hasPermission but for granular feature keys. Looks up the
+ * feature first; if no feature-specific override exists in the cache,
+ * falls back to the parent module's entry.
+ */
+export function hasFeaturePermission(
+  role: Role,
+  feature: string,
+  parentModule: Module,
+  action: Action
+): boolean {
+  if (role === "owner") return true
+  const cache = getPermissionsCache()
+  const cellForRole = cache[role]
+  if (!cellForRole) return false
+  const featureSet = cellForRole[feature]
+  if (featureSet) return featureSet.has(action)
+  return cellForRole[parentModule]?.has(action) ?? false
+}
+
+export function canAccessFeature(
+  role: Role,
+  feature: string,
+  parentModule: Module
+): boolean {
+  if (role === "owner") return true
+  const cache = getPermissionsCache()
+  const cellForRole = cache[role]
+  if (!cellForRole) return false
+  const featureSet = cellForRole[feature]
+  if (featureSet) return featureSet.size > 0
+  return (cellForRole[parentModule]?.size ?? 0) > 0
 }
 
 export function getModulesForRole(role: Role): Module[] {
@@ -234,16 +272,20 @@ export function defaultPermissionRows(): {
 }
 
 export function rowsToCache(
-  rows: { role: Role; module: Module; action: Action; allowed: boolean }[]
+  rows: { role: Role; module: string; action: Action; allowed: boolean }[]
 ): PermissionsCache {
   // Start from defaults so that any (role, module, action) NOT present in
-  // the override list keeps its built-in value.
+  // the override list keeps its built-in value. Feature-specific rows
+  // ("customers.analytics") add new keys to the cache that
+  // hasFeaturePermission can look up directly.
   const out = buildCacheFromMap(DEFAULT_PERMISSION_MAP)
   for (const r of rows) {
-    const m = out[r.role]?.[r.module]
-    if (!m) continue
-    if (r.allowed) m.add(r.action)
-    else m.delete(r.action)
+    const cellForRole = out[r.role]
+    if (!cellForRole) continue
+    if (!cellForRole[r.module]) cellForRole[r.module] = new Set<Action>()
+    const set = cellForRole[r.module]
+    if (r.allowed) set.add(r.action)
+    else set.delete(r.action)
   }
   return out
 }

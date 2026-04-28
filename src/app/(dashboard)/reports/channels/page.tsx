@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportFrame, downloadCsv } from "@/components/analytics/report-frame"
+import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
 import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
 import {
   type DateRange,
@@ -91,7 +91,7 @@ export default function ChannelsReportPage() {
     for (const r of rows) {
       out.push([r.name, r.customers, r.orders, r.revenue, r.aov])
     }
-    downloadCsv(`bao-cao-kenh-${range.from}-${range.to}.csv`, out)
+    downloadXlsx(`bao-cao-kenh-${range.from}-${range.to}`, out)
   }
 
   if (authLoading) return <Skeleton className="h-64" />

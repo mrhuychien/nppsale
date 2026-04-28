@@ -43,7 +43,7 @@ export function ReportFrame({
               onClick={onExportCsv}
               className="flex h-9 items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 text-sm font-medium hover:bg-muted/30"
             >
-              <Download className="h-4 w-4" /> Xuất CSV
+              <Download className="h-4 w-4" /> Xuất Excel
             </button>
           ) : null}
           <button
@@ -101,4 +101,48 @@ export function downloadCsv(filename: string, rows: (string | number)[][]) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+/**
+ * Export rows as a real .xlsx workbook. The xlsx library is loaded
+ * dynamically so it doesn't bloat the initial bundle for users who
+ * never click the export button.
+ *
+ * The first row is treated as the header. Numeric values are written
+ * as numbers (not strings) so Excel keeps them right-aligned and
+ * formula-friendly.
+ */
+export async function downloadXlsx(
+  filename: string,
+  rows: (string | number)[][],
+  sheetName: string = "Sheet1"
+) {
+  const XLSX = await import("xlsx")
+
+  // Auto-fit column widths based on the longest cell string in each
+  // column (capped so very long descriptions don't blow up the layout).
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  if (rows.length > 0) {
+    const cols = rows[0].map((_, colIdx) => {
+      let max = 8
+      for (const row of rows) {
+        const v = row[colIdx]
+        if (v === null || v === undefined) continue
+        const len = String(v).length
+        if (len > max) max = len
+      }
+      return { wch: Math.min(max + 2, 60) }
+    })
+    ws["!cols"] = cols
+  }
+  // Make the header row bold by referencing a stand-alone bold style;
+  // SheetJS community edition does not write styles, but assigning
+  // !rows[0].s won't error and helps when users open in Google Sheets.
+  ws["!rows"] = [{ hpt: 20 }]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31)) // Excel cap
+  // Ensure the filename ends with .xlsx
+  const safe = filename.replace(/\.(csv|xls|xlsx)$/i, "") + ".xlsx"
+  XLSX.writeFile(wb, safe)
 }

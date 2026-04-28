@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
-import { downloadCsv } from "@/components/analytics/report-frame"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   fetchDeliveredOrders,
   fetchOrderLines,
@@ -331,25 +331,25 @@ export default function SalesReportPage() {
     if (variant === "time") {
       const out: (string | number)[][] = [["Thời gian", "Doanh thu", "Giá trị trả", "Doanh thu thuần"]]
       for (const r of timeBuckets) out.push([r.label, r.revenue, -r.returnValue, r.netRevenue])
-      downloadCsv(`bao-cao-banhang-thoigian-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-banhang-thoigian-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [["Thời gian", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"]]
       for (const r of profitRows) out.push([r.label, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
-      downloadCsv(`bao-cao-banhang-loinhuan-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-banhang-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "discount") {
       const out: (string | number)[][] = [["Mã HĐ", "Ngày", "Khách hàng", "Tạm tính", "Giảm giá", "Thành tiền", "% giảm"]]
       for (const r of discountRows)
         out.push([r.order_code, r.order_date, r.customer, r.subtotal, r.discount, r.total, r.pct.toFixed(2)])
-      downloadCsv(`bao-cao-banhang-giamgia-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-banhang-giamgia-${range.from}-${range.to}`, out)
     } else if (variant === "returns") {
       const out: (string | number)[][] = [["Mã trả", "Ngày", "Khách hàng", "Trạng thái", "Giá trị trả"]]
       for (const r of returnsRows) out.push([r.id, r.date, r.customer, r.status, r.amount])
-      downloadCsv(`bao-cao-banhang-trahang-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-banhang-trahang-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [["Nhân viên", "Vai trò", "Số đơn", "Doanh thu", "Giá vốn", "Lợi nhuận", "TB/đơn"]]
       for (const r of employeeRows)
         out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.aov])
-      downloadCsv(`bao-cao-banhang-nhanvien-${range.from}-${range.to}.csv`, out)
+      downloadXlsx(`bao-cao-banhang-nhanvien-${range.from}-${range.to}`, out)
     }
   }
 

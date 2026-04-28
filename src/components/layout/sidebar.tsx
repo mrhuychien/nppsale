@@ -112,7 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Nhà cung cấp", href: "/reports/suppliers", icon: Factory, module: "reports" },
       { label: "Nhân viên", href: "/reports/employees", icon: UserCog, module: "reports" },
       { label: "Kênh bán hàng", href: "/reports/channels", icon: BarChart3, module: "reports" },
-      { label: "Tài chính", href: "/reports/finance/pnl", icon: Wallet, module: "reports" },
+      { label: "Tài chính", href: "/reports/finance", icon: Wallet, module: "reports" },
     ],
   },
   {

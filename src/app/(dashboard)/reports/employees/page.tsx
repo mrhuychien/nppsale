@@ -5,8 +5,17 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportFrame, downloadCsv } from "@/components/analytics/report-frame"
-import { fetchAllOrders, fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { ReportShell, FilterField } from "@/components/analytics/report-shell"
+import { downloadCsv } from "@/components/analytics/report-frame"
+import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
+import {
+  fetchDeliveredOrders,
+  fetchOrderLines,
+  fetchReturnsRows,
+  type SalesOrderLineRow,
+  type SalesOrderRow,
+  type ReturnSummaryRow,
+} from "@/lib/analytics/sales"
 import {
   type DateRange,
   type PeriodPreset,
@@ -15,14 +24,42 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 
+type Variant = "sales" | "profit" | "products"
+
+const VARIANTS = [
+  { key: "sales" as const, label: "Bán hàng" },
+  { key: "profit" as const, label: "Lợi nhuận" },
+  { key: "products" as const, label: "Hàng bán theo nhân viên" },
+] as const
+
 interface UserRow {
   id: string
   full_name: string
   role: string
+  is_active: boolean
+}
+interface CustomerRow {
+  id: string
+  store_name: string
+}
+interface ProductRow {
+  id: string
+  sku: string
+  name: string
+}
+interface StockEntry {
+  id: string
+  type: string
+}
+interface StockEntryLine {
+  entry_id: string
+  product_id: string
+  quantity: number
+  unit_cost: number
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  owner: "Chủ doanh nghiệp",
+  owner: "Chủ DN",
   manager: "Quản lý",
   accountant: "Kế toán",
   sales: "Kinh doanh",
@@ -34,24 +71,64 @@ export default function EmployeesReportPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
   const supabase = createClient()
+  const [variant, setVariant] = useState<Variant>("sales")
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
+  const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
+
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [allOrders, setAllOrders] = useState<SalesOrderRow[]>([])
+  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
+  const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
+  const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
+  const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const [delivered, all, usersRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchAllOrders(supabase, user.org_id, range),
-      supabase.from("users").select("id, full_name, role").eq("org_id", user.org_id),
+    const fromIso = `${range.from}T00:00:00Z`
+    const toIso = `${range.to}T23:59:59Z`
+    const [orderList, returnsRows, usersRes, customersRes, productsRes, stockEntriesRes] =
+      await Promise.all([
+        fetchDeliveredOrders(supabase, user.org_id, range),
+        fetchReturnsRows(supabase, user.org_id, range),
+        supabase
+          .from("users")
+          .select("id, full_name, role, is_active")
+          .eq("org_id", user.org_id),
+        supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
+        supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
+        supabase
+          .from("stock_entries")
+          .select("id, type")
+          .eq("org_id", user.org_id)
+          .eq("status", "posted")
+          .eq("type", "export")
+          .gte("posted_at", fromIso)
+          .lte("posted_at", toIso),
+      ])
+    const orderIds = orderList.map((o) => o.id)
+    const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
+    const [linesList, stockLinesRes] = await Promise.all([
+      fetchOrderLines(supabase, orderIds),
+      stockEntryIds.length === 0
+        ? Promise.resolve({ data: [] as StockEntryLine[] })
+        : supabase
+            .from("stock_entry_lines")
+            .select("entry_id, product_id, quantity, unit_cost")
+            .in("entry_id", stockEntryIds),
     ])
-    setOrders(delivered)
-    setAllOrders(all)
+    setOrders(orderList)
+    setLines(linesList)
+    setReturns(returnsRows)
     setUsers((usersRes.data as UserRow[]) || [])
+    setCustomers((customersRes.data as CustomerRow[]) || [])
+    setProducts((productsRes.data as ProductRow[]) || [])
+    setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
+    setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
     setLoading(false)
   }, [user?.org_id, range, supabase])
 
@@ -65,72 +142,322 @@ export default function EmployeesReportPage() {
     return m
   }, [users])
 
-  const rows = useMemo(() => {
-    const m = new Map<string, { delivered: number; deliveredValue: number; total: number; totalValue: number; cancelled: number }>()
-    for (const o of allOrders) {
-      const e = m.get(o.sales_user_id) || {
-        delivered: 0,
-        deliveredValue: 0,
-        total: 0,
-        totalValue: 0,
-        cancelled: 0,
-      }
-      e.total += 1
-      e.totalValue += Number(o.total || 0)
-      if (o.status === "cancelled") e.cancelled += 1
-      m.set(o.sales_user_id, e)
-    }
-    for (const o of orders) {
-      const e = m.get(o.sales_user_id)
-      if (e) {
-        e.delivered += 1
-        e.deliveredValue += Number(o.total || 0)
-      }
-    }
-    return Array.from(m.entries())
-      .map(([uid, e]) => {
-        const u = userMap.get(uid)
-        return {
-          id: uid,
-          name: u?.full_name || "—",
-          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
-          orders: e.total,
-          delivered: e.delivered,
-          deliveredValue: e.deliveredValue,
-          totalValue: e.totalValue,
-          cancelled: e.cancelled,
-          aov: e.delivered > 0 ? e.deliveredValue / e.delivered : 0,
-        }
-      })
-      .sort((a, b) => b.deliveredValue - a.deliveredValue)
-  }, [orders, allOrders, userMap])
+  const customerMap = useMemo(() => {
+    const m = new Map<string, CustomerRow>()
+    for (const c of customers) m.set(c.id, c)
+    return m
+  }, [customers])
 
-  const totals = rows.reduce(
-    (acc, r) => ({
-      orders: acc.orders + r.orders,
-      delivered: acc.delivered + r.delivered,
-      cancelled: acc.cancelled + r.cancelled,
-      deliveredValue: acc.deliveredValue + r.deliveredValue,
-    }),
-    { orders: 0, delivered: 0, cancelled: 0, deliveredValue: 0 }
+  const productMap = useMemo(() => {
+    const m = new Map<string, ProductRow>()
+    for (const p of products) m.set(p.id, p)
+    return m
+  }, [products])
+
+  // Average COGS per product over the period
+  const avgCostMap = useMemo(() => {
+    const productCogs = new Map<string, { qty: number; value: number }>()
+    for (const l of stockLines) {
+      const e = productCogs.get(l.product_id) || { qty: 0, value: 0 }
+      e.qty += Math.abs(Number(l.quantity || 0))
+      e.value += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
+      productCogs.set(l.product_id, e)
+    }
+    const m = new Map<string, number>()
+    for (const [pid, v] of Array.from(productCogs.entries())) {
+      m.set(pid, v.qty > 0 ? v.value / v.qty : 0)
+    }
+    return m
+  }, [stockLines])
+
+  // Map order_id -> [lines]
+  const linesByOrder = useMemo(() => {
+    const m = new Map<string, SalesOrderLineRow[]>()
+    for (const l of lines) {
+      const a = m.get(l.order_id) || []
+      a.push(l)
+      m.set(l.order_id, a)
+    }
+    return m
+  }, [lines])
+
+  // Map customer_id -> total returns value (used to attribute returns to NV via order's sales_user)
+  const orderByCustomer = useMemo(() => {
+    const m = new Map<string, SalesOrderRow[]>()
+    for (const o of orders) {
+      const a = m.get(o.customer_id) || []
+      a.push(o)
+      m.set(o.customer_id, a)
+    }
+    return m
+  }, [orders])
+
+  const matchSearchUser = useCallback(
+    (uid: string) => {
+      if (!search) return true
+      const u = userMap.get(uid)
+      if (!u) return false
+      return u.full_name.toLowerCase().includes(search.toLowerCase())
+    },
+    [search, userMap]
   )
 
-  const handleExport = () => {
-    const out: (string | number)[][] = [
-      ["Nhân viên", "Vai trò", "Tổng đơn", "Đơn đã giao", "Đơn hủy", "Doanh thu giao", "TB/đơn"],
-    ]
-    for (const r of rows) {
-      out.push([r.name, r.role, r.orders, r.delivered, r.cancelled, r.deliveredValue, r.aov])
+  // ============== Bán hàng (drill-down theo thời gian) ==============
+  type SalesRow = {
+    id: string
+    name: string
+    role: string
+    revenue: number
+    returnValue: number
+    netRevenue: number
+    days: { date: string; label: string; revenue: number; returnValue: number; netRevenue: number }[]
+  }
+
+  const salesRows: SalesRow[] = useMemo(() => {
+    const m = new Map<string, SalesRow>()
+    // revenue from orders
+    for (const o of orders) {
+      if (!matchSearchUser(o.sales_user_id)) continue
+      const u = userMap.get(o.sales_user_id)
+      const e =
+        m.get(o.sales_user_id) ||
+        ({
+          id: o.sales_user_id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          returnValue: 0,
+          netRevenue: 0,
+          days: [],
+        } as SalesRow)
+      e.revenue += Number(o.total || 0)
+      const d = String(o.order_date).slice(0, 10)
+      const dd = d.split("-")
+      const lbl = `${dd[2]}/${dd[1]}/${dd[0]}`
+      const dayBucket = e.days.find((x) => x.date === d)
+      if (dayBucket) {
+        dayBucket.revenue += Number(o.total || 0)
+      } else {
+        e.days.push({ date: d, label: lbl, revenue: Number(o.total || 0), returnValue: 0, netRevenue: 0 })
+      }
+      m.set(o.sales_user_id, e)
     }
-    downloadCsv(`bao-cao-nhan-vien-${range.from}-${range.to}.csv`, out)
+    // attribute returns to the most recent sales_user that served the customer
+    for (const r of returns) {
+      const ords = orderByCustomer.get(r.customer_id) || []
+      if (ords.length === 0) continue
+      const ord = ords.reduce((a, b) => (a.order_date > b.order_date ? a : b))
+      if (!matchSearchUser(ord.sales_user_id)) continue
+      const u = userMap.get(ord.sales_user_id)
+      const e =
+        m.get(ord.sales_user_id) ||
+        ({
+          id: ord.sales_user_id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          returnValue: 0,
+          netRevenue: 0,
+          days: [],
+        } as SalesRow)
+      const amt = Number(r.credit_note_amount || 0)
+      e.returnValue += amt
+      const d = String(r.created_at).slice(0, 10)
+      const dd = d.split("-")
+      const lbl = `${dd[2]}/${dd[1]}/${dd[0]}`
+      const dayBucket = e.days.find((x) => x.date === d)
+      if (dayBucket) {
+        dayBucket.returnValue += amt
+      } else {
+        e.days.push({ date: d, label: lbl, revenue: 0, returnValue: amt, netRevenue: 0 })
+      }
+      m.set(ord.sales_user_id, e)
+    }
+    return Array.from(m.values())
+      .map((r) => ({
+        ...r,
+        netRevenue: r.revenue - r.returnValue,
+        days: r.days
+          .map((d) => ({ ...d, netRevenue: d.revenue - d.returnValue }))
+          .sort((a, b) => b.date.localeCompare(a.date)),
+      }))
+      .sort((a, b) => b.netRevenue - a.netRevenue)
+  }, [orders, returns, orderByCustomer, userMap, matchSearchUser])
+
+  // ============== Lợi nhuận ==============
+  type ProfitRow = {
+    id: string
+    name: string
+    role: string
+    orders: number
+    revenue: number
+    cogs: number
+    profit: number
+    margin: number
+  }
+  const profitRows: ProfitRow[] = useMemo(() => {
+    const m = new Map<string, ProfitRow>()
+    for (const o of orders) {
+      if (!matchSearchUser(o.sales_user_id)) continue
+      const u = userMap.get(o.sales_user_id)
+      const e =
+        m.get(o.sales_user_id) ||
+        ({
+          id: o.sales_user_id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          orders: 0,
+          revenue: 0,
+          cogs: 0,
+          profit: 0,
+          margin: 0,
+        } as ProfitRow)
+      e.orders += 1
+      e.revenue += Number(o.total || 0)
+      const ls = linesByOrder.get(o.id) || []
+      for (const l of ls) {
+        e.cogs += Number(l.quantity || 0) * (avgCostMap.get(l.product_id) || 0)
+      }
+      m.set(o.sales_user_id, e)
+    }
+    return Array.from(m.values())
+      .map((r) => {
+        const profit = r.revenue - r.cogs
+        return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
+      })
+      .sort((a, b) => b.profit - a.profit)
+  }, [orders, linesByOrder, avgCostMap, userMap, matchSearchUser])
+
+  // ============== Hàng bán theo nhân viên ==============
+  type EmployeeProductRow = {
+    id: string
+    name: string
+    role: string
+    revenue: number
+    qty: number
+    products: {
+      id: string
+      sku: string
+      name: string
+      qty: number
+      revenue: number
+      customers: { id: string; store_name: string; qty: number; revenue: number }[]
+    }[]
+  }
+  const employeeProductRows: EmployeeProductRow[] = useMemo(() => {
+    const m = new Map<string, EmployeeProductRow>()
+    for (const o of orders) {
+      if (!matchSearchUser(o.sales_user_id)) continue
+      const u = userMap.get(o.sales_user_id)
+      const e =
+        m.get(o.sales_user_id) ||
+        ({
+          id: o.sales_user_id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          qty: 0,
+          products: [],
+        } as EmployeeProductRow)
+      e.revenue += Number(o.total || 0)
+      const ls = linesByOrder.get(o.id) || []
+      for (const l of ls) {
+        const prod = productMap.get(l.product_id)
+        if (!prod) continue
+        let pr = e.products.find((x) => x.id === l.product_id)
+        if (!pr) {
+          pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0, customers: [] }
+          e.products.push(pr)
+        }
+        pr.qty += Number(l.quantity || 0)
+        pr.revenue += Number(l.line_total || 0)
+        e.qty += Number(l.quantity || 0)
+        const c = customerMap.get(o.customer_id)
+        let cust = pr.customers.find((x) => x.id === o.customer_id)
+        if (!cust) {
+          cust = {
+            id: o.customer_id,
+            store_name: c?.store_name || "—",
+            qty: 0,
+            revenue: 0,
+          }
+          pr.customers.push(cust)
+        }
+        cust.qty += Number(l.quantity || 0)
+        cust.revenue += Number(l.line_total || 0)
+      }
+      m.set(o.sales_user_id, e)
+    }
+    for (const e of Array.from(m.values())) {
+      e.products.sort((a, b) => b.revenue - a.revenue)
+      for (const p of e.products) p.customers.sort((a, b) => b.revenue - a.revenue)
+    }
+    return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
+  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
+
+  const handleExport = () => {
+    if (variant === "sales") {
+      const out: (string | number)[][] = [
+        ["Người bán", "Vai trò", "Doanh thu", "Giá trị trả", "Doanh thu thuần"],
+      ]
+      for (const r of salesRows)
+        out.push([r.name, r.role, r.revenue, -r.returnValue, r.netRevenue])
+      downloadCsv(`bao-cao-nv-banhang-${range.from}-${range.to}.csv`, out)
+    } else if (variant === "profit") {
+      const out: (string | number)[][] = [
+        ["Người bán", "Vai trò", "Số đơn", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
+      ]
+      for (const r of profitRows)
+        out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
+      downloadCsv(`bao-cao-nv-loinhuan-${range.from}-${range.to}.csv`, out)
+    } else {
+      const out: (string | number)[][] = [
+        ["Nhân viên", "Mã hàng", "Tên hàng", "Khách hàng", "SL", "Doanh thu"],
+      ]
+      for (const e of employeeProductRows) {
+        for (const p of e.products) {
+          for (const c of p.customers) {
+            out.push([e.name, p.sku, p.name, c.store_name, c.qty, c.revenue])
+          }
+        }
+      }
+      downloadCsv(`bao-cao-nv-hangban-${range.from}-${range.to}.csv`, out)
+    }
   }
 
   if (authLoading) return <Skeleton className="h-64" />
 
+  // suppress unused warning
+  void stockEntries
+
+  const totalsSales = salesRows.reduce(
+    (acc, r) => ({
+      revenue: acc.revenue + r.revenue,
+      returnValue: acc.returnValue + r.returnValue,
+      netRevenue: acc.netRevenue + r.netRevenue,
+    }),
+    { revenue: 0, returnValue: 0, netRevenue: 0 }
+  )
+  const totalsProfit = profitRows.reduce(
+    (acc, r) => ({
+      orders: acc.orders + r.orders,
+      revenue: acc.revenue + r.revenue,
+      cogs: acc.cogs + r.cogs,
+      profit: acc.profit + r.profit,
+    }),
+    { orders: 0, revenue: 0, cogs: 0, profit: 0 }
+  )
+  const totalsProducts = employeeProductRows.reduce(
+    (acc, r) => ({ qty: acc.qty + r.qty, revenue: acc.revenue + r.revenue }),
+    { qty: 0, revenue: 0 }
+  )
+
   return (
-    <ReportFrame
-      title="Báo cáo theo nhân viên"
-      subtitle={loading ? "Đang tải..." : formatRangeLabel(range)}
+    <ReportShell
+      title="Báo cáo nhân viên"
+      variants={VARIANTS}
+      variant={variant}
+      onVariantChange={(v) => setVariant(v)}
       range={range}
       preset={preset}
       onChangeRange={(p, r) => {
@@ -138,55 +465,190 @@ export default function EmployeesReportPage() {
         setRange(r)
       }}
       onExportCsv={handleExport}
+      filters={
+        <FilterField label="Người bán">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Chọn người bán"
+            className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+          />
+        </FilterField>
+      }
     >
+      <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
+        {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
+      </div>
       {loading ? (
         <Skeleton className="h-72" />
+      ) : variant === "sales" ? (
+        <ReportTable
+          rows={salesRows}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
+            { key: "role", label: "Vai trò", render: (r) => r.role },
+            { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
+            { key: "ret", label: "Giá trị trả", align: "right", render: (r) => (r.returnValue > 0 ? <span className="text-red-600">-{formatCurrency(r.returnValue)}</span> : "0") },
+            { key: "net", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.netRevenue)}</span> },
+          ]}
+          totalsRow={
+            <TotalsRow
+              cells={[
+                { content: `SL người bán: ${salesRows.length}`, colSpan: 2 },
+                { content: formatCurrency(totalsSales.revenue), align: "right" },
+                {
+                  content:
+                    totalsSales.returnValue > 0
+                      ? `-${formatCurrency(totalsSales.returnValue)}`
+                      : "0",
+                  align: "right",
+                  className: "text-red-600",
+                },
+                { content: formatCurrency(totalsSales.netRevenue), align: "right", className: "text-primary" },
+              ]}
+            />
+          }
+          expandable={(r) => (
+            <div className="rounded-md border border-border/40 bg-background/60">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-emerald-100/60">
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Thời gian</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu thuần</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.days.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-2 text-center text-xs text-muted-foreground">
+                        Không có ngày phát sinh
+                      </td>
+                    </tr>
+                  ) : (
+                    r.days.map((d) => (
+                      <tr key={d.date} className="border-t border-border/30">
+                        <td className="px-3 py-1.5 text-primary">{d.label}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(d.revenue)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {d.returnValue > 0 ? <span className="text-red-600">-{formatCurrency(d.returnValue)}</span> : "0"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                          {formatCurrency(d.netRevenue)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        />
+      ) : variant === "profit" ? (
+        <ReportTable
+          rows={profitRows}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "name", label: "Người bán", render: (r) => <span className="font-medium">{r.name}</span> },
+            { key: "role", label: "Vai trò", render: (r) => r.role },
+            { key: "or", label: "Số đơn", align: "right", render: (r) => r.orders },
+            { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
+            { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+            { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red-600"}>{formatCurrency(r.profit)}</span> },
+            { key: "m", label: "Biên LN", align: "right", render: (r) => `${r.margin.toFixed(1)}%` },
+          ]}
+          totalsRow={
+            <TotalsRow
+              cells={[
+                { content: `SL người bán: ${profitRows.length}`, colSpan: 2 },
+                { content: totalsProfit.orders, align: "right" },
+                { content: formatCurrency(totalsProfit.revenue), align: "right" },
+                { content: formatCurrency(totalsProfit.cogs), align: "right" },
+                { content: formatCurrency(totalsProfit.profit), align: "right", className: "text-primary" },
+                {
+                  content: `${
+                    totalsProfit.revenue > 0
+                      ? ((totalsProfit.profit / totalsProfit.revenue) * 100).toFixed(1)
+                      : "0.0"
+                  }%`,
+                  align: "right",
+                },
+              ]}
+            />
+          }
+        />
       ) : (
-        <table className="w-full border border-border/40 text-sm">
-          <thead>
-            <tr className="bg-muted/30 text-muted-foreground">
-              <th className="px-3 py-2 text-left font-semibold">Nhân viên</th>
-              <th className="px-3 py-2 text-left font-semibold">Vai trò</th>
-              <th className="px-3 py-2 text-right font-semibold">Tổng đơn</th>
-              <th className="px-3 py-2 text-right font-semibold">Đơn đã giao</th>
-              <th className="px-3 py-2 text-right font-semibold">Đơn hủy</th>
-              <th className="px-3 py-2 text-right font-semibold">Doanh thu giao</th>
-              <th className="px-3 py-2 text-right font-semibold">TB/đơn</th>
-            </tr>
-            <tr className="border-t border-border/30 bg-muted/10 font-semibold">
-              <td className="px-3 py-2" colSpan={2}>SL nhân viên: {rows.length}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{totals.orders}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{totals.delivered}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{totals.cancelled}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-primary">{formatCurrency(totals.deliveredValue)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(totals.delivered > 0 ? totals.deliveredValue / totals.delivered : 0)}
-              </td>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                  Không có nhân viên có phát sinh đơn trong kỳ
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id} className="border-t border-border/30">
-                  <td className="px-3 py-2 font-medium">{r.name}</td>
-                  <td className="px-3 py-2">{r.role}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.orders}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.delivered}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.cancelled}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.deliveredValue)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.aov)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <ReportTable
+          rows={employeeProductRows}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
+            { key: "role", label: "Vai trò", render: (r) => r.role },
+            { key: "skus", label: "Số mặt hàng", align: "right", render: (r) => r.products.length },
+            { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
+          ]}
+          totalsRow={
+            <TotalsRow
+              cells={[
+                { content: `SL người bán: ${employeeProductRows.length}`, colSpan: 3 },
+                { content: totalsProducts.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: formatCurrency(totalsProducts.revenue), align: "right", className: "text-primary" },
+              ]}
+            />
+          }
+          expandable={(r) => (
+            <div className="space-y-2">
+              {r.products.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Nhân viên này chưa có hàng bán
+                </p>
+              ) : (
+                r.products.map((p) => (
+                  <div key={p.id} className="rounded-md border border-border/40 bg-background/60">
+                    <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-primary">{p.sku}</span>
+                        <span className="font-medium">{p.name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        SL: <span className="font-semibold text-foreground">{p.qty.toLocaleString("vi-VN")}</span>
+                        <span className="mx-2">·</span>
+                        DT: <span className="font-semibold text-primary">{formatCurrency(p.revenue)}</span>
+                      </div>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30">
+                          <th className="px-3 py-1.5 text-left text-xs font-semibold uppercase">Khách hàng</th>
+                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">SL</th>
+                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">Doanh thu</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {p.customers.map((c) => (
+                          <tr key={c.id} className="border-t border-border/30">
+                            <td className="px-3 py-1.5">{c.store_name}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">
+                              {c.qty.toLocaleString("vi-VN")}
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">
+                              {formatCurrency(c.revenue)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        />
       )}
-    </ReportFrame>
+    </ReportShell>
   )
 }

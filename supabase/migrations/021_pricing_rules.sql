@@ -11,8 +11,12 @@
 -- A NULL/0 limit means "no override allowed in that direction" so the
 -- default rules are conservative (no override at all).
 
-CREATE TABLE IF NOT EXISTS pricing_rules (
-  org_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+-- Force the public schema for sessions whose search_path doesn't include
+-- it (some Supabase SQL editor flows reset search_path to "$user" only).
+SET search_path = public, pg_catalog;
+
+CREATE TABLE IF NOT EXISTS public.pricing_rules (
+  org_id uuid PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
   -- Master switch: when false, sales reps can't edit price at all
   allow_sales_override boolean NOT NULL DEFAULT false,
   -- Sale-order rule: cap the discount the rep can give
@@ -22,10 +26,10 @@ CREATE TABLE IF NOT EXISTS pricing_rules (
   return_max_pct numeric(5, 2) NOT NULL DEFAULT 0,    -- 0..100, % above default
   return_max_value numeric(15, 2) NOT NULL DEFAULT 0, -- absolute đ above default
   updated_at timestamptz NOT NULL DEFAULT now(),
-  updated_by uuid REFERENCES users(id)
+  updated_by uuid REFERENCES public.users(id)
 );
 
-CREATE OR REPLACE FUNCTION pricing_rules_touch()
+CREATE OR REPLACE FUNCTION public.pricing_rules_touch()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
@@ -33,26 +37,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_pricing_rules_touch ON pricing_rules;
+DROP TRIGGER IF EXISTS trg_pricing_rules_touch ON public.pricing_rules;
 CREATE TRIGGER trg_pricing_rules_touch
-  BEFORE UPDATE ON pricing_rules
-  FOR EACH ROW EXECUTE FUNCTION pricing_rules_touch();
+  BEFORE UPDATE ON public.pricing_rules
+  FOR EACH ROW EXECUTE FUNCTION public.pricing_rules_touch();
 
-ALTER TABLE pricing_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pricing_rules ENABLE ROW LEVEL SECURITY;
 
 -- Everyone authenticated can read (so the order form can validate input)
-CREATE POLICY "pricing_rules_select" ON pricing_rules
+DROP POLICY IF EXISTS "pricing_rules_select" ON public.pricing_rules;
+CREATE POLICY "pricing_rules_select" ON public.pricing_rules
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
-CREATE POLICY "pricing_rules_insert" ON pricing_rules
+DROP POLICY IF EXISTS "pricing_rules_insert" ON public.pricing_rules;
+CREATE POLICY "pricing_rules_insert" ON public.pricing_rules
   FOR INSERT TO authenticated
   WITH CHECK (
     org_id = public.user_org_id()
     AND public.user_role() IN ('owner', 'manager')
   );
 
-CREATE POLICY "pricing_rules_update" ON pricing_rules
+DROP POLICY IF EXISTS "pricing_rules_update" ON public.pricing_rules;
+CREATE POLICY "pricing_rules_update" ON public.pricing_rules
   FOR UPDATE TO authenticated
   USING (
     org_id = public.user_org_id()
@@ -63,10 +70,10 @@ CREATE POLICY "pricing_rules_update" ON pricing_rules
     AND public.user_role() IN ('owner', 'manager')
   );
 
-GRANT SELECT, INSERT, UPDATE ON pricing_rules TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.pricing_rules TO authenticated;
 
 -- Seed an empty rule for every existing org so the order form's
 -- "fetch single row" never returns null.
-INSERT INTO pricing_rules (org_id)
-SELECT id FROM organizations
+INSERT INTO public.pricing_rules (org_id)
+SELECT id FROM public.organizations
 ON CONFLICT (org_id) DO NOTHING;

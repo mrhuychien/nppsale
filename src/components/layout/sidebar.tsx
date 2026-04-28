@@ -11,6 +11,7 @@ import {
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
+  TrendingUp, FileBarChart2,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -89,11 +90,29 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Phân tích",
+    icon: TrendingUp,
+    items: [
+      { label: "Kinh doanh", href: "/analytics/business/overview", icon: TrendingUp, module: "reports" },
+      { label: "Hàng hóa", href: "/analytics/products/overview", icon: Package, module: "reports" },
+      { label: "Khách hàng", href: "/analytics/customers/overview", icon: Users, module: "reports" },
+      { label: "Công nợ khách hàng", href: "/analytics/performance/receivables", icon: CreditCard, module: "reports" },
+    ],
+  },
+  {
     label: "Báo cáo",
     icon: BarChart3,
     items: [
       { label: "Tổng quan", href: "/dashboard", icon: LayoutDashboard, module: "reports" },
-      { label: "Báo cáo", href: "/reports", icon: BarChart3, module: "reports" },
+      { label: "Cuối ngày", href: "/reports/end-of-day", icon: FileBarChart2, module: "reports" },
+      { label: "Bán hàng", href: "/reports/sales", icon: Receipt, module: "reports" },
+      { label: "Đặt hàng", href: "/reports/orders", icon: ShoppingCart, module: "reports" },
+      { label: "Hàng hóa", href: "/reports/products", icon: Boxes, module: "reports" },
+      { label: "Khách hàng", href: "/reports/customers", icon: Users, module: "reports" },
+      { label: "Nhà cung cấp", href: "/reports/suppliers", icon: Factory, module: "reports" },
+      { label: "Nhân viên", href: "/reports/employees", icon: UserCog, module: "reports" },
+      { label: "Kênh bán hàng", href: "/reports/channels", icon: BarChart3, module: "reports" },
+      { label: "Tài chính", href: "/reports/finance/pnl", icon: Wallet, module: "reports" },
     ],
   },
   {

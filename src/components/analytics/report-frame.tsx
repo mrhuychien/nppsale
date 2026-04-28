@@ -1,0 +1,104 @@
+"use client"
+
+import { Printer, Download } from "lucide-react"
+import { DateRangePicker } from "./date-range-picker"
+import { type DateRange, type PeriodPreset, formatRangeLabel } from "@/lib/analytics/period"
+
+interface ReportFrameProps {
+  title: string
+  subtitle?: string
+  range?: DateRange
+  preset?: PeriodPreset
+  onChangeRange?: (preset: PeriodPreset, range: DateRange) => void
+  onExportCsv?: () => void
+  children: React.ReactNode
+  /** Optional company / branch name */
+  branchName?: string
+}
+
+export function ReportFrame({
+  title,
+  subtitle,
+  range,
+  preset,
+  onChangeRange,
+  onExportCsv,
+  children,
+  branchName,
+}: ReportFrameProps) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+          {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {range && preset && onChangeRange ? (
+            <DateRangePicker value={range} preset={preset} onChange={onChangeRange} />
+          ) : null}
+          {onExportCsv ? (
+            <button
+              type="button"
+              onClick={onExportCsv}
+              className="flex h-9 items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 text-sm font-medium hover:bg-muted/30"
+            >
+              <Download className="h-4 w-4" /> Xuất CSV
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => typeof window !== "undefined" && window.print()}
+            className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:brightness-110"
+          >
+            <Printer className="h-4 w-4" /> In báo cáo
+          </button>
+        </div>
+      </div>
+
+      {/* Print header */}
+      <div className="hidden print:block">
+        <p className="text-xs text-muted-foreground">
+          Ngày lập: {new Date().toLocaleString("vi-VN")}
+        </p>
+        <h1 className="mt-1 text-center text-xl font-bold uppercase">{title}</h1>
+        {range ? (
+          <p className="text-center text-sm">
+            Từ ngày {formatRangeLabel(range).split(" - ")[0]} đến ngày {formatRangeLabel(range).split(" - ")[1]}
+          </p>
+        ) : null}
+        {branchName ? <p className="text-center text-sm">Chi nhánh: {branchName}</p> : null}
+      </div>
+
+      <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export function downloadCsv(filename: string, rows: (string | number)[][]) {
+  const csv = rows
+    .map((row) =>
+      row
+        .map((c) => {
+          const s = String(c ?? "")
+          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replace(/"/g, '""')}"`
+          }
+          return s
+        })
+        .join(",")
+    )
+    .join("\n")
+  const bom = "﻿"
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}

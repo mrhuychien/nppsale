@@ -75,6 +75,17 @@ export const PURCHASE_INVOICE_STATUS_MAP: Record<string, { label: string; varian
   cancelled: { label: "Đã hủy", variant: "danger" },
 }
 
+/**
+ * Trạng thái thanh toán suy ra từ receivables.status. Hiển thị bên cạnh
+ * trạng thái fulfillment để biết đơn đã thu tiền hay chưa.
+ */
+export const PAYMENT_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
+  open: { label: "Đơn nợ", variant: "danger" },
+  partial: { label: "Trả 1 phần", variant: "warning" },
+  paid: { label: "Đã trả tiền", variant: "success" },
+  overdue: { label: "Quá hạn", variant: "destructive" },
+}
+
 export const RETURN_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   pending: { label: "Chờ duyệt", variant: "secondary" },
   approved: { label: "Đã duyệt", variant: "success" },

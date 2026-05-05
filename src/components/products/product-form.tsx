@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { ChevronDown, ChevronUp, ImagePlus, Plus } from "lucide-react"
+import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
 
 type Tab = "info" | "description" | "warranty"
@@ -102,6 +102,66 @@ export function ProductForm({
     weight_unit: product?.weight_unit || "g",
     direct_sale: product?.direct_sale ?? true,
   })
+
+  // Đơn vị quy đổi (secondary units). Mỗi dòng = 1 unit_name + conversion (số
+  // lượng đơn vị cơ sở / 1 đơn vị này). VD baseUnit="lon", thêm "thùng" với
+  // conversion=24 ⇒ 1 thùng = 24 lon. `id` là id db nếu đã tồn tại; tạm thời
+  // null để báo "chưa lưu".
+  const [secondaryUnits, setSecondaryUnits] = useState<
+    { id: string | null; tempId: string; unit_name: string; conversion: string }[]
+  >([])
+
+  // Load secondary units khi sửa sản phẩm
+  const productId = product?.id
+  useEffect(() => {
+    if (!productId) return
+    let cancelled = false
+    async function load() {
+      const { data } = await supabase
+        .from("product_units")
+        .select("id, unit_name, conversion")
+        .eq("product_id", productId!)
+        .order("conversion", { ascending: false })
+      if (cancelled) return
+      const rows = ((data as { id: string; unit_name: string; conversion: number }[]) || []).map((u) => ({
+        id: u.id,
+        tempId: u.id,
+        unit_name: u.unit_name,
+        conversion: String(u.conversion),
+      }))
+      setSecondaryUnits(rows)
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [productId, supabase])
+
+  const addSecondaryUnit = () => {
+    setSecondaryUnits((prev) => [
+      ...prev,
+      {
+        id: null,
+        tempId: `tmp-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
+        unit_name: "",
+        conversion: "",
+      },
+    ])
+  }
+
+  const setSecondaryUnit = (
+    tempId: string,
+    field: "unit_name" | "conversion",
+    value: string
+  ) => {
+    setSecondaryUnits((prev) =>
+      prev.map((u) => (u.tempId === tempId ? { ...u, [field]: value } : u))
+    )
+  }
+
+  const removeSecondaryUnit = (tempId: string) => {
+    setSecondaryUnits((prev) => prev.filter((u) => u.tempId !== tempId))
+  }
 
   // Suggestion lists pulled from existing data so the user can pick or
   // type a brand-new value (KiotViet-style "Tạo mới" inline).
@@ -196,6 +256,62 @@ export function ProductForm({
         toast({ title: "Đã tạo sản phẩm mới" })
       }
 
+      // ----- Đồng bộ đơn vị quy đổi (product_units) -----
+      // Lọc dòng hợp lệ: phải có tên + conversion > 0
+      const validUnits = secondaryUnits
+        .map((u) => ({
+          ...u,
+          conversion: parseFloat(u.conversion) || 0,
+          unit_name: u.unit_name.trim(),
+        }))
+        .filter(
+          (u) =>
+            u.unit_name &&
+            u.conversion > 0 &&
+            // Cấm trùng tên với đơn vị cơ sở
+            u.unit_name.toLowerCase() !== payload.base_unit.toLowerCase()
+        )
+
+      if (product) {
+        // Update flow: tính diff để insert / update / delete
+        const incomingIds = new Set(validUnits.filter((u) => u.id).map((u) => u.id))
+        // Xóa những đơn vị không còn trong list
+        const { data: existing } = await supabase
+          .from("product_units")
+          .select("id")
+          .eq("product_id", saved.id)
+        const removeIds = ((existing as { id: string }[]) || [])
+          .map((r) => r.id)
+          .filter((id) => !incomingIds.has(id))
+        if (removeIds.length > 0) {
+          await supabase.from("product_units").delete().in("id", removeIds)
+        }
+        // Update các dòng có id, insert các dòng chưa có id
+        for (const u of validUnits) {
+          if (u.id) {
+            await supabase
+              .from("product_units")
+              .update({ unit_name: u.unit_name, conversion: u.conversion })
+              .eq("id", u.id)
+          } else {
+            await supabase.from("product_units").insert({
+              product_id: saved.id,
+              unit_name: u.unit_name,
+              conversion: u.conversion,
+            })
+          }
+        }
+      } else if (validUnits.length > 0) {
+        // Create flow: bulk insert
+        await supabase.from("product_units").insert(
+          validUnits.map((u) => ({
+            product_id: saved.id,
+            unit_name: u.unit_name,
+            conversion: u.conversion,
+          }))
+        )
+      }
+
       if (onSaved) {
         onSaved(saved)
         if (saveAndAdd && !product) {
@@ -276,6 +392,10 @@ export function ProductForm({
           openSection={openSection}
           toggleSection={toggleSection}
           compact={compact}
+          secondaryUnits={secondaryUnits}
+          addSecondaryUnit={addSecondaryUnit}
+          setSecondaryUnit={setSecondaryUnit}
+          removeSecondaryUnit={removeSecondaryUnit}
         />
       ) : tab === "description" ? (
         <div className="space-y-2">
@@ -369,6 +489,13 @@ type FormState = {
   direct_sale: boolean
 }
 
+interface SecondaryUnit {
+  id: string | null
+  tempId: string
+  unit_name: string
+  conversion: string
+}
+
 interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
@@ -381,6 +508,14 @@ interface InfoTabProps {
   openSection: Record<string, boolean>
   toggleSection: (key: string) => void
   compact: boolean
+  secondaryUnits: SecondaryUnit[]
+  addSecondaryUnit: () => void
+  setSecondaryUnit: (
+    tempId: string,
+    field: "unit_name" | "conversion",
+    value: string
+  ) => void
+  removeSecondaryUnit: (tempId: string) => void
 }
 
 function InfoTab({
@@ -395,6 +530,10 @@ function InfoTab({
   openSection,
   toggleSection,
   compact,
+  secondaryUnits,
+  addSecondaryUnit,
+  setSecondaryUnit,
+  removeSecondaryUnit,
 }: InfoTabProps) {
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm({ ...form, [key]: value })
@@ -667,6 +806,84 @@ function InfoTab({
               onChange={(e) => setField("max_stock", e.target.value)}
             />
           </div>
+        </div>
+
+        {/* Đơn vị quy đổi (thùng, lốc, …) — gắn ngay cạnh Đơn vị tính cơ sở */}
+        <div className="mt-4 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Đơn vị quy đổi</p>
+              <p className="text-[11px] text-muted-foreground">
+                Thêm các đơn vị bán khác (thùng, lốc, hộp…) cùng số lượng quy đổi sang
+                đơn vị cơ sở{form.base_unit ? ` "${form.base_unit}"` : ""}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addSecondaryUnit}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-xs font-semibold hover:bg-muted/40"
+            >
+              <Plus className="h-3 w-3" /> Thêm đơn vị
+            </button>
+          </div>
+
+          {secondaryUnits.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Chưa có đơn vị quy đổi. Bấm <span className="font-medium">&quot;Thêm đơn vị&quot;</span>{" "}
+              để khai báo (vd. 1 thùng = 24 lon).
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {secondaryUnits.map((u) => {
+                const conversionNum = parseFloat(u.conversion) || 0
+                return (
+                  <div
+                    key={u.tempId}
+                    className="grid grid-cols-[1fr_140px_auto] items-center gap-2"
+                  >
+                    <Input
+                      value={u.unit_name}
+                      onChange={(e) =>
+                        setSecondaryUnit(u.tempId, "unit_name", e.target.value)
+                      }
+                      placeholder="VD: thùng"
+                      className="h-9"
+                    />
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">=</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={u.conversion}
+                        onChange={(e) =>
+                          setSecondaryUnit(u.tempId, "conversion", e.target.value)
+                        }
+                        placeholder="24"
+                        className="h-9 text-right tabular-nums"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {form.base_unit || "ĐV cơ sở"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeSecondaryUnit(u.tempId)}
+                      className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      title="Xóa đơn vị"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <p className="col-span-3 -mt-1 text-[11px] text-muted-foreground">
+                      {u.unit_name && conversionNum > 0
+                        ? `1 ${u.unit_name} = ${conversionNum} ${form.base_unit || "ĐV cơ sở"}`
+                        : "Nhập đầy đủ tên + số quy đổi"}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </Section>
 

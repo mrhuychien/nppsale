@@ -123,6 +123,9 @@ export default function DeliveriesPage() {
     const pickingOrders = (pickingOrdersData as SalesOrder[]) || []
 
     // Exclude orders already in an open (non-completed/non-cancelled) delivery
+    // OR linked to a stock_entry that's already 'posted' (which means the goods
+    // are out of the warehouse — either via Bàn giao lái xe or Tự giao hàng —
+    // so the order shouldn't appear in "Đơn chờ bàn giao" anymore).
     let awaitingOrders: PickedOrder[] = pickingOrders
     if (pickingOrders.length > 0) {
       const pickingIds = pickingOrders.map((o) => o.id)
@@ -136,43 +139,53 @@ export default function DeliveriesPage() {
           .filter((l) => l.delivery && ["pending", "in_transit"].includes(l.delivery.status || ""))
           .map((l) => l.order_id)
       )
-      awaitingOrders = pickingOrders.filter((o) => !attached.has(o.id))
 
-      // Attach the stock_entries row (entry_code + date) that picked these
-      // orders. ref_order_ids is jsonb → Supabase .overlaps() can't match
-      // it, so load all recent draft/posted exports and filter in JS.
-      if (awaitingOrders.length > 0) {
-        const awaitingIdSet = new Set(awaitingOrders.map((o) => o.id))
-        const { data: entryRows } = await supabase
-          .from("stock_entries")
-          .select("id, entry_code, posted_at, created_at, ref_order_ids")
-          .eq("type", "export")
-          .in("status", ["draft", "posted"])
-          .order("created_at", { ascending: false })
-          .limit(200)
-        type EntryRow = {
-          id: string
-          entry_code: string
-          posted_at: string | null
-          created_at: string
-          ref_order_ids: string[]
-        }
-        const allEntries = ((entryRows as unknown) as EntryRow[]) || []
-        const entriesByOrder: Record<string, EntryRow> = {}
-        for (const e of allEntries) {
-          for (const oid of e.ref_order_ids || []) {
-            if (awaitingIdSet.has(oid) && !entriesByOrder[oid]) {
-              entriesByOrder[oid] = e
-            }
+      // Load recent export entries — needed for both filtering (posted means
+      // already out) and for the "đính kèm phiếu xuất" label.
+      const { data: entryRows } = await supabase
+        .from("stock_entries")
+        .select("id, entry_code, posted_at, created_at, ref_order_ids, status")
+        .eq("type", "export")
+        .in("status", ["draft", "posted"])
+        .order("created_at", { ascending: false })
+        .limit(200)
+      type EntryRow = {
+        id: string
+        entry_code: string
+        posted_at: string | null
+        created_at: string
+        ref_order_ids: string[]
+        status: string
+      }
+      const allEntries = ((entryRows as unknown) as EntryRow[]) || []
+      const pickingIdSet = new Set(pickingIds)
+      const postedOrderIds = new Set<string>()
+      const draftEntriesByOrder: Record<string, EntryRow> = {}
+      for (const e of allEntries) {
+        for (const oid of e.ref_order_ids || []) {
+          if (!pickingIdSet.has(oid)) continue
+          if (e.status === "posted") postedOrderIds.add(oid)
+          if (e.status === "draft" && !draftEntriesByOrder[oid]) {
+            draftEntriesByOrder[oid] = e
           }
         }
-        awaitingOrders = awaitingOrders.map((o) => {
-          const entry = entriesByOrder[o.id]
+      }
+
+      awaitingOrders = pickingOrders
+        .filter((o) => !attached.has(o.id) && !postedOrderIds.has(o.id))
+        .map((o) => {
+          const entry = draftEntriesByOrder[o.id]
           return entry
-            ? { ...o, _entry: { id: entry.id, entry_code: entry.entry_code, posted_at: entry.posted_at || entry.created_at } }
+            ? {
+                ...o,
+                _entry: {
+                  id: entry.id,
+                  entry_code: entry.entry_code,
+                  posted_at: entry.posted_at || entry.created_at,
+                },
+              }
             : o
         })
-      }
     }
 
     setPickedOrders(awaitingOrders)

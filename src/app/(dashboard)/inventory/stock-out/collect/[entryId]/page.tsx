@@ -296,12 +296,23 @@ export default function CollectPaymentPage() {
         })
       }
 
+      // Đẩy tất cả đơn hàng trong lệnh xuất sang trạng thái 'delivered'.
+      // Đến bước thu tiền nghĩa là hàng đã đến tay khách — phần thu/chưa
+      // thu là trạng thái thanh toán riêng, hiển thị qua badge thanh toán.
+      const orderIds = rows.map((r) => r.orderId)
+      if (orderIds.length > 0) {
+        await supabase
+          .from("sales_orders")
+          .update({ status: "delivered" })
+          .in("id", orderIds)
+      }
+
       toast({
         title: `Đã ghi nhận thu ${formatCurrency(totals.collect)}`,
         description:
           totals.leftover > 0
-            ? `Còn ${formatCurrency(totals.leftover)} chuyển sang công nợ.`
-            : "Đã thu đủ — không có công nợ phát sinh.",
+            ? `Đã giao ${rows.length} đơn — còn ${formatCurrency(totals.leftover)} chuyển sang công nợ.`
+            : `Đã giao ${rows.length} đơn và thu đủ tiền.`,
       })
       router.push(`/finance/cash-receipts/${receiptId}`)
     } catch (err) {

@@ -306,10 +306,12 @@ export default function StockEntryDetailPage() {
         .update({ status: "posted", posted_at: new Date().toISOString() })
         .eq("id", entry.id)
 
-      // 3) Đơn → delivered (tự giao luôn nên không qua bước delivering)
+      // 3) Đơn → delivering. Lái xe / chủ xe đang trên đường giao;
+      // trạng thái sẽ chuyển sang 'delivered' sau khi nộp tiền ở trang
+      // /inventory/stock-out/collect/{entryId}.
       await supabase
         .from("sales_orders")
-        .update({ status: "delivered" })
+        .update({ status: "delivering" })
         .in("id", orderIds)
 
       // 4) Tạo receivable cho từng đơn (idempotent)
@@ -319,8 +321,8 @@ export default function StockEntryDetailPage() {
       }
 
       toast({
-        title: `Đã tự giao ${orderIds.length} đơn`,
-        description: "Đã trừ kho. Tiếp tục bước thu tiền.",
+        title: `Đã chuyển ${orderIds.length} đơn sang "Đang giao"`,
+        description: "Đã trừ kho. Tiếp tục bước thu tiền để chuyển sang 'Đã giao'.",
       })
       router.push(`/inventory/stock-out/collect/${entry.id}`)
     } catch (err) {

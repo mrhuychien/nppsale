@@ -122,3 +122,114 @@ export function validateReturnPrice(
 function formatVnd(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + "đ"
 }
+
+// =====================================================================
+// Per-product price-edit rules (migration 025)
+// =====================================================================
+//
+// Per-product overrides let the distributor say "this SKU lets the rep
+// charge UP to +X% above list in sales orders" or "lets the rep refund
+// DOWN to -Y VND below list in returns". The org-level pricing_rules
+// above govern discount-side flexibility; this is the markup-side
+// (sales) and discount-side (returns) inverse.
+//
+// Quy tắc:
+//   - Sales: price ∈ [sell_price, sell_price + adjustment]
+//   - Returns: price ∈ [sell_price - adjustment, sell_price]
+
+export interface ProductPriceEditRules {
+  allow_price_edit: boolean
+  price_edit_max_type: "percent" | "value"
+  price_edit_max: number
+}
+
+export function productPriceRulesFrom(
+  product: {
+    allow_price_edit?: boolean
+    price_edit_max_type?: "percent" | "value" | string | null
+    price_edit_max?: number
+  } | null | undefined
+): ProductPriceEditRules {
+  return {
+    allow_price_edit: !!product?.allow_price_edit,
+    price_edit_max_type:
+      product?.price_edit_max_type === "value" ? "value" : "percent",
+    price_edit_max: Math.max(0, Number(product?.price_edit_max ?? 0)),
+  }
+}
+
+function adjustmentAmount(sellPrice: number, rules: ProductPriceEditRules): number {
+  if (!rules.allow_price_edit || rules.price_edit_max <= 0) return 0
+  return rules.price_edit_max_type === "percent"
+    ? (Math.max(0, sellPrice) * rules.price_edit_max) / 100
+    : rules.price_edit_max
+}
+
+export function salesPriceBounds(
+  sellPrice: number,
+  rules: ProductPriceEditRules
+): { min: number; max: number } {
+  const adj = adjustmentAmount(sellPrice, rules)
+  return { min: sellPrice, max: sellPrice + adj }
+}
+
+export function returnsPriceBounds(
+  sellPrice: number,
+  rules: ProductPriceEditRules
+): { min: number; max: number } {
+  const adj = adjustmentAmount(sellPrice, rules)
+  return { min: Math.max(0, sellPrice - adj), max: sellPrice }
+}
+
+/**
+ * Validate a sales-line price. Returns null when valid, or a Vietnamese
+ * error string explaining the breach. Tolerance ±0.5 to handle rounding.
+ */
+export function validateProductSalesPrice(
+  enteredPrice: number,
+  sellPrice: number,
+  rules: ProductPriceEditRules
+): string | null {
+  if (!Number.isFinite(enteredPrice) || enteredPrice < 0) {
+    return "Giá không hợp lệ"
+  }
+  // Sản phẩm không cho phép sửa: phải đúng giá bán
+  if (!rules.allow_price_edit) {
+    if (Math.abs(enteredPrice - sellPrice) > 0.5) {
+      return `Sản phẩm này không cho phép sửa giá (giá bán ${formatVnd(sellPrice)})`
+    }
+    return null
+  }
+  const { min, max } = salesPriceBounds(sellPrice, rules)
+  if (enteredPrice < min - 0.5) {
+    return `Đơn bán: giá ≥ ${formatVnd(min)} (giá bán)`
+  }
+  if (enteredPrice > max + 0.5) {
+    return `Đơn bán: giá ≤ ${formatVnd(max)} (giá bán + tối đa)`
+  }
+  return null
+}
+
+export function validateProductReturnPrice(
+  enteredPrice: number,
+  sellPrice: number,
+  rules: ProductPriceEditRules
+): string | null {
+  if (!Number.isFinite(enteredPrice) || enteredPrice < 0) {
+    return "Giá không hợp lệ"
+  }
+  if (!rules.allow_price_edit) {
+    if (Math.abs(enteredPrice - sellPrice) > 0.5) {
+      return `Sản phẩm này không cho phép sửa giá (giá bán ${formatVnd(sellPrice)})`
+    }
+    return null
+  }
+  const { min, max } = returnsPriceBounds(sellPrice, rules)
+  if (enteredPrice > max + 0.5) {
+    return `Đơn trả: giá ≤ ${formatVnd(max)} (giá bán)`
+  }
+  if (enteredPrice < min - 0.5) {
+    return `Đơn trả: giá ≥ ${formatVnd(min)} (giá bán − tối đa)`
+  }
+  return null
+}

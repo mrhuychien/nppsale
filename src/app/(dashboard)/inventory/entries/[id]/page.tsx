@@ -59,6 +59,21 @@ export default function StockEntryDetailPage() {
       line_total?: number | null
       product?: { name: string; sku: string } | null
     }>
+    returns?: Array<{
+      id: string
+      status?: string | null
+      reason?: string | null
+      credit_note_amount?: number | null
+      notes?: string | null
+      lines: Array<{
+        product_id: string
+        unit_name: string
+        quantity: number
+        unit_price: number
+        line_total: number
+        product?: { name: string; sku: string } | null
+      }>
+    }>
   }>>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -103,13 +118,59 @@ export default function StockEntryDetailPage() {
         ? (entryData.ref_order_ids as string[])
         : []
     if (refOrderIds.length > 0) {
-      const { data: orderRows } = await supabase
-        .from("sales_orders")
-        .select(
-          "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
-        )
-        .in("id", refOrderIds)
-      setRefOrders(((orderRows as unknown) as RefOrder[]) || [])
+      const [{ data: orderRows }, { data: returnRows }] = await Promise.all([
+        supabase
+          .from("sales_orders")
+          .select(
+            "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+          )
+          .in("id", refOrderIds),
+        // Hàng trả về kèm theo các đơn này — in cả pending/approved/
+        // completed lên phiếu giao để lái xe biết các yêu cầu trả
+        // (nếu khách có thay đổi tại điểm giao). Chỉ loại bỏ phiếu
+        // đã bị từ chối hoặc hủy.
+        supabase
+          .from("returns")
+          .select(
+            "id, order_id, status, reason, credit_note_amount, notes, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+          )
+          .in("order_id", refOrderIds)
+          .in("status", ["pending", "approved", "completed"]),
+      ])
+      type ReturnRow = {
+        id: string
+        order_id: string
+        status?: string | null
+        reason?: string | null
+        credit_note_amount?: number | null
+        notes?: string | null
+        lines: Array<{
+          product_id: string
+          unit_name: string
+          quantity: number
+          unit_price: number
+          line_total: number
+          product?: { name: string; sku: string } | null
+        }>
+      }
+      const returnsByOrder = new Map<string, ReturnRow[]>()
+      for (const r of ((returnRows as unknown) as ReturnRow[]) || []) {
+        const arr = returnsByOrder.get(r.order_id) || []
+        arr.push(r)
+        returnsByOrder.set(r.order_id, arr)
+      }
+      const merged = (((orderRows as unknown) as RefOrder[]) || []).map((o) => ({
+        ...o,
+        returns: (returnsByOrder.get(o.id) || []).map((r) => ({
+          id: r.id,
+          status: r.status,
+          reason: r.reason,
+          credit_note_amount: r.credit_note_amount,
+          notes: r.notes,
+          lines: r.lines || [],
+        })),
+      }))
+      setRefOrders(merged)
     } else {
       setRefOrders([])
     }
@@ -871,6 +932,172 @@ export default function StockEntryDetailPage() {
                   </tr>
                 </tfoot>
               </table>
+
+              {/* Hàng trả về — in luôn trên phiếu giao để lái xe nhớ
+                  thu hàng trả. Nếu không có phiếu trả nào, vẫn in
+                  bảng trống với 3 dòng để ghi tay. */}
+              {(() => {
+                const allReturnLines = (o.returns || []).flatMap((r) => r.lines || [])
+                const totalReturnQty = allReturnLines.reduce(
+                  (s, l) => s + Number(l.quantity || 0),
+                  0
+                )
+                const totalReturnValue = allReturnLines.reduce(
+                  (s, l) =>
+                    s +
+                    Number(
+                      l.line_total != null
+                        ? l.line_total
+                        : Number(l.unit_price || 0) * Number(l.quantity || 0)
+                    ),
+                  0
+                )
+                const hasReturns = allReturnLines.length > 0
+                return (
+                  <div className="mb-6">
+                    <h2 className="text-base font-bold mb-2 mt-4">
+                      Hàng trả về (thu về kho)
+                    </h2>
+                    <p className="text-xs text-gray-500 mb-2">
+                      {hasReturns
+                        ? "Thu lại các sản phẩm dưới đây và đối chiếu với khách trước khi rời điểm giao."
+                        : "Đơn này hiện chưa có yêu cầu trả. Nếu khách trả tại điểm giao, ghi tay vào các dòng trống bên dưới."}
+                    </p>
+                    <table className="w-full text-sm border-collapse mb-2">
+                      <thead>
+                        <tr className="border-b-2 border-gray-300">
+                          <th className="py-2 text-left font-bold w-10">STT</th>
+                          <th className="py-2 text-left font-bold">Sản phẩm</th>
+                          <th className="py-2 text-left font-bold w-24">SKU</th>
+                          <th className="py-2 text-center font-bold w-14">ĐVT</th>
+                          <th className="py-2 text-right font-bold w-16">SL</th>
+                          <th className="py-2 text-right font-bold w-24">Đơn giá</th>
+                          <th className="py-2 text-right font-bold w-28">Thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {hasReturns
+                          ? allReturnLines.map((l, i) => {
+                              const lineTotal = Number(
+                                l.line_total != null
+                                  ? l.line_total
+                                  : Number(l.unit_price || 0) * Number(l.quantity || 0)
+                              )
+                              return (
+                                <tr key={i} className="border-b border-gray-200">
+                                  <td className="py-1.5">{i + 1}</td>
+                                  <td className="py-1.5 font-medium">
+                                    {l.product?.name || "-"}
+                                  </td>
+                                  <td className="py-1.5 font-mono text-xs">
+                                    {l.product?.sku || "-"}
+                                  </td>
+                                  <td className="py-1.5 text-center">{l.unit_name}</td>
+                                  <td className="py-1.5 text-right font-bold">
+                                    {l.quantity}
+                                  </td>
+                                  <td className="py-1.5 text-right">
+                                    {l.unit_price
+                                      ? formatCurrency(Number(l.unit_price))
+                                      : "-"}
+                                  </td>
+                                  <td className="py-1.5 text-right font-semibold">
+                                    {lineTotal ? formatCurrency(lineTotal) : "-"}
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          : Array.from({ length: 3 }, (_, i) => (
+                              <tr key={`blank-${i}`} className="border-b border-gray-300">
+                                <td className="py-3">{i + 1}</td>
+                                <td className="py-3"></td>
+                                <td className="py-3"></td>
+                                <td className="py-3 text-center"></td>
+                                <td className="py-3 text-right"></td>
+                                <td className="py-3 text-right"></td>
+                                <td className="py-3 text-right"></td>
+                              </tr>
+                            ))}
+                      </tbody>
+                      {hasReturns ? (
+                        <tfoot>
+                          <tr className="border-t-2 border-gray-300">
+                            <td colSpan={4} className="py-2 text-right font-bold">
+                              Tổng trả:
+                            </td>
+                            <td className="py-2 text-right font-black">
+                              {totalReturnQty}
+                            </td>
+                            <td className="py-2 text-right text-gray-500 text-xs">
+                              Giá trị trả
+                            </td>
+                            <td className="py-2 text-right font-black">
+                              {formatCurrency(totalReturnValue)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      ) : (
+                        <tfoot>
+                          <tr className="border-t-2 border-gray-300">
+                            <td colSpan={4} className="py-2 text-right font-bold">
+                              Tổng trả (ghi tay):
+                            </td>
+                            <td className="py-2 text-right">_______</td>
+                            <td className="py-2 text-right text-gray-500 text-xs">
+                              Giá trị trả
+                            </td>
+                            <td className="py-2 text-right">_______</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                    {(o.returns || []).map((r, ri) => {
+                      const reasonText = r.reason
+                        ? ({
+                            damaged: "Hỏng/vỡ",
+                            wrong_item: "Sai hàng",
+                            near_expiry: "Cận date",
+                            expired: "Hết hạn",
+                            refused: "Khách từ chối",
+                          } as Record<string, string>)[r.reason] || r.reason
+                        : "—"
+                      const statusText = r.status
+                        ? ({
+                            pending: "Chờ duyệt",
+                            approved: "Đã duyệt",
+                            completed: "Hoàn tất",
+                          } as Record<string, string>)[r.status] || r.status
+                        : ""
+                      return (
+                        <p key={r.id} className="text-xs text-gray-600 mt-1">
+                          <span className="font-semibold">Phiếu trả {ri + 1}:</span>{" "}
+                          {statusText ? `[${statusText}] ` : ""}Lý do: {reasonText}
+                          {r.credit_note_amount != null
+                            ? ` • Credit note: ${formatCurrency(Number(r.credit_note_amount))}`
+                            : ""}
+                          {r.notes ? ` • ${r.notes}` : ""}
+                        </p>
+                      )
+                    })}
+                    {(() => {
+                      const netDue =
+                        Number(o.total || orderTotal) - totalReturnValue
+                      return (
+                        <div className="mt-2 flex items-center justify-end gap-3 border-t border-gray-300 pt-2 text-sm">
+                          <span className="text-gray-500">
+                            {hasReturns
+                              ? "Còn phải thu (sau trả):"
+                              : "Số phải thu (trước trả tại điểm giao):"}
+                          </span>
+                          <span className="font-black text-base">
+                            {formatCurrency(Math.max(0, netDue))}
+                          </span>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )
+              })()}
 
               <div className="grid grid-cols-3 gap-8 text-center text-sm mt-12">
                 <div>

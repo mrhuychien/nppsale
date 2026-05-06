@@ -24,13 +24,14 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 
-type Variant = "sales" | "profit" | "by_customer" | "products"
+type Variant = "sales" | "profit" | "by_customer" | "products" | "summary"
 
 const VARIANTS = [
   { key: "sales" as const, label: "Bán hàng" },
   { key: "profit" as const, label: "Lợi nhuận" },
   { key: "by_customer" as const, label: "Theo khách hàng" },
   { key: "products" as const, label: "Theo sản phẩm" },
+  { key: "summary" as const, label: "Hàng bán theo nhân viên" },
 ] as const
 
 interface UserRow {
@@ -47,6 +48,14 @@ interface ProductRow {
   id: string
   sku: string
   name: string
+  base_unit?: string | null
+  sell_price?: number | null
+}
+interface ReturnLineRow {
+  return_id: string
+  product_id: string
+  quantity: number
+  line_total: number
 }
 interface StockEntry {
   id: string
@@ -86,6 +95,7 @@ export default function EmployeesReportPage() {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -101,7 +111,7 @@ export default function EmployeesReportPage() {
           .select("id, full_name, role, is_active")
           .eq("org_id", user.org_id),
         supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
-        supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
+        supabase.from("products").select("id, sku, name, base_unit, sell_price").eq("org_id", user.org_id),
         supabase
           .from("stock_entries")
           .select("id, type")
@@ -113,7 +123,8 @@ export default function EmployeesReportPage() {
       ])
     const orderIds = orderList.map((o) => o.id)
     const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
-    const [linesList, stockLinesRes] = await Promise.all([
+    const returnIds = returnsRows.map((r) => r.id)
+    const [linesList, stockLinesRes, returnLinesRes] = await Promise.all([
       fetchOrderLines(supabase, orderIds),
       stockEntryIds.length === 0
         ? Promise.resolve({ data: [] as StockEntryLine[] })
@@ -121,6 +132,12 @@ export default function EmployeesReportPage() {
             .from("stock_entry_lines")
             .select("entry_id, product_id, quantity, unit_cost")
             .in("entry_id", stockEntryIds),
+      returnIds.length === 0
+        ? Promise.resolve({ data: [] as ReturnLineRow[] })
+        : supabase
+            .from("return_lines")
+            .select("return_id, product_id, quantity, line_total")
+            .in("return_id", returnIds),
     ])
     setOrders(orderList)
     setLines(linesList)
@@ -130,6 +147,7 @@ export default function EmployeesReportPage() {
     setProducts((productsRes.data as ProductRow[]) || [])
     setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
     setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
+    setReturnLines((returnLinesRes.data as ReturnLineRow[]) || [])
     setLoading(false)
   }, [user?.org_id, range, supabase])
 
@@ -468,6 +486,153 @@ export default function EmployeesReportPage() {
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
 
+  // ============== Hàng bán theo nhân viên (summary 9 cột) ==============
+  // Map customer→sales_user thông qua đơn (returns không tham chiếu trực tiếp
+  // sales_user, nên dùng đơn gần nhất của KH trong kỳ để gán).
+  type SummaryProduct = {
+    productId: string
+    sku: string
+    name: string
+    unit: string
+    qty: number
+    listed: number
+    revenue: number
+    diff: number
+    returnQty: number
+    returnValue: number
+    netRevenue: number
+  }
+  type SummaryRow = {
+    id: string
+    name: string
+    role: string
+    qty: number
+    listed: number
+    revenue: number
+    diff: number
+    returnQty: number
+    returnValue: number
+    netRevenue: number
+    products: SummaryProduct[]
+  }
+
+  const employeeSummaryRows: SummaryRow[] = useMemo(() => {
+    const m = new Map<string, SummaryRow & { _byProduct: Map<string, SummaryProduct> }>()
+
+    const ensureRow = (uid: string): SummaryRow & { _byProduct: Map<string, SummaryProduct> } => {
+      const existing = m.get(uid)
+      if (existing) return existing
+      const u = userMap.get(uid)
+      const r: SummaryRow & { _byProduct: Map<string, SummaryProduct> } = {
+        id: uid,
+        name: u?.full_name || "—",
+        role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+        qty: 0,
+        listed: 0,
+        revenue: 0,
+        diff: 0,
+        returnQty: 0,
+        returnValue: 0,
+        netRevenue: 0,
+        products: [],
+        _byProduct: new Map(),
+      }
+      m.set(uid, r)
+      return r
+    }
+
+    const ensureProduct = (
+      row: SummaryRow & { _byProduct: Map<string, SummaryProduct> },
+      productId: string
+    ): SummaryProduct => {
+      const existing = row._byProduct.get(productId)
+      if (existing) return existing
+      const p = productMap.get(productId)
+      const created: SummaryProduct = {
+        productId,
+        sku: p?.sku || "—",
+        name: p?.name || "—",
+        unit: p?.base_unit || "",
+        qty: 0,
+        listed: 0,
+        revenue: 0,
+        diff: 0,
+        returnQty: 0,
+        returnValue: 0,
+        netRevenue: 0,
+      }
+      row._byProduct.set(productId, created)
+      row.products.push(created)
+      return created
+    }
+
+    // Order lines → tính SL bán + Giá trị niêm yết + Doanh thu
+    for (const o of orders) {
+      if (!matchSearchUser(o.sales_user_id)) continue
+      const row = ensureRow(o.sales_user_id)
+      const ls = linesByOrder.get(o.id) || []
+      for (const l of ls) {
+        const p = productMap.get(l.product_id)
+        if (!p) continue
+        const qty = Number(l.quantity || 0)
+        const unitListPrice = Number(p.sell_price || 0) > 0
+          ? Number(p.sell_price)
+          : Number(l.unit_price || 0)
+        const listed = qty * unitListPrice
+        const revenue = Number(l.line_total || 0)
+        row.qty += qty
+        row.listed += listed
+        row.revenue += revenue
+        const pr = ensureProduct(row, l.product_id)
+        pr.qty += qty
+        pr.listed += listed
+        pr.revenue += revenue
+      }
+    }
+
+    // Returns → gán cho NV phục vụ KH gần nhất
+    const lineByOrderId = linesByOrder
+    const lastSalesUserByCustomer = new Map<string, string>()
+    const sortedOrders = [...orders].sort((a, b) => b.order_date.localeCompare(a.order_date))
+    for (const o of sortedOrders) {
+      if (!lastSalesUserByCustomer.has(o.customer_id)) {
+        lastSalesUserByCustomer.set(o.customer_id, o.sales_user_id)
+      }
+    }
+    const returnIdToCustomer = new Map<string, string>()
+    for (const r of returns) returnIdToCustomer.set(r.id, r.customer_id)
+
+    for (const rl of returnLines) {
+      const cid = returnIdToCustomer.get(rl.return_id)
+      if (!cid) continue
+      const uid = lastSalesUserByCustomer.get(cid)
+      if (!uid || !matchSearchUser(uid)) continue
+      const row = ensureRow(uid)
+      const qty = Number(rl.quantity || 0)
+      const value = Number(rl.line_total || 0)
+      row.returnQty += qty
+      row.returnValue += value
+      const pr = ensureProduct(row, rl.product_id)
+      pr.returnQty += qty
+      pr.returnValue += value
+    }
+
+    // Suppress unused warning
+    void lineByOrderId
+
+    // Tính chênh lệch + doanh thu thuần
+    for (const row of Array.from(m.values())) {
+      row.diff = row.revenue - row.listed
+      row.netRevenue = row.revenue - row.returnValue
+      for (const p of row.products) {
+        p.diff = p.revenue - p.listed
+        p.netRevenue = p.revenue - p.returnValue
+      }
+      row.products.sort((a, b) => b.revenue - a.revenue)
+    }
+    return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
+  }, [orders, linesByOrder, returns, returnLines, userMap, productMap, matchSearchUser])
+
   const handleExport = () => {
     if (variant === "sales") {
       const out: (string | number)[][] = [
@@ -495,7 +660,7 @@ export default function EmployeesReportPage() {
         }
       }
       downloadXlsx(`bao-cao-nv-theo-khach-${range.from}-${range.to}`, out)
-    } else {
+    } else if (variant === "products") {
       const out: (string | number)[][] = [
         ["Nhân viên", "Mã hàng", "Tên hàng", "Khách hàng", "SL", "Doanh thu"],
       ]
@@ -507,6 +672,54 @@ export default function EmployeesReportPage() {
         }
       }
       downloadXlsx(`bao-cao-nv-theo-sanpham-${range.from}-${range.to}`, out)
+    } else if (variant === "summary") {
+      const out: (string | number)[][] = [
+        [
+          "Người bán",
+          "Mã hàng",
+          "Tên hàng",
+          "Đơn vị",
+          "SL bán",
+          "Giá trị niêm yết",
+          "Doanh thu",
+          "Chênh lệch",
+          "SL trả",
+          "Giá trị trả",
+          "Doanh thu thuần",
+        ],
+      ]
+      for (const r of employeeSummaryRows) {
+        // Tổng hợp NV (không có mã hàng)
+        out.push([
+          r.name,
+          "",
+          "(Tổng hợp)",
+          "",
+          r.qty,
+          r.listed,
+          r.revenue,
+          r.diff,
+          r.returnQty,
+          -r.returnValue,
+          r.netRevenue,
+        ])
+        for (const p of r.products) {
+          out.push([
+            r.name,
+            p.sku,
+            p.name,
+            p.unit,
+            p.qty,
+            p.listed,
+            p.revenue,
+            p.diff,
+            p.returnQty,
+            -p.returnValue,
+            p.netRevenue,
+          ])
+        }
+      }
+      downloadXlsx(`bao-cao-nv-hangban-summary-${range.from}-${range.to}`, out)
     }
   }
 
@@ -770,6 +983,215 @@ export default function EmployeesReportPage() {
                   </div>
                 ))
               )}
+            </div>
+          )}
+        />
+      ) : variant === "summary" ? (
+        <ReportTable
+          rows={employeeSummaryRows}
+          rowKey={(r) => r.id}
+          columns={[
+            {
+              key: "name",
+              label: "Người bán",
+              render: (r) => <span className="font-medium text-primary">{r.name}</span>,
+            },
+            {
+              key: "qty",
+              label: "SL bán",
+              align: "right",
+              render: (r) => r.qty.toLocaleString("vi-VN"),
+            },
+            {
+              key: "unit",
+              label: "Đơn vị",
+              render: () => <span className="text-muted-foreground">—</span>,
+            },
+            {
+              key: "listed",
+              label: "Giá trị niêm yết",
+              align: "right",
+              render: (r) => formatCurrency(r.listed),
+            },
+            {
+              key: "revenue",
+              label: "Doanh thu",
+              align: "right",
+              render: (r) => formatCurrency(r.revenue),
+            },
+            {
+              key: "diff",
+              label: "Chênh lệch",
+              align: "right",
+              render: (r) => (
+                <span
+                  className={
+                    r.diff > 0
+                      ? "text-emerald-600"
+                      : r.diff < 0
+                        ? "text-red-600"
+                        : "text-muted-foreground"
+                  }
+                >
+                  {r.diff === 0 ? "0" : formatCurrency(Math.abs(r.diff))}
+                </span>
+              ),
+            },
+            {
+              key: "rqty",
+              label: "SL trả",
+              align: "right",
+              render: (r) => (r.returnQty > 0 ? r.returnQty.toLocaleString("vi-VN") : "0"),
+            },
+            {
+              key: "rval",
+              label: "Giá trị trả",
+              align: "right",
+              render: (r) =>
+                r.returnValue > 0 ? (
+                  <span className="text-red-600">-{formatCurrency(r.returnValue)}</span>
+                ) : (
+                  "0"
+                ),
+            },
+            {
+              key: "net",
+              label: "Doanh thu thuần",
+              align: "right",
+              render: (r) => (
+                <span className="font-semibold text-primary">
+                  {formatCurrency(r.netRevenue)}
+                </span>
+              ),
+            },
+          ]}
+          totalsRow={
+            <TotalsRow
+              cells={[
+                { content: `SL người bán: ${employeeSummaryRows.length}` },
+                {
+                  content: employeeSummaryRows
+                    .reduce((s, r) => s + r.qty, 0)
+                    .toLocaleString("vi-VN"),
+                  align: "right",
+                },
+                { content: "" },
+                {
+                  content: formatCurrency(
+                    employeeSummaryRows.reduce((s, r) => s + r.listed, 0)
+                  ),
+                  align: "right",
+                },
+                {
+                  content: formatCurrency(
+                    employeeSummaryRows.reduce((s, r) => s + r.revenue, 0)
+                  ),
+                  align: "right",
+                },
+                {
+                  content: formatCurrency(
+                    employeeSummaryRows.reduce((s, r) => s + r.diff, 0)
+                  ),
+                  align: "right",
+                },
+                {
+                  content: employeeSummaryRows
+                    .reduce((s, r) => s + r.returnQty, 0)
+                    .toLocaleString("vi-VN"),
+                  align: "right",
+                },
+                {
+                  content: (() => {
+                    const v = employeeSummaryRows.reduce((s, r) => s + r.returnValue, 0)
+                    return v > 0 ? `-${formatCurrency(v)}` : "0"
+                  })(),
+                  align: "right",
+                  className: "text-red-600",
+                },
+                {
+                  content: formatCurrency(
+                    employeeSummaryRows.reduce((s, r) => s + r.netRevenue, 0)
+                  ),
+                  align: "right",
+                  className: "text-primary",
+                },
+              ]}
+            />
+          }
+          expandable={(r) => (
+            <div className="rounded-md border border-border/40 bg-background/60">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-emerald-100/60">
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hàng</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Đơn vị</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL bán</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị niêm yết</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL trả</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">DT thuần</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.products.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-3 py-2 text-center text-xs text-muted-foreground"
+                      >
+                        Không có dòng hàng
+                      </td>
+                    </tr>
+                  ) : (
+                    r.products.map((p) => (
+                      <tr key={p.productId} className="border-t border-border/30">
+                        <td className="px-3 py-1.5 font-mono text-xs text-primary">{p.sku}</td>
+                        <td className="px-3 py-1.5">{p.name}</td>
+                        <td className="px-3 py-1.5">{p.unit || "—"}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {p.qty.toLocaleString("vi-VN")}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {formatCurrency(p.listed)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {formatCurrency(p.revenue)}
+                        </td>
+                        <td
+                          className={
+                            "px-3 py-1.5 text-right tabular-nums " +
+                            (p.diff > 0
+                              ? "text-emerald-600"
+                              : p.diff < 0
+                                ? "text-red-600"
+                                : "text-muted-foreground")
+                          }
+                        >
+                          {p.diff === 0 ? "0" : formatCurrency(Math.abs(p.diff))}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {p.returnQty > 0 ? p.returnQty.toLocaleString("vi-VN") : "0"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {p.returnValue > 0 ? (
+                            <span className="text-red-600">
+                              -{formatCurrency(p.returnValue)}
+                            </span>
+                          ) : (
+                            "0"
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
+                          {formatCurrency(p.netRevenue)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
         />

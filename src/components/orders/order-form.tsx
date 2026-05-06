@@ -24,6 +24,9 @@ import {
   returnCeiling,
   validateSalePrice,
   validateReturnPrice,
+  productPriceRulesFrom,
+  salesPriceBounds,
+  returnsPriceBounds,
   type PricingRules,
 } from "@/lib/pricing"
 import { RETURN_REASONS } from "@/lib/constants"
@@ -159,12 +162,30 @@ export function OrderForm() {
   }
 
   // Sales-rep override check. Returns null when the line is fine.
+  // Combines the org-level rule (discount path) with the per-product
+  // rule (markup path / no-edit lock).
   const getLinePriceWarning = (line: OrderLine): string | null => {
     if (!isSalesRole) return null
     const def = getLineDefaultPrice(line)
     if (def <= 0) return null
     const check = validateSalePrice(line.unit_price, def, pricingRules)
-    return check.ok ? null : check.message
+    if (!check.ok) return check.message
+
+    // Per-product cap: the markup ceiling. When the SKU disables
+    // editing, force the rep to use exactly the listed sell price.
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return null
+    const sellPrice = Number(product.sell_price ?? def)
+    const productRules = productPriceRulesFrom(product)
+    const { max } = salesPriceBounds(sellPrice, productRules)
+    if (!productRules.allow_price_edit) {
+      if (Math.abs(line.unit_price - sellPrice) > 0.5) {
+        return `Sản phẩm khóa giá: phải đặt đúng ${formatCurrency(sellPrice)}`
+      }
+    } else if (line.unit_price > max + 0.5) {
+      return `Đơn bán: giá ≤ ${formatCurrency(max)} (giá bán + tối đa)`
+    }
+    return null
   }
 
   // Round an arbitrary VAT rate (stored as decimal 0-1) to the nearest
@@ -333,7 +354,23 @@ export function OrderForm() {
     const def = getReturnLineDefault(line)
     if (def <= 0) return null
     const check = validateReturnPrice(line.unit_price, def, pricingRules)
-    return check.ok ? null : check.message
+    if (!check.ok) return check.message
+
+    // Per-product floor for returns: how far below sell_price the rep
+    // can refund. When edit is disabled, lock to listed sell_price.
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return null
+    const sellPrice = Number(product.sell_price ?? def)
+    const productRules = productPriceRulesFrom(product)
+    const { min } = returnsPriceBounds(sellPrice, productRules)
+    if (!productRules.allow_price_edit) {
+      if (Math.abs(line.unit_price - sellPrice) > 0.5) {
+        return `Sản phẩm khóa giá: phải đặt đúng ${formatCurrency(sellPrice)}`
+      }
+    } else if (line.unit_price < min - 0.5) {
+      return `Đơn trả: giá ≥ ${formatCurrency(min)} (giá bán − tối đa)`
+    }
+    return null
   }
 
   const addReturnLine = (productId: string) => {

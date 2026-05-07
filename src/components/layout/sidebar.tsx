@@ -43,7 +43,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers", feature: "customers.visits" },
       { label: "Bảng giá", href: "/products/price-lists", icon: FileText, module: "products", feature: "products.price_lists" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions", feature: "promotions" },
-      { label: "Hoa hồng", href: "/commissions", icon: Award, module: "commissions", feature: "commissions" },
     ],
   },
   {
@@ -88,7 +87,14 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Nhân sự",
     icon: UserCog,
     items: [
-      { label: "Nhân sự", href: "/hr", icon: UserCog, module: "settings", feature: "hr" },
+      { label: "Danh sách nhân viên", href: "/settings/users", icon: Users, module: "settings", feature: "settings.users" },
+      { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus, module: "settings", feature: "settings.users" },
+      { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
+      { label: "Tổng quan nhân sự", href: "/hr", icon: UserCog, module: "settings", feature: "hr" },
+      { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },
+      { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet, module: "settings", feature: "hr" },
+      { label: "Tính lương kỳ", href: "/hr/payroll", icon: Receipt, module: "settings", feature: "hr" },
+      { label: "Hoa hồng (báo cáo)", href: "/commissions", icon: Award, module: "commissions", feature: "commissions" },
     ],
   },
   {
@@ -122,8 +128,9 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Settings,
     items: [
       { label: "Tổng quan", href: "/settings", icon: Settings, module: "settings", feature: "settings" },
-      { label: "Người dùng", href: "/settings/users", icon: UserCog, module: "settings", feature: "settings.users" },
-      { label: "Phân quyền", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
+      { label: "Tổ chức / NPP", href: "/settings/org", icon: Settings, module: "settings", feature: "settings.org" },
+      { label: "Duyệt đơn tự động", href: "/settings/approval-rules", icon: ShieldCheck, module: "settings", feature: "settings.approval_rules" },
+      { label: "Cài đặt giá", href: "/settings/pricing", icon: Tag, module: "settings", feature: "settings.pricing" },
     ],
   },
 ]

@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
-import { Save, Info, ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
+import { Save, Info, ArrowDownToLine, ArrowUpFromLine, Calendar } from "lucide-react"
 import {
   DEFAULT_PRICING_RULES,
   loadPricingRules,
@@ -71,6 +71,7 @@ export default function PricingSettingsPage() {
         sale_min_value: rules.sale_min_value,
         return_max_pct: rules.return_max_pct,
         return_max_value: rules.return_max_value,
+        date_warehouse_threshold_days: rules.date_warehouse_threshold_days,
         updated_by: authUser.id,
       }
       const { error } = await supabase
@@ -246,6 +247,42 @@ export default function PricingSettingsPage() {
             </p>
             <p className="text-lg font-bold text-amber-700">
               {formatCurrency(sampleReturnCeiling)}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-amber-600" />
+            Kho hàng date — ngưỡng tự động
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Khi 1 lô còn ≤ ngưỡng ngày này, hệ thống tự động chuyển từ Kho hàng
+            bán sang Kho hàng date. NV có thể chuyển thủ công bất kỳ lúc nào.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Ngưỡng (ngày trước hạn)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={365}
+                step="1"
+                value={rules.date_warehouse_threshold_days || ""}
+                onChange={(e) => update("date_warehouse_threshold_days", parseNum(e.target.value))}
+                disabled={!canEdit}
+                placeholder="30"
+              />
+              <span className="text-sm text-muted-foreground">ngày</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Mặc định 30 ngày. Khi đổi, dùng nút &ldquo;Rà soát kho date&rdquo; ở trang Lô hàng
+              để áp dụng ngay cho lô hiện có.
             </p>
           </div>
         </CardContent>

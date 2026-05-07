@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,11 +23,9 @@ import {
   loadPricingRules,
   saleFloor,
   returnCeiling,
-  validateSalePrice,
-  validateReturnPrice,
-  productPriceRulesFrom,
-  salesPriceBounds,
-  returnsPriceBounds,
+  userPriceRulesFrom,
+  validateUserSalesPrice,
+  validateUserReturnPrice,
   type PricingRules,
 } from "@/lib/pricing"
 import { RETURN_REASONS } from "@/lib/constants"
@@ -161,31 +160,17 @@ export function OrderForm() {
     return getUnitPrice(product, line.unit_name, selectedCustomer?.group_id)
   }
 
-  // Sales-rep override check. Returns null when the line is fine.
-  // Combines the org-level rule (discount path) with the per-product
-  // rule (markup path / no-edit lock).
+  // Sales-line price guard — Update #2 v2 §4.6 (per-USER rules).
+  // Quy tắc:
+  //   1) Đơn bán: giá ≥ giá list (ngăn phá giá).
+  //   2) Đơn bán: giá ≤ giá list × (1 + max_increase_pct/100).
+  //   Owner & accountant bypass mọi check.
   const getLinePriceWarning = (line: OrderLine): string | null => {
-    if (!isSalesRole) return null
+    const userRules = userPriceRulesFrom(user)
+    if (userRules.free) return null
     const def = getLineDefaultPrice(line)
     if (def <= 0) return null
-    const check = validateSalePrice(line.unit_price, def, pricingRules)
-    if (!check.ok) return check.message
-
-    // Per-product cap: the markup ceiling. When the SKU disables
-    // editing, force the rep to use exactly the listed sell price.
-    const product = products.find((p) => p.id === line.product_id)
-    if (!product) return null
-    const sellPrice = Number(product.sell_price ?? def)
-    const productRules = productPriceRulesFrom(product)
-    const { max } = salesPriceBounds(sellPrice, productRules)
-    if (!productRules.allow_price_edit) {
-      if (Math.abs(line.unit_price - sellPrice) > 0.5) {
-        return `Sản phẩm khóa giá: phải đặt đúng ${formatCurrency(sellPrice)}`
-      }
-    } else if (line.unit_price > max + 0.5) {
-      return `Đơn bán: giá ≤ ${formatCurrency(max)} (giá bán + tối đa)`
-    }
-    return null
+    return validateUserSalesPrice(line.unit_price, def, userRules)
   }
 
   // Round an arbitrary VAT rate (stored as decimal 0-1) to the nearest
@@ -349,28 +334,19 @@ export function OrderForm() {
     return getUnitPrice(product, line.unit_name, selectedCustomer?.group_id)
   }
 
+  // Return-line price guard — Update #2 v2 §4.6 ràng buộc 3:
+  // Giá hoàn ≤ giá đã bán SP đó trong đơn gốc tham chiếu. Đây là
+  // companion-return form (tạo trong cùng đơn bán) → originalPrice
+  // chính là giá vừa nhập trên dòng bán cùng product, fallback giá
+  // list nếu không thấy.
   const getReturnLinePriceWarning = (line: ReturnLineDraft): string | null => {
-    if (!isSalesRole) return null
+    const userRules = userPriceRulesFrom(user)
+    if (userRules.free) return null
     const def = getReturnLineDefault(line)
     if (def <= 0) return null
-    const check = validateReturnPrice(line.unit_price, def, pricingRules)
-    if (!check.ok) return check.message
-
-    // Per-product floor for returns: how far below sell_price the rep
-    // can refund. When edit is disabled, lock to listed sell_price.
-    const product = products.find((p) => p.id === line.product_id)
-    if (!product) return null
-    const sellPrice = Number(product.sell_price ?? def)
-    const productRules = productPriceRulesFrom(product)
-    const { min } = returnsPriceBounds(sellPrice, productRules)
-    if (!productRules.allow_price_edit) {
-      if (Math.abs(line.unit_price - sellPrice) > 0.5) {
-        return `Sản phẩm khóa giá: phải đặt đúng ${formatCurrency(sellPrice)}`
-      }
-    } else if (line.unit_price < min - 0.5) {
-      return `Đơn trả: giá ≥ ${formatCurrency(min)} (giá bán − tối đa)`
-    }
-    return null
+    const sameSaleLine = lines.find((l) => l.product_id === line.product_id)
+    const originalPrice = sameSaleLine ? Number(sameSaleLine.unit_price || def) : def
+    return validateUserReturnPrice(line.unit_price, originalPrice, userRules)
   }
 
   const addReturnLine = (productId: string) => {
@@ -1018,10 +994,10 @@ export function OrderForm() {
                           const def = isSalesRole ? getLineDefaultPrice(line) : 0
                           return (
                             <td className="px-3 py-2 align-top">
-                              <Input
-                                type="number"
+                              <MoneyInput
                                 value={line.unit_price}
-                                onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                                onChange={(v) => updateLine(i, "unit_price", v)}
+                                showSuffix={false}
                                 className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                               />
                               {isSalesRole && def > 0 && (
@@ -1141,10 +1117,10 @@ export function OrderForm() {
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
                               Giá
                             </Label>
-                            <Input
-                              type="number"
+                            <MoneyInput
                               value={line.unit_price}
-                              onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              onChange={(v) => updateLine(i, "unit_price", v)}
+                              showSuffix={false}
                               className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
                           </div>
@@ -1332,10 +1308,10 @@ export function OrderForm() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
-                            <Input
-                              type="number"
+                            <MoneyInput
                               value={line.unit_price}
-                              onChange={(e) => updateReturnLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              onChange={(v) => updateReturnLine(i, "unit_price", v)}
+                              showSuffix={false}
                               className={`h-9 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
                           </div>

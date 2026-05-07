@@ -47,6 +47,12 @@ export interface User {
   phone: string | null
   is_active: boolean
   created_at: string
+  /** Cho phép user sửa giá khi tạo / sửa đơn. Default false; owner +
+   *  accountant được seed true ở migration 027. */
+  allow_price_edit?: boolean
+  /** Ngưỡng % tăng giá tối đa so với giá list. Chỉ áp khi
+   *  allow_price_edit=true. */
+  price_edit_max_increase_pct?: number
 }
 
 export interface CustomerGroup {
@@ -163,6 +169,9 @@ export interface Batch {
   qty_on_hand: number
   unit_cost: number
   status: string
+  warehouse_zone: "sale" | "date"
+  zone_moved_at: string | null
+  zone_moved_by: string | null
   created_at: string
   // Joined
   product?: Product
@@ -631,6 +640,9 @@ export interface HrSalaryConfig {
   under_60_percent: number
   is_active: boolean
   created_at: string
+  /** Role name nào trong mảng này thì lương không nhân hệ số ngày công
+   *  (NV Bán hàng đo bằng kết quả). Default ["sales"] sau migration 026. */
+  bypass_attendance_roles?: string[]
 }
 
 export interface HrMonthlyBonus {

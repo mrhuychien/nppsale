@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -1018,10 +1019,10 @@ export function OrderForm() {
                           const def = isSalesRole ? getLineDefaultPrice(line) : 0
                           return (
                             <td className="px-3 py-2 align-top">
-                              <Input
-                                type="number"
+                              <MoneyInput
                                 value={line.unit_price}
-                                onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                                onChange={(v) => updateLine(i, "unit_price", v)}
+                                showSuffix={false}
                                 className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                               />
                               {isSalesRole && def > 0 && (
@@ -1141,10 +1142,10 @@ export function OrderForm() {
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
                               Giá
                             </Label>
-                            <Input
-                              type="number"
+                            <MoneyInput
                               value={line.unit_price}
-                              onChange={(e) => updateLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              onChange={(v) => updateLine(i, "unit_price", v)}
+                              showSuffix={false}
                               className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
                           </div>
@@ -1332,10 +1333,10 @@ export function OrderForm() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
-                            <Input
-                              type="number"
+                            <MoneyInput
                               value={line.unit_price}
-                              onChange={(e) => updateReturnLine(i, "unit_price", parseInt(e.target.value) || 0)}
+                              onChange={(v) => updateReturnLine(i, "unit_price", v)}
+                              showSuffix={false}
                               className={`h-9 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
                           </div>

@@ -631,6 +631,9 @@ export interface HrSalaryConfig {
   under_60_percent: number
   is_active: boolean
   created_at: string
+  /** Role name nào trong mảng này thì lương không nhân hệ số ngày công
+   *  (NV Bán hàng đo bằng kết quả). Default ["sales"] sau migration 026. */
+  bypass_attendance_roles?: string[]
 }
 
 export interface HrMonthlyBonus {

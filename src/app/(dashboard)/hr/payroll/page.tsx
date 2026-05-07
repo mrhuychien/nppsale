@@ -13,11 +13,12 @@ import { EmptyState } from "@/components/ui/empty-state"
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table"
-import { ChevronLeft, ChevronRight, Calculator, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Calculator, Loader2, Eye } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { ROLE_LABELS } from "@/lib/constants"
 import { useRouter } from "next/navigation"
-import type { HrPayroll, User, HrSalaryConfig, HrMonthlyBonus, HrAttendance } from "@/types"
+import type { HrPayroll, User, HrSalaryConfig, HrMonthlyBonus, HrAttendance, SalesOrder } from "@/types"
+import { computeAllBonuses, type UserPeriodActivity } from "@/lib/bonus"
 
 const STATUS_MAP: Record<string, { label: string; variant: "secondary" | "default" | "success" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -39,6 +40,142 @@ export default function PayrollPage() {
   const [calculating, setCalculating] = useState(false)
 
   const period = `${year}-${String(month).padStart(2, "0")}`
+
+  // Real-time preview (§2.5): runs the bonus library against current
+  // period activity without persisting anything. Refreshes whenever
+  // the user changes month or after they save bonus-config changes.
+  const [preview, setPreview] = useState<
+    Array<{
+      user: User
+      orderCount: number
+      perUnitTotal: number
+      milestoneTotal: number
+      kpiTotal: number
+      totalBonus: number
+      revenue: number
+    }>
+  >([])
+  const [previewing, setPreviewing] = useState(false)
+
+  const refreshPreview = useCallback(async () => {
+    if (!authUser?.org_id) return
+    setPreviewing(true)
+    try {
+      const startDate = `${period}-01`
+      const daysInMonth = new Date(year, month, 0).getDate()
+      const endDate = `${period}-${String(daysInMonth).padStart(2, "0")}`
+
+      const [bonusRes, usersRes, ordersRes, linesRes, returnsRes, customersRes] =
+        await Promise.all([
+          supabase
+            .from("hr_monthly_bonus")
+            .select("*")
+            .eq("org_id", authUser.org_id)
+            .eq("period", period)
+            .maybeSingle(),
+          supabase
+            .from("users")
+            .select("id, full_name, role")
+            .eq("org_id", authUser.org_id)
+            .eq("is_active", true)
+            .eq("role", "sales"),
+          supabase
+            .from("sales_orders")
+            .select("id, sales_user_id, total, status, order_date")
+            .eq("org_id", authUser.org_id)
+            .eq("status", "delivered")
+            .gte("order_date", startDate)
+            .lte("order_date", endDate),
+          supabase
+            .from("sales_order_lines")
+            .select("order_id, product_id, unit_name, quantity, unit_price"),
+          supabase
+            .from("returns")
+            .select("order_id, credit_note_amount")
+            .eq("org_id", authUser.org_id)
+            .gte("created_at", startDate),
+          supabase
+            .from("customers")
+            .select("id, created_by, created_at")
+            .eq("org_id", authUser.org_id)
+            .gte("created_at", startDate)
+            .lte("created_at", endDate + "T23:59:59"),
+        ])
+
+      const bonusConfig = bonusRes.data as HrMonthlyBonus | null
+      const users = (usersRes.data as User[]) || []
+      const orders = (ordersRes.data as SalesOrder[]) || []
+      const lines = (linesRes.data as Array<{
+        order_id: string
+        product_id: string
+        unit_name: string
+        quantity: number
+        unit_price: number
+      }>) || []
+      const returns = (returnsRes.data as Array<{ order_id: string | null; credit_note_amount: number }>) || []
+      const newCustomers = (customersRes.data as Array<{ created_by: string | null }>) || []
+
+      const orderById = new Map(orders.map((o) => [o.id, o]))
+      const linesByUser = new Map<string, typeof lines>()
+      for (const l of lines) {
+        const o = orderById.get(l.order_id)
+        if (!o?.sales_user_id) continue
+        const arr = linesByUser.get(o.sales_user_id) || []
+        arr.push(l)
+        linesByUser.set(o.sales_user_id, arr)
+      }
+      const returnByOrder = new Map<string, number>()
+      for (const r of returns) {
+        if (r.order_id) {
+          returnByOrder.set(r.order_id, (returnByOrder.get(r.order_id) || 0) + Number(r.credit_note_amount || 0))
+        }
+      }
+      const newCustByUser = new Map<string, number>()
+      for (const c of newCustomers) {
+        if (c.created_by) {
+          newCustByUser.set(c.created_by, (newCustByUser.get(c.created_by) || 0) + 1)
+        }
+      }
+
+      const rows = users.map((u) => {
+        const userOrders = orders.filter((o) => o.sales_user_id === u.id)
+        const userLines = linesByUser.get(u.id) || []
+        const revenue = userOrders.reduce((s, o) => s + Number(o.total || 0), 0)
+        const returnTotal = userOrders.reduce(
+          (s, o) => s + (returnByOrder.get(o.id) || 0),
+          0
+        )
+        const activity: UserPeriodActivity = {
+          user_id: u.id,
+          delivered_orders: userOrders,
+          delivered_lines: userLines.map((l) => ({
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: Number(l.quantity || 0),
+            unit_price: Number(l.unit_price || 0),
+          })),
+          new_customers: newCustByUser.get(u.id) || 0,
+          visit_coverage: 0, // TODO: integrate with route_visits when tracked
+          return_rate: revenue > 0 ? (returnTotal / revenue) * 100 : 0,
+        }
+        const bonuses = computeAllBonuses(bonusConfig, activity)
+        return {
+          user: u,
+          orderCount: userOrders.length,
+          revenue,
+          perUnitTotal: bonuses.perUnit.total,
+          milestoneTotal: bonuses.orderMilestone.total,
+          kpiTotal: bonuses.kpi.total,
+          totalBonus: bonuses.total,
+        }
+      })
+      setPreview(rows)
+    } catch (err) {
+      console.error("Bonus preview error:", err)
+    } finally {
+      setPreviewing(false)
+    }
+  }, [authUser?.org_id, period, year, month, supabase])
 
   const fetchPayrolls = useCallback(async () => {
     if (!authUser?.org_id) return
@@ -314,11 +451,63 @@ export default function PayrollPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Bảng lương" description="Tính lương và quản lý chi trả" backHref="/hr">
-        <Button onClick={calculatePayroll} disabled={calculating}>
-          {calculating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
-          Tính lương tháng
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={refreshPreview} disabled={previewing}>
+            {previewing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Eye className="h-4 w-4 mr-2" />}
+            Xem trước thưởng
+          </Button>
+          <Button onClick={calculatePayroll} disabled={calculating}>
+            {calculating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Calculator className="h-4 w-4 mr-2" />}
+            Tính lương tháng
+          </Button>
+        </div>
       </PageHeader>
+
+      {/* §2.5 Real-time bonus preview — non-persistent. */}
+      {preview.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-sm">
+                Xem trước thưởng kỳ {period} (chưa lưu)
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {preview.length} NV bán hàng • Cộng thêm vào bảng lương khi nhấn &ldquo;Tính lương&rdquo;
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nhân viên</TableHead>
+                    <TableHead className="text-right">Đơn</TableHead>
+                    <TableHead className="text-right">Doanh thu</TableHead>
+                    <TableHead className="text-right">Đầu thùng</TableHead>
+                    <TableHead className="text-right">Mốc đơn</TableHead>
+                    <TableHead className="text-right">KPI</TableHead>
+                    <TableHead className="text-right font-bold">Tổng thưởng</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {preview.map((p) => (
+                    <TableRow key={p.user.id}>
+                      <TableCell className="font-medium">{p.user.full_name}</TableCell>
+                      <TableCell className="text-right tabular-nums">{p.orderCount}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(p.revenue)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(p.perUnitTotal)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(p.milestoneTotal)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(p.kpiTotal)}</TableCell>
+                      <TableCell className="text-right tabular-nums font-bold text-primary">
+                        {formatCurrency(p.totalBonus)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Period Selector */}
       <Card>

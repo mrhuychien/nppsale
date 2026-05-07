@@ -133,6 +133,8 @@ export interface Product {
   allow_price_edit?: boolean
   price_edit_max_type?: "percent" | "value"
   price_edit_max?: number
+  // Primary supplier (migration 030) — used by reports/NCC filter
+  primary_supplier_id?: string | null
   // Joined
   units?: ProductUnit[]
   price_lists?: PriceList[]
@@ -319,6 +321,7 @@ export interface SalesOrderLine {
   line_discount: number
   line_total: number
   batch_id: string | null
+  note: string | null
   // Joined
   product?: Product
 }
@@ -524,6 +527,7 @@ export interface ReturnLine {
   quantity: number
   unit_price: number
   line_total: number
+  note: string | null
   // Joined
   product?: Product
 }
@@ -645,11 +649,44 @@ export interface HrSalaryConfig {
   bypass_attendance_roles?: string[]
 }
 
+export interface PerUnitBonus {
+  /** null = áp dụng cho mọi SP. */
+  product_id: string | null
+  unit_name: string
+  bonus: number
+  /** Optional friendly label shown in admin UI. */
+  label?: string
+}
+
+export interface OrderMilestoneTier {
+  min_orders: number
+  bonus: number
+  label?: string
+}
+
+export type KpiMetricKey =
+  | "new_customers"
+  | "visit_coverage"
+  | "aov"
+  | "return_rate"
+  | "above_list_pct"
+
+export interface KpiMetricConfig {
+  key: KpiMetricKey | string
+  label: string
+  /** higher = better unless metric is intrinsically "lower is better" (return_rate) */
+  higher_is_better: boolean
+  tiers: { min: number; bonus: number; label?: string }[]
+}
+
 export interface HrMonthlyBonus {
   id: string
   org_id: string
   period: string
   tiers: { min_revenue: number; bonus: number }[]
+  per_unit_bonuses: PerUnitBonus[]
+  order_milestone_tiers: OrderMilestoneTier[]
+  kpi_metrics: KpiMetricConfig[]
   notes: string | null
   created_at: string
 }

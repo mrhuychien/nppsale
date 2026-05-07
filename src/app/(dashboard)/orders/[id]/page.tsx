@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { ApprovalBadge } from "@/components/orders/approval-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
@@ -128,9 +129,25 @@ export default function OrderDetailPage() {
   // Edit-line state for draft/confirmed orders.
   const [linesEditMode, setLinesEditMode] = useState(false)
   const [editedLines, setEditedLines] = useState<
-    { id: string; quantity: number; unit_price: number; line_discount: number }[]
+    {
+      id: string
+      quantity: number
+      unit_price: number
+      line_discount: number
+      // §4.5 — product swap on a line. Optional: when set, save replaces
+      // sales_order_lines.product_id (and the displayed name follows)
+      swap_product_id?: string
+      swap_product_name?: string
+      swap_sku?: string
+    }[]
   >([])
   const [savingLines, setSavingLines] = useState(false)
+  // Catalog of swappable products (loaded on first open of edit mode)
+  const [swapCatalog, setSwapCatalog] = useState<
+    { id: string; name: string; sku: string; sell_price: number; base_unit: string }[]
+  >([])
+  const [swapDialogFor, setSwapDialogFor] = useState<string | null>(null)
+  const [swapSearch, setSwapSearch] = useState("")
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", payment_terms: "COD", expected_delivery: "" })
   const [actionLoading, setActionLoading] = useState(false)
@@ -400,7 +417,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  const startLinesEdit = () => {
+  const startLinesEdit = async () => {
     setEditedLines(
       lines.map((l) => ({
         id: l.id,
@@ -410,11 +427,59 @@ export default function OrderDetailPage() {
       }))
     )
     setLinesEditMode(true)
+    // Lazy-load product catalog the first time the user opens edit mode
+    if (swapCatalog.length === 0) {
+      const { data } = await supabase
+        .from("products")
+        .select("id, name, sku, sell_price, base_unit")
+        .eq("status", "active")
+        .order("name")
+      setSwapCatalog(
+        (data as Array<{ id: string; name: string; sku: string; sell_price: number; base_unit: string }>) || []
+      )
+    }
   }
 
   const cancelLinesEdit = () => {
     setLinesEditMode(false)
     setEditedLines([])
+    setSwapDialogFor(null)
+  }
+
+  const applySwap = (
+    lineId: string,
+    product: { id: string; name: string; sku: string; sell_price: number }
+  ) => {
+    setEditedLines((prev) =>
+      prev.map((l) =>
+        l.id === lineId
+          ? {
+              ...l,
+              swap_product_id: product.id,
+              swap_product_name: product.name,
+              swap_sku: product.sku,
+              // Pick up the new product's default sell price unless the
+              // user has already manually edited the price in this session.
+              unit_price:
+                l.unit_price === Number(lines.find((x) => x.id === lineId)?.unit_price || 0)
+                  ? Number(product.sell_price || 0)
+                  : l.unit_price,
+            }
+          : l
+      )
+    )
+    setSwapDialogFor(null)
+    setSwapSearch("")
+  }
+
+  const undoSwap = (lineId: string) => {
+    setEditedLines((prev) =>
+      prev.map((l) =>
+        l.id === lineId
+          ? { ...l, swap_product_id: undefined, swap_product_name: undefined, swap_sku: undefined }
+          : l
+      )
+    )
   }
 
   const setEditedLineField = (
@@ -440,13 +505,20 @@ export default function OrderDetailPage() {
       // Cập nhật từng line. Tính line_total = qty*price - discount.
       for (const l of editedLines) {
         const lineTotal = Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0))
+        const update: Record<string, unknown> = {
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          line_total: lineTotal,
+        }
+        if (l.swap_product_id) {
+          // §4.5 — swap product. Reset batch_id since the lot link no
+          // longer applies; warehouse will pick a fresh batch.
+          update.product_id = l.swap_product_id
+          update.batch_id = null
+        }
         const { error } = await supabase
           .from("sales_order_lines")
-          .update({
-            quantity: l.quantity,
-            unit_price: l.unit_price,
-            line_total: lineTotal,
-          })
+          .update(update)
           .eq("id", l.id)
         if (error) throw error
       }
@@ -489,7 +561,10 @@ export default function OrderDetailPage() {
       const updates: Record<string, unknown> = {
         notes: editForm.notes || null,
       }
-      // Only allow terms + delivery date changes when still editable
+      // Only allow terms + delivery date changes when still editable.
+      // Picking-stage edits (§4.4) are limited to lines + notes; payment
+      // terms / delivery date stay locked since the customer already
+      // agreed to them at draft/confirmed.
       if (order.status === "draft" || order.status === "confirmed") {
         updates.payment_terms = editForm.payment_terms
         updates.expected_delivery = editForm.expected_delivery || null
@@ -513,10 +588,16 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy đơn hàng</div>
 
   const availableTransitions = STATUS_FLOW[order.status] || []
-  // Allow edit for all non-terminal statuses. Draft/confirmed get full edit;
-  // picking/delivering can edit notes only; delivered/cancelled cannot edit
+  // Allow edit for all non-terminal statuses. Draft/confirmed get full
+  // edit; picking gets full edit ONLY for warehouse/owner/manager (§4.4
+  // — chỉnh đơn ở bước xuất hàng); picking/delivering for sales rep
+  // can edit notes only; delivered/cancelled cannot edit at all.
   const canEdit = !!(user && hasPermission(user.role, "orders", "update") && !["delivered", "cancelled"].includes(order.status))
-  const fullEdit = canEdit && ["draft", "confirmed"].includes(order.status)
+  const isWarehouseRole = user?.role === "warehouse" || user?.role === "owner" || user?.role === "manager"
+  const fullEdit =
+    canEdit &&
+    (["draft", "confirmed"].includes(order.status) ||
+      (order.status === "picking" && isWarehouseRole))
   const canDelete = user && hasPermission(user.role, "orders", "delete") && ["draft", "cancelled"].includes(order.status)
 
   return (
@@ -550,7 +631,15 @@ export default function OrderDetailPage() {
         {/* Left column - details */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Chi tiết sản phẩm</CardTitle>
+            <div>
+              <CardTitle>Chi tiết sản phẩm</CardTitle>
+              {fullEdit && order.status === "picking" && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Đơn đang ở bước <strong>Xuất kho</strong> — Thủ kho có thể chỉnh
+                  SL / giá để khớp tồn thực tế trước khi xuất.
+                </p>
+              )}
+            </div>
             {fullEdit && lines.length > 0 ? (
               linesEditMode ? (
                 <div className="flex gap-1">
@@ -598,7 +687,56 @@ export default function OrderDetailPage() {
                       : line.line_total
                     return (
                       <TableRow key={line.id}>
-                        <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className={edited?.swap_product_id ? "line-through text-muted-foreground" : ""}>
+                                {line.product?.name || "-"}
+                              </div>
+                              {edited?.swap_product_id && (
+                                <div className="text-emerald-700 font-semibold text-sm">
+                                  → {edited.swap_product_name}{" "}
+                                  <span className="font-normal text-[11px] text-muted-foreground">
+                                    ({edited.swap_sku})
+                                  </span>
+                                </div>
+                              )}
+                              {line.note && (
+                                <div className="text-[11px] text-muted-foreground italic mt-0.5">
+                                  ✏ {line.note}
+                                </div>
+                              )}
+                            </div>
+                            {inEdit && (
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {edited?.swap_product_id ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => undoSwap(line.id)}
+                                  >
+                                    Bỏ đổi
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => {
+                                      setSwapDialogFor(line.id)
+                                      setSwapSearch("")
+                                    }}
+                                  >
+                                    Đổi SP
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{line.unit_name}</TableCell>
                         <TableCell className="text-right">
                           {inEdit ? (
@@ -666,6 +804,11 @@ export default function OrderDetailPage() {
                   return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                      {line.note && (
+                        <p className="text-[11px] text-muted-foreground italic mt-1">
+                          ✏ {line.note}
+                        </p>
+                      )}
                       <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                         <div>
                           <p className="text-muted-foreground">SL ({line.unit_name})</p>
@@ -1314,6 +1457,59 @@ export default function OrderDetailPage() {
         onConfirm={handleDelete}
         loading={actionLoading}
       />
+
+      {/* §4.5 Product swap dialog */}
+      <Dialog open={!!swapDialogFor} onOpenChange={(o) => !o && setSwapDialogFor(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Đổi sản phẩm cho dòng đơn</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={swapSearch}
+            onChange={(e) => setSwapSearch(e.target.value)}
+            placeholder="Tìm theo tên / SKU…"
+          />
+          <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
+            {(() => {
+              const q = swapSearch.trim().toLowerCase()
+              const list = swapCatalog.filter(
+                (p) =>
+                  !q ||
+                  p.name.toLowerCase().includes(q) ||
+                  p.sku.toLowerCase().includes(q)
+              )
+              if (list.length === 0) {
+                return (
+                  <p className="text-xs text-muted-foreground text-center py-6">
+                    Không tìm thấy sản phẩm
+                  </p>
+                )
+              }
+              return list.slice(0, 30).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-muted/40 transition-colors"
+                  onClick={() => {
+                    if (swapDialogFor) applySwap(swapDialogFor, p)
+                  }}
+                >
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                    <span className="font-mono">{p.sku}</span>
+                    <span>{formatCurrency(Number(p.sell_price || 0))} / {p.base_unit}</span>
+                  </div>
+                </button>
+              ))
+            })()}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Đổi SP sẽ reset batch_id để thủ kho chọn lô khác. Giá đơn vị giữ
+            nguyên nếu bạn đã sửa, nếu không sẽ lấy giá bán mặc định của SP mới.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

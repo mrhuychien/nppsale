@@ -25,7 +25,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
-import { Pencil, Trash2, X, Printer, Package, Truck, HandCoins } from "lucide-react"
+import { Pencil, Trash2, X, Package, Truck, HandCoins } from "lucide-react"
+import { PrintButton } from "@/components/ui/print-button"
 import type { StockEntry, StockEntryLine } from "@/types"
 
 export default function StockEntryDetailPage() {
@@ -57,6 +58,7 @@ export default function StockEntryDetailPage() {
       quantity: number
       unit_price?: number | null
       line_total?: number | null
+      note?: string | null
       product?: { name: string; sku: string } | null
     }>
     returns?: Array<{
@@ -71,6 +73,7 @@ export default function StockEntryDetailPage() {
         quantity: number
         unit_price: number
         line_total: number
+        note?: string | null
         product?: { name: string; sku: string } | null
       }>
     }>
@@ -122,7 +125,7 @@ export default function StockEntryDetailPage() {
         supabase
           .from("sales_orders")
           .select(
-            "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+            "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, note, product:products(name, sku))"
           )
           .in("id", refOrderIds),
         // Hàng trả về kèm theo các đơn này — in cả pending/approved/
@@ -132,7 +135,7 @@ export default function StockEntryDetailPage() {
         supabase
           .from("returns")
           .select(
-            "id, order_id, status, reason, credit_note_amount, notes, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+            "id, order_id, status, reason, credit_note_amount, notes, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, note, product:products(name, sku))"
           )
           .in("order_id", refOrderIds)
           .in("status", ["pending", "approved", "completed"]),
@@ -459,9 +462,8 @@ export default function StockEntryDetailPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Chi tiết sản phẩm ({lines.length})</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-2" /> In phiếu
-            </Button>
+            <PrintButton />
+
           </CardHeader>
           <CardContent>
             {lines.length === 0 ? (
@@ -585,7 +587,14 @@ export default function StockEntryDetailPage() {
                         {(o.lines || []).map((l, idx) => (
                           <tr key={idx} className="border-t">
                             <td className="py-1.5 font-mono">{l.product?.sku || "-"}</td>
-                            <td className="py-1.5">{l.product?.name || "-"}</td>
+                            <td className="py-1.5">
+                              <div>{l.product?.name || "-"}</div>
+                              {l.note && (
+                                <div className="text-[10px] italic text-muted-foreground mt-0.5">
+                                  ✏ {l.note}
+                                </div>
+                              )}
+                            </td>
                             <td className="py-1.5 text-right font-semibold">
                               {l.quantity} {l.unit_name}
                             </td>
@@ -911,7 +920,14 @@ export default function StockEntryDetailPage() {
                     return (
                       <tr key={i} className="border-b border-gray-200">
                         <td className="py-1.5">{i + 1}</td>
-                        <td className="py-1.5 font-medium">{l.product?.name || "-"}</td>
+                        <td className="py-1.5 font-medium">
+                          <div>{l.product?.name || "-"}</div>
+                          {l.note && (
+                            <div className="text-[11px] italic text-gray-600 mt-0.5">
+                              ✏ {l.note}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-1.5 font-mono text-xs">{l.product?.sku || "-"}</td>
                         <td className="py-1.5 text-center">{l.unit_name}</td>
                         <td className="py-1.5 text-right font-bold">{l.quantity}</td>
@@ -987,7 +1003,12 @@ export default function StockEntryDetailPage() {
                                 <tr key={i} className="border-b border-gray-200">
                                   <td className="py-1.5">{i + 1}</td>
                                   <td className="py-1.5 font-medium">
-                                    {l.product?.name || "-"}
+                                    <div>{l.product?.name || "-"}</div>
+                                    {l.note && (
+                                      <div className="text-[11px] italic text-gray-600 mt-0.5">
+                                        ✏ {l.note}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="py-1.5 font-mono text-xs">
                                     {l.product?.sku || "-"}

@@ -9,7 +9,15 @@ import { createAdminClient } from "@/lib/supabase/admin"
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { email, password, full_name, role, phone } = body
+    const {
+      email,
+      password,
+      full_name,
+      role,
+      phone,
+      allow_price_edit,
+      price_edit_max_increase_pct,
+    } = body
 
     if (!email || !password || !full_name || !role) {
       return NextResponse.json(
@@ -51,7 +59,10 @@ export async function POST(req: Request) {
       )
     }
 
-    // Create public.users profile
+    // Create public.users profile. Owner/accountant always have free
+    // price-edit (handled in code via userPriceRulesFrom), but we
+    // still persist the explicit flags for transparency.
+    const free = role === "owner" || role === "accountant"
     const { error: profErr } = await admin.from("users").insert({
       id: created.user.id,
       org_id: callerProfile.org_id,
@@ -59,6 +70,15 @@ export async function POST(req: Request) {
       role,
       phone: phone || null,
       is_active: true,
+      allow_price_edit: free
+        ? true
+        : typeof allow_price_edit === "boolean"
+          ? allow_price_edit
+          : false,
+      price_edit_max_increase_pct: Math.max(
+        0,
+        Math.min(100, Number(price_edit_max_increase_pct ?? 0))
+      ),
     })
     if (profErr) {
       // Rollback: delete the auth user to avoid orphan

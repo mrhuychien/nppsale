@@ -6,6 +6,8 @@ export interface PricingRules {
   sale_min_value: number
   return_max_pct: number
   return_max_value: number
+  /** Days-to-expiry threshold to auto-promote batches to "kho date". */
+  date_warehouse_threshold_days: number
 }
 
 export const DEFAULT_PRICING_RULES: PricingRules = {
@@ -14,6 +16,7 @@ export const DEFAULT_PRICING_RULES: PricingRules = {
   sale_min_value: 0,
   return_max_pct: 0,
   return_max_value: 0,
+  date_warehouse_threshold_days: 30,
 }
 
 export async function loadPricingRules(
@@ -33,6 +36,7 @@ export async function loadPricingRules(
     sale_min_value: Number(row.sale_min_value ?? 0),
     return_max_pct: Number(row.return_max_pct ?? 0),
     return_max_value: Number(row.return_max_value ?? 0),
+    date_warehouse_threshold_days: Number(row.date_warehouse_threshold_days ?? 30),
   }
 }
 

@@ -169,6 +169,9 @@ export interface Batch {
   qty_on_hand: number
   unit_cost: number
   status: string
+  warehouse_zone: "sale" | "date"
+  zone_moved_at: string | null
+  zone_moved_by: string | null
   created_at: string
   // Joined
   product?: Product

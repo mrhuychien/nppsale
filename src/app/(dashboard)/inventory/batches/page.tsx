@@ -21,8 +21,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
 import { formatDate, getExpiryStatus } from "@/lib/utils"
-import { BoxesIcon, Plus, Eye, AlertTriangle, Clock } from "lucide-react"
+import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, ArrowRightLeft, RefreshCw } from "lucide-react"
 import type { Batch, Product } from "@/types"
 
 function daysUntil(dateStr: string): number {
@@ -31,9 +32,12 @@ function daysUntil(dateStr: string): number {
 
 export default function BatchesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
+  const { toast } = useToast()
   const [batches, setBatches] = useState<(Batch & { product?: Product })[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState("all")
+  const [movingId, setMovingId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
 
@@ -54,10 +58,75 @@ export default function BatchesPage() {
     [batches]
   )
 
+  const saleBatches = useMemo(
+    () => batches.filter((b) => b.warehouse_zone !== "date"),
+    [batches]
+  )
+  const dateBatches = useMemo(
+    () => batches.filter((b) => b.warehouse_zone === "date"),
+    [batches]
+  )
+
   const fefoBatches = useMemo(
     () => [...batches].sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime()),
     [batches]
   )
+
+  const moveZone = async (batch: Batch, target: "sale" | "date") => {
+    if (!user) return
+    setMovingId(batch.id)
+    try {
+      const { error } = await supabase
+        .from("batches")
+        .update({
+          warehouse_zone: target,
+          zone_moved_at: new Date().toISOString(),
+          zone_moved_by: user.id,
+        })
+        .eq("id", batch.id)
+      if (error) throw error
+      setBatches((prev) =>
+        prev.map((b) => (b.id === batch.id ? { ...b, warehouse_zone: target } : b))
+      )
+      toast({
+        title: target === "date" ? "Đã chuyển sang Kho hàng date" : "Đã chuyển sang Kho hàng bán",
+      })
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: err instanceof Error ? err.message : "Không thể chuyển kho",
+        variant: "destructive",
+      })
+    } finally {
+      setMovingId(null)
+    }
+  }
+
+  const refreshZones = async () => {
+    if (!user?.org_id) return
+    setRefreshing(true)
+    try {
+      const { data, error } = await supabase.rpc("refresh_warehouse_zones", {
+        p_org_id: user.org_id,
+      })
+      if (error) throw error
+      const moved = Number(data ?? 0)
+      toast({ title: `Đã rà soát kho`, description: `${moved} lô chuyển sang kho date` })
+      const { data: fresh } = await supabase
+        .from("batches")
+        .select("*, product:products(*)")
+        .order("expires_at")
+      setBatches((fresh as (Batch & { product?: Product })[]) || [])
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: err instanceof Error ? err.message : "Không thể rà soát",
+        variant: "destructive",
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
@@ -73,13 +142,14 @@ export default function BatchesPage() {
             <TableRow>
               <TableHead>Sản phẩm</TableHead>
               <TableHead>Mã lô</TableHead>
+              <TableHead>Kho</TableHead>
               <TableHead>Vị trí</TableHead>
               <TableHead className="text-right">Ban đầu</TableHead>
               <TableHead className="text-right">Tồn</TableHead>
               <TableHead>NSX</TableHead>
               <TableHead>HSD</TableHead>
               {showCountdown && <TableHead>Còn lại</TableHead>}
-              <TableHead className="w-12"></TableHead>
+              <TableHead className="w-32 text-right">Thao tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -87,6 +157,8 @@ export default function BatchesPage() {
               const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
               const days = daysUntil(b.expires_at)
               const isCritical = days < 30
+              const isDateZone = b.warehouse_zone === "date"
+              const target = isDateZone ? "sale" : "date"
               return (
                 <TableRow
                   key={b.id}
@@ -95,6 +167,14 @@ export default function BatchesPage() {
                 >
                   <TableCell className="font-medium">{b.product?.name}</TableCell>
                   <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={isDateZone ? "warning" : "success"}
+                      className="font-semibold"
+                    >
+                      {isDateZone ? "Date" : "Bán"}
+                    </Badge>
+                  </TableCell>
                   <TableCell>{b.location || "-"}</TableCell>
                   <TableCell className="text-right">{b.qty_initial}</TableCell>
                   <TableCell className="text-right font-medium">{b.qty_on_hand}</TableCell>
@@ -126,8 +206,20 @@ export default function BatchesPage() {
                       </span>
                     </TableCell>
                   )}
-                  <TableCell>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  <TableCell className="text-right">
+                    <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={movingId === b.id}
+                        onClick={() => moveZone(b, target)}
+                      >
+                        <ArrowRightLeft className="h-3 w-3 mr-1" />
+                        {target === "date" ? "→ Date" : "→ Bán"}
+                      </Button>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -142,6 +234,8 @@ export default function BatchesPage() {
           const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
           const days = daysUntil(b.expires_at)
           const isCritical = days < 30
+          const isDateZone = b.warehouse_zone === "date"
+          const target = isDateZone ? "sale" : "date"
           return (
             <div
               key={b.id}
@@ -166,6 +260,9 @@ export default function BatchesPage() {
                     )}
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-1">
+                    <Badge variant={isDateZone ? "warning" : "success"} className="font-semibold">
+                      {isDateZone ? "Kho date" : "Kho bán"}
+                    </Badge>
                     <Badge
                       variant={
                         status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
@@ -207,6 +304,18 @@ export default function BatchesPage() {
                     </p>
                   </div>
                 </div>
+                <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={movingId === b.id}
+                    onClick={() => moveZone(b, target)}
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5 mr-2" />
+                    Chuyển sang {target === "date" ? "Kho hàng date" : "Kho hàng bán"}
+                  </Button>
+                </div>
               </div>
             </div>
           )
@@ -218,13 +327,21 @@ export default function BatchesPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} backHref="/inventory">
-        {canCreate && (
-          <Button asChild>
-            <Link href="/inventory/batches/new">
-              <Plus className="mr-2 h-4 w-4" /> Tạo lô mới
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={refreshZones} disabled={refreshing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              Rà soát kho date
+            </Button>
+          )}
+          {canCreate && (
+            <Button asChild>
+              <Link href="/inventory/batches/new">
+                <Plus className="mr-2 h-4 w-4" /> Tạo lô mới
+              </Link>
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       {expiring.length > 0 && (
@@ -261,6 +378,8 @@ export default function BatchesPage() {
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList>
             <TabsTrigger value="all">Tất cả ({batches.length})</TabsTrigger>
+            <TabsTrigger value="sale">Kho hàng bán ({saleBatches.length})</TabsTrigger>
+            <TabsTrigger value="date">Kho hàng date ({dateBatches.length})</TabsTrigger>
             <TabsTrigger value="fefo">FEFO (ưu tiên xuất)</TabsTrigger>
             <TabsTrigger value="expiring">
               Sắp hết hạn ({expiring.length})
@@ -268,6 +387,35 @@ export default function BatchesPage() {
           </TabsList>
           <TabsContent value="all" className="mt-4">
             {renderTable(batches)}
+          </TabsContent>
+          <TabsContent value="sale" className="mt-4">
+            <p className="text-xs text-muted-foreground mb-2">
+              Hàng còn xa hạn — bán theo giá list bình thường.
+            </p>
+            {saleBatches.length === 0 ? (
+              <EmptyState
+                icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />}
+                title="Kho hàng bán trống"
+                description="Tất cả lô hiện tại đều thuộc kho date"
+              />
+            ) : (
+              renderTable(saleBatches)
+            )}
+          </TabsContent>
+          <TabsContent value="date" className="mt-4">
+            <p className="text-xs text-muted-foreground mb-2">
+              Hàng gần hạn — gom lại bán xả với giá ưu đãi. Tự động chuyển khi
+              ≤ ngưỡng cấu hình ở Cài đặt giá.
+            </p>
+            {dateBatches.length === 0 ? (
+              <EmptyState
+                icon={<Clock className="h-8 w-8 text-muted-foreground" />}
+                title="Chưa có hàng date"
+                description="Chưa có lô nào gần hạn — tất cả đang ở kho hàng bán"
+              />
+            ) : (
+              renderTable(dateBatches, true)
+            )}
           </TabsContent>
           <TabsContent value="fefo" className="mt-4">
             <p className="text-xs text-muted-foreground mb-2">

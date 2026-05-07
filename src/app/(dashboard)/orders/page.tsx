@@ -31,6 +31,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
+import {
+  OrderPipeline,
+  classifyOrder,
+  type PipelineStepKey,
+} from "@/components/orders/order-pipeline"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   ArrowRight,
@@ -66,6 +71,7 @@ export default function OrdersPage() {
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [pipelineStep, setPipelineStep] = useState<PipelineStepKey | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
@@ -135,6 +141,9 @@ export default function OrdersPage() {
           : statusFilter === "pending_approval"
             ? o.status === "draft" && !!o.approval_reason
             : o.status === statusFilter
+      const matchPipeline =
+        !pipelineStep ||
+        classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id]) === pipelineStep
       const matchCustomer = customerFilter === "all" || o.customer_id === customerFilter
       const matchSales = salesFilter === "all" || o.sales_user_id === salesFilter
       const matchFrom = !dateFrom || new Date(o.order_date) >= new Date(dateFrom)
@@ -144,6 +153,7 @@ export default function OrdersPage() {
       return (
         matchSearch &&
         matchStatus &&
+        matchPipeline &&
         matchCustomer &&
         matchSales &&
         matchFrom &&
@@ -152,7 +162,7 @@ export default function OrdersPage() {
         matchMax
       )
     })
-  }, [orders, search, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax])
+  }, [orders, search, statusFilter, pipelineStep, receivablesByOrder, invoiceMap, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax])
 
   const pendingApprovalCount = useMemo(
     () => orders.filter((o) => o.status === "draft" && !!o.approval_reason).length,
@@ -469,25 +479,37 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Status quick filter chips */}
+      {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
+      <OrderPipeline
+        orders={orders}
+        receivables={receivablesByOrder}
+        invoices={invoiceMap}
+        active={pipelineStep}
+        onChange={(next) => {
+          setPipelineStep(next)
+          // Picking a pipeline step clears the special-state chip filter
+          // so the two filters don't fight each other.
+          if (next) setStatusFilter("all")
+        }}
+      />
+
+      {/* Special-state quick filter chips (mutually exclusive with pipeline) */}
       <div className="flex flex-wrap gap-2">
         {([
           { value: "all", label: "Tất cả", color: "" },
           { value: "pending_approval", label: "Chờ duyệt", color: "border-amber-400 text-amber-800 bg-amber-50" },
-          { value: "draft", label: "Nháp", color: "" },
-          { value: "confirmed", label: "Đã duyệt", color: "border-blue-300 text-blue-800 bg-blue-50" },
-          { value: "picking", label: "Đang lấy", color: "border-indigo-300 text-indigo-800 bg-indigo-50" },
-          { value: "delivering", label: "Đang giao", color: "border-purple-300 text-purple-800 bg-purple-50" },
-          { value: "delivered", label: "Đã giao", color: "border-emerald-300 text-emerald-800 bg-emerald-50" },
           { value: "cancelled", label: "Đã hủy", color: "border-red-300 text-red-800 bg-red-50" },
         ] as const).map((s) => {
           const count = statusCounts[s.value] || 0
-          const active = statusFilter === s.value
+          const active = statusFilter === s.value && !pipelineStep
           return (
             <button
               key={s.value}
               type="button"
-              onClick={() => setStatusFilter(s.value)}
+              onClick={() => {
+                setStatusFilter(s.value)
+                setPipelineStep(null)
+              }}
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 active
                   ? "bg-primary text-white border-primary"

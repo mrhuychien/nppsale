@@ -8,6 +8,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { formatDate, formatCurrency, getExpiryStatus, cn } from "@/lib/utils"
 import {
   AlertTriangle,
@@ -18,29 +25,60 @@ import {
 } from "lucide-react"
 import type { Batch, Product, SalesOrderLine } from "@/types"
 
+interface SupplierOption {
+  id: string
+  name: string
+}
+
 export default function InventoryReportPage() {
   const { loading: authLoading } = useRoleGuard("reports")
-  const [batches, setBatches] = useState<(Batch & { product?: Product })[]>([])
+  const [batchesAll, setBatchesAll] = useState<(Batch & { product?: Product })[]>([])
   const [salesLines, setSalesLines] = useState<SalesOrderLine[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
     async function fetch() {
-      const [batchesRes, linesRes] = await Promise.all([
+      const [batchesRes, linesRes, suppliersRes] = await Promise.all([
         supabase
           .from("batches")
           .select("*, product:products(*)")
           .gt("qty_on_hand", 0)
           .order("expires_at"),
         supabase.from("sales_order_lines").select("*"),
+        supabase.from("suppliers").select("id, name").order("name"),
       ])
-      setBatches((batchesRes.data as (Batch & { product?: Product })[]) || [])
+      setBatchesAll((batchesRes.data as (Batch & { product?: Product })[]) || [])
       setSalesLines((linesRes.data as SalesOrderLine[]) || [])
+      setSuppliers((suppliersRes.data as SupplierOption[]) || [])
       setLoading(false)
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    for (const b of batchesAll) {
+      const c = b.product?.category
+      if (c) set.add(c)
+    }
+    return Array.from(set).sort()
+  }, [batchesAll])
+
+  const batches = useMemo(() => {
+    return batchesAll.filter((b) => {
+      if (supplierFilter !== "all" && b.product?.primary_supplier_id !== supplierFilter) {
+        return false
+      }
+      if (categoryFilter !== "all" && (b.product?.category || "") !== categoryFilter) {
+        return false
+      }
+      return true
+    })
+  }, [batchesAll, supplierFilter, categoryFilter])
 
   const stats = useMemo(() => {
     const totalItems = batches.reduce((sum, b) => sum + b.qty_on_hand, 0)
@@ -155,6 +193,54 @@ export default function InventoryReportPage() {
           <Download className="h-4 w-4" /> Xuất báo cáo
         </button>
       </PageHeader>
+
+      {/* Bộ lọc — NCC + Ngành hàng (§3.2) */}
+      <Card className="rounded-2xl border-dashed print:hidden">
+        <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Nhà cung cấp
+            </label>
+            <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tất cả NCC" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả NCC</SelectItem>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Ngành hàng
+            </label>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tất cả" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả ngành hàng</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <p className="text-xs text-muted-foreground">
+              Đang xem <span className="font-bold text-foreground">{batches.length}</span> /{" "}
+              {batchesAll.length} lô hàng
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPI Row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

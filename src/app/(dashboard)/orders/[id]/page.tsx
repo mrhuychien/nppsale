@@ -598,7 +598,14 @@ export default function OrderDetailPage() {
                       : line.line_total
                     return (
                       <TableRow key={line.id}>
-                        <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
+                        <TableCell className="font-medium">
+                          <div>{line.product?.name || "-"}</div>
+                          {line.note && (
+                            <div className="text-[11px] text-muted-foreground italic mt-0.5">
+                              ✏ {line.note}
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell>{line.unit_name}</TableCell>
                         <TableCell className="text-right">
                           {inEdit ? (
@@ -666,6 +673,11 @@ export default function OrderDetailPage() {
                   return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                      {line.note && (
+                        <p className="text-[11px] text-muted-foreground italic mt-1">
+                          ✏ {line.note}
+                        </p>
+                      )}
                       <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                         <div>
                           <p className="text-muted-foreground">SL ({line.unit_name})</p>

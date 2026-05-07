@@ -133,6 +133,8 @@ export interface Product {
   allow_price_edit?: boolean
   price_edit_max_type?: "percent" | "value"
   price_edit_max?: number
+  // Primary supplier (migration 030) — used by reports/NCC filter
+  primary_supplier_id?: string | null
   // Joined
   units?: ProductUnit[]
   price_lists?: PriceList[]
@@ -319,6 +321,7 @@ export interface SalesOrderLine {
   line_discount: number
   line_total: number
   batch_id: string | null
+  note: string | null
   // Joined
   product?: Product
 }
@@ -524,6 +527,7 @@ export interface ReturnLine {
   quantity: number
   unit_price: number
   line_total: number
+  note: string | null
   // Joined
   product?: Product
 }

@@ -41,6 +41,7 @@ interface OrderLine {
   line_discount_percent: number
   line_total: number
   vat_rate: number
+  note: string
 }
 
 interface ReturnLineDraft {
@@ -51,6 +52,7 @@ interface ReturnLineDraft {
   quantity: number
   unit_price: number
   line_total: number
+  note: string
 }
 
 type ReturnReason = (typeof RETURN_REASONS)[number]["value"]
@@ -219,6 +221,7 @@ export function OrderForm() {
         line_total: price,
         // Snap to the VN-standard VAT tiers the selector offers
         vat_rate: snapVat(product.vat_rate ?? 0),
+        note: "",
       },
     ])
     setProductSearch("")
@@ -364,6 +367,7 @@ export function OrderForm() {
         quantity: 1,
         unit_price: price,
         line_total: price,
+        note: "",
       },
     ])
     setReturnSearch("")
@@ -577,6 +581,7 @@ export function OrderForm() {
         unit_price: l.unit_price,
         line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
         line_total: l.line_total,
+        note: l.note?.trim() || null,
       }))
 
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
@@ -610,6 +615,7 @@ export function OrderForm() {
           quantity: l.quantity,
           unit_price: l.unit_price,
           line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+          note: l.note?.trim() || null,
         }))
         const { error: rLinesErr } = await supabase
           .from("return_lines")
@@ -969,6 +975,12 @@ export function OrderForm() {
                           <div className={`text-[10px] ${over ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
                             Tồn: {onHand} {product?.base_unit}
                           </div>
+                          <Input
+                            value={line.note}
+                            onChange={(e) => updateLine(i, "note", e.target.value)}
+                            placeholder="Ghi chú dòng (tuỳ chọn)…"
+                            className="mt-1 h-7 text-xs"
+                          />
                         </td>
                         <td className="px-3 py-2">
                           {units.length <= 1 ? (
@@ -1078,6 +1090,13 @@ export function OrderForm() {
                         <X className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </div>
+                    <Input
+                      value={line.note}
+                      onChange={(e) => updateLine(i, "note", e.target.value)}
+                      placeholder="Ghi chú dòng (tuỳ chọn)…"
+                      className="mb-2 h-8 text-xs"
+                    />
+
                     <div className="flex items-center gap-2">
                       {/* Unit selector */}
                       {units.length <= 1 ? (
@@ -1332,6 +1351,12 @@ export function OrderForm() {
                             <AlertTriangle className="h-3 w-3" /> {warning}
                           </p>
                         )}
+                        <Input
+                          value={line.note}
+                          onChange={(e) => updateReturnLine(i, "note", e.target.value)}
+                          placeholder="Lý do trả / tình trạng (tuỳ chọn)…"
+                          className="mt-2 h-8 text-xs"
+                        />
                       </div>
                     )
                   })}

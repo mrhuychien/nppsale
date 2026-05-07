@@ -90,27 +90,51 @@ export default function ReportsPage() {
     fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredOrders = useMemo(() => {
+  // Range for current period + the immediately preceding equal-length
+  // window (used for MoM% comparison). Returned as [start, end].
+  const periodWindows = useMemo(() => {
     const now = new Date()
-    const cutoff = new Date(now)
+    const end = new Date(now)
+    const start = new Date(now)
     switch (period) {
       case "today":
-        cutoff.setHours(0, 0, 0, 0)
+        start.setHours(0, 0, 0, 0)
         break
       case "week":
-        cutoff.setDate(now.getDate() - 7)
+        start.setDate(now.getDate() - 7)
         break
       case "month":
-        cutoff.setMonth(now.getMonth() - 1)
+        start.setMonth(now.getMonth() - 1)
         break
       case "quarter":
-        cutoff.setMonth(now.getMonth() - 3)
+        start.setMonth(now.getMonth() - 3)
         break
       default:
-        cutoff.setFullYear(2000)
+        start.setFullYear(2000)
     }
-    return data.salesOrders.filter((o) => new Date(o.order_date) >= cutoff)
-  }, [data.salesOrders, period])
+    const prevEnd = new Date(start)
+    const span = end.getTime() - start.getTime()
+    const prevStart = new Date(start.getTime() - span)
+    return { start, end, prevStart, prevEnd }
+  }, [period])
+
+  const filteredOrders = useMemo(() => {
+    const { start } = periodWindows
+    return data.salesOrders.filter((o) => new Date(o.order_date) >= start)
+  }, [data.salesOrders, periodWindows])
+
+  const prevPeriodOrders = useMemo(() => {
+    const { prevStart, prevEnd } = periodWindows
+    return data.salesOrders.filter((o) => {
+      const t = new Date(o.order_date).getTime()
+      return t >= prevStart.getTime() && t < prevEnd.getTime()
+    })
+  }, [data.salesOrders, periodWindows])
+
+  const momPct = (curr: number, prev: number): number | null => {
+    if (!Number.isFinite(prev) || prev === 0) return null
+    return ((curr - prev) / prev) * 100
+  }
 
   const handleExport = () => {
     if (typeof window !== "undefined") window.print()
@@ -125,6 +149,18 @@ export default function ReportsPage() {
   const totalOrders = filteredOrders.length
   const deliveredOrders = filteredOrders.filter((o) => o.status === "delivered").length
   const aov = deliveredOrders > 0 ? totalRevenue / deliveredOrders : 0
+
+  // Previous-period equivalents for MoM%
+  const prevRevenue = prevPeriodOrders
+    .filter((o) => o.status === "delivered")
+    .reduce((sum, o) => sum + o.total, 0)
+  const prevTotalOrders = prevPeriodOrders.length
+  const prevDeliveredOrders = prevPeriodOrders.filter((o) => o.status === "delivered").length
+  const prevAov = prevDeliveredOrders > 0 ? prevRevenue / prevDeliveredOrders : 0
+
+  const momRevenue = momPct(totalRevenue, prevRevenue)
+  const momOrders = momPct(totalOrders, prevTotalOrders)
+  const momAov = momPct(aov, prevAov)
 
   const totalStock = data.batches.reduce((s, b) => s + b.qty_on_hand, 0)
   const expiringCount = data.batches.filter((b) => {
@@ -239,6 +275,7 @@ export default function ReportsPage() {
               icon={TrendingUp}
               accent="primary"
               hint={`${deliveredOrders} đơn đã giao`}
+              momPct={momRevenue}
             />
             <KpiCard
               label="Tổng đơn hàng"
@@ -246,6 +283,7 @@ export default function ReportsPage() {
               icon={ShoppingCart}
               accent="secondary"
               hint={`${PERIOD_LABELS[period]}`}
+              momPct={momOrders}
             />
             <KpiCard
               label="Giá trị đơn TB"
@@ -253,6 +291,7 @@ export default function ReportsPage() {
               icon={Receipt}
               accent="success"
               hint="AOV (Average Order Value)"
+              momPct={momAov}
             />
             <KpiCard
               label="Sản phẩm"
@@ -533,13 +572,24 @@ function KpiCard({
   icon: Icon,
   accent,
   hint,
+  momPct,
+  momHigherIsBetter = true,
 }: {
   label: string
   value: string
   icon: typeof TrendingUp
   accent: Accent
   hint?: string
+  /** Month-over-month delta in % (e.g. +12.4 = up 12.4% vs prev period). */
+  momPct?: number | null
+  /** Whether positive = good (green) — false for "expiring count" etc. */
+  momHigherIsBetter?: boolean
 }) {
+  const showMom = momPct != null && Number.isFinite(momPct)
+  const isUp = showMom && (momPct as number) > 0
+  const isDown = showMom && (momPct as number) < 0
+  const positive = (isUp && momHigherIsBetter) || (isDown && !momHigherIsBetter)
+  const negative = (isDown && momHigherIsBetter) || (isUp && !momHigherIsBetter)
   return (
     <div
       className={cn(
@@ -551,6 +601,20 @@ function KpiCard({
         <span className={cn("inline-flex p-2 rounded-lg", ACCENT_BG[accent])}>
           <Icon className="h-4 w-4" />
         </span>
+        {showMom && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-[11px] font-bold rounded-full px-2 py-0.5",
+              positive && "bg-emerald-50 text-emerald-700 border border-emerald-200",
+              negative && "bg-red-50 text-red-700 border border-red-200",
+              !positive && !negative && "bg-muted text-muted-foreground border border-border/40"
+            )}
+            title="So với kỳ trước (Month-over-Month)"
+          >
+            {isUp ? "▲" : isDown ? "▼" : "—"}{" "}
+            {Math.abs(momPct as number).toFixed(1)}%
+          </span>
+        )}
       </div>
       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
       <h3 className="mt-1 text-xl font-bold text-foreground">{value}</h3>

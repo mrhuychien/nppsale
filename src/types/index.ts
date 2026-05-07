@@ -47,6 +47,12 @@ export interface User {
   phone: string | null
   is_active: boolean
   created_at: string
+  /** Cho phép user sửa giá khi tạo / sửa đơn. Default false; owner +
+   *  accountant được seed true ở migration 027. */
+  allow_price_edit?: boolean
+  /** Ngưỡng % tăng giá tối đa so với giá list. Chỉ áp khi
+   *  allow_price_edit=true. */
+  price_edit_max_increase_pct?: number
 }
 
 export interface CustomerGroup {

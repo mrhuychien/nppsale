@@ -10,10 +10,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
-import { Eye, EyeOff, ShieldAlert } from "lucide-react"
+import { Eye, EyeOff, ShieldAlert, Check } from "lucide-react"
+import {
+  PERMISSION_TEMPLATES,
+  getTemplate,
+  type TemplateKey,
+} from "@/lib/permission-templates"
 
 const ROLES = ["owner", "manager", "accountant", "sales", "warehouse", "driver"] as const
 
@@ -26,10 +32,23 @@ export default function NewUserPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
+  const [templateKey, setTemplateKey] = useState<TemplateKey>("sales_flex")
   const [role, setRole] = useState<string>("sales")
+  const [allowPriceEdit, setAllowPriceEdit] = useState(true)
+  const [priceEditMaxIncreasePct, setPriceEditMaxIncreasePct] = useState(10)
   const [phone, setPhone] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  const applyTemplate = (key: TemplateKey) => {
+    const t = getTemplate(key)
+    if (!t) return
+    setTemplateKey(key)
+    setRole(t.role)
+    setAllowPriceEdit(t.allow_price_edit)
+    setPriceEditMaxIncreasePct(t.price_edit_max_increase_pct)
+  }
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -71,7 +90,15 @@ export default function NewUserPage() {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, full_name: fullName, role, phone }),
+        body: JSON.stringify({
+          email,
+          password,
+          full_name: fullName,
+          role,
+          phone,
+          allow_price_edit: allowPriceEdit,
+          price_edit_max_increase_pct: priceEditMaxIncreasePct,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -178,19 +205,103 @@ export default function NewUserPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Vai trò *</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>{ROLE_LABELS[r] || r}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Mẫu phân quyền *</Label>
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((v) => !v)}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  {advancedOpen ? "Đóng nâng cao" : "Tuỳ chỉnh nâng cao"}
+                </button>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {PERMISSION_TEMPLATES.map((t) => {
+                  const active = templateKey === t.key
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => applyTemplate(t.key)}
+                      className={`text-left rounded-xl border p-3 transition-all ${
+                        active
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                          : "border-border/40 hover:border-primary/40 hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-semibold text-sm">{t.label}</p>
+                        {active && <Check className="h-4 w-4 text-primary" />}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mb-2">
+                        {t.description}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {t.capabilities.map((c) => (
+                          <li key={c} className="text-[10px] text-muted-foreground flex gap-1">
+                            <span className="text-primary">•</span> {c}
+                          </li>
+                        ))}
+                      </ul>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {advancedOpen && (
+                <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Tuỳ chỉnh nâng cao (override mẫu)
+                  </p>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Vai trò</Label>
+                    <Select value={role} onValueChange={setRole}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((r) => (
+                          <SelectItem key={r} value={r}>{ROLE_LABELS[r] || r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2">
+                    <div>
+                      <Label className="text-xs">Cho phép sửa giá</Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        Bật để NV chỉnh được unit_price khi tạo / sửa đơn.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={allowPriceEdit}
+                      onCheckedChange={setAllowPriceEdit}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">% tăng tối đa so với giá list</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.5"
+                      value={priceEditMaxIncreasePct}
+                      onChange={(e) =>
+                        setPriceEditMaxIncreasePct(
+                          Math.max(0, Math.min(100, parseFloat(e.target.value) || 0))
+                        )
+                      }
+                      disabled={!allowPriceEdit}
+                    />
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                Vai trò xác định quyền truy cập các module.{" "}
-                <a href="/help" className="text-primary hover:underline">Xem chi tiết quyền</a>
+                Mẫu áp dụng vai trò + cờ năng lực (giá / chấm công). Quyền theo
+                module vẫn theo ma trận tại{" "}
+                <a href="/settings/permissions" className="text-primary hover:underline">
+                  Phân quyền &amp; Template
+                </a>.
               </p>
             </div>
 

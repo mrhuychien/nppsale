@@ -11,8 +11,8 @@ export const ROLE_LABELS: Record<string, string> = {
   owner: "Chủ NPP",
   manager: "Quản lý bán hàng",
   accountant: "Kế toán",
-  sales: "NV bán hàng",
-  warehouse: "NV kho",
+  sales: "NV Bán hàng",
+  warehouse: "NV Kho",
   driver: "Tài xế",
 }
 

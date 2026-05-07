@@ -40,7 +40,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders", feature: "orders" },
       { label: "Khách hàng", href: "/customers", icon: Users, module: "customers", feature: "customers" },
-      { label: "Phân tích KH", href: "/customers/analytics", icon: BarChart3, module: "customers", feature: "customers.analytics" },
       { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers", feature: "customers.visits" },
       { label: "Bảng giá", href: "/products/price-lists", icon: FileText, module: "products", feature: "products.price_lists" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions", feature: "promotions" },

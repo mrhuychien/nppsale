@@ -183,8 +183,28 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         if (error) throw error
         toast({ title: "Đã cập nhật khách hàng" })
       } else {
-        const { error } = await supabase.from("customers").insert({ ...payload, org_id: user?.org_id })
-        if (error) throw error
+        // Stamp created_by so the §1.2 RLS policy lets the rep see
+        // their own customer immediately. Wrapped via spread so DBs
+        // without migration 032 still accept the insert.
+        const insertPayload: Record<string, unknown> = {
+          ...payload,
+          org_id: user?.org_id,
+        }
+        if (user?.id) insertPayload.created_by = user.id
+        const { error } = await supabase.from("customers").insert(insertPayload)
+        if (error) {
+          // If created_by column missing (mig 032 not applied), retry without it
+          if (
+            (error.message || "").toLowerCase().includes("created_by") ||
+            error.code === "PGRST204"
+          ) {
+            delete insertPayload.created_by
+            const retry = await supabase.from("customers").insert(insertPayload)
+            if (retry.error) throw retry.error
+          } else {
+            throw error
+          }
+        }
         toast({ title: "Đã tạo khách hàng mới" })
       }
 

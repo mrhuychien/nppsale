@@ -7,7 +7,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [x] T-01 UOM conversion fix (mig 039, lib/inventory/uom.ts, order-form snapshot, stock-out + self-deliver consume in base UOM)
 - [x] T-02 FIFO costing infrastructure (mig 040 — fifo_layers + fifo_consumptions tables, fifo_consume() PL/pgSQL helper, JS lib/inventory/fifo.ts)
 - [ ] T-03 Edit-while-picking + workflow stage
-- [ ] T-04 Bỏ module Vận hành
+- [x] T-04 Bỏ module Vận hành (sidebar — Giao hàng + Trả hàng moved into "Kho vận"; no /operations/* routes existed so no redirect needed; Q2)
 
 ## Sprint 2 — Bàn giao + state persistence
 - [ ] T-05 Workflow state persistence + widget "Việc đang dở"

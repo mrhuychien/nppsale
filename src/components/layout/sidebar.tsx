@@ -46,14 +46,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Vận hành",
-    icon: Truck,
-    items: [
-      { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries", feature: "deliveries" },
-      { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns", feature: "returns" },
-    ],
-  },
-  {
     label: "Mua hàng",
     icon: ClipboardList,
     items: [
@@ -69,6 +61,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory", feature: "inventory" },
       { label: "Sản phẩm", href: "/products", icon: Package, module: "products", feature: "products" },
+      { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries", feature: "deliveries" },
+      { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns", feature: "returns" },
     ],
   },
   {

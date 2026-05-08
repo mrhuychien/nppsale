@@ -14,6 +14,8 @@ interface ReportFrameProps {
   children: React.ReactNode
   /** Optional company / branch name */
   branchName?: string
+  /** Left filter sidebar — same slot pattern as ReportShell */
+  filters?: React.ReactNode
 }
 
 export function ReportFrame({
@@ -25,6 +27,7 @@ export function ReportFrame({
   onExportCsv,
   children,
   branchName,
+  filters,
 }: ReportFrameProps) {
   return (
     <div className="space-y-4">
@@ -70,9 +73,20 @@ export function ReportFrame({
         {branchName ? <p className="text-center text-sm">Chi nhánh: {branchName}</p> : null}
       </div>
 
-      <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
-        {children}
-      </div>
+      {filters ? (
+        <div className="grid gap-4 lg:grid-cols-[260px_1fr] print:block">
+          <aside className="space-y-4 print:hidden">{filters}</aside>
+          <div className="min-w-0">
+            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+              {children}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+          {children}
+        </div>
+      )}
     </div>
   )
 }

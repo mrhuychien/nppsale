@@ -1,6 +1,7 @@
 "use client"
 
-import { Printer, Download, FileSpreadsheet } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Printer, Download, FileSpreadsheet, ChevronDown, X } from "lucide-react"
 import { DateRangePicker } from "./date-range-picker"
 import {
   type DateRange,
@@ -192,3 +193,151 @@ export function FilterSelect<T extends string>({
 }
 
 export { Download, Printer }
+
+// =====================================================================
+// FilterSearchSelect — searchable dropdown linked to DB-backed lists.
+// Use for "Khách hàng / Nhân viên / Hàng hóa / Bảng giá" filters where
+// admin picks 1 record from many.
+// =====================================================================
+
+export interface FilterOption {
+  id: string
+  label: string
+  /** Optional secondary label shown smaller (vd: SKU / phone). */
+  hint?: string
+}
+
+export function FilterSearchSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Tất cả",
+  emptyText = "Không có dữ liệu",
+  loading = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: FilterOption[]
+  placeholder?: string
+  emptyText?: string
+  loading?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const selected = options.find((o) => o.id === value)
+  const q = query.trim().toLowerCase()
+  const filtered = !q
+    ? options
+    : options.filter(
+        (o) =>
+          o.label.toLowerCase().includes(q) ||
+          (o.hint || "").toLowerCase().includes(q)
+      )
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border/60 bg-card px-2 text-sm",
+          selected ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        <span className="truncate">
+          {selected ? selected.label : loading ? "Đang tải..." : placeholder}
+        </span>
+        <span className="flex items-center gap-1 shrink-0">
+          {selected && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Xoá lựa chọn"
+              onClick={(e) => {
+                e.stopPropagation()
+                onChange("")
+              }}
+              className="rounded p-0.5 hover:bg-muted/60 cursor-pointer"
+            >
+              <X className="h-3 w-3" />
+            </span>
+          )}
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+        </span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-border/60 bg-card shadow-lg">
+          <div className="border-b border-border/50 p-1.5">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Tìm kiếm…"
+              className="h-8 w-full rounded-md border border-border/40 bg-background px-2 text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+          <ul className="max-h-60 overflow-y-auto">
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("")
+                  setOpen(false)
+                  setQuery("")
+                }}
+                className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-sm hover:bg-muted/40 text-muted-foreground"
+              >
+                <span>{placeholder}</span>
+              </button>
+            </li>
+            {filtered.length === 0 ? (
+              <li className="px-2 py-2 text-center text-xs text-muted-foreground">
+                {emptyText}
+              </li>
+            ) : (
+              filtered.slice(0, 100).map((o) => (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(o.id)
+                      setOpen(false)
+                      setQuery("")
+                    }}
+                    className={cn(
+                      "flex w-full items-start justify-between gap-2 px-2 py-1.5 text-left text-sm hover:bg-muted/40",
+                      value === o.id ? "bg-primary/10 font-semibold" : ""
+                    )}
+                  >
+                    <span className="truncate">{o.label}</span>
+                    {o.hint && (
+                      <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
+                        {o.hint}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))
+            )}
+            {filtered.length > 100 && (
+              <li className="px-2 py-1.5 text-center text-[10px] text-muted-foreground">
+                Hiển thị 100/{filtered.length} kết quả — gõ để lọc
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}

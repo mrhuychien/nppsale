@@ -6,6 +6,16 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame } from "@/components/analytics/report-frame"
+import {
+  FilterField,
+  FilterSearchSelect,
+  FilterSelect,
+} from "@/components/analytics/report-shell"
+import {
+  useFilterCatalogs,
+  PAYMENT_METHOD_OPTIONS,
+  SALES_METHOD_OPTIONS,
+} from "@/lib/analytics/filter-catalogs"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   fetchAllOrders,
@@ -36,6 +46,7 @@ export default function EndOfDayPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
   const supabase = createClient()
+  const catalogs = useFilterCatalogs(user?.org_id)
   const [date, setDate] = useState<string>(rangeFromPreset("today").from)
   const [, setLoading] = useState(true)
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
@@ -44,6 +55,13 @@ export default function EndOfDayPage() {
   const [cogs, setCogs] = useState(0)
   const [cashReceipts, setCashReceipts] = useState<CashReceiptRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
+
+  // Filters
+  const [customerFilter, setCustomerFilter] = useState("")
+  const [salesUserFilter, setSalesUserFilter] = useState("")
+  const [creatorFilter, setCreatorFilter] = useState("")
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("")
+  const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
 
   const range: DateRange = useMemo(() => ({ from: date, to: date }), [date])
 
@@ -79,14 +97,43 @@ export default function EndOfDayPage() {
     load()
   }, [load])
 
-  const revenue = delivered.reduce((s, o) => s + Number(o.total || 0), 0)
+  // Filter helper applied to delivered + raw orders
+  const passesFilters = useCallback(
+    (o: SalesOrderRow) => {
+      if (customerFilter && o.customer_id !== customerFilter) return false
+      if (salesUserFilter && o.sales_user_id !== salesUserFilter) return false
+      // creator / payment method / sales method are stored on the order
+      // record where present; we apply best-effort filters.
+      if (creatorFilter && (o as unknown as { created_by?: string }).created_by !== creatorFilter) return false
+      if (
+        paymentMethodFilter &&
+        ((o as unknown as { payment_terms?: string }).payment_terms || "").toLowerCase() !== paymentMethodFilter
+      )
+        return false
+      if (
+        salesMethodFilter &&
+        (o as unknown as { sales_method?: string }).sales_method !== salesMethodFilter
+      )
+        return false
+      return true
+    },
+    [customerFilter, salesUserFilter, creatorFilter, paymentMethodFilter, salesMethodFilter]
+  )
+
+  const filteredOrders = useMemo(() => orders.filter(passesFilters), [orders, passesFilters])
+  const filteredDelivered = useMemo(
+    () => delivered.filter(passesFilters),
+    [delivered, passesFilters]
+  )
+
+  const revenue = filteredDelivered.reduce((s, o) => s + Number(o.total || 0), 0)
   const netRevenue = revenue - returnsValue
   const grossProfit = netRevenue - cogs
   const cashIn = cashReceipts
     .filter((r) => r.status === "received")
     .reduce((s, r) => s + Number(r.submitted_amount || 0), 0)
   const cashOut = expenses.reduce((s, e) => s + Number(e.amount || 0), 0)
-  const ordersByStatus = orders.reduce<Record<string, number>>((acc, o) => {
+  const ordersByStatus = filteredOrders.reduce<Record<string, number>>((acc, o) => {
     acc[o.status] = (acc[o.status] || 0) + 1
     return acc
   }, {})
@@ -100,11 +147,58 @@ export default function EndOfDayPage() {
       range={range}
       preset="custom"
       onChangeRange={(_p, r) => setDate(r.from)}
+      filters={
+        <>
+          <FilterField label="Khách hàng">
+            <FilterSearchSelect
+              value={customerFilter}
+              onChange={setCustomerFilter}
+              options={catalogs.customers}
+              placeholder="Theo mã, tên, số điện thoại"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Nhân viên">
+            <FilterSearchSelect
+              value={salesUserFilter}
+              onChange={setSalesUserFilter}
+              options={catalogs.salesUsers}
+              placeholder="Chọn nhân viên"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Người tạo">
+            <FilterSearchSelect
+              value={creatorFilter}
+              onChange={setCreatorFilter}
+              options={catalogs.allUsers}
+              placeholder="Chọn người tạo"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Phương thức thanh toán">
+            <FilterSelect
+              value={paymentMethodFilter}
+              onChange={(v) => setPaymentMethodFilter(v)}
+              options={PAYMENT_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
+              placeholder="Chọn phương thức thanh toán"
+            />
+          </FilterField>
+          <FilterField label="Phương thức bán hàng">
+            <FilterSelect
+              value={salesMethodFilter}
+              onChange={(v) => setSalesMethodFilter(v)}
+              options={SALES_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
+              placeholder="Chọn phương thức bán hàng"
+            />
+          </FilterField>
+        </>
+      }
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <SmallStat label="Đơn tạo trong ngày" value={String(orders.length)} />
-          <SmallStat label="Đơn đã giao" value={String(delivered.length)} />
+          <SmallStat label="Đơn tạo trong ngày" value={String(filteredOrders.length)} />
+          <SmallStat label="Đơn đã giao" value={String(filteredDelivered.length)} />
           <SmallStat label="Doanh thu" value={formatCurrency(revenue)} />
           <SmallStat label="Trả hàng" value={formatCurrency(returnsValue)} />
           <SmallStat label="Doanh thu thuần" value={formatCurrency(netRevenue)} accent />

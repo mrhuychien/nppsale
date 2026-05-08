@@ -45,6 +45,12 @@ interface ProductRow {
   name: string
   category: string | null
   base_unit: string
+  primary_supplier_id?: string | null
+}
+
+interface SupplierRow {
+  id: string
+  name: string
 }
 
 interface BatchRow {
@@ -100,6 +106,8 @@ export default function ProductsReportPage() {
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -113,9 +121,10 @@ export default function ProductsReportPage() {
       returnsRows,
       stockEntriesRes,
       customersRes,
+      suppliersRes,
     ] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
-      supabase.from("products").select("id, sku, name, category, base_unit").eq("org_id", user.org_id),
+      supabase.from("products").select("id, sku, name, category, base_unit, primary_supplier_id").eq("org_id", user.org_id),
       supabase
         .from("batches")
         .select("id, product_id, qty_on_hand, unit_cost")
@@ -129,6 +138,7 @@ export default function ProductsReportPage() {
         .gte("posted_at", fromIso)
         .lte("posted_at", toIso),
       supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
+      supabase.from("suppliers").select("id, name").eq("org_id", user.org_id).order("name"),
     ])
 
     const orderIds = orderList.map((o) => o.id)
@@ -160,6 +170,7 @@ export default function ProductsReportPage() {
     setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
     setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
     setCustomers((customersRes.data as CustomerRow[]) || [])
+    setSuppliers((suppliersRes.data as SupplierRow[]) || [])
     setLoading(false)
   }, [user?.org_id, range, supabase])
 
@@ -167,11 +178,16 @@ export default function ProductsReportPage() {
     load()
   }, [load])
 
+  // §3.2 — apply NCC filter at the productMap layer; downstream views
+  // skip any line/batch whose product isn't in the map.
   const productMap = useMemo(() => {
     const m = new Map<string, ProductRow>()
-    for (const p of products) m.set(p.id, p)
+    for (const p of products) {
+      if (supplierFilter !== "all" && p.primary_supplier_id !== supplierFilter) continue
+      m.set(p.id, p)
+    }
     return m
-  }, [products])
+  }, [products, supplierFilter])
 
   const customerMap = useMemo(() => {
     const m = new Map<string, CustomerRow>()
@@ -467,15 +483,31 @@ export default function ProductsReportPage() {
         </FilterField>
       }
       filters={
-        <FilterField label="Hàng hóa">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Theo mã, tên hàng"
-            className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-          />
-        </FilterField>
+        <>
+          <FilterField label="Hàng hóa">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Theo mã, tên hàng"
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            />
+          </FilterField>
+          <FilterField label="Nhà cung cấp">
+            <select
+              value={supplierFilter}
+              onChange={(e) => setSupplierFilter(e.target.value)}
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            >
+              <option value="all">Tất cả NCC</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        </>
       }
     >
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">

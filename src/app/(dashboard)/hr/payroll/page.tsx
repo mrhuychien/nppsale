@@ -18,7 +18,7 @@ import { formatCurrency } from "@/lib/utils"
 import { ROLE_LABELS } from "@/lib/constants"
 import { useRouter } from "next/navigation"
 import type { HrPayroll, User, HrSalaryConfig, HrMonthlyBonus, HrAttendance, SalesOrder } from "@/types"
-import { computeAllBonuses, type UserPeriodActivity } from "@/lib/bonus"
+import { computeAllBonuses, type UserPeriodActivity, type BonusBreakdown } from "@/lib/bonus"
 
 const STATUS_MAP: Record<string, { label: string; variant: "secondary" | "default" | "success" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -253,17 +253,73 @@ export default function PayrollPage() {
         .lte("work_date", endDate)
       const attendanceList = (attendData as HrAttendance[]) || []
 
-      // Fetch revenue from sales_orders for each sales user
-      const { data: revenueData } = await supabase
-        .from("sales_orders")
-        .select("sales_user_id, total")
-        .eq("org_id", authUser.org_id)
-        .eq("status", "delivered")
-        .gte("order_date", startDate)
-        .lte("order_date", endDate)
+      // Fetch revenue from sales_orders for each sales user. Also pull
+      // the lines / returns / new-customers needed to compute the new
+      // bonuses (per-unit / milestone / KPI) — so the saved payroll
+      // includes them in monthly_revenue_bonus + breakdown.bonus_v2.
+      const [revenueRes, linesRes, returnsRes, customersNewRes] =
+        await Promise.all([
+          supabase
+            .from("sales_orders")
+            .select("id, sales_user_id, total, status, order_date")
+            .eq("org_id", authUser.org_id)
+            .eq("status", "delivered")
+            .gte("order_date", startDate)
+            .lte("order_date", endDate),
+          supabase
+            .from("sales_order_lines")
+            .select("order_id, product_id, unit_name, quantity, unit_price"),
+          supabase
+            .from("returns")
+            .select("order_id, credit_note_amount")
+            .eq("org_id", authUser.org_id)
+            .gte("created_at", startDate),
+          supabase
+            .from("customers")
+            .select("id, created_by, created_at")
+            .eq("org_id", authUser.org_id)
+            .gte("created_at", startDate)
+            .lte("created_at", endDate + "T23:59:59"),
+        ])
+
+      const orderRows = (revenueRes.data as SalesOrder[]) || []
+      const lineRows = (linesRes.data as Array<{
+        order_id: string
+        product_id: string
+        unit_name: string
+        quantity: number
+        unit_price: number
+      }>) || []
+      const returnRows = (returnsRes.data as Array<{ order_id: string | null; credit_note_amount: number }>) || []
+      const newCustomerRows = (customersNewRes.data as Array<{ created_by: string | null }>) || []
+
+      const orderById = new Map(orderRows.map((o) => [o.id, o]))
+      const linesByUser = new Map<string, typeof lineRows>()
+      for (const l of lineRows) {
+        const o = orderById.get(l.order_id)
+        if (!o?.sales_user_id) continue
+        const arr = linesByUser.get(o.sales_user_id) || []
+        arr.push(l)
+        linesByUser.set(o.sales_user_id, arr)
+      }
+      const returnTotalByOrder = new Map<string, number>()
+      for (const r of returnRows) {
+        if (r.order_id) {
+          returnTotalByOrder.set(
+            r.order_id,
+            (returnTotalByOrder.get(r.order_id) || 0) + Number(r.credit_note_amount || 0)
+          )
+        }
+      }
+      const newCustByUser = new Map<string, number>()
+      for (const c of newCustomerRows) {
+        if (c.created_by) {
+          newCustByUser.set(c.created_by, (newCustByUser.get(c.created_by) || 0) + 1)
+        }
+      }
 
       const revenueByUser: Record<string, number> = {}
-      for (const order of revenueData || []) {
+      for (const order of orderRows) {
         const uid = order.sales_user_id
         if (uid) {
           revenueByUser[uid] = (revenueByUser[uid] || 0) + (order.total || 0)
@@ -299,6 +355,41 @@ export default function PayrollPage() {
         let targetAmount = 0
         let targetPercent = 0
 
+        // §2.1/§2.2/§2.3 — new bonuses computed once per user. Stored in
+        // breakdown.bonus_v2 for transparency; the totals folded into
+        // monthly_revenue_bonus so existing UI keeps working without a
+        // schema change. Only apply to sales reps.
+        let bonusV2 = { perUnit: 0, milestone: 0, kpi: 0, total: 0 }
+        let bonusV2Detail: BonusBreakdown | null = null
+        if (isSales) {
+          const userOrders = orderRows.filter((o) => o.sales_user_id === emp.id)
+          const userLines = (linesByUser.get(emp.id) || []).map((l) => ({
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: Number(l.quantity || 0),
+            unit_price: Number(l.unit_price || 0),
+          }))
+          const returnTotal = userOrders.reduce(
+            (s, o) => s + (returnTotalByOrder.get(o.id) || 0),
+            0
+          )
+          const activity: UserPeriodActivity = {
+            user_id: emp.id,
+            delivered_orders: userOrders,
+            delivered_lines: userLines,
+            new_customers: newCustByUser.get(emp.id) || 0,
+            visit_coverage: 0, // TODO: integrate with route_visits
+            return_rate: totalRevenue > 0 ? (returnTotal / totalRevenue) * 100 : 0,
+          }
+          bonusV2Detail = computeAllBonuses(bonusConfig, activity)
+          bonusV2 = {
+            perUnit: bonusV2Detail.perUnit.total,
+            milestone: bonusV2Detail.orderMilestone.total,
+            kpi: bonusV2Detail.kpi.total,
+            total: bonusV2Detail.total,
+          }
+        }
+
         if (isSales) {
           // Find target from tiers - use the highest tier min_percent as the "100% target"
           const tiers = config.target_tiers || []
@@ -319,9 +410,13 @@ export default function PayrollPage() {
 
           targetPercent = targetAmount > 0 ? (totalRevenue / targetAmount) * 100 : 0
 
-          // Under 60%: only revenue * under_60_percent
+          // Under 60%: only revenue * under_60_percent. New v2 bonuses
+          // (đầu thùng / mốc đơn / KPI) STILL apply — they're explicit
+          // performance bonuses configured by the owner, not tied to
+          // the legacy target%.
           if (targetPercent < 60) {
-            const total = totalRevenue * ((config.under_60_percent || 0) / 100)
+            const baseTotal = totalRevenue * ((config.under_60_percent || 0) / 100)
+            const total = baseTotal + bonusV2.total
             return {
               org_id: authUser.org_id,
               user_id: emp.id,
@@ -336,17 +431,23 @@ export default function PayrollPage() {
               phone_allowance: 0,
               target_bonus: 0,
               over_target_bonus: 0,
-              monthly_revenue_bonus: 0,
+              monthly_revenue_bonus: Math.round(bonusV2.total),
               deductions: 0,
               total_salary: Math.round(total),
-              breakdown: { rule: "under_60", percent: config.under_60_percent },
+              breakdown: {
+                rule: "under_60",
+                percent: config.under_60_percent,
+                bonus_v2: bonusV2,
+                bonus_v2_detail: bonusV2Detail,
+              },
               status: "draft",
             }
           }
 
-          // Under 70%: only base + gas + phone
+          // Under 70%: only base + gas + phone (+ v2 bonuses)
           if (targetPercent < 70) {
-            const total = (baseSalary + gasAllowance + phoneAllowance) * attendanceRatio
+            const baseTotal = (baseSalary + gasAllowance + phoneAllowance) * attendanceRatio
+            const total = baseTotal + bonusV2.total
             return {
               org_id: authUser.org_id,
               user_id: emp.id,
@@ -361,10 +462,14 @@ export default function PayrollPage() {
               phone_allowance: Math.round(phoneAllowance * attendanceRatio),
               target_bonus: 0,
               over_target_bonus: 0,
-              monthly_revenue_bonus: 0,
+              monthly_revenue_bonus: Math.round(bonusV2.total),
               deductions: 0,
               total_salary: Math.round(total),
-              breakdown: { rule: "under_70" },
+              breakdown: {
+                rule: "under_70",
+                bonus_v2: bonusV2,
+                bonus_v2_detail: bonusV2Detail,
+              },
               status: "draft",
             }
           }
@@ -394,15 +499,21 @@ export default function PayrollPage() {
           }
         }
 
-        // Prorate everything by attendance
+        // Prorate everything by attendance. v2 bonuses (đầu thùng /
+        // mốc đơn / KPI) are NOT prorated — they're earned from actual
+        // delivered output, so a rep who hit targets despite missing
+        // days keeps the full bonus.
         const proratedBase = baseSalary * attendanceRatio
         const proratedGas = gasAllowance * attendanceRatio
         const proratedPhone = phoneAllowance * attendanceRatio
         const proratedTarget = targetBonus * attendanceRatio
         const proratedOver = overTargetBonus * attendanceRatio
         const proratedMonthly = monthlyRevenueBonus * attendanceRatio
+        const totalMonthly = proratedMonthly + bonusV2.total
 
-        const totalSalary = proratedBase + proratedGas + proratedPhone + proratedTarget + proratedOver + proratedMonthly
+        const totalSalary =
+          proratedBase + proratedGas + proratedPhone +
+          proratedTarget + proratedOver + totalMonthly
 
         return {
           org_id: authUser.org_id,
@@ -418,7 +529,7 @@ export default function PayrollPage() {
           phone_allowance: Math.round(proratedPhone),
           target_bonus: Math.round(proratedTarget),
           over_target_bonus: Math.round(proratedOver),
-          monthly_revenue_bonus: Math.round(proratedMonthly),
+          monthly_revenue_bonus: Math.round(totalMonthly),
           deductions: 0,
           total_salary: Math.round(totalSalary),
           breakdown: {
@@ -427,6 +538,9 @@ export default function PayrollPage() {
             config_phone: config.phone_allowance,
             attendance_ratio: Math.round(attendanceRatio * 10000) / 10000,
             working_days_per_month: workingDaysPerMonth,
+            legacy_revenue_bonus: Math.round(proratedMonthly),
+            bonus_v2: bonusV2,
+            bonus_v2_detail: bonusV2Detail,
           },
           status: "draft",
         }

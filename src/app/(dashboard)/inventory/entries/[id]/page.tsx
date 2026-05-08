@@ -116,7 +116,7 @@ export default function StockEntryDetailPage() {
         supabase
           .from("sales_orders")
           .select(
-            "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, note, product:products(name, sku))"
+            "id, order_code, order_date, subtotal, vat, total, payment_terms, notes, customer:customers(store_name, phone, address, ward, district, province), lines:sales_order_lines(product_id, unit_name, quantity, unit_price, line_total, note, conversion_factor, product:products(name, sku))"
           )
           .in("id", refOrderIds),
         // Hàng trả về kèm theo các đơn này — in cả pending/approved/
@@ -195,9 +195,12 @@ export default function StockEntryDetailPage() {
     }
     setSelfDelivering(true)
     try {
-      // 1) FEFO trừ batches + stamp unit_cost lên từng line
+      // 1) FEFO trừ batches + stamp unit_cost lên từng line.
+      // T-01 — consume in BASE UOM (qty_in_base_uom) so 4 thùng x 10 hộp
+      // deducts 40 hộp from batches.qty_on_hand, not 4.
       for (const l of lines) {
-        let remaining = Number(l.quantity || 0)
+        const lineWithBase = l as unknown as { qty_in_base_uom?: number; quantity: number }
+        let remaining = Number(lineWithBase.qty_in_base_uom ?? lineWithBase.quantity ?? 0)
         if (remaining <= 0) continue
         const { data: prodBatches } = await supabase
           .from("batches")
@@ -557,7 +560,25 @@ export default function StockEntryDetailPage() {
                               )}
                             </td>
                             <td className="py-1.5 text-right font-semibold">
-                              {l.quantity} {l.unit_name}
+                              {(() => {
+                                // T-01: show "4 thùng (40 hộp)" when factor > 1.
+                                const factor = Number(
+                                  (l as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+                                )
+                                const qty = Number(l.quantity || 0)
+                                const baseQty = qty * factor
+                                if (factor > 1) {
+                                  return (
+                                    <>
+                                      {qty} {l.unit_name}
+                                      <span className="text-[10px] text-muted-foreground ml-1">
+                                        ({baseQty})
+                                      </span>
+                                    </>
+                                  )
+                                }
+                                return `${qty} ${l.unit_name}`
+                              })()}
                             </td>
                           </tr>
                         ))}

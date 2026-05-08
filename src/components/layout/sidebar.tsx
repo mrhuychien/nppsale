@@ -46,14 +46,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Vận hành",
-    icon: Truck,
-    items: [
-      { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries", feature: "deliveries" },
-      { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns", feature: "returns" },
-    ],
-  },
-  {
     label: "Mua hàng",
     icon: ClipboardList,
     items: [
@@ -69,6 +61,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory", feature: "inventory" },
       { label: "Sản phẩm", href: "/products", icon: Package, module: "products", feature: "products" },
+      { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries", feature: "deliveries" },
+      { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns", feature: "returns" },
     ],
   },
   {
@@ -90,7 +84,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Danh sách nhân viên", href: "/settings/users", icon: Users, module: "settings", feature: "settings.users" },
       { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus, module: "settings", feature: "settings.users" },
       { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
-      { label: "Tổng quan nhân sự", href: "/hr", icon: UserCog, module: "settings", feature: "hr" },
+      { label: "Chấm công", href: "/hr/attendance", icon: UserCog, module: "settings", feature: "hr" },
       { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },
       { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet, module: "settings", feature: "hr" },
       { label: "Tính lương kỳ", href: "/hr/payroll", icon: Receipt, module: "settings", feature: "hr" },

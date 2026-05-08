@@ -30,6 +30,7 @@ import {
   type PricingRules,
 } from "@/lib/pricing"
 import { RETURN_REASONS } from "@/lib/constants"
+import { getConversionFactor } from "@/lib/inventory/uom"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
@@ -594,6 +595,13 @@ export function OrderForm() {
 
       const orderLines = lines.map((l) => {
         const trimmed = l.note?.trim()
+        // T-01 — snapshot conversion factor so picking can deduct in base UOM.
+        const product = products.find((p) => p.id === l.product_id)
+        const conversionFactor = getConversionFactor(
+          product,
+          product?.units,
+          l.unit_name
+        )
         return {
           order_id: order.id,
           product_id: l.product_id,
@@ -602,6 +610,7 @@ export function OrderForm() {
           unit_price: l.unit_price,
           line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
           line_total: l.line_total,
+          conversion_factor: conversionFactor,
           // Only include `note` when set so DBs without migration 029
           // don't reject the insert.
           ...(trimmed ? { note: trimmed } : {}),
@@ -610,12 +619,16 @@ export function OrderForm() {
 
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) {
-        // Same defensive retry — if DB lacks `note` (mig 029), strip
-        // and retry so the order still saves.
+        // Defensive retry — if DB lacks `note` (mig 029) or
+        // `conversion_factor` (mig 039), strip those optional columns
+        // and retry so the order still saves on un-migrated tenants.
         const msg = (linesErr.message || "").toLowerCase()
-        if (!msg.includes("note") && (linesErr as unknown as { code?: string }).code !== "PGRST204") {
-          throw linesErr
-        }
+        const code = (linesErr as unknown as { code?: string }).code
+        const optional =
+          msg.includes("note") ||
+          msg.includes("conversion_factor") ||
+          code === "PGRST204"
+        if (!optional) throw linesErr
         const stripped = lines.map((l) => ({
           order_id: order.id,
           product_id: l.product_id,

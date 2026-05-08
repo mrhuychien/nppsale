@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
@@ -53,6 +54,8 @@ interface ReturnLineDraft {
   unit_price: number
   line_total: number
   note: string
+  /** True = đổi hàng. Không trừ vào công nợ; vẫn in trên phiếu giao. */
+  is_exchange: boolean
 }
 
 type ReturnReason = (typeof RETURN_REASONS)[number]["value"]
@@ -368,6 +371,7 @@ export function OrderForm() {
         unit_price: price,
         line_total: price,
         note: "",
+        is_exchange: false,
       },
     ])
     setReturnSearch("")
@@ -376,7 +380,7 @@ export function OrderForm() {
   const updateReturnLine = (
     index: number,
     field: keyof ReturnLineDraft,
-    value: number | string
+    value: number | string | boolean
   ) => {
     setReturnLines((prev) => {
       const updated = [...prev]
@@ -415,8 +419,23 @@ export function OrderForm() {
     return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
   })
 
+  // Tổng giá trị trả ĐƯỢC TRỪ vào công nợ — KHÔNG cộng dòng đổi hàng,
+  // vì đổi hàng chỉ là vật chất ra/vào, không động đến tiền.
   const returnSubtotal = returnLines.reduce(
-    (s, l) => s + Number(l.quantity || 0) * Number(l.unit_price || 0),
+    (s, l) =>
+      s +
+      (l.is_exchange
+        ? 0
+        : Number(l.quantity || 0) * Number(l.unit_price || 0)),
+    0
+  )
+
+  const exchangeSubtotal = returnLines.reduce(
+    (s, l) =>
+      s +
+      (l.is_exchange
+        ? Number(l.quantity || 0) * Number(l.unit_price || 0)
+        : 0),
     0
   )
 
@@ -573,16 +592,21 @@ export function OrderForm() {
 
       if (orderErr) throw orderErr
 
-      const orderLines = lines.map((l) => ({
-        order_id: order.id,
-        product_id: l.product_id,
-        unit_name: l.unit_name,
-        quantity: l.quantity,
-        unit_price: l.unit_price,
-        line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
-        line_total: l.line_total,
-        note: l.note?.trim() || null,
-      }))
+      const orderLines = lines.map((l) => {
+        const trimmed = l.note?.trim()
+        return {
+          order_id: order.id,
+          product_id: l.product_id,
+          unit_name: l.unit_name,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
+          line_total: l.line_total,
+          // Only include `note` when set so DBs without migration 029
+          // don't reject the insert.
+          ...(trimmed ? { note: trimmed } : {}),
+        }
+      })
 
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
       if (linesErr) throw linesErr
@@ -608,15 +632,21 @@ export function OrderForm() {
           .single()
         if (returnErr) throw returnErr
         const returnId = (returnRow as { id: string }).id
-        const returnLineRows = returnLines.map((l) => ({
-          return_id: returnId,
-          product_id: l.product_id,
-          unit_name: l.unit_name,
-          quantity: l.quantity,
-          unit_price: l.unit_price,
-          line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
-          note: l.note?.trim() || null,
-        }))
+        const returnLineRows = returnLines.map((l) => {
+          const trimmed = l.note?.trim()
+          return {
+            return_id: returnId,
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+            // Only include note + is_exchange when needed so DBs without
+            // migrations 029 / 035 still accept the insert.
+            ...(trimmed ? { note: trimmed } : {}),
+            ...(l.is_exchange ? { is_exchange: true } : {}),
+          }
+        })
         const { error: rLinesErr } = await supabase
           .from("return_lines")
           .insert(returnLineRows)
@@ -1351,6 +1381,28 @@ export function OrderForm() {
                             <AlertTriangle className="h-3 w-3" /> {warning}
                           </p>
                         )}
+                        <label
+                          className={`mt-2 flex items-start gap-2 rounded-lg border px-2 py-1.5 cursor-pointer transition-colors ${
+                            line.is_exchange
+                              ? "border-blue-400 bg-blue-50/60"
+                              : "border-border/40 hover:bg-muted/40"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={line.is_exchange}
+                            onCheckedChange={(v) =>
+                              updateReturnLine(i, "is_exchange", v === true)
+                            }
+                            className="mt-0.5"
+                          />
+                          <div className="text-xs leading-tight">
+                            <p className="font-semibold">Đổi hàng</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              In trên phiếu giao để lái xe thu hàng. KHÔNG trừ
+                              vào công nợ — coi như đổi 1-đổi-1.
+                            </p>
+                          </div>
+                        </label>
                         <Input
                           value={line.note}
                           onChange={(e) => updateReturnLine(i, "note", e.target.value)}
@@ -1364,11 +1416,25 @@ export function OrderForm() {
               )}
 
               {returnLines.length > 0 && (
-                <div className="flex items-center justify-between pt-3 border-t border-border/40">
-                  <span className="text-sm text-muted-foreground">Tổng tiền trả</span>
-                  <span className="text-lg font-bold text-amber-700">
-                    −{formatCurrency(returnSubtotal)}
-                  </span>
+                <div className="space-y-1.5 pt-3 border-t border-border/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Trừ công nợ
+                    </span>
+                    <span className="text-lg font-bold text-amber-700">
+                      −{formatCurrency(returnSubtotal)}
+                    </span>
+                  </div>
+                  {exchangeSubtotal > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        Đổi hàng (không trừ công nợ)
+                      </span>
+                      <span className="font-semibold text-blue-700">
+                        {formatCurrency(exchangeSubtotal)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

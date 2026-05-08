@@ -528,6 +528,8 @@ export interface ReturnLine {
   unit_price: number
   line_total: number
   note: string | null
+  /** True = dòng đổi hàng (in trên phiếu giao, không trừ công nợ). */
+  is_exchange?: boolean
   // Joined
   product?: Product
 }

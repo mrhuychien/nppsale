@@ -74,6 +74,7 @@ export default function StockEntryDetailPage() {
         unit_price: number
         line_total: number
         note?: string | null
+        is_exchange?: boolean | null
         product?: { name: string; sku: string } | null
       }>
     }>
@@ -135,7 +136,7 @@ export default function StockEntryDetailPage() {
         supabase
           .from("returns")
           .select(
-            "id, order_id, status, reason, credit_note_amount, notes, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, note, product:products(name, sku))"
+            "id, order_id, status, reason, credit_note_amount, notes, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, note, is_exchange, product:products(name, sku))"
           )
           .in("order_id", refOrderIds)
           .in("status", ["pending", "approved", "completed"]),
@@ -1003,7 +1004,14 @@ export default function StockEntryDetailPage() {
                                 <tr key={i} className="border-b border-gray-200">
                                   <td className="py-1.5">{i + 1}</td>
                                   <td className="py-1.5 font-medium">
-                                    <div>{l.product?.name || "-"}</div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{l.product?.name || "-"}</span>
+                                      {l.is_exchange && (
+                                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                          ĐỔI
+                                        </span>
+                                      )}
+                                    </div>
                                     {l.note && (
                                       <div className="text-[11px] italic text-gray-600 mt-0.5">
                                         ✏ {l.note}

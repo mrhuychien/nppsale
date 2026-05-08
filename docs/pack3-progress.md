@@ -5,7 +5,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 
 ## Sprint 1 — P0 critical
 - [x] T-01 UOM conversion fix (mig 039, lib/inventory/uom.ts, order-form snapshot, stock-out + self-deliver consume in base UOM)
-- [ ] T-02 FIFO costing infrastructure
+- [x] T-02 FIFO costing infrastructure (mig 040 — fifo_layers + fifo_consumptions tables, fifo_consume() PL/pgSQL helper, JS lib/inventory/fifo.ts)
 - [ ] T-03 Edit-while-picking + workflow stage
 - [ ] T-04 Bỏ module Vận hành
 

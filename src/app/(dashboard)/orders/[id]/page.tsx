@@ -167,10 +167,13 @@ export default function OrderDetailPage() {
         .from("delivery_lines")
         .select("id, status, pod_photo_url, delivered_at, notes, delivery:deliveries(id, route_name, driver:users!deliveries_driver_id_fkey(full_name), started_at, completed_at, status)")
         .eq("order_id", id),
+      // ref_order_ids is jsonb (mig 017), so .contains() generates the
+      // wrong PostgREST syntax (`cs.{uuid}` works for text[], not for
+      // jsonb arrays). Use the raw filter with a JSON-array literal.
       supabase
         .from("stock_entries")
         .select("id, entry_code, type, status, posted_at, created_at, notes, creator:users!stock_entries_created_by_fkey(full_name), lines:stock_entry_lines(id, product_id, quantity, unit_name, unit_cost, product:products(name, sku))")
-        .contains("ref_order_ids", [id])
+        .filter("ref_order_ids", "cs", JSON.stringify([id]))
         .order("created_at", { ascending: false }),
       supabase
         .from("returns")

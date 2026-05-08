@@ -609,7 +609,25 @@ export function OrderForm() {
       })
 
       const { error: linesErr } = await supabase.from("sales_order_lines").insert(orderLines)
-      if (linesErr) throw linesErr
+      if (linesErr) {
+        // Same defensive retry — if DB lacks `note` (mig 029), strip
+        // and retry so the order still saves.
+        const msg = (linesErr.message || "").toLowerCase()
+        if (!msg.includes("note") && (linesErr as unknown as { code?: string }).code !== "PGRST204") {
+          throw linesErr
+        }
+        const stripped = lines.map((l) => ({
+          order_id: order.id,
+          product_id: l.product_id,
+          unit_name: l.unit_name,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
+          line_total: l.line_total,
+        }))
+        const retry = await supabase.from("sales_order_lines").insert(stripped)
+        if (retry.error) throw retry.error
+      }
 
       // Companion return record (if the rep filled the "Hàng trả lại" section).
       // The return stays 'pending' so a manager can review at /returns; on
@@ -650,7 +668,41 @@ export function OrderForm() {
         const { error: rLinesErr } = await supabase
           .from("return_lines")
           .insert(returnLineRows)
-        if (rLinesErr) throw rLinesErr
+        if (rLinesErr) {
+          // Defensive fallback: if the DB lacks `is_exchange` (mig 035
+          // not yet applied), Postgres rejects the bulk insert with
+          // a "column does not exist" 400 because Supabase sends the
+          // union of keys via ?columns=... Retry once without the
+          // optional columns so existing tenants stay functional.
+          const msg = (rLinesErr.message || "").toLowerCase()
+          const code = (rLinesErr as unknown as { code?: string }).code
+          const optionalMissing =
+            msg.includes("is_exchange") ||
+            msg.includes("'note'") ||
+            msg.includes('"note"') ||
+            code === "PGRST204"
+          if (!optionalMissing) throw rLinesErr
+          const stripped = returnLines.map((l) => ({
+            return_id: returnId,
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+          }))
+          const retry = await supabase.from("return_lines").insert(stripped)
+          if (retry.error) throw retry.error
+          // If the rep marked exchange lines but the DB doesn't support it,
+          // surface a soft warning (don't block the order — already saved).
+          if (returnLines.some((l) => l.is_exchange)) {
+            toast({
+              title: "Đã lưu đơn — chưa áp dụng đổi hàng",
+              description:
+                "DB thiếu cột is_exchange (migration 035 chưa chạy). Liên hệ admin để áp dụng.",
+              variant: "destructive",
+            })
+          }
+        }
       }
 
       // Fire-and-forget notifications

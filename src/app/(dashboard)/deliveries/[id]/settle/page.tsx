@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
+import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import {
   Wallet,
   CheckCircle2,
@@ -91,6 +92,19 @@ export default function DeliverySettlePage() {
   const [submittedAmount, setSubmittedAmount] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
+
+  // T-05: workflow session — keep this in-progress settlement on the
+  // dashboard widget. Closes when the user finalises (status='settled').
+  const { saveDraft, closeSession } = useWorkflowSession({
+    entityType: "delivery",
+    entityId: id,
+    stage: "collecting_payment",
+    lastUrl: `/deliveries/${id}/settle`,
+    entityLabel: delivery?.route_name
+      ? `Chuyến giao ${delivery.route_name}`
+      : undefined,
+    enabled: !!id && !!user && delivery?.status !== "settled",
+  })
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -190,6 +204,12 @@ export default function DeliverySettlePage() {
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // T-05: persist form draft so a reload restores in-progress changes.
+  useEffect(() => {
+    if (loading) return
+    saveDraft({ editedAmounts, submittedAmount, notes, goodsNotes })
+  }, [editedAmounts, submittedAmount, notes, goodsNotes, loading, saveDraft])
 
   const goodsAlreadyHandedOver = !!delivery?.goods_handover_at
 
@@ -294,6 +314,8 @@ export default function DeliverySettlePage() {
           title: "Đã hoàn tất chuyến",
           description: "Chuyến chỉ có đơn công nợ — không cần lập phiếu thu.",
         })
+        // T-05: nothing to settle but the chuyến is done — close session.
+        await closeSession()
         router.push(`/deliveries/${delivery.id}`)
         return
       }
@@ -409,6 +431,8 @@ export default function DeliverySettlePage() {
             ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
             : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`,
       })
+      // T-05: chuyến đã quyết toán → close workflow session.
+      await closeSession()
       router.push(`/finance/cash-receipts/${receipt.id}`)
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })

@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useWorkflowSession } from "@/hooks/use-workflow-session"
 
 type PaymentMethod = "cash" | "transfer" | "ewallet"
 
@@ -99,6 +100,17 @@ export default function CollectPaymentPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [notes, setNotes] = useState("")
+
+  // T-05: workflow session — surface this in-progress collection on the
+  // dashboard widget so the user can return to it from another tab.
+  const { saveDraft, closeSession } = useWorkflowSession({
+    entityType: "stock_entry",
+    entityId: entryId,
+    stage: "collecting_payment",
+    lastUrl: `/inventory/stock-out/collect/${entryId}`,
+    entityLabel: entry ? `Phiếu xuất ${entry.entry_code}` : undefined,
+    enabled: !!entryId && !!user,
+  })
 
   const fetchData = useCallback(async () => {
     if (!entryId || !user?.org_id) return
@@ -180,6 +192,12 @@ export default function CollectPaymentPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // T-05: persist form draft (rows + notes) so a reload restores state.
+  useEffect(() => {
+    if (loading) return
+    saveDraft({ rows, notes })
+  }, [rows, notes, loading, saveDraft])
 
   const totals = useMemo(() => {
     let outstanding = 0
@@ -314,6 +332,8 @@ export default function CollectPaymentPage() {
             ? `Đã giao ${rows.length} đơn — còn ${formatCurrency(totals.leftover)} chuyển sang công nợ.`
             : `Đã giao ${rows.length} đơn và thu đủ tiền.`,
       })
+      // T-05: workflow done — close session so it falls off the widget.
+      await closeSession()
       router.push(`/finance/cash-receipts/${receiptId}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"

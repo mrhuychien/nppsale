@@ -10,7 +10,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [x] T-04 Bỏ module Vận hành (sidebar — Giao hàng + Trả hàng moved into "Kho vận"; no /operations/* routes existed so no redirect needed; Q2)
 
 ## Sprint 2 — Bàn giao + state persistence
-- [ ] T-05 Workflow state persistence + widget "Việc đang dở"
+- [x] T-05 Workflow state persistence + widget "Việc đang dở" (mig 045 — workflow_sessions table + RLS + auto-bump trigger; lib/workflow/sessions.ts client helpers; hooks/use-workflow-session.ts with debounced draft + localStorage mirror; components/dashboard/pending-work-widget.tsx; mounted on /dashboard. Hooked into /inventory/stock-out/collect/[entryId] and /deliveries/[id]/settle as canonical "đang dở" pages — additional pages can opt in by calling `useWorkflowSession`)
 - [ ] T-06 Hard-lock concurrency
 - [ ] T-07 Driver handover (Bàn giao lại)
 - [~] T-08 Phiếu thu lái xe TT200 (component PaymentReceiptTT200 + numberToVietnameseWords helper). Wiring into /deliveries/[id]/settle "In phiếu thu" button deferred — caller can render the component anywhere.

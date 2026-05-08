@@ -18,6 +18,7 @@ import {
   ArrowRight,
 } from "lucide-react"
 import type { SalesOrder } from "@/types"
+import { PendingWorkWidget } from "@/components/dashboard/pending-work-widget"
 
 interface DashboardStats {
   todayOrders: number
@@ -399,6 +400,9 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* T-05: Resume in-progress workflows (xuất kho, giao hàng, thu tiền…) */}
+      <PendingWorkWidget />
 
       {/* Channel Breakdown */}
       {channelBreakdown.length > 0 && (

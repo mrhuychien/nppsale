@@ -1,11 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterCheckbox, FilterSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterCheckbox, FilterSelect, FilterSearchSelect } from "@/components/analytics/report-shell"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   ReportTable,
@@ -50,10 +51,13 @@ interface ProductMeta {
   id: string
   sku: string
   name: string
+  category?: string | null
+  brand?: string | null
 }
 interface CustomerMeta {
   id: string
   store_name: string
+  group_id?: string | null
 }
 interface UserMeta {
   id: string
@@ -70,7 +74,14 @@ export default function OrdersReportPage() {
   const [status, setStatus] = useState<OrderStatus | "">("")
   const [groupSameType, setGroupSameType] = useState(false)
   const [customerSearch, setCustomerSearch] = useState("")
-  const [productSearch, setProductSearch] = useState("")
+  const [productSearch] = useState("")
+  const [customerFilter, setCustomerFilter] = useState("")
+  const [productFilter, setProductFilter] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [brandFilter, setBrandFilter] = useState("")
+  const [groupFilter, setGroupFilter] = useState("")
+  const [salesUserFilter, setSalesUserFilter] = useState("")
+  const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
@@ -84,8 +95,8 @@ export default function OrdersReportPage() {
     setLoading(true)
     const [orderList, productsRes, customersRes, usersRes] = await Promise.all([
       fetchAllOrders(supabase, user.org_id, range),
-      supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
-      supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
+      supabase.from("products").select("id, sku, name, category, brand").eq("org_id", user.org_id),
+      supabase.from("customers").select("id, store_name, group_id").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
     const orderIds = orderList
@@ -107,6 +118,8 @@ export default function OrdersReportPage() {
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (status && o.status !== status) return false
+      if (customerFilter && o.customer_id !== customerFilter) return false
+      if (salesUserFilter && o.sales_user_id !== salesUserFilter) return false
       if (customerSearch) {
         const c = customers.find((x) => x.id === o.customer_id)
         if (
@@ -117,7 +130,7 @@ export default function OrdersReportPage() {
       }
       return true
     })
-  }, [orders, customers, status, customerSearch])
+  }, [orders, customers, status, customerFilter, salesUserFilter, customerSearch])
 
   const productMap = useMemo(() => {
     const m = new Map<string, ProductMeta>()
@@ -158,6 +171,15 @@ export default function OrdersReportPage() {
       if (!filteredOrderIdSet.has(l.order_id)) continue
       const p = productMap.get(l.product_id)
       if (!p) continue
+      // Catalog-backed filters
+      if (productFilter && p.id !== productFilter) continue
+      if (categoryFilter && (p.category || "") !== categoryFilter) continue
+      if (brandFilter && (p.brand || "") !== brandFilter) continue
+      if (groupFilter) {
+        const o = orders.find((x) => x.id === l.order_id)
+        const c = o ? customerMap.get(o.customer_id) : null
+        if (c?.group_id !== groupFilter) continue
+      }
       if (productSearch) {
         const q = productSearch.toLowerCase()
         if (!p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) continue
@@ -181,7 +203,7 @@ export default function OrdersReportPage() {
       m.set(k, e)
     }
     return Array.from(m.values()).sort((a, b) => b.value - a.value)
-  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch])
+  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch, productFilter, categoryFilter, brandFilter, groupFilter])
 
   // -------------------- By transaction --------------------
   type TxRow = {
@@ -268,26 +290,69 @@ export default function OrdersReportPage() {
               options={STATUS_OPTIONS}
             />
           </FilterField>
-          <FilterField label="Khách hàng / Mã đơn">
+          <FilterField label="Khách hàng">
+            <FilterSearchSelect
+              value={customerFilter}
+              onChange={setCustomerFilter}
+              options={catalogs.customers}
+              placeholder="Theo mã, tên, số điện thoại"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Tìm theo mã đơn / tên KH">
             <input
               type="search"
               value={customerSearch}
               onChange={(e) => setCustomerSearch(e.target.value)}
-              placeholder="Theo mã, tên, số điện thoại"
+              placeholder="Mã đơn / tên khách (tự do)"
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
             />
           </FilterField>
-          {variant === "by_product" ? (
-            <FilterField label="Hàng hóa">
-              <input
-                type="search"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Theo mã, tên hàng"
-                className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-              />
-            </FilterField>
-          ) : null}
+          <FilterField label="Hàng hóa">
+            <FilterSearchSelect
+              value={productFilter}
+              onChange={setProductFilter}
+              options={catalogs.products}
+              placeholder="Theo mã, tên hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Loại hàng">
+            <FilterSearchSelect
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={catalogs.categories}
+              placeholder="Chọn loại hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Thương hiệu">
+            <FilterSearchSelect
+              value={brandFilter}
+              onChange={setBrandFilter}
+              options={catalogs.brands}
+              placeholder="Chọn thương hiệu"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Nhóm hàng / Bảng giá">
+            <FilterSearchSelect
+              value={groupFilter}
+              onChange={setGroupFilter}
+              options={catalogs.customerGroups}
+              placeholder="Chọn nhóm hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Nhân viên">
+            <FilterSearchSelect
+              value={salesUserFilter}
+              onChange={setSalesUserFilter}
+              options={catalogs.salesUsers}
+              placeholder="Chọn nhân viên"
+              loading={catalogs.loading}
+            />
+          </FilterField>
         </>
       }
     >

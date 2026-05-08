@@ -9,7 +9,9 @@ import {
   ReportShell,
   FilterCheckbox,
   FilterField,
+  FilterSearchSelect,
 } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   fetchDeliveredOrders,
@@ -44,6 +46,7 @@ interface ProductRow {
   sku: string
   name: string
   category: string | null
+  brand?: string | null
   base_unit: string
   primary_supplier_id?: string | null
 }
@@ -108,6 +111,11 @@ export default function ProductsReportPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
+  const [productFilter, setProductFilter] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [brandFilter, setBrandFilter] = useState("")
+  const [groupFilter, setGroupFilter] = useState("")
+  const catalogs = useFilterCatalogs(user?.org_id)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -124,7 +132,7 @@ export default function ProductsReportPage() {
       suppliersRes,
     ] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
-      supabase.from("products").select("id, sku, name, category, base_unit, primary_supplier_id").eq("org_id", user.org_id),
+      supabase.from("products").select("id, sku, name, category, brand, base_unit, primary_supplier_id").eq("org_id", user.org_id),
       supabase
         .from("batches")
         .select("id, product_id, qty_on_hand, unit_cost")
@@ -178,16 +186,21 @@ export default function ProductsReportPage() {
     load()
   }, [load])
 
-  // §3.2 — apply NCC filter at the productMap layer; downstream views
-  // skip any line/batch whose product isn't in the map.
+  // §3.2 + filter overhaul — apply ALL catalog-backed filters at the
+  // productMap layer; downstream views skip any line/batch whose
+  // product isn't in the map.
   const productMap = useMemo(() => {
     const m = new Map<string, ProductRow>()
     for (const p of products) {
       if (supplierFilter !== "all" && p.primary_supplier_id !== supplierFilter) continue
+      if (productFilter && p.id !== productFilter) continue
+      if (categoryFilter && (p.category || "") !== categoryFilter) continue
+      const brand = (p as unknown as { brand?: string | null }).brand
+      if (brandFilter && (brand || "") !== brandFilter) continue
       m.set(p.id, p)
     }
     return m
-  }, [products, supplierFilter])
+  }, [products, supplierFilter, productFilter, categoryFilter, brandFilter])
 
   const customerMap = useMemo(() => {
     const m = new Map<string, CustomerRow>()
@@ -484,28 +497,59 @@ export default function ProductsReportPage() {
       }
       filters={
         <>
+          <FilterField label="Bảng giá / Nhóm khách">
+            <FilterSearchSelect
+              value={groupFilter}
+              onChange={setGroupFilter}
+              options={catalogs.customerGroups}
+              placeholder="Chọn bảng giá"
+              loading={catalogs.loading}
+            />
+          </FilterField>
           <FilterField label="Hàng hóa">
+            <FilterSearchSelect
+              value={productFilter}
+              onChange={setProductFilter}
+              options={catalogs.products}
+              placeholder="Theo mã, tên hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Tìm tự do">
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Theo mã, tên hàng"
+              placeholder="Theo mã, tên hàng (tự do)"
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
             />
           </FilterField>
+          <FilterField label="Loại hàng">
+            <FilterSearchSelect
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={catalogs.categories}
+              placeholder="Chọn loại hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Thương hiệu">
+            <FilterSearchSelect
+              value={brandFilter}
+              onChange={setBrandFilter}
+              options={catalogs.brands}
+              placeholder="Chọn thương hiệu"
+              loading={catalogs.loading}
+            />
+          </FilterField>
           <FilterField label="Nhà cung cấp">
-            <select
-              value={supplierFilter}
-              onChange={(e) => setSupplierFilter(e.target.value)}
-              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-            >
-              <option value="all">Tất cả NCC</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <FilterSearchSelect
+              value={supplierFilter === "all" ? "" : supplierFilter}
+              onChange={(v) => setSupplierFilter(v || "all")}
+              options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+              placeholder="Tất cả NCC"
+              loading={catalogs.loading}
+            />
           </FilterField>
         </>
       }

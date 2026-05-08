@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterSearchSelect, FilterSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs, SALES_METHOD_OPTIONS } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   fetchDeliveredOrders,
@@ -88,6 +89,13 @@ export default function SalesReportPage() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [productSupplierMap, setProductSupplierMap] = useState<Map<string, string | null>>(new Map())
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
+  const [priceListFilter, setPriceListFilter] = useState<string>("")
+  const [routeFilter, setRouteFilter] = useState<string>("")
+  const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
+  const catalogs = useFilterCatalogs(user?.org_id)
+  // Customer → group_id map (for bảng giá / kênh bán filtering on orders)
+  const [customerGroupMap, setCustomerGroupMap] = useState<Map<string, string | null>>(new Map())
+  const [customerRouteMap, setCustomerRouteMap] = useState<Map<string, string | null>>(new Map())
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -97,7 +105,7 @@ export default function SalesReportPage() {
     const [orderList, returnsRows, customersRes, usersRes, stockEntriesRes, suppliersRes, productsRes] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
       fetchReturnsRows(supabase, user.org_id, range),
-      supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
+      supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name, role").eq("org_id", user.org_id),
       supabase
         .from("stock_entries")
@@ -125,6 +133,14 @@ export default function SalesReportPage() {
     setLines(linesList)
     setReturns(returnsRows)
     setCustomers((customersRes.data as CustomerRow[]) || [])
+    const groupMap = new Map<string, string | null>()
+    const routeMap = new Map<string, string | null>()
+    for (const c of (customersRes.data as Array<{ id: string; group_id: string | null; channel: string | null }>) || []) {
+      groupMap.set(c.id, c.group_id)
+      routeMap.set(c.id, c.channel)
+    }
+    setCustomerGroupMap(groupMap)
+    setCustomerRouteMap(routeMap)
     setUsers((usersRes.data as UserRow[]) || [])
     setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
     setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
@@ -154,10 +170,40 @@ export default function SalesReportPage() {
   }, [lines, supplierFilter, productSupplierMap])
 
   const filteredOrders = useMemo<SalesOrderRow[]>(() => {
-    if (supplierFilter === "all") return orders
-    const orderIdsWithLines = new Set(filteredLines.map((l) => l.order_id))
-    return orders.filter((o) => orderIdsWithLines.has(o.id))
-  }, [orders, supplierFilter, filteredLines])
+    let result = orders
+    if (supplierFilter !== "all") {
+      const orderIdsWithLines = new Set(filteredLines.map((l) => l.order_id))
+      result = result.filter((o) => orderIdsWithLines.has(o.id))
+    }
+    if (priceListFilter) {
+      result = result.filter((o) => customerGroupMap.get(o.customer_id) === priceListFilter)
+    }
+    if (routeFilter) {
+      const route = catalogs.routes.find((r) => r.id === routeFilter)
+      const matchVals = [route?.id, route?.label, route?.hint].filter(Boolean) as string[]
+      result = result.filter((o) => {
+        const ch = customerRouteMap.get(o.customer_id)
+        return ch ? matchVals.includes(ch) : false
+      })
+    }
+    if (salesMethodFilter) {
+      result = result.filter(
+        (o) =>
+          (o as unknown as { sales_method?: string }).sales_method === salesMethodFilter
+      )
+    }
+    return result
+  }, [
+    orders,
+    supplierFilter,
+    filteredLines,
+    priceListFilter,
+    customerGroupMap,
+    routeFilter,
+    catalogs.routes,
+    customerRouteMap,
+    salesMethodFilter,
+  ])
 
   const customerMap = useMemo(() => {
     const m = new Map<string, CustomerRow>()
@@ -409,18 +455,39 @@ export default function SalesReportPage() {
             />
           </FilterField>
           <FilterField label="Nhà cung cấp">
-            <select
-              value={supplierFilter}
-              onChange={(e) => setSupplierFilter(e.target.value)}
-              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-            >
-              <option value="all">Tất cả NCC</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <FilterSearchSelect
+              value={supplierFilter === "all" ? "" : supplierFilter}
+              onChange={(v) => setSupplierFilter(v || "all")}
+              options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+              placeholder="Tất cả NCC"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Bảng giá">
+            <FilterSearchSelect
+              value={priceListFilter}
+              onChange={setPriceListFilter}
+              options={catalogs.customerGroups}
+              placeholder="Chọn bảng giá"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Kênh bán">
+            <FilterSearchSelect
+              value={routeFilter}
+              onChange={setRouteFilter}
+              options={catalogs.routes}
+              placeholder="Chọn kênh bán"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Phương thức bán hàng">
+            <FilterSelect
+              value={salesMethodFilter}
+              onChange={(v) => setSalesMethodFilter(v)}
+              options={SALES_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
+              placeholder="Chọn phương thức bán hàng"
+            />
           </FilterField>
         </>
       }

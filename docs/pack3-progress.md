@@ -22,7 +22,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [ ] T-12 Phiếu xuất hàng đem đổi
 
 ## Sprint 4 — Permission + payroll
-- [ ] T-13 Phân quyền per-user override
+- [~] T-13 Phân quyền per-user override (mig 041 — table + resolver fn). Settings UI page deferred (existing /settings/permissions covers role matrix; per-user override UI to add later)
 - [ ] T-14 Row-level customer
 - [ ] T-15 KPI tiers + Order-count bonus + Activity bonus
 - [ ] T-16 Bảng lương

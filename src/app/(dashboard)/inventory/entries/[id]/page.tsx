@@ -15,13 +15,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
@@ -84,9 +77,6 @@ export default function StockEntryDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editNotes, setEditNotes] = useState("")
   const [actionLoading, setActionLoading] = useState(false)
-  const [drivers, setDrivers] = useState<Array<{ id: string; full_name: string }>>([])
-  const [selectedDriverId, setSelectedDriverId] = useState<string>("")
-  const [handingOver, setHandingOver] = useState(false)
   const [selfDelivering, setSelfDelivering] = useState(false)
   const supabase = createClient()
   const router = useRouter()
@@ -182,125 +172,6 @@ export default function StockEntryDetailPage() {
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
-
-  // Load drivers when this is an export entry awaiting handover
-  useEffect(() => {
-    if (entry?.type !== "export" || entry.status !== "draft") return
-    let cancelled = false
-    ;(async () => {
-      const { data } = await supabase
-        .from("users")
-        .select("id, full_name")
-        .eq("role", "driver")
-        .eq("is_active", true)
-        .order("full_name")
-      if (!cancelled) {
-        setDrivers((data as Array<{ id: string; full_name: string }>) || [])
-      }
-    })()
-    return () => { cancelled = true }
-  }, [entry?.type, entry?.status]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleHandover = async () => {
-    if (!entry || !user) return
-    if (!selectedDriverId) {
-      toast({ title: "Chưa chọn lái xe", variant: "destructive" })
-      return
-    }
-    const orderIds = (entry.ref_order_ids as string[] | null) || []
-    if (orderIds.length === 0) {
-      toast({ title: "Phiếu không có đơn nguồn", variant: "destructive" })
-      return
-    }
-    setHandingOver(true)
-    try {
-      // 1) Create delivery
-      const routeName =
-        refOrders.length === 1
-          ? `Giao ${refOrders[0].customer?.store_name || "KH"}`
-          : `Giao ${refOrders.length} đơn`
-      const { data: delivery, error: delErr } = await supabase
-        .from("deliveries")
-        .insert({
-          org_id: user.org_id,
-          driver_id: selectedDriverId,
-          route_name: routeName,
-          status: "in_transit",
-          started_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single()
-      if (delErr || !delivery) throw delErr || new Error("Không tạo được chuyến giao")
-
-      // 2) Delivery lines
-      const deliveryLineRows = orderIds.map((orderId) => ({
-        delivery_id: delivery.id,
-        order_id: orderId,
-        status: "pending" as const,
-      }))
-      const { error: dLineErr } = await supabase
-        .from("delivery_lines")
-        .insert(deliveryLineRows)
-      if (dLineErr) throw dLineErr
-
-      // 3) FEFO deduct for each line on the entry
-      for (const l of lines) {
-        let remaining = Number(l.quantity || 0)
-        if (remaining <= 0) continue
-        const { data: prodBatches } = await supabase
-          .from("batches")
-          .select("id, qty_on_hand")
-          .eq("product_id", l.product_id)
-          .gt("qty_on_hand", 0)
-          .order("expires_at", { ascending: true })
-        for (const b of (prodBatches as Array<{ id: string; qty_on_hand: number }>) || []) {
-          if (remaining <= 0) break
-          const take = Math.min(remaining, Number(b.qty_on_hand))
-          await supabase
-            .from("batches")
-            .update({ qty_on_hand: Number(b.qty_on_hand) - take })
-            .eq("id", b.id)
-          remaining -= take
-        }
-      }
-
-      // 4) Post the stock entry
-      await supabase
-        .from("stock_entries")
-        .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", entry.id)
-
-      // 5) Orders → delivering
-      await supabase
-        .from("sales_orders")
-        .update({ status: "delivering" })
-        .in("id", orderIds)
-
-      // 6) Notify driver
-      if (selectedDriverId !== user.id) {
-        const { createNotification } = await import("@/lib/notifications")
-        createNotification(supabase, {
-          orgId: user.org_id,
-          userId: selectedDriverId,
-          type: "info",
-          title: `Đã bàn giao ${orderIds.length} đơn`,
-          body: `Phiếu xuất ${entry.entry_code}`,
-          linkUrl: `/deliveries/${delivery.id}`,
-          metadata: { delivery_id: delivery.id, order_ids: orderIds, entry_id: entry.id },
-        })
-      }
-
-      toast({
-        title: "Đã bàn giao cho lái xe",
-        description: `Phiếu ${entry.entry_code} đã post. Tồn kho đã trừ.`,
-      })
-      router.push(`/deliveries/${delivery.id}`)
-    } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
-    } finally {
-      setHandingOver(false)
-    }
-  }
 
   /**
    * "Tự giao hàng": chủ xe / NPP giao trực tiếp khi lái xe không dùng
@@ -629,57 +500,10 @@ export default function StockEntryDetailPage() {
                 <Button
                   className="w-full h-11 bg-emerald-600 hover:bg-emerald-600/90 text-white"
                   onClick={handleSelfDeliver}
-                  disabled={selfDelivering || handingOver || lines.length === 0}
+                  disabled={selfDelivering || lines.length === 0}
                 >
                   <HandCoins className="h-4 w-4 mr-2" />
                   {selfDelivering ? "Đang xử lý..." : "Tự giao hàng & thu tiền"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {entry.type === "export" && entry.status === "draft" && (
-            <Card className="border-primary/40 bg-primary/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Truck className="h-5 w-5 text-primary" />
-                  Bàn giao lái xe
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Chọn lái xe nhận hàng. Sau khi bàn giao, tồn kho sẽ trừ và đơn chuyển sang trạng thái đang giao.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Lái xe
-                  </Label>
-                  <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn lái xe..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {drivers.length === 0 ? (
-                        <div className="px-2 py-3 text-xs text-muted-foreground">
-                          Chưa có lái xe nào
-                        </div>
-                      ) : (
-                        drivers.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.full_name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  className="w-full h-11"
-                  onClick={handleHandover}
-                  disabled={handingOver || selfDelivering || !selectedDriverId}
-                >
-                  <Truck className="h-4 w-4 mr-2" />
-                  {handingOver ? "Đang bàn giao..." : "Bàn giao"}
                 </Button>
               </CardContent>
             </Card>

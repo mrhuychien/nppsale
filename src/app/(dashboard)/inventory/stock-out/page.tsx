@@ -216,7 +216,9 @@ export default function StockOutPage() {
     [orders, selectedIds]
   )
 
-  // Pick-list summary: aggregate quantity by product across selected orders
+  // Pick-list summary: aggregate quantity by product across selected orders.
+  // T-01 — carry conversion_factor snapshot from sales_order_lines so the
+  // export entry can deduct batches in BASE UOM (4 thùng → 40 hộp).
   const pickList = useMemo(() => {
     const agg = new Map<
       string,
@@ -226,15 +228,22 @@ export default function StockOutPage() {
         name: string
         unit: string
         qty: number
+        qty_in_base_uom: number
+        conversion_factor: number
         location: string
       }
     >()
     selectedOrders.forEach((o) => {
       ;(o.lines || []).forEach((l) => {
         const key = `${l.product_id}__${l.unit_name}`
+        const factor = Number(
+          (l as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+        )
         const existing = agg.get(key)
+        const lineQty = Number(l.quantity || 0)
         if (existing) {
-          existing.qty += Number(l.quantity || 0)
+          existing.qty += lineQty
+          existing.qty_in_base_uom += lineQty * factor
         } else {
           const firstBatch = batches.find(
             (b) => b.product_id === l.product_id
@@ -244,7 +253,9 @@ export default function StockOutPage() {
             sku: l.product?.sku || "",
             name: l.product?.name || "",
             unit: l.unit_name,
-            qty: Number(l.quantity || 0),
+            qty: lineQty,
+            qty_in_base_uom: lineQty * factor,
+            conversion_factor: factor,
             location: firstBatch?.location || "—",
           })
         }
@@ -357,12 +368,20 @@ export default function StockOutPage() {
         .single()
       if (stockErr) throw stockErr
 
-      // 2) Insert stock_entry_lines - one row per SKU in pick list
+      // 2) Insert stock_entry_lines - one row per SKU in pick list.
+      // T-01: store quantity (transaction UOM) AND base-UOM split.
+      // `quantity` column stays in transaction UOM (existing semantics —
+      // some legacy code reads it). `qty_in_base_uom` is what the
+      // FIFO/batch deduction should consume.
       const entryLines = pickList.map((p) => ({
         entry_id: stockEntry.id,
         product_id: p.product_id,
         unit_name: p.unit,
         quantity: p.qty,
+        qty_in_transaction_uom: p.qty,
+        qty_in_base_uom: p.qty_in_base_uom,
+        transaction_uom: p.unit,
+        conversion_factor_snapshot: p.conversion_factor,
         notes: `Vị trí: ${p.location}`,
       }))
       if (entryLines.length > 0) {

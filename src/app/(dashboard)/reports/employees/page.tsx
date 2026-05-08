@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
@@ -43,11 +44,15 @@ interface UserRow {
 interface CustomerRow {
   id: string
   store_name: string
+  group_id?: string | null
+  channel?: string | null
 }
 interface ProductRow {
   id: string
   sku: string
   name: string
+  category?: string | null
+  brand?: string | null
   base_unit?: string | null
   sell_price?: number | null
 }
@@ -85,6 +90,13 @@ export default function EmployeesReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
+  const [productFilter, setProductFilter] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [brandFilter, setBrandFilter] = useState("")
+  const [groupFilter, setGroupFilter] = useState("")
+  const [salesUserFilter, setSalesUserFilter] = useState("")
+  const [routeFilter, setRouteFilter] = useState("")
+  const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
@@ -110,8 +122,8 @@ export default function EmployeesReportPage() {
           .from("users")
           .select("id, full_name, role, is_active")
           .eq("org_id", user.org_id),
-        supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
-        supabase.from("products").select("id, sku, name, base_unit, sell_price").eq("org_id", user.org_id),
+        supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
+        supabase.from("products").select("id, sku, name, base_unit, sell_price, category, brand").eq("org_id", user.org_id),
         supabase
           .from("stock_entries")
           .select("id, type")
@@ -213,12 +225,44 @@ export default function EmployeesReportPage() {
 
   const matchSearchUser = useCallback(
     (uid: string) => {
+      if (salesUserFilter && uid !== salesUserFilter) return false
       if (!search) return true
       const u = userMap.get(uid)
       if (!u) return false
       return u.full_name.toLowerCase().includes(search.toLowerCase())
     },
-    [search, userMap]
+    [search, salesUserFilter, userMap]
+  )
+
+  // Filter at the line level — applied where lines are iterated.
+  const productPasses = useCallback(
+    (productId: string) => {
+      if (!productFilter && !categoryFilter && !brandFilter) return true
+      const p = productMap.get(productId)
+      if (!p) return false
+      if (productFilter && p.id !== productFilter) return false
+      if (categoryFilter && (p.category || "") !== categoryFilter) return false
+      if (brandFilter && (p.brand || "") !== brandFilter) return false
+      return true
+    },
+    [productFilter, categoryFilter, brandFilter, productMap]
+  )
+
+  // Filter at the customer level (group + route) — applied where orders / customers are iterated.
+  const customerPasses = useCallback(
+    (customerId: string) => {
+      if (!groupFilter && !routeFilter) return true
+      const c = customerMap.get(customerId)
+      if (!c) return false
+      if (groupFilter && c.group_id !== groupFilter) return false
+      if (routeFilter) {
+        const route = catalogs.routes.find((r) => r.id === routeFilter)
+        const matchVals = [route?.id, route?.label, route?.hint].filter(Boolean) as string[]
+        if (!c.channel || !matchVals.includes(c.channel)) return false
+      }
+      return true
+    },
+    [groupFilter, routeFilter, customerMap, catalogs.routes]
   )
 
   // ============== Bán hàng (drill-down theo thời gian) ==============
@@ -237,6 +281,7 @@ export default function EmployeesReportPage() {
     // revenue from orders
     for (const o of orders) {
       if (!matchSearchUser(o.sales_user_id)) continue
+      if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
       const e =
         m.get(o.sales_user_id) ||
@@ -301,7 +346,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [orders, returns, orderByCustomer, userMap, matchSearchUser])
+  }, [orders, returns, orderByCustomer, userMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -318,6 +363,7 @@ export default function EmployeesReportPage() {
     const m = new Map<string, ProfitRow>()
     for (const o of orders) {
       if (!matchSearchUser(o.sales_user_id)) continue
+      if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
       const e =
         m.get(o.sales_user_id) ||
@@ -335,6 +381,7 @@ export default function EmployeesReportPage() {
       e.revenue += Number(o.total || 0)
       const ls = linesByOrder.get(o.id) || []
       for (const l of ls) {
+        if (!productPasses(l.product_id)) continue
         e.cogs += Number(l.quantity || 0) * (avgCostMap.get(l.product_id) || 0)
       }
       m.set(o.sales_user_id, e)
@@ -345,7 +392,7 @@ export default function EmployeesReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [orders, linesByOrder, avgCostMap, userMap, matchSearchUser])
+  }, [orders, linesByOrder, avgCostMap, userMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên ==============
   type EmployeeProductRow = {
@@ -367,6 +414,7 @@ export default function EmployeesReportPage() {
     const m = new Map<string, EmployeeProductRow>()
     for (const o of orders) {
       if (!matchSearchUser(o.sales_user_id)) continue
+      if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
       const e =
         m.get(o.sales_user_id) ||
@@ -381,6 +429,7 @@ export default function EmployeesReportPage() {
       e.revenue += Number(o.total || 0)
       const ls = linesByOrder.get(o.id) || []
       for (const l of ls) {
+        if (!productPasses(l.product_id)) continue
         const prod = productMap.get(l.product_id)
         if (!prod) continue
         let pr = e.products.find((x) => x.id === l.product_id)
@@ -412,7 +461,7 @@ export default function EmployeesReportPage() {
       for (const p of e.products) p.customers.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
+  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Theo khách hàng (NV → KH → mặt hàng) ==============
   type EmployeeCustomerRow = {
@@ -434,6 +483,7 @@ export default function EmployeesReportPage() {
     const m = new Map<string, EmployeeCustomerRow>()
     for (const o of orders) {
       if (!matchSearchUser(o.sales_user_id)) continue
+      if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
       const e =
         m.get(o.sales_user_id) ||
@@ -465,6 +515,7 @@ export default function EmployeesReportPage() {
 
       const ls = linesByOrder.get(o.id) || []
       for (const l of ls) {
+        if (!productPasses(l.product_id)) continue
         const prod = productMap.get(l.product_id)
         if (!prod) continue
         cust.qty += Number(l.quantity || 0)
@@ -484,7 +535,7 @@ export default function EmployeesReportPage() {
       for (const c of e.customers) c.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser])
+  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên (summary 9 cột) ==============
   // Map customer→sales_user thông qua đơn (returns không tham chiếu trực tiếp
@@ -569,9 +620,11 @@ export default function EmployeesReportPage() {
     // Order lines → tính SL bán + Giá trị niêm yết + Doanh thu
     for (const o of orders) {
       if (!matchSearchUser(o.sales_user_id)) continue
+      if (!customerPasses(o.customer_id)) continue
       const row = ensureRow(o.sales_user_id)
       const ls = linesByOrder.get(o.id) || []
       for (const l of ls) {
+        if (!productPasses(l.product_id)) continue
         const p = productMap.get(l.product_id)
         if (!p) continue
         const qty = Number(l.quantity || 0)
@@ -631,7 +684,7 @@ export default function EmployeesReportPage() {
       row.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, returns, returnLines, userMap, productMap, matchSearchUser])
+  }, [orders, linesByOrder, returns, returnLines, userMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -772,15 +825,71 @@ export default function EmployeesReportPage() {
       }}
       onExportCsv={handleExport}
       filters={
-        <FilterField label="Người bán">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Chọn người bán"
-            className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-          />
-        </FilterField>
+        <>
+          <FilterField label="Hàng hóa">
+            <FilterSearchSelect
+              value={productFilter}
+              onChange={setProductFilter}
+              options={catalogs.products}
+              placeholder="Theo mã, tên hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Loại hàng">
+            <FilterSearchSelect
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={catalogs.categories}
+              placeholder="Chọn loại hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Thương hiệu">
+            <FilterSearchSelect
+              value={brandFilter}
+              onChange={setBrandFilter}
+              options={catalogs.brands}
+              placeholder="Chọn thương hiệu"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Nhóm hàng / Bảng giá">
+            <FilterSearchSelect
+              value={groupFilter}
+              onChange={setGroupFilter}
+              options={catalogs.customerGroups}
+              placeholder="Chọn nhóm hàng"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Người bán">
+            <FilterSearchSelect
+              value={salesUserFilter}
+              onChange={setSalesUserFilter}
+              options={catalogs.salesUsers}
+              placeholder="Chọn người bán"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Kênh bán">
+            <FilterSearchSelect
+              value={routeFilter}
+              onChange={setRouteFilter}
+              options={catalogs.routes}
+              placeholder="Chọn kênh bán"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Tìm tự do">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Tên NV (tự do)"
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            />
+          </FilterField>
+        </>
       }
     >
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">

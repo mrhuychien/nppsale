@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
@@ -88,6 +89,8 @@ export default function SuppliersReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
+  const [supplierFilter, setSupplierFilter] = useState("")
+  const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
@@ -179,6 +182,7 @@ export default function SuppliersReportPage() {
   const matchSearch = useCallback(
     (s: SupplierRow | undefined) => {
       if (!s) return false
+      if (supplierFilter && s.id !== supplierFilter) return false
       if (!search) return true
       const q = search.toLowerCase()
       return (
@@ -187,7 +191,7 @@ export default function SuppliersReportPage() {
         (s.phone || "").toLowerCase().includes(q)
       )
     },
-    [search]
+    [search, supplierFilter]
   )
 
   // -------------------- Nhập hàng (drill-down) --------------------
@@ -412,15 +416,26 @@ export default function SuppliersReportPage() {
       }}
       onExportCsv={handleExport}
       filters={
-        <FilterField label="Nhà cung cấp">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Theo mã, tên, số điện thoại"
-            className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-          />
-        </FilterField>
+        <>
+          <FilterField label="Nhà cung cấp">
+            <FilterSearchSelect
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              options={catalogs.suppliers}
+              placeholder="Theo mã, tên, số điện thoại"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Tìm tự do">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Mã, tên, SĐT (tự do)"
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            />
+          </FilterField>
+        </>
       }
     >
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">

@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
+import { FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
 import {
   type DateRange,
@@ -17,6 +19,7 @@ import { formatCurrency } from "@/lib/utils"
 
 interface CustomerRow {
   id: string
+  store_name: string
   channel: string | null
 }
 
@@ -29,13 +32,16 @@ export default function ChannelsReportPage() {
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [routeFilter, setRouteFilter] = useState("")
+  const [customerFilter, setCustomerFilter] = useState("")
+  const catalogs = useFilterCatalogs(user?.org_id)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
     const [orderList, customersRes] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
-      supabase.from("customers").select("id, channel").eq("org_id", user.org_id),
+      supabase.from("customers").select("id, store_name, channel").eq("org_id", user.org_id),
     ])
     setOrders(orderList)
     setCustomers((customersRes.data as CustomerRow[]) || [])
@@ -55,8 +61,15 @@ export default function ChannelsReportPage() {
   const rows = useMemo(() => {
     const m = new Map<string, { revenue: number; orders: number; customers: Set<string> }>()
     const fallback = "Bán trực tiếp"
+    // Resolve route filter to candidate channel strings (id / code / name)
+    const route = routeFilter ? catalogs.routes.find((r) => r.id === routeFilter) : null
+    const matchVals = route
+      ? ([route.id, route.label, route.hint].filter(Boolean) as string[])
+      : null
     for (const o of orders) {
+      if (customerFilter && o.customer_id !== customerFilter) continue
       const ch = customerMap.get(o.customer_id)?.channel || fallback
+      if (matchVals && !matchVals.includes(ch)) continue
       const e = m.get(ch) || { revenue: 0, orders: 0, customers: new Set() }
       e.revenue += Number(o.total || 0)
       e.orders += 1
@@ -73,7 +86,7 @@ export default function ChannelsReportPage() {
         aov: e.orders > 0 ? e.revenue / e.orders : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue)
-  }, [orders, customerMap])
+  }, [orders, customerMap, customerFilter, routeFilter, catalogs.routes])
 
   const totals = rows.reduce(
     (acc, r) => ({
@@ -107,6 +120,28 @@ export default function ChannelsReportPage() {
         setRange(r)
       }}
       onExportCsv={handleExport}
+      filters={
+        <>
+          <FilterField label="Kênh bán">
+            <FilterSearchSelect
+              value={routeFilter}
+              onChange={setRouteFilter}
+              options={catalogs.routes}
+              placeholder="Chọn kênh bán"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+          <FilterField label="Khách hàng">
+            <FilterSearchSelect
+              value={customerFilter}
+              onChange={setCustomerFilter}
+              options={catalogs.customers}
+              placeholder="Theo mã, tên, SĐT"
+              loading={catalogs.loading}
+            />
+          </FilterField>
+        </>
+      }
     >
       {loading ? (
         <Skeleton className="h-72" />

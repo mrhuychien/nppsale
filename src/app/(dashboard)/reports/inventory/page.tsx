@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { FilterSearchSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -32,13 +35,17 @@ interface SupplierOption {
 
 export default function InventoryReportPage() {
   const { loading: authLoading } = useRoleGuard("reports")
+  const { user } = useAuth()
   const [batchesAll, setBatchesAll] = useState<(Batch & { product?: Product })[]>([])
   const [salesLines, setSalesLines] = useState<SalesOrderLine[]>([])
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [brandFilter, setBrandFilter] = useState<string>("")
+  const [productFilter, setProductFilter] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const catalogs = useFilterCatalogs(user?.org_id)
 
   useEffect(() => {
     async function fetch() {
@@ -76,9 +83,11 @@ export default function InventoryReportPage() {
       if (categoryFilter !== "all" && (b.product?.category || "") !== categoryFilter) {
         return false
       }
+      if (brandFilter && (b.product?.brand || "") !== brandFilter) return false
+      if (productFilter && b.product_id !== productFilter) return false
       return true
     })
-  }, [batchesAll, supplierFilter, categoryFilter])
+  }, [batchesAll, supplierFilter, categoryFilter, brandFilter, productFilter])
 
   const stats = useMemo(() => {
     const totalItems = batches.reduce((sum, b) => sum + b.qty_on_hand, 0)
@@ -233,7 +242,31 @@ export default function InventoryReportPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Thương hiệu
+            </label>
+            <FilterSearchSelect
+              value={brandFilter}
+              onChange={setBrandFilter}
+              options={catalogs.brands}
+              placeholder="Tất cả thương hiệu"
+              loading={catalogs.loading}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Hàng hóa cụ thể
+            </label>
+            <FilterSearchSelect
+              value={productFilter}
+              onChange={setProductFilter}
+              options={catalogs.products}
+              placeholder="Theo mã, tên hàng"
+              loading={catalogs.loading}
+            />
+          </div>
+          <div className="md:col-span-3 flex items-end">
             <p className="text-xs text-muted-foreground">
               Đang xem <span className="font-bold text-foreground">{batches.length}</span> /{" "}
               {batchesAll.length} lô hàng

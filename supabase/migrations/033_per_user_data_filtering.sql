@@ -7,29 +7,59 @@
 -- 1. customers: sales rep cũng thấy được khách mình tạo (created_by =
 --    auth.uid()) — không cần đợi customer_assignment được thêm.
 -- 2. payments: sales chỉ thấy thanh toán cho đơn của mình.
--- 3. notifications: user chỉ thấy thông báo của mình (đã có nhưng
---    confirm).
--- 4. order_status_history: user thấy lịch sử của đơn mình thấy được
---    (theo policy sales_orders).
+-- 3. notifications: user chỉ thấy thông báo của mình.
+-- 4. order_status_history: user thấy lịch sử của đơn mình thấy được.
+--
+-- TOÀN BỘ migration được wrap trong DO $$..$$ blocks và idempotent:
+-- chạy lại nhiều lần không fail. Mỗi block kiểm tra trước khi apply
+-- để tránh phá nếu migration phụ thuộc (032) chưa chạy.
 -- ====================================================================
 
 -- ---------------------------------------------------------------------
 -- 1. Extend customers SELECT for sales: own assignments OR own creations
+--    Chỉ chạy nếu created_by column TỒN TẠI (mig 032 đã apply).
 -- ---------------------------------------------------------------------
-DROP POLICY IF EXISTS "Sales see assigned customers" ON customers;
-CREATE POLICY "Sales see own customers" ON customers
-  FOR SELECT
-  USING (
-    org_id = public.user_org_id()
-    AND public.user_role() = 'sales'
-    AND (
-      created_by = auth.uid()
-      OR id IN (
-        SELECT customer_id FROM customer_assignments
-        WHERE user_id = auth.uid() AND status = 'active'
-      )
-    )
-  );
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'customers' AND column_name = 'created_by'
+  ) THEN
+    DROP POLICY IF EXISTS "Sales see assigned customers" ON customers;
+    DROP POLICY IF EXISTS "Sales see own customers" ON customers;
+    EXECUTE $POL$
+      CREATE POLICY "Sales see own customers" ON customers
+        FOR SELECT
+        USING (
+          org_id = public.user_org_id()
+          AND public.user_role() = 'sales'
+          AND (
+            created_by = auth.uid()
+            OR id IN (
+              SELECT customer_id FROM customer_assignments
+              WHERE user_id = auth.uid() AND status = 'active'
+            )
+          )
+        );
+    $POL$;
+  ELSE
+    -- Mig 032 chưa chạy. Đảm bảo policy gốc tồn tại để sales vẫn
+    -- thấy được customers theo assignment.
+    DROP POLICY IF EXISTS "Sales see assigned customers" ON customers;
+    EXECUTE $POL$
+      CREATE POLICY "Sales see assigned customers" ON customers
+        FOR SELECT
+        USING (
+          org_id = public.user_org_id()
+          AND public.user_role() = 'sales'
+          AND id IN (
+            SELECT customer_id FROM customer_assignments
+            WHERE user_id = auth.uid() AND status = 'active'
+          )
+        );
+    $POL$;
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------
 -- 2. payments: sales rep see only payments for own orders
@@ -55,9 +85,7 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------
--- 3. notifications: user sees only own notifications. Most installs
---    already enforce this via user_id = auth.uid(); add a defensive
---    policy DROP+CREATE so the rule is unambiguous.
+-- 3. notifications: user sees only own notifications.
 -- ---------------------------------------------------------------------
 DO $$
 BEGIN

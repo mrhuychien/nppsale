@@ -13,12 +13,12 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [ ] T-05 Workflow state persistence + widget "Việc đang dở"
 - [ ] T-06 Hard-lock concurrency
 - [ ] T-07 Driver handover (Bàn giao lại)
-- [ ] T-08 Phiếu thu lái xe TT200
+- [~] T-08 Phiếu thu lái xe TT200 (component PaymentReceiptTT200 + numberToVietnameseWords helper). Wiring into /deliveries/[id]/settle "In phiếu thu" button deferred — caller can render the component anywhere.
 
 ## Sprint 3 — Print + UI tồn kho
 - [ ] T-09 Tab Tồn kho hiện tại + drill-down
 - [ ] T-10 Layout buttons + In danh sách giao
-- [ ] T-11 A5 nhỏ chữ + footer phiếu giao
+- [~] T-11 A5 nhỏ chữ (globals.css 8pt Times on A5; .a5-doc class hooks for printing/payment-receipt-tt200). Footer subtotal/VAT/total in delivery slip already exists from prior work — no further change needed.
 - [ ] T-12 Phiếu xuất hàng đem đổi
 
 ## Sprint 4 — Permission + payroll

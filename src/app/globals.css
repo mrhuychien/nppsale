@@ -107,11 +107,21 @@
   html[data-paper-size="A4"] @page,
   body[data-paper-size="A4"] @page,
   [data-paper-size="A4"] @page { size: A4 portrait; margin: 12mm; }
-  /* Compact font on A5 to keep tables readable */
-  html:not([data-paper-size="A4"]) .print-page { font-size: 11px; }
-  html:not([data-paper-size="A4"]) .print-page table { font-size: 10.5px; }
+  /* T-11 — A5 needs tighter font to fit ~25 line orders on 1 page.
+     Times New Roman matches official VN business slip aesthetic. */
+  html:not([data-paper-size="A4"]) .print-page,
+  html:not([data-paper-size="A4"]) .a5-doc {
+    font-size: 8pt;
+    line-height: 1.15;
+    font-family: "Times New Roman", Times, serif;
+  }
+  html:not([data-paper-size="A4"]) .print-page table,
+  html:not([data-paper-size="A4"]) .a5-doc table { font-size: 8pt; border-collapse: collapse; }
   html:not([data-paper-size="A4"]) .print-page h1,
-  html:not([data-paper-size="A4"]) .print-page h2 { font-size: 14px; }
+  html:not([data-paper-size="A4"]) .a5-doc h1 { font-size: 11pt; }
+  html:not([data-paper-size="A4"]) .print-page h2,
+  html:not([data-paper-size="A4"]) .a5-doc h2 { font-size: 9pt; }
+  html:not([data-paper-size="A4"]) .a5-doc .signatures { font-size: 7pt; }
 }
 
 @layer utilities {

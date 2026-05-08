@@ -318,6 +318,37 @@ export default function StockEntryDetailPage() {
 
   const totalQty = lines.reduce((sum, l) => sum + Number(l.quantity || 0), 0)
 
+  // Aggregate exchange / refund return-lines across all ref-orders.
+  // Đem về để đổi: items the rep collects from customer to swap. Đem
+  // về để trả: items collected for refund (deducts from công nợ).
+  const exchangeAgg = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
+  const refundAgg = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
+  for (const o of refOrders) {
+    for (const r of o.returns || []) {
+      for (const l of r.lines || []) {
+        const target = l.is_exchange ? exchangeAgg : refundAgg
+        const key = `${l.product_id}::${l.unit_name}`
+        const prev = target.get(key)
+        const qty = Number(l.quantity || 0)
+        const value = Number(l.line_total ?? Number(l.unit_price || 0) * qty)
+        if (prev) {
+          prev.qty += qty
+          prev.value += value
+        } else {
+          target.set(key, {
+            name: l.product?.name || "—",
+            sku: l.product?.sku || "—",
+            unit: l.unit_name,
+            qty,
+            value,
+          })
+        }
+      }
+    }
+  }
+  const exchangeRows = Array.from(exchangeAgg.values())
+  const refundRows = Array.from(refundAgg.values())
+
   return (
     <div className="space-y-4">
       <div className="no-print space-y-4">
@@ -416,6 +447,64 @@ export default function StockEntryDetailPage() {
               <span className="text-muted-foreground">Tổng số lượng</span>
               <span className="font-black text-lg">{totalQty}</span>
             </div>
+
+            {/* Hàng đem về (return / exchange) — show two distinct
+                buckets so warehouse + driver know what to collect AND
+                that exchange items don't reduce công nợ. */}
+            {(exchangeRows.length > 0 || refundRows.length > 0) && (
+              <div className="mt-4 pt-4 border-t border-border/40 space-y-3">
+                {exchangeRows.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                        ĐỔI
+                      </span>
+                      <h3 className="font-semibold text-sm">
+                        Hàng đổi đem về ({exchangeRows.length})
+                      </h3>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        Không trừ công nợ
+                      </span>
+                    </div>
+                    <ul className="space-y-1 text-sm">
+                      {exchangeRows.map((r, i) => (
+                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
+                          <span className="font-medium">{r.name}</span>
+                          <span className="font-bold tabular-nums">
+                            {r.qty} {r.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {refundRows.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                        TRẢ
+                      </span>
+                      <h3 className="font-semibold text-sm">
+                        Hàng trả đem về ({refundRows.length})
+                      </h3>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        Trừ {formatCurrency(refundRows.reduce((s, r) => s + r.value, 0))} công nợ
+                      </span>
+                    </div>
+                    <ul className="space-y-1 text-sm">
+                      {refundRows.map((r, i) => (
+                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
+                          <span className="font-medium">{r.name}</span>
+                          <span className="font-bold tabular-nums">
+                            {r.qty} {r.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -779,11 +868,14 @@ export default function StockEntryDetailPage() {
                   bảng trống với 3 dòng để ghi tay. */}
               {(() => {
                 const allReturnLines = (o.returns || []).flatMap((r) => r.lines || [])
-                const totalReturnQty = allReturnLines.reduce(
+                // Refund-side total only — exchange items don't deduct
+                // công nợ on the slip.
+                const refundOnly = allReturnLines.filter((l) => !l.is_exchange)
+                const totalReturnQty = refundOnly.reduce(
                   (s, l) => s + Number(l.quantity || 0),
                   0
                 )
-                const totalReturnValue = allReturnLines.reduce(
+                const totalReturnValue = refundOnly.reduce(
                   (s, l) =>
                     s +
                     Number(
@@ -850,12 +942,20 @@ export default function StockEntryDetailPage() {
                                     {l.quantity}
                                   </td>
                                   <td className="py-1.5 text-right">
-                                    {l.unit_price
-                                      ? formatCurrency(Number(l.unit_price))
-                                      : "-"}
+                                    {l.is_exchange ? (
+                                      <span className="text-blue-700 font-semibold">đổi</span>
+                                    ) : l.unit_price ? (
+                                      formatCurrency(Number(l.unit_price))
+                                    ) : (
+                                      "-"
+                                    )}
                                   </td>
                                   <td className="py-1.5 text-right font-semibold">
-                                    {lineTotal ? formatCurrency(lineTotal) : "-"}
+                                    {l.is_exchange
+                                      ? <span className="text-blue-700">—</span>
+                                      : lineTotal
+                                        ? formatCurrency(lineTotal)
+                                        : "-"}
                                   </td>
                                 </tr>
                               )
@@ -876,18 +976,25 @@ export default function StockEntryDetailPage() {
                         <tfoot>
                           <tr className="border-t-2 border-gray-300">
                             <td colSpan={4} className="py-2 text-right font-bold">
-                              Tổng trả:
+                              Tổng trả (trừ công nợ):
                             </td>
                             <td className="py-2 text-right font-black">
                               {totalReturnQty}
                             </td>
                             <td className="py-2 text-right text-gray-500 text-xs">
-                              Giá trị trả
+                              Giá trị trừ
                             </td>
                             <td className="py-2 text-right font-black">
                               {formatCurrency(totalReturnValue)}
                             </td>
                           </tr>
+                          {allReturnLines.some((l) => l.is_exchange) && (
+                            <tr>
+                              <td colSpan={7} className="py-1.5 text-[11px] italic text-blue-700">
+                                * Dòng có nhãn ĐỔI là hàng đổi: thu về kho nhưng KHÔNG trừ công nợ.
+                              </td>
+                            </tr>
+                          )}
                         </tfoot>
                       ) : (
                         <tfoot>

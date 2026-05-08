@@ -24,6 +24,7 @@ import {
   Banknote,
   ArrowRightCircle,
   Receipt,
+  Package as PackageIcon,
 } from "lucide-react"
 
 type SettleLine = {
@@ -71,10 +72,21 @@ export default function DeliverySettlePage() {
     settled_at: string | null
     settled_amount: number | null
     driver_id: string | null
+    goods_handover_at?: string | null
+    goods_handover_by?: string | null
+    goods_handover_notes?: string | null
     driver?: { full_name: string } | null
   } | null>(null)
   const [lines, setLines] = useState<SettleLine[]>([])
   const [editedAmounts, setEditedAmounts] = useState<Record<string, string>>({})
+  // Goods handover state — items the driver collected from customers
+  // (refund + exchange) that need to come back into the warehouse.
+  const [goodsHandover, setGoodsHandover] = useState<{
+    refund: Array<{ name: string; sku: string; unit: string; qty: number; value: number }>
+    exchange: Array<{ name: string; sku: string; unit: string; qty: number; value: number }>
+  }>({ refund: [], exchange: [] })
+  const [goodsNotes, setGoodsNotes] = useState("")
+  const [goodsConfirming, setGoodsConfirming] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submittedAmount, setSubmittedAmount] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
@@ -86,7 +98,7 @@ export default function DeliverySettlePage() {
       supabase
         .from("deliveries")
         .select(
-          "id, route_name, status, settled_at, settled_amount, driver_id, driver:users!deliveries_driver_id_fkey(full_name)"
+          "id, route_name, status, settled_at, settled_amount, driver_id, goods_handover_at, goods_handover_by, goods_handover_notes, driver:users!deliveries_driver_id_fkey(full_name)"
         )
         .eq("id", id)
         .single(),
@@ -101,6 +113,57 @@ export default function DeliverySettlePage() {
     if (delData) setDelivery(delData)
     const linesData = ((linesRes.data as unknown) as SettleLine[]) || []
     setLines(linesData)
+
+    // Fetch returns linked to orders in this delivery → aggregate
+    const orderIds = linesData.map((l) => l.order_id).filter(Boolean) as string[]
+    if (orderIds.length > 0) {
+      const { data: returnsData } = await supabase
+        .from("returns")
+        .select(
+          "id, order_id, status, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name, sku))"
+        )
+        .in("order_id", orderIds)
+        .in("status", ["pending", "approved", "completed"])
+      type RLine = {
+        product_id: string
+        unit_name: string
+        quantity: number
+        unit_price: number
+        line_total: number
+        is_exchange?: boolean | null
+        product?: { name: string; sku: string } | null
+      }
+      const refund = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
+      const exchange = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
+      for (const r of (returnsData as unknown as Array<{ lines: RLine[] }>) || []) {
+        for (const l of r.lines || []) {
+          const target = l.is_exchange ? exchange : refund
+          const key = `${l.product_id}::${l.unit_name}`
+          const prev = target.get(key)
+          const qty = Number(l.quantity || 0)
+          const value = Number(l.line_total || Number(l.unit_price || 0) * qty)
+          if (prev) {
+            prev.qty += qty
+            prev.value += value
+          } else {
+            target.set(key, {
+              name: l.product?.name || "—",
+              sku: l.product?.sku || "—",
+              unit: l.unit_name,
+              qty,
+              value,
+            })
+          }
+        }
+      }
+      setGoodsHandover({
+        refund: Array.from(refund.values()),
+        exchange: Array.from(exchange.values()),
+      })
+    } else {
+      setGoodsHandover({ refund: [], exchange: [] })
+    }
+    if (delData?.goods_handover_notes) setGoodsNotes(delData.goods_handover_notes)
 
     // A line is considered "delivered" for settlement if:
     //   - it was explicitly marked delivered, OR
@@ -127,6 +190,34 @@ export default function DeliverySettlePage() {
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  const goodsAlreadyHandedOver = !!delivery?.goods_handover_at
+
+  const handleConfirmGoods = async () => {
+    if (!user) return
+    setGoodsConfirming(true)
+    try {
+      const { error } = await supabase
+        .from("deliveries")
+        .update({
+          goods_handover_at: new Date().toISOString(),
+          goods_handover_by: user.id,
+          goods_handover_notes: goodsNotes || null,
+        })
+        .eq("id", id)
+      if (error) throw error
+      toast({ title: "Đã xác nhận nhận hàng từ tài xế" })
+      await fetchData()
+    } catch (err) {
+      toast({
+        title: "Lỗi",
+        description: (err as Error).message,
+        variant: "destructive",
+      })
+    } finally {
+      setGoodsConfirming(false)
+    }
+  }
 
   // Expected = sum of (edited amount) for delivered COD lines.
   // Same "delivered" rule as fetchData so completing a route in one click
@@ -460,6 +551,117 @@ export default function DeliverySettlePage() {
 
         {/* Right: settle box */}
         <div className="space-y-4">
+          {/* Bàn giao hàng — items collected by driver to bring back */}
+          {(goodsHandover.refund.length > 0 || goodsHandover.exchange.length > 0) && (
+            <Card className="border-amber-300 bg-amber-50/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PackageIcon className="h-5 w-5 text-amber-600" />
+                  Bàn giao hàng
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Thủ kho đối chiếu hàng tài xế thu về (trả + đổi) trước khi
+                  nhận. Bấm xác nhận để stamp thời điểm + người nhận.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {goodsHandover.exchange.length > 0 && (
+                  <div className="rounded-lg bg-white/70 border p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                        ĐỔI
+                      </span>
+                      <p className="text-xs font-bold uppercase tracking-wider">
+                        Hàng đổi ({goodsHandover.exchange.length})
+                      </p>
+                    </div>
+                    <ul className="space-y-1 text-sm">
+                      {goodsHandover.exchange.map((g, i) => (
+                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
+                          <span>
+                            <span className="font-medium">{g.name}</span>
+                            <span className="text-[11px] font-mono text-muted-foreground ml-2">
+                              {g.sku}
+                            </span>
+                          </span>
+                          <span className="font-bold tabular-nums whitespace-nowrap">
+                            {g.qty} {g.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {goodsHandover.refund.length > 0 && (
+                  <div className="rounded-lg bg-white/70 border p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                        TRẢ
+                      </span>
+                      <p className="text-xs font-bold uppercase tracking-wider">
+                        Hàng trả ({goodsHandover.refund.length})
+                      </p>
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        Trừ công nợ {formatCurrency(goodsHandover.refund.reduce((s, g) => s + g.value, 0))}
+                      </span>
+                    </div>
+                    <ul className="space-y-1 text-sm">
+                      {goodsHandover.refund.map((g, i) => (
+                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
+                          <span>
+                            <span className="font-medium">{g.name}</span>
+                            <span className="text-[11px] font-mono text-muted-foreground ml-2">
+                              {g.sku}
+                            </span>
+                          </span>
+                          <span className="font-bold tabular-nums whitespace-nowrap">
+                            {g.qty} {g.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {goodsAlreadyHandedOver ? (
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 text-xs">
+                    <p className="font-semibold">
+                      ✓ Đã nhận hàng lúc{" "}
+                      {delivery?.goods_handover_at
+                        ? new Date(delivery.goods_handover_at).toLocaleString("vi-VN")
+                        : "—"}
+                    </p>
+                    {delivery?.goods_handover_notes && (
+                      <p className="mt-1 italic">{delivery.goods_handover_notes}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Ghi chú nhận hàng (tuỳ chọn)
+                      </Label>
+                      <Input
+                        value={goodsNotes}
+                        onChange={(e) => setGoodsNotes(e.target.value)}
+                        placeholder="vd: Thiếu 1 thùng SP A so với phiếu"
+                        disabled={goodsConfirming}
+                      />
+                    </div>
+                    <Button
+                      className="w-full"
+                      variant="default"
+                      onClick={handleConfirmGoods}
+                      disabled={goodsConfirming}
+                    >
+                      {goodsConfirming ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">

@@ -99,12 +99,11 @@
 }
 
 /*
-  Phiếu giao hàng — A5 default, A4 option (Update #2 v2 §4.3).
-  Add data-paper-size="A4" to <html> (or any ancestor) before printing
-  to switch to A4. Default is A5 landscape so 1 đơn vừa 1 trang.
+  Phiếu giao hàng — A5 portrait mặc định, A4 portrait là tuỳ chọn.
+  Đặt data-paper-size="A4" trên <html> trước khi gọi window.print().
 */
 @media print {
-  @page { size: A5 landscape; margin: 8mm; }
+  @page { size: A5 portrait; margin: 8mm; }
   html[data-paper-size="A4"] @page,
   body[data-paper-size="A4"] @page,
   [data-paper-size="A4"] @page { size: A4 portrait; margin: 12mm; }

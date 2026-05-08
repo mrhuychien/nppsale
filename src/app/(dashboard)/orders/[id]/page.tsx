@@ -23,7 +23,13 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock } from "lucide-react"
+import {
+  validateOrderEdit,
+  isLineLocked,
+  type OrderLineChange,
+  type WorkflowStage,
+} from "@/lib/orders/edit-validator"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
@@ -90,6 +96,28 @@ const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   cancelled: [],
 }
 
+/** T-03: map legacy `status` → new `current_workflow_stage`. Used as a
+ *  fallback when the migration hasn't populated the column yet for this
+ *  org or when consuming code receives older API payloads. */
+function mapStatusToWorkflowStage(status: OrderStatus): WorkflowStage {
+  switch (status) {
+    case "draft":
+      return "draft"
+    case "confirmed":
+      return "approved"
+    case "picking":
+      return "picking"
+    case "delivering":
+      return "delivering"
+    case "delivered":
+      return "closed"
+    case "cancelled":
+      return "failed"
+    default:
+      return "draft"
+  }
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -151,6 +179,10 @@ export default function OrderDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", payment_terms: "COD", expected_delivery: "" })
   const [actionLoading, setActionLoading] = useState(false)
+  // T-03 — picked qty per line (base UOM). Read from v_sales_order_line_picked.
+  // Populated alongside `lines` in fetchData. Lines with picked > 0 cannot be
+  // reduced/removed/UOM-changed once stage='picking' (spec D10).
+  const [pickedByLine, setPickedByLine] = useState<Record<string, number>>({})
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -193,7 +225,25 @@ export default function OrderDetailPage() {
         expected_delivery: o.expected_delivery || "",
       })
     }
-    setLines((linesRes.data as SalesOrderLine[]) || [])
+    const fetchedLines = (linesRes.data as SalesOrderLine[]) || []
+    setLines(fetchedLines)
+
+    // T-03: load per-line picked qty (base UOM) from the helper view.
+    if (fetchedLines.length > 0) {
+      const { data: pickedRows } = await supabase
+        .from("v_sales_order_line_picked")
+        .select("order_line_id, picked_qty_in_base_uom")
+        .eq("order_id", id)
+      const map: Record<string, number> = {}
+      ;((pickedRows as Array<{ order_line_id: string; picked_qty_in_base_uom: number }>) || [])
+        .forEach((r) => {
+          map[r.order_line_id] = Number(r.picked_qty_in_base_uom || 0)
+        })
+      setPickedByLine(map)
+    } else {
+      setPickedByLine({})
+    }
+
     const recRow = recRes.data as
       | { id: string; amount: number; paid: number; status: string; due_date: string | null }
       | null
@@ -505,6 +555,48 @@ export default function OrderDetailPage() {
     if (!order) return
     setSavingLines(true)
     try {
+      // T-03 — validate the edit batch against picking-stage rules (D10).
+      const stage: WorkflowStage =
+        (order.current_workflow_stage as WorkflowStage | undefined) ??
+        mapStatusToWorkflowStage(order.status)
+      const changes: OrderLineChange[] = editedLines.map((l) => {
+        const original = lines.find((x) => x.id === l.id)
+        if (!original) {
+          return { existing: null, proposed: null }
+        }
+        const factor = Number(
+          (original as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+        )
+        return {
+          existing: {
+            id: original.id,
+            product_id: original.product_id,
+            unit_name: original.unit_name,
+            quantity: Number(original.quantity || 0),
+            conversion_factor: factor,
+            picked_qty_in_base_uom: pickedByLine[original.id] || 0,
+          },
+          proposed: {
+            // swap_product_id (when set) is a product change; the validator
+            // will block it if the line is already picked.
+            product_id: l.swap_product_id || original.product_id,
+            unit_name: original.unit_name,
+            quantity: Number(l.quantity || 0),
+            conversion_factor: factor,
+          },
+        }
+      })
+      const validation = validateOrderEdit({ stage, changes })
+      if (!validation.ok) {
+        toast({
+          title: "Không thể lưu",
+          description: validation.errors.map((e) => e.reason).join("\n"),
+          variant: "destructive",
+        })
+        setSavingLines(false)
+        return
+      }
+
       // Cập nhật từng line. Tính line_total = qty*price - discount.
       for (const l of editedLines) {
         const lineTotal = Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0))
@@ -638,8 +730,8 @@ export default function OrderDetailPage() {
               <CardTitle>Chi tiết sản phẩm</CardTitle>
               {fullEdit && order.status === "picking" && (
                 <p className="text-[11px] text-amber-700 mt-1">
-                  Đơn đang ở bước <strong>Xuất kho</strong> — Thủ kho có thể chỉnh
-                  SL / giá để khớp tồn thực tế trước khi xuất.
+                  Đơn đang ở bước <strong>Xuất kho</strong> — có thể thêm SP / tăng SL / sửa giá.
+                  Dòng có icon <Lock className="inline h-3 w-3 mb-0.5" /> đã được pick một phần — không thể giảm SL, đổi đơn vị, đổi sản phẩm hay xoá.
                 </p>
               )}
             </div>
@@ -688,12 +780,32 @@ export default function OrderDetailPage() {
                     const liveTotal = inEdit
                       ? Math.max(0, liveQty * livePrice - liveDiscount)
                       : line.line_total
+                    // T-03: dòng đã pick → khoá giảm SL + đổi SP. Chỉ tính lock
+                    // khi đơn đang ở stage 'picking'; trước đó user có toàn
+                    // quyền sửa.
+                    const pickedBase = pickedByLine[line.id] || 0
+                    const lineLocked =
+                      order.status === "picking" && isLineLocked(pickedBase)
+                    const lineFactor = Number(
+                      (line as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+                    )
+                    const minQtyForLine = lineLocked
+                      ? pickedBase / (lineFactor || 1)
+                      : 0
                     return (
                       <TableRow key={line.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-start gap-2">
                             <div className="min-w-0 flex-1">
-                              <div className={edited?.swap_product_id ? "line-through text-muted-foreground" : ""}>
+                              <div className={`flex items-center gap-1.5 ${edited?.swap_product_id ? "line-through text-muted-foreground" : ""}`}>
+                                {lineLocked && (
+                                  <span
+                                    title={`Đã pick ${pickedBase} ${line.product?.base_unit || ""} — không thể giảm hoặc đổi.`}
+                                    className="inline-flex h-4 w-4 items-center justify-center text-amber-600 shrink-0"
+                                  >
+                                    <Lock className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
                                 {line.product?.name || "-"}
                               </div>
                               {edited?.swap_product_id && (
@@ -732,6 +844,8 @@ export default function OrderDetailPage() {
                                       setSwapDialogFor(line.id)
                                       setSwapSearch("")
                                     }}
+                                    disabled={lineLocked}
+                                    title={lineLocked ? "Đã pick — không thể đổi SP." : undefined}
                                   >
                                     Đổi SP
                                   </Button>
@@ -745,13 +859,20 @@ export default function OrderDetailPage() {
                           {inEdit ? (
                             <Input
                               type="number"
-                              min={0}
+                              min={minQtyForLine}
                               step="any"
                               value={liveQty}
                               onChange={(e) =>
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
-                              className="ml-auto h-8 w-24 text-right tabular-nums"
+                              className={`ml-auto h-8 w-24 text-right tabular-nums ${
+                                lineLocked ? "border-amber-300" : ""
+                              }`}
+                              title={
+                                lineLocked
+                                  ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
+                                  : undefined
+                              }
                             />
                           ) : (
                             line.quantity
@@ -804,9 +925,24 @@ export default function OrderDetailPage() {
                   const liveTotal = inEdit
                     ? Math.max(0, liveQty * livePrice - liveDiscount)
                     : line.line_total
+                  // T-03: dòng đã pick → khoá giảm SL.
+                  const pickedBase = pickedByLine[line.id] || 0
+                  const lineLocked =
+                    order.status === "picking" && isLineLocked(pickedBase)
+                  const lineFactor = Number(
+                    (line as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+                  )
+                  const minQtyForLine = lineLocked
+                    ? pickedBase / (lineFactor || 1)
+                    : 0
                   return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
-                      <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
+                      <p className="font-semibold text-sm leading-tight flex items-center gap-1.5">
+                        {lineLocked && (
+                          <Lock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        )}
+                        {line.product?.name || "-"}
+                      </p>
                       {line.note && (
                         <p className="text-[11px] text-muted-foreground italic mt-1">
                           ✏ {line.note}
@@ -818,13 +954,18 @@ export default function OrderDetailPage() {
                           {inEdit ? (
                             <Input
                               type="number"
-                              min={0}
+                              min={minQtyForLine}
                               step="any"
                               value={liveQty}
                               onChange={(e) =>
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
-                              className="h-8 mt-0.5"
+                              className={`h-8 mt-0.5 ${lineLocked ? "border-amber-300" : ""}`}
+                              title={
+                                lineLocked
+                                  ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
+                                  : undefined
+                              }
                             />
                           ) : (
                             <p className="font-medium">{line.quantity}</p>

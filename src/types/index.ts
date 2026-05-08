@@ -221,6 +221,20 @@ export interface SalesOrder {
   order_date: string
   expected_delivery: string | null
   status: OrderStatus
+  /** T-03 / Pack3: granular workflow stage. Synced from `status` via DB
+   *  trigger; richer states (collecting/handover/delivery_failed) come
+   *  from Pack3 features T-07/T-08. */
+  current_workflow_stage?:
+    | "draft"
+    | "pending_approval"
+    | "approved"
+    | "picking"
+    | "delivering"
+    | "collecting"
+    | "handover"
+    | "closed"
+    | "failed"
+    | "delivery_failed"
   payment_terms: string | null
   subtotal: number
   discount: number

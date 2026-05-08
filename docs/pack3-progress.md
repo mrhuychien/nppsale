@@ -6,7 +6,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 ## Sprint 1 — P0 critical
 - [x] T-01 UOM conversion fix (mig 039, lib/inventory/uom.ts, order-form snapshot, stock-out + self-deliver consume in base UOM)
 - [x] T-02 FIFO costing infrastructure (mig 040 — fifo_layers + fifo_consumptions tables, fifo_consume() PL/pgSQL helper, JS lib/inventory/fifo.ts)
-- [ ] T-03 Edit-while-picking + workflow stage
+- [~] T-03 Edit-while-picking + workflow stage (mig 044 — sales_orders.current_workflow_stage + status sync trigger; v_sales_order_line_picked view; enforce_picked_line_lock() server-side trigger; lib/orders/edit-validator.ts pure validator; orders/[id]/page.tsx wires validator into saveLineEdits + 🔒 lock icon + qty min on picked rows + disabled "Đổi SP" on picked rows; banner explains rules in picking stage). Add-line UI ("+ Thêm SP") in detail-page edit mode deferred — validator already supports new lines so wiring is mechanical (Q5).
 - [x] T-04 Bỏ module Vận hành (sidebar — Giao hàng + Trả hàng moved into "Kho vận"; no /operations/* routes existed so no redirect needed; Q2)
 
 ## Sprint 2 — Bàn giao + state persistence

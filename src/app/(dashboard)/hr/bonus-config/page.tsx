@@ -19,7 +19,6 @@ import { formatCurrency } from "@/lib/utils"
 import type {
   HrMonthlyBonus,
   KpiMetricConfig,
-  KpiMetricKey,
   OrderMilestoneTier,
   PerUnitBonus,
 } from "@/types"

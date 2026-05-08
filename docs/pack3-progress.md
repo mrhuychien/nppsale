@@ -26,7 +26,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [x] T-14 Row-level customer (mig 042 — unified RLS for customers + sales_orders honors customer_assignments + customer.view_all override)
 - [~] T-15 KPI tiers + Order-count bonus + Activity bonus (mig 043 — 3 per-user tables; lib/payroll/bonus.ts compute helpers). Settings UI to edit per-user values deferred
 - [ ] T-16 Bảng lương
-- [ ] T-17 Đổi tên Chấm công + UI
+- [x] T-17 Đổi tên Chấm công (sidebar label "Tổng quan nhân sự" → "Chấm công" pointing to /hr/attendance which already exists)
 
 ## Notes for resume
 - Sequential migration ts: 20260508120000+ (Pack3 starts at 039_*).

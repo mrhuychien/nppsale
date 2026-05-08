@@ -173,6 +173,44 @@ export default function ReportsPage() {
     .reduce((s, r) => s + (r.amount - r.paid), 0)
   const overdueCount = data.receivables.filter((r) => r.status === "overdue").length
 
+  // Period-scoped finance MoM: receivables created/paid in current vs
+  // prev period. `created_at` on receivables is reliable; payments live
+  // in a separate table but here we approximate paid-this-period via
+  // `paid` field on rows whose `created_at` is in the window.
+  const inWindow = (s: string | null | undefined, lo: Date, hi: Date) => {
+    if (!s) return false
+    const t = new Date(s).getTime()
+    return t >= lo.getTime() && t < hi.getTime()
+  }
+  const recvCurrent = data.receivables.filter((r) =>
+    inWindow(r.created_at, periodWindows.start, periodWindows.end)
+  )
+  const recvPrev = data.receivables.filter((r) =>
+    inWindow(r.created_at, periodWindows.prevStart, periodWindows.prevEnd)
+  )
+  const currOpenAmount = recvCurrent
+    .filter((r) => r.status === "open" || r.status === "overdue" || r.status === "partial")
+    .reduce((s, r) => s + (r.amount - r.paid), 0)
+  const prevOpenAmount = recvPrev
+    .filter((r) => r.status === "open" || r.status === "overdue" || r.status === "partial")
+    .reduce((s, r) => s + (r.amount - r.paid), 0)
+  const currPaid = recvCurrent.reduce((s, r) => s + r.paid, 0)
+  const prevPaid = recvPrev.reduce((s, r) => s + r.paid, 0)
+  const momOpenRecv = momPct(currOpenAmount, prevOpenAmount)
+  const momPaid = momPct(currPaid, prevPaid)
+  const momRecvCount = momPct(recvCurrent.length, recvPrev.length)
+
+  // HR tab MoM: count of new active users created in window
+  const userInWindow = (u: { created_at: string }, lo: Date, hi: Date) =>
+    inWindow(u.created_at, lo, hi)
+  const newUsersCurr = data.users.filter((u) =>
+    userInWindow(u, periodWindows.start, periodWindows.end)
+  ).length
+  const newUsersPrev = data.users.filter((u) =>
+    userInWindow(u, periodWindows.prevStart, periodWindows.prevEnd)
+  ).length
+  const momNewUsers = momPct(newUsersCurr, newUsersPrev)
+
   const usersByRole = data.users.reduce<Record<string, number>>((acc, u) => {
     acc[u.role] = (acc[u.role] || 0) + 1
     return acc
@@ -372,6 +410,8 @@ export default function ReportsPage() {
               icon={Wallet}
               accent="danger"
               hint={`${overdueCount} quá hạn`}
+              momPct={momOpenRecv}
+              momHigherIsBetter={false}
             />
             <KpiCard
               label="Số phiếu công nợ"
@@ -379,6 +419,7 @@ export default function ReportsPage() {
               icon={Receipt}
               accent="primary"
               hint="Tổng phiếu"
+              momPct={momRecvCount}
             />
             <KpiCard
               label="Đã thanh toán"
@@ -387,6 +428,7 @@ export default function ReportsPage() {
               )}
               icon={BarChart3}
               accent="success"
+              momPct={momPaid}
               hint="Tổng đã thu"
             />
             <KpiCard
@@ -474,7 +516,8 @@ export default function ReportsPage() {
               value={String(data.users.length)}
               icon={Users}
               accent="primary"
-              hint={`${data.users.filter((u) => u.is_active).length} đang hoạt động`}
+              hint={`${data.users.filter((u) => u.is_active).length} đang hoạt động • ${newUsersCurr} mới trong kỳ`}
+              momPct={momNewUsers}
             />
             <KpiCard
               label="Nhân viên Sales"

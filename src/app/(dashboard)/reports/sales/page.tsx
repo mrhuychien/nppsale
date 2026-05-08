@@ -85,13 +85,16 @@ export default function SalesReportPage() {
   const [users, setUsers] = useState<UserRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [productSupplierMap, setProductSupplierMap] = useState<Map<string, string | null>>(new Map())
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
     const fromIso = `${range.from}T00:00:00Z`
     const toIso = `${range.to}T23:59:59Z`
-    const [orderList, returnsRows, customersRes, usersRes, stockEntriesRes] = await Promise.all([
+    const [orderList, returnsRows, customersRes, usersRes, stockEntriesRes, suppliersRes, productsRes] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
       fetchReturnsRows(supabase, user.org_id, range),
       supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
@@ -104,6 +107,8 @@ export default function SalesReportPage() {
         .eq("type", "export")
         .gte("posted_at", fromIso)
         .lte("posted_at", toIso),
+      supabase.from("suppliers").select("id, name").eq("org_id", user.org_id).order("name"),
+      supabase.from("products").select("id, primary_supplier_id").eq("org_id", user.org_id),
     ])
     const orderIds = orderList.map((o) => o.id)
     const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
@@ -123,12 +128,36 @@ export default function SalesReportPage() {
     setUsers((usersRes.data as UserRow[]) || [])
     setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
     setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
+    setSuppliers((suppliersRes.data as { id: string; name: string }[]) || [])
+    const psMap = new Map<string, string | null>()
+    for (const p of (productsRes.data as { id: string; primary_supplier_id: string | null }[]) || []) {
+      psMap.set(p.id, p.primary_supplier_id)
+    }
+    setProductSupplierMap(psMap)
     setLoading(false)
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
     load()
   }, [load])
+
+  // §3.2 — apply NCC filter. When supplierFilter !== "all", keep only
+  // lines whose product's primary_supplier_id matches; an order keeps
+  // appearing if it still has ≥ 1 matching line. Returns are filtered
+  // similarly via their lines (return_lines product_id) — but since we
+  // only have summary `returns` here without per-line products, we
+  // skip return filter when NCC is selected (small acceptable
+  // limitation; most NCC-focused use cases care about sales side).
+  const filteredLines = useMemo(() => {
+    if (supplierFilter === "all") return lines
+    return lines.filter((l) => productSupplierMap.get(l.product_id) === supplierFilter)
+  }, [lines, supplierFilter, productSupplierMap])
+
+  const filteredOrders = useMemo<SalesOrderRow[]>(() => {
+    if (supplierFilter === "all") return orders
+    const orderIdsWithLines = new Set(filteredLines.map((l) => l.order_id))
+    return orders.filter((o) => orderIdsWithLines.has(o.id))
+  }, [orders, supplierFilter, filteredLines])
 
   const customerMap = useMemo(() => {
     const m = new Map<string, CustomerRow>()
@@ -151,7 +180,7 @@ export default function SalesReportPage() {
   // -------------------- Thời gian --------------------
   const timeBuckets: DayBucket[] = useMemo(() => {
     const map = new Map<string, DayBucket>()
-    for (const o of orders) {
+    for (const o of filteredOrders) {
       const d = String(o.order_date).slice(0, 10)
       const dd = d.split("-")
       const label = `${dd[2]}/${dd[1]}/${dd[0]}`
@@ -184,13 +213,13 @@ export default function SalesReportPage() {
     return Array.from(map.values())
       .map((b) => ({ ...b, netRevenue: b.revenue - b.returnValue }))
       .sort((a, b) => a.date.localeCompare(b.date))
-  }, [orders, returns, customerMap, search])
+  }, [filteredOrders, returns, customerMap, search])
 
   // -------------------- Lợi nhuận --------------------
   const profitRows: ProfitByDayRow[] = useMemo(() => {
     // revenue per day from delivered orders
     const map = new Map<string, ProfitByDayRow>()
-    for (const o of orders) {
+    for (const o of filteredOrders) {
       const d = String(o.order_date).slice(0, 10)
       const dd = d.split("-")
       const label = `${dd[2]}/${dd[1]}/${dd[0]}`
@@ -215,11 +244,11 @@ export default function SalesReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => a.date.localeCompare(b.date))
-  }, [orders, stockLines, stockEntryMap])
+  }, [filteredOrders, stockLines, stockEntryMap])
 
   // -------------------- Giảm giá HĐ --------------------
   const discountRows: DiscountRow[] = useMemo(() => {
-    return orders
+    return filteredOrders
       .filter((o) => Number(o.discount || 0) > 0)
       .filter((o) => {
         if (!search) return true
@@ -243,7 +272,7 @@ export default function SalesReportPage() {
         }
       })
       .sort((a, b) => b.discount - a.discount)
-  }, [orders, customerMap, search])
+  }, [filteredOrders, customerMap, search])
 
   // -------------------- Trả hàng --------------------
   const returnsRows: ReturnSummaryRow[] = useMemo(() => {
@@ -268,7 +297,7 @@ export default function SalesReportPage() {
   // -------------------- Nhân viên --------------------
   const employeeRows: EmployeeRow[] = useMemo(() => {
     const m = new Map<string, EmployeeRow>()
-    for (const o of orders) {
+    for (const o of filteredOrders) {
       const u = userMap.get(o.sales_user_id)
       const e = m.get(o.sales_user_id) || {
         id: o.sales_user_id,
@@ -286,7 +315,7 @@ export default function SalesReportPage() {
     }
     // attribute COGS by line aggregated to order
     const lineByOrder = new Map<string, SalesOrderLineRow[]>()
-    for (const l of lines) {
+    for (const l of filteredLines) {
       const a = lineByOrder.get(l.order_id) || []
       a.push(l)
       lineByOrder.set(l.order_id, a)
@@ -304,7 +333,7 @@ export default function SalesReportPage() {
     for (const [pid, v] of Array.from(productCogs.entries())) {
       avgCost.set(pid, v.qty > 0 ? v.value / v.qty : 0)
     }
-    for (const o of orders) {
+    for (const o of filteredOrders) {
       const e = m.get(o.sales_user_id)
       if (!e) continue
       const ls = lineByOrder.get(o.id) || []
@@ -325,7 +354,7 @@ export default function SalesReportPage() {
         return r.name.toLowerCase().includes(search.toLowerCase())
       })
       .sort((a, b) => b.revenue - a.revenue)
-  }, [orders, lines, stockLines, stockEntryMap, userMap, search])
+  }, [filteredOrders, filteredLines, stockLines, stockEntryMap, userMap, search])
 
   const handleExport = () => {
     if (variant === "time") {
@@ -369,15 +398,31 @@ export default function SalesReportPage() {
       }}
       onExportCsv={handleExport}
       filters={
-        <FilterField label="Tìm kiếm">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Mã HĐ, khách hàng, NV…"
-            className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-          />
-        </FilterField>
+        <>
+          <FilterField label="Tìm kiếm">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Mã HĐ, khách hàng, NV…"
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            />
+          </FilterField>
+          <FilterField label="Nhà cung cấp">
+            <select
+              value={supplierFilter}
+              onChange={(e) => setSupplierFilter(e.target.value)}
+              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
+            >
+              <option value="all">Tất cả NCC</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        </>
       }
     >
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">

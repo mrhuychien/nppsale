@@ -161,6 +161,7 @@ export default function OrderDetailPage() {
       quantity: number
       unit_price: number
       line_total: number
+      is_exchange?: boolean | null
       product?: { name?: string; sku?: string } | null
     }>
   }>>([])
@@ -249,7 +250,7 @@ export default function OrderDetailPage() {
       supabase
         .from("returns")
         .select(
-          "id, status, reason, credit_note_amount, notes, created_at, requester:users!returns_requested_by_fkey(full_name), lines:return_lines(id, product_id, unit_name, quantity, unit_price, line_total, product:products(name, sku))"
+          "id, status, reason, credit_note_amount, notes, created_at, requester:users!returns_requested_by_fkey(full_name), lines:return_lines(id, product_id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name, sku))"
         )
         .eq("order_id", id)
         .order("created_at", { ascending: false }),
@@ -1695,6 +1696,17 @@ export default function OrderDetailPage() {
                   completed: "Đã hoàn tất",
                   rejected: "Từ chối",
                 }[r.status] || r.status
+              // Bugfix: phân tách rõ refund (trừ công nợ) vs exchange (đổi).
+              const refundLines = (r.lines || []).filter((l) => !l.is_exchange)
+              const exchangeLines = (r.lines || []).filter((l) => l.is_exchange)
+              const refundTotal = refundLines.reduce(
+                (s, l) => s + Number(l.line_total || 0),
+                0
+              )
+              const exchangeTotal = exchangeLines.reduce(
+                (s, l) => s + Number(l.line_total || 0),
+                0
+              )
               return (
                 <div key={r.id} className="rounded-xl border bg-amber-50/30 p-3">
                   <div className="flex items-start justify-between gap-3 mb-2">
@@ -1717,6 +1729,7 @@ export default function OrderDetailPage() {
                       <p className="text-lg font-bold text-amber-700">
                         −{formatCurrency(Number(r.credit_note_amount || 0))}
                       </p>
+                      <p className="text-[10px] text-muted-foreground">trừ công nợ</p>
                       <Link
                         href={`/returns/${r.id}`}
                         className="text-[11px] text-primary hover:underline"
@@ -1725,19 +1738,52 @@ export default function OrderDetailPage() {
                       </Link>
                     </div>
                   </div>
+
+                  {/* Per-kind summary chips so the user thấy ngay 2 nhóm. */}
+                  {(refundLines.length > 0 || exchangeLines.length > 0) && (
+                    <div className="flex flex-wrap gap-2 text-[11px] mb-2">
+                      {refundLines.length > 0 && (
+                        <span className="rounded-md bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5">
+                          Trả trừ công nợ: {refundLines.length} dòng •{" "}
+                          <strong>{formatCurrency(refundTotal)}</strong>
+                        </span>
+                      )}
+                      {exchangeLines.length > 0 && (
+                        <span className="rounded-md bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5">
+                          Đổi (không trừ công nợ): {exchangeLines.length} dòng •{" "}
+                          <strong>{formatCurrency(exchangeTotal)}</strong>
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {r.lines && r.lines.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-amber-200/50">
                       <div className="space-y-1 text-xs">
                         {r.lines.map((l) => (
                           <div key={l.id} className="flex items-center justify-between gap-2">
-                            <span className="truncate">
-                              <span className="font-mono text-[10px] text-muted-foreground mr-1">
+                            <span className="truncate flex items-center gap-1.5">
+                              {l.is_exchange ? (
+                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300 shrink-0">
+                                  ĐỔI
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                  TRẢ
+                                </span>
+                              )}
+                              <span className="font-mono text-[10px] text-muted-foreground">
                                 {l.product?.sku}
                               </span>
-                              {l.product?.name}
+                              <span className="truncate">{l.product?.name}</span>
                             </span>
                             <span className="font-semibold whitespace-nowrap">
-                              {l.quantity} {l.unit_name} • {formatCurrency(Number(l.line_total || 0))}
+                              {l.quantity} {l.unit_name} •{" "}
+                              {l.is_exchange ? (
+                                <span className="text-blue-700">không trừ tiền</span>
+                              ) : (
+                                formatCurrency(Number(l.line_total || 0))
+                              )}
                             </span>
                           </div>
                         ))}

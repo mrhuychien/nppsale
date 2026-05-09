@@ -201,6 +201,7 @@ export default function ReturnDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Loại</TableHead>
                     <TableHead>Sản phẩm</TableHead>
                     <TableHead>ĐVT</TableHead>
                     <TableHead className="text-right">SL</TableHead>
@@ -209,29 +210,81 @@ export default function ReturnDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.map((line) => (
-                    <TableRow key={line.id}>
+                  {lines.map((line) => {
+                    const isExchange = !!(line as { is_exchange?: boolean | null }).is_exchange
+                    return (
+                    <TableRow key={line.id} className={isExchange ? "bg-blue-50/40" : undefined}>
+                      <TableCell>
+                        {isExchange ? (
+                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                            ĐỔI
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            TRẢ
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
                       <TableCell>{line.unit_name}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {isExchange ? (
+                          <span className="text-blue-700 italic">không trừ tiền</span>
+                        ) : (
+                          formatCurrency(line.line_total)
+                        )}
+                      </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                   {lines.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                         Chưa có sản phẩm trả
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
-              {ret.credit_note_amount != null && (
-                <div className="mt-4 text-right border-t border-border/40 pt-4">
-                  <p className="text-lg font-black">Credit Note: {formatCurrency(ret.credit_note_amount)}</p>
-                </div>
-              )}
+              {(() => {
+                // Bugfix: split refund vs exchange tổng cho người dùng
+                // thấy ngay phần nào trừ công nợ, phần nào không.
+                const refundT = lines
+                  .filter((l) => !(l as { is_exchange?: boolean | null }).is_exchange)
+                  .reduce((s, l) => s + Number(l.line_total || 0), 0)
+                const exchangeT = lines
+                  .filter((l) => (l as { is_exchange?: boolean | null }).is_exchange)
+                  .reduce((s, l) => s + Number(l.line_total || 0), 0)
+                if (lines.length === 0 && ret.credit_note_amount == null) return null
+                return (
+                  <div className="mt-4 text-right border-t border-border/40 pt-4 space-y-1">
+                    {refundT > 0 && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Trả trừ công nợ:</span>{" "}
+                        <span className="font-semibold">{formatCurrency(refundT)}</span>
+                      </p>
+                    )}
+                    {exchangeT > 0 && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Đổi (không trừ công nợ):</span>{" "}
+                        <span className="font-semibold text-blue-700">
+                          {formatCurrency(exchangeT)}
+                        </span>
+                      </p>
+                    )}
+                    <p className="text-lg font-black">
+                      Credit Note: {formatCurrency(ret.credit_note_amount ?? refundT)}
+                    </p>
+                    {refundT > 0 && exchangeT > 0 && (
+                      <p className="text-[11px] italic text-muted-foreground">
+                        * Chỉ phần TRẢ trừ công nợ; phần ĐỔI thu về kho mà không động đến tiền.
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
 

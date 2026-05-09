@@ -29,6 +29,19 @@ export default function StockEntryDetailPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const [entry, setEntry] = useState<StockEntry | null>(null)
   const [lines, setLines] = useState<StockEntryLine[]>([])
+  // T-12: hàng đem đi đổi attached to this entry. Rendered in its own
+  // table on the print slip.
+  const [swapItems, setSwapItems] = useState<
+    Array<{
+      id: string
+      product_id: string
+      qty: number
+      unit_name: string
+      qty_in_base_uom: number
+      reason: string | null
+      product?: { name: string; sku: string } | null
+    }>
+  >([])
   const [refOrders, setRefOrders] = useState<Array<{
     id: string
     order_code: string
@@ -85,7 +98,7 @@ export default function StockEntryDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [entryRes, linesRes] = await Promise.all([
+    const [entryRes, linesRes, swapRes] = await Promise.all([
       supabase
         .from("stock_entries")
         .select("*, creator:users!stock_entries_created_by_fkey(*)")
@@ -95,7 +108,17 @@ export default function StockEntryDetailPage() {
         .from("stock_entry_lines")
         .select("*, product:products(*), batch:batches(*)")
         .eq("entry_id", id),
+      // T-12 — swap items linked to this stock_entry.
+      supabase
+        .from("swap_stock_movements")
+        .select(
+          "id, product_id, qty, unit_name, qty_in_base_uom, reason, product:products(name, sku)"
+        )
+        .eq("stock_entry_id", id),
     ])
+    setSwapItems(
+      ((swapRes.data as unknown) as typeof swapItems) || []
+    )
     let entryData: StockEntry | null = null
     if (entryRes.data) {
       const e = entryRes.data as StockEntry
@@ -768,6 +791,8 @@ export default function StockEntryDetailPage() {
             </div>
           </div>
 
+          {/* Section A: hàng theo đơn (filter swap rows by note prefix). */}
+          <h2 className="text-sm font-bold mb-2">HÀNG THEO ĐƠN</h2>
           <table className="w-full text-sm border-collapse mb-8">
             <thead>
               <tr className="border-b-2 border-gray-300">
@@ -781,26 +806,67 @@ export default function StockEntryDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, index) => (
-                <tr key={line.id} className="border-b border-gray-200">
-                  <td className="py-2">{index + 1}</td>
-                  <td className="py-2 font-medium">{line.product?.name || "-"}</td>
-                  <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
-                  <td className="py-2 text-center">{line.unit_name}</td>
-                  <td className="py-2 text-right font-bold">{line.quantity}</td>
-                  <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
-                  <td className="py-2 text-xs">{line.notes || "-"}</td>
-                </tr>
-              ))}
+              {lines
+                .filter((l) => !(l.notes || "").startsWith("[Swap]"))
+                .map((line, index) => (
+                  <tr key={line.id} className="border-b border-gray-200">
+                    <td className="py-2">{index + 1}</td>
+                    <td className="py-2 font-medium">{line.product?.name || "-"}</td>
+                    <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
+                    <td className="py-2 text-center">{line.unit_name}</td>
+                    <td className="py-2 text-right font-bold">{line.quantity}</td>
+                    <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
+                    <td className="py-2 text-xs">{line.notes || "-"}</td>
+                  </tr>
+                ))}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-300">
                 <td colSpan={4} className="py-2 text-right font-bold">Tổng cộng:</td>
-                <td className="py-2 text-right font-black">{totalQty}</td>
+                <td className="py-2 text-right font-black">
+                  {lines
+                    .filter((l) => !(l.notes || "").startsWith("[Swap]"))
+                    .reduce((s, l) => s + Number(l.quantity || 0), 0)}
+                </td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>
+
+          {/* T-12 Section B: hàng đem đi đổi — only when there are swap items. */}
+          {swapItems.length > 0 && (
+            <div className="border-2 border-dashed border-gray-400 p-3 mb-8">
+              <h2 className="text-sm font-bold mb-2">HÀNG ĐEM ĐI ĐỔI (DỰ PHÒNG)</h2>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="py-1 text-left font-bold w-10">STT</th>
+                    <th className="py-1 text-left font-bold">Sản phẩm</th>
+                    <th className="py-1 text-left font-bold w-24">SKU</th>
+                    <th className="py-1 text-center font-bold w-14">ĐVT</th>
+                    <th className="py-1 text-right font-bold w-16">SL</th>
+                    <th className="py-1 text-left font-bold">Lý do</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {swapItems.map((s, i) => (
+                    <tr key={s.id} className="border-b border-gray-200">
+                      <td className="py-1">{i + 1}</td>
+                      <td className="py-1 font-medium">{s.product?.name || "-"}</td>
+                      <td className="py-1 font-mono text-xs">{s.product?.sku || "-"}</td>
+                      <td className="py-1 text-center">{s.unit_name}</td>
+                      <td className="py-1 text-right font-bold">{s.qty}</td>
+                      <td className="py-1 text-xs">{s.reason || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs italic text-gray-500 mt-2">
+                Hàng cầm theo dự phòng đổi cho khách. Phần chưa dùng sẽ được nhập lại kho ở
+                bước Bàn giao lại.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-8 text-center text-sm mt-16">
             <div>

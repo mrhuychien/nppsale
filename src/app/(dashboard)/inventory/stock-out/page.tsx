@@ -42,6 +42,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type {
   Batch,
   Customer,
@@ -120,6 +121,32 @@ export default function StockOutPage() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [barcodeOpen, setBarcodeOpen] = useState(false)
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
+  // T-12: hàng đem đi đổi (dự phòng) — driver carries spare stock for
+  // in-the-field exchanges. These rows ride along on the same export
+  // stock_entry and surface on the print slip in their own section.
+  const [swapItems, setSwapItems] = useState<
+    Array<{
+      key: string
+      productId: string
+      productName: string
+      sku: string
+      unit: string
+      conversionFactor: number
+      qty: string
+      reason: string
+    }>
+  >([])
+  const [swapPickerOpen, setSwapPickerOpen] = useState(false)
+  const [swapSearch, setSwapSearch] = useState("")
+  const [productCatalog, setProductCatalog] = useState<
+    Array<{
+      id: string
+      sku: string
+      name: string
+      base_unit: string
+      units: Array<{ unit_name: string; conversion: number }>
+    }>
+  >([])
 
   const canUpdate =
     !!user &&
@@ -316,6 +343,66 @@ export default function StockOutPage() {
 
   const clearSelection = () => setSelectedIds(new Set())
 
+  // T-12: lazy load full catalog for the swap picker.
+  const openSwapPicker = async () => {
+    setSwapPickerOpen(true)
+    if (productCatalog.length === 0) {
+      const { data } = await supabase
+        .from("products")
+        .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)")
+        .eq("status", "active")
+        .order("name")
+      setProductCatalog(
+        (data as Array<{
+          id: string
+          sku: string
+          name: string
+          base_unit: string
+          units: Array<{ unit_name: string; conversion: number }>
+        }>) || []
+      )
+    }
+  }
+
+  const addSwapItem = (p: {
+    id: string
+    sku: string
+    name: string
+    base_unit: string
+    units: Array<{ unit_name: string; conversion: number }>
+  }) => {
+    const baseUnit = p.units[0]?.unit_name || p.base_unit
+    const factor = p.units[0]?.conversion ?? 1
+    setSwapItems((prev) => [
+      ...prev,
+      {
+        key: `${p.id}-${Date.now()}`,
+        productId: p.id,
+        productName: p.name,
+        sku: p.sku,
+        unit: baseUnit,
+        conversionFactor: factor,
+        qty: "1",
+        reason: "Hàng đem đi đổi dự phòng",
+      },
+    ])
+    setSwapPickerOpen(false)
+    setSwapSearch("")
+  }
+
+  const updateSwapItem = (
+    key: string,
+    patch: Partial<(typeof swapItems)[number]>
+  ) => {
+    setSwapItems((prev) =>
+      prev.map((it) => (it.key === key ? { ...it, ...patch } : it))
+    )
+  }
+
+  const removeSwapItem = (key: string) => {
+    setSwapItems((prev) => prev.filter((it) => it.key !== key))
+  }
+
   const resetFilters = () => {
     setDateFrom("")
     setDateTo("")
@@ -389,6 +476,67 @@ export default function StockOutPage() {
           .from("stock_entry_lines")
           .insert(entryLines)
         if (linesErr) throw linesErr
+      }
+
+      // T-12: hàng đem đi đổi → 1 stock_entry_line per swap item +
+      // 1 swap_stock_movements row pointing back to that line so T-07
+      // handover can see what's still unused.
+      if (swapItems.length > 0) {
+        const swapEntryLines = swapItems
+          .filter((s) => Number(s.qty) > 0)
+          .map((s) => {
+            const qtyNum = Number(s.qty) || 0
+            return {
+              entry_id: stockEntry.id,
+              product_id: s.productId,
+              unit_name: s.unit,
+              quantity: qtyNum,
+              qty_in_transaction_uom: qtyNum,
+              qty_in_base_uom: qtyNum * (s.conversionFactor || 1),
+              transaction_uom: s.unit,
+              conversion_factor_snapshot: s.conversionFactor,
+              notes: `[Swap] ${s.reason || "Hàng đem đi đổi dự phòng"}`,
+            }
+          })
+        if (swapEntryLines.length > 0) {
+          const { data: insertedSwapLines, error: swapLinesErr } = await supabase
+            .from("stock_entry_lines")
+            .insert(swapEntryLines)
+            .select("id, product_id, unit_name, qty_in_base_uom")
+          if (swapLinesErr) throw swapLinesErr
+
+          // Match inserted lines back to their drafts by (product, unit, base qty).
+          const swapMovements = swapItems
+            .filter((s) => Number(s.qty) > 0)
+            .map((s) => {
+              const qtyNum = Number(s.qty) || 0
+              const baseQty = qtyNum * (s.conversionFactor || 1)
+              const matched = (insertedSwapLines || []).find(
+                (l) =>
+                  l.product_id === s.productId &&
+                  l.unit_name === s.unit &&
+                  Number(l.qty_in_base_uom) === baseQty
+              )
+              return {
+                org_id: user.org_id,
+                stock_entry_id: stockEntry.id,
+                product_id: s.productId,
+                qty: qtyNum,
+                unit_name: s.unit,
+                conversion_factor: s.conversionFactor,
+                qty_in_base_uom: baseQty,
+                reason: s.reason || null,
+                out_line_id: matched?.id ?? null,
+                created_by: user.id,
+              }
+            })
+          if (swapMovements.length > 0) {
+            const { error: swapErr } = await supabase
+              .from("swap_stock_movements")
+              .insert(swapMovements)
+            if (swapErr) throw swapErr
+          }
+        }
       }
 
       // 3) Update orders to 'picking'
@@ -789,6 +937,71 @@ export default function StockOutPage() {
               )}
             </div>
 
+            {/* T-12: hàng đem đi đổi (dự phòng) */}
+            <div className="rounded-xl bg-white/5 border border-dashed border-amber-300/40 p-3 mb-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wider text-amber-200 font-semibold">
+                  Hàng đem đi đổi (dự phòng)
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={openSwapPicker}
+                >
+                  + Thêm SP
+                </Button>
+              </div>
+              {swapItems.length === 0 ? (
+                <p className="text-[11px] text-gray-400">
+                  Tuỳ chọn — thêm SP nếu lái xe muốn cầm theo để đổi cho khách tại nhà.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {swapItems.map((s) => (
+                    <div
+                      key={s.key}
+                      className="flex items-center gap-2 text-xs bg-black/20 rounded p-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{s.productName}</p>
+                        <p className="font-mono text-[10px] text-gray-400">{s.sku}</p>
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={s.qty}
+                        onChange={(e) =>
+                          updateSwapItem(s.key, { qty: e.target.value })
+                        }
+                        className="h-7 w-16 rounded bg-white/10 px-2 text-right tabular-nums text-white"
+                      />
+                      <span className="text-[10px] text-gray-400 w-8">{s.unit}</span>
+                      <Input
+                        value={s.reason}
+                        onChange={(e) =>
+                          updateSwapItem(s.key, { reason: e.target.value })
+                        }
+                        placeholder="Lý do"
+                        className="h-7 text-[11px] bg-white/10 border-0 text-white placeholder:text-gray-500"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-red-300 hover:text-red-100"
+                        onClick={() => removeSwapItem(s.key)}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="rounded-xl bg-white/5 border border-white/10 p-3 mb-3">
               <p className="text-[11px] text-gray-300">
                 Bước tiếp theo: sau khi bấm <span className="font-bold">Xuất kho</span>, hệ thống sẽ
@@ -843,6 +1056,58 @@ export default function StockOutPage() {
       </div>
 
       <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
+
+      {/* T-12: swap product picker */}
+      <Dialog open={swapPickerOpen} onOpenChange={setSwapPickerOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Chọn SP đem đi đổi (dự phòng)</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={swapSearch}
+            onChange={(e) => setSwapSearch(e.target.value)}
+            placeholder="Tìm theo tên hoặc SKU…"
+          />
+          <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
+            {(() => {
+              const q = swapSearch.trim().toLowerCase()
+              const list = productCatalog.filter(
+                (p) =>
+                  !q ||
+                  p.name.toLowerCase().includes(q) ||
+                  p.sku.toLowerCase().includes(q)
+              )
+              if (list.length === 0) {
+                return (
+                  <p className="text-xs text-muted-foreground text-center py-6">
+                    {productCatalog.length === 0
+                      ? "Đang tải danh mục..."
+                      : "Không tìm thấy sản phẩm"}
+                  </p>
+                )
+              }
+              return list.slice(0, 30).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-muted/40 transition-colors"
+                  onClick={() => addSwapItem(p)}
+                >
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="text-[11px] font-mono text-muted-foreground">
+                    {p.sku} • {p.base_unit}
+                  </div>
+                </button>
+              ))
+            })()}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            SP chọn ở đây sẽ ghi vào phiếu xuất kèm với hàng theo đơn. Khi lái xe trả về,
+            phần chưa dùng sẽ hiện ở trang Bàn giao lại để nhập lại kho.
+          </p>
+        </DialogContent>
+      </Dialog>
 
       {/* Bottom system log */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground font-mono border-t pt-3">

@@ -11,7 +11,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 
 ## Sprint 2 — Bàn giao + state persistence
 - [x] T-05 Workflow state persistence + widget "Việc đang dở" (mig 045 — workflow_sessions table + RLS + auto-bump trigger; lib/workflow/sessions.ts client helpers; hooks/use-workflow-session.ts with debounced draft + localStorage mirror; components/dashboard/pending-work-widget.tsx; mounted on /dashboard. Hooked into /inventory/stock-out/collect/[entryId] and /deliveries/[id]/settle as canonical "đang dở" pages — additional pages can opt in by calling `useWorkflowSession`)
-- [ ] T-06 Hard-lock concurrency
+- [x] T-06 Hard-lock concurrency (mig 046 — entity_locks table with SECURITY DEFINER RPCs acquire_/heartbeat_/release_entity_lock; stale locks reaped lazily on every acquire/heartbeat at 10 min threshold (no pg_cron dependency); lib/locking/entity-lock.ts + hooks/use-entity-lock.ts state machine: idle/acquiring/mine/other/released with 60s heartbeat + Realtime subscription on entity_locks. Wired into orders/[id] linesEditMode: acquire on Sửa SL → release on Hủy/Lưu, banner shows holder name when state='other', inputs disabled, save guard rejects non-mine.)
 - [ ] T-07 Driver handover (Bàn giao lại)
 - [~] T-08 Phiếu thu lái xe TT200 (component PaymentReceiptTT200 + numberToVietnameseWords helper). Wiring into /deliveries/[id]/settle "In phiếu thu" button deferred — caller can render the component anywhere.
 

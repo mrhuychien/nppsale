@@ -30,6 +30,7 @@ import {
   type OrderLineChange,
   type WorkflowStage,
 } from "@/lib/orders/edit-validator"
+import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
@@ -186,6 +187,15 @@ export default function OrderDetailPage() {
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+
+  // T-06 — pessimistic edit lock. Activates only while the user is in
+  // `linesEditMode`; another user opening the order sees the holder banner
+  // and a readonly form.
+  const lock = useEntityLock({
+    entityType: "sales_order",
+    entityId: id,
+    enabled: linesEditMode,
+  })
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -497,6 +507,8 @@ export default function OrderDetailPage() {
     setLinesEditMode(false)
     setEditedLines([])
     setSwapDialogFor(null)
+    // T-06: release lock (best-effort).
+    lock.release().catch(() => {})
   }
 
   const applySwap = (
@@ -553,6 +565,17 @@ export default function OrderDetailPage() {
 
   const saveLineEdits = async () => {
     if (!order) return
+    // T-06 — must hold the lock to mutate.
+    if (lock.state !== "mine") {
+      toast({
+        title: "Đơn đang được người khác sửa",
+        description: lock.holder?.holderName
+          ? `${lock.holder.holderName} đang khoá form. Vui lòng thử lại sau.`
+          : "Vui lòng thử lại sau.",
+        variant: "destructive",
+      })
+      return
+    }
     setSavingLines(true)
     try {
       // T-03 — validate the edit batch against picking-stage rules (D10).
@@ -636,6 +659,8 @@ export default function OrderDetailPage() {
       })
       setLinesEditMode(false)
       setEditedLines([])
+      // T-06: release lock after successful save.
+      await lock.release().catch(() => {})
       fetchData()
     } catch (err) {
       toast({
@@ -734,6 +759,15 @@ export default function OrderDetailPage() {
                   Dòng có icon <Lock className="inline h-3 w-3 mb-0.5" /> đã được pick một phần — không thể giảm SL, đổi đơn vị, đổi sản phẩm hay xoá.
                 </p>
               )}
+              {linesEditMode && lock.state === "other" && lock.holder && (
+                <p className="text-[11px] text-red-700 mt-1 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  <span>
+                    <strong>{lock.holder.holderName || "Người dùng khác"}</strong>{" "}
+                    đang sửa đơn này từ {formatDate(lock.holder.lockedAt)}. Form đang khoá.
+                  </span>
+                </p>
+              )}
             </div>
             {fullEdit && lines.length > 0 ? (
               linesEditMode ? (
@@ -746,7 +780,16 @@ export default function OrderDetailPage() {
                   >
                     Hủy
                   </Button>
-                  <Button size="sm" onClick={saveLineEdits} disabled={savingLines}>
+                  <Button
+                    size="sm"
+                    onClick={saveLineEdits}
+                    disabled={savingLines || lock.state !== "mine"}
+                    title={
+                      lock.state !== "mine"
+                        ? "Chưa khoá được đơn — đợi người khác xong rồi thử lại."
+                        : undefined
+                    }
+                  >
                     {savingLines ? "Đang lưu..." : "Lưu dòng đơn"}
                   </Button>
                 </div>
@@ -792,6 +835,8 @@ export default function OrderDetailPage() {
                     const minQtyForLine = lineLocked
                       ? pickedBase / (lineFactor || 1)
                       : 0
+                    // T-06 — readonly when someone else holds the lock.
+                    const lockReadonly = inEdit && lock.state !== "mine"
                     return (
                       <TableRow key={line.id}>
                         <TableCell className="font-medium">
@@ -844,8 +889,14 @@ export default function OrderDetailPage() {
                                       setSwapDialogFor(line.id)
                                       setSwapSearch("")
                                     }}
-                                    disabled={lineLocked}
-                                    title={lineLocked ? "Đã pick — không thể đổi SP." : undefined}
+                                    disabled={lineLocked || lockReadonly}
+                                    title={
+                                      lockReadonly
+                                        ? "Người khác đang sửa — form khoá."
+                                        : lineLocked
+                                          ? "Đã pick — không thể đổi SP."
+                                          : undefined
+                                    }
                                   >
                                     Đổi SP
                                   </Button>
@@ -868,10 +919,13 @@ export default function OrderDetailPage() {
                               className={`ml-auto h-8 w-24 text-right tabular-nums ${
                                 lineLocked ? "border-amber-300" : ""
                               }`}
+                              disabled={lockReadonly}
                               title={
-                                lineLocked
-                                  ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
-                                  : undefined
+                                lockReadonly
+                                  ? "Người khác đang sửa — form khoá."
+                                  : lineLocked
+                                    ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
+                                    : undefined
                               }
                             />
                           ) : (
@@ -889,6 +943,7 @@ export default function OrderDetailPage() {
                                 setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
                               }
                               className="ml-auto h-8 w-32 text-right tabular-nums"
+                              disabled={lockReadonly}
                             />
                           ) : (
                             formatCurrency(line.unit_price)
@@ -935,6 +990,7 @@ export default function OrderDetailPage() {
                   const minQtyForLine = lineLocked
                     ? pickedBase / (lineFactor || 1)
                     : 0
+                  const lockReadonly = inEdit && lock.state !== "mine"
                   return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <p className="font-semibold text-sm leading-tight flex items-center gap-1.5">
@@ -961,10 +1017,13 @@ export default function OrderDetailPage() {
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
                               className={`h-8 mt-0.5 ${lineLocked ? "border-amber-300" : ""}`}
+                              disabled={lockReadonly}
                               title={
-                                lineLocked
-                                  ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
-                                  : undefined
+                                lockReadonly
+                                  ? "Người khác đang sửa — form khoá."
+                                  : lineLocked
+                                    ? `Đã pick ${pickedBase} (base UOM). Tối thiểu ${minQtyForLine} ${line.unit_name}.`
+                                    : undefined
                               }
                             />
                           ) : (
@@ -983,6 +1042,7 @@ export default function OrderDetailPage() {
                                 setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
                               }
                               className="h-8 mt-0.5"
+                              disabled={lockReadonly}
                             />
                           ) : (
                             <p className="font-medium">{formatCurrency(line.unit_price)}</p>

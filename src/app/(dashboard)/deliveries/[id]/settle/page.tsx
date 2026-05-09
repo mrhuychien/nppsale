@@ -425,15 +425,19 @@ export default function DeliverySettlePage() {
 
       toast({
         title: "Đã quyết toán",
-        description: isMatch
-          ? `Đã lập phiếu thu ${receiptCode}. Số tiền khớp.`
-          : isShort
-            ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
-            : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`,
+        description: `${
+          isMatch
+            ? `Đã lập phiếu thu ${receiptCode}. Số tiền khớp.`
+            : isShort
+              ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
+              : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`
+        } Tiếp tục bàn giao hàng về kho…`,
       })
       // T-05: chuyến đã quyết toán → close workflow session.
       await closeSession()
-      router.push(`/finance/cash-receipts/${receipt.id}`)
+      // Issue #4 — chuyển sang nhận hàng trả về thay vì phiếu thu.
+      // Phiếu thu vẫn truy cập được qua /finance/cash-receipts.
+      router.push(`/deliveries/${delivery.id}/handover?from_receipt=${receipt.id}`)
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {

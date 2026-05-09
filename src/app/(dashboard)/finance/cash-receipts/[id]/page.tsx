@@ -169,6 +169,7 @@ export default function CashReceiptDetailPage() {
 
   return (
     <div className="space-y-4">
+      <div className="no-print space-y-4">
       <PageHeader
         title={`Phiếu thu ${receipt.receipt_code}`}
         description={`Ngày ${formatDate(receipt.receipt_date)}`}
@@ -178,9 +179,6 @@ export default function CashReceiptDetailPage() {
           <Badge variant={STATUS_VARIANT[receipt.status] || "secondary"}>
             {STATUS_LABEL[receipt.status] || receipt.status}
           </Badge>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-2" /> In
-          </Button>
           {/* T-08 — Phiếu thu mẫu 01-TT (TT200). Print-only block below. */}
           <Button
             variant="outline"
@@ -200,6 +198,27 @@ export default function CashReceiptDetailPage() {
           </Button>
         </div>
       </PageHeader>
+
+      {/* Issue #4 — khi phiếu thu nguồn từ delivery_settle, surfaces
+          link sang nhận bàn giao lại (Pack3 T-07). */}
+      {delivery && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 flex items-center justify-between gap-3 text-sm">
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-amber-900">
+              Bước tiếp: nhận hàng trả về từ chuyến giao
+            </p>
+            <p className="text-xs text-amber-800">
+              Xác nhận đơn thất bại + nhập kho hàng đem đổi không dùng cho{" "}
+              <strong>{delivery.route_name || "chuyến này"}</strong>.
+            </p>
+          </div>
+          <Button asChild>
+            <Link href={`/deliveries/${delivery.id}/handover`}>
+              Nhận hàng trả về →
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left: receipt lines */}
@@ -386,6 +405,7 @@ export default function CashReceiptDetailPage() {
           )}
         </div>
       </div>
+      </div>{/* /.no-print wrapper */}
 
       {/* T-08: TT200 print-only — toggled by data-print-mode='receipt-tt200'. */}
       <div className="print-receipt-tt200-only">

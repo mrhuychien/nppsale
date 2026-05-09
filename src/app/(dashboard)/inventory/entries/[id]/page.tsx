@@ -824,105 +824,171 @@ export default function StockEntryDetailPage() {
 
       {/* Print-only section: 1 trang phiếu xuất tổng + 1 trang/đơn chi tiết */}
       <div className="print-only">
-        {/* Page 1: aggregate stock entry */}
-        <div className="print-page p-8">
-          <h1 className="text-2xl font-black text-center uppercase mb-6">
+        {/* Page 1: aggregate stock entry — A5 portrait, tiết kiệm giấy. */}
+        <div className="print-page a5-doc p-4">
+          <h1 className="text-center font-bold uppercase mb-2" style={{ fontSize: "11pt" }}>
             {entry.type === "export" ? "Phiếu xuất kho" : entry.type === "import" ? "Phiếu nhập kho" : entry.type === "transfer" ? "Phiếu chuyển kho" : "Phiếu kiểm kê"}
           </h1>
 
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-            <div>
-              <p><span className="text-gray-500">Mã phiếu:</span> <span className="font-bold font-mono">{entry.entry_code}</span></p>
-              <p><span className="text-gray-500">Ngày tạo:</span> <span className="font-semibold">{formatDate(entry.created_at)}</span></p>
+          {/* Compact 2-col header (1 block, 4 fields total). */}
+          <div className="grid grid-cols-2 gap-x-4 mb-2 text-[8pt]">
+            <p>
+              <span className="text-gray-500">Mã phiếu:</span>{" "}
+              <span className="font-bold font-mono">{entry.entry_code}</span>
+              <span className="text-gray-500 ml-3">Ngày:</span>{" "}
+              <span className="font-semibold">{formatDate(entry.created_at)}</span>
+            </p>
+            <p>
+              <span className="text-gray-500">Người lập:</span>{" "}
+              <span className="font-semibold">{entry.creator?.full_name || "-"}</span>
               {refOrders.length > 0 && (
-                <p><span className="text-gray-500">Số đơn gộp:</span> <span className="font-semibold">{refOrders.length}</span></p>
+                <>
+                  <span className="text-gray-500 ml-3">Số đơn gộp:</span>{" "}
+                  <span className="font-semibold">{refOrders.length}</span>
+                </>
               )}
-            </div>
-            <div>
-              <p><span className="text-gray-500">Người lập:</span> <span className="font-semibold">{entry.creator?.full_name || "-"}</span></p>
-              {entry.notes && <p><span className="text-gray-500">Ghi chú:</span> {entry.notes}</p>}
-            </div>
+            </p>
+            {entry.notes && (
+              <p className="col-span-2">
+                <span className="text-gray-500">Ghi chú:</span> {entry.notes}
+              </p>
+            )}
           </div>
 
-          {/* Section A: hàng theo đơn (filter swap rows by note prefix). */}
-          <h2 className="text-sm font-bold mb-2">HÀNG THEO ĐƠN</h2>
-          <table className="w-full text-sm border-collapse mb-8">
-            <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="py-2 text-left font-bold w-12">STT</th>
-                <th className="py-2 text-left font-bold">Sản phẩm</th>
-                <th className="py-2 text-left font-bold w-24">SKU</th>
-                <th className="py-2 text-center font-bold w-16">ĐVT</th>
-                <th className="py-2 text-right font-bold w-20">Số lượng</th>
-                <th className="py-2 text-left font-bold w-28">Lô hàng</th>
-                <th className="py-2 text-left font-bold">Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines
-                .filter((l) => !(l.notes || "").startsWith("[Swap]"))
-                .map((line, index) => {
-                  // T-01: print shows "4 thùng (40 hộp)" when transaction
-                  // UOM differs from base UOM. conversion_factor_snapshot
-                  // is set by mig 039; legacy rows fall back to 1.
-                  const lineExt = line as unknown as {
-                    qty_in_base_uom?: number
-                    qty_in_transaction_uom?: number
-                    transaction_uom?: string
-                    conversion_factor_snapshot?: number
-                  }
-                  const factor = Number(lineExt.conversion_factor_snapshot ?? 1) || 1
-                  const txQty = Number(lineExt.qty_in_transaction_uom ?? line.quantity) || 0
-                  const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
-                  const baseUnit = line.product?.base_unit || ""
-                  const showBaseEquivalent =
-                    factor > 1 && baseUnit && baseUnit !== line.unit_name
-                  return (
-                    <tr key={line.id} className="border-b border-gray-200">
-                      <td className="py-2">{index + 1}</td>
-                      <td className="py-2 font-medium">{line.product?.name || "-"}</td>
-                      <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
-                      <td className="py-2 text-center">{line.unit_name}</td>
-                      <td className="py-2 text-right font-bold">
-                        {txQty}
-                        {showBaseEquivalent && (
-                          <span className="ml-1 font-normal text-gray-600">
-                            ({baseQty} {baseUnit})
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
-                      <td className="py-2 text-xs">{line.notes || "-"}</td>
+          {/* Section A: HÀNG GIAO KHÁCH = hàng bán + hàng đổi cho khách
+              gộp 1 bảng có cột Loại. swap (dự phòng) tách section riêng. */}
+          {(() => {
+            const sellRows = lines.filter(
+              (l) => !(l.notes || "").startsWith("[Swap]")
+            )
+            const totalRowCount = sellRows.length + exchangeRows.length
+            return (
+              <>
+                <h2 className="font-bold mb-1" style={{ fontSize: "9pt" }}>
+                  HÀNG GIAO KHÁCH ({totalRowCount} dòng)
+                </h2>
+                <table
+                  className="w-full border-collapse mb-3"
+                  style={{ fontSize: "8pt" }}
+                >
+                  <colgroup>
+                    <col style={{ width: "8mm" }} />
+                    <col style={{ width: "12mm" }} />
+                    <col />
+                    <col style={{ width: "20mm" }} />
+                    <col style={{ width: "12mm" }} />
+                    <col style={{ width: "20mm" }} />
+                    <col style={{ width: "26mm" }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-gray-400">
+                      <th className="py-0.5 text-left font-bold">STT</th>
+                      <th className="py-0.5 text-left font-bold">Loại</th>
+                      <th className="py-0.5 text-left font-bold">Sản phẩm</th>
+                      <th className="py-0.5 text-left font-bold">SKU</th>
+                      <th className="py-0.5 text-center font-bold">ĐVT</th>
+                      <th className="py-0.5 text-right font-bold">Số lượng</th>
+                      <th className="py-0.5 text-left font-bold">Vị trí / Lô</th>
                     </tr>
-                  )
-                })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-300">
-                <td colSpan={4} className="py-2 text-right font-bold">Tổng cộng:</td>
-                <td className="py-2 text-right font-black">
-                  {lines
-                    .filter((l) => !(l.notes || "").startsWith("[Swap]"))
-                    .reduce((s, l) => s + Number(l.quantity || 0), 0)}
-                </td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
-          </table>
+                  </thead>
+                  <tbody>
+                    {sellRows.map((line, index) => {
+                      const lineExt = line as unknown as {
+                        qty_in_base_uom?: number
+                        qty_in_transaction_uom?: number
+                        conversion_factor_snapshot?: number
+                      }
+                      const factor = Number(lineExt.conversion_factor_snapshot ?? 1) || 1
+                      const txQty =
+                        Number(lineExt.qty_in_transaction_uom ?? line.quantity) || 0
+                      const baseQty =
+                        Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
+                      const baseUnit = line.product?.base_unit || ""
+                      const showBase =
+                        factor > 1 && baseUnit && baseUnit !== line.unit_name
+                      // Notes thường có dạng "Vị trí: Kho Tân Bình - Kệ A1".
+                      // Bỏ prefix "Vị trí: " để tiết kiệm chữ.
+                      const note = (line.notes || "").replace(/^Vị trí:\s*/, "")
+                      return (
+                        <tr key={line.id} className="border-b border-gray-200">
+                          <td className="py-0.5">{index + 1}</td>
+                          <td className="py-0.5">Bán</td>
+                          <td className="py-0.5 font-medium">{line.product?.name || "-"}</td>
+                          <td className="py-0.5 font-mono">{line.product?.sku || "-"}</td>
+                          <td className="py-0.5 text-center">{line.unit_name}</td>
+                          <td className="py-0.5 text-right font-semibold">
+                            {txQty}
+                            {showBase && (
+                              <span className="ml-1 font-normal text-gray-600">
+                                ({baseQty} {baseUnit})
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-0.5">
+                            {line.batch?.batch_code
+                              ? `${line.batch.batch_code} ${note ? "· " + note : ""}`
+                              : note || "-"}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {exchangeRows.map((r, idx) => (
+                      <tr
+                        key={`ex-${r.sku}`}
+                        className="border-b border-gray-200 bg-gray-50"
+                      >
+                        <td className="py-0.5">{sellRows.length + idx + 1}</td>
+                        <td className="py-0.5 font-semibold">Đổi</td>
+                        <td className="py-0.5 font-medium">{r.name}</td>
+                        <td className="py-0.5 font-mono">{r.sku}</td>
+                        <td className="py-0.5 text-center">{r.unit}</td>
+                        <td className="py-0.5 text-right font-semibold">{r.qty}</td>
+                        <td className="py-0.5 italic">Đem đi đổi cho khách</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-gray-400">
+                      <td colSpan={5} className="py-0.5 text-right font-bold">
+                        Tổng cộng:
+                      </td>
+                      <td className="py-0.5 text-right font-bold">
+                        {sellRows.reduce((s, l) => s + Number(l.quantity || 0), 0) +
+                          exchangeRows.reduce((s, r) => s + r.qty, 0)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </>
+            )
+          })()}
 
-          {/* T-12 Section B: hàng đem đi đổi — only when there are swap items. */}
+          {/* T-12 Section B: hàng đem đi đổi DỰ PHÒNG (swap_stock_movements)
+              — kept separate because these are spare items, not tied to
+              a specific customer return. */}
           {swapItems.length > 0 && (
-            <div className="border-2 border-dashed border-gray-400 p-3 mb-8">
-              <h2 className="text-sm font-bold mb-2">HÀNG ĐEM ĐI ĐỔI (DỰ PHÒNG)</h2>
-              <table className="w-full text-sm border-collapse">
+            <div className="border border-dashed border-gray-400 p-2 mb-3">
+              <h2 className="font-bold mb-1" style={{ fontSize: "9pt" }}>
+                HÀNG ĐEM ĐI ĐỔI DỰ PHÒNG ({swapItems.length})
+              </h2>
+              <table className="w-full border-collapse" style={{ fontSize: "8pt" }}>
+                <colgroup>
+                  <col style={{ width: "8mm" }} />
+                  <col />
+                  <col style={{ width: "20mm" }} />
+                  <col style={{ width: "12mm" }} />
+                  <col style={{ width: "16mm" }} />
+                  <col />
+                </colgroup>
                 <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="py-1 text-left font-bold w-10">STT</th>
-                    <th className="py-1 text-left font-bold">Sản phẩm</th>
-                    <th className="py-1 text-left font-bold w-24">SKU</th>
-                    <th className="py-1 text-center font-bold w-14">ĐVT</th>
-                    <th className="py-1 text-right font-bold w-16">SL</th>
-                    <th className="py-1 text-left font-bold">Lý do</th>
+                  <tr className="border-b border-gray-400">
+                    <th className="py-0.5 text-left font-bold">STT</th>
+                    <th className="py-0.5 text-left font-bold">Sản phẩm</th>
+                    <th className="py-0.5 text-left font-bold">SKU</th>
+                    <th className="py-0.5 text-center font-bold">ĐVT</th>
+                    <th className="py-0.5 text-right font-bold">SL</th>
+                    <th className="py-0.5 text-left font-bold">Lý do</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -933,11 +999,11 @@ export default function StockEntryDetailPage() {
                         : 1
                     return (
                       <tr key={s.id} className="border-b border-gray-200">
-                        <td className="py-1">{i + 1}</td>
-                        <td className="py-1 font-medium">{s.product?.name || "-"}</td>
-                        <td className="py-1 font-mono text-xs">{s.product?.sku || "-"}</td>
-                        <td className="py-1 text-center">{s.unit_name}</td>
-                        <td className="py-1 text-right font-bold">
+                        <td className="py-0.5">{i + 1}</td>
+                        <td className="py-0.5 font-medium">{s.product?.name || "-"}</td>
+                        <td className="py-0.5 font-mono">{s.product?.sku || "-"}</td>
+                        <td className="py-0.5 text-center">{s.unit_name}</td>
+                        <td className="py-0.5 text-right font-semibold">
                           {s.qty}
                           {factor > 1 && (
                             <span className="ml-1 font-normal text-gray-600">
@@ -945,31 +1011,35 @@ export default function StockEntryDetailPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-1 text-xs">{s.reason || "—"}</td>
+                        <td className="py-0.5 italic">{s.reason || "—"}</td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-              <p className="text-xs italic text-gray-500 mt-2">
-                Hàng cầm theo dự phòng đổi cho khách. Phần chưa dùng sẽ được nhập lại kho ở
-                bước Bàn giao lại.
+              <p className="italic text-gray-500 mt-1" style={{ fontSize: "7pt" }}>
+                Hàng cầm theo dự phòng. Phần chưa dùng nhập lại kho ở bước Bàn giao lại.
               </p>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-8 text-center text-sm mt-16">
+          {/* Compact signatures — mt-8 + mb-12 instead of mt-16 + mb-20.
+              Saves ~3cm vertical space per slip. */}
+          <div className="grid grid-cols-3 gap-4 text-center signatures mt-6">
             <div>
-              <p className="font-bold">Người lập phiếu</p>
-              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+              <p className="font-bold" style={{ fontSize: "8pt" }}>Người lập phiếu</p>
+              <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+              <div style={{ height: "16mm" }} />
             </div>
             <div>
-              <p className="font-bold">Thủ kho</p>
-              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+              <p className="font-bold" style={{ fontSize: "8pt" }}>Thủ kho</p>
+              <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+              <div style={{ height: "16mm" }} />
             </div>
             <div>
-              <p className="font-bold">Người nhận</p>
-              <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+              <p className="font-bold" style={{ fontSize: "8pt" }}>Người nhận</p>
+              <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+              <div style={{ height: "16mm" }} />
             </div>
           </div>
         </div>

@@ -290,6 +290,7 @@ export default function PayrollRunsPage() {
 
   return (
     <div className="space-y-4">
+      <div className="no-print space-y-4">
       <PageHeader
         title="Bảng lương (Pack3)"
         description="Tính lương theo tháng — KPI, thưởng số đơn, hoạt động, BHXH"
@@ -557,6 +558,7 @@ export default function PayrollRunsPage() {
           )}
         </div>
       </div>
+      </div>{/* /.no-print wrapper */}
 
       {/* Per-user payslip — toggled by data-print-mode='payslip'. */}
       <div className="print-payslip-only">

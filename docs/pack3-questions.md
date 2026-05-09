@@ -87,6 +87,30 @@ re-aggregated from selected orders' lines each time.
 the order detail page UI today. Workaround: cancel + re-pick. Track
 as follow-up in a future Pack3 iteration.
 
+## Q7: [T-07] Customer-return + unused-swap-stock sources defer to other tasks.
+
+**Spec says:** "Tab 2 — Hàng nhận về" auto-lists items from
+   1) failed orders → restocked
+   2) customer returns mid-route
+   3) unused swap stock (T-12)
+
+**Current state:**
+- (1) ships in T-07: pre-fills item rows from failed orders'
+  sales_order_lines.
+- (2) is already handled by the existing `/deliveries/[id]/settle`
+  goods_handover_at/by/notes columns (mig 038) which the driver
+  confirms there.
+- (3) requires T-12 (swap_stock_movements). T-12 not yet landed; the
+  schema column `source_type='unused_swap_stock'` is allowed by the
+  CHECK constraint and the UI dropdown supports it, but no rows are
+  loaded yet.
+
+**Assumption:** T-07 ships handling for (1) only. After T-12 ships,
+the handover page can be extended to query swap_stock_movements
+WHERE shipment_id=this and append rows of source_type='unused_swap_
+stock' with the spec-D7 "Đã đổi cho khách rồi" checkbox toggling
+default destination_zone.
+
 ## Q6: [T-03] order_activity_log diff log is deferred.
 
 **Spec says:** "Diff log lưu vào `order_activity_log` action='edit'"

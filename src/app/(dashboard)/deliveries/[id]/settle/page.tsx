@@ -458,6 +458,12 @@ export default function DeliverySettlePage() {
         ) : (
           <Badge variant="warning">Chờ trả tiền</Badge>
         )}
+        {/* T-07: nhận bàn giao lại — đơn thất bại + hàng nhập kho */}
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/deliveries/${id}/handover`}>
+            Nhận bàn giao lại →
+          </Link>
+        </Button>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">

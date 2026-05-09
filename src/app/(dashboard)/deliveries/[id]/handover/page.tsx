@@ -100,7 +100,7 @@ interface FailedOrderDraft {
 interface ItemDraft {
   /** Stable key; usually order_line.id but can be synthesised for new rows. */
   key: string
-  sourceType: "failed_order" | "unused_swap_stock"
+  sourceType: "failed_order" | "unused_swap_stock" | "customer_return"
   sourceOrderId: string | null
   /** swap_stock_movements.id when sourceType=unused_swap_stock. */
   swapMovementId: string | null
@@ -145,7 +145,7 @@ export default function DeliveryHandoverPage() {
       supabase
         .from("delivery_lines")
         .select(
-          "id, status, order_id, order:sales_orders(id, order_code, customer_id, total, customer:customers(store_name), lines:sales_order_lines(id, product_id, unit_name, quantity, conversion_factor, product:products(name, sku, base_unit)))"
+          "id, status, order_id, order:sales_orders(id, order_code, customer_id, total, customer:customers(store_name), lines:sales_order_lines(id, product_id, unit_name, quantity, conversion_factor, product:products(name, sku, base_unit)), returns(id, status, return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(name, sku, base_unit))))"
         )
         .eq("delivery_id", id),
     ])
@@ -168,26 +168,84 @@ export default function DeliveryHandoverPage() {
       }))
     setFailedDrafts(failed)
 
-    // Items = order lines from failed orders, one per line.
+    // Items pre-fill — tách 2 nguồn:
+    //
+    //  (a) FAILED orders (delivery_lines.status != 'delivered'):
+    //      toàn bộ đơn không giao được → mọi sales_order_lines quay về
+    //      kho theo nguyên SL gốc.
+    //
+    //  (b) DELIVERED orders có returns: chỉ nhận về phần khách trả
+    //      (returns.return_lines), KHÔNG phải toàn bộ đơn.
+    //      Lý do user-facing: hàng đã giao thành công, chỉ thu lại
+    //      phần khách trả (TRẢ trừ công nợ HOẶC ĐỔI đem về kho).
     const items: ItemDraft[] = []
     linesData.forEach((dl) => {
-      if (dl.status === "delivered" || !dl.order?.lines) return
-      dl.order.lines.forEach((ln) => {
-        const factor = Number(ln.conversion_factor || 1)
-        items.push({
-          key: `fo-${ln.id}`,
-          sourceType: "failed_order",
-          sourceOrderId: dl.order!.id,
-          swapMovementId: null,
-          productId: ln.product_id,
-          productName: ln.product?.name || "—",
-          sku: ln.product?.sku || "",
-          qty: String(ln.quantity ?? 0),
-          unitName: ln.unit_name,
-          conversionFactor: factor,
-          destinationZone: "sale",
-          reason: `Trả từ đơn ${dl.order!.order_code}`,
-          swappedToCustomer: false,
+      if (!dl.order) return
+
+      const isFailed = dl.status !== "delivered"
+
+      if (isFailed) {
+        // Toàn bộ sales_order_lines quay lại.
+        ;(dl.order.lines || []).forEach((ln) => {
+          const factor = Number(ln.conversion_factor || 1)
+          items.push({
+            key: `fo-${ln.id}`,
+            sourceType: "failed_order",
+            sourceOrderId: dl.order!.id,
+            swapMovementId: null,
+            productId: ln.product_id,
+            productName: ln.product?.name || "—",
+            sku: ln.product?.sku || "",
+            qty: String(ln.quantity ?? 0),
+            unitName: ln.unit_name,
+            conversionFactor: factor,
+            destinationZone: "sale",
+            reason: `Trả từ đơn ${dl.order!.order_code} (giao thất bại)`,
+            swappedToCustomer: false,
+          })
+        })
+      }
+
+      // Phiếu trả luôn luôn ghi nhận (cả failed lẫn delivered orders).
+      // is_exchange=true → đổi hàng → quay về kho date (D7), không
+      // trừ công nợ. is_exchange=false → trả tiền → kho bán mặc định.
+      const orderReturns =
+        ((dl.order as unknown as {
+          returns?: Array<{
+            id: string
+            status: string
+            return_lines?: Array<{
+              id: string
+              product_id: string
+              unit_name: string
+              quantity: number
+              is_exchange: boolean | null
+              product?: { name: string; sku: string; base_unit?: string } | null
+            }>
+          }>
+        }).returns) || []
+      orderReturns.forEach((r) => {
+        if (r.status === "rejected") return
+        ;(r.return_lines || []).forEach((rl) => {
+          items.push({
+            key: `ret-${rl.id}`,
+            sourceType: "customer_return",
+            sourceOrderId: dl.order!.id,
+            swapMovementId: null,
+            productId: rl.product_id,
+            productName: rl.product?.name || "—",
+            sku: rl.product?.sku || "",
+            qty: String(rl.quantity ?? 0),
+            unitName: rl.unit_name,
+            // Returns không snapshot conversion_factor → assume 1
+            // (return ở base UOM thường gặp).
+            conversionFactor: 1,
+            destinationZone: rl.is_exchange ? "date" : "sale",
+            reason: rl.is_exchange
+              ? `Đổi từ đơn ${dl.order!.order_code} (đem về kho date)`
+              : `Trả từ đơn ${dl.order!.order_code} (trừ công nợ)`,
+            swappedToCustomer: !!rl.is_exchange,
+          })
         })
       })
     })
@@ -545,13 +603,37 @@ export default function DeliveryHandoverPage() {
                 </thead>
                 <tbody>
                   {itemDrafts.map((it) => (
-                    <tr key={it.key} className="border-b last:border-0">
+                    <tr
+                      key={it.key}
+                      className={`border-b last:border-0 ${
+                        it.sourceType === "customer_return" && it.swappedToCustomer
+                          ? "bg-blue-50/40"
+                          : it.sourceType === "customer_return"
+                            ? "bg-amber-50/40"
+                            : ""
+                      }`}
+                    >
                       <td className="px-2 py-2">
                         <div className="flex items-center gap-1.5">
                           {it.sourceType === "unused_swap_stock" && (
                             <Badge variant="default" className="text-[10px]">
                               SWAP
                             </Badge>
+                          )}
+                          {it.sourceType === "customer_return" && it.swappedToCustomer && (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                              ĐỔI
+                            </span>
+                          )}
+                          {it.sourceType === "customer_return" && !it.swappedToCustomer && (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              TRẢ
+                            </span>
+                          )}
+                          {it.sourceType === "failed_order" && (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                              THẤT BẠI
+                            </span>
                           )}
                           <span className="font-medium">{it.productName}</span>
                         </div>

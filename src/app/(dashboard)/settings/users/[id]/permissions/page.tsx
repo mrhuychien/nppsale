@@ -1,22 +1,22 @@
 "use client"
 
 /**
- * T-13: per-user permission override page.
+ * T-13: Phân quyền chi tiết theo từng nhân viên.
  *
- * /settings/users/[id]/permissions
+ * Mirror /settings/permissions (role matrix) ở mức granularity
+ * FEATURE × ACTION — không phải MODULE × ACTION như trước. Cell có
+ * 3 trạng thái:
  *
- * Shows the standard module × action matrix. Each cell stores an
- * explicit grant/revoke in user_permission_overrides; removing the
- * row reverts the cell to the user's role default (the org-level
- * role_permissions / DEFAULT_PERMISSION_MAP).
+ *   ● Theo vai trò (mặc định) — không có row trong user_permission_overrides
+ *   ✓ Cấp quyền                — override granted=true
+ *   ✗ Thu hồi                  — override granted=false
  *
- * Tri-state toggle per cell:
- *   "Theo vai trò"  → no override row
- *   "Cấp quyền"     → override row with granted=true
- *   "Thu hồi"       → override row with granted=false
+ * Click cycle: inherit → grant → revoke → inherit. Effective value
+ * hiển thị dạng nhỏ phía dưới (xanh = có quyền, đỏ = không).
  *
- * Effective value shown next to the toggle so the user can see what
- * the role default actually is.
+ * Permission key format: `${feature.key}.${action}` — vd
+ *   "customers.analytics.read", "orders.create".
+ * Resolver mig 058 split-on-last-dot fall back về role_permissions.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -28,44 +28,83 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { ChevronLeft, RotateCcw } from "lucide-react"
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  RotateCcw,
+  Eye,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Download,
+} from "lucide-react"
 import {
   ACTIONS,
   ACTION_LABELS,
-  MODULES,
-  MODULE_LABELS,
+  DEFAULT_PERMISSION_MAP,
   ROLE_LABELS,
-  hasPermission,
   type Action,
-  type Module,
   type Role,
 } from "@/lib/permissions"
+import {
+  FEATURE_GROUPS,
+  featuresByGroup,
+  type FeatureDef,
+  type FeatureGroup,
+} from "@/lib/permissions-features"
+import { cn } from "@/lib/utils"
 
-/**
- * Pack3 spec D8/D13 flat permission keys. These are override-only
- * (no role_permissions equivalent) and grant special capabilities
- * referenced by RLS or feature gates.
- */
-interface SpecPermission {
+const ACTION_ICONS: Record<Action, typeof Eye> = {
+  read: Eye,
+  create: Plus,
+  update: Pencil,
+  delete: Trash2,
+  approve: CheckCircle2,
+  export: Download,
+}
+
+const ACTION_DESC: Record<Action, string> = {
+  read: "Xem danh sách và chi tiết",
+  create: "Tạo bản ghi mới",
+  update: "Sửa thông tin có sẵn",
+  delete: "Xóa bản ghi",
+  approve: "Phê duyệt / hủy duyệt",
+  export: "Xuất file CSV / In ra giấy",
+}
+
+interface UserRow {
+  id: string
+  org_id: string
+  full_name: string | null
+  email: string
+  role: Role
+  is_active: boolean
+}
+
+interface OverrideRow {
+  user_id: string
+  permission_key: string
+  granted: boolean
+}
+
+interface RolePermRow {
+  role: string
+  module: string
+  action: string
+  allowed: boolean
+}
+
+type CellMode = "inherit" | "grant" | "revoke"
+
+const PACK3_SPEC_GROUPS: Array<{
   key: string
   label: string
-}
-interface SpecGroup {
-  key: string
-  label: string
-  permissions: SpecPermission[]
-}
-const PACK3_SPEC_GROUPS: SpecGroup[] = [
+  permissions: Array<{ key: string; label: string }>
+}> = [
   {
     key: "customer",
     label: "Khách hàng",
@@ -114,31 +153,29 @@ const PACK3_SPEC_GROUPS: SpecGroup[] = [
   },
 ]
 
-interface UserRow {
-  id: string
-  org_id: string
-  full_name: string | null
-  email: string
-  role: Role
-  is_active: boolean
+function permissionKey(featureKey: string, action: Action): string {
+  return `${featureKey}.${action}`
 }
 
-interface OverrideRow {
-  user_id: string
-  permission_key: string
-  granted: boolean
-}
-
-type CellMode = "inherit" | "grant" | "revoke"
-
-const CELL_MODE_LABEL: Record<CellMode, string> = {
-  inherit: "Theo vai trò",
-  grant: "Cấp quyền",
-  revoke: "Thu hồi",
-}
-
-function permissionKey(m: Module, a: Action): string {
-  return `${m}.${a}`
+/** Resolve effective value for a (feature, action) — mirror DB resolver
+ *  but client-side so the UI shows current state instantly. */
+function effectiveValue(
+  role: Role,
+  feature: FeatureDef,
+  action: Action,
+  overrides: Map<string, boolean>,
+  rolePerms: Map<string, boolean>
+): boolean {
+  if (role === "owner") return true
+  const key = permissionKey(feature.key, action)
+  const override = overrides.get(key)
+  if (override !== undefined) return override
+  // role_permissions fallback by feature key first.
+  const rpByFeature = rolePerms.get(`${feature.key}::${action}`)
+  if (rpByFeature !== undefined) return rpByFeature
+  // Then by parent module key (DEFAULT_PERMISSION_MAP).
+  const moduleDefaults = DEFAULT_PERMISSION_MAP[role][feature.module] ?? []
+  return moduleDefaults.includes(action)
 }
 
 export default function UserPermissionsPage() {
@@ -150,14 +187,19 @@ export default function UserPermissionsPage() {
 
   const [user, setUser] = useState<UserRow | null>(null)
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
+  const [rolePerms, setRolePerms] = useState<Map<string, boolean>>(new Map())
   const [pending, setPending] = useState<Map<string, CellMode>>(new Map())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState("")
+  const [openGroups, setOpenGroups] = useState<Set<FeatureGroup>>(
+    () => new Set(FEATURE_GROUPS)
+  )
 
   const fetchData = useCallback(async () => {
     if (!id || !me?.org_id) return
     setLoading(true)
-    const [uRes, oRes] = await Promise.all([
+    const [uRes, oRes, rpRes] = await Promise.all([
       supabase
         .from("users")
         .select("id, org_id, full_name, email, role, is_active")
@@ -167,13 +209,28 @@ export default function UserPermissionsPage() {
         .from("user_permission_overrides")
         .select("user_id, permission_key, granted")
         .eq("user_id", id),
+      supabase
+        .from("role_permissions")
+        .select("role, module, action, allowed")
+        .eq("org_id", me.org_id),
     ])
     setUser(((uRes.data as UserRow) || null))
-    const map = new Map<string, boolean>()
+
+    const omap = new Map<string, boolean>()
     ;(((oRes.data as OverrideRow[]) || [])).forEach((o) =>
-      map.set(o.permission_key, o.granted)
+      omap.set(o.permission_key, o.granted)
     )
-    setOverrides(map)
+    setOverrides(omap)
+
+    const rmap = new Map<string, boolean>()
+    const target = (uRes.data as UserRow | null)?.role
+    ;(((rpRes.data as RolePermRow[]) || [])).forEach((rp) => {
+      if (rp.role === target) {
+        rmap.set(`${rp.module}::${rp.action}`, rp.allowed)
+      }
+    })
+    setRolePerms(rmap)
+
     setPending(new Map())
     setLoading(false)
   }, [id, me?.org_id, supabase])
@@ -182,43 +239,96 @@ export default function UserPermissionsPage() {
     fetchData()
   }, [fetchData])
 
+  const filteredGroups = useMemo(() => {
+    const grouped = featuresByGroup()
+    if (!search.trim()) return grouped
+    const q = search.trim().toLowerCase()
+    const out: Record<FeatureGroup, FeatureDef[]> = {} as Record<FeatureGroup, FeatureDef[]>
+    for (const g of FEATURE_GROUPS) {
+      const list = (grouped[g] || []).filter(
+        (f) =>
+          f.label.toLowerCase().includes(q) ||
+          f.key.toLowerCase().includes(q)
+      )
+      if (list.length > 0) out[g] = list
+    }
+    return out
+  }, [search])
+
+  const toggleGroupOpen = (group: FeatureGroup) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
+      return next
+    })
+  }
+
   const cellMode = useCallback(
-    (m: Module, a: Action): CellMode => {
-      const k = permissionKey(m, a)
-      if (pending.has(k)) return pending.get(k)!
-      if (overrides.has(k)) return overrides.get(k) ? "grant" : "revoke"
+    (key: string): CellMode => {
+      if (pending.has(key)) return pending.get(key)!
+      if (overrides.has(key)) return overrides.get(key) ? "grant" : "revoke"
       return "inherit"
     },
     [pending, overrides]
   )
 
-  const setCell = (m: Module, a: Action, mode: CellMode) => {
-    const k = permissionKey(m, a)
+  const cycleCell = (key: string) => {
     setPending((prev) => {
       const next = new Map(prev)
-      const original: CellMode = overrides.has(k)
-        ? overrides.get(k)
+      const original: CellMode = overrides.has(key)
+        ? overrides.get(key)
           ? "grant"
           : "revoke"
         : "inherit"
-      if (mode === original) {
-        next.delete(k)
+      const current = pending.has(key) ? pending.get(key)! : original
+      // Cycle: inherit → grant → revoke → inherit
+      const target: CellMode =
+        current === "inherit" ? "grant" : current === "grant" ? "revoke" : "inherit"
+      if (target === original) {
+        next.delete(key)
       } else {
-        next.set(k, mode)
+        next.set(key, target)
       }
       return next
     })
   }
 
-  const dirty = pending.size > 0
-
-  const effectiveValue = (m: Module, a: Action): boolean => {
-    if (!user) return false
-    const mode = cellMode(m, a)
-    if (mode === "grant") return true
-    if (mode === "revoke") return false
-    return hasPermission(user.role, m, a)
+  /** Bulk: set all cells in a feature row to a target. Compares against
+   *  CURRENT state (effective value). If user clicks "Bật cả dòng" while
+   *  some cells are off → flips them on (grant); already-on stays in
+   *  "inherit" if role default already allows. */
+  const bulkRow = (feature: FeatureDef, target: boolean) => {
+    if (!user || user.role === "owner") return
+    setPending((prev) => {
+      const next = new Map(prev)
+      for (const a of ACTIONS) {
+        const key = permissionKey(feature.key, a)
+        const roleDefault = effectiveValue(user.role, feature, a, new Map(), rolePerms)
+        const original: CellMode = overrides.has(key)
+          ? overrides.get(key)
+            ? "grant"
+            : "revoke"
+          : "inherit"
+        const desired: CellMode =
+          target === roleDefault ? "inherit" : target ? "grant" : "revoke"
+        if (desired === original) {
+          next.delete(key)
+        } else {
+          next.set(key, desired)
+        }
+      }
+      return next
+    })
   }
+
+  const bulkGroup = (group: FeatureGroup, target: boolean) => {
+    if (!user || user.role === "owner") return
+    const items = filteredGroups[group] || []
+    items.forEach((f) => bulkRow(f, target))
+  }
+
+  const dirty = pending.size > 0
 
   const save = async () => {
     if (!user || !me?.org_id) return
@@ -280,8 +390,6 @@ export default function UserPermissionsPage() {
     }
   }
 
-  const overrideCount = useMemo(() => overrides.size, [overrides])
-
   if (authLoading || loading) return <Skeleton className="h-96" />
   if (!user) {
     return (
@@ -290,6 +398,9 @@ export default function UserPermissionsPage() {
       </div>
     )
   }
+
+  const isOwner = user.role === "owner"
+  const overrideCount = overrides.size
 
   return (
     <div className="space-y-4">
@@ -307,11 +418,11 @@ export default function UserPermissionsPage() {
           variant="outline"
           size="sm"
           onClick={resetAll}
-          disabled={saving || overrideCount === 0}
+          disabled={saving || overrideCount === 0 || isOwner}
         >
           <RotateCcw className="h-4 w-4 mr-1.5" /> Reset về vai trò
         </Button>
-        <Button onClick={save} disabled={!dirty || saving}>
+        <Button onClick={save} disabled={!dirty || saving || isOwner}>
           {saving ? "Đang lưu..." : `Lưu (${pending.size})`}
         </Button>
       </PageHeader>
@@ -319,90 +430,250 @@ export default function UserPermissionsPage() {
       {/* Legend */}
       <Card>
         <CardContent className="p-3 text-xs flex flex-wrap items-center gap-3">
-          <span className="text-muted-foreground">Trạng thái mỗi ô:</span>
-          <Badge variant="secondary">Theo vai trò</Badge>
-          <Badge variant="success">Cấp quyền</Badge>
-          <Badge variant="danger">Thu hồi</Badge>
-          <span className="ml-auto text-muted-foreground">
-            &ldquo;Theo vai trò&rdquo; = lấy mặc định từ vai trò {ROLE_LABELS[user.role]}.
+          <span className="text-muted-foreground">3 trạng thái mỗi ô (click để chuyển):</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-4 h-4 rounded border border-border bg-background" />
+            <span className="text-muted-foreground">Theo vai trò</span>
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-4 h-4 rounded bg-emerald-500 text-white text-[10px] flex items-center justify-center font-bold">✓</span>
+            <span className="text-emerald-700">Cấp quyền</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-4 h-4 rounded bg-rose-500 text-white text-[10px] flex items-center justify-center font-bold">✗</span>
+            <span className="text-rose-700">Thu hồi</span>
+          </span>
+          {isOwner && (
+            <span className="ml-auto text-amber-700 text-[11px]">
+              Chủ DN luôn có toàn quyền — không thể tuỳ chỉnh.
+            </span>
+          )}
         </CardContent>
       </Card>
 
+      {/* Search + summary */}
       <Card>
-        <CardHeader>
-          <CardTitle>Ma trận quyền</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30">
-              <tr className="text-xs uppercase text-muted-foreground">
-                <th className="px-3 py-2 text-left w-48">Module</th>
-                {ACTIONS.map((a) => (
-                  <th key={a} className="px-3 py-2 text-left w-44">
-                    {ACTION_LABELS[a]}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MODULES.map((m) => (
-                <tr key={m} className="border-b last:border-0 align-middle">
-                  <td className="px-3 py-2 font-medium">{MODULE_LABELS[m]}</td>
-                  {ACTIONS.map((a) => {
-                    const mode = cellMode(m, a)
-                    const eff = effectiveValue(m, a)
-                    const variant: "secondary" | "success" | "danger" =
-                      mode === "grant" ? "success" : mode === "revoke" ? "danger" : "secondary"
-                    return (
-                      <td key={a} className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <Select
-                            value={mode}
-                            onValueChange={(v) => setCell(m, a, v as CellMode)}
-                          >
-                            <SelectTrigger className="h-8 w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="inherit">{CELL_MODE_LABEL.inherit}</SelectItem>
-                              <SelectItem value="grant">{CELL_MODE_LABEL.grant}</SelectItem>
-                              <SelectItem value="revoke">{CELL_MODE_LABEL.revoke}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Badge
-                            variant={eff ? "success" : "secondary"}
-                            className="text-[10px]"
-                          >
-                            {eff ? "✓" : "—"}
-                          </Badge>
-                          {mode !== "inherit" && (
-                            <span className="text-[9px] uppercase text-muted-foreground">
-                              <span className={`inline-block w-1.5 h-1.5 rounded-full mr-0.5 ${
-                                variant === "success" ? "bg-emerald-500" : "bg-rose-500"
-                              }`} />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <CardContent className="p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-1 items-center gap-3">
+            <h3 className="text-base font-semibold">
+              Vai trò mặc định:{" "}
+              <span className="text-primary">{ROLE_LABELS[user.role]}</span>
+            </h3>
+            <span className="text-[11px] text-muted-foreground">
+              ({overrideCount} cell tuỳ chỉnh)
+            </span>
+          </div>
+          <input
+            type="search"
+            placeholder="Tìm menu..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 w-44 rounded-md border border-border/60 bg-background px-2 text-sm"
+          />
         </CardContent>
       </Card>
 
-      {/* Pack3 spec D8/D13 — flat keys consumed by RLS / feature gates.
-          Override-only: tick = grant, untick = revoke (no inherit), since
-          no role_permissions row backs these keys. */}
+      {/* Permission matrix grouped by menu group */}
+      <div className="space-y-3">
+        {FEATURE_GROUPS.map((group) => {
+          const items = filteredGroups[group]
+          if (!items || items.length === 0) return null
+          const isOpen = openGroups.has(group)
+
+          let groupAllowed = 0
+          let groupTotal = 0
+          for (const f of items) {
+            for (const a of ACTIONS) {
+              groupTotal += 1
+              if (effectiveValue(user.role, f, a, overrides, rolePerms)) {
+                groupAllowed += 1
+              }
+            }
+          }
+          return (
+            <div
+              key={group}
+              className="overflow-hidden rounded-xl border border-border/40 bg-card shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/20 px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => toggleGroupOpen(group)}
+                  className="flex flex-1 items-center gap-2 text-left"
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <h3 className="text-sm font-semibold text-foreground">{group}</h3>
+                  <span className="text-[11px] text-muted-foreground">
+                    {items.length} menu • {groupAllowed}/{groupTotal} có quyền
+                  </span>
+                </button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bulkGroup(group, true)}
+                    disabled={isOwner}
+                  >
+                    Bật cả nhóm
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bulkGroup(group, false)}
+                    disabled={isOwner}
+                  >
+                    Tắt cả nhóm
+                  </Button>
+                </div>
+              </div>
+
+              {isOpen && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/40 bg-muted/10">
+                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Menu
+                        </th>
+                        {ACTIONS.map((a) => {
+                          const Icon = ACTION_ICONS[a]
+                          return (
+                            <th
+                              key={a}
+                              className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                              title={ACTION_DESC[a]}
+                            >
+                              <div className="flex flex-col items-center gap-0.5">
+                                <Icon className="h-3.5 w-3.5" />
+                                <span>{ACTION_LABELS[a]}</span>
+                              </div>
+                            </th>
+                          )
+                        })}
+                        <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Bật/Tắt cả dòng
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((f) => {
+                        return (
+                          <tr
+                            key={f.key}
+                            className="border-b border-border/30 hover:bg-muted/20"
+                          >
+                            <td className="px-4 py-2.5 align-middle">
+                              <div className="font-medium text-foreground">
+                                {f.label}
+                              </div>
+                              <div className="text-[11px] font-mono text-muted-foreground">
+                                {f.key}
+                              </div>
+                            </td>
+                            {ACTIONS.map((a) => {
+                              const key = permissionKey(f.key, a)
+                              const mode = cellMode(key)
+                              // Apply pending changes for instant UI feedback.
+                              const liveOverrides = new Map(overrides)
+                              pending.forEach((m, k) => {
+                                if (m === "inherit") liveOverrides.delete(k)
+                                else liveOverrides.set(k, m === "grant")
+                              })
+                              const eff = effectiveValue(
+                                user.role,
+                                f,
+                                a,
+                                liveOverrides,
+                                rolePerms
+                              )
+                              const cellBg =
+                                mode === "grant"
+                                  ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                                  : mode === "revoke"
+                                    ? "bg-rose-500 hover:bg-rose-600 text-white"
+                                    : eff
+                                      ? "bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                                      : "bg-rose-50 hover:bg-rose-100 border border-rose-200"
+                              const symbol =
+                                mode === "grant"
+                                  ? "✓"
+                                  : mode === "revoke"
+                                    ? "✗"
+                                    : eff
+                                      ? "·"
+                                      : "·"
+                              return (
+                                <td
+                                  key={a}
+                                  className="px-3 py-2.5 text-center align-middle"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => cycleCell(key)}
+                                    disabled={isOwner}
+                                    title={
+                                      mode === "inherit"
+                                        ? `Theo vai trò (${eff ? "có quyền" : "không có quyền"})`
+                                        : mode === "grant"
+                                          ? "Đã cấp quyền"
+                                          : "Đã thu hồi"
+                                    }
+                                    className={cn(
+                                      "inline-flex h-7 w-9 items-center justify-center rounded-md text-xs font-bold transition-colors",
+                                      cellBg,
+                                      isOwner && "cursor-not-allowed opacity-50"
+                                    )}
+                                  >
+                                    {symbol}
+                                  </button>
+                                </td>
+                              )
+                            })}
+                            <td className="px-3 py-2.5 text-center align-middle">
+                              <div className="flex justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => bulkRow(f, true)}
+                                  disabled={isOwner}
+                                  className="rounded-md border border-border/60 px-2 py-0.5 text-xs hover:bg-muted/40 disabled:opacity-40"
+                                >
+                                  Bật
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => bulkRow(f, false)}
+                                  disabled={isOwner}
+                                  className="rounded-md border border-border/60 px-2 py-0.5 text-xs hover:bg-muted/40 disabled:opacity-40"
+                                >
+                                  Tắt
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Pack3 spec D8/D13 — flat keys (override-only). */}
       <Card>
         <CardHeader>
           <CardTitle>Quyền đặc biệt (Pack3)</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Các quyền chỉ kích hoạt khi tick: vd. <code>customer.view_all</code>{" "}
-            override row-level RLS để xem mọi KH (D8).
+            Các quyền chỉ kích hoạt khi tick — không có mặc định theo vai trò.
+            Vd: <code>customer.view_all</code> override row-level RLS để xem mọi KH (D8).
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -411,23 +682,23 @@ export default function UserPermissionsPage() {
               <h3 className="text-sm font-semibold mb-2">{g.label}</h3>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {g.permissions.map((p) => {
-                  const mode = pending.has(p.key)
-                    ? pending.get(p.key)!
-                    : overrides.has(p.key)
-                      ? overrides.get(p.key)
-                        ? "grant"
-                        : "revoke"
-                      : "inherit"
+                  const mode = cellMode(p.key)
                   const granted = mode === "grant"
                   return (
                     <label
                       key={p.key}
-                      className="flex items-center gap-2 rounded border bg-muted/10 px-3 py-1.5 cursor-pointer text-sm"
+                      className={cn(
+                        "flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer",
+                        isOwner ? "cursor-not-allowed opacity-60" : "hover:bg-muted/30",
+                        granted && "border-emerald-300 bg-emerald-50"
+                      )}
                     >
                       <input
                         type="checkbox"
                         checked={granted}
+                        disabled={isOwner}
                         onChange={(e) => {
+                          if (isOwner) return
                           const k = p.key
                           setPending((prev) => {
                             const next = new Map(prev)
@@ -440,11 +711,8 @@ export default function UserPermissionsPage() {
                             const target: CellMode = e.target.checked
                               ? "grant"
                               : "inherit"
-                            if (target === original) {
-                              next.delete(k)
-                            } else {
-                              next.set(k, target)
-                            }
+                            if (target === original) next.delete(k)
+                            else next.set(k, target)
                             return next
                           })
                         }}

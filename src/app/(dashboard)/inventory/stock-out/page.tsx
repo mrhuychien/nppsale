@@ -161,7 +161,7 @@ export default function StockOutPage() {
       const ordersRes = await supabase
         .from("sales_orders")
         .select(
-          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit))"
+          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit)), returns(id, status, lines:return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(id, sku, name, base_unit)))"
         )
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
@@ -247,48 +247,107 @@ export default function StockOutPage() {
   // T-01 — carry conversion_factor snapshot from sales_order_lines so the
   // export entry can deduct batches in BASE UOM (4 thùng → 40 hộp).
   const pickList = useMemo(() => {
-    const agg = new Map<
-      string,
-      {
-        product_id: string
-        sku: string
-        name: string
-        unit: string
-        qty: number
-        qty_in_base_uom: number
-        conversion_factor: number
-        location: string
+    type PickRow = {
+      product_id: string
+      sku: string
+      name: string
+      unit: string
+      qty: number
+      qty_in_base_uom: number
+      conversion_factor: number
+      location: string
+      // 'sell' = hàng theo đơn; 'exchange' = hàng đem đi đổi cho khách
+      // (returns.is_exchange=true). Both physically leave warehouse, so
+      // both are saved as stock_entry_lines on confirm.
+      kind: "sell" | "exchange"
+    }
+    const agg = new Map<string, PickRow>()
+    const addRow = (input: {
+      product_id: string
+      sku: string
+      name: string
+      unit_name: string
+      quantity: number
+      conversion_factor: number
+      kind: "sell" | "exchange"
+    }) => {
+      const key = `${input.kind}__${input.product_id}__${input.unit_name}`
+      const existing = agg.get(key)
+      const factor = input.conversion_factor || 1
+      const qty = Number(input.quantity || 0)
+      if (existing) {
+        existing.qty += qty
+        existing.qty_in_base_uom += qty * factor
+      } else {
+        const firstBatch = batches.find((b) => b.product_id === input.product_id)
+        agg.set(key, {
+          product_id: input.product_id,
+          sku: input.sku,
+          name: input.name,
+          unit: input.unit_name,
+          qty,
+          qty_in_base_uom: qty * factor,
+          conversion_factor: factor,
+          location: firstBatch?.location || "—",
+          kind: input.kind,
+        })
       }
-    >()
+    }
     selectedOrders.forEach((o) => {
+      // Hàng bán
       ;(o.lines || []).forEach((l) => {
-        const key = `${l.product_id}__${l.unit_name}`
-        const factor = Number(
-          (l as unknown as { conversion_factor?: number }).conversion_factor ?? 1
-        )
-        const existing = agg.get(key)
-        const lineQty = Number(l.quantity || 0)
-        if (existing) {
-          existing.qty += lineQty
-          existing.qty_in_base_uom += lineQty * factor
-        } else {
-          const firstBatch = batches.find(
-            (b) => b.product_id === l.product_id
-          )
-          agg.set(key, {
-            product_id: l.product_id,
-            sku: l.product?.sku || "",
-            name: l.product?.name || "",
-            unit: l.unit_name,
-            qty: lineQty,
-            qty_in_base_uom: lineQty * factor,
-            conversion_factor: factor,
-            location: firstBatch?.location || "—",
+        addRow({
+          product_id: l.product_id,
+          sku: l.product?.sku || "",
+          name: l.product?.name || "",
+          unit_name: l.unit_name,
+          quantity: Number(l.quantity || 0),
+          conversion_factor: Number(
+            (l as unknown as { conversion_factor?: number }).conversion_factor ?? 1
+          ),
+          kind: "sell",
+        })
+      })
+      // Hàng đem đi đổi cho khách (returns.is_exchange=true).
+      // Filter out rejected/voided returns.
+      const returns =
+        (o as unknown as {
+          returns?: Array<{
+            status: string
+            lines?: Array<{
+              product_id: string
+              unit_name: string
+              quantity: number
+              is_exchange: boolean | null
+              product?: { sku: string; name: string; base_unit: string } | null
+            }>
+          }>
+        }).returns || []
+      returns.forEach((r) => {
+        if (r.status === "rejected" || r.status === "voided") return
+        ;(r.lines || []).forEach((rl) => {
+          if (!rl.is_exchange) return
+          addRow({
+            product_id: rl.product_id,
+            sku: rl.product?.sku || "",
+            name: rl.product?.name || "",
+            unit_name: rl.unit_name,
+            quantity: Number(rl.quantity || 0),
+            // Returns table doesn't snapshot conversion_factor; use the
+            // transactional rule: factor 1 unless the product has a
+            // matching unit. Keep simple: transaction unit = base unit
+            // most of the time for exchange.
+            conversion_factor: 1,
+            kind: "exchange",
           })
-        }
+        })
       })
     })
-    return Array.from(agg.values()).sort((a, b) => b.qty - a.qty)
+    return Array.from(agg.values()).sort((a, b) => {
+      // Sell rows first, then exchange.
+      if (a.kind !== b.kind) return a.kind === "sell" ? -1 : 1
+      return b.qty - a.qty
+    })
   }, [selectedOrders, batches])
 
   const uniqueSkuCount = pickList.length
@@ -469,7 +528,13 @@ export default function StockOutPage() {
         qty_in_base_uom: p.qty_in_base_uom,
         transaction_uom: p.unit,
         conversion_factor_snapshot: p.conversion_factor,
-        notes: `Vị trí: ${p.location}`,
+        // Notes prefix differentiates the kind for downstream display:
+        //   sell     → "Vị trí: …"     (default kho-out semantics)
+        //   exchange → "[Exchange] …"  (driver mang đi đổi cho khách)
+        notes:
+          p.kind === "exchange"
+            ? `[Exchange] ${p.location}`
+            : `Vị trí: ${p.location}`,
       }))
       if (entryLines.length > 0) {
         const { error: linesErr } = await supabase

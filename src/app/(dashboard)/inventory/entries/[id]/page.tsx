@@ -858,9 +858,14 @@ export default function StockEntryDetailPage() {
           {/* Section A: HÀNG GIAO KHÁCH = hàng bán + hàng đổi cho khách
               gộp 1 bảng có cột Loại. swap (dự phòng) tách section riêng. */}
           {(() => {
-            const sellRows = lines.filter(
-              (l) => !(l.notes || "").startsWith("[Swap]")
-            )
+            // Sell rows = lines that aren't tagged. [Swap] = T-12 dự
+            // phòng (separate dashed section). [Exchange] = đem đi đổi
+            // cho khách — hiển thị qua exchangeRows (đến từ returns
+            // table) để có thêm thông tin link với phiếu trả gốc.
+            const sellRows = lines.filter((l) => {
+              const n = l.notes || ""
+              return !n.startsWith("[Swap]") && !n.startsWith("[Exchange]")
+            })
             const totalRowCount = sellRows.length + exchangeRows.length
             return (
               <>
@@ -1056,43 +1061,73 @@ export default function StockEntryDetailPage() {
             .filter(Boolean)
             .join(", ")
           return (
-            <div key={o.id} className="print-page p-8">
-              <div className="flex justify-between items-start mb-4 text-xs text-gray-500">
+            <div key={o.id} className="print-page a5-doc p-4">
+              <div className="flex justify-between items-start mb-1" style={{ fontSize: "7pt", color: "#666" }}>
                 <span>Phiếu giao hàng — {entry.entry_code}</span>
                 <span>{idx + 1}/{refOrders.length}</span>
               </div>
-              <h1 className="text-2xl font-black text-center uppercase mb-1">
+              <h1 className="text-center font-bold uppercase" style={{ fontSize: "11pt" }}>
                 Phiếu giao hàng
               </h1>
-              <p className="text-center font-mono font-bold mb-6">{o.order_code}</p>
+              <p className="text-center font-mono font-bold mb-2" style={{ fontSize: "9pt" }}>
+                {o.order_code}
+              </p>
 
-              <div className="grid grid-cols-2 gap-4 mb-5 text-sm">
-                <div className="space-y-1">
-                  <p><span className="text-gray-500">Khách hàng:</span> <span className="font-bold">{o.customer?.store_name || "-"}</span></p>
+              <div className="grid grid-cols-2 gap-x-3 mb-2" style={{ fontSize: "8pt" }}>
+                <div>
+                  <p>
+                    <span className="text-gray-500">Khách:</span>{" "}
+                    <span className="font-bold">{o.customer?.store_name || "-"}</span>
+                  </p>
                   {o.customer?.phone && (
-                    <p><span className="text-gray-500">SĐT:</span> <span className="font-semibold">{o.customer.phone}</span></p>
+                    <p>
+                      <span className="text-gray-500">SĐT:</span>{" "}
+                      <span className="font-semibold">{o.customer.phone}</span>
+                    </p>
                   )}
                   {fullAddress && (
-                    <p><span className="text-gray-500">Địa chỉ:</span> <span className="font-semibold">{fullAddress}</span></p>
+                    <p>
+                      <span className="text-gray-500">Địa chỉ:</span>{" "}
+                      <span className="font-semibold">{fullAddress}</span>
+                    </p>
                   )}
                 </div>
-                <div className="space-y-1">
-                  <p><span className="text-gray-500">Ngày đặt:</span> <span className="font-semibold">{o.order_date ? formatDate(o.order_date) : "-"}</span></p>
-                  <p><span className="text-gray-500">Hình thức:</span> <span className="font-semibold">{o.payment_terms || "COD"}</span></p>
-                  {o.notes && <p><span className="text-gray-500">Ghi chú:</span> {o.notes}</p>}
+                <div>
+                  <p>
+                    <span className="text-gray-500">Ngày đặt:</span>{" "}
+                    <span className="font-semibold">{o.order_date ? formatDate(o.order_date) : "-"}</span>
+                  </p>
+                  <p>
+                    <span className="text-gray-500">Hình thức:</span>{" "}
+                    <span className="font-semibold">{o.payment_terms || "COD"}</span>
+                  </p>
+                  {o.notes && (
+                    <p>
+                      <span className="text-gray-500">Ghi chú:</span> {o.notes}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <table className="w-full text-sm border-collapse mb-6">
+              <table className="w-full border-collapse mb-2" style={{ fontSize: "8pt" }}>
+                <colgroup>
+                  <col style={{ width: "8mm" }} />
+                  <col />
+                  <col style={{ width: "20mm" }} />
+                  <col style={{ width: "11mm" }} />
+                  <col style={{ width: "13mm" }} />
+                  <col style={{ width: "20mm" }} />
+                  <col style={{ width: "22mm" }} />
+                </colgroup>
                 <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="py-2 text-left font-bold w-10">STT</th>
-                    <th className="py-2 text-left font-bold">Sản phẩm</th>
-                    <th className="py-2 text-left font-bold w-24">SKU</th>
-                    <th className="py-2 text-center font-bold w-14">ĐVT</th>
-                    <th className="py-2 text-right font-bold w-16">SL</th>
-                    <th className="py-2 text-right font-bold w-24">Đơn giá</th>
-                    <th className="py-2 text-right font-bold w-28">Thành tiền</th>
+                  <tr className="border-b border-gray-400">
+                    <th className="py-0.5 text-left font-bold">STT</th>
+                    <th className="py-0.5 text-left font-bold">Sản phẩm</th>
+                    <th className="py-0.5 text-left font-bold">SKU</th>
+                    <th className="py-0.5 text-center font-bold">ĐVT</th>
+                    <th className="py-0.5 text-right font-bold">SL</th>
+                    <th className="py-0.5 text-right font-bold">Đơn giá</th>
+                    <th className="py-0.5 text-right font-bold">Thành tiền</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1100,30 +1135,34 @@ export default function StockEntryDetailPage() {
                     const lineTotal = Number(l.line_total || Number(l.unit_price || 0) * Number(l.quantity || 0))
                     return (
                       <tr key={i} className="border-b border-gray-200">
-                        <td className="py-1.5">{i + 1}</td>
-                        <td className="py-1.5 font-medium">
-                          <div>{l.product?.name || "-"}</div>
+                        <td className="py-0.5">{i + 1}</td>
+                        <td className="py-0.5 font-medium">
+                          {l.product?.name || "-"}
                           {l.note && (
-                            <div className="text-[11px] italic text-gray-600 mt-0.5">
+                            <span className="italic text-gray-600 ml-1" style={{ fontSize: "7pt" }}>
                               ✏ {l.note}
-                            </div>
+                            </span>
                           )}
                         </td>
-                        <td className="py-1.5 font-mono text-xs">{l.product?.sku || "-"}</td>
-                        <td className="py-1.5 text-center">{l.unit_name}</td>
-                        <td className="py-1.5 text-right font-bold">{l.quantity}</td>
-                        <td className="py-1.5 text-right">{l.unit_price ? formatCurrency(Number(l.unit_price)) : "-"}</td>
-                        <td className="py-1.5 text-right font-semibold">{lineTotal ? formatCurrency(lineTotal) : "-"}</td>
+                        <td className="py-0.5 font-mono">{l.product?.sku || "-"}</td>
+                        <td className="py-0.5 text-center">{l.unit_name}</td>
+                        <td className="py-0.5 text-right font-semibold">{l.quantity}</td>
+                        <td className="py-0.5 text-right">
+                          {l.unit_price ? formatCurrency(Number(l.unit_price)) : "-"}
+                        </td>
+                        <td className="py-0.5 text-right font-semibold">
+                          {lineTotal ? formatCurrency(lineTotal) : "-"}
+                        </td>
                       </tr>
                     )
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-gray-300">
-                    <td colSpan={4} className="py-2 text-right font-bold">Tổng cộng:</td>
-                    <td className="py-2 text-right font-black">{orderQty}</td>
-                    <td className="py-2 text-right text-gray-500 text-xs">Tổng tiền</td>
-                    <td className="py-2 text-right font-black">
+                  <tr className="border-t border-gray-400 font-bold">
+                    <td colSpan={4} className="py-0.5 text-right">Tổng cộng:</td>
+                    <td className="py-0.5 text-right">{orderQty}</td>
+                    <td className="py-0.5"></td>
+                    <td className="py-0.5 text-right">
                       {formatCurrency(Number(o.total || orderTotal))}
                     </td>
                   </tr>
@@ -1154,25 +1193,34 @@ export default function StockEntryDetailPage() {
                 )
                 const hasReturns = allReturnLines.length > 0
                 return (
-                  <div className="mb-6">
-                    <h2 className="text-base font-bold mb-2 mt-4">
+                  <div className="mb-2">
+                    <h2 className="font-bold mt-2 mb-1" style={{ fontSize: "9pt" }}>
                       Hàng trả về (thu về kho)
                     </h2>
-                    <p className="text-xs text-gray-500 mb-2">
+                    <p className="text-gray-500 mb-1" style={{ fontSize: "7pt" }}>
                       {hasReturns
-                        ? "Thu lại các sản phẩm dưới đây và đối chiếu với khách trước khi rời điểm giao."
-                        : "Đơn này hiện chưa có yêu cầu trả. Nếu khách trả tại điểm giao, ghi tay vào các dòng trống bên dưới."}
+                        ? "Thu lại các SP dưới đây và đối chiếu với khách trước khi rời điểm giao."
+                        : "Đơn chưa có yêu cầu trả. Nếu khách trả tại điểm giao, ghi tay vào các dòng trống."}
                     </p>
-                    <table className="w-full text-sm border-collapse mb-2">
+                    <table className="w-full border-collapse" style={{ fontSize: "8pt" }}>
+                      <colgroup>
+                        <col style={{ width: "8mm" }} />
+                        <col />
+                        <col style={{ width: "20mm" }} />
+                        <col style={{ width: "11mm" }} />
+                        <col style={{ width: "13mm" }} />
+                        <col style={{ width: "20mm" }} />
+                        <col style={{ width: "22mm" }} />
+                      </colgroup>
                       <thead>
-                        <tr className="border-b-2 border-gray-300">
-                          <th className="py-2 text-left font-bold w-10">STT</th>
-                          <th className="py-2 text-left font-bold">Sản phẩm</th>
-                          <th className="py-2 text-left font-bold w-24">SKU</th>
-                          <th className="py-2 text-center font-bold w-14">ĐVT</th>
-                          <th className="py-2 text-right font-bold w-16">SL</th>
-                          <th className="py-2 text-right font-bold w-24">Đơn giá</th>
-                          <th className="py-2 text-right font-bold w-28">Thành tiền</th>
+                        <tr className="border-b border-gray-400">
+                          <th className="py-0.5 text-left font-bold">STT</th>
+                          <th className="py-0.5 text-left font-bold">Sản phẩm</th>
+                          <th className="py-0.5 text-left font-bold">SKU</th>
+                          <th className="py-0.5 text-center font-bold">ĐVT</th>
+                          <th className="py-0.5 text-right font-bold">SL</th>
+                          <th className="py-0.5 text-right font-bold">Đơn giá</th>
+                          <th className="py-0.5 text-right font-bold">Thành tiền</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1185,39 +1233,39 @@ export default function StockEntryDetailPage() {
                               )
                               return (
                                 <tr key={i} className="border-b border-gray-200">
-                                  <td className="py-1.5">{i + 1}</td>
-                                  <td className="py-1.5 font-medium">
-                                    <div className="flex items-center gap-1.5">
-                                      <span>{l.product?.name || "-"}</span>
-                                      {l.is_exchange && (
-                                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
-                                          ĐỔI
-                                        </span>
-                                      )}
-                                    </div>
+                                  <td className="py-0.5">{i + 1}</td>
+                                  <td className="py-0.5 font-medium">
+                                    {l.product?.name || "-"}
+                                    {l.is_exchange && (
+                                      <span
+                                        className="font-bold uppercase px-1 ml-1 rounded bg-blue-100 text-blue-800 border border-blue-300"
+                                        style={{ fontSize: "7pt" }}
+                                      >
+                                        ĐỔI
+                                      </span>
+                                    )}
                                     {l.note && (
-                                      <div className="text-[11px] italic text-gray-600 mt-0.5">
+                                      <span
+                                        className="italic text-gray-600 ml-1"
+                                        style={{ fontSize: "7pt" }}
+                                      >
                                         ✏ {l.note}
-                                      </div>
+                                      </span>
                                     )}
                                   </td>
-                                  <td className="py-1.5 font-mono text-xs">
-                                    {l.product?.sku || "-"}
-                                  </td>
-                                  <td className="py-1.5 text-center">{l.unit_name}</td>
-                                  <td className="py-1.5 text-right font-bold">
+                                  <td className="py-0.5 font-mono">{l.product?.sku || "-"}</td>
+                                  <td className="py-0.5 text-center">{l.unit_name}</td>
+                                  <td className="py-0.5 text-right font-semibold">
                                     {l.quantity}
                                   </td>
-                                  <td className="py-1.5 text-right">
-                                    {l.is_exchange ? (
-                                      <span className="text-blue-700 font-semibold">đổi</span>
-                                    ) : l.unit_price ? (
-                                      formatCurrency(Number(l.unit_price))
-                                    ) : (
-                                      "-"
-                                    )}
+                                  <td className="py-0.5 text-right">
+                                    {l.is_exchange
+                                      ? <span className="text-blue-700 font-semibold">đổi</span>
+                                      : l.unit_price
+                                        ? formatCurrency(Number(l.unit_price))
+                                        : "-"}
                                   </td>
-                                  <td className="py-1.5 text-right font-semibold">
+                                  <td className="py-0.5 text-right font-semibold">
                                     {l.is_exchange
                                       ? <span className="text-blue-700">—</span>
                                       : lineTotal
@@ -1229,51 +1277,49 @@ export default function StockEntryDetailPage() {
                             })
                           : Array.from({ length: 3 }, (_, i) => (
                               <tr key={`blank-${i}`} className="border-b border-gray-300">
-                                <td className="py-3">{i + 1}</td>
-                                <td className="py-3"></td>
-                                <td className="py-3"></td>
-                                <td className="py-3 text-center"></td>
-                                <td className="py-3 text-right"></td>
-                                <td className="py-3 text-right"></td>
-                                <td className="py-3 text-right"></td>
+                                <td style={{ height: "5mm" }}>{i + 1}</td>
+                                <td></td>
+                                <td></td>
+                                <td className="text-center"></td>
+                                <td className="text-right"></td>
+                                <td className="text-right"></td>
+                                <td className="text-right"></td>
                               </tr>
                             ))}
                       </tbody>
                       {hasReturns ? (
                         <tfoot>
-                          <tr className="border-t-2 border-gray-300">
-                            <td colSpan={4} className="py-2 text-right font-bold">
+                          <tr className="border-t border-gray-400 font-bold">
+                            <td colSpan={4} className="py-0.5 text-right">
                               Tổng trả (trừ công nợ):
                             </td>
-                            <td className="py-2 text-right font-black">
-                              {totalReturnQty}
-                            </td>
-                            <td className="py-2 text-right text-gray-500 text-xs">
-                              Giá trị trừ
-                            </td>
-                            <td className="py-2 text-right font-black">
+                            <td className="py-0.5 text-right">{totalReturnQty}</td>
+                            <td className="py-0.5"></td>
+                            <td className="py-0.5 text-right">
                               {formatCurrency(totalReturnValue)}
                             </td>
                           </tr>
                           {allReturnLines.some((l) => l.is_exchange) && (
                             <tr>
-                              <td colSpan={7} className="py-1.5 text-[11px] italic text-blue-700">
-                                * Dòng có nhãn ĐỔI là hàng đổi: thu về kho nhưng KHÔNG trừ công nợ.
+                              <td
+                                colSpan={7}
+                                className="italic text-blue-700"
+                                style={{ fontSize: "7pt" }}
+                              >
+                                * ĐỔI = thu về kho, KHÔNG trừ công nợ.
                               </td>
                             </tr>
                           )}
                         </tfoot>
                       ) : (
                         <tfoot>
-                          <tr className="border-t-2 border-gray-300">
-                            <td colSpan={4} className="py-2 text-right font-bold">
+                          <tr className="border-t border-gray-400 font-bold">
+                            <td colSpan={4} className="py-0.5 text-right">
                               Tổng trả (ghi tay):
                             </td>
-                            <td className="py-2 text-right">_______</td>
-                            <td className="py-2 text-right text-gray-500 text-xs">
-                              Giá trị trả
-                            </td>
-                            <td className="py-2 text-right">_______</td>
+                            <td className="py-0.5 text-right">_______</td>
+                            <td className="py-0.5"></td>
+                            <td className="py-0.5 text-right">_______</td>
                           </tr>
                         </tfoot>
                       )}
@@ -1296,7 +1342,11 @@ export default function StockEntryDetailPage() {
                           } as Record<string, string>)[r.status] || r.status
                         : ""
                       return (
-                        <p key={r.id} className="text-xs text-gray-600 mt-1">
+                        <p
+                          key={r.id}
+                          className="text-gray-600 mt-0.5"
+                          style={{ fontSize: "7pt" }}
+                        >
                           <span className="font-semibold">Phiếu trả {ri + 1}:</span>{" "}
                           {statusText ? `[${statusText}] ` : ""}Lý do: {reasonText}
                           {r.credit_note_amount != null
@@ -1310,13 +1360,14 @@ export default function StockEntryDetailPage() {
                       const netDue =
                         Number(o.total || orderTotal) - totalReturnValue
                       return (
-                        <div className="mt-2 flex items-center justify-end gap-3 border-t border-gray-300 pt-2 text-sm">
+                        <div
+                          className="mt-1 flex items-center justify-end gap-2 border-t border-gray-400 pt-1"
+                          style={{ fontSize: "9pt" }}
+                        >
                           <span className="text-gray-500">
-                            {hasReturns
-                              ? "Còn phải thu (sau trả):"
-                              : "Số phải thu (trước trả tại điểm giao):"}
+                            {hasReturns ? "Còn phải thu:" : "Số phải thu:"}
                           </span>
-                          <span className="font-black text-base">
+                          <span className="font-bold" style={{ fontSize: "10pt" }}>
                             {formatCurrency(Math.max(0, netDue))}
                           </span>
                         </div>
@@ -1326,18 +1377,21 @@ export default function StockEntryDetailPage() {
                 )
               })()}
 
-              <div className="grid grid-cols-3 gap-8 text-center text-sm mt-12">
+              <div className="grid grid-cols-3 gap-3 text-center signatures mt-4">
                 <div>
-                  <p className="font-bold">Thủ kho</p>
-                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                  <p className="font-bold" style={{ fontSize: "8pt" }}>Thủ kho</p>
+                  <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+                  <div style={{ height: "16mm" }} />
                 </div>
                 <div>
-                  <p className="font-bold">Lái xe / Giao hàng</p>
-                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                  <p className="font-bold" style={{ fontSize: "8pt" }}>Lái xe / Giao hàng</p>
+                  <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+                  <div style={{ height: "16mm" }} />
                 </div>
                 <div>
-                  <p className="font-bold">Khách hàng</p>
-                  <p className="text-xs text-gray-500 mb-20">(Ký, ghi rõ họ tên)</p>
+                  <p className="font-bold" style={{ fontSize: "8pt" }}>Khách hàng</p>
+                  <p className="italic text-gray-500" style={{ fontSize: "7pt" }}>(Ký, ghi rõ họ tên)</p>
+                  <div style={{ height: "16mm" }} />
                 </div>
               </div>
             </div>

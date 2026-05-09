@@ -428,10 +428,34 @@ export default function StockEntryDetailPage() {
                         const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
                         const baseUnit = line.product?.base_unit || ""
                         const showBase = factor > 1 && baseUnit && baseUnit !== line.unit_name
+                        const noteRaw = line.notes || ""
+                        const isExchange = noteRaw.startsWith("[Exchange]")
+                        const isSwap = noteRaw.startsWith("[Swap]")
+                        const cleanNote = noteRaw
+                          .replace(/^\[Exchange\]\s*/, "")
+                          .replace(/^\[Swap\]\s*/, "")
+                          .replace(/^Vị trí:\s*/, "")
+                        const rowBg = isExchange
+                          ? "bg-blue-50/40"
+                          : isSwap
+                            ? "bg-amber-50/40"
+                            : undefined
                         return (
-                          <TableRow key={line.id}>
+                          <TableRow key={line.id} className={rowBg}>
                             <TableCell>
-                              <div className="font-semibold">{line.product?.name || "-"}</div>
+                              <div className="font-semibold flex items-center gap-1.5">
+                                {isExchange && (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                    ĐỔI
+                                  </span>
+                                )}
+                                {isSwap && (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                    DỰ PHÒNG
+                                  </span>
+                                )}
+                                <span>{line.product?.name || "-"}</span>
+                              </div>
                               <div className="text-xs text-muted-foreground font-mono">
                                 SKU: {line.product?.sku}
                               </div>
@@ -455,7 +479,7 @@ export default function StockEntryDetailPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
-                              {line.notes || "-"}
+                              {cleanNote || "-"}
                             </TableCell>
                           </TableRow>
                         )
@@ -477,12 +501,38 @@ export default function StockEntryDetailPage() {
                     const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
                     const baseUnit = line.product?.base_unit || ""
                     const showBase = factor > 1 && baseUnit && baseUnit !== line.unit_name
+                    const noteRaw = line.notes || ""
+                    const isExchange = noteRaw.startsWith("[Exchange]")
+                    const isSwap = noteRaw.startsWith("[Swap]")
+                    const cleanNote = noteRaw
+                      .replace(/^\[Exchange\]\s*/, "")
+                      .replace(/^\[Swap\]\s*/, "")
+                      .replace(/^Vị trí:\s*/, "")
+                    const cardBg = isExchange
+                      ? "bg-blue-50/40 border-blue-200"
+                      : isSwap
+                        ? "bg-amber-50/40 border-amber-200"
+                        : "bg-muted/20"
                     return (
-                    <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
+                    <div key={line.id} className={`rounded-xl border p-3 ${cardBg}`}>
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-sm leading-tight">{line.product?.name || "-"}</p>
-                          <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            {isExchange && (
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                ĐỔI
+                              </span>
+                            )}
+                            {isSwap && (
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                DỰ PHÒNG
+                              </span>
+                            )}
+                            <p className="font-semibold text-sm leading-tight">
+                              {line.product?.name || "-"}
+                            </p>
+                          </div>
+                          <p className="font-mono text-xs text-muted-foreground">
                             SKU: {line.product?.sku}
                           </p>
                         </div>
@@ -500,8 +550,8 @@ export default function StockEntryDetailPage() {
                           Lô: {line.batch.batch_code}
                         </span>
                       )}
-                      {line.notes && (
-                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{line.notes}</p>
+                      {cleanNote && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{cleanNote}</p>
                       )}
                     </div>
                     )

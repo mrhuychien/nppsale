@@ -352,6 +352,70 @@ export default function StockOutPage() {
 
   const uniqueSkuCount = pickList.length
 
+  // Phân tách sell vs exchange counts để hiển thị summary chip.
+  const pickKindCounts = useMemo(() => {
+    let sell = 0
+    let exchange = 0
+    for (const p of pickList) {
+      if (p.kind === "exchange") exchange += 1
+      else sell += 1
+    }
+    return { sell, exchange }
+  }, [pickList])
+
+  // Refund items (TRẢ trừ công nợ) — KHÔNG đem đi đổi, mà driver phải
+  // THU VỀ từ khách trên đường giao. Liệt kê riêng cho thủ kho biết
+  // chuẩn bị bao bì / chỗ chứa khi xe về.
+  const collectFromCustomer = useMemo(() => {
+    type CollectRow = {
+      product_id: string
+      sku: string
+      name: string
+      unit_name: string
+      qty: number
+      orderCodes: Set<string>
+    }
+    const agg = new Map<string, CollectRow>()
+    selectedOrders.forEach((o) => {
+      const returns =
+        (o as unknown as {
+          returns?: Array<{
+            status: string
+            lines?: Array<{
+              product_id: string
+              unit_name: string
+              quantity: number
+              is_exchange: boolean | null
+              product?: { sku: string; name: string } | null
+            }>
+          }>
+        }).returns || []
+      returns.forEach((r) => {
+        if (r.status === "rejected" || r.status === "voided") return
+        ;(r.lines || []).forEach((rl) => {
+          if (rl.is_exchange) return // chỉ TRẢ — đổi đã có ở pickList
+          const key = `${rl.product_id}__${rl.unit_name}`
+          const existing = agg.get(key)
+          const qty = Number(rl.quantity || 0)
+          if (existing) {
+            existing.qty += qty
+            existing.orderCodes.add(o.order_code || "")
+          } else {
+            agg.set(key, {
+              product_id: rl.product_id,
+              sku: rl.product?.sku || "",
+              name: rl.product?.name || "",
+              unit_name: rl.unit_name,
+              qty,
+              orderCodes: new Set([o.order_code || ""]),
+            })
+          }
+        })
+      })
+    })
+    return Array.from(agg.values())
+  }, [selectedOrders])
+
   const targetCustomer = useMemo(() => {
     if (selectedOrders.length === 0) return null
     const first = selectedOrders[0].customer_id
@@ -954,12 +1018,59 @@ export default function StockOutPage() {
                   Tổng SKU
                 </p>
                 <p className="text-2xl font-black mt-1">{uniqueSkuCount}</p>
+                {pickKindCounts.exchange > 0 && (
+                  <p className="text-[10px] mt-1 flex items-center gap-1">
+                    <span className="text-gray-300">{pickKindCounts.sell} Bán</span>
+                    <span className="text-gray-500">+</span>
+                    <span className="text-blue-300 font-semibold">
+                      {pickKindCounts.exchange} Đổi
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Refund items — driver thu về từ khách trên đường giao.
+                Không nằm trong pickList vì hàng đã ở chỗ khách. */}
+            {collectFromCustomer.length > 0 && (
+              <div className="mb-5 rounded-xl bg-amber-500/10 border border-amber-400/30 p-3">
+                <p className="text-xs uppercase tracking-wider text-amber-300 font-semibold mb-2 flex items-center gap-1">
+                  ⚠ Thu về từ khách (KHÔNG xuất kho)
+                </p>
+                <p className="text-[11px] text-amber-200/80 mb-2">
+                  Driver thu lại các SP dưới đây từ khách rồi nhập lại kho ở
+                  bước Bàn giao lại. Hàng này TRỪ vào công nợ.
+                </p>
+                <div className="space-y-1">
+                  {collectFromCustomer.map((c) => (
+                    <div
+                      key={`${c.product_id}-${c.unit_name}`}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="truncate flex items-center gap-1.5">
+                        <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-amber-500 text-white">
+                          TRẢ
+                        </span>
+                        <span className="font-mono text-gray-300">{c.sku}</span>
+                        <span className="truncate">{c.name}</span>
+                      </span>
+                      <span className="font-bold whitespace-nowrap text-amber-200">
+                        {c.qty} {c.unit_name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mb-5">
               <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
                 Pick-list Summary (SKU)
+                {pickKindCounts.exchange > 0 && (
+                  <span className="ml-2 text-blue-300 normal-case">
+                    — {pickKindCounts.exchange} dòng ĐỔI cho khách (đem đi)
+                  </span>
+                )}
               </p>
               {pickList.length === 0 ? (
                 <div className="rounded-xl bg-white/5 p-4 text-center text-sm text-gray-400">
@@ -969,11 +1080,20 @@ export default function StockOutPage() {
                 <div className="space-y-2">
                   {pickList.slice(0, 3).map((p) => (
                     <div
-                      key={`${p.product_id}-${p.unit}`}
-                      className="flex items-center justify-between rounded-xl bg-white/5 p-3"
+                      key={`${p.kind}-${p.product_id}-${p.unit}`}
+                      className={`flex items-center justify-between rounded-xl p-3 ${
+                        p.kind === "exchange"
+                          ? "bg-blue-500/10 border border-blue-400/30"
+                          : "bg-white/5"
+                      }`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
+                          {p.kind === "exchange" && (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500 text-white">
+                              ĐỔI
+                            </span>
+                          )}
                           <span className="font-mono text-xs text-gray-300">
                             {p.sku}
                           </span>

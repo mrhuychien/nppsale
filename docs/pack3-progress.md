@@ -25,7 +25,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - [~] T-13 Phân quyền per-user override (mig 041 — table + resolver fn). Settings UI page deferred (existing /settings/permissions covers role matrix; per-user override UI to add later)
 - [x] T-14 Row-level customer (mig 042 — unified RLS for customers + sales_orders honors customer_assignments + customer.view_all override)
 - [~] T-15 KPI tiers + Order-count bonus + Activity bonus (mig 043 — 3 per-user tables; lib/payroll/bonus.ts compute helpers). Settings UI to edit per-user values deferred
-- [ ] T-16 Bảng lương
+- [~] T-16 Bảng lương (mig 050 — payroll_runs + payroll_run_items + compute_payroll_run() + lock_payroll_run() RPCs + enforce_payroll_lock trigger. lib/payroll/run.ts wraps RPCs + setManualAdjustment. /hr/payroll/runs page lists kỳ + active run details with totals tiles + per-user grid showing prorated base + KPI + order-count bonus + activity bonus + BHXH (10.5% flat) + manual_adjustment. Lock flips status='locked', trigger blocks further mutations. Excel export + payslip PDF deferred — Q8.)
 - [x] T-17 Đổi tên Chấm công (sidebar label "Tổng quan nhân sự" → "Chấm công" pointing to /hr/attendance which already exists)
 
 ## Notes for resume

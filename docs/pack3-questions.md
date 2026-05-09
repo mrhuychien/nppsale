@@ -87,6 +87,21 @@ re-aggregated from selected orders' lines each time.
 the order detail page UI today. Workaround: cancel + re-pick. Track
 as follow-up in a future Pack3 iteration.
 
+## Q8: [T-16] Excel export + per-user payslip PDF deferred.
+
+**Spec asks:** GET /api/payroll/[id]/export-excel and
+GET /api/payroll/[id]/items/[itemId]/payslip-pdf.
+
+**Current state:** payroll_run_items has every column needed for a
+payslip; the table-view UI shows the same data on screen and the
+browser print works for paper distribution.
+
+**Assumption:** ship the canonical payroll_runs + payroll_run_items
+storage and the compute/lock workflow first. Excel export (xlsx via
+the existing `xlsx` package the repo already depends on) and a
+dedicated payslip print page can be layered on top without schema
+changes — pure read-only formatting.
+
 ## Q7: [T-07] Customer-return + unused-swap-stock sources defer to other tasks.
 
 **Spec says:** "Tab 2 — Hàng nhận về" auto-lists items from

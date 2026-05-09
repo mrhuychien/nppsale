@@ -77,11 +77,25 @@ export default function CashReceiptDetailPage() {
       .eq("receipt_id", id)
     setLines((ls as unknown as ReceiptLineWithOrder[]) || [])
 
-    if ((r as { source_type?: string; source_id?: string } | null)?.source_type === "delivery_settle" && (r as { source_id?: string } | null)?.source_id) {
+    // Resolve linked delivery for the "Nhận bàn giao lại" CTA. Two paths:
+    //   - source_type='delivery_settle' → source_id IS the delivery_id
+    //   - source_type='manual' (self-deliver flow) → source_id is the
+    //     stock_entry_id; lookup deliveries.source_stock_entry_id (mig 056).
+    const sourceType = (r as { source_type?: string } | null)?.source_type
+    const sourceId = (r as { source_id?: string } | null)?.source_id
+    if (sourceType === "delivery_settle" && sourceId) {
       const { data: d } = await supabase
         .from("deliveries")
         .select("id, route_name")
-        .eq("id", (r as { source_id: string }).source_id)
+        .eq("id", sourceId)
+        .maybeSingle()
+      setDelivery((d as { id: string; route_name: string | null } | null) || null)
+    } else if (sourceType === "manual" && sourceId) {
+      // Self-deliver flow — receipt source_id is stock_entry.id.
+      const { data: d } = await supabase
+        .from("deliveries")
+        .select("id, route_name")
+        .eq("source_stock_entry_id", sourceId)
         .maybeSingle()
       setDelivery((d as { id: string; route_name: string | null } | null) || null)
     } else {

@@ -283,6 +283,64 @@ export default function StockEntryDetailPage() {
         await ensureReceivableForOrder(supabase, orderId)
       }
 
+      // 5) Tạo delivery row + delivery_lines để T-07 handover flow dùng
+      // được sau khi thu tiền. Self-deliver = NPP / chủ xe trực tiếp
+      // giao, driver_id chính là user hiện tại. Idempotent: nếu đã có
+      // delivery cho stock_entry này thì skip (không double-create).
+      const { data: existingDelivery } = await supabase
+        .from("deliveries")
+        .select("id")
+        .eq("source_stock_entry_id", entry.id)
+        .maybeSingle()
+      let deliveryId = (existingDelivery as { id: string } | null)?.id ?? null
+      if (!deliveryId) {
+        const { data: newDelivery, error: delErr } = await supabase
+          .from("deliveries")
+          .insert({
+            org_id: entry.org_id,
+            driver_id: user.id,
+            route_name: `Tự giao — ${entry.entry_code}`,
+            status: "in_transit",
+            started_at: new Date().toISOString(),
+            source_stock_entry_id: entry.id,
+          })
+          .select("id")
+          .single()
+        if (delErr) {
+          // Defensive — older DBs có thể chưa có cột source_stock_entry_id.
+          // Retry không có cột đó để vẫn tạo delivery.
+          const msg = (delErr.message || "").toLowerCase()
+          if (msg.includes("source_stock_entry_id")) {
+            const { data: fallback } = await supabase
+              .from("deliveries")
+              .insert({
+                org_id: entry.org_id,
+                driver_id: user.id,
+                route_name: `Tự giao — ${entry.entry_code}`,
+                status: "in_transit",
+                started_at: new Date().toISOString(),
+              })
+              .select("id")
+              .single()
+            deliveryId = (fallback as { id: string } | null)?.id ?? null
+          } else {
+            throw delErr
+          }
+        } else {
+          deliveryId = (newDelivery as { id: string } | null)?.id ?? null
+        }
+      }
+      if (deliveryId) {
+        // 1 delivery_line per order. Status='pending' — flips to
+        // 'delivered' khi user xác nhận thu tiền ở collect page.
+        const deliveryLineRows = orderIds.map((oid) => ({
+          delivery_id: deliveryId,
+          order_id: oid,
+          status: "pending",
+        }))
+        await supabase.from("delivery_lines").insert(deliveryLineRows)
+      }
+
       toast({
         title: `Đã chuyển ${orderIds.length} đơn sang "Đang giao"`,
         description: "Đã trừ kho. Tiếp tục bước thu tiền để chuyển sang 'Đã giao'.",

@@ -327,14 +327,32 @@ export default function CollectPaymentPage() {
 
       toast({
         title: `Đã ghi nhận thu ${formatCurrency(totals.collect)}`,
-        description:
+        description: `${
           totals.leftover > 0
             ? `Đã giao ${rows.length} đơn — còn ${formatCurrency(totals.leftover)} chuyển sang công nợ.`
-            : `Đã giao ${rows.length} đơn và thu đủ tiền.`,
+            : `Đã giao ${rows.length} đơn và thu đủ tiền.`
+        } Tiếp tục bàn giao lại từ lái xe…`,
       })
       // T-05: workflow done — close session so it falls off the widget.
       await closeSession()
-      router.push(`/finance/cash-receipts/${receiptId}`)
+      // User feedback: sau bước thu tiền + in phiếu thu cần chuyển
+      // sang "Nhận bàn giao lại từ lái xe". Tìm delivery đã tạo ở
+      // handleSelfDeliver (mig 056 — source_stock_entry_id) → redirect
+      // tới handover. Nếu không có (legacy entry tạo trước fix) thì
+      // fallback về cash-receipts như cũ.
+      const { data: linkedDelivery } = await supabase
+        .from("deliveries")
+        .select("id")
+        .eq("source_stock_entry_id", entry.id)
+        .maybeSingle()
+      const deliveryId = (linkedDelivery as { id: string } | null)?.id
+      if (deliveryId) {
+        router.push(
+          `/deliveries/${deliveryId}/handover?from_receipt=${receiptId}`
+        )
+      } else {
+        router.push(`/finance/cash-receipts/${receiptId}`)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({ title: "Lỗi", description: message, variant: "destructive" })

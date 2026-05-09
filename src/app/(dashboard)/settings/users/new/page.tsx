@@ -107,9 +107,16 @@ export default function NewUserPage() {
       }
       toast({
         title: "Đã tạo người dùng",
-        description: `${fullName} (${ROLE_LABELS[role] || role}) - email: ${email}`,
+        description: `${fullName} (${ROLE_LABELS[role] || role}) — tiếp tục phân quyền chi tiết.`,
       })
-      router.push("/settings/users")
+      // Sau khi tạo xong → redirect tới trang edit để admin tuỳ chỉnh
+      // phân quyền chi tiết ngay (matrix mount sẵn ở dưới form).
+      const newUserId = data?.user?.id || data?.id
+      if (newUserId) {
+        router.push(`/settings/users/${newUserId}`)
+      } else {
+        router.push("/settings/users")
+      }
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {

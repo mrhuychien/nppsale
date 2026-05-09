@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { PermissionMatrix } from "@/components/settings/permission-matrix"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -227,6 +228,26 @@ export default function UserDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Phân quyền chi tiết — embedded matrix giống /settings/permissions
+          (role page) nhưng cho user cụ thể. Click cell để cycle 3 trạng
+          thái: theo vai trò / cấp quyền / thu hồi. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Phân quyền chi tiết</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Tuỳ chỉnh quyền per-user. Mặc định inherit theo vai trò; click cell
+            để cấp / thu hồi từng action. Owner luôn có toàn quyền.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <PermissionMatrix
+            userId={target.id}
+            userRole={target.role}
+            orgId={target.org_id}
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

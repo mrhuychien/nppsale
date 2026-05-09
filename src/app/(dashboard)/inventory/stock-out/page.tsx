@@ -54,6 +54,20 @@ import type {
 type OrderWithRelations = SalesOrder & {
   customer?: Customer
   lines?: (SalesOrderLine & { product?: Product })[]
+  /** Pack3: linked returns with is_exchange flag so picking flow can
+   *  add exchange replacements + warn driver about refund collections. */
+  returns?: Array<{
+    id: string
+    status: string
+    return_lines?: Array<{
+      id: string
+      product_id: string
+      unit_name: string
+      quantity: number
+      is_exchange: boolean | null
+      product?: { id?: string; sku: string; name: string; base_unit?: string } | null
+    }>
+  }>
 }
 
 type BatchLite = Pick<Batch, "id" | "product_id" | "location" | "qty_on_hand" | "expires_at">
@@ -161,7 +175,7 @@ export default function StockOutPage() {
       const ordersRes = await supabase
         .from("sales_orders")
         .select(
-          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit)), returns(id, status, lines:return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(id, sku, name, base_unit)))"
+          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit)), returns(id, status, return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(id, sku, name, base_unit)))"
         )
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
@@ -177,9 +191,20 @@ export default function StockOutPage() {
         if (valid.length > 0) setSelectedIds(new Set(valid))
       }
 
+      // Include both sale-line product ids AND exchange-line product ids
+      // (returns.return_lines where is_exchange=true) so batches lookup
+      // covers exchange replacements too.
       const productIds = Array.from(
         new Set(
-          typed.flatMap((o) => (o.lines || []).map((l) => l.product_id))
+          typed.flatMap((o) => {
+            const sellIds = (o.lines || []).map((l) => l.product_id)
+            const exchangeIds = (o.returns || []).flatMap((r) =>
+              (r.return_lines || [])
+                .filter((rl) => rl.is_exchange)
+                .map((rl) => rl.product_id)
+            )
+            return [...sellIds, ...exchangeIds]
+          })
         )
       )
 
@@ -308,24 +333,11 @@ export default function StockOutPage() {
           kind: "sell",
         })
       })
-      // Hàng đem đi đổi cho khách (returns.is_exchange=true).
-      // Filter out rejected/voided returns.
-      const returns =
-        (o as unknown as {
-          returns?: Array<{
-            status: string
-            lines?: Array<{
-              product_id: string
-              unit_name: string
-              quantity: number
-              is_exchange: boolean | null
-              product?: { sku: string; name: string; base_unit: string } | null
-            }>
-          }>
-        }).returns || []
-      returns.forEach((r) => {
-        if (r.status === "rejected" || r.status === "voided") return
-        ;(r.lines || []).forEach((rl) => {
+      // Hàng đem đi đổi cho khách (returns.return_lines.is_exchange=true).
+      // Skip rejected returns. Pending/approved/completed all included.
+      ;(o.returns || []).forEach((r) => {
+        if (r.status === "rejected") return
+        ;(r.return_lines || []).forEach((rl) => {
           if (!rl.is_exchange) return
           addRow({
             product_id: rl.product_id,
@@ -333,10 +345,9 @@ export default function StockOutPage() {
             name: rl.product?.name || "",
             unit_name: rl.unit_name,
             quantity: Number(rl.quantity || 0),
-            // Returns table doesn't snapshot conversion_factor; use the
-            // transactional rule: factor 1 unless the product has a
-            // matching unit. Keep simple: transaction unit = base unit
-            // most of the time for exchange.
+            // Returns table doesn't snapshot conversion_factor; default
+            // to 1 so transaction qty == base qty. Exchange items are
+            // typically tracked at base UOM (hộp / chai / cái).
             conversion_factor: 1,
             kind: "exchange",
           })
@@ -377,22 +388,9 @@ export default function StockOutPage() {
     }
     const agg = new Map<string, CollectRow>()
     selectedOrders.forEach((o) => {
-      const returns =
-        (o as unknown as {
-          returns?: Array<{
-            status: string
-            lines?: Array<{
-              product_id: string
-              unit_name: string
-              quantity: number
-              is_exchange: boolean | null
-              product?: { sku: string; name: string } | null
-            }>
-          }>
-        }).returns || []
-      returns.forEach((r) => {
-        if (r.status === "rejected" || r.status === "voided") return
-        ;(r.lines || []).forEach((rl) => {
+      ;(o.returns || []).forEach((r) => {
+        if (r.status === "rejected") return
+        ;(r.return_lines || []).forEach((rl) => {
           if (rl.is_exchange) return // chỉ TRẢ — đổi đã có ở pickList
           const key = `${rl.product_id}__${rl.unit_name}`
           const existing = agg.get(key)
@@ -1078,7 +1076,14 @@ export default function StockOutPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {pickList.slice(0, 3).map((p) => (
+                  {(() => {
+                    // Đảm bảo các dòng ĐỔI luôn xuất hiện trong preview.
+                    // Top 3 hàng bán + tất cả hàng đổi.
+                    const sellRows = pickList.filter((p) => p.kind === "sell")
+                    const exchangeRows = pickList.filter((p) => p.kind === "exchange")
+                    const visible = [...sellRows.slice(0, 3), ...exchangeRows]
+                    return visible
+                  })().map((p) => (
                     <div
                       key={`${p.kind}-${p.product_id}-${p.unit}`}
                       className={`flex items-center justify-between rounded-xl p-3 ${
@@ -1113,11 +1118,19 @@ export default function StockOutPage() {
                       </div>
                     </div>
                   ))}
-                  {pickList.length > 3 && (
-                    <p className="text-xs text-gray-400 text-center">
-                      +{pickList.length - 3} SKU khác
-                    </p>
-                  )}
+                  {(() => {
+                    // Chỉ đếm số sell rows bị ẩn — exchange rows luôn hiện.
+                    const hiddenSell = Math.max(
+                      0,
+                      pickList.filter((p) => p.kind === "sell").length - 3
+                    )
+                    if (hiddenSell === 0) return null
+                    return (
+                      <p className="text-xs text-gray-400 text-center">
+                        +{hiddenSell} SKU bán khác
+                      </p>
+                    )
+                  })()}
                 </div>
               )}
             </div>

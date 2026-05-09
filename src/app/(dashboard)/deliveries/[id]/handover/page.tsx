@@ -100,8 +100,10 @@ interface FailedOrderDraft {
 interface ItemDraft {
   /** Stable key; usually order_line.id but can be synthesised for new rows. */
   key: string
-  sourceType: "failed_order"
-  sourceOrderId: string
+  sourceType: "failed_order" | "unused_swap_stock"
+  sourceOrderId: string | null
+  /** swap_stock_movements.id when sourceType=unused_swap_stock. */
+  swapMovementId: string | null
   productId: string
   productName: string
   sku: string
@@ -173,9 +175,10 @@ export default function DeliveryHandoverPage() {
       dl.order.lines.forEach((ln) => {
         const factor = Number(ln.conversion_factor || 1)
         items.push({
-          key: ln.id,
+          key: `fo-${ln.id}`,
           sourceType: "failed_order",
           sourceOrderId: dl.order!.id,
+          swapMovementId: null,
           productId: ln.product_id,
           productName: ln.product?.name || "—",
           sku: ln.product?.sku || "",
@@ -188,6 +191,68 @@ export default function DeliveryHandoverPage() {
         })
       })
     })
+
+    // Q7: also load unused swap stock.
+    // Path: delivery → delivery_lines.order_id IN (...) → stock_entries
+    // whose ref_order_ids contains any of those orders → swap_stock_movements.
+    const orderIds = linesData.map((dl) => dl.order_id).filter(Boolean) as string[]
+    if (orderIds.length > 0) {
+      // Fetch stock_entries that reference these orders.
+      const { data: entries } = await supabase
+        .from("stock_entries")
+        .select("id, ref_order_ids")
+        .eq("type", "export")
+      const entryIds = ((entries as Array<{ id: string; ref_order_ids: string[] | null }>) || [])
+        .filter((e) => {
+          const refs = e.ref_order_ids || []
+          return refs.some((rid) => orderIds.includes(rid))
+        })
+        .map((e) => e.id)
+
+      if (entryIds.length > 0) {
+        const { data: swapRows } = await supabase
+          .from("swap_stock_movements")
+          .select(
+            "id, product_id, qty, unit_name, conversion_factor, qty_in_base_uom, qty_returned_in_base_uom, reason, product:products(name, sku)"
+          )
+          .in("stock_entry_id", entryIds)
+        ;((swapRows as unknown) as Array<{
+          id: string
+          product_id: string
+          qty: number
+          unit_name: string
+          conversion_factor: number
+          qty_in_base_uom: number
+          qty_returned_in_base_uom: number
+          reason: string | null
+          product?: { name: string; sku: string } | null
+        }> || []).forEach((sw) => {
+          const remainingBase =
+            Number(sw.qty_in_base_uom || 0) - Number(sw.qty_returned_in_base_uom || 0)
+          if (remainingBase <= 0) return
+          const factor = Number(sw.conversion_factor || 1) || 1
+          const remainingTx = remainingBase / factor
+          items.push({
+            key: `sw-${sw.id}`,
+            sourceType: "unused_swap_stock",
+            sourceOrderId: null,
+            swapMovementId: sw.id,
+            productId: sw.product_id,
+            productName: sw.product?.name || "—",
+            sku: sw.product?.sku || "",
+            qty: String(remainingTx),
+            unitName: sw.unit_name,
+            conversionFactor: factor,
+            // D7 default — unused swap = back to Kho bán; user can flip to Kho date
+            // when they confirm "Đã đổi cho khách rồi".
+            destinationZone: "sale",
+            reason: sw.reason || "Hàng đem đi đổi không dùng",
+            swappedToCustomer: false,
+          })
+        })
+      }
+    }
+
     setItemDrafts(items)
     setLoading(false)
   }, [id, user?.org_id, supabase])
@@ -252,6 +317,7 @@ export default function DeliveryHandoverPage() {
           return {
             sourceType: it.sourceType,
             sourceOrderId: it.sourceOrderId,
+            swapMovementId: it.swapMovementId,
             productId: it.productId,
             qty: qtyNum,
             unitName: it.unitName,
@@ -481,10 +547,34 @@ export default function DeliveryHandoverPage() {
                   {itemDrafts.map((it) => (
                     <tr key={it.key} className="border-b last:border-0">
                       <td className="px-2 py-2">
-                        <div className="font-medium">{it.productName}</div>
+                        <div className="flex items-center gap-1.5">
+                          {it.sourceType === "unused_swap_stock" && (
+                            <Badge variant="default" className="text-[10px]">
+                              SWAP
+                            </Badge>
+                          )}
+                          <span className="font-medium">{it.productName}</span>
+                        </div>
                         <div className="text-[11px] font-mono text-muted-foreground">
                           {it.sku}
                         </div>
+                        {it.sourceType === "unused_swap_stock" && (
+                          <label className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={it.swappedToCustomer}
+                              onChange={(e) =>
+                                updateItem(it.key, {
+                                  swappedToCustomer: e.target.checked,
+                                  // D7 default: checked → date stock,
+                                  // unchecked → sale stock.
+                                  destinationZone: e.target.checked ? "date" : "sale",
+                                })
+                              }
+                            />
+                            Đã đổi cho khách rồi
+                          </label>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <Input

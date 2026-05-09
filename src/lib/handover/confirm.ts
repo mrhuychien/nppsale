@@ -29,6 +29,9 @@ export interface HandoverFailedOrderInput {
 export interface HandoverItemInput {
   sourceType: HandoverItemSource
   sourceOrderId?: string | null
+  /** When sourceType = 'unused_swap_stock', this points at the
+   *  swap_stock_movements row so the confirm RPC bumps qty_returned. */
+  swapMovementId?: string | null
   productId: string
   qty: number
   unitName: string
@@ -106,6 +109,7 @@ export async function createAndConfirmHandover(
           handover_id: handoverId,
           source_type: it.sourceType,
           source_order_id: it.sourceOrderId ?? null,
+          swap_movement_id: it.swapMovementId ?? null,
           product_id: it.productId,
           qty: it.qty,
           unit_name: it.unitName,

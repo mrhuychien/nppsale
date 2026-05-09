@@ -20,8 +20,9 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { Calculator, Lock, RefreshCw, Plus } from "lucide-react"
+import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   ensurePayrollRun,
   computePayrollRun,
@@ -171,6 +172,72 @@ export default function PayrollRunsPage() {
     }
   }
 
+  const handleExport = async () => {
+    if (!activeRun || items.length === 0) return
+    const header = [
+      "STT",
+      "Nhân sự",
+      "Vai trò",
+      "Công chuẩn",
+      "Công thực",
+      "Lương cơ bản",
+      "Theo công",
+      "KPI",
+      "Đơn",
+      "Hoạt động",
+      "OT",
+      "Trừ",
+      "BHXH",
+      "Điều chỉnh",
+      "Net",
+      "Ghi chú",
+    ]
+    const rows: (string | number)[][] = [header]
+    items.forEach((it, i) => {
+      const u = users.get(it.user_id)
+      rows.push([
+        i + 1,
+        u?.full_name || "—",
+        u?.role || "",
+        Number(it.standard_workdays || 0),
+        Number(it.actual_workdays || 0),
+        Number(it.base_salary || 0),
+        Number(it.prorated_base || 0),
+        Number(it.kpi_bonus || 0),
+        Number(it.order_count_bonus || 0),
+        Number(it.activity_bonus || 0),
+        Number(it.overtime || 0),
+        Number(it.deductions || 0),
+        Number(it.social_insurance || 0),
+        Number(it.manual_adjustment || 0),
+        Number(it.net_salary || 0),
+        it.notes || "",
+      ])
+    })
+    // Totals row.
+    rows.push([
+      "",
+      "TỔNG CỘNG",
+      "",
+      "",
+      "",
+      "",
+      Number(items.reduce((s, it) => s + Number(it.prorated_base || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.kpi_bonus || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.order_count_bonus || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.activity_bonus || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.overtime || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.deductions || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.social_insurance || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.manual_adjustment || 0), 0).toFixed(0)),
+      Number(items.reduce((s, it) => s + Number(it.net_salary || 0), 0).toFixed(0)),
+      "",
+    ])
+    const period = activeRun.month.slice(0, 7)
+    await downloadXlsx(`bang-luong-${period}`, rows, `Bảng lương ${period}`)
+    toast({ title: `Đã xuất Excel: bang-luong-${period}.xlsx` })
+  }
+
   const saveAdjust = async (item: PayrollRunItem) => {
     const raw = pendingAdjust[item.id]
     const amt = Number(raw ?? item.manual_adjustment ?? 0) || 0
@@ -282,6 +349,14 @@ export default function PayrollRunsPage() {
                     disabled={busy || isLocked}
                   >
                     <Calculator className="h-4 w-4 mr-1.5" /> Tính lại
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExport}
+                    disabled={items.length === 0}
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Xuất Excel
                   </Button>
                   <Button
                     variant="default"

@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus } from "lucide-react"
 import {
   validateOrderEdit,
   isLineLocked,
@@ -184,6 +184,23 @@ export default function OrderDetailPage() {
   // Populated alongside `lines` in fetchData. Lines with picked > 0 cannot be
   // reduced/removed/UOM-changed once stage='picking' (spec D10).
   const [pickedByLine, setPickedByLine] = useState<Record<string, number>>({})
+  // Q5 — new lines being added in edit mode. Validator's `existing: null`
+  // path always allows adding regardless of stage (D10 picking row says
+  // "Thêm SP mới: ✅"). Inserted into sales_order_lines on save.
+  const [addedLines, setAddedLines] = useState<
+    Array<{
+      key: string
+      product_id: string
+      product_name: string
+      sku: string
+      unit_name: string
+      sell_price: number
+      quantity: number
+      unit_price: number
+    }>
+  >([])
+  const [addLineDialogOpen, setAddLineDialogOpen] = useState(false)
+  const [addLineSearch, setAddLineSearch] = useState("")
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -507,8 +524,49 @@ export default function OrderDetailPage() {
     setLinesEditMode(false)
     setEditedLines([])
     setSwapDialogFor(null)
+    setAddedLines([])
+    setAddLineDialogOpen(false)
+    setAddLineSearch("")
     // T-06: release lock (best-effort).
     lock.release().catch(() => {})
+  }
+
+  // Q5: pick a product from the catalog and append a draft new line.
+  const appendAddedLine = (p: {
+    id: string
+    name: string
+    sku: string
+    sell_price: number
+    base_unit: string
+  }) => {
+    setAddedLines((prev) => [
+      ...prev,
+      {
+        key: `add-${p.id}-${Date.now()}`,
+        product_id: p.id,
+        product_name: p.name,
+        sku: p.sku,
+        unit_name: p.base_unit,
+        sell_price: Number(p.sell_price || 0),
+        quantity: 1,
+        unit_price: Number(p.sell_price || 0),
+      },
+    ])
+    setAddLineDialogOpen(false)
+    setAddLineSearch("")
+  }
+
+  const updateAddedLine = (
+    key: string,
+    patch: Partial<(typeof addedLines)[number]>
+  ) => {
+    setAddedLines((prev) =>
+      prev.map((l) => (l.key === key ? { ...l, ...patch } : l))
+    )
+  }
+
+  const removeAddedLine = (key: string) => {
+    setAddedLines((prev) => prev.filter((l) => l.key !== key))
   }
 
   const applySwap = (
@@ -562,6 +620,11 @@ export default function OrderDetailPage() {
       s + Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0)),
     0
   )
+  // Q5: live total includes new draft lines.
+  const addedLinesTotal = addedLines.reduce(
+    (s, l) => s + Math.max(0, l.quantity * l.unit_price),
+    0
+  )
 
   const saveLineEdits = async () => {
     if (!order) return
@@ -582,7 +645,7 @@ export default function OrderDetailPage() {
       const stage: WorkflowStage =
         (order.current_workflow_stage as WorkflowStage | undefined) ??
         mapStatusToWorkflowStage(order.status)
-      const changes: OrderLineChange[] = editedLines.map((l) => {
+      const editChanges: OrderLineChange[] = editedLines.map((l) => {
         const original = lines.find((x) => x.id === l.id)
         if (!original) {
           return { existing: null, proposed: null }
@@ -609,6 +672,18 @@ export default function OrderDetailPage() {
           },
         }
       })
+      // Q5: append "new line" changes for the validator (existing=null,
+      // proposed=draft). Validator allows these in any editable stage.
+      const addChanges: OrderLineChange[] = addedLines.map((l) => ({
+        existing: null,
+        proposed: {
+          product_id: l.product_id,
+          unit_name: l.unit_name,
+          quantity: Number(l.quantity || 0),
+          conversion_factor: 1,
+        },
+      }))
+      const changes = [...editChanges, ...addChanges]
       const validation = validateOrderEdit({ stage, changes })
       if (!validation.ok) {
         toast({
@@ -641,11 +716,28 @@ export default function OrderDetailPage() {
         if (error) throw error
       }
 
-      // Tính lại tổng đơn — discount + vat giữ nguyên tỷ lệ tương đối
-      // dựa trên subtotal mới so với subtotal cũ. Cách đơn giản: subtotal
-      // = sum line_total; total = subtotal - discount + vat (giữ discount
-      // và vat hiện tại).
-      const subtotal = editedLinesTotal
+      // Q5: insert new draft lines.
+      if (addedLines.length > 0) {
+        const inserts = addedLines
+          .filter((l) => l.quantity > 0)
+          .map((l) => ({
+            order_id: order.id,
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: Math.max(0, l.quantity * l.unit_price),
+          }))
+        if (inserts.length > 0) {
+          const { error: insErr } = await supabase
+            .from("sales_order_lines")
+            .insert(inserts)
+          if (insErr) throw insErr
+        }
+      }
+
+      // Tính lại tổng đơn — subtotal = existing edited + new added.
+      const subtotal = editedLinesTotal + addedLinesTotal
       const total = Math.max(0, subtotal - Number(order.discount || 0) + Number(order.vat || 0))
       const { error: orderErr } = await supabase
         .from("sales_orders")
@@ -659,6 +751,7 @@ export default function OrderDetailPage() {
       })
       setLinesEditMode(false)
       setEditedLines([])
+      setAddedLines([])
       // T-06: release lock after successful save.
       await lock.release().catch(() => {})
       fetchData()
@@ -772,6 +865,22 @@ export default function OrderDetailPage() {
             {fullEdit && lines.length > 0 ? (
               linesEditMode ? (
                 <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAddLineDialogOpen(true)
+                      setAddLineSearch("")
+                    }}
+                    disabled={savingLines || lock.state !== "mine"}
+                    title={
+                      lock.state !== "mine"
+                        ? "Chưa khoá được đơn — đợi người khác xong rồi thử lại."
+                        : "Thêm SP mới — vẫn được phép ở stage 'picking' (D10)."
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Thêm SP
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -955,13 +1064,75 @@ export default function OrderDetailPage() {
                       </TableRow>
                     )
                   })}
-                  {lines.length === 0 && (
+                  {lines.length === 0 && addedLines.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                         Chưa có sản phẩm
                       </TableCell>
                     </TableRow>
                   )}
+                  {/* Q5 — new draft lines being added in edit mode. */}
+                  {linesEditMode &&
+                    addedLines.map((al) => (
+                      <TableRow key={al.key} className="bg-emerald-50/40">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="success" className="text-[10px]">
+                              MỚI
+                            </Badge>
+                            <span>{al.product_name}</span>
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {al.sku}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{al.unit_name}</TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="any"
+                            value={al.quantity}
+                            onChange={(e) =>
+                              updateAddedLine(al.key, {
+                                quantity: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="ml-auto h-8 w-24 text-right tabular-nums"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="any"
+                            value={al.unit_price}
+                            onChange={(e) =>
+                              updateAddedLine(al.key, {
+                                unit_price: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="ml-auto h-8 w-32 text-right tabular-nums"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="font-medium tabular-nums">
+                              {formatCurrency(al.quantity * al.unit_price)}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => removeAddedLine(al.key)}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
@@ -1063,7 +1234,7 @@ export default function OrderDetailPage() {
               <p className="text-sm">
                 Tạm tính:{" "}
                 {linesEditMode
-                  ? formatCurrency(editedLinesTotal)
+                  ? formatCurrency(editedLinesTotal + addedLinesTotal)
                   : formatCurrency(order.subtotal)}
               </p>
               <p className="text-sm">Chiết khấu: {formatCurrency(order.discount)}</p>
@@ -1072,7 +1243,7 @@ export default function OrderDetailPage() {
                 Tổng:{" "}
                 {linesEditMode
                   ? formatCurrency(
-                      Math.max(0, editedLinesTotal - Number(order.discount || 0) + Number(order.vat || 0))
+                      Math.max(0, editedLinesTotal + addedLinesTotal - Number(order.discount || 0) + Number(order.vat || 0))
                     )
                   : formatCurrency(order.total)}
               </p>
@@ -1711,6 +1882,61 @@ export default function OrderDetailPage() {
           <p className="text-[11px] text-muted-foreground">
             Đổi SP sẽ reset batch_id để thủ kho chọn lô khác. Giá đơn vị giữ
             nguyên nếu bạn đã sửa, nếu không sẽ lấy giá bán mặc định của SP mới.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* Q5 — add-line picker. Reuses swapCatalog (loaded on edit-mode open). */}
+      <Dialog open={addLineDialogOpen} onOpenChange={setAddLineDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Thêm sản phẩm mới vào đơn</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={addLineSearch}
+            onChange={(e) => setAddLineSearch(e.target.value)}
+            placeholder="Tìm theo tên / SKU…"
+          />
+          <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
+            {(() => {
+              const q = addLineSearch.trim().toLowerCase()
+              const list = swapCatalog.filter(
+                (p) =>
+                  !q ||
+                  p.name.toLowerCase().includes(q) ||
+                  p.sku.toLowerCase().includes(q)
+              )
+              if (list.length === 0) {
+                return (
+                  <p className="text-xs text-muted-foreground text-center py-6">
+                    {swapCatalog.length === 0
+                      ? "Đang tải danh mục..."
+                      : "Không tìm thấy sản phẩm"}
+                  </p>
+                )
+              }
+              return list.slice(0, 30).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-muted/40 transition-colors"
+                  onClick={() => appendAddedLine(p)}
+                >
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                    <span className="font-mono">{p.sku}</span>
+                    <span>
+                      {formatCurrency(Number(p.sell_price || 0))} / {p.base_unit}
+                    </span>
+                  </div>
+                </button>
+              ))
+            })()}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            SP mới sẽ được thêm với SL=1 và đơn giá mặc định. Bạn có thể chỉnh
+            trước khi bấm Lưu dòng đơn.
           </p>
         </DialogContent>
       </Dialog>

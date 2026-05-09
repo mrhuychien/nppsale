@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
+import { StockBalanceTable } from "@/components/inventory/stock-balance-table"
 import {
   Activity,
   ArrowDownToLine,
@@ -163,26 +164,8 @@ export default function InventoryPage() {
     })
   }, [batches, search, brandFilter, locationFilter])
 
-  const inventorySummary = useMemo(() => {
-    const map = new Map<
-      string,
-      { product: Product; total: number; lowThreshold: number }
-    >()
-    for (const b of batches) {
-      if (!b.product) continue
-      const key = b.product.id
-      const current = map.get(key) || {
-        product: b.product,
-        total: 0,
-        lowThreshold: 20,
-      }
-      current.total += b.qty_on_hand || 0
-      map.set(key, current)
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      a.product.name.localeCompare(b.product.name, "vi")
-    )
-  }, [batches])
+  // T-09: legacy single-column summary replaced by StockBalanceTable
+  // (split by zone + drill-down). Keep computation removed.
 
   const stocktakeEntries = useMemo(
     () => entries.filter((e) => e.type === "stocktake"),
@@ -273,56 +256,9 @@ export default function InventoryPage() {
           </TabsList>
         </div>
 
-        {/* Tab 1: current stock summary */}
+        {/* Tab 1: T-09 — Tồn kho hiện tại split by Kho bán / Kho date + drill-down */}
         <TabsContent value="current" className="mt-4">
-          <Card>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="p-6">
-                  <Skeleton className="h-48" />
-                </div>
-              ) : inventorySummary.length === 0 ? (
-                <EmptyState
-                  icon={<Package className="h-8 w-8 text-muted-foreground" />}
-                  title="Chưa có dữ liệu tồn kho"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Sản phẩm</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead className="text-right">Tổng tồn</TableHead>
-                      <TableHead>Trạng thái</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {inventorySummary.map((row) => {
-                      const low = row.total <= row.lowThreshold
-                      return (
-                        <TableRow key={row.product.id}>
-                          <TableCell className="font-medium">
-                            {row.product.name}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {row.product.sku}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {row.total} {row.product.base_unit}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={low ? "warning" : "success"}>
-                              {low ? "Low" : "OK"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <StockBalanceTable />
         </TabsContent>
 
         {/* Tab 2: FEFO batches (default) */}

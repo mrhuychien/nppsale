@@ -33,9 +33,25 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 - Spec table-name → actual mapping recorded in `pack3-questions.md` Q1.
 - Each commit prefixed `feat(pack3-T<id>):` for git log audit.
 
-## Pack3 final
-All 17 tasks shipped. Open follow-ups (cosmetic / nice-to-have only):
-- Q5 (add-line UI) — done in this iteration; the earlier "deferred" note in pack3-questions Q5 supersedes itself.
-- Q6 (order_activity_log) — still optional. The DB trigger enforce_picked_line_lock blocks invalid edits; explicit per-edit audit table can land later.
-- Q7 (swap-stock handover wiring) — done in this iteration.
-- Q8 (payroll Excel) — done. Per-user payslip PDF still optional.
+## Pack3 final — 100% spec-aligned
+All 17 tasks shipped + every Q deferral closed. Migrations span 039 → 053.
+
+Final close-out commit highlights:
+- Q6 (mig 052): `order_activity_log` table + AFTER-trigger on
+  sales_order_lines logs add_line/edit_line/remove_line with
+  before/after diff; new "Lịch sử sửa dòng đơn" card on /orders/[id].
+- T-16 payslip: A5 Payslip component + per-row "In phiếu lương"
+  button on /hr/payroll/runs (data-print-mode='payslip' toggle).
+- T-09 tooltip: hover any qty cell to see "X hộp = Y thùng = Z lốc"
+  derived from product_units.
+- T-01 print: phiếu xuất + on-screen line list now show
+  "4 thùng (40 hộp)" when conversion_factor > 1.
+- T-10 layout: 3 picking actions stacked vertically in a sticky
+  right-rail "Hành động phiếu" card on /inventory/entries/[id].
+- T-06 cron (mig 053): pg_cron schedule for release_stale_entity_locks
+  every minute, gated on extension availability (lazy cleanup
+  remains the fallback).
+
+Operational items still requiring runtime: applying migrations on
+staging, smoke-testing the full E2E flow (order → picking → delivery
+→ handover → payroll), and opening a PR to main.

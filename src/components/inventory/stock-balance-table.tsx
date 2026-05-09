@@ -35,11 +35,39 @@ interface BalanceRow {
   value: number
 }
 
+interface ProductUnitMeta {
+  unit_name: string
+  conversion: number
+}
+
 interface ProductMeta {
   id: string
   sku: string
   name: string
   base_unit: string
+  units?: ProductUnitMeta[]
+}
+
+/** Build a tooltip showing the qty in every defined unit, e.g.:
+ *    400 hộp = 40 thùng = 80 lốc
+ *  Falls back to "X <base_unit>" when no other units are registered. */
+function buildQtyTooltip(qtyBase: number, product: ProductMeta): string {
+  if (qtyBase <= 0) return `0 ${product.base_unit}`
+  const baseStr = `${qtyBase.toLocaleString("vi-VN")} ${product.base_unit}`
+  const units = (product.units || [])
+    .filter((u) => u.unit_name !== product.base_unit && u.conversion > 0)
+    .sort((a, b) => b.conversion - a.conversion)
+  const extras = units
+    .map((u) => {
+      const qty = qtyBase / u.conversion
+      // Use up to 2 decimals for non-integer conversions, drop trailing zeros.
+      const display = Number.isInteger(qty)
+        ? qty.toLocaleString("vi-VN")
+        : Number(qty.toFixed(2)).toLocaleString("vi-VN")
+      return `${display} ${u.unit_name}`
+    })
+    .filter((s) => !s.startsWith("0 "))
+  return [baseStr, ...extras].join(" = ")
 }
 
 interface PivotRow {
@@ -72,13 +100,15 @@ export function StockBalanceTable() {
         .select("product_id, warehouse_zone, qty_in_base_uom, value"),
       supabase
         .from("products")
-        .select("id, sku, name, base_unit")
+        .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)")
         .eq("status", "active"),
     ]).then(([balRes, prodRes]) => {
       if (cancelled) return
       setRows((balRes.data as BalanceRow[]) || [])
       const map = new Map<string, ProductMeta>()
-      ;(((prodRes.data as ProductMeta[]) || [])).forEach((p) => map.set(p.id, p))
+      ;(((prodRes.data as unknown) as ProductMeta[]) || []).forEach((p) =>
+        map.set(p.id, p)
+      )
       setProducts(map)
       setLoading(false)
     })
@@ -222,7 +252,10 @@ export function StockBalanceTable() {
                   >
                     <TableCell className="font-mono text-xs">{r.product.sku}</TableCell>
                     <TableCell className="font-medium">{r.product.name}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell
+                      className="text-right tabular-nums"
+                      title={buildQtyTooltip(r.saleQty, r.product)}
+                    >
                       {r.saleQty.toLocaleString("vi-VN")}{" "}
                       <span className="text-[11px] text-muted-foreground">
                         {r.product.base_unit}
@@ -231,7 +264,10 @@ export function StockBalanceTable() {
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(r.saleValue)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell
+                      className="text-right tabular-nums"
+                      title={buildQtyTooltip(r.dateQty, r.product)}
+                    >
                       {r.dateQty.toLocaleString("vi-VN")}{" "}
                       <span className="text-[11px] text-muted-foreground">
                         {r.product.base_unit}
@@ -240,7 +276,10 @@ export function StockBalanceTable() {
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(r.dateValue)}
                     </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
+                    <TableCell
+                      className="text-right font-semibold tabular-nums"
+                      title={buildQtyTooltip(r.totalQty, r.product)}
+                    >
                       {r.totalQty.toLocaleString("vi-VN")}
                     </TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">

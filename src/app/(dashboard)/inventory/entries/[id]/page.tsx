@@ -18,7 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
-import { Pencil, Trash2, X, Package, Truck, HandCoins, Printer } from "lucide-react"
+import { Pencil, Trash2, X, Package, Truck, Printer } from "lucide-react"
 import { PrintButton } from "@/components/ui/print-button"
 import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
 import type { StockEntry, StockEntryLine } from "@/types"
@@ -392,27 +392,9 @@ export default function StockEntryDetailPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Chi tiết sản phẩm ({lines.length})</CardTitle>
-            <div className="flex gap-2">
-              <PrintButton label="In phiếu xuất & giao hàng" />
-              {entry.type === "export" && refOrders.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const html = document.documentElement
-                    html.setAttribute("data-print-mode", "driver-list")
-                    requestAnimationFrame(() => {
-                      window.print()
-                      setTimeout(() => {
-                        html.removeAttribute("data-print-mode")
-                      }, 200)
-                    })
-                  }}
-                >
-                  <Printer className="h-4 w-4 mr-2" /> In danh sách giao
-                </Button>
-              )}
-            </div>
+            {/* T-10: secondary "khổ giấy" trigger; primary actions are
+                in the right-rail Hành động phiếu card. */}
+            {entry.type !== "export" && <PrintButton label="In phiếu" />}
           </CardHeader>
           <CardContent>
             {lines.length === 0 ? (
@@ -435,37 +417,67 @@ export default function StockEntryDetailPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lines.map((line) => (
-                        <TableRow key={line.id}>
-                          <TableCell>
-                            <div className="font-semibold">{line.product?.name || "-"}</div>
-                            <div className="text-xs text-muted-foreground font-mono">
-                              SKU: {line.product?.sku}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {line.batch?.batch_code ? (
-                              <span className="font-mono text-xs bg-surface-container px-2 py-1 rounded">
-                                {line.batch.batch_code}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{line.unit_name}</TableCell>
-                          <TableCell className="text-right font-bold">{line.quantity}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
-                            {line.notes || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {lines.map((line) => {
+                        const lineExt = line as unknown as {
+                          qty_in_base_uom?: number
+                          qty_in_transaction_uom?: number
+                          conversion_factor_snapshot?: number
+                        }
+                        const factor = Number(lineExt.conversion_factor_snapshot ?? 1) || 1
+                        const txQty = Number(lineExt.qty_in_transaction_uom ?? line.quantity) || 0
+                        const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
+                        const baseUnit = line.product?.base_unit || ""
+                        const showBase = factor > 1 && baseUnit && baseUnit !== line.unit_name
+                        return (
+                          <TableRow key={line.id}>
+                            <TableCell>
+                              <div className="font-semibold">{line.product?.name || "-"}</div>
+                              <div className="text-xs text-muted-foreground font-mono">
+                                SKU: {line.product?.sku}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {line.batch?.batch_code ? (
+                                <span className="font-mono text-xs bg-surface-container px-2 py-1 rounded">
+                                  {line.batch.batch_code}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{line.unit_name}</TableCell>
+                            <TableCell className="text-right font-bold">
+                              {txQty}
+                              {showBase && (
+                                <span className="ml-1 font-normal text-muted-foreground text-xs">
+                                  ({baseQty} {baseUnit})
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
+                              {line.notes || "-"}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
 
                 {/* Mobile card list */}
                 <div className="md:hidden space-y-2">
-                  {lines.map((line) => (
+                  {lines.map((line) => {
+                    const lineExt = line as unknown as {
+                      qty_in_base_uom?: number
+                      qty_in_transaction_uom?: number
+                      conversion_factor_snapshot?: number
+                    }
+                    const factor = Number(lineExt.conversion_factor_snapshot ?? 1) || 1
+                    const txQty = Number(lineExt.qty_in_transaction_uom ?? line.quantity) || 0
+                    const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
+                    const baseUnit = line.product?.base_unit || ""
+                    const showBase = factor > 1 && baseUnit && baseUnit !== line.unit_name
+                    return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <div className="min-w-0 flex-1">
@@ -474,7 +486,14 @@ export default function StockEntryDetailPage() {
                             SKU: {line.product?.sku}
                           </p>
                         </div>
-                        <span className="shrink-0 font-bold text-base">{line.quantity} {line.unit_name}</span>
+                        <span className="shrink-0 font-bold text-base">
+                          {txQty} {line.unit_name}
+                          {showBase && (
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                              ({baseQty} {baseUnit})
+                            </span>
+                          )}
+                        </span>
                       </div>
                       {line.batch?.batch_code && (
                         <span className="font-mono text-xs bg-surface-container px-2 py-0.5 rounded inline-block">
@@ -485,7 +504,8 @@ export default function StockEntryDetailPage() {
                         <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{line.notes}</p>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </>
             )}
@@ -635,29 +655,62 @@ export default function StockEntryDetailPage() {
         )}
 
         {/* Right - info + actions */}
-        <div className="space-y-4">
-          {entry.type === "export" && entry.status === "draft" && (
-            <Card className="border-emerald-500/40 bg-emerald-500/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <HandCoins className="h-5 w-5 text-emerald-600" />
-                  Tự giao hàng
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Dùng khi NPP / chủ xe trực tiếp giao mà lái xe không dùng phần mềm.
-                  Sau khi bấm, tồn kho sẽ trừ ngay, đơn chuyển trạng thái{" "}
-                  <span className="font-semibold">đã giao</span> rồi chuyển sang trang thu tiền.
-                </p>
+        <aside className="space-y-4 lg:sticky lg:top-4 self-start">
+          {/* T-10: 3 picking actions stacked vertically per spec.
+              Visible for export entries; "Tự giao hàng" only for draft. */}
+          {entry.type === "export" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Hành động phiếu</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2.5">
                 <Button
-                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-600/90 text-white"
-                  onClick={handleSelfDeliver}
-                  disabled={selfDelivering || lines.length === 0}
+                  variant="outline"
+                  className="w-full h-11 justify-start"
+                  onClick={() => {
+                    const html = document.documentElement
+                    html.removeAttribute("data-print-mode")
+                    requestAnimationFrame(() => window.print())
+                  }}
                 >
-                  <HandCoins className="h-4 w-4 mr-2" />
-                  {selfDelivering ? "Đang xử lý..." : "Tự giao hàng & thu tiền"}
+                  <Printer className="h-4 w-4 mr-2" /> IN PHIẾU XUẤT &amp; GIAO HÀNG
                 </Button>
+                {refOrders.length > 0 && (
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 justify-start"
+                    onClick={() => {
+                      const html = document.documentElement
+                      html.setAttribute("data-print-mode", "driver-list")
+                      requestAnimationFrame(() => {
+                        window.print()
+                        setTimeout(() => {
+                          html.removeAttribute("data-print-mode")
+                        }, 200)
+                      })
+                    }}
+                  >
+                    <Printer className="h-4 w-4 mr-2" /> IN DANH SÁCH GIAO
+                  </Button>
+                )}
+                {entry.status === "draft" && (
+                  <Button
+                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white justify-start"
+                    onClick={handleSelfDeliver}
+                    disabled={selfDelivering || lines.length === 0}
+                  >
+                    <Truck className="h-4 w-4 mr-2" />
+                    {selfDelivering
+                      ? "Đang xử lý..."
+                      : "TỰ GIAO HÀNG & THU TIỀN"}
+                  </Button>
+                )}
+                {entry.status === "draft" && (
+                  <p className="text-[11px] text-muted-foreground pt-1">
+                    Tự giao hàng = NPP / chủ xe trực tiếp giao. Tồn kho sẽ trừ ngay,
+                    đơn chuyển sang trạng thái <strong>đã giao</strong> rồi mở trang thu tiền.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -754,7 +807,7 @@ export default function StockEntryDetailPage() {
               </CardContent>
             </Card>
           )}
-        </div>
+        </aside>
       </div>
 
       <ConfirmDialog
@@ -808,17 +861,41 @@ export default function StockEntryDetailPage() {
             <tbody>
               {lines
                 .filter((l) => !(l.notes || "").startsWith("[Swap]"))
-                .map((line, index) => (
-                  <tr key={line.id} className="border-b border-gray-200">
-                    <td className="py-2">{index + 1}</td>
-                    <td className="py-2 font-medium">{line.product?.name || "-"}</td>
-                    <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
-                    <td className="py-2 text-center">{line.unit_name}</td>
-                    <td className="py-2 text-right font-bold">{line.quantity}</td>
-                    <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
-                    <td className="py-2 text-xs">{line.notes || "-"}</td>
-                  </tr>
-                ))}
+                .map((line, index) => {
+                  // T-01: print shows "4 thùng (40 hộp)" when transaction
+                  // UOM differs from base UOM. conversion_factor_snapshot
+                  // is set by mig 039; legacy rows fall back to 1.
+                  const lineExt = line as unknown as {
+                    qty_in_base_uom?: number
+                    qty_in_transaction_uom?: number
+                    transaction_uom?: string
+                    conversion_factor_snapshot?: number
+                  }
+                  const factor = Number(lineExt.conversion_factor_snapshot ?? 1) || 1
+                  const txQty = Number(lineExt.qty_in_transaction_uom ?? line.quantity) || 0
+                  const baseQty = Number(lineExt.qty_in_base_uom ?? line.quantity * factor) || 0
+                  const baseUnit = line.product?.base_unit || ""
+                  const showBaseEquivalent =
+                    factor > 1 && baseUnit && baseUnit !== line.unit_name
+                  return (
+                    <tr key={line.id} className="border-b border-gray-200">
+                      <td className="py-2">{index + 1}</td>
+                      <td className="py-2 font-medium">{line.product?.name || "-"}</td>
+                      <td className="py-2 font-mono text-xs">{line.product?.sku || "-"}</td>
+                      <td className="py-2 text-center">{line.unit_name}</td>
+                      <td className="py-2 text-right font-bold">
+                        {txQty}
+                        {showBaseEquivalent && (
+                          <span className="ml-1 font-normal text-gray-600">
+                            ({baseQty} {baseUnit})
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-xs">{line.batch?.batch_code || "-"}</td>
+                      <td className="py-2 text-xs">{line.notes || "-"}</td>
+                    </tr>
+                  )
+                })}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-300">
@@ -849,16 +926,29 @@ export default function StockEntryDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {swapItems.map((s, i) => (
-                    <tr key={s.id} className="border-b border-gray-200">
-                      <td className="py-1">{i + 1}</td>
-                      <td className="py-1 font-medium">{s.product?.name || "-"}</td>
-                      <td className="py-1 font-mono text-xs">{s.product?.sku || "-"}</td>
-                      <td className="py-1 text-center">{s.unit_name}</td>
-                      <td className="py-1 text-right font-bold">{s.qty}</td>
-                      <td className="py-1 text-xs">{s.reason || "—"}</td>
-                    </tr>
-                  ))}
+                  {swapItems.map((s, i) => {
+                    const factor =
+                      Number(s.qty) > 0
+                        ? Number(s.qty_in_base_uom || 0) / Number(s.qty || 1)
+                        : 1
+                    return (
+                      <tr key={s.id} className="border-b border-gray-200">
+                        <td className="py-1">{i + 1}</td>
+                        <td className="py-1 font-medium">{s.product?.name || "-"}</td>
+                        <td className="py-1 font-mono text-xs">{s.product?.sku || "-"}</td>
+                        <td className="py-1 text-center">{s.unit_name}</td>
+                        <td className="py-1 text-right font-bold">
+                          {s.qty}
+                          {factor > 1 && (
+                            <span className="ml-1 font-normal text-gray-600">
+                              ({s.qty_in_base_uom})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1 text-xs">{s.reason || "—"}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
               <p className="text-xs italic text-gray-500 mt-2">

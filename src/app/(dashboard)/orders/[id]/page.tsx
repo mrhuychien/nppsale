@@ -132,6 +132,18 @@ export default function OrderDetailPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [misaLoading, setMisaLoading] = useState(false)
   const [statusHistory, setStatusHistory] = useState<OrderStatusHistory[]>([])
+  // Q6 — per-line activity log entries (most recent first).
+  const [activityLog, setActivityLog] = useState<
+    Array<{
+      id: string
+      order_line_id: string | null
+      action: "add_line" | "edit_line" | "remove_line"
+      workflow_stage: string | null
+      changes: Record<string, unknown>
+      created_at: string
+      actor?: { full_name?: string | null } | null
+    }>
+  >([])
   const [deliveryLines, setDeliveryLines] = useState<DeliveryLineWithDetails[]>([])
   const [stockEntries, setStockEntries] = useState<OrderStockEntry[]>([])
   const [linkedReturns, setLinkedReturns] = useState<Array<{
@@ -216,7 +228,7 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes] = await Promise.all([
       supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id, amount, paid, status, due_date").eq("order_id", id).maybeSingle(),
@@ -241,6 +253,15 @@ export default function OrderDetailPage() {
         )
         .eq("order_id", id)
         .order("created_at", { ascending: false }),
+      // Q6 — per-line audit log (mig 052).
+      supabase
+        .from("order_activity_log")
+        .select(
+          "id, order_line_id, action, workflow_stage, changes, created_at, actor_id, actor:users!actor_id(full_name)"
+        )
+        .eq("order_id", id)
+        .order("created_at", { ascending: false })
+        .limit(100),
     ])
     setInvoice((invoiceRes.data as Invoice) || null)
     if (orderRes.data) {
@@ -284,6 +305,7 @@ export default function OrderDetailPage() {
     setDeliveryLines(((deliveryLinesRes.data as unknown) as DeliveryLineWithDetails[]) || [])
     setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
     setLinkedReturns(((returnsRes.data as unknown) as typeof linkedReturns) || [])
+    setActivityLog(((activityRes.data as unknown) as typeof activityLog) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1766,6 +1788,71 @@ export default function OrderDetailPage() {
                 )
               })()
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Q6 — line-edit activity log */}
+      {activityLog.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4" /> Lịch sử sửa dòng đơn ({activityLog.length})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Audit log tự ghi mỗi khi có dòng được thêm / sửa / xoá. 100 entry gần nhất.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-1.5 text-sm">
+              {activityLog.map((a) => {
+                const actionLabel =
+                  a.action === "add_line"
+                    ? "Thêm dòng"
+                    : a.action === "remove_line"
+                      ? "Xoá dòng"
+                      : "Sửa dòng"
+                const actionVariant: "success" | "danger" | "warning" =
+                  a.action === "add_line"
+                    ? "success"
+                    : a.action === "remove_line"
+                      ? "danger"
+                      : "warning"
+                const actor =
+                  (a.actor as unknown as { full_name: string } | null)?.full_name ||
+                  "Hệ thống"
+                const stage = a.workflow_stage || "—"
+                const changedKeys = Object.keys(a.changes || {})
+                return (
+                  <li key={a.id} className="rounded-md border bg-muted/10 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={actionVariant}>{actionLabel}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Stage <span className="font-mono">{stage}</span>
+                      </span>
+                      <span className="text-xs">{actor}</span>
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        {formatDate(a.created_at)}
+                      </span>
+                    </div>
+                    {changedKeys.length > 0 && a.action === "edit_line" && (
+                      <div className="mt-1 text-[11px] text-muted-foreground space-y-0.5">
+                        {changedKeys.map((k) => {
+                          const c = (a.changes as Record<string, { from?: unknown; to?: unknown }>)[k]
+                          if (!c || c.from === undefined) return null
+                          return (
+                            <div key={k}>
+                              <span className="font-mono">{k}</span>: {String(c.from)}{" "}
+                              <span className="text-foreground">→</span> {String(c.to)}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           </CardContent>
         </Card>
       )}

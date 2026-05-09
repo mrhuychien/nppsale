@@ -20,9 +20,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet } from "lucide-react"
+import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { downloadXlsx } from "@/components/analytics/report-frame"
+import { Payslip } from "@/components/printing/payslip"
 import {
   ensurePayrollRun,
   computePayrollRun,
@@ -58,16 +59,28 @@ export default function PayrollRunsPage() {
   const [busy, setBusy] = useState(false)
   const [pendingAdjust, setPendingAdjust] = useState<Record<string, string>>({})
   const [pendingNotes, setPendingNotes] = useState<Record<string, string>>({})
+  // Per-user payslip print mode — caller picks one row → we render the
+  // <Payslip> for it inside the .print-payslip-only block.
+  const [payslipFor, setPayslipFor] = useState<string | null>(null)
+  const [orgName, setOrgName] = useState<string>("")
 
   const loadRuns = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const { data } = await supabase
-      .from("payroll_runs")
-      .select("*")
-      .eq("org_id", user.org_id)
-      .order("month", { ascending: false })
-    setRuns((data as PayrollRun[]) || [])
+    const [runsRes, orgRes] = await Promise.all([
+      supabase
+        .from("payroll_runs")
+        .select("*")
+        .eq("org_id", user.org_id)
+        .order("month", { ascending: false }),
+      supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", user.org_id)
+        .maybeSingle(),
+    ])
+    setRuns((runsRes.data as PayrollRun[]) || [])
+    setOrgName(((orgRes.data as { name: string } | null)?.name) || "")
     setLoading(false)
   }, [user?.org_id, supabase])
 
@@ -236,6 +249,19 @@ export default function PayrollRunsPage() {
     const period = activeRun.month.slice(0, 7)
     await downloadXlsx(`bang-luong-${period}`, rows, `Bảng lương ${period}`)
     toast({ title: `Đã xuất Excel: bang-luong-${period}.xlsx` })
+  }
+
+  const printPayslipFor = (itemId: string) => {
+    setPayslipFor(itemId)
+    const html = document.documentElement
+    html.setAttribute("data-print-mode", "payslip")
+    requestAnimationFrame(() => {
+      window.print()
+      setTimeout(() => {
+        html.removeAttribute("data-print-mode")
+        setPayslipFor(null)
+      }, 300)
+    })
   }
 
   const saveAdjust = async (item: PayrollRunItem) => {
@@ -498,17 +524,26 @@ export default function PayrollRunsPage() {
                               <td className="px-2 py-2 text-right font-bold tabular-nums">
                                 {formatCurrency(it.net_salary)}
                               </td>
-                              <td className="px-2 py-2">
+                              <td className="px-2 py-2 flex gap-1 justify-end">
                                 {dirty && !isLocked && (
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => saveAdjust(it)}
                                     disabled={busy}
+                                    title="Lưu điều chỉnh"
                                   >
                                     <RefreshCw className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => printPayslipFor(it.id)}
+                                  title="In phiếu lương"
+                                >
+                                  <Printer className="h-3.5 w-3.5" />
+                                </Button>
                               </td>
                             </tr>
                           )
@@ -521,6 +556,38 @@ export default function PayrollRunsPage() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Per-user payslip — toggled by data-print-mode='payslip'. */}
+      <div className="print-payslip-only">
+        {payslipFor && activeRun && (() => {
+          const it = items.find((x) => x.id === payslipFor)
+          if (!it) return null
+          const u = users.get(it.user_id)
+          return (
+            <Payslip
+              organizationName={orgName || "—"}
+              employeeName={u?.full_name || "—"}
+              employeeRole={u?.role}
+              period={activeRun.month.slice(0, 7)}
+              baseSalary={Number(it.base_salary || 0)}
+              standardWorkdays={Number(it.standard_workdays || 0)}
+              actualWorkdays={Number(it.actual_workdays || 0)}
+              proratedBase={Number(it.prorated_base || 0)}
+              kpiBonus={Number(it.kpi_bonus || 0)}
+              orderCountBonus={Number(it.order_count_bonus || 0)}
+              activityBonus={Number(it.activity_bonus || 0)}
+              overtime={Number(it.overtime || 0)}
+              deductions={Number(it.deductions || 0)}
+              socialInsurance={Number(it.social_insurance || 0)}
+              manualAdjustment={Number(it.manual_adjustment || 0)}
+              netSalary={Number(it.net_salary || 0)}
+              notes={it.notes}
+              computedAt={activeRun.computed_at}
+              lockedAt={activeRun.locked_at}
+            />
+          )
+        })()}
       </div>
     </div>
   )

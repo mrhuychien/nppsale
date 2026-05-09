@@ -88,6 +88,7 @@
 .print-only { display: none; }
 .print-driver-list-only { display: none; }
 .print-receipt-tt200-only { display: none; }
+.print-payslip-only { display: none; }
 
 @media print {
   aside, header, nav, .no-print { display: none !important; }
@@ -104,6 +105,9 @@
   /* T-08 — TT200 receipt print mode. */
   html[data-print-mode="receipt-tt200"] .print-only { display: none !important; }
   html[data-print-mode="receipt-tt200"] .print-receipt-tt200-only { display: block !important; }
+  /* T-16 — per-user payslip print mode. */
+  html[data-print-mode="payslip"] .print-only { display: none !important; }
+  html[data-print-mode="payslip"] .print-payslip-only { display: block !important; }
 }
 
 /*

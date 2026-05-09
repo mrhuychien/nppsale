@@ -119,13 +119,19 @@ export default function DeliverySettlePage() {
       supabase
         .from("delivery_lines")
         .select(
-          "id, order_id, status, payment_method, amount_collected, order:sales_orders(id, order_code, total, payment_terms, customer:customers(store_name, phone))"
+          "id, order_id, status, payment_method, amount_collected, order:sales_orders(id, order_code, total, payment_terms, status, customer:customers(store_name, phone))"
         )
         .eq("delivery_id", id),
     ])
     const delData = (delRes.data as unknown as typeof delivery) || null
     if (delData) setDelivery(delData)
-    const linesData = ((linesRes.data as unknown) as SettleLine[]) || []
+    // User feedback: handover trước collect → đơn cancelled (failed
+    // handover) không xuất hiện ở list thu tiền.
+    const allLines = ((linesRes.data as unknown) as SettleLine[]) || []
+    const linesData = allLines.filter((l) => {
+      const order = (l as unknown as { order?: { status?: string } }).order
+      return order?.status !== "cancelled"
+    })
     setLines(linesData)
 
     // Fetch returns linked to orders in this delivery → aggregate

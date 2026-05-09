@@ -137,8 +137,11 @@ export default function CollectPaymentPage() {
     const [ordersRes, customersRes, receivablesRes] = await Promise.all([
       supabase
         .from("sales_orders")
-        .select("id, org_id, order_code, customer_id, total, order_date, payment_terms")
-        .in("id", orderIds),
+        .select("id, org_id, order_code, customer_id, total, order_date, payment_terms, status")
+        // User feedback: bàn giao trước thu tiền → đơn cancelled (failed
+        // handover) không hiển thị ở list thu tiền.
+        .in("id", orderIds)
+        .neq("status", "cancelled"),
       supabase
         .from("customers")
         .select("id, store_name, phone, address")

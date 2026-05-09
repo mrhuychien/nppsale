@@ -343,9 +343,19 @@ export default function StockEntryDetailPage() {
 
       toast({
         title: `Đã chuyển ${orderIds.length} đơn sang "Đang giao"`,
-        description: "Đã trừ kho. Tiếp tục bước thu tiền để chuyển sang 'Đã giao'.",
+        description:
+          "Đã trừ kho. Bước tiếp: bàn giao lại từ lái xe (xác nhận đơn thất bại / giao 1 phần) trước khi thu tiền.",
       })
-      router.push(`/inventory/stock-out/collect/${entry.id}`)
+      // User feedback: bàn giao TRƯỚC thu tiền. Đơn thất bại sẽ bị
+      // loại khỏi list thu tiền; đơn giao 1 phần được điều chỉnh qty
+      // nên thu tiền hiển thị số đúng.
+      if (deliveryId) {
+        router.push(
+          `/deliveries/${deliveryId}/handover?next=collect&entry=${entry.id}`
+        )
+      } else {
+        router.push(`/inventory/stock-out/collect/${entry.id}`)
+      }
     } catch (err) {
       toast({
         title: "Lỗi",

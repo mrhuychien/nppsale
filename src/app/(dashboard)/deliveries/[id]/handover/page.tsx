@@ -27,7 +27,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -47,6 +47,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChevronLeft, PackageOpen, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
@@ -152,10 +159,19 @@ export default function DeliveryHandoverPage() {
   const { loading: authLoading } = useRoleGuard("deliveries")
   const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [delivery, setDelivery] = useState<DeliveryRow | null>(null)
   const [failedDrafts, setFailedDrafts] = useState<FailedOrderDraft[]>([])
+  /** Per-line "thực nhận" qty cho partial orders. Map<orderId, Map<lineId, receivedQty>>.
+   *  Default per line = ordered_qty (no return). User reduce → delta = ordered - received
+   *  → derive items table tự động. */
+  const [partialReceived, setPartialReceived] = useState<
+    Map<string, Map<string, number>>
+  >(new Map())
+  /** Modal cho partial mode — orderId hiện đang edit, hoặc null. */
+  const [partialModalOrderId, setPartialModalOrderId] = useState<string | null>(null)
   /** Customer-return items seeded từ delivered orders' returns. Always
    *  shown unless user removes. */
   const [customerReturnItems, setCustomerReturnItems] = useState<ItemDraft[]>([])
@@ -345,10 +361,25 @@ export default function DeliveryHandoverPage() {
     const out: ItemDraft[] = []
 
     // (a) failed_order items — chỉ orders đã tick.
+    //     mode='failed'  → toàn bộ lines × ordered_qty về kho
+    //     mode='partial' → chỉ lines nào (ordered - received) > 0;
+    //                      qty = delta = ordered - received
     failedDrafts.forEach((f) => {
       if (!f.selected) return
+      const linesReceived = partialReceived.get(f.orderId)
       f.lines.forEach((ln) => {
         const factor = Number(ln.conversion_factor || 1)
+        const ordered = Number(ln.quantity || 0)
+
+        let qtyBack = ordered
+        if (f.mode === "partial") {
+          // Default received = ordered (no return) when modal chưa mở.
+          const received = linesReceived?.get(ln.id) ?? ordered
+          qtyBack = Math.max(0, ordered - received)
+          // Skip lines khách nhận hết (delta = 0).
+          if (qtyBack === 0) return
+        }
+
         const baseDraft: ItemDraft = {
           key: `fo-${ln.id}`,
           sourceType: "failed_order",
@@ -357,13 +388,13 @@ export default function DeliveryHandoverPage() {
           productId: ln.product_id,
           productName: ln.product?.name || "—",
           sku: ln.product?.sku || "",
-          qty: String(ln.quantity ?? 0),
+          qty: String(qtyBack),
           unitName: ln.unit_name,
           conversionFactor: factor,
           destinationZone: "sale",
           reason:
             f.mode === "partial"
-              ? `Khách nhận 1 phần đơn ${f.orderCode} — phần này về kho`
+              ? `Khách nhận ${ordered - qtyBack}/${ordered} ${ln.unit_name} ${ln.product?.sku || ""} đơn ${f.orderCode}`
               : `Trả từ đơn ${f.orderCode} (giao thất bại)`,
           swappedToCustomer: false,
         }
@@ -384,7 +415,7 @@ export default function DeliveryHandoverPage() {
         const edit = itemEdits.get(it.key)
         return edit ? { ...it, ...edit } : it
       })
-  }, [failedDrafts, customerReturnItems, unusedSwapItems, itemEdits, removedKeys])
+  }, [failedDrafts, customerReturnItems, unusedSwapItems, itemEdits, removedKeys, partialReceived])
 
   const summary = useMemo(() => {
     const selectedOrders = failedDrafts.filter((f) => f.selected)
@@ -485,13 +516,130 @@ export default function DeliveryHandoverPage() {
 
       if (error) throw new Error(error)
 
+      // Partial orders: lookup unit_price từ sales_order_lines để tính
+      // line_total cho returns. Tạo `returns` row (status='completed',
+      // is_exchange=false) — trigger sync_return_credit_amount auto
+      // tính credit_note_amount. Sau đó recompute receivable cho mỗi
+      // đơn để công nợ giảm theo.
+      const partialOrders = selectedOrders.filter(
+        (f) =>
+          f.mode === "partial" && (partialReceived.get(f.orderId)?.size || 0) > 0
+      )
+      if (partialOrders.length > 0) {
+        const { recomputeReceivableForOrder } = await import(
+          "@/lib/returns"
+        )
+        for (const po of partialOrders) {
+          const received = partialReceived.get(po.orderId)
+          if (!received) continue
+
+          // Cần unit_price từ sales_order_lines + customer_id từ
+          // sales_orders. Fetch song song.
+          const [solRes, soRes] = await Promise.all([
+            supabase
+              .from("sales_order_lines")
+              .select("id, product_id, unit_name, quantity, unit_price")
+              .eq("order_id", po.orderId),
+            supabase
+              .from("sales_orders")
+              .select("customer_id")
+              .eq("id", po.orderId)
+              .single(),
+          ])
+          const lineMap = new Map(
+            (
+              (solRes.data as Array<{
+                id: string
+                product_id: string
+                unit_name: string
+                quantity: number
+                unit_price: number
+              }>) || []
+            ).map((l) => [l.id, l])
+          )
+          const customerId =
+            (soRes.data as { customer_id: string } | null)?.customer_id
+          if (!customerId) continue
+
+          const deltaLines = po.lines
+            .map((ln) => {
+              const ord = Number(ln.quantity || 0)
+              const rec = received.get(ln.id) ?? ord
+              const delta = Math.max(0, ord - rec)
+              if (delta === 0) return null
+              const sol = lineMap.get(ln.id)
+              const unitPrice = Number(sol?.unit_price || 0)
+              return {
+                product_id: ln.product_id,
+                unit_name: ln.unit_name,
+                quantity: delta,
+                unit_price: unitPrice,
+                line_total: delta * unitPrice,
+                is_exchange: false,
+              }
+            })
+            .filter((x): x is {
+              product_id: string
+              unit_name: string
+              quantity: number
+              unit_price: number
+              line_total: number
+              is_exchange: boolean
+            } => x !== null)
+
+          if (deltaLines.length === 0) continue
+
+          // Insert returns row.
+          const { data: rRow, error: rErr } = await supabase
+            .from("returns")
+            .insert({
+              org_id: user.org_id,
+              order_id: po.orderId,
+              customer_id: customerId,
+              requested_by: user.id,
+              reason: "refused",
+              status: "completed",
+              notes: `Partial delivery — handover ${delivery.id.slice(0, 8)}: khách nhận một phần đơn ${po.orderCode}.`,
+            })
+            .select("id")
+            .single()
+          if (rErr || !rRow) {
+            console.warn("[handover] Cannot create return for partial:", rErr)
+            continue
+          }
+          const returnId = (rRow as { id: string }).id
+
+          await supabase.from("return_lines").insert(
+            deltaLines.map((dl) => ({
+              return_id: returnId,
+              ...dl,
+            }))
+          )
+          // Trigger sync_return_credit_amount auto fills
+          // returns.credit_note_amount = sum(line_total) where !is_exchange.
+
+          // Recompute receivable to reflect the new credit.
+          await recomputeReceivableForOrder(supabase, po.orderId)
+        }
+      }
+
       toast({
         title: "Đã xác nhận bàn giao lại",
         description: `${failedOrdersPayload.length} đơn thất bại + ${
           summary.partialCount
-        } đơn giao 1 phần + ${items.length} dòng hàng nhập lại kho.`,
+        } đơn giao 1 phần + ${items.length} dòng hàng nhập lại kho. Tiếp tục thu tiền…`,
       })
-      router.push(`/deliveries/${delivery.id}`)
+      // User feedback: handover TRƯỚC collect. Sau khi confirm bàn
+      // giao, redirect tới collect / settle.
+      const next = searchParams.get("next")
+      const entryId = searchParams.get("entry")
+      if (next === "collect" && entryId) {
+        // Self-deliver flow.
+        router.push(`/inventory/stock-out/collect/${entryId}`)
+      } else {
+        // Driver flow → settle page.
+        router.push(`/deliveries/${delivery.id}/settle`)
+      }
     } catch (err) {
       toast({
         title: "Lỗi",
@@ -692,12 +840,43 @@ export default function DeliveryHandoverPage() {
                         />
                       </div>
                       {f.mode === "partial" && (
-                        <p className="sm:col-span-3 text-[11px] text-orange-700 bg-orange-50 rounded p-2">
-                          ⓘ Đơn giao 1 phần: {f.lines.length} dòng đã thêm vào
-                          mục 2. Chỉnh qty từng dòng xuống số <strong>về kho</strong> (số
-                          khách KHÔNG nhận). Xoá dòng nếu khách nhận hết SP đó.
-                          Đơn KHÔNG flip về <em>delivery_failed</em> vì đã giao 1 phần.
-                        </p>
+                        <div className="sm:col-span-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-orange-700 bg-orange-50 rounded p-2">
+                            <span>
+                              ⓘ Đơn giao 1 phần: bấm <strong>Sửa đơn</strong>{" "}
+                              để nhập <em>thực nhận</em> từng dòng. Phần khách
+                              KHÔNG nhận tự về kho ở mục 2.
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0"
+                              onClick={() => setPartialModalOrderId(f.orderId)}
+                            >
+                              Sửa đơn (chi tiết)
+                            </Button>
+                          </div>
+                          {(() => {
+                            const received = partialReceived.get(f.orderId)
+                            if (!received || received.size === 0) {
+                              return (
+                                <p className="text-[10px] text-muted-foreground italic px-1">
+                                  Chưa nhập thực nhận — mặc định 100% lines về kho.
+                                </p>
+                              )
+                            }
+                            const adjusted = f.lines.filter((ln) => {
+                              const ord = Number(ln.quantity || 0)
+                              const rec = received.get(ln.id) ?? ord
+                              return rec !== ord
+                            })
+                            return (
+                              <p className="text-[10px] text-orange-700 px-1">
+                                Đã nhập thực nhận cho {adjusted.length}/{f.lines.length} dòng.
+                              </p>
+                            )
+                          })()}
+                        </div>
                       )}
                     </div>
                   )}
@@ -917,6 +1096,162 @@ export default function DeliveryHandoverPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Partial-order edit modal — nhập thực nhận từng dòng cho đơn
+          khách giao 1 phần. Lưu vào partialReceived state → items
+          table tự derive delta về kho. */}
+      <Dialog
+        open={!!partialModalOrderId}
+        onOpenChange={(o) => {
+          if (!o) setPartialModalOrderId(null)
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          {(() => {
+            const order = failedDrafts.find(
+              (f) => f.orderId === partialModalOrderId
+            )
+            if (!order) return null
+            const received =
+              partialReceived.get(order.orderId) || new Map<string, number>()
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    Sửa đơn {order.orderCode} — {order.customerName}
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Nhập <strong>thực nhận</strong> từng dòng. Phần KHÔNG nhận
+                    (delta = đặt − nhận) tự về kho ở mục 2 và trừ công nợ.
+                  </p>
+                </DialogHeader>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-2 text-left">Sản phẩm</th>
+                        <th className="px-2 py-2 text-right">Đặt</th>
+                        <th className="px-2 py-2 text-right">Thực nhận</th>
+                        <th className="px-2 py-2 text-right">Về kho</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.lines.map((ln) => {
+                        const ordered = Number(ln.quantity || 0)
+                        const rec = received.get(ln.id) ?? ordered
+                        const back = Math.max(0, ordered - rec)
+                        return (
+                          <tr key={ln.id} className="border-b last:border-0">
+                            <td className="px-2 py-2">
+                              <div className="font-medium">
+                                {ln.product?.name || "—"}
+                              </div>
+                              <div className="text-[10px] font-mono text-muted-foreground">
+                                {ln.product?.sku} • {ln.unit_name}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                              {ordered}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={ordered}
+                                step="any"
+                                value={rec}
+                                onChange={(e) => {
+                                  const v = Math.min(
+                                    ordered,
+                                    Math.max(0, Number(e.target.value) || 0)
+                                  )
+                                  setPartialReceived((prev) => {
+                                    const next = new Map(prev)
+                                    const orderMap =
+                                      new Map(next.get(order.orderId) || [])
+                                    if (v === ordered) {
+                                      orderMap.delete(ln.id)
+                                    } else {
+                                      orderMap.set(ln.id, v)
+                                    }
+                                    if (orderMap.size === 0) {
+                                      next.delete(order.orderId)
+                                    } else {
+                                      next.set(order.orderId, orderMap)
+                                    }
+                                    return next
+                                  })
+                                }}
+                                className={`h-8 w-20 text-right tabular-nums ml-auto ${
+                                  rec !== ordered ? "border-orange-300" : ""
+                                }`}
+                              />
+                            </td>
+                            <td
+                              className={`px-2 py-2 text-right tabular-nums font-semibold ${
+                                back > 0 ? "text-orange-700" : "text-muted-foreground"
+                              }`}
+                            >
+                              {back}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot className="border-t-2 font-bold">
+                      <tr>
+                        <td className="px-2 py-2 text-right" colSpan={1}>
+                          Tổng:
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">
+                          {order.lines.reduce(
+                            (s, ln) => s + Number(ln.quantity || 0),
+                            0
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">
+                          {order.lines.reduce(
+                            (s, ln) =>
+                              s +
+                              (received.get(ln.id) ??
+                                Number(ln.quantity || 0)),
+                            0
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-orange-700">
+                          {order.lines.reduce((s, ln) => {
+                            const ord = Number(ln.quantity || 0)
+                            const r = received.get(ln.id) ?? ord
+                            return s + Math.max(0, ord - r)
+                          }, 0)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <DialogFooter className="flex flex-row items-center justify-between gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setPartialReceived((prev) => {
+                        const next = new Map(prev)
+                        next.delete(order.orderId)
+                        return next
+                      })
+                    }}
+                  >
+                    Reset (khách nhận hết)
+                  </Button>
+                  <Button onClick={() => setPartialModalOrderId(null)}>
+                    Xong
+                  </Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

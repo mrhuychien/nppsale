@@ -663,6 +663,12 @@ export function OrderForm() {
           .single()
         if (returnErr) throw returnErr
         const returnId = (returnRow as { id: string }).id
+        // ⚠️ Always send is_exchange (even when false) so the Supabase
+        // batch insert sees a consistent column set — PostgREST infers
+        // ?columns=... from the first row only, so a row WITH
+        // is_exchange after rows WITHOUT it would silently lose the
+        // value, leaving exchange flags as DEFAULT (false). The optional-
+        // missing fallback below catches DBs without the column entirely.
         const returnLineRows = returnLines.map((l) => {
           const trimmed = l.note?.trim()
           return {
@@ -672,10 +678,8 @@ export function OrderForm() {
             quantity: l.quantity,
             unit_price: l.unit_price,
             line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
-            // Only include note + is_exchange when needed so DBs without
-            // migrations 029 / 035 still accept the insert.
+            is_exchange: !!l.is_exchange,
             ...(trimmed ? { note: trimmed } : {}),
-            ...(l.is_exchange ? { is_exchange: true } : {}),
           }
         })
         const { error: rLinesErr } = await supabase

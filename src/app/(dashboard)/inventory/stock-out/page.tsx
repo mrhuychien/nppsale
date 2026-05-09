@@ -374,6 +374,26 @@ export default function StockOutPage() {
     return { sell, exchange }
   }, [pickList])
 
+  // Diagnostic — đếm nguồn gốc returns + exchange-flagged lines của
+  // các đơn được chọn. Surface ngay trên UI để user thấy data tồn tại
+  // (vs. nghĩ pickList đang bỏ qua exchange).
+  const returnsDiagnostic = useMemo(() => {
+    let returnCount = 0
+    let exchangeLineCount = 0
+    let refundLineCount = 0
+    selectedOrders.forEach((o) => {
+      ;(o.returns || []).forEach((r) => {
+        if (r.status === "rejected") return
+        returnCount += 1
+        ;(r.return_lines || []).forEach((rl) => {
+          if (rl.is_exchange) exchangeLineCount += 1
+          else refundLineCount += 1
+        })
+      })
+    })
+    return { returnCount, exchangeLineCount, refundLineCount }
+  }, [selectedOrders])
+
   // Refund items (TRẢ trừ công nợ) — KHÔNG đem đi đổi, mà driver phải
   // THU VỀ từ khách trên đường giao. Liệt kê riêng cho thủ kho biết
   // chuẩn bị bao bì / chỗ chứa khi xe về.
@@ -598,6 +618,19 @@ export default function StockOutPage() {
             ? `[Exchange] ${p.location}`
             : `Vị trí: ${p.location}`,
       }))
+      // Diagnostic log — surfaces what's actually being saved so user
+      // có thể verify trong DevTools nếu cảm thấy thiếu hàng đổi.
+      console.log("[stock-out] insert stock_entry_lines:", {
+        total: entryLines.length,
+        sell: entryLines.filter((l) => !l.notes?.startsWith("[Exchange]")).length,
+        exchange: entryLines.filter((l) => l.notes?.startsWith("[Exchange]")).length,
+        rows: entryLines.map((l) => ({
+          product_id: l.product_id,
+          unit_name: l.unit_name,
+          quantity: l.quantity,
+          notes: l.notes,
+        })),
+      })
       if (entryLines.length > 0) {
         const { error: linesErr } = await supabase
           .from("stock_entry_lines")
@@ -1027,6 +1060,34 @@ export default function StockOutPage() {
                 )}
               </div>
             </div>
+
+            {/* Diagnostic — surfaces returns data state so user thấy ngay
+                nếu data không khớp với expectation. */}
+            {selectedOrders.length > 0 && (
+              <div className="mb-3 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-[11px] text-gray-300">
+                <span className="text-gray-400">Phiếu trả gắn đơn:</span>{" "}
+                <strong className="text-white">
+                  {returnsDiagnostic.returnCount}
+                </strong>{" "}
+                <span className="text-gray-400">•</span>{" "}
+                <span className="text-blue-300">
+                  ĐỔI <strong>{returnsDiagnostic.exchangeLineCount}</strong> dòng
+                </span>{" "}
+                <span className="text-gray-500">→ pickList</span>{" "}
+                <span className="text-gray-400">•</span>{" "}
+                <span className="text-amber-300">
+                  TRẢ <strong>{returnsDiagnostic.refundLineCount}</strong> dòng
+                </span>{" "}
+                <span className="text-gray-500">→ thu về</span>
+                {returnsDiagnostic.exchangeLineCount === 0 &&
+                  returnsDiagnostic.refundLineCount === 0 &&
+                  returnsDiagnostic.returnCount === 0 && (
+                    <span className="text-gray-500 ml-1">
+                      (không có phiếu trả)
+                    </span>
+                  )}
+              </div>
+            )}
 
             {/* Refund items — driver thu về từ khách trên đường giao.
                 Không nằm trong pickList vì hàng đã ở chỗ khách. */}

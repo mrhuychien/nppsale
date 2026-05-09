@@ -22,6 +22,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { CashReceipt, CashReceiptLine } from "@/types"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
@@ -53,6 +54,7 @@ export default function CashReceiptDetailPage() {
   const [receipt, setReceipt] = useState<CashReceipt | null>(null)
   const [lines, setLines] = useState<ReceiptLineWithOrder[]>([])
   const [delivery, setDelivery] = useState<{ id: string; route_name: string | null } | null>(null)
+  const [orgName, setOrgName] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -85,8 +87,19 @@ export default function CashReceiptDetailPage() {
     } else {
       setDelivery(null)
     }
+
+    // T-08: pull org name for the TT200 receipt header.
+    if (user?.org_id) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", user.org_id)
+        .maybeSingle()
+      setOrgName(((org as { name: string } | null)?.name) || "")
+    }
+
     setLoading(false)
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -167,6 +180,23 @@ export default function CashReceiptDetailPage() {
           </Badge>
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-2" /> In
+          </Button>
+          {/* T-08 — Phiếu thu mẫu 01-TT (TT200). Print-only block below. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const html = document.documentElement
+              html.setAttribute("data-print-mode", "receipt-tt200")
+              requestAnimationFrame(() => {
+                window.print()
+                setTimeout(() => {
+                  html.removeAttribute("data-print-mode")
+                }, 200)
+              })
+            }}
+          >
+            <Printer className="h-4 w-4 mr-2" /> In phiếu thu (TT200)
           </Button>
         </div>
       </PageHeader>
@@ -355,6 +385,26 @@ export default function CashReceiptDetailPage() {
             </Card>
           )}
         </div>
+      </div>
+
+      {/* T-08: TT200 print-only — toggled by data-print-mode='receipt-tt200'. */}
+      <div className="print-receipt-tt200-only">
+        <PaymentReceiptTT200
+          organizationName={orgName || "—"}
+          receiptNo={receipt.receipt_code}
+          date={new Date(receipt.receipt_date)}
+          payerName={
+            (receipt.collector as unknown as { full_name?: string } | undefined)?.full_name ||
+            "—"
+          }
+          reason={
+            delivery?.route_name
+              ? `Thu tiền giao hàng chuyến ${delivery.route_name} ngày ${formatDate(receipt.receipt_date)}`
+              : `Thu tiền giao hàng theo phiếu ${receipt.receipt_code}`
+          }
+          amount={Number(receipt.submitted_amount ?? 0)}
+          evidenceCount={lines.length}
+        />
       </div>
     </div>
   )

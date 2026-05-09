@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 import { PageHeader } from "@/components/ui/page-header"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
@@ -103,6 +104,20 @@ export default function UserDetailPage() {
         <Badge variant={target.is_active ? "success" : "secondary"}>
           {target.is_active ? "Đang hoạt động" : "Tạm khóa"}
         </Badge>
+        {/* T-13: per-user permission overrides */}
+        <Link
+          href={`/settings/users/${target.id}/permissions`}
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Phân quyền tuỳ chỉnh →
+        </Link>
+        {/* T-15: per-user salary config */}
+        <Link
+          href={`/settings/users/${target.id}/salary`}
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Cấu hình lương →
+        </Link>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">

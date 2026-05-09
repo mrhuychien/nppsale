@@ -87,6 +87,7 @@
 /* Print styles */
 .print-only { display: none; }
 .print-driver-list-only { display: none; }
+.print-receipt-tt200-only { display: none; }
 
 @media print {
   aside, header, nav, .no-print { display: none !important; }
@@ -100,6 +101,9 @@
   /* T-10 — driver-list print mode toggles via html[data-print-mode]. */
   html[data-print-mode="driver-list"] .print-only { display: none !important; }
   html[data-print-mode="driver-list"] .print-driver-list-only { display: block !important; }
+  /* T-08 — TT200 receipt print mode. */
+  html[data-print-mode="receipt-tt200"] .print-only { display: none !important; }
+  html[data-print-mode="receipt-tt200"] .print-receipt-tt200-only { display: block !important; }
 }
 
 /*

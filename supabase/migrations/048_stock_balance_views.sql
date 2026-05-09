@@ -13,27 +13,40 @@
 -- the FE pivots to wide format.
 -- ====================================================================
 
+-- Normalize the COALESCE(warehouse_zone, 'sale') in a CTE so the outer
+-- GROUP BY references a real column (n.warehouse_zone) — Postgres won't
+-- accept the ungrouped `b.warehouse_zone` deep in the subquery if the
+-- outer GROUP BY only carries the COALESCE expression.
 CREATE OR REPLACE VIEW v_stock_balance_by_zone AS
+WITH normalized AS (
+  SELECT
+    b.org_id,
+    b.product_id,
+    COALESCE(b.warehouse_zone, 'sale') AS warehouse_zone,
+    b.qty_on_hand,
+    b.unit_cost
+  FROM batches b
+  WHERE b.qty_on_hand > 0
+)
 SELECT
-  b.org_id,
-  b.product_id,
-  COALESCE(b.warehouse_zone, 'sale') AS warehouse_zone,
-  SUM(b.qty_on_hand)::numeric AS qty_in_base_uom,
+  n.org_id,
+  n.product_id,
+  n.warehouse_zone,
+  SUM(n.qty_on_hand)::numeric AS qty_in_base_uom,
   -- Prefer FIFO valuation; fallback to batch weighted-avg.
   COALESCE(
     (
       SELECT SUM(fl.qty_in_base_uom_remaining * fl.unit_cost)::numeric
       FROM fifo_layers fl
-      WHERE fl.org_id = b.org_id
-        AND fl.product_id = b.product_id
-        AND fl.warehouse_zone = COALESCE(b.warehouse_zone, 'sale')
+      WHERE fl.org_id = n.org_id
+        AND fl.product_id = n.product_id
+        AND fl.warehouse_zone = n.warehouse_zone
         AND fl.closed_at IS NULL
     ),
-    SUM(b.qty_on_hand * COALESCE(b.unit_cost, 0))::numeric
+    SUM(n.qty_on_hand * COALESCE(n.unit_cost, 0))::numeric
   ) AS value
-FROM batches b
-WHERE b.qty_on_hand > 0
-GROUP BY b.org_id, b.product_id, COALESCE(b.warehouse_zone, 'sale');
+FROM normalized n
+GROUP BY n.org_id, n.product_id, n.warehouse_zone;
 
 COMMENT ON VIEW v_stock_balance_by_zone IS
   'T-09: per (product, warehouse_zone) qty + FIFO-valued cost. One row per zone (sale/date) per product with positive on-hand.';

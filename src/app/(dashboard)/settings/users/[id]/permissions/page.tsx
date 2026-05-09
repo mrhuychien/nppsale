@@ -51,6 +51,69 @@ import {
   type Role,
 } from "@/lib/permissions"
 
+/**
+ * Pack3 spec D8/D13 flat permission keys. These are override-only
+ * (no role_permissions equivalent) and grant special capabilities
+ * referenced by RLS or feature gates.
+ */
+interface SpecPermission {
+  key: string
+  label: string
+}
+interface SpecGroup {
+  key: string
+  label: string
+  permissions: SpecPermission[]
+}
+const PACK3_SPEC_GROUPS: SpecGroup[] = [
+  {
+    key: "customer",
+    label: "Khách hàng",
+    permissions: [
+      { key: "customer.view_all", label: "Xem tất cả KH (override row-level)" },
+      { key: "customer.assign", label: "Phân công NV phụ trách" },
+    ],
+  },
+  {
+    key: "warehouse",
+    label: "Kho vận",
+    permissions: [
+      { key: "warehouse.view_balance", label: "Xem tồn kho" },
+      { key: "warehouse.view_cost", label: "Xem giá vốn" },
+      { key: "warehouse.adjust", label: "Điều chỉnh tồn" },
+      { key: "warehouse.picking", label: "Xuất kho" },
+      { key: "warehouse.handover", label: "Nhận bàn giao" },
+    ],
+  },
+  {
+    key: "finance",
+    label: "Tài chính",
+    permissions: [
+      { key: "finance.view_ar", label: "Xem công nợ" },
+      { key: "finance.collect", label: "Thu tiền" },
+      { key: "finance.print_receipt", label: "In phiếu thu" },
+    ],
+  },
+  {
+    key: "hr",
+    label: "Nhân sự",
+    permissions: [
+      { key: "hr.view_attendance", label: "Xem chấm công" },
+      { key: "hr.run_payroll", label: "Tính lương" },
+      { key: "hr.config_salary", label: "Cấu hình lương" },
+    ],
+  },
+  {
+    key: "admin",
+    label: "Quản trị",
+    permissions: [
+      { key: "admin.users", label: "Quản lý user" },
+      { key: "admin.permissions", label: "Phân quyền" },
+      { key: "admin.audit_log", label: "Xem audit log" },
+    ],
+  },
+]
+
 interface UserRow {
   id: string
   org_id: string
@@ -328,6 +391,74 @@ export default function UserPermissionsPage() {
               ))}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      {/* Pack3 spec D8/D13 — flat keys consumed by RLS / feature gates.
+          Override-only: tick = grant, untick = revoke (no inherit), since
+          no role_permissions row backs these keys. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quyền đặc biệt (Pack3)</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Các quyền chỉ kích hoạt khi tick: vd. <code>customer.view_all</code>{" "}
+            override row-level RLS để xem mọi KH (D8).
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {PACK3_SPEC_GROUPS.map((g) => (
+            <div key={g.key}>
+              <h3 className="text-sm font-semibold mb-2">{g.label}</h3>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {g.permissions.map((p) => {
+                  const mode = pending.has(p.key)
+                    ? pending.get(p.key)!
+                    : overrides.has(p.key)
+                      ? overrides.get(p.key)
+                        ? "grant"
+                        : "revoke"
+                      : "inherit"
+                  const granted = mode === "grant"
+                  return (
+                    <label
+                      key={p.key}
+                      className="flex items-center gap-2 rounded border bg-muted/10 px-3 py-1.5 cursor-pointer text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={granted}
+                        onChange={(e) => {
+                          const k = p.key
+                          setPending((prev) => {
+                            const next = new Map(prev)
+                            const original =
+                              overrides.has(k)
+                                ? overrides.get(k)
+                                  ? "grant"
+                                  : "revoke"
+                                : "inherit"
+                            const target: CellMode = e.target.checked
+                              ? "grant"
+                              : "inherit"
+                            if (target === original) {
+                              next.delete(k)
+                            } else {
+                              next.set(k, target)
+                            }
+                            return next
+                          })
+                        }}
+                      />
+                      <span className="flex-1">{p.label}</span>
+                      <code className="text-[10px] text-muted-foreground">
+                        {p.key}
+                      </code>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

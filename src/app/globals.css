@@ -86,6 +86,7 @@
 
 /* Print styles */
 .print-only { display: none; }
+.print-driver-list-only { display: none; }
 
 @media print {
   aside, header, nav, .no-print { display: none !important; }
@@ -96,6 +97,9 @@
   .print-page:last-child { page-break-after: auto; break-after: auto; }
   table { page-break-inside: auto; }
   tr { page-break-inside: avoid; page-break-after: auto; }
+  /* T-10 — driver-list print mode toggles via html[data-print-mode]. */
+  html[data-print-mode="driver-list"] .print-only { display: none !important; }
+  html[data-print-mode="driver-list"] .print-driver-list-only { display: block !important; }
 }
 
 /*

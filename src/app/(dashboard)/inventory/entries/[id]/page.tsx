@@ -18,8 +18,9 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
-import { Pencil, Trash2, X, Package, Truck, HandCoins } from "lucide-react"
+import { Pencil, Trash2, X, Package, Truck, HandCoins, Printer } from "lucide-react"
 import { PrintButton } from "@/components/ui/print-button"
+import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
 import type { StockEntry, StockEntryLine } from "@/types"
 
 export default function StockEntryDetailPage() {
@@ -368,8 +369,27 @@ export default function StockEntryDetailPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Chi tiết sản phẩm ({lines.length})</CardTitle>
-            <PrintButton />
-
+            <div className="flex gap-2">
+              <PrintButton label="In phiếu xuất & giao hàng" />
+              {entry.type === "export" && refOrders.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const html = document.documentElement
+                    html.setAttribute("data-print-mode", "driver-list")
+                    requestAnimationFrame(() => {
+                      window.print()
+                      setTimeout(() => {
+                        html.removeAttribute("data-print-mode")
+                      }, 200)
+                    })
+                  }}
+                >
+                  <Printer className="h-4 w-4 mr-2" /> In danh sách giao
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {lines.length === 0 ? (
@@ -1097,6 +1117,30 @@ export default function StockEntryDetailPage() {
             </div>
           )
         })}
+      </div>
+
+      {/* T-10: alternate print section — danh sách giao (A5 portrait).
+          Active when html[data-print-mode='driver-list']. */}
+      <div className="print-driver-list-only">
+        <DriverList
+          shipmentCode={entry.entry_code}
+          shipmentDate={entry.posted_at || entry.created_at}
+          orders={refOrders.map<DriverListOrder>((o) => ({
+            id: o.id,
+            orderCode: o.order_code,
+            customerName: o.customer?.store_name || "—",
+            deliveryAddress:
+              [
+                o.customer?.address,
+                o.customer?.ward,
+                o.customer?.district,
+                o.customer?.province,
+              ]
+                .filter(Boolean)
+                .join(", ") || null,
+            totalToCollect: Number(o.total || 0),
+          }))}
+        />
       </div>
     </div>
   )

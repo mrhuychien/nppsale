@@ -17,7 +17,7 @@ Resume: pick first unchecked task → read spec section 5 → execute per protoc
 
 ## Sprint 3 — Print + UI tồn kho
 - [x] T-09 Tab Tồn kho hiện tại + drill-down (mig 048 — v_stock_balance_by_zone view (per product × zone qty + FIFO-valued cost) + v_stock_movements view (signed base UOM, decorated with entry meta). components/inventory/stock-balance-table.tsx (pivoted wide table: SKU | name | sale qty/value | date qty/value | totals + tfoot grand totals + search + "chỉ hiện hàng còn tồn" filter). components/inventory/stock-history-drawer.tsx (Sheet with zone + date filters, running balance per zone, link to source entry). Mounted on existing /inventory "Tồn kho hiện tại" tab.)
-- [ ] T-10 Layout buttons + In danh sách giao
+- [x] T-10 Layout buttons + In danh sách giao (components/printing/driver-list.tsx — A5 portrait per-driver section grouped by driverName, blank "thực thu" column for driver fill-in, signatures block. globals.css adds .print-driver-list-only + html[data-print-mode='driver-list'] toggle. inventory/entries/[id]: PrintButton kept for "In phiếu xuất & giao hàng", new "In danh sách giao" button next to it which sets data-print-mode and calls window.print(). The "Tự giao hàng & thu tiền" button already exists in the side card from prior work.)
 - [~] T-11 A5 nhỏ chữ (globals.css 8pt Times on A5; .a5-doc class hooks for printing/payment-receipt-tt200). Footer subtotal/VAT/total in delivery slip already exists from prior work — no further change needed.
 - [ ] T-12 Phiếu xuất hàng đem đổi
 

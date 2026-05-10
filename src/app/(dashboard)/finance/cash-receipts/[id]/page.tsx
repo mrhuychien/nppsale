@@ -77,7 +77,9 @@ export default function CashReceiptDetailPage() {
       .eq("receipt_id", id)
     setLines((ls as unknown as ReceiptLineWithOrder[]) || [])
 
-    // Resolve linked delivery for the "Nhận bàn giao lại" CTA. Two paths:
+    // Resolve linked delivery — used for "Chi tiết chuyến" link in
+    // the chuyến giao section + reason text on the TT200 receipt.
+    // Two source paths:
     //   - source_type='delivery_settle' → source_id IS the delivery_id
     //   - source_type='manual' (self-deliver flow) → source_id is the
     //     stock_entry_id; lookup deliveries.source_stock_entry_id (mig 056).
@@ -212,27 +214,6 @@ export default function CashReceiptDetailPage() {
           </Button>
         </div>
       </PageHeader>
-
-      {/* Issue #4 — khi phiếu thu nguồn từ delivery_settle, surfaces
-          link sang nhận bàn giao lại (Pack3 T-07). */}
-      {delivery && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 flex items-center justify-between gap-3 text-sm">
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-amber-900">
-              Bước tiếp: nhận hàng trả về từ chuyến giao
-            </p>
-            <p className="text-xs text-amber-800">
-              Xác nhận đơn thất bại + nhập kho hàng đem đổi không dùng cho{" "}
-              <strong>{delivery.route_name || "chuyến này"}</strong>.
-            </p>
-          </div>
-          <Button asChild>
-            <Link href={`/deliveries/${delivery.id}/handover`}>
-              Nhận hàng trả về →
-            </Link>
-          </Button>
-        </div>
-      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left: receipt lines */}

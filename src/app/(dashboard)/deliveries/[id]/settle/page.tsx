@@ -437,13 +437,13 @@ export default function DeliverySettlePage() {
             : isShort
               ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
               : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`
-        } Tiếp tục bàn giao hàng về kho…`,
+        }`,
       })
       // T-05: chuyến đã quyết toán → close workflow session.
       await closeSession()
-      // Issue #4 — chuyển sang nhận hàng trả về thay vì phiếu thu.
-      // Phiếu thu vẫn truy cập được qua /finance/cash-receipts.
-      router.push(`/deliveries/${delivery.id}/handover?from_receipt=${receipt.id}`)
+      // Bàn giao đã làm trước thu tiền (flow mới) → settle xong là
+      // bước cuối: chuyển sang phiếu thu để in/xác nhận.
+      router.push(`/finance/cash-receipts/${receipt.id}`)
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {
@@ -468,12 +468,6 @@ export default function DeliverySettlePage() {
         ) : (
           <Badge variant="warning">Chờ trả tiền</Badge>
         )}
-        {/* T-07: nhận bàn giao lại — đơn thất bại + hàng nhập kho */}
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/deliveries/${id}/handover`}>
-            Nhận bàn giao lại →
-          </Link>
-        </Button>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">

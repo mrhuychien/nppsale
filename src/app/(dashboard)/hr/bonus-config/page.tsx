@@ -12,6 +12,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
+import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table"
 import { Save, Plus, Trash2, ChevronLeft, ChevronRight, Loader2, Package, ListOrdered, Target } from "lucide-react"
@@ -22,6 +25,18 @@ import type {
   OrderMilestoneTier,
   PerUnitBonus,
 } from "@/types"
+
+interface ProductOption {
+  id: string
+  sku: string
+  name: string
+  base_unit: string
+}
+
+interface ProductUnitOption {
+  product_id: string
+  unit_name: string
+}
 
 interface BonusTier {
   min_revenue: number
@@ -99,6 +114,8 @@ export default function BonusConfigPage() {
   const [milestoneTiers, setMilestoneTiers] = useState<OrderMilestoneTier[]>([])
   const [kpiMetrics, setKpiMetrics] = useState<KpiMetricConfig[]>([])
   const [notes, setNotes] = useState("")
+  const [products, setProducts] = useState<ProductOption[]>([])
+  const [productUnits, setProductUnits] = useState<ProductUnitOption[]>([])
 
   const period = `${year}-${String(month).padStart(2, "0")}`
 
@@ -106,7 +123,7 @@ export default function BonusConfigPage() {
     if (!authUser?.org_id) return
     setLoading(true)
 
-    const [currentRes, historyRes] = await Promise.all([
+    const [currentRes, historyRes, productsRes, unitsRes] = await Promise.all([
       supabase
         .from("hr_monthly_bonus")
         .select("*")
@@ -119,7 +136,17 @@ export default function BonusConfigPage() {
         .eq("org_id", authUser.org_id)
         .order("period", { ascending: false })
         .limit(12),
+      supabase
+        .from("products")
+        .select("id, sku, name, base_unit")
+        .eq("org_id", authUser.org_id)
+        .order("name", { ascending: true }),
+      supabase
+        .from("product_units")
+        .select("product_id, unit_name"),
     ])
+    setProducts((productsRes.data as ProductOption[]) || [])
+    setProductUnits((unitsRes.data as ProductUnitOption[]) || [])
 
     if (currentRes.data) {
       const c = currentRes.data as HrMonthlyBonus
@@ -138,9 +165,9 @@ export default function BonusConfigPage() {
       ])
       setPerUnit([])
       setMilestoneTiers([
-        { min_orders: 30, bonus: 300_000, label: "30 đơn" },
-        { min_orders: 50, bonus: 700_000, label: "50 đơn" },
-        { min_orders: 80, bonus: 1_200_000, label: "80 đơn" },
+        { min_orders: 30, min_order_value: 0, bonus: 10_000, label: "30+ đơn" },
+        { min_orders: 50, min_order_value: 0, bonus: 14_000, label: "50+ đơn" },
+        { min_orders: 80, min_order_value: 0, bonus: 18_000, label: "80+ đơn" },
       ])
       setKpiMetrics(DEFAULT_KPI_METRICS)
       setNotes("")
@@ -318,70 +345,128 @@ export default function BonusConfigPage() {
               Chưa có thưởng đầu thùng nào
             </p>
           ) : (
-            perUnit.map((p, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-4">
-                  <Label className="text-xs">Mã SP (để trống = mọi SP)</Label>
-                  <Input
-                    value={p.product_id || ""}
-                    onChange={(e) => {
-                      const next = [...perUnit]
-                      next[idx] = { ...p, product_id: e.target.value.trim() || null }
-                      setPerUnit(next)
-                    }}
-                    placeholder="UUID hoặc trống"
-                  />
+            perUnit.map((p, idx) => {
+              const product = products.find((pp) => pp.id === p.product_id) || null
+              const unitOptions: string[] = product
+                ? Array.from(
+                    new Set([
+                      product.base_unit,
+                      ...productUnits
+                        .filter((u) => u.product_id === product.id)
+                        .map((u) => u.unit_name),
+                    ])
+                  ).filter(Boolean)
+                : []
+              return (
+                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-4">
+                    <Label className="text-xs uppercase text-muted-foreground">
+                      Sản phẩm
+                    </Label>
+                    <Select
+                      value={p.product_id || "_all"}
+                      onValueChange={(v) => {
+                        const next = [...perUnit]
+                        const newProductId = v === "_all" ? null : v
+                        // Khi đổi SP → reset unit_name về base_unit của SP mới
+                        // (tránh giữ ĐVT không thuộc SP đó). null → giữ
+                        // unit_name cũ vì đã là "mọi SP".
+                        let newUnit = p.unit_name
+                        if (newProductId) {
+                          const newProd = products.find((pp) => pp.id === newProductId)
+                          if (newProd) newUnit = newProd.base_unit
+                        }
+                        next[idx] = { ...p, product_id: newProductId, unit_name: newUnit }
+                        setPerUnit(next)
+                      }}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Chọn SP" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all">— Mọi sản phẩm —</SelectItem>
+                        {products.map((pp) => (
+                          <SelectItem key={pp.id} value={pp.id}>
+                            {pp.sku} — {pp.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs uppercase text-muted-foreground">ĐVT</Label>
+                    {unitOptions.length > 0 ? (
+                      <Select
+                        value={p.unit_name || ""}
+                        onValueChange={(v) => {
+                          const next = [...perUnit]
+                          next[idx] = { ...p, unit_name: v }
+                          setPerUnit(next)
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Chọn ĐVT" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unitOptions.map((u) => (
+                            <SelectItem key={u} value={u}>
+                              {u}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={p.unit_name}
+                        onChange={(e) => {
+                          const next = [...perUnit]
+                          next[idx] = { ...p, unit_name: e.target.value }
+                          setPerUnit(next)
+                        }}
+                        placeholder="thùng / lốc / hộp"
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-3">
+                    <Label className="text-xs uppercase text-muted-foreground">Thưởng / 1 ĐVT</Label>
+                    <Input
+                      type="number"
+                      value={p.bonus}
+                      onChange={(e) => {
+                        const next = [...perUnit]
+                        next[idx] = { ...p, bonus: Number(e.target.value) || 0 }
+                        setPerUnit(next)
+                      }}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {formatCurrency(p.bonus)}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs uppercase text-muted-foreground">Nhãn</Label>
+                    <Input
+                      value={p.label || ""}
+                      onChange={(e) => {
+                        const next = [...perUnit]
+                        next[idx] = { ...p, label: e.target.value }
+                        setPerUnit(next)
+                      }}
+                      placeholder="VD: Thưởng thùng"
+                    />
+                  </div>
+                  <div className="col-span-1 flex items-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive"
+                      onClick={() => setPerUnit(perUnit.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">ĐVT</Label>
-                  <Input
-                    value={p.unit_name}
-                    onChange={(e) => {
-                      const next = [...perUnit]
-                      next[idx] = { ...p, unit_name: e.target.value }
-                      setPerUnit(next)
-                    }}
-                  />
-                </div>
-                <div className="col-span-3">
-                  <Label className="text-xs">Thưởng / 1 ĐVT</Label>
-                  <Input
-                    type="number"
-                    value={p.bonus}
-                    onChange={(e) => {
-                      const next = [...perUnit]
-                      next[idx] = { ...p, bonus: Number(e.target.value) || 0 }
-                      setPerUnit(next)
-                    }}
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {formatCurrency(p.bonus)}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Nhãn</Label>
-                  <Input
-                    value={p.label || ""}
-                    onChange={(e) => {
-                      const next = [...perUnit]
-                      next[idx] = { ...p, label: e.target.value }
-                      setPerUnit(next)
-                    }}
-                    placeholder="VD: Thùng nước ngọt"
-                  />
-                </div>
-                <div className="col-span-1 flex items-end">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => setPerUnit(perUnit.filter((_, i) => i !== idx))}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </CardContent>
       </Card>
@@ -403,13 +488,20 @@ export default function BonusConfigPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              setMilestoneTiers([...milestoneTiers, { min_orders: 0, bonus: 0 }])
+              setMilestoneTiers([
+                ...milestoneTiers,
+                { min_orders: 0, min_order_value: 0, bonus: 0 },
+              ])
             }
           >
             <Plus className="h-4 w-4 mr-1" /> Thêm bậc
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Mỗi đơn pass cả 2 ngưỡng (số đơn tối thiểu + giá trị tối thiểu mỗi
+            đơn) sẽ được tính. Tổng thưởng = số đơn pass × giá trị thưởng mỗi đơn.
+          </p>
           {milestoneTiers.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               Chưa có bậc thưởng
@@ -417,10 +509,13 @@ export default function BonusConfigPage() {
           ) : (
             milestoneTiers.map((t, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-3">
-                  <Label className="text-xs">Số đơn tối thiểu</Label>
+                <div className="col-span-2">
+                  <Label className="text-xs uppercase text-muted-foreground">
+                    Số đơn tối thiểu
+                  </Label>
                   <Input
                     type="number"
+                    min={0}
                     value={t.min_orders}
                     onChange={(e) => {
                       const next = [...milestoneTiers]
@@ -429,10 +524,31 @@ export default function BonusConfigPage() {
                     }}
                   />
                 </div>
-                <div className="col-span-4">
-                  <Label className="text-xs">Thưởng</Label>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">
+                    Giá trị tối thiểu mỗi đơn
+                  </Label>
                   <Input
                     type="number"
+                    min={0}
+                    value={t.min_order_value ?? 0}
+                    onChange={(e) => {
+                      const next = [...milestoneTiers]
+                      next[idx] = { ...t, min_order_value: Number(e.target.value) || 0 }
+                      setMilestoneTiers(next)
+                    }}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {formatCurrency(Number(t.min_order_value || 0))}
+                  </p>
+                </div>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">
+                    Giá trị thưởng mỗi đơn
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
                     value={t.bonus}
                     onChange={(e) => {
                       const next = [...milestoneTiers]
@@ -444,8 +560,8 @@ export default function BonusConfigPage() {
                     {formatCurrency(t.bonus)}
                   </p>
                 </div>
-                <div className="col-span-4">
-                  <Label className="text-xs">Nhãn (tuỳ chọn)</Label>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">Nhãn (tuỳ chọn)</Label>
                   <Input
                     value={t.label || ""}
                     onChange={(e) => {

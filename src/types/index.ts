@@ -657,7 +657,14 @@ export interface HrSalaryConfig {
   gas_allowance: number
   phone_allowance: number
   working_days_per_month: number
-  target_tiers: { min_percent: number; bonus: number; label: string }[]
+  target_tiers: {
+    min_percent: number
+    /** Mức doanh số tối thiểu (VND) — alternative trigger to min_percent.
+     *  Optional for backward compat. */
+    min_revenue?: number
+    bonus: number
+    label: string
+  }[]
   over_target_percent: number
   under_70_rule: string
   under_60_percent: number
@@ -678,7 +685,11 @@ export interface PerUnitBonus {
 }
 
 export interface OrderMilestoneTier {
+  /** Số đơn tối thiểu phải đạt. */
   min_orders: number
+  /** Giá trị tối thiểu mỗi đơn để được tính (VND). */
+  min_order_value?: number
+  /** Số tiền thưởng cho mỗi đơn pass ngưỡng. */
   bonus: number
   label?: string
 }

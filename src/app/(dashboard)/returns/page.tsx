@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
-import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   Table,
@@ -15,11 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -29,24 +29,25 @@ import {
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
-import {
-  RotateCcw,
-  Plus,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  BadgeCheck,
-  PieChart,
-} from "lucide-react"
+import { RotateCcw, PieChart, Search, Info } from "lucide-react"
 import type { Return } from "@/types"
 
+const REASON_COLORS: Record<string, string> = {
+  damaged: "bg-red-500",
+  wrong_item: "bg-amber-500",
+  near_expiry: "bg-orange-500",
+  expired: "bg-rose-600",
+  refused: "bg-slate-500",
+}
+
 export default function ReturnsPage() {
-  const { user, loading: authLoading } = useRoleGuard("returns")
+  const { loading: authLoading } = useRoleGuard("returns")
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
   const [returns, setReturns] = useState<Return[]>([])
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
+  const [search, setSearch] = useState("")
   const router = useRouter()
   const supabase = createClient()
 
@@ -55,7 +56,7 @@ export default function ReturnsPage() {
       const { data } = await supabase
         .from("returns")
         .select(
-          "*, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name)"
+          "*, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)"
         )
         .order("created_at", { ascending: false })
       setReturns((data as Return[]) || [])
@@ -63,15 +64,6 @@ export default function ReturnsPage() {
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const stats = useMemo(() => {
-    return {
-      pending: returns.filter((r) => r.status === "pending").length,
-      approved: returns.filter((r) => r.status === "approved").length,
-      rejected: returns.filter((r) => r.status === "rejected").length,
-      completed: returns.filter((r) => r.status === "completed").length,
-    }
-  }, [returns])
 
   const reasonCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -85,93 +77,64 @@ export default function ReturnsPage() {
   const maxReasonCount = Math.max(1, ...Object.values(reasonCounts))
 
   const filtered = useMemo(() => {
-    if (reasonFilter === "all") return returns
-    return returns.filter((r) => r.reason === reasonFilter)
-  }, [returns, reasonFilter])
+    let list = returns
+    if (reasonFilter !== "all") list = list.filter((r) => r.reason === reasonFilter)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter((r) =>
+        (r.customer?.store_name || "").toLowerCase().includes(q) ||
+        (r.requester?.full_name || "").toLowerCase().includes(q) ||
+        ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [returns, reasonFilter, search])
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
   const getReasonLabel = (reason: string | null) =>
-    RETURN_REASONS.find((r) => r.value === reason)?.label || reason || "-"
+    RETURN_REASONS.find((r) => r.value === reason)?.label || reason || "—"
 
-  const REASON_COLORS: Record<string, string> = {
-    damaged: "bg-red-500",
-    wrong_item: "bg-amber-500",
-    near_expiry: "bg-orange-500",
-    expired: "bg-rose-600",
-    refused: "bg-slate-500",
-  }
+  const totalCredit = filtered.reduce(
+    (s, r) => s + Number(r.credit_note_amount || 0),
+    0
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title={isSales ? "Yêu cầu trả hàng của tôi" : "Trả hàng"} description={`${returns.length} yêu cầu`}>
-        {user && hasPermission(user.role, "returns", "create") && (
-          <Button onClick={() => router.push("/returns/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Tạo yêu cầu
-          </Button>
-        )}
-      </PageHeader>
+      <PageHeader
+        title={isSales ? "Trả hàng của tôi" : "Trả hàng"}
+        description={`${returns.length} phiếu trả • Tra cứu thông tin`}
+      />
 
-      {isSales && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-black">i</span>
-          Bạn chỉ thấy yêu cầu trả hàng do bạn tạo.
-        </div>
-      )}
-
-      {/* Stats cards */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-2xl shadow-ambient">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <div className="rounded-xl bg-amber-100 p-3 text-amber-700">
-              <Clock className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Chờ duyệt</div>
-              <div className="text-2xl font-bold">{stats.pending}</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl shadow-ambient">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Đã duyệt</div>
-              <div className="text-2xl font-bold">{stats.approved}</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl shadow-ambient">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <div className="rounded-xl bg-red-100 p-3 text-red-700">
-              <XCircle className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Từ chối</div>
-              <div className="text-2xl font-bold">{stats.rejected}</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl shadow-ambient">
-          <CardContent className="flex items-center gap-3 pt-6">
-            <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
-              <BadgeCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Hoàn tất</div>
-              <div className="text-2xl font-bold">{stats.completed}</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="flex items-start gap-3 p-3 text-sm">
+          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <div className="space-y-0.5 text-primary">
+            <p className="font-semibold">Danh sách tra cứu</p>
+            <p className="text-xs opacity-90">
+              Phiếu trả được tự động tạo từ bước Bàn giao lại sau khi lái xe
+              quay về (giao thất bại / khách nhận một phần). Trang này chỉ
+              dùng để tra cứu thông tin, không cần thao tác duyệt.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tìm khách / đơn / NV…"
+                className="pl-8 h-9"
+              />
+            </div>
             <Select value={reasonFilter} onValueChange={setReasonFilter}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="h-9 sm:w-56">
                 <SelectValue placeholder="Lọc theo lý do" />
               </SelectTrigger>
               <SelectContent>
@@ -183,20 +146,31 @@ export default function ReturnsPage() {
                 ))}
               </SelectContent>
             </Select>
-            {reasonFilter !== "all" && (
-              <Button size="sm" variant="ghost" onClick={() => setReasonFilter("all")}>
-                Xóa lọc
+            {(reasonFilter !== "all" || search.trim() !== "") && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setReasonFilter("all")
+                  setSearch("")
+                }}
+              >
+                Xoá lọc
               </Button>
             )}
-            <span className="text-xs text-muted-foreground ml-auto">
-              {filtered.length} / {returns.length}
+            <span className="text-xs text-muted-foreground sm:ml-auto">
+              {filtered.length} / {returns.length} • Tổng credit{" "}
+              <span className="font-semibold text-foreground">
+                {formatCurrency(totalCredit)}
+              </span>
             </span>
           </div>
 
           {filtered.length === 0 ? (
             <EmptyState
               icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />}
-              title="Chưa có yêu cầu trả hàng"
+              title="Không có phiếu trả nào"
+              description="Phiếu trả sẽ xuất hiện tự động khi xử lý bàn giao lại."
             />
           ) : (
             <>
@@ -205,78 +179,102 @@ export default function ReturnsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead>Lý do</TableHead>
-                      <TableHead>Người yêu cầu</TableHead>
-                      <TableHead className="text-right">Credit Note</TableHead>
                       <TableHead>Ngày</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Đơn gốc</TableHead>
+                      <TableHead>Lý do</TableHead>
+                      <TableHead>Người tạo</TableHead>
+                      <TableHead className="text-right">Credit Note</TableHead>
                       <TableHead>Trạng thái</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((r) => (
-                      <TableRow
-                        key={r.id}
-                        className="cursor-pointer"
-                        onClick={() => router.push(`/returns/${r.id}`)}
-                      >
-                        <TableCell className="font-medium">
-                          {r.customer?.store_name || "-"}
-                        </TableCell>
-                        <TableCell>{getReasonLabel(r.reason)}</TableCell>
-                        <TableCell>{r.requester?.full_name || "-"}</TableCell>
-                        <TableCell className="text-right">
-                          {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "-"}
-                        </TableCell>
-                        <TableCell>{formatDate(r.created_at)}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={r.status} type="return" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filtered.map((r) => {
+                      const orderCode = (r as Return & { order?: { order_code?: string } }).order?.order_code
+                      return (
+                        <TableRow
+                          key={r.id}
+                          className="cursor-pointer hover:bg-muted/40"
+                          onClick={() => router.push(`/returns/${r.id}`)}
+                        >
+                          <TableCell className="text-sm whitespace-nowrap">
+                            {formatDate(r.created_at)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {r.customer?.store_name || "—"}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {orderCode || "—"}
+                          </TableCell>
+                          <TableCell>{getReasonLabel(r.reason)}</TableCell>
+                          <TableCell className="text-sm">
+                            {r.requester?.full_name || "—"}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={r.status} type="return" />
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
 
               {/* Mobile card list */}
               <div className="lg:hidden space-y-3">
-                {filtered.map((r) => (
-                  <div
-                    key={r.id}
-                    className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                    onClick={() => router.push(`/returns/${r.id}`)}
-                  >
-                    <div className="p-4">
-                      <div className="flex justify-between items-start gap-3 mb-2">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-extrabold text-base leading-tight truncate">
-                            {r.customer?.store_name || "-"}
-                          </h3>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Lý do: <span className="font-medium text-foreground">{getReasonLabel(r.reason)}</span>
-                          </p>
-                          {r.requester?.full_name && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                              Người YC: {r.requester.full_name}
+                {filtered.map((r) => {
+                  const orderCode = (r as Return & { order?: { order_code?: string } }).order?.order_code
+                  return (
+                    <div
+                      key={r.id}
+                      className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                      onClick={() => router.push(`/returns/${r.id}`)}
+                    >
+                      <div className="p-4">
+                        <div className="flex justify-between items-start gap-3 mb-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-extrabold text-base leading-tight truncate">
+                              {r.customer?.store_name || "—"}
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Lý do:{" "}
+                              <span className="font-medium text-foreground">
+                                {getReasonLabel(r.reason)}
+                              </span>
                             </p>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {formatDate(r.created_at)}
-                          </p>
+                            {orderCode && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                Đơn gốc: <span className="font-mono">{orderCode}</span>
+                              </p>
+                            )}
+                            {r.requester?.full_name && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                Người tạo: {r.requester.full_name}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {formatDate(r.created_at)}
+                            </p>
+                          </div>
+                          <div className="shrink-0">
+                            <StatusBadge status={r.status} type="return" />
+                          </div>
                         </div>
-                        <div className="shrink-0">
-                          <StatusBadge status={r.status} type="return" />
-                        </div>
+                        {r.credit_note_amount ? (
+                          <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
+                            <span className="text-xs text-muted-foreground">Credit Note</span>
+                            <span className="font-bold text-base">
+                              {formatCurrency(r.credit_note_amount)}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
-                      {r.credit_note_amount && (
-                        <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
-                          <span className="text-xs text-muted-foreground">Credit Note</span>
-                          <span className="font-bold text-base">{formatCurrency(r.credit_note_amount)}</span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}

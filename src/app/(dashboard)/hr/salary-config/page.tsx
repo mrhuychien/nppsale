@@ -16,6 +16,8 @@ import type { HrSalaryConfig } from "@/types"
 
 interface TierRow {
   min_percent: number
+  /** Mức doanh số tối thiểu (VND) để áp dụng tier — bổ sung cho min_percent. */
+  min_revenue?: number
   bonus: number
   label: string
 }
@@ -37,10 +39,10 @@ export default function SalaryConfigPage() {
   const [phoneAllowance, setPhoneAllowance] = useState(0)
   const [workingDays, setWorkingDays] = useState(26)
   const [tiers, setTiers] = useState<TierRow[]>([
-    { min_percent: 70, bonus: 1000000, label: "70-79%" },
-    { min_percent: 80, bonus: 2000000, label: "80-89%" },
-    { min_percent: 90, bonus: 3000000, label: "90-99%" },
-    { min_percent: 100, bonus: 5000000, label: "100%+" },
+    { min_percent: 70, min_revenue: 0, bonus: 1000000, label: "70-79%" },
+    { min_percent: 80, min_revenue: 0, bonus: 2000000, label: "80-89%" },
+    { min_percent: 90, min_revenue: 0, bonus: 3000000, label: "90-99%" },
+    { min_percent: 100, min_revenue: 0, bonus: 5000000, label: "100%+" },
   ])
   const [overTargetPercent, setOverTargetPercent] = useState(3)
   const [under70Rule, setUnder70Rule] = useState("base_only")
@@ -113,7 +115,7 @@ export default function SalaryConfigPage() {
   }
 
   const addTier = () => {
-    setTiers([...tiers, { min_percent: 0, bonus: 0, label: "" }])
+    setTiers([...tiers, { min_percent: 0, min_revenue: 0, bonus: 0, label: "" }])
   }
 
   const removeTier = (idx: number) => {
@@ -205,7 +207,13 @@ export default function SalaryConfigPage() {
       {/* Target Tiers */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Mức thưởng KPI</CardTitle>
+          <div>
+            <CardTitle>Mức thưởng KPI</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Áp dụng tier cao nhất mà NV đạt được. Có thể trigger theo
+              % KPI HOẶC mức doanh số tuyệt đối — cả hai phải pass.
+            </p>
+          </div>
           <Button variant="outline" size="sm" onClick={addTier}>
             <Plus className="h-4 w-4 mr-1" /> Thêm mức
           </Button>
@@ -213,38 +221,56 @@ export default function SalaryConfigPage() {
         <CardContent>
           <div className="space-y-3">
             {tiers.map((tier, idx) => (
-              <div key={idx} className="flex items-end gap-3">
-                <div className="flex-1">
-                  <Label>Từ % KPI</Label>
+              <div key={idx} className="grid grid-cols-12 gap-3 items-end">
+                <div className="col-span-2">
+                  <Label className="text-xs uppercase text-muted-foreground">Từ % KPI</Label>
                   <Input
                     type="number"
                     value={tier.min_percent}
                     onChange={(e) => updateTier(idx, "min_percent", Number(e.target.value))}
                   />
                 </div>
-                <div className="flex-1">
-                  <Label>Thưởng (VNĐ)</Label>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">Mức doanh số (VNĐ)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={tier.min_revenue ?? 0}
+                    onChange={(e) => updateTier(idx, "min_revenue", Number(e.target.value))}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {formatCurrency(Number(tier.min_revenue || 0))}
+                  </p>
+                </div>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">Thưởng (VNĐ)</Label>
                   <Input
                     type="number"
                     value={tier.bonus}
                     onChange={(e) => updateTier(idx, "bonus", Number(e.target.value))}
                   />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {formatCurrency(tier.bonus)}
+                  </p>
                 </div>
-                <div className="flex-1">
-                  <Label>Nhãn</Label>
+                <div className="col-span-3">
+                  <Label className="text-xs uppercase text-muted-foreground">Nhãn</Label>
                   <Input
                     value={tier.label}
                     onChange={(e) => updateTier(idx, "label", e.target.value)}
+                    placeholder="VD: Đạt 80% / 100tr"
                   />
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive shrink-0"
-                  onClick={() => removeTier(idx)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="col-span-1 flex items-end">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive"
+                    onClick={() => removeTier(idx)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
             {tiers.length === 0 && (

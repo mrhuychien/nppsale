@@ -164,9 +164,15 @@ export default function DeliveryHandoverPage() {
 
   const [delivery, setDelivery] = useState<DeliveryRow | null>(null)
   const [failedDrafts, setFailedDrafts] = useState<FailedOrderDraft[]>([])
-  /** Per-line "thực nhận" qty cho partial orders. Map<orderId, Map<lineId, receivedQty>>.
-   *  Default per line = ordered_qty (no return). User reduce → delta = ordered - received
-   *  → derive items table tự động. */
+  /** Per-line "thực nhận" qty trong BASE UOM cho partial orders.
+   *  Map<orderId, Map<lineId, receivedQtyInBaseUom>>.
+   *
+   *  BASE UOM (ko phải transaction UOM) để xử lý case khách trả lẻ:
+   *  vd đơn 1 thùng (= 20 hộp), khách nhận 18 hộp, trả 2 hộp móp.
+   *  receivedQtyInBaseUom = 18; ordered base = 20; delta = 2 hộp.
+   *
+   *  Default per line = ordered_base (no return). User reduce → delta
+   *  > 0 → derive items table tự động trong base UOM. */
   const [partialReceived, setPartialReceived] = useState<
     Map<string, Map<string, number>>
   >(new Map())
@@ -362,25 +368,47 @@ export default function DeliveryHandoverPage() {
 
     // (a) failed_order items — chỉ orders đã tick.
     //     mode='failed'  → toàn bộ lines × ordered_qty về kho
-    //     mode='partial' → chỉ lines nào (ordered - received) > 0;
-    //                      qty = delta = ordered - received
+    //     mode='partial' → chỉ lines nào (orderedBase - receivedBase) > 0;
+    //                      qty về kho lưu trong BASE UOM để xử lý case
+    //                      khách trả lẻ (vd 1 thùng = 20 hộp, khách
+    //                      nhận 18 hộp, trả 2 hộp).
     failedDrafts.forEach((f) => {
       if (!f.selected) return
       const linesReceived = partialReceived.get(f.orderId)
       f.lines.forEach((ln) => {
         const factor = Number(ln.conversion_factor || 1)
         const ordered = Number(ln.quantity || 0)
+        const orderedBase = ordered * factor
+        const baseUnit = ln.product?.base_unit || ln.unit_name
 
-        let qtyBack = ordered
-        if (f.mode === "partial") {
-          // Default received = ordered (no return) when modal chưa mở.
-          const received = linesReceived?.get(ln.id) ?? ordered
-          qtyBack = Math.max(0, ordered - received)
-          // Skip lines khách nhận hết (delta = 0).
-          if (qtyBack === 0) return
+        if (f.mode === "failed") {
+          // Failed: toàn bộ về theo unit gốc của line.
+          out.push({
+            key: `fo-${ln.id}`,
+            sourceType: "failed_order",
+            sourceOrderId: f.orderId,
+            swapMovementId: null,
+            productId: ln.product_id,
+            productName: ln.product?.name || "—",
+            sku: ln.product?.sku || "",
+            qty: String(ordered),
+            unitName: ln.unit_name,
+            conversionFactor: factor,
+            destinationZone: "sale",
+            reason: `Trả từ đơn ${f.orderCode} (giao thất bại)`,
+            swappedToCustomer: false,
+          })
+          return
         }
 
-        const baseDraft: ItemDraft = {
+        // mode='partial': delta tính ở BASE UOM, return cũng ở BASE UOM
+        // (xử lý case lẻ — vd "2 hộp móp" trên đơn "1 thùng").
+        // Default received = orderedBase (no return) when chưa mở modal.
+        const receivedBase = linesReceived?.get(ln.id) ?? orderedBase
+        const deltaBase = Math.max(0, orderedBase - receivedBase)
+        if (deltaBase === 0) return
+
+        out.push({
           key: `fo-${ln.id}`,
           sourceType: "failed_order",
           sourceOrderId: f.orderId,
@@ -388,17 +416,15 @@ export default function DeliveryHandoverPage() {
           productId: ln.product_id,
           productName: ln.product?.name || "—",
           sku: ln.product?.sku || "",
-          qty: String(qtyBack),
-          unitName: ln.unit_name,
-          conversionFactor: factor,
+          // BASE UOM: qty + factor=1 → row hiển thị + restock đúng
+          // số khách trả lẻ. Khác với failed (giữ unit gốc).
+          qty: String(deltaBase),
+          unitName: baseUnit,
+          conversionFactor: 1,
           destinationZone: "sale",
-          reason:
-            f.mode === "partial"
-              ? `Khách nhận ${ordered - qtyBack}/${ordered} ${ln.unit_name} ${ln.product?.sku || ""} đơn ${f.orderCode}`
-              : `Trả từ đơn ${f.orderCode} (giao thất bại)`,
+          reason: `Đơn ${f.orderCode} ${ln.product?.sku || ""}: khách nhận ${receivedBase}/${orderedBase} ${baseUnit} (đặt ${ordered} ${ln.unit_name}); trả ${deltaBase} ${baseUnit}`,
           swappedToCustomer: false,
-        }
-        out.push(baseDraft)
+        })
       })
     })
 
@@ -563,18 +589,29 @@ export default function DeliveryHandoverPage() {
 
           const deltaLines = po.lines
             .map((ln) => {
-              const ord = Number(ln.quantity || 0)
-              const rec = received.get(ln.id) ?? ord
-              const delta = Math.max(0, ord - rec)
-              if (delta === 0) return null
+              // partialReceived lưu trong BASE UOM (mig 056 + handover
+              // refactor) — vd "18" cho 18 hộp khi đơn 1 thùng = 20 hộp.
+              const factor = Number(ln.conversion_factor || 1)
+              const orderedBase = Number(ln.quantity || 0) * factor
+              const recBase = received.get(ln.id) ?? orderedBase
+              const deltaBase = Math.max(0, orderedBase - recBase)
+              if (deltaBase === 0) return null
+
               const sol = lineMap.get(ln.id)
-              const unitPrice = Number(sol?.unit_price || 0)
+              const unitPriceTx = Number(sol?.unit_price || 0)
+              // Unit price per BASE UOM. unit_price gốc tính theo
+              // transaction UOM (vd 200000đ/thùng) → chia factor để
+              // có giá per hộp (10000đ/hộp). Từ đó line_total ở
+              // base UOM = deltaBase × pricePerBase.
+              const pricePerBase = factor > 0 ? unitPriceTx / factor : unitPriceTx
+              const baseUnit = ln.product?.base_unit || ln.unit_name
+
               return {
                 product_id: ln.product_id,
-                unit_name: ln.unit_name,
-                quantity: delta,
-                unit_price: unitPrice,
-                line_total: delta * unitPrice,
+                unit_name: baseUnit,
+                quantity: deltaBase,
+                unit_price: pricePerBase,
+                line_total: deltaBase * pricePerBase,
                 is_exchange: false,
               }
             })
@@ -844,8 +881,10 @@ export default function DeliveryHandoverPage() {
                           <div className="flex items-center justify-between gap-2 text-[11px] text-orange-700 bg-orange-50 rounded p-2">
                             <span>
                               ⓘ Đơn giao 1 phần: bấm <strong>Sửa đơn</strong>{" "}
-                              để nhập <em>thực nhận</em> từng dòng. Phần khách
-                              KHÔNG nhận tự về kho ở mục 2.
+                              để nhập <em>thực nhận</em> trong{" "}
+                              <strong>đơn vị nhỏ nhất</strong>. Hỗ trợ trả
+                              lẻ (vd đơn 1 thùng = 20 hộp, khách trả 2 hộp
+                              móp). Phần KHÔNG nhận tự về kho ở mục 2.
                             </span>
                             <Button
                               size="sm"
@@ -866,9 +905,10 @@ export default function DeliveryHandoverPage() {
                               )
                             }
                             const adjusted = f.lines.filter((ln) => {
-                              const ord = Number(ln.quantity || 0)
-                              const rec = received.get(ln.id) ?? ord
-                              return rec !== ord
+                              const factor = Number(ln.conversion_factor || 1)
+                              const orderedBase = Number(ln.quantity || 0) * factor
+                              const recBase = received.get(ln.id) ?? orderedBase
+                              return recBase !== orderedBase
                             })
                             return (
                               <p className="text-[10px] text-orange-700 px-1">
@@ -1121,8 +1161,11 @@ export default function DeliveryHandoverPage() {
                     Sửa đơn {order.orderCode} — {order.customerName}
                   </DialogTitle>
                   <p className="text-xs text-muted-foreground">
-                    Nhập <strong>thực nhận</strong> từng dòng. Phần KHÔNG nhận
-                    (delta = đặt − nhận) tự về kho ở mục 2 và trừ công nợ.
+                    Nhập <strong>thực nhận</strong> trong <strong>đơn vị nhỏ
+                    nhất</strong> (base UOM — vd <em>hộp</em>, <em>cái</em>).
+                    Phần KHÔNG nhận tự về kho và trừ công nợ. Hỗ trợ trả lẻ:
+                    đơn 1 thùng (= 20 hộp), khách trả 2 hộp móp → nhập
+                    thực nhận = 18.
                   </p>
                 </DialogHeader>
                 <div className="overflow-x-auto rounded-lg border">
@@ -1131,15 +1174,20 @@ export default function DeliveryHandoverPage() {
                       <tr>
                         <th className="px-2 py-2 text-left">Sản phẩm</th>
                         <th className="px-2 py-2 text-right">Đặt</th>
-                        <th className="px-2 py-2 text-right">Thực nhận</th>
+                        <th className="px-2 py-2 text-right">Thực nhận (base)</th>
                         <th className="px-2 py-2 text-right">Về kho</th>
                       </tr>
                     </thead>
                     <tbody>
                       {order.lines.map((ln) => {
+                        const factor = Number(ln.conversion_factor || 1)
                         const ordered = Number(ln.quantity || 0)
-                        const rec = received.get(ln.id) ?? ordered
-                        const back = Math.max(0, ordered - rec)
+                        const orderedBase = ordered * factor
+                        const baseUnit = ln.product?.base_unit || ln.unit_name
+                        const recBase = received.get(ln.id) ?? orderedBase
+                        const backBase = Math.max(0, orderedBase - recBase)
+                        const showBaseEquivalent =
+                          factor > 1 && baseUnit !== ln.unit_name
                         return (
                           <tr key={ln.id} className="border-b last:border-0">
                             <td className="px-2 py-2">
@@ -1147,52 +1195,69 @@ export default function DeliveryHandoverPage() {
                                 {ln.product?.name || "—"}
                               </div>
                               <div className="text-[10px] font-mono text-muted-foreground">
-                                {ln.product?.sku} • {ln.unit_name}
+                                {ln.product?.sku}
                               </div>
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                              {ordered}
+                            <td className="px-2 py-2 text-right tabular-nums">
+                              <div className="font-semibold">
+                                {ordered} {ln.unit_name}
+                              </div>
+                              {showBaseEquivalent && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  = {orderedBase} {baseUnit}
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={ordered}
-                                step="any"
-                                value={rec}
-                                onChange={(e) => {
-                                  const v = Math.min(
-                                    ordered,
-                                    Math.max(0, Number(e.target.value) || 0)
-                                  )
-                                  setPartialReceived((prev) => {
-                                    const next = new Map(prev)
-                                    const orderMap =
-                                      new Map(next.get(order.orderId) || [])
-                                    if (v === ordered) {
-                                      orderMap.delete(ln.id)
-                                    } else {
-                                      orderMap.set(ln.id, v)
-                                    }
-                                    if (orderMap.size === 0) {
-                                      next.delete(order.orderId)
-                                    } else {
-                                      next.set(order.orderId, orderMap)
-                                    }
-                                    return next
-                                  })
-                                }}
-                                className={`h-8 w-20 text-right tabular-nums ml-auto ${
-                                  rec !== ordered ? "border-orange-300" : ""
-                                }`}
-                              />
+                              <div className="flex items-center justify-end gap-1">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={orderedBase}
+                                  step="any"
+                                  value={recBase}
+                                  onChange={(e) => {
+                                    const v = Math.min(
+                                      orderedBase,
+                                      Math.max(0, Number(e.target.value) || 0)
+                                    )
+                                    setPartialReceived((prev) => {
+                                      const next = new Map(prev)
+                                      const orderMap = new Map(
+                                        next.get(order.orderId) || []
+                                      )
+                                      if (v === orderedBase) {
+                                        orderMap.delete(ln.id)
+                                      } else {
+                                        orderMap.set(ln.id, v)
+                                      }
+                                      if (orderMap.size === 0) {
+                                        next.delete(order.orderId)
+                                      } else {
+                                        next.set(order.orderId, orderMap)
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  className={`h-8 w-20 text-right tabular-nums ${
+                                    recBase !== orderedBase
+                                      ? "border-orange-300"
+                                      : ""
+                                  }`}
+                                />
+                                <span className="text-[10px] text-muted-foreground w-6">
+                                  {baseUnit}
+                                </span>
+                              </div>
                             </td>
                             <td
                               className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                                back > 0 ? "text-orange-700" : "text-muted-foreground"
+                                backBase > 0
+                                  ? "text-orange-700"
+                                  : "text-muted-foreground"
                               }`}
                             >
-                              {back}
+                              {backBase > 0 ? `${backBase} ${baseUnit}` : "—"}
                             </td>
                           </tr>
                         )
@@ -1201,28 +1266,32 @@ export default function DeliveryHandoverPage() {
                     <tfoot className="border-t-2 font-bold">
                       <tr>
                         <td className="px-2 py-2 text-right" colSpan={1}>
-                          Tổng:
-                        </td>
-                        <td className="px-2 py-2 text-right tabular-nums">
-                          {order.lines.reduce(
-                            (s, ln) => s + Number(ln.quantity || 0),
-                            0
-                          )}
+                          Tổng (base):
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums">
                           {order.lines.reduce(
                             (s, ln) =>
                               s +
-                              (received.get(ln.id) ??
-                                Number(ln.quantity || 0)),
+                              Number(ln.quantity || 0) *
+                                Number(ln.conversion_factor || 1),
                             0
                           )}
                         </td>
+                        <td className="px-2 py-2 text-right tabular-nums">
+                          {order.lines.reduce((s, ln) => {
+                            const orderedBase =
+                              Number(ln.quantity || 0) *
+                              Number(ln.conversion_factor || 1)
+                            return s + (received.get(ln.id) ?? orderedBase)
+                          }, 0)}
+                        </td>
                         <td className="px-2 py-2 text-right tabular-nums text-orange-700">
                           {order.lines.reduce((s, ln) => {
-                            const ord = Number(ln.quantity || 0)
-                            const r = received.get(ln.id) ?? ord
-                            return s + Math.max(0, ord - r)
+                            const orderedBase =
+                              Number(ln.quantity || 0) *
+                              Number(ln.conversion_factor || 1)
+                            const r = received.get(ln.id) ?? orderedBase
+                            return s + Math.max(0, orderedBase - r)
                           }, 0)}
                         </td>
                       </tr>

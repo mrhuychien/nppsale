@@ -504,17 +504,29 @@ export default function DeliveryHandoverPage() {
   const handleSubmit = async () => {
     if (!user?.org_id || !delivery) return
     const selectedOrders = failedDrafts.filter((f) => f.selected)
-    if (selectedOrders.length === 0 && itemDrafts.length === 0) {
-      toast({
-        title: "Chưa chọn dữ liệu nào",
-        description: "Cần ít nhất một đơn thất bại hoặc một dòng hàng nhận về.",
-        variant: "destructive",
-      })
-      return
-    }
+    const hasNothing = selectedOrders.length === 0 && itemDrafts.length === 0
 
     setSubmitting(true)
     try {
+      // Trường hợp giao thành công 100% — không có đơn thất bại, không
+      // có hàng nhận về, không có hàng đổi dư. Bỏ qua RPC (không cần
+      // tạo handover record) và chuyển thẳng sang bước tiếp theo.
+      if (hasNothing) {
+        toast({
+          title: "Tất cả đơn giao thành công",
+          description: "Không có hàng cần nhập lại. Tiếp tục bước tiếp theo…",
+        })
+        await closeHandoverSession().catch(() => {})
+        const next = searchParams.get("next")
+        const entryId = searchParams.get("entry")
+        if (next === "collect" && entryId) {
+          router.push(`/inventory/stock-out/collect/${entryId}`)
+        } else {
+          router.push(`/deliveries/${delivery.id}/settle`)
+        }
+        return
+      }
+
       const items: HandoverItemInput[] = itemDrafts
         .filter((it) => Number(it.qty) > 0)
         .map((it) => {
@@ -1139,6 +1151,11 @@ export default function DeliveryHandoverPage() {
             <Button onClick={handleSubmit} disabled={submitting}>
               {submitting ? (
                 "Đang xử lý..."
+              ) : summary.orderCount === 0 && summary.itemCount === 0 ? (
+                <>
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Tất cả đã giao OK
+                  — Tiếp tục →
+                </>
               ) : (
                 <>
                   <CheckCircle2 className="mr-1.5 h-4 w-4" /> Xác nhận bàn giao &

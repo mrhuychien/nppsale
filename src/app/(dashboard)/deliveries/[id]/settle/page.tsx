@@ -307,7 +307,10 @@ export default function DeliverySettlePage() {
     if (alreadySettled) return
     setSubmitting(true)
     try {
-      // 0 COD orders → just mark the delivery settled, no cash receipt
+      // 0 COD orders → just mark the delivery settled, no cash receipt.
+      // Áp dụng cho 2 trường hợp:
+      //   - Chỉ có đơn công nợ (creditCount > 0).
+      //   - Tất cả đơn giao thất bại (deliveredCount === 0).
       if (summary.codCount === 0) {
         await supabase
           .from("deliveries")
@@ -318,7 +321,10 @@ export default function DeliverySettlePage() {
           .eq("id", delivery.id)
         toast({
           title: "Đã hoàn tất chuyến",
-          description: "Chuyến chỉ có đơn công nợ — không cần lập phiếu thu.",
+          description:
+            summary.deliveredCount === 0
+              ? "Tất cả đơn giao thất bại — không có tiền cần thu."
+              : "Chuyến chỉ có đơn công nợ — không cần lập phiếu thu.",
         })
         // T-05: nothing to settle but the chuyến is done — close session.
         await closeSession()
@@ -777,6 +783,12 @@ export default function DeliverySettlePage() {
                 </div>
               )}
 
+              {!alreadySettled && summary.deliveredCount === 0 && (
+                <div className="rounded-lg bg-rose-50 border border-rose-200 text-rose-800 p-3 text-xs">
+                  Tất cả đơn trong chuyến đều giao thất bại — không có tiền cần thu. Bấm <span className="font-semibold">Hoàn tất chuyến</span> để đánh dấu đã quyết toán.
+                </div>
+              )}
+
               {!alreadySettled && (
                 <div className="space-y-1.5">
                   <Label htmlFor="notes" className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -836,7 +848,7 @@ export default function DeliverySettlePage() {
                 <Button
                   className="w-full h-11"
                   onClick={handleSettle}
-                  disabled={submitting || summary.deliveredCount === 0}
+                  disabled={submitting}
                 >
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                   {submitting ? "Đang xử lý..." : "Hoàn tất chuyến"}

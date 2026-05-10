@@ -464,7 +464,9 @@ export default function CollectPaymentPage() {
                     colSpan={8}
                     className="px-4 py-6 text-center text-sm text-muted-foreground"
                   >
-                    Phiếu xuất này không có đơn hàng tham chiếu.
+                    {(entry?.ref_order_ids?.length || 0) > 0
+                      ? "Tất cả đơn trong phiếu xuất đều giao thất bại — không có gì cần thu."
+                      : "Phiếu xuất này không có đơn hàng tham chiếu."}
                   </td>
                 </tr>
               ) : (
@@ -584,10 +586,20 @@ export default function CollectPaymentPage() {
           <Button variant="outline" onClick={() => router.push(`/inventory/entries/${entry.id}`)}>
             Bỏ qua
           </Button>
-          <Button onClick={handleSubmit} disabled={saving || rows.length === 0}>
-            <CheckCircle2 className="mr-1.5 h-4 w-4" />
-            {saving ? "Đang lưu..." : `Xác nhận thu ${formatCurrency(totals.collect)}`}
-          </Button>
+          {rows.length === 0 ? (
+            <Button
+              onClick={() => router.push(`/inventory/entries/${entry.id}`)}
+              disabled={saving}
+            >
+              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              Hoàn tất — Không có gì cần thu
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={saving}>
+              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              {saving ? "Đang lưu..." : `Xác nhận thu ${formatCurrency(totals.collect)}`}
+            </Button>
+          )}
         </div>
       </div>
 

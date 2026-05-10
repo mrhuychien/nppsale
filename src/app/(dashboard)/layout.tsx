@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
+import { WorkflowResumeBar } from "@/components/dashboard/workflow-resume-bar"
 
 export default function DashboardLayout({
   children,
@@ -117,6 +118,7 @@ export default function DashboardLayout({
 
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header onMenuClick={() => setMobileOpen(true)} />
+        <WorkflowResumeBar />
         <main className="flex-1 p-6 pb-24 lg:pb-6">
           {children}
         </main>

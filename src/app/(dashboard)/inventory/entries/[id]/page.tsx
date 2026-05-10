@@ -21,6 +21,7 @@ import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Package, Truck, Printer } from "lucide-react"
 import { PrintButton } from "@/components/ui/print-button"
 import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
+import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import type { StockEntry, StockEntryLine } from "@/types"
 
 export default function StockEntryDetailPage() {
@@ -28,6 +29,18 @@ export default function StockEntryDetailPage() {
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("inventory")
   const [entry, setEntry] = useState<StockEntry | null>(null)
+  // Workflow session: picking flow active khi entry còn ở status='draft'
+  // (chưa post). Resume bar cho user click quay lại trang này nếu họ
+  // tắt tab giữa chừng.
+  useWorkflowSession({
+    entityType: "stock_entry",
+    entityId: id,
+    stage: "picking_in_progress",
+    lastUrl: `/inventory/entries/${id}`,
+    entityLabel: entry ? `Phiếu xuất ${entry.entry_code}` : undefined,
+    enabled:
+      !!id && !!user && entry?.status === "draft" && entry?.type === "export",
+  })
   const [lines, setLines] = useState<StockEntryLine[]>([])
   // T-12: hàng đem đi đổi attached to this entry. Rendered in its own
   // table on the print slip.

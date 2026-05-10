@@ -65,6 +65,7 @@ import {
   type HandoverItemInput,
   type WarehouseZone,
 } from "@/lib/handover/confirm"
+import { useWorkflowSession } from "@/hooks/use-workflow-session"
 
 interface DeliveryRow {
   id: string
@@ -163,6 +164,21 @@ export default function DeliveryHandoverPage() {
   const { toast } = useToast()
 
   const [delivery, setDelivery] = useState<DeliveryRow | null>(null)
+  // Workflow session: handover flow active. Resume bar cho user
+  // click quay lại đây nếu họ tắt tab giữa chừng.
+  const { closeSession: closeHandoverSession } = useWorkflowSession({
+    entityType: "delivery",
+    entityId: id,
+    stage: "handover_received_goods",
+    lastUrl:
+      searchParams.get("next") === "collect" && searchParams.get("entry")
+        ? `/deliveries/${id}/handover?next=collect&entry=${searchParams.get("entry")}`
+        : `/deliveries/${id}/handover`,
+    entityLabel: delivery?.route_name
+      ? `Bàn giao chuyến ${delivery.route_name}`
+      : undefined,
+    enabled: !!id && !!user && delivery?.status !== "completed",
+  })
   const [failedDrafts, setFailedDrafts] = useState<FailedOrderDraft[]>([])
   /** Per-line "thực nhận" qty trong BASE UOM cho partial orders.
    *  Map<orderId, Map<lineId, receivedQtyInBaseUom>>.
@@ -666,6 +682,8 @@ export default function DeliveryHandoverPage() {
           summary.partialCount
         } đơn giao 1 phần + ${items.length} dòng hàng nhập lại kho. Tiếp tục thu tiền…`,
       })
+      // Bàn giao xong → close session để bar resume bỏ chip này.
+      await closeHandoverSession().catch(() => {})
       // User feedback: handover TRƯỚC collect. Sau khi confirm bàn
       // giao, redirect tới collect / settle.
       const next = searchParams.get("next")

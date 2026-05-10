@@ -33,7 +33,7 @@ import { ensureReceivableForOrder } from "@/lib/receivables"
 import {
   Camera, PenTool, Play, CheckCircle2, XCircle, Pencil, Trash2, X,
   CheckCheck, AlertCircle, ClipboardCheck, PackageCheck, Wallet,
-  Eye, Banknote,
+  Eye, Banknote, Link as LinkIcon, ArrowDownToLine, ArrowUpFromLine, Receipt, FileText,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryPaymentMethod, DeliveryStatus, SalesOrder, SalesOrderLine, User } from "@/types"
 
@@ -41,6 +41,9 @@ type OrderDetail = SalesOrder & {
   customer?: SalesOrder["customer"] & { address?: string | null; ward?: string | null; district?: string | null; province?: string | null }
   lines?: (SalesOrderLine & { product?: { name?: string; sku?: string; base_unit?: string } })[]
 }
+
+type RelatedStockEntry = { id: string; entry_code: string; type: "import" | "export"; status: string; created_at: string; notes: string | null }
+type RelatedCashReceipt = { id: string; receipt_code: string; status: string; total_amount: number; received_at: string | null; created_at: string }
 
 type NextStatus = {
   value: DeliveryStatus
@@ -88,6 +91,10 @@ export default function DeliveryDetailPage() {
   const [collectNote, setCollectNote] = useState<string>("")
   const [collectSaving, setCollectSaving] = useState(false)
 
+  const [sourceEntry, setSourceEntry] = useState<RelatedStockEntry | null>(null)
+  const [handoverEntries, setHandoverEntries] = useState<RelatedStockEntry[]>([])
+  const [cashReceipts, setCashReceipts] = useState<RelatedCashReceipt[]>([])
+
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -99,8 +106,9 @@ export default function DeliveryDetailPage() {
       supabase.from("delivery_lines").select("*, order:sales_orders(order_code, total, customer:customers(store_name, phone, address))").eq("delivery_id", id),
       supabase.from("users").select("*").eq("role", "driver").eq("is_active", true).order("full_name"),
     ])
+    let d: Delivery | null = null
     if (delRes.data) {
-      const d = delRes.data as Delivery
+      d = delRes.data as Delivery
       setDelivery(d)
       setEditForm({
         driver_id: d.driver_id || "",
@@ -110,6 +118,40 @@ export default function DeliveryDetailPage() {
     }
     setLines((linesRes.data as DeliveryLine[]) || [])
     setDrivers((driversRes.data as User[]) || [])
+
+    // Cross-links: source export entry, handover import entries, cash receipts
+    if (d) {
+      const sourceQuery = d.source_stock_entry_id
+        ? supabase
+            .from("stock_entries")
+            .select("id, entry_code, type, status, created_at, notes")
+            .eq("id", d.source_stock_entry_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null })
+
+      const [sourceRes, handoverRes, receiptsRes] = await Promise.all([
+        sourceQuery,
+        supabase
+          .from("stock_entries")
+          .select("id, entry_code, type, status, created_at, notes")
+          .eq("type", "import")
+          .ilike("notes", `%${d.id}%`)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("cash_receipts")
+          .select("id, receipt_code, status, total_amount, received_at, created_at")
+          .eq("source_type", "delivery_settle")
+          .eq("source_id", d.id)
+          .order("created_at", { ascending: false }),
+      ])
+      setSourceEntry((sourceRes.data as RelatedStockEntry | null) || null)
+      setHandoverEntries((handoverRes.data as RelatedStockEntry[] | null) || [])
+      setCashReceipts((receiptsRes.data as RelatedCashReceipt[] | null) || [])
+    } else {
+      setSourceEntry(null)
+      setHandoverEntries([])
+      setCashReceipts([])
+    }
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -541,6 +583,110 @@ export default function DeliveryDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Cross-links card */}
+          {(sourceEntry || handoverEntries.length > 0 || cashReceipts.length > 0 || lines.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <LinkIcon className="h-4 w-4" /> Liên kết chứng từ
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Tra cứu nhanh các chứng từ liên quan đến chuyến giao này.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {sourceEntry && (
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <ArrowUpFromLine className="h-3 w-3" /> Phiếu xuất kho
+                    </Label>
+                    <Link
+                      href={`/inventory/entries/${sourceEntry.id}`}
+                      className="font-mono text-primary font-bold hover:underline text-sm block"
+                    >
+                      {sourceEntry.entry_code}
+                    </Link>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatDate(sourceEntry.created_at)} • {sourceEntry.status}
+                    </p>
+                  </div>
+                )}
+
+                {handoverEntries.length > 0 && (
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <ArrowDownToLine className="h-3 w-3" /> Phiếu nhập kho (bàn giao lại)
+                    </Label>
+                    <div className="space-y-1">
+                      {handoverEntries.map((e) => (
+                        <div key={e.id} className="flex justify-between items-baseline">
+                          <Link
+                            href={`/inventory/entries/${e.id}`}
+                            className="font-mono text-primary font-bold hover:underline text-sm"
+                          >
+                            {e.entry_code}
+                          </Link>
+                          <span className="text-[11px] text-muted-foreground">{formatDate(e.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {cashReceipts.length > 0 && (
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Receipt className="h-3 w-3" /> Phiếu thu
+                    </Label>
+                    <div className="space-y-1">
+                      {cashReceipts.map((r) => (
+                        <div key={r.id} className="flex justify-between items-baseline gap-2">
+                          <Link
+                            href={`/finance/cash-receipts/${r.id}`}
+                            className="font-mono text-primary font-bold hover:underline text-sm"
+                          >
+                            {r.receipt_code}
+                          </Link>
+                          <span className="text-[11px] font-semibold text-emerald-700">
+                            {formatCurrency(Number(r.total_amount || 0))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {lines.length > 0 && (
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Đơn hàng trong chuyến ({lines.length})
+                    </Label>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {lines.map((l) => (
+                        <Link
+                          key={l.id}
+                          href={`/orders/${l.order_id}`}
+                          className="flex justify-between items-baseline gap-2 hover:bg-muted/40 rounded px-1 -mx-1"
+                        >
+                          <span className="font-mono text-primary font-bold text-xs">
+                            {l.order?.order_code || l.order_id.slice(0, 8)}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate">
+                            {l.order?.customer?.store_name || ""}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!sourceEntry && handoverEntries.length === 0 && cashReceipts.length === 0 && lines.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Chưa có chứng từ liên quan.</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Handoff card */}
           {delivery.status === "pending" || (delivery.warehouse_confirmed_at && delivery.driver_confirmed_at) ? (

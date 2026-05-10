@@ -416,7 +416,10 @@ export interface Delivery {
   driver_confirmed_at: string | null
   started_at: string | null
   completed_at: string | null
+  settled_at?: string | null
+  source_stock_entry_id?: string | null
   created_at: string
+  updated_at?: string | null
   // Joined
   driver?: User
   lines?: DeliveryLine[]

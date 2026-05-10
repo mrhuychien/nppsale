@@ -55,3 +55,16 @@ Final close-out commit highlights:
 Operational items still requiring runtime: applying migrations on
 staging, smoke-testing the full E2E flow (order → picking → delivery
 → handover → payroll), and opening a PR to main.
+
+## Post-Pack3 polish (UX feedback)
+
+- [x] /deliveries list rewrite — danh sách chuyến giao theo flow
+  (Đang chuẩn bị / Đang giao / Đã giao / Đã nộp tiền / Đã hủy) với
+  5 stat cards + tabs có badge count + tìm kiếm tuyến/xe/lái xe.
+  Bỏ section "Đơn chờ bàn giao" khỏi trang vì flow mới buộc handover
+  phải đi qua chuyến giao có sẵn.
+- [x] /deliveries/[id] cross-links — card "Liên kết chứng từ" hiển thị
+  phiếu xuất kho gốc (qua deliveries.source_stock_entry_id), phiếu
+  nhập kho bàn giao lại (lookup stock_entries WHERE notes LIKE
+  '%delivery_id%' AND type='import'), phiếu thu (cash_receipts WHERE
+  source_id = delivery.id), và quick-jump tới từng đơn trong chuyến.

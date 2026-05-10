@@ -12,20 +12,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/ui/empty-state"
+import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
+import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import {
-  Wallet,
-  CheckCircle2,
-  AlertTriangle,
-  Banknote,
-  ArrowRightCircle,
-  Receipt,
-  Package as PackageIcon,
+  Wallet, CheckCircle2, AlertTriangle, Banknote, Printer, ArrowRight,
 } from "lucide-react"
 
 type SettleLine = {
@@ -39,14 +34,9 @@ type SettleLine = {
     order_code: string
     total: number
     payment_terms: string | null
+    status: string
     customer?: { store_name?: string; phone?: string } | null
   } | null
-}
-
-function isCodTerms(terms: string | null | undefined): boolean {
-  if (!terms) return true
-  const t = terms.trim().toUpperCase()
-  return t === "" || t === "COD" || t.startsWith("COD")
 }
 
 function generateReceiptCode(): string {
@@ -56,6 +46,13 @@ function generateReceiptCode(): string {
   const dd = String(now.getDate()).padStart(2, "0")
   const rand = Math.floor(1 + Math.random() * 9999).toString().padStart(4, "0")
   return `PT-${yy}${mm}${dd}-${rand}`
+}
+
+interface SavedReceipt {
+  id: string
+  code: string
+  amount: number
+  date: Date
 }
 
 export default function DeliverySettlePage() {
@@ -73,28 +70,17 @@ export default function DeliverySettlePage() {
     settled_at: string | null
     settled_amount: number | null
     driver_id: string | null
-    goods_handover_at?: string | null
-    goods_handover_by?: string | null
-    goods_handover_notes?: string | null
     driver?: { full_name: string } | null
   } | null>(null)
   const [lines, setLines] = useState<SettleLine[]>([])
   const [editedAmounts, setEditedAmounts] = useState<Record<string, string>>({})
-  // Goods handover state — items the driver collected from customers
-  // (refund + exchange) that need to come back into the warehouse.
-  const [goodsHandover, setGoodsHandover] = useState<{
-    refund: Array<{ name: string; sku: string; unit: string; qty: number; value: number }>
-    exchange: Array<{ name: string; sku: string; unit: string; qty: number; value: number }>
-  }>({ refund: [], exchange: [] })
-  const [goodsNotes, setGoodsNotes] = useState("")
-  const [goodsConfirming, setGoodsConfirming] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [submittedAmount, setSubmittedAmount] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
+  const [orgName, setOrgName] = useState<string>("")
+  const [saved, setSaved] = useState<SavedReceipt | null>(null)
 
-  // T-05: workflow session — keep this in-progress settlement on the
-  // dashboard widget. Closes when the user finalises (status='settled').
+  const [loading, setLoading] = useState(true)
+
   const { saveDraft, closeSession } = useWorkflowSession({
     entityType: "delivery",
     entityId: id,
@@ -112,7 +98,7 @@ export default function DeliverySettlePage() {
       supabase
         .from("deliveries")
         .select(
-          "id, route_name, status, settled_at, settled_amount, driver_id, goods_handover_at, goods_handover_by, goods_handover_notes, driver:users!deliveries_driver_id_fkey(full_name)"
+          "id, route_name, status, settled_at, settled_amount, driver_id, driver:users!deliveries_driver_id_fkey(full_name)"
         )
         .eq("id", id)
         .single(),
@@ -123,229 +109,126 @@ export default function DeliverySettlePage() {
         )
         .eq("delivery_id", id),
     ])
-    const delData = (delRes.data as unknown as typeof delivery) || null
-    if (delData) setDelivery(delData)
-    // User feedback: handover trước collect → đơn cancelled (failed
-    // handover) không xuất hiện ở list thu tiền.
-    const allLines = ((linesRes.data as unknown) as SettleLine[]) || []
-    const linesData = allLines.filter((l) => {
-      const order = (l as unknown as { order?: { status?: string } }).order
-      return order?.status !== "cancelled"
-    })
-    setLines(linesData)
 
-    // Fetch returns linked to orders in this delivery → aggregate
-    const orderIds = linesData.map((l) => l.order_id).filter(Boolean) as string[]
-    if (orderIds.length > 0) {
-      const { data: returnsData } = await supabase
-        .from("returns")
-        .select(
-          "id, order_id, status, lines:return_lines(product_id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name, sku))"
-        )
-        .in("order_id", orderIds)
-        .in("status", ["pending", "approved", "completed"])
-      type RLine = {
-        product_id: string
-        unit_name: string
-        quantity: number
-        unit_price: number
-        line_total: number
-        is_exchange?: boolean | null
-        product?: { name: string; sku: string } | null
-      }
-      const refund = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
-      const exchange = new Map<string, { name: string; sku: string; unit: string; qty: number; value: number }>()
-      for (const r of (returnsData as unknown as Array<{ lines: RLine[] }>) || []) {
-        for (const l of r.lines || []) {
-          const target = l.is_exchange ? exchange : refund
-          const key = `${l.product_id}::${l.unit_name}`
-          const prev = target.get(key)
-          const qty = Number(l.quantity || 0)
-          const value = Number(l.line_total || Number(l.unit_price || 0) * qty)
-          if (prev) {
-            prev.qty += qty
-            prev.value += value
-          } else {
-            target.set(key, {
-              name: l.product?.name || "—",
-              sku: l.product?.sku || "—",
-              unit: l.unit_name,
-              qty,
-              value,
-            })
-          }
-        }
-      }
-      setGoodsHandover({
-        refund: Array.from(refund.values()),
-        exchange: Array.from(exchange.values()),
-      })
-    } else {
-      setGoodsHandover({ refund: [], exchange: [] })
+    if (delRes.data) {
+      setDelivery(delRes.data as unknown as typeof delivery)
     }
-    if (delData?.goods_handover_notes) setGoodsNotes(delData.goods_handover_notes)
+    const rawLines = ((linesRes.data as unknown as SettleLine[]) || [])
+      // Spec: đơn giao thất bại / huỷ → không vào danh sách thu tiền.
+      .filter(
+        (l) =>
+          l.status !== "failed" &&
+          l.status !== "pending" &&
+          l.order?.status !== "cancelled"
+      )
+    setLines(rawLines)
 
-    // A line is considered "delivered" for settlement if:
-    //   - it was explicitly marked delivered, OR
-    //   - the parent delivery is completed and the line was not failed
-    // (the driver may finish the route in one click without per-line marks).
-    const deliveryCompleted = delData?.status === "completed"
-    const isDelivered = (status: string) =>
-      status === "delivered" || (deliveryCompleted && status !== "failed" && status !== "cancelled")
-
-    // Pre-fill editable amounts for delivered COD lines
+    // Default amount = amount_collected (if set) or order.total
     const initial: Record<string, string> = {}
-    linesData.forEach((l) => {
-      const cod = isCodTerms(l.order?.payment_terms)
-      const delivered = isDelivered(l.status)
-      if (!delivered || !cod) {
-        initial[l.id] = ""
-        return
-      }
+    for (const l of rawLines) {
       const collected = Number(l.amount_collected || 0)
-      initial[l.id] = collected > 0 ? String(collected) : String(l.order?.total ?? "")
-    })
+      const orderTotal = Number(l.order?.total || 0)
+      initial[l.id] = String(collected > 0 ? collected : orderTotal)
+    }
     setEditedAmounts(initial)
+
+    if (user?.org_id) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", user.org_id)
+        .maybeSingle()
+      setOrgName(((org as { name: string } | null)?.name) || "")
+    }
     setLoading(false)
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // T-05: persist form draft so a reload restores in-progress changes.
+  // Auto-save draft to workflow_session
   useEffect(() => {
     if (loading) return
-    saveDraft({ editedAmounts, submittedAmount, notes, goodsNotes })
-  }, [editedAmounts, submittedAmount, notes, goodsNotes, loading, saveDraft])
+    saveDraft({ editedAmounts, notes })
+  }, [editedAmounts, notes, loading, saveDraft])
 
-  const goodsAlreadyHandedOver = !!delivery?.goods_handover_at
-
-  const handleConfirmGoods = async () => {
-    if (!user) return
-    setGoodsConfirming(true)
-    try {
-      const { error } = await supabase
-        .from("deliveries")
-        .update({
-          goods_handover_at: new Date().toISOString(),
-          goods_handover_by: user.id,
-          goods_handover_notes: goodsNotes || null,
-        })
-        .eq("id", id)
-      if (error) throw error
-      toast({ title: "Đã xác nhận nhận hàng từ tài xế" })
-      await fetchData()
-    } catch (err) {
-      toast({
-        title: "Lỗi",
-        description: (err as Error).message,
-        variant: "destructive",
-      })
-    } finally {
-      setGoodsConfirming(false)
-    }
-  }
-
-  // Expected = sum of (edited amount) for delivered COD lines.
-  // Same "delivered" rule as fetchData so completing a route in one click
-  // still flows through to the settle screen.
   const summary = useMemo(() => {
-    let expected = 0
-    let codCount = 0
-    let creditCount = 0
-    let totalOrderValue = 0
-    let creditValue = 0
-    let deliveredCount = 0
-    const deliveryCompleted = delivery?.status === "completed"
-    const isDelivered = (status: string) =>
-      status === "delivered" || (deliveryCompleted && status !== "failed" && status !== "cancelled")
-    const rows = lines.map((l) => {
-      const o = l.order
-      const orderTotal = Number(o?.total || 0)
-      const cod = isCodTerms(o?.payment_terms)
-      const delivered = isDelivered(l.status)
-      const editedRaw = editedAmounts[l.id] ?? ""
-      const editedNum = parseFloat(editedRaw || "0") || 0
-      const expectedForLine = delivered && cod ? editedNum : 0
-      if (delivered) {
-        deliveredCount += 1
-        totalOrderValue += orderTotal
-      }
-      if (delivered && cod) {
-        expected += expectedForLine
-        codCount += 1
-      }
-      if (delivered && !cod) {
-        creditCount += 1
-        creditValue += orderTotal
-      }
-      return { ...l, cod, delivered, editedAmount: editedNum, expectedForLine, orderTotal }
-    })
-    return {
-      expected,
-      codCount,
-      creditCount,
-      creditValue,
-      totalOrderValue,
-      deliveredCount,
-      rows,
+    let totalExpected = 0
+    let totalCollected = 0
+    for (const l of lines) {
+      const orderTotal = Number(l.order?.total || 0)
+      const collected = Number(parseFloat(editedAmounts[l.id] || "0")) || 0
+      totalExpected += orderTotal
+      totalCollected += Math.max(0, collected)
     }
-  }, [lines, editedAmounts, delivery?.status])
-
-  const submittedNum = parseFloat(submittedAmount || "0") || 0
-  const diff = submittedNum - summary.expected
-  const isMatch = Math.abs(diff) < 1
-  const isShort = diff < -0.5
-
-  const alreadySettled = !!delivery?.settled_at
+    return { totalExpected, totalCollected, count: lines.length }
+  }, [lines, editedAmounts])
 
   const setLineAmount = (lineId: string, value: string) => {
     setEditedAmounts((prev) => ({ ...prev, [lineId]: value }))
   }
 
-  const handleSettle = async () => {
+  const setLineToOrderTotal = (line: SettleLine) => {
+    setLineAmount(line.id, String(Number(line.order?.total || 0)))
+  }
+
+  const setLineToZero = (line: SettleLine) => {
+    setLineAmount(line.id, "0")
+  }
+
+  const alreadySettled = !!delivery?.settled_at
+  const hasNothingToCollect = !alreadySettled && lines.length === 0
+
+  const printTT200 = (delay = 50) => {
+    const html = document.documentElement
+    html.setAttribute("data-print-mode", "receipt-tt200")
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        window.print()
+        setTimeout(() => {
+          html.removeAttribute("data-print-mode")
+        }, 200)
+      })
+    }, delay)
+  }
+
+  const finalize = async ({ withPrint }: { withPrint: boolean }) => {
     if (!delivery || !user) return
     if (alreadySettled) return
     setSubmitting(true)
     try {
-      // 0 COD orders → just mark the delivery settled, no cash receipt.
-      // Áp dụng cho 2 trường hợp:
-      //   - Chỉ có đơn công nợ (creditCount > 0).
-      //   - Tất cả đơn giao thất bại (deliveredCount === 0).
-      if (summary.codCount === 0) {
+      // Case 1: tất cả đơn thất bại / chuyến rỗng → phiếu thu = 0,
+      // chỉ stamp settled_at, không tạo cash_receipts.
+      if (lines.length === 0) {
         await supabase
           .from("deliveries")
-          .update({
-            settled_at: new Date().toISOString(),
-            settled_amount: 0,
-          })
+          .update({ settled_at: new Date().toISOString(), settled_amount: 0 })
           .eq("id", delivery.id)
         toast({
           title: "Đã hoàn tất chuyến",
-          description:
-            summary.deliveredCount === 0
-              ? "Tất cả đơn giao thất bại — không có tiền cần thu."
-              : "Chuyến chỉ có đơn công nợ — không cần lập phiếu thu.",
+          description: "Tất cả đơn giao thất bại — không có tiền cần thu.",
         })
-        // T-05: nothing to settle but the chuyến is done — close session.
         await closeSession()
-        router.push(`/deliveries/${delivery.id}`)
+        router.push("/orders")
         return
       }
 
-      // Persist edited amount_collected back to delivery_lines first
-      for (const r of summary.rows) {
-        if (!r.delivered || !r.cod) continue
-        const newAmt = r.editedAmount
-        if (Number(r.amount_collected || 0) !== newAmt) {
+      // Case 2: có ít nhất 1 đơn delivered → tạo phiếu thu (có thể $0
+      // nếu user nhập 0 hết).
+
+      // 1) Persist edited amount_collected back to delivery_lines
+      for (const l of lines) {
+        const newAmt = Math.max(0, Number(parseFloat(editedAmounts[l.id] || "0")) || 0)
+        if (Number(l.amount_collected || 0) !== newAmt) {
           await supabase
             .from("delivery_lines")
             .update({ amount_collected: newAmt })
-            .eq("id", r.id)
+            .eq("id", l.id)
         }
       }
 
-      // Create cash receipt header
+      // 2) Create receipt header
       const receiptCode = generateReceiptCode()
+      const submittedTotal = summary.totalCollected
       const { data: receipt, error: receiptErr } = await supabase
         .from("cash_receipts")
         .insert({
@@ -354,16 +237,23 @@ export default function DeliverySettlePage() {
           source_type: "delivery_settle",
           source_id: delivery.id,
           collected_by: delivery.driver_id || null,
-          submitted_amount: submittedNum,
-          expected_amount: summary.expected,
+          submitted_amount: submittedTotal,
+          expected_amount: summary.totalExpected,
           notes: notes.trim() || null,
-          status: "pending",
+          status: "received",
+          received_by: user.id,
+          received_at: new Date().toISOString(),
           created_by: user.id,
         })
         .select("id")
         .single()
-      if (receiptErr || !receipt) throw receiptErr || new Error("Không tạo được phiếu thu")
+      if (receiptErr || !receipt) {
+        throw receiptErr || new Error("Không tạo được phiếu thu")
+      }
+      const receiptId = (receipt as { id: string }).id
 
+      // 3) For each line: ensure receivable, create payment if amount > 0,
+      //    update receivable, queue receipt line.
       const receiptLineRows: Array<{
         receipt_id: string
         order_id: string
@@ -372,37 +262,36 @@ export default function DeliverySettlePage() {
         amount: number
         notes: string | null
       }> = []
+      for (const l of lines) {
+        if (!l.order) continue
+        const amt = Math.max(0, Number(parseFloat(editedAmounts[l.id] || "0")) || 0)
+        if (amt <= 0) continue
 
-      // For each delivered COD line: ensure receivable, create payment, update receivable, queue receipt line
-      for (const r of summary.rows) {
-        if (!r.delivered || !r.cod || !r.order) continue
-        const amountForLine = r.editedAmount
-        if (amountForLine <= 0) continue
-
-        await ensureReceivableForOrder(supabase, r.order.id)
+        await ensureReceivableForOrder(supabase, l.order.id)
         const { data: rec } = await supabase
           .from("receivables")
           .select("id, amount, paid")
-          .eq("order_id", r.order.id)
+          .eq("order_id", l.order.id)
           .maybeSingle()
         if (!rec) continue
+        const r = rec as { id: string; amount: number | null; paid: number | null }
 
-        const newPaid = Number(rec.paid || 0) + amountForLine
-        const recAmount = Number(rec.amount || 0)
+        const newPaid = Number(r.paid || 0) + amt
+        const recAmount = Number(r.amount || 0)
         const status =
           newPaid >= recAmount ? "paid" : newPaid > 0 ? "partial" : "open"
-        const method =
-          r.payment_method === "cod_transfer" ? "transfer" : "cash"
+        const method = l.payment_method === "cod_transfer" ? "transfer" : "cash"
 
         const { data: payment } = await supabase
           .from("payments")
           .insert({
-            receivable_id: rec.id,
+            receivable_id: r.id,
             collected_by: user.id,
-            amount: amountForLine,
+            amount: amt,
             method,
             collected_at: new Date().toISOString(),
-            verified_at: null,
+            verified_at: new Date().toISOString(),
+            verified_by: user.id,
           })
           .select("id")
           .single()
@@ -410,46 +299,55 @@ export default function DeliverySettlePage() {
         await supabase
           .from("receivables")
           .update({ paid: newPaid, status })
-          .eq("id", rec.id)
+          .eq("id", r.id)
 
         receiptLineRows.push({
-          receipt_id: receipt.id,
-          order_id: r.order.id,
-          receivable_id: rec.id,
-          payment_id: payment?.id || null,
-          amount: amountForLine,
+          receipt_id: receiptId,
+          order_id: l.order.id,
+          receivable_id: r.id,
+          payment_id: (payment as { id: string } | null)?.id || null,
+          amount: amt,
           notes: null,
         })
       }
-
       if (receiptLineRows.length > 0) {
         await supabase.from("cash_receipt_lines").insert(receiptLineRows)
       }
 
-      // Mark delivery as settled
+      // 4) Mark delivery as settled
       await supabase
         .from("deliveries")
         .update({
           settled_at: new Date().toISOString(),
-          settled_amount: submittedNum,
+          settled_amount: submittedTotal,
         })
         .eq("id", delivery.id)
 
-      toast({
-        title: "Đã quyết toán",
-        description: `${
-          isMatch
-            ? `Đã lập phiếu thu ${receiptCode}. Số tiền khớp.`
-            : isShort
-              ? `Đã lập phiếu thu ${receiptCode}. Thiếu ${formatCurrency(Math.abs(diff))}.`
-              : `Đã lập phiếu thu ${receiptCode}. Dư ${formatCurrency(diff)}.`
-        }`,
-      })
-      // T-05: chuyến đã quyết toán → close workflow session.
       await closeSession()
-      // Bàn giao đã làm trước thu tiền (flow mới) → settle xong là
-      // bước cuối: chuyển sang phiếu thu để in/xác nhận.
-      router.push(`/finance/cash-receipts/${receipt.id}`)
+
+      const savedRow: SavedReceipt = {
+        id: receiptId,
+        code: receiptCode,
+        amount: submittedTotal,
+        date: new Date(),
+      }
+      setSaved(savedRow)
+
+      toast({
+        title: "Đã lập phiếu thu",
+        description: `${receiptCode} • ${formatCurrency(submittedTotal)}`,
+      })
+
+      if (withPrint) {
+        // Render TT200 first (state set above). After short delay → print.
+        // Sau khi print dialog đóng → redirect /orders.
+        printTT200(120)
+        setTimeout(() => {
+          router.push("/orders")
+        }, 1500)
+      } else {
+        router.push("/orders")
+      }
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
     } finally {
@@ -457,416 +355,263 @@ export default function DeliverySettlePage() {
     }
   }
 
+  const reprint = () => {
+    if (!saved) return
+    printTT200(0)
+  }
+
   if (authLoading || loading) return <Skeleton className="h-96" />
   if (!delivery) {
-    return <div className="text-center py-12 text-muted-foreground">Không tìm thấy chuyến giao</div>
+    return (
+      <div className="space-y-3">
+        <PageHeader title="Không tìm thấy chuyến giao" backHref="/deliveries" />
+      </div>
+    )
   }
+
+  const driverName = delivery.driver?.full_name || "—"
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Quyết toán chuyến giao"
-        description={`${delivery.route_name || "Chuyến giao"} • Lái xe: ${delivery.driver?.full_name || "-"}`}
-        backHref={`/deliveries/${delivery.id}`}
-      >
+      <div className="no-print">
+        <PageHeader
+          title="Nộp tiền chuyến giao"
+          description={`${delivery.route_name || "Chuyến giao"} • Lái xe: ${driverName}`}
+          backHref={`/deliveries/${delivery.id}`}
+        >
+          <Badge variant="default">
+            <Wallet className="h-3 w-3 mr-1" /> Bước cuối flow xử lý đơn
+          </Badge>
+        </PageHeader>
+
         {alreadySettled ? (
-          <Badge variant="success">Đã quyết toán</Badge>
-        ) : (
-          <Badge variant="warning">Chờ trả tiền</Badge>
-        )}
-      </PageHeader>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Left: orders list with editable đã thu */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Receipt className="h-4 w-4" />
-              Danh sách đơn ({summary.rows.length})
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Có thể chỉnh sửa số tiền đã thu của từng đơn COD trước khi quyết toán. Đơn công nợ chỉ ghi nhận giao thành công.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {summary.rows.length === 0 ? (
-              <EmptyState
-                title="Chưa có đơn"
-                description="Chuyến giao này chưa có đơn hàng nào."
-              />
-            ) : (
-              <div className="space-y-2">
-                {summary.rows.map((r) => {
-                  const o = r.order
-                  const editable = !alreadySettled && r.delivered && r.cod
-                  const lineDiff = r.editedAmount - r.orderTotal
-                  return (
-                    <div
-                      key={r.id}
-                      className={`rounded-xl border p-3 ${
-                        !r.delivered ? "opacity-60" : ""
-                      } ${
-                        r.cod && r.delivered
-                          ? "border-emerald-300 bg-emerald-50/40"
-                          : "bg-muted/20"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <Link
-                              href={`/orders/${o?.id || ""}`}
-                              className="font-mono text-xs font-bold text-primary hover:underline"
-                            >
-                              {o?.order_code}
-                            </Link>
-                            {r.cod ? (
-                              <Badge variant="success" className="text-[10px]">COD</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {o?.payment_terms || "Công nợ"}
-                              </Badge>
-                            )}
-                            {!r.delivered && (
-                              <Badge variant="outline" className="text-[10px]">
-                                {r.status === "failed" ? "Thất bại" : "Chưa giao"}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="font-medium text-sm truncate">
-                            {o?.customer?.store_name || "-"}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {o?.customer?.phone || ""}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                            Tiền đơn
-                          </p>
-                          <p className="text-sm font-bold">{formatCurrency(r.orderTotal)}</p>
-                        </div>
-                      </div>
-
-                      {editable && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <Label className="text-xs text-muted-foreground shrink-0">
-                            Đã thu
-                          </Label>
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            className="h-9"
-                            value={editedAmounts[r.id] ?? ""}
-                            onChange={(e) => setLineAmount(r.id, e.target.value)}
-                            disabled={submitting}
-                          />
-                          {lineDiff !== 0 && (
-                            <span
-                              className={`text-[11px] font-semibold whitespace-nowrap ${
-                                lineDiff < 0 ? "text-rose-700" : "text-amber-700"
-                              }`}
-                            >
-                              {lineDiff < 0 ? "Thiếu " : "Dư "}
-                              {formatCurrency(Math.abs(lineDiff))}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {!editable && r.delivered && r.cod && (
-                        <p className="text-xs mt-1">
-                          Đã thu:{" "}
-                          <span className="font-semibold">
-                            {formatCurrency(Number(r.amount_collected || 0))}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right: settle box */}
-        <div className="space-y-4">
-          {/* Bàn giao hàng — items collected by driver to bring back */}
-          {(goodsHandover.refund.length > 0 || goodsHandover.exchange.length > 0) && (
-            <Card className="border-amber-300 bg-amber-50/40">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <PackageIcon className="h-5 w-5 text-amber-600" />
-                  Bàn giao hàng
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Thủ kho đối chiếu hàng tài xế thu về (trả + đổi) trước khi
-                  nhận. Bấm xác nhận để stamp thời điểm + người nhận.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {goodsHandover.exchange.length > 0 && (
-                  <div className="rounded-lg bg-white/70 border p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
-                        ĐỔI
-                      </span>
-                      <p className="text-xs font-bold uppercase tracking-wider">
-                        Hàng đổi ({goodsHandover.exchange.length})
-                      </p>
-                    </div>
-                    <ul className="space-y-1 text-sm">
-                      {goodsHandover.exchange.map((g, i) => (
-                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
-                          <span>
-                            <span className="font-medium">{g.name}</span>
-                            <span className="text-[11px] font-mono text-muted-foreground ml-2">
-                              {g.sku}
-                            </span>
-                          </span>
-                          <span className="font-bold tabular-nums whitespace-nowrap">
-                            {g.qty} {g.unit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {goodsHandover.refund.length > 0 && (
-                  <div className="rounded-lg bg-white/70 border p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                        TRẢ
-                      </span>
-                      <p className="text-xs font-bold uppercase tracking-wider">
-                        Hàng trả ({goodsHandover.refund.length})
-                      </p>
-                      <span className="ml-auto text-[10px] text-muted-foreground">
-                        Trừ công nợ {formatCurrency(goodsHandover.refund.reduce((s, g) => s + g.value, 0))}
-                      </span>
-                    </div>
-                    <ul className="space-y-1 text-sm">
-                      {goodsHandover.refund.map((g, i) => (
-                        <li key={i} className="flex justify-between gap-2 py-1 border-b border-border/30 last:border-0">
-                          <span>
-                            <span className="font-medium">{g.name}</span>
-                            <span className="text-[11px] font-mono text-muted-foreground ml-2">
-                              {g.sku}
-                            </span>
-                          </span>
-                          <span className="font-bold tabular-nums whitespace-nowrap">
-                            {g.qty} {g.unit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {goodsAlreadyHandedOver ? (
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 text-xs">
-                    <p className="font-semibold">
-                      ✓ Đã nhận hàng lúc{" "}
-                      {delivery?.goods_handover_at
-                        ? new Date(delivery.goods_handover_at).toLocaleString("vi-VN")
-                        : "—"}
-                    </p>
-                    {delivery?.goods_handover_notes && (
-                      <p className="mt-1 italic">{delivery.goods_handover_notes}</p>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                        Ghi chú nhận hàng (tuỳ chọn)
-                      </Label>
-                      <Input
-                        value={goodsNotes}
-                        onChange={(e) => setGoodsNotes(e.target.value)}
-                        placeholder="vd: Thiếu 1 thùng SP A so với phiếu"
-                        disabled={goodsConfirming}
-                      />
-                    </div>
-                    <Button
-                      className="w-full"
-                      variant="default"
-                      onClick={handleConfirmGoods}
-                      disabled={goodsConfirming}
-                    >
-                      {goodsConfirming ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Wallet className="h-5 w-5 text-primary" />
-                Nộp tiền
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <div className="rounded-lg bg-white/60 p-2.5 border">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                    Đã giao
+          <Card className="border-emerald-300 bg-emerald-50">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-7 w-7 text-emerald-600 shrink-0" />
+                <div>
+                  <p className="font-semibold text-emerald-900">
+                    Chuyến đã nộp tiền {delivery.settled_at && `• ${formatDate(delivery.settled_at)}`}
                   </p>
-                  <p className="text-xl font-black mt-0.5">{summary.deliveredCount}</p>
-                </div>
-                <div className="rounded-lg bg-white/60 p-2.5 border">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                    Đơn COD
+                  <p className="text-xs text-emerald-800/80">
+                    Đã thu {formatCurrency(Number(delivery.settled_amount || 0))}
                   </p>
-                  <p className="text-xl font-black mt-0.5">{summary.codCount}</p>
-                </div>
-                <div className="rounded-lg bg-white/60 p-2.5 border">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                    Công nợ
-                  </p>
-                  <p className="text-xl font-black mt-0.5">{summary.creditCount}</p>
                 </div>
               </div>
-
-              <div className="rounded-lg bg-white/60 p-3 border">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                  Tổng giá trị đơn (đã giao)
-                </p>
-                <p className="text-lg font-bold mt-0.5">
-                  {formatCurrency(summary.totalOrderValue)}
-                </p>
-                {summary.creditCount > 0 && (
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Trong đó công nợ: {formatCurrency(summary.creditValue)}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-lg bg-white/60 p-3 border">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                  Tổng cần nộp (đơn COD)
-                </p>
-                <p className="text-2xl font-black mt-1 text-primary">
-                  {formatCurrency(summary.expected)}
-                </p>
-              </div>
-
-              {summary.codCount > 0 && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="submitted" className="text-xs uppercase tracking-wider text-muted-foreground">
-                    <Banknote className="h-3 w-3 inline mr-1" />
-                    Số tiền tài xế nộp
-                  </Label>
-                  <Input
-                    id="submitted"
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="0"
-                    className="h-12 text-lg font-bold"
-                    value={
-                      alreadySettled
-                        ? String(delivery.settled_amount || 0)
-                        : submittedAmount
-                    }
-                    onChange={(e) => setSubmittedAmount(e.target.value)}
-                    disabled={alreadySettled || submitting}
-                  />
-                </div>
-              )}
-
-              {!alreadySettled && summary.codCount === 0 && summary.creditCount > 0 && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 p-3 text-xs">
-                  Chuyến này chỉ có đơn công nợ — không cần nộp tiền mặt. Bạn có thể bấm <span className="font-semibold">Hoàn tất chuyến</span> để đánh dấu đã quyết toán.
-                </div>
-              )}
-
-              {!alreadySettled && summary.deliveredCount === 0 && (
-                <div className="rounded-lg bg-rose-50 border border-rose-200 text-rose-800 p-3 text-xs">
-                  Tất cả đơn trong chuyến đều giao thất bại — không có tiền cần thu. Bấm <span className="font-semibold">Hoàn tất chuyến</span> để đánh dấu đã quyết toán.
-                </div>
-              )}
-
-              {!alreadySettled && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="notes" className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Ghi chú
-                  </Label>
-                  <Input
-                    id="notes"
-                    placeholder="vd: Tài xế nộp thiếu 50k vì khách thanh toán chuyển khoản"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-              )}
-
-              {!alreadySettled && submittedAmount !== "" && (
-                <div
-                  className={`rounded-lg p-3 border text-sm ${
-                    isMatch
-                      ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                      : isShort
-                        ? "bg-rose-50 border-rose-300 text-rose-800"
-                        : "bg-amber-50 border-amber-300 text-amber-800"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-semibold">
-                    {isMatch ? (
-                      <>
-                        <CheckCircle2 className="h-4 w-4" /> Khớp
-                      </>
-                    ) : isShort ? (
-                      <>
-                        <AlertTriangle className="h-4 w-4" />
-                        Thiếu {formatCurrency(Math.abs(diff))}
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="h-4 w-4" />
-                        Dư {formatCurrency(diff)}
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs mt-0.5 opacity-80">
-                    Số nộp {formatCurrency(submittedNum)} vs cần {formatCurrency(summary.expected)}
-                  </p>
-                </div>
-              )}
-
-              {alreadySettled ? (
-                <div className="rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 p-3 text-sm">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Đã quyết toán {formatDate(delivery.settled_at!)}
-                  </div>
-                </div>
-              ) : summary.codCount === 0 ? (
-                <Button
-                  className="w-full h-11"
-                  onClick={handleSettle}
-                  disabled={submitting}
-                >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {submitting ? "Đang xử lý..." : "Hoàn tất chuyến"}
-                </Button>
-              ) : (
-                <Button
-                  className="w-full h-11"
-                  onClick={handleSettle}
-                  disabled={submitting || submittedAmount === ""}
-                >
-                  <ArrowRightCircle className="h-4 w-4 mr-2" />
-                  {submitting ? "Đang xử lý..." : "Lập phiếu thu"}
-                </Button>
-              )}
+              <Button asChild variant="outline">
+                <Link href="/orders">Về quản lý đơn hàng</Link>
+              </Button>
             </CardContent>
           </Card>
-        </div>
+        ) : hasNothingToCollect ? (
+          <Card className="border-rose-200 bg-rose-50">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-7 w-7 text-rose-600 shrink-0" />
+                <div>
+                  <p className="font-semibold text-rose-900">Tất cả đơn giao thất bại</p>
+                  <p className="text-xs text-rose-800/80">
+                    Không có tiền cần thu trong chuyến này. Phiếu thu = 0.
+                  </p>
+                </div>
+              </div>
+              <Button onClick={() => finalize({ withPrint: false })} disabled={submitting}>
+                {submitting ? "Đang xử lý…" : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Hoàn tất chuyến
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Banknote className="h-4 w-4" />
+                  Danh sách đơn cần thu ({lines.length})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Đơn giao thất bại / huỷ đã được loại khỏi danh sách. Nhập số
+                  thực thu cho từng đơn — tổng tự cập nhật ở cuối bảng.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Đơn hàng</th>
+                        <th className="px-3 py-2 text-left font-semibold">Khách hàng</th>
+                        <th className="px-3 py-2 text-right font-semibold w-32">Cần thu</th>
+                        <th className="px-3 py-2 text-right font-semibold w-44">Thực thu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((l) => {
+                        const orderTotal = Number(l.order?.total || 0)
+                        const v = editedAmounts[l.id] ?? "0"
+                        const num = Math.max(0, Number(parseFloat(v) || 0))
+                        const matched = num === orderTotal
+                        return (
+                          <tr key={l.id} className="border-t">
+                            <td className="px-3 py-2">
+                              <Link
+                                href={`/orders/${l.order?.id}`}
+                                className="font-mono text-xs font-bold text-primary hover:underline"
+                              >
+                                {l.order?.order_code || "—"}
+                              </Link>
+                              {l.status === "partial" && (
+                                <Badge variant="warning" className="ml-2 text-[10px]">Giao 1 phần</Badge>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <p className="font-medium">{l.order?.customer?.store_name || "—"}</p>
+                              {l.order?.customer?.phone && (
+                                <p className="text-xs text-muted-foreground">{l.order.customer.phone}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatCurrency(orderTotal)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-1.5 justify-end">
+                                <Input
+                                  type="number"
+                                  inputMode="decimal"
+                                  className={`h-9 w-32 text-right tabular-nums font-semibold ${matched ? "" : "border-amber-400"}`}
+                                  value={v}
+                                  onChange={(e) => setLineAmount(l.id, e.target.value)}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-1.5 text-[10px]"
+                                  onClick={() => setLineToOrderTotal(l)}
+                                  title="Đặt = đủ tổng đơn"
+                                >
+                                  Đủ
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-1.5 text-[10px]"
+                                  onClick={() => setLineToZero(l)}
+                                  title="Đặt = 0"
+                                >
+                                  0
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/30">
+                        <td colSpan={2} className="px-3 py-3 text-right font-bold">
+                          Tổng phiếu thu
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-sm text-muted-foreground">
+                          {formatCurrency(summary.totalExpected)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-2xl font-black text-primary">
+                          {formatCurrency(summary.totalCollected)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-2 p-4">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Ghi chú phiếu thu
+                </Label>
+                <Textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="VD: Khách KH-A trả 50% chuyển khoản 50% tiền mặt"
+                />
+              </CardContent>
+            </Card>
+
+            {saved ? (
+              <Card className="border-emerald-300 bg-emerald-50">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-7 w-7 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-emerald-900">
+                        Đã lập phiếu thu {saved.code} • {formatCurrency(saved.amount)}
+                      </p>
+                      <p className="text-xs text-emerald-800/80">
+                        Đang chuyển về quản lý đơn hàng…
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={reprint}>
+                      <Printer className="h-4 w-4 mr-2" /> In lại TT200
+                    </Button>
+                    <Button asChild>
+                      <Link href="/orders">
+                        Về đơn hàng <ArrowRight className="h-4 w-4 ml-2" />
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" asChild>
+                  <Link href={`/deliveries/${delivery.id}`}>Huỷ</Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => finalize({ withPrint: false })}
+                  disabled={submitting}
+                >
+                  {submitting ? "Đang xử lý…" : "Lập phiếu thu"}
+                </Button>
+                <Button
+                  onClick={() => finalize({ withPrint: true })}
+                  disabled={submitting}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  {submitting ? "Đang xử lý…" : "Lập phiếu thu & In TT200"}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* TT200 print-only block. Render only after save so receipt code +
+         amount reflect actual created row. */}
+      {saved && (
+        <div className="print-receipt-tt200-only">
+          <PaymentReceiptTT200
+            organizationName={orgName || "—"}
+            receiptNo={saved.code}
+            date={saved.date}
+            payerName={driverName}
+            reason={
+              delivery.route_name
+                ? `Thu tiền giao hàng chuyến ${delivery.route_name}`
+                : `Thu tiền giao hàng theo phiếu ${saved.code}`
+            }
+            amount={saved.amount}
+            evidenceCount={lines.length}
+          />
+        </div>
+      )}
     </div>
   )
 }

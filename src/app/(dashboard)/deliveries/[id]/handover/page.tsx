@@ -514,7 +514,7 @@ export default function DeliveryHandoverPage() {
       if (hasNothing) {
         toast({
           title: "Tất cả đơn giao thành công",
-          description: "Không có hàng cần nhập lại. Tiếp tục bước tiếp theo…",
+          description: "Không có hàng cần nhập lại. Tiếp tục bước nộp tiền…",
         })
         await closeHandoverSession().catch(() => {})
         const next = searchParams.get("next")
@@ -522,9 +522,8 @@ export default function DeliveryHandoverPage() {
         if (next === "collect" && entryId) {
           router.push(`/inventory/stock-out/collect/${entryId}`)
         } else {
-          // Quay về detail page — user bấm "Nộp tiền — Lập phiếu thu (TT200)"
-          // để chuyển bước cuối.
-          router.push(`/deliveries/${delivery.id}`)
+          // Driver flow → màn nộp tiền chuyến.
+          router.push(`/deliveries/${delivery.id}/settle`)
         }
         return
       }
@@ -699,16 +698,15 @@ export default function DeliveryHandoverPage() {
       // Bàn giao xong → close session để bar resume bỏ chip này.
       await closeHandoverSession().catch(() => {})
       // User feedback: handover TRƯỚC collect. Sau khi confirm bàn
-      // giao, redirect tới collect / detail.
+      // giao, redirect tới collect / settle.
       const next = searchParams.get("next")
       const entryId = searchParams.get("entry")
       if (next === "collect" && entryId) {
         // Self-deliver flow.
         router.push(`/inventory/stock-out/collect/${entryId}`)
       } else {
-        // Driver flow → quay về detail, user bấm "Nộp tiền — Lập phiếu thu
-        // (TT200)" để hoàn tất.
-        router.push(`/deliveries/${delivery.id}`)
+        // Driver flow → màn nộp tiền chuyến.
+        router.push(`/deliveries/${delivery.id}/settle`)
       }
     } catch (err) {
       toast({

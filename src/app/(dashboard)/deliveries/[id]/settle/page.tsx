@@ -78,6 +78,7 @@ export default function DeliverySettlePage() {
   const [submitting, setSubmitting] = useState(false)
   const [orgName, setOrgName] = useState<string>("")
   const [saved, setSaved] = useState<SavedReceipt | null>(null)
+  const [pendingPrint, setPendingPrint] = useState(false)
 
   const [loading, setLoading] = useState(true)
 
@@ -113,14 +114,14 @@ export default function DeliverySettlePage() {
     if (delRes.data) {
       setDelivery(delRes.data as unknown as typeof delivery)
     }
-    const rawLines = ((linesRes.data as unknown as SettleLine[]) || [])
-      // Spec: đơn giao thất bại / huỷ → không vào danh sách thu tiền.
-      .filter(
-        (l) =>
-          l.status !== "failed" &&
-          l.status !== "pending" &&
-          l.order?.status !== "cancelled"
-      )
+    // Spec: đơn giao thất bại → không vào danh sách thu tiền.
+    // Sau handover RPC (mig 047), failed orders có sales_orders.status =
+    // 'cancelled'. Chỉ lọc theo cờ này — KHÔNG lọc theo
+    // delivery_lines.status (RPC không touch cột này, vẫn = 'pending'
+    // dù đơn đã giao OK).
+    const rawLines = ((linesRes.data as unknown as SettleLine[]) || []).filter(
+      (l) => l.status !== "failed" && l.order?.status !== "cancelled"
+    )
     setLines(rawLines)
 
     // Default amount = amount_collected (if set) or order.total
@@ -191,6 +192,40 @@ export default function DeliverySettlePage() {
     }, delay)
   }
 
+  // Auto-print + redirect khi save xong (pendingPrint=true). Đảm bảo
+  // TT200 component đã render trong DOM trước khi window.print() chạy.
+  useEffect(() => {
+    if (!saved || !pendingPrint) return
+    const html = document.documentElement
+    html.setAttribute("data-print-mode", "receipt-tt200")
+
+    let redirected = false
+    const goOrders = () => {
+      if (redirected) return
+      redirected = true
+      html.removeAttribute("data-print-mode")
+      router.push("/orders")
+    }
+    const afterPrint = () => {
+      // Chờ thêm 200ms để Chrome ổn định DOM trước khi điều hướng.
+      setTimeout(goOrders, 200)
+    }
+    window.addEventListener("afterprint", afterPrint, { once: true })
+    // Fallback: nếu afterprint không fire (vd Safari) → tự redirect
+    // sau 10s. User vẫn có thể bấm "Về đơn hàng" thủ công sớm hơn.
+    const fallback = setTimeout(goOrders, 10000)
+
+    requestAnimationFrame(() => {
+      window.print()
+    })
+    setPendingPrint(false)
+
+    return () => {
+      window.removeEventListener("afterprint", afterPrint)
+      clearTimeout(fallback)
+    }
+  }, [saved, pendingPrint, router])
+
   const finalize = async ({ withPrint }: { withPrint: boolean }) => {
     if (!delivery || !user) return
     if (alreadySettled) return
@@ -215,14 +250,21 @@ export default function DeliverySettlePage() {
       // Case 2: có ít nhất 1 đơn delivered → tạo phiếu thu (có thể $0
       // nếu user nhập 0 hết).
 
-      // 1) Persist edited amount_collected back to delivery_lines
+      // 1) Persist edited amount_collected + mark line status='delivered'
+      // (RPC handover không update delivery_lines.status; làm ở đây để
+      // sau này tra cứu trong /deliveries/[id] thấy đúng "Đã giao").
       for (const l of lines) {
         const newAmt = Math.max(0, Number(parseFloat(editedAmounts[l.id] || "0")) || 0)
+        const updates: Record<string, unknown> = {}
         if (Number(l.amount_collected || 0) !== newAmt) {
-          await supabase
-            .from("delivery_lines")
-            .update({ amount_collected: newAmt })
-            .eq("id", l.id)
+          updates.amount_collected = newAmt
+        }
+        if (l.status === "pending") {
+          updates.status = "delivered"
+          updates.delivered_at = new Date().toISOString()
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from("delivery_lines").update(updates).eq("id", l.id)
         }
       }
 
@@ -331,7 +373,6 @@ export default function DeliverySettlePage() {
         amount: submittedTotal,
         date: new Date(),
       }
-      setSaved(savedRow)
 
       toast({
         title: "Đã lập phiếu thu",
@@ -339,13 +380,14 @@ export default function DeliverySettlePage() {
       })
 
       if (withPrint) {
-        // Render TT200 first (state set above). After short delay → print.
-        // Sau khi print dialog đóng → redirect /orders.
-        printTT200(120)
-        setTimeout(() => {
-          router.push("/orders")
-        }, 1500)
+        // Set saved + pendingPrint → useEffect bên trên sẽ trigger
+        // window.print() sau khi DOM commit, rồi redirect /orders khi
+        // print dialog đóng (event afterprint).
+        setSaved(savedRow)
+        setPendingPrint(true)
       } else {
+        // No print → mark saved (UI flash success) + redirect ngay.
+        setSaved(savedRow)
         router.push("/orders")
       }
     } catch (err) {

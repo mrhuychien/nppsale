@@ -52,7 +52,6 @@ const ROLE_NAV: Record<Role, MobileNavItem[]> = {
   driver: [
     { label: "Chuyến", href: "/deliveries", icon: Truck, module: "deliveries" },
     { label: "Thu tiền", href: "/receivables/collect", icon: CreditCard, module: "receivables" },
-    { label: "Trip", href: "/driver/trip", icon: Truck, module: "deliveries" },
   ],
 }
 

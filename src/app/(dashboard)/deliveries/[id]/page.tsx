@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { createOrFindReceiptForDelivery } from "@/lib/cash-receipts/create-from-delivery"
 import {
   Play, XCircle, Trash2,
   PackageCheck, Wallet,
@@ -54,6 +55,7 @@ export default function DeliveryDetailPage() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [collectingCash, setCollectingCash] = useState(false)
 
   const [orderDetailOpen, setOrderDetailOpen] = useState(false)
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
@@ -167,6 +169,31 @@ export default function DeliveryDetailPage() {
     }
   }
 
+  const handleCollectCash = async () => {
+    if (!delivery || !user) return
+    setCollectingCash(true)
+    try {
+      // Self-deliver flow vẫn dùng /inventory/stock-out/collect/[entryId]
+      // vì entry đó có thêm UI cho "thu tiền sau khi tự giao".
+      if (delivery.source_stock_entry_id) {
+        router.push(`/inventory/stock-out/collect/${delivery.source_stock_entry_id}`)
+        return
+      }
+      // Driver flow: tạo / tìm phiếu thu (TT200) thẳng — bỏ qua bước
+      // Quyết toán trung gian. Trang phiếu thu có nút In TT200 + xác
+      // nhận đã nhận tiền.
+      const res = await createOrFindReceiptForDelivery(supabase, delivery.id, user.id)
+      toast({
+        title: res.reused ? "Mở phiếu thu hiện có" : "Đã tạo phiếu thu",
+        description: `${res.receiptCode} • ${formatCurrency(res.submitted)}`,
+      })
+      router.push(`/finance/cash-receipts/${res.receiptId}`)
+    } catch (err) {
+      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      setCollectingCash(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!delivery) return
     setActionLoading(true)
@@ -236,10 +263,6 @@ export default function DeliveryDetailPage() {
     user && hasPermission(user.role, "deliveries", "delete") &&
     (stage === "pending" || stage === "cancelled")
 
-  const settleHref = isSelfDeliver
-    ? `/inventory/stock-out/collect/${delivery.source_stock_entry_id}`
-    : `/deliveries/${delivery.id}/settle`
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -291,15 +314,17 @@ export default function DeliveryDetailPage() {
               <div>
                 <p className="font-semibold text-emerald-900">Đã giao hàng</p>
                 <p className="text-xs text-emerald-800/80">
-                  Đã nhận bàn giao từ tài xế. Tiếp tục lập phiếu thu / nộp tiền để hoàn tất chuyến.
+                  Đã nhận bàn giao từ tài xế. Tiếp tục lập phiếu thu (TT200) để hoàn tất chuyến.
                 </p>
               </div>
             </div>
-            <Button asChild className="h-11 sm:min-w-[260px]">
-              <Link href={settleHref}>
-                <Banknote className="h-4 w-4 mr-2" />
-                Nộp tiền
-              </Link>
+            <Button
+              onClick={handleCollectCash}
+              disabled={collectingCash}
+              className="h-11 sm:min-w-[260px]"
+            >
+              <Banknote className="h-4 w-4 mr-2" />
+              {collectingCash ? "Đang lập phiếu thu…" : "Nộp tiền — Lập phiếu thu (TT200)"}
             </Button>
           </CardContent>
         </Card>

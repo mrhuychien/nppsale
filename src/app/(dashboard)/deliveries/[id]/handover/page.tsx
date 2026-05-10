@@ -55,7 +55,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ChevronLeft, PackageOpen, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { PackageOpen, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import {
   createAndConfirmHandover,
@@ -522,7 +522,9 @@ export default function DeliveryHandoverPage() {
         if (next === "collect" && entryId) {
           router.push(`/inventory/stock-out/collect/${entryId}`)
         } else {
-          router.push(`/deliveries/${delivery.id}/settle`)
+          // Quay về detail page — user bấm "Nộp tiền — Lập phiếu thu (TT200)"
+          // để chuyển bước cuối.
+          router.push(`/deliveries/${delivery.id}`)
         }
         return
       }
@@ -697,15 +699,16 @@ export default function DeliveryHandoverPage() {
       // Bàn giao xong → close session để bar resume bỏ chip này.
       await closeHandoverSession().catch(() => {})
       // User feedback: handover TRƯỚC collect. Sau khi confirm bàn
-      // giao, redirect tới collect / settle.
+      // giao, redirect tới collect / detail.
       const next = searchParams.get("next")
       const entryId = searchParams.get("entry")
       if (next === "collect" && entryId) {
         // Self-deliver flow.
         router.push(`/inventory/stock-out/collect/${entryId}`)
       } else {
-        // Driver flow → settle page.
-        router.push(`/deliveries/${delivery.id}/settle`)
+        // Driver flow → quay về detail, user bấm "Nộp tiền — Lập phiếu thu
+        // (TT200)" để hoàn tất.
+        router.push(`/deliveries/${delivery.id}`)
       }
     } catch (err) {
       toast({
@@ -733,13 +736,8 @@ export default function DeliveryHandoverPage() {
         title="Nhận bàn giao lại từ tài xế"
         description={`${delivery.route_name || "Chuyến giao"} • Lái xe: ${delivery.driver?.full_name || "—"}`}
         backHref={`/deliveries/${delivery.id}`}
-      >
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/deliveries/${delivery.id}/settle`}>
-            <ChevronLeft className="mr-1.5 h-4 w-4" /> Quyết toán
-          </Link>
-        </Button>
-      </PageHeader>
+      />
+
 
       {/* Summary */}
       <div className="grid gap-3 md:grid-cols-4">

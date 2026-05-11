@@ -338,9 +338,10 @@ export default function CollectPaymentPage() {
       })
       // T-05: workflow done — close session so it falls off the widget.
       await closeSession()
-      // Self-deliver flow đã đổi thứ tự: handover làm TRƯỚC collect.
-      // Sau khi thu tiền xong → tự stamp delivery.settled_at + về
-      // /orders. Không quay lại /handover (đã làm rồi).
+      // Self-deliver flow: handover làm TRƯỚC collect. Sau khi thu
+      // tiền xong → stamp delivery.settled_at + chuyển sang trang
+      // phiếu thu để user xem chi tiết + in TT200 nếu cần. Không
+      // vòng lại /handover (đã làm rồi).
       const { data: linkedDelivery } = await supabase
         .from("deliveries")
         .select("id")
@@ -356,7 +357,7 @@ export default function CollectPaymentPage() {
           })
           .eq("id", deliveryId)
       }
-      router.push("/orders")
+      router.push(`/finance/cash-receipts/${receiptId}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({ title: "Lỗi", description: message, variant: "destructive" })

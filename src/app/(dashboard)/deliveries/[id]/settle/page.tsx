@@ -200,20 +200,20 @@ export default function DeliverySettlePage() {
     html.setAttribute("data-print-mode", "receipt-tt200")
 
     let redirected = false
-    const goOrders = () => {
+    const goReceipt = () => {
       if (redirected) return
       redirected = true
       html.removeAttribute("data-print-mode")
-      router.push("/orders")
+      router.push(`/finance/cash-receipts/${saved.id}`)
     }
     const afterPrint = () => {
       // Chờ thêm 200ms để Chrome ổn định DOM trước khi điều hướng.
-      setTimeout(goOrders, 200)
+      setTimeout(goReceipt, 200)
     }
     window.addEventListener("afterprint", afterPrint, { once: true })
     // Fallback: nếu afterprint không fire (vd Safari) → tự redirect
-    // sau 10s. User vẫn có thể bấm "Về đơn hàng" thủ công sớm hơn.
-    const fallback = setTimeout(goOrders, 10000)
+    // sau 10s. User vẫn có thể bấm "Mở phiếu thu" thủ công sớm hơn.
+    const fallback = setTimeout(goReceipt, 10000)
 
     requestAnimationFrame(() => {
       window.print()
@@ -246,7 +246,6 @@ export default function DeliverySettlePage() {
         router.push("/orders")
         return
       }
-
       // Case 2: có ít nhất 1 đơn delivered → tạo phiếu thu (có thể $0
       // nếu user nhập 0 hết).
 
@@ -381,14 +380,15 @@ export default function DeliverySettlePage() {
 
       if (withPrint) {
         // Set saved + pendingPrint → useEffect bên trên sẽ trigger
-        // window.print() sau khi DOM commit, rồi redirect /orders khi
-        // print dialog đóng (event afterprint).
+        // window.print() sau khi DOM commit, rồi redirect tới phiếu
+        // thu khi print dialog đóng (event afterprint).
         setSaved(savedRow)
         setPendingPrint(true)
       } else {
-        // No print → mark saved (UI flash success) + redirect ngay.
+        // No print → mark saved (UI flash success) + redirect thẳng
+        // tới phiếu thu để user xem chi tiết / in lại TT200.
         setSaved(savedRow)
-        router.push("/orders")
+        router.push(`/finance/cash-receipts/${receiptId}`)
       }
     } catch (err) {
       toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
@@ -594,7 +594,7 @@ export default function DeliverySettlePage() {
                         Đã lập phiếu thu {saved.code} • {formatCurrency(saved.amount)}
                       </p>
                       <p className="text-xs text-emerald-800/80">
-                        Đang chuyển về quản lý đơn hàng…
+                        Đang chuyển sang trang phiếu thu…
                       </p>
                     </div>
                   </div>
@@ -603,8 +603,8 @@ export default function DeliverySettlePage() {
                       <Printer className="h-4 w-4 mr-2" /> In lại TT200
                     </Button>
                     <Button asChild>
-                      <Link href="/orders">
-                        Về đơn hàng <ArrowRight className="h-4 w-4 ml-2" />
+                      <Link href={`/finance/cash-receipts/${saved.id}`}>
+                        Mở phiếu thu <ArrowRight className="h-4 w-4 ml-2" />
                       </Link>
                     </Button>
                   </div>

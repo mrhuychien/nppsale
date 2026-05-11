@@ -327,6 +327,8 @@ export default function StockInPage() {
         org_id: user.org_id,
         entry_code: entryCode,
         type: "import",
+        status: "posted",
+        posted_at: new Date().toISOString(),
         created_by: user.id,
         notes,
       }
@@ -339,13 +341,25 @@ export default function StockInPage() {
         .single()
       if (entryErr) throw entryErr
 
+      // Helper: hệ số quy đổi của dòng từ unit_name → base unit.
+      const lineConversion = (l: { product_id: string; unit_name: string }): { unit: string; conv: number } => {
+        const product = productMap.get(l.product_id)
+        const unit = l.unit_name || product?.base_unit || ""
+        if (!product || unit === product.base_unit) return { unit, conv: 1 }
+        const conv = Number(product.units?.find((u) => u.unit_name === unit)?.conversion ?? 1) || 1
+        return { unit, conv }
+      }
+
       // Create batches in bulk - auto-generate batch_code if empty.
-      // unit_cost defaults to unit_price when the user doesn't override.
+      // Batch lưu theo BASE UNIT (qty_in_base_uom, unit_cost / base unit).
       const batchPayload = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
+        const { conv } = lineConversion(l)
+        const baseQty = qty * conv
         const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
         const expiresAt = l.expires_at || "2099-12-31"
-        const cost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const txCost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const baseCost = conv > 0 ? txCost / conv : txCost
         const lineLocation = l.location.trim() || warehouse.trim() || null
         return {
           org_id: user.org_id,
@@ -354,9 +368,9 @@ export default function StockInPage() {
           manufactured_at: l.manufactured_at || null,
           expires_at: expiresAt,
           location: lineLocation,
-          qty_initial: qty,
-          qty_on_hand: qty,
-          unit_cost: cost,
+          qty_initial: baseQty,
+          qty_on_hand: baseQty,
+          unit_cost: baseCost,
         }
       })
       const { data: insertedBatches, error: batchErr } = await supabase
@@ -365,17 +379,25 @@ export default function StockInPage() {
         .select()
       if (batchErr) throw batchErr
 
-      // Create stock entry lines linked to the new batches (preserve order)
+      // Create stock entry lines linked to the new batches (preserve order).
+      // qty_in_base_uom là NOT NULL (mig 039) — phải truyền đủ các cột split UOM.
       const entryLines = validLines.map((l, idx) => {
         const qty = parseFloat(l.quantity) || 0
-        const cost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const { unit, conv } = lineConversion(l)
+        const baseQty = qty * conv
+        const txCost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const baseCost = conv > 0 ? txCost / conv : txCost
         return {
           entry_id: entry.id,
           product_id: l.product_id,
           batch_id: insertedBatches?.[idx]?.id ?? null,
-          unit_name: l.unit_name || productMap.get(l.product_id)?.base_unit || "",
-          quantity: qty,
-          unit_cost: cost,
+          unit_name: unit,
+          quantity: baseQty,
+          qty_in_base_uom: baseQty,
+          qty_in_transaction_uom: qty,
+          transaction_uom: unit,
+          conversion_factor_snapshot: conv,
+          unit_cost: baseCost,
         }
       })
       const { error: lineErr } = await supabase

@@ -281,6 +281,10 @@ export default function StocktakeAdjustPage() {
           batch_id: r.batchId,
           unit_name: r.baseUnit,
           quantity: r.diff, // signed: negative = shrinkage, positive = surplus
+          qty_in_base_uom: r.diff,
+          qty_in_transaction_uom: r.diff,
+          transaction_uom: r.baseUnit,
+          conversion_factor_snapshot: 1,
           unit_cost: r.batchCost,
           notes: r.notes || null,
         })

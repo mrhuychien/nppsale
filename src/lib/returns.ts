@@ -129,15 +129,22 @@ export async function processApprovedReturn(
     }
 
     // 3. One stock_entry_lines row per return_line for traceability
-    const entryLineRows = lines.map((l) => ({
-      entry_id: entryId,
-      product_id: l.product_id,
-      batch_id: productBatchMap[l.product_id]?.id || null,
-      unit_name: l.unit_name,
-      quantity: Number(l.quantity || 0),
-      unit_cost: productBatchMap[l.product_id]?.unit_cost || 0,
-      notes: "Nhập lại từ đơn trả",
-    }))
+    const entryLineRows = lines.map((l) => {
+      const q = Number(l.quantity || 0)
+      return {
+        entry_id: entryId,
+        product_id: l.product_id,
+        batch_id: productBatchMap[l.product_id]?.id || null,
+        unit_name: l.unit_name,
+        quantity: q,
+        qty_in_base_uom: q,
+        qty_in_transaction_uom: q,
+        transaction_uom: l.unit_name,
+        conversion_factor_snapshot: 1,
+        unit_cost: productBatchMap[l.product_id]?.unit_cost || 0,
+        notes: "Nhập lại từ đơn trả",
+      }
+    })
     if (entryLineRows.length > 0) {
       await supabase.from("stock_entry_lines").insert(entryLineRows)
     }

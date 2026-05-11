@@ -73,11 +73,16 @@ export default function StocktakePage() {
       }
 
       const selectedProduct = products.find((p) => p.id === productId)
+      const signedQty = entryType === "export" ? -qty : qty
       const { error: lineErr } = await supabase.from("stock_entry_lines").insert({
         entry_id: entry.id,
         product_id: productId,
         unit_name: selectedProduct?.base_unit || "",
-        quantity: entryType === "export" ? -qty : qty,
+        quantity: signedQty,
+        qty_in_base_uom: signedQty,
+        qty_in_transaction_uom: signedQty,
+        transaction_uom: selectedProduct?.base_unit || "",
+        conversion_factor_snapshot: 1,
       })
       if (lineErr) throw lineErr
 

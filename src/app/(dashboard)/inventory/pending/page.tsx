@@ -336,6 +336,10 @@ export default function PendingStockPage() {
           batch_id: batchId,
           unit_name: unitName || "",
           quantity: qty,
+          qty_in_base_uom: qty,
+          qty_in_transaction_uom: qty,
+          transaction_uom: unitName || "",
+          conversion_factor_snapshot: 1,
           unit_cost: unitCost,
           notes: "Nhập lại",
         })

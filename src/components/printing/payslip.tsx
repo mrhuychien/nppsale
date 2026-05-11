@@ -20,6 +20,8 @@ export interface PayslipProps {
   standardWorkdays: number
   actualWorkdays: number
   proratedBase: number
+  /** Tổng phụ cấp (xăng xe + điện thoại). */
+  allowances?: number
   kpiBonus: number
   orderCountBonus: number
   activityBonus: number
@@ -34,8 +36,9 @@ export interface PayslipProps {
 }
 
 export function Payslip(p: PayslipProps) {
+  const allowances = p.allowances ?? 0
   const gross =
-    p.proratedBase + p.kpiBonus + p.orderCountBonus + p.activityBonus + p.overtime
+    p.proratedBase + allowances + p.kpiBonus + p.orderCountBonus + p.activityBonus + p.overtime
   const totalDeductions = p.deductions + p.socialInsurance
   return (
     <div className="a5-doc print-page" style={{ width: "148mm", padding: "8mm" }}>
@@ -111,7 +114,7 @@ export function Payslip(p: PayslipProps) {
         <tbody>
           <tr>
             <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-              Lương theo công
+              Lương cơ bản
             </td>
             <td
               style={{
@@ -124,6 +127,23 @@ export function Payslip(p: PayslipProps) {
             </td>
             <td style={{ border: "1px solid #999" }}></td>
           </tr>
+          {allowances > 0 && (
+            <tr>
+              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
+                Phụ cấp (xăng xe + điện thoại)
+              </td>
+              <td
+                style={{
+                  border: "1px solid #999",
+                  padding: "1mm 2mm",
+                  textAlign: "right",
+                }}
+              >
+                {formatCurrency(allowances)}
+              </td>
+              <td style={{ border: "1px solid #999" }}></td>
+            </tr>
+          )}
           {p.kpiBonus > 0 && (
             <tr>
               <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>

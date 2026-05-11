@@ -29,6 +29,8 @@ export interface PayrollRunItem {
   standard_workdays: number
   actual_workdays: number
   prorated_base: number
+  /** Tổng phụ cấp (xăng xe + điện thoại) — mig 064. */
+  allowances?: number
   kpi_bonus: number
   order_count_bonus: number
   activity_bonus: number

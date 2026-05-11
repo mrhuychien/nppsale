@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -20,7 +21,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer } from "lucide-react"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
+import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer, FileText } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { Payslip } from "@/components/printing/payslip"
@@ -37,6 +41,14 @@ interface UserRow {
   id: string
   full_name: string | null
   role: string
+}
+
+interface PayslipOrder {
+  id: string
+  order_code: string
+  order_date: string
+  total: number
+  status: string
 }
 
 function nthOfMonth(d: Date): string {
@@ -63,6 +75,10 @@ export default function PayrollRunsPage() {
   // <Payslip> for it inside the .print-payslip-only block.
   const [payslipFor, setPayslipFor] = useState<string | null>(null)
   const [orgName, setOrgName] = useState<string>("")
+  // Detail dialog state.
+  const [detailItem, setDetailItem] = useState<PayrollRunItem | null>(null)
+  const [detailOrders, setDetailOrders] = useState<PayslipOrder[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
 
   const loadRuns = useCallback(async () => {
     if (!user?.org_id) return
@@ -118,6 +134,7 @@ export default function PayrollRunsPage() {
       (acc, it) => {
         acc.gross +=
           Number(it.prorated_base) +
+          Number(it.allowances || 0) +
           Number(it.kpi_bonus) +
           Number(it.order_count_bonus) +
           Number(it.activity_bonus) +
@@ -130,6 +147,33 @@ export default function PayrollRunsPage() {
       { gross: 0, adjustments: 0, deductions: 0, net: 0 }
     )
   }, [items])
+
+  const openDetail = useCallback(
+    async (item: PayrollRunItem) => {
+      setDetailItem(item)
+      setDetailOrders([])
+      setDetailLoading(true)
+      try {
+        const bd = item.computed_breakdown || {}
+        const ps = (bd.period_start as string) || ""
+        const pe = (bd.period_end as string) || ""
+        if (ps && pe) {
+          const { data } = await supabase
+            .from("sales_orders")
+            .select("id, order_code, order_date, total, status")
+            .eq("sales_user_id", item.user_id)
+            .in("status", ["delivered", "confirmed"])
+            .gte("order_date", ps)
+            .lte("order_date", pe)
+            .order("order_date", { ascending: false })
+          setDetailOrders((data as PayslipOrder[]) || [])
+        }
+      } finally {
+        setDetailLoading(false)
+      }
+    },
+    [supabase]
+  )
 
   const handleCreateOrOpen = async () => {
     if (!user?.org_id) return
@@ -191,18 +235,16 @@ export default function PayrollRunsPage() {
       "STT",
       "Nhân sự",
       "Vai trò",
-      "Công chuẩn",
-      "Công thực",
       "Lương cơ bản",
-      "Theo công",
-      "KPI",
-      "Đơn",
-      "Hoạt động",
+      "Phụ cấp",
+      "Thưởng KPI",
+      "Thưởng số đơn",
+      "Thưởng hoạt động",
       "OT",
-      "Trừ",
+      "Khấu trừ khác",
       "BHXH",
       "Điều chỉnh",
-      "Net",
+      "Thực lĩnh",
       "Ghi chú",
     ]
     const rows: (string | number)[][] = [header]
@@ -212,10 +254,8 @@ export default function PayrollRunsPage() {
         i + 1,
         u?.full_name || "—",
         u?.role || "",
-        Number(it.standard_workdays || 0),
-        Number(it.actual_workdays || 0),
-        Number(it.base_salary || 0),
         Number(it.prorated_base || 0),
+        Number(it.allowances || 0),
         Number(it.kpi_bonus || 0),
         Number(it.order_count_bonus || 0),
         Number(it.activity_bonus || 0),
@@ -228,22 +268,22 @@ export default function PayrollRunsPage() {
       ])
     })
     // Totals row.
+    const sum = (f: (it: PayrollRunItem) => number) =>
+      Number(items.reduce((s, it) => s + f(it), 0).toFixed(0))
     rows.push([
       "",
       "TỔNG CỘNG",
       "",
-      "",
-      "",
-      "",
-      Number(items.reduce((s, it) => s + Number(it.prorated_base || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.kpi_bonus || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.order_count_bonus || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.activity_bonus || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.overtime || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.deductions || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.social_insurance || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.manual_adjustment || 0), 0).toFixed(0)),
-      Number(items.reduce((s, it) => s + Number(it.net_salary || 0), 0).toFixed(0)),
+      sum((it) => Number(it.prorated_base || 0)),
+      sum((it) => Number(it.allowances || 0)),
+      sum((it) => Number(it.kpi_bonus || 0)),
+      sum((it) => Number(it.order_count_bonus || 0)),
+      sum((it) => Number(it.activity_bonus || 0)),
+      sum((it) => Number(it.overtime || 0)),
+      sum((it) => Number(it.deductions || 0)),
+      sum((it) => Number(it.social_insurance || 0)),
+      sum((it) => Number(it.manual_adjustment || 0)),
+      sum((it) => Number(it.net_salary || 0)),
       "",
     ])
     const period = activeRun.month.slice(0, 7)
@@ -439,15 +479,15 @@ export default function PayrollRunsPage() {
                     <thead className="bg-muted/30">
                       <tr className="text-xs uppercase text-muted-foreground">
                         <th className="px-2 py-2 text-left">Nhân sự</th>
-                        <th className="px-2 py-2 text-right">Công CN/TT</th>
-                        <th className="px-2 py-2 text-right">Lương cơ bản (theo công)</th>
+                        <th className="px-2 py-2 text-right">Lương cơ bản</th>
+                        <th className="px-2 py-2 text-right">Phụ cấp</th>
                         <th className="px-2 py-2 text-right">KPI</th>
                         <th className="px-2 py-2 text-right">Đơn</th>
                         <th className="px-2 py-2 text-right">Hoạt động</th>
                         <th className="px-2 py-2 text-right">BHXH</th>
                         <th className="px-2 py-2 text-right">Điều chỉnh</th>
                         <th className="px-2 py-2 text-left">Ghi chú</th>
-                        <th className="px-2 py-2 text-right">Net</th>
+                        <th className="px-2 py-2 text-right">Thực lĩnh</th>
                         <th className="px-2 py-2"></th>
                       </tr>
                     </thead>
@@ -483,11 +523,10 @@ export default function PayrollRunsPage() {
                                 </div>
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums">
-                                {Number(it.actual_workdays).toLocaleString("vi-VN")} /{" "}
-                                {Number(it.standard_workdays).toLocaleString("vi-VN")}
+                                {formatCurrency(it.prorated_base)}
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums">
-                                {formatCurrency(it.prorated_base)}
+                                {formatCurrency(it.allowances || 0)}
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums">
                                 {formatCurrency(it.kpi_bonus)}
@@ -540,6 +579,14 @@ export default function PayrollRunsPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  onClick={() => openDetail(it)}
+                                  title="Chi tiết phiếu lương"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => printPayslipFor(it.id)}
                                   title="In phiếu lương"
                                 >
@@ -560,6 +607,241 @@ export default function PayrollRunsPage() {
       </div>
       </div>{/* /.no-print wrapper */}
 
+      {/* Detail dialog — full breakdown + linked orders */}
+      <Dialog open={!!detailItem} onOpenChange={(o) => { if (!o) setDetailItem(null) }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {detailItem && (() => {
+            const it = detailItem
+            const u = users.get(it.user_id)
+            const bd = (it.computed_breakdown || {}) as Record<string, unknown>
+            const num = (v: unknown) => Number(v || 0)
+            const allowances = num(it.allowances)
+            const gas = num(bd.gas_allowance)
+            const phone = num(bd.phone_allowance)
+            const revenue = num(bd.revenue)
+            const kpiTarget = num(bd.kpi_target_revenue)
+            const kpiPct = bd.kpi_pct != null ? Number(bd.kpi_pct) : null
+            const kpiModel = String(bd.kpi_model || "")
+            const lowPerf = String(bd.low_perf || "normal")
+            const tierBreakdown = (bd.kpi_tier_breakdown as Array<{ min_percent: number; bonus: number; label?: string; passed: boolean }>) || []
+            const ocCount = num(bd.oc_count)
+            const ocMinCount = num(bd.oc_min_count)
+            const ocMinValue = num(bd.oc_min_value)
+            const ocPerOrder = num(bd.oc_bonus_per_order)
+            const overPct = num(bd.over_target_percent)
+            const under60Pct = num(bd.under_60_percent)
+            const grossBeforeAdj = num(it.prorated_base) + allowances + num(it.kpi_bonus) + num(it.order_count_bonus) + num(it.activity_bonus) + num(it.overtime)
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Phiếu lương — {u?.full_name || "—"}</DialogTitle>
+                  <DialogDescription>
+                    {u?.role} • Kỳ {activeRun?.month.slice(0, 7)}
+                    {bd.period_start ? ` (${formatDate(String(bd.period_start))} – ${formatDate(String(bd.period_end))})` : ""}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 text-sm">
+                  {/* Thu nhập */}
+                  <div className="rounded-lg border">
+                    <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                      Các khoản thu nhập
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Lương cơ bản{lowPerf === "under_60" ? " (thay bằng % doanh số)" : ""}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.prorated_base))}</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">
+                            Phụ cấp
+                            <span className="text-[11px] text-muted-foreground"> — xăng xe {formatCurrency(gas)} + điện thoại {formatCurrency(phone)}</span>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(allowances)}</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Thưởng KPI doanh số</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.kpi_bonus))}</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Thưởng theo số đơn</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.order_count_bonus))}</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Thưởng hoạt động</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.activity_bonus))}</td>
+                        </tr>
+                        {num(it.overtime) > 0 && (
+                          <tr className="border-t">
+                            <td className="px-3 py-2">Tăng ca / OT</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.overtime))}</td>
+                          </tr>
+                        )}
+                        <tr className="border-t-2 bg-muted/20 font-semibold">
+                          <td className="px-3 py-2">Tổng thu nhập</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(grossBeforeAdj)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Cách tính thưởng KPI */}
+                  <div className="rounded-lg border">
+                    <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                      Cách tính thưởng KPI doanh số
+                    </div>
+                    <div className="px-3 py-2 space-y-1.5">
+                      <p>
+                        Doanh số trong kỳ: <strong>{formatCurrency(revenue)}</strong>
+                        {kpiTarget > 0 && (
+                          <> / mức chung A = {formatCurrency(kpiTarget)} → đạt <strong>{kpiPct != null ? `${kpiPct}%` : "—"}</strong></>
+                        )}
+                      </p>
+                      {kpiModel === "per_user_tier" && (
+                        <p className="text-muted-foreground text-xs">Áp dụng bậc KPI riêng của nhân viên này.</p>
+                      )}
+                      {lowPerf === "under_60" && (
+                        <p className="text-rose-700 text-xs">
+                          Đạt dưới 60% A → không có lương cơ bản; lương = doanh số × {under60Pct}% = {formatCurrency(num(it.prorated_base))}.
+                        </p>
+                      )}
+                      {lowPerf === "under_70" && (
+                        <p className="text-amber-700 text-xs">
+                          Đạt dưới 70% A → chỉ lương CB + phụ cấp, không thưởng KPI.
+                        </p>
+                      )}
+                      {lowPerf === "over_100" && overPct > 0 && (
+                        <p className="text-emerald-700 text-xs">
+                          Vượt 100% A → thưởng thêm = (doanh số − A) × {overPct}% = {formatCurrency(Math.round((revenue - kpiTarget) * overPct / 100))}.
+                        </p>
+                      )}
+                      {tierBreakdown.length > 0 && (
+                        <table className="w-full text-xs mt-2 border rounded">
+                          <thead className="bg-muted/30">
+                            <tr>
+                              <th className="px-2 py-1 text-left">Bậc</th>
+                              <th className="px-2 py-1 text-right">Cộng thêm</th>
+                              <th className="px-2 py-1 text-center">Đạt?</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tierBreakdown.map((t, i) => (
+                              <tr key={i} className={`border-t ${t.passed ? "" : "text-muted-foreground"}`}>
+                                <td className="px-2 py-1">{t.label || `Đạt ${t.min_percent}%`} {kpiTarget > 0 ? `(≥ ${formatCurrency(Math.round(kpiTarget * t.min_percent / 100))})` : ""}</td>
+                                <td className="px-2 py-1 text-right tabular-nums">+{formatCurrency(t.bonus)}</td>
+                                <td className="px-2 py-1 text-center">{t.passed ? "✓" : "—"}</td>
+                              </tr>
+                            ))}
+                            <tr className="border-t-2 bg-muted/20 font-semibold">
+                              <td className="px-2 py-1">Tổng thưởng KPI</td>
+                              <td className="px-2 py-1 text-right tabular-nums" colSpan={2}>{formatCurrency(num(it.kpi_bonus))}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cách tính thưởng số đơn */}
+                  {(ocCount > 0 || ocMinCount > 0) && (
+                    <div className="rounded-lg border">
+                      <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                        Cách tính thưởng theo số đơn
+                      </div>
+                      <div className="px-3 py-2 text-xs space-y-1">
+                        <p>Đơn đạt ngưỡng ({formatCurrency(ocMinValue)}/đơn): <strong>{ocCount}</strong> đơn (cần tối thiểu {ocMinCount} đơn).</p>
+                        <p>
+                          {ocCount >= ocMinCount
+                            ? <>Thưởng = {ocCount} × {formatCurrency(ocPerOrder)} = <strong>{formatCurrency(num(it.order_count_bonus))}</strong></>
+                            : <span className="text-muted-foreground">Chưa đạt số đơn tối thiểu → không thưởng.</span>}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Khấu trừ */}
+                  <div className="rounded-lg border">
+                    <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                      Khấu trừ & điều chỉnh
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">BHXH/BHYT/BHTN (10,5% lương CB)</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-rose-700">−{formatCurrency(num(it.social_insurance))}</td>
+                        </tr>
+                        {num(it.deductions) > 0 && (
+                          <tr className="border-t">
+                            <td className="px-3 py-2">Khấu trừ khác</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-rose-700">−{formatCurrency(num(it.deductions))}</td>
+                          </tr>
+                        )}
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Điều chỉnh tay {it.notes ? <span className="text-[11px] text-muted-foreground">— {it.notes}</span> : ""}</td>
+                          <td className={`px-3 py-2 text-right tabular-nums ${num(it.manual_adjustment) < 0 ? "text-rose-700" : ""}`}>
+                            {num(it.manual_adjustment) >= 0 ? "+" : ""}{formatCurrency(num(it.manual_adjustment))}
+                          </td>
+                        </tr>
+                        <tr className="border-t-2 bg-primary/5 font-black text-base">
+                          <td className="px-3 py-2">THỰC LĨNH</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-primary">{formatCurrency(num(it.net_salary))}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Đơn hàng tham chiếu */}
+                  <div className="rounded-lg border">
+                    <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground flex items-center justify-between">
+                      <span>Đơn hàng tính lương ({detailOrders.length})</span>
+                      {revenue > 0 && <span className="font-normal normal-case">Tổng {formatCurrency(detailOrders.reduce((s, o) => s + Number(o.total || 0), 0))}</span>}
+                    </div>
+                    {detailLoading ? (
+                      <div className="p-3"><Skeleton className="h-20" /></div>
+                    ) : detailOrders.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-muted-foreground">Không có đơn nào trong kỳ (status delivered / confirmed).</p>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/20 sticky top-0">
+                            <tr>
+                              <th className="px-2 py-1 text-left">Mã đơn</th>
+                              <th className="px-2 py-1 text-left">Ngày</th>
+                              <th className="px-2 py-1 text-left">Trạng thái</th>
+                              <th className="px-2 py-1 text-right">Giá trị</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailOrders.map((o) => (
+                              <tr key={o.id} className="border-t">
+                                <td className="px-2 py-1">
+                                  <Link href={`/orders/${o.id}`} className="font-mono text-primary hover:underline">
+                                    {o.order_code}
+                                  </Link>
+                                </td>
+                                <td className="px-2 py-1">{formatDate(o.order_date)}</td>
+                                <td className="px-2 py-1">{o.status}</td>
+                                <td className="px-2 py-1 text-right tabular-nums">{formatCurrency(Number(o.total || 0))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { if (detailItem) printPayslipFor(detailItem.id) }}>
+                    <Printer className="h-4 w-4 mr-2" /> In phiếu lương
+                  </Button>
+                  <Button onClick={() => setDetailItem(null)}>Đóng</Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Per-user payslip — toggled by data-print-mode='payslip'. */}
       <div className="print-payslip-only">
         {payslipFor && activeRun && (() => {
@@ -576,6 +858,7 @@ export default function PayrollRunsPage() {
               standardWorkdays={Number(it.standard_workdays || 0)}
               actualWorkdays={Number(it.actual_workdays || 0)}
               proratedBase={Number(it.prorated_base || 0)}
+              allowances={Number(it.allowances || 0)}
               kpiBonus={Number(it.kpi_bonus || 0)}
               orderCountBonus={Number(it.order_count_bonus || 0)}
               activityBonus={Number(it.activity_bonus || 0)}

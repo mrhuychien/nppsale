@@ -334,15 +334,13 @@ export default function CollectPaymentPage() {
           totals.leftover > 0
             ? `Đã giao ${rows.length} đơn — còn ${formatCurrency(totals.leftover)} chuyển sang công nợ.`
             : `Đã giao ${rows.length} đơn và thu đủ tiền.`
-        } Tiếp tục bàn giao lại từ lái xe…`,
+        }`,
       })
       // T-05: workflow done — close session so it falls off the widget.
       await closeSession()
-      // User feedback: sau bước thu tiền + in phiếu thu cần chuyển
-      // sang "Nhận bàn giao lại từ lái xe". Tìm delivery đã tạo ở
-      // handleSelfDeliver (mig 056 — source_stock_entry_id) → redirect
-      // tới handover. Nếu không có (legacy entry tạo trước fix) thì
-      // fallback về cash-receipts như cũ.
+      // Self-deliver flow đã đổi thứ tự: handover làm TRƯỚC collect.
+      // Sau khi thu tiền xong → tự stamp delivery.settled_at + về
+      // /orders. Không quay lại /handover (đã làm rồi).
       const { data: linkedDelivery } = await supabase
         .from("deliveries")
         .select("id")
@@ -350,12 +348,15 @@ export default function CollectPaymentPage() {
         .maybeSingle()
       const deliveryId = (linkedDelivery as { id: string } | null)?.id
       if (deliveryId) {
-        router.push(
-          `/deliveries/${deliveryId}/handover?from_receipt=${receiptId}`
-        )
-      } else {
-        router.push(`/finance/cash-receipts/${receiptId}`)
+        await supabase
+          .from("deliveries")
+          .update({
+            settled_at: new Date().toISOString(),
+            settled_amount: totals.collect,
+          })
+          .eq("id", deliveryId)
       }
+      router.push("/orders")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({ title: "Lỗi", description: message, variant: "destructive" })

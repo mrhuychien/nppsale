@@ -510,8 +510,17 @@ export default function DeliveryHandoverPage() {
     try {
       // Trường hợp giao thành công 100% — không có đơn thất bại, không
       // có hàng nhận về, không có hàng đổi dư. Bỏ qua RPC (không cần
-      // tạo handover record) và chuyển thẳng sang bước tiếp theo.
+      // tạo handover record) NHƯNG vẫn phải flip delivery.status =
+      // 'completed' để stage trên /deliveries/[id] hiện đúng "đã giao
+      // hàng" + CTA "Nộp tiền". Tránh state lệch khi user back lại.
       if (hasNothing) {
+        await supabase
+          .from("deliveries")
+          .update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", delivery.id)
         toast({
           title: "Tất cả đơn giao thành công",
           description: "Không có hàng cần nhập lại. Tiếp tục bước nộp tiền…",

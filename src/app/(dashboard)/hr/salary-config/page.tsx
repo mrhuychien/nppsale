@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Save, Plus, Trash2, Loader2 } from "lucide-react"
@@ -187,28 +188,28 @@ export default function SalaryConfigPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <Label>Lương cơ bản</Label>
-              <Input
-                type="number"
+              <MoneyInput
                 value={baseSalary}
-                onChange={(e) => setBaseSalary(Number(e.target.value))}
+                onChange={(v) => setBaseSalary(v)}
+                showSuffix={false}
               />
               <p className="text-xs text-muted-foreground mt-1">{formatCurrency(baseSalary)}</p>
             </div>
             <div>
               <Label>Phụ cấp xăng xe</Label>
-              <Input
-                type="number"
+              <MoneyInput
                 value={gasAllowance}
-                onChange={(e) => setGasAllowance(Number(e.target.value))}
+                onChange={(v) => setGasAllowance(v)}
+                showSuffix={false}
               />
               <p className="text-xs text-muted-foreground mt-1">{formatCurrency(gasAllowance)}</p>
             </div>
             <div>
               <Label>Phụ cấp điện thoại</Label>
-              <Input
-                type="number"
+              <MoneyInput
                 value={phoneAllowance}
-                onChange={(e) => setPhoneAllowance(Number(e.target.value))}
+                onChange={(v) => setPhoneAllowance(v)}
+                showSuffix={false}
               />
               <p className="text-xs text-muted-foreground mt-1">{formatCurrency(phoneAllowance)}</p>
             </div>
@@ -237,11 +238,10 @@ export default function SalaryConfigPage() {
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">
               Mức doanh số chung (A) — VNĐ
             </Label>
-            <Input
-              type="number"
-              min={0}
+            <MoneyInput
               value={kpiTargetRevenue}
-              onChange={(e) => setKpiTargetRevenue(Number(e.target.value) || 0)}
+              onChange={(v) => setKpiTargetRevenue(v)}
+              showSuffix={false}
               className="mt-1 max-w-xs"
             />
             <p className="text-[11px] text-muted-foreground mt-1">
@@ -284,11 +284,10 @@ export default function SalaryConfigPage() {
                     </div>
                     <div className="col-span-3">
                       <Label className="text-xs uppercase text-muted-foreground">Cộng thêm (VNĐ)</Label>
-                      <Input
-                        type="number"
-                        min={0}
+                      <MoneyInput
                         value={tier.bonus}
-                        onChange={(e) => updateTier(idx, "bonus", Number(e.target.value))}
+                        onChange={(v) => updateTier(idx, "bonus", v)}
+                        showSuffix={false}
                       />
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         +{formatCurrency(tier.bonus)}

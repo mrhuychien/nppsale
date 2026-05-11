@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -283,19 +284,19 @@ export default function BonusConfigPage() {
               <div key={idx} className="flex items-end gap-3">
                 <div className="flex-1">
                   <Label>Doanh số tối thiểu (VNĐ)</Label>
-                  <Input
-                    type="number"
+                  <MoneyInput
                     value={tier.min_revenue}
-                    onChange={(e) => updateTier(idx, "min_revenue", Number(e.target.value))}
+                    onChange={(v) => updateTier(idx, "min_revenue", v)}
+                    showSuffix={false}
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(tier.min_revenue)}</p>
                 </div>
                 <div className="flex-1">
                   <Label>Thưởng (VNĐ)</Label>
-                  <Input
-                    type="number"
+                  <MoneyInput
                     value={tier.bonus}
-                    onChange={(e) => updateTier(idx, "bonus", Number(e.target.value))}
+                    onChange={(v) => updateTier(idx, "bonus", v)}
+                    showSuffix={false}
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(tier.bonus)}</p>
                 </div>
@@ -429,14 +430,14 @@ export default function BonusConfigPage() {
                   </div>
                   <div className="col-span-3">
                     <Label className="text-xs uppercase text-muted-foreground">Thưởng / 1 ĐVT</Label>
-                    <Input
-                      type="number"
+                    <MoneyInput
                       value={p.bonus}
-                      onChange={(e) => {
+                      onChange={(v) => {
                         const next = [...perUnit]
-                        next[idx] = { ...p, bonus: Number(e.target.value) || 0 }
+                        next[idx] = { ...p, bonus: v }
                         setPerUnit(next)
                       }}
+                      showSuffix={false}
                     />
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       {formatCurrency(p.bonus)}
@@ -528,15 +529,14 @@ export default function BonusConfigPage() {
                   <Label className="text-xs uppercase text-muted-foreground">
                     Giá trị tối thiểu mỗi đơn
                   </Label>
-                  <Input
-                    type="number"
-                    min={0}
+                  <MoneyInput
                     value={t.min_order_value ?? 0}
-                    onChange={(e) => {
+                    onChange={(v) => {
                       const next = [...milestoneTiers]
-                      next[idx] = { ...t, min_order_value: Number(e.target.value) || 0 }
+                      next[idx] = { ...t, min_order_value: v }
                       setMilestoneTiers(next)
                     }}
+                    showSuffix={false}
                   />
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {formatCurrency(Number(t.min_order_value || 0))}
@@ -546,15 +546,14 @@ export default function BonusConfigPage() {
                   <Label className="text-xs uppercase text-muted-foreground">
                     Giá trị thưởng mỗi đơn
                   </Label>
-                  <Input
-                    type="number"
-                    min={0}
+                  <MoneyInput
                     value={t.bonus}
-                    onChange={(e) => {
+                    onChange={(v) => {
                       const next = [...milestoneTiers]
-                      next[idx] = { ...t, bonus: Number(e.target.value) || 0 }
+                      next[idx] = { ...t, bonus: v }
                       setMilestoneTiers(next)
                     }}
+                    showSuffix={false}
                   />
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {formatCurrency(t.bonus)}
@@ -658,16 +657,16 @@ export default function BonusConfigPage() {
                     </div>
                     <div className="col-span-5">
                       <Label className="text-[10px]">Thưởng</Label>
-                      <Input
-                        type="number"
+                      <MoneyInput
                         value={t.bonus}
-                        onChange={(e) => {
+                        onChange={(v) => {
                           const next = [...kpiMetrics]
                           const tiers = [...m.tiers]
-                          tiers[ti] = { ...t, bonus: Number(e.target.value) || 0 }
+                          tiers[ti] = { ...t, bonus: v }
                           next[mi] = { ...m, tiers }
                           setKpiMetrics(next)
                         }}
+                        showSuffix={false}
                       />
                     </div>
                     <div className="col-span-2">

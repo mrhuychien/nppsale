@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -363,11 +364,10 @@ export default function UserSalaryPage() {
               <Label className="text-xs uppercase text-muted-foreground">
                 Doanh số tối thiểu
               </Label>
-              <Input
-                type="number"
-                min={0}
+              <MoneyInput
                 value={newTier.min_revenue}
-                onChange={(e) => setNewTier({ ...newTier, min_revenue: e.target.value })}
+                onChange={(v) => setNewTier({ ...newTier, min_revenue: String(v) })}
+                showSuffix={false}
               />
             </div>
             <div>
@@ -387,11 +387,10 @@ export default function UserSalaryPage() {
             </div>
             <div>
               <Label className="text-xs uppercase text-muted-foreground">Giá trị</Label>
-              <Input
-                type="number"
-                min={0}
+              <MoneyInput
                 value={newTier.bonus_value}
-                onChange={(e) => setNewTier({ ...newTier, bonus_value: e.target.value })}
+                onChange={(v) => setNewTier({ ...newTier, bonus_value: String(v) })}
+                showSuffix={false}
               />
             </div>
             <Button onClick={addTier} disabled={busy}>
@@ -492,24 +491,22 @@ export default function UserSalaryPage() {
               <Label className="text-xs uppercase text-muted-foreground">
                 Min giá trị / đơn
               </Label>
-              <Input
-                type="number"
-                min={0}
+              <MoneyInput
                 value={newOc.min_order_value}
-                onChange={(e) =>
-                  setNewOc({ ...newOc, min_order_value: e.target.value })
+                onChange={(v) =>
+                  setNewOc({ ...newOc, min_order_value: String(v) })
                 }
+                showSuffix={false}
               />
             </div>
             <div>
               <Label className="text-xs uppercase text-muted-foreground">Bonus / đơn</Label>
-              <Input
-                type="number"
-                min={0}
+              <MoneyInput
                 value={newOc.bonus_per_order}
-                onChange={(e) =>
-                  setNewOc({ ...newOc, bonus_per_order: e.target.value })
+                onChange={(v) =>
+                  setNewOc({ ...newOc, bonus_per_order: String(v) })
                 }
+                showSuffix={false}
               />
             </div>
             <div>
@@ -600,11 +597,10 @@ export default function UserSalaryPage() {
               <Label className="text-xs uppercase text-muted-foreground">
                 Số tiền (tháng {activityMonth.slice(0, 7)})
               </Label>
-              <Input
-                type="number"
-                min={0}
+              <MoneyInput
                 value={newActivity.amount}
-                onChange={(e) => setNewActivity({ ...newActivity, amount: e.target.value })}
+                onChange={(v) => setNewActivity({ ...newActivity, amount: String(v) })}
+                showSuffix={false}
               />
             </div>
             <div>

@@ -54,8 +54,7 @@ export const FEATURES: FeatureDef[] = [
   { key: "returns", label: "Trả hàng", module: "returns", group: "Vận hành" },
 
   // Mua hàng
-  { key: "purchasing.orders", label: "Đơn mua hàng", module: "inventory", group: "Mua hàng", inherits: true },
-  { key: "purchasing.invoices", label: "Hóa đơn mua hàng", module: "inventory", group: "Mua hàng", inherits: true },
+  { key: "purchasing.invoices", label: "Hoá đơn mua hàng (tra cứu)", module: "inventory", group: "Mua hàng", inherits: true },
   { key: "suppliers", label: "Nhà cung cấp", module: "inventory", group: "Mua hàng", inherits: true },
   { key: "payables", label: "Công nợ NCC", module: "receivables", group: "Mua hàng", inherits: true },
 

@@ -49,10 +49,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Mua hàng",
     icon: ClipboardList,
     items: [
-      { label: "Đơn mua hàng", href: "/purchasing/orders", icon: ShoppingCart, module: "inventory", feature: "purchasing.orders" },
-      { label: "HĐ mua hàng", href: "/purchasing/invoices", icon: FileText, module: "inventory", feature: "purchasing.invoices" },
+      { label: "Tạo phiếu nhập kho", href: "/inventory/stock-in", icon: ShoppingCart, module: "inventory", feature: "inventory" },
+      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText, module: "inventory", feature: "purchasing.invoices" },
       { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory", feature: "suppliers" },
-      { label: "CN nhà cung cấp", href: "/payables", icon: CreditCard, module: "receivables", feature: "payables" },
+      { label: "Công nợ NCC", href: "/payables", icon: CreditCard, module: "receivables", feature: "payables" },
     ],
   },
   {

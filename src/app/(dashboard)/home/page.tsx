@@ -28,7 +28,6 @@ import {
   LogOut,
   Search,
   Navigation,
-  ClipboardList,
   PieChart,
   FilePlus2,
   MapPin,
@@ -101,8 +100,7 @@ const TILES: Tile[] = [
   { label: "Trả hàng", href: "/returns", icon: RotateCcw, color: "rose", module: "returns" },
 
   // Mua hàng
-  { label: "Đơn mua hàng", href: "/purchasing/orders", icon: ClipboardList, color: "purple", module: "inventory" },
-  { label: "Hóa đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple", module: "inventory" },
+  { label: "Hoá đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple", module: "inventory" },
   { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "slate", module: "inventory" },
 
   // Kế toán & Tài chính

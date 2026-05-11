@@ -383,8 +383,30 @@ export default function StockInPage() {
         .insert(entryLines)
       if (lineErr) throw lineErr
 
-      toast({ title: `Đã tạo phiếu nhập ${entryCode}` })
-      router.push("/inventory")
+      // Có NCC → ghi công nợ NCC (hoá đơn mua hàng) bằng tổng tiền nhập.
+      let payableCreated = false
+      if (supplierId && summary.total > 0) {
+        const { error: payErr } = await supabase.from("payables").insert({
+          org_id: user.org_id,
+          supplier_id: supplierId,
+          stock_entry_id: entry.id,
+          invoice_number: invoiceNo.trim() || null,
+          amount: summary.total,
+          paid: 0,
+          status: "open",
+          notes: `Nhập kho ${entryCode}`,
+        })
+        if (!payErr) payableCreated = true
+        else console.warn("[stock-in] không tạo được công nợ NCC:", payErr)
+      }
+
+      toast({
+        title: `Đã tạo phiếu nhập ${entryCode}`,
+        description: payableCreated
+          ? `Đã ghi công nợ NCC ${formatCurrency(summary.total)}.`
+          : "Tồn kho đã được cập nhật.",
+      })
+      router.push(`/inventory/entries/${entry.id}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({ title: "Lỗi", description: message, variant: "destructive" })
@@ -488,6 +510,12 @@ export default function StockInPage() {
                         placeholder="Nhập tên nhà cung cấp tự do"
                         className="mt-2"
                       />
+                    )}
+                    {supplierId && (
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Khi lưu, hệ thống sẽ ghi <strong>công nợ NCC</strong> bằng tổng tiền nhập
+                        ({formatCurrency(summary.total)}) — xem ở mục Hoá đơn mua hàng / Công nợ NCC.
+                      </p>
                     )}
                   </>
                 ) : (

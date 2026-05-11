@@ -11,19 +11,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
-import {
-  Factory,
-  FileText,
-  CreditCard,
-  ArrowRight,
-  Plus,
-  ShoppingCart,
-} from "lucide-react"
+import { Factory, FileText, CreditCard, ArrowRight, Plus, PackagePlus } from "lucide-react"
 
 export default function PurchasingHubPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const { user } = useAuth()
-  const [stats, setStats] = useState({ draftInvoices: 0, monthTotal: 0, openPayables: 0 })
+  const [stats, setStats] = useState({ importsThisMonth: 0, monthTotal: 0, openPayables: 0 })
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -32,34 +25,22 @@ export default function PurchasingHubPage() {
   useEffect(() => {
     async function fetch() {
       const now = new Date()
-      const firstDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
-
-      const [draftRes, monthRes, payRes] = await Promise.all([
+      const firstDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00`
+      const [impRes, payRes, monthPayRes] = await Promise.all([
         supabase
-          .from("purchase_invoices")
+          .from("stock_entries")
           .select("id", { count: "exact", head: true })
-          .eq("status", "draft"),
-        supabase
-          .from("purchase_invoices")
-          .select("total")
-          .gte("invoice_date", firstDay)
-          .eq("status", "completed"),
-        supabase
-          .from("payables")
-          .select("amount, paid")
-          .neq("status", "paid"),
+          .eq("type", "import")
+          .gte("created_at", firstDay),
+        supabase.from("payables").select("amount, paid").neq("status", "paid"),
+        supabase.from("payables").select("amount").gte("created_at", firstDay).not("stock_entry_id", "is", null),
       ])
-
-      const monthTotal = ((monthRes.data as Array<{ total: number }>) || []).reduce(
-        (s, r) => s + Number(r.total || 0),
-        0
-      )
       const openPayables = ((payRes.data as Array<{ amount: number; paid: number }>) || []).reduce(
         (s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)),
         0
       )
-
-      setStats({ draftInvoices: draftRes.count || 0, monthTotal, openPayables })
+      const monthTotal = ((monthPayRes.data as Array<{ amount: number }>) || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+      setStats({ importsThisMonth: impRes.count || 0, monthTotal, openPayables })
       setLoading(false)
     }
     fetch()
@@ -68,38 +49,10 @@ export default function PurchasingHubPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const cards = [
-    {
-      title: "Hoá đơn nhập hàng",
-      description: "Tạo, sửa, hoàn thành hoá đơn nhập từ nhà cung cấp",
-      href: "/purchasing/invoices",
-      icon: FileText,
-      color: "text-amber-600",
-      bg: "bg-amber-50",
-    },
-    {
-      title: "Nhà cung cấp",
-      description: "Danh sách và thông tin nhà cung cấp",
-      href: "/suppliers",
-      icon: Factory,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-    },
-    {
-      title: "Công nợ NCC",
-      description: "Theo dõi & thanh toán công nợ phải trả",
-      href: "/payables",
-      icon: CreditCard,
-      color: "text-rose-600",
-      bg: "bg-rose-50",
-    },
-    {
-      title: "Đơn mua hàng (PO)",
-      description: "Đặt hàng NCC trước khi nhận (tuỳ chọn)",
-      href: "/purchasing/orders",
-      icon: ShoppingCart,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
+    { title: "Tạo phiếu nhập kho", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/inventory/stock-in", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
+    { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
+    { title: "Nhà cung cấp", description: "Danh sách và thông tin nhà cung cấp", href: "/suppliers", icon: Factory, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { title: "Công nợ NCC", description: "Theo dõi & thanh toán công nợ phải trả", href: "/payables", icon: CreditCard, color: "text-rose-600", bg: "bg-rose-50" },
   ]
 
   return (
@@ -107,35 +60,31 @@ export default function PurchasingHubPage() {
       <PageHeader title="Mua hàng" description="Nhập hàng từ nhà cung cấp & quản lý công nợ">
         {canCreate && (
           <Button asChild>
-            <Link href="/purchasing/invoices/new">
-              <Plus className="h-4 w-4 mr-1.5" /> Tạo hoá đơn nhập
-            </Link>
+            <Link href="/inventory/stock-in"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập kho</Link>
           </Button>
         )}
       </PageHeader>
 
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
+        <strong>Quy trình mua hàng:</strong> Vào Kho → Tạo phiếu nhập kho → Lưu xong: tồn kho tăng + ghi công nợ NCC. Xong.
+      </div>
+
       {/* Quick stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Link href="/purchasing/invoices?status=draft" className="block">
-          <Card className="rounded-2xl shadow-ambient transition-colors hover:bg-muted/30 h-full">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                <FileText className="h-6 w-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hoá đơn nháp</p>
-                {loading ? <Skeleton className="h-7 w-16 mt-1" /> : <p className="text-2xl font-black">{stats.draftInvoices}</p>}
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
         <Card className="rounded-2xl shadow-ambient">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <ShoppingCart className="h-6 w-6 text-primary" />
+            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><PackagePlus className="h-6 w-6 text-primary" /></div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Phiếu nhập tháng này</p>
+              {loading ? <Skeleton className="h-7 w-16 mt-1" /> : <p className="text-2xl font-black">{stats.importsThisMonth}</p>}
             </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl shadow-ambient">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0"><FileText className="h-6 w-6 text-amber-600" /></div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nhập hàng tháng này</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Giá trị nhập tháng này</p>
               {loading ? <Skeleton className="h-7 w-32 mt-1" /> : <p className="text-2xl font-black truncate">{formatCurrency(stats.monthTotal)}</p>}
             </div>
           </CardContent>
@@ -143,9 +92,7 @@ export default function PurchasingHubPage() {
         <Link href="/payables" className="block">
           <Card className="rounded-2xl shadow-ambient transition-colors hover:bg-muted/30 h-full">
             <CardContent className="p-5 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
-                <CreditCard className="h-6 w-6 text-rose-600" />
-              </div>
+              <div className="h-12 w-12 rounded-xl bg-rose-50 flex items-center justify-center shrink-0"><CreditCard className="h-6 w-6 text-rose-600" /></div>
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Công nợ NCC</p>
                 {loading ? <Skeleton className="h-7 w-32 mt-1" /> : <p className="text-2xl font-black truncate text-rose-700">{formatCurrency(stats.openPayables)}</p>}
@@ -155,7 +102,7 @@ export default function PurchasingHubPage() {
         </Link>
       </div>
 
-      {/* Navigation cards */}
+      {/* Nav cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => {
           const Icon = card.icon
@@ -163,16 +110,12 @@ export default function PurchasingHubPage() {
             <Link key={card.href} href={card.href}>
               <Card className="rounded-2xl shadow-ambient transition-all hover:shadow-ambient-md hover:scale-[1.01] cursor-pointer h-full">
                 <CardContent className="p-5 flex flex-col gap-4">
-                  <div className={`h-11 w-11 rounded-xl ${card.bg} flex items-center justify-center`}>
-                    <Icon className={`h-5 w-5 ${card.color}`} />
-                  </div>
+                  <div className={`h-11 w-11 rounded-xl ${card.bg} flex items-center justify-center`}><Icon className={`h-5 w-5 ${card.color}`} /></div>
                   <div className="flex-1">
                     <h3 className="font-bold text-sm mb-1">{card.title}</h3>
                     <p className="text-xs text-muted-foreground leading-relaxed">{card.description}</p>
                   </div>
-                  <div className="flex items-center gap-1 text-xs font-semibold text-primary">
-                    Mở <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
+                  <div className="flex items-center gap-1 text-xs font-semibold text-primary">Mở <ArrowRight className="h-3.5 w-3.5" /></div>
                 </CardContent>
               </Card>
             </Link>

@@ -1658,7 +1658,7 @@ export function OrderForm() {
                     className="flex-1 bg-white/20 hover:bg-white/30 text-white border-0 font-bold"
                     onClick={() => router.back()}
                   >
-                    Lưu nháp
+                    Huỷ
                   </Button>
                   <Button
                     type="submit"

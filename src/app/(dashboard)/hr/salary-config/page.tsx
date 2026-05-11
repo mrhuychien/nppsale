@@ -331,39 +331,50 @@ export default function SalaryConfigPage() {
         </CardContent>
       </Card>
 
-      {/* Under-performance Rules */}
+      {/* Under-performance Rules — đều quy chiếu theo mức doanh số chung A */}
       <Card>
         <CardHeader>
-          <CardTitle>Quy tắc hiệu suất thấp</CardTitle>
+          <CardTitle>Quy tắc theo mức doanh số chung (A)</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Các ngưỡng dưới đây so với cùng <strong>A = {formatCurrency(kpiTargetRevenue)}</strong>{" "}
+            đã đặt ở mục Mức thưởng KPI.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label>% thưởng vượt chỉ tiêu (trên 100%)</Label>
+              <Label>% thưởng vượt A (doanh số &gt; 100% A)</Label>
               <Input
                 type="number"
+                min={0}
                 value={overTargetPercent}
                 onChange={(e) => setOverTargetPercent(Number(e.target.value))}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                (Doanh số vượt - Chỉ tiêu) x {overTargetPercent}%
+                Thưởng thêm = (Doanh số − A) × {overTargetPercent}%
+                {kpiTargetRevenue > 0 ? ` — A = ${formatCurrency(kpiTargetRevenue)}` : ""}
               </p>
             </div>
             <div>
-              <Label>Quy tắc dưới 70% KPI</Label>
+              <Label>Quy tắc khi đạt dưới 70% A</Label>
               <Input value={under70Rule} onChange={(e) => setUnder70Rule(e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">Chỉ nhận lương CB + phụ cấp</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Chỉ nhận lương CB + phụ cấp (không có thưởng KPI)
+                {kpiTargetRevenue > 0 ? ` — dưới ${formatCurrency(Math.round(kpiTargetRevenue * 0.7))}` : ""}
+              </p>
             </div>
           </div>
           <div>
-            <Label>% doanh số khi dưới 60% KPI</Label>
+            <Label>% doanh số khi đạt dưới 60% A</Label>
             <Input
               type="number"
+              min={0}
               value={under60Percent}
               onChange={(e) => setUnder60Percent(Number(e.target.value))}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Doanh số x {under60Percent}% (không có lương cơ bản)
+              Lương = Doanh số × {under60Percent}% (không có lương cơ bản, không thưởng)
+              {kpiTargetRevenue > 0 ? ` — dưới ${formatCurrency(Math.round(kpiTargetRevenue * 0.6))}` : ""}
             </p>
           </div>
         </CardContent>

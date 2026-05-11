@@ -318,23 +318,23 @@ export default function DashboardPage() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
         {/* Revenue */}
-        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-primary">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-sm font-semibold text-muted-foreground">
+        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-primary">
+          <div className="flex justify-between items-start mb-3 sm:mb-4">
+            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
               {isSales ? "Doanh số của tôi" : "Doanh thu"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần" : period === "quarter" ? "quý" : "tháng"})
             </p>
-            <span className="text-primary bg-primary/10 p-2 rounded-lg inline-flex">
-              <Wallet className="h-5 w-5" />
+            <span className="text-primary bg-primary/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
+              <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
           </div>
-          <div className="flex items-end gap-3 mb-4">
-            <h3 className="text-2xl xl:text-2xl font-bold text-foreground tracking-tight">
+          <div className="flex items-end gap-3 mb-3 sm:mb-4">
+            <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(stats.monthRevenue)}
             </h3>
           </div>
-          <div className="h-12 w-full flex items-end gap-1">
+          <div className="hidden sm:flex h-12 w-full items-end gap-1">
             <div className="flex-1 bg-primary/10 h-6 rounded-t-sm" />
             <div className="flex-1 bg-primary/20 h-8 rounded-t-sm" />
             <div className="flex-1 bg-primary/30 h-10 rounded-t-sm" />
@@ -346,57 +346,57 @@ export default function DashboardPage() {
         </div>
 
         {/* Today's Orders */}
-        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-secondary">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-sm font-semibold text-muted-foreground">
+        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-secondary">
+          <div className="flex justify-between items-start mb-3 sm:mb-4">
+            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
               {isSales ? "Đơn tôi tạo" : "Đơn hàng"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"})
             </p>
-            <span className="text-secondary bg-secondary/10 p-2 rounded-lg inline-flex">
-              <ShoppingBasket className="h-5 w-5" />
+            <span className="text-secondary bg-secondary/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
+              <ShoppingBasket className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
           </div>
-          <h3 className="text-2xl font-bold text-foreground tracking-tight">
+          <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
             {stats.todayOrders}
           </h3>
-          <p className="text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
-            <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
+            <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shrink-0" />
             Đơn mới trong ngày
           </p>
         </div>
 
         {/* Overdue Receivables */}
-        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-destructive">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-sm font-semibold text-muted-foreground">
+        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-destructive">
+          <div className="flex justify-between items-start mb-3 sm:mb-4">
+            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
               {isSales ? "Công nợ KH của tôi" : "Công nợ mở"}
             </p>
-            <span className="text-destructive bg-destructive/10 p-2 rounded-lg inline-flex">
-              <AlertTriangle className="h-5 w-5" />
+            <span className="text-destructive bg-destructive/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
           </div>
-          <h3 className="text-2xl xl:text-2xl font-bold text-destructive tracking-tight">
+          <h3 className="text-lg sm:text-2xl font-bold text-destructive tracking-tight">
             {formatCurrency(stats.openReceivables)}
           </h3>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">
+          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium">
             {stats.overdueCount} khoản quá hạn
           </p>
         </div>
 
         {/* Inventory Alert */}
-        <div className="bg-card rounded-2xl shadow-sm p-6 border-l-4 border-amber-500">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-sm font-semibold text-muted-foreground">
+        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-amber-500">
+          <div className="flex justify-between items-start mb-3 sm:mb-4">
+            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
               Tồn kho cảnh báo
             </p>
-            <span className="text-amber-600 bg-amber-100 p-2 rounded-lg inline-flex">
-              <Warehouse className="h-5 w-5" />
+            <span className="text-amber-600 bg-amber-100 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
+              <Warehouse className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
           </div>
-          <h3 className="text-2xl font-bold text-foreground tracking-tight">
+          <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
             {stats.lowStockCount} SKU
           </h3>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">
-            Cần nhập hàng ngay lập tức
+          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium">
+            Cần nhập hàng ngay
           </p>
         </div>
       </div>

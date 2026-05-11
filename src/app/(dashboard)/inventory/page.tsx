@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
@@ -34,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { StockBalanceTable } from "@/components/inventory/stock-balance-table"
 import {
   Activity,
@@ -49,9 +47,8 @@ import {
   Clock,
   Wallet,
   Eye,
-  Plus,
 } from "lucide-react"
-import type { Batch, Product, StockEntry } from "@/types"
+import type { Batch, Product } from "@/types"
 
 type BatchWithProduct = Batch & { product?: Product; avg_price?: number | null }
 
@@ -73,16 +70,14 @@ function getBatchExpiryState(
 export default function InventoryPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
   const [batches, setBatches] = useState<BatchWithProduct[]>([])
-  const [entries, setEntries] = useState<StockEntry[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState("fefo")
+  const [tab, setTab] = useState("current")
   const [search, setSearch] = useState("")
   const [brandFilter, setBrandFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [now, setNow] = useState<Date>(new Date())
   const supabase = createClient()
-  const router = useRouter()
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000)
@@ -91,7 +86,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     async function fetchAll() {
-      const [batchesRes, entriesRes, pendingRes] = await Promise.all([
+      const [batchesRes, pendingRes] = await Promise.all([
         supabase
           .from("batches")
           .select("*, product:products(*)")
@@ -99,15 +94,10 @@ export default function InventoryPage() {
           .order("expires_at"),
         supabase
           .from("stock_entries")
-          .select("*, creator:users!stock_entries_created_by_fkey(*)")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("stock_entries")
           .select("id", { count: "exact", head: true })
           .eq("status", "draft"),
       ])
       setBatches((batchesRes.data as BatchWithProduct[]) || [])
-      setEntries((entriesRes.data as StockEntry[]) || [])
       setPendingCount(pendingRes.count ?? 0)
       setLoading(false)
     }
@@ -166,11 +156,6 @@ export default function InventoryPage() {
 
   // T-09: legacy single-column summary replaced by StockBalanceTable
   // (split by zone + drill-down). Keep computation removed.
-
-  const stocktakeEntries = useMemo(
-    () => entries.filter((e) => e.type === "stocktake"),
-    [entries]
-  )
 
   const timeLabel = now.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
@@ -246,13 +231,77 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* Thống kê tồn kho — luôn hiển thị (mọi tab) */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Sắp hết hạn
+                </div>
+                <div className="mt-2 text-2xl font-bold text-destructive">
+                  {stats.expiringSoon}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Lô có HSD &lt; 30 ngày
+                </div>
+              </div>
+              <div className="rounded-xl bg-destructive/10 p-3 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="pt-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Cần đẩy hàng
+                </div>
+                <div className="mt-2 text-2xl font-bold text-primary">
+                  {stats.needsPush}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  HSD còn &lt; 1/3 tuổi thọ
+                </div>
+              </div>
+              <div className="rounded-xl bg-primary/10 p-3 text-primary">
+                <Clock className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-green-500">
+          <CardContent className="pt-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tổng giá trị tồn kho
+                </div>
+                <div className="mt-2 text-xl font-bold text-green-700">
+                  {formatCurrency(stats.totalValue)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Tính theo giá vốn trung bình
+                </div>
+              </div>
+              <div className="rounded-xl bg-green-100 p-3 text-green-700">
+                <Wallet className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <div className="sticky top-0 z-10 -mx-2 bg-background/80 px-2 py-2 backdrop-blur">
           <TabsList className="w-full overflow-x-auto justify-start gap-1 h-auto flex-wrap">
             <TabsTrigger value="current">Tồn kho hiện tại</TabsTrigger>
             <TabsTrigger value="fefo">Theo lô hàng (FEFO)</TabsTrigger>
-            <TabsTrigger value="entries">Phiếu kho</TabsTrigger>
-            <TabsTrigger value="stocktake">Kiểm kê</TabsTrigger>
           </TabsList>
         </div>
 
@@ -261,73 +310,8 @@ export default function InventoryPage() {
           <StockBalanceTable />
         </TabsContent>
 
-        {/* Tab 2: FEFO batches (default) */}
+        {/* Tab 2: FEFO batches */}
         <TabsContent value="fefo" className="mt-4 space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card className="border-l-4 border-l-destructive">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Sắp hết hạn
-                    </div>
-                    <div className="mt-2 text-2xl font-bold text-destructive">
-                      {stats.expiringSoon}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Lô có HSD &lt; 30 ngày
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-destructive/10 p-3 text-destructive">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-primary">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Cần đẩy hàng
-                    </div>
-                    <div className="mt-2 text-2xl font-bold text-primary">
-                      {stats.needsPush}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      HSD còn &lt; 1/3 tuổi thọ
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-primary/10 p-3 text-primary">
-                    <Clock className="h-5 w-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-green-500">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Tổng giá trị tồn kho
-                    </div>
-                    <div className="mt-2 text-xl font-bold text-green-700">
-                      {formatCurrency(stats.totalValue)}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Tính theo giá vốn trung bình
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-green-100 p-3 text-green-700">
-                    <Wallet className="h-5 w-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
           <Card>
             <CardContent className="p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -497,133 +481,6 @@ export default function InventoryPage() {
           </Card>
         </TabsContent>
 
-        {/* Tab 3: stock entries */}
-        <TabsContent value="entries" className="mt-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {entries.length} phiếu gần nhất
-            </div>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/inventory/entries">
-                <ClipboardList className="mr-2 h-4 w-4" /> Xem tất cả phiếu
-              </Link>
-            </Button>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="p-6">
-                  <Skeleton className="h-48" />
-                </div>
-              ) : entries.length === 0 ? (
-                <EmptyState
-                  icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
-                  title="Chưa có phiếu kho"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã phiếu</TableHead>
-                      <TableHead>Loại</TableHead>
-                      <TableHead>Người tạo</TableHead>
-                      <TableHead>Ghi chú</TableHead>
-                      <TableHead>Ngày</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map((e) => {
-                      const t = STOCK_ENTRY_TYPES.find((x) => x.value === e.type)
-                      const variant: "success" | "warning" | "default" | "secondary" =
-                        e.type === "import"
-                          ? "success"
-                          : e.type === "export"
-                            ? "warning"
-                            : e.type === "transfer"
-                              ? "default"
-                              : "secondary"
-                      return (
-                        <TableRow
-                          key={e.id}
-                          className="cursor-pointer hover:bg-muted/30"
-                          onClick={() => router.push(`/inventory/entries/${e.id}`)}
-                        >
-                          <TableCell className="font-mono text-sm font-bold text-primary">
-                            {e.entry_code}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={variant}>{t?.label || e.type}</Badge>
-                          </TableCell>
-                          <TableCell>{e.creator?.full_name || "—"}</TableCell>
-                          <TableCell className="text-muted-foreground max-w-xs truncate">
-                            {e.notes || "—"}
-                          </TableCell>
-                          <TableCell>{formatDate(e.created_at)}</TableCell>
-                          <TableCell>
-                            <Eye className="h-4 w-4 text-muted-foreground" />
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 4: stocktake */}
-        <TabsContent value="stocktake" className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {stocktakeEntries.length} phiếu kiểm kê
-            </div>
-            <Button onClick={() => router.push("/inventory/stocktake")}>
-              <Plus className="mr-2 h-4 w-4" /> Tạo phiếu kiểm kê
-            </Button>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="p-6">
-                  <Skeleton className="h-48" />
-                </div>
-              ) : stocktakeEntries.length === 0 ? (
-                <EmptyState
-                  icon={<ClipboardCheck className="h-8 w-8 text-muted-foreground" />}
-                  title="Chưa có phiếu kiểm kê"
-                  description="Tạo phiếu kiểm kê để điều chỉnh tồn kho thực tế"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã phiếu</TableHead>
-                      <TableHead>Người tạo</TableHead>
-                      <TableHead>Ghi chú</TableHead>
-                      <TableHead>Ngày</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stocktakeEntries.map((e) => (
-                      <TableRow key={e.id}>
-                        <TableCell className="font-mono text-sm">
-                          {e.entry_code}
-                        </TableCell>
-                        <TableCell>{e.creator?.full_name || "—"}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {e.notes || "—"}
-                        </TableCell>
-                        <TableCell>{formatDate(e.created_at)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   )

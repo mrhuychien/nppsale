@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Printer, Download, FileSpreadsheet, ChevronDown, X } from "lucide-react"
+import { Printer, Download, FileSpreadsheet, ChevronDown, X, SlidersHorizontal } from "lucide-react"
 import { DateRangePicker } from "./date-range-picker"
 import {
   type DateRange,
@@ -47,24 +47,34 @@ export function ReportShell<T extends string>({
   branchName,
   extraOptions,
 }: ReportShellProps<T>) {
+  // On mobile the filter panel is collapsed by default so the report
+  // data is visible immediately. Tapping "Bộ lọc" expands it.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between print:hidden">
-        <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+      <div className="flex items-center justify-between gap-2 print:hidden">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">{title}</h1>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            className="flex h-9 items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 text-sm font-semibold hover:bg-muted/30 lg:hidden"
+          >
+            <SlidersHorizontal className="h-4 w-4" /> Bộ lọc
+          </button>
           <button
             type="button"
             onClick={() => typeof window !== "undefined" && window.print()}
             className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:brightness-110"
           >
-            <Printer className="h-4 w-4" /> In báo cáo
+            <Printer className="h-4 w-4" /> <span className="hidden sm:inline">In báo cáo</span>
           </button>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[260px_1fr] print:block">
-        {/* Left filter panel */}
-        <aside className="space-y-4 print:hidden">
+        {/* Left filter panel — collapsed on mobile unless toggled */}
+        <aside className={cn("space-y-4 print:hidden", filtersOpen ? "block" : "hidden lg:block")}>
           {onExportCsv ? (
             <button
               type="button"

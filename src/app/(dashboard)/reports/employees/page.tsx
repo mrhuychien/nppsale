@@ -926,7 +926,7 @@ export default function EmployeesReportPage() {
             />
           }
           expandable={(r) => (
-            <div className="rounded-md border border-border/40 bg-background/60">
+            <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-emerald-100/60">
@@ -1024,7 +1024,7 @@ export default function EmployeesReportPage() {
                 </p>
               ) : (
                 r.customers.map((c) => (
-                  <div key={c.id} className="rounded-md border border-border/40 bg-background/60">
+                  <div key={c.id} className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
                     <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{c.store_name}</span>
@@ -1228,7 +1228,7 @@ export default function EmployeesReportPage() {
             />
           }
           expandable={(r) => (
-            <div className="rounded-md border border-border/40 bg-background/60">
+            <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-emerald-100/60">
@@ -1332,7 +1332,7 @@ export default function EmployeesReportPage() {
                 </p>
               ) : (
                 r.products.map((p) => (
-                  <div key={p.id} className="rounded-md border border-border/40 bg-background/60">
+                  <div key={p.id} className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
                     <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-primary">{p.sku}</span>

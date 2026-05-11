@@ -1,7 +1,9 @@
 "use client"
 
-import { Printer, Download } from "lucide-react"
+import { useState } from "react"
+import { Printer, Download, SlidersHorizontal } from "lucide-react"
 import { DateRangePicker } from "./date-range-picker"
+import { cn } from "@/lib/utils"
 import { type DateRange, type PeriodPreset, formatRangeLabel } from "@/lib/analytics/period"
 
 interface ReportFrameProps {
@@ -29,16 +31,26 @@ export function ReportFrame({
   branchName,
   filters,
 }: ReportFrameProps) {
+  const [filtersOpen, setFiltersOpen] = useState(false)
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">{title}</h1>
           {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {range && preset && onChangeRange ? (
             <DateRangePicker value={range} preset={preset} onChange={onChangeRange} />
+          ) : null}
+          {filters ? (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className="flex h-9 items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 text-sm font-medium hover:bg-muted/30 lg:hidden"
+            >
+              <SlidersHorizontal className="h-4 w-4" /> Bộ lọc
+            </button>
           ) : null}
           {onExportCsv ? (
             <button
@@ -46,7 +58,7 @@ export function ReportFrame({
               onClick={onExportCsv}
               className="flex h-9 items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 text-sm font-medium hover:bg-muted/30"
             >
-              <Download className="h-4 w-4" /> Xuất Excel
+              <Download className="h-4 w-4" /> <span className="hidden sm:inline">Xuất Excel</span>
             </button>
           ) : null}
           <button
@@ -54,7 +66,7 @@ export function ReportFrame({
             onClick={() => typeof window !== "undefined" && window.print()}
             className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:brightness-110"
           >
-            <Printer className="h-4 w-4" /> In báo cáo
+            <Printer className="h-4 w-4" /> <span className="hidden sm:inline">In báo cáo</span>
           </button>
         </div>
       </div>
@@ -75,9 +87,9 @@ export function ReportFrame({
 
       {filters ? (
         <div className="grid gap-4 lg:grid-cols-[260px_1fr] print:block">
-          <aside className="space-y-4 print:hidden">{filters}</aside>
+          <aside className={cn("space-y-4 print:hidden", filtersOpen ? "block" : "hidden lg:block")}>{filters}</aside>
           <div className="min-w-0">
-            <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+            <div className="rounded-xl border border-border/40 bg-card p-4 sm:p-5 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
               {children}
             </div>
           </div>

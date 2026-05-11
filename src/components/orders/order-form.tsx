@@ -269,30 +269,83 @@ export function OrderForm() {
     return line.quantity * (u?.conversion || 1)
   }
 
-  // For a given line, return on-hand minus everything already ordered on OTHER
-  // lines for the same product (so a split order doesn't accidentally double-count).
+  // Same conversion but for a return-line draft (hàng đi đổi cũng xuất
+  // kho như hàng bán nên cần check tồn).
+  const baseQtyReturn = (line: ReturnLineDraft): number => {
+    const product = products.find((p) => p.id === line.product_id)
+    if (!product) return line.quantity
+    if (line.unit_name === product.base_unit) return line.quantity
+    const u = product.units?.find((x) => x.unit_name === line.unit_name)
+    return line.quantity * (u?.conversion || 1)
+  }
+
+  // Demand per product (base UOM) split by source.
+  const saleDemandByProduct = (() => {
+    const m: Record<string, number> = {}
+    for (const l of lines) {
+      m[l.product_id] = (m[l.product_id] || 0) + baseQty(l)
+    }
+    return m
+  })()
+  const exchangeDemandByProduct = (() => {
+    const m: Record<string, number> = {}
+    for (const l of returnLines) {
+      if (!l.is_exchange) continue
+      m[l.product_id] = (m[l.product_id] || 0) + baseQtyReturn(l)
+    }
+    return m
+  })()
+
+  // For a given sale line, return on-hand minus everything already ordered on
+  // OTHER sale lines for the same product. (Hàng đi đổi được tính riêng ở
+  // dòng trả-đổi để "blame" rơi vào dòng đổi — phần thêm vào — chứ không
+  // làm dòng bán đang hợp lệ bỗng nhiên đỏ.)
   const availableForLine = (line: OrderLine, index: number): number => {
     const onHand = stockByProduct[line.product_id] ?? 0
-    const otherQty = lines.reduce((sum, l, i) => {
+    const otherSale = lines.reduce((sum, l, i) => {
       if (i === index) return sum
       if (l.product_id !== line.product_id) return sum
       return sum + baseQty(l)
     }, 0)
-    return onHand - otherQty
+    return onHand - otherSale
   }
 
-  // Check if a specific line exceeds stock
+  // Check if a specific sale line exceeds stock
   const lineOverstock = (line: OrderLine, index: number): boolean => {
     return baseQty(line) > availableForLine(line, index)
   }
 
-  // Aggregated check — true if any product across all lines exceeds on-hand.
+  // For an exchange return line: on-hand minus ALL sale demand minus OTHER
+  // exchange lines for the same product. (Non-exchange returns ADD stock so
+  // không cần check.)
+  const exchangeAvailableForLine = (line: ReturnLineDraft, index: number): number => {
+    const onHand = stockByProduct[line.product_id] ?? 0
+    const saleUsed = saleDemandByProduct[line.product_id] || 0
+    const otherExchange = returnLines.reduce((sum, l, i) => {
+      if (i === index) return sum
+      if (!l.is_exchange) return sum
+      if (l.product_id !== line.product_id) return sum
+      return sum + baseQtyReturn(l)
+    }, 0)
+    return onHand - saleUsed - otherExchange
+  }
+  const returnLineOverstock = (line: ReturnLineDraft, index: number): boolean => {
+    if (!line.is_exchange) return false
+    return baseQtyReturn(line) > exchangeAvailableForLine(line, index)
+  }
+
+  // Aggregated check — true if any product's TOTAL demand (sale + exchange)
+  // exceeds on-hand. Vd: tồn 10, bán 9, đổi 2 → 11 > 10 → block.
   const hasOverstock = (() => {
-    const totals: Record<string, number> = {}
-    for (const l of lines) {
-      totals[l.product_id] = (totals[l.product_id] || 0) + baseQty(l)
-    }
-    for (const [pid, total] of Object.entries(totals)) {
+    const pids = Array.from(
+      new Set<string>([
+        ...Object.keys(saleDemandByProduct),
+        ...Object.keys(exchangeDemandByProduct),
+      ])
+    )
+    for (const pid of pids) {
+      const total =
+        (saleDemandByProduct[pid] || 0) + (exchangeDemandByProduct[pid] || 0)
       if (total > (stockByProduct[pid] ?? 0)) return true
     }
     return false
@@ -473,18 +526,27 @@ export function OrderForm() {
     }
 
     // Block orders that exceed current on-hand stock. Aggregated across
-    // lines so two lines for the same SKU can't bypass the check.
+    // sale lines + hàng đi đổi (is_exchange) — cả hai đều xuất kho nên
+    // phải tính chung. Vd: tồn 10, bán 9, đổi 2 → 11 > 10 → chặn.
     const totalsByProduct: Record<string, number> = {}
+    const exchangeByProduct: Record<string, number> = {}
     for (const l of lines) {
       totalsByProduct[l.product_id] = (totalsByProduct[l.product_id] || 0) + baseQty(l)
+    }
+    for (const l of returnLines) {
+      if (!l.is_exchange) continue
+      totalsByProduct[l.product_id] = (totalsByProduct[l.product_id] || 0) + baseQtyReturn(l)
+      exchangeByProduct[l.product_id] = (exchangeByProduct[l.product_id] || 0) + baseQtyReturn(l)
     }
     const overstock: string[] = []
     for (const [productId, total] of Object.entries(totalsByProduct)) {
       const onHand = stockByProduct[productId] ?? 0
       if (total > onHand) {
         const p = products.find((x) => x.id === productId)
+        const exQty = exchangeByProduct[productId] || 0
+        const note = exQty > 0 ? ` (gồm ${exQty} ${p?.base_unit || ""} hàng đi đổi)` : ""
         overstock.push(
-          `${p?.name || productId}: cần ${total} ${p?.base_unit || ""}, chỉ còn ${onHand}`
+          `${p?.name || productId}: cần ${total} ${p?.base_unit || ""}${note}, chỉ còn ${onHand}`
         )
       }
     }
@@ -1453,7 +1515,9 @@ export function OrderForm() {
                         <label
                           className={`mt-2 flex items-start gap-2 rounded-lg border px-2 py-1.5 cursor-pointer transition-colors ${
                             line.is_exchange
-                              ? "border-blue-400 bg-blue-50/60"
+                              ? returnLineOverstock(line, i)
+                                ? "border-red-400 bg-red-50/60"
+                                : "border-blue-400 bg-blue-50/60"
                               : "border-border/40 hover:bg-muted/40"
                           }`}
                         >
@@ -1472,6 +1536,16 @@ export function OrderForm() {
                             </p>
                           </div>
                         </label>
+                        {line.is_exchange && returnLineOverstock(line, i) && (
+                          <p className="text-[10px] text-red-600 font-semibold mt-1.5 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Không đủ tồn kho để đổi: cần {baseQtyReturn(line)}{" "}
+                            {products.find((p) => p.id === line.product_id)?.base_unit || ""}, chỉ
+                            còn {Math.max(0, exchangeAvailableForLine(line, i))}{" "}
+                            {products.find((p) => p.id === line.product_id)?.base_unit || ""} (đã
+                            trừ phần hàng bán ở trên)
+                          </p>
+                        )}
                         <Input
                           value={line.note}
                           onChange={(e) => updateReturnLine(i, "note", e.target.value)}

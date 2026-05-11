@@ -15,9 +15,9 @@ import { formatCurrency } from "@/lib/utils"
 import type { HrSalaryConfig } from "@/types"
 
 interface TierRow {
+  /** Ngưỡng % của doanh số chung A để được cộng dồn bonus của bậc này. */
   min_percent: number
-  /** Mức doanh số tối thiểu (VND) để áp dụng tier — bổ sung cho min_percent. */
-  min_revenue?: number
+  /** Số tiền cộng thêm khi đạt bậc này (CỘNG DỒN với các bậc thấp hơn). */
   bonus: number
   label: string
 }
@@ -38,11 +38,12 @@ export default function SalaryConfigPage() {
   const [gasAllowance, setGasAllowance] = useState(0)
   const [phoneAllowance, setPhoneAllowance] = useState(0)
   const [workingDays, setWorkingDays] = useState(26)
+  const [kpiTargetRevenue, setKpiTargetRevenue] = useState(0)
   const [tiers, setTiers] = useState<TierRow[]>([
-    { min_percent: 70, min_revenue: 0, bonus: 1000000, label: "70-79%" },
-    { min_percent: 80, min_revenue: 0, bonus: 2000000, label: "80-89%" },
-    { min_percent: 90, min_revenue: 0, bonus: 3000000, label: "90-99%" },
-    { min_percent: 100, min_revenue: 0, bonus: 5000000, label: "100%+" },
+    { min_percent: 70, bonus: 1000000, label: "Đạt 70%" },
+    { min_percent: 80, bonus: 1000000, label: "Đạt 80%" },
+    { min_percent: 90, bonus: 1000000, label: "Đạt 90%" },
+    { min_percent: 100, bonus: 1000000, label: "Đạt 100%" },
   ])
   const [overTargetPercent, setOverTargetPercent] = useState(3)
   const [under70Rule, setUnder70Rule] = useState("base_only")
@@ -66,7 +67,16 @@ export default function SalaryConfigPage() {
         setGasAllowance(c.gas_allowance)
         setPhoneAllowance(c.phone_allowance)
         setWorkingDays(c.working_days_per_month)
-        setTiers(c.target_tiers || [])
+        setKpiTargetRevenue(Number(c.kpi_target_revenue || 0))
+        // Bỏ trường min_revenue legacy nếu có — model mới chỉ dùng
+        // min_percent + bonus + label.
+        setTiers(
+          (c.target_tiers || []).map((t) => ({
+            min_percent: Number(t.min_percent || 0),
+            bonus: Number(t.bonus || 0),
+            label: t.label || "",
+          }))
+        )
         setOverTargetPercent(c.over_target_percent)
         setUnder70Rule(c.under_70_rule || "base_only")
         setUnder60Percent(c.under_60_percent)
@@ -87,7 +97,9 @@ export default function SalaryConfigPage() {
       gas_allowance: gasAllowance,
       phone_allowance: phoneAllowance,
       working_days_per_month: workingDays,
-      target_tiers: tiers,
+      kpi_target_revenue: kpiTargetRevenue,
+      // Bậc đã sort tăng dần theo min_percent để cộng dồn cho đúng.
+      target_tiers: [...tiers].sort((a, b) => a.min_percent - b.min_percent),
       over_target_percent: overTargetPercent,
       under_70_rule: under70Rule,
       under_60_percent: under60Percent,
@@ -115,7 +127,7 @@ export default function SalaryConfigPage() {
   }
 
   const addTier = () => {
-    setTiers([...tiers, { min_percent: 0, min_revenue: 0, bonus: 0, label: "" }])
+    setTiers([...tiers, { min_percent: 0, bonus: 0, label: "" }])
   }
 
   const removeTier = (idx: number) => {
@@ -210,71 +222,110 @@ export default function SalaryConfigPage() {
           <div>
             <CardTitle>Mức thưởng KPI</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Áp dụng tier cao nhất mà NV đạt được. Có thể trigger theo
-              % KPI HOẶC mức doanh số tuyệt đối — cả hai phải pass.
+              Một mức doanh số chung A. Mỗi bậc % của A đạt được sẽ
+              <strong> cộng dồn </strong> thêm tiền thưởng vào lương cơ bản.
+              VD: đạt 70%A → +x1; đạt 80%A → +x1+x2; đạt 90%A → +x1+x2+x3…
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={addTier}>
-            <Plus className="h-4 w-4 mr-1" /> Thêm mức
+            <Plus className="h-4 w-4 mr-1" /> Thêm bậc
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Mức doanh số chung A */}
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Mức doanh số chung (A) — VNĐ
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              value={kpiTargetRevenue}
+              onChange={(e) => setKpiTargetRevenue(Number(e.target.value) || 0)}
+              className="mt-1 max-w-xs"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {formatCurrency(kpiTargetRevenue)} • Doanh số NV trong kỳ được so
+              với A để tính % đạt KPI.
+            </p>
+          </div>
+
           <div className="space-y-3">
-            {tiers.map((tier, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-3 items-end">
-                <div className="col-span-2">
-                  <Label className="text-xs uppercase text-muted-foreground">Từ % KPI</Label>
-                  <Input
-                    type="number"
-                    value={tier.min_percent}
-                    onChange={(e) => updateTier(idx, "min_percent", Number(e.target.value))}
-                  />
-                </div>
-                <div className="col-span-3">
-                  <Label className="text-xs uppercase text-muted-foreground">Mức doanh số (VNĐ)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={tier.min_revenue ?? 0}
-                    onChange={(e) => updateTier(idx, "min_revenue", Number(e.target.value))}
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {formatCurrency(Number(tier.min_revenue || 0))}
-                  </p>
-                </div>
-                <div className="col-span-3">
-                  <Label className="text-xs uppercase text-muted-foreground">Thưởng (VNĐ)</Label>
-                  <Input
-                    type="number"
-                    value={tier.bonus}
-                    onChange={(e) => updateTier(idx, "bonus", Number(e.target.value))}
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {formatCurrency(tier.bonus)}
-                  </p>
-                </div>
-                <div className="col-span-3">
-                  <Label className="text-xs uppercase text-muted-foreground">Nhãn</Label>
-                  <Input
-                    value={tier.label}
-                    onChange={(e) => updateTier(idx, "label", e.target.value)}
-                    placeholder="VD: Đạt 80% / 100tr"
-                  />
-                </div>
-                <div className="col-span-1 flex items-end">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => removeTier(idx)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+            {[...tiers]
+              .map((t, idx) => ({ t, idx }))
+              .sort((a, b) => a.t.min_percent - b.t.min_percent)
+              .map(({ t: tier, idx }, displayIdx) => {
+                const thresholdRevenue =
+                  kpiTargetRevenue > 0
+                    ? Math.round((kpiTargetRevenue * (tier.min_percent || 0)) / 100)
+                    : 0
+                // Tổng cộng dồn từ bậc thấp nhất đến bậc này.
+                const sortedTiers = [...tiers].sort(
+                  (a, b) => a.min_percent - b.min_percent
+                )
+                const cumulative = sortedTiers
+                  .slice(0, displayIdx + 1)
+                  .reduce((s, x) => s + Number(x.bonus || 0), 0)
+                return (
+                  <div key={idx} className="grid grid-cols-12 gap-3 items-end">
+                    <div className="col-span-2">
+                      <Label className="text-xs uppercase text-muted-foreground">% của A</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={tier.min_percent}
+                        onChange={(e) => updateTier(idx, "min_percent", Number(e.target.value))}
+                      />
+                      {kpiTargetRevenue > 0 && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          ≥ {formatCurrency(thresholdRevenue)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs uppercase text-muted-foreground">Cộng thêm (VNĐ)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={tier.bonus}
+                        onChange={(e) => updateTier(idx, "bonus", Number(e.target.value))}
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        +{formatCurrency(tier.bonus)}
+                      </p>
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs uppercase text-muted-foreground">Tổng cộng dồn</Label>
+                      <div className="h-9 px-3 flex items-center text-sm font-semibold text-emerald-700 bg-emerald-50/60 rounded-md">
+                        +{formatCurrency(cumulative)}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Lương = CB + {formatCurrency(cumulative)}
+                      </p>
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs uppercase text-muted-foreground">Nhãn</Label>
+                      <Input
+                        value={tier.label}
+                        onChange={(e) => updateTier(idx, "label", e.target.value)}
+                        placeholder={`Đạt ${tier.min_percent}%`}
+                      />
+                    </div>
+                    <div className="col-span-1 flex items-end">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={() => removeTier(idx)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
             {tiers.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">Chưa có mức thưởng nào</p>
+              <p className="text-sm text-muted-foreground text-center py-4">Chưa có bậc nào</p>
             )}
           </div>
         </CardContent>

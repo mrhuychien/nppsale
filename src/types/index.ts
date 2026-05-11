@@ -657,11 +657,12 @@ export interface HrSalaryConfig {
   gas_allowance: number
   phone_allowance: number
   working_days_per_month: number
+  /** Mức doanh số chung A để tính % KPI. */
+  kpi_target_revenue?: number
+  /** Bậc thưởng KPI — bonus CỘNG DỒN theo % của kpi_target_revenue.
+   *  Đạt 70% A → +bonus(70). Đạt 80% A → +bonus(70)+bonus(80). v.v. */
   target_tiers: {
     min_percent: number
-    /** Mức doanh số tối thiểu (VND) — alternative trigger to min_percent.
-     *  Optional for backward compat. */
-    min_revenue?: number
     bonus: number
     label: string
   }[]

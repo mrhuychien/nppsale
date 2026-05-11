@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
@@ -89,6 +89,7 @@ export function OrderForm() {
 
   const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   useEffect(() => {
@@ -105,6 +106,11 @@ export function OrderForm() {
         stockMap[b.product_id] = (stockMap[b.product_id] || 0) + Number(b.qty_on_hand || 0)
       }
       setStockByProduct(stockMap)
+      // Deep-link: /orders/new?customerId=X → preselect khách hàng.
+      const cid = searchParams.get("customerId")
+      if (cid && (custRes.data as Customer[] | null)?.some((c) => c.id === cid)) {
+        setCustomerId(cid)
+      }
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

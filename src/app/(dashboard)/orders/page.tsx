@@ -846,18 +846,20 @@ export default function OrdersPage() {
                         />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex justify-between items-start gap-2 mb-1">
+                        <div className="flex items-center gap-2">
                           <p className="font-mono text-xs font-bold text-primary">{order.order_code}</p>
+                          <span className="text-xs text-muted-foreground">• {formatDate(order.order_date)}</span>
+                        </div>
+                        <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                          {order.customer?.store_name || "-"}
+                        </h3>
+                        {order.sales_user?.full_name && (
+                          <p className="text-xs text-muted-foreground truncate">NV: {order.sales_user.full_name}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           <StatusBadge status={order.status} type="order" />
                           <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
                         </div>
-                        <h3 className="font-extrabold text-base leading-tight truncate">
-                          {order.customer?.store_name || "-"}
-                        </h3>
-                        <p className="text-xs text-muted-foreground mt-1 truncate">
-                          {order.sales_user?.full_name ? `NV: ${order.sales_user.full_name} • ` : ""}
-                          {formatDate(order.order_date)}
-                        </p>
                       </div>
                     </div>
 

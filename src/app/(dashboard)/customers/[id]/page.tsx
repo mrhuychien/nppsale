@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
-  ArrowRight, Banknote, Navigation, MapPin, Camera,
+  ArrowRight, Banknote, Navigation, MapPin, Camera, FilePlus2,
 } from "lucide-react"
 import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
 
@@ -250,6 +250,15 @@ export default function CustomerDetailPage() {
       <PageHeader title={customer.store_name} description={customer.address} backHref="/customers">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={customer.status} type="customer" />
+          {user && hasPermission(user.role, "orders", "create") && (
+            <Button
+              size="sm"
+              onClick={() => router.push(`/orders/new?customerId=${customer.id}`)}
+            >
+              <FilePlus2 className="h-4 w-4 mr-1.5" />
+              Tạo đơn
+            </Button>
+          )}
           {user && hasPermission(user.role, "customers", "update") && (
             <Button
               size="sm"
@@ -263,7 +272,8 @@ export default function CustomerDetailPage() {
           {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
             <Button
               size="sm"
-              className="bg-gradient-primary text-white"
+              variant="outline"
+              className="text-rose-600 border-rose-300 hover:bg-rose-50"
               onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
             >
               <Banknote className="h-4 w-4 mr-1.5" />

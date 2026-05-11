@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route } from "lucide-react"
+import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2 } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
 
@@ -400,37 +400,47 @@ export default function CustomersPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 border-t divide-x">
+                  <div className="grid grid-cols-4 border-t divide-x">
                     <button
                       type="button"
-                      className="flex items-center justify-center gap-1 py-2.5 text-xs font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
+                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-primary hover:bg-muted/50 active:scale-95 transition"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/orders/new?customerId=${c.id}`)
+                      }}
+                    >
+                      <FilePlus2 className="h-4 w-4" /> Tạo đơn
+                    </button>
+                    <button
+                      type="button"
+                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleCheckIn(c)
                       }}
                     >
-                      <Navigation className="h-3.5 w-3.5" /> Ghé thăm
+                      <Navigation className="h-4 w-4" /> Ghé thăm
                     </button>
                     <button
                       type="button"
                       disabled={debt <= 0}
-                      className="flex items-center justify-center gap-1 py-2.5 text-xs font-semibold text-primary hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-rose-600 hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                       onClick={(e) => {
                         e.stopPropagation()
                         router.push(`/receivables/collect?customerId=${c.id}`)
                       }}
                     >
-                      <HandCoins className="h-3.5 w-3.5" /> Thu tiền
+                      <HandCoins className="h-4 w-4" /> Thu tiền
                     </button>
                     <button
                       type="button"
-                      className="flex items-center justify-center gap-1 py-2.5 text-xs font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
+                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleInventoryCheck()
                       }}
                     >
-                      <ClipboardList className="h-3.5 w-3.5" /> Kiểm tồn
+                      <ClipboardList className="h-4 w-4" /> Kiểm tồn
                     </button>
                   </div>
                 </div>

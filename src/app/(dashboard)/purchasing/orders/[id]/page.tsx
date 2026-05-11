@@ -274,11 +274,32 @@ export default function PurchaseOrderDetailPage() {
           vat: order.vat,
           total: order.total,
           notes: `Từ PO ${order.po_code}`,
+          status: "draft",
+          created_by: user.id,
         })
         .select()
         .single()
       if (invErr) throw invErr
-      toast({ title: "Đã tạo hóa đơn mua hàng" })
+      // Copy các dòng từ PO sang hoá đơn nhập (nháp) để không phải nhập lại.
+      const { data: poLines } = await supabase
+        .from("purchase_order_lines")
+        .select("product_id, unit_name, quantity, unit_price, vat_rate, line_total")
+        .eq("po_id", order.id)
+      if (poLines && poLines.length > 0) {
+        await supabase.from("purchase_invoice_lines").insert(
+          (poLines as Array<{ product_id: string; unit_name: string; quantity: number; unit_price: number; vat_rate: number; line_total: number }>).map((l) => ({
+            invoice_id: inv.id,
+            product_id: l.product_id,
+            unit_name: l.unit_name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            vat_rate: l.vat_rate ?? 0,
+            conversion_factor: 1,
+            line_total: l.line_total ?? Number(l.quantity || 0) * Number(l.unit_price || 0),
+          }))
+        )
+      }
+      toast({ title: "Đã tạo hoá đơn nhập (nháp) từ PO" })
       setConfirmOpen(null)
       router.push(`/purchasing/invoices/${inv.id}`)
     } catch (error) {

@@ -10,6 +10,7 @@ import {
   FilterCheckbox,
   FilterField,
   FilterSearchSelect,
+  FilterMultiSelect,
 } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
@@ -110,10 +111,10 @@ export default function ProductsReportPage() {
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
-  const [supplierFilter, setSupplierFilter] = useState<string>("all")
-  const [productFilter, setProductFilter] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([])
+  const [productFilter, setProductFilter] = useState<string[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const catalogs = useFilterCatalogs(user?.org_id)
 
@@ -192,11 +193,11 @@ export default function ProductsReportPage() {
   const productMap = useMemo(() => {
     const m = new Map<string, ProductRow>()
     for (const p of products) {
-      if (supplierFilter !== "all" && p.primary_supplier_id !== supplierFilter) continue
-      if (productFilter && p.id !== productFilter) continue
-      if (categoryFilter && (p.category || "") !== categoryFilter) continue
+      if (supplierFilter.length && !supplierFilter.includes(p.primary_supplier_id || "")) continue
+      if (productFilter.length && !productFilter.includes(p.id)) continue
+      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) continue
       const brand = (p as unknown as { brand?: string | null }).brand
-      if (brandFilter && (brand || "") !== brandFilter) continue
+      if (brandFilter.length && !brandFilter.includes(brand || "")) continue
       m.set(p.id, p)
     }
     return m
@@ -506,12 +507,12 @@ export default function ProductsReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Hàng hóa">
-            <FilterSearchSelect
+          <FilterField label="Hàng hóa (chọn nhiều)">
+            <FilterMultiSelect
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
-              placeholder="Theo mã, tên hàng"
+              placeholder="Tất cả hàng hóa"
               loading={catalogs.loading}
             />
           </FilterField>
@@ -524,28 +525,28 @@ export default function ProductsReportPage() {
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
             />
           </FilterField>
-          <FilterField label="Loại hàng">
-            <FilterSearchSelect
+          <FilterField label="Loại hàng (chọn nhiều)">
+            <FilterMultiSelect
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={catalogs.categories}
-              placeholder="Chọn loại hàng"
+              placeholder="Tất cả loại hàng"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Thương hiệu">
-            <FilterSearchSelect
+          <FilterField label="Thương hiệu (chọn nhiều)">
+            <FilterMultiSelect
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
-              placeholder="Chọn thương hiệu"
+              placeholder="Tất cả thương hiệu"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Nhà cung cấp">
-            <FilterSearchSelect
-              value={supplierFilter === "all" ? "" : supplierFilter}
-              onChange={(v) => setSupplierFilter(v || "all")}
+          <FilterField label="Nhà cung cấp (chọn nhiều)">
+            <FilterMultiSelect
+              value={supplierFilter}
+              onChange={setSupplierFilter}
               options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
               placeholder="Tất cả NCC"
               loading={catalogs.loading}

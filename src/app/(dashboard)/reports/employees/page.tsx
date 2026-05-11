@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterSearchSelect, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
@@ -90,12 +90,12 @@ export default function EmployeesReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
-  const [productFilter, setProductFilter] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
+  const [productFilter, setProductFilter] = useState<string[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
-  const [salesUserFilter, setSalesUserFilter] = useState("")
-  const [routeFilter, setRouteFilter] = useState("")
+  const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
+  const [routeFilter, setRouteFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
@@ -225,7 +225,7 @@ export default function EmployeesReportPage() {
 
   const matchSearchUser = useCallback(
     (uid: string) => {
-      if (salesUserFilter && uid !== salesUserFilter) return false
+      if (salesUserFilter.length && !salesUserFilter.includes(uid)) return false
       if (!search) return true
       const u = userMap.get(uid)
       if (!u) return false
@@ -237,12 +237,12 @@ export default function EmployeesReportPage() {
   // Filter at the line level — applied where lines are iterated.
   const productPasses = useCallback(
     (productId: string) => {
-      if (!productFilter && !categoryFilter && !brandFilter) return true
+      if (!productFilter.length && !categoryFilter.length && !brandFilter.length) return true
       const p = productMap.get(productId)
       if (!p) return false
-      if (productFilter && p.id !== productFilter) return false
-      if (categoryFilter && (p.category || "") !== categoryFilter) return false
-      if (brandFilter && (p.brand || "") !== brandFilter) return false
+      if (productFilter.length && !productFilter.includes(p.id)) return false
+      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) return false
+      if (brandFilter.length && !brandFilter.includes(p.brand || "")) return false
       return true
     },
     [productFilter, categoryFilter, brandFilter, productMap]
@@ -251,14 +251,17 @@ export default function EmployeesReportPage() {
   // Filter at the customer level (group + route) — applied where orders / customers are iterated.
   const customerPasses = useCallback(
     (customerId: string) => {
-      if (!groupFilter && !routeFilter) return true
+      if (!groupFilter && !routeFilter.length) return true
       const c = customerMap.get(customerId)
       if (!c) return false
       if (groupFilter && c.group_id !== groupFilter) return false
-      if (routeFilter) {
-        const route = catalogs.routes.find((r) => r.id === routeFilter)
-        const matchVals = [route?.id, route?.label, route?.hint].filter(Boolean) as string[]
-        if (!c.channel || !matchVals.includes(c.channel)) return false
+      if (routeFilter.length) {
+        const matchVals = new Set<string>()
+        for (const rid of routeFilter) {
+          const route = catalogs.routes.find((r) => r.id === rid)
+          for (const v of [route?.id, route?.label, route?.hint]) if (v) matchVals.add(v)
+        }
+        if (!c.channel || !matchVals.has(c.channel)) return false
       }
       return true
     },
@@ -826,30 +829,30 @@ export default function EmployeesReportPage() {
       onExportCsv={handleExport}
       filters={
         <>
-          <FilterField label="Hàng hóa">
-            <FilterSearchSelect
+          <FilterField label="Hàng hóa (chọn nhiều)">
+            <FilterMultiSelect
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
-              placeholder="Theo mã, tên hàng"
+              placeholder="Tất cả hàng hóa"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Loại hàng">
-            <FilterSearchSelect
+          <FilterField label="Loại hàng (chọn nhiều)">
+            <FilterMultiSelect
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={catalogs.categories}
-              placeholder="Chọn loại hàng"
+              placeholder="Tất cả loại hàng"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Thương hiệu">
-            <FilterSearchSelect
+          <FilterField label="Thương hiệu (chọn nhiều)">
+            <FilterMultiSelect
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
-              placeholder="Chọn thương hiệu"
+              placeholder="Tất cả thương hiệu"
               loading={catalogs.loading}
             />
           </FilterField>
@@ -862,21 +865,21 @@ export default function EmployeesReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Người bán">
-            <FilterSearchSelect
+          <FilterField label="Người bán (chọn nhiều)">
+            <FilterMultiSelect
               value={salesUserFilter}
               onChange={setSalesUserFilter}
               options={catalogs.salesUsers}
-              placeholder="Chọn người bán"
+              placeholder="Tất cả người bán"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Kênh bán">
-            <FilterSearchSelect
+          <FilterField label="Kênh bán (chọn nhiều)">
+            <FilterMultiSelect
               value={routeFilter}
               onChange={setRouteFilter}
               options={catalogs.routes}
-              placeholder="Chọn kênh bán"
+              placeholder="Tất cả kênh bán"
               loading={catalogs.loading}
             />
           </FilterField>

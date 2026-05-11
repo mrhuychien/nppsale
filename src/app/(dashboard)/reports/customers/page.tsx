@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
@@ -81,7 +81,7 @@ export default function CustomersReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_week")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_week"))
   const [search, setSearch] = useState("")
-  const [customerFilter, setCustomerFilter] = useState("")
+  const [customerFilter, setCustomerFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
@@ -179,7 +179,7 @@ export default function CustomersReportPage() {
   const matchSearch = useCallback(
     (c: CustomerRow | undefined) => {
       if (!c) return false
-      if (customerFilter && c.id !== customerFilter) return false
+      if (customerFilter.length && !customerFilter.includes(c.id)) return false
       if (!search) return true
       const q = search.toLowerCase()
       return (
@@ -465,12 +465,12 @@ export default function CustomersReportPage() {
       onExportCsv={handleExport}
       filters={
         <>
-          <FilterField label="Khách hàng">
-            <FilterSearchSelect
+          <FilterField label="Khách hàng (chọn nhiều)">
+            <FilterMultiSelect
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
-              placeholder="Theo mã, tên, số điện thoại"
+              placeholder="Tất cả khách hàng"
               loading={catalogs.loading}
             />
           </FilterField>

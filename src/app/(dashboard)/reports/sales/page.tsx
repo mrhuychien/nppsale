@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterSearchSelect, FilterSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterMultiSelect, FilterSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs, SALES_METHOD_OPTIONS } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
@@ -88,9 +88,9 @@ export default function SalesReportPage() {
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [productSupplierMap, setProductSupplierMap] = useState<Map<string, string | null>>(new Map())
-  const [supplierFilter, setSupplierFilter] = useState<string>("all")
-  const [priceListFilter, setPriceListFilter] = useState<string>("")
-  const [routeFilter, setRouteFilter] = useState<string>("")
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([])
+  const [priceListFilter, setPriceListFilter] = useState<string[]>([])
+  const [routeFilter, setRouteFilter] = useState<string[]>([])
   const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
   const catalogs = useFilterCatalogs(user?.org_id)
   // Customer → group_id map (for bảng giá / kênh bán filtering on orders)
@@ -157,7 +157,7 @@ export default function SalesReportPage() {
     load()
   }, [load])
 
-  // §3.2 — apply NCC filter. When supplierFilter !== "all", keep only
+  // §3.2 — apply NCC filter (chọn nhiều). Giữ lại các dòng có
   // lines whose product's primary_supplier_id matches; an order keeps
   // appearing if it still has ≥ 1 matching line. Returns are filtered
   // similarly via their lines (return_lines product_id) — but since we
@@ -165,25 +165,28 @@ export default function SalesReportPage() {
   // skip return filter when NCC is selected (small acceptable
   // limitation; most NCC-focused use cases care about sales side).
   const filteredLines = useMemo(() => {
-    if (supplierFilter === "all") return lines
-    return lines.filter((l) => productSupplierMap.get(l.product_id) === supplierFilter)
+    if (supplierFilter.length === 0) return lines
+    return lines.filter((l) => supplierFilter.includes(productSupplierMap.get(l.product_id) || ""))
   }, [lines, supplierFilter, productSupplierMap])
 
   const filteredOrders = useMemo<SalesOrderRow[]>(() => {
     let result = orders
-    if (supplierFilter !== "all") {
+    if (supplierFilter.length > 0) {
       const orderIdsWithLines = new Set(filteredLines.map((l) => l.order_id))
       result = result.filter((o) => orderIdsWithLines.has(o.id))
     }
-    if (priceListFilter) {
-      result = result.filter((o) => customerGroupMap.get(o.customer_id) === priceListFilter)
+    if (priceListFilter.length > 0) {
+      result = result.filter((o) => priceListFilter.includes(customerGroupMap.get(o.customer_id) || ""))
     }
-    if (routeFilter) {
-      const route = catalogs.routes.find((r) => r.id === routeFilter)
-      const matchVals = [route?.id, route?.label, route?.hint].filter(Boolean) as string[]
+    if (routeFilter.length > 0) {
+      const matchVals = new Set<string>()
+      for (const rid of routeFilter) {
+        const route = catalogs.routes.find((r) => r.id === rid)
+        for (const v of [route?.id, route?.label, route?.hint]) if (v) matchVals.add(v)
+      }
       result = result.filter((o) => {
         const ch = customerRouteMap.get(o.customer_id)
-        return ch ? matchVals.includes(ch) : false
+        return ch ? matchVals.has(ch) : false
       })
     }
     if (salesMethodFilter) {
@@ -454,30 +457,30 @@ export default function SalesReportPage() {
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
             />
           </FilterField>
-          <FilterField label="Nhà cung cấp">
-            <FilterSearchSelect
-              value={supplierFilter === "all" ? "" : supplierFilter}
-              onChange={(v) => setSupplierFilter(v || "all")}
+          <FilterField label="Nhà cung cấp (chọn nhiều)">
+            <FilterMultiSelect
+              value={supplierFilter}
+              onChange={setSupplierFilter}
               options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
               placeholder="Tất cả NCC"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Bảng giá">
-            <FilterSearchSelect
+          <FilterField label="Bảng giá (chọn nhiều)">
+            <FilterMultiSelect
               value={priceListFilter}
               onChange={setPriceListFilter}
               options={catalogs.customerGroups}
-              placeholder="Chọn bảng giá"
+              placeholder="Tất cả bảng giá"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Kênh bán">
-            <FilterSearchSelect
+          <FilterField label="Kênh bán (chọn nhiều)">
+            <FilterMultiSelect
               value={routeFilter}
               onChange={setRouteFilter}
               options={catalogs.routes}
-              placeholder="Chọn kênh bán"
+              placeholder="Tất cả kênh bán"
               loading={catalogs.loading}
             />
           </FilterField>

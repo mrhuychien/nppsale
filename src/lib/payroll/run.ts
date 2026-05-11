@@ -98,16 +98,16 @@ export async function setManualAdjustment(
   patch: { manual_adjustment: number; notes?: string | null }
 ): Promise<{ error: string | null }> {
   // Re-compute net_salary with the new adjustment in a single round-trip.
+  // SELECT * để không vỡ nếu DB chưa có cột allowances (mig 064).
   const { data: row, error: readErr } = await supabase
     .from("payroll_run_items")
-    .select(
-      "prorated_base, kpi_bonus, order_count_bonus, activity_bonus, overtime, deductions, social_insurance"
-    )
+    .select("*")
     .eq("id", itemId)
     .single()
   if (readErr || !row) return { error: readErr?.message ?? "Not found" }
   const r = row as {
     prorated_base: number
+    allowances?: number | null
     kpi_bonus: number
     order_count_bonus: number
     activity_bonus: number
@@ -117,6 +117,7 @@ export async function setManualAdjustment(
   }
   const net =
     Number(r.prorated_base || 0) +
+    Number(r.allowances || 0) +
     Number(r.kpi_bonus || 0) +
     Number(r.order_count_bonus || 0) +
     Number(r.activity_bonus || 0) +

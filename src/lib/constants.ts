@@ -87,10 +87,13 @@ export const PAYMENT_STATUS_MAP: Record<string, { label: string; variant: "defau
 }
 
 export const RETURN_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  pending: { label: "Chờ duyệt", variant: "secondary" },
-  approved: { label: "Đã duyệt", variant: "success" },
-  rejected: { label: "Từ chối", variant: "danger" },
-  completed: { label: "Hoàn tất", variant: "default" },
+  // Workflow duyệt đã bỏ — phiếu trả là bản ghi tra cứu (xử lý nhập
+  // kho + trừ công nợ đã làm ngay ở bước Bàn giao lại). Các trạng
+  // thái legacy map về nhãn trung tính.
+  pending: { label: "Đã ghi nhận", variant: "secondary" },
+  approved: { label: "Đã ghi nhận", variant: "success" },
+  rejected: { label: "Đã huỷ", variant: "danger" },
+  completed: { label: "Đã ghi nhận", variant: "success" },
 }
 
 export const RETURN_REASONS = [

@@ -20,28 +20,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
-import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, PackageCheck } from "lucide-react"
-import { processApprovedReturn } from "@/lib/returns"
-import type { Return, ReturnLine, ReturnStatus } from "@/types"
-
-type NextStatus = {
-  value: ReturnStatus
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  roles: string[]
-}
-
-const STATUS_FLOW: Record<ReturnStatus, NextStatus[]> = {
-  pending: [
-    { value: "approved", label: "Duyệt yêu cầu", icon: CheckCircle2, roles: ["owner", "manager"] },
-    { value: "rejected", label: "Từ chối", icon: XCircle, roles: ["owner", "manager"] },
-  ],
-  approved: [
-    { value: "completed", label: "Xác nhận đã nhận hàng", icon: PackageCheck, roles: ["owner", "manager", "warehouse"] },
-  ],
-  rejected: [],
-  completed: [],
-}
+import { Pencil, Trash2, X, ExternalLink, Info } from "lucide-react"
+import type { Return, ReturnLine } from "@/types"
 
 export default function ReturnDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -50,7 +30,6 @@ export default function ReturnDetailPage() {
   const [ret, setRet] = useState<Return | null>(null)
   const [lines, setLines] = useState<ReturnLine[]>([])
   const [loading, setLoading] = useState(true)
-  const [confirmOpen, setConfirmOpen] = useState<{ status: ReturnStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", credit_note_amount: "" })
@@ -64,7 +43,7 @@ export default function ReturnDetailPage() {
     const [retRes, linesRes] = await Promise.all([
       supabase
         .from("returns")
-        .select("*, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*)")
+        .select("*, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)")
         .eq("id", id)
         .single(),
       supabase.from("return_lines").select("*, product:products(*)").eq("return_id", id),
@@ -83,67 +62,13 @@ export default function ReturnDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const handleChangeStatus = async (newStatus: ReturnStatus) => {
-    if (!ret || !user) return
-    setActionLoading(true)
-    try {
-      // Approving the return triggers the full processing pipeline:
-      // restock the goods, net the credit against the linked order's
-      // receivable, then mark the return 'completed' so warehouse doesn't
-      // have to repeat the action at /inventory/pending.
-      if (newStatus === "approved") {
-        const { error: approveErr } = await supabase
-          .from("returns")
-          .update({ status: "approved", approved_by: user.id })
-          .eq("id", ret.id)
-        if (approveErr) throw approveErr
-
-        const result = await processApprovedReturn(supabase, ret.id, user.id)
-        if (!result.ok) {
-          throw new Error(result.error || "Không xử lý được phiếu trả")
-        }
-        toast({
-          title: "Đã duyệt và nhập lại kho",
-          description: result.entryId
-            ? `Phiếu nhập đã tạo. Công nợ đã được trừ.`
-            : `Đã ghi nhận credit note. Công nợ đã được trừ.`,
-        })
-        setConfirmOpen(null)
-        fetchData()
-        return
-      }
-
-      // approved → completed (legacy: returns left in 'approved' before this
-      // codepath auto-processed). Run the same pipeline so AR/stock stay in sync.
-      if (newStatus === "completed" && ret.status === "approved") {
-        const result = await processApprovedReturn(supabase, ret.id, user.id)
-        if (!result.ok) throw new Error(result.error || "Không xử lý được phiếu trả")
-        toast({ title: "Đã hoàn tất phiếu trả + nhập lại kho" })
-        setConfirmOpen(null)
-        fetchData()
-        return
-      }
-
-      const updates: Record<string, unknown> = { status: newStatus }
-      const { error } = await supabase.from("returns").update(updates).eq("id", ret.id)
-      if (error) throw error
-      toast({ title: `Đã chuyển trạng thái: ${newStatus}` })
-      setConfirmOpen(null)
-      fetchData()
-    } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   const handleDelete = async () => {
     if (!ret) return
     setActionLoading(true)
     try {
       const { error } = await supabase.from("returns").delete().eq("id", ret.id)
       if (error) throw error
-      toast({ title: "Đã xóa yêu cầu trả hàng" })
+      toast({ title: "Đã xoá phiếu trả hàng" })
       router.push("/returns")
     } catch (error) {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
@@ -163,7 +88,7 @@ export default function ReturnDetailPage() {
         })
         .eq("id", ret.id)
       if (error) throw error
-      toast({ title: "Đã cập nhật yêu cầu trả hàng" })
+      toast({ title: "Đã cập nhật phiếu trả hàng" })
       setEditMode(false)
       fetchData()
     } catch (error) {
@@ -174,22 +99,35 @@ export default function ReturnDetailPage() {
   }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
-  if (!ret) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy yêu cầu trả hàng</div>
+  if (!ret) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy phiếu trả hàng</div>
 
-  const reasonLabel = RETURN_REASONS.find((r) => r.value === ret.reason)?.label || ret.reason || "-"
-  const availableTransitions = STATUS_FLOW[ret.status] || []
-  const canEdit = user && hasPermission(user.role, "returns", "update") && ret.status === "pending"
-  const canDelete = user && user.role === "owner" && ret.status === "pending"
+  const reasonLabel = RETURN_REASONS.find((r) => r.value === ret.reason)?.label || ret.reason || "—"
+  const orderCode = (ret as Return & { order?: { order_code?: string } }).order?.order_code
+  // Phiếu trả giờ chỉ là bản ghi tra cứu — không còn workflow duyệt.
+  // Cho phép sửa ghi chú / credit note + (owner) xoá.
+  const canEdit = !!user && hasPermission(user.role, "returns", "update")
+  const canDelete = !!user && user.role === "owner"
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Trả hàng - ${ret.customer?.store_name || "N/A"}`}
+        title={`Phiếu trả — ${ret.customer?.store_name || "N/A"}`}
         description={`Tạo: ${formatDate(ret.created_at)} • Lý do: ${reasonLabel}`}
         backHref="/returns"
       >
         <StatusBadge status={ret.status} type="return" />
       </PageHeader>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="flex items-start gap-3 p-3 text-sm">
+          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <p className="text-xs text-primary">
+            Phiếu trả là bản ghi tra cứu. Việc nhập lại kho + trừ công nợ đã
+            được xử lý ngay ở bước Bàn giao lại từ lái xe — không cần duyệt
+            ở đây.
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column - details + lines */}
@@ -198,59 +136,59 @@ export default function ReturnDetailPage() {
           <Card>
             <CardHeader><CardTitle>Chi tiết hàng trả</CardTitle></CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Loại</TableHead>
-                    <TableHead>Sản phẩm</TableHead>
-                    <TableHead>ĐVT</TableHead>
-                    <TableHead className="text-right">SL</TableHead>
-                    <TableHead className="text-right">Đơn giá</TableHead>
-                    <TableHead className="text-right">Thành tiền</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((line) => {
-                    const isExchange = !!(line as { is_exchange?: boolean | null }).is_exchange
-                    return (
-                    <TableRow key={line.id} className={isExchange ? "bg-blue-50/40" : undefined}>
-                      <TableCell>
-                        {isExchange ? (
-                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
-                            ĐỔI
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                            TRẢ
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{line.product?.name || "-"}</TableCell>
-                      <TableCell>{line.unit_name}</TableCell>
-                      <TableCell className="text-right">{line.quantity}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {isExchange ? (
-                          <span className="text-blue-700 italic">không trừ tiền</span>
-                        ) : (
-                          formatCurrency(line.line_total)
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    )
-                  })}
-                  {lines.length === 0 && (
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                        Chưa có sản phẩm trả
-                      </TableCell>
+                      <TableHead>Loại</TableHead>
+                      <TableHead>Sản phẩm</TableHead>
+                      <TableHead>ĐVT</TableHead>
+                      <TableHead className="text-right tabular-nums">SL</TableHead>
+                      <TableHead className="text-right tabular-nums">Đơn giá</TableHead>
+                      <TableHead className="text-right tabular-nums">Thành tiền</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {lines.map((line) => {
+                      const isExchange = !!(line as { is_exchange?: boolean | null }).is_exchange
+                      return (
+                        <TableRow key={line.id} className={isExchange ? "bg-blue-50/40" : undefined}>
+                          <TableCell>
+                            {isExchange ? (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                ĐỔI
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                TRẢ
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">{line.product?.name || "—"}</TableCell>
+                          <TableCell>{line.unit_name}</TableCell>
+                          <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatCurrency(line.unit_price)}</TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            {isExchange ? (
+                              <span className="text-blue-700 italic">không trừ tiền</span>
+                            ) : (
+                              formatCurrency(line.line_total)
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                    {lines.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                          Chưa có sản phẩm trả
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
               {(() => {
-                // Bugfix: split refund vs exchange tổng cho người dùng
-                // thấy ngay phần nào trừ công nợ, phần nào không.
                 const refundT = lines
                   .filter((l) => !(l as { is_exchange?: boolean | null }).is_exchange)
                   .reduce((s, l) => s + Number(l.line_total || 0), 0)
@@ -291,7 +229,7 @@ export default function ReturnDetailPage() {
           {/* Edit panel */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Thông tin yêu cầu</CardTitle>
+              <CardTitle>Thông tin phiếu trả</CardTitle>
               {canEdit && !editMode && (
                 <Button size="sm" variant="ghost" onClick={() => setEditMode(true)}>
                   <Pencil className="h-4 w-4 mr-1" /> Sửa
@@ -359,20 +297,20 @@ export default function ReturnDetailPage() {
           </Card>
         </div>
 
-        {/* Right column - customer + actions */}
+        {/* Right column - customer + links */}
         <div className="space-y-4">
           {/* Customer info */}
           <Card>
             <CardHeader><CardTitle>Khách hàng</CardTitle></CardHeader>
             <CardContent className="space-y-1 text-sm">
-              <p className="font-bold">{ret.customer?.store_name || "-"}</p>
+              <p className="font-bold">{ret.customer?.store_name || "—"}</p>
               <p className="text-muted-foreground">{ret.customer?.owner_name}</p>
               <p>{ret.customer?.phone}</p>
               <p className="text-muted-foreground">{ret.customer?.address}</p>
             </CardContent>
           </Card>
 
-          {/* Meta info */}
+          {/* Links */}
           <Card>
             <CardHeader><CardTitle>Liên kết</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
@@ -382,76 +320,48 @@ export default function ReturnDetailPage() {
                   className="flex items-center gap-2 text-primary hover:underline font-semibold"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  Xem đơn hàng gốc
+                  Đơn hàng gốc {orderCode ? `(${orderCode})` : ""}
                 </Link>
               )}
               <div className="pt-2 border-t border-border/40">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người yêu cầu</Label>
-                <p>{ret.requester?.full_name || "-"}</p>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người tạo</Label>
+                <p>{ret.requester?.full_name || "—"}</p>
               </div>
               {ret.approver && (
                 <div>
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người duyệt</Label>
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người xử lý</Label>
                   <p>{ret.approver.full_name}</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Status transitions */}
-          {(availableTransitions.length > 0 || canDelete) && (
+          {/* Admin: delete only */}
+          {canDelete && (
             <Card>
-              <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {availableTransitions.map((trans) => {
-                  if (!user || !trans.roles.includes(user.role)) return null
-                  const Icon = trans.icon
-                  const isDestructive = trans.value === "rejected"
-                  return (
-                    <Button
-                      key={trans.value}
-                      variant={isDestructive ? "destructive" : "default"}
-                      className="w-full justify-start"
-                      onClick={() => setConfirmOpen({ status: trans.value, label: trans.label })}
-                    >
-                      <Icon className="h-4 w-4 mr-2" /> {trans.label}
-                    </Button>
-                  )
-                })}
-                {canDelete && (
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-destructive hover:bg-destructive/10"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" /> Xóa yêu cầu
-                  </Button>
-                )}
+              <CardHeader><CardTitle>Thao tác quản trị</CardTitle></CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Xoá phiếu trả
+                </Button>
               </CardContent>
             </Card>
           )}
         </div>
       </div>
 
-      {/* Status change confirm */}
-      <ConfirmDialog
-        open={!!confirmOpen}
-        onOpenChange={(open) => !open && setConfirmOpen(null)}
-        title={confirmOpen?.label || "Xác nhận"}
-        description={`Xác nhận thao tác "${confirmOpen?.label}" cho yêu cầu trả hàng này`}
-        variant={confirmOpen?.status === "rejected" ? "destructive" : "default"}
-        onConfirm={() => confirmOpen && handleChangeStatus(confirmOpen.status)}
-        loading={actionLoading}
-      />
-
       {/* Delete confirm */}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Xóa vĩnh viễn yêu cầu trả hàng?"
-        description="Yêu cầu trả hàng này sẽ bị xóa cùng toàn bộ chi tiết. Không thể khôi phục."
+        title="Xoá vĩnh viễn phiếu trả hàng?"
+        description="Phiếu trả này sẽ bị xoá cùng toàn bộ chi tiết. Không thể khôi phục."
         variant="destructive"
-        confirmLabel="Xóa vĩnh viễn"
+        confirmLabel="Xoá vĩnh viễn"
         onConfirm={handleDelete}
         loading={actionLoading}
       />

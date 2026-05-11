@@ -16,9 +16,10 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatDate } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import {
   Navigation, MapPin, Clock, CheckCircle2, TrendingUp, User as UserIcon,
-  Camera,
+  Camera, Route,
 } from "lucide-react"
 import type { User } from "@/types"
 
@@ -136,7 +137,13 @@ export default function VisitsHistoryPage() {
       <PageHeader
         title={isManagerLike ? "Lịch sử đi tuyến" : "Đi tuyến của tôi"}
         description={`${formatDate(dateFrom)} - ${formatDate(dateTo)}`}
-      />
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/sales/pjp">
+            <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến PJP
+          </Link>
+        </Button>
+      </PageHeader>
 
       {/* Filters */}
       <Card>

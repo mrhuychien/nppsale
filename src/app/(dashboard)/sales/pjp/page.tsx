@@ -207,12 +207,13 @@ export default function PjpPage() {
       })
       const todayStr = new Date().toISOString().slice(0, 10)
       await supabase.from("visit_logs").insert({
+        org_id: user!.org_id,
         sales_user_id: user!.id,
         customer_id: customerId,
         visit_date: todayStr,
         check_in_at: new Date().toISOString(),
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+        check_in_lat: position.coords.latitude,
+        check_in_lng: position.coords.longitude,
         result: null,
       })
       await fetchTodayVisits()
@@ -270,7 +271,13 @@ export default function PjpPage() {
       <PageHeader
         title="Tuyến bán hàng (PJP)"
         description={isManager ? "Lập kế hoạch tuyến bán cho nhân viên" : "Tuyến ghé thăm khách hàng của bạn"}
-      />
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/sales/visits">
+            <Navigation className="h-3.5 w-3.5 mr-1.5" /> Lịch sử đi tuyến
+          </Link>
+        </Button>
+      </PageHeader>
 
       {/* Manager: select sales user */}
       {isManager && (
@@ -419,7 +426,7 @@ export default function PjpPage() {
                       )}
                       {status === "checked_in" && (
                         <>
-                          <Link href={`/orders/new?customer=${route.customer_id}`}>
+                          <Link href={`/orders/new?customerId=${route.customer_id}`}>
                             <Button size="sm" className="text-xs">
                               <ShoppingCart className="h-3.5 w-3.5 mr-1" />
                               Tạo đơn

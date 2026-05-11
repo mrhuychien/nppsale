@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -82,7 +82,14 @@ export default function OrdersPage() {
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Deep-link: /orders?status=draft → preselect the status filter.
+  useEffect(() => {
+    const s = searchParams.get("status")
+    if (s) setStatusFilter(s)
+  }, [searchParams])
 
   useEffect(() => {
     async function fetch() {

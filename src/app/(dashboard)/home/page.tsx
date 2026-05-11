@@ -30,6 +30,9 @@ import {
   Navigation,
   ClipboardList,
   PieChart,
+  FilePlus2,
+  MapPin,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -41,7 +44,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 type TileColor =
   | "blue"
@@ -80,7 +83,6 @@ interface Tile {
   icon: LucideIcon
   color: TileColor
   module: Module
-  /** Small caption shown below the label (e.g. "10 Workspaces"). */
   caption?: string
 }
 
@@ -123,14 +125,35 @@ const TILES: Tile[] = [
   { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue", module: "settings" },
 ]
 
+function startOfTodayISO(): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
+function todayDateOnly(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+interface SalesSnapshot {
+  ordersToday: number
+  ordersTodayValue: number
+  draftOrders: number
+  visitsToday: number
+  myCustomers: number
+}
+
 export default function HomeLauncherPage() {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [orgName, setOrgName] = useState<string | null>(null)
+  const [snapshot, setSnapshot] = useState<SalesSnapshot | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch org name (used in profile dropdown caption)
+  const role = user?.role
+  const isSales = role === "sales"
+
   useEffect(() => {
     if (!user?.org_id) return
     let cancelled = false
@@ -148,7 +171,53 @@ export default function HomeLauncherPage() {
     }
   }, [user?.org_id])
 
-  // Cmd/Ctrl + K focuses the search box
+  // Sales-rep snapshot — only for the sales role.
+  useEffect(() => {
+    if (!isSales || !user?.id) return
+    let cancelled = false
+    const supabase = createClient()
+    const t0 = startOfTodayISO()
+    const todayDate = todayDateOnly()
+    ;(async () => {
+      const [ordersTodayRes, draftRes, visitsRes, custRes] = await Promise.all([
+        supabase
+          .from("sales_orders")
+          .select("total", { count: "exact" })
+          .eq("sales_user_id", user.id)
+          .gte("order_date", t0),
+        supabase
+          .from("sales_orders")
+          .select("id", { count: "exact", head: true })
+          .eq("sales_user_id", user.id)
+          .eq("status", "draft"),
+        supabase
+          .from("visit_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("sales_user_id", user.id)
+          .eq("visit_date", todayDate),
+        supabase
+          .from("customers")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active"),
+      ])
+      if (cancelled) return
+      const ordersToday = ordersTodayRes.count ?? 0
+      const ordersTodayValue = (
+        (ordersTodayRes.data as Array<{ total: number | null }> | null) || []
+      ).reduce((s, r) => s + Number(r.total || 0), 0)
+      setSnapshot({
+        ordersToday,
+        ordersTodayValue,
+        draftOrders: draftRes.count ?? 0,
+        visitsToday: visitsRes.count ?? 0,
+        myCustomers: custRes.count ?? 0,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isSales, user?.id])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -161,7 +230,6 @@ export default function HomeLauncherPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  const role = user?.role
   const visibleTiles = useMemo(() => {
     if (!role) return TILES
     return TILES.filter((t) => canAccessModule(role, t.module))
@@ -174,6 +242,8 @@ export default function HomeLauncherPage() {
       (t) => t.label.toLowerCase().includes(q) || t.href.toLowerCase().includes(q)
     )
   }, [search, visibleTiles])
+
+  const searching = search.trim().length > 0
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -188,19 +258,29 @@ export default function HomeLauncherPage() {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
   }, [user?.full_name])
 
+  const firstName = useMemo(() => {
+    const parts = (user?.full_name || "").trim().split(/\s+/).filter(Boolean)
+    return parts.length ? parts[parts.length - 1] : "bạn"
+  }, [user?.full_name])
+
+  const todayLabel = useMemo(() => {
+    const d = new Date()
+    return d.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" })
+  }, [])
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-24 lg:pb-0">
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-6 py-4 backdrop-blur-md">
+      <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
         <Link
           href="/home"
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-200 text-zinc-700 transition-colors hover:bg-zinc-300"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-zinc-700 transition-colors hover:bg-zinc-300"
           title="Trang chủ"
         >
           <span className="text-lg font-black">N</span>
         </Link>
 
-        <form onSubmit={handleSearchSubmit} className="relative mx-4 w-full max-w-xl">
+        <form onSubmit={handleSearchSubmit} className="relative mx-3 w-full max-w-xl sm:mx-4">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -208,7 +288,7 @@ export default function HomeLauncherPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm tính năng…"
-            className="h-10 w-full rounded-full border border-border/40 bg-card pl-10 pr-16 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10"
+            className="h-10 w-full rounded-full border border-border/40 bg-card pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 sm:pr-16"
           />
           <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-flex">
             <span className="text-xs">⌘</span>
@@ -218,7 +298,7 @@ export default function HomeLauncherPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground transition-transform hover:scale-105">
+            <button className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground transition-transform hover:scale-105">
               {userInitials}
             </button>
           </DropdownMenuTrigger>
@@ -258,35 +338,117 @@ export default function HomeLauncherPage() {
         </DropdownMenu>
       </header>
 
-      {/* App grid */}
-      <main className="mx-auto max-w-6xl px-6 py-12 lg:py-20">
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* Sales snapshot — only when not searching */}
+        {isSales && !searching && (
+          <section className="mb-8 space-y-4">
+            <div>
+              <h1 className="text-xl font-black">Chào {firstName} 👋</h1>
+              <p className="text-sm capitalize text-muted-foreground">{todayLabel}</p>
+            </div>
+
+            {/* Metric cards */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Link
+                href="/orders"
+                className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đơn hôm nay</p>
+                <p className="mt-1 text-2xl font-black tabular-nums">{snapshot?.ordersToday ?? "—"}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {snapshot ? formatCurrency(snapshot.ordersTodayValue) : ""}
+                </p>
+              </Link>
+              <Link
+                href="/orders?status=draft"
+                className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đơn nháp</p>
+                <p className={cn("mt-1 text-2xl font-black tabular-nums", (snapshot?.draftOrders ?? 0) > 0 && "text-amber-600")}>
+                  {snapshot?.draftOrders ?? "—"}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Chưa gửi duyệt</p>
+              </Link>
+              <Link
+                href="/sales/visits"
+                className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đã thăm h.nay</p>
+                <p className="mt-1 text-2xl font-black tabular-nums">{snapshot?.visitsToday ?? "—"}</p>
+                <p className="text-[11px] text-muted-foreground">Điểm bán</p>
+              </Link>
+              <Link
+                href="/customers"
+                className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Khách hàng</p>
+                <p className="mt-1 text-2xl font-black tabular-nums">{snapshot?.myCustomers ?? "—"}</p>
+                <p className="text-[11px] text-muted-foreground">Đang hoạt động</p>
+              </Link>
+            </div>
+
+            {/* Quick actions */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Link
+                href="/orders/new"
+                className="col-span-2 flex items-center gap-3 rounded-2xl bg-primary px-4 py-3.5 text-primary-foreground shadow-sm transition-transform active:scale-[0.99] sm:col-span-2"
+              >
+                <FilePlus2 className="h-5 w-5 shrink-0" />
+                <span className="font-bold">Tạo đơn hàng mới</span>
+                <ArrowRight className="ml-auto h-4 w-4" />
+              </Link>
+              <Link
+                href="/sales/visits"
+                className="flex items-center gap-2 rounded-2xl border bg-card px-3 py-3.5 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <MapPin className="h-5 w-5 shrink-0 text-indigo-500" />
+                <span className="text-sm font-semibold">Đi tuyến</span>
+              </Link>
+              <Link
+                href="/receivables"
+                className="flex items-center gap-2 rounded-2xl border bg-card px-3 py-3.5 shadow-sm transition-colors hover:bg-muted/40"
+              >
+                <CreditCard className="h-5 w-5 shrink-0 text-rose-500" />
+                <span className="text-sm font-semibold">Công nợ</span>
+              </Link>
+            </div>
+          </section>
+        )}
+
+        {/* App grid */}
+        {!isSales || searching ? null : (
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <span>Tất cả chức năng</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        )}
         {filteredTiles.length === 0 ? (
-          <div className="py-24 text-center">
+          <div className="py-20 text-center">
             <p className="text-base font-medium text-foreground">Không tìm thấy tính năng</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Thử từ khóa khác hoặc xóa ô tìm kiếm.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-x-6 gap-y-10 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-7 sm:grid-cols-4 sm:gap-x-6 md:grid-cols-5 lg:grid-cols-6">
             {filteredTiles.map((t) => {
               const Icon = t.icon
               return (
                 <Link
                   key={t.href}
                   href={t.href}
-                  className="group flex flex-col items-center gap-2.5 text-center"
+                  className="group flex flex-col items-center gap-2 text-center"
                 >
                   <div
                     className={cn(
-                      "flex h-16 w-16 items-center justify-center rounded-2xl shadow-sm transition-all group-hover:-translate-y-0.5 group-hover:shadow-md",
+                      "flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm transition-all group-active:scale-95 group-hover:-translate-y-0.5 group-hover:shadow-md sm:h-16 sm:w-16",
                       COLOR_CLASS[t.color]
                     )}
                   >
-                    <Icon className="h-7 w-7" strokeWidth={2} />
+                    <Icon className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2} />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{t.label}</p>
+                    <p className="text-[13px] font-semibold leading-tight text-foreground sm:text-sm">{t.label}</p>
                     {t.caption ? (
                       <p className="text-[11px] text-muted-foreground">{t.caption}</p>
                     ) : null}

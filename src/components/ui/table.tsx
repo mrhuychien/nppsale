@@ -3,7 +3,9 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto rounded-2xl bg-card border border-border/40 overflow-hidden">
+    // overflow-x-auto: bảng rộng cuộn ngang trên màn hẹp (mobile) thay
+    // vì bị cắt. (Trước đây có cả overflow-hidden → chặn cuộn ngang.)
+    <div className="relative w-full overflow-x-auto rounded-2xl bg-card border border-border/40">
       <table ref={ref} className={cn("w-full caption-bottom text-sm border-collapse", className)} {...props} />
     </div>
   )

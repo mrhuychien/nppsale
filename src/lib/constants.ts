@@ -70,9 +70,11 @@ export const PO_STATUS_MAP: Record<string, { label: string; variant: "default" |
 
 export const PURCHASE_INVOICE_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   draft: { label: "Nháp", variant: "secondary" },
-  confirmed: { label: "Đã xác nhận", variant: "default" },
-  paid: { label: "Đã thanh toán", variant: "success" },
-  cancelled: { label: "Đã hủy", variant: "danger" },
+  completed: { label: "Hoàn thành", variant: "success" },
+  cancelled: { label: "Đã huỷ", variant: "danger" },
+  // legacy (trước mig 065) — vẫn map để không vỡ dữ liệu cũ
+  confirmed: { label: "Hoàn thành", variant: "success" },
+  paid: { label: "Hoàn thành", variant: "success" },
 }
 
 /**

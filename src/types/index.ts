@@ -589,7 +589,7 @@ export interface PayablePayment {
 
 // Purchase Orders
 export type PurchaseOrderStatus = "draft" | "confirmed" | "received" | "partial" | "cancelled"
-export type PurchaseInvoiceStatus = "draft" | "confirmed" | "paid" | "cancelled"
+export type PurchaseInvoiceStatus = "draft" | "completed" | "cancelled"
 
 export interface PurchaseOrder {
   id: string
@@ -643,9 +643,29 @@ export interface PurchaseInvoice {
   payable_id: string | null
   notes: string | null
   created_at: string
+  created_by?: string | null
+  completed_at?: string | null
+  stock_entry_id?: string | null
   // Joined
   supplier?: Supplier
   purchase_order?: PurchaseOrder
+  lines?: PurchaseInvoiceLine[]
+}
+
+export interface PurchaseInvoiceLine {
+  id: string
+  invoice_id: string
+  product_id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  vat_rate: number
+  conversion_factor: number
+  line_total: number
+  notes: string | null
+  created_at: string
+  // Joined
+  product?: { id: string; name: string; sku: string; base_unit: string }
 }
 
 // HR Module

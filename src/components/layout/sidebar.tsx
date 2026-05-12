@@ -87,7 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Chấm công", href: "/hr/attendance", icon: UserCog, module: "settings", feature: "hr" },
       { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },
       { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet, module: "settings", feature: "hr" },
-      { label: "Tính lương kỳ", href: "/hr/payroll", icon: Receipt, module: "settings", feature: "hr" },
+      { label: "Bảng lương", href: "/hr/payroll/runs", icon: Receipt, module: "settings", feature: "hr" },
       { label: "Hoa hồng (báo cáo)", href: "/commissions", icon: Award, module: "commissions", feature: "commissions" },
     ],
   },

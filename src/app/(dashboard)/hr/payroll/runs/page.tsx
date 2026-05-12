@@ -186,9 +186,22 @@ export default function PayrollRunsPage() {
       })
       if (error) throw new Error(error)
       if (!run) throw new Error("Empty response")
+      // Fresh run → compute straight away so the user sees the payroll
+      // lines without a second click. Existing runs are left as-is.
+      let computed = 0
+      const justCreated = !run.computed_at
+      if (justCreated && run.status !== "locked") {
+        const { count, error: cErr } = await computePayrollRun(supabase, run.id)
+        if (cErr) throw new Error(cErr)
+        computed = count
+      }
       await loadRuns()
       await loadActive(run.id)
-      toast({ title: `Mở bảng lương ${month.slice(0, 7)}` })
+      toast({
+        title: justCreated
+          ? `Đã tạo & tính bảng lương ${month.slice(0, 7)} — ${computed} nhân sự`
+          : `Mở bảng lương ${month.slice(0, 7)}`,
+      })
     } catch (e) {
       toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
     } finally {
@@ -332,8 +345,8 @@ export default function PayrollRunsPage() {
     <div className="space-y-4">
       <div className="no-print space-y-4">
       <PageHeader
-        title="Bảng lương (Pack3)"
-        description="Tính lương theo tháng — KPI, thưởng số đơn, hoạt động, BHXH"
+        title="Bảng lương"
+        description="Tính lương theo tháng — lương CB, phụ cấp, thưởng KPI, thưởng số đơn, hoạt động, BHXH"
         backHref="/hr"
       >
         <div className="flex gap-2">

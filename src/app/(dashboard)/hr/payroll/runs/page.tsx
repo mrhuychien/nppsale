@@ -346,7 +346,7 @@ export default function PayrollRunsPage() {
       <div className="no-print space-y-4">
       <PageHeader
         title="Bảng lương"
-        description="Tính lương theo tháng — lương CB, phụ cấp, thưởng KPI, thưởng số đơn, hoạt động, BHXH"
+        description="Tính lương tháng cho nhân viên bán hàng — lương CB, phụ cấp, thưởng KPI, thưởng số đơn, hoạt động, BHXH"
         backHref="/hr"
       >
         <div className="flex gap-2">

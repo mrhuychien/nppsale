@@ -530,10 +530,19 @@ export default function PayrollRunsPage() {
                           return (
                             <tr key={it.id} className="border-b last:border-0">
                               <td className="px-2 py-2">
-                                <div className="font-medium">{u?.full_name || "—"}</div>
-                                <div className="text-[11px] text-muted-foreground">
-                                  {u?.role}
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => openDetail(it)}
+                                  className="text-left group"
+                                  title="Xem chi tiết phiếu lương"
+                                >
+                                  <div className="font-medium text-primary group-hover:underline">
+                                    {u?.full_name || "—"}
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground">
+                                    {u?.role} · Xem phiếu lương
+                                  </div>
+                                </button>
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums">
                                 {formatCurrency(it.prorated_base)}
@@ -662,7 +671,14 @@ export default function PayrollRunsPage() {
                     <table className="w-full text-sm">
                       <tbody>
                         <tr className="border-t">
-                          <td className="px-3 py-2">Lương cơ bản{lowPerf === "under_60" ? " (thay bằng % doanh số)" : ""}</td>
+                          <td className="px-3 py-2">
+                            Lương cơ bản{lowPerf === "under_60" ? " (thay bằng % doanh số)" : ""}
+                            <span className="text-[11px] text-muted-foreground">
+                              {lowPerf === "under_60"
+                                ? ` — doanh số ${formatCurrency(revenue)} × ${under60Pct}%`
+                                : ` — theo cấu hình ${formatCurrency(num(it.base_salary))}, không trừ theo chấm công`}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(num(it.prorated_base))}</td>
                         </tr>
                         <tr className="border-t">

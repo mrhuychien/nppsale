@@ -670,6 +670,7 @@ export default function PayrollRunsPage() {
             const ocPerOrder = num(bd.oc_bonus_per_order)
             const overPct = num(bd.over_target_percent)
             const under60Pct = num(bd.under_60_percent)
+            const allowanceDropped = Boolean(bd.allowance_dropped)
             const grossBeforeAdj = num(it.prorated_base) + allowances + num(it.kpi_bonus) + num(it.order_count_bonus) + num(it.activity_bonus) + num(it.overtime)
             return (
               <>
@@ -702,7 +703,11 @@ export default function PayrollRunsPage() {
                         <tr className="border-t">
                           <td className="px-3 py-2">
                             Phụ cấp
-                            <span className="text-[11px] text-muted-foreground"> — xăng xe {formatCurrency(gas)} + điện thoại {formatCurrency(phone)}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {allowanceDropped
+                                ? " — không có do đạt dưới 60% A (không hưởng lương cứng)"
+                                : ` — xăng xe ${formatCurrency(gas)} + điện thoại ${formatCurrency(phone)}`}
+                            </span>
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(allowances)}</td>
                         </tr>
@@ -749,7 +754,7 @@ export default function PayrollRunsPage() {
                       )}
                       {lowPerf === "under_60" && (
                         <p className="text-rose-700 text-xs">
-                          Đạt dưới 60% A → không có lương cơ bản; lương = doanh số × {under60Pct}% = {formatCurrency(num(it.prorated_base))}.
+                          Đạt dưới 60% A → không hưởng lương cứng &amp; không có phụ cấp; lương = doanh số × {under60Pct}% = {formatCurrency(num(it.prorated_base))}; không thưởng KPI.
                         </p>
                       )}
                       {lowPerf === "under_70" && (
@@ -928,6 +933,7 @@ export default function PayrollRunsPage() {
               kpiTargetRevenue={bd.kpi_target_revenue != null ? Number(bd.kpi_target_revenue) : null}
               periodStart={bd.period_start != null ? String(bd.period_start) : null}
               periodEnd={bd.period_end != null ? String(bd.period_end) : null}
+              allowanceDropped={bd.allowance_dropped === true}
             />
           )
         })()}

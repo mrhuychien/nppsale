@@ -42,6 +42,8 @@ export interface PayslipProps {
   kpiTargetRevenue?: number | null
   periodStart?: string | null
   periodEnd?: string | null
+  /** True khi phụ cấp bị bỏ vì đạt dưới 60% A (không hưởng lương cứng). */
+  allowanceDropped?: boolean
 }
 
 const BORDER = "0.4mm solid #333"
@@ -67,7 +69,11 @@ export function Payslip(p: PayslipProps) {
 
   const incomeRows: Array<{ label: string; value: number; hint?: string }> = [
     { label: "Lương cơ bản", value: p.proratedBase, hint: `cấu hình ${formatCurrency(p.baseSalary)}/tháng` },
-    { label: "Phụ cấp xăng xe + điện thoại", value: allowances },
+    {
+      label: "Phụ cấp xăng xe + điện thoại",
+      value: allowances,
+      hint: p.allowanceDropped ? "không có do đạt dưới 60% A" : undefined,
+    },
     { label: "Thưởng KPI doanh số", value: p.kpiBonus },
     { label: "Thưởng theo số đơn", value: p.orderCountBonus },
     { label: "Thưởng hoạt động", value: p.activityBonus },

@@ -71,6 +71,7 @@ export default function PayrollRunsPage() {
   const [busy, setBusy] = useState(false)
   const [pendingAdjust, setPendingAdjust] = useState<Record<string, string>>({})
   const [pendingNotes, setPendingNotes] = useState<Record<string, string>>({})
+  const [pendingSi, setPendingSi] = useState<Record<string, string>>({})
   // Per-user payslip print mode — caller picks one row → we render the
   // <Payslip> for it inside the .print-payslip-only block.
   const [payslipFor, setPayslipFor] = useState<string | null>(null)
@@ -121,6 +122,7 @@ export default function PayrollRunsPage() {
       setUsers(m)
       setPendingAdjust({})
       setPendingNotes({})
+      setPendingSi({})
     },
     [supabase, user?.org_id]
   )
@@ -318,14 +320,15 @@ export default function PayrollRunsPage() {
   }
 
   const saveAdjust = async (item: PayrollRunItem) => {
-    const raw = pendingAdjust[item.id]
-    const amt = Number(raw ?? item.manual_adjustment ?? 0) || 0
+    const amt = Number(pendingAdjust[item.id] ?? item.manual_adjustment ?? 0) || 0
     const notes = pendingNotes[item.id] ?? item.notes ?? ""
+    const si = Number(pendingSi[item.id] ?? item.social_insurance ?? 0) || 0
     setBusy(true)
     try {
       const { error } = await setManualAdjustment(supabase, item.id, {
         manual_adjustment: amt,
         notes: notes || null,
+        social_insurance: si,
       })
       if (error) throw new Error(error)
       if (activeRun) await loadActive(activeRun.id)
@@ -522,11 +525,17 @@ export default function PayrollRunsPage() {
                             pendingNotes[it.id] !== undefined
                               ? pendingNotes[it.id]
                               : it.notes ?? ""
+                          const siVal =
+                            pendingSi[it.id] !== undefined
+                              ? pendingSi[it.id]
+                              : String(it.social_insurance ?? 0)
                           const dirty =
                             (pendingAdjust[it.id] !== undefined &&
                               Number(pendingAdjust[it.id]) !== Number(it.manual_adjustment)) ||
                             (pendingNotes[it.id] !== undefined &&
-                              pendingNotes[it.id] !== (it.notes ?? ""))
+                              pendingNotes[it.id] !== (it.notes ?? "")) ||
+                            (pendingSi[it.id] !== undefined &&
+                              Number(pendingSi[it.id]) !== Number(it.social_insurance))
                           return (
                             <tr key={it.id} className="border-b last:border-0">
                               <td className="px-2 py-2">
@@ -559,8 +568,17 @@ export default function PayrollRunsPage() {
                               <td className="px-2 py-2 text-right tabular-nums">
                                 {formatCurrency(it.activity_bonus)}
                               </td>
-                              <td className="px-2 py-2 text-right tabular-nums text-destructive">
-                                −{formatCurrency(it.social_insurance)}
+                              <td className="px-2 py-2 text-right">
+                                <Input
+                                  type="number"
+                                  value={siVal}
+                                  onChange={(e) =>
+                                    setPendingSi((p) => ({ ...p, [it.id]: e.target.value }))
+                                  }
+                                  className="h-8 w-28 text-right tabular-nums text-destructive"
+                                  disabled={isLocked}
+                                  title="BHXH/BHYT/BHTN — sửa tay nếu cần (mặc định 10,5% lương CB)"
+                                />
                               </td>
                               <td className="px-2 py-2 text-right">
                                 <Input
@@ -796,7 +814,12 @@ export default function PayrollRunsPage() {
                     <table className="w-full text-sm">
                       <tbody>
                         <tr className="border-t">
-                          <td className="px-3 py-2">BHXH/BHYT/BHTN (10,5% lương CB)</td>
+                          <td className="px-3 py-2">
+                            BHXH/BHYT/BHTN
+                            <span className="text-[11px] text-muted-foreground">
+                              {" "}— mặc định 10,5% lương CB, có thể sửa tay ở danh sách
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums text-rose-700">−{formatCurrency(num(it.social_insurance))}</td>
                         </tr>
                         {num(it.deductions) > 0 && (
@@ -877,6 +900,7 @@ export default function PayrollRunsPage() {
           const it = items.find((x) => x.id === payslipFor)
           if (!it) return null
           const u = users.get(it.user_id)
+          const bd = (it.computed_breakdown || {}) as Record<string, unknown>
           return (
             <Payslip
               organizationName={orgName || "—"}
@@ -899,6 +923,11 @@ export default function PayrollRunsPage() {
               notes={it.notes}
               computedAt={activeRun.computed_at}
               lockedAt={activeRun.locked_at}
+              revenue={bd.revenue != null ? Number(bd.revenue) : null}
+              kpiPct={bd.kpi_pct != null ? Number(bd.kpi_pct) : null}
+              kpiTargetRevenue={bd.kpi_target_revenue != null ? Number(bd.kpi_target_revenue) : null}
+              periodStart={bd.period_start != null ? String(bd.period_start) : null}
+              periodEnd={bd.period_end != null ? String(bd.period_end) : null}
             />
           )
         })()}

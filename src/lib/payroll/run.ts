@@ -95,7 +95,12 @@ export async function lockPayrollRun(
 export async function setManualAdjustment(
   supabase: SupabaseClient,
   itemId: string,
-  patch: { manual_adjustment: number; notes?: string | null }
+  patch: {
+    manual_adjustment: number
+    notes?: string | null
+    /** Optional override for BHXH/BHYT/BHTN — defaults to current value. */
+    social_insurance?: number
+  }
 ): Promise<{ error: string | null }> {
   // Re-compute net_salary with the new adjustment in a single round-trip.
   // SELECT * để không vỡ nếu DB chưa có cột allowances (mig 064).
@@ -115,6 +120,10 @@ export async function setManualAdjustment(
     deductions: number
     social_insurance: number
   }
+  const si =
+    patch.social_insurance !== undefined
+      ? Number(patch.social_insurance) || 0
+      : Number(r.social_insurance || 0)
   const net =
     Number(r.prorated_base || 0) +
     Number(r.allowances || 0) +
@@ -124,12 +133,13 @@ export async function setManualAdjustment(
     Number(r.overtime || 0) +
     Number(patch.manual_adjustment || 0) -
     Number(r.deductions || 0) -
-    Number(r.social_insurance || 0)
+    si
   const { error } = await supabase
     .from("payroll_run_items")
     .update({
       manual_adjustment: patch.manual_adjustment,
       notes: patch.notes ?? null,
+      social_insurance: si,
       net_salary: net,
       updated_at: new Date().toISOString(),
     })

@@ -3,12 +3,15 @@
 /**
  * Per-user payslip — A5 portrait, ready for window.print().
  *
- * Shipped as part of T-16 / Pack3 close-out. The payroll runs page
- * renders one of these into a `.print-payslip-only` section and
- * toggles html[data-print-mode='payslip'] before calling print().
+ * Rendered by the payroll runs page into a `.print-payslip-only`
+ * section; html[data-print-mode='payslip'] is toggled before print().
+ * Print font is Times New Roman 8pt (see globals.css) to match the
+ * official VN business-document aesthetic used by the other slips.
  */
 
+import type { CSSProperties } from "react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
 
 export interface PayslipProps {
   organizationName: string
@@ -33,330 +36,230 @@ export interface PayslipProps {
   notes?: string | null
   computedAt?: string | null
   lockedAt?: string | null
+  /** Optional context from computed_breakdown — for transparency. */
+  revenue?: number | null
+  kpiPct?: number | null
+  kpiTargetRevenue?: number | null
+  periodStart?: string | null
+  periodEnd?: string | null
+}
+
+const BORDER = "0.4mm solid #333"
+const HAIR = "0.2mm solid #999"
+
+function cell(extra?: CSSProperties): CSSProperties {
+  return { padding: "1.2mm 2.5mm", borderBottom: HAIR, ...extra }
 }
 
 export function Payslip(p: PayslipProps) {
   const allowances = p.allowances ?? 0
-  const gross =
+  const grossBeforeAdj =
     p.proratedBase + allowances + p.kpiBonus + p.orderCountBonus + p.activityBonus + p.overtime
   const totalDeductions = p.deductions + p.socialInsurance
-  return (
-    <div className="a5-doc print-page" style={{ width: "148mm", padding: "8mm" }}>
-      <header style={{ textAlign: "center", marginBottom: "4mm" }}>
-        <div style={{ fontSize: "9pt", fontWeight: 600 }}>{p.organizationName}</div>
-        <h1 style={{ fontSize: "12pt", fontWeight: 700, marginTop: "2mm" }}>
-          PHIẾU LƯƠNG THÁNG {p.period}
-        </h1>
-      </header>
+  const monthLabel = (() => {
+    const [y, m] = p.period.split("-")
+    return m ? `${m}/${y}` : p.period
+  })()
+  const rangeLabel =
+    p.periodStart && p.periodEnd
+      ? `${formatDate(p.periodStart)} – ${formatDate(p.periodEnd)}`
+      : ""
 
-      <table style={{ width: "100%", marginBottom: "3mm", fontSize: "8pt" }}>
+  const incomeRows: Array<{ label: string; value: number; hint?: string }> = [
+    { label: "Lương cơ bản", value: p.proratedBase, hint: `cấu hình ${formatCurrency(p.baseSalary)}/tháng` },
+    { label: "Phụ cấp xăng xe + điện thoại", value: allowances },
+    { label: "Thưởng KPI doanh số", value: p.kpiBonus },
+    { label: "Thưởng theo số đơn", value: p.orderCountBonus },
+    { label: "Thưởng hoạt động", value: p.activityBonus },
+  ]
+  if (p.overtime > 0) incomeRows.push({ label: "Tăng ca / OT", value: p.overtime })
+
+  const deductionRows: Array<{ label: string; value: number }> = [
+    { label: "BHXH / BHYT / BHTN", value: p.socialInsurance },
+  ]
+  if (p.deductions > 0) deductionRows.push({ label: "Khấu trừ khác", value: p.deductions })
+
+  return (
+    <div
+      className="a5-doc print-page"
+      style={{
+        width: "148mm",
+        padding: "8mm",
+        boxSizing: "border-box",
+        color: "#111",
+      }}
+    >
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: "3.5mm" }}>
+        <div style={{ fontSize: "9pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3pt" }}>
+          {p.organizationName}
+        </div>
+        <h1
+          style={{
+            fontSize: "13pt",
+            fontWeight: 700,
+            margin: "2mm 0 0.5mm",
+            letterSpacing: "0.5pt",
+          }}
+        >
+          PHIẾU LƯƠNG
+        </h1>
+        <div style={{ fontSize: "9pt" }}>
+          Tháng {monthLabel}
+          {rangeLabel ? ` · Kỳ ${rangeLabel}` : ""}
+        </div>
+      </div>
+
+      {/* Employee info */}
+      <table style={{ width: "100%", fontSize: "8.5pt", marginBottom: "3mm", borderCollapse: "collapse" }}>
         <tbody>
           <tr>
-            <td style={{ width: "30%" }}>Họ tên:</td>
-            <td style={{ fontWeight: 600 }}>{p.employeeName}</td>
-            <td style={{ width: "20%" }}>Vai trò:</td>
-            <td>{p.employeeRole || "—"}</td>
+            <td style={{ width: "20%", padding: "0.8mm 0" }}>Họ và tên</td>
+            <td style={{ fontWeight: 700, padding: "0.8mm 0" }}>{p.employeeName}</td>
+            <td style={{ width: "18%", padding: "0.8mm 0" }}>Vai trò</td>
+            <td style={{ padding: "0.8mm 0" }}>{p.employeeRole || "—"}</td>
           </tr>
           <tr>
-            <td>Công chuẩn:</td>
-            <td>{p.standardWorkdays} ngày</td>
-            <td>Công thực:</td>
-            <td>{p.actualWorkdays} ngày</td>
-          </tr>
-          <tr>
-            <td>Lương cơ bản:</td>
-            <td colSpan={3} style={{ fontWeight: 600 }}>
-              {formatCurrency(p.baseSalary)} / tháng
+            <td style={{ padding: "0.8mm 0" }}>Công chuẩn</td>
+            <td style={{ padding: "0.8mm 0" }}>{p.standardWorkdays} ngày</td>
+            <td style={{ padding: "0.8mm 0" }}>Công thực</td>
+            <td style={{ padding: "0.8mm 0" }}>
+              {p.actualWorkdays} ngày
+              <span style={{ color: "#666" }}> (lương không phụ thuộc chấm công)</span>
             </td>
           </tr>
+          {(p.revenue != null || p.kpiTargetRevenue != null) && (
+            <tr>
+              <td style={{ padding: "0.8mm 0" }}>Doanh số kỳ</td>
+              <td style={{ padding: "0.8mm 0", fontWeight: 600 }}>
+                {formatCurrency(p.revenue ?? 0)}
+              </td>
+              <td style={{ padding: "0.8mm 0" }}>Mức chung A</td>
+              <td style={{ padding: "0.8mm 0" }}>
+                {p.kpiTargetRevenue ? formatCurrency(p.kpiTargetRevenue) : "—"}
+                {p.kpiPct != null ? ` · đạt ${p.kpiPct}%` : ""}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 
+      {/* Earnings + deductions */}
       <table
         style={{
           width: "100%",
           borderCollapse: "collapse",
-          fontSize: "8pt",
+          fontSize: "8.5pt",
+          border: BORDER,
           marginBottom: "3mm",
         }}
       >
-        <thead>
-          <tr>
-            <th
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "left",
-              }}
-            >
-              Khoản
-            </th>
-            <th
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "right",
-              }}
-            >
-              Cộng
-            </th>
-            <th
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "right",
-              }}
-            >
-              Trừ
-            </th>
-          </tr>
-        </thead>
         <tbody>
+          {/* A. Thu nhập */}
           <tr>
-            <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-              Lương cơ bản
+            <td colSpan={2} style={{ ...cell(), background: "#eee", fontWeight: 700, textTransform: "uppercase", fontSize: "8pt" }}>
+              A · Các khoản thu nhập
             </td>
-            <td
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "right",
-              }}
-            >
-              {formatCurrency(p.proratedBase)}
-            </td>
-            <td style={{ border: "1px solid #999" }}></td>
           </tr>
-          {allowances > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Phụ cấp (xăng xe + điện thoại)
+          {incomeRows.map((r, i) => (
+            <tr key={`inc-${i}`} style={r.value === 0 ? { color: "#777" } : undefined}>
+              <td style={cell()}>
+                {i + 1}. {r.label}
+                {r.hint ? <span style={{ color: "#777", fontStyle: "italic" }}> — {r.hint}</span> : null}
               </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(allowances)}
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-            </tr>
-          )}
-          {p.kpiBonus > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Thưởng KPI doanh số
-              </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.kpiBonus)}
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-            </tr>
-          )}
-          {p.orderCountBonus > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Thưởng số đơn
-              </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.orderCountBonus)}
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-            </tr>
-          )}
-          {p.activityBonus > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Thưởng hoạt động
-              </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.activityBonus)}
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-            </tr>
-          )}
-          {p.overtime > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Thưởng OT
-              </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.overtime)}
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-            </tr>
-          )}
-          {p.socialInsurance > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                BHXH (10.5%)
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.socialInsurance)}
+              <td style={cell({ textAlign: "right", whiteSpace: "nowrap", width: "32mm" })}>
+                {formatCurrency(r.value)}
               </td>
             </tr>
-          )}
-          {p.deductions > 0 && (
-            <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Khấu trừ khác
-              </td>
-              <td style={{ border: "1px solid #999" }}></td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {formatCurrency(p.deductions)}
-              </td>
+          ))}
+          <tr style={{ fontWeight: 700 }}>
+            <td style={cell({ textAlign: "right" })}>Tổng thu nhập (I)</td>
+            <td style={cell({ textAlign: "right", whiteSpace: "nowrap" })}>{formatCurrency(grossBeforeAdj)}</td>
+          </tr>
+
+          {/* B. Khấu trừ */}
+          <tr>
+            <td colSpan={2} style={{ ...cell(), background: "#eee", fontWeight: 700, textTransform: "uppercase", fontSize: "8pt" }}>
+              B · Các khoản khấu trừ
+            </td>
+          </tr>
+          {deductionRows.map((r, i) => (
+            <tr key={`ded-${i}`} style={r.value === 0 ? { color: "#777" } : undefined}>
+              <td style={cell()}>{i + 1}. {r.label}</td>
+              <td style={cell({ textAlign: "right", whiteSpace: "nowrap" })}>{formatCurrency(r.value)}</td>
             </tr>
-          )}
+          ))}
+          <tr style={{ fontWeight: 700 }}>
+            <td style={cell({ textAlign: "right" })}>Tổng khấu trừ (II)</td>
+            <td style={cell({ textAlign: "right", whiteSpace: "nowrap" })}>{formatCurrency(totalDeductions)}</td>
+          </tr>
+
+          {/* C. Điều chỉnh */}
           {p.manualAdjustment !== 0 && (
             <tr>
-              <td style={{ border: "1px solid #999", padding: "1mm 2mm" }}>
-                Điều chỉnh thủ công
+              <td style={cell()}>
+                C · Điều chỉnh thủ công
+                {p.notes ? <span style={{ color: "#777", fontStyle: "italic" }}> — {p.notes}</span> : null}
               </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {p.manualAdjustment > 0 ? formatCurrency(p.manualAdjustment) : ""}
-              </td>
-              <td
-                style={{
-                  border: "1px solid #999",
-                  padding: "1mm 2mm",
-                  textAlign: "right",
-                }}
-              >
-                {p.manualAdjustment < 0 ? formatCurrency(-p.manualAdjustment) : ""}
+              <td style={cell({ textAlign: "right", whiteSpace: "nowrap", fontWeight: 600 })}>
+                {p.manualAdjustment > 0 ? "+" : "−"}
+                {formatCurrency(Math.abs(p.manualAdjustment))}
               </td>
             </tr>
           )}
-          <tr style={{ fontWeight: 600 }}>
-            <td
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                background: "#f4f4f4",
-              }}
-            >
-              Tổng
+
+          {/* Net */}
+          <tr style={{ fontWeight: 700, fontSize: "10pt" }}>
+            <td style={{ padding: "2mm 2.5mm", background: "#ddd", textTransform: "uppercase" }}>
+              Thực lĩnh = I − II {p.manualAdjustment !== 0 ? (p.manualAdjustment > 0 ? "+ ĐC" : "− ĐC") : ""}
             </td>
-            <td
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "right",
-                background: "#f4f4f4",
-              }}
-            >
-              {formatCurrency(gross + Math.max(0, p.manualAdjustment))}
-            </td>
-            <td
-              style={{
-                border: "1px solid #999",
-                padding: "1mm 2mm",
-                textAlign: "right",
-                background: "#f4f4f4",
-              }}
-            >
-              {formatCurrency(totalDeductions + Math.max(0, -p.manualAdjustment))}
+            <td style={{ padding: "2mm 2.5mm", background: "#ddd", textAlign: "right", whiteSpace: "nowrap" }}>
+              {formatCurrency(p.netSalary)}
             </td>
           </tr>
         </tbody>
       </table>
 
-      <div
-        style={{
-          textAlign: "right",
-          fontSize: "11pt",
-          fontWeight: 700,
-          marginBottom: "4mm",
-        }}
-      >
-        Thực lĩnh: {formatCurrency(p.netSalary)} VNĐ
+      <div style={{ fontSize: "8.5pt", fontStyle: "italic", marginBottom: "1mm" }}>
+        Bằng chữ: {numberToVietnameseWords(p.netSalary)}.
       </div>
-
-      {p.notes && (
-        <p style={{ fontSize: "8pt", fontStyle: "italic", marginBottom: "4mm" }}>
+      {p.notes && p.manualAdjustment === 0 && (
+        <div style={{ fontSize: "8pt", fontStyle: "italic", marginBottom: "1mm" }}>
           Ghi chú: {p.notes}
-        </p>
+        </div>
       )}
 
-      <footer
-        className="signatures"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: "2mm",
-          textAlign: "center",
-          marginTop: "8mm",
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 600 }}>Người nhận</div>
-          <div style={{ fontStyle: "italic" }}>(Ký, họ tên)</div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Kế toán</div>
-          <div style={{ fontStyle: "italic" }}>(Ký, họ tên)</div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Giám đốc</div>
-          <div style={{ fontStyle: "italic" }}>(Ký, họ tên)</div>
-        </div>
-      </footer>
+      {/* Signatures */}
+      <div style={{ fontSize: "8pt", textAlign: "right", color: "#444", margin: "5mm 0 1mm" }}>
+        Ngày …… tháng …… năm ……
+      </div>
+      <table className="signatures" style={{ width: "100%", textAlign: "center", fontSize: "8pt" }}>
+        <tbody>
+          <tr style={{ fontWeight: 700 }}>
+            <td style={{ padding: "0.5mm" }}>Người nhận</td>
+            <td style={{ padding: "0.5mm" }}>Người lập</td>
+            <td style={{ padding: "0.5mm" }}>Kế toán</td>
+            <td style={{ padding: "0.5mm" }}>Giám đốc</td>
+          </tr>
+          <tr style={{ fontStyle: "italic", color: "#666" }}>
+            <td>(Ký, họ tên)</td>
+            <td>(Ký, họ tên)</td>
+            <td>(Ký, họ tên)</td>
+            <td>(Ký, họ tên)</td>
+          </tr>
+          <tr>
+            <td style={{ height: "16mm" }}></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
 
       {(p.computedAt || p.lockedAt) && (
-        <p
-          style={{
-            marginTop: "4mm",
-            fontSize: "7pt",
-            color: "#666",
-            textAlign: "right",
-          }}
-        >
+        <p style={{ marginTop: "2mm", fontSize: "7pt", color: "#888", textAlign: "right" }}>
           {p.computedAt ? `Tính ngày ${formatDate(p.computedAt)}` : ""}
-          {p.lockedAt ? ` • Khoá ngày ${formatDate(p.lockedAt)}` : ""}
+          {p.lockedAt ? ` · Khoá ngày ${formatDate(p.lockedAt)}` : ""}
         </p>
       )}
     </div>

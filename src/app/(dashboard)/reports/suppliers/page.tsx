@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
@@ -89,7 +89,7 @@ export default function SuppliersReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
-  const [supplierFilter, setSupplierFilter] = useState("")
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
@@ -182,7 +182,7 @@ export default function SuppliersReportPage() {
   const matchSearch = useCallback(
     (s: SupplierRow | undefined) => {
       if (!s) return false
-      if (supplierFilter && s.id !== supplierFilter) return false
+      if (supplierFilter.length && !supplierFilter.includes(s.id)) return false
       if (!search) return true
       const q = search.toLowerCase()
       return (
@@ -418,7 +418,7 @@ export default function SuppliersReportPage() {
       filters={
         <>
           <FilterField label="Nhà cung cấp">
-            <FilterSearchSelect
+            <FilterMultiSelect
               value={supplierFilter}
               onChange={setSupplierFilter}
               options={catalogs.suppliers}

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
-import { FilterField, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
 import {
@@ -32,8 +32,8 @@ export default function ChannelsReportPage() {
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
-  const [routeFilter, setRouteFilter] = useState("")
-  const [customerFilter, setCustomerFilter] = useState("")
+  const [routeFilter, setRouteFilter] = useState<string[]>([])
+  const [customerFilter, setCustomerFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
 
   const load = useCallback(async () => {
@@ -62,14 +62,17 @@ export default function ChannelsReportPage() {
     const m = new Map<string, { revenue: number; orders: number; customers: Set<string> }>()
     const fallback = "Bán trực tiếp"
     // Resolve route filter to candidate channel strings (id / code / name)
-    const route = routeFilter ? catalogs.routes.find((r) => r.id === routeFilter) : null
-    const matchVals = route
-      ? ([route.id, route.label, route.hint].filter(Boolean) as string[])
-      : null
+    const matchVals = routeFilter.length ? new Set<string>() : null
+    if (matchVals) {
+      for (const rid of routeFilter) {
+        const r = catalogs.routes.find((x) => x.id === rid)
+        for (const v of [r?.id, r?.label, r?.hint]) if (v) matchVals.add(v)
+      }
+    }
     for (const o of orders) {
-      if (customerFilter && o.customer_id !== customerFilter) continue
+      if (customerFilter.length && !customerFilter.includes(o.customer_id)) continue
       const ch = customerMap.get(o.customer_id)?.channel || fallback
-      if (matchVals && !matchVals.includes(ch)) continue
+      if (matchVals && !matchVals.has(ch)) continue
       const e = m.get(ch) || { revenue: 0, orders: 0, customers: new Set() }
       e.revenue += Number(o.total || 0)
       e.orders += 1
@@ -123,7 +126,7 @@ export default function ChannelsReportPage() {
       filters={
         <>
           <FilterField label="Kênh bán">
-            <FilterSearchSelect
+            <FilterMultiSelect
               value={routeFilter}
               onChange={setRouteFilter}
               options={catalogs.routes}
@@ -132,7 +135,7 @@ export default function ChannelsReportPage() {
             />
           </FilterField>
           <FilterField label="Khách hàng">
-            <FilterSearchSelect
+            <FilterMultiSelect
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}

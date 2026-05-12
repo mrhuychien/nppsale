@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame } from "@/components/analytics/report-frame"
 import {
   FilterField,
+  FilterMultiSelect,
   FilterSearchSelect,
   FilterSelect,
 } from "@/components/analytics/report-shell"
@@ -57,8 +58,8 @@ export default function EndOfDayPage() {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
 
   // Filters
-  const [customerFilter, setCustomerFilter] = useState("")
-  const [salesUserFilter, setSalesUserFilter] = useState("")
+  const [customerFilter, setCustomerFilter] = useState<string[]>([])
+  const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
   const [creatorFilter, setCreatorFilter] = useState("")
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("")
   const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
@@ -100,8 +101,8 @@ export default function EndOfDayPage() {
   // Filter helper applied to delivered + raw orders
   const passesFilters = useCallback(
     (o: SalesOrderRow) => {
-      if (customerFilter && o.customer_id !== customerFilter) return false
-      if (salesUserFilter && o.sales_user_id !== salesUserFilter) return false
+      if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
+      if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
       // creator / payment method / sales method are stored on the order
       // record where present; we apply best-effort filters.
       if (creatorFilter && (o as unknown as { created_by?: string }).created_by !== creatorFilter) return false
@@ -150,7 +151,7 @@ export default function EndOfDayPage() {
       filters={
         <>
           <FilterField label="Khách hàng">
-            <FilterSearchSelect
+            <FilterMultiSelect
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
@@ -159,7 +160,7 @@ export default function EndOfDayPage() {
             />
           </FilterField>
           <FilterField label="Nhân viên">
-            <FilterSearchSelect
+            <FilterMultiSelect
               value={salesUserFilter}
               onChange={setSalesUserFilter}
               options={catalogs.salesUsers}

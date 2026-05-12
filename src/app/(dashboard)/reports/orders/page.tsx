@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterCheckbox, FilterSelect, FilterSearchSelect } from "@/components/analytics/report-shell"
+import { ReportShell, FilterField, FilterCheckbox, FilterSelect, FilterSearchSelect, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   ReportTable,
@@ -75,12 +75,12 @@ export default function OrdersReportPage() {
   const [groupSameType, setGroupSameType] = useState(false)
   const [customerSearch, setCustomerSearch] = useState("")
   const [productSearch] = useState("")
-  const [customerFilter, setCustomerFilter] = useState("")
-  const [productFilter, setProductFilter] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
+  const [customerFilter, setCustomerFilter] = useState<string[]>([])
+  const [productFilter, setProductFilter] = useState<string[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
-  const [salesUserFilter, setSalesUserFilter] = useState("")
+  const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
@@ -118,8 +118,8 @@ export default function OrdersReportPage() {
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (status && o.status !== status) return false
-      if (customerFilter && o.customer_id !== customerFilter) return false
-      if (salesUserFilter && o.sales_user_id !== salesUserFilter) return false
+      if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
+      if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
       if (customerSearch) {
         const c = customers.find((x) => x.id === o.customer_id)
         if (
@@ -172,9 +172,9 @@ export default function OrdersReportPage() {
       const p = productMap.get(l.product_id)
       if (!p) continue
       // Catalog-backed filters
-      if (productFilter && p.id !== productFilter) continue
-      if (categoryFilter && (p.category || "") !== categoryFilter) continue
-      if (brandFilter && (p.brand || "") !== brandFilter) continue
+      if (productFilter.length && !productFilter.includes(p.id)) continue
+      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) continue
+      if (brandFilter.length && !brandFilter.includes(p.brand || "")) continue
       if (groupFilter) {
         const o = orders.find((x) => x.id === l.order_id)
         const c = o ? customerMap.get(o.customer_id) : null
@@ -290,12 +290,12 @@ export default function OrdersReportPage() {
               options={STATUS_OPTIONS}
             />
           </FilterField>
-          <FilterField label="Khách hàng">
-            <FilterSearchSelect
+          <FilterField label="Khách hàng (chọn nhiều)">
+            <FilterMultiSelect
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
-              placeholder="Theo mã, tên, số điện thoại"
+              placeholder="Tất cả khách hàng"
               loading={catalogs.loading}
             />
           </FilterField>
@@ -308,30 +308,30 @@ export default function OrdersReportPage() {
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
             />
           </FilterField>
-          <FilterField label="Hàng hóa">
-            <FilterSearchSelect
+          <FilterField label="Hàng hóa (chọn nhiều)">
+            <FilterMultiSelect
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
-              placeholder="Theo mã, tên hàng"
+              placeholder="Tất cả hàng hóa"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Loại hàng">
-            <FilterSearchSelect
+          <FilterField label="Loại hàng (chọn nhiều)">
+            <FilterMultiSelect
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={catalogs.categories}
-              placeholder="Chọn loại hàng"
+              placeholder="Tất cả loại hàng"
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Thương hiệu">
-            <FilterSearchSelect
+          <FilterField label="Thương hiệu (chọn nhiều)">
+            <FilterMultiSelect
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
-              placeholder="Chọn thương hiệu"
+              placeholder="Tất cả thương hiệu"
               loading={catalogs.loading}
             />
           </FilterField>
@@ -344,12 +344,12 @@ export default function OrdersReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Nhân viên">
-            <FilterSearchSelect
+          <FilterField label="Nhân viên (chọn nhiều)">
+            <FilterMultiSelect
               value={salesUserFilter}
               onChange={setSalesUserFilter}
               options={catalogs.salesUsers}
-              placeholder="Chọn nhân viên"
+              placeholder="Tất cả nhân viên"
               loading={catalogs.loading}
             />
           </FilterField>

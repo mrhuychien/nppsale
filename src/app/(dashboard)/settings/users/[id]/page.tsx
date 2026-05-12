@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -35,6 +36,8 @@ export default function UserDetailPage() {
     role: "sales" as Role,
     phone: "",
     is_active: true,
+    allow_price_edit: false,
+    price_edit_max_increase_pct: 0,
   })
   const supabase = createClient()
   const { toast } = useToast()
@@ -50,6 +53,8 @@ export default function UserDetailPage() {
         role: u.role,
         phone: u.phone || "",
         is_active: u.is_active,
+        allow_price_edit: u.allow_price_edit ?? false,
+        price_edit_max_increase_pct: u.price_edit_max_increase_pct ?? 0,
       })
     }
     setLoading(false)
@@ -77,6 +82,10 @@ export default function UserDetailPage() {
           role: form.role,
           phone: form.phone || null,
           is_active: form.is_active,
+          allow_price_edit: form.allow_price_edit,
+          price_edit_max_increase_pct: form.allow_price_edit
+            ? Math.max(0, Math.min(100, Number(form.price_edit_max_increase_pct) || 0))
+            : 0,
         })
         .eq("id", target.id)
       if (error) throw error
@@ -185,6 +194,48 @@ export default function UserDetailPage() {
                 </Select>
               </div>
             </div>
+
+            <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Quyền sửa giá khi tạo / sửa đơn
+              </p>
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2">
+                <div>
+                  <Label className="text-xs">Cho phép sửa giá</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Bật để nhân viên chỉnh được unit_price khi tạo / sửa đơn.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.allow_price_edit}
+                  onCheckedChange={(v) => setForm({ ...form, allow_price_edit: v })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">% tăng tối đa so với giá list</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={form.price_edit_max_increase_pct}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      price_edit_max_increase_pct: Math.max(
+                        0,
+                        Math.min(100, parseFloat(e.target.value) || 0)
+                      ),
+                    })
+                  }
+                  disabled={!form.allow_price_edit}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  VD 10 = giá tối đa = giá list × 1,10. Chỉ áp dụng khi bật &ldquo;Cho phép sửa giá&rdquo;.
+                </p>
+              </div>
+            </div>
+
             <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
               <Button variant="outline" onClick={() => router.push("/settings/users")} disabled={saving}>
                 Hủy

@@ -39,7 +39,6 @@ export default function NewUserPage() {
   const [phone, setPhone] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const applyTemplate = (key: TemplateKey) => {
     const t = getTemplate(key)
@@ -213,16 +212,7 @@ export default function NewUserPage() {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Mẫu phân quyền *</Label>
-                <button
-                  type="button"
-                  onClick={() => setAdvancedOpen((v) => !v)}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  {advancedOpen ? "Đóng nâng cao" : "Tuỳ chỉnh nâng cao"}
-                </button>
-              </div>
+              <Label>Mẫu phân quyền *</Label>
               <div className="grid gap-2 md:grid-cols-2">
                 {PERMISSION_TEMPLATES.map((t) => {
                   const active = templateKey === t.key
@@ -256,52 +246,53 @@ export default function NewUserPage() {
                 })}
               </div>
 
-              {advancedOpen && (
-                <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Tuỳ chỉnh nâng cao (override mẫu)
-                  </p>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Vai trò</Label>
-                    <Select value={role} onValueChange={setRole}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ROLES.map((r) => (
-                          <SelectItem key={r} value={r}>{ROLE_LABELS[r] || r}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2">
-                    <div>
-                      <Label className="text-xs">Cho phép sửa giá</Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        Bật để NV chỉnh được unit_price khi tạo / sửa đơn.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={allowPriceEdit}
-                      onCheckedChange={setAllowPriceEdit}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">% tăng tối đa so với giá list</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.5"
-                      value={priceEditMaxIncreasePct}
-                      onChange={(e) =>
-                        setPriceEditMaxIncreasePct(
-                          Math.max(0, Math.min(100, parseFloat(e.target.value) || 0))
-                        )
-                      }
-                      disabled={!allowPriceEdit}
-                    />
-                  </div>
+              <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tuỳ chỉnh (override mẫu)
+                </p>
+                <div className="space-y-2">
+                  <Label className="text-xs">Vai trò</Label>
+                  <Select value={role} onValueChange={setRole}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ROLES.map((r) => (
+                        <SelectItem key={r} value={r}>{ROLE_LABELS[r] || r}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2">
+                  <div>
+                    <Label className="text-xs">Cho phép sửa giá</Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      Bật để NV chỉnh được unit_price khi tạo / sửa đơn.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={allowPriceEdit}
+                    onCheckedChange={setAllowPriceEdit}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">% tăng tối đa so với giá list</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.5"
+                    value={priceEditMaxIncreasePct}
+                    onChange={(e) =>
+                      setPriceEditMaxIncreasePct(
+                        Math.max(0, Math.min(100, parseFloat(e.target.value) || 0))
+                      )
+                    }
+                    disabled={!allowPriceEdit}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    VD 10 = giá tối đa = giá list × 1,10. Chỉ áp dụng khi bật &ldquo;Cho phép sửa giá&rdquo;.
+                  </p>
+                </div>
+              </div>
 
               <p className="text-xs text-muted-foreground">
                 Mẫu áp dụng vai trò + cờ năng lực (giá / chấm công). Quyền theo

@@ -27,7 +27,7 @@ import {
 import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer, FileText } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { downloadXlsx } from "@/components/analytics/report-frame"
-import { Payslip } from "@/components/printing/payslip"
+import { Payslip, type PayslipKpiTier } from "@/components/printing/payslip"
 import {
   ensurePayrollRun,
   computePayrollRun,
@@ -75,6 +75,7 @@ export default function PayrollRunsPage() {
   // Per-user payslip print mode — caller picks one row → we render the
   // <Payslip> for it inside the .print-payslip-only block.
   const [payslipFor, setPayslipFor] = useState<string | null>(null)
+  const [payslipOrders, setPayslipOrders] = useState<PayslipOrder[]>([])
   const [orgName, setOrgName] = useState<string>("")
   // Detail dialog state.
   const [detailItem, setDetailItem] = useState<PayrollRunItem | null>(null)
@@ -306,8 +307,30 @@ export default function PayrollRunsPage() {
     toast({ title: `Đã xuất Excel: bang-luong-${period}.xlsx` })
   }
 
-  const printPayslipFor = (itemId: string) => {
-    setPayslipFor(itemId)
+  const printPayslipFor = async (item: PayrollRunItem) => {
+    // Load the orders that count toward this period so the printed
+    // payslip is a self-contained handout for the employee.
+    let ords: PayslipOrder[] = []
+    try {
+      const bd = item.computed_breakdown || {}
+      const ps = (bd.period_start as string) || ""
+      const pe = (bd.period_end as string) || ""
+      if (ps && pe) {
+        const { data } = await supabase
+          .from("sales_orders")
+          .select("id, order_code, order_date, total, status")
+          .eq("sales_user_id", item.user_id)
+          .in("status", ["delivered", "confirmed"])
+          .gte("order_date", ps)
+          .lte("order_date", pe)
+          .order("order_date", { ascending: false })
+        ords = (data as PayslipOrder[]) || []
+      }
+    } catch {
+      ords = []
+    }
+    setPayslipOrders(ords)
+    setPayslipFor(item.id)
     const html = document.documentElement
     html.setAttribute("data-print-mode", "payslip")
     requestAnimationFrame(() => {
@@ -627,7 +650,7 @@ export default function PayrollRunsPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => printPayslipFor(it.id)}
+                                  onClick={() => printPayslipFor(it)}
                                   title="In phiếu lương"
                                 >
                                   <Printer className="h-3.5 w-3.5" />
@@ -888,7 +911,7 @@ export default function PayrollRunsPage() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => { if (detailItem) printPayslipFor(detailItem.id) }}>
+                  <Button variant="outline" onClick={() => { if (detailItem) printPayslipFor(detailItem) }}>
                     <Printer className="h-4 w-4 mr-2" /> In phiếu lương
                   </Button>
                   <Button onClick={() => setDetailItem(null)}>Đóng</Button>
@@ -931,9 +954,21 @@ export default function PayrollRunsPage() {
               revenue={bd.revenue != null ? Number(bd.revenue) : null}
               kpiPct={bd.kpi_pct != null ? Number(bd.kpi_pct) : null}
               kpiTargetRevenue={bd.kpi_target_revenue != null ? Number(bd.kpi_target_revenue) : null}
+              kpiModel={bd.kpi_model != null ? String(bd.kpi_model) : null}
+              lowPerf={bd.low_perf != null ? String(bd.low_perf) : null}
+              overTargetPercent={bd.over_target_percent != null ? Number(bd.over_target_percent) : null}
+              under60Percent={bd.under_60_percent != null ? Number(bd.under_60_percent) : null}
+              kpiTierBreakdown={Array.isArray(bd.kpi_tier_breakdown) ? (bd.kpi_tier_breakdown as PayslipKpiTier[]) : []}
+              gasAllowance={bd.gas_allowance != null ? Number(bd.gas_allowance) : null}
+              phoneAllowance={bd.phone_allowance != null ? Number(bd.phone_allowance) : null}
+              allowanceDropped={bd.allowance_dropped === true}
+              ocCount={bd.oc_count != null ? Number(bd.oc_count) : null}
+              ocMinCount={bd.oc_min_count != null ? Number(bd.oc_min_count) : null}
+              ocMinValue={bd.oc_min_value != null ? Number(bd.oc_min_value) : null}
+              ocBonusPerOrder={bd.oc_bonus_per_order != null ? Number(bd.oc_bonus_per_order) : null}
               periodStart={bd.period_start != null ? String(bd.period_start) : null}
               periodEnd={bd.period_end != null ? String(bd.period_end) : null}
-              allowanceDropped={bd.allowance_dropped === true}
+              orders={payslipOrders}
             />
           )
         })()}

@@ -29,7 +29,7 @@ const ZONE_LABEL: Record<string, string> = {
   date: "Kho hàng date",
 }
 
-interface Row extends SupplierReturn {
+type Row = Omit<SupplierReturn, "supplier"> & {
   supplier?: Pick<Supplier, "id" | "name" | "code"> | undefined
 }
 

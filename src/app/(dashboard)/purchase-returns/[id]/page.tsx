@@ -34,11 +34,11 @@ const REASON_LABEL: Record<string, string> = {
   other: "Khác",
 }
 
-interface LineRow extends SupplierReturnLine {
+interface LineRow extends Omit<SupplierReturnLine, "product"> {
   product?: Pick<Product, "id" | "name" | "sku" | "base_unit"> | undefined
 }
 
-interface Detail extends SupplierReturn {
+type Detail = Omit<SupplierReturn, "supplier" | "lines"> & {
   supplier?: Pick<Supplier, "id" | "name" | "code"> | undefined
   lines?: LineRow[]
 }

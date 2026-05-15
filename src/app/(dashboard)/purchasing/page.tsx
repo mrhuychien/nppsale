@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
-import { Factory, FileText, CreditCard, ArrowRight, Plus, PackagePlus } from "lucide-react"
+import { Factory, FileText, CreditCard, ArrowRight, Plus, PackagePlus, RotateCcw } from "lucide-react"
 
 export default function PurchasingHubPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
@@ -51,6 +51,7 @@ export default function PurchasingHubPage() {
   const cards = [
     { title: "Tạo phiếu nhập kho", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/inventory/stock-in", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
     { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
+    { title: "Trả hàng NCC", description: "Hoàn trả hàng cho NCC — xuất kho + giảm công nợ", href: "/purchase-returns", icon: RotateCcw, color: "text-orange-600", bg: "bg-orange-50" },
     { title: "Nhà cung cấp", description: "Danh sách và thông tin nhà cung cấp", href: "/suppliers", icon: Factory, color: "text-emerald-600", bg: "bg-emerald-50" },
     { title: "Công nợ NCC", description: "Theo dõi & thanh toán công nợ phải trả", href: "/payables", icon: CreditCard, color: "text-rose-600", bg: "bg-rose-50" },
   ]

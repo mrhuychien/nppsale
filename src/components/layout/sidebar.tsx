@@ -51,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Tạo phiếu nhập kho", href: "/inventory/stock-in", icon: ShoppingCart, module: "inventory", feature: "inventory" },
       { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText, module: "inventory", feature: "purchasing.invoices" },
+      { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw, module: "inventory", feature: "purchasing.returns" },
       { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory", feature: "suppliers" },
       { label: "Công nợ NCC", href: "/payables", icon: CreditCard, module: "receivables", feature: "payables" },
     ],

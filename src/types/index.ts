@@ -822,3 +822,47 @@ export interface CashReceiptLine {
     customer?: { store_name?: string | null } | null
   } | null
 }
+
+// Supplier Returns (Trả hàng NCC)
+export type SupplierReturnStatus = "draft" | "completed" | "cancelled"
+export type WarehouseZone = "sale" | "date"
+
+export interface SupplierReturn {
+  id: string
+  org_id: string
+  supplier_id: string
+  return_code: string | null
+  return_date: string
+  reason: string | null
+  notes: string | null
+  subtotal: number
+  vat: number
+  total: number
+  status: SupplierReturnStatus
+  warehouse_zone: WarehouseZone
+  stock_entry_id: string | null
+  payable_credit_id: string | null
+  completed_at: string | null
+  completed_by: string | null
+  created_by: string | null
+  created_at: string
+  // Joined
+  supplier?: Supplier
+  lines?: SupplierReturnLine[]
+}
+
+export interface SupplierReturnLine {
+  id: string
+  return_id: string
+  product_id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  vat_rate: number
+  conversion_factor: number
+  line_total: number
+  notes: string | null
+  created_at: string
+  // Joined
+  product?: Pick<Product, "id" | "name" | "sku" | "base_unit">
+}

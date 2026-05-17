@@ -53,6 +53,8 @@ interface ReturnLineDraft {
   unit_name: string
   quantity: number
   unit_price: number
+  /** VAT (phân số 0-1). line_total = qty × unit_price × (1 + vat_rate). */
+  vat_rate: number
   line_total: number
   note: string
   /** True = đổi hàng. Không trừ vào công nợ; vẫn in trên phiếu giao. */
@@ -420,6 +422,7 @@ export function OrderForm() {
     if (!product) return
     const groupId = selectedCustomer?.group_id
     const price = getUnitPrice(product, product.base_unit, groupId)
+    const vatRate = snapVat(product.vat_rate ?? 0)
     setReturnLines((prev) => [
       ...prev,
       {
@@ -429,7 +432,8 @@ export function OrderForm() {
         unit_name: product.base_unit,
         quantity: 1,
         unit_price: price,
-        line_total: price,
+        vat_rate: vatRate,
+        line_total: price * (1 + vatRate),
         note: "",
         is_exchange: false,
       },
@@ -453,7 +457,10 @@ export function OrderForm() {
           if (newPrice > 0) line.unit_price = newPrice
         }
       }
-      line.line_total = Number(line.quantity || 0) * Number(line.unit_price || 0)
+      line.line_total =
+        Number(line.quantity || 0) *
+        Number(line.unit_price || 0) *
+        (1 + Number(line.vat_rate || 0))
       updated[index] = line
       return updated
     })
@@ -739,13 +746,17 @@ export function OrderForm() {
         // missing fallback below catches DBs without the column entirely.
         const returnLineRows = returnLines.map((l) => {
           const trimmed = l.note?.trim()
+          const vat = Number(l.vat_rate || 0)
+          const gross =
+            Number(l.quantity || 0) * Number(l.unit_price || 0) * (1 + vat)
           return {
             return_id: returnId,
             product_id: l.product_id,
             unit_name: l.unit_name,
             quantity: l.quantity,
             unit_price: l.unit_price,
-            line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+            vat_rate: vat,
+            line_total: gross,
             is_exchange: !!l.is_exchange,
             ...(trimmed ? { note: trimmed } : {}),
           }
@@ -763,6 +774,7 @@ export function OrderForm() {
           const code = (rLinesErr as unknown as { code?: string }).code
           const optionalMissing =
             msg.includes("is_exchange") ||
+            msg.includes("vat_rate") ||
             msg.includes("'note'") ||
             msg.includes('"note"') ||
             code === "PGRST204"
@@ -773,7 +785,10 @@ export function OrderForm() {
             unit_name: l.unit_name,
             quantity: l.quantity,
             unit_price: l.unit_price,
-            line_total: Number(l.quantity || 0) * Number(l.unit_price || 0),
+            line_total:
+              Number(l.quantity || 0) *
+              Number(l.unit_price || 0) *
+              (1 + Number(l.vat_rate || 0)),
           }))
           const retry = await supabase.from("return_lines").insert(stripped)
           if (retry.error) throw retry.error
@@ -1463,7 +1478,7 @@ export function OrderForm() {
                             <X className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                           {units.length <= 1 ? (
                             <div className="space-y-1">
                               <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">ĐVT</Label>
@@ -1500,6 +1515,21 @@ export function OrderForm() {
                               showSuffix={false}
                               className={`h-9 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT</Label>
+                            <Select
+                              value={String(Math.round((line.vat_rate || 0) * 100))}
+                              onValueChange={(v) => updateReturnLine(i, "vat_rate", parseInt(v) / 100)}
+                            >
+                              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">0%</SelectItem>
+                                <SelectItem value="5">5%</SelectItem>
+                                <SelectItem value="8">8%</SelectItem>
+                                <SelectItem value="10">10%</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Thành tiền</Label>

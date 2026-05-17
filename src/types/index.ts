@@ -547,6 +547,8 @@ export interface ReturnLine {
   note: string | null
   /** True = dòng đổi hàng (in trên phiếu giao, không trừ công nợ). */
   is_exchange?: boolean
+  /** Thuế VAT (phân số 0-1, vd 0.1 = 10%). line_total đã gồm VAT. */
+  vat_rate?: number
   // Joined
   product?: Product
 }

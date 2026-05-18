@@ -276,6 +276,10 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function friendlyError(msg: string): string {
   if (msg.includes("INSUFFICIENT_STOCK")) {
+    const parts = msg.split("|").map((s) => s.trim())
+    if (parts.length > 1) {
+      return `Không đủ tồn để xuất — ${parts.slice(1).join(" · ")}. Đổi kho khác hoặc giảm số lượng / nhập đủ rồi gửi lại.`
+    }
     return "Không đủ tồn kho trong kho đã chọn để xuất. Kiểm tra số lượng / chọn kho khác."
   }
   if (msg.includes("RETURN_HAS_NO_LINES")) return "Phiếu chưa có dòng hàng."

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Send, Trash2, ExternalLink } from "lucide-react"
+import { Send, Trash2, ExternalLink, Pencil } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
 
@@ -130,6 +130,11 @@ export default function PurchaseReturnDetailPage() {
         <Badge variant={st.variant}>{st.label}</Badge>
         {isDraft && (
           <>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/purchase-returns/${data.id}/edit`}>
+                <Pencil className="h-4 w-4 mr-1.5" /> Sửa
+              </Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDelete} disabled={busy}>
               <Trash2 className="h-4 w-4 mr-1.5" /> Xoá nháp
             </Button>

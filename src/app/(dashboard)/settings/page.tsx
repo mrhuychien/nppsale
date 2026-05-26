@@ -4,7 +4,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Users, Building2, CheckCircle2, Tag, ShieldCheck } from "lucide-react"
+import { Users, Building2, CheckCircle2, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 
 export default function SettingsPage() {
@@ -31,12 +31,6 @@ export default function SettingsPage() {
           <Card className="hover:border-primary transition-colors cursor-pointer h-full">
             <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Duyệt đơn tự động</CardTitle></CardHeader>
             <CardContent><p className="text-sm text-muted-foreground">Ngưỡng giá trị đơn, công nợ KH, công nợ NV, hạn mức</p></CardContent>
-          </Card>
-        </Link>
-        <Link href="/settings/pricing">
-          <Card className="hover:border-primary transition-colors cursor-pointer h-full">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Tag className="h-5 w-5" /> Cài đặt giá</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Cho phép NV sửa giá + ngưỡng giảm giá / tăng giá khi trả</p></CardContent>
           </Card>
         </Link>
         <Link href="/settings/org">

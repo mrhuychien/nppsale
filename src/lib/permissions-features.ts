@@ -99,7 +99,6 @@ export const FEATURES: FeatureDef[] = [
   { key: "settings.permissions", label: "Phân quyền", module: "settings", group: "Cài đặt", inherits: true },
   { key: "settings.org", label: "Tổ chức / NPP", module: "settings", group: "Cài đặt", inherits: true },
   { key: "settings.approval_rules", label: "Duyệt đơn tự động", module: "settings", group: "Cài đặt", inherits: true },
-  { key: "settings.pricing", label: "Cài đặt giá", module: "settings", group: "Cài đặt", inherits: true },
 ]
 
 const FEATURE_BY_KEY = new Map(FEATURES.map((f) => [f.key, f]))

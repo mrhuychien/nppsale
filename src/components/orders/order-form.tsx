@@ -20,14 +20,10 @@ import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, Chevr
 import Link from "next/link"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import {
-  DEFAULT_PRICING_RULES,
-  loadPricingRules,
-  saleFloor,
-  returnCeiling,
   userPriceRulesFrom,
+  userSalesCeiling,
   validateUserSalesPrice,
   validateUserReturnPrice,
-  type PricingRules,
 } from "@/lib/pricing"
 import { RETURN_REASONS } from "@/lib/constants"
 import { getConversionFactor } from "@/lib/inventory/uom"
@@ -77,7 +73,6 @@ export function OrderForm() {
   const [productSearch, setProductSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
-  const [pricingRules, setPricingRules] = useState<PricingRules>(DEFAULT_PRICING_RULES)
 
   // Optional "hàng trả lại" companion to this order. The sales rep can record
   // goods the customer is returning at the same visit; on submit we create a
@@ -117,18 +112,6 @@ export function OrderForm() {
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pricing rules drive whether the sales rep can edit unit_price and how
-  // far they can deviate from the default price-list value.
-  useEffect(() => {
-    if (!user?.org_id) return
-    let cancelled = false
-    ;(async () => {
-      const r = await loadPricingRules(supabase, user.org_id)
-      if (!cancelled) setPricingRules(r)
-    })()
-    return () => { cancelled = true }
-  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
   const filteredCustomers = customers.filter((c) => {
@@ -163,7 +146,9 @@ export function OrderForm() {
   const isSalesRole = user?.role === "sales"
   // Sales rep may only edit price when the org allows it.
   // Manager/owner always see the input (their authority overrides rules).
-  const canEditPrice = !isSalesRole || pricingRules.allow_sales_override
+  // Sales reps cần flag allow_price_edit ở /settings/users/[id] để sửa được giá.
+  const userRules = userPriceRulesFrom(user)
+  const canEditPrice = !isSalesRole || userRules.allow_price_edit
   // Discount % stays manager-only.
   const canEditDiscount = !isSalesRole
 
@@ -1194,11 +1179,15 @@ export function OrderForm() {
                                 showSuffix={false}
                                 className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                               />
-                              {isSalesRole && def > 0 && (
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
-                                  Mặc định: {formatCurrency(def)} • Tối thiểu: {formatCurrency(saleFloor(def, pricingRules))}
-                                </p>
-                              )}
+                              {isSalesRole && def > 0 && (() => {
+                                const ceiling = userSalesCeiling(def, userRules)
+                                return (
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    Mặc định: {formatCurrency(def)}
+                                    {ceiling > def + 0.5 ? ` • Tối đa: ${formatCurrency(ceiling)}` : ""}
+                                  </p>
+                                )
+                              })()}
                               {warning && (
                                 <p className="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1">
                                   <AlertTriangle className="h-3 w-3" /> {warning}
@@ -1325,11 +1314,15 @@ export function OrderForm() {
                               className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                             />
                           </div>
-                          {isSalesRole && def > 0 && (
-                            <p className="text-[10px] text-muted-foreground">
-                              Mặc định {formatCurrency(def)} • Tối thiểu {formatCurrency(saleFloor(def, pricingRules))}
-                            </p>
-                          )}
+                          {isSalesRole && def > 0 && (() => {
+                            const ceiling = userSalesCeiling(def, userRules)
+                            return (
+                              <p className="text-[10px] text-muted-foreground">
+                                Mặc định {formatCurrency(def)}
+                                {ceiling > def + 0.5 ? ` • Tối đa ${formatCurrency(ceiling)}` : ""}
+                              </p>
+                            )
+                          })()}
                           {warning && (
                             <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" /> {warning}
@@ -1460,7 +1453,14 @@ export function OrderForm() {
                     const units = returnAvailableUnits(line)
                     const def = isSalesRole ? getReturnLineDefault(line) : 0
                     const warning = getReturnLinePriceWarning(line)
-                    const ceilingValue = isSalesRole && def > 0 ? returnCeiling(def, pricingRules) : null
+                    // Per-user rule: giá trả ≤ giá đã bán cùng SP trong đơn này
+                    // (fallback giá list nếu chưa thêm dòng bán). Owner/accountant
+                    // (free) bỏ qua → không hiển thị trần.
+                    const ceilingValue = (() => {
+                      if (!isSalesRole || def <= 0 || userRules.free) return null
+                      const sameSaleLine = lines.find((l) => l.product_id === line.product_id)
+                      return sameSaleLine ? Number(sameSaleLine.unit_price || def) : def
+                    })()
                     return (
                       <div key={i} className="rounded-xl border bg-amber-50/30 p-3">
                         <div className="flex items-start justify-between gap-2 mb-2">

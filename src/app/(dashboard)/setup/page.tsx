@@ -26,7 +26,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -34,13 +33,13 @@ import {
   Building2, Tag, Wallet, Users, Package, Factory, FileText, Trophy,
 } from "lucide-react"
 
-const STEPS = ["welcome", "org", "pricing", "salary", "done"] as const
+const STEPS = ["welcome", "org", "warehouse", "salary", "done"] as const
 type Step = (typeof STEPS)[number]
 
 const STEP_LABEL: Record<Step, string> = {
   welcome: "Chào mừng",
   org: "Thông tin NPP",
-  pricing: "Quy tắc giá",
+  warehouse: "Kho date",
   salary: "Lương cơ bản",
   done: "Hoàn tất",
 }
@@ -54,12 +53,8 @@ interface OrgState {
   email: string
 }
 
-interface PricingState {
-  allow_sales_override: boolean
-  sale_min_pct: string
-  sale_min_value: string
-  return_max_pct: string
-  return_max_value: string
+interface WarehouseState {
+  date_warehouse_threshold_days: string
 }
 
 interface SalaryState {
@@ -72,12 +67,8 @@ interface SalaryState {
   under_60_percent: string
 }
 
-const DEFAULT_PRICING: PricingState = {
-  allow_sales_override: false,
-  sale_min_pct: "0",
-  sale_min_value: "0",
-  return_max_pct: "0",
-  return_max_value: "0",
+const DEFAULT_WAREHOUSE: WarehouseState = {
+  date_warehouse_threshold_days: "30",
 }
 const DEFAULT_SALARY: SalaryState = {
   base_salary: "3700000",
@@ -99,7 +90,7 @@ export default function SetupWizardPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [org, setOrg] = useState<OrgState>({ name: "", slug: "", tax_code: "", address: "", phone: "", email: "" })
-  const [pricing, setPricing] = useState<PricingState>(DEFAULT_PRICING)
+  const [warehouse, setWarehouse] = useState<WarehouseState>(DEFAULT_WAREHOUSE)
   const [salary, setSalary] = useState<SalaryState>(DEFAULT_SALARY)
   const [salaryConfigId, setSalaryConfigId] = useState<string | null>(null)
 
@@ -130,12 +121,8 @@ export default function SetupWizardPage() {
     })
     const pr = prRes.data as Record<string, unknown> | null
     if (pr) {
-      setPricing({
-        allow_sales_override: !!pr.allow_sales_override,
-        sale_min_pct: String(pr.sale_min_pct ?? 0),
-        sale_min_value: String(pr.sale_min_value ?? 0),
-        return_max_pct: String(pr.return_max_pct ?? 0),
-        return_max_value: String(pr.return_max_value ?? 0),
+      setWarehouse({
+        date_warehouse_threshold_days: String(pr.date_warehouse_threshold_days ?? 30),
       })
     }
     const sc = scRes.data as Record<string, unknown> | null
@@ -188,21 +175,17 @@ export default function SetupWizardPage() {
     return true
   }
 
-  const savePricing = async () => {
+  const saveWarehouse = async () => {
     if (!user?.org_id) return false
-    const num = (v: string) => Math.max(0, parseFloat(v) || 0)
+    const days = Math.max(0, Math.min(365, parseInt(warehouse.date_warehouse_threshold_days) || 30))
     const row = {
       org_id: user.org_id,
-      allow_sales_override: pricing.allow_sales_override,
-      sale_min_pct: num(pricing.sale_min_pct),
-      sale_min_value: num(pricing.sale_min_value),
-      return_max_pct: num(pricing.return_max_pct),
-      return_max_value: num(pricing.return_max_value),
+      date_warehouse_threshold_days: days,
       updated_by: user.id,
     }
     const { error } = await supabase.from("pricing_rules").upsert(row, { onConflict: "org_id" })
     if (error) {
-      toast({ title: "Lỗi lưu quy tắc giá", description: error.message, variant: "destructive" })
+      toast({ title: "Lỗi lưu ngưỡng kho date", description: error.message, variant: "destructive" })
       return false
     }
     return true
@@ -273,7 +256,7 @@ export default function SetupWizardPage() {
     setSaving(true)
     let ok = true
     if (step === "org") ok = await saveOrg()
-    else if (step === "pricing") ok = await savePricing()
+    else if (step === "warehouse") ok = await saveWarehouse()
     else if (step === "salary") ok = await saveSalary()
     setSaving(false)
     if (!ok) return
@@ -380,61 +363,35 @@ export default function SetupWizardPage() {
         </Card>
       )}
 
-      {step === "pricing" && (
+      {step === "warehouse" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Tag className="h-5 w-5 text-primary" /> Quy tắc giá cho NV bán hàng
+              <Tag className="h-5 w-5 text-primary" /> Ngưỡng kho date
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <Label>Cho phép NV sửa giá</Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Tắt = NV chỉ dùng giá list mặc định. Bật để áp dụng cap dưới đây.
-                </p>
-              </div>
-              <Switch checked={pricing.allow_sales_override} onCheckedChange={(v) => setPricing({ ...pricing, allow_sales_override: v })} />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Cap giảm giá khi BÁN (%)</Label>
-                <Input
-                  type="number" min={0} max={100} step="0.5"
-                  value={pricing.sale_min_pct}
-                  onChange={(e) => setPricing({ ...pricing, sale_min_pct: e.target.value })}
-                  disabled={!pricing.allow_sales_override}
-                />
-                <p className="text-[10px] text-muted-foreground">VD 5 = NV chỉ giảm tối đa 5% so với giá list.</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Cap giảm giá khi BÁN (VND)</Label>
-                <Input
-                  type="number" min={0}
-                  value={pricing.sale_min_value}
-                  onChange={(e) => setPricing({ ...pricing, sale_min_value: e.target.value })}
-                  disabled={!pricing.allow_sales_override}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Cap tăng giá khi TRẢ (%)</Label>
-                <Input
-                  type="number" min={0} max={100} step="0.5"
-                  value={pricing.return_max_pct}
-                  onChange={(e) => setPricing({ ...pricing, return_max_pct: e.target.value })}
-                  disabled={!pricing.allow_sales_override}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Cap tăng giá khi TRẢ (VND)</Label>
-                <Input
-                  type="number" min={0}
-                  value={pricing.return_max_value}
-                  onChange={(e) => setPricing({ ...pricing, return_max_value: e.target.value })}
-                  disabled={!pricing.allow_sales_override}
-                />
-              </div>
+          <CardContent className="space-y-3">
+            <div className="space-y-2 max-w-sm">
+              <Label>Tự động chuyển sang Kho date khi còn (ngày)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                step="1"
+                value={warehouse.date_warehouse_threshold_days}
+                onChange={(e) =>
+                  setWarehouse({
+                    ...warehouse,
+                    date_warehouse_threshold_days: e.target.value,
+                  })
+                }
+                placeholder="30"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Lô hàng còn ≤ ngưỡng này tự động chuyển từ Kho bán sang
+                Kho date. Mặc định 30 ngày. Quy tắc giá sửa được cấu hình
+                riêng cho từng nhân viên ở /settings/users/[id].
+              </p>
             </div>
           </CardContent>
         </Card>

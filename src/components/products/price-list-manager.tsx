@@ -16,7 +16,7 @@ interface PriceListManagerProps {
   baseUnit: string
   units: ProductUnit[]
   priceLists: PriceList[]
-  customerGroups: CustomerGroup[]
+  customerGroups: Pick<CustomerGroup, "id" | "name">[]
   onUpdate: () => void
 }
 

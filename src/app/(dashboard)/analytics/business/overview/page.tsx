@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -77,7 +78,7 @@ export default function BusinessOverviewPage() {
   const [cogs, setCogs] = useState(0)
   const [prevCogs, setPrevCogs] = useState(0)
   const [customers, setCustomers] = useState<CustomerRow[]>([])
-  const [groups, setGroups] = useState<CustomerGroupRow[]>([])
+  const { groups } = useCustomerGroups()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
 
@@ -93,7 +94,6 @@ export default function BusinessOverviewPage() {
       cogsRes,
       prevCogsRes,
       customersRes,
-      groupsRes,
       productsRes,
       usersRes,
     ] = await Promise.all([
@@ -104,7 +104,6 @@ export default function BusinessOverviewPage() {
       fetchCogsForRange(supabase, user.org_id, range),
       fetchCogsForRange(supabase, user.org_id, prev),
       supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
-      supabase.from("customer_groups").select("id, name").eq("org_id", user.org_id),
       supabase.from("products").select("id, name, category").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
@@ -124,7 +123,6 @@ export default function BusinessOverviewPage() {
     setCogs(cogsRes.cogs)
     setPrevCogs(prevCogsRes.cogs)
     setCustomers((customersRes.data as CustomerRow[]) || [])
-    setGroups((groupsRes.data as CustomerGroupRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
     setUsers((usersRes.data as UserRow[]) || [])
     setLoading(false)

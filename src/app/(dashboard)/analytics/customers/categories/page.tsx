@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -41,25 +42,23 @@ export default function CustomersCategoriesPage() {
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
-  const [groups, setGroups] = useState<CustomerGroupRow[]>([])
+  const { groups } = useCustomerGroups()
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
     const prev = previousRange(range)
-    const [orderList, prevOrderList, customersRes, groupsRes] = await Promise.all([
+    const [orderList, prevOrderList, customersRes] = await Promise.all([
       fetchDeliveredOrders(supabase, user.org_id, range),
       fetchDeliveredOrders(supabase, user.org_id, prev),
       supabase
         .from("customers")
         .select("id, store_name, channel, group_id, province")
         .eq("org_id", user.org_id),
-      supabase.from("customer_groups").select("id, name").eq("org_id", user.org_id),
     ])
     setOrders(orderList)
     setPrevOrders(prevOrderList)
     setCustomers((customersRes.data as CustomerRow[]) || [])
-    setGroups((groupsRes.data as CustomerGroupRow[]) || [])
     setLoading(false)
   }, [user?.org_id, range, supabase])
 

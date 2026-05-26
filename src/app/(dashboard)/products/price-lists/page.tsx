@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -29,7 +30,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { Search, Pencil, Save, X, Plus, FileText } from "lucide-react"
-import type { Product, PriceList, CustomerGroup } from "@/types"
+import type { Product, PriceList } from "@/types"
 
 interface PivotRow {
   productId: string
@@ -45,7 +46,7 @@ export default function PriceListsPage() {
   const { user, loading: authLoading } = useRoleGuard("products")
   const [products, setProducts] = useState<Product[]>([])
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
-  const [customerGroups, setCustomerGroups] = useState<CustomerGroup[]>([])
+  const { groups: customerGroups } = useCustomerGroups()
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [filterGroup, setFilterGroup] = useState("all")
@@ -62,7 +63,7 @@ export default function PriceListsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [productsRes, pricesRes, groupsRes] = await Promise.all([
+    const [productsRes, pricesRes] = await Promise.all([
       supabase
         .from("products")
         .select("*, units:product_units(*)")
@@ -70,11 +71,9 @@ export default function PriceListsPage() {
       supabase
         .from("price_lists")
         .select("*, group:customer_groups(*)"),
-      supabase.from("customer_groups").select("*"),
     ])
     setProducts((productsRes.data as Product[]) || [])
     setPriceLists((pricesRes.data as PriceList[]) || [])
-    setCustomerGroups((groupsRes.data as CustomerGroup[]) || [])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

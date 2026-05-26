@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -22,7 +23,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { Pencil, Save, X, Copy, FileText } from "lucide-react"
-import type { Product, PriceList, CustomerGroup } from "@/types"
+import type { Product, PriceList } from "@/types"
 
 interface GroupPriceRow {
   productId: string
@@ -36,9 +37,13 @@ interface GroupPriceRow {
 export default function GroupPriceListPage() {
   const { groupId } = useParams<{ groupId: string }>()
   const { user, loading: authLoading } = useRoleGuard("products")
+  const isDefault = groupId === "default"
   const [products, setProducts] = useState<Product[]>([])
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
-  const [group, setGroup] = useState<CustomerGroup | null>(null)
+  const { groups: customerGroups } = useCustomerGroups()
+  const group = isDefault
+    ? null
+    : customerGroups.find((g) => g.id === groupId) ?? null
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
   const [editedRows, setEditedRows] = useState<
@@ -49,29 +54,17 @@ export default function GroupPriceListPage() {
   const supabase = createClient()
   const { toast } = useToast()
 
-  const isDefault = groupId === "default"
-
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [productsRes, pricesRes, groupRes] = await Promise.all([
+    const [productsRes, pricesRes] = await Promise.all([
       supabase
         .from("products")
         .select("*, units:product_units(*)")
         .order("name"),
       supabase.from("price_lists").select("*, group:customer_groups(*)"),
-      isDefault
-        ? Promise.resolve({ data: null })
-        : supabase
-            .from("customer_groups")
-            .select("*")
-            .eq("id", groupId)
-            .single(),
     ])
     setProducts((productsRes.data as Product[]) || [])
     setPriceLists((pricesRes.data as PriceList[]) || [])
-    if (!isDefault && groupRes.data) {
-      setGroup(groupRes.data as CustomerGroup)
-    }
     setLoading(false)
   }, [groupId, isDefault]) // eslint-disable-line react-hooks/exhaustive-deps
 

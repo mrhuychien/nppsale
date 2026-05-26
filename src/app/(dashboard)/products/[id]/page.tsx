@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,7 +19,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Trash2, ClipboardList } from "lucide-react"
-import type { Product, ProductUnit, PriceList, CustomerGroup } from "@/types"
+import type { Product, ProductUnit, PriceList } from "@/types"
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -27,7 +28,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null)
   const [units, setUnits] = useState<ProductUnit[]>([])
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
-  const [customerGroups, setCustomerGroups] = useState<CustomerGroup[]>([])
+  const { groups: customerGroups } = useCustomerGroups()
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -37,16 +38,14 @@ export default function ProductDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [productRes, unitsRes, priceRes, groupsRes] = await Promise.all([
+    const [productRes, unitsRes, priceRes] = await Promise.all([
       supabase.from("products").select("*").eq("id", id).single(),
       supabase.from("product_units").select("*").eq("product_id", id),
       supabase.from("price_lists").select("*, group:customer_groups(*)").eq("product_id", id),
-      supabase.from("customer_groups").select("*"),
     ])
     if (productRes.data) setProduct(productRes.data as Product)
     setUnits((unitsRes.data as ProductUnit[]) || [])
     setPriceLists((priceRes.data as PriceList[]) || [])
-    setCustomerGroups((groupsRes.data as CustomerGroup[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 

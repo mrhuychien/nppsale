@@ -307,7 +307,7 @@ export default function PjpPage() {
               onClick={() => setActiveDay(idx)}
               className={`flex flex-col items-center px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 activeDay === idx
-                  ? "bg-primary text-white shadow-card"
+                  ? "bg-primary text-on-primary shadow-card"
                   : "bg-surface-low text-muted-foreground hover:bg-surface-container"
               }`}
             >

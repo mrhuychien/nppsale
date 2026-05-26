@@ -842,7 +842,7 @@ export function OrderForm() {
       <div className="w-full lg:hidden flex items-center gap-2 px-1 pb-1">
         <div className="flex items-center gap-2">
           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            customerId ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+            customerId ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
           }`}>
             1
           </span>
@@ -853,7 +853,7 @@ export function OrderForm() {
         <div className="h-px flex-1 bg-border" />
         <div className="flex items-center gap-2">
           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            lineCount > 0 ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+            lineCount > 0 ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
           }`}>
             2
           </span>
@@ -864,7 +864,7 @@ export function OrderForm() {
         <div className="h-px flex-1 bg-border" />
         <div className="flex items-center gap-2">
           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            summaryHasContent ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+            summaryHasContent ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
           }`}>
             3
           </span>
@@ -1726,7 +1726,7 @@ export function OrderForm() {
       {/* Mobile floating summary dock */}
       {lineCount > 0 && (
         <div className="fixed bottom-20 left-0 right-0 z-40 lg:hidden px-4 pointer-events-none">
-          <div className="pointer-events-auto mx-auto max-w-md rounded-2xl bg-card/95 backdrop-blur-xl p-3 flex items-center justify-between gap-3 shadow-2xl border border-border">
+          <div className="pointer-events-auto mx-auto max-w-md rounded-xl bg-surface-container-lowest/95 backdrop-blur-xl p-3 flex items-center justify-between gap-3 shadow-overlay border border-outline-variant/60">
             <div className="pl-2 min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase tracking-widest">
                 <span className="relative inline-flex items-center justify-center">

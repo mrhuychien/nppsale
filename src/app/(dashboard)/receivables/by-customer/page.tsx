@@ -194,7 +194,7 @@ export default function ReceivablesByCustomerPage() {
                     onClick={() => setFilter(f)}
                     className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       filter === f
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-on-primary"
                         : "bg-surface-low text-muted-foreground hover:bg-surface-container"
                     }`}
                   >

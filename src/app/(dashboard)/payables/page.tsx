@@ -180,7 +180,7 @@ export default function PayablesPage() {
                     onClick={() => setStatusFilter(f)}
                     className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       statusFilter === f
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-on-primary"
                         : "bg-surface-low text-muted-foreground hover:bg-surface-container"
                     }`}
                   >

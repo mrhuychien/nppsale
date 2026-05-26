@@ -1,13 +1,14 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Manrope } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/hooks/use-auth"
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ["latin", "vietnamese"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-  variable: "--font-inter",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-manrope",
+  display: "swap",
 })
 
 export const metadata: Metadata = {
@@ -21,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="vi" className={inter.variable}>
-      <body className="font-inter antialiased bg-background text-foreground">
+    <html lang="vi" className={manrope.variable}>
+      <body className="font-sans antialiased bg-background text-foreground">
         <AuthProvider>
           {children}
         </AuthProvider>

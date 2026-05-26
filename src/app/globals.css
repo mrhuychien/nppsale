@@ -4,43 +4,48 @@
 
 @layer base {
   :root {
-    /* Claude Design System - Premium ERP */
-    --background: 220 20% 97%;
-    --foreground: 220 30% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 220 30% 10%;
+    /* Precision Enterprise — token values derived from Stitch DESIGN.md.
+       Keeping shadcn variable names so existing components inherit the
+       new look without code changes. Use Tailwind tokens directly
+       (e.g. bg-surface-container-lowest, text-on-surface-variant) for
+       new Stitch-style code. */
+    --background: 210 60% 98%;         /* #f7fafd surface */
+    --foreground: 207 9% 11%;          /* #181c1e on-surface */
+    --card: 0 0% 100%;                 /* #ffffff surface-container-lowest */
+    --card-foreground: 207 9% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 30% 10%;
-    --primary: 220 90% 45%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 40%;
+    --popover-foreground: 207 9% 11%;
+    --primary: 219 100% 30%;           /* #003d9b primary */
+    --primary-foreground: 0 0% 100%;   /* #ffffff on-primary */
+    --secondary: 215 17% 39%;          /* #525f73 secondary */
     --secondary-foreground: 0 0% 100%;
-    --muted: 220 20% 95%;
-    --muted-foreground: 220 10% 45%;
-    --accent: 220 30% 94%;
-    --accent-foreground: 220 30% 10%;
-    --destructive: 0 72% 51%;
+    --muted: 213 23% 96%;              /* #f1f4f7 surface-container-low */
+    --muted-foreground: 230 11% 30%;   /* #434654 on-surface-variant */
+    --accent: 218 86% 91%;             /* #d6e3fb secondary-container */
+    --accent-foreground: 207 9% 11%;
+    --destructive: 0 75% 41%;          /* #ba1a1a error */
     --destructive-foreground: 0 0% 100%;
-    --border: 220 15% 90%;
-    --input: 220 20% 95%;
-    --ring: 220 90% 45%;
-    --radius: 0.625rem;
+    --border: 228 17% 80%;             /* #c3c6d6 outline-variant */
+    --input: 228 17% 80%;
+    --ring: 219 100% 30%;              /* #003d9b primary */
+    --radius: 0.5rem;
 
-    /* Surface layers */
-    --surface-container-lowest: 0 0% 100%;
-    --surface-container-low: 220 25% 97%;
-    --surface-container: 220 25% 95%;
-    --surface-container-high: 220 20% 93%;
-    --surface-container-highest: 220 15% 91%;
-    --surface-dim: 220 15% 87%;
+    /* Surface layers — match Stitch surface-container-* */
+    --surface-container-lowest: 0 0% 100%;     /* #ffffff */
+    --surface-container-low: 213 23% 96%;      /* #f1f4f7 */
+    --surface-container: 213 11% 93%;          /* #ebeef1 */
+    --surface-container-high: 220 7% 91%;      /* #e5e8eb */
+    --surface-container-highest: 210 6% 89%;   /* #e0e3e6 */
+    --surface-dim: 210 4% 86%;                 /* #d7dadd */
 
-    /* Semantic colors */
-    --success: 152 60% 40%;
-    --success-light: 152 60% 95%;
+    /* Semantic colors — kept as legacy aliases; prefer Stitch tokens
+       (tertiary / error / etc.) in new code. */
+    --success: 156 100% 15%;           /* #004e33 tertiary */
+    --success-light: 152 75% 92%;
     --warning: 38 95% 50%;
     --warning-light: 38 95% 95%;
-    --info: 210 90% 55%;
-    --info-light: 210 90% 95%;
+    --info: 217 100% 40%;              /* #0052cc primary-container */
+    --info-light: 218 100% 88%;        /* #c4d2ff on-primary-container */
   }
 }
 
@@ -50,10 +55,17 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tabular numerals — apply to columns with prices / quantities. */
+  .tabular-data,
+  [data-tabular="true"] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
 
   /* Smooth scrolling */

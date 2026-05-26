@@ -36,6 +36,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import {
+  DELIVERY_COLUMNS,
+  DEFAULT_DELIVERY_COLUMNS,
+  type DeliveryColumnKey,
+} from "./list-config"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   Truck,
@@ -142,6 +149,16 @@ export default function DeliveriesPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<"all" | DerivedStatus>("all")
   const [search, setSearch] = useState("")
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs(
+    "deliveries",
+    DEFAULT_DELIVERY_COLUMNS,
+    []
+  )
+  const show = (k: DeliveryColumnKey) => visibleColumns.includes(k)
   const supabase = createClient()
 
   useEffect(() => {
@@ -323,13 +340,21 @@ export default function DeliveriesPage() {
             ))}
           </TabsList>
         </Tabs>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Tìm route / xe / lái xe..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 w-56"
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm route / xe / lái xe..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-9 w-56"
+            />
+          </div>
+          <ColumnPicker
+            available={DELIVERY_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
           />
         </div>
       </div>
@@ -363,11 +388,11 @@ export default function DeliveriesPage() {
                 <TableRow>
                   <TableHead className="w-[140px]">Trạng thái</TableHead>
                   <TableHead>Chuyến / Lái xe</TableHead>
-                  <TableHead>Xe</TableHead>
-                  <TableHead className="text-right">Số đơn</TableHead>
-                  <TableHead className="text-right">Tổng giá trị</TableHead>
-                  <TableHead className="w-[110px]">Tạo</TableHead>
-                  <TableHead className="w-[110px]">Cập nhật cuối</TableHead>
+                  {show("vehicle") && <TableHead>Xe</TableHead>}
+                  {show("orderCount") && <TableHead className="text-right">Số đơn</TableHead>}
+                  {show("totalValue") && <TableHead className="text-right">Tổng giá trị</TableHead>}
+                  {show("createdAt") && <TableHead className="w-[110px]">Tạo</TableHead>}
+                  {show("updatedAt") && <TableHead className="w-[110px]">Cập nhật cuối</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -404,31 +429,41 @@ export default function DeliveriesPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {d.vehicle || "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        <span className="font-semibold">{d._stats.orderCount}</span>
-                        {d._stats.deliveredCount > 0 && (
-                          <span className="ml-1 text-[10px] text-emerald-700">
-                            (✓{d._stats.deliveredCount})
-                          </span>
-                        )}
-                        {d._stats.failedCount > 0 && (
-                          <span className="ml-1 text-[10px] text-rose-700">
-                            (✗{d._stats.failedCount})
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatCurrency(d._stats.totalValue)}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(d.created_at)}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(lastUpdate)}
-                      </TableCell>
+                      {show("vehicle") && (
+                        <TableCell className="text-sm">
+                          {d.vehicle || "—"}
+                        </TableCell>
+                      )}
+                      {show("orderCount") && (
+                        <TableCell className="text-right tabular-nums">
+                          <span className="font-semibold">{d._stats.orderCount}</span>
+                          {d._stats.deliveredCount > 0 && (
+                            <span className="ml-1 text-[10px] text-emerald-700">
+                              (✓{d._stats.deliveredCount})
+                            </span>
+                          )}
+                          {d._stats.failedCount > 0 && (
+                            <span className="ml-1 text-[10px] text-rose-700">
+                              (✗{d._stats.failedCount})
+                            </span>
+                          )}
+                        </TableCell>
+                      )}
+                      {show("totalValue") && (
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(d._stats.totalValue)}
+                        </TableCell>
+                      )}
+                      {show("createdAt") && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {formatDate(d.created_at)}
+                        </TableCell>
+                      )}
+                      {show("updatedAt") && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {formatDate(lastUpdate)}
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}

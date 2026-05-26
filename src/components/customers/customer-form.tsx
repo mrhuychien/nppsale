@@ -18,7 +18,7 @@ import type { Customer, CustomerGroup } from "@/types"
 
 interface CustomerFormProps {
   customer?: Customer
-  groups: CustomerGroup[]
+  groups: Pick<CustomerGroup, "id" | "name">[]
 }
 
 interface PjpRouteDisplay {

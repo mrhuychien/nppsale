@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -27,7 +28,7 @@ import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
   ArrowRight, Banknote, Navigation, MapPin, Camera, FilePlus2, Pencil,
 } from "lucide-react"
-import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
+import type { Customer, CustomerAssignment } from "@/types"
 
 interface OrderRow {
   id: string
@@ -53,8 +54,8 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("customers")
+  const { groups } = useCustomerGroups()
   const [customer, setCustomer] = useState<Customer | null>(null)
-  const [groups, setGroups] = useState<CustomerGroup[]>([])
   const [assignments, setAssignments] = useState<CustomerAssignment[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -96,13 +97,11 @@ export default function CustomerDetailPage() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [custRes, groupsRes, assignRes] = await Promise.all([
+    const [custRes, assignRes] = await Promise.all([
       supabase.from("customers").select("*, group:customer_groups(*)").eq("id", id).single(),
-      supabase.from("customer_groups").select("*"),
       supabase.from("customer_assignments").select("*, user:users(*)").eq("customer_id", id),
     ])
     if (custRes.data) setCustomer(custRes.data as Customer)
-    setGroups((groupsRes.data as CustomerGroup[]) || [])
     setAssignments((assignRes.data as CustomerAssignment[]) || [])
 
     // KPIs + tab data

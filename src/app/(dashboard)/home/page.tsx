@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { canAccessModule, type Module } from "@/lib/permissions"
+import { SetupBanner } from "@/components/setup/setup-banner"
 import {
   ShoppingCart,
   Users,
@@ -337,6 +338,12 @@ export default function HomeLauncherPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* Banner gợi ý chạy trình hướng dẫn cài đặt (owner, chưa setup) */}
+        {!searching && (
+          <div className="mb-6">
+            <SetupBanner />
+          </div>
+        )}
         {/* Sales snapshot — only when not searching */}
         {isSales && !searching && (
           <section className="mb-8 space-y-4">

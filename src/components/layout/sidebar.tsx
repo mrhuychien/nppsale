@@ -124,6 +124,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Settings,
     items: [
       { label: "Tổng quan", href: "/settings", icon: Settings, module: "settings", feature: "settings" },
+      { label: "Trình hướng dẫn cài đặt", href: "/setup", icon: Plus, module: "settings", feature: "settings.org" },
       { label: "Tổ chức / NPP", href: "/settings/org", icon: Settings, module: "settings", feature: "settings.org" },
       { label: "Duyệt đơn tự động", href: "/settings/approval-rules", icon: ShieldCheck, module: "settings", feature: "settings.approval_rules" },
       { label: "Cài đặt giá", href: "/settings/pricing", icon: Tag, module: "settings", feature: "settings.pricing" },

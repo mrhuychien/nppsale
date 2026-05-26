@@ -1,3 +1,16 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "CallExpression[callee.property.name='select'][arguments.0.value='*']",
+        "message": "Tránh .select('*') — liệt kê cột cụ thể để giảm payload + bắt buộc type narrow. Xem các Pick<X,...> trong /invoices, /customers, useOrg, useCustomerGroups."
+      },
+      {
+        "selector": "CallExpression[callee.property.name='select'][arguments.0.type='Literal'][arguments.0.value=/^\\*,/]",
+        "message": "Tránh .select('*, joined:...') — chỉ liệt kê cột cần (vẫn join được)."
+      }
+    ]
+  }
 }

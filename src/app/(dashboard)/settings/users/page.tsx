@@ -17,6 +17,13 @@ import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
 import { Users, Pencil, Lock, Unlock, Plus, Trash2 } from "lucide-react"
 import type { User } from "@/types"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import {
+  USER_COLUMNS,
+  DEFAULT_USER_COLUMNS,
+  type UserColumnKey,
+} from "./list-config"
 
 export default function UsersPage() {
   const { user: currentUser, loading: authLoading } = useRoleGuard("settings")
@@ -29,6 +36,12 @@ export default function UsersPage() {
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs("settings-users", DEFAULT_USER_COLUMNS, [])
+  const show = (k: UserColumnKey) => visibleColumns.includes(k)
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
@@ -91,13 +104,21 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Quản lý người dùng" description={`${users.length} người dùng`} backHref="/settings">
-        {isOwner && (
-          <Button asChild>
-            <Link href="/settings/users/new">
-              <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ColumnPicker
+            available={USER_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
+          {isOwner && (
+            <Button asChild>
+              <Link href="/settings/users/new">
+                <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
+              </Link>
+            </Button>
+          )}
+        </div>
       </PageHeader>
 
       {users.length === 0 ? (
@@ -110,63 +131,67 @@ export default function UsersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Họ tên</TableHead>
-                  <TableHead>Vai trò</TableHead>
-                  <TableHead>SĐT</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
+                  {show("role") && <TableHead>Vai trò</TableHead>}
+                  {show("phone") && <TableHead>SĐT</TableHead>}
+                  {show("status") && <TableHead>Trạng thái</TableHead>}
+                  {show("action") && <TableHead className="text-right">Thao tác</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.full_name}</TableCell>
-                    <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
-                    <TableCell>{u.phone || "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant={u.is_active ? "success" : "secondary"}>
-                        {u.is_active ? "Đang hoạt động" : "Tạm khóa"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canManage ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setToggleTarget(u)}
-                          >
-                            {u.is_active ? (
-                              <>
-                                <Lock className="h-4 w-4 mr-1" /> Tạm khóa
-                              </>
-                            ) : (
-                              <>
-                                <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => router.push(`/settings/users/${u.id}`)}
-                          >
-                            <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
-                          </Button>
-                          {isOwner && u.id !== currentUser?.id && (
+                    {show("role") && <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>}
+                    {show("phone") && <TableCell>{u.phone || "-"}</TableCell>}
+                    {show("status") && (
+                      <TableCell>
+                        <Badge variant={u.is_active ? "success" : "secondary"}>
+                          {u.is_active ? "Đang hoạt động" : "Tạm khóa"}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {show("action") && (
+                      <TableCell className="text-right">
+                        {canManage ? (
+                          <div className="flex items-center justify-end gap-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-destructive hover:bg-destructive/10"
-                              onClick={() => setDeleteTarget(u)}
+                              onClick={() => setToggleTarget(u)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              {u.is_active ? (
+                                <>
+                                  <Lock className="h-4 w-4 mr-1" /> Tạm khóa
+                                </>
+                              ) : (
+                                <>
+                                  <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
+                                </>
+                              )}
                             </Button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => router.push(`/settings/users/${u.id}`)}
+                            >
+                              <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
+                            </Button>
+                            {isOwner && u.id !== currentUser?.id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive hover:bg-destructive/10"
+                                onClick={() => setDeleteTarget(u)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

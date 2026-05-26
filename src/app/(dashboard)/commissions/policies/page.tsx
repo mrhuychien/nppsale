@@ -16,6 +16,13 @@ import { formatDate } from "@/lib/utils"
 import { COMMISSION_TYPES } from "@/lib/constants"
 import { Settings2, Plus } from "lucide-react"
 import type { CommissionPolicy } from "@/types"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import {
+  COMMISSION_POLICY_COLUMNS,
+  DEFAULT_COMMISSION_POLICY_COLUMNS,
+  type CommissionPolicyColumnKey,
+} from "./list-config"
 
 export default function CommissionPoliciesPage() {
   const { user } = useAuth()
@@ -24,6 +31,16 @@ export default function CommissionPoliciesPage() {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
   const router = useRouter()
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs(
+    "commission-policies",
+    DEFAULT_COMMISSION_POLICY_COLUMNS,
+    []
+  )
+  const show = (k: CommissionPolicyColumnKey) => visibleColumns.includes(k)
 
   useEffect(() => {
     async function fetch() {
@@ -41,9 +58,17 @@ export default function CommissionPoliciesPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Chính sách hoa hồng" description={`${policies.length} chính sách`} backHref="/commissions">
-        {user && hasPermission(user.role, "commissions", "create") && (
-          <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ColumnPicker
+            available={COMMISSION_POLICY_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
+          {user && hasPermission(user.role, "commissions", "create") && (
+            <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
+          )}
+        </div>
       </PageHeader>
 
       {policies.length === 0 ? (
@@ -56,24 +81,26 @@ export default function CommissionPoliciesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tên chính sách</TableHead>
-                  <TableHead>Loại</TableHead>
-                  <TableHead>Áp dụng cho</TableHead>
-                  <TableHead>Hiệu lực</TableHead>
-                  <TableHead>Trạng thái</TableHead>
+                  {show("type") && <TableHead>Loại</TableHead>}
+                  {show("appliesTo") && <TableHead>Áp dụng cho</TableHead>}
+                  {show("effective") && <TableHead>Hiệu lực</TableHead>}
+                  {show("status") && <TableHead>Trạng thái</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {policies.map((p) => (
                   <TableRow key={p.id} className="cursor-pointer" onClick={() => router.push(`/commissions/policies/${p.id}`)}>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{getTypeLabel(p.type)}</TableCell>
-                    <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>
-                    <TableCell className="text-sm">{p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}</TableCell>
-                    <TableCell>
-                      <Badge variant={p.is_active ? "success" : "secondary"}>
-                        {p.is_active ? "Đang áp dụng" : "Ngừng"}
-                      </Badge>
-                    </TableCell>
+                    {show("type") && <TableCell>{getTypeLabel(p.type)}</TableCell>}
+                    {show("appliesTo") && <TableCell>{p.applies_to === "all" ? "Tất cả" : p.applies_to}</TableCell>}
+                    {show("effective") && <TableCell className="text-sm">{p.effective_from ? formatDate(p.effective_from) : "-"} - {p.effective_to ? formatDate(p.effective_to) : "∞"}</TableCell>}
+                    {show("status") && (
+                      <TableCell>
+                        <Badge variant={p.is_active ? "success" : "secondary"}>
+                          {p.is_active ? "Đang áp dụng" : "Ngừng"}
+                        </Badge>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

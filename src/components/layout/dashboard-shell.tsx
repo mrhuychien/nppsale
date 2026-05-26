@@ -30,12 +30,12 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-surface">
       <PermissionsLoader />
       <Sidebar role={role} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 bg-card border-0">
+        <SheetContent side="left" className="w-72 p-0 bg-surface-container-low border-0">
           <Sidebar role={role} mobile onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
@@ -43,7 +43,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <WorkflowResumeBar />
-        <main className="flex-1 p-6 pb-24 lg:pb-6">
+        <main className="flex-1 p-4 lg:p-container-padding pb-24 lg:pb-container-padding">
           {children}
         </main>
       </div>

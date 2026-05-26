@@ -191,17 +191,17 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
 
   return (
     <aside className={cn(
-      "flex flex-col bg-card h-screen",
-      mobile ? "w-full" : "hidden lg:flex lg:w-64 border-r border-border/50 sticky top-0"
+      "flex flex-col bg-surface-container-low h-screen",
+      mobile ? "w-full" : "hidden lg:flex lg:w-60 border-r border-outline-variant/60 sticky top-0"
     )}>
-      {/* Logo */}
-      <div className="px-5 py-4 flex items-center gap-3">
-        <div className="w-9 h-9 bg-primary rounded-[10px] flex items-center justify-center text-white font-black text-lg">
+      {/* Brand */}
+      <div className="px-5 py-5 flex items-center gap-3">
+        <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-on-primary font-bold text-base shadow-sm shrink-0">
           N
         </div>
-        <div>
-          <h1 className="text-sm font-bold text-primary leading-none">npp.sale</h1>
-          <p className="text-[10px] text-muted-foreground font-medium mt-0.5">PHÂN PHỐI FMCG</p>
+        <div className="min-w-0">
+          <h1 className="text-base font-bold text-on-surface leading-tight">npp.sale</h1>
+          <p className="text-[10px] text-on-surface-variant font-semibold tracking-[0.05em] uppercase mt-0.5">PHÂN PHỐI FMCG</p>
         </div>
       </div>
 
@@ -211,7 +211,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
           <Link
             href="/orders/new"
             onClick={onNavigate}
-            className="w-full bg-primary text-white py-2.5 px-4 rounded-[10px] font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-primary/90 transition-colors"
+            className="w-full bg-primary text-on-primary py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-primary-container transition-colors"
           >
             <Plus className="h-4 w-4" />
             Tạo đơn mới
@@ -221,24 +221,18 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
 
       {/* Home shortcut (always visible, pinned) */}
       <div className="px-3 mb-1">
-        <Link
+        <SidebarLink
           href="/home"
-          onClick={onNavigate}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-            pathname === "/home"
-              ? "bg-primary/[0.08] text-primary font-medium"
-              : "text-muted-foreground hover:bg-muted/50 font-medium"
-          )}
-        >
-          <Home className="h-4 w-4 shrink-0" />
-          <span>Trang chủ</span>
-        </Link>
+          icon={Home}
+          label="Trang chủ"
+          isActive={pathname === "/home"}
+          onNavigate={onNavigate}
+        />
       </div>
 
       {/* Module groups */}
       <ScrollArea className="flex-1 px-3">
-        <nav className="space-y-0.5">
+        <nav className="space-y-1">
           {visibleGroups.map((group, groupIdx) => {
             const isExpanded = expandedGroups.has(groupIdx)
             const hasActiveChild = group.items.some(
@@ -252,10 +246,10 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
                 <button
                   onClick={() => toggleGroup(groupIdx)}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    "w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-semibold uppercase tracking-[0.05em] transition-colors",
                     hasActiveChild
                       ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-on-surface-variant hover:text-on-surface"
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -272,24 +266,18 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
 
                 {/* Group items */}
                 {isExpanded && (
-                  <div className="ml-3 pl-3 border-l border-border/40 space-y-0.5 mb-1.5">
+                  <div className="ml-3 pl-3 border-l border-outline-variant/40 space-y-0.5 mb-1.5">
                     {group.items.map((item) => {
                       const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
                       return (
-                        <Link
+                        <SidebarLink
                           key={item.href}
                           href={item.href}
-                          onClick={onNavigate}
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                            isActive
-                              ? "bg-primary/[0.08] text-primary font-medium"
-                              : "text-muted-foreground hover:bg-muted/50 font-medium"
-                          )}
-                        >
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                        </Link>
+                          icon={item.icon}
+                          label={item.label}
+                          isActive={isActive}
+                          onNavigate={onNavigate}
+                        />
                       )
                     })}
                   </div>
@@ -301,23 +289,60 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
       </ScrollArea>
 
       {/* Footer Links */}
-      <div className="p-3 mt-auto space-y-0.5 border-t border-border/40">
+      <div className="p-3 mt-auto space-y-0.5 border-t border-outline-variant/40">
         <Link
           href="/help"
           onClick={onNavigate}
-          className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground font-medium hover:text-primary transition-colors text-sm rounded-lg"
+          className="w-full flex items-center gap-3 px-3 py-2 text-on-surface-variant font-medium hover:bg-surface-container hover:text-on-surface transition-colors text-sm rounded-lg"
         >
-          <HelpCircle className="h-4 w-4" />
+          <HelpCircle className="h-4 w-4 shrink-0" />
           Hỗ trợ
         </Link>
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground font-medium hover:text-destructive transition-colors text-sm rounded-lg"
+          className="w-full flex items-center gap-3 px-3 py-2 text-on-surface-variant font-medium hover:bg-error-container hover:text-on-error-container transition-colors text-sm rounded-lg"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4 shrink-0" />
           Đăng xuất
         </button>
       </div>
     </aside>
+  )
+}
+
+interface SidebarLinkProps {
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  isActive: boolean
+  onNavigate?: () => void
+}
+
+/**
+ * Sidebar nav item with Stitch active treatment: 3px vertical bar on the
+ * left + subtle primary tint background + bold primary text. Hover state
+ * uses surface-container as a neutral grey panel.
+ */
+function SidebarLink({ href, icon: IconComp, label, isActive, onNavigate }: SidebarLinkProps) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={cn(
+        "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+        isActive
+          ? "bg-primary/[0.08] text-primary"
+          : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+      )}
+    >
+      {isActive && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary"
+        />
+      )}
+      <IconComp className={cn("h-4 w-4 shrink-0", isActive && "stroke-[2.25px]")} />
+      <span className="truncate">{label}</span>
+    </Link>
   )
 }

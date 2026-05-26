@@ -62,7 +62,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "Dashboard"
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-card/80 backdrop-blur border-b border-border/50 px-4 lg:px-6 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full bg-surface border-b border-outline-variant/60 px-4 lg:px-8 h-16 flex items-center justify-between">
       <div className="flex items-center gap-4 min-w-0 flex-1">
         <Button
           variant="ghost"
@@ -72,7 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h2 className="text-base lg:text-lg font-semibold tracking-tight text-foreground truncate">
+        <h2 className="text-base lg:text-headline-md font-semibold tracking-tight text-on-surface truncate">
           {pageTitle}
         </h2>
       </div>
@@ -80,30 +80,30 @@ export function Header({ onMenuClick }: HeaderProps) {
       <div className="flex items-center gap-2 lg:gap-3">
         {/* Search - hidden on mobile */}
         <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant h-4 w-4" />
           <input
             type="text"
             placeholder="Tìm kiếm nhanh..."
-            className="pl-10 pr-4 py-2 bg-card border border-border/60 rounded-[10px] text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none w-56"
+            className="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-56 transition-all"
           />
         </div>
 
         <NotificationBell />
 
-        <div className="hidden sm:block h-6 w-px bg-border/50 mx-1"></div>
+        <div className="hidden sm:block h-6 w-px bg-outline-variant/60 mx-1"></div>
 
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg pl-1 pr-3 py-1 transition-colors">
-              <Avatar className="h-8 w-8 border border-border/40">
-                <AvatarFallback className="text-xs bg-primary text-white font-semibold">
+            <button className="flex items-center gap-2 hover:bg-surface-container-low rounded-lg pl-1 pr-3 py-1 transition-colors">
+              <Avatar className="h-8 w-8 border border-outline-variant/60">
+                <AvatarFallback className="text-xs bg-primary text-on-primary font-semibold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden lg:block text-left">
-                <p className="text-sm font-medium leading-none">{user?.full_name}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-sm font-medium leading-none text-on-surface">{user?.full_name}</p>
+                <p className="text-[10px] text-on-surface-variant mt-0.5">
                   {user?.role ? ROLE_LABELS[user.role] : ""}
                 </p>
               </div>
@@ -111,13 +111,13 @@ export function Header({ onMenuClick }: HeaderProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <p className="font-semibold">{user?.full_name}</p>
-              <p className="text-xs font-normal text-muted-foreground mt-0.5">
+              <p className="font-semibold text-on-surface">{user?.full_name}</p>
+              <p className="text-xs font-normal text-on-surface-variant mt-0.5">
                 {user?.role ? ROLE_LABELS[user.role] : ""}
               </p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+            <DropdownMenuItem onClick={handleSignOut} className="text-error">
               <LogOut className="mr-2 h-4 w-4" />
               Đăng xuất
             </DropdownMenuItem>

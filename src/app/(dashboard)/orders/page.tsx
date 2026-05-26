@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -14,6 +15,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import {
+  ORDER_COLUMNS,
+  DEFAULT_ORDER_COLUMNS,
+  ORDER_FILTERS,
+  DEFAULT_ORDER_FILTERS,
+  type OrderColumnKey,
+  type OrderFilterKey,
+} from "./list-config"
 import {
   Select,
   SelectContent,
@@ -84,6 +94,21 @@ export default function OrdersPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+
+  const {
+    columns: visibleColumns,
+    filters: activeFilters,
+    setColumns,
+    setFilters,
+    resetColumns,
+    resetFilters,
+  } = useListViewPrefs(
+    "orders",
+    DEFAULT_ORDER_COLUMNS,
+    DEFAULT_ORDER_FILTERS
+  )
+  const show = (k: OrderColumnKey) => visibleColumns.includes(k)
+  const filterActive = (k: OrderFilterKey) => activeFilters.includes(k)
 
   // Deep-link: /orders?status=draft → preselect the status filter.
   useEffect(() => {
@@ -487,20 +512,23 @@ export default function OrdersPage() {
       )}
 
       {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
-      <OrderPipeline
-        orders={orders}
-        receivables={receivablesByOrder}
-        invoices={invoiceMap}
-        active={pipelineStep}
-        onChange={(next) => {
-          setPipelineStep(next)
-          // Picking a pipeline step clears the special-state chip filter
-          // so the two filters don't fight each other.
-          if (next) setStatusFilter("all")
-        }}
-      />
+      {filterActive("pipeline") && (
+        <OrderPipeline
+          orders={orders}
+          receivables={receivablesByOrder}
+          invoices={invoiceMap}
+          active={pipelineStep}
+          onChange={(next) => {
+            setPipelineStep(next)
+            // Picking a pipeline step clears the special-state chip filter
+            // so the two filters don't fight each other.
+            if (next) setStatusFilter("all")
+          }}
+        />
+      )}
 
       {/* Special-state quick filter chips (mutually exclusive with pipeline) */}
+      {filterActive("specialStatus") && (
       <div className="flex flex-wrap gap-2">
         {([
           { value: "all", label: "Tất cả", color: "" },
@@ -535,89 +563,120 @@ export default function OrdersPage() {
           )
         })}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Tìm mã đơn hàng..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+        {filterActive("search") && (
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Tìm mã đơn hàng..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        )}
+        {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
+          <Button
+            variant="outline"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            Bộ lọc nâng cao
+            {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <FilterPicker
+            available={ORDER_FILTERS}
+            value={activeFilters}
+            onChange={setFilters}
+            onReset={resetFilters}
+          />
+          <ColumnPicker
+            available={ORDER_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
           />
         </div>
-        <Button
-          variant="outline"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="gap-2"
-        >
-          <Filter className="h-4 w-4" />
-          Bộ lọc nâng cao
-          {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
       </div>
 
       {showAdvanced && (
         <Card className="rounded-2xl border-dashed">
           <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Từ ngày</label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Đến ngày</label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Khách hàng</label>
-              <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Tất cả" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả khách hàng</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.store_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">NV bán hàng</label>
-              <Select value={salesFilter} onValueChange={setSalesFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Tất cả" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả NV</SelectItem>
-                  {salesUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Tổng tiền từ</label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Tổng tiền đến</label>
-              <Input
-                type="number"
-                placeholder="VD: 50000000"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
-              />
-            </div>
+            {filterActive("date") && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Từ ngày</label>
+                  <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Đến ngày</label>
+                  <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </div>
+              </>
+            )}
+            {filterActive("customer") && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">Khách hàng</label>
+                <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tất cả" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả khách hàng</SelectItem>
+                    {customers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.store_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {filterActive("sales") && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">NV bán hàng</label>
+                <Select value={salesFilter} onValueChange={setSalesFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tất cả" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả NV</SelectItem>
+                    {salesUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {filterActive("amount") && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Tổng tiền từ</label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={amountMin}
+                    onChange={(e) => setAmountMin(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Tổng tiền đến</label>
+                  <Input
+                    type="number"
+                    placeholder="VD: 50000000"
+                    value={amountMax}
+                    onChange={(e) => setAmountMax(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
             <div className="md:col-span-3 flex justify-end">
               <Button variant="ghost" size="sm" onClick={resetAdvanced}>
                 Xóa bộ lọc
@@ -720,11 +779,11 @@ export default function OrdersPage() {
                     />
                   </TableHead>
                   <TableHead>Mã đơn</TableHead>
-                  <TableHead>Khách hàng</TableHead>
-                  <TableHead>NV bán hàng</TableHead>
-                  <TableHead>Ngày đặt</TableHead>
-                  <TableHead className="text-right">Tổng tiền</TableHead>
-                  <TableHead>Trạng thái</TableHead>
+                  {show("customer") && <TableHead>Khách hàng</TableHead>}
+                  {show("salesUser") && <TableHead>NV bán hàng</TableHead>}
+                  {show("date") && <TableHead>Ngày đặt</TableHead>}
+                  {show("total") && <TableHead className="text-right">Tổng tiền</TableHead>}
+                  {show("status") && <TableHead>Trạng thái</TableHead>}
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -754,30 +813,40 @@ export default function OrdersPage() {
                           {order.order_code}
                         </Link>
                       </TableCell>
-                      <TableCell className="font-medium">{order.customer?.store_name || "-"}</TableCell>
-                      <TableCell>
-                        {order.sales_user?.full_name || "-"}
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(order.order_date)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(order.total)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <StatusBadge status={order.status} type="order" />
-                          <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
-                          {order.status === "draft" && order.approval_reason && (
-                            <span
-                              className="text-[10px] text-amber-700 font-semibold"
-                              title={order.approval_reason}
-                            >
-                              Cần duyệt
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
+                      {show("customer") && (
+                        <TableCell className="font-medium">{order.customer?.store_name || "-"}</TableCell>
+                      )}
+                      {show("salesUser") && (
+                        <TableCell>
+                          {order.sales_user?.full_name || "-"}
+                        </TableCell>
+                      )}
+                      {show("date") && (
+                        <TableCell>
+                          {formatDate(order.order_date)}
+                        </TableCell>
+                      )}
+                      {show("total") && (
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatCurrency(order.total)}
+                        </TableCell>
+                      )}
+                      {show("status") && (
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <StatusBadge status={order.status} type="order" />
+                            <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
+                            {order.status === "draft" && order.approval_reason && (
+                              <span
+                                className="text-[10px] text-amber-700 font-semibold"
+                                title={order.approval_reason}
+                              >
+                                Cần duyệt
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
                           {order.status === "delivered" && (

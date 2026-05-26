@@ -25,6 +25,13 @@ import { useToast } from "@/hooks/use-toast"
 import { formatDate, getExpiryStatus } from "@/lib/utils"
 import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, ArrowRightLeft, RefreshCw } from "lucide-react"
 import type { Batch, Product } from "@/types"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import {
+  BATCH_COLUMNS,
+  DEFAULT_BATCH_COLUMNS,
+  type BatchColumnKey,
+} from "./list-config"
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -40,6 +47,16 @@ export default function BatchesPage() {
   const [movingId, setMovingId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs(
+    "inventory-batches",
+    DEFAULT_BATCH_COLUMNS,
+    []
+  )
+  const show = (k: BatchColumnKey) => visibleColumns.includes(k)
 
   useEffect(() => {
     async function fetch() {
@@ -141,13 +158,13 @@ export default function BatchesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Sản phẩm</TableHead>
-              <TableHead>Mã lô</TableHead>
-              <TableHead>Kho</TableHead>
-              <TableHead>Vị trí</TableHead>
-              <TableHead className="text-right">Ban đầu</TableHead>
-              <TableHead className="text-right">Tồn</TableHead>
-              <TableHead>NSX</TableHead>
-              <TableHead>HSD</TableHead>
+              {show("batchCode") && <TableHead>Mã lô</TableHead>}
+              {show("zone") && <TableHead>Kho</TableHead>}
+              {show("location") && <TableHead>Vị trí</TableHead>}
+              {show("qtyInitial") && <TableHead className="text-right">Ban đầu</TableHead>}
+              {show("qtyOnHand") && <TableHead className="text-right">Tồn</TableHead>}
+              {show("manufacturedAt") && <TableHead>NSX</TableHead>}
+              {show("expiresAt") && <TableHead>HSD</TableHead>}
               {showCountdown && <TableHead>Còn lại</TableHead>}
               <TableHead className="w-32 text-right">Thao tác</TableHead>
             </TableRow>
@@ -166,28 +183,32 @@ export default function BatchesPage() {
                   onClick={() => router.push(`/inventory/batches/${b.id}`)}
                 >
                   <TableCell className="font-medium">{b.product?.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={isDateZone ? "warning" : "success"}
-                      className="font-semibold"
-                    >
-                      {isDateZone ? "Date" : "Bán"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{b.location || "-"}</TableCell>
-                  <TableCell className="text-right">{b.qty_initial}</TableCell>
-                  <TableCell className="text-right font-medium">{b.qty_on_hand}</TableCell>
-                  <TableCell>{b.manufactured_at ? formatDate(b.manufactured_at) : "-"}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
-                      }
-                    >
-                      {formatDate(b.expires_at)}
-                    </Badge>
-                  </TableCell>
+                  {show("batchCode") && <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>}
+                  {show("zone") && (
+                    <TableCell>
+                      <Badge
+                        variant={isDateZone ? "warning" : "success"}
+                        className="font-semibold"
+                      >
+                        {isDateZone ? "Date" : "Bán"}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  {show("location") && <TableCell>{b.location || "-"}</TableCell>}
+                  {show("qtyInitial") && <TableCell className="text-right tabular-nums">{b.qty_initial}</TableCell>}
+                  {show("qtyOnHand") && <TableCell className="text-right tabular-nums font-medium">{b.qty_on_hand}</TableCell>}
+                  {show("manufacturedAt") && <TableCell>{b.manufactured_at ? formatDate(b.manufactured_at) : "-"}</TableCell>}
+                  {show("expiresAt") && (
+                    <TableCell>
+                      <Badge
+                        variant={
+                          status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
+                        }
+                      >
+                        {formatDate(b.expires_at)}
+                      </Badge>
+                    </TableCell>
+                  )}
                   {showCountdown && (
                     <TableCell>
                       <span
@@ -328,6 +349,12 @@ export default function BatchesPage() {
     <div className="space-y-4">
       <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} backHref="/inventory">
         <div className="flex items-center gap-2">
+          <ColumnPicker
+            available={BATCH_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
           {canCreate && (
             <Button variant="outline" size="sm" onClick={refreshZones} disabled={refreshing}>
               <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />

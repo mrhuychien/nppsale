@@ -65,21 +65,8 @@ export function NotificationBell() {
     fetchNotifications()
   }, [fetchNotifications])
 
-  // Fast unread-count refresh every 60s (no popover re-render flash)
-  useEffect(() => {
-    if (!authUser?.id) return
-    const intervalId = setInterval(async () => {
-      const { count } = await supabase
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", authUser.id)
-        .eq("is_read", false)
-      setUnreadCount(count ?? 0)
-    }, 60000)
-    return () => clearInterval(intervalId)
-  }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Realtime subscription — push new rows into the list instantly
+  // Realtime subscription — INSERT pushes new rows; UPDATE syncs is_read
+  // changes made from other tabs/devices. Replaces the previous 60s poll.
   useEffect(() => {
     if (!authUser?.id) return
     const channel = supabase
@@ -96,6 +83,25 @@ export function NotificationBell() {
           const n = payload.new as Notification
           setItems((prev) => [n, ...prev].slice(0, 20))
           if (!n.is_read) setUnreadCount((prev) => prev + 1)
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Notification
+          const prevRow = payload.old as Notification
+          setItems((prev) => prev.map((x) => (x.id === next.id ? next : x)))
+          if (!prevRow.is_read && next.is_read) {
+            setUnreadCount((prev) => Math.max(0, prev - 1))
+          } else if (prevRow.is_read && !next.is_read) {
+            setUnreadCount((prev) => prev + 1)
+          }
         }
       )
       .subscribe()

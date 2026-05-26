@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Eye, Phone, User, Banknote } from "lucide-react"
 import type { Customer } from "@/types"
+import type { CustomerColumnKey } from "@/app/(dashboard)/customers/list-config"
 
 interface LastOrderInfo {
   order_code: string
@@ -27,6 +29,13 @@ interface CustomerTableProps {
   lastOrders?: Record<string, LastOrderInfo>
   lastVisits?: Record<string, LastVisitInfo>
   canCollect?: boolean
+  visibleColumns: CustomerColumnKey[]
+  selectable?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string, next: boolean) => void
+  onToggleSelectAll?: (next: boolean) => void
+  allSelected?: boolean
+  someSelected?: boolean
 }
 
 export function CustomerTable({
@@ -35,8 +44,16 @@ export function CustomerTable({
   lastOrders = {},
   lastVisits = {},
   canCollect = false,
+  visibleColumns,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  allSelected = false,
+  someSelected = false,
 }: CustomerTableProps) {
   const router = useRouter()
+  const show = (key: CustomerColumnKey) => visibleColumns.includes(key)
   const showEnrichment =
     Object.keys(debts).length > 0 ||
     Object.keys(lastOrders).length > 0 ||
@@ -45,18 +62,27 @@ export function CustomerTable({
   return (
     <>
       {/* Desktop table */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card">
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-muted/30">
+              {selectable && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => onToggleSelectAll?.(!!v)}
+                    aria-label="Chọn tất cả"
+                  />
+                </TableHead>
+              )}
               <TableHead>Cửa hàng</TableHead>
-              <TableHead>Chủ cửa hàng</TableHead>
-              <TableHead>SĐT</TableHead>
-              <TableHead>Tuyến</TableHead>
-              {showEnrichment && <TableHead>Ghé thăm</TableHead>}
-              {showEnrichment && <TableHead>Đơn gần nhất</TableHead>}
-              {showEnrichment && <TableHead className="text-right">Công nợ</TableHead>}
-              <TableHead>Trạng thái</TableHead>
+              {show("owner") && <TableHead>Chủ cửa hàng</TableHead>}
+              {show("phone") && <TableHead>SĐT</TableHead>}
+              {show("channel") && <TableHead>Tuyến</TableHead>}
+              {show("lastVisit") && showEnrichment && <TableHead>Ghé thăm</TableHead>}
+              {show("lastOrder") && showEnrichment && <TableHead>Đơn gần nhất</TableHead>}
+              {show("debt") && showEnrichment && <TableHead className="text-right">Công nợ</TableHead>}
+              {show("status") && <TableHead>Trạng thái</TableHead>}
               <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
@@ -66,12 +92,22 @@ export function CustomerTable({
               const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
               const lastOrder = lastOrders[c.id]
               const lastVisit = lastVisits[c.id]
+              const checked = selectedIds?.has(c.id) ?? false
               return (
                 <TableRow
                   key={c.id}
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:bg-muted/40"
                   onClick={() => router.push(`/customers/${c.id}`)}
                 >
+                  {selectable && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => onToggleSelect?.(c.id, !!v)}
+                        aria-label={`Chọn ${c.store_name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Link
                       href={`/customers/${c.id}`}
@@ -81,12 +117,14 @@ export function CustomerTable({
                       {c.store_name}
                     </Link>
                   </TableCell>
-                  <TableCell>{c.owner_name}</TableCell>
-                  <TableCell>{c.phone}</TableCell>
-                  <TableCell>
-                    {c.channel && <Badge variant="outline">{c.channel}</Badge>}
-                  </TableCell>
-                  {showEnrichment && (
+                  {show("owner") && <TableCell>{c.owner_name}</TableCell>}
+                  {show("phone") && <TableCell>{c.phone}</TableCell>}
+                  {show("channel") && (
+                    <TableCell>
+                      {c.channel && <Badge variant="outline">{c.channel}</Badge>}
+                    </TableCell>
+                  )}
+                  {show("lastVisit") && showEnrichment && (
                     <TableCell className="text-xs">
                       {lastVisit ? (
                         formatDate(lastVisit.visit_date)
@@ -95,7 +133,7 @@ export function CustomerTable({
                       )}
                     </TableCell>
                   )}
-                  {showEnrichment && (
+                  {show("lastOrder") && showEnrichment && (
                     <TableCell className="text-xs">
                       {lastOrder ? (
                         <>
@@ -107,8 +145,8 @@ export function CustomerTable({
                       )}
                     </TableCell>
                   )}
-                  {showEnrichment && (
-                    <TableCell className="text-right">
+                  {show("debt") && showEnrichment && (
+                    <TableCell className="text-right tabular-nums">
                       {debt > 0 ? (
                         <div className="flex items-center justify-end gap-2">
                           <span className={`font-bold ${isBadDebt ? "text-danger" : ""}`}>
@@ -133,9 +171,11 @@ export function CustomerTable({
                       )}
                     </TableCell>
                   )}
-                  <TableCell>
-                    <StatusBadge status={c.status} type="customer" />
-                  </TableCell>
+                  {show("status") && (
+                    <TableCell>
+                      <StatusBadge status={c.status} type="customer" />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Eye className="h-4 w-4 text-muted-foreground" />
                   </TableCell>
@@ -146,22 +186,34 @@ export function CustomerTable({
         </Table>
       </div>
 
-      {/* Mobile card list */}
+      {/* Mobile card list — layout cố định, không phụ thuộc visibleColumns */}
       <div className="lg:hidden space-y-3">
         {customers.map((c) => {
           const debt = debts[c.id] || 0
           const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
           const lastOrder = lastOrders[c.id]
           const lastVisit = lastVisits[c.id]
+          const checked = selectedIds?.has(c.id) ?? false
           return (
             <div
               key={c.id}
-              className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-              onClick={() => router.push(`/customers/${c.id}`)}
+              className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden active:scale-[0.99] transition-transform"
             >
               <div className="p-4">
                 <div className="flex justify-between items-start gap-3 mb-2">
-                  <div className="min-w-0 flex-1">
+                  {selectable && (
+                    <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => onToggleSelect?.(c.id, !!v)}
+                        aria-label={`Chọn ${c.store_name}`}
+                      />
+                    </div>
+                  )}
+                  <div
+                    className="min-w-0 flex-1 cursor-pointer"
+                    onClick={() => router.push(`/customers/${c.id}`)}
+                  >
                     <h3 className="font-extrabold text-base leading-tight truncate text-primary">
                       {c.store_name}
                     </h3>

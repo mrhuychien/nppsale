@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -16,9 +18,18 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2 } from "lucide-react"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
+import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2, Power, PowerOff } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
+import {
+  CUSTOMER_COLUMNS,
+  DEFAULT_CUSTOMER_COLUMNS,
+  CUSTOMER_FILTERS,
+  DEFAULT_CUSTOMER_FILTERS,
+  type CustomerFilterKey,
+} from "./list-config"
 
 interface LastOrderInfo {
   order_code: string
@@ -44,8 +55,24 @@ export default function CustomersPage() {
   const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [channelFilter, setChannelFilter] = useState("all")
   const [salesUserFilter, setSalesUserFilter] = useState("all")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const { toast } = useToast()
+  const {
+    columns: visibleColumns,
+    filters: activeFilters,
+    setColumns,
+    setFilters,
+    resetColumns,
+    resetFilters,
+  } = useListViewPrefs(
+    "customers",
+    DEFAULT_CUSTOMER_COLUMNS,
+    DEFAULT_CUSTOMER_FILTERS
+  )
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])
   const [primaryRepMap, setPrimaryRepMap] = useState<Record<string, string>>({})
@@ -173,19 +200,26 @@ export default function CustomersPage() {
     loadRoutes()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (authLoading) return <Skeleton className="h-96" />
+  const filterActive = (k: CustomerFilterKey) => activeFilters.includes(k)
 
   const filtered = customers.filter((c) => {
-    const matchSearch = c.store_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.owner_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search)
-    const matchChannel = channelFilter === "all" || c.channel === channelFilter
-    const matchRep =
-      salesUserFilter === "all" ||
-      (salesUserFilter === "_none"
-        ? !primaryRepMap[c.id]
-        : primaryRepMap[c.id] === salesUserFilter)
-    return matchSearch && matchChannel && matchRep
+    if (filterActive("search") && search) {
+      const q = search.toLowerCase()
+      const matches =
+        c.store_name.toLowerCase().includes(q) ||
+        c.owner_name.toLowerCase().includes(q) ||
+        c.phone.includes(search)
+      if (!matches) return false
+    }
+    if (filterActive("status") && statusFilter !== "all" && c.status !== statusFilter)
+      return false
+    if (filterActive("channel") && channelFilter !== "all" && c.channel !== channelFilter)
+      return false
+    if (filterActive("sales") && salesUserFilter !== "all") {
+      if (salesUserFilter === "_none" ? primaryRepMap[c.id] : primaryRepMap[c.id] !== salesUserFilter)
+        return false
+    }
+    return true
   })
 
   const totalRoute = customers.length
@@ -221,6 +255,68 @@ export default function CustomersPage() {
   const handleInventoryCheck = () => {
     alert("Tính năng đang phát triển")
   }
+
+  const toggleOne = (id: string, next: boolean) => {
+    setSelectedIds((prev) => {
+      const s = new Set(prev)
+      if (next) s.add(id)
+      else s.delete(id)
+      return s
+    })
+  }
+  const toggleAll = (next: boolean) => {
+    setSelectedIds(next ? new Set(filtered.map((c) => c.id)) : new Set())
+  }
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const allSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))
+  const someSelected = filtered.some((c) => selectedIds.has(c.id))
+
+  const setStatusBulk = async (next: "active" | "suspended") => {
+    if (selectedIds.size === 0) return
+    setBulkSaving(true)
+    const ids = Array.from(selectedIds)
+    const { error } = await supabase
+      .from("customers")
+      .update({ status: next })
+      .in("id", ids)
+    setBulkSaving(false)
+    if (error) {
+      toast({ title: "Lỗi cập nhật trạng thái", description: error.message, variant: "destructive" })
+      return
+    }
+    setCustomers((prev) =>
+      prev.map((c) => (selectedIds.has(c.id) ? { ...c, status: next } : c))
+    )
+    clearSelection()
+    toast({
+      title: next === "active" ? `Đã kích hoạt ${ids.length} KH` : `Đã tạm ngưng ${ids.length} KH`,
+    })
+  }
+
+  const canEdit = !!user && hasPermission(user.role, "customers", "update")
+  const bulkActions: BulkAction[] = canEdit
+    ? [
+        {
+          key: "activate",
+          label: "Kích hoạt",
+          icon: Power,
+          onClick: () => setStatusBulk("active"),
+          loading: bulkSaving,
+          variant: "default",
+        },
+        {
+          key: "suspend",
+          label: "Tạm ngưng",
+          icon: PowerOff,
+          onClick: () => setStatusBulk("suspended"),
+          loading: bulkSaving,
+          variant: "outline",
+        },
+      ]
+    : []
+
+  if (authLoading) return <Skeleton className="h-96" />
 
   return (
     <div className="space-y-4">
@@ -258,20 +354,35 @@ export default function CustomersPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Tìm tên, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-        </div>
-        <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Tuyến" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả tuyến</SelectItem>
-            {routes.map((r) => (
-              <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {!isSales && (
+        {filterActive("search") && (
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Tìm tên, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          </div>
+        )}
+        {filterActive("status") && (
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả</SelectItem>
+              <SelectItem value="active">Đang hoạt động</SelectItem>
+              <SelectItem value="suspended">Tạm ngưng</SelectItem>
+              <SelectItem value="locked">Đã khoá</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {filterActive("channel") && (
+          <Select value={channelFilter} onValueChange={setChannelFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Tuyến" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả tuyến</SelectItem>
+              {routes.map((r) => (
+                <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {filterActive("sales") && !isSales && (
           <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
             <SelectTrigger className="w-44"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
             <SelectContent>
@@ -283,6 +394,20 @@ export default function CustomersPage() {
             </SelectContent>
           </Select>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <FilterPicker
+            available={CUSTOMER_FILTERS}
+            value={activeFilters}
+            onChange={setFilters}
+            onReset={resetFilters}
+          />
+          <ColumnPicker
+            available={CUSTOMER_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
+        </div>
         <Button variant="outline" size="sm" asChild>
           <Link href="/customers/routes">
             <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
@@ -304,6 +429,13 @@ export default function CustomersPage() {
               lastOrders={lastOrders}
               lastVisits={lastVisits}
               canCollect={!!user && hasPermission(user.role, "receivables", "create")}
+              visibleColumns={visibleColumns}
+              selectable={canEdit}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleOne}
+              onToggleSelectAll={toggleAll}
+              allSelected={allSelected}
+              someSelected={someSelected && !allSelected}
             />
           </div>
 
@@ -459,6 +591,13 @@ export default function CustomersPage() {
           onSuccess={handleVisitSuccess}
         />
       )}
+
+      <BulkActionsBar
+        count={selectedIds.size}
+        onClear={clearSelection}
+        actions={bulkActions}
+        entityLabel="khách hàng"
+      />
     </div>
   )
 }

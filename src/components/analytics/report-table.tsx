@@ -50,13 +50,13 @@ export function ReportTable<T>({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-sky-50 text-foreground print:bg-sky-100">
-              {expandable ? <th className="w-8 border-b border-border/40 px-2 py-2"></th> : null}
+            <tr className="bg-surface-container-low text-on-surface print:bg-surface-container">
+              {expandable ? <th className="w-8 border-b border-outline-variant/40 px-2 py-2"></th> : null}
               {columns.map((c) => (
                 <th
                   key={c.key}
                   className={cn(
-                    "border-b border-border/40 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide",
+                    "border-b border-outline-variant/40 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide",
                     c.align === "right" ? "text-right" : "text-left",
                     c.className
                   )}
@@ -72,7 +72,7 @@ export function ReportTable<T>({
               <tr>
                 <td
                   colSpan={columns.length + (expandable ? 1 : 0)}
-                  className="px-3 py-6 text-center text-sm text-muted-foreground"
+                  className="px-3 py-6 text-center text-sm text-on-surface-variant"
                 >
                   {emptyText}
                 </td>
@@ -85,13 +85,13 @@ export function ReportTable<T>({
                   <React.Fragment key={key}>
                     <tr
                       className={cn(
-                        "border-b border-border/30 hover:bg-muted/20",
+                        "border-b border-outline-variant/30 hover:bg-[#F5F9FF]",
                         expandable ? "cursor-pointer" : ""
                       )}
                       onClick={expandable ? () => toggle(key) : undefined}
                     >
                       {expandable ? (
-                        <td className="px-2 py-3 text-muted-foreground">
+                        <td className="px-2 py-3 text-on-surface-variant">
                           {isOpen ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -113,7 +113,7 @@ export function ReportTable<T>({
                       ))}
                     </tr>
                     {expandable && isOpen ? (
-                      <tr className="bg-emerald-50/40 print:bg-transparent">
+                      <tr className="bg-tertiary-fixed/20 print:bg-transparent">
                         <td colSpan={columns.length + 1} className="px-2 py-3">
                           {expandable(row)}
                         </td>
@@ -137,14 +137,14 @@ export function TotalsRow({
 }) {
   const { hasExpandColumn } = React.useContext(ReportTableCtx)
   return (
-    <tr className="bg-amber-50 font-semibold text-foreground print:bg-amber-100">
-      {hasExpandColumn ? <td className="border-b border-border/40 px-2 py-2.5 w-8"></td> : null}
+    <tr className="bg-primary-fixed font-semibold text-on-primary-fixed-variant print:bg-primary-fixed">
+      {hasExpandColumn ? <td className="border-b border-outline-variant/40 px-2 py-2.5 w-8"></td> : null}
       {cells.map((c, i) => (
         <td
           key={i}
           colSpan={c.colSpan}
           className={cn(
-            "border-b border-border/40 px-3 py-2.5",
+            "border-b border-outline-variant/40 px-3 py-2.5",
             c.align === "right" ? "text-right" : "text-left",
             c.className
           )}

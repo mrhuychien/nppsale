@@ -108,10 +108,10 @@ export function TopListCard<T>({
 }
 
 export function ChangeBadge({ pct }: { pct: number | null }) {
-  if (pct === null) return <span className="text-muted-foreground">—</span>
+  if (pct === null) return <span className="text-on-surface-variant">—</span>
   const positive = pct >= 0
   return (
-    <span className={cn("font-semibold", positive ? "text-emerald-600" : "text-red-600")}>
+    <span className={cn("font-semibold tabular-data", positive ? "text-tertiary" : "text-error")}>
       {positive ? "+" : ""}
       {pct.toFixed(2)}%
     </span>

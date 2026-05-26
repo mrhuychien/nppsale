@@ -174,7 +174,7 @@ export default function ProductsStockPage() {
           { key: "expires", label: "Hạn dùng", render: (r) =>
             r.expires_at ? new Date(r.expires_at).toLocaleDateString("vi-VN") : "—" },
           { key: "days", label: "Còn lại (ngày)", align: "right", render: (r) => (
-            <span className={r.daysLeft <= 0 ? "font-semibold text-red-600" : r.daysLeft <= 30 ? "font-semibold text-amber-600" : "text-foreground"}>
+            <span className={r.daysLeft <= 0 ? "font-semibold text-error tabular-data" : r.daysLeft <= 30 ? "font-semibold text-[#b54708] tabular-data" : "text-on-surface tabular-data"}>
               {r.daysLeft}
             </span>
           )},

@@ -46,28 +46,28 @@ export function KpiCard({
 }: KpiCardProps) {
   const change = typeof changePct === "number" ? changePct : null
   return (
-    <div className="rounded-xl border border-border/40 bg-card p-4 shadow-sm">
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-3xl font-bold tracking-tight text-foreground">
+    <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-4 shadow-card">
+      <p className="text-label-md uppercase text-on-surface-variant">{label}</p>
+      <p className="mt-1 text-3xl font-bold tracking-tight text-on-surface tabular-data">
         {format(value, fmt)}
       </p>
       <div className="mt-3 flex items-baseline justify-between gap-2 text-xs">
         <div>
-          <p className="text-muted-foreground">{avgLabel}</p>
-          <p className="font-semibold text-foreground">
+          <p className="text-on-surface-variant">{avgLabel}</p>
+          <p className="font-semibold text-on-surface tabular-data">
             {avgValue !== undefined ? format(avgValue, fmt === "compactCurrency" ? "number" : fmt) : "—"}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-muted-foreground">{changeLabel}</p>
+          <p className="text-on-surface-variant">{changeLabel}</p>
           <p
             className={cn(
-              "font-semibold",
+              "font-semibold tabular-data",
               change === null
-                ? "text-muted-foreground"
+                ? "text-on-surface-variant"
                 : change >= 0
-                  ? "text-emerald-600"
-                  : "text-red-600"
+                  ? "text-tertiary"
+                  : "text-error"
             )}
           >
             {change === null

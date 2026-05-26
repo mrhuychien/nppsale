@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -13,9 +14,18 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
+import {
+  INVOICE_COLUMNS,
+  DEFAULT_INVOICE_COLUMNS,
+  INVOICE_FILTERS,
+  DEFAULT_INVOICE_FILTERS,
+  type InvoiceColumnKey,
+  type InvoiceFilterKey,
+} from "./list-config"
 
 type InvoiceRow = Pick<
   Invoice,
@@ -48,6 +58,21 @@ export default function InvoicesPage() {
   const [misaFilter, setMisaFilter] = useState("all")
   const supabase = createClient()
 
+  const {
+    columns: visibleColumns,
+    filters: activeFilters,
+    setColumns,
+    setFilters,
+    resetColumns,
+    resetFilters,
+  } = useListViewPrefs(
+    "invoices",
+    DEFAULT_INVOICE_COLUMNS,
+    DEFAULT_INVOICE_FILTERS
+  )
+  const show = (k: InvoiceColumnKey) => visibleColumns.includes(k)
+  const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)
+
   useEffect(() => {
     async function fetch() {
       const { data } = await supabase
@@ -62,6 +87,28 @@ export default function InvoicesPage() {
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const filtered = useMemo(() => {
+    return invoices.filter((inv) => {
+      if (filterActive("search") && search.trim()) {
+        const q = search.toLowerCase()
+        const matches =
+          (inv.invoice_number || "").toLowerCase().includes(q) ||
+          inv.customer_name.toLowerCase().includes(q) ||
+          (inv.misa_invoice_id || "").toLowerCase().includes(q)
+        if (!matches) return false
+      }
+      if (filterActive("status") && statusFilter !== "all" && inv.status !== statusFilter)
+        return false
+      if (filterActive("misa") && misaFilter !== "all") {
+        const ms = inv.misa_status
+        if (misaFilter === "signed" && ms !== "signed") return false
+        if (misaFilter === "pending" && ms && ms !== "pending") return false
+        if (misaFilter === "error" && ms !== "error") return false
+      }
+      return true
+    })
+  }, [invoices, search, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (authLoading || loading) return <Skeleton className="h-96" />
 
   const statusVariant = (s: string): "default" | "success" | "danger" | "secondary" => {
@@ -70,19 +117,6 @@ export default function InvoicesPage() {
   const statusLabel = (s: string) => {
     switch (s) { case "issued": return "Đã phát hành"; case "cancelled": return "Đã hủy"; default: return "Nháp" }
   }
-
-  const filtered = invoices.filter((inv) => {
-    const matchSearch = !search.trim() ||
-      (inv.invoice_number || "").toLowerCase().includes(search.toLowerCase()) ||
-      inv.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      (inv.misa_invoice_id || "").toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === "all" || inv.status === statusFilter
-    const matchMisa = misaFilter === "all" ||
-      (misaFilter === "signed" && inv.misa_status === "signed") ||
-      (misaFilter === "pending" && (!inv.misa_status || inv.misa_status === "pending")) ||
-      (misaFilter === "error" && inv.misa_status === "error")
-    return matchSearch && matchStatus && matchMisa
-  })
 
   // Stats
   const totalInvoices = invoices.length
@@ -126,28 +160,48 @@ export default function InvoicesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Tìm số HĐ, khách hàng, mã MISA..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        {filterActive("search") && (
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Tìm số HĐ, khách hàng, mã MISA..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          </div>
+        )}
+        {filterActive("status") && (
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả</SelectItem>
+              <SelectItem value="draft">Nháp</SelectItem>
+              <SelectItem value="issued">Đã phát hành</SelectItem>
+              <SelectItem value="cancelled">Đã hủy</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {filterActive("misa") && (
+          <Select value={misaFilter} onValueChange={setMisaFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">MISA: Tất cả</SelectItem>
+              <SelectItem value="signed">Đã ký số</SelectItem>
+              <SelectItem value="pending">Chờ gửi</SelectItem>
+              <SelectItem value="error">Lỗi</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <FilterPicker
+            available={INVOICE_FILTERS}
+            value={activeFilters}
+            onChange={setFilters}
+            onReset={resetFilters}
+          />
+          <ColumnPicker
+            available={INVOICE_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả</SelectItem>
-            <SelectItem value="draft">Nháp</SelectItem>
-            <SelectItem value="issued">Đã phát hành</SelectItem>
-            <SelectItem value="cancelled">Đã hủy</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={misaFilter} onValueChange={setMisaFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">MISA: Tất cả</SelectItem>
-            <SelectItem value="signed">Đã ký số</SelectItem>
-            <SelectItem value="pending">Chờ gửi</SelectItem>
-            <SelectItem value="error">Lỗi</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {filtered.length === 0 ? (
@@ -159,55 +213,67 @@ export default function InvoicesPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden lg:block">
+          <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Số HĐ</TableHead>
+                <TableRow className="bg-muted/30">
+                  {show("number") && <TableHead>Số HĐ</TableHead>}
                   <TableHead>Khách hàng</TableHead>
-                  <TableHead className="text-right">Tổng tiền</TableHead>
-                  <TableHead>Ngày</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead>MISA</TableHead>
-                  <TableHead>Tra cứu</TableHead>
+                  {show("amount") && <TableHead className="text-right">Tổng tiền</TableHead>}
+                  {show("date") && <TableHead>Ngày</TableHead>}
+                  {show("status") && <TableHead>Trạng thái</TableHead>}
+                  {show("misa") && <TableHead>MISA</TableHead>}
+                  {show("lookup") && <TableHead>Tra cứu</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((inv) => {
                   const misa = inv.misa_status ? MISA_BADGE[inv.misa_status] : null
                   return (
-                    <TableRow key={inv.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${inv.id}`)}>
-                      <TableCell className="font-mono text-sm font-medium">
-                        {inv.misa_invoice_id || inv.invoice_number || "-"}
-                      </TableCell>
+                    <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/invoices/${inv.id}`)}>
+                      {show("number") && (
+                        <TableCell className="font-mono text-sm font-medium">
+                          {inv.misa_invoice_id || inv.invoice_number || "-"}
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">{inv.customer_name}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
-                      <TableCell className="text-muted-foreground">{inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {misa ? (
-                          <Badge variant={misa.variant}>{misa.label}</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {inv.misa_invoice_url ? (
-                          <a
-                            href={inv.misa_invoice_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-primary hover:underline text-xs flex items-center gap-1"
-                          >
-                            Xem HĐ <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
+                      {show("amount") && (
+                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(inv.total)}</TableCell>
+                      )}
+                      {show("date") && (
+                        <TableCell className="text-muted-foreground">{inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}</TableCell>
+                      )}
+                      {show("status") && (
+                        <TableCell>
+                          <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        </TableCell>
+                      )}
+                      {show("misa") && (
+                        <TableCell>
+                          {misa ? (
+                            <Badge variant={misa.variant}>{misa.label}</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {show("lookup") && (
+                        <TableCell>
+                          {inv.misa_invoice_url ? (
+                            <a
+                              href={inv.misa_invoice_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-primary hover:underline text-xs flex items-center gap-1"
+                            >
+                              Xem HĐ <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}

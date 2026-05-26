@@ -76,6 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, module: "receivables", feature: "finance.cash_receipts" },
       { label: "Chi phí", href: "/finance/expenses", icon: Wallet, module: "settings", feature: "finance.expenses" },
       { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices", feature: "invoices" },
+      { label: "Cấu hình HĐ điện tử", href: "/settings/einvoice", icon: Settings, module: "settings", feature: "einvoice.config" },
     ],
   },
   {

@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, RefreshCw, AlertCircle, FileText } from "lucide-react"
+import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 
 type NextStatus = {
@@ -146,20 +146,21 @@ export default function InvoiceDetailPage() {
     }
   }
 
-  const handleMisaRetry = async () => {
-    if (!invoice || !invoice.order_id) return
+  // Phát hành hoá đơn điện tử qua MISA meInvoice (Layer 3 — /api/einvoice/publish).
+  const handleEinvoicePublish = async (mode: "as_sold" | "box" = "as_sold") => {
+    if (!invoice) return
     setMisaLoading(true)
     try {
-      const res = await fetch("/api/invoice/misa", {
+      const res = await fetch("/api/einvoice/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: invoice.order_id, invoiceId: invoice.id }),
+        body: JSON.stringify({ invoiceId: invoice.id, mode }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Gửi MISA thất bại")
+      if (!res.ok) throw new Error(data.error || "Phát hành MISA thất bại")
       toast({
-        title: "Gửi MISA thành công",
-        description: `Số HĐ: ${data.invoice_number}${data.mock ? " (thử nghiệm)" : ""}`,
+        title: data.cached ? "Hoá đơn đã phát hành trước đó" : "Đã phát hành hoá đơn điện tử",
+        description: `${data.inv_no ? `Số HĐ: ${data.inv_no} · ` : ""}Mã tra cứu: ${data.lookup_code || "—"}${data.sandbox ? " (sandbox)" : ""}`,
       })
       fetchData()
     } catch (error) {
@@ -346,15 +347,15 @@ export default function InvoiceDetailPage() {
             </CardContent>
           </Card>
 
-          {/* MISA meInvoice integration */}
-          {invoice.misa_status && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> Tích hợp MISA meInvoice
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+          {/* Hoá đơn điện tử MISA meInvoice */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Hoá đơn điện tử (MISA)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {invoice.misa_status && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Trạng thái</span>
                   <Badge variant={
@@ -363,73 +364,93 @@ export default function InvoiceDetailPage() {
                     : invoice.misa_status === "sent" ? "default"
                     : "warning"
                   }>
-                    {invoice.misa_status === "signed" ? "Đã ký số"
+                    {invoice.misa_status === "signed" ? "Đã phát hành"
                     : invoice.misa_status === "error" ? "Lỗi"
                     : invoice.misa_status === "sent" ? "Đã gửi"
-                    : "Đang chờ"}
+                    : "Đang xử lý"}
                   </Badge>
                 </div>
-                {invoice.misa_invoice_id && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Số HĐ MISA</span>
-                    <span className="font-mono font-bold text-sm">{invoice.misa_invoice_id}</span>
-                  </div>
-                )}
-                {invoice.misa_sent_at && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Gửi lúc</span>
-                    <span className="text-sm">{formatDate(invoice.misa_sent_at)}</span>
-                  </div>
-                )}
-                {invoice.misa_signed_at && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Ký lúc</span>
-                    <span className="text-sm">{formatDate(invoice.misa_signed_at)}</span>
-                  </div>
-                )}
-                {invoice.misa_invoice_url && (
-                  <a
-                    href={invoice.misa_invoice_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Tra cứu hóa đơn
-                  </a>
-                )}
-                {invoice.misa_status === "error" && (
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
-                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                      <span>{invoice.misa_error || "Lỗi không xác định"}</span>
+              )}
+              {invoice.misa_invoice_id && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Số HĐ MISA</span>
+                  <span className="font-mono font-bold text-sm">{invoice.misa_invoice_id}</span>
+                </div>
+              )}
+              {invoice.misa_lookup_code && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Mã tra cứu</span>
+                  <span className="font-mono text-sm">{invoice.misa_lookup_code}</span>
+                </div>
+              )}
+              {invoice.misa_published_at && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Phát hành lúc</span>
+                  <span className="text-sm">{formatDate(invoice.misa_published_at)}</span>
+                </div>
+              )}
+              {invoice.misa_invoice_url && (
+                <a
+                  href={invoice.misa_invoice_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Tra cứu hóa đơn
+                </a>
+              )}
+
+              {invoice.misa_status === "error" && (
+                <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  <span>{invoice.misa_error || "Lỗi không xác định"}</span>
+                </div>
+              )}
+
+              {/* Nút phát hành — chỉ khi chưa có mã tra cứu */}
+              {!invoice.misa_lookup_code ? (
+                <div className="space-y-2 pt-1">
+                  {invoice.status !== "issued" && (
+                    <p className="text-[11px] text-amber-600">
+                      Nên phát hành hóa đơn (chuyển sang &ldquo;Đã phát hành&rdquo;) trước khi đẩy lên MISA.
+                    </p>
+                  )}
+                  {(user?.role === "owner" || user?.role === "accountant" || user?.role === "manager") && (
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleEinvoicePublish("as_sold")}
+                        disabled={misaLoading}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1.5" />
+                        {misaLoading ? "Đang phát hành..." : invoice.misa_status === "error" ? "Phát hành lại lên MISA" : "Phát hành lên MISA"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleEinvoicePublish("box")}
+                        disabled={misaLoading}
+                      >
+                        Phát hành theo hộp (quy đổi)
+                      </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={handleMisaRetry}
-                      disabled={misaLoading}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                      {misaLoading ? "Đang gửi lại..." : "Gửi lại"}
-                    </Button>
-                  </div>
-                )}
-                {invoice.misa_status === "pending" && invoice.order_id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={handleMisaRetry}
-                    disabled={misaLoading}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                    {misaLoading ? "Đang kiểm tra..." : "Kiểm tra trạng thái"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Cần cấu hình tài khoản tại{" "}
+                    <Link href="/settings/einvoice" className="text-primary hover:underline">
+                      Cài đặt → Hoá đơn điện tử
+                    </Link>.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Hoá đơn đã phát hành lên MISA — không phát hành lại để tránh trùng.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Status transitions */}
           {(availableTransitions.length > 0 || canDelete) && (

@@ -70,6 +70,7 @@ export const FEATURES: FeatureDef[] = [
   { key: "finance.cash_receipts", label: "Phiếu thu", module: "receivables", group: "Kế toán", inherits: true },
   { key: "finance.expenses", label: "Chi phí", module: "settings", group: "Kế toán", inherits: true },
   { key: "invoices", label: "Hóa đơn bán", module: "invoices", group: "Kế toán" },
+  { key: "einvoice.config", label: "Cấu hình hoá đơn điện tử (MISA)", module: "settings", group: "Kế toán", inherits: true },
 
   // Nhân sự
   { key: "hr", label: "Nhân sự", module: "settings", group: "Nhân sự", inherits: true },

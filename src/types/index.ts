@@ -490,6 +490,8 @@ export interface Invoice {
   misa_error: string | null
   misa_sent_at: string | null
   misa_signed_at: string | null
+  misa_lookup_code?: string | null
+  misa_published_at?: string | null
   // Joined
   order?: SalesOrder
 }

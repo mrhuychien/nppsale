@@ -4,7 +4,14 @@ import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { PageHeader } from "@/components/ui/page-header"
+import {
+  PAYABLE_COLUMNS,
+  DEFAULT_PAYABLE_COLUMNS,
+  type PayableColumnKey,
+} from "./list-config"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +41,12 @@ export default function PayablesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const supabase = createClient()
   const router = useRouter()
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [])
+  const show = (k: PayableColumnKey) => visibleColumns.includes(k)
 
   useEffect(() => {
     async function fetch() {
@@ -176,6 +189,12 @@ export default function PayablesPage() {
                 )
               })}
             </div>
+            <ColumnPicker
+              available={PAYABLE_COLUMNS}
+              value={visibleColumns}
+              onChange={setColumns}
+              onReset={resetColumns}
+            />
           </div>
         </CardContent>
       </Card>
@@ -197,13 +216,13 @@ export default function PayablesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nhà cung cấp</TableHead>
-                      <TableHead>Mã HĐ</TableHead>
-                      <TableHead className="text-right">Số tiền</TableHead>
-                      <TableHead className="text-right">Đã trả</TableHead>
-                      <TableHead className="text-right">Còn lại</TableHead>
-                      <TableHead>Hạn trả</TableHead>
-                      <TableHead>Tuổi nợ</TableHead>
-                      <TableHead>Trạng thái</TableHead>
+                      {show("invoiceNumber") && <TableHead>Mã HĐ</TableHead>}
+                      {show("amount") && <TableHead className="text-right">Số tiền</TableHead>}
+                      {show("paid") && <TableHead className="text-right">Đã trả</TableHead>}
+                      {show("remaining") && <TableHead className="text-right">Còn lại</TableHead>}
+                      {show("dueDate") && <TableHead>Hạn trả</TableHead>}
+                      {show("aging") && <TableHead>Tuổi nợ</TableHead>}
+                      {show("status") && <TableHead>Trạng thái</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -219,21 +238,25 @@ export default function PayablesPage() {
                           onClick={() => router.push(`/payables/${p.id}`)}
                         >
                           <TableCell className="font-medium">{p.supplier?.name || "-"}</TableCell>
-                          <TableCell className="font-mono text-xs">{p.invoice_number || "-"}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(p.amount)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(p.paid)}</TableCell>
-                          <TableCell className="text-right font-bold">{formatCurrency(remaining)}</TableCell>
-                          <TableCell>{p.due_date ? formatDate(p.due_date) : "-"}</TableCell>
-                          <TableCell>
-                            {p.status !== "paid" && p.due_date ? (
-                              <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
-                            ) : (
-                              "-"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-                          </TableCell>
+                          {show("invoiceNumber") && <TableCell className="font-mono text-xs">{p.invoice_number || "-"}</TableCell>}
+                          {show("amount") && <TableCell className="text-right tabular-nums">{formatCurrency(p.amount)}</TableCell>}
+                          {show("paid") && <TableCell className="text-right tabular-nums">{formatCurrency(p.paid)}</TableCell>}
+                          {show("remaining") && <TableCell className="text-right font-bold tabular-nums">{formatCurrency(remaining)}</TableCell>}
+                          {show("dueDate") && <TableCell>{p.due_date ? formatDate(p.due_date) : "-"}</TableCell>}
+                          {show("aging") && (
+                            <TableCell>
+                              {p.status !== "paid" && p.due_date ? (
+                                <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                          )}
+                          {show("status") && (
+                            <TableCell>
+                              <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                            </TableCell>
+                          )}
                         </TableRow>
                       )
                     })}

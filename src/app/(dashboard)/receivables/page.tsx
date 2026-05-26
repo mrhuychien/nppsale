@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { PageHeader } from "@/components/ui/page-header"
+import {
+  RECEIVABLE_COLUMNS,
+  DEFAULT_RECEIVABLE_COLUMNS,
+  type ReceivableColumnKey,
+} from "./list-config"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +35,12 @@ export default function ReceivablesPage() {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
   const router = useRouter()
+  const {
+    columns: visibleColumns,
+    setColumns,
+    resetColumns,
+  } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [])
+  const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
 
   useEffect(() => {
     async function fetch() {
@@ -158,6 +171,15 @@ export default function ReceivablesPage() {
         </CardContent>
       </Card>
 
+      <div className="flex justify-end">
+        <ColumnPicker
+          available={RECEIVABLE_COLUMNS}
+          value={visibleColumns}
+          onChange={setColumns}
+          onReset={resetColumns}
+        />
+      </div>
+
       {receivables.length === 0 ? (
         <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chưa có công nợ" />
       ) : (
@@ -168,13 +190,13 @@ export default function ReceivablesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Khách hàng</TableHead>
-                  <TableHead>NV phụ trách</TableHead>
-                  <TableHead className="text-right">Phải thu</TableHead>
-                  <TableHead className="text-right">Đã thu</TableHead>
-                  <TableHead className="text-right">Còn lại</TableHead>
-                  <TableHead>Hạn</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
+                  {show("salesUser") && <TableHead>NV phụ trách</TableHead>}
+                  {show("amount") && <TableHead className="text-right">Phải thu</TableHead>}
+                  {show("paid") && <TableHead className="text-right">Đã thu</TableHead>}
+                  {show("remaining") && <TableHead className="text-right">Còn lại</TableHead>}
+                  {show("dueDate") && <TableHead>Hạn</TableHead>}
+                  {show("status") && <TableHead>Trạng thái</TableHead>}
+                  {show("action") && <TableHead className="text-right">Thao tác</TableHead>}
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -189,22 +211,24 @@ export default function ReceivablesPage() {
                       onClick={() => router.push(`/receivables/${r.id}`)}
                     >
                       <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
-                      <TableCell>{r.sales_user?.full_name || "-"}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(r.paid)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
-                      <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>
-                      <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleExportStatement(r)}
-                        >
-                          <FileText className="mr-1 h-3.5 w-3.5" />
-                          Xuất bản kê
-                        </Button>
-                      </TableCell>
+                      {show("salesUser") && <TableCell>{r.sales_user?.full_name || "-"}</TableCell>}
+                      {show("amount") && <TableCell className="text-right tabular-nums">{formatCurrency(r.amount)}</TableCell>}
+                      {show("paid") && <TableCell className="text-right tabular-nums">{formatCurrency(r.paid)}</TableCell>}
+                      {show("remaining") && <TableCell className="text-right font-medium tabular-nums">{formatCurrency(remaining)}</TableCell>}
+                      {show("dueDate") && <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>}
+                      {show("status") && <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>}
+                      {show("action") && (
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleExportStatement(r)}
+                          >
+                            <FileText className="mr-1 h-3.5 w-3.5" />
+                            Xuất bản kê
+                          </Button>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Eye className="h-4 w-4 text-muted-foreground" />
                       </TableCell>

@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { PageHeader } from "@/components/ui/page-header"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import {
+  RETURN_COLUMNS,
+  DEFAULT_RETURN_COLUMNS,
+  RETURN_FILTERS,
+  DEFAULT_RETURN_FILTERS,
+  type ReturnColumnKey,
+  type ReturnFilterKey,
+} from "./list-config"
 import {
   Table,
   TableBody,
@@ -51,6 +61,21 @@ export default function ReturnsPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  const {
+    columns: visibleColumns,
+    filters: activeFilters,
+    setColumns,
+    setFilters,
+    resetColumns,
+    resetFilters,
+  } = useListViewPrefs(
+    "returns",
+    DEFAULT_RETURN_COLUMNS,
+    DEFAULT_RETURN_FILTERS
+  )
+  const show = (k: ReturnColumnKey) => visibleColumns.includes(k)
+  const filterActive = (k: ReturnFilterKey) => activeFilters.includes(k)
+
   useEffect(() => {
     async function fetch() {
       const { data } = await supabase
@@ -78,17 +103,19 @@ export default function ReturnsPage() {
 
   const filtered = useMemo(() => {
     let list = returns
-    if (reasonFilter !== "all") list = list.filter((r) => r.reason === reasonFilter)
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter((r) =>
-        (r.customer?.store_name || "").toLowerCase().includes(q) ||
-        (r.requester?.full_name || "").toLowerCase().includes(q) ||
-        ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(q)
-      )
+    if (filterActive("reason") && reasonFilter !== "all") list = list.filter((r) => r.reason === reasonFilter)
+    if (filterActive("search")) {
+      const q = search.trim().toLowerCase()
+      if (q) {
+        list = list.filter((r) =>
+          (r.customer?.store_name || "").toLowerCase().includes(q) ||
+          (r.requester?.full_name || "").toLowerCase().includes(q) ||
+          ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(q)
+        )
+      }
     }
     return list
-  }, [returns, reasonFilter, search])
+  }, [returns, reasonFilter, search, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
@@ -124,28 +151,32 @@ export default function ReturnsPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm khách / đơn / NV…"
-                className="pl-8 h-9"
-              />
-            </div>
-            <Select value={reasonFilter} onValueChange={setReasonFilter}>
-              <SelectTrigger className="h-9 sm:w-56">
-                <SelectValue placeholder="Lọc theo lý do" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả lý do</SelectItem>
-                {RETURN_REASONS.map((r) => (
-                  <SelectItem key={r.value} value={r.value}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {filterActive("search") && (
+              <div className="relative sm:max-w-xs">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Tìm khách / đơn / NV…"
+                  className="pl-8 h-9"
+                />
+              </div>
+            )}
+            {filterActive("reason") && (
+              <Select value={reasonFilter} onValueChange={setReasonFilter}>
+                <SelectTrigger className="h-9 sm:w-56">
+                  <SelectValue placeholder="Lọc theo lý do" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả lý do</SelectItem>
+                  {RETURN_REASONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {(reasonFilter !== "all" || search.trim() !== "") && (
               <Button
                 size="sm"
@@ -158,7 +189,21 @@ export default function ReturnsPage() {
                 Xoá lọc
               </Button>
             )}
-            <span className="text-xs text-muted-foreground sm:ml-auto">
+            <div className="sm:ml-auto flex items-center gap-2">
+              <FilterPicker
+                available={RETURN_FILTERS}
+                value={activeFilters}
+                onChange={setFilters}
+                onReset={resetFilters}
+              />
+              <ColumnPicker
+                available={RETURN_COLUMNS}
+                value={visibleColumns}
+                onChange={setColumns}
+                onReset={resetColumns}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground sm:ml-2">
               {filtered.length} / {returns.length} • Tổng credit{" "}
               <span className="font-semibold text-foreground">
                 {formatCurrency(totalCredit)}
@@ -179,13 +224,13 @@ export default function ReturnsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Ngày</TableHead>
+                      {show("date") && <TableHead>Ngày</TableHead>}
                       <TableHead>Khách hàng</TableHead>
-                      <TableHead>Đơn gốc</TableHead>
-                      <TableHead>Lý do</TableHead>
-                      <TableHead>Người tạo</TableHead>
-                      <TableHead className="text-right">Credit Note</TableHead>
-                      <TableHead>Trạng thái</TableHead>
+                      {show("orderCode") && <TableHead>Đơn gốc</TableHead>}
+                      {show("reason") && <TableHead>Lý do</TableHead>}
+                      {show("requester") && <TableHead>Người tạo</TableHead>}
+                      {show("creditNote") && <TableHead className="text-right">Credit Note</TableHead>}
+                      {show("status") && <TableHead>Trạng thái</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -197,25 +242,35 @@ export default function ReturnsPage() {
                           className="cursor-pointer hover:bg-muted/40"
                           onClick={() => router.push(`/returns/${r.id}`)}
                         >
-                          <TableCell className="text-sm whitespace-nowrap">
-                            {formatDate(r.created_at)}
-                          </TableCell>
+                          {show("date") && (
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {formatDate(r.created_at)}
+                            </TableCell>
+                          )}
                           <TableCell className="font-medium">
                             {r.customer?.store_name || "—"}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {orderCode || "—"}
-                          </TableCell>
-                          <TableCell>{getReasonLabel(r.reason)}</TableCell>
-                          <TableCell className="text-sm">
-                            {r.requester?.full_name || "—"}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={r.status} type="return" />
-                          </TableCell>
+                          {show("orderCode") && (
+                            <TableCell className="font-mono text-xs">
+                              {orderCode || "—"}
+                            </TableCell>
+                          )}
+                          {show("reason") && <TableCell>{getReasonLabel(r.reason)}</TableCell>}
+                          {show("requester") && (
+                            <TableCell className="text-sm">
+                              {r.requester?.full_name || "—"}
+                            </TableCell>
+                          )}
+                          {show("creditNote") && (
+                            <TableCell className="text-right tabular-nums">
+                              {r.credit_note_amount ? formatCurrency(r.credit_note_amount) : "—"}
+                            </TableCell>
+                          )}
+                          {show("status") && (
+                            <TableCell>
+                              <StatusBadge status={r.status} type="return" />
+                            </TableCell>
+                          )}
                         </TableRow>
                       )
                     })}

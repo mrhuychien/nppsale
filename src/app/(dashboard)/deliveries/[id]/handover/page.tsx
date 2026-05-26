@@ -269,10 +269,9 @@ export default function DeliveryHandoverPage() {
         lines: dl.order!.lines || [],
         failureReason: "customer_absent",
         notes: "",
-        selected:
-          dl.status === "failed" ||
-          dl.status === "partial" ||
-          dl.status === "pending",
+        // Mặc định không tick — kế toán chủ động chọn đơn cần nhận bàn
+        // giao lại. Tránh tự thêm hàng loạt khiến phải bỏ tick lại.
+        selected: false,
         mode: dl.status === "partial" ? "partial" : "failed",
       }))
     setFailedDrafts(failed)

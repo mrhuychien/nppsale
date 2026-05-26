@@ -839,7 +839,7 @@ export default function OrdersPage() {
                             <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
                             {order.status === "draft" && order.approval_reason && (
                               <span
-                                className="text-[10px] text-amber-700 font-semibold"
+                                className="text-[10px] text-[#b54708] font-semibold"
                                 title={order.approval_reason}
                               >
                                 Cần duyệt

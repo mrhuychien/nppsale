@@ -97,7 +97,7 @@ export default function CommissionsPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                 Đã chi trả
               </p>
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <CheckCircle2 className="h-5 w-5 text-tertiary" />
             </div>
             <h3 className="mt-4 text-2xl font-black">{formatCurrency(totalPaid)}</h3>
           </CardContent>
@@ -139,7 +139,7 @@ export default function CommissionsPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                 Tỷ lệ đạt
               </p>
-              <p className="text-2xl font-black text-green-600">
+              <p className="text-2xl font-black text-tertiary">
                 {wallets.length > 0
                   ? Math.round((achieversCount / wallets.length) * 100)
                   : 0}
@@ -181,7 +181,7 @@ export default function CommissionsPage() {
                         </div>
                       </div>
                       {achieved && (
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-[10px] font-black uppercase text-green-700">
+                        <span className="rounded-full bg-[#ecfdf3] px-3 py-1 text-[10px] font-black uppercase text-tertiary">
                           Đạt chỉ tiêu
                         </span>
                       )}
@@ -198,7 +198,7 @@ export default function CommissionsPage() {
                         <p className="text-[10px] font-bold uppercase text-muted-foreground">
                           Paid
                         </p>
-                        <p className="text-sm font-bold text-green-600">
+                        <p className="text-sm font-bold text-tertiary">
                           {formatCurrency(w.paid)}
                         </p>
                       </div>
@@ -221,10 +221,10 @@ export default function CommissionsPage() {
                         <div
                           className={`h-full ${
                             paidPct >= 100
-                              ? "bg-green-500"
+                              ? "bg-tertiary"
                               : paidPct >= 50
                                 ? "bg-primary"
-                                : "bg-amber-400"
+                                : "bg-[#fdb022]"
                           }`}
                           style={{ width: `${paidPct}%` }}
                         />

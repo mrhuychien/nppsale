@@ -401,7 +401,7 @@ export default function InvoiceDetailPage() {
               )}
 
               {invoice.misa_status === "error" && (
-                <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                <div className="flex items-start gap-2 rounded-lg bg-error-container p-2 text-xs text-error">
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                   <span>{invoice.misa_error || "Lỗi không xác định"}</span>
                 </div>
@@ -411,7 +411,7 @@ export default function InvoiceDetailPage() {
               {!invoice.misa_lookup_code ? (
                 <div className="space-y-2 pt-1">
                   {invoice.status !== "issued" && (
-                    <p className="text-[11px] text-amber-600">
+                    <p className="text-[11px] text-[#b54708]">
                       Nên phát hành hóa đơn (chuyển sang &ldquo;Đã phát hành&rdquo;) trước khi đẩy lên MISA.
                     </p>
                   )}

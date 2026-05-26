@@ -118,7 +118,7 @@ export default function PayablesPage() {
           <Button variant="outline" asChild>
             <Link href="/payables/by-supplier">Theo NCC</Link>
           </Button>
-          <Button asChild className="bg-gradient-primary text-white shadow-ambient">
+          <Button asChild className="bg-primary text-on-primary shadow-card">
             <Link href="/payables/new"><Plus className="mr-2 h-4 w-4" />Tạo công nợ NCC</Link>
           </Button>
         </div>
@@ -135,7 +135,7 @@ export default function PayablesPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Trong hạn</p>
-            <p className="text-xl font-black mt-1 text-green-700">{formatCurrency(totalInTerm)}</p>
+            <p className="text-xl font-black mt-1 text-tertiary">{formatCurrency(totalInTerm)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -276,7 +276,7 @@ export default function PayablesPage() {
               return (
                 <div
                   key={p.id}
-                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                   onClick={() => router.push(`/payables/${p.id}`)}
                 >
                   <div className="p-4">

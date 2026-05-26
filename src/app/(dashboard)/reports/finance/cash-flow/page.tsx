@@ -99,30 +99,30 @@ export default function CashFlowPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+                <div className="flex items-center gap-1.5 text-xs text-tertiary">
                   <ArrowDownCircle className="h-3.5 w-3.5" /> Thu từ KH
                 </div>
-                <p className="text-xl font-black mt-1 text-emerald-700">
+                <p className="text-xl font-black mt-1 text-tertiary">
                   {formatCurrency(data.operating.cashFromCustomers)}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-1.5 text-xs text-red-700">
+                <div className="flex items-center gap-1.5 text-xs text-error">
                   <ArrowUpCircle className="h-3.5 w-3.5" /> Trả NCC
                 </div>
-                <p className="text-xl font-black mt-1 text-red-700">
+                <p className="text-xl font-black mt-1 text-error">
                   {formatCurrency(data.operating.cashToSuppliers)}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-1.5 text-xs text-amber-700">
+                <div className="flex items-center gap-1.5 text-xs text-[#b54708]">
                   <ArrowUpCircle className="h-3.5 w-3.5" /> Chi phí đã trả
                 </div>
-                <p className="text-xl font-black mt-1 text-amber-700">
+                <p className="text-xl font-black mt-1 text-[#b54708]">
                   {formatCurrency(data.operating.cashToExpenses)}
                 </p>
               </CardContent>
@@ -130,10 +130,10 @@ export default function CashFlowPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  {data.netChange >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-emerald-600" /> : <TrendingDown className="h-3.5 w-3.5 text-red-600" />}
+                  {data.netChange >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-tertiary" /> : <TrendingDown className="h-3.5 w-3.5 text-error" />}
                   Dòng tiền ròng
                 </div>
-                <p className={`text-xl font-black mt-1 ${data.netChange >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <p className={`text-xl font-black mt-1 ${data.netChange >= 0 ? "text-tertiary" : "text-error"}`}>
                   {formatCurrency(data.netChange)}
                 </p>
               </CardContent>
@@ -151,19 +151,19 @@ export default function CashFlowPage() {
                 <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground pb-1">
                   I. Hoạt động kinh doanh
                 </div>
-                <div className="flex justify-between py-1.5 pl-4 text-emerald-700">
+                <div className="flex justify-between py-1.5 pl-4 text-tertiary">
                   <span className="flex items-center gap-1.5">
                     <ArrowDownCircle className="h-3 w-3" /> Thu từ khách hàng
                   </span>
                   <span className="font-semibold">+{formatCurrency(data.operating.cashFromCustomers)}</span>
                 </div>
-                <div className="flex justify-between py-1.5 pl-4 text-red-700">
+                <div className="flex justify-between py-1.5 pl-4 text-error">
                   <span className="flex items-center gap-1.5">
                     <ArrowUpCircle className="h-3 w-3" /> Trả nhà cung cấp
                   </span>
                   <span className="font-semibold">−{formatCurrency(data.operating.cashToSuppliers)}</span>
                 </div>
-                <div className="flex justify-between py-1.5 pl-4 text-red-700">
+                <div className="flex justify-between py-1.5 pl-4 text-error">
                   <span className="flex items-center gap-1.5">
                     <ArrowUpCircle className="h-3 w-3" /> Chi phí hoạt động đã trả
                   </span>
@@ -171,7 +171,7 @@ export default function CashFlowPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b font-bold">
                   <span>Dòng tiền HĐKD ròng</span>
-                  <span className={data.operating.net >= 0 ? "text-emerald-700" : "text-red-700"}>
+                  <span className={data.operating.net >= 0 ? "text-tertiary" : "text-error"}>
                     {data.operating.net >= 0 ? "+" : ""}{formatCurrency(data.operating.net)}
                   </span>
                 </div>
@@ -205,7 +205,7 @@ export default function CashFlowPage() {
                 {/* Total */}
                 <div className="flex justify-between py-3 border-t-2 border-foreground mt-2 text-base font-black">
                   <span>TĂNG/GIẢM TIỀN RÒNG</span>
-                  <span className={data.netChange >= 0 ? "text-emerald-700" : "text-red-700"}>
+                  <span className={data.netChange >= 0 ? "text-tertiary" : "text-error"}>
                     {data.netChange >= 0 ? "+" : ""}{formatCurrency(data.netChange)}
                   </span>
                 </div>

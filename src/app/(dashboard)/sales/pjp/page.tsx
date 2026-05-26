@@ -307,7 +307,7 @@ export default function PjpPage() {
               onClick={() => setActiveDay(idx)}
               className={`flex flex-col items-center px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 activeDay === idx
-                  ? "bg-primary text-white shadow-ambient"
+                  ? "bg-primary text-white shadow-card"
                   : "bg-surface-low text-muted-foreground hover:bg-surface-container"
               }`}
             >
@@ -353,9 +353,9 @@ export default function PjpPage() {
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
                           status === "visited"
-                            ? "bg-green-100 text-green-600"
+                            ? "bg-[#ecfdf3] text-tertiary"
                             : status === "checked_in"
-                            ? "bg-amber-100 text-amber-600"
+                            ? "bg-[#fff4ed] text-[#b54708]"
                             : "bg-primary/10 text-primary"
                         }`}
                       >
@@ -371,13 +371,13 @@ export default function PjpPage() {
                           </p>
                         )}
                         {status === "visited" && (
-                          <Badge variant="outline" className="mt-1 text-green-700 border-green-200 bg-green-50">
+                          <Badge variant="outline" className="mt-1 text-tertiary border-tertiary/40 bg-[#ecfdf3]">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Đã ghé
                           </Badge>
                         )}
                         {status === "checked_in" && (
-                          <Badge variant="outline" className="mt-1 text-amber-700 border-amber-200 bg-amber-50">
+                          <Badge variant="outline" className="mt-1 text-[#b54708] border-[#fdb022]/40 bg-[#fff4ed]">
                             <Clock className="h-3 w-3 mr-1" />
                             Đang ghé
                           </Badge>

@@ -478,7 +478,7 @@ export default function StockInPage() {
 
       {/* Bento grid: 2 + 1 */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2 rounded-2xl shadow-ambient bg-card">
+        <Card className="lg:col-span-2 rounded-xl shadow-card bg-card">
           <CardHeader>
             <CardTitle className="text-base font-bold">Thông tin chung</CardTitle>
           </CardHeader>
@@ -590,7 +590,7 @@ export default function StockInPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-primary text-white shadow-ambient-md rounded-2xl">
+        <Card className="bg-primary text-on-primary shadow-card-hover rounded-xl">
           <CardHeader>
             <CardTitle className="text-white text-base font-bold">Giá trị nhập kho</CardTitle>
           </CardHeader>
@@ -627,7 +627,7 @@ export default function StockInPage() {
       </div>
 
       {/* Line items */}
-      <Card className="rounded-2xl shadow-ambient bg-card">
+      <Card className="rounded-xl shadow-card bg-card">
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <div>
             <CardTitle className="text-base font-bold">Line Items &amp; Lot Tracking</CardTitle>
@@ -650,7 +650,7 @@ export default function StockInPage() {
               className="h-10"
             />
             {filteredProducts.length > 0 && (
-              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-ambient-md max-h-72 overflow-y-auto">
+              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-card-hover max-h-72 overflow-y-auto">
                 {filteredProducts.slice(0, 10).map((p) => (
                   <button
                     key={p.id}

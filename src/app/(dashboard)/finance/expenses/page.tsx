@@ -25,11 +25,11 @@ import { Plus, Search, Trash2, Wallet, Receipt, Info } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
-  cogs: { label: "Giá vốn", color: "text-red-700 bg-red-100" },
-  operating: { label: "Vận hành", color: "text-blue-700 bg-blue-100" },
-  hr: { label: "Nhân sự", color: "text-purple-700 bg-purple-100" },
-  financial: { label: "Tài chính", color: "text-amber-700 bg-amber-100" },
-  tax: { label: "Thuế", color: "text-slate-700 bg-slate-200" },
+  cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
+  operating: { label: "Vận hành", color: "text-[#175cd3] bg-[#eff8ff]" },
+  hr: { label: "Nhân sự", color: "text-[#6941c6] bg-[#f4f3ff]" },
+  financial: { label: "Tài chính", color: "text-[#b54708] bg-[#fff4ed]" },
+  tax: { label: "Thuế", color: "text-on-surface-variant bg-surface-container" },
   other: { label: "Khác", color: "text-muted-foreground bg-muted" },
 }
 
@@ -241,18 +241,18 @@ export default function ExpensesPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+            <div className="flex items-center gap-1.5 text-xs text-tertiary">
               <Receipt className="h-3.5 w-3.5" /> Đã trả
             </div>
-            <p className="text-xl font-black mt-1 text-emerald-700">{formatCurrency(totals.paid)}</p>
+            <p className="text-xl font-black mt-1 text-tertiary">{formatCurrency(totals.paid)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-xs text-amber-700">
+            <div className="flex items-center gap-1.5 text-xs text-[#b54708]">
               <Receipt className="h-3.5 w-3.5" /> Chưa trả
             </div>
-            <p className="text-xl font-black mt-1 text-amber-700">{formatCurrency(totals.unpaid)}</p>
+            <p className="text-xl font-black mt-1 text-[#b54708]">{formatCurrency(totals.unpaid)}</p>
           </CardContent>
         </Card>
         <Card>

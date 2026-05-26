@@ -100,7 +100,7 @@ export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
           <div className="rounded-md border border-border/40 bg-background/60">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-emerald-100/60 text-foreground">
+                <tr className="bg-[#ecfdf3]/60 text-foreground">
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hóa đơn</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Thời gian</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Khách hàng</th>

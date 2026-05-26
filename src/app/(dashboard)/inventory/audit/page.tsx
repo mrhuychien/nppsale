@@ -103,14 +103,14 @@ export default function InventoryAuditPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Đang tồn</p>
-            <p className="text-lg font-black mt-1 text-emerald-700">{stats.inStock} SKU</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary">Đang tồn</p>
+            <p className="text-lg font-black mt-1 text-tertiary">{stats.inStock} SKU</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Hết hàng</p>
-            <p className="text-lg font-black mt-1 text-red-700">{stats.outOfStock} SKU</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-error">Hết hàng</p>
+            <p className="text-lg font-black mt-1 text-error">{stats.outOfStock} SKU</p>
           </CardContent>
         </Card>
       </div>
@@ -169,7 +169,7 @@ export default function InventoryAuditPage() {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className={`font-bold text-sm ${outOfStock ? "text-red-700" : ""}`}>
+                    <p className={`font-bold text-sm ${outOfStock ? "text-error" : ""}`}>
                       {stock.on_hand} {p.base_unit}
                     </p>
                     <p className="text-[11px] text-muted-foreground">

@@ -566,7 +566,7 @@ function ProfitView({ rows }: { rows: { id: string; name: string; channel: strin
         { key: "or", label: "Số đơn", align: "right", render: (r) => r.orders },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
         { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
-        { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red-600"}>{formatCurrency(r.profit)}</span> },
+        { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>{formatCurrency(r.profit)}</span> },
         { key: "m", label: "Biên LN", align: "right", render: (r) => `${r.margin.toFixed(1)}%` },
       ]}
       totalsRow={
@@ -602,9 +602,9 @@ function ReceivablesView({ rows }: { rows: { id: string; name: string; channel: 
         { key: "ch", label: "Kênh", render: (r) => r.channel },
         { key: "cl", label: "Hạn mức", align: "right", render: (r) => formatCurrency(r.creditLimit) },
         { key: "inv", label: "Số phiếu", align: "right", render: (r) => r.invoices },
-        { key: "out", label: "Công nợ", align: "right", render: (r) => <span className="font-semibold text-red-600">{formatCurrency(r.outstanding)}</span> },
+        { key: "out", label: "Công nợ", align: "right", render: (r) => <span className="font-semibold text-error">{formatCurrency(r.outstanding)}</span> },
         { key: "od", label: "Tuổi nợ tối đa", align: "right", render: (r) => (
-          <span className={r.overdueDays > 0 ? "font-semibold text-red-600" : ""}>
+          <span className={r.overdueDays > 0 ? "font-semibold text-error" : ""}>
             {r.overdueDays > 0 ? `${r.overdueDays} ngày` : "—"}
           </span>
         )},
@@ -614,7 +614,7 @@ function ReceivablesView({ rows }: { rows: { id: string; name: string; channel: 
           cells={[
             { content: `SL khách hàng: ${rows.length}`, colSpan: 3 },
             { content: totals.invoices, align: "right" },
-            { content: formatCurrency(totals.outstanding), align: "right", className: "text-red-600" },
+            { content: formatCurrency(totals.outstanding), align: "right", className: "text-error" },
             { content: "", align: "right" },
           ]}
         />
@@ -655,7 +655,7 @@ function CustomerProductsView({
         <div className="rounded-md border border-border/40 bg-background/60">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-emerald-100/60">
+              <tr className="bg-[#ecfdf3]/60">
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hàng</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL bán</th>

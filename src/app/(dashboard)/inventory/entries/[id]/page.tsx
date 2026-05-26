@@ -517,21 +517,21 @@ export default function StockEntryDetailPage() {
                           .replace(/^\[Swap\]\s*/, "")
                           .replace(/^Vị trí:\s*/, "")
                         const rowBg = isExchange
-                          ? "bg-blue-50/40"
+                          ? "bg-[#eff8ff]/40"
                           : isSwap
-                            ? "bg-amber-50/40"
+                            ? "bg-[#fff4ed]/40"
                             : undefined
                         return (
                           <TableRow key={line.id} className={rowBg}>
                             <TableCell>
                               <div className="font-semibold flex items-center gap-1.5">
                                 {isExchange && (
-                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
                                     ĐỔI
                                   </span>
                                 )}
                                 {isSwap && (
-                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40">
                                     DỰ PHÒNG
                                   </span>
                                 )}
@@ -590,9 +590,9 @@ export default function StockEntryDetailPage() {
                       .replace(/^\[Swap\]\s*/, "")
                       .replace(/^Vị trí:\s*/, "")
                     const cardBg = isExchange
-                      ? "bg-blue-50/40 border-blue-200"
+                      ? "bg-[#eff8ff]/40 border-[#175cd3]/40"
                       : isSwap
-                        ? "bg-amber-50/40 border-amber-200"
+                        ? "bg-[#fff4ed]/40 border-[#fdb022]/40"
                         : "bg-muted/20"
                     return (
                     <div key={line.id} className={`rounded-xl border p-3 ${cardBg}`}>
@@ -600,12 +600,12 @@ export default function StockEntryDetailPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 mb-0.5">
                             {isExchange && (
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
                                 ĐỔI
                               </span>
                             )}
                             {isSwap && (
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40">
                                 DỰ PHÒNG
                               </span>
                             )}
@@ -653,7 +653,7 @@ export default function StockEntryDetailPage() {
                 {exchangeRows.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
                         ĐỔI
                       </span>
                       <h3 className="font-semibold text-sm">
@@ -678,7 +678,7 @@ export default function StockEntryDetailPage() {
                 {refundRows.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                      <span className="inline-flex items-center justify-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40">
                         TRẢ
                       </span>
                       <h3 className="font-semibold text-sm">
@@ -826,7 +826,7 @@ export default function StockEntryDetailPage() {
                 )}
                 {entry.status === "draft" && (
                   <Button
-                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white justify-start"
+                    className="w-full h-11 bg-[#175cd3] hover:bg-[#175cd3]/90 text-white justify-start"
                     onClick={handleSelfDeliver}
                     disabled={selfDelivering || lines.length === 0}
                   >
@@ -847,9 +847,9 @@ export default function StockEntryDetailPage() {
           )}
 
           {entry.type === "export" && entry.status === "posted" && (
-            <Card className="border-emerald-500/40 bg-emerald-500/5">
+            <Card className="border-tertiary/40/40 bg-tertiary/5">
               <CardContent className="pt-6 text-sm">
-                <div className="flex items-center gap-2 font-semibold text-emerald-700">
+                <div className="flex items-center gap-2 font-semibold text-tertiary">
                   <Truck className="h-4 w-4" />
                   Đã bàn giao cho lái xe
                 </div>
@@ -1369,7 +1369,7 @@ export default function StockEntryDetailPage() {
                                     {l.product?.name || "-"}
                                     {l.is_exchange && (
                                       <span
-                                        className="font-bold uppercase px-1 ml-1 rounded bg-blue-100 text-blue-800 border border-blue-300"
+                                        className="font-bold uppercase px-1 ml-1 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40"
                                         style={{ fontSize: "7pt" }}
                                       >
                                         ĐỔI
@@ -1391,14 +1391,14 @@ export default function StockEntryDetailPage() {
                                   </td>
                                   <td className="py-0.5 text-right">
                                     {l.is_exchange
-                                      ? <span className="text-blue-700 font-semibold">đổi</span>
+                                      ? <span className="text-[#175cd3] font-semibold">đổi</span>
                                       : l.unit_price
                                         ? formatCurrency(Number(l.unit_price))
                                         : "-"}
                                   </td>
                                   <td className="py-0.5 text-right font-semibold">
                                     {l.is_exchange
-                                      ? <span className="text-blue-700">—</span>
+                                      ? <span className="text-[#175cd3]">—</span>
                                       : lineTotal
                                         ? formatCurrency(lineTotal)
                                         : "-"}
@@ -1434,7 +1434,7 @@ export default function StockEntryDetailPage() {
                             <tr>
                               <td
                                 colSpan={7}
-                                className="italic text-blue-700"
+                                className="italic text-[#175cd3]"
                                 style={{ fontSize: "7pt" }}
                               >
                                 * ĐỔI = thu về kho, KHÔNG trừ công nợ.

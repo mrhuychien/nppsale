@@ -258,13 +258,13 @@ export default function DebugPage() {
         </div>
 
         {/* Env info */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 space-y-2">
+        <div className="bg-card rounded-xl shadow-card p-6 space-y-2">
           <h2 className="font-bold mb-2">Environment Variables</h2>
           <div className="text-sm space-y-1 font-mono">
             <div>
               NEXT_PUBLIC_SUPABASE_URL:{" "}
               {envInfo.hasUrl ? (
-                <span className="text-green-600">
+                <span className="text-tertiary">
                   ✓ {envInfo.urlPrefix}...
                 </span>
               ) : (
@@ -274,7 +274,7 @@ export default function DebugPage() {
             <div>
               NEXT_PUBLIC_SUPABASE_ANON_KEY:{" "}
               {envInfo.hasKey ? (
-                <span className="text-green-600">
+                <span className="text-tertiary">
                   ✓ {envInfo.keyPrefix}...
                 </span>
               ) : (
@@ -285,7 +285,7 @@ export default function DebugPage() {
         </div>
 
         {/* Diagnostic tests */}
-        <div className="bg-card rounded-2xl shadow-ambient p-6 space-y-3">
+        <div className="bg-card rounded-xl shadow-card p-6 space-y-3">
           <h2 className="font-bold">Diagnostic tests</h2>
           {results.map((r, i) => (
             <div
@@ -297,7 +297,7 @@ export default function DebugPage() {
                   <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 )}
                 {r.status === "success" && (
-                  <div className="w-5 h-5 bg-green-100 text-green-700 rounded-full flex items-center justify-center text-xs font-black">
+                  <div className="w-5 h-5 bg-[#ecfdf3] text-tertiary rounded-full flex items-center justify-center text-xs font-black">
                     ✓
                   </div>
                 )}

@@ -262,11 +262,11 @@ export default function PayableDetailPage() {
                 </div>
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-muted-foreground">Đã trả</Label>
-                  <p className="font-bold text-lg text-green-700">{formatCurrency(payable.paid)}</p>
+                  <p className="font-bold text-lg text-tertiary">{formatCurrency(payable.paid)}</p>
                 </div>
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-muted-foreground">Còn lại</Label>
-                  <p className="font-bold text-lg text-red-700">{formatCurrency(balance)}</p>
+                  <p className="font-bold text-lg text-error">{formatCurrency(balance)}</p>
                 </div>
               </div>
 
@@ -596,7 +596,7 @@ export default function PayableDetailPage() {
         </p>
       )}
       {payable.status === "paid" && (
-        <div className="flex items-center justify-center gap-2 text-sm text-green-700 font-semibold">
+        <div className="flex items-center justify-center gap-2 text-sm text-tertiary font-semibold">
           <CheckCircle2 className="h-4 w-4" /> Công nợ đã trả đủ
         </div>
       )}

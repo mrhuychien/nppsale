@@ -33,7 +33,7 @@ export function ProfitByTimeView({ rows }: { rows: ProfitByDayRow[] }) {
           label: "Lợi nhuận",
           align: "right",
           render: (r) => (
-            <span className={r.profit >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red-600"}>
+            <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>
               {formatCurrency(r.profit)}
             </span>
           ),

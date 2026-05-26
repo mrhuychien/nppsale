@@ -50,10 +50,10 @@ export default function PurchasingHubPage() {
 
   const cards = [
     { title: "Tạo phiếu nhập kho", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/inventory/stock-in", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
-    { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
-    { title: "Trả hàng NCC", description: "Hoàn trả hàng cho NCC — xuất kho + giảm công nợ", href: "/purchase-returns", icon: RotateCcw, color: "text-orange-600", bg: "bg-orange-50" },
-    { title: "Nhà cung cấp", description: "Danh sách và thông tin nhà cung cấp", href: "/suppliers", icon: Factory, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { title: "Công nợ NCC", description: "Theo dõi & thanh toán công nợ phải trả", href: "/payables", icon: CreditCard, color: "text-rose-600", bg: "bg-rose-50" },
+    { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-[#b54708]", bg: "bg-[#fff4ed]" },
+    { title: "Trả hàng NCC", description: "Hoàn trả hàng cho NCC — xuất kho + giảm công nợ", href: "/purchase-returns", icon: RotateCcw, color: "text-[#c2410c]", bg: "bg-[#fff4ed]" },
+    { title: "Nhà cung cấp", description: "Danh sách và thông tin nhà cung cấp", href: "/suppliers", icon: Factory, color: "text-tertiary", bg: "bg-[#ecfdf3]" },
+    { title: "Công nợ NCC", description: "Theo dõi & thanh toán công nợ phải trả", href: "/payables", icon: CreditCard, color: "text-error", bg: "bg-error-container" },
   ]
 
   return (
@@ -72,7 +72,7 @@ export default function PurchasingHubPage() {
 
       {/* Quick stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="rounded-2xl shadow-ambient">
+        <Card className="rounded-xl shadow-card">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><PackagePlus className="h-6 w-6 text-primary" /></div>
             <div>
@@ -81,9 +81,9 @@ export default function PurchasingHubPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl shadow-ambient">
+        <Card className="rounded-xl shadow-card">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0"><FileText className="h-6 w-6 text-amber-600" /></div>
+            <div className="h-12 w-12 rounded-xl bg-[#fff4ed] flex items-center justify-center shrink-0"><FileText className="h-6 w-6 text-[#b54708]" /></div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Giá trị nhập tháng này</p>
               {loading ? <Skeleton className="h-7 w-32 mt-1" /> : <p className="text-2xl font-black truncate">{formatCurrency(stats.monthTotal)}</p>}
@@ -91,12 +91,12 @@ export default function PurchasingHubPage() {
           </CardContent>
         </Card>
         <Link href="/payables" className="block">
-          <Card className="rounded-2xl shadow-ambient transition-colors hover:bg-muted/30 h-full">
+          <Card className="rounded-xl shadow-card transition-colors hover:bg-muted/30 h-full">
             <CardContent className="p-5 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-rose-50 flex items-center justify-center shrink-0"><CreditCard className="h-6 w-6 text-rose-600" /></div>
+              <div className="h-12 w-12 rounded-xl bg-error-container flex items-center justify-center shrink-0"><CreditCard className="h-6 w-6 text-error" /></div>
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Công nợ NCC</p>
-                {loading ? <Skeleton className="h-7 w-32 mt-1" /> : <p className="text-2xl font-black truncate text-rose-700">{formatCurrency(stats.openPayables)}</p>}
+                {loading ? <Skeleton className="h-7 w-32 mt-1" /> : <p className="text-2xl font-black truncate text-error">{formatCurrency(stats.openPayables)}</p>}
               </div>
             </CardContent>
           </Card>
@@ -109,7 +109,7 @@ export default function PurchasingHubPage() {
           const Icon = card.icon
           return (
             <Link key={card.href} href={card.href}>
-              <Card className="rounded-2xl shadow-ambient transition-all hover:shadow-ambient-md hover:scale-[1.01] cursor-pointer h-full">
+              <Card className="rounded-xl shadow-card transition-all hover:shadow-card-hover hover:scale-[1.01] cursor-pointer h-full">
                 <CardContent className="p-5 flex flex-col gap-4">
                   <div className={`h-11 w-11 rounded-xl ${card.bg} flex items-center justify-center`}><Icon className={`h-5 w-5 ${card.color}`} /></div>
                   <div className="flex-1">

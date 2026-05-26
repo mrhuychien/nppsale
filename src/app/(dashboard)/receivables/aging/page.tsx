@@ -196,7 +196,7 @@ export default function AccountantLedgerPage() {
                     </p>
                   </div>
                   <div>
-                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                    <span className="rounded-full bg-[#ecfdf3] px-3 py-1 text-xs font-bold text-tertiary">
                       {selectedCustomer.status}
                     </span>
                   </div>
@@ -246,7 +246,7 @@ export default function AccountantLedgerPage() {
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">
                       Tổng phát sinh Có
                     </p>
-                    <p className="text-lg font-black text-green-600">
+                    <p className="text-lg font-black text-tertiary">
                       {formatCurrency(totalCredit)}
                     </p>
                   </div>
@@ -290,8 +290,8 @@ export default function AccountantLedgerPage() {
                               <span
                                 className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
                                   row.type === "invoice"
-                                    ? "bg-blue-50 text-blue-700"
-                                    : "bg-green-50 text-green-700"
+                                    ? "bg-[#eff8ff] text-[#175cd3]"
+                                    : "bg-[#ecfdf3] text-tertiary"
                                 }`}
                               >
                                 {row.typeLabel}
@@ -300,7 +300,7 @@ export default function AccountantLedgerPage() {
                             <TableCell className="text-right font-semibold">
                               {row.debit > 0 ? formatCurrency(row.debit) : "-"}
                             </TableCell>
-                            <TableCell className="text-right font-semibold text-green-600">
+                            <TableCell className="text-right font-semibold text-tertiary">
                               {row.credit > 0 ? formatCurrency(row.credit) : "-"}
                             </TableCell>
                             <TableCell className="text-right font-black">
@@ -319,7 +319,7 @@ export default function AccountantLedgerPage() {
                 {ledger.map((row) => (
                   <div
                     key={row.id}
-                    className="rounded-2xl border bg-card shadow-ambient overflow-hidden"
+                    className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden"
                   >
                     <div className="p-4">
                       <div className="flex justify-between items-start gap-3 mb-2">
@@ -330,8 +330,8 @@ export default function AccountantLedgerPage() {
                         <span
                           className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
                             row.type === "invoice"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-green-50 text-green-700"
+                              ? "bg-[#eff8ff] text-[#175cd3]"
+                              : "bg-[#ecfdf3] text-tertiary"
                           }`}
                         >
                           {row.typeLabel}
@@ -344,7 +344,7 @@ export default function AccountantLedgerPage() {
                         </div>
                         <div>
                           <p className="text-muted-foreground">PS Có</p>
-                          <p className="font-semibold text-green-600">{row.credit > 0 ? formatCurrency(row.credit) : "-"}</p>
+                          <p className="font-semibold text-tertiary">{row.credit > 0 ? formatCurrency(row.credit) : "-"}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Tồn cuối</p>

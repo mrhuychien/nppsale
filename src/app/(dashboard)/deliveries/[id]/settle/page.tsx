@@ -421,15 +421,15 @@ export default function DeliverySettlePage() {
         </PageHeader>
 
         {alreadySettled ? (
-          <Card className="border-emerald-300 bg-emerald-50">
+          <Card className="border-tertiary/40 bg-[#ecfdf3]">
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-7 w-7 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="h-7 w-7 text-tertiary shrink-0" />
                 <div>
-                  <p className="font-semibold text-emerald-900">
+                  <p className="font-semibold text-tertiary">
                     Chuyến đã nộp tiền {delivery.settled_at && `• ${formatDate(delivery.settled_at)}`}
                   </p>
-                  <p className="text-xs text-emerald-800/80">
+                  <p className="text-xs text-tertiary/80">
                     Đã thu {formatCurrency(Number(delivery.settled_amount || 0))}
                   </p>
                 </div>
@@ -440,13 +440,13 @@ export default function DeliverySettlePage() {
             </CardContent>
           </Card>
         ) : hasNothingToCollect ? (
-          <Card className="border-rose-200 bg-rose-50">
+          <Card className="border-error/40 bg-error-container">
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-7 w-7 text-rose-600 shrink-0" />
+                <AlertTriangle className="h-7 w-7 text-error shrink-0" />
                 <div>
-                  <p className="font-semibold text-rose-900">Tất cả đơn giao thất bại</p>
-                  <p className="text-xs text-rose-800/80">
+                  <p className="font-semibold text-error">Tất cả đơn giao thất bại</p>
+                  <p className="text-xs text-error/80">
                     Không có tiền cần thu trong chuyến này. Phiếu thu = 0.
                   </p>
                 </div>
@@ -518,7 +518,7 @@ export default function DeliverySettlePage() {
                                 <Input
                                   type="number"
                                   inputMode="decimal"
-                                  className={`h-9 w-32 text-right tabular-nums font-semibold ${matched ? "" : "border-amber-400"}`}
+                                  className={`h-9 w-32 text-right tabular-nums font-semibold ${matched ? "" : "border-[#fdb022]/40"}`}
                                   value={v}
                                   onChange={(e) => setLineAmount(l.id, e.target.value)}
                                 />
@@ -579,15 +579,15 @@ export default function DeliverySettlePage() {
             </Card>
 
             {saved ? (
-              <Card className="border-emerald-300 bg-emerald-50">
+              <Card className="border-tertiary/40 bg-[#ecfdf3]">
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <CheckCircle2 className="h-7 w-7 text-emerald-600 shrink-0" />
+                    <CheckCircle2 className="h-7 w-7 text-tertiary shrink-0" />
                     <div>
-                      <p className="font-semibold text-emerald-900">
+                      <p className="font-semibold text-tertiary">
                         Đã lập phiếu thu {saved.code} • {formatCurrency(saved.amount)}
                       </p>
-                      <p className="text-xs text-emerald-800/80">
+                      <p className="text-xs text-tertiary/80">
                         Đang chuyển sang trang phiếu thu…
                       </p>
                     </div>

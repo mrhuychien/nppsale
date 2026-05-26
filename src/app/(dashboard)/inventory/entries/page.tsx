@@ -277,11 +277,11 @@ export default function StockEntriesPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => router.push("/inventory/stock-in")}>
-                <ArrowDownToLine className="mr-2 h-4 w-4 text-green-600" />
+                <ArrowDownToLine className="mr-2 h-4 w-4 text-tertiary" />
                 Nhập kho
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/inventory/stock-out")}>
-                <ArrowUpFromLine className="mr-2 h-4 w-4 text-amber-600" />
+                <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
                 Xuất kho
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -290,7 +290,7 @@ export default function StockEntriesPage() {
                 Kiểm kê
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/inventory/adjustments")}>
-                <ClipboardCheck className="mr-2 h-4 w-4 text-amber-600" />
+                <ClipboardCheck className="mr-2 h-4 w-4 text-[#b54708]" />
                 Duyệt điều chỉnh kiểm kê
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -300,19 +300,19 @@ export default function StockEntriesPage() {
 
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-4">
-        <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-green-500">
+        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-tertiary/40">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Nhập kho</p>
           <p className="text-2xl font-black text-foreground mt-1">{importCount}</p>
         </div>
-        <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-amber-500">
+        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-[#fdb022]/40">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Xuất kho</p>
           <p className="text-2xl font-black text-foreground mt-1">{exportCount}</p>
         </div>
-        <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-primary">
+        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-primary">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Kiểm kê</p>
           <p className="text-2xl font-black text-foreground mt-1">{stocktakeCount}</p>
         </div>
-        <div className="bg-card rounded-2xl shadow-ambient p-4 border-l-4 border-orange-400">
+        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-[#f97316]/40">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Phiếu nháp</p>
           <p className="text-2xl font-black text-foreground mt-1">{draftCount}</p>
         </div>
@@ -467,7 +467,7 @@ export default function StockEntriesPage() {
                                 handleApprove(e)
                               }}
                             >
-                              <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt
                             </DropdownMenuItem>
                           )}
                           {(e.status || "posted") === "draft" && e.type === "stocktake" && (
@@ -477,7 +477,7 @@ export default function StockEntriesPage() {
                                 router.push(`/inventory/adjustments`)
                               }}
                             >
-                              <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt tại trang điều chỉnh
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt tại trang điều chỉnh
                             </DropdownMenuItem>
                           )}
                           {(e.status || "posted") === "posted" && (
@@ -487,7 +487,7 @@ export default function StockEntriesPage() {
                                 handleCancel(e)
                               }}
                             >
-                              <CircleX className="mr-2 h-4 w-4 text-amber-600" /> Hủy phiếu
+                              <CircleX className="mr-2 h-4 w-4 text-[#b54708]" /> Hủy phiếu
                             </DropdownMenuItem>
                           )}
                           {canDelete && (

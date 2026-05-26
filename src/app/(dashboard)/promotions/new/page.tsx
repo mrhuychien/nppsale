@@ -32,27 +32,27 @@ const TYPE_META: Record<
   trade_discount: {
     icon: BadgePercent,
     description: "Giảm % trên giá trị đơn",
-    color: "from-blue-500/10 to-blue-500/5 text-blue-700 border-blue-200",
+    color: "from-blue-500/10 to-blue-500/5 text-[#175cd3] border-[#175cd3]/40",
   },
   buy_x_get_y: {
     icon: Gift,
     description: "Mua X sản phẩm tặng Y",
-    color: "from-pink-500/10 to-pink-500/5 text-pink-700 border-pink-200",
+    color: "from-[#fdf2f8] to-[#fdf2f8]/30 text-[#be185d] border-[#fce7f3]",
   },
   payment_discount: {
     icon: CreditCard,
     description: "Chiết khấu khi thanh toán đúng hạn",
-    color: "from-emerald-500/10 to-emerald-500/5 text-emerald-700 border-emerald-200",
+    color: "from-emerald-500/10 to-emerald-500/5 text-tertiary border-tertiary/40",
   },
   cumulative: {
     icon: TrendingUp,
     description: "Thưởng lũy kế theo ngưỡng",
-    color: "from-purple-500/10 to-purple-500/5 text-purple-700 border-purple-200",
+    color: "from-[#f4f3ff] to-[#f4f3ff]/30 text-[#6941c6] border-[#e9d5ff]",
   },
   display: {
     icon: Store,
     description: "Thưởng trưng bày tại cửa hàng",
-    color: "from-orange-500/10 to-orange-500/5 text-orange-700 border-orange-200",
+    color: "from-orange-500/10 to-orange-500/5 text-[#c2410c] border-[#f97316]/40",
   },
 }
 
@@ -117,7 +117,7 @@ export default function NewPromotionPage() {
                 {formatCurrency(sample - discount)}
               </span>
             </div>
-            <div className="text-xs text-emerald-600">
+            <div className="text-xs text-tertiary">
               Tiết kiệm {formatCurrency(discount)}
             </div>
           </>
@@ -206,7 +206,7 @@ export default function NewPromotionPage() {
     <div className="space-y-4">
       <PageHeader title="Tạo chương trình khuyến mãi" backHref="/promotions" />
 
-      <Card className="rounded-2xl shadow-ambient">
+      <Card className="rounded-xl shadow-card">
         <CardHeader>
           <CardTitle className="text-base">Chọn loại khuyến mãi</CardTitle>
         </CardHeader>
@@ -221,7 +221,7 @@ export default function NewPromotionPage() {
                   type="button"
                   key={t.value}
                   onClick={() => setType(t.value)}
-                  className={`flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition-all hover:shadow-ambient ${
+                  className={`flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition-all hover:shadow-card ${
                     active
                       ? "border-primary ring-2 ring-primary/30 bg-gradient-to-br " + (meta?.color || "")
                       : "border-border bg-card"
@@ -246,7 +246,7 @@ export default function NewPromotionPage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        <Card className="rounded-2xl shadow-ambient">
+        <Card className="rounded-xl shadow-card">
           <CardHeader>
             <CardTitle>Thông tin khuyến mãi</CardTitle>
           </CardHeader>
@@ -396,7 +396,7 @@ export default function NewPromotionPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl shadow-ambient h-fit bg-gradient-to-br from-primary/5 to-background border-primary/20">
+        <Card className="rounded-xl shadow-card h-fit bg-gradient-to-br from-primary/5 to-background border-primary/20">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Calculator className="h-4 w-4 text-primary" />

@@ -423,7 +423,7 @@ export default function DeliveriesPage() {
                         <div className="text-[11px] text-muted-foreground">
                           {d.driver?.full_name || "Chưa gán lái xe"}
                           {d.source_stock_entry_id && (
-                            <span className="ml-1.5 text-amber-700">
+                            <span className="ml-1.5 text-[#b54708]">
                               · Tự giao
                             </span>
                           )}
@@ -438,12 +438,12 @@ export default function DeliveriesPage() {
                         <TableCell className="text-right tabular-nums">
                           <span className="font-semibold">{d._stats.orderCount}</span>
                           {d._stats.deliveredCount > 0 && (
-                            <span className="ml-1 text-[10px] text-emerald-700">
+                            <span className="ml-1 text-[10px] text-tertiary">
                               (✓{d._stats.deliveredCount})
                             </span>
                           )}
                           {d._stats.failedCount > 0 && (
-                            <span className="ml-1 text-[10px] text-rose-700">
+                            <span className="ml-1 text-[10px] text-error">
                               (✗{d._stats.failedCount})
                             </span>
                           )}

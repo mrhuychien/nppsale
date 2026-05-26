@@ -240,13 +240,13 @@ export default function EndOfDayPage() {
               <tbody>
                 <tr className="border-b border-border/30">
                   <td className="px-3 py-2">Phiếu thu (đã nhận)</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-tertiary">
                     +{formatCurrency(cashIn)}
                   </td>
                 </tr>
                 <tr className="border-b border-border/30">
                   <td className="px-3 py-2">Chi phí trong ngày</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-error">
                     -{formatCurrency(cashOut)}
                   </td>
                 </tr>

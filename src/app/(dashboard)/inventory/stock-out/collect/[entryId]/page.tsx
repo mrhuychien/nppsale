@@ -536,7 +536,7 @@ export default function CollectPaymentPage() {
                         className={cn(
                           "px-3 py-3 text-right tabular-nums",
                           leftover > 0
-                            ? "font-semibold text-red-600"
+                            ? "font-semibold text-error"
                             : "text-muted-foreground"
                         )}
                       >
@@ -549,18 +549,18 @@ export default function CollectPaymentPage() {
             </tbody>
             {rows.length > 0 ? (
               <tfoot>
-                <tr className="border-t-2 border-border/40 bg-amber-50 font-bold print:bg-amber-100">
+                <tr className="border-t-2 border-border/40 bg-[#fff4ed] font-bold print:bg-[#fff4ed]">
                   <td className="px-3 py-3" colSpan={4}>
                     Tổng {rows.length} đơn
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums text-primary">
                     {formatCurrency(totals.outstanding)}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-emerald-600">
+                  <td className="px-3 py-3 text-right tabular-nums text-tertiary">
                     {formatCurrency(totals.collect)}
                   </td>
                   <td className="px-3 py-3"></td>
-                  <td className="px-3 py-3 text-right tabular-nums text-red-600">
+                  <td className="px-3 py-3 text-right tabular-nums text-error">
                     {formatCurrency(totals.leftover)}
                   </td>
                 </tr>
@@ -638,17 +638,17 @@ function SummaryCard({
     color === "primary"
       ? "border-l-primary text-primary"
       : color === "success"
-        ? "border-l-emerald-500 text-emerald-600"
+        ? "border-l-emerald-500 text-tertiary"
         : color === "danger"
-          ? "border-l-red-500 text-red-600"
+          ? "border-l-error-container0 text-error"
           : "border-l-border/60 text-muted-foreground"
   const iconBg =
     color === "primary"
       ? "bg-primary/10 text-primary"
       : color === "success"
-        ? "bg-emerald-500/10 text-emerald-600"
+        ? "bg-tertiary/10 text-tertiary"
         : color === "danger"
-          ? "bg-red-500/10 text-red-600"
+          ? "bg-error/10 text-error"
           : "bg-muted/40 text-muted-foreground"
   return (
     <div className={cn("rounded-xl border border-l-4 border-border/40 bg-card p-4 shadow-sm", tone)}>

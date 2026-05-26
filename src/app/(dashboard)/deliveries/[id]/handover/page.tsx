@@ -749,7 +749,7 @@ export default function DeliveryHandoverPage() {
       <div className="grid gap-3 md:grid-cols-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <AlertTriangle className="h-8 w-8 text-amber-500" />
+            <AlertTriangle className="h-8 w-8 text-[#b54708]" />
             <div>
               <p className="text-xs text-muted-foreground">Đơn thất bại</p>
               <p className="text-xl font-bold">{summary.orderCount}</p>
@@ -761,7 +761,7 @@ export default function DeliveryHandoverPage() {
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <PackageOpen className="h-8 w-8 text-orange-500" />
+            <PackageOpen className="h-8 w-8 text-[#c2410c]" />
             <div>
               <p className="text-xs text-muted-foreground">Đơn giao 1 phần</p>
               <p className="text-xl font-bold">{summary.partialCount}</p>
@@ -798,7 +798,7 @@ export default function DeliveryHandoverPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" /> 1. Đơn không
+            <AlertTriangle className="h-4 w-4 text-[#b54708]" /> 1. Đơn không
             giao thành công
           </CardTitle>
           <p className="text-xs text-muted-foreground">
@@ -912,7 +912,7 @@ export default function DeliveryHandoverPage() {
                       </div>
                       {f.mode === "partial" && (
                         <div className="sm:col-span-3 space-y-2">
-                          <div className="flex items-center justify-between gap-2 text-[11px] text-orange-700 bg-orange-50 rounded p-2">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-[#c2410c] bg-[#fff4ed] rounded p-2">
                             <span>
                               ⓘ Đơn giao 1 phần: bấm <strong>Sửa đơn</strong>{" "}
                               để nhập <em>thực nhận</em> trong{" "}
@@ -945,7 +945,7 @@ export default function DeliveryHandoverPage() {
                               return recBase !== orderedBase
                             })
                             return (
-                              <p className="text-[10px] text-orange-700 px-1">
+                              <p className="text-[10px] text-[#c2410c] px-1">
                                 Đã nhập thực nhận cho {adjusted.length}/{f.lines.length} dòng.
                               </p>
                             )
@@ -1003,11 +1003,11 @@ export default function DeliveryHandoverPage() {
                         key={it.key}
                         className={`border-b last:border-0 ${
                           it.sourceType === "customer_return" && it.swappedToCustomer
-                            ? "bg-blue-50/40"
+                            ? "bg-[#eff8ff]/40"
                             : it.sourceType === "customer_return"
-                              ? "bg-amber-50/40"
+                              ? "bg-[#fff4ed]/40"
                               : isPartial
-                                ? "bg-orange-50/40"
+                                ? "bg-[#fff4ed]/40"
                                 : ""
                         }`}
                       >
@@ -1020,23 +1020,23 @@ export default function DeliveryHandoverPage() {
                             )}
                             {it.sourceType === "customer_return" &&
                               it.swappedToCustomer && (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
                                   ĐỔI
                                 </span>
                               )}
                             {it.sourceType === "customer_return" &&
                               !it.swappedToCustomer && (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40">
                                   TRẢ
                                 </span>
                               )}
                             {it.sourceType === "failed_order" && !isPartial && (
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-error-container text-error border border-error/40">
                                 THẤT BẠI
                               </span>
                             )}
                             {it.sourceType === "failed_order" && isPartial && (
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#c2410c] border border-[#f97316]/40">
                                 1 PHẦN
                               </span>
                             )}
@@ -1073,7 +1073,7 @@ export default function DeliveryHandoverPage() {
                               updateItem(it.key, { qty: e.target.value })
                             }
                             className={`h-8 w-20 text-right tabular-nums ml-auto ${
-                              isPartial ? "border-orange-300" : ""
+                              isPartial ? "border-[#f97316]/40" : ""
                             }`}
                             title={
                               isPartial
@@ -1280,7 +1280,7 @@ export default function DeliveryHandoverPage() {
                                   }}
                                   className={`h-8 w-20 text-right tabular-nums ${
                                     recBase !== orderedBase
-                                      ? "border-orange-300"
+                                      ? "border-[#f97316]/40"
                                       : ""
                                   }`}
                                 />
@@ -1292,7 +1292,7 @@ export default function DeliveryHandoverPage() {
                             <td
                               className={`px-2 py-2 text-right tabular-nums font-semibold ${
                                 backBase > 0
-                                  ? "text-orange-700"
+                                  ? "text-[#c2410c]"
                                   : "text-muted-foreground"
                               }`}
                             >
@@ -1324,7 +1324,7 @@ export default function DeliveryHandoverPage() {
                             return s + (received.get(ln.id) ?? orderedBase)
                           }, 0)}
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-orange-700">
+                        <td className="px-2 py-2 text-right tabular-nums text-[#c2410c]">
                           {order.lines.reduce((s, ln) => {
                             const orderedBase =
                               Number(ln.quantity || 0) *

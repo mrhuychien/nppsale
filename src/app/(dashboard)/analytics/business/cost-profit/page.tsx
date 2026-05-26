@@ -339,7 +339,7 @@ function Row({
       <span
         className={
           "tabular-nums " +
-          (accent ? (value >= 0 ? "text-emerald-600" : "text-red-600") : "")
+          (accent ? (value >= 0 ? "text-tertiary" : "text-error") : "")
         }
       >
         {negative ? `(${formatCurrency(Math.abs(value))})` : formatCurrency(value)}

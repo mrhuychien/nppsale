@@ -323,22 +323,22 @@ export default function StocktakeAdjustPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Hao hụt</p>
-            <p className="text-xl font-black mt-1 text-red-700">-{summary.shrinkageQty}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-error">Hao hụt</p>
+            <p className="text-xl font-black mt-1 text-error">-{summary.shrinkageQty}</p>
             <p className="text-xs text-muted-foreground">{formatCurrency(summary.shrinkageValue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Thừa</p>
-            <p className="text-xl font-black mt-1 text-emerald-700">+{summary.surplusQty}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary">Thừa</p>
+            <p className="text-xl font-black mt-1 text-tertiary">+{summary.surplusQty}</p>
             <p className="text-xs text-muted-foreground">{formatCurrency(summary.surplusValue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Giá trị chênh (ròng)</p>
-            <p className={`text-xl font-black mt-1 ${summary.totalDiffValue < 0 ? "text-red-700" : summary.totalDiffValue > 0 ? "text-emerald-700" : ""}`}>
+            <p className={`text-xl font-black mt-1 ${summary.totalDiffValue < 0 ? "text-error" : summary.totalDiffValue > 0 ? "text-tertiary" : ""}`}>
               {summary.totalDiffValue > 0 ? "+" : ""}{formatCurrency(summary.totalDiffValue)}
             </p>
           </CardContent>
@@ -393,7 +393,7 @@ export default function StocktakeAdjustPage() {
                         </div>
                       </div>
                       {already && (
-                        <p className="text-[10px] text-amber-600 mt-1">Đã trong danh sách</p>
+                        <p className="text-[10px] text-[#b54708] mt-1">Đã trong danh sách</p>
                       )}
                     </button>
                   )
@@ -425,7 +425,7 @@ export default function StocktakeAdjustPage() {
                 return (
                   <div
                     key={r.key}
-                    className={`rounded-xl border p-3 ${hasDiff ? diff! < 0 ? "border-red-300 bg-red-50/50" : "border-emerald-300 bg-emerald-50/50" : "bg-card"}`}
+                    className={`rounded-xl border p-3 ${hasDiff ? diff! < 0 ? "border-error/40 bg-error-container/50" : "border-tertiary/40 bg-[#ecfdf3]/50" : "bg-card"}`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0 flex-1">
@@ -471,7 +471,7 @@ export default function StocktakeAdjustPage() {
                         <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                           Chênh lệch
                         </Label>
-                        <p className={`font-bold text-sm mt-1 ${hasDiff ? diff! < 0 ? "text-red-700" : "text-emerald-700" : "text-muted-foreground"}`}>
+                        <p className={`font-bold text-sm mt-1 ${hasDiff ? diff! < 0 ? "text-error" : "text-tertiary" : "text-muted-foreground"}`}>
                           {diff === null ? "-" : diff > 0 ? `+${diff}` : String(diff)}
                         </p>
                         {hasDiff && r.batchCost > 0 && (
@@ -507,9 +507,9 @@ export default function StocktakeAdjustPage() {
       )}
 
       {summary.shrinkageValue > 0 && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 text-amber-800 shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-900">
+        <div className="rounded-xl border border-[#fdb022]/40 bg-[#fff4ed] p-3 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 text-[#b54708] shrink-0 mt-0.5" />
+          <div className="text-sm text-[#b54708]">
             <p className="font-semibold">
               Hao hụt {formatCurrency(summary.shrinkageValue)} sẽ ghi vào chi phí khi duyệt điều chỉnh
             </p>

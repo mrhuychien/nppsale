@@ -63,18 +63,18 @@ type TileColor =
   | "zinc"
 
 const COLOR_CLASS: Record<TileColor, string> = {
-  blue: "bg-blue-500 text-white",
-  indigo: "bg-indigo-500 text-white",
-  green: "bg-green-500 text-white",
-  emerald: "bg-emerald-500 text-white",
-  orange: "bg-orange-500 text-white",
-  amber: "bg-amber-500 text-white",
-  purple: "bg-purple-500 text-white",
-  pink: "bg-pink-500 text-white",
-  red: "bg-red-500 text-white",
-  rose: "bg-rose-500 text-white",
-  yellow: "bg-yellow-500 text-white",
-  slate: "bg-slate-500 text-white",
+  blue: "bg-[#175cd3] text-white",
+  indigo: "bg-[#6941c6] text-white",
+  green: "bg-tertiary text-white",
+  emerald: "bg-tertiary text-white",
+  orange: "bg-[#fdb022] text-white",
+  amber: "bg-[#fdb022] text-white",
+  purple: "bg-[#6941c6] text-white",
+  pink: "bg-[#be185d] text-white",
+  red: "bg-error text-white",
+  rose: "bg-error text-white",
+  yellow: "bg-[#fdb022] text-white",
+  slate: "bg-surface-container-low0 text-white",
   zinc: "bg-zinc-700 text-white",
 }
 
@@ -354,7 +354,7 @@ export default function HomeLauncherPage() {
                 className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
               >
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đơn nháp</p>
-                <p className={cn("mt-1 text-2xl font-black tabular-nums", (snapshot?.draftOrders ?? 0) > 0 && "text-amber-600")}>
+                <p className={cn("mt-1 text-2xl font-black tabular-nums", (snapshot?.draftOrders ?? 0) > 0 && "text-[#b54708]")}>
                   {snapshot?.draftOrders ?? "—"}
                 </p>
                 <p className="text-[11px] text-muted-foreground">Chưa gửi duyệt</p>
@@ -391,14 +391,14 @@ export default function HomeLauncherPage() {
                 href="/sales/visits"
                 className="flex items-center gap-2 rounded-2xl border bg-card px-3 py-3.5 shadow-sm transition-colors hover:bg-muted/40"
               >
-                <MapPin className="h-5 w-5 shrink-0 text-indigo-500" />
+                <MapPin className="h-5 w-5 shrink-0 text-[#6941c6]" />
                 <span className="text-sm font-semibold">Đi tuyến</span>
               </Link>
               <Link
                 href="/receivables"
                 className="flex items-center gap-2 rounded-2xl border bg-card px-3 py-3.5 shadow-sm transition-colors hover:bg-muted/40"
               >
-                <CreditCard className="h-5 w-5 shrink-0 text-rose-500" />
+                <CreditCard className="h-5 w-5 shrink-0 text-error" />
                 <span className="text-sm font-semibold">Công nợ</span>
               </Link>
             </div>

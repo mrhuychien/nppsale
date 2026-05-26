@@ -123,7 +123,7 @@ export default function PnLPage() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Lợi nhuận gộp
                 </p>
-                <p className={`text-xl font-black mt-1 ${data.grossProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <p className={`text-xl font-black mt-1 ${data.grossProfit >= 0 ? "text-tertiary" : "text-error"}`}>
                   {formatCurrency(data.grossProfit)}
                 </p>
                 <p className="text-xs text-muted-foreground">Biên: {grossMargin.toFixed(1)}%</p>
@@ -134,7 +134,7 @@ export default function PnLPage() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Lợi nhuận HĐKD
                 </p>
-                <p className={`text-xl font-black mt-1 ${data.operatingProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <p className={`text-xl font-black mt-1 ${data.operatingProfit >= 0 ? "text-tertiary" : "text-error"}`}>
                   {formatCurrency(data.operatingProfit)}
                 </p>
               </CardContent>
@@ -142,10 +142,10 @@ export default function PnLPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {data.netProfit >= 0 ? <TrendingUp className="h-3 w-3 text-emerald-600" /> : <TrendingDown className="h-3 w-3 text-red-600" />}
+                  {data.netProfit >= 0 ? <TrendingUp className="h-3 w-3 text-tertiary" /> : <TrendingDown className="h-3 w-3 text-error" />}
                   Lợi nhuận ròng
                 </div>
-                <p className={`text-xl font-black mt-1 ${data.netProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <p className={`text-xl font-black mt-1 ${data.netProfit >= 0 ? "text-tertiary" : "text-error"}`}>
                   {formatCurrency(data.netProfit)}
                 </p>
                 <p className="text-xs text-muted-foreground">Biên: {netMargin.toFixed(1)}%</p>
@@ -170,7 +170,7 @@ export default function PnLPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b font-bold">
                   <span>= Lợi nhuận gộp</span>
-                  <span className={data.grossProfit >= 0 ? "text-emerald-700" : "text-red-700"}>
+                  <span className={data.grossProfit >= 0 ? "text-tertiary" : "text-error"}>
                     {formatCurrency(data.grossProfit)}
                   </span>
                 </div>
@@ -192,7 +192,7 @@ export default function PnLPage() {
                 )}
                 <div className="flex justify-between py-2 border-b font-bold">
                   <span>= Lợi nhuận HĐKD (EBIT)</span>
-                  <span className={data.operatingProfit >= 0 ? "text-emerald-700" : "text-red-700"}>
+                  <span className={data.operatingProfit >= 0 ? "text-tertiary" : "text-error"}>
                     {formatCurrency(data.operatingProfit)}
                   </span>
                 </div>
@@ -225,7 +225,7 @@ export default function PnLPage() {
 
                 <div className="flex justify-between py-3 border-t-2 border-foreground mt-2 text-base font-black">
                   <span>LỢI NHUẬN RÒNG (Net Profit)</span>
-                  <span className={data.netProfit >= 0 ? "text-emerald-700" : "text-red-700"}>
+                  <span className={data.netProfit >= 0 ? "text-tertiary" : "text-error"}>
                     {formatCurrency(data.netProfit)}
                   </span>
                 </div>

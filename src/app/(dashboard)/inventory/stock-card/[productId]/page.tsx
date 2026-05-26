@@ -40,9 +40,9 @@ type MovementRow = {
 }
 
 const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: "in" | "out" | "adjust" }> = {
-  import: { icon: ArrowDownToLine, label: "Nhập", color: "text-emerald-700 bg-emerald-100", sign: "in" },
-  export: { icon: ArrowUpFromLine, label: "Xuất", color: "text-red-700 bg-red-100", sign: "out" },
-  transfer: { icon: Package, label: "Chuyển", color: "text-blue-700 bg-blue-100", sign: "adjust" },
+  import: { icon: ArrowDownToLine, label: "Nhập", color: "text-tertiary bg-[#ecfdf3]", sign: "in" },
+  export: { icon: ArrowUpFromLine, label: "Xuất", color: "text-error bg-error-container", sign: "out" },
+  transfer: { icon: Package, label: "Chuyển", color: "text-[#175cd3] bg-[#eff8ff]", sign: "adjust" },
   stocktake: { icon: ClipboardList, label: "Kiểm kê", color: "text-primary bg-primary/10", sign: "adjust" },
 }
 
@@ -213,19 +213,19 @@ export default function StockCardPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-tertiary">
               <TrendingUp className="h-3 w-3" /> Nhập (kỳ)
             </div>
-            <p className="text-xl font-black mt-1 text-emerald-700">+{totals.inQty}</p>
+            <p className="text-xl font-black mt-1 text-tertiary">+{totals.inQty}</p>
             <p className="text-xs text-muted-foreground">{formatCurrency(totals.inValue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-error">
               <TrendingDown className="h-3 w-3" /> Xuất (kỳ)
             </div>
-            <p className="text-xl font-black mt-1 text-red-700">-{totals.outQty}</p>
+            <p className="text-xl font-black mt-1 text-error">-{totals.outQty}</p>
             <p className="text-xs text-muted-foreground">{formatCurrency(totals.outValue)}</p>
           </CardContent>
         </Card>
@@ -339,7 +339,7 @@ export default function StockCardPage() {
                       <TableCell className="text-right font-semibold">
                         {isIn ? `+${m.quantity}` : meta.sign === "adjust" && m.quantity > 0 ? `+${m.quantity}` : "-"}
                       </TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">
+                      <TableCell className="text-right font-semibold text-error">
                         {isOut ? `-${m.quantity}` : "-"}
                       </TableCell>
                       <TableCell className="text-right font-bold">{m.running}</TableCell>
@@ -382,7 +382,7 @@ export default function StockCardPage() {
                           </p>
                         </div>
                         <div className="shrink-0 text-right">
-                          <p className={`font-bold text-sm ${isIn ? "text-emerald-700" : isOut ? "text-red-600" : ""}`}>
+                          <p className={`font-bold text-sm ${isIn ? "text-tertiary" : isOut ? "text-error" : ""}`}>
                             {isIn ? "+" : isOut ? "-" : "Δ"}{m.quantity}
                           </p>
                           <p className="text-[10px] text-muted-foreground">

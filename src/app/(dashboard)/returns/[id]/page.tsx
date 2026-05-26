@@ -153,14 +153,14 @@ export default function ReturnDetailPage() {
                     {lines.map((line) => {
                       const isExchange = !!(line as { is_exchange?: boolean | null }).is_exchange
                       return (
-                        <TableRow key={line.id} className={isExchange ? "bg-blue-50/40" : undefined}>
+                        <TableRow key={line.id} className={isExchange ? "bg-[#eff8ff]/40" : undefined}>
                           <TableCell>
                             {isExchange ? (
-                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
                                 ĐỔI
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40">
                                 TRẢ
                               </span>
                             )}
@@ -174,7 +174,7 @@ export default function ReturnDetailPage() {
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
                             {isExchange ? (
-                              <span className="text-blue-700 italic">không trừ tiền</span>
+                              <span className="text-[#175cd3] italic">không trừ tiền</span>
                             ) : (
                               formatCurrency(line.line_total)
                             )}
@@ -211,7 +211,7 @@ export default function ReturnDetailPage() {
                     {exchangeT > 0 && (
                       <p className="text-sm">
                         <span className="text-muted-foreground">Đổi (không trừ công nợ):</span>{" "}
-                        <span className="font-semibold text-blue-700">
+                        <span className="font-semibold text-[#175cd3]">
                           {formatCurrency(exchangeT)}
                         </span>
                       </p>

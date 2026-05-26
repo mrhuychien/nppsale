@@ -210,7 +210,7 @@ export default function ReceivablesAnalyticsPage() {
                   <span className="tabular-nums">
                     <span className="font-semibold">{b.count}</span>
                     <span className="mx-1 text-muted-foreground">phiếu •</span>
-                    <span className={cn("font-semibold", overdue && "text-red-600")}>
+                    <span className={cn("font-semibold", overdue && "text-error")}>
                       {b.amount.toLocaleString("vi-VN")}đ
                     </span>
                     <span className="ml-1 text-muted-foreground">({pct.toFixed(1)}%)</span>
@@ -218,7 +218,7 @@ export default function ReceivablesAnalyticsPage() {
                 </div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted/40">
                   <div
-                    className={cn("h-full rounded-full", overdue ? "bg-red-500" : "bg-emerald-500")}
+                    className={cn("h-full rounded-full", overdue ? "bg-error" : "bg-tertiary")}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -238,7 +238,7 @@ export default function ReceivablesAnalyticsPage() {
           { key: "credit", label: "Hạn mức", align: "right", render: (r) => <MoneyCell value={r.creditLimit} /> },
           { key: "amount", label: "Công nợ", align: "right", render: (r) => <MoneyCell value={r.amount} /> },
           { key: "oldest", label: "Tuổi nợ tối đa", align: "right", render: (r) => (
-            <span className={r.oldestDays > 0 ? "font-semibold text-red-600" : ""}>
+            <span className={r.oldestDays > 0 ? "font-semibold text-error" : ""}>
               {r.oldestDays > 0 ? `${r.oldestDays} ngày` : "—"}
             </span>
           )},

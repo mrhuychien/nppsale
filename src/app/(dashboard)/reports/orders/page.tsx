@@ -384,7 +384,7 @@ export default function OrdersReportPage() {
             <div className="rounded-md border border-border/40 bg-background/60">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-emerald-100/60">
+                  <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã phiếu</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Thời gian</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Khách hàng</th>

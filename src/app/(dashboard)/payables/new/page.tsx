@@ -223,7 +223,7 @@ export default function NewPayablePage() {
               <Button
                 type="submit"
                 disabled={loading || !form.supplier_id || !form.amount}
-                className="bg-gradient-primary text-white shadow-ambient"
+                className="bg-primary text-on-primary shadow-card"
               >
                 {loading ? "Đang lưu..." : "Tạo công nợ"}
               </Button>

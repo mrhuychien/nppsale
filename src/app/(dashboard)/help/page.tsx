@@ -250,9 +250,9 @@ export default function HelpPage() {
 
       {/* Role-specific guide */}
       {guide && (
-        <div className="bg-card rounded-2xl shadow-ambient p-6 lg:p-8 border-l-4 border-primary">
+        <div className="bg-card rounded-xl shadow-card p-6 lg:p-8 border-l-4 border-primary">
           <div className="flex items-start gap-4 mb-6">
-            <div className="w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center text-white shrink-0">
+            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-white shrink-0">
               <BookOpen className="h-6 w-6" />
             </div>
             <div>
@@ -316,7 +316,7 @@ export default function HelpPage() {
               <Link
                 key={m.href}
                 href={m.href}
-                className="bg-card rounded-2xl shadow-ambient p-5 hover:shadow-ambient-md transition-all group"
+                className="bg-card rounded-xl shadow-card p-5 hover:shadow-card-hover transition-all group"
               >
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 bg-primary/10 text-primary rounded-lg flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors">
@@ -339,7 +339,7 @@ export default function HelpPage() {
           <HelpCircle className="h-5 w-5 text-primary" />
           Câu hỏi thường gặp
         </h2>
-        <div className="bg-card rounded-2xl shadow-ambient divide-y divide-border/40">
+        <div className="bg-card rounded-xl shadow-card divide-y divide-border/40">
           {FAQS.map((faq, i) => (
             <details key={i} className="p-5 group">
               <summary className="font-semibold text-sm text-foreground cursor-pointer list-none flex items-center justify-between">

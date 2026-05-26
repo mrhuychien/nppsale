@@ -870,13 +870,13 @@ export default function OrderDetailPage() {
             <div>
               <CardTitle>Chi tiết sản phẩm</CardTitle>
               {fullEdit && order.status === "picking" && (
-                <p className="text-[11px] text-amber-700 mt-1">
+                <p className="text-[11px] text-[#b54708] mt-1">
                   Đơn đang ở bước <strong>Xuất kho</strong> — có thể thêm SP / tăng SL / sửa giá.
                   Dòng có icon <Lock className="inline h-3 w-3 mb-0.5" /> đã được pick một phần — không thể giảm SL, đổi đơn vị, đổi sản phẩm hay xoá.
                 </p>
               )}
               {linesEditMode && lock.state === "other" && lock.holder && (
-                <p className="text-[11px] text-red-700 mt-1 flex items-center gap-1">
+                <p className="text-[11px] text-error mt-1 flex items-center gap-1">
                   <Lock className="h-3 w-3" />
                   <span>
                     <strong>{lock.holder.holderName || "Người dùng khác"}</strong>{" "}
@@ -978,7 +978,7 @@ export default function OrderDetailPage() {
                                 {lineLocked && (
                                   <span
                                     title={`Đã pick ${pickedBase} ${line.product?.base_unit || ""} — không thể giảm hoặc đổi.`}
-                                    className="inline-flex h-4 w-4 items-center justify-center text-amber-600 shrink-0"
+                                    className="inline-flex h-4 w-4 items-center justify-center text-[#b54708] shrink-0"
                                   >
                                     <Lock className="h-3.5 w-3.5" />
                                   </span>
@@ -986,7 +986,7 @@ export default function OrderDetailPage() {
                                 {line.product?.name || "-"}
                               </div>
                               {edited?.swap_product_id && (
-                                <div className="text-emerald-700 font-semibold text-sm">
+                                <div className="text-tertiary font-semibold text-sm">
                                   → {edited.swap_product_name}{" "}
                                   <span className="font-normal text-[11px] text-muted-foreground">
                                     ({edited.swap_sku})
@@ -1049,7 +1049,7 @@ export default function OrderDetailPage() {
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
                               className={`ml-auto h-8 w-24 text-right tabular-nums ${
-                                lineLocked ? "border-amber-300" : ""
+                                lineLocked ? "border-[#fdb022]/40" : ""
                               }`}
                               disabled={lockReadonly}
                               title={
@@ -1097,7 +1097,7 @@ export default function OrderDetailPage() {
                   {/* Q5 — new draft lines being added in edit mode. */}
                   {linesEditMode &&
                     addedLines.map((al) => (
-                      <TableRow key={al.key} className="bg-emerald-50/40">
+                      <TableRow key={al.key} className="bg-[#ecfdf3]/40">
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-1.5">
                             <Badge variant="success" className="text-[10px]">
@@ -1189,7 +1189,7 @@ export default function OrderDetailPage() {
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <p className="font-semibold text-sm leading-tight flex items-center gap-1.5">
                         {lineLocked && (
-                          <Lock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <Lock className="h-3.5 w-3.5 text-[#b54708] shrink-0" />
                         )}
                         {line.product?.name || "-"}
                       </p>
@@ -1210,7 +1210,7 @@ export default function OrderDetailPage() {
                               onChange={(e) =>
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
-                              className={`h-8 mt-0.5 ${lineLocked ? "border-amber-300" : ""}`}
+                              className={`h-8 mt-0.5 ${lineLocked ? "border-[#fdb022]/40" : ""}`}
                               disabled={lockReadonly}
                               title={
                                 lockReadonly
@@ -1363,7 +1363,7 @@ export default function OrderDetailPage() {
                     </>
                   )}
                   {!fullEdit && (
-                    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                    <div className="rounded-lg bg-[#fff4ed] p-3 text-xs text-[#b54708]">
                       Đơn đã được duyệt - chỉ cho phép sửa ghi chú. Các trường khác chỉ sửa được khi ở trạng thái nháp hoặc đã duyệt.
                     </div>
                   )}
@@ -1461,7 +1461,7 @@ export default function OrderDetailPage() {
                     )}
                     {invoice.misa_status === "error" && (
                       <div className="space-y-2">
-                        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                        <div className="flex items-start gap-2 rounded-lg bg-error-container p-2 text-xs text-error">
                           <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                           <span>{invoice.misa_error || "Lỗi không xác định"}</span>
                         </div>
@@ -1614,9 +1614,9 @@ export default function OrderDetailPage() {
                 <div className="space-y-2">
                   {stockEntries.map((e) => {
                     const typeMeta: Record<string, { label: string; color: string }> = {
-                      import: { label: "Nhập", color: "bg-emerald-100 text-emerald-800" },
-                      export: { label: "Xuất", color: "bg-red-100 text-red-800" },
-                      transfer: { label: "Chuyển", color: "bg-blue-100 text-blue-800" },
+                      import: { label: "Nhập", color: "bg-[#ecfdf3] text-tertiary" },
+                      export: { label: "Xuất", color: "bg-error-container text-error" },
+                      transfer: { label: "Chuyển", color: "bg-[#eff8ff] text-[#175cd3]" },
                       stocktake: { label: "Kiểm kê", color: "bg-primary/10 text-primary" },
                     }
                     const tm = typeMeta[e.type] || typeMeta.export
@@ -1708,7 +1708,7 @@ export default function OrderDetailPage() {
                 0
               )
               return (
-                <div key={r.id} className="rounded-xl border bg-amber-50/30 p-3">
+                <div key={r.id} className="rounded-xl border bg-[#fff4ed]/30 p-3">
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -1726,7 +1726,7 @@ export default function OrderDetailPage() {
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-lg font-bold text-amber-700">
+                      <p className="text-lg font-bold text-[#b54708]">
                         −{formatCurrency(Number(r.credit_note_amount || 0))}
                       </p>
                       <p className="text-[10px] text-muted-foreground">trừ công nợ</p>
@@ -1743,13 +1743,13 @@ export default function OrderDetailPage() {
                   {(refundLines.length > 0 || exchangeLines.length > 0) && (
                     <div className="flex flex-wrap gap-2 text-[11px] mb-2">
                       {refundLines.length > 0 && (
-                        <span className="rounded-md bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5">
+                        <span className="rounded-md bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40 px-2 py-0.5">
                           Trả trừ công nợ: {refundLines.length} dòng •{" "}
                           <strong>{formatCurrency(refundTotal)}</strong>
                         </span>
                       )}
                       {exchangeLines.length > 0 && (
-                        <span className="rounded-md bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5">
+                        <span className="rounded-md bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40 px-2 py-0.5">
                           Đổi (không trừ công nợ): {exchangeLines.length} dòng •{" "}
                           <strong>{formatCurrency(exchangeTotal)}</strong>
                         </span>
@@ -1758,17 +1758,17 @@ export default function OrderDetailPage() {
                   )}
 
                   {r.lines && r.lines.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-amber-200/50">
+                    <div className="mt-2 pt-2 border-t border-[#fdb022]/40/50">
                       <div className="space-y-1 text-xs">
                         {r.lines.map((l) => (
                           <div key={l.id} className="flex items-center justify-between gap-2">
                             <span className="truncate flex items-center gap-1.5">
                               {l.is_exchange ? (
-                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300 shrink-0">
+                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40 shrink-0">
                                   ĐỔI
                                 </span>
                               ) : (
-                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-[#fff4ed] text-[#b54708] border border-[#fdb022]/40 shrink-0">
                                   TRẢ
                                 </span>
                               )}
@@ -1780,7 +1780,7 @@ export default function OrderDetailPage() {
                             <span className="font-semibold whitespace-nowrap">
                               {l.quantity} {l.unit_name} •{" "}
                               {l.is_exchange ? (
-                                <span className="text-blue-700">không trừ tiền</span>
+                                <span className="text-[#175cd3]">không trừ tiền</span>
                               ) : (
                                 formatCurrency(Number(l.line_total || 0))
                               )}
@@ -1814,7 +1814,7 @@ export default function OrderDetailPage() {
                     {credits > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Trừ đơn trả đã duyệt</span>
-                        <span className="font-semibold text-amber-700">−{formatCurrency(credits)}</span>
+                        <span className="font-semibold text-[#b54708]">−{formatCurrency(credits)}</span>
                       </div>
                     )}
                     {pending > 0 && (

@@ -244,7 +244,7 @@ export default function StocktakeCheckPage() {
                   {summary.total} sản phẩm chênh lệch
                 </p>
                 {summary.positiveTotal > 0 && (
-                  <p className="text-green-700">
+                  <p className="text-tertiary">
                     Thừa: +{summary.positiveTotal} ({summary.positiveCount} sản phẩm)
                   </p>
                 )}
@@ -313,7 +313,7 @@ export default function StocktakeCheckPage() {
                               <span
                                 className={
                                   diff > 0
-                                    ? "text-green-700"
+                                    ? "text-tertiary"
                                     : diff < 0
                                       ? "text-destructive"
                                       : "text-muted-foreground"
@@ -379,7 +379,7 @@ export default function StocktakeCheckPage() {
                               <span
                                 className={
                                   diff > 0
-                                    ? "text-green-700"
+                                    ? "text-tertiary"
                                     : diff < 0
                                       ? "text-destructive"
                                       : "text-muted-foreground"
@@ -416,7 +416,7 @@ export default function StocktakeCheckPage() {
       ) : (
         <Card className="border-l-4 border-l-green-500">
           <CardContent className="pt-6">
-            <p className="text-sm font-semibold text-green-700">
+            <p className="text-sm font-semibold text-tertiary">
               Đã lưu kiểm kê thành công. Phiếu kiểm kê đã được tạo trong danh sách phiếu kho.
             </p>
             <div className="flex gap-2 mt-3">

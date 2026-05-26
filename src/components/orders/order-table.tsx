@@ -68,7 +68,7 @@ export function OrderTable({ orders }: OrderTableProps) {
         {orders.map((order) => (
           <div
             key={order.id}
-            className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+            className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
             onClick={() => router.push(`/orders/${order.id}`)}
           >
             <div className="p-4">

@@ -194,7 +194,7 @@ export default function PayablesBySupplierPage() {
             {filteredRows.map((row) => (
               <div
                 key={row.supplierId}
-                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
               >
                 <div className="p-4">

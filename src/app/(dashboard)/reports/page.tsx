@@ -648,8 +648,8 @@ function KpiCard({
           <span
             className={cn(
               "inline-flex items-center gap-0.5 text-[11px] font-bold rounded-full px-2 py-0.5",
-              positive && "bg-emerald-50 text-emerald-700 border border-emerald-200",
-              negative && "bg-red-50 text-red-700 border border-red-200",
+              positive && "bg-[#ecfdf3] text-tertiary border border-tertiary/40",
+              negative && "bg-error-container text-error border border-error/40",
               !positive && !negative && "bg-muted text-muted-foreground border border-border/40"
             )}
             title="So với kỳ trước (Month-over-Month)"

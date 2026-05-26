@@ -377,7 +377,7 @@ function Row({ label, value, level = 0, bold, sub, accent }: FlatRowProps) {
     accent === "primary"
       ? "text-primary"
       : accent === "negative"
-        ? "text-red-600"
+        ? "text-error"
         : ""
   return (
     <tr className={cn("border-b border-border/40", bold ? "font-semibold" : "")}>
@@ -402,7 +402,7 @@ function Row({ label, value, level = 0, bold, sub, accent }: FlatRowProps) {
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <tr className="bg-sky-50 print:bg-sky-100">
+    <tr className="bg-[#eff8ff] print:bg-[#eff8ff]">
       <td colSpan={2} className="px-4 py-2.5 text-center font-semibold text-foreground">
         {children}
       </td>
@@ -454,12 +454,12 @@ function IncomeStatement(p: IncomeProps) {
             <Row key={c.id} label={c.name} value={c.amount} level={1} sub />
           ))
         )}
-        <tr className="border-t-2 border-foreground/40 bg-amber-50 font-bold">
+        <tr className="border-t-2 border-foreground/40 bg-[#fff4ed] font-bold">
           <td className="px-4 py-3">Lợi nhuận thuần (7 = 5-6)</td>
           <td
             className={cn(
               "px-4 py-3 text-right tabular-nums text-base",
-              p.netProfit >= 0 ? "text-emerald-600" : "text-red-600"
+              p.netProfit >= 0 ? "text-tertiary" : "text-error"
             )}
           >
             {p.netProfit < 0 ? `(${formatCurrency(Math.abs(p.netProfit))})` : formatCurrency(p.netProfit)}
@@ -500,7 +500,7 @@ function BalanceSheet({
           <td className="px-4 py-2 text-right">{formatCurrency(payable)}</td>
         </tr>
         <Row label="Công nợ phải trả NCC" value={payable} level={1} sub />
-        <tr className="border-t-2 border-foreground/40 bg-amber-50 font-bold">
+        <tr className="border-t-2 border-foreground/40 bg-[#fff4ed] font-bold">
           <td className="px-4 py-3">Vốn chủ sở hữu (ước tính)</td>
           <td className="px-4 py-3 text-right tabular-nums text-primary">
             {formatCurrency(totalAssets - payable)}
@@ -521,20 +521,20 @@ function CashFlow({ cashIn, cashOut }: { cashIn: number; cashOut: number }) {
       <tbody>
         <tr className="bg-muted/30 font-semibold">
           <td className="px-4 py-2">DÒNG TIỀN VÀO</td>
-          <td className="px-4 py-2 text-right text-emerald-600">{formatCurrency(cashIn)}</td>
+          <td className="px-4 py-2 text-right text-tertiary">{formatCurrency(cashIn)}</td>
         </tr>
         <Row label="Thu từ phiếu thu (đã nhận)" value={cashIn} level={1} sub />
         <tr className="bg-muted/30 font-semibold">
           <td className="px-4 py-2">DÒNG TIỀN RA</td>
-          <td className="px-4 py-2 text-right text-red-600">{formatCurrency(cashOut)}</td>
+          <td className="px-4 py-2 text-right text-error">{formatCurrency(cashOut)}</td>
         </tr>
         <Row label="Chi phí đã thanh toán" value={cashOut} level={1} sub />
-        <tr className="border-t-2 border-foreground/40 bg-amber-50 font-bold">
+        <tr className="border-t-2 border-foreground/40 bg-[#fff4ed] font-bold">
           <td className="px-4 py-3">Chênh lệch dòng tiền</td>
           <td
             className={cn(
               "px-4 py-3 text-right tabular-nums text-base",
-              diff >= 0 ? "text-emerald-600" : "text-red-600"
+              diff >= 0 ? "text-tertiary" : "text-error"
             )}
           >
             {diff < 0 ? `(${formatCurrency(Math.abs(diff))})` : formatCurrency(diff)}

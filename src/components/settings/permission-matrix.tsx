@@ -416,15 +416,15 @@ export function PermissionMatrix({
             <span className="text-muted-foreground">Theo vai trò</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-flex w-4 h-4 rounded bg-emerald-500 text-white text-[10px] items-center justify-center font-bold">✓</span>
-            <span className="text-emerald-700">Cấp quyền</span>
+            <span className="inline-flex w-4 h-4 rounded bg-tertiary text-white text-[10px] items-center justify-center font-bold">✓</span>
+            <span className="text-tertiary">Cấp quyền</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-flex w-4 h-4 rounded bg-rose-500 text-white text-[10px] items-center justify-center font-bold">✗</span>
-            <span className="text-rose-700">Thu hồi</span>
+            <span className="inline-flex w-4 h-4 rounded bg-error text-white text-[10px] items-center justify-center font-bold">✗</span>
+            <span className="text-error">Thu hồi</span>
           </span>
           {isOwner && (
-            <span className="ml-auto text-amber-700 text-[11px]">
+            <span className="ml-auto text-[#b54708] text-[11px]">
               Chủ DN luôn có toàn quyền — không thể tuỳ chỉnh.
             </span>
           )}
@@ -550,12 +550,12 @@ export function PermissionMatrix({
                             )
                             const cellBg =
                               mode === "grant"
-                                ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                                ? "bg-tertiary hover:bg-tertiary text-white"
                                 : mode === "revoke"
-                                  ? "bg-rose-500 hover:bg-rose-600 text-white"
+                                  ? "bg-error hover:bg-error text-white"
                                   : eff
-                                    ? "bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
-                                    : "bg-rose-50 hover:bg-rose-100 border border-rose-200"
+                                    ? "bg-[#ecfdf3] hover:bg-[#ecfdf3] border border-tertiary/40"
+                                    : "bg-error-container hover:bg-error-container border border-error/40"
                             const symbol =
                               mode === "grant"
                                 ? "✓"
@@ -643,7 +643,7 @@ export function PermissionMatrix({
                       className={cn(
                         "flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer",
                         isOwner ? "cursor-not-allowed opacity-60" : "hover:bg-muted/30",
-                        granted && "border-emerald-300 bg-emerald-50"
+                        granted && "border-tertiary/40 bg-[#ecfdf3]"
                       )}
                     >
                       <input

@@ -560,7 +560,7 @@ export default function InventoryReportPage() {
                   const variant = r.tag === "Cận date" ? "danger" : r.qty <= 20 ? "warning" : "default"
                   const label = r.tag === "Cận date" ? "Cận date" : r.qty <= 20 ? "Tồn thấp" : "Bán chậm"
                   return (
-                    <div key={r.id} className="rounded-2xl border bg-card p-4 shadow-ambient">
+                    <div key={r.id} className="rounded-2xl border bg-card p-4 shadow-card">
                       <div className="flex justify-between items-start gap-3 mb-2">
                         <div className="min-w-0 flex-1">
                           <p className="font-mono text-xs font-bold text-primary">{r.sku}</p>

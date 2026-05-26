@@ -297,8 +297,8 @@ export default function CashReceiptDetailPage() {
                 <div
                   className={`rounded-lg p-2.5 border text-sm ${
                     isShort
-                      ? "bg-rose-50 border-rose-300 text-rose-800"
-                      : "bg-amber-50 border-amber-300 text-amber-800"
+                      ? "bg-error-container border-error/40 text-error"
+                      : "bg-[#fff4ed] border-[#fdb022]/40 text-[#b54708]"
                   }`}
                 >
                   <div className="flex items-center gap-2 font-semibold">
@@ -308,7 +308,7 @@ export default function CashReceiptDetailPage() {
                 </div>
               )}
               {isMatch && submitted > 0 && (
-                <div className="rounded-lg p-2.5 border bg-emerald-50 border-emerald-300 text-emerald-800 text-sm">
+                <div className="rounded-lg p-2.5 border bg-[#ecfdf3] border-tertiary/40 text-tertiary text-sm">
                   <div className="flex items-center gap-2 font-semibold">
                     <CheckCircle2 className="h-4 w-4" /> Số tiền khớp
                   </div>
@@ -365,22 +365,22 @@ export default function CashReceiptDetailPage() {
           </Card>
 
           {canConfirm && (
-            <Card className="border-emerald-300 bg-emerald-50/40">
+            <Card className="border-tertiary/40 bg-[#ecfdf3]/40">
               <CardContent className="pt-6 space-y-2">
                 <Button
-                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-700"
+                  className="w-full h-11 bg-tertiary hover:bg-tertiary/90"
                   onClick={handleConfirm}
                   disabled={actionLoading}
                 >
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                   {actionLoading ? "Đang xử lý..." : "Xác nhận đã nhận tiền"}
                 </Button>
-                <p className="text-xs text-emerald-800">
+                <p className="text-xs text-tertiary">
                   Sau khi xác nhận, các khoản thu sẽ được đánh dấu đã đối soát (verified).
                 </p>
                 <Button
                   variant="ghost"
-                  className="w-full text-rose-700 hover:bg-rose-50"
+                  className="w-full text-error hover:bg-error-container"
                   onClick={handleVoid}
                   disabled={actionLoading}
                 >

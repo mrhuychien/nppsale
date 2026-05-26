@@ -908,7 +908,7 @@ export default function EmployeesReportPage() {
             { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-            { key: "ret", label: "Giá trị trả", align: "right", render: (r) => (r.returnValue > 0 ? <span className="text-red-600">-{formatCurrency(r.returnValue)}</span> : "0") },
+            { key: "ret", label: "Giá trị trả", align: "right", render: (r) => (r.returnValue > 0 ? <span className="text-error">-{formatCurrency(r.returnValue)}</span> : "0") },
             { key: "net", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.netRevenue)}</span> },
           ]}
           totalsRow={
@@ -922,7 +922,7 @@ export default function EmployeesReportPage() {
                       ? `-${formatCurrency(totalsSales.returnValue)}`
                       : "0",
                   align: "right",
-                  className: "text-red-600",
+                  className: "text-error",
                 },
                 { content: formatCurrency(totalsSales.netRevenue), align: "right", className: "text-primary" },
               ]}
@@ -932,7 +932,7 @@ export default function EmployeesReportPage() {
             <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-emerald-100/60">
+                  <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Thời gian</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
@@ -952,7 +952,7 @@ export default function EmployeesReportPage() {
                         <td className="px-3 py-1.5 text-primary">{d.label}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(d.revenue)}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
-                          {d.returnValue > 0 ? <span className="text-red-600">-{formatCurrency(d.returnValue)}</span> : "0"}
+                          {d.returnValue > 0 ? <span className="text-error">-{formatCurrency(d.returnValue)}</span> : "0"}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums font-medium">
                           {formatCurrency(d.netRevenue)}
@@ -975,7 +975,7 @@ export default function EmployeesReportPage() {
             { key: "or", label: "Số đơn", align: "right", render: (r) => r.orders },
             { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
             { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
-            { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red-600"}>{formatCurrency(r.profit)}</span> },
+            { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>{formatCurrency(r.profit)}</span> },
             { key: "m", label: "Biên LN", align: "right", render: (r) => `${r.margin.toFixed(1)}%` },
           ]}
           totalsRow={
@@ -1028,7 +1028,7 @@ export default function EmployeesReportPage() {
               ) : (
                 r.customers.map((c) => (
                   <div key={c.id} className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
-                    <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between border-b border-border/40 bg-[#ecfdf3]/60 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{c.store_name}</span>
                         <span className="text-xs text-muted-foreground">
@@ -1139,9 +1139,9 @@ export default function EmployeesReportPage() {
                 <span
                   className={
                     r.diff > 0
-                      ? "text-emerald-600"
+                      ? "text-tertiary"
                       : r.diff < 0
-                        ? "text-red-600"
+                        ? "text-error"
                         : "text-muted-foreground"
                   }
                 >
@@ -1161,7 +1161,7 @@ export default function EmployeesReportPage() {
               align: "right",
               render: (r) =>
                 r.returnValue > 0 ? (
-                  <span className="text-red-600">-{formatCurrency(r.returnValue)}</span>
+                  <span className="text-error">-{formatCurrency(r.returnValue)}</span>
                 ) : (
                   "0"
                 ),
@@ -1218,7 +1218,7 @@ export default function EmployeesReportPage() {
                     return v > 0 ? `-${formatCurrency(v)}` : "0"
                   })(),
                   align: "right",
-                  className: "text-red-600",
+                  className: "text-error",
                 },
                 {
                   content: formatCurrency(
@@ -1234,7 +1234,7 @@ export default function EmployeesReportPage() {
             <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-emerald-100/60">
+                  <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Đơn vị</th>
@@ -1276,9 +1276,9 @@ export default function EmployeesReportPage() {
                           className={
                             "px-3 py-1.5 text-right tabular-nums " +
                             (p.diff > 0
-                              ? "text-emerald-600"
+                              ? "text-tertiary"
                               : p.diff < 0
-                                ? "text-red-600"
+                                ? "text-error"
                                 : "text-muted-foreground")
                           }
                         >
@@ -1289,7 +1289,7 @@ export default function EmployeesReportPage() {
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {p.returnValue > 0 ? (
-                            <span className="text-red-600">
+                            <span className="text-error">
                               -{formatCurrency(p.returnValue)}
                             </span>
                           ) : (
@@ -1336,7 +1336,7 @@ export default function EmployeesReportPage() {
               ) : (
                 r.products.map((p) => (
                   <div key={p.id} className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
-                    <div className="flex items-center justify-between border-b border-border/40 bg-emerald-100/60 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between border-b border-border/40 bg-[#ecfdf3]/60 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-primary">{p.sku}</span>
                         <span className="font-medium">{p.name}</span>

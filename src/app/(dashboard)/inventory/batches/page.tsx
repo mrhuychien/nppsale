@@ -179,7 +179,7 @@ export default function BatchesPage() {
               return (
                 <TableRow
                   key={b.id}
-                  className={`cursor-pointer ${isCritical && showCountdown ? "bg-red-50/50 hover:bg-red-50" : ""}`}
+                  className={`cursor-pointer ${isCritical && showCountdown ? "bg-error-container/50 hover:bg-error-container" : ""}`}
                   onClick={() => router.push(`/inventory/batches/${b.id}`)}
                 >
                   <TableCell className="font-medium">{b.product?.name}</TableCell>
@@ -214,11 +214,11 @@ export default function BatchesPage() {
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-semibold ${
                           days < 0
-                            ? "text-red-600"
+                            ? "text-error"
                             : days < 30
-                            ? "text-red-600"
+                            ? "text-error"
                             : days < 90
-                            ? "text-amber-600"
+                            ? "text-[#b54708]"
                             : "text-muted-foreground"
                         }`}
                       >
@@ -260,8 +260,8 @@ export default function BatchesPage() {
           return (
             <div
               key={b.id}
-              className={`relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
-                isCritical && showCountdown ? "border-red-300 bg-red-50/30" : ""
+              className={`relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
+                isCritical && showCountdown ? "border-error/40 bg-error-container/30" : ""
               }`}
               onClick={() => router.push(`/inventory/batches/${b.id}`)}
             >
@@ -295,11 +295,11 @@ export default function BatchesPage() {
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-semibold ${
                           days < 0
-                            ? "text-red-600"
+                            ? "text-error"
                             : days < 30
-                            ? "text-red-600"
+                            ? "text-error"
                             : days < 90
-                            ? "text-amber-600"
+                            ? "text-[#b54708]"
                             : "text-muted-foreground"
                         }`}
                       >
@@ -373,22 +373,22 @@ export default function BatchesPage() {
 
       {expiring.length > 0 && (
         <Card
-          className="rounded-2xl border-red-300 bg-gradient-to-r from-red-50 to-red-50/40 shadow-ambient cursor-pointer"
+          className="rounded-2xl border-error/40 bg-gradient-to-r from-error-container to-error-container/40 shadow-card cursor-pointer"
           onClick={() => setTab("expiring")}
         >
           <CardContent className="flex items-center gap-3 pt-6">
-            <div className="rounded-xl bg-red-100 p-3 text-red-700">
+            <div className="rounded-xl bg-error-container p-3 text-error">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-red-900">
+              <div className="font-semibold text-error">
                 {expiring.length} lô sắp hết hạn (&lt; 30 ngày)
               </div>
-              <div className="text-xs text-red-700">
+              <div className="text-xs text-error">
                 Nhấn để xem danh sách và ưu tiên xuất trước
               </div>
             </div>
-            <Button size="sm" variant="outline" className="border-red-300 text-red-700">
+            <Button size="sm" variant="outline" className="border-error/40 text-error">
               Xem ngay
             </Button>
           </CardContent>

@@ -467,7 +467,7 @@ export default function SuppliersReportPage() {
             <div className="rounded-md border border-border/40 bg-background/60">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-emerald-100/60">
+                  <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã HĐ</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Ngày</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Trạng thái</th>
@@ -498,9 +498,9 @@ export default function SuppliersReportPage() {
             { key: "code", label: "Mã NCC", render: (r) => <span className="font-mono text-xs text-primary">{r.code}</span> },
             { key: "name", label: "Tên NCC", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "n", label: "Số phiếu", align: "right", render: (r) => r.invoices },
-            { key: "out", label: "Công nợ", align: "right", render: (r) => <span className="font-semibold text-red-600">{formatCurrency(r.outstanding)}</span> },
+            { key: "out", label: "Công nợ", align: "right", render: (r) => <span className="font-semibold text-error">{formatCurrency(r.outstanding)}</span> },
             { key: "od", label: "Tuổi nợ tối đa", align: "right", render: (r) => (
-              <span className={r.overdueDays > 0 ? "font-semibold text-red-600" : ""}>
+              <span className={r.overdueDays > 0 ? "font-semibold text-error" : ""}>
                 {r.overdueDays > 0 ? `${r.overdueDays} ngày` : "—"}
               </span>
             )},
@@ -510,7 +510,7 @@ export default function SuppliersReportPage() {
               cells={[
                 { content: `SL NCC: ${payableRows.length}`, colSpan: 2 },
                 { content: totalsPayable.inv, align: "right" },
-                { content: formatCurrency(totalsPayable.out), align: "right", className: "text-red-600" },
+                { content: formatCurrency(totalsPayable.out), align: "right", className: "text-error" },
                 { content: "", align: "right" },
               ]}
             />
@@ -539,7 +539,7 @@ export default function SuppliersReportPage() {
             <div className="rounded-md border border-border/40 bg-background/60">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-emerald-100/60">
+                  <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL nhập</th>

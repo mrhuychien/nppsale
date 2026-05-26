@@ -256,7 +256,7 @@ export default function NewSupplierPage() {
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={loading} className="bg-gradient-primary text-white shadow-ambient">
+              <Button type="submit" disabled={loading} className="bg-primary text-on-primary shadow-card">
                 {loading ? "Đang lưu..." : "Tạo mới"}
               </Button>
             </div>

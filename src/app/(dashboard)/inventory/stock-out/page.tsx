@@ -927,7 +927,7 @@ export default function StockOutPage() {
                               data-state={checked ? "selected" : undefined}
                               onClick={() => toggleOne(o.id)}
                               className={`cursor-pointer border-l-4 ${
-                                isHighlighted ? "border-l-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : groupColor || "border-l-transparent"
+                                isHighlighted ? "border-l-[#fdb022] bg-[#fff4ed] " : groupColor || "border-l-transparent"
                               }`}
                             >
                               <TableCell
@@ -977,7 +977,7 @@ export default function StockOutPage() {
                           onClick={() => toggleOne(o.id)}
                           className={`rounded-xl border p-3 cursor-pointer active:scale-[0.99] transition-transform ${
                             checked ? "bg-primary/5 border-primary" : ""
-                          } ${isHighlighted ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" : ""}`}
+                          } ${isHighlighted ? "border-[#fdb022]/40 bg-[#fff4ed] " : ""}`}
                         >
                           <div className="flex items-start gap-2">
                             <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
@@ -1011,7 +1011,7 @@ export default function StockOutPage() {
 
         {/* Right 5/12 - Dark merge preview */}
         <div className="lg:col-span-5 space-y-3">
-          <div className="rounded-3xl bg-gray-900 text-white p-6 shadow-ambient-md">
+          <div className="rounded-3xl bg-gray-900 text-white p-6 shadow-card-hover">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-400 font-semibold">
@@ -1053,7 +1053,7 @@ export default function StockOutPage() {
                   <p className="text-[10px] mt-1 flex items-center gap-1">
                     <span className="text-gray-300">{pickKindCounts.sell} Bán</span>
                     <span className="text-gray-500">+</span>
-                    <span className="text-blue-300 font-semibold">
+                    <span className="text-[#7cc4fa] font-semibold">
                       {pickKindCounts.exchange} Đổi
                     </span>
                   </p>
@@ -1070,12 +1070,12 @@ export default function StockOutPage() {
                   {returnsDiagnostic.returnCount}
                 </strong>{" "}
                 <span className="text-gray-400">•</span>{" "}
-                <span className="text-blue-300">
+                <span className="text-[#7cc4fa]">
                   ĐỔI <strong>{returnsDiagnostic.exchangeLineCount}</strong> dòng
                 </span>{" "}
                 <span className="text-gray-500">→ pickList</span>{" "}
                 <span className="text-gray-400">•</span>{" "}
-                <span className="text-amber-300">
+                <span className="text-[#fcd34d]">
                   TRẢ <strong>{returnsDiagnostic.refundLineCount}</strong> dòng
                 </span>{" "}
                 <span className="text-gray-500">→ thu về</span>
@@ -1092,11 +1092,11 @@ export default function StockOutPage() {
             {/* Refund items — driver thu về từ khách trên đường giao.
                 Không nằm trong pickList vì hàng đã ở chỗ khách. */}
             {collectFromCustomer.length > 0 && (
-              <div className="mb-5 rounded-xl bg-amber-500/10 border border-amber-400/30 p-3">
-                <p className="text-xs uppercase tracking-wider text-amber-300 font-semibold mb-2 flex items-center gap-1">
+              <div className="mb-5 rounded-xl bg-[#fdb022]/10 border border-[#fdb022]/40/30 p-3">
+                <p className="text-xs uppercase tracking-wider text-[#fcd34d] font-semibold mb-2 flex items-center gap-1">
                   ⚠ Thu về từ khách (KHÔNG xuất kho)
                 </p>
-                <p className="text-[11px] text-amber-200/80 mb-2">
+                <p className="text-[11px] text-[#fcd34d]/80 mb-2">
                   Driver thu lại các SP dưới đây từ khách rồi nhập lại kho ở
                   bước Bàn giao lại. Hàng này TRỪ vào công nợ.
                 </p>
@@ -1107,13 +1107,13 @@ export default function StockOutPage() {
                       className="flex items-center justify-between text-xs"
                     >
                       <span className="truncate flex items-center gap-1.5">
-                        <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-amber-500 text-white">
+                        <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-[#fdb022] text-white">
                           TRẢ
                         </span>
                         <span className="font-mono text-gray-300">{c.sku}</span>
                         <span className="truncate">{c.name}</span>
                       </span>
-                      <span className="font-bold whitespace-nowrap text-amber-200">
+                      <span className="font-bold whitespace-nowrap text-[#fcd34d]">
                         {c.qty} {c.unit_name}
                       </span>
                     </div>
@@ -1126,7 +1126,7 @@ export default function StockOutPage() {
               <p className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">
                 Pick-list Summary (SKU)
                 {pickKindCounts.exchange > 0 && (
-                  <span className="ml-2 text-blue-300 normal-case">
+                  <span className="ml-2 text-[#7cc4fa] normal-case">
                     — {pickKindCounts.exchange} dòng ĐỔI cho khách (đem đi)
                   </span>
                 )}
@@ -1149,14 +1149,14 @@ export default function StockOutPage() {
                       key={`${p.kind}-${p.product_id}-${p.unit}`}
                       className={`flex items-center justify-between rounded-xl p-3 ${
                         p.kind === "exchange"
-                          ? "bg-blue-500/10 border border-blue-400/30"
+                          ? "bg-[#175cd3]/10 border border-[#175cd3]/40/30"
                           : "bg-white/5"
                       }`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           {p.kind === "exchange" && (
-                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500 text-white">
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#175cd3] text-white">
                               ĐỔI
                             </span>
                           )}
@@ -1197,9 +1197,9 @@ export default function StockOutPage() {
             </div>
 
             {/* T-12: hàng đem đi đổi (dự phòng) */}
-            <div className="rounded-xl bg-white/5 border border-dashed border-amber-300/40 p-3 mb-3 space-y-2">
+            <div className="rounded-xl bg-white/5 border border-dashed border-[#fdb022]/40/40 p-3 mb-3 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-wider text-amber-200 font-semibold">
+                <p className="text-[11px] uppercase tracking-wider text-[#fcd34d] font-semibold">
                   Hàng đem đi đổi (dự phòng)
                 </p>
                 <Button
@@ -1250,7 +1250,7 @@ export default function StockOutPage() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-red-300 hover:text-red-100"
+                        className="h-7 w-7 p-0 text-error/80 hover:text-error/80"
                         onClick={() => removeSwapItem(s.key)}
                       >
                         ×
@@ -1280,24 +1280,24 @@ export default function StockOutPage() {
               {submitting ? "Đang xử lý..." : "Xuất kho"}
             </Button>
             {!canUpdate && (
-              <p className="text-xs text-amber-300 mt-2 text-center">
+              <p className="text-xs text-[#fcd34d] mt-2 text-center">
                 Cần quyền kho/quản lý để thực hiện.
               </p>
             )}
           </div>
 
           {/* Optimized Pathing insight */}
-          <Card className="bg-surface-container-high border-l-4 border-green-500">
+          <Card className="bg-surface-container-high border-l-4 border-tertiary/40">
             <CardContent className="pt-6">
               <div className="flex items-start gap-3">
-                <Route className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                <Route className="h-5 w-5 text-tertiary shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-green-700 mb-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-tertiary mb-1">
                     Optimized Pathing
                   </p>
                   <p className="text-sm text-foreground">
                     Việc gộp {selectedOrders.length || "N"} đơn này giúp giảm{" "}
-                    <span className="font-black text-green-700">~28%</span>{" "}
+                    <span className="font-black text-tertiary">~28%</span>{" "}
                     quãng đường nhặt hàng tại{" "}
                     <span className="font-bold">
                       Khu vực{" "}

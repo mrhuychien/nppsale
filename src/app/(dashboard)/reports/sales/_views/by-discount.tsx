@@ -35,7 +35,7 @@ export function DiscountView({ rows }: { rows: DiscountRow[] }) {
           key: "disc",
           label: "Giảm giá",
           align: "right",
-          render: (r) => <span className="font-semibold text-red-600">-{formatCurrency(r.discount)}</span>,
+          render: (r) => <span className="font-semibold text-error">-{formatCurrency(r.discount)}</span>,
         },
         { key: "tot", label: "Thành tiền", align: "right", render: (r) => formatCurrency(r.total) },
         { key: "pct", label: "% giảm", align: "right", render: (r) => `${r.pct.toFixed(1)}%` },
@@ -45,7 +45,7 @@ export function DiscountView({ rows }: { rows: DiscountRow[] }) {
           cells={[
             { content: `SL hóa đơn: ${rows.length}`, colSpan: 3 },
             { content: formatCurrency(totals.subtotal), align: "right" },
-            { content: `-${formatCurrency(totals.discount)}`, align: "right", className: "text-red-600" },
+            { content: `-${formatCurrency(totals.discount)}`, align: "right", className: "text-error" },
             { content: formatCurrency(totals.total), align: "right", className: "text-primary" },
             { content: `${totalPct.toFixed(1)}%`, align: "right" },
           ]}

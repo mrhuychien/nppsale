@@ -290,7 +290,7 @@ export default function CustomerDetailPage() {
             <Button
               size="sm"
               variant="outline"
-              className="text-rose-600 border-rose-300 hover:bg-rose-50"
+              className="text-error border-error/40 hover:bg-error-container"
               onClick={() => router.push(`/receivables/collect?customerId=${customer.id}`)}
             >
               <Banknote className="h-4 w-4 mr-1.5" />
@@ -302,7 +302,7 @@ export default function CustomerDetailPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-primary">
+        <div className="bg-card rounded-xl shadow-card p-5 border-l-4 border-primary">
           <div className="flex justify-between items-start mb-3">
             <p className="text-sm font-semibold text-muted-foreground">Doanh thu tháng này</p>
             <span className="text-primary bg-primary/10 p-2 rounded-lg inline-flex">
@@ -314,7 +314,7 @@ export default function CustomerDetailPage() {
           </h3>
         </div>
 
-        <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-secondary">
+        <div className="bg-card rounded-xl shadow-card p-5 border-l-4 border-secondary">
           <div className="flex justify-between items-start mb-3">
             <p className="text-sm font-semibold text-muted-foreground">Tổng đơn hàng</p>
             <span className="text-secondary bg-secondary/10 p-2 rounded-lg inline-flex">
@@ -326,7 +326,7 @@ export default function CustomerDetailPage() {
           </h3>
         </div>
 
-        <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-destructive">
+        <div className="bg-card rounded-xl shadow-card p-5 border-l-4 border-destructive">
           <div className="flex justify-between items-start mb-3">
             <p className="text-sm font-semibold text-muted-foreground">Công nợ hiện tại</p>
             <span className="text-destructive bg-destructive/10 p-2 rounded-lg inline-flex">
@@ -351,10 +351,10 @@ export default function CustomerDetailPage() {
           )}
         </div>
 
-        <div className="bg-card rounded-2xl shadow-ambient p-5 border-l-4 border-amber-500">
+        <div className="bg-card rounded-xl shadow-card p-5 border-l-4 border-[#fdb022]/40">
           <div className="flex justify-between items-start mb-3">
             <p className="text-sm font-semibold text-muted-foreground">Tần suất mua</p>
-            <span className="text-amber-600 bg-amber-100 p-2 rounded-lg inline-flex">
+            <span className="text-[#b54708] bg-[#fff4ed] p-2 rounded-lg inline-flex">
               <TrendingUp className="h-4 w-4" />
             </span>
           </div>

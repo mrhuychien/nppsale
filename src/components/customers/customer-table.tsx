@@ -197,7 +197,7 @@ export function CustomerTable({
           return (
             <div
               key={c.id}
-              className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden active:scale-[0.99] transition-transform"
+              className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
             >
               <div className="p-4">
                 <div className="flex justify-between items-start gap-3 mb-2">

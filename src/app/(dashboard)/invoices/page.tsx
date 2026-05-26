@@ -139,22 +139,22 @@ export default function InvoicesPage() {
           <p className="text-xl font-bold mt-1">{totalInvoices}</p>
         </div>
         <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+          <div className="flex items-center gap-2 text-xs text-tertiary font-medium">
             <CheckCircle2 className="h-3.5 w-3.5" /> Đã ký số MISA
           </div>
-          <p className="text-xl font-bold mt-1 text-emerald-600">{signedCount}</p>
+          <p className="text-xl font-bold mt-1 text-tertiary">{signedCount}</p>
         </div>
         <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-amber-600 font-medium">
+          <div className="flex items-center gap-2 text-xs text-[#b54708] font-medium">
             <Clock className="h-3.5 w-3.5" /> Chờ gửi
           </div>
-          <p className="text-xl font-bold mt-1 text-amber-600">{pendingCount}</p>
+          <p className="text-xl font-bold mt-1 text-[#b54708]">{pendingCount}</p>
         </div>
         <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-red-600 font-medium">
+          <div className="flex items-center gap-2 text-xs text-error font-medium">
             <AlertCircle className="h-3.5 w-3.5" /> Lỗi
           </div>
-          <p className="text-xl font-bold mt-1 text-red-600">{errorCount}</p>
+          <p className="text-xl font-bold mt-1 text-error">{errorCount}</p>
         </div>
       </div>
 
@@ -288,7 +288,7 @@ export default function InvoicesPage() {
               return (
                 <div
                   key={inv.id}
-                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                   onClick={() => router.push(`/invoices/${inv.id}`)}
                 >
                   <div className="p-4">

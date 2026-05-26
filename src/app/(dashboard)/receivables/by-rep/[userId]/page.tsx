@@ -195,7 +195,7 @@ export default function RepDebtDetailPage() {
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tỷ lệ thu hồi</p>
             <p className={`text-xl font-black mt-1 ${
-              collectionRate >= 80 ? "text-green-700" : collectionRate >= 60 ? "text-amber-600" : "text-destructive"
+              collectionRate >= 80 ? "text-tertiary" : collectionRate >= 60 ? "text-[#b54708]" : "text-destructive"
             }`}>
               {collectionRate}%
             </p>
@@ -311,7 +311,7 @@ export default function RepDebtDetailPage() {
                             </TableCell>
                             <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
                             <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
-                            <TableCell className="text-right text-green-700">{formatCurrency(r.paid)}</TableCell>
+                            <TableCell className="text-right text-tertiary">{formatCurrency(r.paid)}</TableCell>
                             <TableCell className="text-right font-bold">{formatCurrency(remaining)}</TableCell>
                             <TableCell className="text-right hidden sm:table-cell">
                               {aging > 0 ? (
@@ -360,7 +360,7 @@ export default function RepDebtDetailPage() {
                         return (
                           <TableRow key={p.id}>
                             <TableCell className="text-sm">{formatDate(p.collected_at)}</TableCell>
-                            <TableCell className="text-right font-semibold text-green-700">{formatCurrency(p.amount)}</TableCell>
+                            <TableCell className="text-right font-semibold text-tertiary">{formatCurrency(p.amount)}</TableCell>
                             <TableCell>
                               <Badge variant="secondary">{PAYMENT_METHOD_LABEL[p.method] || p.method}</Badge>
                             </TableCell>

@@ -171,10 +171,10 @@ export default function InventoryPage() {
           <h1 className="text-2xl lg:text-2xl font-bold tracking-tight text-foreground">
             Quản lý Kho hàng
           </h1>
-          <div className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#ecfdf3] px-3 py-1 text-xs font-semibold text-tertiary">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-tertiary opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-tertiary"></span>
             </span>
             <Activity className="h-3 w-3" />
             Hệ thống ổn định • Cập nhật cuối: {timeLabel}
@@ -198,7 +198,7 @@ export default function InventoryPage() {
               <Clock className="mr-2 h-4 w-4" />
               Chờ xử lý
               {pendingCount > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold h-5 min-w-[20px] px-1">
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-[#fdb022] text-white text-[10px] font-bold h-5 min-w-[20px] px-1">
                   {pendingCount}
                 </span>
               )}
@@ -282,14 +282,14 @@ export default function InventoryPage() {
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Tổng giá trị tồn kho
                 </div>
-                <div className="mt-2 text-xl font-bold text-green-700">
+                <div className="mt-2 text-xl font-bold text-tertiary">
                   {formatCurrency(stats.totalValue)}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   Tính theo giá vốn trung bình
                 </div>
               </div>
-              <div className="rounded-xl bg-green-100 p-3 text-green-700">
+              <div className="rounded-xl bg-[#ecfdf3] p-3 text-tertiary">
                 <Wallet className="h-5 w-5" />
               </div>
             </div>

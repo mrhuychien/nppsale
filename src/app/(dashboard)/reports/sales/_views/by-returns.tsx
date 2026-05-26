@@ -37,13 +37,13 @@ export function ReturnsView({ rows }: { rows: ReturnSummaryRow[] }) {
         { key: "cust", label: "Khách hàng", render: (r) => r.customer },
         { key: "reason", label: "Lý do", render: (r) => REASON_LABEL[r.reason] || r.reason || "—" },
         { key: "status", label: "Trạng thái", render: (r) => STATUS_LABEL[r.status] || r.status },
-        { key: "amt", label: "Giá trị trả", align: "right", render: (r) => <span className="font-semibold text-red-600">{formatCurrency(r.amount)}</span> },
+        { key: "amt", label: "Giá trị trả", align: "right", render: (r) => <span className="font-semibold text-error">{formatCurrency(r.amount)}</span> },
       ]}
       totalsRow={
         <TotalsRow
           cells={[
             { content: `SL phiếu trả: ${rows.length}`, colSpan: 5 },
-            { content: formatCurrency(totals), align: "right", className: "text-red-600" },
+            { content: formatCurrency(totals), align: "right", className: "text-error" },
           ]}
         />
       }

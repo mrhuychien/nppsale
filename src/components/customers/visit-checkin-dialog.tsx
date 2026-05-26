@@ -315,21 +315,21 @@ export function VisitCheckinDialog({
             )}
             {coords && customerCoords && distanceMeters != null && (
               distanceMeters <= PROXIMITY_WARN_METERS ? (
-                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-800 flex items-center gap-1.5">
+                <div className="rounded-lg border border-tertiary/40 bg-[#ecfdf3] p-2 text-xs text-tertiary flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     Đúng vị trí điểm bán ({Math.round(distanceMeters)} m)
                   </span>
                 </div>
               ) : distanceMeters <= PROXIMITY_BLOCK_METERS ? (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 flex items-center gap-1.5">
+                <div className="rounded-lg border border-[#fdb022]/40 bg-[#fff4ed] p-2 text-xs text-[#b54708] flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     Cách điểm bán {Math.round(distanceMeters)} m — kiểm tra lại bạn có đang ở đúng cửa hàng không.
                   </span>
                 </div>
               ) : (
-                <div className="rounded-lg border border-rose-300 bg-rose-50 p-2 text-xs text-rose-800 flex items-center gap-1.5">
+                <div className="rounded-lg border border-error/40 bg-error-container p-2 text-xs text-error flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     Cách điểm bán {(distanceMeters / 1000).toFixed(2)} km — quá xa, hệ thống sẽ yêu cầu xác nhận.

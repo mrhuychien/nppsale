@@ -281,13 +281,13 @@ export default function AdjustmentsPage() {
                   <td className="py-1.5 px-2 font-mono text-muted-foreground">
                     {l.batch?.batch_code || "—"}
                   </td>
-                  <td className={`py-1.5 px-2 text-right font-bold ${diff < 0 ? "text-red-700" : diff > 0 ? "text-emerald-700" : ""}`}>
+                  <td className={`py-1.5 px-2 text-right font-bold ${diff < 0 ? "text-error" : diff > 0 ? "text-tertiary" : ""}`}>
                     {diff > 0 ? `+${diff}` : diff} {l.unit_name}
                   </td>
                   <td className="py-1.5 px-2 text-right text-muted-foreground">
                     {cost > 0 ? formatCurrency(cost) : "-"}
                   </td>
-                  <td className={`py-1.5 px-2 text-right font-semibold ${diff < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                  <td className={`py-1.5 px-2 text-right font-semibold ${diff < 0 ? "text-error" : "text-tertiary"}`}>
                     {value > 0 ? (diff < 0 ? "-" : "+") + formatCurrency(value) : "-"}
                   </td>
                 </tr>
@@ -324,20 +324,20 @@ export default function AdjustmentsPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-700">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-error">
                 <TrendingDown className="h-3 w-3" /> Chi phí hao hụt chờ ghi
               </div>
-              <p className="text-xl font-black mt-1 text-red-700">
+              <p className="text-xl font-black mt-1 text-error">
                 {formatCurrency(totalSummary.shrink)}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-tertiary">
                 <TrendingUp className="h-3 w-3" /> Giá trị thừa chờ thu hồi
               </div>
-              <p className="text-xl font-black mt-1 text-emerald-700">
+              <p className="text-xl font-black mt-1 text-tertiary">
                 {formatCurrency(totalSummary.surplus)}
               </p>
             </CardContent>
@@ -364,7 +364,7 @@ export default function AdjustmentsPage() {
             const s = summarize(a)
             const isExpanded = expandedId === a.id
             return (
-              <Card key={a.id} className="border-amber-300">
+              <Card key={a.id} className="border-[#fdb022]/40">
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start gap-3">
                     <div className="min-w-0 flex-1">
@@ -393,21 +393,21 @@ export default function AdjustmentsPage() {
                   <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                     <div>
                       <p className="text-[10px] text-muted-foreground">Hao hụt</p>
-                      <p className="font-bold text-red-700">
+                      <p className="font-bold text-error">
                         {s.shrinkQty > 0 ? `-${s.shrinkQty}` : "0"}
                       </p>
                       <p className="text-[10px] text-muted-foreground">{formatCurrency(s.shrinkValue)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Thừa</p>
-                      <p className="font-bold text-emerald-700">
+                      <p className="font-bold text-tertiary">
                         {s.surplusQty > 0 ? `+${s.surplusQty}` : "0"}
                       </p>
                       <p className="text-[10px] text-muted-foreground">{formatCurrency(s.surplusValue)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Chi phí lệch ròng</p>
-                      <p className={`font-bold ${s.netValue < 0 ? "text-red-700" : s.netValue > 0 ? "text-emerald-700" : ""}`}>
+                      <p className={`font-bold ${s.netValue < 0 ? "text-error" : s.netValue > 0 ? "text-tertiary" : ""}`}>
                         {s.netValue > 0 ? "+" : ""}{formatCurrency(s.netValue)}
                       </p>
                     </div>
@@ -437,7 +437,7 @@ export default function AdjustmentsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-red-300 text-red-700 hover:bg-red-50"
+                          className="border-error/40 text-error hover:bg-error-container"
                           onClick={() => handleReject(a)}
                           disabled={approvingId === a.id || rejectingId === a.id}
                         >

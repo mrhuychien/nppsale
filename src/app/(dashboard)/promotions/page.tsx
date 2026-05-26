@@ -108,7 +108,7 @@ export default function PromotionsPage() {
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 3)
 
-  const medalColors = ["bg-amber-100 text-amber-700", "bg-slate-100 text-slate-700", "bg-orange-100 text-orange-700"]
+  const medalColors = ["bg-[#fff4ed] text-[#b54708]", "bg-surface-container-low text-on-surface-variant", "bg-[#fff4ed] text-[#c2410c]"]
 
   const toggleOne = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -317,7 +317,7 @@ export default function PromotionsPage() {
                   return (
                     <div
                       key={p.id}
-                      className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden active:scale-[0.99] transition-transform"
+                      className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
                     >
                       <div className="p-4">
                         <div className="flex justify-between items-start gap-3 mb-2">
@@ -361,7 +361,7 @@ export default function PromotionsPage() {
         </div>
 
         {/* ROI sidebar */}
-        <Card className="rounded-2xl shadow-ambient h-fit">
+        <Card className="rounded-xl shadow-card h-fit">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-primary" />

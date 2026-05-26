@@ -163,16 +163,16 @@ export default function SupplierDetailPage() {
       <PageHeader title="" backHref="/suppliers" />
 
       {/* Overview header card */}
-      <div className="rounded-2xl bg-card shadow-ambient overflow-hidden">
+      <div className="rounded-2xl bg-card shadow-card overflow-hidden">
         {/* Decorative gradient strip */}
-        <div className="bg-gradient-primary h-20" />
+        <div className="bg-primary h-20" />
         {/* Content area below the strip - avatar overlaps upward */}
         <div className="px-6 pb-6">
           <div className="flex flex-col lg:flex-row gap-4 lg:items-end lg:justify-between">
             {/* Avatar + main info */}
             <div className="flex flex-col sm:flex-row gap-4 sm:items-end min-w-0 flex-1">
               {/* Avatar initial - overlaps banner upward */}
-              <div className="w-20 h-20 rounded-2xl bg-card shadow-ambient flex items-center justify-center text-3xl font-black text-primary border-4 border-white shrink-0 -mt-12">
+              <div className="w-20 h-20 rounded-2xl bg-card shadow-card flex items-center justify-center text-3xl font-black text-primary border-4 border-white shrink-0 -mt-12">
                 {initial}
               </div>
               <div className="min-w-0 flex-1">
@@ -220,7 +220,7 @@ export default function SupplierDetailPage() {
               </Button>
               <Button
                 size="sm"
-                className="bg-gradient-primary text-white shadow-ambient gap-1.5"
+                className="bg-primary text-on-primary shadow-card gap-1.5"
                 onClick={() => router.push("/inventory/stock-in")}
               >
                 <FileDown className="h-4 w-4" />
@@ -236,8 +236,8 @@ export default function SupplierDetailPage() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-red-100 p-3">
-                <CreditCard className="h-5 w-5 text-red-600" />
+              <div className="rounded-xl bg-error-container p-3">
+                <CreditCard className="h-5 w-5 text-error" />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Công nợ NCC</p>
@@ -249,8 +249,8 @@ export default function SupplierDetailPage() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-blue-100 p-3">
-                <FileDown className="h-5 w-5 text-blue-600" />
+              <div className="rounded-xl bg-[#eff8ff] p-3">
+                <FileDown className="h-5 w-5 text-[#175cd3]" />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Số phiếu nhập</p>
@@ -262,8 +262,8 @@ export default function SupplierDetailPage() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-green-100 p-3">
-                <Package className="h-5 w-5 text-green-600" />
+              <div className="rounded-xl bg-[#ecfdf3] p-3">
+                <Package className="h-5 w-5 text-tertiary" />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sản phẩm</p>
@@ -497,7 +497,7 @@ export default function SupplierDetailPage() {
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" onClick={() => setEditing(false)} disabled={saving}>Hủy</Button>
-                      <Button onClick={handleSave} disabled={saving} className="bg-gradient-primary text-white shadow-ambient">
+                      <Button onClick={handleSave} disabled={saving} className="bg-primary text-on-primary shadow-card">
                         {saving ? "Đang lưu..." : "Lưu thay đổi"}
                       </Button>
                     </div>

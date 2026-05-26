@@ -1134,12 +1134,12 @@ export function OrderForm() {
                     const onHand = stockByProduct[line.product_id] ?? 0
                     const over = lineOverstock(line, i)
                     return (
-                      <tr key={i} className={`hover:bg-muted/20 ${over ? "bg-red-50" : ""}`}>
+                      <tr key={i} className={`hover:bg-muted/20 ${over ? "bg-error-container" : ""}`}>
                         <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-2">
                           <span className="font-medium">{line.product_name}</span>
                           <span className="text-[10px] text-muted-foreground ml-2">SKU: {line.sku}</span>
-                          <div className={`text-[10px] ${over ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
+                          <div className={`text-[10px] ${over ? "text-error font-bold" : "text-muted-foreground"}`}>
                             Tồn: {onHand} {product?.base_unit}
                           </div>
                           <Input
@@ -1165,7 +1165,7 @@ export function OrderForm() {
                             min={1}
                             value={line.quantity}
                             onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
-                            className={`h-8 w-20 text-center ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            className={`h-8 w-20 text-center ${over ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
                           />
                         </td>
                         {canEditPrice && (() => {
@@ -1177,7 +1177,7 @@ export function OrderForm() {
                                 value={line.unit_price}
                                 onChange={(v) => updateLine(i, "unit_price", v)}
                                 showSuffix={false}
-                                className={`h-8 w-28 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                                className={`h-8 w-28 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
                               />
                               {isSalesRole && def > 0 && (() => {
                                 const ceiling = userSalesCeiling(def, userRules)
@@ -1189,7 +1189,7 @@ export function OrderForm() {
                                 )
                               })()}
                               {warning && (
-                                <p className="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1">
+                                <p className="text-[10px] text-error font-semibold mt-0.5 flex items-center gap-1">
                                   <AlertTriangle className="h-3 w-3" /> {warning}
                                 </p>
                               )}
@@ -1247,13 +1247,13 @@ export function OrderForm() {
                 return (
                   <div
                     key={i}
-                    className={`border rounded-xl p-3 ${over ? "border-red-500 bg-red-50" : "border-border/40 bg-card"}`}
+                    className={`border rounded-xl p-3 ${over ? "border-error/40 bg-error-container" : "border-border/40 bg-card"}`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-sm truncate">{line.product_name}</p>
                         <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
-                        <p className={`text-[10px] ${over ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
+                        <p className={`text-[10px] ${over ? "text-error font-bold" : "text-muted-foreground"}`}>
                           Tồn: {onHand} {product?.base_unit}
                         </p>
                       </div>
@@ -1286,7 +1286,7 @@ export function OrderForm() {
                           min={1}
                           value={line.quantity}
                           onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
-                          className={`h-8 text-center flex-1 ${over ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                          className={`h-8 text-center flex-1 ${over ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
                         />
                         <button type="button" onClick={() => updateLine(i, "quantity", line.quantity + 1)} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">+</button>
                       </div>
@@ -1294,7 +1294,7 @@ export function OrderForm() {
                       <span className="text-sm font-bold text-primary shrink-0">{formatCurrency(line.line_total)}</span>
                     </div>
                     {over && (
-                      <p className="text-[11px] text-red-600 font-semibold mt-2">
+                      <p className="text-[11px] text-error font-semibold mt-2">
                         Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
                       </p>
                     )}
@@ -1311,7 +1311,7 @@ export function OrderForm() {
                               value={line.unit_price}
                               onChange={(v) => updateLine(i, "unit_price", v)}
                               showSuffix={false}
-                              className={`h-8 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              className={`h-8 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
                             />
                           </div>
                           {isSalesRole && def > 0 && (() => {
@@ -1324,7 +1324,7 @@ export function OrderForm() {
                             )
                           })()}
                           {warning && (
-                            <p className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
+                            <p className="text-[10px] text-error font-semibold flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" /> {warning}
                             </p>
                           )}
@@ -1367,7 +1367,7 @@ export function OrderForm() {
               className="w-full flex items-center justify-between text-left"
             >
               <div className="flex items-center gap-2">
-                <RotateCcw className="h-5 w-5 text-amber-600" />
+                <RotateCcw className="h-5 w-5 text-[#b54708]" />
                 <div>
                   <CardTitle className="text-base font-bold">
                     Hàng trả lại {returnLines.length > 0 ? `(${returnLines.length})` : "(tuỳ chọn)"}
@@ -1462,7 +1462,7 @@ export function OrderForm() {
                       return sameSaleLine ? Number(sameSaleLine.unit_price || def) : def
                     })()
                     return (
-                      <div key={i} className="rounded-xl border bg-amber-50/30 p-3">
+                      <div key={i} className="rounded-xl border bg-[#fff4ed]/30 p-3">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-sm truncate">{line.product_name}</p>
@@ -1513,7 +1513,7 @@ export function OrderForm() {
                               value={line.unit_price}
                               onChange={(v) => updateReturnLine(i, "unit_price", v)}
                               showSuffix={false}
-                              className={`h-9 ${warning ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              className={`h-9 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
                             />
                           </div>
                           <div className="space-y-1">
@@ -1533,7 +1533,7 @@ export function OrderForm() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Thành tiền</Label>
-                            <div className="h-9 px-3 flex items-center justify-end font-bold text-amber-700">
+                            <div className="h-9 px-3 flex items-center justify-end font-bold text-[#b54708]">
                               {formatCurrency(line.line_total)}
                             </div>
                           </div>
@@ -1544,7 +1544,7 @@ export function OrderForm() {
                           </p>
                         )}
                         {warning && (
-                          <p className="text-[10px] text-red-600 font-semibold mt-1.5 flex items-center gap-1">
+                          <p className="text-[10px] text-error font-semibold mt-1.5 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" /> {warning}
                           </p>
                         )}
@@ -1552,8 +1552,8 @@ export function OrderForm() {
                           className={`mt-2 flex items-start gap-2 rounded-lg border px-2 py-1.5 cursor-pointer transition-colors ${
                             line.is_exchange
                               ? returnLineOverstock(line, i)
-                                ? "border-red-400 bg-red-50/60"
-                                : "border-blue-400 bg-blue-50/60"
+                                ? "border-error/40 bg-error-container/60"
+                                : "border-[#175cd3]/40 bg-[#eff8ff]/60"
                               : "border-border/40 hover:bg-muted/40"
                           }`}
                         >
@@ -1573,7 +1573,7 @@ export function OrderForm() {
                           </div>
                         </label>
                         {line.is_exchange && returnLineOverstock(line, i) && (
-                          <p className="text-[10px] text-red-600 font-semibold mt-1.5 flex items-center gap-1">
+                          <p className="text-[10px] text-error font-semibold mt-1.5 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" />
                             Không đủ tồn kho để đổi: cần {baseQtyReturn(line)}{" "}
                             {products.find((p) => p.id === line.product_id)?.base_unit || ""}, chỉ
@@ -1600,7 +1600,7 @@ export function OrderForm() {
                     <span className="text-sm text-muted-foreground">
                       Trừ công nợ
                     </span>
-                    <span className="text-lg font-bold text-amber-700">
+                    <span className="text-lg font-bold text-[#b54708]">
                       −{formatCurrency(returnSubtotal)}
                     </span>
                   </div>
@@ -1609,7 +1609,7 @@ export function OrderForm() {
                       <span className="text-muted-foreground">
                         Đổi hàng (không trừ công nợ)
                       </span>
-                      <span className="font-semibold text-blue-700">
+                      <span className="font-semibold text-[#175cd3]">
                         {formatCurrency(exchangeSubtotal)}
                       </span>
                     </div>
@@ -1741,7 +1741,7 @@ export function OrderForm() {
             <Button
               type="submit"
               disabled={loading || hasOverstock || hasPriceViolation || !customerId}
-              className="h-11 px-5 rounded-full shrink-0 bg-gradient-primary text-white font-bold"
+              className="h-11 px-5 rounded-full shrink-0 bg-primary text-on-primary font-bold"
             >
               {loading
                 ? "Đang lưu..."

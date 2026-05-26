@@ -198,7 +198,7 @@ export default function CustomerDebtDetailPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Đã trả</p>
-            <p className="text-xl font-black mt-1 text-green-700">{formatCurrency(totalPaid)}</p>
+            <p className="text-xl font-black mt-1 text-tertiary">{formatCurrency(totalPaid)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -210,7 +210,7 @@ export default function CustomerDebtDetailPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hạn mức còn lại</p>
-            <p className={`text-xl font-black mt-1 ${creditRemaining < 0 ? "text-destructive" : "text-green-700"}`}>
+            <p className={`text-xl font-black mt-1 ${creditRemaining < 0 ? "text-destructive" : "text-tertiary"}`}>
               {formatCurrency(creditRemaining)}
             </p>
           </CardContent>
@@ -268,7 +268,7 @@ export default function CustomerDebtDetailPage() {
                             </TableCell>
                             <TableCell className="text-sm">{formatDate(r.created_at)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
-                            <TableCell className="text-right text-green-700">{formatCurrency(r.paid)}</TableCell>
+                            <TableCell className="text-right text-tertiary">{formatCurrency(r.paid)}</TableCell>
                             <TableCell className="text-right font-bold">{formatCurrency(remaining)}</TableCell>
                             <TableCell className="text-sm">{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>
                             <TableCell className="text-right hidden sm:table-cell">
@@ -321,7 +321,7 @@ export default function CustomerDebtDetailPage() {
                         return (
                           <TableRow key={p.id}>
                             <TableCell className="text-sm">{formatDate(p.collected_at)}</TableCell>
-                            <TableCell className="text-right font-semibold text-green-700">{formatCurrency(p.amount)}</TableCell>
+                            <TableCell className="text-right font-semibold text-tertiary">{formatCurrency(p.amount)}</TableCell>
                             <TableCell>
                               <Badge variant="secondary">{PAYMENT_METHOD_LABEL[p.method] || p.method}</Badge>
                             </TableCell>
@@ -369,8 +369,8 @@ export default function CustomerDebtDetailPage() {
                     <div key={entry.id} className="flex items-start gap-3 rounded-lg border p-3">
                       <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${
                         entry.type === "order"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-green-100 text-green-700"
+                          ? "bg-[#eff8ff] text-[#175cd3]"
+                          : "bg-[#ecfdf3] text-tertiary"
                       }`}>
                         {entry.type === "order" ? "\u{1F4E6}" : "\u{1F4B0}"}
                       </div>
@@ -378,7 +378,7 @@ export default function CustomerDebtDetailPage() {
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-sm">{entry.label}</p>
                           <p className={`font-bold text-sm ${
-                            entry.type === "order" ? "text-destructive" : "text-green-700"
+                            entry.type === "order" ? "text-destructive" : "text-tertiary"
                           }`}>
                             {entry.type === "order" ? "+" : "-"}{formatCurrency(entry.amount)}
                           </p>

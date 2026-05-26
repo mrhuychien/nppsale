@@ -103,9 +103,9 @@ export function WorkflowResumeBar() {
   if (!user || hidden || sessions.length === 0) return null
 
   return (
-    <div className="sticky top-0 z-30 border-b border-amber-300 bg-amber-50/95 backdrop-blur supports-[backdrop-filter]:bg-amber-50/80">
+    <div className="sticky top-0 z-30 border-b border-[#fdb022]/40 bg-[#fff4ed]/95 backdrop-blur supports-[backdrop-filter]:bg-[#fff4ed]/80">
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-800 shrink-0">
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#b54708] shrink-0">
           <Clock className="h-3.5 w-3.5" />
           {sessions.length} việc đang dở
         </span>
@@ -139,7 +139,7 @@ export function WorkflowResumeBar() {
             size="sm"
             onClick={refresh}
             disabled={refreshing}
-            className="h-7 px-2 text-xs text-amber-800 hover:bg-amber-100"
+            className="h-7 px-2 text-xs text-[#b54708] hover:bg-[#fff4ed]"
             title="Làm mới"
           >
             <RotateCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
@@ -151,7 +151,7 @@ export function WorkflowResumeBar() {
               setHidden(true)
               setHiddenInTab(true)
             }}
-            className="h-7 px-2 text-xs text-amber-800 hover:bg-amber-100"
+            className="h-7 px-2 text-xs text-[#b54708] hover:bg-[#fff4ed]"
             title="Ẩn tạm — bar sẽ hiện lại khi mở tab mới"
           >
             <EyeOff className="h-3.5 w-3.5" />
@@ -175,21 +175,21 @@ function ResumeChip({ session, isHere, onClose }: ResumeChipProps) {
     <div
       className={`shrink-0 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
         isHere
-          ? "bg-amber-200 border-amber-400 text-amber-900 font-semibold"
-          : "bg-white border-amber-200 text-amber-900 hover:border-amber-400"
+          ? "bg-[#fff4ed] border-[#fdb022]/40 text-[#b54708] font-semibold"
+          : "bg-white border-[#fdb022]/40 text-[#b54708] hover:border-[#fdb022]/40"
       }`}
     >
       <span className="font-semibold">{stage}</span>
-      <span className="text-amber-700">·</span>
+      <span className="text-[#b54708]">·</span>
       <span className="truncate max-w-[160px]">{label}</span>
       {isHere ? (
-        <span className="text-[10px] text-amber-700 font-medium ml-0.5">
+        <span className="text-[10px] text-[#b54708] font-medium ml-0.5">
           (đang xem)
         </span>
       ) : (
         <Link
           href={session.last_url}
-          className="inline-flex items-center gap-0.5 text-amber-700 hover:text-amber-900 ml-0.5"
+          className="inline-flex items-center gap-0.5 text-[#b54708] hover:text-[#b54708] ml-0.5"
         >
           <ArrowRight className="h-3 w-3" />
         </Link>
@@ -202,7 +202,7 @@ function ResumeChip({ session, isHere, onClose }: ResumeChipProps) {
             onClose()
           }
         }}
-        className="text-amber-600 hover:text-rose-600 ml-0.5"
+        className="text-[#b54708] hover:text-error ml-0.5"
         title="Đóng (đánh dấu hoàn tất)"
       >
         <X className="h-3 w-3" />

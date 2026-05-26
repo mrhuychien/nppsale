@@ -179,7 +179,7 @@ export default function PayrollDetailPage() {
               <span className="text-2xl font-black text-primary">{formatCurrency(payroll.total_salary)}</span>
             </div>
             {breakdown.rule ? (
-              <p className="text-xs text-amber-600 font-semibold mt-1">
+              <p className="text-xs text-[#b54708] font-semibold mt-1">
                 * Áp dụng quy tắc: {String(breakdown.rule) === "under_60" ? "Dưới 60% KPI" : "Dưới 70% KPI"}
               </p>
             ) : null}

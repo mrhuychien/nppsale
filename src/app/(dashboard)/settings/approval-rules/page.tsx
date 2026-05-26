@@ -144,7 +144,7 @@ export default function ApprovalRulesPage() {
       </PageHeader>
 
       {!canEdit && (
-        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
+        <div className="rounded-xl bg-[#fff4ed] border border-[#fdb022]/40 p-3 text-sm text-[#b54708] flex items-start gap-2">
           <Info className="h-4 w-4 shrink-0 mt-0.5" />
           Chỉ Owner/Manager mới có thể chỉnh quy tắc duyệt. Bạn có thể xem cấu hình hiện tại.
         </div>

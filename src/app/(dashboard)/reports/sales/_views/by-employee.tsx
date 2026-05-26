@@ -36,7 +36,7 @@ export function EmployeeView({ rows }: { rows: EmployeeRow[] }) {
           key: "profit",
           label: "Lợi nhuận",
           align: "right",
-          render: (r) => <span className="font-semibold text-emerald-600">{formatCurrency(r.profit)}</span>,
+          render: (r) => <span className="font-semibold text-tertiary">{formatCurrency(r.profit)}</span>,
         },
         { key: "aov", label: "TB/đơn", align: "right", render: (r) => formatCurrency(r.aov) },
       ]}

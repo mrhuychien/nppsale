@@ -97,7 +97,7 @@ export default function BalanceSheetPage() {
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Scale className="h-3.5 w-3.5" /> Vốn chủ sở hữu
                 </div>
-                <p className={`text-xl font-black mt-1 ${data.equity.total >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <p className={`text-xl font-black mt-1 ${data.equity.total >= 0 ? "text-tertiary" : "text-error"}`}>
                   {formatCurrency(data.equity.total)}
                 </p>
               </CardContent>
@@ -167,7 +167,7 @@ export default function BalanceSheetPage() {
                   </div>
                   <div className="flex justify-between py-1.5 text-muted-foreground">
                     <span className="pl-5">Lợi nhuận giữ lại</span>
-                    <span className={data.equity.retainedEarnings >= 0 ? "text-emerald-700" : "text-red-700"}>
+                    <span className={data.equity.retainedEarnings >= 0 ? "text-tertiary" : "text-error"}>
                       {formatCurrency(data.equity.retainedEarnings)}
                     </span>
                   </div>
@@ -186,7 +186,7 @@ export default function BalanceSheetPage() {
           </div>
 
           {/* Balance check */}
-          <div className={`rounded-xl border p-3 text-sm ${balanced ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+          <div className={`rounded-xl border p-3 text-sm ${balanced ? "border-tertiary/40 bg-[#ecfdf3] text-tertiary" : "border-[#fdb022]/40 bg-[#fff4ed] text-[#b54708]"}`}>
             <p className="font-semibold">
               {balanced ? "✓ Bảng cân đối đã cân" : "⚠ Lệch cân đối"}
             </p>

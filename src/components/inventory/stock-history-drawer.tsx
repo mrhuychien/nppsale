@@ -227,7 +227,7 @@ export function StockHistoryDrawer({
                         className={`px-2 py-2 text-right tabular-nums ${
                           r.signed_qty_in_base_uom < 0
                             ? "text-destructive"
-                            : "text-emerald-600"
+                            : "text-tertiary"
                         }`}
                       >
                         {sign}

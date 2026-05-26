@@ -20,11 +20,11 @@ import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 
 const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string; label: string }> = {
-  order_pending_approval: { icon: ShoppingCart, color: "text-amber-600 bg-amber-100", label: "Chờ duyệt" },
-  order_approved: { icon: CircleCheck, color: "text-emerald-600 bg-emerald-100", label: "Đã duyệt" },
-  order_cancelled: { icon: CircleX, color: "text-red-600 bg-red-100", label: "Hủy đơn" },
-  payment_received: { icon: CreditCard, color: "text-blue-600 bg-blue-100", label: "Thanh toán" },
-  receivable_overdue: { icon: Clock, color: "text-orange-600 bg-orange-100", label: "Quá hạn" },
+  order_pending_approval: { icon: ShoppingCart, color: "text-[#b54708] bg-[#fff4ed]", label: "Chờ duyệt" },
+  order_approved: { icon: CircleCheck, color: "text-tertiary bg-[#ecfdf3]", label: "Đã duyệt" },
+  order_cancelled: { icon: CircleX, color: "text-error bg-error-container", label: "Hủy đơn" },
+  payment_received: { icon: CreditCard, color: "text-[#175cd3] bg-[#eff8ff]", label: "Thanh toán" },
+  receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]", label: "Quá hạn" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10", label: "Ghé thăm" },
   info: { icon: Info, color: "text-muted-foreground bg-muted", label: "Khác" },
 }

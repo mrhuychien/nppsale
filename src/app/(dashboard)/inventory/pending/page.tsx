@@ -520,7 +520,7 @@ export default function PendingStockPage() {
                               className="h-4 w-4 mt-1 shrink-0"
                               aria-label={`Chọn trả hàng ${r.id}`}
                             />
-                            <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                            <div className="shrink-0 w-10 h-10 rounded-lg bg-[#fff4ed] text-[#b54708] flex items-center justify-center">
                               <RotateCcw className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -605,7 +605,7 @@ export default function PendingStockPage() {
                               className="h-4 w-4 mt-1 shrink-0"
                               aria-label={`Chọn giao thất bại ${d.id}`}
                             />
-                            <div className="shrink-0 w-10 h-10 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
+                            <div className="shrink-0 w-10 h-10 rounded-lg bg-error-container text-error flex items-center justify-center">
                               <CircleX className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">

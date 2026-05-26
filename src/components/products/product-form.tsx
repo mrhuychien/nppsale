@@ -578,7 +578,7 @@ function InfoTab({
 
           <div className="space-y-1.5">
             <Label htmlFor="name">
-              Tên hàng <span className="text-red-500">*</span>
+              Tên hàng <span className="text-error">*</span>
             </Label>
             <Input
               id="name"
@@ -819,7 +819,7 @@ function InfoTab({
                   </span>
                 </div>
               </div>
-              <div className="sm:col-span-2 rounded-md bg-amber-50 p-2 text-[11px] text-amber-800">
+              <div className="sm:col-span-2 rounded-md bg-[#fff4ed] p-2 text-[11px] text-[#b54708]">
                 <p className="font-semibold">Quy tắc khi NV sửa giá:</p>
                 <ul className="mt-0.5 list-inside list-disc">
                   <li>
@@ -872,7 +872,7 @@ function InfoTab({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="base_unit">
-              Đơn vị tính <span className="text-red-500">*</span>
+              Đơn vị tính <span className="text-error">*</span>
             </Label>
             <Input
               id="base_unit"

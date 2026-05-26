@@ -446,7 +446,7 @@ export default function SetupWizardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Sẵn sàng vận hành
+              <CheckCircle2 className="h-5 w-5 text-tertiary" /> Sẵn sàng vận hành
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">

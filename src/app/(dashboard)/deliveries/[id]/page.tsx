@@ -262,13 +262,13 @@ export default function DeliveryDetailPage() {
 
       {/* Big status-driven CTA */}
       {stage === "in_transit" && (
-        <Card className="border-amber-500/40 bg-amber-50/60">
+        <Card className="border-[#fdb022]/40/40 bg-[#fff4ed]/60">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <Truck className="h-8 w-8 text-amber-600 shrink-0" />
+              <Truck className="h-8 w-8 text-[#b54708] shrink-0" />
               <div>
-                <p className="font-semibold text-amber-900">Đang giao hàng</p>
-                <p className="text-xs text-amber-800/80">
+                <p className="font-semibold text-[#b54708]">Đang giao hàng</p>
+                <p className="text-xs text-[#b54708]/80">
                   Lái xe đang trên đường giao. Khi lái xe quay về, bấm để nhận bàn giao lại + nhập kho hàng trả về.
                 </p>
               </div>
@@ -284,13 +284,13 @@ export default function DeliveryDetailPage() {
       )}
 
       {stage === "completed" && (
-        <Card className="border-emerald-500/40 bg-emerald-50/60">
+        <Card className="border-tertiary/40/40 bg-[#ecfdf3]/60">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="h-8 w-8 text-tertiary shrink-0" />
               <div>
-                <p className="font-semibold text-emerald-900">Đã giao hàng</p>
-                <p className="text-xs text-emerald-800/80">
+                <p className="font-semibold text-tertiary">Đã giao hàng</p>
+                <p className="text-xs text-tertiary/80">
                   Đã nhận bàn giao từ tài xế. Tiếp tục nhập số thực thu từng đơn để lập phiếu thu (TT200).
                 </p>
               </div>
@@ -306,12 +306,12 @@ export default function DeliveryDetailPage() {
       )}
 
       {stage === "settled" && (
-        <Card className="border-emerald-500/40 bg-emerald-50/60">
+        <Card className="border-tertiary/40/40 bg-[#ecfdf3]/60">
           <CardContent className="flex items-center gap-3 p-4">
-            <Wallet className="h-7 w-7 text-emerald-600 shrink-0" />
+            <Wallet className="h-7 w-7 text-tertiary shrink-0" />
             <div>
-              <p className="font-semibold text-emerald-900">Đã quyết toán</p>
-              <p className="text-xs text-emerald-800/80">
+              <p className="font-semibold text-tertiary">Đã quyết toán</p>
+              <p className="text-xs text-tertiary/80">
                 Chuyến giao đã hoàn tất {delivery.settled_at && `lúc ${formatDate(delivery.settled_at)}`}.
               </p>
             </div>
@@ -320,25 +320,25 @@ export default function DeliveryDetailPage() {
       )}
 
       {stage === "cancelled" && (
-        <Card className="border-rose-300 bg-rose-50/60">
+        <Card className="border-error/40 bg-error-container/60">
           <CardContent className="flex items-center gap-3 p-4">
-            <XCircle className="h-7 w-7 text-rose-600 shrink-0" />
+            <XCircle className="h-7 w-7 text-error shrink-0" />
             <div>
-              <p className="font-semibold text-rose-900">Chuyến đã huỷ</p>
-              <p className="text-xs text-rose-800/80">Phiếu giao đã được huỷ, không còn trong flow xử lý đơn hàng.</p>
+              <p className="font-semibold text-error">Chuyến đã huỷ</p>
+              <p className="text-xs text-error/80">Phiếu giao đã được huỷ, không còn trong flow xử lý đơn hàng.</p>
             </div>
           </CardContent>
         </Card>
       )}
 
       {stage === "pending" && (
-        <Card className="border-slate-300 bg-slate-50/60">
+        <Card className="border-outline-variant bg-surface-container-low/60">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <Truck className="h-7 w-7 text-slate-600 shrink-0" />
+              <Truck className="h-7 w-7 text-on-surface-variant shrink-0" />
               <div>
-                <p className="font-semibold text-slate-900">Đang chuẩn bị giao</p>
-                <p className="text-xs text-slate-700">
+                <p className="font-semibold text-on-surface-variant">Đang chuẩn bị giao</p>
+                <p className="text-xs text-on-surface-variant">
                   Phiếu vừa tạo, chưa xuất phát. Khi lái xe nhận hàng và lên đường, chuyển sang Đang giao hàng.
                 </p>
               </div>
@@ -422,7 +422,7 @@ export default function DeliveryDetailPage() {
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
                           {collected > 0 ? (
-                            <span className="font-semibold text-emerald-700">{formatCurrency(collected)}</span>
+                            <span className="font-semibold text-tertiary">{formatCurrency(collected)}</span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -492,19 +492,19 @@ export default function DeliveryDetailPage() {
                 {deliveredCount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Giao thành công</span>
-                    <span className="font-semibold text-emerald-700">{deliveredCount} đơn</span>
+                    <span className="font-semibold text-tertiary">{deliveredCount} đơn</span>
                   </div>
                 )}
                 {partialCount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Giao 1 phần</span>
-                    <span className="font-semibold text-amber-700">{partialCount} đơn</span>
+                    <span className="font-semibold text-[#b54708]">{partialCount} đơn</span>
                   </div>
                 )}
                 {failedCount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Giao thất bại</span>
-                    <span className="font-semibold text-rose-700">{failedCount} đơn</span>
+                    <span className="font-semibold text-error">{failedCount} đơn</span>
                   </div>
                 )}
                 {delivery.completed_at && (
@@ -528,7 +528,7 @@ export default function DeliveryDetailPage() {
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Đã thu (tổng)</span>
-                  <span className="font-bold text-emerald-700">{formatCurrency(totalCollected)}</span>
+                  <span className="font-bold text-tertiary">{formatCurrency(totalCollected)}</span>
                 </div>
                 {delivery.settled_at && (
                   <div className="flex justify-between text-xs text-muted-foreground pt-1 border-t">
@@ -609,7 +609,7 @@ export default function DeliveryDetailPage() {
                           >
                             {r.receipt_code}
                           </Link>
-                          <span className="text-[11px] font-semibold text-emerald-700">
+                          <span className="text-[11px] font-semibold text-tertiary">
                             {formatCurrency(Number(r.total_amount || 0))}
                           </span>
                         </div>
@@ -656,7 +656,7 @@ export default function DeliveryDetailPage() {
                 {canCancel && (
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-rose-700 hover:bg-rose-50"
+                    className="w-full justify-start text-error hover:bg-error-container"
                     onClick={() => setConfirmCancel(true)}
                   >
                     <XCircle className="h-4 w-4 mr-2" /> Huỷ chuyến

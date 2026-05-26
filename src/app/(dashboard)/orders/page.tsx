@@ -503,11 +503,13 @@ export default function OrdersPage() {
       </PageHeader>
 
       {(isSales || isDriver) && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
-          {isSales
-            ? "Bạn chỉ thấy đơn do bạn tạo. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
-            : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
+        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
+          <span>
+            {isSales
+              ? "Bạn chỉ thấy đơn do bạn tạo. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
+              : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
+          </span>
         </div>
       )}
 
@@ -532,8 +534,8 @@ export default function OrdersPage() {
       <div className="flex flex-wrap gap-2">
         {([
           { value: "all", label: "Tất cả", color: "" },
-          { value: "pending_approval", label: "Chờ duyệt", color: "border-amber-400 text-amber-800 bg-amber-50" },
-          { value: "cancelled", label: "Đã hủy", color: "border-red-300 text-red-800 bg-red-50" },
+          { value: "pending_approval", label: "Chờ duyệt", color: "border-[#fdb022] text-[#b54708] bg-[#fff4ed]" },
+          { value: "cancelled", label: "Đã hủy", color: "border-error/40 text-on-error-container bg-error-container" },
         ] as const).map((s) => {
           const count = statusCounts[s.value] || 0
           const active = statusFilter === s.value && !pipelineStep
@@ -547,14 +549,14 @@ export default function OrdersPage() {
               }}
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 active
-                  ? "bg-primary text-white border-primary"
-                  : s.color || "bg-card text-muted-foreground hover:bg-muted/60"
+                  ? "bg-primary text-on-primary border-primary"
+                  : s.color || "bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface-container-low"
               }`}
             >
               {s.label}
               {count > 0 && (
                 <span className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
-                  active ? "bg-white/20 text-white" : "bg-background/70"
+                  active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
                 }`}>
                   {count}
                 </span>
@@ -698,12 +700,12 @@ export default function OrdersPage() {
         const hasDraftNeedingApproval = selectedOrders.some((o) => o.status === "draft")
 
         return (
-          <Card className="rounded-2xl border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 shadow-sm sticky top-16 z-20">
+          <Card className="rounded-xl border-primary/40 bg-primary-fixed shadow-card sticky top-16 z-20">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <div className="text-sm font-semibold text-primary">
+              <div className="text-sm font-semibold text-on-primary-fixed-variant">
                 {selectedIds.size} đơn đã chọn
                 {allSameStatus && sharedStatus && (
-                  <span className="ml-2 text-xs text-muted-foreground font-normal">
+                  <span className="ml-2 text-xs text-on-surface-variant font-normal">
                     • cùng trạng thái: {sharedStatus}
                   </span>
                 )}
@@ -720,7 +722,6 @@ export default function OrdersPage() {
                     size="sm"
                     onClick={handleBulkAdvance}
                     disabled={bulkLoading}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
                     <ArrowRight className="mr-2 h-4 w-4" />
                     {next.label}
@@ -732,7 +733,7 @@ export default function OrdersPage() {
                     variant="outline"
                     onClick={handleBulkCancel}
                     disabled={bulkLoading}
-                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    className="border-error/40 text-on-error-container hover:bg-error-container"
                   >
                     <XCircle className="mr-2 h-4 w-4" />
                     Hủy {cancellableCount} đơn
@@ -767,7 +768,7 @@ export default function OrdersPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+          <div className="hidden lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -851,7 +852,7 @@ export default function OrdersPage() {
                         <div className="flex items-center gap-1">
                           {order.status === "delivered" && (
                             invoiceMap[order.id]?.misa_status === "signed" ? (
-                              <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-green-100 text-green-600">
+                              <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-[#ecfdf3] text-[#027a48]">
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                               </span>
                             ) : (
@@ -867,7 +868,7 @@ export default function OrdersPage() {
                               </Button>
                             )
                           )}
-                          <Eye className="h-4 w-4 text-muted-foreground" />
+                          <Eye className="h-4 w-4 text-on-surface-variant" />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -900,9 +901,9 @@ export default function OrdersPage() {
               return (
                 <div
                   key={order.id}
-                  className={`relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
-                    checked ? "border-primary bg-primary/5" : ""
-                  } ${isPendingApproval ? "border-l-4 border-l-amber-400" : ""}`}
+                  className={`relative rounded-xl border bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
+                    checked ? "border-primary bg-primary-fixed/40" : "border-outline-variant/60"
+                  } ${isPendingApproval ? "border-l-4 border-l-[#fdb022]" : ""}`}
                   onClick={() => router.push(`/orders/${order.id}`)}
                 >
                   <div className="p-4">
@@ -917,13 +918,13 @@ export default function OrdersPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="font-mono text-xs font-bold text-primary">{order.order_code}</p>
-                          <span className="text-xs text-muted-foreground">• {formatDate(order.order_date)}</span>
+                          <span className="text-xs text-on-surface-variant">• {formatDate(order.order_date)}</span>
                         </div>
-                        <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
+                        <h3 className="font-bold text-base text-on-surface leading-tight truncate mt-0.5">
                           {order.customer?.store_name || "-"}
                         </h3>
                         {order.sales_user?.full_name && (
-                          <p className="text-xs text-muted-foreground truncate">NV: {order.sales_user.full_name}</p>
+                          <p className="text-xs text-on-surface-variant truncate">NV: {order.sales_user.full_name}</p>
                         )}
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           <StatusBadge status={order.status} type="order" />
@@ -933,25 +934,25 @@ export default function OrdersPage() {
                     </div>
 
                     {isPendingApproval && (
-                      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2">
-                        <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-0.5">
+                      <div className="mt-2 rounded-lg bg-[#fff4ed] border border-[#fdb022]/40 p-2">
+                        <p className="text-[10px] font-bold text-[#b54708] uppercase tracking-wider mb-0.5">
                           Cần duyệt
                         </p>
-                        <p className="text-[11px] text-amber-800 leading-snug whitespace-pre-wrap line-clamp-3">
+                        <p className="text-[11px] text-[#b54708] leading-snug whitespace-pre-wrap line-clamp-3">
                           {order.approval_reason}
                         </p>
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t">
-                      <span className="text-xs text-muted-foreground">Tổng tiền</span>
-                      <span className="font-bold text-base">{formatCurrency(order.total)}</span>
+                    <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t border-outline-variant/40">
+                      <span className="text-xs text-on-surface-variant">Tổng tiền</span>
+                      <span className="font-bold text-base text-on-surface tabular-data">{formatCurrency(order.total)}</span>
                     </div>
 
                     {showInvoiceAction && (
                       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                         {invoice?.misa_status === "signed" ? (
-                          <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg py-2">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-[#027a48] bg-[#ecfdf3] rounded-lg py-2">
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             Đã xuất hóa đơn
                           </div>

@@ -877,7 +877,7 @@ export function OrderForm() {
       {/* LEFT COLUMN */}
       <div className="w-full lg:w-[320px] lg:shrink-0 space-y-6">
         {/* Customer info card */}
-        <Card className="rounded-2xl shadow-sm bg-card">
+        <Card className="rounded-xl shadow-card">
           <CardHeader>
             <CardTitle className="text-base font-bold">Thông tin khách hàng</CardTitle>
           </CardHeader>
@@ -978,7 +978,7 @@ export function OrderForm() {
         </Card>
 
         {/* Terms & delivery card */}
-        <Card className="rounded-2xl shadow-sm bg-card">
+        <Card className="rounded-xl shadow-card">
           <CardHeader>
             <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
           </CardHeader>
@@ -1017,7 +1017,7 @@ export function OrderForm() {
       {/* MAIN COLUMN */}
       <div className="flex-1 w-full space-y-6 min-w-0">
         {/* Products card */}
-        <Card className="rounded-2xl shadow-sm bg-card flex-1">
+        <Card className="rounded-xl shadow-card flex-1">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base font-bold">Sản phẩm</CardTitle>
@@ -1359,7 +1359,7 @@ export function OrderForm() {
         </Card>
 
         {/* Hàng trả lại (tuỳ chọn) — companion return tied to this order */}
-        <Card className="rounded-2xl shadow-sm bg-card border-l-4 border-l-amber-400">
+        <Card className="rounded-xl shadow-card border-l-4 border-l-[#fdb022]">
           <CardHeader>
             <button
               type="button"
@@ -1623,7 +1623,7 @@ export function OrderForm() {
         {/* Notes + Summary row */}
         <div className="flex flex-col lg:flex-row justify-between gap-6">
           <div className="w-full lg:w-1/2">
-            <Card className="rounded-2xl shadow-sm bg-card h-full">
+            <Card className="rounded-xl shadow-card h-full">
               <CardHeader>
                 <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
               </CardHeader>
@@ -1639,27 +1639,29 @@ export function OrderForm() {
           </div>
 
           <div className="w-full lg:w-80">
-            <div className="bg-primary text-white rounded-2xl shadow-md p-6 relative overflow-hidden">
-              <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-3xl pointer-events-none" />
+            {/* Order Summary — Stitch primary panel (bold blue, sticky on desktop) */}
+            <div className="bg-primary text-on-primary rounded-xl shadow-card-hover p-6 relative overflow-hidden lg:sticky lg:top-24">
+              <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+              <h3 className="text-headline-md font-semibold mb-6 relative">Tổng thanh toán</h3>
               <div className="relative space-y-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-white/80 font-medium">Tạm tính</span>
-                  <span className="font-bold">{formatCurrency(subtotal)}</span>
+                  <span className="text-primary-fixed font-medium">Tạm tính</span>
+                  <span className="font-semibold tabular-data">{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-white/80 font-medium">Tổng chiết khấu</span>
-                  <span className="font-bold">-{formatCurrency(total_discount)}</span>
+                  <span className="text-primary-fixed font-medium">Tổng chiết khấu</span>
+                  <span className="font-semibold tabular-data">-{formatCurrency(total_discount)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-white/80 font-medium">VAT</span>
-                  <span className="font-bold">+{formatCurrency(vat)}</span>
+                  <span className="text-primary-fixed font-medium">VAT</span>
+                  <span className="font-semibold tabular-data">+{formatCurrency(vat)}</span>
                 </div>
-                <div className="h-px bg-white/20" />
+                <div className="h-px bg-primary-fixed-dim/30" />
                 <div className="flex items-end justify-between">
-                  <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                  <span className="text-label-md uppercase text-primary-fixed">
                     Tổng đơn
                   </span>
-                  <span className="text-2xl font-bold tracking-tight">
+                  <span className="text-headline-lg font-bold tracking-tight tabular-data">
                     {formatCurrency(total)}
                   </span>
                 </div>
@@ -1667,15 +1669,15 @@ export function OrderForm() {
                 {returnLines.length > 0 && (
                   <>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-white/80 font-medium">Trừ hàng trả</span>
-                      <span className="font-bold">-{formatCurrency(returnSubtotal)}</span>
+                      <span className="text-primary-fixed font-medium">Trừ hàng trả</span>
+                      <span className="font-semibold tabular-data">-{formatCurrency(returnSubtotal)}</span>
                     </div>
-                    <div className="h-px bg-white/20" />
+                    <div className="h-px bg-primary-fixed-dim/30" />
                     <div className="flex items-end justify-between">
-                      <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                      <span className="text-label-md uppercase text-primary-fixed">
                         Phải thu
                       </span>
-                      <span className="text-2xl font-bold tracking-tight text-amber-200">
+                      <span className="text-headline-lg font-bold tracking-tight tabular-data text-tertiary-fixed-dim">
                         {formatCurrency(Math.max(0, total - returnSubtotal))}
                       </span>
                     </div>
@@ -1685,7 +1687,7 @@ export function OrderForm() {
                 <div className="flex gap-3 pt-2">
                   <Button
                     type="button"
-                    className="flex-1 bg-white/20 hover:bg-white/30 text-white border-0 font-bold"
+                    className="flex-1 bg-on-primary/15 hover:bg-on-primary/25 text-on-primary border-0 font-semibold"
                     onClick={() => router.back()}
                   >
                     Huỷ
@@ -1693,7 +1695,7 @@ export function OrderForm() {
                   <Button
                     type="submit"
                     disabled={loading || hasOverstock || hasPriceViolation}
-                    className="flex-[2] bg-white hover:bg-white/90 text-primary font-bold border-0"
+                    className="flex-[2] bg-on-primary hover:bg-on-primary/90 text-primary font-semibold border-0"
                   >
                     {loading
                       ? "Đang lưu..."

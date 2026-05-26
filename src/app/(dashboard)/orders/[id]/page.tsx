@@ -850,13 +850,13 @@ export default function OrderDetailPage() {
 
       {/* Approval reason callout — only for draft orders awaiting manual approval */}
       {order.status === "draft" && order.approval_reason && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
-          <div className="shrink-0 h-8 w-8 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-sm">
+        <div className="rounded-xl border border-[#fdb022]/40 bg-[#fff4ed] p-4 flex items-start gap-3">
+          <div className="shrink-0 h-8 w-8 rounded-full bg-[#fdb022] text-on-primary flex items-center justify-center font-bold text-sm">
             !
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-amber-900 text-sm">Đơn đang chờ duyệt</p>
-            <p className="text-xs text-amber-800 mt-0.5 whitespace-pre-wrap">
+            <p className="font-bold text-[#b54708] text-sm">Đơn đang chờ duyệt</p>
+            <p className="text-xs text-[#b54708]/90 mt-0.5 whitespace-pre-wrap">
               {order.approval_reason}
             </p>
           </div>

@@ -37,12 +37,12 @@ interface TopCustomer {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: "bg-muted/50 text-foreground",
-  confirmed: "bg-green-100 text-green-700",
-  picking: "bg-amber-100 text-amber-700",
-  delivering: "bg-amber-100 text-amber-700",
-  delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-destructive/10 text-destructive",
+  draft: "bg-surface-container text-on-surface-variant",
+  confirmed: "bg-[#ecfdf3] text-[#027a48]",
+  picking: "bg-[#fff4ed] text-[#b54708]",
+  delivering: "bg-[#eff8ff] text-[#175cd3]",
+  delivered: "bg-[#ecfdf3] text-[#027a48]",
+  cancelled: "bg-error-container text-on-error-container",
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -246,26 +246,26 @@ export default function DashboardPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-card-gap">
         <div className="space-y-2">
-          <div className="h-8 w-64 bg-muted/50 rounded-lg animate-pulse" />
-          <div className="h-4 w-40 bg-muted/30 rounded animate-pulse" />
+          <div className="h-8 w-64 bg-surface-container-low rounded-lg animate-pulse" />
+          <div className="h-4 w-40 bg-surface-container-low rounded animate-pulse" />
         </div>
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-card-gap sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-40 bg-muted/50 rounded-2xl animate-pulse" />
+            <div key={i} className="h-40 bg-surface-container-low rounded-xl animate-pulse" />
           ))}
         </div>
-        <div className="h-72 bg-muted/50 rounded-2xl animate-pulse" />
+        <div className="h-72 bg-surface-container-low rounded-xl animate-pulse" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-card-gap">
         <PageHeader title="Tổng quan kinh doanh" />
-        <div className="bg-destructive/10 border border-destructive/20 text-destructive p-6 rounded-2xl">
+        <div className="bg-error-container border border-error/30 text-on-error-container p-6 rounded-xl">
           <p className="font-semibold mb-1">Không thể tải dữ liệu</p>
           <p className="text-sm">{error}</p>
           <button
@@ -280,125 +280,92 @@ export default function DashboardPage() {
   }
 
   const topMax = topCustomers[0]?.total || 1
+  const periodLabel =
+    period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-card-gap">
       <PageHeader
         title={isSales ? "Tổng quan của tôi" : "Tổng quan kinh doanh"}
         description={today ? `Cập nhật ${today}` : undefined}
-      />
-
-      {/* Period filter pills */}
-      <div className="flex gap-2 flex-wrap">
-        {([
-          { value: "today", label: "Hôm nay" },
-          { value: "week", label: "Tuần này" },
-          { value: "month", label: "Tháng này" },
-          { value: "quarter", label: "Quý này" },
-        ] as const).map((p) => (
-          <button
-            key={p.value}
-            onClick={() => setPeriod(p.value)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-              period === p.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted/30"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      >
+        {/* Period filter pills */}
+        <div className="flex gap-1 flex-wrap rounded-lg border border-outline-variant bg-surface-container-lowest p-1">
+          {([
+            { value: "today", label: "Hôm nay" },
+            { value: "week", label: "Tuần này" },
+            { value: "month", label: "Tháng này" },
+            { value: "quarter", label: "Quý này" },
+          ] as const).map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setPeriod(p.value)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                period === p.value
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-container-low"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </PageHeader>
 
       {isSales && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
-          Bạn đang xem dữ liệu của chính bạn (đơn hàng bạn tạo, khách hàng bạn phụ trách, công nợ bạn theo dõi)
+        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
+          <span>Bạn đang xem dữ liệu của chính bạn (đơn hàng bạn tạo, khách hàng bạn phụ trách, công nợ bạn theo dõi)</span>
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
-        {/* Revenue */}
-        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-primary">
-          <div className="flex justify-between items-start mb-3 sm:mb-4">
-            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
-              {isSales ? "Doanh số của tôi" : "Doanh thu"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần" : period === "quarter" ? "quý" : "tháng"})
-            </p>
-            <span className="text-primary bg-primary/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
-              <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+      {/* KPI Cards — Stitch Bento style */}
+      <div className="grid grid-cols-2 gap-card-gap md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label={isSales ? `Doanh số của tôi (${periodLabel})` : `Doanh thu (${periodLabel})`}
+          value={formatCurrency(stats.monthRevenue)}
+          icon={Wallet}
+          iconTone="primary"
+          tabular
+        />
+        <KpiCard
+          label={isSales ? `Đơn tôi tạo (${periodLabel})` : `Đơn hàng (${periodLabel})`}
+          value={stats.todayOrders.toLocaleString("vi-VN")}
+          icon={ShoppingBasket}
+          iconTone="secondary"
+          tabular
+          footer={
+            <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+              <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-pulse" />
+              Đơn mới trong kỳ
             </span>
-          </div>
-          <div className="flex items-end gap-3 mb-3 sm:mb-4">
-            <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
-              {formatCurrency(stats.monthRevenue)}
-            </h3>
-          </div>
-          <div className="hidden sm:flex h-12 w-full items-end gap-1">
-            <div className="flex-1 bg-primary/10 h-6 rounded-t-sm" />
-            <div className="flex-1 bg-primary/20 h-8 rounded-t-sm" />
-            <div className="flex-1 bg-primary/30 h-10 rounded-t-sm" />
-            <div className="flex-1 bg-primary/40 h-7 rounded-t-sm" />
-            <div className="flex-1 bg-primary/50 h-9 rounded-t-sm" />
-            <div className="flex-1 bg-primary/60 h-12 rounded-t-sm" />
-            <div className="flex-1 bg-primary h-11 rounded-t-sm" />
-          </div>
-        </div>
-
-        {/* Today's Orders */}
-        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-secondary">
-          <div className="flex justify-between items-start mb-3 sm:mb-4">
-            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
-              {isSales ? "Đơn tôi tạo" : "Đơn hàng"} ({period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"})
-            </p>
-            <span className="text-secondary bg-secondary/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
-              <ShoppingBasket className="h-4 w-4 sm:h-5 sm:w-5" />
+          }
+        />
+        <KpiCard
+          label={isSales ? "Công nợ KH của tôi" : "Công nợ mở"}
+          value={formatCurrency(stats.openReceivables)}
+          icon={AlertTriangle}
+          iconTone="error"
+          valueTone="error"
+          tabular
+          footer={
+            <span className="text-xs text-on-surface-variant">
+              {stats.overdueCount} khoản quá hạn
             </span>
-          </div>
-          <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
-            {stats.todayOrders}
-          </h3>
-          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
-            <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shrink-0" />
-            Đơn mới trong ngày
-          </p>
-        </div>
-
-        {/* Overdue Receivables */}
-        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-destructive">
-          <div className="flex justify-between items-start mb-3 sm:mb-4">
-            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
-              {isSales ? "Công nợ KH của tôi" : "Công nợ mở"}
-            </p>
-            <span className="text-destructive bg-destructive/10 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
-              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
+          }
+        />
+        <KpiCard
+          label="Tồn kho cảnh báo"
+          value={`${stats.lowStockCount} SKU`}
+          icon={Warehouse}
+          iconTone="warning"
+          tabular
+          footer={
+            <span className="text-xs text-on-surface-variant">
+              Cần nhập hàng ngay
             </span>
-          </div>
-          <h3 className="text-lg sm:text-2xl font-bold text-destructive tracking-tight">
-            {formatCurrency(stats.openReceivables)}
-          </h3>
-          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium">
-            {stats.overdueCount} khoản quá hạn
-          </p>
-        </div>
-
-        {/* Inventory Alert */}
-        <div className="bg-card rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-amber-500">
-          <div className="flex justify-between items-start mb-3 sm:mb-4">
-            <p className="text-xs sm:text-sm font-semibold text-muted-foreground">
-              Tồn kho cảnh báo
-            </p>
-            <span className="text-amber-600 bg-amber-100 p-1.5 sm:p-2 rounded-lg inline-flex shrink-0">
-              <Warehouse className="h-4 w-4 sm:h-5 sm:w-5" />
-            </span>
-          </div>
-          <h3 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">
-            {stats.lowStockCount} SKU
-          </h3>
-          <p className="text-[11px] sm:text-xs text-muted-foreground mt-2 font-medium">
-            Cần nhập hàng ngay
-          </p>
-        </div>
+          }
+        />
       </div>
 
       {/* T-05: Resume in-progress workflows (xuất kho, giao hàng, thu tiền…) */}
@@ -406,16 +373,18 @@ export default function DashboardPage() {
 
       {/* Channel Breakdown */}
       {channelBreakdown.length > 0 && (
-        <div className="bg-card rounded-2xl shadow-sm p-6">
-          <h4 className="text-lg font-bold text-foreground mb-4">Doanh thu theo kênh</h4>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card p-6">
+          <h4 className="text-headline-md font-semibold text-on-surface mb-4">Doanh thu theo kênh</h4>
           <div className="space-y-4">
             {channelBreakdown.map((ch) => (
-              <div key={ch.channel} className="space-y-1">
+              <div key={ch.channel} className="space-y-1.5">
                 <div className="flex justify-between text-sm">
-                  <span className="font-semibold">{ch.channel}</span>
-                  <span className="text-muted-foreground">{formatCurrency(ch.revenue)} ({ch.percent}%)</span>
+                  <span className="font-semibold text-on-surface">{ch.channel}</span>
+                  <span className="text-on-surface-variant tabular-data">
+                    {formatCurrency(ch.revenue)} <span className="text-on-surface-variant/70">({ch.percent}%)</span>
+                  </span>
                 </div>
-                <div className="h-3 bg-muted/30 rounded-full overflow-hidden">
+                <div className="h-2.5 bg-surface-container rounded-full overflow-hidden">
                   <div
                     className="h-full bg-primary rounded-full transition-all duration-500"
                     style={{ width: `${Math.max(ch.percent, 2)}%` }}
@@ -427,81 +396,58 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Charts + Top Customers */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {/* Performance (2/3) */}
-        <div className="xl:col-span-2 bg-muted/30 rounded-2xl p-6 lg:p-8 relative overflow-hidden">
-          <div className="flex items-center justify-between mb-6">
+      {/* Performance + Top Customers */}
+      <div className="grid grid-cols-1 gap-card-gap xl:grid-cols-3">
+        {/* Performance (col-span-2) */}
+        <div className="xl:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card p-6 flex flex-col">
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/40">
             <div>
-              <h4 className="text-xl lg:text-xl font-bold text-foreground tracking-tight">
-                Hiệu suất tài chính
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                Doanh thu trong tháng
-              </p>
+              <h4 className="text-headline-md font-semibold text-on-surface">Hiệu suất tài chính</h4>
+              <p className="text-sm text-on-surface-variant mt-0.5">Doanh thu trong {periodLabel}</p>
             </div>
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-primary" />
-                <span className="text-xs font-semibold">Doanh thu</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-secondary" />
-                <span className="text-xs font-semibold">Lợi nhuận</span>
-              </div>
+            <div className="hidden sm:flex gap-4">
+              <LegendDot color="primary" label="Doanh thu" />
+              <LegendDot color="secondary" label="Lợi nhuận" />
             </div>
           </div>
-          <div className="relative h-56 w-full bg-card rounded-2xl flex items-end justify-around px-4 pb-8">
-            <div className="absolute inset-x-8 bottom-10 h-32 flex items-end gap-6 lg:gap-12 opacity-80">
-              <div className="flex-1 h-3/4 bg-primary/10 rounded-full relative">
-                <div className="absolute bottom-0 w-full h-1/2 bg-primary rounded-full" />
+          <div className="relative h-56 flex-1 bg-surface-container-low rounded-lg flex items-end px-6 pb-6 gap-3">
+            {[55, 38, 72, 48, 65, 80, 50].map((h, i) => (
+              <div key={i} className="flex-1 relative h-full flex items-end">
+                <div className="w-full bg-primary/15 rounded-t-md relative" style={{ height: `${h}%` }}>
+                  <div className="absolute bottom-0 left-0 right-0 bg-primary rounded-t-md" style={{ height: "55%" }} />
+                </div>
               </div>
-              <div className="flex-1 h-1/2 bg-primary/10 rounded-full relative">
-                <div className="absolute bottom-0 w-full h-2/3 bg-primary rounded-full" />
-              </div>
-              <div className="flex-1 h-full bg-primary/10 rounded-full relative">
-                <div className="absolute bottom-0 w-full h-4/5 bg-primary rounded-full" />
-              </div>
-              <div className="flex-1 h-2/3 bg-primary/10 rounded-full relative">
-                <div className="absolute bottom-0 w-full h-1/3 bg-primary rounded-full" />
-              </div>
-              <div className="flex-1 h-4/5 bg-primary/10 rounded-full relative">
-                <div className="absolute bottom-0 w-full h-3/4 bg-primary rounded-full" />
-              </div>
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-card/20 to-transparent pointer-events-none" />
-            <div className="relative z-10 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Biểu đồ sẽ sớm cập nhật dữ liệu thực
+            ))}
+            <div className="absolute top-3 right-4 flex items-center gap-1.5 text-[11px] font-medium text-on-surface-variant bg-surface-container-lowest/80 backdrop-blur px-2 py-1 rounded-md">
+              <TrendingUp className="h-3 w-3 text-primary" />
+              Sắp cập nhật dữ liệu thực
             </div>
           </div>
         </div>
 
-        {/* Top Customers (1/3) */}
-        <div className="bg-card rounded-2xl p-6 lg:p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Top khách hàng
-            </h4>
-            <Users className="h-5 w-5 text-muted-foreground" />
+        {/* Top Customers (col-span-1) */}
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card p-6">
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/40">
+            <h4 className="text-headline-md font-semibold text-on-surface">Top khách hàng</h4>
+            <Users className="h-5 w-5 text-on-surface-variant" strokeWidth={1.75} />
           </div>
           {topCustomers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có dữ liệu</p>
+            <p className="text-sm text-on-surface-variant text-center py-6">Chưa có dữ liệu</p>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {topCustomers.map((c) => {
                 const pct = Math.round((c.total / topMax) * 100)
                 return (
-                  <div key={c.customer_id} className="space-y-2">
+                  <div key={c.customer_id} className="space-y-1.5">
                     <div className="flex justify-between text-sm">
-                      <span className="font-bold text-foreground truncate pr-2">
+                      <span className="font-semibold text-on-surface truncate pr-2">
                         {c.store_name}
                       </span>
-                      <span className="font-medium text-muted-foreground shrink-0">
+                      <span className="text-on-surface-variant tabular-data shrink-0">
                         {formatCurrency(c.total)}
                       </span>
                     </div>
-                    <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-surface-container rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary rounded-full"
                         style={{ width: `${Math.max(pct, 4)}%` }}
@@ -516,129 +462,84 @@ export default function DashboardPage() {
       </div>
 
       {/* Alerts + Recent Orders */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-card-gap lg:grid-cols-5">
         {/* Alerts (2 cols) */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-stack-md">
           <div className="flex items-center justify-between">
-            <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Cảnh báo quan trọng
-            </h4>
-            <span className="px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-bold rounded uppercase">
+            <h4 className="text-headline-md font-semibold text-on-surface">Cảnh báo quan trọng</h4>
+            <span className="px-2.5 py-1 bg-error/10 text-error text-[10px] font-bold rounded-full uppercase tracking-wider">
               Cần xử lý
             </span>
           </div>
           <div className="space-y-3">
-            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
-              <div className="shrink-0 w-10 h-10 bg-destructive/10 text-destructive rounded-full flex items-center justify-center">
-                <Hourglass className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">
-                  Lô hàng sắp hết hạn
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.expiringSoonCount} lô còn hạn dưới 30 ngày
-                </p>
-                <Link
-                  href="/inventory"
-                  className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1"
-                >
-                  Xem chi tiết <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            </div>
-            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
-              <div className="shrink-0 w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">
-                  Vượt hạn mức nợ
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.overdueCount} khách hàng có công nợ quá hạn
-                </p>
-                <Link
-                  href="/receivables"
-                  className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1"
-                >
-                  Nhắc nợ ngay <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            </div>
-            <div className="p-4 bg-card rounded-2xl shadow-sm flex gap-4 hover:shadow-md transition-shadow">
-              <div className="shrink-0 w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
-                <Warehouse className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">
-                  Tồn kho thấp
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.lowStockCount} lô có tồn kho dưới 10 đơn vị
-                </p>
-                <Link
-                  href="/inventory"
-                  className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1"
-                >
-                  Xem kho <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            </div>
+            <AlertCard
+              icon={Hourglass}
+              tone="error"
+              title="Lô hàng sắp hết hạn"
+              detail={`${stats.expiringSoonCount} lô còn hạn dưới 30 ngày`}
+              actionHref="/inventory"
+              actionLabel="Xem chi tiết"
+            />
+            <AlertCard
+              icon={AlertTriangle}
+              tone="warning"
+              title="Vượt hạn mức nợ"
+              detail={`${stats.overdueCount} khách hàng có công nợ quá hạn`}
+              actionHref="/receivables"
+              actionLabel="Nhắc nợ ngay"
+            />
+            <AlertCard
+              icon={Warehouse}
+              tone="warning"
+              title="Tồn kho thấp"
+              detail={`${stats.lowStockCount} lô có tồn kho dưới 10 đơn vị`}
+              actionHref="/inventory"
+              actionLabel="Xem kho"
+            />
           </div>
         </div>
 
         {/* Recent Orders (3 cols) */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-stack-md">
           <div className="flex items-center justify-between">
-            <h4 className="text-lg lg:text-xl font-bold text-foreground">
-              Hoạt động gần đây
-            </h4>
+            <h4 className="text-headline-md font-semibold text-on-surface">Hoạt động gần đây</h4>
             <Link
               href="/orders"
-              className="text-sm font-semibold text-primary inline-flex items-center gap-1"
+              className="text-sm font-semibold text-primary inline-flex items-center gap-1 hover:underline"
             >
               Tất cả <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-          <div className="bg-card rounded-2xl overflow-hidden shadow-sm">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
             {recentOrders.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground text-sm">
+              <p className="text-center py-8 text-on-surface-variant text-sm">
                 Chưa có đơn hàng
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-muted/30 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                      <th className="px-6 py-4">Mã đơn</th>
-                      <th className="px-6 py-4">Khách hàng</th>
-                      <th className="px-6 py-4 text-right">Giá trị</th>
-                      <th className="px-6 py-4 text-center">Trạng thái</th>
+                    <tr className="bg-surface-container-low text-[11px] uppercase font-semibold tracking-wider text-on-surface-variant border-b border-outline-variant/40">
+                      <th className="px-6 py-3">Mã đơn</th>
+                      <th className="px-6 py-3">Khách hàng</th>
+                      <th className="px-6 py-3 text-right">Giá trị</th>
+                      <th className="px-6 py-3 text-center">Trạng thái</th>
                     </tr>
                   </thead>
-                  <tbody className="text-sm">
+                  <tbody className="text-sm divide-y divide-outline-variant/30">
                     {recentOrders.map((o) => (
-                      <tr
-                        key={o.id}
-                        className="hover:bg-muted/30/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 font-bold text-primary">
+                      <tr key={o.id} className="hover:bg-[#F5F9FF] transition-colors group cursor-pointer">
+                        <td className="px-6 py-3.5 font-semibold text-primary group-hover:underline">
                           <Link href={`/orders/${o.id}`}>{o.order_code}</Link>
                         </td>
-                        <td className="px-6 py-4 text-foreground truncate max-w-[180px]">
+                        <td className="px-6 py-3.5 text-on-surface truncate max-w-[180px]">
                           {o.customer?.store_name || "-"}
                         </td>
-                        <td className="px-6 py-4 text-right font-semibold text-foreground">
+                        <td className="px-6 py-3.5 text-right font-semibold text-on-surface tabular-data">
                           {formatCurrency(o.total)}
                         </td>
-                        <td className="px-6 py-4 text-center">
-                          <span
-                            className={`px-2 py-1 text-[10px] font-bold rounded-full ${
-                              STATUS_BADGE[o.status] ||
-                              "bg-muted/50 text-foreground"
-                            }`}
-                          >
+                        <td className="px-6 py-3.5 text-center">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold rounded-full ${STATUS_BADGE[o.status] || "bg-surface-container text-on-surface-variant"}`}>
                             {STATUS_LABEL[o.status] || o.status}
                           </span>
                         </td>
@@ -651,6 +552,85 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// === Local presentational helpers ===
+
+type IconTone = "primary" | "secondary" | "error" | "warning"
+type ValueTone = "default" | "error"
+
+interface KpiCardProps {
+  label: string
+  value: string
+  icon: React.ComponentType<{ className?: string }>
+  iconTone?: IconTone
+  valueTone?: ValueTone
+  tabular?: boolean
+  footer?: React.ReactNode
+}
+
+function KpiCard({ label, value, icon: IconComp, iconTone = "primary", valueTone = "default", tabular, footer }: KpiCardProps) {
+  const iconClasses: Record<IconTone, string> = {
+    primary: "bg-primary-fixed text-primary",
+    secondary: "bg-secondary-fixed text-on-secondary-fixed",
+    error: "bg-error-container text-error",
+    warning: "bg-[#fff4ed] text-[#b54708]",
+  }
+  return (
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card p-5 sm:p-6 flex flex-col gap-3">
+      <div className="flex justify-between items-start">
+        <p className="text-label-md uppercase text-on-surface-variant pr-2">{label}</p>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconClasses[iconTone]}`}>
+          <IconComp className="h-5 w-5" />
+        </div>
+      </div>
+      <h3 className={`text-xl sm:text-headline-lg font-bold leading-tight tracking-tight ${valueTone === "error" ? "text-error" : "text-on-surface"} ${tabular ? "tabular-data" : ""}`}>
+        {value}
+      </h3>
+      {footer && <div className="mt-auto pt-1">{footer}</div>}
+    </div>
+  )
+}
+
+interface AlertCardProps {
+  icon: React.ComponentType<{ className?: string }>
+  tone: "error" | "warning"
+  title: string
+  detail: string
+  actionHref: string
+  actionLabel: string
+}
+
+function AlertCard({ icon: IconComp, tone, title, detail, actionHref, actionLabel }: AlertCardProps) {
+  const iconClasses = tone === "error"
+    ? "bg-error-container text-error"
+    : "bg-[#fff4ed] text-[#b54708]"
+  return (
+    <div className="p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card flex gap-3 hover:shadow-card-hover transition-shadow">
+      <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${iconClasses}`}>
+        <IconComp className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-on-surface">{title}</p>
+        <p className="text-xs text-on-surface-variant mt-0.5">{detail}</p>
+        <Link
+          href={actionHref}
+          className="mt-2 text-xs font-semibold text-primary inline-flex items-center gap-1 hover:underline"
+        >
+          {actionLabel} <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function LegendDot({ color, label }: { color: "primary" | "secondary"; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-2.5 h-2.5 rounded-full ${color === "primary" ? "bg-primary" : "bg-secondary"}`} />
+      <span className="text-xs font-medium text-on-surface-variant">{label}</span>
     </div>
   )
 }

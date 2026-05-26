@@ -327,25 +327,25 @@ export default function CustomersPage() {
       </PageHeader>
 
       {isSales && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
-          Bạn chỉ thấy KH được phân công cho bạn. Liên hệ Quản lý nếu cần phân công thêm.
+        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
+          <span>Bạn chỉ thấy KH được phân công cho bạn. Liên hệ Quản lý nếu cần phân công thêm.</span>
         </div>
       )}
 
       {/* Route progress (visible on all sizes; prominent on mobile) */}
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card p-4">
         <div className="flex items-baseline justify-between mb-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Lộ trình hôm nay</p>
-            <p className="text-xl font-bold tracking-tight">
+            <p className="text-label-md uppercase text-on-surface-variant">Lộ trình hôm nay</p>
+            <p className="text-xl font-bold tracking-tight text-on-surface tabular-data">
               {visitedCount}
-              <span className="text-sm font-medium text-muted-foreground"> / {totalRoute} điểm đã ghé</span>
+              <span className="text-sm font-medium text-on-surface-variant"> / {totalRoute} điểm đã ghé</span>
             </p>
           </div>
-          <span className="text-sm font-bold text-primary">{progressPct}%</span>
+          <span className="text-sm font-bold text-primary tabular-data">{progressPct}%</span>
         </div>
-        <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div className="h-2 rounded-full bg-surface-container overflow-hidden">
           <div
             className="h-full bg-primary transition-all"
             style={{ width: `${progressPct}%` }}
@@ -450,7 +450,7 @@ export default function CustomersPage() {
               return (
                 <div
                   key={c.id}
-                  className="relative rounded-xl border bg-card shadow-sm overflow-hidden"
+                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden"
                 >
                   <div
                     className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${
@@ -556,7 +556,7 @@ export default function CustomersPage() {
                     <button
                       type="button"
                       disabled={debt <= 0}
-                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-rose-600 hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-error hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                       onClick={(e) => {
                         e.stopPropagation()
                         router.push(`/receivables/collect?customerId=${c.id}`)

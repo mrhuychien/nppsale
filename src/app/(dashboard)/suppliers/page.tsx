@@ -169,10 +169,7 @@ export default function SuppliersPage() {
     <div className="space-y-4">
       <PageHeader title="Nhà cung cấp" description={`${suppliers.length} nhà cung cấp`}>
         {user && hasPermission(user.role, "inventory", "create") && (
-          <Button
-            onClick={() => router.push("/suppliers/new")}
-            className="bg-gradient-primary text-white shadow-ambient"
-          >
+          <Button onClick={() => router.push("/suppliers/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo mới
           </Button>
         )}
@@ -252,10 +249,10 @@ export default function SuppliersPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card">
+          <div className="hidden lg:block">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/30">
+                <TableRow>
                   {canEdit && (
                     <TableHead className="w-10">
                       <Checkbox
@@ -280,7 +277,7 @@ export default function SuppliersPage() {
                   return (
                     <TableRow
                       key={s.id}
-                      className="cursor-pointer hover:bg-muted/40"
+                      className="cursor-pointer"
                       onClick={() => router.push(`/suppliers/${s.id}`)}
                     >
                       {canEdit && (
@@ -358,7 +355,7 @@ export default function SuppliersPage() {
               return (
                 <div
                   key={s.id}
-                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden active:scale-[0.99] transition-transform"
+                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
                 >
                   <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${s.is_active ? "bg-primary" : "bg-danger"}`} />
                   <div className="p-4 pl-5">

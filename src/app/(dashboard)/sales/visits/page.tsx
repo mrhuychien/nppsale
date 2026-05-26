@@ -193,10 +193,10 @@ export default function VisitsHistoryPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-xs text-emerald-600">
+            <div className="flex items-center gap-2 text-xs text-tertiary">
               <CheckCircle2 className="h-3.5 w-3.5" /> Đặt được đơn
             </div>
-            <p className="text-xl font-black mt-1 text-emerald-700">{stats.orderPlaced}</p>
+            <p className="text-xl font-black mt-1 text-tertiary tabular-data">{stats.orderPlaced}</p>
           </CardContent>
         </Card>
         <Card>
@@ -242,7 +242,7 @@ export default function VisitsHistoryPage() {
                       ? `https://www.google.com/maps?q=${v.check_in_lat},${v.check_in_lng}`
                       : null
                     return (
-                      <div key={v.id} className="flex items-start gap-3 rounded-xl border bg-muted/10 p-3">
+                      <div key={v.id} className="flex items-start gap-3 rounded-lg border border-outline-variant/40 bg-surface-container-low/50 p-3">
                         {v.photo_url ? (
                           <a
                             href={v.photo_url}

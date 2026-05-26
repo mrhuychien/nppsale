@@ -17,6 +17,20 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
 
+type InvoiceRow = Pick<
+  Invoice,
+  | "id"
+  | "invoice_number"
+  | "customer_name"
+  | "total"
+  | "status"
+  | "created_at"
+  | "issued_at"
+  | "misa_status"
+  | "misa_invoice_id"
+  | "misa_invoice_url"
+>
+
 const MISA_BADGE: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }> = {
   signed: { label: "Đã ký số", variant: "success" },
   sent: { label: "Đã gửi MISA", variant: "default" },
@@ -27,7 +41,7 @@ const MISA_BADGE: Record<string, { label: string; variant: "default" | "success"
 export default function InvoicesPage() {
   const { user, loading: authLoading } = useRoleGuard("invoices")
   const router = useRouter()
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -36,8 +50,13 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("invoices").select("*").order("created_at", { ascending: false })
-      setInvoices((data as Invoice[]) || [])
+      const { data } = await supabase
+        .from("invoices")
+        .select(
+          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url"
+        )
+        .order("created_at", { ascending: false })
+      setInvoices((data as InvoiceRow[]) || [])
       setLoading(false)
     }
     fetch()

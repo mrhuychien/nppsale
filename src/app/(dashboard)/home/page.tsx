@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { canAccessModule, type Module } from "@/lib/permissions"
 import { SetupBanner } from "@/components/setup/setup-banner"
 import {
@@ -144,31 +145,15 @@ interface SalesSnapshot {
 
 export default function HomeLauncherPage() {
   const { user, signOut } = useAuth()
+  const { org } = useOrg()
   const router = useRouter()
   const [search, setSearch] = useState("")
-  const [orgName, setOrgName] = useState<string | null>(null)
+  const orgName = org?.name ?? null
   const [snapshot, setSnapshot] = useState<SalesSnapshot | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const role = user?.role
   const isSales = role === "sales"
-
-  useEffect(() => {
-    if (!user?.org_id) return
-    let cancelled = false
-    const supabase = createClient()
-    supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", user.org_id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setOrgName((data as { name?: string } | null)?.name ?? null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [user?.org_id])
 
   // Sales-rep snapshot — only for the sales role.
   useEffect(() => {

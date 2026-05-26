@@ -2,34 +2,59 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Organization } from "@/types"
 import { useAuth } from "./use-auth"
+
+interface OrgRow {
+  id: string
+  name: string
+}
+
+// Module-level cache giữ data tổ chức trong suốt session — tránh
+// re-fetch khi user navigate giữa các trang có in chứng từ (phiếu
+// lương, phiếu thu, biên bản bàn giao, …).
+const cache = new Map<string, OrgRow>()
+
+export function clearOrgCache(): void {
+  cache.clear()
+}
 
 export function useOrg() {
   const { user } = useAuth()
-  const [org, setOrg] = useState<Organization | null>(null)
-  const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const orgId = user?.org_id
+  const cached = orgId ? cache.get(orgId) ?? null : null
+  const [org, setOrg] = useState<OrgRow | null>(cached)
+  const [loading, setLoading] = useState(orgId ? !cached : false)
 
   useEffect(() => {
-    async function fetchOrg() {
-      if (!user?.org_id) {
-        setLoading(false)
-        return
-      }
-      try {
-        const { data } = await supabase
-          .from("organizations")
-          .select("*")
-          .eq("id", user.org_id)
-          .single()
-        if (data) setOrg(data as Organization)
-      } finally {
-        setLoading(false)
-      }
+    if (!orgId) {
+      setOrg(null)
+      setLoading(false)
+      return
     }
-    fetchOrg()
-  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const c = cache.get(orgId)
+    if (c) {
+      setOrg(c)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    const supabase = createClient()
+    supabase
+      .from("organizations")
+      .select("id, name")
+      .eq("id", orgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        const row = data as OrgRow | null
+        if (row) cache.set(orgId, row)
+        setOrg(row)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [orgId])
 
   return { org, loading }
 }

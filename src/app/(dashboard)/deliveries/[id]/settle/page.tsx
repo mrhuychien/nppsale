@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -76,7 +77,8 @@ export default function DeliverySettlePage() {
   const [editedAmounts, setEditedAmounts] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
-  const [orgName, setOrgName] = useState<string>("")
+  const { org } = useOrg()
+  const orgName = org?.name ?? ""
   const [saved, setSaved] = useState<SavedReceipt | null>(null)
   const [pendingPrint, setPendingPrint] = useState(false)
 
@@ -133,14 +135,6 @@ export default function DeliverySettlePage() {
     }
     setEditedAmounts(initial)
 
-    if (user?.org_id) {
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("name")
-        .eq("id", user.org_id)
-        .maybeSingle()
-      setOrgName(((org as { name: string } | null)?.name) || "")
-    }
     setLoading(false)
   }, [id, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 

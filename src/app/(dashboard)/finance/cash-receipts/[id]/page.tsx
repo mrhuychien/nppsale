@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -54,7 +55,8 @@ export default function CashReceiptDetailPage() {
   const [receipt, setReceipt] = useState<CashReceipt | null>(null)
   const [lines, setLines] = useState<ReceiptLineWithOrder[]>([])
   const [delivery, setDelivery] = useState<{ id: string; route_name: string | null } | null>(null)
-  const [orgName, setOrgName] = useState<string>("")
+  const { org } = useOrg()
+  const orgName = org?.name ?? ""
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -102,16 +104,6 @@ export default function CashReceiptDetailPage() {
       setDelivery((d as { id: string; route_name: string | null } | null) || null)
     } else {
       setDelivery(null)
-    }
-
-    // T-08: pull org name for the TT200 receipt header.
-    if (user?.org_id) {
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("name")
-        .eq("id", user.org_id)
-        .maybeSingle()
-      setOrgName(((org as { name: string } | null)?.name) || "")
     }
 
     setLoading(false)

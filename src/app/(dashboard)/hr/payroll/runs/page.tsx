@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -76,7 +77,8 @@ export default function PayrollRunsPage() {
   // <Payslip> for it inside the .print-payslip-only block.
   const [payslipFor, setPayslipFor] = useState<string | null>(null)
   const [payslipOrders, setPayslipOrders] = useState<PayslipOrder[]>([])
-  const [orgName, setOrgName] = useState<string>("")
+  const { org } = useOrg()
+  const orgName = org?.name ?? ""
   // Detail dialog state.
   const [detailItem, setDetailItem] = useState<PayrollRunItem | null>(null)
   const [detailOrders, setDetailOrders] = useState<PayslipOrder[]>([])
@@ -85,20 +87,12 @@ export default function PayrollRunsPage() {
   const loadRuns = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const [runsRes, orgRes] = await Promise.all([
-      supabase
-        .from("payroll_runs")
-        .select("*")
-        .eq("org_id", user.org_id)
-        .order("month", { ascending: false }),
-      supabase
-        .from("organizations")
-        .select("name")
-        .eq("id", user.org_id)
-        .maybeSingle(),
-    ])
-    setRuns((runsRes.data as PayrollRun[]) || [])
-    setOrgName(((orgRes.data as { name: string } | null)?.name) || "")
+    const { data } = await supabase
+      .from("payroll_runs")
+      .select("*")
+      .eq("org_id", user.org_id)
+      .order("month", { ascending: false })
+    setRuns((data as PayrollRun[]) || [])
     setLoading(false)
   }, [user?.org_id, supabase])
 

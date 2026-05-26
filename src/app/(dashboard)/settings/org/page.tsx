@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRoleGuard } from "@/hooks/use-role-guard"
-import { useOrg } from "@/hooks/use-org"
+import { clearOrgCache, useOrg } from "@/hooks/use-org"
 import { createClient } from "@/lib/supabase/client"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,6 +32,7 @@ export default function OrgSettingsPage() {
     try {
       const { error } = await supabase.from("organizations").update({ name }).eq("id", org.id)
       if (error) throw error
+      clearOrgCache()
       toast({ title: "Đã cập nhật thông tin tổ chức" })
     } catch {
       toast({ title: "Lỗi", variant: "destructive" })

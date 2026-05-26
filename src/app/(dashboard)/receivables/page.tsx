@@ -77,9 +77,9 @@ export default function ReceivablesPage() {
 
   const bucketConfig: Record<BucketKey, { label: string; sub: string; barClass: string; textClass: string }> = {
     current: { label: "Hiện tại", sub: "0-30 ngày", barClass: "bg-primary", textClass: "text-primary" },
-    warning: { label: "Cảnh báo", sub: "31-60 ngày", barClass: "bg-amber-400", textClass: "text-amber-600" },
-    overdue: { label: "Quá hạn", sub: "61-90 ngày", barClass: "bg-orange-500", textClass: "text-orange-600" },
-    critical: { label: "Khẩn cấp", sub: ">90 ngày", barClass: "bg-destructive", textClass: "text-destructive" },
+    warning: { label: "Cảnh báo", sub: "31-60 ngày", barClass: "bg-[#fdb022]", textClass: "text-[#b54708]" },
+    overdue: { label: "Quá hạn", sub: "61-90 ngày", barClass: "bg-[#f97316]", textClass: "text-[#c2410c]" },
+    critical: { label: "Khẩn cấp", sub: ">90 ngày", barClass: "bg-error", textClass: "text-error" },
   }
 
   const maxAmount = Math.max(
@@ -114,8 +114,8 @@ export default function ReceivablesPage() {
       </PageHeader>
 
       {(isSales || isDriver) && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-sm text-primary flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary/20 items-center justify-center text-xs font-bold">i</span>
+        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
           {isSales
             ? "Bạn chỉ thấy công nợ từ các đơn do bạn tạo."
             : "Bạn thấy công nợ thuộc các đơn giao của bạn (COD)."}
@@ -247,7 +247,7 @@ export default function ReceivablesPage() {
               return (
                 <div
                   key={r.id}
-                  className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                   onClick={() => router.push(`/receivables/${r.id}`)}
                 >
                   <div className="p-4">

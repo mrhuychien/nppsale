@@ -133,9 +133,9 @@ export default function ReceivablesByRepPage() {
   if (authLoading || loading) return <Skeleton className="h-96" />
 
   const rateColor = (rate: number) => {
-    if (rate >= 80) return "text-green-700"
-    if (rate >= 60) return "text-amber-600"
-    return "text-destructive"
+    if (rate >= 80) return "text-tertiary"
+    if (rate >= 60) return "text-[#b54708]"
+    return "text-error"
   }
 
   const rateBadge = (rate: number) => {
@@ -237,7 +237,7 @@ export default function ReceivablesByRepPage() {
             {rows.map((row) => (
               <div
                 key={row.userId}
-                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
               >
                 <div className="p-4">

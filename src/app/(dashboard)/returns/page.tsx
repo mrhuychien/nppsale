@@ -43,11 +43,11 @@ import { RotateCcw, PieChart, Search, Info } from "lucide-react"
 import type { Return } from "@/types"
 
 const REASON_COLORS: Record<string, string> = {
-  damaged: "bg-red-500",
-  wrong_item: "bg-amber-500",
-  near_expiry: "bg-orange-500",
-  expired: "bg-rose-600",
-  refused: "bg-slate-500",
+  damaged: "bg-error",
+  wrong_item: "bg-[#fdb022]",
+  near_expiry: "bg-[#f97316]",
+  expired: "bg-[#dc2626]",
+  refused: "bg-on-surface-variant",
 }
 
 export default function ReturnsPage() {
@@ -134,10 +134,10 @@ export default function ReturnsPage() {
         description={`${returns.length} phiếu trả • Tra cứu thông tin`}
       />
 
-      <Card className="border-primary/20 bg-primary/5">
+      <Card className="border-primary-fixed-dim bg-primary-fixed">
         <CardContent className="flex items-start gap-3 p-3 text-sm">
           <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <div className="space-y-0.5 text-primary">
+          <div className="space-y-0.5 text-on-primary-fixed-variant">
             <p className="font-semibold">Danh sách tra cứu</p>
             <p className="text-xs opacity-90">
               Phiếu trả được tự động tạo từ bước Bàn giao lại sau khi lái xe
@@ -220,7 +220,7 @@ export default function ReturnsPage() {
           ) : (
             <>
               {/* Desktop table */}
-              <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
+              <div className="hidden lg:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -285,7 +285,7 @@ export default function ReturnsPage() {
                   return (
                     <div
                       key={r.id}
-                      className="relative rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                      className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                       onClick={() => router.push(`/returns/${r.id}`)}
                     >
                       <div className="p-4">
@@ -336,7 +336,7 @@ export default function ReturnsPage() {
         </div>
 
         {/* Reason breakdown */}
-        <Card className="rounded-2xl shadow-ambient h-fit">
+        <Card className="h-fit">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <PieChart className="h-4 w-4 text-primary" />

@@ -151,7 +151,7 @@ export default function ReceivablesByCustomerPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Trong hạn</p>
-            <p className="text-xl font-black mt-1 text-green-700">{formatCurrency(totalInTerm)}</p>
+            <p className="text-xl font-black mt-1 text-tertiary tabular-data">{formatCurrency(totalInTerm)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -267,7 +267,7 @@ export default function ReceivablesByCustomerPage() {
             {filteredRows.map((row) => (
               <div
                 key={row.customerId}
-                className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={() => router.push(`/receivables/by-customer/${row.customerId}`)}
               >
                 <div className="p-4">

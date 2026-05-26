@@ -168,7 +168,7 @@ export default function PurchaseInvoicesLookupPage() {
       case "paid":
         return <span className="block text-right tabular-nums">{r.payable ? formatCurrency(paid) : "—"}</span>
       case "remaining":
-        return <span className={`block text-right tabular-nums font-semibold ${remaining > 0 ? "text-rose-700" : ""}`}>{r.payable ? formatCurrency(remaining) : "—"}</span>
+        return <span className={`block text-right tabular-nums font-semibold ${remaining > 0 ? "text-error" : ""}`}>{r.payable ? formatCurrency(remaining) : "—"}</span>
       case "debt_status":
         if (!r.payable) return <Badge variant="secondary">Không gắn NCC</Badge>
         { const m = DEBT_LABEL[r.payable.status] || { label: r.payable.status, variant: "secondary" as const }
@@ -190,7 +190,7 @@ export default function PurchaseInvoicesLookupPage() {
         )}
       </PageHeader>
 
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-primary">
+      <div className="rounded-lg border border-primary-fixed-dim bg-primary-fixed p-3 text-xs text-on-primary-fixed-variant">
         Trang này chỉ để tra cứu. Việc tạo / sửa hàng nhập + công nợ NCC thực hiện ở phiếu nhập kho
         (Kho → Tạo phiếu nhập kho). Bấm vào dòng để mở phiếu nhập tương ứng.
       </div>
@@ -290,7 +290,7 @@ export default function PurchaseInvoicesLookupPage() {
               return (
                 <div
                   key={r.id}
-                  className="rounded-2xl border bg-card shadow-ambient overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+                  className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
                   onClick={() => router.push(`/inventory/entries/${r.id}`)}
                 >
                   <div className="p-4">
@@ -306,7 +306,7 @@ export default function PurchaseInvoicesLookupPage() {
                     {r.payable && (
                       <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t text-sm">
                         <span className="text-muted-foreground">Còn nợ</span>
-                        <span className={`font-bold ${remaining > 0 ? "text-rose-700" : ""}`}>{formatCurrency(remaining)} <span className="text-[11px] text-muted-foreground font-normal">/ {formatCurrency(amount)}</span></span>
+                        <span className={`font-bold ${remaining > 0 ? "text-error" : ""}`}>{formatCurrency(remaining)} <span className="text-[11px] text-muted-foreground font-normal">/ {formatCurrency(amount)}</span></span>
                       </div>
                     )}
                   </div>

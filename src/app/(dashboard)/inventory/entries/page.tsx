@@ -1,14 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -19,6 +21,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
@@ -29,6 +33,14 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import type { StockEntry } from "@/types"
+import {
+  STOCK_ENTRY_COLUMNS,
+  DEFAULT_STOCK_ENTRY_COLUMNS,
+  STOCK_ENTRY_FILTERS,
+  DEFAULT_STOCK_ENTRY_FILTERS,
+  type StockEntryColumnKey,
+  type StockEntryFilterKey,
+} from "./list-config"
 
 export default function StockEntriesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
@@ -39,9 +51,26 @@ export default function StockEntriesPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [deleteTarget, setDeleteTarget] = useState<StockEntry | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+
+  const {
+    columns: visibleColumns,
+    filters: activeFilters,
+    setColumns,
+    setFilters,
+    resetColumns,
+    resetFilters,
+  } = useListViewPrefs(
+    "stock-entries",
+    DEFAULT_STOCK_ENTRY_COLUMNS,
+    DEFAULT_STOCK_ENTRY_FILTERS
+  )
+  const show = (k: StockEntryColumnKey) => visibleColumns.includes(k)
+  const filterActive = (k: StockEntryFilterKey) => activeFilters.includes(k)
 
   const fetchData = async () => {
     setLoading(true)
@@ -73,9 +102,6 @@ export default function StockEntriesPage() {
     }
   }
 
-  // Quick status transitions. Stocktake drafts are handled at
-  // /inventory/adjustments because they touch inventory + expenses;
-  // for import / export / transfer drafts we just flip status here.
   const handleApprove = async (e: StockEntry) => {
     if (!confirm(`Duyệt phiếu ${e.entry_code}?`)) return
     try {
@@ -106,8 +132,6 @@ export default function StockEntriesPage() {
     }
   }
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
-
   const getTypeLabel = (type: string) => STOCK_ENTRY_TYPES.find((t) => t.value === type)?.label || type
   const getTypeVariant = (type: string): "default" | "success" | "warning" | "secondary" => {
     switch (type) {
@@ -119,15 +143,25 @@ export default function StockEntriesPage() {
   }
 
   const canCreate = user && hasPermission(user.role, "inventory", "create")
+  const canUpdate = user && hasPermission(user.role, "inventory", "update")
   const canDelete = user && hasPermission(user.role, "inventory", "delete")
 
-  const filtered = entries.filter((e) => {
-    const matchSearch = e.entry_code.toLowerCase().includes(search.toLowerCase()) ||
-      (e.notes || "").toLowerCase().includes(search.toLowerCase())
-    const matchType = typeFilter === "all" || e.type === typeFilter
-    const matchStatus = statusFilter === "all" || (e.status || "posted") === statusFilter
-    return matchSearch && matchType && matchStatus
-  })
+  const filtered = useMemo(() => {
+    return entries.filter((e) => {
+      if (filterActive("search") && search) {
+        const q = search.toLowerCase()
+        const matches =
+          e.entry_code.toLowerCase().includes(q) ||
+          (e.notes || "").toLowerCase().includes(q)
+        if (!matches) return false
+      }
+      if (filterActive("type") && typeFilter !== "all" && e.type !== typeFilter)
+        return false
+      if (filterActive("status") && statusFilter !== "all" && (e.status || "posted") !== statusFilter)
+        return false
+      return true
+    })
+  }, [entries, search, typeFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stats
   const importCount = entries.filter((e) => e.type === "import").length
@@ -143,6 +177,89 @@ export default function StockEntriesPage() {
       default: return { label: status, variant: "secondary" }
     }
   }
+
+  const toggleOne = (id: string, next: boolean) => {
+    setSelectedIds((prev) => {
+      const s = new Set(prev)
+      if (next) s.add(id)
+      else s.delete(id)
+      return s
+    })
+  }
+  const toggleAll = (next: boolean) => {
+    setSelectedIds(next ? new Set(filtered.map((e) => e.id)) : new Set())
+  }
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.id))
+  const someSelected = filtered.some((e) => selectedIds.has(e.id))
+
+  const approveBulk = async () => {
+    if (selectedIds.size === 0) return
+    // Chỉ duyệt phiếu nháp + không phải stocktake (stocktake duyệt ở /inventory/adjustments)
+    const ids = entries
+      .filter((e) => selectedIds.has(e.id) && (e.status || "posted") === "draft" && e.type !== "stocktake")
+      .map((e) => e.id)
+    if (ids.length === 0) {
+      toast({ title: "Không có phiếu nháp phù hợp để duyệt", variant: "destructive" })
+      return
+    }
+    setBulkSaving(true)
+    const { error } = await supabase
+      .from("stock_entries")
+      .update({ status: "posted", posted_at: new Date().toISOString() })
+      .in("id", ids)
+    setBulkSaving(false)
+    if (error) {
+      toast({ title: "Lỗi duyệt phiếu", description: error.message, variant: "destructive" })
+      return
+    }
+    toast({ title: `Đã duyệt ${ids.length} phiếu` })
+    clearSelection()
+    fetchData()
+  }
+
+  const cancelBulk = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Hủy ${selectedIds.size} phiếu đã chọn? Phiếu posted sẽ trở về cancelled.`)) return
+    setBulkSaving(true)
+    const ids = Array.from(selectedIds)
+    const { error } = await supabase
+      .from("stock_entries")
+      .update({ status: "cancelled" })
+      .in("id", ids)
+    setBulkSaving(false)
+    if (error) {
+      toast({ title: "Lỗi hủy phiếu", description: error.message, variant: "destructive" })
+      return
+    }
+    toast({ title: `Đã hủy ${ids.length} phiếu` })
+    clearSelection()
+    fetchData()
+  }
+
+  const bulkActions: BulkAction[] = canUpdate
+    ? [
+        {
+          key: "approve",
+          label: "Duyệt",
+          icon: CheckCircle2,
+          onClick: approveBulk,
+          loading: bulkSaving,
+          variant: "default",
+        },
+        {
+          key: "cancel",
+          label: "Hủy",
+          icon: CircleX,
+          onClick: cancelBulk,
+          loading: bulkSaving,
+          variant: "outline",
+        },
+      ]
+    : []
+
+  if (authLoading || loading) return <Skeleton className="h-96" />
 
   return (
     <div className="space-y-4">
@@ -203,33 +320,53 @@ export default function StockEntriesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Tìm mã phiếu hoặc ghi chú..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+        {filterActive("search") && (
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Tìm mã phiếu hoặc ghi chú..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        )}
+        {filterActive("type") && (
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả loại</SelectItem>
+              {STOCK_ENTRY_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {filterActive("status") && (
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả trạng thái</SelectItem>
+              <SelectItem value="draft">Nháp</SelectItem>
+              <SelectItem value="posted">Đã duyệt</SelectItem>
+              <SelectItem value="cancelled">Đã hủy</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <FilterPicker
+            available={STOCK_ENTRY_FILTERS}
+            value={activeFilters}
+            onChange={setFilters}
+            onReset={resetFilters}
+          />
+          <ColumnPicker
+            available={STOCK_ENTRY_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
           />
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả loại</SelectItem>
-            {STOCK_ENTRY_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả trạng thái</SelectItem>
-            <SelectItem value="draft">Nháp</SelectItem>
-            <SelectItem value="posted">Đã duyệt</SelectItem>
-            <SelectItem value="cancelled">Đã hủy</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {filtered.length === 0 ? (
@@ -239,116 +376,143 @@ export default function StockEntriesPage() {
           description={entries.length === 0 ? "Tạo phiếu đầu tiên bằng nút 'Tạo phiếu'" : "Thử đổi bộ lọc"}
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Mã phiếu</TableHead>
-              <TableHead>Loại</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead>Người tạo</TableHead>
-              <TableHead>Ghi chú</TableHead>
-              <TableHead>Ngày</TableHead>
-              <TableHead className="w-20 text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((e) => (
-              <TableRow
-                key={e.id}
-                className="cursor-pointer"
-                onClick={() => router.push(`/inventory/entries/${e.id}`)}
-              >
-                <TableCell>
-                  <Link
-                    href={`/inventory/entries/${e.id}`}
-                    className="font-mono text-sm text-primary font-bold hover:underline"
-                    onClick={(ev) => ev.stopPropagation()}
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30">
+                {canUpdate && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected && !allSelected ? "indeterminate" : false}
+                      onCheckedChange={(v) => toggleAll(!!v)}
+                      aria-label="Chọn tất cả"
+                    />
+                  </TableHead>
+                )}
+                <TableHead>Mã phiếu</TableHead>
+                {show("type") && <TableHead>Loại</TableHead>}
+                {show("status") && <TableHead>Trạng thái</TableHead>}
+                {show("creator") && <TableHead>Người tạo</TableHead>}
+                {show("notes") && <TableHead>Ghi chú</TableHead>}
+                {show("date") && <TableHead>Ngày</TableHead>}
+                <TableHead className="w-20 text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((e) => {
+                const checked = selectedIds.has(e.id)
+                return (
+                  <TableRow
+                    key={e.id}
+                    className="cursor-pointer hover:bg-muted/40"
+                    onClick={() => router.push(`/inventory/entries/${e.id}`)}
                   >
-                    {e.entry_code}
-                  </Link>
-                </TableCell>
-                <TableCell><Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge></TableCell>
-                <TableCell>
-                  {(() => {
-                    const s = getStatusMeta(e.status || "posted")
-                    return <Badge variant={s.variant}>{s.label}</Badge>
-                  })()}
-                </TableCell>
-                <TableCell>{e.creator?.full_name || "-"}</TableCell>
-                <TableCell className="text-muted-foreground truncate max-w-xs">{e.notes || "-"}</TableCell>
-                <TableCell>{formatDate(e.created_at)}</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
+                    {canUpdate && (
+                      <TableCell onClick={(ev) => ev.stopPropagation()}>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggleOne(e.id, !!v)}
+                          aria-label={`Chọn ${e.entry_code}`}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Link
+                        href={`/inventory/entries/${e.id}`}
+                        className="font-mono text-sm text-primary font-bold hover:underline"
                         onClick={(ev) => ev.stopPropagation()}
                       >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(ev) => {
-                          ev.stopPropagation()
-                          router.push(`/inventory/entries/${e.id}`)
-                        }}
-                      >
-                        <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
-                      </DropdownMenuItem>
-                      {(e.status || "posted") === "draft" && e.type !== "stocktake" && (
-                        <DropdownMenuItem
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            handleApprove(e)
-                          }}
-                        >
-                          <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt
-                        </DropdownMenuItem>
-                      )}
-                      {(e.status || "posted") === "draft" && e.type === "stocktake" && (
-                        <DropdownMenuItem
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            router.push(`/inventory/adjustments`)
-                          }}
-                        >
-                          <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt tại trang điều chỉnh
-                        </DropdownMenuItem>
-                      )}
-                      {(e.status || "posted") === "posted" && (
-                        <DropdownMenuItem
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            handleCancel(e)
-                          }}
-                        >
-                          <CircleX className="mr-2 h-4 w-4 text-amber-600" /> Hủy phiếu
-                        </DropdownMenuItem>
-                      )}
-                      {canDelete && (
-                        <>
-                          <DropdownMenuSeparator />
+                        {e.entry_code}
+                      </Link>
+                    </TableCell>
+                    {show("type") && (
+                      <TableCell><Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge></TableCell>
+                    )}
+                    {show("status") && (
+                      <TableCell>
+                        {(() => {
+                          const s = getStatusMeta(e.status || "posted")
+                          return <Badge variant={s.variant}>{s.label}</Badge>
+                        })()}
+                      </TableCell>
+                    )}
+                    {show("creator") && <TableCell>{e.creator?.full_name || "-"}</TableCell>}
+                    {show("notes") && <TableCell className="text-muted-foreground truncate max-w-xs">{e.notes || "-"}</TableCell>}
+                    {show("date") && <TableCell>{formatDate(e.created_at)}</TableCell>}
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(ev) => ev.stopPropagation()}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            className="text-destructive"
                             onClick={(ev) => {
                               ev.stopPropagation()
-                              setDeleteTarget(e)
+                              router.push(`/inventory/entries/${e.id}`)
                             }}
                           >
-                            <Trash2 className="mr-2 h-4 w-4" /> Xóa
+                            <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
                           </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                          {(e.status || "posted") === "draft" && e.type !== "stocktake" && (
+                            <DropdownMenuItem
+                              onClick={(ev) => {
+                                ev.stopPropagation()
+                                handleApprove(e)
+                              }}
+                            >
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt
+                            </DropdownMenuItem>
+                          )}
+                          {(e.status || "posted") === "draft" && e.type === "stocktake" && (
+                            <DropdownMenuItem
+                              onClick={(ev) => {
+                                ev.stopPropagation()
+                                router.push(`/inventory/adjustments`)
+                              }}
+                            >
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt tại trang điều chỉnh
+                            </DropdownMenuItem>
+                          )}
+                          {(e.status || "posted") === "posted" && (
+                            <DropdownMenuItem
+                              onClick={(ev) => {
+                                ev.stopPropagation()
+                                handleCancel(e)
+                              }}
+                            >
+                              <CircleX className="mr-2 h-4 w-4 text-amber-600" /> Hủy phiếu
+                            </DropdownMenuItem>
+                          )}
+                          {canDelete && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={(ev) => {
+                                  ev.stopPropagation()
+                                  setDeleteTarget(e)
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Xóa
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <ConfirmDialog
@@ -360,6 +524,13 @@ export default function StockEntriesPage() {
         confirmLabel="Xóa vĩnh viễn"
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      <BulkActionsBar
+        count={selectedIds.size}
+        onClear={clearSelection}
+        actions={bulkActions}
+        entityLabel="phiếu"
       />
     </div>
   )

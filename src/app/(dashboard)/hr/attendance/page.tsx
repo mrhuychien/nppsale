@@ -18,11 +18,11 @@ import {
 import type { User, AttendanceStatus, HrAttendance } from "@/types"
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: string; color: string; bg: string }[] = [
-  { value: "present", label: "Có mặt", icon: "✓", color: "text-green-700", bg: "bg-green-100" },
-  { value: "absent", label: "Vắng", icon: "✗", color: "text-red-700", bg: "bg-red-100" },
-  { value: "half_day", label: "Nửa ngày", icon: "½", color: "text-amber-700", bg: "bg-amber-100" },
-  { value: "leave", label: "Nghỉ phép", icon: "P", color: "text-blue-700", bg: "bg-blue-100" },
-  { value: "holiday", label: "Nghỉ lễ", icon: "H", color: "text-purple-700", bg: "bg-purple-100" },
+  { value: "present", label: "Có mặt", icon: "✓", color: "text-[#027a48]", bg: "bg-[#ecfdf3]" },
+  { value: "absent", label: "Vắng", icon: "✗", color: "text-error", bg: "bg-error-container" },
+  { value: "half_day", label: "Nửa ngày", icon: "½", color: "text-[#b54708]", bg: "bg-[#fff4ed]" },
+  { value: "leave", label: "Nghỉ phép", icon: "P", color: "text-[#175cd3]", bg: "bg-[#eff8ff]" },
+  { value: "holiday", label: "Nghỉ lễ", icon: "H", color: "text-[#6941c6]", bg: "bg-[#f4f3ff]" },
 ]
 
 const DAY_NAMES = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
@@ -235,14 +235,14 @@ export default function AttendancePage() {
                     <button
                       key={d}
                       onClick={() => setMobileDay(d)}
-                      className={`flex flex-col items-center min-w-[40px] py-1.5 px-1 rounded-xl text-xs transition-all ${
+                      className={`flex flex-col items-center min-w-[40px] py-1.5 px-1 rounded-lg text-xs transition-all ${
                         active
-                          ? "bg-gradient-primary text-white shadow-ambient-md"
+                          ? "bg-primary text-on-primary shadow-card"
                           : today
-                            ? "bg-primary/10 text-primary font-bold"
+                            ? "bg-primary-fixed text-primary font-bold"
                             : weekend
-                              ? "bg-muted/50 text-muted-foreground"
-                              : "hover:bg-surface-low"
+                              ? "bg-surface-container text-on-surface-variant"
+                              : "hover:bg-surface-container-low"
                       }`}
                     >
                       <span className="text-[10px] font-medium">{DAY_NAMES[getDayOfWeek(year, month, d)]}</span>
@@ -300,7 +300,7 @@ export default function AttendancePage() {
       {/* VIEW MODE: GRID (desktop) */}
       {viewMode === "grid" && (
         <>
-          <div className="overflow-auto bg-card rounded-2xl shadow-ambient relative">
+          <div className="overflow-auto bg-surface-container-lowest rounded-xl shadow-card border border-outline-variant/60 relative">
             <table className="w-full text-xs border-collapse">
               <thead className="bg-surface-low">
                 <tr>
@@ -315,8 +315,8 @@ export default function AttendancePage() {
                         key={d}
                         ref={today ? todayRef : undefined}
                         className={`px-0.5 py-1 text-center min-w-[36px] ${
-                          weekend ? "bg-muted/50" : ""
-                        } ${today ? "bg-primary/10" : ""}`}
+                          weekend ? "bg-surface-container" : ""
+                        } ${today ? "bg-primary-fixed" : ""}`}
                       >
                         <div className={`text-[10px] ${weekend ? "text-destructive" : "text-muted-foreground"}`}>
                           {DAY_NAMES[getDayOfWeek(year, month, d)]}
@@ -348,7 +348,7 @@ export default function AttendancePage() {
                       return (
                         <td
                           key={d}
-                          className={`px-0.5 py-1 text-center relative ${weekend ? "bg-muted/30" : ""} ${today ? "bg-primary/5" : ""}`}
+                          className={`px-0.5 py-1 text-center relative ${weekend ? "bg-surface-container-low" : ""} ${today ? "bg-primary-fixed/60" : ""}`}
                         >
                           <button
                             onClick={() => canEdit && setPopupCell(isPopup ? null : { userId: emp.id, day: d })}
@@ -364,7 +364,7 @@ export default function AttendancePage() {
 
                           {/* Status picker popup */}
                           {isPopup && canEdit && (
-                            <div className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 bg-card rounded-xl shadow-ambient-md border border-border/50 p-1.5 flex gap-1">
+                            <div className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 bg-surface-container-lowest rounded-lg shadow-overlay border border-outline-variant/60 p-1.5 flex gap-1">
                               {STATUS_OPTIONS.map((opt) => (
                                 <button
                                   key={opt.value}
@@ -404,7 +404,7 @@ export default function AttendancePage() {
               <span className="text-muted-foreground">Cuối tuần</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-6 h-6 rounded-lg bg-primary/10 text-center leading-6 text-primary text-[10px] font-bold">▼</span>
+              <span className="w-6 h-6 rounded-md bg-primary-fixed text-center leading-6 text-primary text-[10px] font-bold">▼</span>
               <span className="text-muted-foreground">Hôm nay</span>
             </div>
           </div>

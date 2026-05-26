@@ -389,7 +389,7 @@ export default function PermissionsPage() {
             Vai trò: <span className="text-primary">{ROLE_LABELS[activeRole]}</span>
           </h3>
           {activeRole === "owner" ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#fff4ed] px-2 py-1 text-xs font-medium text-[#b54708]">
               <Lock className="h-3 w-3" /> Chủ DN luôn có toàn quyền — không thể thay đổi
             </span>
           ) : null}
@@ -596,7 +596,7 @@ export default function PermissionsPage() {
 
       {/* Sticky save bar when dirty */}
       {dirty ? (
-        <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-md">
+        <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-xl border border-primary-fixed-dim bg-primary-fixed px-4 py-3 shadow-card-hover">
           <div className="text-sm">
             <span className="font-medium">Có thay đổi chưa lưu</span>
             <span className="ml-2 text-muted-foreground">
@@ -623,7 +623,7 @@ export default function PermissionsPage() {
             const Icon = ACTION_ICONS[a]
             return (
               <div key={a} className="flex items-start gap-2">
-                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-fixed text-primary">
                   <Icon className="h-3.5 w-3.5" />
                 </span>
                 <div>

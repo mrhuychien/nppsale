@@ -734,7 +734,7 @@ export default function BonusConfigPage() {
                 {history.map((h) => (
                   <TableRow
                     key={h.id}
-                    className={h.period === period ? "bg-primary/5" : "cursor-pointer"}
+                    className={h.period === period ? "bg-primary-fixed" : "cursor-pointer"}
                     onClick={() => {
                       const [y, m] = h.period.split("-").map(Number)
                       setYear(y)

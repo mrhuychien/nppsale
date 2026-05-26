@@ -295,7 +295,7 @@ export default function SalaryConfigPage() {
                     </div>
                     <div className="col-span-3">
                       <Label className="text-xs uppercase text-muted-foreground">Tổng cộng dồn</Label>
-                      <div className="h-9 px-3 flex items-center text-sm font-semibold text-emerald-700 bg-emerald-50/60 rounded-md">
+                      <div className="h-9 px-3 flex items-center text-sm font-semibold text-tertiary bg-tertiary-fixed/30 rounded-md tabular-data">
                         +{formatCurrency(cumulative)}
                       </div>
                       <p className="text-[10px] text-muted-foreground mt-0.5">

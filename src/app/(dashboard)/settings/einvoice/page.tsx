@@ -133,9 +133,9 @@ export default function EInvoiceSettingsPage() {
         backHref="/settings"
       />
 
-      <Card className="border-l-4 border-amber-500">
+      <Card className="border-l-4 border-l-[#fdb022]">
         <CardContent className="p-4 flex gap-3 text-sm">
-          <Info className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <Info className="h-5 w-5 text-[#b54708] shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold">Lưu ý</p>
             <p className="text-muted-foreground">

@@ -403,7 +403,7 @@ export default function PayrollRunsPage() {
                       type="button"
                       onClick={() => loadActive(r.id)}
                       className={`w-full flex items-center justify-between rounded-md px-2 py-1.5 text-sm ${
-                        activeRun?.id === r.id ? "bg-primary/10" : "hover:bg-muted/40"
+                        activeRun?.id === r.id ? "bg-primary-fixed text-primary font-semibold" : "hover:bg-surface-container-low"
                       }`}
                     >
                       <span className="font-mono">{r.month.slice(0, 7)}</span>
@@ -770,17 +770,17 @@ export default function PayrollRunsPage() {
                         <p className="text-muted-foreground text-xs">Áp dụng bậc KPI riêng của nhân viên này.</p>
                       )}
                       {lowPerf === "under_60" && (
-                        <p className="text-rose-700 text-xs">
+                        <p className="text-error text-xs">
                           Đạt dưới 60% A → không hưởng lương cứng &amp; không có phụ cấp; lương = doanh số × {under60Pct}% = {formatCurrency(num(it.prorated_base))}; không thưởng KPI.
                         </p>
                       )}
                       {lowPerf === "under_70" && (
-                        <p className="text-amber-700 text-xs">
+                        <p className="text-[#b54708] text-xs">
                           Đạt dưới 70% A → chỉ lương CB + phụ cấp, không thưởng KPI.
                         </p>
                       )}
                       {lowPerf === "over_100" && overPct > 0 && (
-                        <p className="text-emerald-700 text-xs">
+                        <p className="text-tertiary text-xs">
                           Vượt 100% A → thưởng thêm = (doanh số − A) × {overPct}% = {formatCurrency(Math.round((revenue - kpiTarget) * overPct / 100))}.
                         </p>
                       )}
@@ -842,21 +842,21 @@ export default function PayrollRunsPage() {
                               {" "}— mặc định 10,5% lương CB, có thể sửa tay ở danh sách
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-rose-700">−{formatCurrency(num(it.social_insurance))}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-error">−{formatCurrency(num(it.social_insurance))}</td>
                         </tr>
                         {num(it.deductions) > 0 && (
                           <tr className="border-t">
                             <td className="px-3 py-2">Khấu trừ khác</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-rose-700">−{formatCurrency(num(it.deductions))}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-error">−{formatCurrency(num(it.deductions))}</td>
                           </tr>
                         )}
                         <tr className="border-t">
                           <td className="px-3 py-2">Điều chỉnh tay {it.notes ? <span className="text-[11px] text-muted-foreground">— {it.notes}</span> : ""}</td>
-                          <td className={`px-3 py-2 text-right tabular-nums ${num(it.manual_adjustment) < 0 ? "text-rose-700" : ""}`}>
+                          <td className={`px-3 py-2 text-right tabular-nums ${num(it.manual_adjustment) < 0 ? "text-error" : ""}`}>
                             {num(it.manual_adjustment) >= 0 ? "+" : ""}{formatCurrency(num(it.manual_adjustment))}
                           </td>
                         </tr>
-                        <tr className="border-t-2 bg-primary/5 font-black text-base">
+                        <tr className="border-t-2 bg-primary-fixed font-black text-base">
                           <td className="px-3 py-2">THỰC LĨNH</td>
                           <td className="px-3 py-2 text-right tabular-nums text-primary">{formatCurrency(num(it.net_salary))}</td>
                         </tr>

@@ -203,7 +203,7 @@ export default function UsersPage() {
             {users.map((u) => (
               <div
                 key={u.id}
-                className="rounded-2xl border bg-card shadow-ambient overflow-hidden"
+                className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden"
               >
                 <div className="p-4">
                   <div className="flex justify-between items-start gap-3 mb-2">

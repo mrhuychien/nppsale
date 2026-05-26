@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import {
   Trash2, Wallet, ShoppingBasket, CreditCard, TrendingUp,
-  ArrowRight, Banknote, Navigation, MapPin, Camera, FilePlus2,
+  ArrowRight, Banknote, Navigation, MapPin, Camera, FilePlus2, Pencil,
 } from "lucide-react"
 import type { Customer, CustomerGroup, CustomerAssignment } from "@/types"
 
@@ -84,6 +84,7 @@ export default function CustomerDetailPage() {
     sales_user?: { full_name?: string } | null
   }>>([])
   const [visitDialogOpen, setVisitDialogOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState("overview")
 
   const supabase = createClient()
   const router = useRouter()
@@ -260,14 +261,31 @@ export default function CustomerDetailPage() {
             </Button>
           )}
           {user && hasPermission(user.role, "customers", "update") && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setVisitDialogOpen(true)}
-            >
-              <Navigation className="h-4 w-4 mr-1.5" />
-              Ghé thăm
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setActiveTab("info")
+                  if (typeof window !== "undefined") {
+                    requestAnimationFrame(() =>
+                      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+                    )
+                  }
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-1.5" />
+                Sửa thông tin
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setVisitDialogOpen(true)}
+              >
+                <Navigation className="h-4 w-4 mr-1.5" />
+                Ghé thăm
+              </Button>
+            </>
           )}
           {currentDebt > 0 && user && hasPermission(user.role, "receivables", "create") && (
             <Button
@@ -352,13 +370,13 @@ export default function CustomerDetailPage() {
       {/* Main content */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <Tabs defaultValue="overview">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
               <TabsTrigger value="orders">Lịch sử đơn hàng</TabsTrigger>
               <TabsTrigger value="visits">Ghé thăm ({visits.length})</TabsTrigger>
               <TabsTrigger value="prices">Bảng giá áp dụng</TabsTrigger>
-              <TabsTrigger value="info">Thông tin</TabsTrigger>
+              <TabsTrigger value="info">Sửa thông tin</TabsTrigger>
               <TabsTrigger value="assignments">Phân công ({assignments.length})</TabsTrigger>
             </TabsList>
 

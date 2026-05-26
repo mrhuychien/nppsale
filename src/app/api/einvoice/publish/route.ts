@@ -117,7 +117,9 @@ export async function POST(req: Request) {
       .eq("id", invoice.order_id)
       .maybeSingle()
     if (order) {
-      const c = (order.customer || {}) as Record<string, unknown>
+      // Supabase suy luận join là mảng (không biết FK 1-1) — chuẩn hoá:
+      const rawCustomer = (order as { customer: unknown }).customer
+      const c = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer || {}) as Record<string, unknown>
       buyer = {
         name: (c.billing_name as string) || (c.store_name as string) || invoice.customer_name || "",
         tax_code: (c.tax_code as string) || invoice.customer_tax_code || "",
@@ -126,8 +128,10 @@ export async function POST(req: Request) {
         channel: (c.channel as string) || null,
         payment_method_label: (c.payment_method_label as string) || "Chuyển khoản",
       }
-      lines = ((order.lines as Array<Record<string, unknown>>) || []).map((l) => {
-        const p = (l.product || {}) as Record<string, unknown>
+      const rawLines = (order as { lines: unknown }).lines
+      lines = ((Array.isArray(rawLines) ? rawLines : []) as Array<Record<string, unknown>>).map((l) => {
+        const rawP = (l as { product: unknown }).product
+        const p = (Array.isArray(rawP) ? rawP[0] : rawP || {}) as Record<string, unknown>
         return {
           product_name: (p.name as string) || "",
           sku: (p.sku as string) || null,

@@ -170,7 +170,10 @@ export async function publishInvoice(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        // WebAPI v2 yêu cầu header taxcode để xác định tenant.
+        // WebAPI v2 SAInvoice/Insert dùng CompanyTaxCode (PascalCase).
+        // Gửi cả 2 dạng để chắc — HTTP header case-insensitive nhưng
+        // .NET binding đôi khi nhạy với casing.
+        CompanyTaxCode: cfg.taxCode || "",
         taxcode: cfg.taxCode || "",
       },
       body: JSON.stringify(payload),

@@ -51,10 +51,15 @@ export interface InvoiceDetailLine {
 }
 
 /**
- * Body /SAInvoice/Insert (WebAPI v2) — flat 1 hoá đơn, không wrap.
- * Field name lấy từ doc + example MISA: BuyerLegalName/BuyerTaxCode/...
+ * Body /SAInvoice/Insert WebAPI v2 — wrapper MeInvoiceParam:
+ *   { data: "<JSON string header>", detail: "<JSON string lines>" }
+ * Cả 2 đều là STRING (đã JSON.stringify), không phải object.
+ *
+ * Field name lấy từ doc + Help/Api: BuyerLegalName/BuyerTaxCode/...
+ * TotalSaleAmountOC / TotalAmountWithoutVATOC / TotalVATAmountOC /
+ * TotalDiscountAmountOC / TotalAmountOC (OC = Original Currency).
  */
-export interface InvoicePayload {
+export interface InvoiceHeader {
   RefID: string
   InvSeries?: string
   InvoiceName?: string
@@ -62,24 +67,27 @@ export interface InvoicePayload {
   CurrencyCode: "VND"
   ExchangeRate: 1
   PaymentMethodName: string
-  // Người mua (WebAPI v2 dùng Buyer*; Integration API dùng AccountObject*).
   BuyerLegalName: string
   BuyerTaxCode: string
   BuyerAddress: string
   BuyerEmail?: string
   ContactName?: string
-  // Tổng tiền (suffix OC = Original Currency).
-  TotalAmountOC: number
-  TotalVATAmountOC: number
+  TotalSaleAmountOC: number
   TotalDiscountAmountOC?: number
-  TotalAmountWithVATOC: number
-  // Định danh org/template MISA.
+  TotalAmountWithoutVATOC: number
+  TotalVATAmountOC: number
+  TotalAmountOC: number
   CompanyID?: string | null
   OrgUnitID?: string | null
   TemplateID?: string | null
   UserID?: string | null
-  // Chi tiết.
-  OriginalInvoiceDetail: InvoiceDetailLine[]
+}
+
+/** Wrapper body POST /SAInvoice/Insert. */
+export interface InvoicePayload {
+  data: string
+  detail: string
+  EntityState?: number
 }
 
 /** Response /oauth — token nằm trực tiếp (không wrap Success/Data). */

@@ -1,5 +1,5 @@
 import crypto from "node:crypto"
-import type { InvoiceDetailLine, InvoicePayload, SellerInfo } from "./types"
+import type { InvoiceDetailLine, InvoiceHeader, InvoicePayload, SellerInfo } from "./types"
 
 /**
  * Layer 2 — Mapper (pure, no I/O).
@@ -112,11 +112,13 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
   })
 
   // Tổng = sum(round(line)) — KHÔNG round(sum) → khớp đến từng đồng.
-  const totalSale = detail.reduce((s, d) => s + d.Amount, 0)
+  // line.Amount đã trừ discount (xem chỗ tính bên trên).
+  const totalAmountAfterDiscount = detail.reduce((s, d) => s + d.Amount, 0)
   const totalVat = detail.reduce((s, d) => s + d.VATAmount, 0)
   const totalDiscount = detail.reduce((s, d) => s + (d.DiscountAmount || 0), 0)
+  const totalSale = totalAmountAfterDiscount + totalDiscount // = sum quantity*unitPrice
 
-  return {
+  const header: InvoiceHeader = {
     RefID: crypto.randomUUID(),
     InvSeries: opts.invSeries || undefined,
     InvoiceName: "HÓA ĐƠN GIÁ TRỊ GIA TĂNG",
@@ -129,14 +131,20 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
     BuyerAddress: opts.buyer.address || "",
     BuyerEmail: opts.buyer.email || undefined,
     ContactName: buildContactName(opts.buyer, opts.poNote),
-    TotalAmountOC: totalSale,
-    TotalVATAmountOC: totalVat,
+    TotalSaleAmountOC: totalSale,
     TotalDiscountAmountOC: totalDiscount || undefined,
-    TotalAmountWithVATOC: totalSale + totalVat,
+    TotalAmountWithoutVATOC: totalAmountAfterDiscount,
+    TotalVATAmountOC: totalVat,
+    TotalAmountOC: totalAmountAfterDiscount + totalVat,
     CompanyID: opts.companyId,
     OrgUnitID: opts.orgUnitId,
     TemplateID: opts.templateId,
     UserID: opts.userId,
-    OriginalInvoiceDetail: detail,
+  }
+
+  // MISA WebAPI v2 expect MeInvoiceParam: { data: jsonString, detail: jsonString }.
+  return {
+    data: JSON.stringify(header),
+    detail: JSON.stringify(detail),
   }
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -130,7 +130,7 @@ export default function PurchaseInvoicesLookupPage() {
       const ids = entries.map((e) => e.id)
 
       // 2. Load payables CHỈ cho entries trên page hiện tại.
-      let payByEntry = new Map<string, ImportRow["payable"]>()
+      const payByEntry = new Map<string, ImportRow["payable"]>()
       if (ids.length > 0) {
         const { data: payData } = await supabase
           .from("payables")

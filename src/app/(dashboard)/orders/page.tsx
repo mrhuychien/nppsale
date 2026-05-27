@@ -94,7 +94,6 @@ export default function OrdersPage() {
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
-  const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -153,7 +152,6 @@ export default function OrdersPage() {
       statuses.forEach((s, i) => { counts[s] = statusResps[i].count ?? 0 })
       counts.pending_approval = pendApprRes.count ?? 0
       setStatusCounts(counts)
-      setPendingApprovalCount(pendApprRes.count ?? 0)
     }
     loadMeta()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

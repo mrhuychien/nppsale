@@ -122,30 +122,45 @@ function looksLikeAuthError(status: number, body: string): boolean {
 }
 
 function extractPublishResult(data: unknown): { lookup: string | null; invNo: string | null } {
-  // MISA Integration API response:
-  // { success, errorCode, descriptionErrorCode,
-  //   createInvoiceResult: [{RefID, TransactionID, ...}],
-  //   publishInvoiceResult: [{RefID, InvoiceNumber, InvoiceIssuedDate, ...}] }
+  // MISA WebAPI v2 response envelope:
+  // { success, error, data: "<json string>", newdata: "<json string>",
+  //   content: "<json string|null>", dataError, recordsTotal, ... }
+  // Khi save OK: data thường chứa JSON string của hoá đơn vừa lưu (RefID, ...).
   const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
   const candidates: Array<Record<string, unknown>> = [obj]
-  for (const k of ["Data", "data", "publishInvoiceResult", "createInvoiceResult"]) {
+
+  // Parse các field stringified MISA hay dùng.
+  for (const k of ["data", "newdata", "content", "Data"]) {
     const v = obj[k]
-    if (Array.isArray(v) && v.length) candidates.push(v[0] as Record<string, unknown>)
-    else if (v && typeof v === "object") candidates.push(v as Record<string, unknown>)
+    if (typeof v === "string" && v) {
+      try {
+        const parsed = JSON.parse(v)
+        if (Array.isArray(parsed) && parsed.length) {
+          candidates.push(parsed[0] as Record<string, unknown>)
+        } else if (parsed && typeof parsed === "object") {
+          candidates.push(parsed as Record<string, unknown>)
+        }
+      } catch { /* không phải JSON — bỏ qua */ }
+    } else if (Array.isArray(v) && v.length) {
+      candidates.push(v[0] as Record<string, unknown>)
+    } else if (v && typeof v === "object") {
+      candidates.push(v as Record<string, unknown>)
+    }
   }
+
   const pick = (...keys: string[]): string | null => {
     for (const src of candidates) {
       for (const k of keys) {
-        const v = src?.[k]
-        if (typeof v === "string" && v) return v
-        if (typeof v === "number") return String(v)
+        const val = src?.[k]
+        if (typeof val === "string" && val) return val
+        if (typeof val === "number") return String(val)
       }
     }
     return null
   }
   return {
     lookup: pick("TransactionID", "transactionID", "LookupCode", "lookupCode", "lookup_code", "Code"),
-    invNo: pick("InvoiceNumber", "invoiceNumber", "InvNo", "invNo", "invoice_no"),
+    invNo: pick("RefID", "refID", "InvoiceNumber", "invoiceNumber", "InvNo", "invNo"),
   }
 }
 
@@ -226,5 +241,30 @@ export async function publishInvoice(
   }
 
   const { lookup, invNo } = extractPublishResult(data)
+
+  // Edge case: server trả success:true nhưng data/newdata/content đều rỗng →
+  // thường nghĩa là endpoint sai (vd hit api_base sandbox/production lệch
+  // tài khoản, hoặc path không khớp WebAPI v2). Báo lỗi rõ để khỏi tưởng OK.
+  const dataField = obj["data"]
+  const newdataField = obj["newdata"]
+  const contentField = obj["content"]
+  const isEmpty =
+    (dataField === "" || dataField == null) &&
+    (newdataField === "" || newdataField == null) &&
+    (contentField == null) &&
+    !lookup && !invNo
+  if (isEmpty) {
+    return {
+      ok: false,
+      raw: data,
+      error:
+        "MISA trả success nhưng không có dữ liệu hoá đơn (data/newdata/content đều rỗng). " +
+        "Thường do: api_base sai (sandbox vs production lệch tài khoản), hoặc tài khoản chưa được cấp quyền API. " +
+        "Kiểm tra log einvoice_logs để xem raw response.",
+      lookup_code: null,
+      inv_no: null,
+    }
+  }
+
   return { ok: true, raw: data, lookup_code: lookup, inv_no: invNo }
 }

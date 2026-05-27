@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
-import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, ShoppingCart, ChevronRight, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
+import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import {
@@ -833,51 +833,15 @@ export function OrderForm() {
     ? CUSTOMER_STATUS_MAP[selectedCustomer.status] ?? { label: selectedCustomer.status, variant: "outline" as const }
     : null
 
-  const lineCount = lines.length
-  const summaryHasContent = !!customerId && lineCount > 0
-
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-card-gap pb-24 lg:pb-6">
-      {/* Mobile step indicator */}
-      <div className="w-full lg:hidden flex items-center gap-2 px-1 pb-1">
-        <div className="flex items-center gap-2">
-          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            customerId ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
-          }`}>
-            1
-          </span>
-          <span className={`text-xs font-semibold ${customerId ? "text-primary" : "text-muted-foreground"}`}>
-            Khách hàng
-          </span>
-        </div>
-        <div className="h-px flex-1 bg-border" />
-        <div className="flex items-center gap-2">
-          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            lineCount > 0 ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
-          }`}>
-            2
-          </span>
-          <span className={`text-xs font-semibold ${lineCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
-            Sản phẩm ({lineCount})
-          </span>
-        </div>
-        <div className="h-px flex-1 bg-border" />
-        <div className="flex items-center gap-2">
-          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-            summaryHasContent ? "bg-primary text-on-primary" : "bg-muted text-muted-foreground"
-          }`}>
-            3
-          </span>
-          <span className={`text-xs font-semibold ${summaryHasContent ? "text-primary" : "text-muted-foreground"}`}>
-            Xác nhận
-          </span>
-        </div>
-      </div>
-
-      {/* Stitch layout: 8/12 main + 4/12 sticky summary on xl+ */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-card-gap items-start">
-        {/* MAIN COLUMN (8/12) */}
-        <div className="xl:col-span-8 flex flex-col gap-card-gap min-w-0">
+    <form
+      onSubmit={handleSubmit}
+      // Bottom padding leaves clear space for the sticky summary bar
+      // (mobile bar ≈ 260px above mobile-nav; desktop bar ≈ 96px).
+      className="flex flex-col gap-card-gap pb-[280px] lg:pb-32"
+    >
+      {/* Stitch single-column layout — sticky bottom summary bar below */}
+      <div className="flex flex-col gap-card-gap max-w-5xl mx-auto w-full">
         {/* Customer info card */}
         <Card className="rounded-xl shadow-card">
           <CardHeader>
@@ -1633,82 +1597,9 @@ export function OrderForm() {
             />
           </CardContent>
         </Card>
-        </div>
-        {/* end MAIN COLUMN */}
-
-        {/* SUMMARY COLUMN (4/12) — sticky on xl+ */}
-        <div className="xl:col-span-4 flex flex-col gap-card-gap xl:sticky xl:top-24">
-          {/* Order Summary — Stitch primary panel (bold blue) */}
-          <div className="bg-primary text-on-primary rounded-xl shadow-card-hover p-6 relative overflow-hidden">
-            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-            <h3 className="text-headline-md font-semibold mb-6 relative">Tổng thanh toán</h3>
-            <div className="relative space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-primary-fixed font-medium">Tạm tính</span>
-                <span className="font-semibold tabular-data">{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-primary-fixed font-medium">Tổng chiết khấu</span>
-                <span className="font-semibold tabular-data">-{formatCurrency(total_discount)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-primary-fixed font-medium">VAT</span>
-                <span className="font-semibold tabular-data">+{formatCurrency(vat)}</span>
-              </div>
-              <div className="h-px bg-primary-fixed-dim/30" />
-              <div className="flex items-end justify-between">
-                <span className="text-label-md uppercase text-primary-fixed">
-                  Tổng đơn
-                </span>
-                <span className="text-headline-lg font-bold tracking-tight tabular-data">
-                  {formatCurrency(total)}
-                </span>
-              </div>
-
-              {returnLines.length > 0 && (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-primary-fixed font-medium">Trừ hàng trả</span>
-                    <span className="font-semibold tabular-data">-{formatCurrency(returnSubtotal)}</span>
-                  </div>
-                  <div className="h-px bg-primary-fixed-dim/30" />
-                  <div className="flex items-end justify-between">
-                    <span className="text-label-md uppercase text-primary-fixed">
-                      Phải thu
-                    </span>
-                    <span className="text-headline-lg font-bold tracking-tight tabular-data text-tertiary-fixed-dim">
-                      {formatCurrency(Math.max(0, total - returnSubtotal))}
-                    </span>
-                  </div>
-                </>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <Button
-                  type="button"
-                  className="flex-1 bg-on-primary/15 hover:bg-on-primary/25 text-on-primary border-0 font-semibold"
-                  onClick={() => router.back()}
-                >
-                  Huỷ
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={loading || hasOverstock || hasPriceViolation}
-                  className="flex-[2] bg-on-primary hover:bg-on-primary/90 text-primary font-semibold border-0"
-                >
-                  {loading
-                    ? "Đang lưu..."
-                    : hasOverstock
-                      ? "Vượt tồn kho"
-                      : hasPriceViolation
-                        ? "Giá thấp hơn cho phép"
-                        : "Tạo đơn hàng"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
+      {/* end single-column content */}
+
       {/* Click-outside to close customer dropdown */}
       {customerDropdownOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setCustomerDropdownOpen(false)} />
@@ -1721,40 +1612,130 @@ export function OrderForm() {
         onScan={processBarcodeResult}
       />
 
-      {/* Mobile floating summary dock */}
-      {lineCount > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 z-40 lg:hidden px-4 pointer-events-none">
-          <div className="pointer-events-auto mx-auto max-w-md rounded-xl bg-surface-container-lowest/95 backdrop-blur-xl p-3 flex items-center justify-between gap-3 shadow-overlay border border-outline-variant/60">
-            <div className="pl-2 min-w-0">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase tracking-widest">
-                <span className="relative inline-flex items-center justify-center">
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                </span>
-                {lineCount} sản phẩm
-              </div>
-              <p className="text-base font-black leading-tight truncate">
-                {formatCurrency(total)}
-              </p>
+      {/* ===== Sticky bottom summary bar (Stitch design) ===== */}
+
+      {/* Mobile: stacked white card sitting above the bottom nav */}
+      <div className="fixed bottom-[76px] left-0 right-0 z-40 lg:hidden bg-surface-container-lowest border-t border-outline-variant shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4">
+        <div className="space-y-2 mb-4">
+          <div className="flex justify-between text-sm text-on-surface-variant">
+            <span>Tạm tính</span>
+            <span className="text-on-surface tabular-data">{formatCurrency(subtotal)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-on-surface-variant">
+            <span>Tổng chiết khấu</span>
+            <span className="text-error tabular-data">-{formatCurrency(total_discount)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-on-surface-variant">
+            <span>VAT</span>
+            <span className="text-on-surface tabular-data">{formatCurrency(vat)}</span>
+          </div>
+          {returnLines.length > 0 && (
+            <div className="flex justify-between text-sm text-on-surface-variant">
+              <span>Trừ hàng trả</span>
+              <span className="text-error tabular-data">-{formatCurrency(returnSubtotal)}</span>
             </div>
-            <Button
-              type="submit"
-              disabled={loading || hasOverstock || hasPriceViolation || !customerId}
-              className="h-11 px-5 rounded-full shrink-0 bg-primary text-on-primary font-bold"
-            >
-              {loading
-                ? "Đang lưu..."
-                : hasOverstock
-                  ? "Vượt tồn"
-                  : hasPriceViolation
-                    ? "Giá thấp"
-                    : !customerId
-                      ? "Chọn KH"
-                      : "Tiếp tục"}
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+          )}
+          <div className="flex justify-between items-end border-t border-outline-variant pt-2 mt-2">
+            <span className="text-sm font-bold text-on-surface">TỔNG CỘNG</span>
+            <span className="text-headline-lg font-bold text-primary tabular-data leading-none">
+              {formatCurrency(Math.max(0, total - returnSubtotal))}
+            </span>
           </div>
         </div>
-      )}
+        <div className="flex gap-gutter">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => router.back()}
+          >
+            Huỷ
+          </Button>
+          <Button
+            type="submit"
+            disabled={loading || hasOverstock || hasPriceViolation || !customerId}
+            className="flex-[2]"
+          >
+            {loading
+              ? "Đang lưu..."
+              : hasOverstock
+                ? "Vượt tồn kho"
+                : hasPriceViolation
+                  ? "Giá thấp hơn cho phép"
+                  : !customerId
+                    ? "Chọn khách hàng"
+                    : "Tạo đơn hàng"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Desktop: full-width primary bar below content, aligned with sidebar */}
+      <div className="hidden lg:block fixed bottom-0 left-60 right-0 z-40 bg-primary shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        {/* Decorative angled white wash on the right */}
+        <div
+          className="absolute top-0 right-0 w-64 h-full bg-on-primary opacity-5 pointer-events-none"
+          style={{ clipPath: "polygon(10% 0, 100% 0, 100% 100%, 0% 100%)" }}
+        />
+        <div className="max-w-5xl mx-auto px-container-padding py-4 flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-8 text-on-primary text-sm">
+            <div className="flex flex-col gap-1">
+              <span className="text-primary-fixed text-xs">Tạm tính</span>
+              <span className="font-medium tabular-data">{formatCurrency(subtotal)}</span>
+            </div>
+            <div className="w-px h-8 bg-primary-fixed/20" />
+            <div className="flex flex-col gap-1">
+              <span className="text-primary-fixed text-xs">Tổng chiết khấu</span>
+              <span className="font-medium tabular-data">-{formatCurrency(total_discount)}</span>
+            </div>
+            <div className="w-px h-8 bg-primary-fixed/20" />
+            <div className="flex flex-col gap-1">
+              <span className="text-primary-fixed text-xs">VAT</span>
+              <span className="font-medium tabular-data">{formatCurrency(vat)}</span>
+            </div>
+            {returnLines.length > 0 && (
+              <>
+                <div className="w-px h-8 bg-primary-fixed/20" />
+                <div className="flex flex-col gap-1">
+                  <span className="text-primary-fixed text-xs">Trừ hàng trả</span>
+                  <span className="font-medium tabular-data">-{formatCurrency(returnSubtotal)}</span>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-end gap-0.5 mr-4">
+              <span className="text-primary-fixed-dim uppercase text-[10px] tracking-wider font-medium">
+                TỔNG CỘNG
+              </span>
+              <span className="text-headline-xl font-bold text-on-primary tabular-data tracking-tight leading-none">
+                {formatCurrency(Math.max(0, total - returnSubtotal))}
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                className="bg-on-primary/10 hover:bg-on-primary/20 text-on-primary border border-on-primary/20 font-medium"
+                onClick={() => router.back()}
+              >
+                Huỷ
+              </Button>
+              <Button
+                type="submit"
+                disabled={loading || hasOverstock || hasPriceViolation}
+                className="bg-on-primary hover:bg-surface-bright text-primary font-bold border-0 shadow-sm"
+              >
+                {loading
+                  ? "Đang lưu..."
+                  : hasOverstock
+                    ? "Vượt tồn kho"
+                    : hasPriceViolation
+                      ? "Giá thấp hơn cho phép"
+                      : "Tạo đơn hàng"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
     </form>
   )
 }

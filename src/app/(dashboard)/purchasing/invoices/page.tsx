@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -69,6 +71,12 @@ export default function PurchaseInvoicesLookupPage() {
   const [search, setSearch] = useState("")
   const [debtFilter, setDebtFilter] = useState(() => searchParams.get("debt") || "all")
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_COLS)
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   const canCreate = !!user && hasPermission(user.role, "inventory", "update")
 
@@ -91,54 +99,72 @@ export default function PurchaseInvoicesLookupPage() {
     persistCols(ALL_COLS.map((c) => c.key).filter((c) => next.includes(c)))
   }
 
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      // Phiếu nhập kho (import) + NCC + công nợ liên kết.
-      const [entriesRes, payRes] = await Promise.all([
-        supabase
-          .from("stock_entries")
-          .select("id, entry_code, posted_at, created_at, supplier:suppliers(name, code)")
-          .eq("type", "import")
-          .order("created_at", { ascending: false })
-          .limit(500),
-        supabase
+      // 1. Query phiếu nhập paginated.
+      let q = supabase
+        .from("stock_entries")
+        .select(
+          "id, entry_code, posted_at, created_at, supplier:suppliers(name, code)",
+          { count: "exact" }
+        )
+        .eq("type", "import")
+        .order("created_at", { ascending: false })
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.ilike("entry_code", term)
+      }
+      if (debtFilter === "no_supplier") q = q.is("supplier_id", null)
+      const { data: entriesData, count } = await q
+      if (cancelled) return
+
+      const entries = (entriesData as unknown as Array<Omit<ImportRow, "payable">>) || []
+      const ids = entries.map((e) => e.id)
+
+      // 2. Load payables CHỈ cho entries trên page hiện tại.
+      let payByEntry = new Map<string, ImportRow["payable"]>()
+      if (ids.length > 0) {
+        const { data: payData } = await supabase
           .from("payables")
           .select("id, stock_entry_id, amount, paid, status, invoice_number")
-          .not("stock_entry_id", "is", null),
-      ])
-      if (cancelled) return
-      const payByEntry = new Map<string, ImportRow["payable"]>()
-      for (const p of (payRes.data as Array<{ id: string; stock_entry_id: string; amount: number; paid: number; status: string; invoice_number: string | null }>) || []) {
-        payByEntry.set(p.stock_entry_id, { id: p.id, amount: p.amount, paid: p.paid, status: p.status, invoice_number: p.invoice_number })
+          .in("stock_entry_id", ids)
+        for (const p of (payData as Array<{ id: string; stock_entry_id: string; amount: number; paid: number; status: string; invoice_number: string | null }>) || []) {
+          payByEntry.set(p.stock_entry_id, { id: p.id, amount: p.amount, paid: p.paid, status: p.status, invoice_number: p.invoice_number })
+        }
       }
-      const list = ((entriesRes.data as unknown as Array<Omit<ImportRow, "payable">>) || []).map((e) => ({
-        ...e,
-        payable: payByEntry.get(e.id) || null,
-      }))
+
+      let list = entries.map((e) => ({ ...e, payable: payByEntry.get(e.id) || null }))
+
+      // Debt filter (open/paid) phụ thuộc payable → áp client-side trên page.
+      // Search supplier name/invoice number cũng cross-table → áp client-side trên page.
+      if (debtFilter === "open") list = list.filter((r) => !!r.payable && r.payable.status !== "paid")
+      else if (debtFilter === "paid") list = list.filter((r) => !!r.payable && r.payable.status === "paid")
+      if (debouncedSearch) {
+        const term = debouncedSearch.toLowerCase()
+        list = list.filter((r) =>
+          r.entry_code.toLowerCase().includes(term) ||
+          (r.supplier?.name || "").toLowerCase().includes(term) ||
+          (r.supplier?.code || "").toLowerCase().includes(term) ||
+          (r.payable?.invoice_number || "").toLowerCase().includes(term)
+        )
+      }
       setRows(list)
+      pg.setTotal(count ?? 0)
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
-      const matchSearch =
-        !q ||
-        r.entry_code.toLowerCase().includes(q) ||
-        (r.supplier?.name || "").toLowerCase().includes(q) ||
-        (r.supplier?.code || "").toLowerCase().includes(q) ||
-        (r.payable?.invoice_number || "").toLowerCase().includes(q)
-      let matchDebt = true
-      if (debtFilter === "open") matchDebt = !!r.payable && r.payable.status !== "paid"
-      else if (debtFilter === "paid") matchDebt = !!r.payable && r.payable.status === "paid"
-      else if (debtFilter === "no_supplier") matchDebt = !r.supplier
-      return matchSearch && matchDebt
-    })
-  }, [rows, search, debtFilter])
+  // Pass-through, đã filter ở effect trên.
+  const filtered = rows
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -314,6 +340,7 @@ export default function PurchaseInvoicesLookupPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
     </div>

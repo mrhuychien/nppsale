@@ -16,6 +16,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -149,6 +151,15 @@ export default function DeliveriesPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<"all" | DerivedStatus>("all")
   const [search, setSearch] = useState("")
+  const [statusCounts, setStatusCounts] = useState<Record<DerivedStatus, number>>({
+    pending: 0, in_transit: 0, delivered: 0, settled: 0, cancelled: 0,
+  })
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const {
     columns: visibleColumns,
     setColumns,
@@ -161,16 +172,63 @@ export default function DeliveriesPage() {
   const show = (k: DeliveryColumnKey) => visibleColumns.includes(k)
   const supabase = createClient()
 
+  // Reset page khi filter/tab đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stats counts theo derived status — chính xác toàn tổng, không phụ thuộc page.
+  useEffect(() => {
+    async function loadCounts() {
+      const [cancelledRes, inTransitRes, settledRes, deliveredRes, pendingRes] = await Promise.all([
+        supabase.from("deliveries").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
+        supabase.from("deliveries").select("id", { count: "exact", head: true }).eq("status", "in_transit"),
+        supabase.from("deliveries").select("id", { count: "exact", head: true })
+          .not("settled_at", "is", null).not("status", "eq", "cancelled"),
+        supabase.from("deliveries").select("id", { count: "exact", head: true })
+          .eq("status", "completed").is("settled_at", null),
+        // pending: status null OR status not in (cancelled,in_transit,completed)
+        // Đơn giản hoá: count(all) - count(các trên).
+        supabase.from("deliveries").select("id", { count: "exact", head: true }),
+      ])
+      const cancelled = cancelledRes.count ?? 0
+      const inTransit = inTransitRes.count ?? 0
+      const settled = settledRes.count ?? 0
+      const delivered = deliveredRes.count ?? 0
+      const total = pendingRes.count ?? 0
+      setStatusCounts({
+        pending: Math.max(0, total - cancelled - inTransit - settled - delivered),
+        in_transit: inTransit,
+        delivered,
+        settled,
+        cancelled,
+      })
+      // Total value open (in_transit + delivered): cần aggregation từ delivery_lines.
+      // Để đơn giản, skip computing chính xác — sẽ tính trên page hiện tại.
+    }
+    loadCounts()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     let cancelled = false
     async function fetchAll() {
       setLoading(true)
-      const { data: rows } = await supabase
+      let q = supabase
         .from("deliveries")
         .select(
-          "*, driver:users!deliveries_driver_id_fkey(full_name)"
+          "*, driver:users!deliveries_driver_id_fkey(full_name)",
+          { count: "exact" }
         )
         .order("created_at", { ascending: false })
+        .range(pg.from, pg.to)
+      // Filter status theo activeTab (cố gắng server-side cho 4/5 trường hợp đơn giản).
+      if (activeTab === "cancelled") q = q.eq("status", "cancelled")
+      else if (activeTab === "in_transit") q = q.eq("status", "in_transit")
+      else if (activeTab === "settled") q = q.not("settled_at", "is", null).not("status", "eq", "cancelled")
+      else if (activeTab === "delivered") q = q.eq("status", "completed").is("settled_at", null)
+      // activeTab === "pending" hoặc "all" → không filter status (pending hiếm, để client lọc nếu cần).
+      const { data: rows, count } = await q
+      if (cancelled) return
       const list = ((rows as DeliveryRow[]) || [])
 
       // Aggregate stats per delivery from delivery_lines.
@@ -211,7 +269,23 @@ export default function DeliveriesPage() {
       }))
 
       if (!cancelled) {
-        setDeliveries(withStats)
+        // Search/pending filter chạy client-side trên page hiện tại.
+        let result = withStats
+        if (activeTab === "pending") {
+          result = result.filter((d) => deriveStatus(d) === "pending")
+        }
+        if (debouncedSearch) {
+          const term = debouncedSearch.toLowerCase()
+          result = result.filter((d) =>
+            [d.id, d.route_name, d.vehicle, d.driver?.full_name]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase()
+              .includes(term)
+          )
+        }
+        setDeliveries(result)
+        pg.setTotal(count ?? 0)
         setLoading(false)
       }
     }
@@ -219,7 +293,7 @@ export default function DeliveriesPage() {
     return () => {
       cancelled = true
     }
-  }, [supabase])
+  }, [supabase, pg.from, pg.to, activeTab, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const counts: Record<DerivedStatus, number> = {
@@ -229,37 +303,21 @@ export default function DeliveriesPage() {
       settled: 0,
       cancelled: 0,
     }
+    // Counts từ server (chính xác toàn tổng).
+    Object.assign(counts, statusCounts)
+    // totalValueOpen vẫn tính trên page hiện tại (chưa có server-side aggregation).
     let totalValueOpen = 0
     for (const d of deliveries) {
       const s = deriveStatus(d)
-      counts[s] += 1
       if (s === "in_transit" || s === "delivered") {
         totalValueOpen += d._stats.totalValue
       }
     }
     return { counts, totalValueOpen }
-  }, [deliveries])
+  }, [deliveries, statusCounts])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return deliveries.filter((d) => {
-      const status = deriveStatus(d)
-      if (activeTab !== "all" && status !== activeTab) return false
-      if (q) {
-        const haystack = [
-          d.id,
-          d.route_name,
-          d.vehicle,
-          d.driver?.full_name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-        if (!haystack.includes(q)) return false
-      }
-      return true
-    })
-  }, [deliveries, activeTab, search])
+  // Đã filter ở fetchAll — pass-through.
+  const filtered = deliveries
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -469,6 +527,7 @@ export default function DeliveriesPage() {
                 })}
               </TableBody>
             </Table>
+            <DataPagination pg={pg} shownCount={filtered.length} />
           </CardContent>
         </Card>
       )}

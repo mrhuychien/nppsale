@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -50,36 +52,54 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all")
+  const [unreadCount, setUnreadCount] = useState(0)
+  const pg = usePagination(50)
+
+  // Count unread riêng — không phụ thuộc filter/page.
+  const loadUnreadCount = useCallback(async () => {
+    if (!authUser?.id) return
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", authUser.id)
+      .eq("is_read", false)
+    setUnreadCount(count ?? 0)
+  }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadUnreadCount() }, [loadUnreadCount])
+
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [typeFilter, readFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchAll = useCallback(async () => {
     if (!authUser?.id) return
     setLoading(true)
-    const { data } = await supabase
+    let q = supabase
       .from("notifications")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("user_id", authUser.id)
       .order("created_at", { ascending: false })
-      .limit(200)
+      .range(pg.from, pg.to)
+    if (typeFilter !== "all") q = q.eq("type", typeFilter)
+    if (readFilter === "unread") q = q.eq("is_read", false)
+    if (readFilter === "read") q = q.eq("is_read", true)
+    const { data, count } = await q
     setItems((data as Notification[]) || [])
+    pg.setTotal(count ?? 0)
     setLoading(false)
-  }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authUser?.id, pg.from, pg.to, typeFilter, readFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const filtered = useMemo(() => {
-    return items.filter((n) => {
-      if (typeFilter !== "all" && n.type !== typeFilter) return false
-      if (readFilter === "unread" && n.is_read) return false
-      if (readFilter === "read" && !n.is_read) return false
-      return true
-    })
-  }, [items, typeFilter, readFilter])
-
-  const unreadCount = items.filter((n) => !n.is_read).length
+  // Đã filter server-side, pass-through.
+  const filtered = items
 
   const markOneRead = async (n: Notification) => {
     if (n.is_read) return
     setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)))
+    setUnreadCount((c) => Math.max(0, c - 1))
     await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
@@ -89,6 +109,7 @@ export default function NotificationsPage() {
   const markAllRead = async () => {
     if (!authUser?.id || unreadCount === 0) return
     setItems((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    setUnreadCount(0)
     await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
@@ -211,6 +232,8 @@ export default function NotificationsPage() {
           })}
         </div>
       )}
+
+      <DataPagination pg={pg} shownCount={filtered.length} />
 
       <div className="flex justify-center">
         <Button variant="ghost" size="sm" onClick={() => router.push("/home")}>

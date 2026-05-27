@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -77,6 +79,13 @@ export default function InventoryPage() {
   const [brandFilter, setBrandFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [now, setNow] = useState<Date>(new Date())
+  const [statsBatches, setStatsBatches] = useState<Array<Pick<BatchWithProduct, "qty_on_hand" | "unit_cost" | "avg_price" | "expires_at"> & { product?: { shelf_life_days?: number | null; brand?: string | null } | null; location?: string | null }>>([])
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const supabase = createClient()
 
   useEffect(() => {
@@ -84,75 +93,103 @@ export default function InventoryPage() {
     return () => clearInterval(t)
   }, [])
 
+  // Stats query: lightweight load tất cả batches qty_on_hand > 0 — chỉ fields
+  // cần cho expiry calc + valuation. Chạy 1 lần khi mount.
   useEffect(() => {
-    async function fetchAll() {
-      const [batchesRes, pendingRes] = await Promise.all([
+    async function loadStatsData() {
+      const [statsRes, pendingRes] = await Promise.all([
         supabase
           .from("batches")
-          .select("*, product:products(*)")
-          .gt("qty_on_hand", 0)
-          .order("expires_at"),
+          .select(
+            "qty_on_hand, unit_cost, avg_price, expires_at, location, product:products(shelf_life_days, brand)"
+          )
+          .gt("qty_on_hand", 0),
         supabase
           .from("stock_entries")
           .select("id", { count: "exact", head: true })
           .eq("status", "draft"),
       ])
-      setBatches((batchesRes.data as BatchWithProduct[]) || [])
+      setStatsBatches((statsRes.data as Parameters<typeof setStatsBatches>[0]) || [])
       setPendingCount(pendingRes.count ?? 0)
+    }
+    loadStatsData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, brandFilter, locationFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paginated batches list.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchBatchesList() {
+      setLoading(true)
+      let q = supabase
+        .from("batches")
+        .select("*, product:products(*)", { count: "exact" })
+        .gt("qty_on_hand", 0)
+        .order("expires_at")
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.ilike("batch_code", term)
+      }
+      if (locationFilter !== "all") q = q.eq("location", locationFilter)
+      const { data, count } = await q
+      if (cancelled) return
+      let list = (data as BatchWithProduct[]) || []
+      // Filter brand + search cross-table (product.name/sku) client-side trên page.
+      if (brandFilter !== "all") list = list.filter((b) => b.product?.brand === brandFilter)
+      if (debouncedSearch) {
+        const term = debouncedSearch.toLowerCase()
+        list = list.filter(
+          (b) =>
+            (b.product?.name || "").toLowerCase().includes(term) ||
+            (b.product?.sku || "").toLowerCase().includes(term) ||
+            b.batch_code.toLowerCase().includes(term)
+        )
+      }
+      setBatches(list)
+      pg.setTotal(count ?? 0)
       setLoading(false)
     }
-    fetchAll()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    fetchBatchesList()
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, brandFilter, locationFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     let expiringSoon = 0
     let needsPush = 0
     let totalValue = 0
-    for (const b of batches) {
+    for (const b of statsBatches) {
       const state = getBatchExpiryState(b.expires_at, b.product?.shelf_life_days ?? undefined)
       if (state === "critical" || state === "expired") expiringSoon++
       if (state === "push") needsPush++
-      // batches.unit_cost (migration 016) is the source of truth for
-      // valuation. Fall back to the legacy avg_price shape just in case a
-      // row is loaded from an older codepath.
       const cost = Number(b.unit_cost ?? 0) || (typeof b.avg_price === "number" ? b.avg_price : 0)
       totalValue += (Number(b.qty_on_hand) || 0) * cost
     }
     return { expiringSoon, needsPush, totalValue }
-  }, [batches])
+  }, [statsBatches])
 
   const brands = useMemo(() => {
     const set = new Set<string>()
-    batches.forEach((b) => {
+    statsBatches.forEach((b) => {
       if (b.product?.brand) set.add(b.product.brand)
     })
     return Array.from(set)
-  }, [batches])
+  }, [statsBatches])
 
   const locations = useMemo(() => {
     const set = new Set<string>()
-    batches.forEach((b) => {
+    statsBatches.forEach((b) => {
       if (b.location) set.add(b.location)
     })
     return Array.from(set)
-  }, [batches])
+  }, [statsBatches])
 
-  const filteredBatches = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return batches.filter((b) => {
-      if (
-        q &&
-        !(b.product?.name || "").toLowerCase().includes(q) &&
-        !(b.product?.sku || "").toLowerCase().includes(q) &&
-        !b.batch_code.toLowerCase().includes(q)
-      ) {
-        return false
-      }
-      if (brandFilter !== "all" && b.product?.brand !== brandFilter) return false
-      if (locationFilter !== "all" && b.location !== locationFilter) return false
-      return true
-    })
-  }, [batches, search, brandFilter, locationFilter])
+  // Đã filter ở effect trên — pass-through.
+  const filteredBatches = batches
 
   // T-09: legacy single-column summary replaced by StockBalanceTable
   // (split by zone + drill-down). Keep computation removed.
@@ -477,6 +514,7 @@ export default function InventoryPage() {
                   </TableBody>
                 </Table>
               )}
+              <DataPagination pg={pg} shownCount={filteredBatches.length} />
             </CardContent>
           </Card>
         </TabsContent>

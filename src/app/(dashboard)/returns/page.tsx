@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -58,6 +60,14 @@ export default function ReturnsPage() {
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
   const [search, setSearch] = useState("")
+  const [totalCount, setTotalCount] = useState(0)
+  const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const router = useRouter()
   const supabase = createClient()
 
@@ -76,48 +86,75 @@ export default function ReturnsPage() {
   const show = (k: ReturnColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: ReturnFilterKey) => activeFilters.includes(k)
 
+  // Stats: count theo reason (mount 1 lần, toàn tổng).
   useEffect(() => {
-    async function fetch() {
-      const { data } = await supabase
+    async function loadStats() {
+      const { count: totalC } = await supabase
         .from("returns")
-        .select(
-          "*, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)"
-        )
-        .order("created_at", { ascending: false })
-      setReturns((data as Return[]) || [])
-      setLoading(false)
+        .select("id", { count: "exact", head: true })
+      setTotalCount(totalC ?? 0)
+      const counts: Record<string, number> = {}
+      await Promise.all(
+        RETURN_REASONS.map(async (r) => {
+          const { count } = await supabase
+            .from("returns")
+            .select("id", { count: "exact", head: true })
+            .eq("reason", r.value)
+          counts[r.value] = count ?? 0
+        })
+      )
+      setReasonCounts(counts)
     }
-    fetch()
+    loadStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const reasonCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    RETURN_REASONS.forEach((r) => (counts[r.value] = 0))
-    returns.forEach((r) => {
-      if (r.reason && counts[r.reason] !== undefined) counts[r.reason]++
-    })
-    return counts
-  }, [returns])
 
   const maxReasonCount = Math.max(1, ...Object.values(reasonCounts))
 
-  const filtered = useMemo(() => {
-    let list = returns
-    if (filterActive("reason") && reasonFilter !== "all") list = list.filter((r) => r.reason === reasonFilter)
-    if (filterActive("search")) {
-      const q = search.trim().toLowerCase()
-      if (q) {
-        list = list.filter((r) =>
-          (r.customer?.store_name || "").toLowerCase().includes(q) ||
-          (r.requester?.full_name || "").toLowerCase().includes(q) ||
-          ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(q)
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, reasonFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetch() {
+      setLoading(true)
+      let q = supabase
+        .from("returns")
+        .select(
+          "*, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)",
+          { count: "exact" }
+        )
+        .order("created_at", { ascending: false })
+        .range(pg.from, pg.to)
+      if (filterActive("reason") && reasonFilter !== "all") {
+        q = q.eq("reason", reasonFilter)
+      }
+      const { data, count } = await q
+      if (cancelled) return
+      const raw = (data as Return[]) || []
+      // Search cross-table (customer/requester/order) → client-side trên page.
+      let list = raw
+      if (filterActive("search") && debouncedSearch) {
+        const term = debouncedSearch.toLowerCase()
+        list = raw.filter((r) =>
+          (r.customer?.store_name || "").toLowerCase().includes(term) ||
+          (r.requester?.full_name || "").toLowerCase().includes(term) ||
+          ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(term)
         )
       }
+      setReturns(list)
+      pg.setTotal(count ?? 0)
+      setLoading(false)
     }
-    return list
-  }, [returns, reasonFilter, search, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+    fetch()
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, reasonFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  // Đã filter server-side (reason) + client-side trên page (search).
+  const filtered = returns
+
+  if (authLoading) return <Skeleton className="h-96" />
 
   const getReasonLabel = (reason: string | null) =>
     RETURN_REASONS.find((r) => r.value === reason)?.label || reason || "—"
@@ -131,7 +168,7 @@ export default function ReturnsPage() {
     <div className="space-y-4">
       <PageHeader
         title={isSales ? "Trả hàng của tôi" : "Trả hàng"}
-        description={`${returns.length} phiếu trả • Tra cứu thông tin`}
+        description={`${totalCount} phiếu trả • Tra cứu thông tin`}
       />
 
       <Card className="border-primary-fixed-dim bg-primary-fixed">
@@ -204,14 +241,16 @@ export default function ReturnsPage() {
               />
             </div>
             <span className="text-xs text-muted-foreground sm:ml-2">
-              {filtered.length} / {returns.length} • Tổng credit{" "}
+              {pg.total} • Tổng credit{" "}
               <span className="font-semibold text-foreground">
                 {formatCurrency(totalCredit)}
               </span>
             </span>
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <Skeleton className="h-64" />
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />}
               title="Không có phiếu trả nào"
@@ -331,6 +370,7 @@ export default function ReturnsPage() {
                   )
                 })}
               </div>
+              <DataPagination pg={pg} shownCount={filtered.length} />
             </>
           )}
         </div>

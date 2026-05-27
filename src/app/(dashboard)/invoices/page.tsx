@@ -303,14 +303,13 @@ export default function InvoicesPage() {
                           {(inv.misa_lookup_code || inv.misa_invoice_id) ? (
                             <div className="flex flex-col gap-0.5">
                               <a
-                                href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code || inv.misa_invoice_id}`}
+                                href="https://app.meinvoice.vn/sainvoice"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                               >
-                                {inv.misa_lookup_code ? "Mở MISA" : "Mở MISA (ký)"}
-                                <ExternalLink className="h-3 w-3" />
+                                Vào MISA <ExternalLink className="h-3 w-3" />
                               </a>
                               {inv.misa_invoice_url && (
                                 <a
@@ -371,14 +370,13 @@ export default function InvoicesPage() {
                     {(inv.misa_lookup_code || inv.misa_invoice_id) && (
                       <div className="flex items-center gap-3 mt-2">
                         <a
-                          href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code || inv.misa_invoice_id}`}
+                          href="https://app.meinvoice.vn/sainvoice"
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                         >
-                          {inv.misa_lookup_code ? "Mở trên MISA" : "Mở MISA để ký"}
-                          <ExternalLink className="h-3 w-3" />
+                          Vào MISA <ExternalLink className="h-3 w-3" />
                         </a>
                         {inv.misa_invoice_url && (
                           <a

@@ -495,16 +495,22 @@ export default function InvoiceDetailPage() {
                   <p className="text-[11px] text-muted-foreground">
                     {misaLookup
                       ? "Đã phát hành bên MISA — không đẩy lại để tránh trùng."
-                      : "Đã đẩy nháp lên MISA. Bấm 'Mở HĐ trên MISA' để duyệt + ký + phát hành."}
+                      : "Đã đẩy nháp lên MISA. Vào MISA web tìm HĐ theo RefID dưới để duyệt + ký + phát hành."}
                   </p>
+                  {misaUrlId && (
+                    <div className="rounded-md border border-border/40 bg-muted/30 p-2 text-[11px] space-y-0.5">
+                      <p className="text-muted-foreground">RefID để tìm trên MISA:</p>
+                      <p className="font-mono text-xs break-all select-all">{misaUrlId}</p>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-2">
                     <a
-                      href={`https://app.meinvoice.vn/sainvoice/edit/${misaUrlId}`}
+                      href="https://app.meinvoice.vn/sainvoice"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary text-on-primary px-3 h-9 text-sm font-medium hover:bg-primary/90"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Mở HĐ trên MISA
+                      <ExternalLink className="h-3.5 w-3.5" /> Vào MISA tìm HĐ
                     </a>
                     <Button
                       variant="outline"

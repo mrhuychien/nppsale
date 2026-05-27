@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -48,6 +50,14 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [allCategories, setAllCategories] = useState<string[]>([])
+  const [allBrands, setAllBrands] = useState<string[]>([])
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
@@ -65,55 +75,58 @@ export default function ProductsPage() {
     DEFAULT_PRODUCT_FILTERS
   )
 
+  // Load full distinct category/brand list cho dropdown — 1 lần khi mount.
+  useEffect(() => {
+    async function loadMeta() {
+      const { data } = await supabase.from("products").select("category, brand")
+      const cats = new Set<string>()
+      const brs = new Set<string>()
+      for (const p of (data as Array<{ category: string | null; brand: string | null }>) || []) {
+        if (p.category) cats.add(p.category)
+        if (p.brand) brs.add(p.brand)
+      }
+      setAllCategories(Array.from(cats).sort())
+      setAllBrands(Array.from(brs).sort())
+    }
+    loadMeta()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, categoryFilter, brandFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     fetchProducts()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, categoryFilter, brandFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     setLoading(true)
-    const { data } = await supabase
+    let q = supabase
       .from("products")
-      .select("*, price_lists(*)")
+      .select("*, price_lists(*)", { count: "exact" })
       .order("name")
+      .range(pg.from, pg.to)
+    if (debouncedSearch) {
+      const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+      q = q.or(`name.ilike.${term},sku.ilike.${term},brand.ilike.${term}`)
+    }
+    if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+    if (brandFilter !== "all") q = q.eq("brand", brandFilter)
+    if (statusFilter !== "all") q = q.eq("status", statusFilter)
+    const { data, count } = await q
     setProducts((data as Product[]) || [])
+    pg.setTotal(count ?? 0)
     setLoading(false)
   }
 
   const filterActive = (k: ProductFilterKey) => activeFilters.includes(k)
 
-  const categories = useMemo(() => {
-    const set = new Set<string>()
-    products.forEach((p) => p.category && set.add(p.category))
-    return Array.from(set).sort()
-  }, [products])
+  const categories = allCategories
+  const brands = allBrands
 
-  const brands = useMemo(() => {
-    const set = new Set<string>()
-    products.forEach((p) => p.brand && set.add(p.brand))
-    return Array.from(set).sort()
-  }, [products])
-
-  const filtered = useMemo(() => {
-    return products.filter((p) => {
-      if (
-        filterActive("search") &&
-        search &&
-        !(
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.sku.toLowerCase().includes(search.toLowerCase()) ||
-          (p.brand || "").toLowerCase().includes(search.toLowerCase())
-        )
-      )
-        return false
-      if (filterActive("category") && categoryFilter !== "all" && p.category !== categoryFilter)
-        return false
-      if (filterActive("brand") && brandFilter !== "all" && p.brand !== brandFilter)
-        return false
-      if (filterActive("status") && statusFilter !== "all" && p.status !== statusFilter)
-        return false
-      return true
-    })
-  }, [products, search, categoryFilter, brandFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Đã filter server-side toàn bộ — pass-through.
+  const filtered = products
 
   const toggleOne = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -289,16 +302,19 @@ export default function ProductsPage() {
             )}
         </EmptyState>
       ) : (
-        <ProductTable
-          products={filtered}
-          visibleColumns={visibleColumns}
-          selectable={canEdit}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleOne}
-          onToggleSelectAll={toggleAll}
-          allSelected={allSelected}
-          someSelected={someSelected && !allSelected}
-        />
+        <>
+          <ProductTable
+            products={filtered}
+            visibleColumns={visibleColumns}
+            selectable={canEdit}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleOne}
+            onToggleSelectAll={toggleAll}
+            allSelected={allSelected}
+            someSelected={someSelected && !allSelected}
+          />
+          <DataPagination pg={pg} shownCount={filtered.length} />
+        </>
       )}
 
       <BulkActionsBar

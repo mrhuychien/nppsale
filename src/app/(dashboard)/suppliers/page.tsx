@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -45,6 +47,13 @@ export default function SuppliersPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [allCategories, setAllCategories] = useState<string[]>([])
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
@@ -62,46 +71,53 @@ export default function SuppliersPage() {
     DEFAULT_SUPPLIER_FILTERS
   )
 
+  // Distinct categories cho dropdown (load 1 lần).
+  useEffect(() => {
+    async function loadCats() {
+      const { data } = await supabase.from("suppliers").select("category")
+      const set = new Set<string>()
+      for (const s of (data as Array<{ category: string | null }>) || []) {
+        if (s.category) set.add(s.category)
+      }
+      setAllCategories(Array.from(set).sort())
+    }
+    loadCats()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, categoryFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
-      const { data } = await supabase
+      let q = supabase
         .from("suppliers")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("name")
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.or(`name.ilike.${term},code.ilike.${term}`)
+      }
+      if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+      if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
+      const { data, count } = await q
       setSuppliers((data as Supplier[]) || [])
+      pg.setTotal(count ?? 0)
       setLoading(false)
     }
     fetchData()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, categoryFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
   const show = (k: (typeof SUPPLIER_COLUMNS)[number]["key"]) => visibleColumns.includes(k)
+  const categories = allCategories
 
-  const categories = useMemo(() => {
-    const set = new Set<string>()
-    suppliers.forEach((s) => s.category && set.add(s.category))
-    return Array.from(set).sort()
-  }, [suppliers])
-
-  const filtered = useMemo(() => {
-    return suppliers.filter((s) => {
-      if (filterActive("search") && search) {
-        const q = search.toLowerCase()
-        const matches =
-          s.name.toLowerCase().includes(q) ||
-          (s.code && s.code.toLowerCase().includes(q))
-        if (!matches) return false
-      }
-      if (filterActive("category") && categoryFilter !== "all" && s.category !== categoryFilter)
-        return false
-      if (filterActive("status") && statusFilter !== "all") {
-        const isActive = statusFilter === "active"
-        if (s.is_active !== isActive) return false
-      }
-      return true
-    })
-  }, [suppliers, search, categoryFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Đã filter server-side toàn bộ — pass-through.
+  // Đã filter server-side toàn bộ — pass-through.
+  const filtered = suppliers
 
   const toggleOne = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -408,6 +424,7 @@ export default function SuppliersPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
 

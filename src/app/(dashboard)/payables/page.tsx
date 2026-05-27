@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -36,9 +38,16 @@ const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "defau
 export default function PayablesPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
   const [payables, setPayables] = useState<Payable[]>([])
+  const [allOpen, setAllOpen] = useState<Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const supabase = createClient()
   const router = useRouter()
   const {
@@ -48,46 +57,73 @@ export default function PayablesPage() {
   } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [])
   const show = (k: PayableColumnKey) => visibleColumns.includes(k)
 
+  // Stats: load all UNPAID light fields cho aging summary.
   useEffect(() => {
-    async function fetch() {
+    async function loadOpen() {
       const { data } = await supabase
         .from("payables")
-        .select("*, supplier:suppliers(name, code)")
-        .order("due_date")
-      setPayables((data as Payable[]) || [])
-      setLoading(false)
+        .select("amount, paid, due_date, supplier_id, status")
+        .neq("status", "paid")
+      setAllOpen((data as Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>) || [])
     }
-    fetch()
+    loadOpen()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset page khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paginated table query.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchData() {
+      setLoading(true)
+      let q = supabase
+        .from("payables")
+        .select("*, supplier:suppliers(name, code)", { count: "exact" })
+        .order("due_date")
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.ilike("invoice_number", term)
+      }
+      if (statusFilter !== "all") q = q.eq("status", statusFilter)
+      const { data, count } = await q
+      if (cancelled) return
+      setPayables((data as Payable[]) || [])
+      pg.setTotal(count ?? 0)
+      setLoading(false)
+    }
+    fetchData()
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filter supplier name client-side trên page hiện tại (cross-table join filter
+  // không trực tiếp được trên server-side với Supabase).
   const filtered = useMemo(() => {
-    let result = payables
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (p) =>
-          p.supplier?.name?.toLowerCase().includes(q) ||
-          p.supplier?.code?.toLowerCase().includes(q) ||
-          p.invoice_number?.toLowerCase().includes(q)
-      )
-    }
-    if (statusFilter !== "all") {
-      result = result.filter((p) => p.status === statusFilter)
-    }
-    return result
-  }, [payables, search, statusFilter])
+    if (!debouncedSearch) return payables
+    const q = debouncedSearch.toLowerCase()
+    // Nếu invoice_number đã match server-side, mọi row đều OK.
+    // Đồng thời also lọc theo supplier nếu user search tên NCC.
+    return payables.filter(
+      (p) =>
+        p.invoice_number?.toLowerCase().includes(q) ||
+        p.supplier?.name?.toLowerCase().includes(q) ||
+        p.supplier?.code?.toLowerCase().includes(q)
+    )
+  }, [payables, debouncedSearch])
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  if (authLoading) return <Skeleton className="h-96" />
 
-  const openPayables = payables.filter((p) => p.status !== "paid")
-  const totalOutstanding = openPayables.reduce((sum, p) => sum + (p.amount - p.paid), 0)
-  const totalInTerm = openPayables
+  const totalOutstanding = allOpen.reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+  const totalInTerm = allOpen
     .filter((p) => !p.due_date || getAgingStatus(p.due_date) === "current")
-    .reduce((sum, p) => sum + (p.amount - p.paid), 0)
-  const totalOverdue = openPayables
+    .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+  const totalOverdue = allOpen
     .filter((p) => p.due_date && getAgingStatus(p.due_date) !== "current")
-    .reduce((sum, p) => sum + (p.amount - p.paid), 0)
-  const suppliersWithDebt = new Set(openPayables.map((p) => p.supplier_id)).size
+    .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+  const suppliersWithDebt = new Set(allOpen.map((p) => p.supplier_id)).size
 
   const getDaysOverdue = (dueDate: string | null): number => {
     if (!dueDate) return 0
@@ -200,7 +236,9 @@ export default function PayablesPage() {
       </Card>
 
       {/* Table */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <Skeleton className="h-96" />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Factory className="h-8 w-8 text-muted-foreground" />}
           title="Chưa có công nợ NCC"
@@ -320,6 +358,7 @@ export default function PayablesPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
     </div>

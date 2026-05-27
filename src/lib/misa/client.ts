@@ -6,15 +6,15 @@ import type {
 } from "./types"
 
 /**
- * Layer 1 — MISA meInvoice client.
+ * Layer 1 — MISA meInvoice WebAPI v2 client.
  *
- * Trách nhiệm: nói chuyện với MISA API. KHÔNG biết schema npp.sale.
- * - getToken(): cache in-memory TTL 30 phút, refresh khi hết hạn.
- * - publishInvoice(): retry 1 lần khi token expired (401/403/"token").
+ * Flow đơn giản: login bằng user/pass tài khoản meInvoice thường →
+ * đẩy hoá đơn nháp lên web → user vào MISA duyệt + ký thủ công.
  *
- * Endpoint path đọc từ MisaConfig.tokenPath / publishPath — bắt buộc
- * nhập ở UI Cài đặt theo doc MISA của tenant (Connect API v3 vs Open
- * API v1 vs OEM dùng path khác nhau).
+ * - getToken(): POST /oauth, body form-encoded grant_type=password,
+ *   MST đặt ở header 'taxcode'. Token cache 30 phút.
+ * - publishInvoice(): POST /SAInvoice/Insert, Bearer token +
+ *   header 'taxcode'.
  */
 
 const TOKEN_TTL_MS = 30 * 60 * 1000
@@ -30,14 +30,14 @@ function cacheKey(cfg: MisaConfig): string {
 }
 
 function extractToken(data: MisaTokenResponse): string | null {
-  // MISA Integration API: { Success, Data: { access_token, ... }, ErrorCode, Errors }.
-  // Thử các vị trí để hỗ trợ cả v3/Connect API.
+  // WebAPI v2 /oauth trả thẳng { access_token, token_type, expires_in }.
+  // Hỗ trợ thêm vị trí wrap để dùng được cả khi MISA đổi format.
   const d = data as Record<string, unknown>
   const candidates = [
-    (d["Data"] as Record<string, unknown> | undefined)?.["access_token"],
-    (d["data"] as Record<string, unknown> | undefined)?.["access_token"],
     d["access_token"],
     d["accessToken"],
+    (d["Data"] as Record<string, unknown> | undefined)?.["access_token"],
+    (d["data"] as Record<string, unknown> | undefined)?.["access_token"],
   ]
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c
@@ -73,15 +73,19 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     if (cached && cached.expiresAt > now) return cached.token
   }
 
+  // WebAPI v2 /oauth: body form-encoded, MST ở header 'taxcode'.
+  const form = new URLSearchParams()
+  form.set("grant_type", "password")
+  form.set("username", cfg.username)
+  form.set("password", cfg.password)
+
   const res = await fetch(`${cfg.apiBase}${tokenPath}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      appid: cfg.appId ?? "",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
       taxcode: cfg.taxCode,
-      username: cfg.username,
-      password: cfg.password,
-    }),
+    },
+    body: form.toString(),
   })
 
   const text = await res.text()
@@ -89,15 +93,11 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
   try {
     data = text ? (JSON.parse(text) as MisaTokenResponse) : {}
   } catch {
-    // Response không phải JSON — vẫn để raw để log debug.
+    // Không phải JSON — log để debug.
   }
 
   if (!res.ok) {
     throw new Error(`MISA token lỗi ${res.status}: ${extractErrorMessage(data, text)}`)
-  }
-  // MISA dùng { Success: false, ErrorCode: ... } để báo lỗi nghiệp vụ mặc dù HTTP 200.
-  if ((data as Record<string, unknown>)["Success"] === false) {
-    throw new Error(`MISA token thất bại: ${extractErrorMessage(data, text)}`)
   }
   const token = extractToken(data)
   if (!token) {
@@ -106,8 +106,7 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     )
   }
 
-  const expiresIn =
-    (data.Data?.expires_in as number | undefined) ?? (data as Record<string, unknown>)["expires_in"]
+  const expiresIn = (data as Record<string, unknown>)["expires_in"]
   const ttl =
     typeof expiresIn === "number" && expiresIn > 0
       ? Math.min(expiresIn * 1000, TOKEN_TTL_MS)
@@ -171,8 +170,8 @@ export async function publishInvoice(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        // MISA Integration API yêu cầu header CompanyTaxCode.
-        CompanyTaxCode: cfg.taxCode || "",
+        // WebAPI v2 yêu cầu header taxcode để xác định tenant.
+        taxcode: cfg.taxCode || "",
       },
       body: JSON.stringify(payload),
     })

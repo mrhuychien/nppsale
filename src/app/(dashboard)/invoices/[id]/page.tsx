@@ -159,10 +159,10 @@ export default function InvoiceDetailPage() {
       const text = await res.text()
       let data: { error?: string; cached?: boolean; inv_no?: string; lookup_code?: string; sandbox?: boolean } = {}
       try { data = text ? JSON.parse(text) : {} } catch { /* non-JSON */ }
-      if (!res.ok) throw new Error(data.error || `Phát hành MISA thất bại (HTTP ${res.status})${text && !data.error ? `: ${text.slice(0, 200)}` : ""}`)
+      if (!res.ok) throw new Error(data.error || `Đẩy MISA thất bại (HTTP ${res.status})${text && !data.error ? `: ${text.slice(0, 200)}` : ""}`)
       toast({
-        title: data.cached ? "Hoá đơn đã phát hành trước đó" : "Đã phát hành hoá đơn điện tử",
-        description: `${data.inv_no ? `Số HĐ: ${data.inv_no} · ` : ""}Mã tra cứu: ${data.lookup_code || "—"}${data.sandbox ? " (sandbox)" : ""}`,
+        title: data.cached ? "Đã đẩy lên MISA trước đó" : "Đã đẩy hoá đơn nháp lên MISA",
+        description: `${data.inv_no ? `RefID: ${data.inv_no} · ` : ""}${data.lookup_code ? `Mã: ${data.lookup_code}` : "Vào web meInvoice để duyệt + ký"}${data.sandbox ? " (sandbox)" : ""}`,
       })
       fetchData()
     } catch (error) {
@@ -412,11 +412,13 @@ export default function InvoiceDetailPage() {
               {/* Nút phát hành — chỉ khi chưa có mã tra cứu */}
               {!invoice.misa_lookup_code ? (
                 <div className="space-y-2 pt-1">
-                  {invoice.status !== "issued" && (
-                    <p className="text-[11px] text-[#b54708]">
-                      Nên phát hành hóa đơn (chuyển sang &ldquo;Đã phát hành&rdquo;) trước khi đẩy lên MISA.
-                    </p>
-                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Đẩy hoá đơn lên MISA ở trạng thái <strong>nháp</strong>. Vào
+                    <a href="https://app.meinvoice.vn" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline mx-1">
+                      web meInvoice
+                    </a>
+                    để duyệt + ký + phát hành thủ công.
+                  </p>
                   {(user?.role === "owner" || user?.role === "accountant" || user?.role === "manager") && (
                     <div className="flex flex-col gap-2">
                       <Button
@@ -426,7 +428,7 @@ export default function InvoiceDetailPage() {
                         disabled={misaLoading}
                       >
                         <FileText className="h-3.5 w-3.5 mr-1.5" />
-                        {misaLoading ? "Đang phát hành..." : invoice.misa_status === "error" ? "Phát hành lại lên MISA" : "Phát hành lên MISA"}
+                        {misaLoading ? "Đang đẩy..." : invoice.misa_status === "error" ? "Đẩy lại lên MISA" : "Đẩy lên MISA (nháp)"}
                       </Button>
                       <Button
                         variant="outline"
@@ -435,7 +437,7 @@ export default function InvoiceDetailPage() {
                         onClick={() => handleEinvoicePublish("box")}
                         disabled={misaLoading}
                       >
-                        Phát hành theo hộp (quy đổi)
+                        Đẩy theo hộp (quy đổi)
                       </Button>
                     </div>
                   )}
@@ -448,7 +450,7 @@ export default function InvoiceDetailPage() {
                 </div>
               ) : (
                 <p className="text-[11px] text-muted-foreground">
-                  Hoá đơn đã phát hành lên MISA — không phát hành lại để tránh trùng.
+                  Đã đẩy nháp lên MISA — vào web meInvoice để duyệt + ký. Không đẩy lại để tránh trùng.
                 </p>
               )}
             </CardContent>

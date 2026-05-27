@@ -1,5 +1,5 @@
 import crypto from "node:crypto"
-import type { InvoiceDataItem, InvoiceDetailLine, InvoicePayload, SellerInfo } from "./types"
+import type { InvoiceDetailLine, InvoicePayload, SellerInfo } from "./types"
 
 /**
  * Layer 2 — Mapper (pure, no I/O).
@@ -48,8 +48,6 @@ export interface MapperOptions {
   orgUnitId?: string | null
   templateId?: string | null
   userId?: string | null
-  /** SignType MISA: 1=USB/file (default), 2=HSM, 3=HSM async, 4/5=không ký. */
-  signType?: number | null
 }
 
 /** VND: làm tròn về số nguyên đồng. */
@@ -116,33 +114,29 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
   // Tổng = sum(round(line)) — KHÔNG round(sum) → khớp đến từng đồng.
   const totalSale = detail.reduce((s, d) => s + d.Amount, 0)
   const totalVat = detail.reduce((s, d) => s + d.VATAmount, 0)
+  const totalDiscount = detail.reduce((s, d) => s + (d.DiscountAmount || 0), 0)
 
-  const invoiceItem: InvoiceDataItem = {
+  return {
     RefID: crypto.randomUUID(),
     InvSeries: opts.invSeries || undefined,
-    InvTemplateNo: opts.invTemplateNo || undefined,
-    InvoiceDate: opts.invoiceDate || vnInvoiceDate(),
+    InvoiceName: "HÓA ĐƠN GIÁ TRỊ GIA TĂNG",
+    InvDate: opts.invoiceDate || vnInvoiceDate(),
     CurrencyCode: "VND",
     ExchangeRate: 1,
     PaymentMethodName: opts.buyer.payment_method_label || "Chuyển khoản",
-    AccountObjectName: opts.buyer.name,
-    AccountObjectTaxCode: opts.buyer.tax_code || "", // khách lẻ → ""
-    AccountObjectAddress: opts.buyer.address || "",
+    BuyerLegalName: opts.buyer.name,
+    BuyerTaxCode: opts.buyer.tax_code || "", // khách lẻ → ""
+    BuyerAddress: opts.buyer.address || "",
+    BuyerEmail: opts.buyer.email || undefined,
     ContactName: buildContactName(opts.buyer, opts.poNote),
-    AccountObjectEmail: opts.buyer.email || undefined,
-    TotalSaleAmount: totalSale,
-    TotalVATAmount: totalVat,
-    TotalAmount: totalSale + totalVat,
+    TotalAmountOC: totalSale,
+    TotalVATAmountOC: totalVat,
+    TotalDiscountAmountOC: totalDiscount || undefined,
+    TotalAmountWithVATOC: totalSale + totalVat,
     CompanyID: opts.companyId,
     OrgUnitID: opts.orgUnitId,
     TemplateID: opts.templateId,
     UserID: opts.userId,
     OriginalInvoiceDetail: detail,
-  }
-
-  return {
-    SignType: opts.signType ?? 1,
-    InvoiceData: [invoiceItem],
-    PublishInvoiceData: [],
   }
 }

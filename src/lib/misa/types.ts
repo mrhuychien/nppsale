@@ -1,10 +1,11 @@
 /**
  * MISA meInvoice — kiểu dữ liệu cho payload & response.
  *
- * Dựa trên doc Integration API (https://doc.meinvoice.vn/itg):
- * - Token body: appid, taxcode, username, password (lowercase).
- * - Response wrap: { Success, Data: {...}, ErrorCode, Errors }.
- * - Publish wrap: { SignType, InvoiceData: [...], PublishInvoiceData: [...] }.
+ * Mặc định dùng WebAPI v2 (đơn giản — không cần AppID, không cần ký):
+ * - Token: POST /api/v2/oauth (form-encoded, taxcode ở header)
+ * - Insert nháp: POST /api/v2/SAInvoice/Insert (Bearer + taxcode header)
+ *
+ * Schema dựa trên: doc.meinvoice.vn/webapi & testapp.meinvoice.vn/api/v2.
  */
 
 export interface MisaConfig {
@@ -12,14 +13,10 @@ export interface MisaConfig {
   taxCode: string
   username: string
   password: string
-  /** AppID do MISA cấp — gửi trong body lấy token. */
-  appId?: string | null
-  /** Path lấy access_token, vd '/api/integration/auth/token'. */
+  /** Path lấy token, WebAPI v2 = '/oauth'. */
   tokenPath?: string | null
-  /** Path phát hành hoá đơn, vd '/api/integration/invoice/publish'. */
+  /** Path tạo HĐ nháp, WebAPI v2 = '/SAInvoice/Insert'. */
   publishPath?: string | null
-  /** 1=USB/file, 2=HSM, 3=HSM async, 4=vé không ký, 5=POS không ký. */
-  signType?: number | null
   companyId?: string | null
   orgUnitId?: string | null
   templateId?: string | null
@@ -53,53 +50,44 @@ export interface InvoiceDetailLine {
   DiscountAmount?: number
 }
 
-/** 1 dòng InvoiceData trong publish payload — schema MISA Integration API. */
-export interface InvoiceDataItem {
-  /** UUID duy nhất cho hoá đơn (RefID) — dùng cho idempotency phía MISA. */
+/**
+ * Body /SAInvoice/Insert (WebAPI v2) — flat 1 hoá đơn, không wrap.
+ * Field name lấy từ doc + example MISA: BuyerLegalName/BuyerTaxCode/...
+ */
+export interface InvoicePayload {
   RefID: string
   InvSeries?: string
-  InvTemplateNo?: string
-  InvoiceDate: string // ISO 8601 + TZ
+  InvoiceName?: string
+  InvDate: string
   CurrencyCode: "VND"
   ExchangeRate: 1
   PaymentMethodName: string
-  // Người mua
-  AccountObjectName: string
-  AccountObjectTaxCode: string // "" nếu khách lẻ
-  AccountObjectAddress: string
-  ContactName?: string // tên người liên hệ / chuỗi MT + PO
-  AccountObjectEmail?: string
-  // Tổng tiền
-  TotalSaleAmount: number // = sum(round(line.Amount))
-  TotalVATAmount: number
-  TotalAmount: number
-  // Định danh org/template MISA
+  // Người mua (WebAPI v2 dùng Buyer*; Integration API dùng AccountObject*).
+  BuyerLegalName: string
+  BuyerTaxCode: string
+  BuyerAddress: string
+  BuyerEmail?: string
+  ContactName?: string
+  // Tổng tiền (suffix OC = Original Currency).
+  TotalAmountOC: number
+  TotalVATAmountOC: number
+  TotalDiscountAmountOC?: number
+  TotalAmountWithVATOC: number
+  // Định danh org/template MISA.
   CompanyID?: string | null
   OrgUnitID?: string | null
   TemplateID?: string | null
   UserID?: string | null
-  // Chi tiết
+  // Chi tiết.
   OriginalInvoiceDetail: InvoiceDetailLine[]
 }
 
-/** Wrapper publish payload theo doc MISA Integration API. */
-export interface InvoicePayload {
-  SignType: number
-  InvoiceData: InvoiceDataItem[]
-  PublishInvoiceData: Array<Record<string, unknown>>
-}
-
+/** Response /oauth — token nằm trực tiếp (không wrap Success/Data). */
 export interface MisaTokenResponse {
-  Success?: boolean
-  Data?: {
-    access_token?: string
-    token_type?: string
-    expires_in?: number
-    refresh_token?: string
-    [k: string]: unknown
-  }
-  ErrorCode?: string | null
-  Errors?: string | null
+  access_token?: string
+  token_type?: string
+  expires_in?: number
+  refresh_token?: string
   [k: string]: unknown
 }
 

@@ -20,14 +20,12 @@ interface ConfigState {
   tax_code: string
   seller_name: string
   seller_address: string
-  misa_app_id: string
   misa_company_id: string
   misa_org_unit_id: string
   misa_template_id: string
   misa_user_id: string
   misa_inv_series: string
   misa_inv_template_no: string
-  sign_type: number
   sandbox: boolean
   is_active: boolean
   username: string
@@ -37,20 +35,18 @@ interface ConfigState {
 }
 
 const EMPTY: ConfigState = {
-  api_base: "https://testapi.meinvoice.vn",
-  token_path: "/api/integration/auth/token",
-  publish_path: "/api/integration/invoice/publish",
+  api_base: "https://testapp.meinvoice.vn/api/v2",
+  token_path: "/oauth",
+  publish_path: "/SAInvoice/Insert",
   tax_code: "",
   seller_name: "",
   seller_address: "",
-  misa_app_id: "",
   misa_company_id: "",
   misa_org_unit_id: "",
   misa_template_id: "",
   misa_user_id: "",
   misa_inv_series: "",
   misa_inv_template_no: "1",
-  sign_type: 1,
   sandbox: true,
   is_active: true,
   username: "",
@@ -83,13 +79,11 @@ export default function EInvoiceSettingsPage() {
             tax_code: data.config.tax_code || "",
             seller_name: data.config.seller_name || "",
             seller_address: data.config.seller_address || "",
-            misa_app_id: data.config.misa_app_id || "",
             misa_company_id: data.config.misa_company_id || "",
             misa_org_unit_id: data.config.misa_org_unit_id || "",
             misa_template_id: data.config.misa_template_id || "",
             misa_user_id: data.config.misa_user_id || "",
             misa_inv_series: data.config.misa_inv_series || "",
-            sign_type: typeof data.config.sign_type === "number" ? data.config.sign_type : 1,
             username: "",
             password: "",
           }))
@@ -141,7 +135,7 @@ export default function EInvoiceSettingsPage() {
     <div className="space-y-4 max-w-3xl">
       <PageHeader
         title="Hoá đơn điện tử (MISA meInvoice)"
-        description="Cấu hình tài khoản MISA để phát hành hoá đơn GTGT điện tử"
+        description="Đẩy hoá đơn nháp lên MISA — vào web meInvoice duyệt + ký thủ công"
         backHref="/settings"
       />
 
@@ -149,12 +143,15 @@ export default function EInvoiceSettingsPage() {
         <CardContent className="p-4 flex gap-3 text-sm">
           <Info className="h-5 w-5 text-[#b54708] shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-semibold">Lưu ý</p>
+            <p className="font-semibold">Luồng hiện tại: đẩy nháp lên MISA</p>
             <p className="text-muted-foreground">
-              Username/mật khẩu MISA được mã hoá khi lưu (cần đặt biến môi trường
+              Khi bấm &ldquo;Xuất hoá đơn&rdquo;, hệ thống dùng tài khoản MISA bạn nhập
+              bên dưới để đẩy dữ liệu lên <strong>app.meinvoice.vn</strong> ở trạng thái
+              hoá đơn <strong>chưa phát hành</strong>. Bạn vào web MISA để duyệt, ký và
+              phát hành thủ công. Username/mật khẩu được mã hoá khi lưu (cần env
               <code className="mx-1 px-1 rounded bg-muted">EINVOICE_ENC_KEY</code>).
-              Nên test ở môi trường <strong>sandbox</strong> trước khi tắt và chạy thật.
-              Để trống ô mật khẩu/username khi lưu = giữ giá trị cũ.
+              Test ở sandbox <code>testapp.meinvoice.vn</code> trước, khi OK đổi sang
+              <code className="mx-1 px-1 rounded bg-muted">app.meinvoice.vn</code>.
             </p>
           </div>
         </CardContent>
@@ -186,61 +183,33 @@ export default function EInvoiceSettingsPage() {
             <Input
               value={cfg.api_base}
               onChange={(e) => set({ api_base: e.target.value })}
-              placeholder="https://api.meinvoice.vn (production) / https://demo.meinvoice.vn (sandbox)"
+              placeholder="https://testapp.meinvoice.vn/api/v2"
             />
             <p className="text-[11px] text-muted-foreground">
-              Là host của API, KHÔNG phải web portal <code>app.meinvoice.vn</code>.
-              Lấy trong tài liệu MISA cấp cho NPP của bạn.
+              Sandbox: <code>https://testapp.meinvoice.vn/api/v2</code> ·
+              Production: <code>https://app.meinvoice.vn/api/v2</code>.
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Endpoint lấy token *</Label>
+            <Label>Endpoint lấy token</Label>
             <Input
               value={cfg.token_path}
               onChange={(e) => set({ token_path: e.target.value })}
-              placeholder="/api/integration/auth/token"
+              placeholder="/oauth"
             />
             <p className="text-[11px] text-muted-foreground">
-              Theo doc MISA Integration API.
+              WebAPI v2 mặc định: <code>/oauth</code>.
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Endpoint phát hành *</Label>
+            <Label>Endpoint tạo hoá đơn nháp</Label>
             <Input
               value={cfg.publish_path}
               onChange={(e) => set({ publish_path: e.target.value })}
-              placeholder="/api/integration/invoice/publish"
+              placeholder="/SAInvoice/Insert"
             />
             <p className="text-[11px] text-muted-foreground">
-              Theo doc MISA, vd <code>/api/integration/invoice/publish</code>.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>AppID (MISA cấp) *</Label>
-            <Input
-              value={cfg.misa_app_id}
-              onChange={(e) => set({ misa_app_id: e.target.value })}
-              placeholder="appid do MISA cung cấp"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Khác với Company ID — là chuỗi MISA phát cho tích hợp.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>Kiểu ký (SignType) *</Label>
-            <select
-              value={cfg.sign_type}
-              onChange={(e) => set({ sign_type: parseInt(e.target.value, 10) })}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value={1}>1 — USB/File token</option>
-              <option value={2}>2 — HSM (đồng bộ)</option>
-              <option value={3}>3 — HSM (bất đồng bộ)</option>
-              <option value={4}>4 — Vé không ký</option>
-              <option value={5}>5 — POS không ký</option>
-            </select>
-            <p className="text-[11px] text-muted-foreground">
-              Mặc định 1 (USB). HSM dành cho NPP đã mua dịch vụ ký từ xa của MISA.
+              WebAPI v2 mặc định: <code>/SAInvoice/Insert</code>.
             </p>
           </div>
           <div className="space-y-2">

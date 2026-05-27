@@ -17,6 +17,18 @@ export const dynamic = "force-dynamic"
  * idempotency → mapper → MISA client → log + update invoice.
  */
 export async function POST(req: Request) {
+  // Top-level guard — bất kỳ throw nào ngoài try/catch chi tiết bên trong
+  // vẫn phải trả JSON body, không để FE crash vì "Unexpected end of JSON input".
+  try {
+    return await handlePublish(req)
+  } catch (err) {
+    console.error("[/api/einvoice/publish] fatal:", err)
+    const msg = err instanceof Error ? err.message : "Lỗi server không xác định khi gọi MISA"
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+async function handlePublish(req: Request) {
   let body: { invoiceId?: string; mode?: ExportMode; poNote?: string }
   try {
     body = await req.json()
@@ -44,7 +56,15 @@ export async function POST(req: Request) {
     )
   }
 
-  const admin = createAdminClient()
+  let admin: ReturnType<typeof createAdminClient>
+  try {
+    admin = createAdminClient()
+  } catch (e) {
+    return NextResponse.json(
+      { error: `Server thiếu cấu hình: ${(e as Error).message}` },
+      { status: 500 }
+    )
+  }
   const orgId = profile.org_id as string
 
   // --- Load invoice (scope theo org) ---
@@ -55,7 +75,7 @@ export async function POST(req: Request) {
     .eq("org_id", orgId)
     .maybeSingle()
   if (invErr || !invoice) {
-    return NextResponse.json({ error: "Không tìm thấy hoá đơn" }, { status: 404 })
+    return NextResponse.json({ error: invErr?.message || "Không tìm thấy hoá đơn" }, { status: 404 })
   }
 
   // --- Idempotency: đã có lookup code → trả cached ---
@@ -70,13 +90,16 @@ export async function POST(req: Request) {
   }
 
   // --- Atomic pending guard (chống double-click) ---
-  const { data: locked } = await admin
+  const { data: locked, error: lockErr } = await admin
     .from("invoices")
     .update({ misa_status: "pending" })
     .eq("id", invoiceId)
     .is("misa_lookup_code", null)
     .or("misa_status.is.null,misa_status.neq.pending")
     .select("id")
+  if (lockErr) {
+    return NextResponse.json({ error: `Không khoá được hoá đơn: ${lockErr.message}` }, { status: 500 })
+  }
   if (!locked || locked.length === 0) {
     return NextResponse.json(
       { error: "Hoá đơn đang được xử lý hoặc đã phát hành. Thử lại sau giây lát." },

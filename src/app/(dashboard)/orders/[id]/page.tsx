@@ -360,8 +360,10 @@ export default function OrderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invoiceId: currentInvoiceId, mode: "as_sold" }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Phát hành MISA thất bại")
+      const text = await res.text()
+      let data: { error?: string; cached?: boolean; inv_no?: string; lookup_code?: string; sandbox?: boolean } = {}
+      try { data = text ? JSON.parse(text) : {} } catch { /* non-JSON */ }
+      if (!res.ok) throw new Error(data.error || `Phát hành MISA thất bại (HTTP ${res.status})${text && !data.error ? `: ${text.slice(0, 200)}` : ""}`)
 
       toast({
         title: data.cached ? "Hoá đơn đã phát hành trước đó" : "Đã phát hành hoá đơn điện tử",

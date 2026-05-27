@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -91,6 +93,14 @@ export default function OrdersPage() {
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -116,101 +126,119 @@ export default function OrdersPage() {
     if (s) setStatusFilter(s)
   }, [searchParams])
 
+  // Load metadata (customers, users) + counts theo status — 1 lần khi mount.
   useEffect(() => {
-    async function fetch() {
-      setLoading(true)
-      const [ordersRes, customersRes, usersRes, receivablesRes] = await Promise.all([
-        supabase
-          .from("sales_orders")
-          .select(
-            "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
-          )
-          .order("created_at", { ascending: false }),
+    async function loadMeta() {
+      const [customersRes, usersRes] = await Promise.all([
         supabase.from("customers").select("id, store_name").order("store_name"),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
-        supabase
-          .from("receivables")
-          .select("order_id, amount, paid, status, due_date"),
       ])
-      const allOrders = (ordersRes.data as SalesOrder[]) || []
-      setOrders(allOrders)
       setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
-      const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
-      for (const r of (receivablesRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || []) {
-        if (r.order_id) recvMap[r.order_id] = { amount: r.amount, paid: r.paid, status: r.status, due_date: r.due_date }
-      }
-      setReceivablesByOrder(recvMap)
 
-      // Fetch invoices for delivered orders
-      const deliveredIds = allOrders
-        .filter((o) => o.status === "delivered")
-        .map((o) => o.id)
-      if (deliveredIds.length > 0) {
-        const { data: invoicesData } = await supabase
-          .from("invoices")
-          .select("*")
-          .in("order_id", deliveredIds)
-        if (invoicesData) {
-          const map: Record<string, Invoice> = {}
-          for (const inv of invoicesData as Invoice[]) {
-            if (inv.order_id) map[inv.order_id] = inv
-          }
-          setInvoiceMap(map)
+      // Count theo status — chính xác tổng, không phụ thuộc pagination.
+      const statuses = ["draft", "confirmed", "picking", "delivering", "delivered", "cancelled"]
+      const [{ count: totalC }, ...statusResps] = await Promise.all([
+        supabase.from("sales_orders").select("id", { count: "exact", head: true }),
+        ...statuses.map((s) =>
+          supabase.from("sales_orders").select("id", { count: "exact", head: true }).eq("status", s)
+        ),
+      ])
+      const pendApprRes = await supabase
+        .from("sales_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "draft")
+        .not("approval_reason", "is", null)
+      const counts: Record<string, number> = { all: totalC ?? 0 }
+      statuses.forEach((s, i) => { counts[s] = statusResps[i].count ?? 0 })
+      counts.pending_approval = pendApprRes.count ?? 0
+      setStatusCounts(counts)
+      setPendingApprovalCount(pendApprRes.count ?? 0)
+    }
+    loadMeta()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset page về 1 mỗi khi filter đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // List query — filter server-side, paginate.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchOrders() {
+      setLoading(true)
+      let q = supabase
+        .from("sales_orders")
+        .select(
+          "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
+          { count: "exact" }
+        )
+        .order("created_at", { ascending: false })
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.ilike("order_code", term)
+      }
+      if (statusFilter === "pending_approval") {
+        q = q.eq("status", "draft").not("approval_reason", "is", null)
+      } else if (statusFilter !== "all") {
+        q = q.eq("status", statusFilter)
+      }
+      if (customerFilter !== "all") q = q.eq("customer_id", customerFilter)
+      if (salesFilter !== "all") q = q.eq("sales_user_id", salesFilter)
+      if (dateFrom) q = q.gte("order_date", dateFrom)
+      if (dateTo) q = q.lte("order_date", dateTo + "T23:59:59")
+      if (amountMin) q = q.gte("total", parseFloat(amountMin))
+      if (amountMax) q = q.lte("total", parseFloat(amountMax))
+
+      const { data, count } = await q
+      if (cancelled) return
+      const ordersData = (data as SalesOrder[]) || []
+      setOrders(ordersData)
+      pg.setTotal(count ?? 0)
+
+      // Load receivables + invoices CHỈ cho orders đang hiển thị trên page.
+      const ids = ordersData.map((o) => o.id)
+      if (ids.length > 0) {
+        const [recvRes, invRes] = await Promise.all([
+          supabase
+            .from("receivables")
+            .select("order_id, amount, paid, status, due_date")
+            .in("order_id", ids),
+          supabase.from("invoices").select("*").in("order_id", ids),
+        ])
+        if (cancelled) return
+        const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
+        for (const r of (recvRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || []) {
+          if (r.order_id) recvMap[r.order_id] = { amount: r.amount, paid: r.paid, status: r.status, due_date: r.due_date }
         }
+        setReceivablesByOrder(recvMap)
+        const invMap: Record<string, Invoice> = {}
+        for (const inv of (invRes.data as Invoice[]) || []) {
+          if (inv.order_id) invMap[inv.order_id] = inv
+        }
+        setInvoiceMap(invMap)
+      } else {
+        setReceivablesByOrder({})
+        setInvoiceMap({})
       }
       setLoading(false)
     }
-    fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    fetchOrders()
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Đã filter server-side (search/status/customer/sales/date/amount).
+  // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
+  // Note: pipeline filter chỉ áp dụng trên trang hiện tại — chấp nhận trade-off
+  // để khỏi phải replicate classifyOrder() trong SQL.
   const filtered = useMemo(() => {
-    return orders.filter((o) => {
-      const matchSearch = o.order_code.toLowerCase().includes(search.toLowerCase())
-      const matchStatus =
-        statusFilter === "all"
-          ? true
-          : statusFilter === "pending_approval"
-            ? o.status === "draft" && !!o.approval_reason
-            : o.status === statusFilter
-      const matchPipeline =
-        !pipelineStep ||
-        classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id]) === pipelineStep
-      const matchCustomer = customerFilter === "all" || o.customer_id === customerFilter
-      const matchSales = salesFilter === "all" || o.sales_user_id === salesFilter
-      const matchFrom = !dateFrom || new Date(o.order_date) >= new Date(dateFrom)
-      const matchTo = !dateTo || new Date(o.order_date) <= new Date(dateTo + "T23:59:59")
-      const matchMin = !amountMin || o.total >= parseFloat(amountMin)
-      const matchMax = !amountMax || o.total <= parseFloat(amountMax)
-      return (
-        matchSearch &&
-        matchStatus &&
-        matchPipeline &&
-        matchCustomer &&
-        matchSales &&
-        matchFrom &&
-        matchTo &&
-        matchMin &&
-        matchMax
-      )
-    })
-  }, [orders, search, statusFilter, pipelineStep, receivablesByOrder, invoiceMap, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax])
-
-  const pendingApprovalCount = useMemo(
-    () => orders.filter((o) => o.status === "draft" && !!o.approval_reason).length,
-    [orders]
-  )
-
-  // Counts per status for the quick filter chips
-  const statusCounts = useMemo(() => {
-    const c: Record<string, number> = {
-      all: orders.length,
-      pending_approval: pendingApprovalCount,
-      draft: 0, confirmed: 0, picking: 0, delivering: 0, delivered: 0, cancelled: 0,
-    }
-    for (const o of orders) c[o.status] = (c[o.status] || 0) + 1
-    return c
-  }, [orders, pendingApprovalCount])
+    if (!pipelineStep) return orders
+    return orders.filter(
+      (o) => classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id]) === pipelineStep
+    )
+  }, [orders, pipelineStep, receivablesByOrder, invoiceMap])
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -976,6 +1004,7 @@ export default function OrdersPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
     </div>

@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -60,6 +62,13 @@ export default function CustomersPage() {
   const [salesUserFilter, setSalesUserFilter] = useState("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [stats, setStats] = useState({ total: 0, visited: 0 })
+  const pg = usePagination(50)
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
   const { toast } = useToast()
   const {
     columns: visibleColumns,
@@ -80,70 +89,103 @@ export default function CustomersPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // Stats: tổng KH + KH đã ghé hôm nay — count query, không phụ thuộc pagination.
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      const { data: cData } = await supabase
-        .from("customers")
-        .select("*, group:customer_groups(*)")
-        .order("store_name")
-      const list = (cData as Customer[]) || []
-      setCustomers(list)
-
-      // Unpaid receivables per customer
-      const { data: recData } = await supabase
-        .from("receivables")
-        .select("customer_id, amount, paid, status")
-        .neq("status", "paid")
-      const debtMap: Record<string, number> = {}
-      for (const r of (recData as Pick<Receivable, "customer_id" | "amount" | "paid">[]) || []) {
-        const outstanding = Number(r.amount || 0) - Number(r.paid || 0)
-        if (outstanding > 0) {
-          debtMap[r.customer_id] = (debtMap[r.customer_id] || 0) + outstanding
-        }
-      }
-      setDebts(debtMap)
-
-      // Today's orders (visits) per customer
+    async function loadStats() {
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
-      const { data: orders } = await supabase
-        .from("sales_orders")
-        .select("customer_id, order_date, created_at")
-        .gte("created_at", todayStart.toISOString())
-      const visits = new Set<string>()
-      for (const o of (orders as Pick<SalesOrder, "customer_id">[]) || []) {
-        if (o.customer_id) visits.add(o.customer_id)
+      const [totalRes, ordersTodayRes] = await Promise.all([
+        supabase.from("customers").select("id", { count: "exact", head: true }),
+        supabase
+          .from("sales_orders")
+          .select("customer_id")
+          .gte("created_at", todayStart.toISOString()),
+      ])
+      const visitsToday = new Set<string>()
+      for (const o of (ordersTodayRes.data as Pick<SalesOrder, "customer_id">[]) || []) {
+        if (o.customer_id) visitsToday.add(o.customer_id)
       }
-      setVisitedToday(visits)
+      setStats({ total: totalRes.count ?? 0, visited: visitsToday.size })
+      setVisitedToday(visitsToday)
+    }
+    loadStats()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-      // Latest order per customer (any time)
-      const { data: latestOrders } = await supabase
-        .from("sales_orders")
-        .select("customer_id, order_code, order_date, total")
-        .order("order_date", { ascending: false })
-        .limit(500)
+  // Reset page khi filter/search đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, statusFilter, channelFilter, salesUserFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // List query — paginate + filter server-side.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchData() {
+      setLoading(true)
+      let q = supabase
+        .from("customers")
+        .select("*, group:customer_groups(*)", { count: "exact" })
+        .order("store_name")
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.or(`store_name.ilike.${term},owner_name.ilike.${term},phone.ilike.${term}`)
+      }
+      if (statusFilter !== "all") q = q.eq("status", statusFilter)
+      if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+
+      const { data: cData, count } = await q
+      if (cancelled) return
+      const list = (cData as Customer[]) || []
+      setCustomers(list)
+      pg.setTotal(count ?? 0)
+
+      // Load aggregates CHỈ cho khách trên page hiện tại.
+      const ids = list.map((c) => c.id)
+      if (ids.length === 0) {
+        setDebts({}); setLastOrders({}); setLastVisits({}); setPrimaryRepMap({})
+        setLoading(false)
+        return
+      }
+      const [recvRes, lastOrdersRes, lastVisitsRes, assignsRes] = await Promise.all([
+        supabase
+          .from("receivables")
+          .select("customer_id, amount, paid, status")
+          .in("customer_id", ids)
+          .neq("status", "paid"),
+        supabase
+          .from("sales_orders")
+          .select("customer_id, order_code, order_date, total")
+          .in("customer_id", ids)
+          .order("order_date", { ascending: false }),
+        supabase
+          .from("visit_logs")
+          .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
+          .in("customer_id", ids)
+          .order("visit_date", { ascending: false })
+          .order("check_in_at", { ascending: false }),
+        supabase
+          .from("customer_assignments")
+          .select("customer_id, user_id, role, status")
+          .in("customer_id", ids)
+          .eq("role", "primary")
+          .eq("status", "active"),
+      ])
+      if (cancelled) return
+      const debtMap: Record<string, number> = {}
+      for (const r of (recvRes.data as Pick<Receivable, "customer_id" | "amount" | "paid">[]) || []) {
+        const outstanding = Number(r.amount || 0) - Number(r.paid || 0)
+        if (outstanding > 0) debtMap[r.customer_id] = (debtMap[r.customer_id] || 0) + outstanding
+      }
+      setDebts(debtMap)
       const orderMap: Record<string, LastOrderInfo> = {}
-      for (const o of (latestOrders as Array<Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">>) || []) {
+      for (const o of (lastOrdersRes.data as Array<Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">>) || []) {
         if (o.customer_id && !orderMap[o.customer_id]) {
-          orderMap[o.customer_id] = {
-            order_code: o.order_code,
-            order_date: o.order_date,
-            total: o.total,
-          }
+          orderMap[o.customer_id] = { order_code: o.order_code, order_date: o.order_date, total: o.total }
         }
       }
       setLastOrders(orderMap)
-
-      // Latest visit per customer
-      const { data: latestVisits } = await supabase
-        .from("visit_logs")
-        .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
-        .order("visit_date", { ascending: false })
-        .order("check_in_at", { ascending: false })
-        .limit(500)
       const visitMap: Record<string, LastVisitInfo> = {}
-      for (const v of (latestVisits as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
+      for (const v of (lastVisitsRes.data as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
         if (v.customer_id && !visitMap[v.customer_id]) {
           visitMap[v.customer_id] = {
             visit_date: v.visit_date,
@@ -154,15 +196,8 @@ export default function CustomersPage() {
         }
       }
       setLastVisits(visitMap)
-
-      // Primary sales rep per customer (for filter "Nhân viên phụ trách")
-      const { data: assignmentRows } = await supabase
-        .from("customer_assignments")
-        .select("customer_id, user_id, role, status")
-        .eq("role", "primary")
-        .eq("status", "active")
       const repMap: Record<string, string> = {}
-      for (const a of (assignmentRows as Array<{ customer_id: string; user_id: string }>) || []) {
+      for (const a of (assignsRes.data as Array<{ customer_id: string; user_id: string }>) || []) {
         if (!repMap[a.customer_id]) repMap[a.customer_id] = a.user_id
       }
       setPrimaryRepMap(repMap)
@@ -170,7 +205,8 @@ export default function CustomersPage() {
       setLoading(false)
     }
     fetchData()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -202,19 +238,9 @@ export default function CustomersPage() {
 
   const filterActive = (k: CustomerFilterKey) => activeFilters.includes(k)
 
+  // Sales rep filter client-side (cần primaryRepMap đã load cho page hiện tại).
+  // Các filter khác đã server-side.
   const filtered = customers.filter((c) => {
-    if (filterActive("search") && search) {
-      const q = search.toLowerCase()
-      const matches =
-        c.store_name.toLowerCase().includes(q) ||
-        c.owner_name.toLowerCase().includes(q) ||
-        c.phone.includes(search)
-      if (!matches) return false
-    }
-    if (filterActive("status") && statusFilter !== "all" && c.status !== statusFilter)
-      return false
-    if (filterActive("channel") && channelFilter !== "all" && c.channel !== channelFilter)
-      return false
     if (filterActive("sales") && salesUserFilter !== "all") {
       if (salesUserFilter === "_none" ? primaryRepMap[c.id] : primaryRepMap[c.id] !== salesUserFilter)
         return false
@@ -222,8 +248,8 @@ export default function CustomersPage() {
     return true
   })
 
-  const totalRoute = customers.length
-  const visitedCount = customers.filter((c) => visitedToday.has(c.id)).length
+  const totalRoute = stats.total
+  const visitedCount = stats.visited
   const progressPct = totalRoute > 0 ? Math.round((visitedCount / totalRoute) * 100) : 0
 
   const handleCheckIn = (c: Customer) => {
@@ -579,6 +605,7 @@ export default function CustomersPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
 

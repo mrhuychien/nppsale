@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { PageHeader } from "@/components/ui/page-header"
 import {
@@ -32,7 +34,9 @@ export default function ReceivablesPage() {
   const isSales = authUser?.role === "sales"
   const isDriver = authUser?.role === "driver"
   const [receivables, setReceivables] = useState<Receivable[]>([])
+  const [allUnpaid, setAllUnpaid] = useState<Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>>([])
   const [loading, setLoading] = useState(true)
+  const pg = usePagination(50)
   const supabase = createClient()
   const router = useRouter()
   const {
@@ -42,36 +46,58 @@ export default function ReceivablesPage() {
   } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [])
   const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
 
+  // Aging summary: chỉ load các trường nhẹ (amount, paid, due_date, status)
+  // cho UNPAID — 1 lần mount, không join.
   useEffect(() => {
-    async function fetch() {
+    async function loadSummary() {
       const { data } = await supabase
         .from("receivables")
-        .select("*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)")
+        .select("amount, paid, due_date, status")
+        .neq("status", "paid")
+      setAllUnpaid((data as Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>) || [])
+    }
+    loadSummary()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paginated table query (gồm join customer + sales_user).
+  useEffect(() => {
+    let cancelled = false
+    async function fetch() {
+      setLoading(true)
+      const { data, count } = await supabase
+        .from("receivables")
+        .select(
+          "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+          { count: "exact" }
+        )
         .order("due_date")
+        .range(pg.from, pg.to)
+      if (cancelled) return
       setReceivables((data as Receivable[]) || [])
+      pg.setTotal(count ?? 0)
       setLoading(false)
     }
     fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true }
+  }, [pg.from, pg.to]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  if (authLoading) return <Skeleton className="h-96" />
 
-  const totalOutstanding = receivables.reduce((sum, r) => sum + (r.amount - r.paid), 0)
+  // Tổng + aging dùng allUnpaid (full unpaid set) — chính xác toàn tổng,
+  // không phụ thuộc page hiện tại.
+  const totalOutstanding = allUnpaid.reduce((sum, r) => sum + (Number(r.amount) - Number(r.paid)), 0)
   const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
     switch (status) { case "current": return "success"; case "warning": return "warning"; case "overdue": return "danger"; case "critical": return "danger"; default: return "default" }
   }
-
-  // Aging buckets based on days overdue from due_date
   const buckets: Record<BucketKey, { amount: number; count: number }> = {
     current: { amount: 0, count: 0 },
     warning: { amount: 0, count: 0 },
     overdue: { amount: 0, count: 0 },
     critical: { amount: 0, count: 0 },
   }
-  receivables.forEach((r) => {
-    if (r.status === "paid") return
+  allUnpaid.forEach((r) => {
     const key: BucketKey = r.due_date ? getAgingStatus(r.due_date) : "current"
-    buckets[key].amount += r.amount - r.paid
+    buckets[key].amount += Number(r.amount) - Number(r.paid)
     buckets[key].count += 1
   })
 
@@ -180,7 +206,9 @@ export default function ReceivablesPage() {
         />
       </div>
 
-      {receivables.length === 0 ? (
+      {loading ? (
+        <Skeleton className="h-96" />
+      ) : receivables.length === 0 ? (
         <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chưa có công nợ" />
       ) : (
         <>
@@ -299,6 +327,7 @@ export default function ReceivablesPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={receivables.length} />
         </>
       )}
     </div>

@@ -160,27 +160,23 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
     g.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/"))
   )
 
+  // Accordion mode: chỉ 1 group mở tại 1 thời điểm. Khi user click 1 mục con,
+  // route đổi → activeGroupIndex đổi → useEffect tự thu các group khác và chỉ
+  // giữ group chứa item active.
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(
     new Set(activeGroupIndex >= 0 ? [activeGroupIndex] : [0])
   )
 
-  // Update expansion when route changes
   useEffect(() => {
     if (activeGroupIndex >= 0) {
-      setExpandedGroups((prev) => new Set([...Array.from(prev), activeGroupIndex]))
+      setExpandedGroups(new Set([activeGroupIndex]))
     }
   }, [activeGroupIndex])
 
   const toggleGroup = (index: number) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
-      return next
-    })
+    setExpandedGroups((prev) =>
+      prev.has(index) && prev.size === 1 ? new Set() : new Set([index])
+    )
   }
 
   const handleSignOut = async () => {
@@ -194,8 +190,12 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
       "flex flex-col bg-surface-container-low h-screen",
       mobile ? "w-full" : "hidden lg:flex lg:w-60 border-r border-outline-variant/60 sticky top-0"
     )}>
-      {/* Brand */}
-      <div className="px-5 py-5 flex items-center gap-3">
+      {/* Brand — click logo về Trang chủ */}
+      <Link
+        href="/home"
+        onClick={onNavigate}
+        className="px-5 py-5 flex items-center gap-3 hover:bg-surface-container/40 transition-colors"
+      >
         <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-on-primary font-bold text-base shadow-sm shrink-0">
           N
         </div>
@@ -203,7 +203,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
           <h1 className="text-base font-bold text-on-surface leading-tight">npp.sale</h1>
           <p className="text-[10px] text-on-surface-variant font-semibold tracking-[0.05em] uppercase mt-0.5">PHÂN PHỐI FMCG</p>
         </div>
-      </div>
+      </Link>
 
       {/* Quick CTA */}
       {canCreateOrder && (

@@ -84,120 +84,141 @@ export async function POST(req: Request) {
     )
   }
 
-  // --- Load config + order + customer + lines + org ---
-  const [cfgRes, orgRes] = await Promise.all([
-    admin.from("company_einvoice_config").select("*").eq("org_id", orgId).maybeSingle(),
-    admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
-  ])
-  const cfg = cfgRes.data
-  if (!cfg || !cfg.is_active) {
-    await admin.from("invoices").update({ misa_status: "error", misa_error: "Chưa cấu hình tài khoản MISA" }).eq("id", invoiceId)
-    return NextResponse.json(
-      { error: "Chưa cấu hình tài khoản hoá đơn điện tử MISA. Vào Cài đặt → Hoá đơn điện tử." },
-      { status: 400 }
-    )
-  }
-
-  let lines: MapperLine[] = []
-  let buyer = {
-    name: invoice.customer_name || "",
-    tax_code: invoice.customer_tax_code || "",
-    address: invoice.customer_address || "",
-    email: "" as string | null,
-    channel: "" as string | null,
-    payment_method_label: "Chuyển khoản" as string | null,
-  }
-
-  if (invoice.order_id) {
-    const { data: order } = await admin
-      .from("sales_orders")
-      .select(
-        "id, notes, customer:customers(store_name, billing_name, tax_code, billing_address, address, billing_email, channel, payment_method_label), lines:sales_order_lines(unit_name, quantity, unit_price, line_discount, conversion_factor, product:products(name, sku, base_unit, vat_rate))"
-      )
-      .eq("id", invoice.order_id)
-      .maybeSingle()
-    if (order) {
-      // Supabase suy luận join là mảng (không biết FK 1-1) — chuẩn hoá:
-      const rawCustomer = (order as { customer: unknown }).customer
-      const c = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer || {}) as Record<string, unknown>
-      buyer = {
-        name: (c.billing_name as string) || (c.store_name as string) || invoice.customer_name || "",
-        tax_code: (c.tax_code as string) || invoice.customer_tax_code || "",
-        address: (c.billing_address as string) || (c.address as string) || invoice.customer_address || "",
-        email: (c.billing_email as string) || null,
-        channel: (c.channel as string) || null,
-        payment_method_label: (c.payment_method_label as string) || "Chuyển khoản",
-      }
-      const rawLines = (order as { lines: unknown }).lines
-      lines = ((Array.isArray(rawLines) ? rawLines : []) as Array<Record<string, unknown>>).map((l) => {
-        const rawP = (l as { product: unknown }).product
-        const p = (Array.isArray(rawP) ? rawP[0] : rawP || {}) as Record<string, unknown>
-        return {
-          product_name: (p.name as string) || "",
-          sku: (p.sku as string) || null,
-          unit_name: (l.unit_name as string) || (p.base_unit as string) || "",
-          base_unit: (p.base_unit as string) || null,
-          quantity: Number(l.quantity || 0),
-          unit_price: Number(l.unit_price || 0),
-          conversion_factor: Number(l.conversion_factor || 1),
-          vat_rate:
-            p.vat_rate != null ? Math.round(Number(p.vat_rate) * (Number(p.vat_rate) <= 1 ? 100 : 1)) : 10,
-          line_discount: Number(l.line_discount || 0),
-        }
-      })
-    }
-  }
-
-  // Fallback: hoá đơn không gắn order → 1 dòng tổng hợp.
-  if (lines.length === 0) {
-    lines = [
-      {
-        product_name: "Hàng hoá, dịch vụ",
-        unit_name: "Lần",
-        quantity: 1,
-        unit_price: Number(invoice.subtotal || invoice.total || 0),
-        conversion_factor: 1,
-        vat_rate:
-          invoice.subtotal > 0 ? Math.round((Number(invoice.vat || 0) / Number(invoice.subtotal)) * 100) : 10,
-        line_discount: 0,
-      },
-    ]
-  }
-
-  const misaConfig: MisaConfig = {
-    apiBase: cfg.api_base,
-    taxCode: cfg.tax_code || "",
-    username: decryptSecret(cfg.username_enc),
-    password: decryptSecret(cfg.password_enc),
-    companyId: cfg.misa_company_id,
-    orgUnitId: cfg.misa_org_unit_id,
-    templateId: cfg.misa_template_id,
-    userId: cfg.misa_user_id,
-    invSeries: cfg.misa_inv_series,
-    invTemplateNo: cfg.misa_inv_template_no,
-    sandbox: cfg.sandbox,
-  }
-
-  const payload = invoiceToMisaPayload({
-    buyer,
-    seller: {
-      name: cfg.seller_name || (orgRes.data?.name as string) || "",
-      taxCode: cfg.tax_code || "",
-      address: cfg.seller_address || "",
-    },
-    lines,
-    mode,
-    poNote: poNote || null,
-    invSeries: cfg.misa_inv_series,
-    invTemplateNo: cfg.misa_inv_template_no,
-    companyId: cfg.misa_company_id,
-    orgUnitId: cfg.misa_org_unit_id,
-    templateId: cfg.misa_template_id,
-    userId: cfg.misa_user_id,
-  })
-
-  // --- Gọi MISA + log ---
+  // Mọi lỗi sau khi đã set misa_status='pending' phải mark lại "error",
+  // nếu không invoice kẹt pending → lần retry kế tiếp luôn 409.
+  let payload: ReturnType<typeof invoiceToMisaPayload> | null = null
   try {
+    // --- Load config + order + customer + lines + org ---
+    const [cfgRes, orgRes] = await Promise.all([
+      admin.from("company_einvoice_config").select("*").eq("org_id", orgId).maybeSingle(),
+      admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+    ])
+    const cfg = cfgRes.data
+    if (!cfg || !cfg.is_active) {
+      await admin.from("invoices").update({ misa_status: "error", misa_error: "Chưa cấu hình tài khoản MISA" }).eq("id", invoiceId)
+      return NextResponse.json(
+        { error: "Chưa cấu hình tài khoản hoá đơn điện tử MISA. Vào Cài đặt → Hoá đơn điện tử." },
+        { status: 400 }
+      )
+    }
+    if (!cfg.username_enc || !cfg.password_enc) {
+      await admin.from("invoices").update({ misa_status: "error", misa_error: "Thiếu username/password MISA" }).eq("id", invoiceId)
+      return NextResponse.json(
+        { error: "Chưa nhập username/password MISA. Vào Cài đặt → Hoá đơn điện tử." },
+        { status: 400 }
+      )
+    }
+
+    let lines: MapperLine[] = []
+    let buyer = {
+      name: invoice.customer_name || "",
+      tax_code: invoice.customer_tax_code || "",
+      address: invoice.customer_address || "",
+      email: "" as string | null,
+      channel: "" as string | null,
+      payment_method_label: "Chuyển khoản" as string | null,
+    }
+
+    if (invoice.order_id) {
+      const { data: order } = await admin
+        .from("sales_orders")
+        .select(
+          "id, notes, customer:customers(store_name, billing_name, tax_code, billing_address, address, billing_email, channel, payment_method_label), lines:sales_order_lines(unit_name, quantity, unit_price, line_discount, conversion_factor, product:products(name, sku, base_unit, vat_rate))"
+        )
+        .eq("id", invoice.order_id)
+        .maybeSingle()
+      if (order) {
+        // Supabase suy luận join là mảng (không biết FK 1-1) — chuẩn hoá:
+        const rawCustomer = (order as { customer: unknown }).customer
+        const c = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer || {}) as Record<string, unknown>
+        buyer = {
+          name: (c.billing_name as string) || (c.store_name as string) || invoice.customer_name || "",
+          tax_code: (c.tax_code as string) || invoice.customer_tax_code || "",
+          address: (c.billing_address as string) || (c.address as string) || invoice.customer_address || "",
+          email: (c.billing_email as string) || null,
+          channel: (c.channel as string) || null,
+          payment_method_label: (c.payment_method_label as string) || "Chuyển khoản",
+        }
+        const rawLines = (order as { lines: unknown }).lines
+        lines = ((Array.isArray(rawLines) ? rawLines : []) as Array<Record<string, unknown>>).map((l) => {
+          const rawP = (l as { product: unknown }).product
+          const p = (Array.isArray(rawP) ? rawP[0] : rawP || {}) as Record<string, unknown>
+          return {
+            product_name: (p.name as string) || "",
+            sku: (p.sku as string) || null,
+            unit_name: (l.unit_name as string) || (p.base_unit as string) || "",
+            base_unit: (p.base_unit as string) || null,
+            quantity: Number(l.quantity || 0),
+            unit_price: Number(l.unit_price || 0),
+            conversion_factor: Number(l.conversion_factor || 1),
+            vat_rate:
+              p.vat_rate != null ? Math.round(Number(p.vat_rate) * (Number(p.vat_rate) <= 1 ? 100 : 1)) : 10,
+            line_discount: Number(l.line_discount || 0),
+          }
+        })
+      }
+    }
+
+    // Fallback: hoá đơn không gắn order → 1 dòng tổng hợp.
+    if (lines.length === 0) {
+      const sub = Number(invoice.subtotal || 0)
+      lines = [
+        {
+          product_name: "Hàng hoá, dịch vụ",
+          unit_name: "Lần",
+          quantity: 1,
+          unit_price: sub || Number(invoice.total || 0),
+          conversion_factor: 1,
+          vat_rate: sub > 0 ? Math.round((Number(invoice.vat || 0) / sub) * 100) : 10,
+          line_discount: 0,
+        },
+      ]
+    }
+
+    let username: string
+    let password: string
+    try {
+      username = decryptSecret(cfg.username_enc)
+      password = decryptSecret(cfg.password_enc)
+    } catch (e) {
+      const msg = `Không giải mã được credentials MISA (kiểm tra EINVOICE_ENC_KEY có thay đổi so với lúc lưu cấu hình không): ${(e as Error).message}`
+      await admin.from("invoices").update({ misa_status: "error", misa_error: msg }).eq("id", invoiceId)
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
+
+    const misaConfig: MisaConfig = {
+      apiBase: cfg.api_base,
+      taxCode: cfg.tax_code || "",
+      username,
+      password,
+      companyId: cfg.misa_company_id,
+      orgUnitId: cfg.misa_org_unit_id,
+      templateId: cfg.misa_template_id,
+      userId: cfg.misa_user_id,
+      invSeries: cfg.misa_inv_series,
+      invTemplateNo: cfg.misa_inv_template_no,
+      sandbox: cfg.sandbox,
+    }
+
+    payload = invoiceToMisaPayload({
+      buyer,
+      seller: {
+        name: cfg.seller_name || (orgRes.data?.name as string) || "",
+        taxCode: cfg.tax_code || "",
+        address: cfg.seller_address || "",
+      },
+      lines,
+      mode,
+      poNote: poNote || null,
+      invSeries: cfg.misa_inv_series,
+      invTemplateNo: cfg.misa_inv_template_no,
+      companyId: cfg.misa_company_id,
+      orgUnitId: cfg.misa_org_unit_id,
+      templateId: cfg.misa_template_id,
+      userId: cfg.misa_user_id,
+    })
+
+    // --- Gọi MISA + log ---
     const result = await publishInvoice(misaConfig, payload)
 
     await admin.from("einvoice_logs").insert({
@@ -248,20 +269,25 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Lỗi không xác định khi gọi MISA"
-    await admin.from("einvoice_logs").insert({
-      org_id: orgId,
-      invoice_id: invoiceId,
-      order_id: invoice.order_id,
-      request_payload: payload as unknown as Record<string, unknown>,
-      response_payload: null,
-      status: "failed",
-      error_message: msg,
-      created_by: profile.id,
-    })
-    await admin
-      .from("invoices")
-      .update({ misa_status: "error", misa_error: msg, misa_sent_at: new Date().toISOString() })
-      .eq("id", invoiceId)
+    console.error("[/api/einvoice/publish] uncaught:", err)
+    try {
+      await admin.from("einvoice_logs").insert({
+        org_id: orgId,
+        invoice_id: invoiceId,
+        order_id: invoice.order_id,
+        request_payload: (payload ?? null) as unknown as Record<string, unknown> | null,
+        response_payload: null,
+        status: "failed",
+        error_message: msg,
+        created_by: profile.id,
+      })
+    } catch { /* best-effort */ }
+    try {
+      await admin
+        .from("invoices")
+        .update({ misa_status: "error", misa_error: msg, misa_sent_at: new Date().toISOString() })
+        .eq("id", invoiceId)
+    } catch { /* best-effort */ }
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

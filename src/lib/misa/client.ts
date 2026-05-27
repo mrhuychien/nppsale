@@ -12,13 +12,11 @@ import type {
  * - getToken(): cache in-memory TTL 30 phút, refresh khi hết hạn.
  * - publishInvoice(): retry 1 lần khi token expired (401/403/"token").
  *
- * LƯU Ý: endpoint path MISA chưa public hoàn toàn — các path dưới đây
- * là giá trị mặc định hợp lý; verify bằng sandbox (doc Step 6) rồi
- * chỉnh TOKEN_PATH / PUBLISH_PATH cho khớp tài liệu MISA của bạn.
+ * Endpoint path đọc từ MisaConfig.tokenPath / publishPath — bắt buộc
+ * nhập ở UI Cài đặt theo doc MISA của tenant (Connect API v3 vs Open
+ * API v1 vs OEM dùng path khác nhau).
  */
 
-const TOKEN_PATH = "/auth/token"
-const PUBLISH_PATH = "/api/v1/invoices"
 const TOKEN_TTL_MS = 30 * 60 * 1000
 
 interface CachedToken {
@@ -48,6 +46,12 @@ function extractToken(data: MisaTokenResponse): string | null {
 }
 
 export async function getToken(cfg: MisaConfig, force = false): Promise<string> {
+  const tokenPath = (cfg.tokenPath || "").trim()
+  if (!tokenPath) {
+    throw new Error(
+      "Chưa cấu hình 'Endpoint lấy token' (token_path) cho MISA. Vào Cài đặt → Hoá đơn điện tử."
+    )
+  }
   const key = cacheKey(cfg)
   const now = Date.now()
   if (!force) {
@@ -55,7 +59,7 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     if (cached && cached.expiresAt > now) return cached.token
   }
 
-  const res = await fetch(`${cfg.apiBase}${TOKEN_PATH}`, {
+  const res = await fetch(`${cfg.apiBase}${tokenPath}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -122,8 +126,19 @@ export async function publishInvoice(
   cfg: MisaConfig,
   payload: InvoicePayload
 ): Promise<MisaPublishResponse> {
+  const publishPath = (cfg.publishPath || "").trim()
+  if (!publishPath) {
+    return {
+      ok: false,
+      raw: null,
+      error:
+        "Chưa cấu hình 'Endpoint phát hành' (publish_path) cho MISA. Vào Cài đặt → Hoá đơn điện tử.",
+      lookup_code: null,
+      inv_no: null,
+    }
+  }
   const doCall = async (token: string) => {
-    const res = await fetch(`${cfg.apiBase}${PUBLISH_PATH}`, {
+    const res = await fetch(`${cfg.apiBase}${publishPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

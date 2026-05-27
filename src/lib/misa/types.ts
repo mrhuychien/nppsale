@@ -11,6 +11,10 @@ export interface MisaConfig {
   taxCode: string
   username: string
   password: string
+  /** Path lấy access_token, vd '/api/Account/Login'. Bắt buộc — không có default đúng cho mọi tenant. */
+  tokenPath?: string | null
+  /** Path phát hành hoá đơn, vd '/api/InvoiceWS/Publish'. Bắt buộc. */
+  publishPath?: string | null
   companyId?: string | null
   orgUnitId?: string | null
   templateId?: string | null

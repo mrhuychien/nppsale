@@ -66,7 +66,9 @@ export async function POST(req: Request) {
   const row: Record<string, unknown> = {
     org_id: a.orgId,
     provider: "misa",
-    api_base: str("api_base") || "https://app.meinvoice.vn",
+    api_base: str("api_base") || "https://api.meinvoice.vn",
+    token_path: str("token_path") || null,
+    publish_path: str("publish_path") || null,
     tax_code: str("tax_code") || null,
     seller_name: str("seller_name") || null,
     seller_address: str("seller_address") || null,

@@ -15,6 +15,8 @@ import { Info, ShieldCheck } from "lucide-react"
 
 interface ConfigState {
   api_base: string
+  token_path: string
+  publish_path: string
   tax_code: string
   seller_name: string
   seller_address: string
@@ -33,7 +35,9 @@ interface ConfigState {
 }
 
 const EMPTY: ConfigState = {
-  api_base: "https://app.meinvoice.vn",
+  api_base: "https://api.meinvoice.vn",
+  token_path: "",
+  publish_path: "",
   tax_code: "",
   seller_name: "",
   seller_address: "",
@@ -69,6 +73,8 @@ export default function EInvoiceSettingsPage() {
             ...prev,
             ...data.config,
             api_base: data.config.api_base || prev.api_base,
+            token_path: data.config.token_path || "",
+            publish_path: data.config.publish_path || "",
             misa_inv_template_no: data.config.misa_inv_template_no || "1",
             tax_code: data.config.tax_code || "",
             seller_name: data.config.seller_name || "",
@@ -170,8 +176,39 @@ export default function EInvoiceSettingsPage() {
         <CardHeader><CardTitle>Tài khoản &amp; định danh MISA</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label>API base</Label>
-            <Input value={cfg.api_base} onChange={(e) => set({ api_base: e.target.value })} />
+            <Label>API base *</Label>
+            <Input
+              value={cfg.api_base}
+              onChange={(e) => set({ api_base: e.target.value })}
+              placeholder="https://api.meinvoice.vn (production) / https://demo.meinvoice.vn (sandbox)"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Là host của API, KHÔNG phải web portal <code>app.meinvoice.vn</code>.
+              Lấy trong tài liệu MISA cấp cho NPP của bạn.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Endpoint lấy token *</Label>
+            <Input
+              value={cfg.token_path}
+              onChange={(e) => set({ token_path: e.target.value })}
+              placeholder="/api/Account/Login"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Theo phiên bản API: v3 thường <code>/api/v3/Auth/login</code>;
+              cũ <code>/api/Account/Login</code>.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Endpoint phát hành *</Label>
+            <Input
+              value={cfg.publish_path}
+              onChange={(e) => set({ publish_path: e.target.value })}
+              placeholder="/api/InvoiceWS/Publish"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              vd <code>/api/InvoiceWS/Publish</code> hoặc <code>/api/v3/invoices</code>.
+            </p>
           </div>
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">

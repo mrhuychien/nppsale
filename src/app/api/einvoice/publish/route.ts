@@ -214,6 +214,8 @@ async function handlePublish(req: Request) {
       taxCode: cfg.tax_code || "",
       username,
       password,
+      tokenPath: cfg.token_path,
+      publishPath: cfg.publish_path,
       companyId: cfg.misa_company_id,
       orgUnitId: cfg.misa_org_unit_id,
       templateId: cfg.misa_template_id,

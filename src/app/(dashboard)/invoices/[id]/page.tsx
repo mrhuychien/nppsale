@@ -435,8 +435,11 @@ export default function InvoiceDetailPage() {
                 </div>
               )}
 
-              {/* Nút phát hành — chỉ khi chưa có mã tra cứu */}
-              {!invoice.misa_lookup_code ? (
+              {/* 3 trạng thái: chưa đẩy / đã đẩy nháp / đã ký xong.
+                  RefID = misa_invoice_id luôn có sau khi đẩy nháp,
+                  TransactionID = misa_lookup_code chỉ có sau khi ký bên MISA. */}
+              {!invoice.misa_invoice_id ? (
+                // TH1: chưa đẩy lên MISA
                 <div className="space-y-2 pt-1">
                   <p className="text-[11px] text-muted-foreground">
                     Đẩy hoá đơn lên MISA ở trạng thái <strong>nháp</strong>. Vào
@@ -475,18 +478,21 @@ export default function InvoiceDetailPage() {
                   </p>
                 </div>
               ) : (
+                // TH2 (chưa lookup_code) hoặc TH3 (đã có lookup_code).
                 <div className="space-y-2 pt-1">
                   <p className="text-[11px] text-muted-foreground">
-                    Đã đẩy nháp lên MISA. Vào web meInvoice để duyệt + ký + phát hành.
+                    {invoice.misa_lookup_code
+                      ? "Đã phát hành bên MISA — không đẩy lại để tránh trùng."
+                      : "Đã đẩy nháp lên MISA. Bấm 'Mở HĐ trên MISA' để duyệt + ký + phát hành."}
                   </p>
                   <div className="flex flex-col gap-2">
                     <a
-                      href={`https://app.meinvoice.vn/sainvoice/edit/${invoice.misa_lookup_code}`}
+                      href={`https://app.meinvoice.vn/sainvoice/edit/${invoice.misa_lookup_code || invoice.misa_invoice_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 h-9 text-sm font-medium hover:bg-accent"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary text-on-primary px-3 h-9 text-sm font-medium hover:bg-primary/90"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Mở HD trên MISA
+                      <ExternalLink className="h-3.5 w-3.5" /> Mở HĐ trên MISA
                     </a>
                     <Button
                       variant="outline"

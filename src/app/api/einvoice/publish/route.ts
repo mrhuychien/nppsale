@@ -78,8 +78,8 @@ async function handlePublish(req: Request) {
     return NextResponse.json({ error: invErr?.message || "Không tìm thấy hoá đơn" }, { status: 404 })
   }
 
-  // --- Idempotency: đã có lookup code → trả cached ---
-  if (invoice.misa_lookup_code) {
+  // --- Idempotency: đã có RefID hoặc lookup_code → trả cached, không đẩy lại ---
+  if (invoice.misa_lookup_code || invoice.misa_invoice_id) {
     return NextResponse.json({
       success: true,
       cached: true,
@@ -279,17 +279,21 @@ async function handlePublish(req: Request) {
       ? `https://www.meinvoice.vn/tra-cuu?code=${encodeURIComponent(result.lookup_code)}`
       : null
     const now = new Date().toISOString()
+    // Đẩy /v3sainvoice là tạo NHÁP — MISA chưa cấp TransactionID/InvNo chính
+    // thức cho tới khi user ký bên MISA web. Nếu có lookup_code → "signed",
+    // chỉ có inv_no/RefID → "sent" (nháp đang chờ ký).
+    const finalStatus = result.lookup_code ? "signed" : "sent"
     await admin
       .from("invoices")
       .update({
         misa_lookup_code: result.lookup_code,
         misa_invoice_id: result.inv_no,
         misa_invoice_url: lookupUrl,
-        misa_status: "signed",
+        misa_status: finalStatus,
         misa_error: null,
         misa_sent_at: now,
-        misa_signed_at: now,
-        misa_published_at: now,
+        misa_signed_at: result.lookup_code ? now : null,
+        misa_published_at: result.lookup_code ? now : null,
       })
       .eq("id", invoiceId)
 

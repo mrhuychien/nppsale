@@ -49,9 +49,10 @@ async function handle(req: Request) {
     .maybeSingle()
   if (!invoice) return NextResponse.json({ error: "Không tìm thấy HD" }, { status: 404 })
 
-  // MISA WebAPI v2 dùng RefID = misa_lookup_code mà chúng ta gán lúc đẩy
-  // (extractPublishResult trả RefID làm inv_no). Ưu tiên lookup_code, fallback inv_id.
-  const refId = invoice.misa_lookup_code || invoice.misa_invoice_id
+  // MISA LAYTHONGTINHD lookup theo RefID (GUID hoá đơn) = misa_invoice_id.
+  // misa_lookup_code = TransactionID, chỉ có sau khi ký bên MISA — không dùng
+  // làm refID query.
+  const refId = invoice.misa_invoice_id || invoice.misa_lookup_code
   if (!refId) {
     return NextResponse.json(
       { error: "HD chưa đẩy lên MISA — không có RefID để tra cứu." },

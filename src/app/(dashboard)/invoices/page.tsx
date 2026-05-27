@@ -300,16 +300,17 @@ export default function InvoicesPage() {
                       )}
                       {show("lookup") && (
                         <TableCell>
-                          {inv.misa_lookup_code ? (
+                          {(inv.misa_lookup_code || inv.misa_invoice_id) ? (
                             <div className="flex flex-col gap-0.5">
                               <a
-                                href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code}`}
+                                href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code || inv.misa_invoice_id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                               >
-                                Mở MISA <ExternalLink className="h-3 w-3" />
+                                {inv.misa_lookup_code ? "Mở MISA" : "Mở MISA (ký)"}
+                                <ExternalLink className="h-3 w-3" />
                               </a>
                               {inv.misa_invoice_url && (
                                 <a
@@ -367,16 +368,17 @@ export default function InvoicesPage() {
                       <span className="text-xs text-muted-foreground">Tổng tiền</span>
                       <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
                     </div>
-                    {inv.misa_lookup_code && (
+                    {(inv.misa_lookup_code || inv.misa_invoice_id) && (
                       <div className="flex items-center gap-3 mt-2">
                         <a
-                          href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code}`}
+                          href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code || inv.misa_invoice_id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                         >
-                          Mở trên MISA <ExternalLink className="h-3 w-3" />
+                          {inv.misa_lookup_code ? "Mở trên MISA" : "Mở MISA để ký"}
+                          <ExternalLink className="h-3 w-3" />
                         </a>
                         {inv.misa_invoice_url && (
                           <a

@@ -117,7 +117,6 @@ export async function getInvoiceTemplates(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       TaxCode: cfg.taxCode,
-      taxcode: cfg.taxCode,
     },
     body: JSON.stringify({
       TypeInvoice: typeInvoice,
@@ -161,7 +160,6 @@ export async function getInvoiceByRefId(
     headers: {
       Authorization: `Bearer ${token}`,
       TaxCode: cfg.taxCode,
-      taxcode: cfg.taxCode,
       "Content-Type": "application/json",
     },
   })
@@ -390,12 +388,9 @@ export async function publishInvoice(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        // MISA WebAPI v2 SAInvoice/Insert: header MST.
-        // Gửi cả 3 casing để cover .NET binding (HTTP header
-        // case-insensitive nhưng MISA binding có thể sensitive).
+        // Doc HDGTGT.html mục 2: header MST là TaxCode (PascalCase),
+        // KHÔNG gửi nhiều casing — fetch() merge duplicate gây 401.
         TaxCode: cfg.taxCode || "",
-        taxcode: cfg.taxCode || "",
-        CompanyTaxCode: cfg.taxCode || "",
       },
       body: JSON.stringify(payload),
     })

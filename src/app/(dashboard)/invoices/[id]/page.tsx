@@ -27,13 +27,16 @@ type NextStatus = {
   roles: string[]
 }
 
+// Trạng thái nội bộ npp.sale, ĐỘC LẬP với MISA. Khi đẩy MISA thành công,
+// status tự động chuyển sang "issued" (xem publish/route.ts). User không
+// cần bấm "Khoá hoá đơn" tay nếu đã đẩy MISA.
 const STATUS_FLOW: Record<InvoiceStatus, NextStatus[]> = {
   draft: [
-    { value: "issued", label: "Phát hành hóa đơn", icon: CheckCircle2, roles: ["owner", "manager", "accountant"] },
-    { value: "cancelled", label: "Hủy hóa đơn", icon: XCircle, roles: ["owner", "manager", "accountant"] },
+    { value: "issued", label: "Khoá hoá đơn (không cho sửa)", icon: CheckCircle2, roles: ["owner", "manager", "accountant"] },
+    { value: "cancelled", label: "Huỷ hoá đơn", icon: XCircle, roles: ["owner", "manager", "accountant"] },
   ],
   issued: [
-    { value: "cancelled", label: "Hủy hóa đơn", icon: XCircle, roles: ["owner"] },
+    { value: "cancelled", label: "Huỷ hoá đơn", icon: XCircle, roles: ["owner"] },
   ],
   cancelled: [],
 }
@@ -208,6 +211,15 @@ export default function InvoiceDetailPage() {
   const availableTransitions = STATUS_FLOW[invoice.status] || []
   const canEdit = user && hasPermission(user.role, "invoices", "update") && invoice.status === "draft"
   const canDelete = user && user.role === "owner" && invoice.status === "draft"
+
+  // misa_invoice_id chỉ "đã đẩy" khi là UUID hợp lệ (loại bỏ data cũ bị bug
+  // lưu "<Chưa cấp số>"). Bug cũ đã fix nhưng data lưu sẵn cần xử lý mềm.
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const misaRefId = invoice.misa_invoice_id && uuidRe.test(invoice.misa_invoice_id)
+    ? invoice.misa_invoice_id
+    : null
+  const misaLookup = invoice.misa_lookup_code || null
+  const misaUrlId = misaLookup || misaRefId
 
   return (
     <div className="space-y-4">
@@ -438,7 +450,7 @@ export default function InvoiceDetailPage() {
               {/* 3 trạng thái: chưa đẩy / đã đẩy nháp / đã ký xong.
                   RefID = misa_invoice_id luôn có sau khi đẩy nháp,
                   TransactionID = misa_lookup_code chỉ có sau khi ký bên MISA. */}
-              {!invoice.misa_invoice_id ? (
+              {!misaRefId ? (
                 // TH1: chưa đẩy lên MISA
                 <div className="space-y-2 pt-1">
                   <p className="text-[11px] text-muted-foreground">
@@ -481,13 +493,13 @@ export default function InvoiceDetailPage() {
                 // TH2 (chưa lookup_code) hoặc TH3 (đã có lookup_code).
                 <div className="space-y-2 pt-1">
                   <p className="text-[11px] text-muted-foreground">
-                    {invoice.misa_lookup_code
+                    {misaLookup
                       ? "Đã phát hành bên MISA — không đẩy lại để tránh trùng."
                       : "Đã đẩy nháp lên MISA. Bấm 'Mở HĐ trên MISA' để duyệt + ký + phát hành."}
                   </p>
                   <div className="flex flex-col gap-2">
                     <a
-                      href={`https://app.meinvoice.vn/sainvoice/edit/${invoice.misa_lookup_code || invoice.misa_invoice_id}`}
+                      href={`https://app.meinvoice.vn/sainvoice/edit/${misaUrlId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary text-on-primary px-3 h-9 text-sm font-medium hover:bg-primary/90"
@@ -508,10 +520,15 @@ export default function InvoiceDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Status transitions */}
+          {/* Status transitions (nội bộ npp.sale, không phải MISA) */}
           {(availableTransitions.length > 0 || canDelete) && (
             <Card>
-              <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Thao tác (nội bộ)</CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Trạng thái HĐ nội bộ trong app. Khoá = không cho sửa nữa. Huỷ/Xoá KHÔNG huỷ HĐ bên MISA — phải vào MISA web để huỷ riêng.
+                </p>
+              </CardHeader>
               <CardContent className="space-y-2">
                 {availableTransitions.map((trans) => {
                   if (!user || !trans.roles.includes(user.role)) return null

@@ -79,7 +79,11 @@ async function handlePublish(req: Request) {
   }
 
   // --- Idempotency: đã có RefID hoặc lookup_code → trả cached, không đẩy lại ---
-  if (invoice.misa_lookup_code || invoice.misa_invoice_id) {
+  // Data cũ có thể lưu invoice_id = "<Chưa cấp số>" (bug trước, đã fix) — coi
+  // như chưa đẩy để user re-push.
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const hasValidInvoiceId = !!invoice.misa_invoice_id && uuidRe.test(String(invoice.misa_invoice_id))
+  if (invoice.misa_lookup_code || hasValidInvoiceId) {
     return NextResponse.json({
       success: true,
       cached: true,
@@ -283,11 +287,21 @@ async function handlePublish(req: Request) {
     // thức cho tới khi user ký bên MISA web. Nếu có lookup_code → "signed",
     // chỉ có inv_no/RefID → "sent" (nháp đang chờ ký).
     const finalStatus = result.lookup_code ? "signed" : "sent"
+    // misa_invoice_id luôn lưu RefID (GUID) — đây là khoá build URL admin MISA
+    // app.meinvoice.vn/sainvoice/edit/{RefID}. Source of truth là payload[0].RefID
+    // (cái mình tạo + gửi đi), không phải response (response trả "<Chưa cấp số>"
+    // nhồi vào InvNo field gây lộn xộn).
+    const sentRefId = Array.isArray(payload) && payload[0]?.RefID ? payload[0].RefID : null
+    // Đẩy MISA OK → khoá HD nội bộ luôn (status=issued + issued_at), tránh
+    // user phải bấm "Phát hành hoá đơn" 2 lần (1 nội bộ + 1 MISA).
+    const internalIssuedAt = invoice.status === "draft" ? now : invoice.issued_at
     await admin
       .from("invoices")
       .update({
+        status: "issued",
+        issued_at: internalIssuedAt,
         misa_lookup_code: result.lookup_code,
-        misa_invoice_id: result.inv_no,
+        misa_invoice_id: sentRefId,
         misa_invoice_url: lookupUrl,
         misa_status: finalStatus,
         misa_error: null,

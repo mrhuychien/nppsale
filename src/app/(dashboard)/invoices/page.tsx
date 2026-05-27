@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { usePagination } from "@/hooks/use-pagination"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -15,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
@@ -57,6 +59,8 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [misaFilter, setMisaFilter] = useState("all")
+  const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0 })
+  const pg = usePagination(50)
   const supabase = createClient()
 
   const {
@@ -74,43 +78,77 @@ export default function InvoicesPage() {
   const show = (k: InvoiceColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)
 
+  // Tách stats query khỏi list query — gọi 1 lần khi mount, không reload theo
+  // filter (số tổng vẫn chính xác).
   useEffect(() => {
+    async function loadStats() {
+      const [allRes, signedRes, errorRes, pendingRes] = await Promise.all([
+        supabase.from("invoices").select("id", { count: "exact", head: true }),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).eq("misa_status", "signed"),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).eq("misa_status", "error"),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).or("misa_status.is.null,misa_status.eq.pending"),
+      ])
+      setStats({
+        total: allRes.count ?? 0,
+        signed: signedRes.count ?? 0,
+        error: errorRes.count ?? 0,
+        pending: pendingRes.count ?? 0,
+      })
+    }
+    loadStats()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search để tránh hit Supabase mỗi keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Reset về trang 1 khi filter/search đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [debouncedSearch, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // List query: filter + sort + pagination ở server.
+  useEffect(() => {
+    let cancelled = false
     async function fetch() {
-      const { data } = await supabase
+      setLoading(true)
+      let q = supabase
         .from("invoices")
         .select(
-          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code"
+          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code",
+          { count: "exact" }
         )
         .order("created_at", { ascending: false })
+        .range(pg.from, pg.to)
+      if (filterActive("search") && debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.or(
+          `invoice_number.ilike.${term},customer_name.ilike.${term},misa_invoice_id.ilike.${term}`
+        )
+      }
+      if (filterActive("status") && statusFilter !== "all") {
+        q = q.eq("status", statusFilter)
+      }
+      if (filterActive("misa") && misaFilter !== "all") {
+        if (misaFilter === "signed") q = q.eq("misa_status", "signed")
+        else if (misaFilter === "error") q = q.eq("misa_status", "error")
+        else if (misaFilter === "pending") q = q.or("misa_status.is.null,misa_status.eq.pending")
+      }
+      const { data, count } = await q
+      if (cancelled) return
       setInvoices((data as InvoiceRow[]) || [])
+      pg.setTotal(count ?? 0)
       setLoading(false)
     }
     fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    return invoices.filter((inv) => {
-      if (filterActive("search") && search.trim()) {
-        const q = search.toLowerCase()
-        const matches =
-          (inv.invoice_number || "").toLowerCase().includes(q) ||
-          inv.customer_name.toLowerCase().includes(q) ||
-          (inv.misa_invoice_id || "").toLowerCase().includes(q)
-        if (!matches) return false
-      }
-      if (filterActive("status") && statusFilter !== "all" && inv.status !== statusFilter)
-        return false
-      if (filterActive("misa") && misaFilter !== "all") {
-        const ms = inv.misa_status
-        if (misaFilter === "signed" && ms !== "signed") return false
-        if (misaFilter === "pending" && ms && ms !== "pending") return false
-        if (misaFilter === "error" && ms !== "error") return false
-      }
-      return true
-    })
-  }, [invoices, search, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  const filtered = invoices // đã filter server-side
+  if (authLoading) return <Skeleton className="h-96" />
 
   const statusVariant = (s: string): "default" | "success" | "danger" | "secondary" => {
     switch (s) { case "issued": return "success"; case "cancelled": return "danger"; default: return "secondary" }
@@ -119,11 +157,11 @@ export default function InvoicesPage() {
     switch (s) { case "issued": return "Đã phát hành"; case "cancelled": return "Đã hủy"; default: return "Nháp" }
   }
 
-  // Stats
-  const totalInvoices = invoices.length
-  const signedCount = invoices.filter((i) => i.misa_status === "signed").length
-  const pendingCount = invoices.filter((i) => !i.misa_status || i.misa_status === "pending").length
-  const errorCount = invoices.filter((i) => i.misa_status === "error").length
+  // Stats từ separate count queries (chính xác toàn tổng, không phụ thuộc page hiện tại)
+  const totalInvoices = stats.total
+  const signedCount = stats.signed
+  const pendingCount = stats.pending
+  const errorCount = stats.error
 
   return (
     <div className="space-y-6">
@@ -205,11 +243,13 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <Skeleton className="h-96" />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<FileText className="h-8 w-8 text-muted-foreground" />}
-          title={invoices.length === 0 ? "Chưa có hóa đơn" : "Không tìm thấy hóa đơn"}
-          description={invoices.length === 0 ? "Hóa đơn được tạo từ đơn hàng đã giao" : "Thử đổi bộ lọc"}
+          title={pg.total === 0 ? "Chưa có hóa đơn" : "Không tìm thấy hóa đơn"}
+          description={pg.total === 0 ? "Hóa đơn được tạo từ đơn hàng đã giao" : "Thử đổi bộ lọc"}
         />
       ) : (
         <>
@@ -356,6 +396,7 @@ export default function InvoicesPage() {
               )
             })}
           </div>
+          <DataPagination pg={pg} shownCount={filtered.length} />
         </>
       )}
     </div>

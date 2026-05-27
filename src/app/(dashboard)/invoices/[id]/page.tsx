@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
 import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 
@@ -65,6 +66,7 @@ export default function InvoiceDetailPage() {
   })
   const [actionLoading, setActionLoading] = useState(false)
   const [misaLoading, setMisaLoading] = useState(false)
+  const [misaCompanyId, setMisaCompanyId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -88,6 +90,17 @@ export default function InvoiceDetailPage() {
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Load MISA companyId 1 lần để build deep-link tới MISA web.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("company_einvoice_config")
+        .select("misa_company_id")
+        .maybeSingle()
+      setMisaCompanyId(data?.misa_company_id ?? null)
+    })()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChangeStatus = async (newStatus: InvoiceStatus) => {
     if (!invoice || !user) return
@@ -220,6 +233,7 @@ export default function InvoiceDetailPage() {
     : null
   const misaLookup = invoice.misa_lookup_code || null
   const misaUrlId = misaLookup || misaRefId
+  const misaDeepLink = buildMisaInvoiceUrl(misaUrlId, misaCompanyId) || MISA_LIST_URL
 
   return (
     <div className="space-y-4">
@@ -495,22 +509,16 @@ export default function InvoiceDetailPage() {
                   <p className="text-[11px] text-muted-foreground">
                     {misaLookup
                       ? "Đã phát hành bên MISA — không đẩy lại để tránh trùng."
-                      : "Đã đẩy nháp lên MISA. Vào MISA web tìm HĐ theo RefID dưới để duyệt + ký + phát hành."}
+                      : "Đã đẩy nháp lên MISA. Bấm để mở HĐ trên MISA web duyệt + ký + phát hành."}
                   </p>
-                  {misaUrlId && (
-                    <div className="rounded-md border border-border/40 bg-muted/30 p-2 text-[11px] space-y-0.5">
-                      <p className="text-muted-foreground">RefID để tìm trên MISA:</p>
-                      <p className="font-mono text-xs break-all select-all">{misaUrlId}</p>
-                    </div>
-                  )}
                   <div className="flex flex-col gap-2">
                     <a
-                      href="https://app.meinvoice.vn/sainvoice"
+                      href={misaDeepLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary text-on-primary px-3 h-9 text-sm font-medium hover:bg-primary/90"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Vào MISA tìm HĐ
+                      <ExternalLink className="h-3.5 w-3.5" /> Mở HĐ trên MISA
                     </a>
                     <Button
                       variant="outline"

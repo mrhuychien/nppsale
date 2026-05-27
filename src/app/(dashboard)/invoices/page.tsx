@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
 import {
@@ -60,6 +61,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [misaFilter, setMisaFilter] = useState("all")
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0 })
+  const [misaCompanyId, setMisaCompanyId] = useState<string | null>(null)
   const pg = usePagination(50)
   const supabase = createClient()
 
@@ -96,6 +98,17 @@ export default function InvoicesPage() {
       })
     }
     loadStats()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load MISA companyId 1 lần để build deep-link tới HĐ trên MISA web.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("company_einvoice_config")
+        .select("misa_company_id")
+        .maybeSingle()
+      setMisaCompanyId(data?.misa_company_id ?? null)
+    })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounce search để tránh hit Supabase mỗi keystroke.
@@ -303,13 +316,13 @@ export default function InvoicesPage() {
                           {(inv.misa_lookup_code || inv.misa_invoice_id) ? (
                             <div className="flex flex-col gap-0.5">
                               <a
-                                href="https://app.meinvoice.vn/sainvoice"
+                                href={buildMisaInvoiceUrl(inv.misa_lookup_code || inv.misa_invoice_id, misaCompanyId) || MISA_LIST_URL}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                               >
-                                Vào MISA <ExternalLink className="h-3 w-3" />
+                                Mở MISA <ExternalLink className="h-3 w-3" />
                               </a>
                               {inv.misa_invoice_url && (
                                 <a
@@ -370,13 +383,13 @@ export default function InvoicesPage() {
                     {(inv.misa_lookup_code || inv.misa_invoice_id) && (
                       <div className="flex items-center gap-3 mt-2">
                         <a
-                          href="https://app.meinvoice.vn/sainvoice"
+                          href={buildMisaInvoiceUrl(inv.misa_lookup_code || inv.misa_invoice_id, misaCompanyId) || MISA_LIST_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
                         >
-                          Vào MISA <ExternalLink className="h-3 w-3" />
+                          Mở MISA <ExternalLink className="h-3 w-3" />
                         </a>
                         {inv.misa_invoice_url && (
                           <a

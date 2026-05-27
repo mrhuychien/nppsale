@@ -32,7 +32,25 @@ export interface MisaConfig {
   invoiceType?: number | null
   /** IsInheritFromOldTemplate (bool): theo response API lấy mẫu HD. */
   isInheritFromOldTemplate?: boolean | null
+  /** Hoá đơn có mã CQT (lấy từ /oauth IsInvoiceWithCode). */
+  isInvoiceWithCode?: boolean | null
   sandbox?: boolean
+}
+
+/** 1 mẫu HD trả về từ LAYMAU (/v3common/template). */
+export interface MisaTemplate {
+  /** IPTemplateID = InvoiceTemplateID khi đẩy HD. */
+  IPTemplateID: string
+  CompanyID: number
+  TemplateName: string
+  InvTemplateNo: string
+  InvSeries: string
+  OrgInvSeries?: string
+  TemplateType: number
+  InvoiceType: number
+  IsInheritFromOldTemplate: boolean
+  IsPublished?: boolean
+  Inactive?: boolean
 }
 
 export interface SellerInfo {

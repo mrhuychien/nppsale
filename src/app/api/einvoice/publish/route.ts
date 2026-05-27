@@ -215,7 +215,10 @@ async function handlePublish(req: Request) {
       username,
       password,
       tokenPath: cfg.token_path,
-      publishPath: cfg.publish_path,
+      // Auto pick path theo IsInvoiceWithCode đã lưu lúc test-connection.
+      publishPath: cfg.misa_is_invoice_with_code
+        ? "/v3sainvoice/Code"
+        : (cfg.publish_path || "/v3sainvoice"),
       companyId: cfg.misa_company_id,
       orgUnitId: cfg.misa_org_unit_id,
       templateId: cfg.misa_template_id,
@@ -224,6 +227,7 @@ async function handlePublish(req: Request) {
       invTemplateNo: cfg.misa_inv_template_no,
       invoiceType: cfg.invoice_type ?? 1,
       isInheritFromOldTemplate: !!cfg.is_inherit_from_old_template,
+      isInvoiceWithCode: !!cfg.misa_is_invoice_with_code,
       sandbox: cfg.sandbox,
     }
 

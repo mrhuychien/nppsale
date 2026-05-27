@@ -2,8 +2,12 @@ import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { decryptSecret, encryptSecret } from "@/lib/crypto"
-import { extractTenantIds, getTokenWithRawResponse } from "@/lib/misa/client"
-import type { MisaConfig } from "@/lib/misa/types"
+import {
+  extractTenantIds,
+  getInvoiceTemplates,
+  getTokenWithRawResponse,
+} from "@/lib/misa/client"
+import type { MisaConfig, MisaTemplate } from "@/lib/misa/types"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -12,9 +16,10 @@ export const dynamic = "force-dynamic"
  * POST /api/einvoice/test-connection
  * Body (optional): { username, password } để override khi user vừa nhập mà chưa lưu.
  *
- * Mục đích: gọi /oauth thật để (a) verify credentials, (b) trích
- * CompanyID/OrganizationUnitID/UserID từ response và lưu vào config —
- * user không phải tự đi tìm.
+ * Mục đích: user chỉ cần nhập MST + username + password, mọi thông tin
+ * khác (CompanyID, OrganizationUnitID, UserID, IsInvoiceWithCode,
+ * InvoiceTemplateID, InvSeries, InvTemplateNo, IsInheritFromOldTemplate)
+ * lấy tự động từ MISA và lưu vào config.
  */
 export async function POST(req: Request) {
   try {
@@ -69,6 +74,7 @@ async function handle(req: Request) {
     )
   }
 
+  // Bước 1: lấy token + trích CompanyID, OrgUnitID, UserID, IsInvoiceWithCode.
   const misaConfig: MisaConfig = {
     apiBase: cfg.api_base,
     taxCode: cfg.tax_code || "",
@@ -77,38 +83,64 @@ async function handle(req: Request) {
     tokenPath,
     publishPath: cfg.publish_path || "/v3sainvoice",
   }
-
   let result: Awaited<ReturnType<typeof getTokenWithRawResponse>>
   try {
     result = await getTokenWithRawResponse(misaConfig)
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 })
   }
-
   const ids = extractTenantIds(result.raw)
 
-  // Auto-fill các ID lấy được + (nếu user vừa nhập credentials) lưu lại.
-  const updates: Record<string, unknown> = {}
-  if (ids.companyId && !cfg.misa_company_id) updates.misa_company_id = ids.companyId
-  if (ids.orgUnitId && !cfg.misa_org_unit_id) updates.misa_org_unit_id = ids.orgUnitId
-  if (ids.userId && !cfg.misa_user_id) updates.misa_user_id = ids.userId
+  // Bước 2: dùng IsInvoiceWithCode để chọn path đẩy HD, rồi gọi LAYMAU
+  // để lấy danh sách mẫu HD active. Pick mẫu đầu tiên (active + IsPublished).
+  const isCode = !!ids.isInvoiceWithCode
+  misaConfig.isInvoiceWithCode = isCode
+  let templates: MisaTemplate[] = []
+  let templateError: string | null = null
+  try {
+    // TypeInvoice=0 theo example LAYMAU.
+    templates = await getInvoiceTemplates(misaConfig, 0)
+  } catch (e) {
+    templateError = (e as Error).message
+  }
+  const activeTemplates = templates.filter((t) => !t.Inactive)
+  const chosen = activeTemplates.find((t) => t.IsPublished !== false) || activeTemplates[0] || null
+
+  // Bước 3: lưu tất cả vào config (ghi đè nếu đã có vì user chỉ có 1 mẫu).
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+  if (ids.companyId) updates.misa_company_id = ids.companyId
+  if (ids.orgUnitId) updates.misa_org_unit_id = ids.orgUnitId
+  if (ids.userId) updates.misa_user_id = ids.userId
+  if (ids.isInvoiceWithCode != null) {
+    updates.misa_is_invoice_with_code = ids.isInvoiceWithCode
+    updates.publish_path = isCode ? "/v3sainvoice/Code" : "/v3sainvoice"
+  }
+  if (chosen) {
+    updates.misa_template_id = chosen.IPTemplateID
+    updates.misa_inv_series = chosen.InvSeries
+    updates.misa_inv_template_no = chosen.InvTemplateNo || "1"
+    updates.invoice_type = chosen.InvoiceType || 1
+    updates.is_inherit_from_old_template = !!chosen.IsInheritFromOldTemplate
+  }
   if (body.username && body.username.trim()) updates.username_enc = encryptSecret(body.username.trim())
   if (body.password && body.password.trim()) updates.password_enc = encryptSecret(body.password.trim())
-  if (Object.keys(updates).length) {
-    updates.updated_at = new Date().toISOString()
-    await admin.from("company_einvoice_config").update(updates).eq("org_id", orgId)
-  }
+  await admin.from("company_einvoice_config").update(updates).eq("org_id", orgId)
 
   return NextResponse.json({
     success: true,
-    auto_filled: {
-      companyId: ids.companyId,
-      orgUnitId: ids.orgUnitId,
-      userId: ids.userId,
-    },
-    needs_manual: {
-      invoice_template_id: !cfg.misa_template_id,
-      inv_series: !cfg.misa_inv_series,
-    },
+    tenant: ids,
+    template: chosen
+      ? {
+          IPTemplateID: chosen.IPTemplateID,
+          TemplateName: chosen.TemplateName,
+          InvSeries: chosen.InvSeries,
+          InvTemplateNo: chosen.InvTemplateNo,
+          InvoiceType: chosen.InvoiceType,
+        }
+      : null,
+    template_count: activeTemplates.length,
+    template_error: templateError,
   })
 }

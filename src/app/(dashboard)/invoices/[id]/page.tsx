@@ -146,6 +146,32 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  const handleRefreshMisaStatus = async () => {
+    if (!invoice) return
+    setMisaLoading(true)
+    try {
+      const res = await fetch("/api/einvoice/refresh-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: invoice.id }),
+      })
+      const text = await res.text()
+      let data: { error?: string; misa?: { InvNo?: string | null; PublishStatus?: number | null } } = {}
+      try { data = text ? JSON.parse(text) : {} } catch { /* */ }
+      if (!res.ok) throw new Error(data.error || `Refresh thất bại (HTTP ${res.status})`)
+      const status = data.misa?.PublishStatus
+      toast({
+        title: "Đã làm mới từ MISA",
+        description: `Số HD: ${data.misa?.InvNo || "—"} · Trạng thái: ${status == null ? "—" : status >= 1 ? "Đã phát hành" : "Nháp (chưa ký)"}`,
+      })
+      fetchData()
+    } catch (e) {
+      toast({ title: "Lỗi refresh", description: (e as Error).message, variant: "destructive" })
+    } finally {
+      setMisaLoading(false)
+    }
+  }
+
   // Phát hành hoá đơn điện tử qua MISA meInvoice (Layer 3 — /api/einvoice/publish).
   const handleEinvoicePublish = async (mode: "as_sold" | "box" = "as_sold") => {
     if (!invoice) return
@@ -449,9 +475,29 @@ export default function InvoiceDetailPage() {
                   </p>
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Đã đẩy nháp lên MISA — vào web meInvoice để duyệt + ký. Không đẩy lại để tránh trùng.
-                </p>
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] text-muted-foreground">
+                    Đã đẩy nháp lên MISA. Vào web meInvoice để duyệt + ký + phát hành.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <a
+                      href={`https://app.meinvoice.vn/sainvoice/edit/${invoice.misa_lookup_code}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 h-9 text-sm font-medium hover:bg-accent"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Mở HD trên MISA
+                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshMisaStatus}
+                      disabled={misaLoading}
+                    >
+                      {misaLoading ? "Đang làm mới..." : "Làm mới trạng thái từ MISA"}
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>

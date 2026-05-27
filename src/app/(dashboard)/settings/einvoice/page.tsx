@@ -140,28 +140,39 @@ export default function EInvoiceSettingsPage() {
         body: JSON.stringify({ username: cfg.username, password: cfg.password }),
       })
       const text = await res.text()
-      let data: { error?: string; auto_filled?: { companyId?: string; orgUnitId?: string; userId?: string }; needs_manual?: { invoice_template_id?: boolean; inv_series?: boolean } } = {}
+      type TestResp = {
+        error?: string
+        tenant?: { companyId?: string | null; orgUnitId?: string | null; userId?: string | null; isInvoiceWithCode?: boolean | null }
+        template?: { IPTemplateID?: string; TemplateName?: string; InvSeries?: string; InvTemplateNo?: string; InvoiceType?: number } | null
+        template_count?: number
+        template_error?: string | null
+      }
+      let data: TestResp = {}
       try { data = text ? JSON.parse(text) : {} } catch { /* */ }
       if (!res.ok) throw new Error(data.error || `Test thất bại (HTTP ${res.status})`)
-      const filled = data.auto_filled || {}
+      const t = data.tenant || {}
+      const tpl = data.template || null
       set({
-        misa_company_id: filled.companyId || cfg.misa_company_id,
-        misa_org_unit_id: filled.orgUnitId || cfg.misa_org_unit_id,
-        misa_user_id: filled.userId || cfg.misa_user_id,
+        misa_company_id: t.companyId || cfg.misa_company_id,
+        misa_org_unit_id: t.orgUnitId || cfg.misa_org_unit_id,
+        misa_user_id: t.userId || cfg.misa_user_id,
+        misa_template_id: tpl?.IPTemplateID || cfg.misa_template_id,
+        misa_inv_series: tpl?.InvSeries || cfg.misa_inv_series,
+        misa_inv_template_no: tpl?.InvTemplateNo || cfg.misa_inv_template_no,
+        invoice_type: typeof tpl?.InvoiceType === "number" ? tpl.InvoiceType : cfg.invoice_type,
+        publish_path: t.isInvoiceWithCode ? "/v3sainvoice/Code" : "/v3sainvoice",
         username: "",
         password: "",
         has_username: true,
         has_password: true,
       })
-      const need = data.needs_manual || {}
-      const missing: string[] = []
-      if (need.invoice_template_id) missing.push("InvoiceTemplateID")
-      if (need.inv_series) missing.push("InvSeries")
       toast({
         title: "Kết nối MISA OK",
-        description:
-          (filled.companyId ? `CompanyID: ${filled.companyId}` : "") +
-          (missing.length ? ` · Còn cần nhập tay: ${missing.join(", ")}` : ""),
+        description: tpl
+          ? `Mẫu HD: ${tpl.TemplateName || tpl.IPTemplateID} · ${data.template_count} mẫu`
+          : data.template_error
+          ? `Đã login. Lỗi lấy mẫu HD: ${data.template_error}`
+          : `Đã login (CompanyID ${t.companyId || "?"}) — chưa tìm thấy mẫu HD active`,
       })
     } catch (e) {
       toast({ title: "Test thất bại", description: (e as Error).message, variant: "destructive" })

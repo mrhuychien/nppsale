@@ -2,6 +2,7 @@ import type {
   InvoicePayload,
   MisaConfig,
   MisaPublishResponse,
+  MisaTemplate,
   MisaTokenResponse,
 } from "./types"
 
@@ -46,13 +47,14 @@ function extractToken(data: MisaTokenResponse): string | null {
 }
 
 /**
- * Trích các định danh MISA cần cho payload phát hành từ response /oauth.
- * Doc HDGTGT mục 7: CompanyID, OrganizationUnitID, UserID lấy từ response token.
+ * Trích các định danh tenant MISA từ response /oauth (doc LAYTOKEN).
+ * Response có CompanyID, OrganizationUnitID, UserID, IsInvoiceWithCode.
  */
 export function extractTenantIds(data: unknown): {
   companyId: string | null
   orgUnitId: string | null
   userId: string | null
+  isInvoiceWithCode: boolean | null
 } {
   const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
   const candidates: Array<Record<string, unknown>> = [obj]
@@ -76,11 +78,105 @@ export function extractTenantIds(data: unknown): {
     }
     return null
   }
+  // IsInvoiceWithCode được MISA trả về string "True"/"False" (case-insensitive).
+  const pickBool = (...keys: string[]): boolean | null => {
+    for (const src of candidates) {
+      for (const k of keys) {
+        const val = src?.[k]
+        if (typeof val === "boolean") return val
+        if (typeof val === "string") {
+          const lower = val.toLowerCase().trim()
+          if (lower === "true") return true
+          if (lower === "false") return false
+        }
+      }
+    }
+    return null
+  }
   return {
     companyId: pick("CompanyID", "companyID", "companyId", "company_id"),
     orgUnitId: pick("OrganizationUnitID", "organizationUnitID", "organizationUnitId", "OrgUnitID"),
     userId: pick("UserID", "userID", "userId", "user_id"),
+    isInvoiceWithCode: pickBool("IsInvoiceWithCode", "isInvoiceWithCode"),
   }
+}
+
+/**
+ * Gọi LAYMAU `POST /v3common/template` (hoặc /v3common/code/template).
+ * Trả về danh sách mẫu HD active để user/code chọn 1.
+ */
+export async function getInvoiceTemplates(
+  cfg: MisaConfig,
+  typeInvoice = 0
+): Promise<MisaTemplate[]> {
+  const token = await getToken(cfg)
+  const path = cfg.isInvoiceWithCode ? "/v3common/code/template" : "/v3common/template"
+  const res = await fetch(`${cfg.apiBase}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      TaxCode: cfg.taxCode,
+      taxcode: cfg.taxCode,
+    },
+    body: JSON.stringify({
+      TypeInvoice: typeInvoice,
+      TaxCode: cfg.taxCode,
+      UserName: cfg.username,
+      Password: cfg.password,
+    }),
+  })
+  const text = await res.text()
+  let obj: Record<string, unknown> = {}
+  try { obj = text ? JSON.parse(text) : {} } catch { /* */ }
+  if (!res.ok) {
+    throw new Error(`Lấy mẫu HD lỗi ${res.status}: ${extractErrorMessage(obj, text)}`)
+  }
+  if (obj["success"] === false || obj["Success"] === false) {
+    throw new Error(`Lấy mẫu HD thất bại: ${extractErrorMessage(obj, text)}`)
+  }
+  const dataStr = obj["data"] ?? obj["Data"]
+  if (typeof dataStr !== "string" || !dataStr) return []
+  try {
+    const arr = JSON.parse(dataStr)
+    return Array.isArray(arr) ? (arr as MisaTemplate[]) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * GET /v3sainvoice/?refID=... (hoặc /v3sainvoice/code/?refID=...)
+ * — lấy thông tin hoá đơn hiện tại trên MISA (InvNo, PublishStatus, TransactionID...).
+ */
+export async function getInvoiceByRefId(
+  cfg: MisaConfig,
+  refId: string
+): Promise<Record<string, unknown> | null> {
+  const token = await getToken(cfg)
+  const segment = cfg.isInvoiceWithCode ? "code/" : ""
+  const url = `${cfg.apiBase}/v3sainvoice/${segment}?refID=${encodeURIComponent(refId)}`
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      TaxCode: cfg.taxCode,
+      taxcode: cfg.taxCode,
+      "Content-Type": "application/json",
+    },
+  })
+  const text = await res.text()
+  let obj: Record<string, unknown> = {}
+  try { obj = text ? JSON.parse(text) : {} } catch { /* */ }
+  if (!res.ok) {
+    throw new Error(`Lấy HD lỗi ${res.status}: ${extractErrorMessage(obj, text)}`)
+  }
+  if (obj["success"] === false || obj["Success"] === false) {
+    throw new Error(`Lấy HD thất bại: ${extractErrorMessage(obj, text)}`)
+  }
+  const dataStr = obj["data"] ?? obj["Data"]
+  if (typeof dataStr !== "string" || !dataStr) return null
+  try { return JSON.parse(dataStr) as Record<string, unknown> } catch { return null }
 }
 
 /**

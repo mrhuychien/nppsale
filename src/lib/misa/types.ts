@@ -1,11 +1,10 @@
 /**
- * MISA meInvoice — kiểu dữ liệu cho payload & response.
+ * MISA meInvoice WebAPI v2 — kiểu dữ liệu theo doc HDGTGT.html.
  *
- * Mặc định dùng WebAPI v2 (đơn giản — không cần AppID, không cần ký):
- * - Token: POST /api/v2/oauth (form-encoded, taxcode ở header)
- * - Insert nháp: POST /api/v2/SAInvoice/Insert (Bearer + taxcode header)
- *
- * Schema dựa trên: doc.meinvoice.vn/webapi & testapp.meinvoice.vn/api/v2.
+ * Endpoint: POST {apiBase}/v3sainvoice (không mã CQT)
+ *         hoặc /v3sainvoice/Code (có mã CQT)
+ * Header:   Authorization: Bearer <token>, TaxCode: <MST>, Content-Type: application/json
+ * Body:     [ { ...InvoiceHeader, InvoiceDetails: [...] } ]  ← MẢNG 1 phần tử
  */
 
 export interface MisaConfig {
@@ -15,85 +14,127 @@ export interface MisaConfig {
   password: string
   /** Path lấy token, WebAPI v2 = '/oauth'. */
   tokenPath?: string | null
-  /** Path tạo HĐ nháp, WebAPI v2 = '/SAInvoice/Insert'. */
+  /** Path đẩy HĐ nháp, WebAPI v2 = '/v3sainvoice' (không mã) hoặc '/v3sainvoice/Code'. */
   publishPath?: string | null
+  /** CompanyID — lấy từ response /oauth (int). */
   companyId?: string | null
+  /** OrganizationUnitID — lấy từ response /oauth (GUID). */
   orgUnitId?: string | null
+  /** InvoiceTemplateID — lấy từ "Lấy danh sách mẫu HD" (GUID). */
   templateId?: string | null
+  /** UserID — lấy từ response /oauth (GUID). */
   userId?: string | null
+  /** Kí hiệu hoá đơn vd '1K23TCB'. */
   invSeries?: string | null
+  /** Mẫu số vd '1'. */
   invTemplateNo?: string | null
+  /** InvoiceType (int): 1 = HĐ GTGT bán hàng (default). */
+  invoiceType?: number | null
+  /** IsInheritFromOldTemplate (bool): theo response API lấy mẫu HD. */
+  isInheritFromOldTemplate?: boolean | null
   sandbox?: boolean
 }
 
-/** Thông tin người bán in trên hoá đơn. */
 export interface SellerInfo {
   name: string
   taxCode: string
   address: string
 }
 
+/** 1 dòng InvoiceDetails — schema theo doc 6.2. */
 export interface InvoiceDetailLine {
-  /** UUID duy nhất cho dòng (RefDetailID). */
   RefDetailID: string
-  ItemCode?: string
-  ItemName: string
+  RefID: string
+  /** 1=Product, 2=Promotion, 3=Description, 4=Discount. */
+  InventoryItemType: number
+  InventoryItemCode?: string
+  /** Tên hàng hoá. */
+  Description: string
   UnitName: string
   Quantity: number
   UnitPrice: number
-  /** Thành tiền chưa thuế = round(Quantity × UnitPrice). */
+  /** = Quantity * UnitPrice. */
+  AmountOC: number
+  /** = AmountOC * ExchangeRate. */
   Amount: number
-  /** Tỷ lệ thuế GTGT (%) — vd 10, 8, 5, 0. */
+  DiscountRate: number
+  DiscountAmountOC: number
+  DiscountAmount: number
   VATRate: number
-  /** Tiền thuế của dòng = round(Amount × VATRate/100). */
+  /** = AmountOC * VATRate / 100. */
+  VATAmountOC: number
+  /** = VATAmountOC * ExchangeRate. */
   VATAmount: number
-  DiscountAmount?: number
+  SortOrder: number
+  /** null nếu InventoryItemType ∈ {3,4}. */
+  SortOrderView: number | null
+  IsPromotion?: boolean
 }
 
-/**
- * Body /SAInvoice/Insert WebAPI v2 — wrapper MeInvoiceParam:
- *   { data: "<JSON string header>", detail: "<JSON string lines>" }
- * Cả 2 đều là STRING (đã JSON.stringify), không phải object.
- *
- * Field name lấy từ doc + Help/Api: BuyerLegalName/BuyerTaxCode/...
- * TotalSaleAmountOC / TotalAmountWithoutVATOC / TotalVATAmountOC /
- * TotalDiscountAmountOC / TotalAmountOC (OC = Original Currency).
- */
+/** Einvoice Master object — theo doc 6.1. */
 export interface InvoiceHeader {
   RefID: string
-  InvSeries?: string
-  InvoiceName?: string
+  CompanyID: number | string
+  OrganizationUnitID: string
+  UserID: string
+  InvoiceType: number
+  InvSeries: string
+  InvTemplateNo: string
+  InvoiceTemplateID: string
+  IsInheritFromOldTemplate: boolean
   InvDate: string
-  CurrencyCode: "VND"
-  ExchangeRate: 1
-  PaymentMethodName: string
-  BuyerLegalName: string
-  BuyerTaxCode: string
-  BuyerAddress: string
-  BuyerEmail?: string
-  ContactName?: string
+  /** Mặc định "<Chưa cấp số>". */
+  InvNo: string
+  /** Mặc định 0. */
+  SourceType: number
+  SendInvoiceStatus: number
+  SendNumber: number
+  CurrencyCode: string
+  CurrencyID: string
+  ExchangeRate: number
+  ExchangeRateOperation: number
+  /** 0=không CK, 1=CK dòng, 2=CK tổng. */
+  TypeDiscount: number
+  DiscountRate: number
+  IsMoreVATRate: boolean
+  VATRate: number
+  EInvoiceStatus: number
+  PaymentStatus: number
+  PaymentRule: number
+  ApproveStep: number
+  CreatedDate: string
+  ModifiedDate: string
+  EditVersion: number
+  OrgInvoiceType: number
   TotalSaleAmountOC: number
-  TotalDiscountAmountOC?: number
+  TotalSaleAmount: number
+  TotalAmountWithoutVAT: number
   TotalAmountWithoutVATOC: number
   TotalVATAmountOC: number
+  TotalVATAmount: number
+  TotalDiscountAmountOC: number
+  TotalDiscountAmount: number
   TotalAmountOC: number
-  /** Định danh tenant — bắt buộc theo doc, lấy từ response /oauth của MISA. */
-  CompanyID?: string | null
-  OrganizationUnitID?: string | null
-  InvoiceTemplateID?: string | null
-  UserID?: string | null
-  /** Phiên bản ghi: 0 khi insert, +1 mỗi update. Bắt buộc. */
-  EditVersion: number
+  TotalAmount: number
+  // Người mua (optional)
+  AccountObjectTaxCode?: string
+  AccountObjectName?: string
+  AccountObjectAddress?: string
+  AccountObjectCode?: string
+  ContactName?: string
+  ReceiverEmail?: string
+  ReceiverName?: string
+  ReceiverMobile?: string
+  PaymentMethod: string
+  /** true nếu HĐ có thuế suất 8%. */
+  IsTaxReduction43: boolean
+  InvoiceDetails: InvoiceDetailLine[]
 }
 
-/** Wrapper body POST /SAInvoice/Insert. */
-export interface InvoicePayload {
-  data: string
-  detail: string
-  EntityState?: number
-}
+/** Body POST /v3sainvoice — mảng 1+ HĐ. */
+export type InvoicePayload = InvoiceHeader[]
 
-/** Response /oauth — token nằm trực tiếp (không wrap Success/Data). */
+/** Response /oauth — token nằm trực tiếp. */
 export interface MisaTokenResponse {
   access_token?: string
   token_type?: string
@@ -103,11 +144,8 @@ export interface MisaTokenResponse {
 }
 
 export interface MisaPublishResponse {
-  /** Mã tra cứu (TransactionID trong MISA). */
   lookup_code?: string | null
-  /** Số hoá đơn được cấp (InvoiceNumber/InvNo). */
   inv_no?: string | null
-  /** Response thô đầy đủ — luôn lưu để debug. */
   raw: unknown
   ok: boolean
   error?: string

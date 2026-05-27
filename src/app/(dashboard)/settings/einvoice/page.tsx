@@ -26,6 +26,8 @@ interface ConfigState {
   misa_user_id: string
   misa_inv_series: string
   misa_inv_template_no: string
+  invoice_type: number
+  is_inherit_from_old_template: boolean
   sandbox: boolean
   is_active: boolean
   username: string
@@ -37,7 +39,7 @@ interface ConfigState {
 const EMPTY: ConfigState = {
   api_base: "https://testapp.meinvoice.vn/api/v2",
   token_path: "/oauth",
-  publish_path: "/SAInvoice/Insert",
+  publish_path: "/v3sainvoice",
   tax_code: "",
   seller_name: "",
   seller_address: "",
@@ -47,6 +49,8 @@ const EMPTY: ConfigState = {
   misa_user_id: "",
   misa_inv_series: "",
   misa_inv_template_no: "1",
+  invoice_type: 1,
+  is_inherit_from_old_template: false,
   sandbox: true,
   is_active: true,
   username: "",
@@ -84,6 +88,8 @@ export default function EInvoiceSettingsPage() {
             misa_template_id: data.config.misa_template_id || "",
             misa_user_id: data.config.misa_user_id || "",
             misa_inv_series: data.config.misa_inv_series || "",
+            invoice_type: typeof data.config.invoice_type === "number" ? data.config.invoice_type : 1,
+            is_inherit_from_old_template: !!data.config.is_inherit_from_old_template,
             username: "",
             password: "",
           }))
@@ -202,14 +208,14 @@ export default function EInvoiceSettingsPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Endpoint tạo hoá đơn nháp</Label>
+            <Label>Endpoint đẩy HĐ</Label>
             <Input
               value={cfg.publish_path}
               onChange={(e) => set({ publish_path: e.target.value })}
-              placeholder="/SAInvoice/Insert"
+              placeholder="/v3sainvoice"
             />
             <p className="text-[11px] text-muted-foreground">
-              WebAPI v2 mặc định: <code>/SAInvoice/Insert</code>.
+              Không mã CQT: <code>/v3sainvoice</code> · Có mã: <code>/v3sainvoice/Code</code>.
             </p>
           </div>
           <div className="space-y-2">
@@ -258,6 +264,30 @@ export default function EInvoiceSettingsPage() {
           <div className="space-y-2">
             <Label>Mẫu số (InvTemplateNo)</Label>
             <Input value={cfg.misa_inv_template_no} onChange={(e) => set({ misa_inv_template_no: e.target.value })} placeholder="1" />
+          </div>
+          <div className="space-y-2">
+            <Label>InvoiceType</Label>
+            <Input
+              type="number"
+              value={cfg.invoice_type}
+              onChange={(e) => set({ invoice_type: parseInt(e.target.value, 10) || 1 })}
+              placeholder="1"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              1 = HĐ GTGT bán hàng. Lấy theo &ldquo;Lấy danh sách mẫu HĐ&rdquo;.
+            </p>
+          </div>
+          <div className="space-y-2 flex flex-col">
+            <Label>IsInheritFromOldTemplate</Label>
+            <div className="flex items-center gap-3 h-10">
+              <Switch
+                checked={cfg.is_inherit_from_old_template}
+                onCheckedChange={(v) => set({ is_inherit_from_old_template: v })}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                Theo response API lấy mẫu HĐ của MISA.
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>

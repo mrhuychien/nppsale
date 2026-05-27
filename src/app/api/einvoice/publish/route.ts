@@ -222,6 +222,8 @@ async function handlePublish(req: Request) {
       userId: cfg.misa_user_id,
       invSeries: cfg.misa_inv_series,
       invTemplateNo: cfg.misa_inv_template_no,
+      invoiceType: cfg.invoice_type ?? 1,
+      isInheritFromOldTemplate: !!cfg.is_inherit_from_old_template,
       sandbox: cfg.sandbox,
     }
 
@@ -241,6 +243,8 @@ async function handlePublish(req: Request) {
       orgUnitId: cfg.misa_org_unit_id,
       templateId: cfg.misa_template_id,
       userId: cfg.misa_user_id,
+      invoiceType: cfg.invoice_type ?? 1,
+      isInheritFromOldTemplate: !!cfg.is_inherit_from_old_template,
     })
 
     // --- Gọi MISA + log ---

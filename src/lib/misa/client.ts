@@ -125,31 +125,52 @@ function looksLikeAuthError(status: number, body: string): boolean {
   return lower.includes("token") || lower.includes("expired") || lower.includes("unauthorized")
 }
 
-function extractPublishResult(data: unknown): { lookup: string | null; invNo: string | null } {
-  // MISA WebAPI v2 response envelope:
-  // { success, error, data: "<json string>", newdata: "<json string>",
-  //   content: "<json string|null>", dataError, recordsTotal, ... }
-  // Khi save OK: data thường chứa JSON string của hoá đơn vừa lưu (RefID, ...).
+function extractPublishResult(data: unknown): {
+  lookup: string | null
+  invNo: string | null
+  innerSuccess: boolean | null
+  innerError: string | null
+} {
+  // /v3sainvoice response (doc):
+  // { success, data: "{\"<refId>\":{\"Data\":\"<innerJSON>\",
+  //     \"ErrorMessage\":null,\"ErrorCode\":[],\"Success\":true,\"EntityState\":0}}", ... }
+  // → outer.data là chuỗi JSON, parse ra map refId→{Data, Success, ErrorMessage}.
   const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
   const candidates: Array<Record<string, unknown>> = [obj]
+  let innerSuccess: boolean | null = null
+  let innerError: string | null = null
 
-  // Parse các field stringified MISA hay dùng.
-  for (const k of ["data", "newdata", "content", "Data"]) {
-    const v = obj[k]
-    if (typeof v === "string" && v) {
-      try {
-        const parsed = JSON.parse(v)
-        if (Array.isArray(parsed) && parsed.length) {
-          candidates.push(parsed[0] as Record<string, unknown>)
-        } else if (parsed && typeof parsed === "object") {
-          candidates.push(parsed as Record<string, unknown>)
+  const tryParseAndCollect = (raw: unknown) => {
+    if (typeof raw !== "string" || !raw) return
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length) {
+        candidates.push(parsed[0] as Record<string, unknown>)
+      } else if (parsed && typeof parsed === "object") {
+        const map = parsed as Record<string, unknown>
+        // Map refId → result. Lấy entry đầu tiên.
+        for (const v of Object.values(map)) {
+          if (v && typeof v === "object") {
+            const entry = v as Record<string, unknown>
+            candidates.push(entry)
+            if (typeof entry["Success"] === "boolean") innerSuccess = entry["Success"] as boolean
+            if (typeof entry["ErrorMessage"] === "string" && entry["ErrorMessage"]) {
+              innerError = entry["ErrorMessage"] as string
+            }
+            const errCode = entry["ErrorCode"]
+            if (Array.isArray(errCode) && errCode.length) {
+              innerError = (innerError ? innerError + " · " : "") + JSON.stringify(errCode)
+            }
+            // Data bên trong là 1 chuỗi JSON nữa của HĐ đã lưu — parse tiếp.
+            tryParseAndCollect(entry["Data"])
+          }
         }
-      } catch { /* không phải JSON — bỏ qua */ }
-    } else if (Array.isArray(v) && v.length) {
-      candidates.push(v[0] as Record<string, unknown>)
-    } else if (v && typeof v === "object") {
-      candidates.push(v as Record<string, unknown>)
-    }
+      }
+    } catch { /* không phải JSON — bỏ qua */ }
+  }
+
+  for (const k of ["data", "newdata", "content", "Data"]) {
+    tryParseAndCollect(obj[k])
   }
 
   const pick = (...keys: string[]): string | null => {
@@ -163,8 +184,10 @@ function extractPublishResult(data: unknown): { lookup: string | null; invNo: st
     return null
   }
   return {
-    lookup: pick("TransactionID", "transactionID", "LookupCode", "lookupCode", "lookup_code", "Code"),
-    invNo: pick("RefID", "refID", "InvoiceNumber", "invoiceNumber", "InvNo", "invNo"),
+    lookup: pick("TransactionID", "transactionID", "LookupCode", "lookupCode", "lookup_code"),
+    invNo: pick("InvNo", "invNo", "InvoiceNumber", "RefID", "refID"),
+    innerSuccess,
+    innerError,
   }
 }
 
@@ -245,11 +268,21 @@ export async function publishInvoice(
     }
   }
 
-  const { lookup, invNo } = extractPublishResult(data)
+  const { lookup, invNo, innerSuccess, innerError } = extractPublishResult(data)
 
-  // Edge case: server trả success:true nhưng data/newdata/content đều rỗng →
-  // thường nghĩa là endpoint sai (vd hit api_base sandbox/production lệch
-  // tài khoản, hoặc path không khớp WebAPI v2). Báo lỗi rõ để khỏi tưởng OK.
+  // Nested success/error từ trong data: refId → {Success, ErrorMessage}.
+  if (innerSuccess === false) {
+    return {
+      ok: false,
+      raw: data,
+      error: `MISA từ chối hoá đơn: ${innerError || extractErrorMessage(data, text)}`,
+      lookup_code: null,
+      inv_no: null,
+    }
+  }
+
+  // Edge case: success:true ở outer + không có dữ liệu hoá đơn trả về →
+  // thường do endpoint sai (sandbox vs production lệch) hoặc path không khớp.
   const dataField = obj["data"]
   const newdataField = obj["newdata"]
   const contentField = obj["content"]
@@ -257,15 +290,14 @@ export async function publishInvoice(
     (dataField === "" || dataField == null) &&
     (newdataField === "" || newdataField == null) &&
     (contentField == null) &&
-    !lookup && !invNo
+    !lookup && !invNo && innerSuccess !== true
   if (isEmpty) {
     return {
       ok: false,
       raw: data,
       error:
-        "MISA trả success nhưng không có dữ liệu hoá đơn (data/newdata/content đều rỗng). " +
-        "Thường do: api_base sai (sandbox vs production lệch tài khoản), hoặc tài khoản chưa được cấp quyền API. " +
-        "Kiểm tra log einvoice_logs để xem raw response.",
+        "MISA trả success nhưng không có dữ liệu hoá đơn. " +
+        "Thường do: api_base sai (sandbox vs production lệch tài khoản), hoặc path không trùng (/v3sainvoice vs /v3sainvoice/Code).",
       lookup_code: null,
       inv_no: null,
     }

@@ -45,8 +45,85 @@ function extractToken(data: MisaTokenResponse): string | null {
   return null
 }
 
+/**
+ * Trích các định danh MISA cần cho payload phát hành từ response /oauth.
+ * Doc HDGTGT mục 7: CompanyID, OrganizationUnitID, UserID lấy từ response token.
+ */
+export function extractTenantIds(data: unknown): {
+  companyId: string | null
+  orgUnitId: string | null
+  userId: string | null
+} {
+  const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
+  const candidates: Array<Record<string, unknown>> = [obj]
+  for (const k of ["Data", "data"]) {
+    const v = obj[k]
+    if (v && typeof v === "object") candidates.push(v as Record<string, unknown>)
+    else if (typeof v === "string" && v) {
+      try {
+        const parsed = JSON.parse(v)
+        if (parsed && typeof parsed === "object") candidates.push(parsed as Record<string, unknown>)
+      } catch { /* not json */ }
+    }
+  }
+  const pick = (...keys: string[]): string | null => {
+    for (const src of candidates) {
+      for (const k of keys) {
+        const val = src?.[k]
+        if (typeof val === "string" && val) return val
+        if (typeof val === "number") return String(val)
+      }
+    }
+    return null
+  }
+  return {
+    companyId: pick("CompanyID", "companyID", "companyId", "company_id"),
+    orgUnitId: pick("OrganizationUnitID", "organizationUnitID", "organizationUnitId", "OrgUnitID"),
+    userId: pick("UserID", "userID", "userId", "user_id"),
+  }
+}
+
+/**
+ * Gọi /oauth + trả response thô để caller tự extract IDs.
+ * Dùng cho luồng "Test connection & auto-fill IDs" ở Settings.
+ */
+export async function getTokenWithRawResponse(cfg: MisaConfig): Promise<{
+  token: string
+  raw: unknown
+}> {
+  const token = await getToken(cfg, true)
+  // getToken cache token; gọi lại để bắt raw — nhưng getToken không expose raw.
+  // Workaround: tự gọi 1 lần để lấy raw, không cache.
+  const tokenPath = (cfg.tokenPath || "").trim()
+  const form = new URLSearchParams()
+  form.set("grant_type", "password")
+  form.set("username", cfg.username)
+  form.set("password", cfg.password)
+  const res = await fetch(`${cfg.apiBase}${tokenPath}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      TaxCode: cfg.taxCode,
+      taxcode: cfg.taxCode,
+      CompanyTaxCode: cfg.taxCode,
+    },
+    body: form.toString(),
+  })
+  const text = await res.text()
+  let raw: unknown = {}
+  try { raw = text ? JSON.parse(text) : {} } catch { raw = { _raw: text } }
+  return { token, raw }
+}
+
 function extractErrorMessage(data: unknown, rawText: string): string {
   const d = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
+  // MISA /oauth lỗi thường có dạng: { error, error_description, status }
+  // (chuẩn OAuth2). Ưu tiên error_description vì có message tiếng Việt.
+  const oauthErr = d["error_description"] || d["error"]
+  if (typeof oauthErr === "string" && oauthErr) {
+    const code = typeof d["error"] === "string" && d["error"] !== oauthErr ? ` (${d["error"]})` : ""
+    return `${oauthErr}${code}`
+  }
   const parts = [
     d["ErrorCode"],
     d["DescriptionErrorCode"],
@@ -100,8 +177,13 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     // Không phải JSON — log để debug.
   }
 
-  if (!res.ok) {
-    throw new Error(`MISA token lỗi ${res.status}: ${extractErrorMessage(data, text)}`)
+  // MISA đôi khi trả HTTP 200 nhưng body có {error, error_description, status:401}.
+  // Bắt cả 2 case: HTTP fail + business fail trong body.
+  const dataObj = data as Record<string, unknown>
+  const hasOAuthError = typeof dataObj["error"] === "string" && dataObj["error"]
+  if (!res.ok || hasOAuthError) {
+    const inferStatus = typeof dataObj["status"] === "number" ? dataObj["status"] : res.status
+    throw new Error(`MISA token lỗi ${inferStatus}: ${extractErrorMessage(data, text)}`)
   }
   const token = extractToken(data)
   if (!token) {

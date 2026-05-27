@@ -124,6 +124,52 @@ export default function EInvoiceSettingsPage() {
     }
   }
 
+  const [testing, setTesting] = useState(false)
+  const handleTestConnection = async () => {
+    setTesting(true)
+    try {
+      // Save trước (encrypted ở server) để test-connection có config mới nhất.
+      await fetch("/api/einvoice/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      })
+      const res = await fetch("/api/einvoice/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cfg.username, password: cfg.password }),
+      })
+      const text = await res.text()
+      let data: { error?: string; auto_filled?: { companyId?: string; orgUnitId?: string; userId?: string }; needs_manual?: { invoice_template_id?: boolean; inv_series?: boolean } } = {}
+      try { data = text ? JSON.parse(text) : {} } catch { /* */ }
+      if (!res.ok) throw new Error(data.error || `Test thất bại (HTTP ${res.status})`)
+      const filled = data.auto_filled || {}
+      set({
+        misa_company_id: filled.companyId || cfg.misa_company_id,
+        misa_org_unit_id: filled.orgUnitId || cfg.misa_org_unit_id,
+        misa_user_id: filled.userId || cfg.misa_user_id,
+        username: "",
+        password: "",
+        has_username: true,
+        has_password: true,
+      })
+      const need = data.needs_manual || {}
+      const missing: string[] = []
+      if (need.invoice_template_id) missing.push("InvoiceTemplateID")
+      if (need.inv_series) missing.push("InvSeries")
+      toast({
+        title: "Kết nối MISA OK",
+        description:
+          (filled.companyId ? `CompanyID: ${filled.companyId}` : "") +
+          (missing.length ? ` · Còn cần nhập tay: ${missing.join(", ")}` : ""),
+      })
+    } catch (e) {
+      toast({ title: "Test thất bại", description: (e as Error).message, variant: "destructive" })
+    } finally {
+      setTesting(false)
+    }
+  }
+
   if (authLoading || loading) return <Skeleton className="h-96" />
 
   if (user && !["owner", "accountant"].includes(user.role)) {
@@ -312,7 +358,10 @@ export default function EInvoiceSettingsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={handleTestConnection} disabled={testing || saving}>
+          {testing ? "Đang test..." : "Test kết nối & lấy IDs"}
+        </Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Đang lưu..." : "Lưu cấu hình"}
         </Button>

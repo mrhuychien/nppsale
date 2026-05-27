@@ -189,7 +189,7 @@ export async function getTokenWithRawResponse(cfg: MisaConfig): Promise<{
 }> {
   const token = await getToken(cfg, true)
   // getToken cache token; gọi lại để bắt raw — nhưng getToken không expose raw.
-  // Workaround: tự gọi 1 lần để lấy raw, không cache.
+  // Workaround: tự gọi 1 lần để lấy raw, không cache. Khớp đúng doc.
   const tokenPath = (cfg.tokenPath || "").trim()
   const form = new URLSearchParams()
   form.set("grant_type", "password")
@@ -198,10 +198,8 @@ export async function getTokenWithRawResponse(cfg: MisaConfig): Promise<{
   const res = await fetch(`${cfg.apiBase}${tokenPath}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      TaxCode: cfg.taxCode,
+      "Content-Type": "text/plain",
       taxcode: cfg.taxCode,
-      CompanyTaxCode: cfg.taxCode,
     },
     body: form.toString(),
   })
@@ -252,15 +250,17 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
   form.set("username", cfg.username)
   form.set("password", cfg.password)
 
+  // MISA WebAPI v2 /oauth (doc LAYTOKEN.html mục 3.1):
+  //   Header: taxcode (LOWERCASE, không phải TaxCode)
+  //   Content-Type: text/plain
+  //   Body: form-encoded grant_type=password&username=...&password=...
+  // KHÔNG gửi nhiều casing — fetch() merge thành duplicate value, MISA
+  // có thể reject với INVALID_TAXCODE.
   const res = await fetch(`${cfg.apiBase}${tokenPath}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      // MISA WebAPI v2 header MST: gửi cả 3 case để chắc — HTTP header
-      // case-insensitive nhưng .NET binding hay sensitive.
-      TaxCode: cfg.taxCode,
+      "Content-Type": "text/plain",
       taxcode: cfg.taxCode,
-      CompanyTaxCode: cfg.taxCode,
     },
     body: form.toString(),
   })

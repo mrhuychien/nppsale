@@ -837,7 +837,7 @@ export function OrderForm() {
   const summaryHasContent = !!customerId && lineCount > 0
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6 items-start pb-24 lg:pb-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-card-gap pb-24 lg:pb-6">
       {/* Mobile step indicator */}
       <div className="w-full lg:hidden flex items-center gap-2 px-1 pb-1">
         <div className="flex items-center gap-2">
@@ -874,8 +874,10 @@ export function OrderForm() {
         </div>
       </div>
 
-      {/* LEFT COLUMN */}
-      <div className="w-full lg:w-[320px] lg:shrink-0 space-y-6">
+      {/* Stitch layout: 8/12 main + 4/12 sticky summary on xl+ */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-card-gap items-start">
+        {/* MAIN COLUMN (8/12) */}
+        <div className="xl:col-span-8 flex flex-col gap-card-gap min-w-0">
         {/* Customer info card */}
         <Card className="rounded-xl shadow-card">
           <CardHeader>
@@ -1012,10 +1014,7 @@ export function OrderForm() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* MAIN COLUMN */}
-      <div className="flex-1 w-full space-y-6 min-w-0">
         {/* Products card */}
         <Card className="rounded-xl shadow-card flex-1">
           <CardHeader>
@@ -1620,92 +1619,91 @@ export function OrderForm() {
           )}
         </Card>
 
-        {/* Notes + Summary row */}
-        <div className="flex flex-col lg:flex-row justify-between gap-6">
-          <div className="w-full lg:w-1/2">
-            <Card className="rounded-xl shadow-card h-full">
-              <CardHeader>
-                <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Yêu cầu đặc biệt về đóng gói, thời gian giao, ghi chú kế toán..."
-                  rows={6}
-                />
-              </CardContent>
-            </Card>
-          </div>
+        {/* Notes card — main column */}
+        <Card className="rounded-xl shadow-card">
+          <CardHeader>
+            <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Yêu cầu đặc biệt về đóng gói, thời gian giao, ghi chú kế toán..."
+              rows={6}
+            />
+          </CardContent>
+        </Card>
+        </div>
+        {/* end MAIN COLUMN */}
 
-          <div className="w-full lg:w-80">
-            {/* Order Summary — Stitch primary panel (bold blue, sticky on desktop) */}
-            <div className="bg-primary text-on-primary rounded-xl shadow-card-hover p-6 relative overflow-hidden lg:sticky lg:top-24">
-              <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-              <h3 className="text-headline-md font-semibold mb-6 relative">Tổng thanh toán</h3>
-              <div className="relative space-y-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-primary-fixed font-medium">Tạm tính</span>
-                  <span className="font-semibold tabular-data">{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-primary-fixed font-medium">Tổng chiết khấu</span>
-                  <span className="font-semibold tabular-data">-{formatCurrency(total_discount)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-primary-fixed font-medium">VAT</span>
-                  <span className="font-semibold tabular-data">+{formatCurrency(vat)}</span>
-                </div>
-                <div className="h-px bg-primary-fixed-dim/30" />
-                <div className="flex items-end justify-between">
-                  <span className="text-label-md uppercase text-primary-fixed">
-                    Tổng đơn
-                  </span>
-                  <span className="text-headline-lg font-bold tracking-tight tabular-data">
-                    {formatCurrency(total)}
-                  </span>
-                </div>
+        {/* SUMMARY COLUMN (4/12) — sticky on xl+ */}
+        <div className="xl:col-span-4 flex flex-col gap-card-gap xl:sticky xl:top-24">
+          {/* Order Summary — Stitch primary panel (bold blue) */}
+          <div className="bg-primary text-on-primary rounded-xl shadow-card-hover p-6 relative overflow-hidden">
+            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+            <h3 className="text-headline-md font-semibold mb-6 relative">Tổng thanh toán</h3>
+            <div className="relative space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-primary-fixed font-medium">Tạm tính</span>
+                <span className="font-semibold tabular-data">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-primary-fixed font-medium">Tổng chiết khấu</span>
+                <span className="font-semibold tabular-data">-{formatCurrency(total_discount)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-primary-fixed font-medium">VAT</span>
+                <span className="font-semibold tabular-data">+{formatCurrency(vat)}</span>
+              </div>
+              <div className="h-px bg-primary-fixed-dim/30" />
+              <div className="flex items-end justify-between">
+                <span className="text-label-md uppercase text-primary-fixed">
+                  Tổng đơn
+                </span>
+                <span className="text-headline-lg font-bold tracking-tight tabular-data">
+                  {formatCurrency(total)}
+                </span>
+              </div>
 
-                {returnLines.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-primary-fixed font-medium">Trừ hàng trả</span>
-                      <span className="font-semibold tabular-data">-{formatCurrency(returnSubtotal)}</span>
-                    </div>
-                    <div className="h-px bg-primary-fixed-dim/30" />
-                    <div className="flex items-end justify-between">
-                      <span className="text-label-md uppercase text-primary-fixed">
-                        Phải thu
-                      </span>
-                      <span className="text-headline-lg font-bold tracking-tight tabular-data text-tertiary-fixed-dim">
-                        {formatCurrency(Math.max(0, total - returnSubtotal))}
-                      </span>
-                    </div>
-                  </>
-                )}
+              {returnLines.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-primary-fixed font-medium">Trừ hàng trả</span>
+                    <span className="font-semibold tabular-data">-{formatCurrency(returnSubtotal)}</span>
+                  </div>
+                  <div className="h-px bg-primary-fixed-dim/30" />
+                  <div className="flex items-end justify-between">
+                    <span className="text-label-md uppercase text-primary-fixed">
+                      Phải thu
+                    </span>
+                    <span className="text-headline-lg font-bold tracking-tight tabular-data text-tertiary-fixed-dim">
+                      {formatCurrency(Math.max(0, total - returnSubtotal))}
+                    </span>
+                  </div>
+                </>
+              )}
 
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    type="button"
-                    className="flex-1 bg-on-primary/15 hover:bg-on-primary/25 text-on-primary border-0 font-semibold"
-                    onClick={() => router.back()}
-                  >
-                    Huỷ
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={loading || hasOverstock || hasPriceViolation}
-                    className="flex-[2] bg-on-primary hover:bg-on-primary/90 text-primary font-semibold border-0"
-                  >
-                    {loading
-                      ? "Đang lưu..."
-                      : hasOverstock
-                        ? "Vượt tồn kho"
-                        : hasPriceViolation
-                          ? "Giá thấp hơn cho phép"
-                          : "Tạo đơn hàng"}
-                  </Button>
-                </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  className="flex-1 bg-on-primary/15 hover:bg-on-primary/25 text-on-primary border-0 font-semibold"
+                  onClick={() => router.back()}
+                >
+                  Huỷ
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading || hasOverstock || hasPriceViolation}
+                  className="flex-[2] bg-on-primary hover:bg-on-primary/90 text-primary font-semibold border-0"
+                >
+                  {loading
+                    ? "Đang lưu..."
+                    : hasOverstock
+                      ? "Vượt tồn kho"
+                      : hasPriceViolation
+                        ? "Giá thấp hơn cho phép"
+                        : "Tạo đơn hàng"}
+                </Button>
               </div>
             </div>
           </div>

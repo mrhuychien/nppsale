@@ -39,6 +39,7 @@ type InvoiceRow = Pick<
   | "misa_status"
   | "misa_invoice_id"
   | "misa_invoice_url"
+  | "misa_lookup_code"
 >
 
 const MISA_BADGE: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }> = {
@@ -78,7 +79,7 @@ export default function InvoicesPage() {
       const { data } = await supabase
         .from("invoices")
         .select(
-          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url"
+          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code"
         )
         .order("created_at", { ascending: false })
       setInvoices((data as InvoiceRow[]) || [])
@@ -259,16 +260,29 @@ export default function InvoicesPage() {
                       )}
                       {show("lookup") && (
                         <TableCell>
-                          {inv.misa_invoice_url ? (
-                            <a
-                              href={inv.misa_invoice_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-primary hover:underline text-xs flex items-center gap-1"
-                            >
-                              Xem HĐ <ExternalLink className="h-3 w-3" />
-                            </a>
+                          {inv.misa_lookup_code ? (
+                            <div className="flex flex-col gap-0.5">
+                              <a
+                                href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
+                              >
+                                Mở MISA <ExternalLink className="h-3 w-3" />
+                              </a>
+                              {inv.misa_invoice_url && (
+                                <a
+                                  href={inv.misa_invoice_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-[10px] text-muted-foreground hover:underline"
+                                >
+                                  Tra cứu công khai
+                                </a>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
@@ -313,16 +327,29 @@ export default function InvoicesPage() {
                       <span className="text-xs text-muted-foreground">Tổng tiền</span>
                       <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
                     </div>
-                    {inv.misa_invoice_url && (
-                      <a
-                        href={inv.misa_invoice_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-primary hover:underline text-xs flex items-center gap-1 mt-2"
-                      >
-                        Xem HĐ trên MISA <ExternalLink className="h-3 w-3" />
-                      </a>
+                    {inv.misa_lookup_code && (
+                      <div className="flex items-center gap-3 mt-2">
+                        <a
+                          href={`https://app.meinvoice.vn/sainvoice/edit/${inv.misa_lookup_code}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
+                        >
+                          Mở trên MISA <ExternalLink className="h-3 w-3" />
+                        </a>
+                        {inv.misa_invoice_url && (
+                          <a
+                            href={inv.misa_invoice_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] text-muted-foreground hover:underline"
+                          >
+                            Tra cứu công khai
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

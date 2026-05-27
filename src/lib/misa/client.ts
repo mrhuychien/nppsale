@@ -83,7 +83,11 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
+      // MISA WebAPI v2 header MST: gửi cả 3 case để chắc — HTTP header
+      // case-insensitive nhưng .NET binding hay sensitive.
+      TaxCode: cfg.taxCode,
       taxcode: cfg.taxCode,
+      CompanyTaxCode: cfg.taxCode,
     },
     body: form.toString(),
   })
@@ -185,11 +189,12 @@ export async function publishInvoice(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        // WebAPI v2 SAInvoice/Insert dùng CompanyTaxCode (PascalCase).
-        // Gửi cả 2 dạng để chắc — HTTP header case-insensitive nhưng
-        // .NET binding đôi khi nhạy với casing.
-        CompanyTaxCode: cfg.taxCode || "",
+        // MISA WebAPI v2 SAInvoice/Insert: header MST.
+        // Gửi cả 3 casing để cover .NET binding (HTTP header
+        // case-insensitive nhưng MISA binding có thể sensitive).
+        TaxCode: cfg.taxCode || "",
         taxcode: cfg.taxCode || "",
+        CompanyTaxCode: cfg.taxCode || "",
       },
       body: JSON.stringify(payload),
     })

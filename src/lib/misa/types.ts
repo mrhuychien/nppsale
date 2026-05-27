@@ -77,10 +77,13 @@ export interface InvoiceHeader {
   TotalAmountWithoutVATOC: number
   TotalVATAmountOC: number
   TotalAmountOC: number
+  /** Định danh tenant — bắt buộc theo doc, lấy từ response /oauth của MISA. */
   CompanyID?: string | null
-  OrgUnitID?: string | null
-  TemplateID?: string | null
+  OrganizationUnitID?: string | null
+  InvoiceTemplateID?: string | null
   UserID?: string | null
+  /** Phiên bản ghi: 0 khi insert, +1 mỗi update. Bắt buộc. */
+  EditVersion: number
 }
 
 /** Wrapper body POST /SAInvoice/Insert. */

@@ -137,9 +137,10 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
     TotalVATAmountOC: totalVat,
     TotalAmountOC: totalAmountAfterDiscount + totalVat,
     CompanyID: opts.companyId,
-    OrgUnitID: opts.orgUnitId,
-    TemplateID: opts.templateId,
+    OrganizationUnitID: opts.orgUnitId,
+    InvoiceTemplateID: opts.templateId,
     UserID: opts.userId,
+    EditVersion: 0,
   }
 
   // MISA WebAPI v2 expect MeInvoiceParam: { data: jsonString, detail: jsonString }.

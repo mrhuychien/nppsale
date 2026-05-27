@@ -201,7 +201,9 @@ export default function PriceListsPage() {
           const existingPl =
             existingRow?.prices[groupKey]
 
-          if (existingPl) {
+          // tempPl (id="temp_...") là placeholder UI khi thêm sản phẩm mới,
+          // chưa có trong DB → coi như insert.
+          if (existingPl && !String(existingPl.id).startsWith("temp_")) {
             // Update existing
             const { error } = await supabase
               .from("price_lists")

@@ -214,8 +214,10 @@ async function handlePublish(req: Request) {
       taxCode: cfg.tax_code || "",
       username,
       password,
+      appId: cfg.misa_app_id,
       tokenPath: cfg.token_path,
       publishPath: cfg.publish_path,
+      signType: cfg.sign_type ?? 1,
       companyId: cfg.misa_company_id,
       orgUnitId: cfg.misa_org_unit_id,
       templateId: cfg.misa_template_id,
@@ -241,6 +243,7 @@ async function handlePublish(req: Request) {
       orgUnitId: cfg.misa_org_unit_id,
       templateId: cfg.misa_template_id,
       userId: cfg.misa_user_id,
+      signType: cfg.sign_type ?? 1,
     })
 
     // --- Gọi MISA + log ---

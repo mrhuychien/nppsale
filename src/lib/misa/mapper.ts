@@ -1,5 +1,5 @@
 import crypto from "node:crypto"
-import type { InvoiceDetailLine, InvoicePayload, SellerInfo } from "./types"
+import type { InvoiceDataItem, InvoiceDetailLine, InvoicePayload, SellerInfo } from "./types"
 
 /**
  * Layer 2 — Mapper (pure, no I/O).
@@ -48,6 +48,8 @@ export interface MapperOptions {
   orgUnitId?: string | null
   templateId?: string | null
   userId?: string | null
+  /** SignType MISA: 1=USB/file (default), 2=HSM, 3=HSM async, 4/5=không ký. */
+  signType?: number | null
 }
 
 /** VND: làm tròn về số nguyên đồng. */
@@ -115,7 +117,7 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
   const totalSale = detail.reduce((s, d) => s + d.Amount, 0)
   const totalVat = detail.reduce((s, d) => s + d.VATAmount, 0)
 
-  return {
+  const invoiceItem: InvoiceDataItem = {
     RefID: crypto.randomUUID(),
     InvSeries: opts.invSeries || undefined,
     InvTemplateNo: opts.invTemplateNo || undefined,
@@ -136,5 +138,11 @@ export function invoiceToMisaPayload(opts: MapperOptions): InvoicePayload {
     TemplateID: opts.templateId,
     UserID: opts.userId,
     OriginalInvoiceDetail: detail,
+  }
+
+  return {
+    SignType: opts.signType ?? 1,
+    InvoiceData: [invoiceItem],
+    PublishInvoiceData: [],
   }
 }

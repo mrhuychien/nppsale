@@ -1,9 +1,10 @@
 /**
  * MISA meInvoice — kiểu dữ liệu cho payload & response.
  *
- * LƯU Ý (doc Step 6): schema response thật của MISA cần verify bằng tay
- * lần đầu chạy với sandbox/production. Các field response dưới đây để
- * optional + client log full response → cập nhật khi biết chính xác.
+ * Dựa trên doc Integration API (https://doc.meinvoice.vn/itg):
+ * - Token body: appid, taxcode, username, password (lowercase).
+ * - Response wrap: { Success, Data: {...}, ErrorCode, Errors }.
+ * - Publish wrap: { SignType, InvoiceData: [...], PublishInvoiceData: [...] }.
  */
 
 export interface MisaConfig {
@@ -11,10 +12,14 @@ export interface MisaConfig {
   taxCode: string
   username: string
   password: string
-  /** Path lấy access_token, vd '/api/Account/Login'. Bắt buộc — không có default đúng cho mọi tenant. */
+  /** AppID do MISA cấp — gửi trong body lấy token. */
+  appId?: string | null
+  /** Path lấy access_token, vd '/api/integration/auth/token'. */
   tokenPath?: string | null
-  /** Path phát hành hoá đơn, vd '/api/InvoiceWS/Publish'. Bắt buộc. */
+  /** Path phát hành hoá đơn, vd '/api/integration/invoice/publish'. */
   publishPath?: string | null
+  /** 1=USB/file, 2=HSM, 3=HSM async, 4=vé không ký, 5=POS không ký. */
+  signType?: number | null
   companyId?: string | null
   orgUnitId?: string | null
   templateId?: string | null
@@ -48,7 +53,8 @@ export interface InvoiceDetailLine {
   DiscountAmount?: number
 }
 
-export interface InvoicePayload {
+/** 1 dòng InvoiceData trong publish payload — schema MISA Integration API. */
+export interface InvoiceDataItem {
   /** UUID duy nhất cho hoá đơn (RefID) — dùng cho idempotency phía MISA. */
   RefID: string
   InvSeries?: string
@@ -76,17 +82,31 @@ export interface InvoicePayload {
   OriginalInvoiceDetail: InvoiceDetailLine[]
 }
 
+/** Wrapper publish payload theo doc MISA Integration API. */
+export interface InvoicePayload {
+  SignType: number
+  InvoiceData: InvoiceDataItem[]
+  PublishInvoiceData: Array<Record<string, unknown>>
+}
+
 export interface MisaTokenResponse {
-  access_token?: string
-  token?: string
-  expires_in?: number
+  Success?: boolean
+  Data?: {
+    access_token?: string
+    token_type?: string
+    expires_in?: number
+    refresh_token?: string
+    [k: string]: unknown
+  }
+  ErrorCode?: string | null
+  Errors?: string | null
   [k: string]: unknown
 }
 
 export interface MisaPublishResponse {
-  /** Mã tra cứu (field thật cần verify — có thể là LookupCode / Code). */
+  /** Mã tra cứu (TransactionID trong MISA). */
   lookup_code?: string | null
-  /** Số hoá đơn được cấp (InvNo / InvoiceNumber). */
+  /** Số hoá đơn được cấp (InvoiceNumber/InvNo). */
   inv_no?: string | null
   /** Response thô đầy đủ — luôn lưu để debug. */
   raw: unknown

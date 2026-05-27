@@ -63,21 +63,30 @@ export async function POST(req: Request) {
 
   const str = (k: string) => (typeof body[k] === "string" ? (body[k] as string).trim() : undefined)
 
+  const signTypeRaw = body["sign_type"]
+  const signType =
+    typeof signTypeRaw === "number"
+      ? signTypeRaw
+      : typeof signTypeRaw === "string" && signTypeRaw.trim()
+      ? parseInt(signTypeRaw, 10)
+      : 1
   const row: Record<string, unknown> = {
     org_id: a.orgId,
     provider: "misa",
-    api_base: str("api_base") || "https://api.meinvoice.vn",
+    api_base: str("api_base") || "https://testapi.meinvoice.vn",
     token_path: str("token_path") || null,
     publish_path: str("publish_path") || null,
     tax_code: str("tax_code") || null,
     seller_name: str("seller_name") || null,
     seller_address: str("seller_address") || null,
+    misa_app_id: str("misa_app_id") || null,
     misa_company_id: str("misa_company_id") || null,
     misa_org_unit_id: str("misa_org_unit_id") || null,
     misa_template_id: str("misa_template_id") || null,
     misa_user_id: str("misa_user_id") || null,
     misa_inv_series: str("misa_inv_series") || null,
     misa_inv_template_no: str("misa_inv_template_no") || "1",
+    sign_type: Number.isFinite(signType) && signType >= 1 && signType <= 5 ? signType : 1,
     sandbox: body.sandbox === undefined ? true : !!body.sandbox,
     is_active: body.is_active === undefined ? true : !!body.is_active,
     updated_at: new Date().toISOString(),

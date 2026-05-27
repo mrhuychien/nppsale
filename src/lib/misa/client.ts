@@ -30,19 +30,33 @@ function cacheKey(cfg: MisaConfig): string {
 }
 
 function extractToken(data: MisaTokenResponse): string | null {
-  // MISA trả token ở nhiều field tuỳ phiên bản — thử lần lượt.
+  // MISA Integration API: { Success, Data: { access_token, ... }, ErrorCode, Errors }.
+  // Thử các vị trí để hỗ trợ cả v3/Connect API.
   const d = data as Record<string, unknown>
   const candidates = [
-    data.access_token,
-    data.token,
-    d["accessToken"],
     (d["Data"] as Record<string, unknown> | undefined)?.["access_token"],
-    (d["data"] as Record<string, unknown> | undefined)?.["token"],
+    (d["data"] as Record<string, unknown> | undefined)?.["access_token"],
+    d["access_token"],
+    d["accessToken"],
   ]
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c
   }
   return null
+}
+
+function extractErrorMessage(data: unknown, rawText: string): string {
+  const d = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
+  const parts = [
+    d["ErrorCode"],
+    d["DescriptionErrorCode"],
+    d["descriptionErrorCode"],
+    d["Errors"],
+    d["errorMessage"],
+    d["message"],
+  ].filter((x) => typeof x === "string" && x)
+  if (parts.length) return parts.join(" — ")
+  return rawText.slice(0, 500)
 }
 
 export async function getToken(cfg: MisaConfig, force = false): Promise<string> {
@@ -63,9 +77,9 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      appId: cfg.companyId ?? undefined,
-      taxCode: cfg.taxCode,
-      userName: cfg.username,
+      appid: cfg.appId ?? "",
+      taxcode: cfg.taxCode,
+      username: cfg.username,
       password: cfg.password,
     }),
   })
@@ -75,22 +89,28 @@ export async function getToken(cfg: MisaConfig, force = false): Promise<string> 
   try {
     data = text ? (JSON.parse(text) as MisaTokenResponse) : {}
   } catch {
-    data = { raw: text } as MisaTokenResponse
+    // Response không phải JSON — vẫn để raw để log debug.
   }
 
   if (!res.ok) {
-    throw new Error(`MISA token lỗi ${res.status}: ${text.slice(0, 300)}`)
+    throw new Error(`MISA token lỗi ${res.status}: ${extractErrorMessage(data, text)}`)
+  }
+  // MISA dùng { Success: false, ErrorCode: ... } để báo lỗi nghiệp vụ mặc dù HTTP 200.
+  if ((data as Record<string, unknown>)["Success"] === false) {
+    throw new Error(`MISA token thất bại: ${extractErrorMessage(data, text)}`)
   }
   const token = extractToken(data)
   if (!token) {
     throw new Error(
-      `MISA token: không tìm thấy access_token trong response (verify schema). Raw: ${text.slice(0, 300)}`
+      `MISA token: không thấy access_token trong response. Raw: ${text.slice(0, 300)}`
     )
   }
 
+  const expiresIn =
+    (data.Data?.expires_in as number | undefined) ?? (data as Record<string, unknown>)["expires_in"]
   const ttl =
-    typeof data.expires_in === "number" && data.expires_in > 0
-      ? Math.min(data.expires_in * 1000, TOKEN_TTL_MS)
+    typeof expiresIn === "number" && expiresIn > 0
+      ? Math.min(expiresIn * 1000, TOKEN_TTL_MS)
       : TOKEN_TTL_MS
   tokenCache.set(key, { token, expiresAt: now + ttl - 60_000 })
   return token
@@ -103,11 +123,19 @@ function looksLikeAuthError(status: number, body: string): boolean {
 }
 
 function extractPublishResult(data: unknown): { lookup: string | null; invNo: string | null } {
-  // Verify thật (doc Step 6). Thử các field MISA hay dùng.
+  // MISA Integration API response:
+  // { success, errorCode, descriptionErrorCode,
+  //   createInvoiceResult: [{RefID, TransactionID, ...}],
+  //   publishInvoiceResult: [{RefID, InvoiceNumber, InvoiceIssuedDate, ...}] }
   const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
-  const inner = (obj["Data"] ?? obj["data"] ?? obj) as Record<string, unknown>
+  const candidates: Array<Record<string, unknown>> = [obj]
+  for (const k of ["Data", "data", "publishInvoiceResult", "createInvoiceResult"]) {
+    const v = obj[k]
+    if (Array.isArray(v) && v.length) candidates.push(v[0] as Record<string, unknown>)
+    else if (v && typeof v === "object") candidates.push(v as Record<string, unknown>)
+  }
   const pick = (...keys: string[]): string | null => {
-    for (const src of [obj, inner]) {
+    for (const src of candidates) {
       for (const k of keys) {
         const v = src?.[k]
         if (typeof v === "string" && v) return v
@@ -117,8 +145,8 @@ function extractPublishResult(data: unknown): { lookup: string | null; invNo: st
     return null
   }
   return {
-    lookup: pick("lookupCode", "LookupCode", "lookup_code", "Code", "code", "transactionID"),
-    invNo: pick("invNo", "InvNo", "invoiceNumber", "InvoiceNumber", "invoice_no", "InvoiceNo"),
+    lookup: pick("TransactionID", "transactionID", "LookupCode", "lookupCode", "lookup_code", "Code"),
+    invNo: pick("InvoiceNumber", "invoiceNumber", "InvNo", "invNo", "invoice_no"),
   }
 }
 
@@ -143,6 +171,8 @@ export async function publishInvoice(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        // MISA Integration API yêu cầu header CompanyTaxCode.
+        CompanyTaxCode: cfg.taxCode || "",
       },
       body: JSON.stringify(payload),
     })
@@ -170,7 +200,24 @@ export async function publishInvoice(
     return {
       ok: false,
       raw: data,
-      error: `MISA publish lỗi ${res.status}: ${text.slice(0, 500)}`,
+      error: `MISA publish lỗi ${res.status}: ${extractErrorMessage(data, text)}`,
+      lookup_code: null,
+      inv_no: null,
+    }
+  }
+
+  // Success HTTP 200 nhưng nghiệp vụ có thể fail (Success:false hoặc errorCode).
+  const obj = (typeof data === "object" && data ? data : {}) as Record<string, unknown>
+  const businessFailed =
+    obj["Success"] === false ||
+    obj["success"] === false ||
+    (typeof obj["errorCode"] === "string" && obj["errorCode"] !== "") ||
+    (typeof obj["ErrorCode"] === "string" && obj["ErrorCode"] !== "")
+  if (businessFailed) {
+    return {
+      ok: false,
+      raw: data,
+      error: `MISA publish thất bại: ${extractErrorMessage(data, text)}`,
       lookup_code: null,
       inv_no: null,
     }

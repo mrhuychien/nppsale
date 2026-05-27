@@ -20,12 +20,14 @@ interface ConfigState {
   tax_code: string
   seller_name: string
   seller_address: string
+  misa_app_id: string
   misa_company_id: string
   misa_org_unit_id: string
   misa_template_id: string
   misa_user_id: string
   misa_inv_series: string
   misa_inv_template_no: string
+  sign_type: number
   sandbox: boolean
   is_active: boolean
   username: string
@@ -35,18 +37,20 @@ interface ConfigState {
 }
 
 const EMPTY: ConfigState = {
-  api_base: "https://api.meinvoice.vn",
-  token_path: "",
-  publish_path: "",
+  api_base: "https://testapi.meinvoice.vn",
+  token_path: "/api/integration/auth/token",
+  publish_path: "/api/integration/invoice/publish",
   tax_code: "",
   seller_name: "",
   seller_address: "",
+  misa_app_id: "",
   misa_company_id: "",
   misa_org_unit_id: "",
   misa_template_id: "",
   misa_user_id: "",
   misa_inv_series: "",
   misa_inv_template_no: "1",
+  sign_type: 1,
   sandbox: true,
   is_active: true,
   username: "",
@@ -73,17 +77,19 @@ export default function EInvoiceSettingsPage() {
             ...prev,
             ...data.config,
             api_base: data.config.api_base || prev.api_base,
-            token_path: data.config.token_path || "",
-            publish_path: data.config.publish_path || "",
+            token_path: data.config.token_path || prev.token_path,
+            publish_path: data.config.publish_path || prev.publish_path,
             misa_inv_template_no: data.config.misa_inv_template_no || "1",
             tax_code: data.config.tax_code || "",
             seller_name: data.config.seller_name || "",
             seller_address: data.config.seller_address || "",
+            misa_app_id: data.config.misa_app_id || "",
             misa_company_id: data.config.misa_company_id || "",
             misa_org_unit_id: data.config.misa_org_unit_id || "",
             misa_template_id: data.config.misa_template_id || "",
             misa_user_id: data.config.misa_user_id || "",
             misa_inv_series: data.config.misa_inv_series || "",
+            sign_type: typeof data.config.sign_type === "number" ? data.config.sign_type : 1,
             username: "",
             password: "",
           }))
@@ -192,11 +198,10 @@ export default function EInvoiceSettingsPage() {
             <Input
               value={cfg.token_path}
               onChange={(e) => set({ token_path: e.target.value })}
-              placeholder="/api/Account/Login"
+              placeholder="/api/integration/auth/token"
             />
             <p className="text-[11px] text-muted-foreground">
-              Theo phiên bản API: v3 thường <code>/api/v3/Auth/login</code>;
-              cũ <code>/api/Account/Login</code>.
+              Theo doc MISA Integration API.
             </p>
           </div>
           <div className="space-y-2">
@@ -204,10 +209,38 @@ export default function EInvoiceSettingsPage() {
             <Input
               value={cfg.publish_path}
               onChange={(e) => set({ publish_path: e.target.value })}
-              placeholder="/api/InvoiceWS/Publish"
+              placeholder="/api/integration/invoice/publish"
             />
             <p className="text-[11px] text-muted-foreground">
-              vd <code>/api/InvoiceWS/Publish</code> hoặc <code>/api/v3/invoices</code>.
+              Theo doc MISA, vd <code>/api/integration/invoice/publish</code>.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>AppID (MISA cấp) *</Label>
+            <Input
+              value={cfg.misa_app_id}
+              onChange={(e) => set({ misa_app_id: e.target.value })}
+              placeholder="appid do MISA cung cấp"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Khác với Company ID — là chuỗi MISA phát cho tích hợp.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Kiểu ký (SignType) *</Label>
+            <select
+              value={cfg.sign_type}
+              onChange={(e) => set({ sign_type: parseInt(e.target.value, 10) })}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value={1}>1 — USB/File token</option>
+              <option value={2}>2 — HSM (đồng bộ)</option>
+              <option value={3}>3 — HSM (bất đồng bộ)</option>
+              <option value={4}>4 — Vé không ký</option>
+              <option value={5}>5 — POS không ký</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Mặc định 1 (USB). HSM dành cho NPP đã mua dịch vụ ký từ xa của MISA.
             </p>
           </div>
           <div className="space-y-2">

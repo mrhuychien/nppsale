@@ -348,7 +348,6 @@ export default function OrderDetailPage() {
             vat: order.vat,
             total: order.total,
             status: "draft",
-            misa_status: "pending",
           })
           .select("id")
           .single()
@@ -356,18 +355,17 @@ export default function OrderDetailPage() {
         currentInvoiceId = newInvoice.id
       }
 
-      // Call MISA API
-      const res = await fetch("/api/invoice/misa", {
+      const res = await fetch("/api/einvoice/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, invoiceId: currentInvoiceId }),
+        body: JSON.stringify({ invoiceId: currentInvoiceId, mode: "as_sold" }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Gửi MISA thất bại")
+      if (!res.ok) throw new Error(data.error || "Phát hành MISA thất bại")
 
       toast({
-        title: "Xuất hóa đơn thành công",
-        description: `Số HĐ: ${data.invoice_number}${data.mock ? " (chế độ thử nghiệm)" : ""}`,
+        title: data.cached ? "Hoá đơn đã phát hành trước đó" : "Đã phát hành hoá đơn điện tử",
+        description: `${data.inv_no ? `Số HĐ: ${data.inv_no} · ` : ""}Mã tra cứu: ${data.lookup_code || "—"}${data.sandbox ? " (sandbox)" : ""}`,
       })
       fetchData()
     } catch (error) {

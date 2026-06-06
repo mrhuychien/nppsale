@@ -34,11 +34,13 @@ export async function updateSession(request: NextRequest) {
       },
     },
     global: {
-      // Race server-side auth calls against a 3s timeout so middleware
-      // never blocks page load if Supabase is slow/unreachable.
+      // Race server-side auth calls against an 8s timeout. Cao hơn 3s
+      // cũ vì refresh token sau khi expire có thể chậm trên mạng yếu;
+      // nếu timeout, ta KHÔNG đuổi user về /login mà coi như "có thể
+      // còn session" để client tự reconcile (xem dưới).
       fetch: (input, init) => {
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 3000)
+        const timeoutId = setTimeout(() => controller.abort(), 8000)
         return fetch(input, { ...init, signal: controller.signal }).finally(() =>
           clearTimeout(timeoutId)
         )
@@ -46,18 +48,28 @@ export async function updateSession(request: NextRequest) {
     },
   })
 
+  // Nếu có cookie Supabase (sb-*-auth-token) → user đã từng đăng nhập
+  // trên device này. Khi getUser() timeout/lỗi, ta TIN cookie thay vì
+  // đuổi về /login, để network chập chờn không log user ra.
+  const hasAuthCookie = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token"))
+
   let user = null
+  let authCheckFailed = false
   try {
     const result = await supabase.auth.getUser()
     user = result.data.user
   } catch (err) {
     console.error("[middleware] auth check failed:", err)
-    // Treat as unauthenticated, but let client-side handle it
+    authCheckFailed = true
   }
 
-  // Redirect unauthenticated users to login
+  // Redirect unauthenticated users to login — TRỪ khi auth check fail
+  // nhưng cookie sb-* vẫn còn (giữ session trên device đã đăng nhập).
   if (
     !user &&
+    !(authCheckFailed && hasAuthCookie) &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     !request.nextUrl.pathname.startsWith("/debug") &&

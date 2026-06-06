@@ -27,8 +27,9 @@ import {
 } from "@/components/ui/select"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
+import { SupplierImportDialog } from "@/components/suppliers/supplier-import-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Search, Factory, CheckCircle2, Phone, MapPin, Power, PowerOff } from "lucide-react"
+import { Plus, Search, Factory, CheckCircle2, Phone, MapPin, Power, PowerOff, Upload } from "lucide-react"
 import type { Supplier } from "@/types"
 import {
   SUPPLIER_COLUMNS,
@@ -48,6 +49,8 @@ export default function SuppliersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [allCategories, setAllCategories] = useState<string[]>([])
+  const [importOpen, setImportOpen] = useState(false)
+  const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function SuppliersPage() {
       setLoading(false)
     }
     fetchData()
-  }, [pg.from, pg.to, debouncedSearch, categoryFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, categoryFilter, statusFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
   const show = (k: (typeof SUPPLIER_COLUMNS)[number]["key"]) => visibleColumns.includes(k)
@@ -185,9 +188,14 @@ export default function SuppliersPage() {
     <div className="space-y-4">
       <PageHeader title="Nhà cung cấp" description={`${suppliers.length} nhà cung cấp`}>
         {user && hasPermission(user.role, "inventory", "create") && (
-          <Button onClick={() => router.push("/suppliers/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Tạo mới
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Nhập Excel
+            </Button>
+            <Button onClick={() => router.push("/suppliers/new")}>
+              <Plus className="mr-2 h-4 w-4" /> Tạo mới
+            </Button>
+          </>
         )}
       </PageHeader>
 
@@ -433,6 +441,15 @@ export default function SuppliersPage() {
         onClear={clearSelection}
         actions={bulkActions}
         entityLabel="nhà cung cấp"
+      />
+
+      <SupplierImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => {
+          pg.reset()
+          setRefreshTick((t) => t + 1)
+        }}
       />
     </div>
   )

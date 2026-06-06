@@ -22,7 +22,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2, Power, PowerOff } from "lucide-react"
+import { CustomerImportDialog } from "@/components/customers/customer-import-dialog"
+import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2, Power, PowerOff, Upload } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
 import {
@@ -63,6 +64,8 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [stats, setStats] = useState({ total: 0, visited: 0 })
+  const [importOpen, setImportOpen] = useState(false)
+  const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function CustomersPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -348,7 +351,12 @@ export default function CustomersPage() {
     <div className="space-y-4">
       <PageHeader title={isSales ? "Khách hàng của tôi" : "Khách hàng"} description={`${customers.length} khách hàng`}>
         {user && hasPermission(user.role, "customers", "create") && (
-          <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Thêm KH</Button>
+          <>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Nhập Excel
+            </Button>
+            <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Thêm KH</Button>
+          </>
         )}
       </PageHeader>
 
@@ -624,6 +632,16 @@ export default function CustomersPage() {
         onClear={clearSelection}
         actions={bulkActions}
         entityLabel="khách hàng"
+      />
+
+      <CustomerImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        autoAssignToSelf={isSales}
+        onImported={() => {
+          pg.reset()
+          setRefreshTick((t) => t + 1)
+        }}
       />
     </div>
   )

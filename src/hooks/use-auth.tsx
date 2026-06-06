@@ -92,10 +92,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       markResolved(event)
     })
 
+    // Refresh session khi tab quay lại visible (mobile user mở app sau
+    // khi bị suspend, hoặc desktop user quay lại sau vài giờ).
+    // Supabase auto-refresh thường chỉ chạy khi tab active; cần kick
+    // thủ công để token mới được set trước khi user thao tác.
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        supabase.auth.refreshSession().catch((err) => {
+          console.warn("[AuthProvider] refresh on visibility failed:", err)
+        })
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+
     return () => {
       mounted = false
       clearTimeout(hardTimeoutId)
       subscription.unsubscribe()
+      document.removeEventListener("visibilitychange", handleVisibility)
     }
   }, [])
 

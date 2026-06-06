@@ -22,5 +22,12 @@ export function createClient() {
     global: {
       fetch: fetchWithTimeout,
     },
+    auth: {
+      // Mặc định của @supabase/ssr đã là true; khai báo tường minh để
+      // chắc chắn session lưu trong cookie + tự refresh khi tab active.
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   })
 }

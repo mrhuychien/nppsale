@@ -61,6 +61,8 @@ type TileColor =
   | "yellow"
   | "slate"
   | "zinc"
+  | "cyan"
+  | "teal"
 
 const COLOR_CLASS: Record<TileColor, string> = {
   blue: "bg-[#175cd3] text-white",
@@ -74,8 +76,10 @@ const COLOR_CLASS: Record<TileColor, string> = {
   red: "bg-error text-white",
   rose: "bg-error text-white",
   yellow: "bg-[#fdb022] text-white",
-  slate: "bg-surface-container-low0 text-white",
+  slate: "bg-slate-700 text-white",
   zinc: "bg-zinc-700 text-white",
+  cyan: "bg-[#0891b2] text-white",
+  teal: "bg-[#0d9488] text-white",
 }
 
 interface Tile {
@@ -102,7 +106,7 @@ const TILES: Tile[] = [
 
   // Mua hàng
   { label: "Hoá đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple", module: "inventory" },
-  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "slate", module: "inventory" },
+  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "cyan", module: "inventory" },
 
   // Kế toán & Tài chính
   { label: "Hóa đơn bán", href: "/invoices", icon: FileText, color: "blue", module: "invoices" },

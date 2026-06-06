@@ -35,6 +35,7 @@ export default function UserDetailPage() {
     full_name: "",
     role: "sales" as Role,
     phone: "",
+    username: "",
     is_active: true,
     allow_price_edit: false,
     price_edit_max_increase_pct: 0,
@@ -58,6 +59,7 @@ export default function UserDetailPage() {
         full_name: u.full_name || "",
         role: u.role,
         phone: u.phone || "",
+        username: u.username || "",
         is_active: u.is_active,
         allow_price_edit: u.allow_price_edit ?? false,
         price_edit_max_increase_pct: u.price_edit_max_increase_pct ?? 0,
@@ -85,12 +87,14 @@ export default function UserDetailPage() {
     if (!target) return
     setSaving(true)
     try {
+      const cleanUsername = form.username.trim()
       const { error } = await supabase
         .from("users")
         .update({
           full_name: form.full_name,
           role: form.role,
           phone: form.phone || null,
+          username: cleanUsername || null,
           is_active: form.is_active,
           allow_price_edit: form.allow_price_edit,
           price_edit_max_increase_pct: form.allow_price_edit
@@ -98,7 +102,15 @@ export default function UserDetailPage() {
             : 0,
         })
         .eq("id", target.id)
-      if (error) throw error
+      if (error) {
+        if (/idx_users_username_unique/i.test(error.message)) {
+          throw new Error("Tên tài khoản đã được dùng. Chọn tên khác.")
+        }
+        if (/idx_users_phone_unique/i.test(error.message)) {
+          throw new Error("Số điện thoại đã được dùng. Chọn số khác.")
+        }
+        throw error
+      }
 
       // Sync user_suppliers — diff state Set vs DB: delete cũ-không-còn, insert mới.
       const { data: currentRows } = await supabase
@@ -219,6 +231,21 @@ export default function UserDetailPage() {
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="0901000001"
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  Dùng được làm tên đăng nhập (nếu duy nhất).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Tài khoản đăng nhập</Label>
+                <Input
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  placeholder="nguyenvana"
+                  autoComplete="off"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Tuỳ chọn. Chữ + số, không khoảng trắng. Dùng đăng nhập thay email.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Trạng thái</Label>

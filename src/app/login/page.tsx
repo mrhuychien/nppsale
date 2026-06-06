@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -21,13 +21,29 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      const id = identifier.trim()
+      let email = id
+
+      // Username / phone → tra ngược email qua RPC. Email đi thẳng.
+      if (!id.includes("@")) {
+        const { data: looked, error: lookupErr } = await supabase.rpc(
+          "lookup_email_by_identifier",
+          { p_id: id }
+        )
+        if (lookupErr || !looked) {
+          setError("Sai tài khoản hoặc mật khẩu.")
+          return
+        }
+        email = String(looked)
+      }
+
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (authError) {
-        setError(authError.message)
+        setError("Sai tài khoản hoặc mật khẩu.")
         return
       }
 
@@ -59,15 +75,16 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-label-md text-on-surface-variant uppercase">
-                Email
+              <Label htmlFor="identifier" className="text-label-md text-on-surface-variant uppercase">
+                Email / SĐT / Tài khoản
               </Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="email@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                autoComplete="username"
+                placeholder="email, số điện thoại hoặc tên tài khoản"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
               />
             </div>
@@ -78,6 +95,7 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="Nhập mật khẩu"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

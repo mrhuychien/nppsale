@@ -37,6 +37,7 @@ export default function NewUserPage() {
   const [allowPriceEdit, setAllowPriceEdit] = useState(true)
   const [priceEditMaxIncreasePct, setPriceEditMaxIncreasePct] = useState(10)
   const [phone, setPhone] = useState("")
+  const [username, setUsername] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -95,6 +96,7 @@ export default function NewUserPage() {
           full_name: fullName,
           role,
           phone,
+          username: username.trim() || null,
           allow_price_edit: allowPriceEdit,
           price_edit_max_increase_pct: priceEditMaxIncreasePct,
         }),
@@ -208,6 +210,18 @@ export default function NewUserPage() {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0901234567"
                 />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Tài khoản đăng nhập</Label>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="nguyenvana (tuỳ chọn)"
+                  autoComplete="off"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Tuỳ chọn. NV có thể đăng nhập bằng email, SĐT hoặc tài khoản này.
+                </p>
               </div>
             </div>
 

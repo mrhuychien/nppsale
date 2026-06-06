@@ -45,6 +45,8 @@ export interface User {
   full_name: string
   role: Role
   phone: string | null
+  /** Tài khoản đăng nhập (alias) — chữ + số + dấu chấm/gạch. */
+  username?: string | null
   is_active: boolean
   created_at: string
   /** Cho phép user sửa giá khi tạo / sửa đơn. Default false; owner +

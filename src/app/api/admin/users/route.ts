@@ -15,6 +15,7 @@ export async function POST(req: Request) {
       full_name,
       role,
       phone,
+      username,
       allow_price_edit,
       price_edit_max_increase_pct,
     } = body
@@ -63,12 +64,15 @@ export async function POST(req: Request) {
     // price-edit (handled in code via userPriceRulesFrom), but we
     // still persist the explicit flags for transparency.
     const free = role === "owner" || role === "accountant"
+    const cleanUsername =
+      typeof username === "string" ? username.trim() : ""
     const { error: profErr } = await admin.from("users").insert({
       id: created.user.id,
       org_id: callerProfile.org_id,
       full_name,
       role,
       phone: phone || null,
+      username: cleanUsername || null,
       is_active: true,
       allow_price_edit: free
         ? true
@@ -83,10 +87,13 @@ export async function POST(req: Request) {
     if (profErr) {
       // Rollback: delete the auth user to avoid orphan
       await admin.auth.admin.deleteUser(created.user.id)
-      return NextResponse.json(
-        { error: `Tạo hồ sơ thất bại: ${profErr.message}` },
-        { status: 400 }
-      )
+      const msg = profErr.message || ""
+      const friendly = /idx_users_username_unique/i.test(msg)
+        ? "Tên tài khoản đã được dùng. Chọn tên khác."
+        : /idx_users_phone_unique/i.test(msg)
+          ? "Số điện thoại đã được dùng. Chọn số khác."
+          : `Tạo hồ sơ thất bại: ${msg}`
+      return NextResponse.json({ error: friendly }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, id: created.user.id })

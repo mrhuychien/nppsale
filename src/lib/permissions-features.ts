@@ -45,7 +45,6 @@ export const FEATURES: FeatureDef[] = [
   { key: "orders", label: "Đơn hàng", module: "orders", group: "Bán hàng" },
   { key: "customers", label: "Khách hàng", module: "customers", group: "Bán hàng" },
   { key: "customers.visits", label: "Lịch sử đi tuyến", module: "customers", group: "Bán hàng", inherits: true },
-  { key: "products.price_lists", label: "Bảng giá", module: "products", group: "Bán hàng", inherits: true },
   { key: "promotions", label: "Khuyến mãi", module: "promotions", group: "Bán hàng" },
   { key: "commissions", label: "Hoa hồng", module: "commissions", group: "Bán hàng" },
 

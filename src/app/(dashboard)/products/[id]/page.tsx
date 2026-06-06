@@ -4,13 +4,9 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
-import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProductForm } from "@/components/products/product-form"
-import { UnitManager } from "@/components/products/unit-manager"
-import { PriceListManager } from "@/components/products/price-list-manager"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,16 +15,13 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Trash2, ClipboardList } from "lucide-react"
-import type { Product, ProductUnit, PriceList } from "@/types"
+import type { Product } from "@/types"
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("products")
   const [product, setProduct] = useState<Product | null>(null)
-  const [units, setUnits] = useState<ProductUnit[]>([])
-  const [priceLists, setPriceLists] = useState<PriceList[]>([])
-  const { groups: customerGroups } = useCustomerGroups()
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -38,14 +31,8 @@ export default function ProductDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [productRes, unitsRes, priceRes] = await Promise.all([
-      supabase.from("products").select("*").eq("id", id).single(),
-      supabase.from("product_units").select("*").eq("product_id", id),
-      supabase.from("price_lists").select("*, group:customer_groups(*)").eq("product_id", id),
-    ])
-    if (productRes.data) setProduct(productRes.data as Product)
-    setUnits((unitsRes.data as ProductUnit[]) || [])
-    setPriceLists((priceRes.data as PriceList[]) || [])
+    const { data } = await supabase.from("products").select("*").eq("id", id).single()
+    if (data) setProduct(data as Product)
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -99,29 +86,7 @@ export default function ProductDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <Tabs defaultValue="info">
-            <TabsList>
-              <TabsTrigger value="info">Thông tin</TabsTrigger>
-              <TabsTrigger value="units">Đơn vị tính ({units.length})</TabsTrigger>
-              <TabsTrigger value="prices">Bảng giá ({priceLists.length})</TabsTrigger>
-            </TabsList>
-            <TabsContent value="info">
-              <ProductForm product={product} />
-            </TabsContent>
-            <TabsContent value="units">
-              <UnitManager productId={product.id} baseUnit={product.base_unit} units={units} onUpdate={fetchData} />
-            </TabsContent>
-            <TabsContent value="prices">
-              <PriceListManager
-                productId={product.id}
-                baseUnit={product.base_unit}
-                units={units}
-                priceLists={priceLists}
-                customerGroups={customerGroups}
-                onUpdate={fetchData}
-              />
-            </TabsContent>
-          </Tabs>
+          <ProductForm product={product} />
         </div>
 
         {canDelete && (
@@ -151,7 +116,7 @@ export default function ProductDetailPage() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Xóa vĩnh viễn sản phẩm?"
-        description={`Sản phẩm "${product.name}" (SKU: ${product.sku}) sẽ bị xóa cùng các đơn vị tính và bảng giá. Thao tác có thể thất bại nếu sản phẩm đã có trong đơn hàng hoặc tồn kho. Không thể khôi phục.`}
+        description={`Sản phẩm "${product.name}" (SKU: ${product.sku}) sẽ bị xóa cùng các đơn vị tính. Thao tác có thể thất bại nếu sản phẩm đã có trong đơn hàng hoặc tồn kho. Không thể khôi phục.`}
         variant="destructive"
         confirmLabel="Xóa vĩnh viễn"
         onConfirm={handleDelete}

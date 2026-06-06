@@ -62,7 +62,7 @@ export function ProductTable({
           </TableHeader>
           <TableBody>
             {products.map((product) => {
-              const defaultPrice = product.price_lists?.find((p) => !p.group_id)
+              const defaultPrice = product.price_lists?.find((p) => !p.group_id)?.price ?? Number(product.sell_price ?? 0)
               const checked = selectedIds?.has(product.id) ?? false
               return (
                 <TableRow
@@ -96,7 +96,7 @@ export function ProductTable({
                   {show("unit") && <TableCell>{product.base_unit}</TableCell>}
                   {show("price") && (
                     <TableCell className="text-right tabular-nums">
-                      {defaultPrice ? formatCurrency(defaultPrice.price) : "-"}
+                      {defaultPrice > 0 ? formatCurrency(defaultPrice) : "-"}
                     </TableCell>
                   )}
                   {show("status") && (

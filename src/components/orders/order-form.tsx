@@ -229,26 +229,27 @@ export function OrderForm() {
     unitName: string,
     groupId: string | null | undefined
   ): number => {
-    // 1. Try exact match on group + unit
+    // 1. Entry trong price_lists (legacy: data NPP cũ còn tồn tại theo nhóm KH).
     if (groupId) {
       const groupMatch = product.price_lists?.find(
         (pl) => pl.unit_name === unitName && pl.group_id === groupId
       )
       if (groupMatch) return groupMatch.price
     }
-    // 2. Try default price (no group) for this unit
     const defaultMatch = product.price_lists?.find(
       (pl) => pl.unit_name === unitName && !pl.group_id
     )
     if (defaultMatch) return defaultMatch.price
 
-    // 3. Fallback: calculate from base_unit price × conversion
-    if (unitName !== product.base_unit) {
-      const unitInfo = product.units?.find((u) => u.unit_name === unitName)
-      if (unitInfo) {
-        const basePrice = getUnitPrice(product, product.base_unit, groupId)
-        if (basePrice > 0) return basePrice * unitInfo.conversion
-      }
+    // 2. Đơn vị cơ sở → giá bán mặc định trong products.sell_price (1 bảng giá).
+    if (unitName === product.base_unit) {
+      return Number(product.sell_price ?? 0)
+    }
+    // 3. Đơn vị quy đổi → giá base × hệ số.
+    const unitInfo = product.units?.find((u) => u.unit_name === unitName)
+    if (unitInfo) {
+      const basePrice = getUnitPrice(product, product.base_unit, groupId)
+      if (basePrice > 0) return basePrice * unitInfo.conversion
     }
     return 0
   }

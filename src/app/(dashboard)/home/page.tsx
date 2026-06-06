@@ -92,7 +92,6 @@ const TILES: Tile[] = [
   { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "blue", module: "orders" },
   { label: "Khách hàng", href: "/customers", icon: Users, color: "green", module: "customers" },
   { label: "Sản phẩm", href: "/products", icon: Package, color: "orange", module: "products" },
-  { label: "Bảng giá", href: "/products/price-lists", icon: Tag, color: "amber", module: "products" },
   { label: "Khuyến mãi", href: "/promotions", icon: Tag, color: "pink", module: "promotions" },
   { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, color: "indigo", module: "customers" },
 

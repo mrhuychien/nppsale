@@ -13,6 +13,7 @@ import { formatCurrency } from "@/lib/utils"
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
 import {
   parseProductSheet,
+  groupRowsForImport,
   TEMPLATE_HEADERS,
   TEMPLATE_SAMPLE_ROWS,
   type ParsedProductRow,
@@ -45,6 +46,11 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
+  // Group theo cấu trúc KiotViet: dòng có "Mã ĐVT Cơ bản" sẽ thành đơn vị quy đổi.
+  const grouped = groupRowsForImport(rows)
+  const productCount = grouped.baseRows.length
+  const unitCount = Object.values(grouped.unitsByParentSku).reduce((s, u) => s + u.length, 0)
+  const orphanCount = grouped.orphanedRows.length
 
   const reset = () => {
     setFileName(null)
@@ -94,7 +100,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
   }
 
   const handleImport = async () => {
-    if (!user?.org_id || validRows.length === 0) return
+    if (!user?.org_id || productCount === 0) return
     setImporting(true)
     try {
       // 1. Lấy SKU đã tồn tại trong org để tránh đụng unique (org_id, sku).
@@ -104,27 +110,31 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         .eq("org_id", user.org_id)
       const usedSku = new Set((existing as { sku: string }[] | null)?.map((r) => r.sku) ?? [])
 
-      // 2. Dựng payload — auto-gen SKU trống, bỏ qua dòng SKU trùng (trong file
-      //    + với DB). Dòng trùng được đẩy sang nhóm "bỏ qua" để báo người dùng.
+      // 2. Dựng payload từ baseRows (đã group qua groupRowsForImport).
       type Payload = {
         org_id: string; sku: string; name: string; category: string | null
         brand: string | null; barcode: string | null; base_unit: string
         vat_rate: number; cost_price: number; sell_price: number
-        min_stock: number; shelf_life_days: number | null; status: string
-        max_stock: number | null
+        min_stock: number; max_stock: number | null
+        shelf_life_days: number | null; status: string
+        description: string | null; shelf_location: string | null
+        weight: number | null; warranty_info: string | null; direct_sale: boolean
       }
       const payloads: Payload[] = []
-      const unitsBySku: Record<string, { unit_name: string; conversion: number }> = {}
+      /** SKU mới sau khi auto-gen → SKU gốc trong file (để map units). */
+      const newSkuFromOriginal: Record<string, string> = {}
       let skipped = 0
 
-      for (const r of validRows) {
-        let sku = r.sku.trim()
+      for (const r of grouped.baseRows) {
+        const original = r.sku.trim()
+        let sku = original
         if (sku) {
-          if (usedSku.has(sku)) { skipped++; continue } // trùng → bỏ qua
+          if (usedSku.has(sku)) { skipped++; continue }
         } else {
           do { sku = genSku() } while (usedSku.has(sku))
         }
         usedSku.add(sku)
+        if (original) newSkuFromOriginal[original] = sku
         payloads.push({
           org_id: user.org_id,
           sku,
@@ -137,13 +147,15 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
           cost_price: r.cost_price,
           sell_price: r.sell_price,
           min_stock: r.min_stock,
+          max_stock: r.max_stock,
           shelf_life_days: r.shelf_life_days,
           status: r.status,
-          max_stock: null,
+          description: r.description,
+          shelf_location: r.shelf_location,
+          weight: r.weight,
+          warranty_info: r.warranty_info,
+          direct_sale: r.direct_sale,
         })
-        if (r.secondary_unit && r.conversion) {
-          unitsBySku[sku] = { unit_name: r.secondary_unit, conversion: Math.round(r.conversion) }
-        }
       }
 
       if (payloads.length === 0) {
@@ -156,29 +168,49 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         return
       }
 
-      // 3. Bulk insert products.
-      const { data: inserted, error } = await supabase
-        .from("products")
-        .insert(payloads)
-        .select("id, sku")
-      if (error) throw error
+      // 3. Bulk insert products theo batch 200 (Supabase OK với insert lớn,
+      //    nhưng batch nhỏ cho file 3000+ dòng để tránh timeout + dễ retry).
+      const BATCH = 200
+      const insertedRows: { id: string; sku: string }[] = []
+      for (let i = 0; i < payloads.length; i += BATCH) {
+        const slice = payloads.slice(i, i + BATCH)
+        const { data, error } = await supabase
+          .from("products")
+          .insert(slice)
+          .select("id, sku")
+        if (error) throw error
+        insertedRows.push(...((data as { id: string; sku: string }[]) || []))
+      }
 
-      // 4. Insert đơn vị quy đổi (product_units) cho dòng có khai báo.
-      const insertedRows = (inserted as { id: string; sku: string }[]) || []
-      const unitInserts = insertedRows
-        .filter((p) => unitsBySku[p.sku])
-        .map((p) => ({
-          product_id: p.id,
-          unit_name: unitsBySku[p.sku].unit_name,
-          conversion: unitsBySku[p.sku].conversion,
-        }))
-      if (unitInserts.length > 0) {
-        await supabase.from("product_units").insert(unitInserts)
+      // 4. Build product_units: gắn SKU file gốc → product_id mới.
+      //    grouped.unitsByParentSku dùng SKU file gốc làm key, tra qua
+      //    newSkuFromOriginal để ra SKU thật (sau khi gen), rồi tìm id.
+      const idBySku: Record<string, string> = {}
+      for (const p of insertedRows) idBySku[p.sku] = p.id
+
+      type UnitInsert = { product_id: string; unit_name: string; conversion: number }
+      const unitInserts: UnitInsert[] = []
+      for (const [origSku, units] of Object.entries(grouped.unitsByParentSku)) {
+        const realSku = newSkuFromOriginal[origSku] || origSku
+        const productId = idBySku[realSku]
+        if (!productId) continue
+        for (const u of units) {
+          unitInserts.push({ product_id: productId, unit_name: u.unit_name, conversion: u.conversion })
+        }
+      }
+      // Batch insert units cũng để an toàn.
+      for (let i = 0; i < unitInserts.length; i += BATCH) {
+        const slice = unitInserts.slice(i, i + BATCH)
+        await supabase.from("product_units").insert(slice)
       }
 
       toast({
         title: `Đã nhập ${insertedRows.length} sản phẩm`,
-        description: skipped > 0 ? `Bỏ qua ${skipped} dòng SKU trùng.` : undefined,
+        description: [
+          unitInserts.length > 0 ? `${unitInserts.length} đơn vị quy đổi` : null,
+          skipped > 0 ? `Bỏ qua ${skipped} SKU trùng` : null,
+          orphanCount > 0 ? `${orphanCount} dòng quy đổi mồ côi (không tìm thấy SKU cha)` : null,
+        ].filter(Boolean).join(" · ") || undefined,
       })
       onImported?.()
       handleClose(false)
@@ -240,15 +272,25 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="success" className="gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {validRows.length} hợp lệ
+                <CheckCircle2 className="h-3.5 w-3.5" /> {productCount} sản phẩm
               </Badge>
+              {unitCount > 0 && (
+                <Badge variant="default" className="gap-1">
+                  {unitCount} đơn vị quy đổi
+                </Badge>
+              )}
               {errorRows.length > 0 && (
                 <Badge variant="danger" className="gap-1">
                   <AlertCircle className="h-3.5 w-3.5" /> {errorRows.length} lỗi
                 </Badge>
               )}
+              {orphanCount > 0 && (
+                <Badge variant="warning" className="gap-1">
+                  {orphanCount} quy đổi không có SP cha
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">
-                Chỉ {validRows.length} dòng hợp lệ được nhập. SKU trùng sẽ bị bỏ qua.
+                {validRows.length} dòng hợp lệ → {productCount} sản phẩm + {unitCount} ĐV quy đổi. SKU trùng sẽ bị bỏ qua.
               </span>
             </div>
 
@@ -267,21 +309,31 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                 <tbody>
                   {rows.slice(0, 100).map((r, idx) => {
                     const ok = r.errors.length === 0
+                    const isUnit = ok && !!r.parent_sku
                     return (
-                      <tr key={idx} className={ok ? "" : "bg-destructive/5"}>
+                      <tr key={idx} className={!ok ? "bg-destructive/5" : isUnit ? "bg-muted/20" : ""}>
                         <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{idx + 1}</td>
-                        <td className="px-2 py-1.5 font-medium truncate max-w-[180px]">{r.name || "—"}</td>
+                        <td className="px-2 py-1.5 font-medium truncate max-w-[180px]">
+                          {r.name || "—"}
+                          {isUnit && (
+                            <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">↳ quy đổi</span>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">{r.base_unit || "—"}</td>
                         <td className="px-2 py-1.5 text-muted-foreground">{r.brand || "—"}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.sell_price ? formatCurrency(r.sell_price) : "—"}</td>
                         <td className="px-2 py-1.5">
-                          {ok ? (
+                          {!ok ? (
+                            <span className="text-xs text-destructive">{r.errors.join("; ")}</span>
+                          ) : isUnit ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              1 {r.base_unit} = {r.conversion} của {r.parent_sku}
+                            </span>
+                          ) : (
                             <span className="inline-flex items-center gap-1 text-xs text-tertiary">
                               <CheckCircle2 className="h-3 w-3" />
                               {r.secondary_unit ? `1 ${r.secondary_unit} = ${r.conversion} ${r.base_unit}` : "OK"}
                             </span>
-                          ) : (
-                            <span className="text-xs text-destructive">{r.errors.join("; ")}</span>
                           )}
                         </td>
                       </tr>
@@ -301,8 +353,8 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
           <Button variant="outline" onClick={() => handleClose(false)} disabled={importing}>
             Huỷ
           </Button>
-          <Button onClick={handleImport} disabled={importing || validRows.length === 0}>
-            {importing ? "Đang nhập..." : `Nhập ${validRows.length} sản phẩm`}
+          <Button onClick={handleImport} disabled={importing || productCount === 0}>
+            {importing ? "Đang nhập..." : `Nhập ${productCount} sản phẩm`}
           </Button>
         </div>
       </DialogContent>

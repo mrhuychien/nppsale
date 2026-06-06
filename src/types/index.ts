@@ -129,10 +129,6 @@ export interface Product {
   weight_unit?: string
   direct_sale?: boolean
   images?: string[]
-  // Per-product price-edit override (migration 025)
-  allow_price_edit?: boolean
-  price_edit_max_type?: "percent" | "value"
-  price_edit_max?: number
   // Primary supplier (migration 030) — used by reports/NCC filter
   primary_supplier_id?: string | null
   // Joined

@@ -101,9 +101,6 @@ export function ProductForm({
     weight: (product?.weight ?? "").toString(),
     weight_unit: product?.weight_unit || "g",
     direct_sale: product?.direct_sale ?? true,
-    allow_price_edit: product?.allow_price_edit ?? false,
-    price_edit_max_type: (product?.price_edit_max_type as "percent" | "value") || "percent",
-    price_edit_max: (product?.price_edit_max ?? 0).toString(),
   })
 
   // Đơn vị quy đổi (secondary units). Mỗi dòng = 1 unit_name + conversion (số
@@ -235,9 +232,6 @@ export function ProductForm({
         weight: form.weight ? parseFloat(form.weight) : null,
         weight_unit: form.weight_unit,
         direct_sale: !!form.direct_sale,
-        allow_price_edit: !!form.allow_price_edit,
-        price_edit_max_type: form.price_edit_max_type === "value" ? "value" : "percent",
-        price_edit_max: form.allow_price_edit ? Math.max(0, parseFloat(form.price_edit_max) || 0) : 0,
       }
 
       let saved: Product
@@ -493,9 +487,6 @@ type FormState = {
   weight: string
   weight_unit: string
   direct_sale: boolean
-  allow_price_edit: boolean
-  price_edit_max_type: "percent" | "value"
-  price_edit_max: string
 }
 
 interface SecondaryUnit {
@@ -749,101 +740,6 @@ function InfoTab({
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        {/* Cho phép NV sửa giá ----------------------------------------- */}
-        <div className="mt-4 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
-          <label className="flex cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={form.allow_price_edit}
-              onChange={(e) => setField("allow_price_edit", e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border/60 accent-primary"
-            />
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                Cho phép nhân viên sửa giá khi tạo đơn
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Khi tắt, giá trên đơn = giá bán mặc định và NV không được chỉnh.
-                Khi bật, NV được điều chỉnh trong giới hạn dưới — đơn bán không
-                được thấp hơn giá bán, đơn trả không được cao hơn giá bán.
-              </p>
-            </div>
-          </label>
-
-          {form.allow_price_edit ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Đơn vị giới hạn</Label>
-                <div className="flex gap-3 text-sm">
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name="price_edit_max_type"
-                      checked={form.price_edit_max_type === "percent"}
-                      onChange={() => setField("price_edit_max_type", "percent")}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    <span>% giá bán</span>
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name="price_edit_max_type"
-                      checked={form.price_edit_max_type === "value"}
-                      onChange={() => setField("price_edit_max_type", "value")}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    <span>Giá trị (VNĐ)</span>
-                  </label>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="price_edit_max" className="text-xs">
-                  Mức tối đa được sửa
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="price_edit_max"
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={form.price_edit_max}
-                    onChange={(e) => setField("price_edit_max", e.target.value)}
-                    placeholder={form.price_edit_max_type === "percent" ? "VD: 10" : "VD: 5000"}
-                    className="text-right tabular-nums"
-                  />
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {form.price_edit_max_type === "percent" ? "%" : "đ"}
-                  </span>
-                </div>
-              </div>
-              <div className="sm:col-span-2 rounded-md bg-[#fff4ed] p-2 text-[11px] text-[#b54708]">
-                <p className="font-semibold">Quy tắc khi NV sửa giá:</p>
-                <ul className="mt-0.5 list-inside list-disc">
-                  <li>
-                    <span className="font-medium">Đơn bán</span>: giá nhập ≥ giá bán.
-                    Mức tối đa được tăng:{" "}
-                    <span className="font-semibold">
-                      {form.price_edit_max_type === "percent"
-                        ? `${parseFloat(form.price_edit_max) || 0}% giá bán`
-                        : `${(parseFloat(form.price_edit_max) || 0).toLocaleString("vi-VN")}đ`}
-                    </span>
-                  </li>
-                  <li>
-                    <span className="font-medium">Đơn trả</span>: giá nhập ≤ giá bán.
-                    Mức tối đa được giảm:{" "}
-                    <span className="font-semibold">
-                      {form.price_edit_max_type === "percent"
-                        ? `${parseFloat(form.price_edit_max) || 0}% giá bán`
-                        : `${(parseFloat(form.price_edit_max) || 0).toLocaleString("vi-VN")}đ`}
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          ) : null}
         </div>
       </Section>
 

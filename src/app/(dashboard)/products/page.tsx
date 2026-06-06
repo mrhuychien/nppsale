@@ -11,6 +11,7 @@ import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ProductTable } from "@/components/products/product-table"
+import { ProductImportDialog } from "@/components/products/product-import-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -30,7 +31,7 @@ import {
   type BulkAction,
 } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Search, Package, PackageCheck, PackageX } from "lucide-react"
+import { Plus, Search, Package, PackageCheck, PackageX, Upload } from "lucide-react"
 import type { Product } from "@/types"
 import {
   PRODUCT_COLUMNS,
@@ -52,6 +53,7 @@ export default function ProductsPage() {
   const [bulkSaving, setBulkSaving] = useState(false)
   const [allCategories, setAllCategories] = useState<string[]>([])
   const [allBrands, setAllBrands] = useState<string[]>([])
+  const [importOpen, setImportOpen] = useState(false)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -75,19 +77,19 @@ export default function ProductsPage() {
     DEFAULT_PRODUCT_FILTERS
   )
 
-  // Load full distinct category/brand list cho dropdown — 1 lần khi mount.
-  useEffect(() => {
-    async function loadMeta() {
-      const { data } = await supabase.from("products").select("category, brand")
-      const cats = new Set<string>()
-      const brs = new Set<string>()
-      for (const p of (data as Array<{ category: string | null; brand: string | null }>) || []) {
-        if (p.category) cats.add(p.category)
-        if (p.brand) brs.add(p.brand)
-      }
-      setAllCategories(Array.from(cats).sort())
-      setAllBrands(Array.from(brs).sort())
+  // Load full distinct category/brand list cho dropdown.
+  async function loadMeta() {
+    const { data } = await supabase.from("products").select("category, brand")
+    const cats = new Set<string>()
+    const brs = new Set<string>()
+    for (const p of (data as Array<{ category: string | null; brand: string | null }>) || []) {
+      if (p.category) cats.add(p.category)
+      if (p.brand) brs.add(p.brand)
     }
+    setAllCategories(Array.from(cats).sort())
+    setAllBrands(Array.from(brs).sort())
+  }
+  useEffect(() => {
     loadMeta()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -199,11 +201,16 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Sản phẩm" description={`${products.length} sản phẩm`}>
+      <PageHeader title="Sản phẩm" description={`${pg.total} sản phẩm`}>
         {user && hasPermission(user.role, "products", "create") && (
-          <Button onClick={() => router.push("/products/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Nhập Excel
+            </Button>
+            <Button onClick={() => router.push("/products/new")}>
+              <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
+            </Button>
+          </div>
         )}
       </PageHeader>
 
@@ -322,6 +329,16 @@ export default function ProductsPage() {
         onClear={clearSelection}
         actions={bulkActions}
         entityLabel="sản phẩm"
+      />
+
+      <ProductImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => {
+          pg.reset()
+          fetchProducts()
+          loadMeta()
+        }}
       />
     </div>
   )

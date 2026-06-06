@@ -39,14 +39,20 @@ export default function UserDetailPage() {
     allow_price_edit: false,
     price_edit_max_increase_pct: 0,
   })
+  const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [supplierIds, setSupplierIds] = useState<Set<string>>(new Set())
   const supabase = createClient()
   const { toast } = useToast()
 
   const fetchUser = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("users").select("*").eq("id", id).maybeSingle()
-    if (data) {
-      const u = data as User
+    const [userRes, supRes, mySupRes] = await Promise.all([
+      supabase.from("users").select("*").eq("id", id).maybeSingle(),
+      supabase.from("suppliers").select("id, name").order("name"),
+      supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
+    ])
+    if (userRes.data) {
+      const u = userRes.data as User
       setTarget(u)
       setForm({
         full_name: u.full_name || "",
@@ -57,6 +63,10 @@ export default function UserDetailPage() {
         price_edit_max_increase_pct: u.price_edit_max_increase_pct ?? 0,
       })
     }
+    setAllSuppliers((supRes.data as { id: string; name: string }[]) || [])
+    setSupplierIds(new Set(
+      ((mySupRes.data as { supplier_id: string }[]) || []).map((r) => r.supplier_id)
+    ))
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -89,6 +99,36 @@ export default function UserDetailPage() {
         })
         .eq("id", target.id)
       if (error) throw error
+
+      // Sync user_suppliers — diff state Set vs DB: delete cũ-không-còn, insert mới.
+      const { data: currentRows } = await supabase
+        .from("user_suppliers")
+        .select("supplier_id")
+        .eq("user_id", target.id)
+      const currentIds = new Set(
+        ((currentRows as { supplier_id: string }[]) || []).map((r) => r.supplier_id)
+      )
+      const toDelete = Array.from(currentIds).filter((sid) => !supplierIds.has(sid))
+      const toInsert = Array.from(supplierIds).filter((sid) => !currentIds.has(sid))
+      if (toDelete.length > 0) {
+        const { error: delErr } = await supabase
+          .from("user_suppliers")
+          .delete()
+          .eq("user_id", target.id)
+          .in("supplier_id", toDelete)
+        if (delErr) throw delErr
+      }
+      if (toInsert.length > 0 && target.org_id) {
+        const { error: insErr } = await supabase.from("user_suppliers").insert(
+          toInsert.map((sid) => ({
+            user_id: target.id,
+            supplier_id: sid,
+            org_id: target.org_id,
+          }))
+        )
+        if (insErr) throw insErr
+      }
+
       toast({ title: "Đã cập nhật người dùng" })
       router.push("/settings/users")
     } catch (err) {
@@ -235,6 +275,79 @@ export default function UserDetailPage() {
                 </p>
               </div>
             </div>
+
+            {form.role === "sales" && (
+              <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Phân quyền theo NCC
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      NV chỉ thấy SP thuộc các NCC được chọn. Bỏ chọn hết = thấy SP chưa gán NCC (legacy).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+                    {supplierIds.size}/{allSuppliers.length}
+                    {supplierIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSupplierIds(new Set())}
+                        className="text-primary hover:underline ml-1"
+                      >
+                        Bỏ tất cả
+                      </button>
+                    )}
+                    {supplierIds.size < allSuppliers.length && (
+                      <button
+                        type="button"
+                        onClick={() => setSupplierIds(new Set(allSuppliers.map((s) => s.id)))}
+                        className="text-primary hover:underline ml-1"
+                      >
+                        Chọn tất cả
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {allSuppliers.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    Chưa có NCC nào. Vào{" "}
+                    <Link href="/suppliers" className="text-primary hover:underline">
+                      Nhà cung cấp
+                    </Link>{" "}
+                    để tạo.
+                  </p>
+                ) : (
+                  <div className="grid gap-1.5 sm:grid-cols-2 max-h-64 overflow-y-auto rounded-lg border bg-background p-2">
+                    {allSuppliers.map((s) => {
+                      const checked = supplierIds.has(s.id)
+                      return (
+                        <label
+                          key={s.id}
+                          className={
+                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50 " +
+                            (checked ? "bg-primary/[0.06]" : "")
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = new Set(supplierIds)
+                              if (e.target.checked) next.add(s.id)
+                              else next.delete(s.id)
+                              setSupplierIds(next)
+                            }}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="truncate">{s.name}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
               <Button variant="outline" onClick={() => router.push("/settings/users")} disabled={saving}>

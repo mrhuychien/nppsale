@@ -1098,12 +1098,12 @@ export function OrderForm() {
                     const onHand = stockByProduct[line.product_id] ?? 0
                     const over = lineOverstock(line, i)
                     return (
-                      <tr key={i} className={`hover:bg-muted/20 ${over ? "bg-error-container" : ""}`}>
+                      <tr key={i} className={`hover:bg-muted/20 ${over ? "bg-amber-50/50" : ""}`}>
                         <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-2">
                           <span className="font-medium">{line.product_name}</span>
                           <span className="text-[10px] text-muted-foreground ml-2">SKU: {line.sku}</span>
-                          <div className={`text-[10px] ${over ? "text-error font-bold" : "text-muted-foreground"}`}>
+                          <div className={`text-[10px] ${over ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}>
                             Tồn: {onHand} {product?.base_unit}
                           </div>
                           <Input
@@ -1129,7 +1129,7 @@ export function OrderForm() {
                             min={1}
                             value={line.quantity}
                             onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
-                            className={`h-8 w-20 text-center ${over ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
+                            className={`h-8 w-20 text-center tabular-nums ${over ? "border-amber-300 focus-visible:ring-amber-200" : ""}`}
                           />
                         </td>
                         {canEditPrice && (() => {
@@ -1141,7 +1141,7 @@ export function OrderForm() {
                                 value={line.unit_price}
                                 onChange={(v) => updateLine(i, "unit_price", v)}
                                 showSuffix={false}
-                                className={`h-8 w-28 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
+                                className={`h-8 w-28 ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
                               />
                               {isSalesRole && def > 0 && (() => {
                                 const ceiling = userSalesCeiling(def, userRules)
@@ -1170,7 +1170,7 @@ export function OrderForm() {
                             value={String(Math.round(line.vat_rate * 100))}
                             onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
                           >
-                            <SelectTrigger className="h-8 w-18"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="0">0%</SelectItem>
                               <SelectItem value="5">5%</SelectItem>
@@ -1208,104 +1208,152 @@ export function OrderForm() {
                 const product = products.find((p) => p.id === line.product_id)
                 const onHand = stockByProduct[line.product_id] ?? 0
                 const over = lineOverstock(line, i)
+                const warning = canEditPrice ? getLinePriceWarning(line) : null
+                const def = canEditPrice && isSalesRole ? getLineDefaultPrice(line) : 0
+                const ceiling = def > 0 ? userSalesCeiling(def, userRules) : 0
                 return (
                   <div
                     key={i}
-                    className={`border rounded-xl p-3 ${over ? "border-error/40 bg-error-container" : "border-border/40 bg-card"}`}
+                    className={`border rounded-xl p-3 space-y-2.5 ${
+                      over ? "border-amber-300 bg-amber-50/40" : "border-border/40 bg-card"
+                    }`}
                   >
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    {/* Header: tên + sku + tồn + close */}
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{line.product_name}</p>
-                        <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
-                        <p className={`text-[10px] ${over ? "text-error font-bold" : "text-muted-foreground"}`}>
-                          Tồn: {onHand} {product?.base_unit}
-                        </p>
+                        <p className="font-semibold text-sm leading-tight">{line.product_name}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                          <span>SKU: {line.sku}</span>
+                          <span aria-hidden>•</span>
+                          <span className={over ? "text-amber-700 font-semibold" : ""}>
+                            Tồn: {onHand} {product?.base_unit}
+                          </span>
+                        </div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeLine(i)}>
-                        <X className="h-4 w-4 text-muted-foreground" />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 -mr-1 -mt-1"
+                        onClick={() => removeLine(i)}
+                        aria-label="Xoá sản phẩm khỏi đơn"
+                      >
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
+
+                    {/* Ghi chú dòng */}
                     <Input
                       value={line.note}
                       onChange={(e) => updateLine(i, "note", e.target.value)}
                       placeholder="Ghi chú dòng (tuỳ chọn)…"
-                      className="mb-2 h-8 text-xs"
+                      className="h-9 text-xs"
                     />
 
+                    {/* SL: ĐVT + stepper + thành tiền */}
                     <div className="flex items-center gap-2">
-                      {/* Unit selector */}
                       {units.length <= 1 ? (
-                        <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">{line.unit_name}</span>
+                        <span className="inline-flex items-center text-xs text-muted-foreground bg-muted/50 px-2.5 h-9 rounded-lg shrink-0">
+                          {line.unit_name}
+                        </span>
                       ) : (
                         <Select value={line.unit_name} onValueChange={(v) => updateLine(i, "unit_name", v)}>
-                          <SelectTrigger className="h-8 w-24 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-9 w-[88px] text-xs shrink-0"><SelectValue /></SelectTrigger>
                           <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                         </Select>
                       )}
-                      {/* Quantity */}
-                      <div className="flex items-center gap-1 flex-1">
-                        <button type="button" onClick={() => updateLine(i, "quantity", Math.max(1, line.quantity - 1))} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">−</button>
+                      <div className="flex items-stretch flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => updateLine(i, "quantity", Math.max(1, line.quantity - 1))}
+                          className="w-9 h-9 rounded-l-lg border border-r-0 border-input bg-muted/30 flex items-center justify-center text-lg font-semibold hover:bg-muted/50 active:bg-muted/70"
+                          aria-label="Giảm"
+                        >
+                          −
+                        </button>
                         <Input
                           type="number"
+                          inputMode="numeric"
                           min={1}
                           value={line.quantity}
                           onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
-                          className={`h-8 text-center flex-1 ${over ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
+                          className={`h-9 text-center font-semibold tabular-nums rounded-none border-x-0 flex-1 min-w-0 px-1 ${
+                            over ? "border-amber-300 focus-visible:ring-amber-200" : ""
+                          }`}
                         />
-                        <button type="button" onClick={() => updateLine(i, "quantity", line.quantity + 1)} className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold">+</button>
+                        <button
+                          type="button"
+                          onClick={() => updateLine(i, "quantity", line.quantity + 1)}
+                          className="w-9 h-9 rounded-r-lg border border-l-0 border-input bg-muted/30 flex items-center justify-center text-lg font-semibold hover:bg-muted/50 active:bg-muted/70"
+                          aria-label="Tăng"
+                        >
+                          +
+                        </button>
                       </div>
-                      {/* Total */}
-                      <span className="text-sm font-bold text-primary shrink-0">{formatCurrency(line.line_total)}</span>
+                      <div className="text-right shrink-0 min-w-[88px]">
+                        <p className="text-sm font-bold text-primary tabular-nums">{formatCurrency(line.line_total)}</p>
+                      </div>
                     </div>
+
                     {over && (
-                      <p className="text-[11px] text-error font-semibold mt-2">
-                        Vượt tồn kho ({baseQty(line)} / {onHand} {product?.base_unit})
+                      <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        Vượt tồn ({baseQty(line)}/{onHand} {product?.base_unit})
                       </p>
                     )}
-                    {canEditPrice && (() => {
-                      const warning = getLinePriceWarning(line)
-                      const def = isSalesRole ? getLineDefaultPrice(line) : 0
-                      return (
-                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
-                              Giá
-                            </Label>
-                            <MoneyInput
-                              value={line.unit_price}
-                              onChange={(v) => updateLine(i, "unit_price", v)}
-                              showSuffix={false}
-                              className={`h-8 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
-                            />
-                          </div>
-                          {isSalesRole && def > 0 && (() => {
-                            const ceiling = userSalesCeiling(def, userRules)
-                            return (
-                              <p className="text-[10px] text-muted-foreground">
-                                Mặc định {formatCurrency(def)}
-                                {ceiling > def + 0.5 ? ` • Tối đa ${formatCurrency(ceiling)}` : ""}
-                              </p>
-                            )
-                          })()}
-                          {warning && (
+
+                    {/* Giá + VAT cùng hàng (grid 1fr / auto) */}
+                    {canEditPrice ? (
+                      <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Giá</Label>
+                          <MoneyInput
+                            value={line.unit_price}
+                            onChange={(v) => updateLine(i, "unit_price", v)}
+                            showSuffix={false}
+                            className={`h-9 tabular-nums ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
+                          />
+                          {warning ? (
                             <p className="text-[10px] text-error font-semibold flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" /> {warning}
                             </p>
+                          ) : isSalesRole && def > 0 ? (
+                            <p className="text-[10px] text-muted-foreground">
+                              Mặc định {formatCurrency(def)}
+                              {ceiling > def + 0.5 ? ` • Tối đa ${formatCurrency(ceiling)}` : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT</Label>
+                          <Select
+                            value={String(Math.round(line.vat_rate * 100))}
+                            onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
+                          >
+                            <SelectTrigger className="h-9 w-[76px] text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="5">5%</SelectItem>
+                              <SelectItem value="8">8%</SelectItem>
+                              <SelectItem value="10">10%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {canEditDiscount && line.line_discount_percent > 0 && (
+                            <p className="text-[10px] text-muted-foreground text-center">CK {line.line_discount_percent}%</p>
                           )}
                         </div>
-                      )
-                    })()}
-                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-                      {canEditDiscount && line.line_discount_percent > 0 && (
-                        <span>CK: {line.line_discount_percent}%</span>
-                      )}
-                      <div className="ml-auto flex items-center gap-1.5">
-                        <span className="text-[10px] font-semibold uppercase">VAT</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2">
+                        {canEditDiscount && line.line_discount_percent > 0 && (
+                          <span className="text-[11px] text-muted-foreground">CK {line.line_discount_percent}%</span>
+                        )}
+                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT</Label>
                         <Select
                           value={String(Math.round(line.vat_rate * 100))}
                           onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
                         >
-                          <SelectTrigger className="h-7 w-[72px] text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-8 w-[76px] text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="0">0%</SelectItem>
                             <SelectItem value="5">5%</SelectItem>
@@ -1314,7 +1362,7 @@ export function OrderForm() {
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })}

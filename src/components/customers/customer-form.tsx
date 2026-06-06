@@ -8,11 +8,11 @@ import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_TERMS } from "@/lib/constants"
+import { WARDS_HAI_PHONG } from "@/lib/constants/wards-hai-phong"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
 import type { Customer, CustomerGroup } from "@/types"
 
@@ -48,6 +48,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
     owner_name: customer?.owner_name || "",
     phone: customer?.phone || "",
     address: customer?.address || "",
+    ward: customer?.ward || "",
     channel: customer?.channel || "",
     group_id: customer?.group_id || "",
     credit_limit: customer?.credit_limit?.toString() || "0",
@@ -160,6 +161,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         owner_name: form.owner_name,
         phone: form.phone,
         address: form.address,
+        ward: form.ward || null,
         channel: form.channel || null,
         group_id: form.group_id || null,
         credit_limit: parseInt(form.credit_limit) || 0,
@@ -282,7 +284,27 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
                   {gpsLoading ? "Đang định vị..." : "Định vị"}
                 </Button>
               </div>
-              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} required placeholder="Số nhà, tên đường" />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Input
+                  className="sm:col-span-2"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  required
+                  placeholder="Số nhà, tên đường"
+                />
+                <Input
+                  list="customer-ward-options"
+                  value={form.ward}
+                  onChange={(e) => setForm({ ...form, ward: e.target.value })}
+                  placeholder="Phường (gõ tìm)"
+                  autoComplete="off"
+                />
+                <datalist id="customer-ward-options">
+                  {WARDS_HAI_PHONG.map((w) => (
+                    <option key={w} value={w} />
+                  ))}
+                </datalist>
+              </div>
               {hasGps && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 text-primary" />

@@ -34,6 +34,7 @@ import {
   FilePlus2,
   MapPin,
   ArrowRight,
+  Quote,
   type LucideIcon,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -46,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, formatCurrency } from "@/lib/utils"
+import { getDailyQuote, QUOTE_CATEGORY_LABEL } from "@/lib/sales-quotes"
 
 type TileColor =
   | "blue"
@@ -255,6 +257,9 @@ export default function HomeLauncherPage() {
     return d.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" })
   }, [])
 
+  // Câu nói hôm nay — same quote cho mọi user trong cùng 1 ngày UTC.
+  const dailyQuote = useMemo(() => getDailyQuote(), [])
+
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-0">
       {/* Top bar */}
@@ -339,6 +344,23 @@ export default function HomeLauncherPage() {
               <h1 className="text-xl font-black">Chào {firstName} 👋</h1>
               <p className="text-sm capitalize text-muted-foreground">{todayLabel}</p>
             </div>
+
+            {/* Câu nói hôm nay — đổi mỗi ngày, lặp lại sau 100 ngày. */}
+            <section className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] to-primary/[0.02] p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Quote className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/80">
+                    {QUOTE_CATEGORY_LABEL[dailyQuote.category]} · Câu {dailyQuote.index}/100
+                  </p>
+                  <p className="mt-1.5 text-[15px] font-bold leading-snug text-foreground">
+                    {dailyQuote.text}
+                  </p>
+                </div>
+              </div>
+            </section>
 
             {/* Metric cards */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

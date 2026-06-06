@@ -10,7 +10,7 @@ export type ProductField =
   | "sku"
   | "base_unit"
   | "category"
-  | "brand"
+  | "supplier_name"
   | "barcode"
   | "cost_price"
   | "sell_price"
@@ -34,7 +34,8 @@ export interface ParsedProductRow {
   sku: string
   name: string
   category: string | null
-  brand: string | null
+  /** Tên NCC từ file — sẽ lookup/create vào suppliers khi nhập. */
+  supplier_name: string | null
   barcode: string | null
   base_unit: string
   vat_rate: number
@@ -88,8 +89,11 @@ const HEADER_MAP: Record<string, ProductField> = {
   // KiotViet xuất cố định "Hàng hóa" — sẽ nuốt mất "Nhóm hàng" thực sự.
   "danh muc": "category", "nhom hang": "category", "nhom hang 3 cap": "category",
   "nhom": "category",
-  // brand — KiotViet: "Thương hiệu"
-  "nhan hang": "brand", "thuong hieu": "brand", "hang": "brand", "brand": "brand",
+  // supplier — header chính "Nhà cung cấp". Giữ alias "Thương hiệu"/"Nhãn hàng"
+  // để file mẫu/KiotViet cũ dùng được — tên cột đó sẽ map thành tên NCC.
+  "nha cung cap": "supplier_name", "ncc": "supplier_name",
+  "nhan hang": "supplier_name", "thuong hieu": "supplier_name",
+  "hang": "supplier_name", "brand": "supplier_name",
   // barcode
   "ma vach": "barcode", "barcode": "barcode", "ma vach san pham": "barcode",
   // cost_price
@@ -209,9 +213,13 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
     const conversionRaw = str(get(raw, "conversion"))
     const conversion = conversionRaw ? parseMoney(conversionRaw) : null
     const parent_sku = str(get(raw, "parent_sku")) || null
+    const supplier_name = str(get(raw, "supplier_name")) || null
 
     const errors: string[] = []
     if (!name) errors.push("Thiếu tên sản phẩm")
+    // Dòng base (không có parent_sku) bắt buộc có NCC. Dòng quy đổi
+    // (KiotViet xuất thùng/lốc) không cần — kế thừa NCC của SP cha.
+    if (!parent_sku && !supplier_name) errors.push("Thiếu nhà cung cấp")
     // base_unit trống ở dòng base → default "cái" (KiotViet bỏ ĐVT khi
     // SP chỉ bán theo lô — hợp lệ). Trống ở dòng secondary (có parent_sku)
     // thì lỗi vì cần tên unit. Đã default "cái" ở output bên dưới.
@@ -234,7 +242,7 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       sku: str(get(raw, "sku")),
       name,
       category: str(get(raw, "category")) || null,
-      brand: str(get(raw, "brand")) || null,
+      supplier_name: str(get(raw, "supplier_name")) || null,
       barcode: str(get(raw, "barcode")) || null,
       base_unit: base_unit || "cái",
       vat_rate: parseVat(get(raw, "vat_rate")),
@@ -327,9 +335,9 @@ export function groupRowsForImport(rows: ParsedProductRow[]): GroupedImport {
 export const TEMPLATE_HEADERS = [
   "Tên sản phẩm*",
   "Đơn vị tính*",
+  "Nhà cung cấp*",
   "SKU",
   "Danh mục",
-  "Nhãn hàng",
   "Mã vạch",
   "Giá vốn",
   "Giá bán",
@@ -343,6 +351,6 @@ export const TEMPLATE_HEADERS = [
 
 /** 2 dòng ví dụ minh hoạ trong file mẫu. */
 export const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
-  ["Nước ngọt Coca 330ml", "lon", "", "Nước giải khát", "Coca-Cola", "8935001712345", 6000, 8000, 8, 24, "", "active", "thùng", 24],
-  ["Mì gói Hảo Hảo", "gói", "", "Thực phẩm khô", "Acecook", "", 3000, 4000, 8, 50, "", "active", "thùng", 30],
+  ["Nước ngọt Coca 330ml", "lon", "Coca-Cola VN", "", "Nước giải khát", "8935001712345", 6000, 8000, 8, 24, "", "active", "thùng", 24],
+  ["Mì gói Hảo Hảo", "gói", "Acecook VN", "", "Thực phẩm khô", "", 3000, 4000, 8, 50, "", "active", "thùng", 30],
 ]

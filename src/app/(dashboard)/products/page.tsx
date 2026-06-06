@@ -47,12 +47,12 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [brandFilter, setBrandFilter] = useState<string>("all")
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [allCategories, setAllCategories] = useState<string[]>([])
-  const [allBrands, setAllBrands] = useState<string[]>([])
+  const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [importOpen, setImportOpen] = useState(false)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
@@ -77,17 +77,18 @@ export default function ProductsPage() {
     DEFAULT_PRODUCT_FILTERS
   )
 
-  // Load full distinct category/brand list cho dropdown.
+  // Load distinct category list + danh sách NCC (full) cho 2 dropdown.
   async function loadMeta() {
-    const { data } = await supabase.from("products").select("category, brand")
+    const [catsRes, supRes] = await Promise.all([
+      supabase.from("products").select("category"),
+      supabase.from("suppliers").select("id, name").order("name"),
+    ])
     const cats = new Set<string>()
-    const brs = new Set<string>()
-    for (const p of (data as Array<{ category: string | null; brand: string | null }>) || []) {
+    for (const p of (catsRes.data as Array<{ category: string | null }>) || []) {
       if (p.category) cats.add(p.category)
-      if (p.brand) brs.add(p.brand)
     }
     setAllCategories(Array.from(cats).sort())
-    setAllBrands(Array.from(brs).sort())
+    setAllSuppliers((supRes.data as { id: string; name: string }[]) || [])
   }
   useEffect(() => {
     loadMeta()
@@ -96,25 +97,28 @@ export default function ProductsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, categoryFilter, brandFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, categoryFilter, supplierFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchProducts()
-  }, [pg.from, pg.to, debouncedSearch, categoryFilter, brandFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, categoryFilter, supplierFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     setLoading(true)
     let q = supabase
       .from("products")
-      .select("*, price_lists(*)", { count: "exact" })
+      .select(
+        "*, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
+        { count: "exact" }
+      )
       .order("name")
       .range(pg.from, pg.to)
     if (debouncedSearch) {
       const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-      q = q.or(`name.ilike.${term},sku.ilike.${term},brand.ilike.${term}`)
+      q = q.or(`name.ilike.${term},sku.ilike.${term}`)
     }
     if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
-    if (brandFilter !== "all") q = q.eq("brand", brandFilter)
+    if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
     if (statusFilter !== "all") q = q.eq("status", statusFilter)
     const { data, count } = await q
     setProducts((data as Product[]) || [])
@@ -125,7 +129,6 @@ export default function ProductsPage() {
   const filterActive = (k: ProductFilterKey) => activeFilters.includes(k)
 
   const categories = allCategories
-  const brands = allBrands
 
   // Đã filter server-side toàn bộ — pass-through.
   const filtered = products
@@ -241,16 +244,16 @@ export default function ProductsPage() {
             </SelectContent>
           </Select>
         )}
-        {filterActive("brand") && (
-          <Select value={brandFilter} onValueChange={setBrandFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Nhãn hàng" />
+        {filterActive("supplier") && (
+          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Nhà cung cấp" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả nhãn hàng</SelectItem>
-              {brands.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
+              <SelectItem value="all">Tất cả nhà cung cấp</SelectItem>
+              {allSuppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
                 </SelectItem>
               ))}
             </SelectContent>

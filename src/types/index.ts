@@ -109,7 +109,8 @@ export interface Product {
   sku: string
   name: string
   category: string | null
-  brand: string | null
+  /** @deprecated — replaced by primary_supplier_id. Đọc legacy data only. */
+  brand?: string | null
   barcode: string | null
   base_unit: string
   vat_rate: number

@@ -84,7 +84,7 @@ export function ProductForm({
     sku: product?.sku || "",
     name: product?.name || "",
     category: product?.category || "",
-    brand: product?.brand || "",
+    primary_supplier_id: product?.primary_supplier_id || "",
     barcode: product?.barcode || "",
     base_unit: product?.base_unit || "",
     vat_rate: product?.vat_rate?.toString() || "0.1",
@@ -166,28 +166,30 @@ export function ProductForm({
   // Suggestion lists pulled from existing data so the user can pick or
   // type a brand-new value (KiotViet-style "Tạo mới" inline).
   const [categorySuggest, setCategorySuggest] = useState<string[]>([])
-  const [brandSuggest, setBrandSuggest] = useState<string[]>([])
   const [showNewCategory, setShowNewCategory] = useState(false)
-  const [showNewBrand, setShowNewBrand] = useState(false)
+  /** Danh sách NCC để gắn vào SP (bắt buộc 1). */
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
 
   const orgId = user?.org_id
   useEffect(() => {
     if (!orgId) return
     let cancelled = false
     async function load() {
-      const { data } = await supabase
-        .from("products")
-        .select("category, brand")
-        .eq("org_id", orgId!)
+      const [catsRes, supRes] = await Promise.all([
+        supabase.from("products").select("category").eq("org_id", orgId!),
+        supabase
+          .from("suppliers")
+          .select("id, name")
+          .eq("org_id", orgId!)
+          .order("name"),
+      ])
       if (cancelled) return
       const cats = new Set<string>()
-      const brands = new Set<string>()
-      for (const p of (data as { category: string | null; brand: string | null }[]) || []) {
+      for (const p of (catsRes.data as { category: string | null }[]) || []) {
         if (p.category) cats.add(p.category)
-        if (p.brand) brands.add(p.brand)
       }
       setCategorySuggest(Array.from(cats).sort())
-      setBrandSuggest(Array.from(brands).sort())
+      setSuppliers((supRes.data as { id: string; name: string }[]) || [])
     }
     load()
     return () => {
@@ -209,13 +211,18 @@ export function ProductForm({
       setTab("info")
       return
     }
+    if (!form.primary_supplier_id) {
+      toast({ title: "Vui lòng chọn nhà cung cấp", variant: "destructive" })
+      setTab("info")
+      return
+    }
     setLoading(true)
     try {
       const payload = {
         sku: form.sku.trim() || genSku(),
         name: form.name.trim(),
         category: form.category.trim() || null,
-        brand: form.brand.trim() || null,
+        primary_supplier_id: form.primary_supplier_id,
         barcode: form.barcode.trim() || null,
         base_unit: form.base_unit.trim(),
         vat_rate: parseFloat(form.vat_rate) || 0,
@@ -384,11 +391,9 @@ export function ProductForm({
           form={form}
           setForm={setForm}
           categorySuggest={categorySuggest}
-          brandSuggest={brandSuggest}
+          suppliers={suppliers}
           showNewCategory={showNewCategory}
           setShowNewCategory={setShowNewCategory}
-          showNewBrand={showNewBrand}
-          setShowNewBrand={setShowNewBrand}
           openSection={openSection}
           toggleSection={toggleSection}
           compact={compact}
@@ -470,7 +475,7 @@ type FormState = {
   sku: string
   name: string
   category: string
-  brand: string
+  primary_supplier_id: string
   barcode: string
   base_unit: string
   vat_rate: string
@@ -500,11 +505,9 @@ interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   categorySuggest: string[]
-  brandSuggest: string[]
+  suppliers: { id: string; name: string }[]
   showNewCategory: boolean
   setShowNewCategory: (v: boolean) => void
-  showNewBrand: boolean
-  setShowNewBrand: (v: boolean) => void
   openSection: Record<string, boolean>
   toggleSection: (key: string) => void
   compact: boolean
@@ -522,11 +525,9 @@ function InfoTab({
   form,
   setForm,
   categorySuggest,
-  brandSuggest,
+  suppliers,
   showNewCategory,
   setShowNewCategory,
-  showNewBrand,
-  setShowNewBrand,
   openSection,
   toggleSection,
   compact,
@@ -624,46 +625,30 @@ function InfoTab({
               )}
             </div>
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label>Thương hiệu</Label>
-                <button
-                  type="button"
-                  onClick={() => setShowNewBrand(!showNewBrand)}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  {showNewBrand ? "Chọn từ danh sách" : "Tạo mới"}
-                </button>
-              </div>
-              {showNewBrand ? (
-                <Input
-                  value={String(form.brand || "")}
-                  onChange={(e) => setField("brand", e.target.value)}
-                  placeholder="VD: Coca Cola"
-                  autoFocus
-                />
-              ) : (
-                <Select
-                  value={String(form.brand || "")}
-                  onValueChange={(v) => setField("brand", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn thương hiệu" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brandSuggest.length === 0 ? (
-                      <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                        Chưa có thương hiệu — bấm &quot;Tạo mới&quot;
-                      </div>
-                    ) : (
-                      brandSuggest.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
+              <Label>
+                Nhà cung cấp <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={String(form.primary_supplier_id || "")}
+                onValueChange={(v) => setField("primary_supplier_id", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn nhà cung cấp" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.length === 0 ? (
+                    <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+                      Chưa có NCC — vào /suppliers để tạo.
+                    </div>
+                  ) : (
+                    suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

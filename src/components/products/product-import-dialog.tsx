@@ -103,17 +103,41 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
     if (!user?.org_id || productCount === 0) return
     setImporting(true)
     try {
-      // 1. Lấy SKU đã tồn tại trong org để tránh đụng unique (org_id, sku).
-      const { data: existing } = await supabase
-        .from("products")
-        .select("sku")
-        .eq("org_id", user.org_id)
-      const usedSku = new Set((existing as { sku: string }[] | null)?.map((r) => r.sku) ?? [])
+      // 1. Lấy SKU đã tồn tại + NCC hiện có trong org.
+      const [existingSkuRes, supRes] = await Promise.all([
+        supabase.from("products").select("sku").eq("org_id", user.org_id),
+        supabase.from("suppliers").select("id, name").eq("org_id", user.org_id),
+      ])
+      const usedSku = new Set((existingSkuRes.data as { sku: string }[] | null)?.map((r) => r.sku) ?? [])
+      const supplierByLower: Record<string, string> = {}
+      for (const s of (supRes.data as { id: string; name: string }[] | null) || []) {
+        supplierByLower[s.name.toLowerCase()] = s.id
+      }
+
+      // 1b. Auto-tạo NCC mới cho các tên NCC trong file chưa có.
+      const newSupplierNames = new Set<string>()
+      for (const r of grouped.baseRows) {
+        const sname = r.supplier_name?.trim()
+        if (sname && !supplierByLower[sname.toLowerCase()]) newSupplierNames.add(sname)
+      }
+      if (newSupplierNames.size > 0) {
+        const insertRows = Array.from(newSupplierNames).map((name) => ({
+          org_id: user.org_id, name, is_active: true,
+        }))
+        const { data: createdSup, error: supErr } = await supabase
+          .from("suppliers")
+          .insert(insertRows)
+          .select("id, name")
+        if (supErr) throw supErr
+        for (const s of (createdSup as { id: string; name: string }[]) || []) {
+          supplierByLower[s.name.toLowerCase()] = s.id
+        }
+      }
 
       // 2. Dựng payload từ baseRows (đã group qua groupRowsForImport).
       type Payload = {
         org_id: string; sku: string; name: string; category: string | null
-        brand: string | null; barcode: string | null; base_unit: string
+        primary_supplier_id: string | null; barcode: string | null; base_unit: string
         vat_rate: number; cost_price: number; sell_price: number
         min_stock: number; max_stock: number | null
         shelf_life_days: number | null; status: string
@@ -135,12 +159,14 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         }
         usedSku.add(sku)
         if (original) newSkuFromOriginal[original] = sku
+        const sname = r.supplier_name?.trim().toLowerCase() || ""
+        const supplier_id = supplierByLower[sname] || null
         payloads.push({
           org_id: user.org_id,
           sku,
           name: r.name,
           category: r.category,
-          brand: r.brand,
+          primary_supplier_id: supplier_id,
           barcode: r.barcode,
           base_unit: r.base_unit,
           vat_rate: r.vat_rate,
@@ -301,7 +327,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                     <th className="px-2 py-2 text-left font-medium w-8">#</th>
                     <th className="px-2 py-2 text-left font-medium">Tên</th>
                     <th className="px-2 py-2 text-left font-medium">ĐVT</th>
-                    <th className="px-2 py-2 text-left font-medium">Nhãn hàng</th>
+                    <th className="px-2 py-2 text-left font-medium">NCC</th>
                     <th className="px-2 py-2 text-right font-medium">Giá bán</th>
                     <th className="px-2 py-2 text-left font-medium">Ghi chú</th>
                   </tr>
@@ -320,7 +346,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                           )}
                         </td>
                         <td className="px-2 py-1.5">{r.base_unit || "—"}</td>
-                        <td className="px-2 py-1.5 text-muted-foreground">{r.brand || "—"}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{r.supplier_name || "—"}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.sell_price ? formatCurrency(r.sell_price) : "—"}</td>
                         <td className="px-2 py-1.5">
                           {!ok ? (

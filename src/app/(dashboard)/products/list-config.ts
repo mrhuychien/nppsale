@@ -5,7 +5,7 @@ import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 export const PRODUCT_COLUMNS = [
   { key: "sku", label: "SKU" },
   { key: "category", label: "Danh mục" },
-  { key: "brand", label: "Nhãn hàng" },
+  { key: "supplier", label: "Nhà cung cấp" },
   { key: "unit", label: "ĐVT" },
   { key: "price", label: "Giá bán" },
   { key: "status", label: "Trạng thái" },
@@ -16,7 +16,7 @@ export type ProductColumnKey = (typeof PRODUCT_COLUMNS)[number]["key"]
 export const DEFAULT_PRODUCT_COLUMNS: ProductColumnKey[] = [
   "sku",
   "category",
-  "brand",
+  "supplier",
   "unit",
   "price",
   "status",
@@ -26,7 +26,7 @@ export const DEFAULT_PRODUCT_COLUMNS: ProductColumnKey[] = [
 export const PRODUCT_FILTERS = [
   { key: "search", label: "Tìm kiếm", required: true },
   { key: "category", label: "Lọc theo danh mục" },
-  { key: "brand", label: "Lọc theo nhãn hàng" },
+  { key: "supplier", label: "Lọc theo nhà cung cấp" },
   { key: "status", label: "Lọc theo trạng thái" },
 ] as const satisfies readonly ListViewOption<string>[]
 

@@ -11,7 +11,10 @@ import type { Product, PriceList } from "@/types"
 import type { ProductColumnKey } from "@/app/(dashboard)/products/list-config"
 
 interface ProductTableProps {
-  products: (Product & { price_lists?: PriceList[] })[]
+  products: (Product & {
+    price_lists?: PriceList[]
+    supplier?: { id: string; name: string } | null
+  })[]
   visibleColumns: ProductColumnKey[]
   selectable?: boolean
   selectedIds?: Set<string>
@@ -53,7 +56,7 @@ export function ProductTable({
               {show("sku") && <TableHead>SKU</TableHead>}
               <TableHead>Tên sản phẩm</TableHead>
               {show("category") && <TableHead>Danh mục</TableHead>}
-              {show("brand") && <TableHead>Nhãn hàng</TableHead>}
+              {show("supplier") && <TableHead>Nhà cung cấp</TableHead>}
               {show("unit") && <TableHead>ĐVT</TableHead>}
               {show("price") && <TableHead className="text-right">Giá bán</TableHead>}
               {show("status") && <TableHead>Trạng thái</TableHead>}
@@ -92,7 +95,7 @@ export function ProductTable({
                   )}
                   <TableCell className="font-medium">{product.name}</TableCell>
                   {show("category") && <TableCell>{product.category || "-"}</TableCell>}
-                  {show("brand") && <TableCell>{product.brand || "-"}</TableCell>}
+                  {show("supplier") && <TableCell>{product.supplier?.name || "-"}</TableCell>}
                   {show("unit") && <TableCell>{product.base_unit}</TableCell>}
                   {show("price") && (
                     <TableCell className="text-right tabular-nums">
@@ -149,8 +152,8 @@ export function ProductTable({
                       {product.category && (
                         <Badge variant="outline" className="text-xs">{product.category}</Badge>
                       )}
-                      {product.brand && (
-                        <Badge variant="outline" className="text-xs">{product.brand}</Badge>
+                      {product.supplier?.name && (
+                        <Badge variant="outline" className="text-xs">{product.supplier.name}</Badge>
                       )}
                       <Badge variant="outline" className="text-xs">ĐVT: {product.base_unit}</Badge>
                     </div>

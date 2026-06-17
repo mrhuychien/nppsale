@@ -1032,8 +1032,10 @@ export function OrderForm() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Product search + barcode scan */}
-            <div className="flex gap-2">
+            {/* Product search + barcode scan — sticky trên mobile để
+                user thêm nhiều SP không phải kéo về đầu trang. Sticky
+                ràng buộc trong CardContent → cuộn qua hết card sẽ nhả. */}
+            <div className="flex gap-2 lg:static sticky top-16 z-20 bg-card -mx-2 px-2 py-2 lg:m-0 lg:p-0">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -1442,8 +1444,9 @@ export function OrderForm() {
                 </div>
               </div>
 
-              {/* Product picker */}
-              <div className="relative">
+              {/* Product picker — sticky trên mobile như picker bên trên,
+                  cuộn qua hết card "Hàng trả lại" sẽ tự nhả. */}
+              <div className="relative lg:static sticky top-16 z-20 bg-card -mx-2 px-2 py-2 lg:m-0 lg:p-0">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input

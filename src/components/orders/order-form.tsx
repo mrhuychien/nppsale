@@ -855,9 +855,10 @@ export function OrderForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      // Bottom padding leaves clear space for the sticky summary bar
-      // (mobile bar ≈ 260px above mobile-nav; desktop bar ≈ 96px).
-      className="flex flex-col gap-card-gap pb-[280px] lg:pb-32"
+      // Mobile: summary nằm inline ở cuối form, chỉ chừa pb nhỏ để
+      // không đụng mobile-nav. Desktop: vẫn fix sticky bar nên cần
+      // pb-32 chừa chỗ.
+      className="flex flex-col gap-card-gap pb-24 lg:pb-32"
     >
       {/* Stitch single-column layout — sticky bottom summary bar below */}
       <div className="flex flex-col gap-card-gap max-w-5xl mx-auto w-full">
@@ -1681,8 +1682,9 @@ export function OrderForm() {
 
       {/* ===== Sticky bottom summary bar (Stitch design) ===== */}
 
-      {/* Mobile: stacked white card sitting above the bottom nav */}
-      <div className="fixed bottom-[76px] left-0 right-0 z-40 lg:hidden bg-surface-container-lowest border-t border-outline-variant shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4">
+      {/* Mobile: card inline ở cuối form — không sticky để tăng không
+          gian hiển thị nội dung phía trên. */}
+      <div className="lg:hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-card p-4">
         <div className="space-y-2 mb-4">
           <div className="flex justify-between text-sm text-on-surface-variant">
             <span>Tạm tính</span>

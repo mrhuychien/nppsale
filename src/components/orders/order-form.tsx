@@ -199,12 +199,19 @@ export function OrderForm() {
     if (!product) return
     const onHand = stockByProduct[productId] ?? 0
     if (onHand <= 0) {
+      if (!allowOversell) {
+        toast({
+          title: "Hết hàng",
+          description: `${product.name} không còn tồn kho`,
+          variant: "destructive",
+        })
+        return
+      }
+      // Bật cho phép vượt tồn → cảnh báo nhẹ, vẫn cho thêm vào đơn.
       toast({
-        title: "Hết hàng",
-        description: `${product.name} không còn tồn kho`,
-        variant: "destructive",
+        title: "Sản phẩm đang hết hàng",
+        description: `${product.name} sẽ được tạo đơn vượt tồn.`,
       })
-      return
     }
     const groupId = selectedCustomer?.group_id
     const price = getUnitPrice(product, product.base_unit, groupId)

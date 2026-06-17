@@ -7,6 +7,7 @@ import { useAuth } from "./use-auth"
 interface OrgRow {
   id: string
   name: string
+  allow_oversell: boolean
 }
 
 // Module-level cache giữ data tổ chức trong suốt session — tránh
@@ -41,12 +42,21 @@ export function useOrg() {
     const supabase = createClient()
     supabase
       .from("organizations")
-      .select("id, name")
+      .select("id, name, allow_oversell")
       .eq("id", orgId)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return
-        const row = data as OrgRow | null
+        const raw = data as Partial<OrgRow> | null
+        const row: OrgRow | null = raw
+          ? {
+              id: String(raw.id ?? orgId),
+              name: String(raw.name ?? ""),
+              // Trước khi migration 086 chạy, cột chưa có → null/undefined.
+              // Coi như tắt để an toàn (giữ behavior cũ).
+              allow_oversell: raw.allow_oversell === true,
+            }
+          : null
         if (row) cache.set(orgId, row)
         setOrg(row)
         setLoading(false)

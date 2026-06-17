@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -61,6 +62,8 @@ type ReturnReason = (typeof RETURN_REASONS)[number]["value"]
 
 export function OrderForm() {
   const { user } = useAuth()
+  const { org } = useOrg()
+  const allowOversell = org?.allow_oversell === true
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<(Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]>([])
   const [customerId, setCustomerId] = useState("")
@@ -550,12 +553,20 @@ export function OrderForm() {
       }
     }
     if (overstock.length > 0) {
-      toast({
-        title: "Số lượng vượt tồn kho",
-        description: overstock.join(" • "),
-        variant: "destructive",
-      })
-      return
+      if (allowOversell) {
+        // NPP đã bật cho phép bán vượt tồn → chỉ cảnh báo, không chặn.
+        toast({
+          title: "Cảnh báo: bán vượt tồn",
+          description: overstock.join(" • "),
+        })
+      } else {
+        toast({
+          title: "Số lượng vượt tồn kho",
+          description: overstock.join(" • "),
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     // Sales-rep price floor (when allowed at all). Block submit if any line
@@ -1702,18 +1713,20 @@ export function OrderForm() {
           </Button>
           <Button
             type="submit"
-            disabled={loading || hasOverstock || hasPriceViolation || !customerId}
+            disabled={loading || (hasOverstock && !allowOversell) || hasPriceViolation || !customerId}
             className="flex-[2]"
           >
             {loading
               ? "Đang lưu..."
-              : hasOverstock
+              : hasOverstock && !allowOversell
                 ? "Vượt tồn kho"
                 : hasPriceViolation
                   ? "Giá thấp hơn cho phép"
                   : !customerId
                     ? "Chọn khách hàng"
-                    : "Tạo đơn hàng"}
+                    : hasOverstock
+                      ? "Tạo đơn (vượt tồn)"
+                      : "Tạo đơn hàng"}
           </Button>
         </div>
       </div>
@@ -1770,16 +1783,18 @@ export function OrderForm() {
               </Button>
               <Button
                 type="submit"
-                disabled={loading || hasOverstock || hasPriceViolation}
+                disabled={loading || (hasOverstock && !allowOversell) || hasPriceViolation}
                 className="bg-on-primary hover:bg-surface-bright text-primary font-bold border-0 shadow-sm"
               >
                 {loading
                   ? "Đang lưu..."
-                  : hasOverstock
+                  : hasOverstock && !allowOversell
                     ? "Vượt tồn kho"
                     : hasPriceViolation
                       ? "Giá thấp hơn cho phép"
-                      : "Tạo đơn hàng"}
+                      : hasOverstock
+                        ? "Tạo đơn (vượt tồn)"
+                        : "Tạo đơn hàng"}
               </Button>
             </div>
           </div>

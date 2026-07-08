@@ -137,14 +137,16 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
-        // Precision Enterprise scale — card uses xl (0.75rem), input uses lg.
-        xl: "0.75rem",
-        "2xl": "1rem",
+        // Refreshed scale — softer, more modern corners.
+        xl: "0.875rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
       },
       boxShadow: {
-        card: "0px 4px 6px -2px rgba(16, 24, 40, 0.03)",
-        "card-hover": "0px 8px 12px -4px rgba(16, 24, 40, 0.05)",
-        overlay: "0px 12px 16px -4px rgba(16, 24, 40, 0.08)",
+        card: "0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px -4px rgba(16, 24, 40, 0.06)",
+        "card-hover": "0 4px 10px -2px rgba(16, 24, 40, 0.06), 0 16px 40px -8px rgba(16, 24, 40, 0.1)",
+        overlay: "0 8px 20px -6px rgba(16, 24, 40, 0.1), 0 24px 56px -12px rgba(16, 24, 40, 0.16)",
+        brand: "0 8px 24px -6px hsl(222 83% 53% / 0.35)",
       },
       keyframes: {
         "accordion-down": {

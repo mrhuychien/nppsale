@@ -7,6 +7,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // Đăng nhập bằng QR: route /qr-login tự đối chiếu token và đặt phiên.
+  // Phải cho qua trước khi middleware đẩy khách chưa đăng nhập về /login.
+  if (request.nextUrl.pathname.startsWith("/qr-login")) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()

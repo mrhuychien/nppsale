@@ -15,8 +15,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
-import { Users, Pencil, Lock, Unlock, Plus, Trash2 } from "lucide-react"
+import { Users, Pencil, Lock, Unlock, Plus, Trash2, QrCode } from "lucide-react"
 import type { User } from "@/types"
+import { QrLoginDialog } from "@/components/users/qr-login-dialog"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import {
@@ -33,6 +34,7 @@ export default function UsersPage() {
   const [toggling, setToggling] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [qrTarget, setQrTarget] = useState<User | null>(null)
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
@@ -112,6 +114,13 @@ export default function UsersPage() {
             onReset={resetColumns}
           />
           {isOwner && (
+            <Button asChild variant="outline">
+              <Link href="/settings/users/qr-new">
+                <QrCode className="mr-2 h-4 w-4" /> Tạo NV quét QR
+              </Link>
+            </Button>
+          )}
+          {isOwner && (
             <Button asChild>
               <Link href="/settings/users/new">
                 <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
@@ -176,6 +185,17 @@ export default function UsersPage() {
                             >
                               <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
                             </Button>
+                            {isOwner && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-primary hover:bg-primary/10"
+                                onClick={() => setQrTarget(u)}
+                                title="Mã QR đăng nhập"
+                              >
+                                <QrCode className="h-4 w-4" />
+                              </Button>
+                            )}
                             {isOwner && u.id !== currentUser?.id && (
                               <Button
                                 size="sm"
@@ -254,6 +274,17 @@ export default function UsersPage() {
                       >
                         <Pencil className="h-4 w-4 mr-1" /> Sửa
                       </Button>
+                      {isOwner && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-primary hover:bg-primary/10"
+                          onClick={() => setQrTarget(u)}
+                          title="Mã QR đăng nhập"
+                        >
+                          <QrCode className="h-4 w-4" />
+                        </Button>
+                      )}
                       {isOwner && u.id !== currentUser?.id && (
                         <Button
                           size="sm"
@@ -298,6 +329,15 @@ export default function UsersPage() {
         onConfirm={handleDelete}
         loading={deleting}
       />
+
+      {qrTarget && (
+        <QrLoginDialog
+          userId={qrTarget.id}
+          userName={qrTarget.full_name}
+          open={!!qrTarget}
+          onOpenChange={(open) => !open && setQrTarget(null)}
+        />
+      )}
     </div>
   )
 }

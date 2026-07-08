@@ -33,6 +33,13 @@ Use the role tokens. Hard-coded colors like `bg-blue-600` are reserved
 for explicit "self-deliver / primary action" buttons (T-10) and one or
 two highlight cases. Default to the semantic set:
 
+> **Palette refresh (2026-07):** primary brightened to `#2563eb`
+> (`--primary: 222 83% 53%`), base `--radius` bumped to `0.75rem`, and
+> card/overlay shadows softened. Values still live in `globals.css` +
+> `tailwind.config.ts` under the same token names — keep using the
+> semantic tokens, don't re-hardcode the old navy `#003d9b`. Auth/hero
+> surfaces use `.bg-gradient-primary` + `.bg-brand-mesh` + `shadow-brand`.
+
 - `bg-card` / `border` — neutral container
 - `bg-muted/30` / `bg-muted/40` — table headers, secondary surfaces
 - `bg-primary` / `text-primary-foreground` — primary CTA

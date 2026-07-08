@@ -618,19 +618,14 @@ export default function StockOutPage() {
             ? `[Exchange] ${p.location}`
             : `Vị trí: ${p.location}`,
       }))
-      // Diagnostic log — surfaces what's actually being saved so user
-      // có thể verify trong DevTools nếu cảm thấy thiếu hàng đổi.
-      console.log("[stock-out] insert stock_entry_lines:", {
-        total: entryLines.length,
-        sell: entryLines.filter((l) => !l.notes?.startsWith("[Exchange]")).length,
-        exchange: entryLines.filter((l) => l.notes?.startsWith("[Exchange]")).length,
-        rows: entryLines.map((l) => ({
-          product_id: l.product_id,
-          unit_name: l.unit_name,
-          quantity: l.quantity,
-          notes: l.notes,
-        })),
-      })
+      // Diagnostic log (dev-only) — verify hàng đổi được lưu đủ.
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[stock-out] insert stock_entry_lines:", {
+          total: entryLines.length,
+          sell: entryLines.filter((l) => !l.notes?.startsWith("[Exchange]")).length,
+          exchange: entryLines.filter((l) => l.notes?.startsWith("[Exchange]")).length,
+        })
+      }
       if (entryLines.length > 0) {
         const { error: linesErr } = await supabase
           .from("stock_entry_lines")

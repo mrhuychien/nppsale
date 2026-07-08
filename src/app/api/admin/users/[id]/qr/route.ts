@@ -51,18 +51,18 @@ export async function GET(
 ) {
   const auth = await authorizeOwner(params.id)
   if (auth.error) return auth.error
-  const { admin } = auth
+  const { admin, target } = auth
   const { data } = await admin
-    .from("users")
-    .select("qr_login_token, qr_login_issued_at, is_active")
-    .eq("id", params.id)
+    .from("qr_login_tokens")
+    .select("token, issued_at")
+    .eq("user_id", params.id)
     .maybeSingle()
-  const token = data?.qr_login_token || null
+  const token = data?.token || null
   return NextResponse.json({
     token,
     loginUrl: token ? qrLoginUrl(token) : null,
-    issuedAt: data?.qr_login_issued_at || null,
-    isActive: data?.is_active ?? true,
+    issuedAt: data?.issued_at || null,
+    isActive: target.is_active ?? true,
   })
 }
 
@@ -75,17 +75,17 @@ export async function POST(
   if (auth.error) return auth.error
   const { admin } = auth
   const token = randomBytes(32).toString("base64url")
+  const issuedAt = new Date().toISOString()
   const { error } = await admin
-    .from("users")
-    .update({ qr_login_token: token, qr_login_issued_at: new Date().toISOString() })
-    .eq("id", params.id)
+    .from("qr_login_tokens")
+    .upsert({ user_id: params.id, token, issued_at: issuedAt })
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
   return NextResponse.json({
     token,
     loginUrl: qrLoginUrl(token),
-    issuedAt: new Date().toISOString(),
+    issuedAt,
   })
 }
 
@@ -98,9 +98,9 @@ export async function DELETE(
   if (auth.error) return auth.error
   const { admin } = auth
   const { error } = await admin
-    .from("users")
-    .update({ qr_login_token: null, qr_login_issued_at: null })
-    .eq("id", params.id)
+    .from("qr_login_tokens")
+    .delete()
+    .eq("user_id", params.id)
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }

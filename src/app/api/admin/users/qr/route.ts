@@ -85,8 +85,6 @@ export async function POST(req: Request) {
       phone: phone || null,
       username: cleanUsername || null,
       is_active: true,
-      qr_login_token: qrToken,
-      qr_login_issued_at: new Date().toISOString(),
       allow_price_edit: free
         ? true
         : typeof allow_price_edit === "boolean"
@@ -106,6 +104,20 @@ export async function POST(req: Request) {
           ? "Số điện thoại đã được dùng. Chọn số khác."
           : `Tạo hồ sơ thất bại: ${msg}`
       return NextResponse.json({ error: friendly }, { status: 400 })
+    }
+
+    // Token QR nằm ở bảng riêng chỉ service_role đọc được (088).
+    const { error: tokenErr } = await admin.from("qr_login_tokens").insert({
+      user_id: created.user.id,
+      token: qrToken,
+    })
+    if (tokenErr) {
+      // Xoá auth user → cascade xoá profile, tránh tài khoản mồ côi.
+      await admin.auth.admin.deleteUser(created.user.id)
+      return NextResponse.json(
+        { error: `Không phát được mã QR: ${tokenErr.message}` },
+        { status: 400 }
+      )
     }
 
     return NextResponse.json({

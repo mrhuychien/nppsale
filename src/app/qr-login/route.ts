@@ -14,6 +14,30 @@ import { createAdminClient } from "@/lib/supabase/admin"
  * Bảo mật: token đối chiếu hoàn toàn server-side. Sai/không active →
  * đẩy về /login kèm cờ lỗi, không tiết lộ chi tiết.
  */
+// Rate-limit đơn giản theo IP (best-effort trên serverless: mỗi instance
+// một bộ đếm). Token 32-byte ngẫu nhiên vốn không thể dò, đây là lớp
+// phòng thủ bổ sung chống quét ồ ạt.
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX = 10
+const hits = new Map<string, { count: number; resetAt: number }>()
+
+function rateLimited(ip: string): boolean {
+  const now = Date.now()
+  const entry = hits.get(ip)
+  if (!entry || now > entry.resetAt) {
+    hits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS })
+    // Dọn bộ nhớ khi map phình to.
+    if (hits.size > 5000) {
+      hits.forEach((v, k) => {
+        if (now > v.resetAt) hits.delete(k)
+      })
+    }
+    return false
+  }
+  entry.count++
+  return entry.count > RATE_MAX
+}
+
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin
   const token = req.nextUrl.searchParams.get("t")?.trim()
@@ -24,22 +48,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  if (rateLimited(ip)) return fail("invalid")
+
   if (!token || token.length < 16) return fail("invalid")
 
   try {
     const admin = createAdminClient()
 
-    const { data: profile } = await admin
-      .from("users")
-      .select("id, is_active")
-      .eq("qr_login_token", token)
+    // Token nằm ở bảng riêng service_role-only (migration 088).
+    const { data: tokenRow } = await admin
+      .from("qr_login_tokens")
+      .select("user_id, users!inner(is_active)")
+      .eq("token", token)
       .maybeSingle()
 
-    if (!profile) return fail("invalid")
-    if (!profile.is_active) return fail("inactive")
+    if (!tokenRow) return fail("invalid")
+    const active = Array.isArray(tokenRow.users)
+      ? (tokenRow.users[0] as { is_active: boolean } | undefined)?.is_active
+      : (tokenRow.users as { is_active: boolean } | null)?.is_active
+    if (!active) return fail("inactive")
 
     const { data: authRes, error: getErr } =
-      await admin.auth.admin.getUserById(profile.id)
+      await admin.auth.admin.getUserById(tokenRow.user_id)
     const email = authRes?.user?.email
     if (getErr || !email) return fail("invalid")
 

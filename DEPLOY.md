@@ -29,15 +29,27 @@
 
 ### 1.3 Chay Migration tao database
 
-Vao **SQL Editor** trong Supabase Dashboard, chay lan luot 3 file theo thu tu:
+Cac migration la **cong don** (001 tao bang, cac file sau ALTER them cot/chuc nang).
+Cai moi tren mot database TRONG chi can **1 file gop** thay vi chay 87 file:
 
-**File 1: Tao bang** - Copy noi dung `supabase/migrations/001_schema.sql` va chay
+**Cach nhanh (khuyen dung):**
+1. Mo **SQL Editor** trong Supabase Dashboard.
+2. Copy toan bo noi dung `supabase/schema_full.sql` va chay **1 lan**.
+   File nay tu dong gop tat ca migration theo dung thu tu (bao gom ca
+   RLS va du lieu mau + tai khoan demo).
 
-**File 2: Thiet lap RLS** - Copy noi dung `supabase/migrations/002_rls_policies.sql` va chay
+> File `schema_full.sql` duoc sinh tu thu muc `supabase/migrations`. Sau
+> khi them migration moi, chay lai `bash scripts/build-combined-migration.sh`
+> de cap nhat.
 
-**File 3: Du lieu mau + Tai khoan demo** - Copy noi dung `supabase/migrations/003_seed.sql` va chay
+**Cach thu cong (neu muon chay tung buoc):** chay lan luot cac file trong
+`supabase/migrations/` theo dung thu tu so (001 → 002 → ... → 087). Phai
+dung thu tu vi cac file sau phu thuoc file truoc.
 
-> **Luu y**: Phai chay dung thu tu 001 → 002 → 003. Neu bi loi, kiem tra lai tung file mot.
+> **Luu y**: Chi chay `schema_full.sql` tren database TRONG (cai moi). Voi
+> database da co san, chi chay rieng migration MOI (vd `087_qr_login.sql`)
+> — dung chay lai ca file gop vi cac lenh CREATE TABLE dau tien se bao loi
+> "already exists".
 
 ### 1.4 Tai khoan demo
 

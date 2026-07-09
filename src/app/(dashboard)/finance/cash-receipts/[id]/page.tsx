@@ -65,7 +65,7 @@ export default function CashReceiptDetailPage() {
     const { data: r } = await supabase
       .from("cash_receipts")
       .select(
-        "*, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
+        "id, receipt_code, receipt_date, status, source_type, source_id, expected_amount, submitted_amount, received_at, notes, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
       )
       .eq("id", id)
       .single()
@@ -74,7 +74,7 @@ export default function CashReceiptDetailPage() {
     const { data: ls } = await supabase
       .from("cash_receipt_lines")
       .select(
-        "*, order:sales_orders(id, order_code, customer:customers(store_name, phone))"
+        "id, payment_id, amount, order:sales_orders(id, order_code, customer:customers(store_name, phone))"
       )
       .eq("receipt_id", id)
     setLines((ls as unknown as ReceiptLineWithOrder[]) || [])

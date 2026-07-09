@@ -38,9 +38,9 @@ export default function PayablesBySupplierPage() {
     async function fetchData() {
       const { data } = await supabase
         .from("payables")
-        .select("*, supplier:suppliers(name, code)")
+        .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)")
         .neq("status", "paid")
-      setPayables((data as Payable[]) || [])
+      setPayables((data as unknown as Payable[]) || [])
       setLoading(false)
     }
     fetchData()

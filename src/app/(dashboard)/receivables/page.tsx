@@ -67,13 +67,13 @@ export default function ReceivablesPage() {
       const { data, count } = await supabase
         .from("receivables")
         .select(
-          "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+          "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
           { count: "exact" }
         )
         .order("due_date")
         .range(pg.from, pg.to)
       if (cancelled) return
-      setReceivables((data as Receivable[]) || [])
+      setReceivables((data as unknown as Receivable[]) || [])
       pg.setTotal(count ?? 0)
       setLoading(false)
     }

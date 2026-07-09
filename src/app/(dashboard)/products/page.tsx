@@ -108,7 +108,7 @@ export default function ProductsPage() {
     let q = supabase
       .from("products")
       .select(
-        "*, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
+        "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
         { count: "exact" }
       )
       .order("name")

@@ -36,7 +36,7 @@ export default function InvoicePrintPage() {
 
     const { data: inv } = await supabase
       .from("invoices")
-      .select("*")
+      .select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at")
       .eq("id", id)
       .single()
 
@@ -52,7 +52,7 @@ export default function InvoicePrintPage() {
     if (invoiceData.org_id) {
       const { data: orgData } = await supabase
         .from("organizations")
-        .select("*")
+        .select("id, name, address, phone, tax_code")
         .eq("id", invoiceData.org_id)
         .single()
       if (orgData) setOrg(orgData as Organization)
@@ -62,16 +62,16 @@ export default function InvoicePrintPage() {
     if (invoiceData.order_id) {
       const { data: orderData } = await supabase
         .from("sales_orders")
-        .select("*")
+        .select("id, order_code")
         .eq("id", invoiceData.order_id)
         .single()
       if (orderData) setOrder(orderData as SalesOrder)
 
       const { data: linesData } = await supabase
         .from("sales_order_lines")
-        .select("*, product:products(*)")
+        .select("id, unit_name, quantity, unit_price, line_total, product:products(*)")
         .eq("order_id", invoiceData.order_id)
-      if (linesData) setLines(linesData as SalesOrderLine[])
+      if (linesData) setLines(linesData as unknown as SalesOrderLine[])
     }
 
     setLoading(false)

@@ -55,7 +55,7 @@ export default function SalaryConfigPage() {
       if (!authUser?.org_id) return
       const { data } = await supabase
         .from("hr_salary_config")
-        .select("*")
+        .select("id, name, base_salary, gas_allowance, phone_allowance, working_days_per_month, kpi_target_revenue, target_tiers, over_target_percent, under_70_rule, under_60_percent")
         .eq("org_id", authUser.org_id)
         .eq("is_active", true)
         .limit(1)

@@ -95,11 +95,11 @@ export function OrderForm() {
   useEffect(() => {
     async function fetch() {
       const [custRes, prodRes, batchRes] = await Promise.all([
-        supabase.from("customers").select("*, group:customer_groups(*)").eq("status", "active").order("store_name"),
-        supabase.from("products").select("*, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
+        supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("status", "active").order("store_name"),
+        supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
         supabase.from("batches").select("product_id, qty_on_hand").gt("qty_on_hand", 0),
       ])
-      setCustomers((custRes.data as Customer[]) || [])
+      setCustomers((custRes.data as unknown as Customer[]) || [])
       setProducts((prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || [])
       const stockMap: Record<string, number> = {}
       for (const b of (batchRes.data as Array<{ product_id: string; qty_on_hand: number }>) || []) {
@@ -606,7 +606,7 @@ export function OrderForm() {
 
       const { data: rulesData } = await supabase
         .from("approval_rules")
-        .select("*")
+        .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
         .eq("org_id", user?.org_id)
         .maybeSingle()
 

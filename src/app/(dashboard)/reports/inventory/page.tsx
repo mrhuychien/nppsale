@@ -52,13 +52,13 @@ export default function InventoryReportPage() {
       const [batchesRes, linesRes, suppliersRes] = await Promise.all([
         supabase
           .from("batches")
-          .select("*, product:products(*)")
+          .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)")
           .gt("qty_on_hand", 0)
           .order("expires_at"),
-        supabase.from("sales_order_lines").select("*"),
+        supabase.from("sales_order_lines").select("id, product_id, quantity"),
         supabase.from("suppliers").select("id, name").order("name"),
       ])
-      setBatchesAll((batchesRes.data as (Batch & { product?: Product })[]) || [])
+      setBatchesAll((batchesRes.data as unknown as (Batch & { product?: Product })[]) || [])
       setSalesLines((linesRes.data as SalesOrderLine[]) || [])
       setSuppliers((suppliersRes.data as SupplierOption[]) || [])
       setLoading(false)

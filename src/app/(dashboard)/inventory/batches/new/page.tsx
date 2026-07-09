@@ -35,7 +35,7 @@ export default function NewBatchPage() {
     async function fetch() {
       const { data } = await supabase
         .from("products")
-        .select("*")
+        .select("id, sku, name")
         .eq("status", "active")
         .order("name")
       setProducts((data as Product[]) || [])

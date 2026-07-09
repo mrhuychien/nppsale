@@ -175,12 +175,12 @@ export default function StockOutPage() {
       const ordersRes = await supabase
         .from("sales_orders")
         .select(
-          "*, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit)), returns(id, status, return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(id, sku, name, base_unit)))"
+          "id, order_code, customer_id, order_date, total, customer:customers(id, store_name, phone, district, province, ward), lines:sales_order_lines(*, product:products(id, sku, name, base_unit)), returns(id, status, return_lines(id, product_id, unit_name, quantity, is_exchange, product:products(id, sku, name, base_unit)))"
         )
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
 
-      const typed = (ordersRes.data as OrderWithRelations[]) || []
+      const typed = ((ordersRes.data as unknown) as OrderWithRelations[]) || []
       setOrders(typed)
 
       // Pre-select orders from ?orderIds= (from /inventory/pending)

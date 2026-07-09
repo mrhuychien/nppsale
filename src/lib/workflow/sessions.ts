@@ -144,7 +144,7 @@ export async function listOpenSessions(
 ): Promise<{ data: WorkflowSession[]; error: string | null }> {
   const { data, error } = await supabase
     .from("workflow_sessions")
-    .select("*")
+    .select("id, org_id, user_id, entity_type, entity_id, stage, last_url, form_draft, entity_label, last_action_at, created_at, closed_at")
     .eq("user_id", userId)
     .is("closed_at", null)
     .order("last_action_at", { ascending: false })

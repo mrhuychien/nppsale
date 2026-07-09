@@ -45,10 +45,10 @@ export default function NewInvoicePage() {
     async function fetchOrders() {
       const { data } = await supabase
         .from("sales_orders")
-        .select("*, customer:customers(store_name, address, phone)")
+        .select("id, order_code, subtotal, vat, total, customer:customers(store_name, address, phone)")
         .eq("status", "delivered")
         .order("order_date", { ascending: false })
-      setOrders(data || [])
+      setOrders((data as unknown as (SalesOrder & { customer?: { store_name: string; address: string; phone: string } })[]) || [])
       setLoading(false)
     }
     fetchOrders()

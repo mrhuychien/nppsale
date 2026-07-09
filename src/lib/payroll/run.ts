@@ -50,7 +50,7 @@ export async function ensurePayrollRun(
 ): Promise<{ run: PayrollRun | null; error: string | null }> {
   const { data: existing, error: findErr } = await supabase
     .from("payroll_runs")
-    .select("*")
+    .select("id, org_id, month, status, computed_at, locked_at, locked_by, created_by, created_at")
     .eq("org_id", opts.orgId)
     .eq("month", opts.month)
     .maybeSingle()
@@ -103,10 +103,10 @@ export async function setManualAdjustment(
   }
 ): Promise<{ error: string | null }> {
   // Re-compute net_salary with the new adjustment in a single round-trip.
-  // SELECT * để không vỡ nếu DB chưa có cột allowances (mig 064).
+  // Cột allowances có từ mig 064.
   const { data: row, error: readErr } = await supabase
     .from("payroll_run_items")
-    .select("*")
+    .select("prorated_base, allowances, kpi_bonus, order_count_bonus, activity_bonus, overtime, deductions, social_insurance")
     .eq("id", itemId)
     .single()
   if (readErr || !row) return { error: readErr?.message ?? "Not found" }

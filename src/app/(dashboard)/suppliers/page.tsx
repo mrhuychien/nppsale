@@ -97,7 +97,7 @@ export default function SuppliersPage() {
       setLoading(true)
       let q = supabase
         .from("suppliers")
-        .select("*", { count: "exact" })
+        .select("id, code, name, category, contact_name, phone, address, is_verified, is_active", { count: "exact" })
         .order("name")
         .range(pg.from, pg.to)
       if (debouncedSearch) {

@@ -36,7 +36,7 @@ export default function CashReceiptsListPage() {
       const { data } = await supabase
         .from("cash_receipts")
         .select(
-          "*, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
+          "id, receipt_code, receipt_date, status, expected_amount, submitted_amount, received_at, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
         )
         .order("created_at", { ascending: false })
       if (!cancelled) {

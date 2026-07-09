@@ -65,12 +65,12 @@ export default function PurchaseReturnsPage() {
       setLoading(true)
       let q = supabase
         .from("supplier_returns")
-        .select("*, supplier:suppliers(id, name, code)")
+        .select("id, return_code, return_date, warehouse_zone, total, status, supplier:suppliers(id, name, code)")
         .eq("org_id", user.org_id)
         .order("created_at", { ascending: false })
       if (filter !== "all") q = q.eq("status", filter)
       const { data } = await q
-      setRows((data as Row[]) || [])
+      setRows((data as unknown as Row[]) || [])
       setLoading(false)
     }
     fetch()

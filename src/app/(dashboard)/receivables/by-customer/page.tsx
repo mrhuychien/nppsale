@@ -46,12 +46,12 @@ export default function ReceivablesByCustomerPage() {
       const [recRes, assignRes] = await Promise.all([
         supabase
           .from("receivables")
-          .select("*, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)")
+          .select("id, customer_id, amount, paid, status, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)")
           .neq("status", "paid"),
-        supabase.from("customer_assignments").select("*, user:users(full_name)").eq("role", "primary"),
+        supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name)").eq("role", "primary"),
       ])
-      setReceivables((recRes.data as Receivable[]) || [])
-      setAssignments((assignRes.data as CustomerAssignment[]) || [])
+      setReceivables((recRes.data as unknown as Receivable[]) || [])
+      setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
       setLoading(false)
     }
     fetchData()

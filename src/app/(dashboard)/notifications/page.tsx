@@ -78,7 +78,7 @@ export default function NotificationsPage() {
     setLoading(true)
     let q = supabase
       .from("notifications")
-      .select("*", { count: "exact" })
+      .select("id, type, title, body, link_url, is_read, created_at", { count: "exact" })
       .eq("user_id", authUser.id)
       .order("created_at", { ascending: false })
       .range(pg.from, pg.to)

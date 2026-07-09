@@ -76,9 +76,9 @@ export default function StockEntriesPage() {
     setLoading(true)
     const { data } = await supabase
       .from("stock_entries")
-      .select("*, creator:users!stock_entries_created_by_fkey(*)")
+      .select("id, entry_code, type, status, notes, created_at, creator:users!stock_entries_created_by_fkey(*)")
       .order("created_at", { ascending: false })
-    setEntries((data as StockEntry[]) || [])
+    setEntries(((data as unknown) as StockEntry[]) || [])
     setLoading(false)
   }
 

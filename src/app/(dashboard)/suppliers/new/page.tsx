@@ -52,7 +52,7 @@ export default function NewSupplierPage() {
       if (!code) {
         const { count } = await supabase
           .from("suppliers")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
         const nextNum = (count || 0) + 1
         code = `NCC-${String(nextNum).padStart(4, "0")}`
       }

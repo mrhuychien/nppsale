@@ -114,12 +114,12 @@ export default function StockEntryDetailPage() {
     const [entryRes, linesRes, swapRes] = await Promise.all([
       supabase
         .from("stock_entries")
-        .select("*, creator:users!stock_entries_created_by_fkey(*)")
+        .select("id, org_id, entry_code, type, status, posted_at, supplier_id, ref_order_ids, created_by, notes, created_at, creator:users!stock_entries_created_by_fkey(*)")
         .eq("id", id)
         .single(),
       supabase
         .from("stock_entry_lines")
-        .select("*, product:products(*), batch:batches(*)")
+        .select("id, entry_id, product_id, batch_id, unit_name, quantity, notes, unit_cost, qty_in_base_uom, qty_in_transaction_uom, transaction_uom, conversion_factor_snapshot, product:products(*), batch:batches(*)")
         .eq("entry_id", id),
       // T-12 — swap items linked to this stock_entry.
       supabase
@@ -134,12 +134,12 @@ export default function StockEntryDetailPage() {
     )
     let entryData: StockEntry | null = null
     if (entryRes.data) {
-      const e = entryRes.data as StockEntry
+      const e = (entryRes.data as unknown) as StockEntry
       entryData = e
       setEntry(e)
       setEditNotes(e.notes || "")
     }
-    setLines((linesRes.data as StockEntryLine[]) || [])
+    setLines(((linesRes.data as unknown) as StockEntryLine[]) || [])
 
     // For export entries that wrap multiple orders, load the source orders
     // with their lines so the warehouse can see how to split the aggregate.

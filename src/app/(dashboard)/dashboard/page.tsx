@@ -151,7 +151,7 @@ export default function DashboardPage() {
             .gte("expires_at", todayStr),
           supabase
             .from("sales_orders")
-            .select("*, customer:customers(store_name, phone)")
+            .select("id, order_code, total, status, created_at, customer:customers(store_name, phone)")
             .order("created_at", { ascending: false })
             .limit(5),
           supabase
@@ -231,7 +231,7 @@ export default function DashboardPage() {
           lowStockCount: lowStockRes.count || 0,
           expiringSoonCount: expiringRes.count || 0,
         })
-        setRecentOrders((recentRes.data as SalesOrder[]) || [])
+        setRecentOrders((recentRes.data as unknown as SalesOrder[]) || [])
         setTopCustomers(topList)
         setChannelBreakdown(channelList)
       } catch (err) {

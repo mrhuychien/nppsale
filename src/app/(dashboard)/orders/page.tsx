@@ -169,7 +169,7 @@ export default function OrdersPage() {
       let q = supabase
         .from("sales_orders")
         .select(
-          "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
+          "id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -192,7 +192,7 @@ export default function OrdersPage() {
 
       const { data, count } = await q
       if (cancelled) return
-      const ordersData = (data as SalesOrder[]) || []
+      const ordersData = (data as unknown as SalesOrder[]) || []
       setOrders(ordersData)
       pg.setTotal(count ?? 0)
 
@@ -204,7 +204,7 @@ export default function OrdersPage() {
             .from("receivables")
             .select("order_id, amount, paid, status, due_date")
             .in("order_id", ids),
-          supabase.from("invoices").select("*").in("order_id", ids),
+          supabase.from("invoices").select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at").in("order_id", ids),
         ])
         if (cancelled) return
         const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
@@ -506,7 +506,7 @@ export default function OrdersPage() {
       // Refresh invoice map
       const { data: updatedInv } = await supabase
         .from("invoices")
-        .select("*")
+        .select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at")
         .eq("id", invoiceId)
         .single()
       if (updatedInv) {

@@ -73,7 +73,7 @@ export default function InvoiceDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("invoices").select("*").eq("id", id).single()
+    const { data } = await supabase.from("invoices").select("id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_lookup_code, misa_published_at").eq("id", id).single()
     if (data) {
       const inv = data as Invoice
       setInvoice(inv)

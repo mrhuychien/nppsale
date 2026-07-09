@@ -52,14 +52,14 @@ export default function BatchDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [batchRes, linesRes] = await Promise.all([
-      supabase.from("batches").select("*, product:products(*)").eq("id", id).single(),
+      supabase.from("batches").select("id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)").eq("id", id).single(),
       supabase
         .from("stock_entry_lines")
-        .select("*, entry:stock_entries(entry_code, type, created_at, creator:users!stock_entries_created_by_fkey(full_name))")
+        .select("id, quantity, unit_name, entry:stock_entries(entry_code, type, created_at, creator:users!stock_entries_created_by_fkey(full_name))")
         .eq("batch_id", id),
     ])
     if (batchRes.data) {
-      const b = batchRes.data as Batch & { product?: Product }
+      const b = (batchRes.data as unknown) as Batch & { product?: Product }
       setBatch(b)
       setEditForm({
         batch_code: b.batch_code,
@@ -70,7 +70,7 @@ export default function BatchDetailPage() {
         unit_cost: Number(b.unit_cost) || 0,
       })
     }
-    setEntryLines((linesRes.data as StockEntryLine[]) || [])
+    setEntryLines(((linesRes.data as unknown) as StockEntryLine[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 

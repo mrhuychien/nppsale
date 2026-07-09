@@ -62,7 +62,7 @@ async function handle(req: Request) {
 
   const { data: cfg } = await admin
     .from("company_einvoice_config")
-    .select("*")
+    .select("api_base, tax_code, token_path, publish_path, username_enc, password_enc, misa_is_invoice_with_code")
     .eq("org_id", profile.org_id)
     .maybeSingle()
   if (!cfg) return NextResponse.json({ error: "Chưa cấu hình MISA" }, { status: 400 })

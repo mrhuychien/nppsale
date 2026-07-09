@@ -89,7 +89,7 @@ export default function PayrollRunsPage() {
     setLoading(true)
     const { data } = await supabase
       .from("payroll_runs")
-      .select("*")
+      .select("id, org_id, month, status, computed_at, locked_at, locked_by, created_at")
       .eq("org_id", user.org_id)
       .order("month", { ascending: false })
     setRuns((data as PayrollRun[]) || [])
@@ -99,10 +99,10 @@ export default function PayrollRunsPage() {
   const loadActive = useCallback(
     async (runId: string) => {
       const [runRes, itemRes, userRes] = await Promise.all([
-        supabase.from("payroll_runs").select("*").eq("id", runId).single(),
+        supabase.from("payroll_runs").select("id, org_id, month, status, computed_at, locked_at, locked_by, created_at").eq("id", runId).single(),
         supabase
           .from("payroll_run_items")
-          .select("*")
+          .select("id, payroll_run_id, user_id, base_salary, standard_workdays, actual_workdays, prorated_base, allowances, kpi_bonus, order_count_bonus, activity_bonus, overtime, deductions, social_insurance, manual_adjustment, net_salary, notes, computed_breakdown")
           .eq("payroll_run_id", runId)
           .order("created_at"),
         supabase

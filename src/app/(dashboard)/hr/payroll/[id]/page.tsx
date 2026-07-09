@@ -44,11 +44,11 @@ export default function PayrollDetailPage() {
     async function fetch() {
       const { data } = await supabase
         .from("hr_payroll")
-        .select("*, user:users(*)")
+        .select("id, org_id, user_id, period, working_days, absent_days, total_revenue, target_amount, target_percent, base_salary, gas_allowance, phone_allowance, target_bonus, over_target_bonus, monthly_revenue_bonus, deductions, total_salary, breakdown, status, confirmed_by, confirmed_at, paid_at, notes, created_at, user:users(*)")
         .eq("id", id)
         .single()
       if (data) {
-        const p = data as HrPayroll
+        const p = data as unknown as HrPayroll
         setPayroll(p)
         setDeductions(p.deductions || 0)
         setNotes(p.notes || "")
@@ -64,10 +64,10 @@ export default function PayrollDetailPage() {
       .from("hr_payroll")
       .update(updates)
       .eq("id", id)
-      .select("*, user:users(*)")
+      .select("id, org_id, user_id, period, working_days, absent_days, total_revenue, target_amount, target_percent, base_salary, gas_allowance, phone_allowance, target_bonus, over_target_bonus, monthly_revenue_bonus, deductions, total_salary, breakdown, status, confirmed_by, confirmed_at, paid_at, notes, created_at, user:users(*)")
       .single()
     if (data) {
-      const p = data as HrPayroll
+      const p = data as unknown as HrPayroll
       setPayroll(p)
       setDeductions(p.deductions || 0)
       setNotes(p.notes || "")

@@ -36,7 +36,7 @@ export default function InventoryAuditPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const [prodRes, batchRes] = await Promise.all([
-      supabase.from("products").select("*").order("name"),
+      supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id").order("name"),
       supabase
         .from("batches")
         .select("product_id, qty_on_hand, unit_cost")

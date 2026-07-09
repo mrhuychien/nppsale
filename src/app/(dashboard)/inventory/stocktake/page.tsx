@@ -35,7 +35,7 @@ export default function StocktakePage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("products").select("*").eq("status", "active").order("name")
+      const { data } = await supabase.from("products").select("id, sku, name, base_unit").eq("status", "active").order("name")
       setProducts((data as Product[]) || [])
     }
     fetch()

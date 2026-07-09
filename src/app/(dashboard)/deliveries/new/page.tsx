@@ -36,18 +36,18 @@ export default function NewDeliveryPage() {
       const [driversRes, ordersRes] = await Promise.all([
         supabase
           .from("users")
-          .select("*")
+          .select("id, full_name")
           .eq("role", "driver")
           .eq("is_active", true)
           .order("full_name"),
         supabase
           .from("sales_orders")
-          .select("*, customer:customers(store_name, phone)")
+          .select("id, order_code, total, created_at, customer:customers(store_name, phone)")
           .eq("status", "confirmed")
           .order("created_at", { ascending: false }),
       ])
       setDrivers((driversRes.data as User[]) || [])
-      setOrders((ordersRes.data as SalesOrder[]) || [])
+      setOrders((ordersRes.data as unknown as SalesOrder[]) || [])
       setLoading(false)
     }
     fetch()

@@ -81,7 +81,7 @@ export default function AdjustmentsPage() {
         .limit(10),
       supabase
         .from("expense_categories")
-        .select("*")
+        .select("id, code, name")
         .eq("org_id", user.org_id)
         .eq("bucket", "cogs")
         .eq("is_active", true),

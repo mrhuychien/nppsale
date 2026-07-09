@@ -53,15 +53,15 @@ export default function SupplierDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [supplierRes, entriesRes, countRes] = await Promise.all([
-      supabase.from("suppliers").select("*").eq("id", id).single(),
+      supabase.from("suppliers").select("id, org_id, name, code, category, contact_name, phone, email, address, tax_code, bank_account, bank_name, payment_terms, rating, notes, is_verified, is_active, created_at").eq("id", id).single(),
       supabase
         .from("stock_entries")
-        .select("*")
+        .select("id, entry_code, type, notes, created_at")
         .eq("supplier_id", id)
         .order("created_at", { ascending: false }),
       supabase
         .from("stock_entries")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("supplier_id", id),
     ])
 

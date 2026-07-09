@@ -78,8 +78,8 @@ export default function AttendancePage() {
     const start = dateStr(year, month, 1)
     const end = dateStr(year, month, daysInMonth)
     const [usersRes, attendRes] = await Promise.all([
-      supabase.from("users").select("*").eq("org_id", authUser.org_id).eq("is_active", true).order("full_name"),
-      supabase.from("hr_attendance").select("*").eq("org_id", authUser.org_id).gte("work_date", start).lte("work_date", end),
+      supabase.from("users").select("id, full_name, role").eq("org_id", authUser.org_id).eq("is_active", true).order("full_name"),
+      supabase.from("hr_attendance").select("id, org_id, user_id, work_date, status").eq("org_id", authUser.org_id).gte("work_date", start).lte("work_date", end),
     ])
     setEmployees((usersRes.data as User[]) || [])
     const map: Record<string, HrAttendance> = {}

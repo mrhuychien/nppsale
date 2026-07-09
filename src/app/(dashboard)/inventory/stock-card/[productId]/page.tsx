@@ -62,8 +62,8 @@ export default function StockCardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [productRes, batchesRes, linesRes] = await Promise.all([
-      supabase.from("products").select("*").eq("id", productId).maybeSingle(),
-      supabase.from("batches").select("*").eq("product_id", productId).order("expires_at"),
+      supabase.from("products").select("id, sku, name, base_unit").eq("id", productId).maybeSingle(),
+      supabase.from("batches").select("id, batch_code, qty_on_hand, unit_cost, expires_at").eq("product_id", productId).order("expires_at"),
       supabase
         .from("stock_entry_lines")
         .select(

@@ -53,7 +53,7 @@ export default function CommissionPolicyDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("commission_policies").select("*").eq("id", id).single()
+    const { data } = await supabase.from("commission_policies").select("id, org_id, name, type, tiers, applies_to, effective_from, effective_to, is_active, created_at").eq("id", id).single()
     if (data) {
       const p = data as CommissionPolicy
       setPolicy(p)

@@ -120,9 +120,12 @@ export default function OrdersPage() {
   const filterActive = (k: OrderFilterKey) => activeFilters.includes(k)
 
   // Deep-link: /orders?status=draft → preselect the status filter.
+  // /orders?q=SO-... → điền ô tìm kiếm (từ ô tìm nhanh trên header).
   useEffect(() => {
     const s = searchParams.get("status")
     if (s) setStatusFilter(s)
+    const q = searchParams.get("q")
+    if (q !== null) setSearch(q)
   }, [searchParams])
 
   // Load metadata (customers, users) + counts theo status — 1 lần khi mount.

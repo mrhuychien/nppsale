@@ -329,7 +329,7 @@ function SidebarLink({ href, icon: IconComp, label, isActive, onNavigate }: Side
       href={href}
       onClick={onNavigate}
       className={cn(
-        "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+        "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         isActive
           ? "bg-primary/[0.08] text-primary"
           : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"

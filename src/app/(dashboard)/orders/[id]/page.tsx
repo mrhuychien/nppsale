@@ -397,34 +397,38 @@ export default function OrderDetailPage() {
 
       // If confirming an order, evaluate rules + check permission
       if (newStatus === "confirmed") {
-        const { evaluateApproval, canApproveForLevel } = await import("@/lib/approval")
+        // 3 query ngữ cảnh duyệt độc lập nhau — chạy song song để bước
+        // "Duyệt" không cộng dồn round-trip tuần tự.
+        const [{ evaluateApproval, canApproveForLevel }, rulesRes, recRes, repDebtRes] =
+          await Promise.all([
+            import("@/lib/approval"),
+            supabase
+              .from("approval_rules")
+              .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
+              .eq("org_id", user.org_id)
+              .maybeSingle(),
+            supabase
+              .from("receivables")
+              .select("amount, paid, due_date")
+              .eq("customer_id", order.customer_id)
+              .neq("status", "paid"),
+            supabase
+              .from("receivables")
+              .select("amount, paid")
+              .eq("sales_user_id", order.sales_user_id)
+              .neq("status", "paid"),
+          ])
+        const rulesData = rulesRes.data
 
-        const { data: rulesData } = await supabase
-          .from("approval_rules")
-          .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
-          .eq("org_id", user.org_id)
-          .maybeSingle()
-
-        // Fetch customer debt context
-        const { data: recData } = await supabase
-          .from("receivables")
-          .select("amount, paid, due_date")
-          .eq("customer_id", order.customer_id)
-          .neq("status", "paid")
         type RecRow = { amount: number; paid: number; due_date: string | null }
-        const recRows = (recData as RecRow[]) || []
+        const recRows = (recRes.data as RecRow[]) || []
         const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
         const now = Date.now()
         const customerOverdue = recRows
           .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
           .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
-        const { data: repDebt } = await supabase
-          .from("receivables")
-          .select("amount, paid")
-          .eq("sales_user_id", order.sales_user_id)
-          .neq("status", "paid")
-        const repPortfolioDebt = ((repDebt as Array<{ amount: number; paid: number }>) || [])
+        const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }>) || [])
           .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
         const decision = evaluateApproval(rulesData ?? null, {

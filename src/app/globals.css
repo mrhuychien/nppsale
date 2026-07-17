@@ -224,15 +224,15 @@
   .text-warning { color: hsl(var(--warning)); }
   .bg-warning-light { background-color: hsl(var(--warning-light)); }
 
-  /* Smooth page transitions */
+  /* Smooth page transitions — ngắn để cảm giác nhanh, không lề mề */
   .page-enter {
-    animation: fadeInUp 0.3s ease-out;
+    animation: fadeInUp 0.16s ease-out;
   }
 
   @keyframes fadeInUp {
     from {
       opacity: 0;
-      transform: translateY(8px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;

@@ -627,41 +627,40 @@ export function OrderForm() {
     setLoading(true)
 
     try {
-      // Evaluate approval rules for this org
-      const { evaluateApproval } = await import("@/lib/approval")
-
-      const { data: rulesData } = await supabase
-        .from("approval_rules")
-        .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
-        .eq("org_id", user?.org_id)
-        .maybeSingle()
-
-      // Customer debt (open receivables)
-      const { data: recData } = await supabase
-        .from("receivables")
-        .select("amount, paid, due_date, status")
-        .eq("customer_id", customerId)
-        .neq("status", "paid")
+      // Evaluate approval rules — 3 query độc lập, chạy song song để
+      // bước "Lưu đơn" không cộng dồn 3 round-trip tuần tự.
+      const [{ evaluateApproval }, rulesRes, recRes, repDebtRes] = await Promise.all([
+        import("@/lib/approval"),
+        supabase
+          .from("approval_rules")
+          .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
+          .eq("org_id", user?.org_id)
+          .maybeSingle(),
+        supabase
+          .from("receivables")
+          .select("amount, paid, due_date, status")
+          .eq("customer_id", customerId)
+          .neq("status", "paid"),
+        user?.id
+          ? supabase
+              .from("receivables")
+              .select("amount, paid")
+              .eq("sales_user_id", user.id)
+              .neq("status", "paid")
+          : Promise.resolve({ data: null }),
+      ])
+      const rulesData = rulesRes.data
 
       type RecRow = { amount: number; paid: number; due_date: string | null; status: string }
-      const recRows = (recData as RecRow[]) || []
+      const recRows = (recRes.data as RecRow[]) || []
       const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
       const now = Date.now()
       const customerOverdue = recRows
         .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
         .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
-      // Rep portfolio debt
-      let repPortfolioDebt = 0
-      if (user?.id) {
-        const { data: repDebt } = await supabase
-          .from("receivables")
-          .select("amount, paid")
-          .eq("sales_user_id", user.id)
-          .neq("status", "paid")
-        repPortfolioDebt = ((repDebt as Array<{ amount: number; paid: number }>) || [])
-          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-      }
+      const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }> | null) || [])
+        .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
       const decision = evaluateApproval(rulesData ?? null, {
         orderTotal: total,
@@ -835,26 +834,30 @@ export function OrderForm() {
         }
       }
 
-      // Fire-and-forget notifications
-      if (user?.org_id) {
-        const { createNotificationForUsers, fetchApproversForOrg } = await import("@/lib/notifications")
-        if (decision.autoApprove) {
-          // Notify the sales rep (creator) — only useful if another user placed this on behalf
-          // Skip: creator already sees the toast.
-        } else {
-          const approvers = await fetchApproversForOrg(supabase, user.org_id)
-          if (approvers.length > 0) {
-            createNotificationForUsers(supabase, {
-              orgId: user.org_id,
-              userIds: approvers,
-              type: "order_pending_approval",
-              title: `Đơn ${orderCode} cần duyệt`,
-              body: `${selectedCustomer?.store_name || ""} • ${new Intl.NumberFormat("vi-VN").format(total)}₫ — ${decision.reason}`,
-              linkUrl: `/orders/${order.id}`,
-              metadata: { order_id: order.id, order_code: orderCode, total },
-            })
+      // Thông báo cho người duyệt — chạy NỀN thật sự (không await) để
+      // không chặn điều hướng sau khi lưu. Lỗi ở nhánh này chỉ log,
+      // không ảnh hưởng đơn đã tạo thành công.
+      if (user?.org_id && !decision.autoApprove) {
+        const orgId = user.org_id
+        void (async () => {
+          try {
+            const { createNotificationForUsers, fetchApproversForOrg } = await import("@/lib/notifications")
+            const approvers = await fetchApproversForOrg(supabase, orgId)
+            if (approvers.length > 0) {
+              await createNotificationForUsers(supabase, {
+                orgId,
+                userIds: approvers,
+                type: "order_pending_approval",
+                title: `Đơn ${orderCode} cần duyệt`,
+                body: `${selectedCustomer?.store_name || ""} • ${new Intl.NumberFormat("vi-VN").format(total)}₫ — ${decision.reason}`,
+                linkUrl: `/orders/${order.id}`,
+                metadata: { order_id: order.id, order_code: orderCode, total },
+              })
+            }
+          } catch (err) {
+            console.error("[order-form] notify approvers failed:", err)
           }
-        }
+        })()
       }
 
       if (decision.autoApprove) {

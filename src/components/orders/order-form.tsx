@@ -74,6 +74,8 @@ export function OrderForm() {
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<OrderLine[]>([])
   const [productSearch, setProductSearch] = useState("")
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false)
+  const [returnDropdownOpen, setReturnDropdownOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
 
@@ -94,11 +96,33 @@ export function OrderForm() {
 
   useEffect(() => {
     async function fetch() {
-      const [custRes, prodRes, batchRes] = await Promise.all([
+      const results = await Promise.all([
         supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("status", "active").order("store_name"),
         supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
         supabase.from("batches").select("product_id, qty_on_hand").gt("qty_on_hand", 0),
       ])
+      let [custRes, prodRes] = results
+      const batchRes = results[2]
+      // Fallback: nếu DB thiếu cột (migration chưa chạy đủ) thì query cột
+      // tường minh trả 400 → danh sách rỗng im lặng. Thử lại bằng '*' để
+      // form vẫn dùng được, đồng thời log + toast để chẩn đoán.
+      if (prodRes.error) {
+        console.error("[order-form] products query failed:", prodRes.error.message)
+        // eslint-disable-next-line no-restricted-syntax
+        prodRes = (await supabase.from("products").select("*, price_lists(*), units:product_units(*)").eq("status", "active").order("name")) as unknown as typeof prodRes
+      }
+      if (custRes.error) {
+        console.error("[order-form] customers query failed:", custRes.error.message)
+        // eslint-disable-next-line no-restricted-syntax
+        custRes = (await supabase.from("customers").select("*, group:customer_groups(*)").eq("status", "active").order("store_name")) as unknown as typeof custRes
+      }
+      if (prodRes.error || custRes.error) {
+        toast({
+          title: "Không tải được dữ liệu sản phẩm/khách hàng",
+          description: prodRes.error?.message || custRes.error?.message || "Lỗi không xác định",
+          variant: "destructive",
+        })
+      }
       setCustomers((custRes.data as unknown as Customer[]) || [])
       setProducts((prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || [])
       const stockMap: Record<string, number> = {}
@@ -477,7 +501,7 @@ export function OrderForm() {
   }
 
   const filteredReturnProducts = products.filter((p) => {
-    if (!returnSearch.trim()) return false
+    if (!returnSearch.trim()) return true
     const q = returnSearch.toLowerCase()
     return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
   })
@@ -521,8 +545,10 @@ export function OrderForm() {
     (isSalesRole && lines.some((l) => getLinePriceWarning(l) != null)) ||
     hasReturnPriceViolation
 
+  // Ô trống → hiện top danh sách để bấm vào là chọn được ngay (không
+  // bắt buộc phải gõ). Dropdown chỉ mở khi input đang focus (state open).
   const filteredProducts = products.filter((p) => {
-    if (!productSearch.trim()) return false
+    if (!productSearch.trim()) return true
     const q = productSearch.toLowerCase()
     return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
   })
@@ -1041,10 +1067,11 @@ export function OrderForm() {
                 <Input
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Tìm tên hoặc mã SKU..."
+                  onFocus={() => setProductDropdownOpen(true)}
+                  placeholder="Chạm để chọn hoặc gõ tên / mã SKU..."
                   className="pl-9"
                 />
-              {filteredProducts.length > 0 && (
+              {productDropdownOpen && filteredProducts.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-md max-h-72 overflow-y-auto">
                   {filteredProducts.slice(0, 10).map((p) => {
                     const groupId = selectedCustomer?.group_id
@@ -1055,7 +1082,7 @@ export function OrderForm() {
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => addLine(p.id)}
+                        onClick={() => { addLine(p.id); setProductDropdownOpen(false) }}
                         className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
                       >
                         <div>
@@ -1452,17 +1479,18 @@ export function OrderForm() {
                   <Input
                     value={returnSearch}
                     onChange={(e) => setReturnSearch(e.target.value)}
-                    placeholder="Tìm sản phẩm để thêm vào đơn trả..."
+                    onFocus={() => setReturnDropdownOpen(true)}
+                    placeholder="Chạm để chọn sản phẩm trả..."
                     className="pl-10 h-10"
                   />
                 </div>
-                {filteredReturnProducts.length > 0 && (
+                {returnDropdownOpen && filteredReturnProducts.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-card border rounded-xl shadow-lg max-h-72 overflow-y-auto">
                     {filteredReturnProducts.slice(0, 10).map((p) => (
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => addReturnLine(p.id)}
+                        onClick={() => { addReturnLine(p.id); setReturnDropdownOpen(false) }}
                         className="w-full text-left px-4 py-2.5 hover:bg-muted/30 flex items-center justify-between border-b border-border/20 last:border-0"
                       >
                         <div>
@@ -1671,6 +1699,13 @@ export function OrderForm() {
       </div>
       {/* end single-column content */}
 
+      {/* Click-outside to close product / return-product dropdowns */}
+      {productDropdownOpen && (
+        <div className="fixed inset-0 z-10" onClick={() => setProductDropdownOpen(false)} />
+      )}
+      {returnDropdownOpen && (
+        <div className="fixed inset-0 z-10" onClick={() => setReturnDropdownOpen(false)} />
+      )}
       {/* Click-outside to close customer dropdown */}
       {customerDropdownOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setCustomerDropdownOpen(false)} />

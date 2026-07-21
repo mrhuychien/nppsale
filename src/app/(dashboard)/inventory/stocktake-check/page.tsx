@@ -47,10 +47,10 @@ export default function StocktakeCheckPage() {
     setLoading(true)
     const { data } = await supabase
       .from("batches")
-      .select("*, product:products(*)")
+      .select("id, product_id, qty_on_hand, product:products(*)")
       .gt("qty_on_hand", 0)
       .order("product_id")
-    setBatches((data as BatchWithProduct[]) || [])
+    setBatches(((data as unknown) as BatchWithProduct[]) || [])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

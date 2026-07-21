@@ -72,17 +72,17 @@ export default function EditPurchaseReturnPage() {
     const [supRes, prodRes, hdrRes, lineRes] = await Promise.all([
       supabase
         .from("suppliers")
-        .select("*")
+        .select("id, name, code")
         .eq("org_id", user.org_id)
         .eq("is_active", true)
         .order("name"),
       supabase
         .from("products")
-        .select("*, units:product_units(*)")
+        .select("id, name, sku, base_unit, cost_price, vat_rate, units:product_units(*)")
         .eq("org_id", user.org_id)
         .order("name"),
-      supabase.from("supplier_returns").select("*").eq("id", id).maybeSingle(),
-      supabase.from("supplier_return_lines").select("*").eq("return_id", id).order("created_at"),
+      supabase.from("supplier_returns").select("id, supplier_id, return_date, warehouse_zone, reason, notes, status").eq("id", id).maybeSingle(),
+      supabase.from("supplier_return_lines").select("id, product_id, unit_name, quantity, unit_price, vat_rate, conversion_factor").eq("return_id", id).order("created_at"),
     ])
     const prods = (prodRes.data as Array<Product & { units?: ProductUnit[] }>) || []
     setSuppliers((supRes.data as Supplier[]) || [])

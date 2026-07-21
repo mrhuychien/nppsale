@@ -127,7 +127,7 @@ export default function InventoryPage() {
       setLoading(true)
       let q = supabase
         .from("batches")
-        .select("*, product:products(*)", { count: "exact" })
+        .select("id, batch_code, qty_on_hand, expires_at, manufactured_at, location, product:products(*)", { count: "exact" })
         .gt("qty_on_hand", 0)
         .order("expires_at")
         .range(pg.from, pg.to)
@@ -138,7 +138,7 @@ export default function InventoryPage() {
       if (locationFilter !== "all") q = q.eq("location", locationFilter)
       const { data, count } = await q
       if (cancelled) return
-      let list = (data as BatchWithProduct[]) || []
+      let list = ((data as unknown) as BatchWithProduct[]) || []
       // Filter brand + search cross-table (product.name/sku) client-side trên page.
       if (brandFilter !== "all") list = list.filter((b) => b.product?.brand === brandFilter)
       if (debouncedSearch) {

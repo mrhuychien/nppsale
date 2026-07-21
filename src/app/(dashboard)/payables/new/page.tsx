@@ -39,7 +39,7 @@ export default function NewPayablePage() {
     async function fetchSuppliers() {
       const { data } = await supabase
         .from("suppliers")
-        .select("*")
+        .select("id, code, name, payment_terms")
         .eq("is_active", true)
         .order("name")
       setSuppliers((data as Supplier[]) || [])
@@ -56,7 +56,7 @@ export default function NewPayablePage() {
       }
       const { data } = await supabase
         .from("stock_entries")
-        .select("*")
+        .select("id, entry_code, created_at")
         .eq("supplier_id", form.supplier_id)
         .eq("type", "import")
         .order("created_at", { ascending: false })

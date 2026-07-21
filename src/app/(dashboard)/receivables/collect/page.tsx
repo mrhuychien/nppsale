@@ -42,7 +42,7 @@ export default function CollectPaymentPage() {
       setFetching(true)
       let query = supabase
         .from("receivables")
-        .select("*, customer:customers(store_name)")
+        .select("id, amount, paid, due_date, customer:customers(store_name)")
         .neq("status", "paid")
         .order("due_date")
 
@@ -51,7 +51,7 @@ export default function CollectPaymentPage() {
       }
 
       const { data } = await query
-      const list = (data as Receivable[]) || []
+      const list = (data as unknown as Receivable[]) || []
       setReceivables(list)
 
       if (customerIdParam) {

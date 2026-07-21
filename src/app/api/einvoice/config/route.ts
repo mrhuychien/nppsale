@@ -28,7 +28,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data } = await admin
     .from("company_einvoice_config")
-    .select("*")
+    .select("id, org_id, provider, api_base, tax_code, seller_name, seller_address, misa_company_id, misa_org_unit_id, misa_template_id, misa_user_id, misa_inv_series, misa_inv_template_no, username_enc, password_enc, sandbox, is_active, token_path, publish_path, misa_app_id, sign_type, invoice_type, is_inherit_from_old_template, misa_is_invoice_with_code, created_at, updated_at")
     .eq("org_id", a.orgId)
     .maybeSingle()
   if (!data) return NextResponse.json({ config: null })

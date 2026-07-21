@@ -64,7 +64,7 @@ export default function StocktakeAdjustPage() {
       if (!user?.org_id) return
       const { data } = await supabase
         .from("expense_categories")
-        .select("*")
+        .select("id, code, name")
         .eq("org_id", user.org_id)
         .eq("bucket", "cogs")
         .eq("is_active", true)
@@ -86,7 +86,7 @@ export default function StocktakeAdjustPage() {
       const q = search.trim()
       const { data, error } = await supabase
         .from("products")
-        .select("*, batches(id, batch_code, qty_on_hand, unit_cost, expires_at)")
+        .select("id, sku, name, base_unit, batches(id, batch_code, qty_on_hand, unit_cost, expires_at)")
         .or(`sku.ilike.%${q}%,name.ilike.%${q}%`)
         .eq("status", "active")
         .order("name")
@@ -139,7 +139,7 @@ export default function StocktakeAdjustPage() {
     const [{ data: prodData }, { data: batchData }] = await Promise.all([
       supabase
         .from("products")
-        .select("*")
+        .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
         .eq("status", "active")
         .order("name"),
       supabase

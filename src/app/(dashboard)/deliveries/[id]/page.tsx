@@ -73,21 +73,21 @@ export default function DeliveryDetailPage() {
       supabase
         .from("deliveries")
         .select(
-          "*, driver:users!deliveries_driver_id_fkey(*), warehouse_confirmer:users!deliveries_warehouse_confirmed_by_fkey(*), driver_confirmer:users!deliveries_driver_confirmed_by_fkey(*)"
+          "id, org_id, driver_id, vehicle, route_name, status, started_at, completed_at, created_at, warehouse_confirmed_by, warehouse_confirmed_at, driver_confirmed_by, driver_confirmed_at, settled_at, settled_amount, goods_handover_at, goods_handover_by, goods_handover_notes, source_stock_entry_id, driver:users!deliveries_driver_id_fkey(*), warehouse_confirmer:users!deliveries_warehouse_confirmed_by_fkey(*), driver_confirmer:users!deliveries_driver_confirmed_by_fkey(*)"
         )
         .eq("id", id)
         .single(),
       supabase
         .from("delivery_lines")
-        .select("*, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")
+        .select("id, delivery_id, order_id, status, notes, amount_collected, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")
         .eq("delivery_id", id),
     ])
     let d: Delivery | null = null
     if (delRes.data) {
-      d = delRes.data as Delivery
+      d = delRes.data as unknown as Delivery
       setDelivery(d)
     }
-    setLines((linesRes.data as DeliveryLine[]) || [])
+    setLines((linesRes.data as unknown as DeliveryLine[]) || [])
 
     if (d) {
       const sourceQuery = d.source_stock_entry_id
@@ -189,7 +189,7 @@ export default function DeliveryDetailPage() {
       const { data } = await supabase
         .from("sales_orders")
         .select(
-          "*, customer:customers(*), lines:sales_order_lines(*, product:products(name, sku, base_unit))"
+          "id, order_code, order_date, payment_terms, notes, subtotal, vat, total, customer:customers(*), lines:sales_order_lines(*, product:products(name, sku, base_unit))"
         )
         .eq("id", orderId)
         .single()

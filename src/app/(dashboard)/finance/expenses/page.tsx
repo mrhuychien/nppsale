@@ -68,7 +68,7 @@ export default function ExpensesPage() {
     const [expensesRes, categoriesRes] = await Promise.all([
       supabase
         .from("expenses")
-        .select("*, category:expense_categories(*)")
+        .select("id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, category:expense_categories(*)")
         .eq("org_id", user.org_id)
         .gte("expense_date", dateFrom)
         .lte("expense_date", dateTo)
@@ -76,13 +76,13 @@ export default function ExpensesPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("expense_categories")
-        .select("*")
+        .select("id, name, bucket")
         .eq("org_id", user.org_id)
         .eq("is_active", true)
         .order("bucket")
         .order("code"),
     ])
-    setExpenses((expensesRes.data as Expense[]) || [])
+    setExpenses((expensesRes.data as unknown as Expense[]) || [])
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)
   }, [user?.org_id, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps

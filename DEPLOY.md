@@ -29,19 +29,38 @@
 
 ### 1.3 Chay Migration tao database
 
-Vao **SQL Editor** trong Supabase Dashboard, chay lan luot 3 file theo thu tu:
+Cac migration la **cong don** (001 tao bang, cac file sau ALTER them cot/chuc nang).
+Cai moi tren mot database TRONG chi can **1 file gop** thay vi chay 87 file:
 
-**File 1: Tao bang** - Copy noi dung `supabase/migrations/001_schema.sql` va chay
+**Cach nhanh (khuyen dung):**
+1. Mo **SQL Editor** trong Supabase Dashboard.
+2. Copy toan bo noi dung `supabase/schema_full.sql` va chay **1 lan**.
+   File nay gop tat ca migration theo dung thu tu (schema + RLS),
+   **KHONG kem du lieu demo** — an toan cho site thuong mai.
+3. (Tuy chon, CHI cho moi truong thu nghiem) chay them
+   `supabase/seed_demo.sql` de co du lieu mau + 6 tai khoan demo.
+   **KHONG chay file nay tren production** — mat khau demo la cong khai.
 
-**File 2: Thiet lap RLS** - Copy noi dung `supabase/migrations/002_rls_policies.sql` va chay
+> File `schema_full.sql` duoc sinh tu thu muc `supabase/migrations`. Sau
+> khi them migration moi, chay lai `bash scripts/build-combined-migration.sh`
+> de cap nhat.
 
-**File 3: Du lieu mau + Tai khoan demo** - Copy noi dung `supabase/migrations/003_seed.sql` va chay
+**Cach thu cong (neu muon chay tung buoc):** chay lan luot cac file trong
+`supabase/migrations/` theo dung thu tu so (001 → 002 → ... → 088). Phai
+dung thu tu vi cac file sau phu thuoc file truoc. Tren production, BO QUA
+`003_seed.sql` (du lieu demo).
 
-> **Luu y**: Phai chay dung thu tu 001 → 002 → 003. Neu bi loi, kiem tra lai tung file mot.
+> **Luu y**: Chi chay `schema_full.sql` tren database TRONG (cai moi). Voi
+> database da co san, chi chay rieng migration MOI (vd `087_qr_login.sql`
+> roi `088_qr_token_isolation.sql`) — dung chay lai ca file gop vi cac
+> lenh CREATE TABLE dau tien se bao loi "already exists".
 
-### 1.4 Tai khoan demo
+### 1.4 Tai khoan demo (chi khi da chay seed_demo.sql)
 
-File seed da tu dong tao 6 tai khoan demo voi mat khau `Demo@123456`:
+File `supabase/seed_demo.sql` tao 6 tai khoan demo voi mat khau `Demo@123456`.
+**Canh bao**: day la mat khau cong khai — chi dung cho thu nghiem. Tren
+production hay tao tai khoan owner that (Authentication > Add user trong
+Supabase Dashboard, roi INSERT profile vao bang users) va KHONG chay seed.
 
 | Email               | Role       | Ten            |
 | ------------------- | ---------- | -------------- |

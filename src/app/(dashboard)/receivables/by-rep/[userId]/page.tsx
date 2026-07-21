@@ -61,16 +61,16 @@ export default function RepDebtDetailPage() {
   useEffect(() => {
     async function fetchData() {
       const [userRes, recRes] = await Promise.all([
-        supabase.from("users").select("*").eq("id", userId).single(),
+        supabase.from("users").select("id, full_name, role, phone").eq("id", userId).single(),
         supabase
           .from("receivables")
-          .select("*, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date)")
+          .select("id, customer_id, amount, paid, due_date, status, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date)")
           .eq("sales_user_id", userId)
           .order("created_at", { ascending: false }),
       ])
 
       setRepUser(userRes.data as User | null)
-      const recs = (recRes.data as Receivable[]) || []
+      const recs = (recRes.data as unknown as Receivable[]) || []
       setReceivables(recs)
 
       // Fetch payments for all receivables of this rep
@@ -78,10 +78,10 @@ export default function RepDebtDetailPage() {
       if (recIds.length > 0) {
         const { data: payData } = await supabase
           .from("payments")
-          .select("*, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))")
+          .select("id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))")
           .in("receivable_id", recIds)
           .order("collected_at", { ascending: false })
-        setPayments((payData as PaymentWithJoin[]) || [])
+        setPayments((payData as unknown as PaymentWithJoin[]) || [])
       }
 
       setLoading(false)

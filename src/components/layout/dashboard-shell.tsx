@@ -43,7 +43,12 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <WorkflowResumeBar />
-        <main className="flex-1 p-4 lg:p-container-padding pb-24 lg:pb-container-padding">
+        {/* key={pathname}: remount main mỗi lần đổi route để chạy hiệu ứng
+            page-enter (fadeInUp 0.3s) — app cảm giác mượt hơn khi điều hướng. */}
+        <main
+          key={pathname}
+          className="flex-1 p-4 lg:p-container-padding pb-24 lg:pb-container-padding page-enter"
+        >
           {children}
         </main>
       </div>

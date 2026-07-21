@@ -126,7 +126,7 @@ export default function CustomersPage() {
       setLoading(true)
       let q = supabase
         .from("customers")
-        .select("*, group:customer_groups(*)", { count: "exact" })
+        .select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)", { count: "exact" })
         .order("store_name")
         .range(pg.from, pg.to)
       if (debouncedSearch) {
@@ -138,7 +138,7 @@ export default function CustomersPage() {
 
       const { data: cData, count } = await q
       if (cancelled) return
-      const list = (cData as Customer[]) || []
+      const list = (cData as unknown as Customer[]) || []
       setCustomers(list)
       pg.setTotal(count ?? 0)
 

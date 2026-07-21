@@ -46,7 +46,7 @@ export default function AccountantLedgerPage() {
     async function fetchCustomers() {
       const { data } = await supabase
         .from("customers")
-        .select("*")
+        .select("id, store_name, owner_name, phone, address, credit_limit, status")
         .order("store_name")
       setCustomers((data as Customer[]) || [])
       setLoadingCustomers(false)
@@ -64,7 +64,7 @@ export default function AccountantLedgerPage() {
       setLoadingLedger(true)
       const { data: orderData } = await supabase
         .from("sales_orders")
-        .select("*")
+        .select("id, order_code, order_date, total")
         .eq("customer_id", selectedId)
         .eq("status", "delivered")
         .order("order_date")
@@ -80,7 +80,7 @@ export default function AccountantLedgerPage() {
       if (receivableIds.length > 0) {
         const { data: payData } = await supabase
           .from("payments")
-          .select("*")
+          .select("id, amount, collected_at")
           .in("receivable_id", receivableIds)
           .order("collected_at")
         paymentData = (payData as Payment[]) || []

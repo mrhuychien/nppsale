@@ -99,10 +99,10 @@ export default function SetupWizardPage() {
     setLoading(true)
     const [orgRes, prRes, scRes] = await Promise.all([
       supabase.from("organizations").select("name, slug, settings").eq("id", user.org_id).maybeSingle(),
-      supabase.from("pricing_rules").select("*").eq("org_id", user.org_id).maybeSingle(),
+      supabase.from("pricing_rules").select("id, date_warehouse_threshold_days").eq("org_id", user.org_id).maybeSingle(),
       supabase
         .from("hr_salary_config")
-        .select("*")
+        .select("id, base_salary, gas_allowance, phone_allowance, working_days_per_month, kpi_target_revenue, over_target_percent, under_60_percent")
         .eq("org_id", user.org_id)
         .eq("is_active", true)
         .order("created_at", { ascending: false })

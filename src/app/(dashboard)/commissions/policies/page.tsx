@@ -44,7 +44,7 @@ export default function CommissionPoliciesPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("commission_policies").select("*").order("created_at", { ascending: false })
+      const { data } = await supabase.from("commission_policies").select("id, org_id, name, type, tiers, applies_to, effective_from, effective_to, is_active, created_at").order("created_at", { ascending: false })
       setPolicies((data as CommissionPolicy[]) || [])
       setLoading(false)
     }

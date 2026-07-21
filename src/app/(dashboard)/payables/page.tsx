@@ -81,7 +81,7 @@ export default function PayablesPage() {
       setLoading(true)
       let q = supabase
         .from("payables")
-        .select("*, supplier:suppliers(name, code)", { count: "exact" })
+        .select("id, invoice_number, amount, paid, due_date, status, supplier:suppliers(name, code)", { count: "exact" })
         .order("due_date")
         .range(pg.from, pg.to)
       if (debouncedSearch) {
@@ -91,7 +91,7 @@ export default function PayablesPage() {
       if (statusFilter !== "all") q = q.eq("status", statusFilter)
       const { data, count } = await q
       if (cancelled) return
-      setPayables((data as Payable[]) || [])
+      setPayables((data as unknown as Payable[]) || [])
       pg.setTotal(count ?? 0)
       setLoading(false)
     }

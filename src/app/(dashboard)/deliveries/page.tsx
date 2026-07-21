@@ -216,7 +216,7 @@ export default function DeliveriesPage() {
       let q = supabase
         .from("deliveries")
         .select(
-          "*, driver:users!deliveries_driver_id_fkey(full_name)",
+          "id, org_id, driver_id, vehicle, route_name, status, started_at, completed_at, created_at, warehouse_confirmed_by, warehouse_confirmed_at, driver_confirmed_by, driver_confirmed_at, settled_at, settled_amount, goods_handover_at, goods_handover_by, goods_handover_notes, source_stock_entry_id, driver:users!deliveries_driver_id_fkey(full_name)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })

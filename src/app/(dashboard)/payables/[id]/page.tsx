@@ -60,17 +60,17 @@ export default function PayableDetailPage() {
     const [payRes, pmtRes] = await Promise.all([
       supabase
         .from("payables")
-        .select("*, supplier:suppliers(name, code, phone, address, payment_terms)")
+        .select("id, invoice_number, amount, paid, due_date, status, notes, created_at, supplier:suppliers(name, code, phone, address, payment_terms)")
         .eq("id", id)
         .single(),
       supabase
         .from("payable_payments")
-        .select("*, payer:users!payable_payments_paid_by_fkey(full_name, role), verifier:users!payable_payments_verified_by_fkey(full_name, role)")
+        .select("id, amount, method, paid_at, verified_at, notes, payer:users!payable_payments_paid_by_fkey(full_name, role), verifier:users!payable_payments_verified_by_fkey(full_name, role)")
         .eq("payable_id", id)
         .order("paid_at", { ascending: false }),
     ])
     if (payRes.data) {
-      const p = payRes.data as Payable
+      const p = payRes.data as unknown as Payable
       setPayable(p)
       setEditForm({
         invoice_number: p.invoice_number || "",
@@ -78,7 +78,7 @@ export default function PayableDetailPage() {
         notes: p.notes || "",
       })
     }
-    setPayments((pmtRes.data as PayablePayment[]) || [])
+    setPayments((pmtRes.data as unknown as PayablePayment[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 

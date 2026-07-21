@@ -230,11 +230,11 @@ export default function OrderDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes] = await Promise.all([
-      supabase.from("sales_orders").select("*, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
-      supabase.from("sales_order_lines").select("*, product:products(*)").eq("order_id", id),
+      supabase.from("sales_orders").select("id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
+      supabase.from("sales_order_lines").select("id, order_id, product_id, unit_name, quantity, unit_price, line_discount, line_total, batch_id, note, conversion_factor, product:products(*)").eq("order_id", id),
       supabase.from("receivables").select("id, amount, paid, status, due_date").eq("order_id", id).maybeSingle(),
-      supabase.from("order_status_history").select("*, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
-      supabase.from("invoices").select("*").eq("order_id", id).maybeSingle(),
+      supabase.from("order_status_history").select("id, order_id, from_status, to_status, changed_by, changed_at, notes, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
+      supabase.from("invoices").select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at").eq("order_id", id).maybeSingle(),
       supabase
         .from("delivery_lines")
         .select("id, status, pod_photo_url, delivered_at, notes, delivery:deliveries(id, route_name, driver:users!deliveries_driver_id_fkey(full_name), started_at, completed_at, status)")
@@ -266,7 +266,7 @@ export default function OrderDetailPage() {
     ])
     setInvoice((invoiceRes.data as Invoice) || null)
     if (orderRes.data) {
-      const o = orderRes.data as SalesOrder
+      const o = orderRes.data as unknown as SalesOrder
       setOrder(o)
       setEditForm({
         notes: o.notes || "",
@@ -274,7 +274,7 @@ export default function OrderDetailPage() {
         expected_delivery: o.expected_delivery || "",
       })
     }
-    const fetchedLines = (linesRes.data as SalesOrderLine[]) || []
+    const fetchedLines = (linesRes.data as unknown as SalesOrderLine[]) || []
     setLines(fetchedLines)
 
     // T-03: load per-line picked qty (base UOM) from the helper view.
@@ -397,34 +397,38 @@ export default function OrderDetailPage() {
 
       // If confirming an order, evaluate rules + check permission
       if (newStatus === "confirmed") {
-        const { evaluateApproval, canApproveForLevel } = await import("@/lib/approval")
+        // 3 query ngữ cảnh duyệt độc lập nhau — chạy song song để bước
+        // "Duyệt" không cộng dồn round-trip tuần tự.
+        const [{ evaluateApproval, canApproveForLevel }, rulesRes, recRes, repDebtRes] =
+          await Promise.all([
+            import("@/lib/approval"),
+            supabase
+              .from("approval_rules")
+              .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
+              .eq("org_id", user.org_id)
+              .maybeSingle(),
+            supabase
+              .from("receivables")
+              .select("amount, paid, due_date")
+              .eq("customer_id", order.customer_id)
+              .neq("status", "paid"),
+            supabase
+              .from("receivables")
+              .select("amount, paid")
+              .eq("sales_user_id", order.sales_user_id)
+              .neq("status", "paid"),
+          ])
+        const rulesData = rulesRes.data
 
-        const { data: rulesData } = await supabase
-          .from("approval_rules")
-          .select("*")
-          .eq("org_id", user.org_id)
-          .maybeSingle()
-
-        // Fetch customer debt context
-        const { data: recData } = await supabase
-          .from("receivables")
-          .select("amount, paid, due_date")
-          .eq("customer_id", order.customer_id)
-          .neq("status", "paid")
         type RecRow = { amount: number; paid: number; due_date: string | null }
-        const recRows = (recData as RecRow[]) || []
+        const recRows = (recRes.data as RecRow[]) || []
         const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
         const now = Date.now()
         const customerOverdue = recRows
           .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
           .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
-        const { data: repDebt } = await supabase
-          .from("receivables")
-          .select("amount, paid")
-          .eq("sales_user_id", order.sales_user_id)
-          .neq("status", "paid")
-        const repPortfolioDebt = ((repDebt as Array<{ amount: number; paid: number }>) || [])
+        const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }>) || [])
           .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
         const decision = evaluateApproval(rulesData ?? null, {

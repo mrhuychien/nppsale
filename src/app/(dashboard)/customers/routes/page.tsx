@@ -49,7 +49,7 @@ export default function SalesRoutesPage() {
     const [routesRes, custRes] = await Promise.all([
       supabase
         .from("sales_routes")
-        .select("*")
+        .select("id, org_id, code, name, description, is_active, sort_order, created_at, updated_at")
         .eq("org_id", user.org_id)
         .order("sort_order")
         .order("code"),

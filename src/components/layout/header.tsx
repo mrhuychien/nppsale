@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -43,10 +44,19 @@ export function Header({ onMenuClick }: HeaderProps) {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const [quickSearch, setQuickSearch] = useState("")
 
   const handleSignOut = async () => {
     await signOut()
     router.push("/login")
+  }
+
+  // Enter → tìm mã đơn hàng trong /orders (trang orders đọc ?q=).
+  const handleQuickSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return
+    const term = quickSearch.trim()
+    if (!term) return
+    router.push(`/orders?q=${encodeURIComponent(term)}`)
   }
 
   const initials = user?.full_name
@@ -62,7 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "Dashboard"
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-surface border-b border-outline-variant/60 px-4 lg:px-8 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full bg-surface/80 backdrop-blur-xl border-b border-outline-variant/60 px-4 lg:px-8 h-16 flex items-center justify-between">
       <div className="flex items-center gap-4 min-w-0 flex-1">
         <Button
           variant="ghost"
@@ -83,8 +93,11 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant h-4 w-4" />
           <input
             type="text"
-            placeholder="Tìm kiếm nhanh..."
-            className="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-56 transition-all"
+            placeholder="Tìm mã đơn hàng... ⏎"
+            value={quickSearch}
+            onChange={(e) => setQuickSearch(e.target.value)}
+            onKeyDown={handleQuickSearch}
+            className="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-56 focus:w-64 transition-all"
           />
         </div>
 

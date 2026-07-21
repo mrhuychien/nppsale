@@ -11,7 +11,7 @@ import {
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
-  TrendingUp, FileBarChart2, ShieldCheck,
+  TrendingUp, FileBarChart2, ShieldCheck, QrCode,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -84,6 +84,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Danh sách nhân viên", href: "/settings/users", icon: Users, module: "settings", feature: "settings.users" },
       { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus, module: "settings", feature: "settings.users" },
+      { label: "Tạo NV quét QR", href: "/settings/users/qr-new", icon: QrCode, module: "settings", feature: "settings.users" },
       { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
       { label: "Chấm công", href: "/hr/attendance", icon: UserCog, module: "settings", feature: "hr" },
       { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },
@@ -195,7 +196,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
         onClick={onNavigate}
         className="px-5 py-5 flex items-center gap-3 hover:bg-surface-container/40 transition-colors"
       >
-        <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-on-primary font-bold text-base shadow-sm shrink-0">
+        <div className="w-9 h-9 bg-gradient-primary rounded-xl flex items-center justify-center text-white font-bold text-base shadow-brand shrink-0">
           N
         </div>
         <div className="min-w-0">
@@ -328,7 +329,7 @@ function SidebarLink({ href, icon: IconComp, label, isActive, onNavigate }: Side
       href={href}
       onClick={onNavigate}
       className={cn(
-        "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+        "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         isActive
           ? "bg-primary/[0.08] text-primary"
           : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"

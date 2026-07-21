@@ -26,7 +26,7 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
 
   useEffect(() => {
     async function fetchSalesUsers() {
-      const { data } = await supabase.from("users").select("*").eq("role", "sales").eq("is_active", true)
+      const { data } = await supabase.from("users").select("id, full_name").eq("role", "sales").eq("is_active", true)
       setSalesUsers((data as User[]) || [])
     }
     fetchSalesUsers()

@@ -104,7 +104,7 @@ export default function PjpPage() {
     setLoading(true)
     const { data } = await supabase
       .from("pjp_routes")
-      .select("*, customer:customers(id, store_name, address)")
+      .select("id, sales_user_id, day_of_week, customer_id, visit_order, is_active, customer:customers(id, store_name, address)")
       .eq("sales_user_id", selectedUserId)
       .eq("is_active", true)
       .order("visit_order", { ascending: true })

@@ -48,7 +48,7 @@ export default function UserDetailPage() {
   const fetchUser = useCallback(async () => {
     setLoading(true)
     const [userRes, supRes, mySupRes] = await Promise.all([
-      supabase.from("users").select("*").eq("id", id).maybeSingle(),
+      supabase.from("users").select("id, org_id, full_name, role, phone, username, is_active, allow_price_edit, price_edit_max_increase_pct, created_at").eq("id", id).maybeSingle(),
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
     ])

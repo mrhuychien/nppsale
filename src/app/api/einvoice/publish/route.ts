@@ -70,7 +70,7 @@ async function handlePublish(req: Request) {
   // --- Load invoice (scope theo org) ---
   const { data: invoice, error: invErr } = await admin
     .from("invoices")
-    .select("*")
+    .select("id, order_id, status, issued_at, subtotal, vat, total, customer_name, customer_address, customer_tax_code, misa_invoice_id, misa_lookup_code, misa_invoice_url")
     .eq("id", invoiceId)
     .eq("org_id", orgId)
     .maybeSingle()
@@ -117,7 +117,7 @@ async function handlePublish(req: Request) {
   try {
     // --- Load config + order + customer + lines + org ---
     const [cfgRes, orgRes] = await Promise.all([
-      admin.from("company_einvoice_config").select("*").eq("org_id", orgId).maybeSingle(),
+      admin.from("company_einvoice_config").select("is_active, username_enc, password_enc, api_base, tax_code, token_path, publish_path, seller_name, seller_address, misa_company_id, misa_org_unit_id, misa_template_id, misa_user_id, misa_inv_series, misa_inv_template_no, invoice_type, is_inherit_from_old_template, misa_is_invoice_with_code, sandbox").eq("org_id", orgId).maybeSingle(),
       admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
     ])
     const cfg = cfgRes.data

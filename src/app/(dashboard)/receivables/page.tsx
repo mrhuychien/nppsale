@@ -67,13 +67,13 @@ export default function ReceivablesPage() {
       const { data, count } = await supabase
         .from("receivables")
         .select(
-          "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+          "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
           { count: "exact" }
         )
         .order("due_date")
         .range(pg.from, pg.to)
       if (cancelled) return
-      setReceivables((data as Receivable[]) || [])
+      setReceivables((data as unknown as Receivable[]) || [])
       pg.setTotal(count ?? 0)
       setLoading(false)
     }
@@ -116,17 +116,7 @@ export default function ReceivablesPage() {
     1
   )
 
-  const handleExportStatement = (r: Receivable) => {
-    // Stash customer + receivable details and invoke print dialog
-    // eslint-disable-next-line no-console
-    console.log("Xuất bản kê công nợ:", {
-      customer: r.customer?.store_name,
-      customer_id: r.customer_id,
-      amount: r.amount,
-      paid: r.paid,
-      remaining: r.amount - r.paid,
-      due_date: r.due_date,
-    })
+  const handleExportStatement = () => {
     if (typeof window !== "undefined") window.print()
   }
 
@@ -250,7 +240,7 @@ export default function ReceivablesPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleExportStatement(r)}
+                            onClick={() => handleExportStatement()}
                           >
                             <FileText className="mr-1 h-3.5 w-3.5" />
                             Xuất bản kê
@@ -316,7 +306,7 @@ export default function ReceivablesPage() {
                         size="sm"
                         variant="outline"
                         className="w-full"
-                        onClick={() => handleExportStatement(r)}
+                        onClick={() => handleExportStatement()}
                       >
                         <FileText className="mr-1 h-3.5 w-3.5" />
                         Xuất bản kê

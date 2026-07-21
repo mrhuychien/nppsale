@@ -127,13 +127,13 @@ export default function BonusConfigPage() {
     const [currentRes, historyRes, productsRes, unitsRes] = await Promise.all([
       supabase
         .from("hr_monthly_bonus")
-        .select("*")
+        .select("id, tiers, per_unit_bonuses, order_milestone_tiers, kpi_metrics, notes")
         .eq("org_id", authUser.org_id)
         .eq("period", period)
         .maybeSingle(),
       supabase
         .from("hr_monthly_bonus")
-        .select("*")
+        .select("id, period, tiers, notes, created_at")
         .eq("org_id", authUser.org_id)
         .order("period", { ascending: false })
         .limit(12),

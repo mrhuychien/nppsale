@@ -69,13 +69,13 @@ export default function NewPurchaseReturnPage() {
       const [supRes, prodRes] = await Promise.all([
         supabase
           .from("suppliers")
-          .select("*")
+          .select("id, name, code")
           .eq("org_id", user.org_id)
           .eq("is_active", true)
           .order("name"),
         supabase
           .from("products")
-          .select("*, units:product_units(*)")
+          .select("id, name, sku, base_unit, cost_price, vat_rate, units:product_units(*)")
           .eq("org_id", user.org_id)
           .order("name"),
       ])

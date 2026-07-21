@@ -4,7 +4,12 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@/types"
 
-const BUILD_TAG = "useAuth-v9-context-20260416"
+// Log chẩn đoán chỉ bật ở môi trường dev — production giữ console sạch,
+// không lộ trạng thái phiên / role người dùng.
+const debug =
+  process.env.NODE_ENV !== "production"
+    ? (...args: unknown[]) => console.log("[AuthProvider]", ...args)
+    : () => {}
 
 interface AuthContextValue {
   user: User | null
@@ -23,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log(`[AuthProvider] mounted ${BUILD_TAG}`)
+    debug("mounted")
     const supabase = createClient()
     let mounted = true
     let resolved = false
@@ -31,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     function markResolved(reason: string) {
       if (resolved) return
       resolved = true
-      console.log("[AuthProvider] resolved:", reason)
+      debug("resolved:", reason)
       if (mounted) setLoading(false)
     }
 
@@ -69,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[AuthProvider] event:", event, session?.user ? "WITH_SESSION" : "NO_SESSION")
+      debug("event:", event, session?.user ? "WITH_SESSION" : "NO_SESSION")
       if (!mounted) return
 
       if (session?.user) {
@@ -78,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fetch profile in background
         fetchProfile(au.id).then((profile) => {
           if (profile && mounted) {
-            console.log("[AuthProvider] profile loaded:", profile.full_name, profile.role)
+            debug("profile loaded")
             setUser(profile)
           }
         })
@@ -96,12 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // khi bị suspend, hoặc desktop user quay lại sau vài giờ).
     // Supabase auto-refresh thường chỉ chạy khi tab active; cần kick
     // thủ công để token mới được set trước khi user thao tác.
+    // Throttle 5 phút: chuyển tab qua lại liên tục không dội request
+    // refresh lên auth endpoint (token sống 1h, refresh sớm là thừa).
+    let lastRefreshAt = 0
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        supabase.auth.refreshSession().catch((err) => {
-          console.warn("[AuthProvider] refresh on visibility failed:", err)
-        })
-      }
+      if (document.visibilityState !== "visible") return
+      const now = Date.now()
+      if (now - lastRefreshAt < 5 * 60_000) return
+      lastRefreshAt = now
+      supabase.auth.refreshSession().catch((err) => {
+        console.warn("[AuthProvider] refresh on visibility failed:", err)
+      })
     }
     document.addEventListener("visibilitychange", handleVisibility)
 

@@ -111,7 +111,7 @@ export default function StockInPage() {
   const refetchProductsAndPickLatest = async () => {
     const { data } = await supabase
       .from("products")
-      .select("*, price_lists(*), units:product_units(*)")
+      .select("id, sku, name, base_unit, barcode, vat_rate, price_lists(*), units:product_units(*)")
       .eq("status", "active")
       .order("created_at", { ascending: false })
     const list = (data as ProductWithRelations[]) || []
@@ -127,10 +127,10 @@ export default function StockInPage() {
       const [prodRes, supRes] = await Promise.all([
         supabase
           .from("products")
-          .select("*, price_lists(*), units:product_units(*)")
+          .select("id, sku, name, base_unit, barcode, vat_rate, price_lists(*), units:product_units(*)")
           .eq("status", "active")
           .order("name"),
-        supabase.from("suppliers").select("*").eq("is_active", true).order("name"),
+        supabase.from("suppliers").select("id, code, name").eq("is_active", true).order("name"),
       ])
       setProducts((prodRes.data as ProductWithRelations[]) || [])
       // Suppliers might fail silently if migration 006 not yet run - that's OK

@@ -247,7 +247,7 @@ export function ProductForm({
           .from("products")
           .update(payload)
           .eq("id", product.id)
-          .select("*")
+          .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
           .single()
         if (error) throw error
         saved = data as Product
@@ -256,7 +256,7 @@ export function ProductForm({
         const { data, error } = await supabase
           .from("products")
           .insert({ ...payload, org_id: user.org_id })
-          .select("*")
+          .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
           .single()
         if (error) throw error
         saved = data as Product

@@ -72,16 +72,16 @@ export default function ReportsPage() {
     async function fetchAll() {
       setLoading(true)
       const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
-        supabase.from("sales_orders").select("*").order("order_date", { ascending: false }),
-        supabase.from("receivables").select("*"),
-        supabase.from("batches").select("*, product:products(shelf_life_days)").gt("qty_on_hand", 0),
-        supabase.from("users").select("*"),
+        supabase.from("sales_orders").select("id, order_date, status, total, sales_user_id").order("order_date", { ascending: false }),
+        supabase.from("receivables").select("id, status, amount, paid, created_at"),
+        supabase.from("batches").select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)").gt("qty_on_hand", 0),
+        supabase.from("users").select("id, full_name, role, is_active, created_at"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
       ])
       setData({
         salesOrders: (ordersRes.data as SalesOrder[]) || [],
         receivables: (recvRes.data as Receivable[]) || [],
-        batches: (batchesRes.data as (Batch & { product?: { shelf_life_days: number | null } })[]) || [],
+        batches: (batchesRes.data as unknown as (Batch & { product?: { shelf_life_days: number | null } })[]) || [],
         users: (usersRes.data as User[]) || [],
         productCount: prodRes.count || 0,
       })

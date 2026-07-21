@@ -32,7 +32,7 @@ export default function NewReturnPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("customers").select("*").eq("status", "active").order("store_name")
+      const { data } = await supabase.from("customers").select("id, store_name").eq("status", "active").order("store_name")
       setCustomers((data as Customer[]) || [])
     }
     fetch()

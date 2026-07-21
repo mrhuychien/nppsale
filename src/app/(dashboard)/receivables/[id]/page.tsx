@@ -59,17 +59,17 @@ export default function ReceivableDetailPage() {
     const [recRes, payRes] = await Promise.all([
       supabase
         .from("receivables")
-        .select("*, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total)")
+        .select("id, org_id, order_id, customer_id, sales_user_id, amount, paid, due_date, status, created_at, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total)")
         .eq("id", id)
         .single(),
       supabase
         .from("payments")
-        .select("*, collector:users!payments_collected_by_fkey(full_name, role), verifier:users!payments_verified_by_fkey(full_name, role)")
+        .select("id, receivable_id, collected_by, amount, method, collected_at, verified_by, verified_at, collector:users!payments_collected_by_fkey(full_name, role), verifier:users!payments_verified_by_fkey(full_name, role)")
         .eq("receivable_id", id)
         .order("collected_at", { ascending: false }),
     ])
-    if (recRes.data) setReceivable(recRes.data as Receivable)
-    setPayments((payRes.data as Payment[]) || [])
+    if (recRes.data) setReceivable(recRes.data as unknown as Receivable)
+    setPayments((payRes.data as unknown as Payment[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 

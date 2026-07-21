@@ -77,7 +77,7 @@ export default function PromotionsPage() {
     async function fetch() {
       const { data } = await supabase
         .from("promotions")
-        .select("*")
+        .select("id, name, type, priority, starts_at, ends_at, is_active")
         .order("priority", { ascending: false })
       setPromotions((data as Promotion[]) || [])
       setLoading(false)

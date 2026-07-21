@@ -122,7 +122,7 @@ export default function ReturnsPage() {
       let q = supabase
         .from("returns")
         .select(
-          "*, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)",
+          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -132,7 +132,7 @@ export default function ReturnsPage() {
       }
       const { data, count } = await q
       if (cancelled) return
-      const raw = (data as Return[]) || []
+      const raw = (data as unknown as Return[]) || []
       // Search cross-table (customer/requester/order) → client-side trên page.
       let list = raw
       if (filterActive("search") && debouncedSearch) {

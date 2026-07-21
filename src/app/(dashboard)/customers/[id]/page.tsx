@@ -98,11 +98,11 @@ export default function CustomerDetailPage() {
     const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
     const [custRes, assignRes] = await Promise.all([
-      supabase.from("customers").select("*, group:customer_groups(*)").eq("id", id).single(),
-      supabase.from("customer_assignments").select("*, user:users(*)").eq("customer_id", id),
+      supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("id", id).single(),
+      supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(*)").eq("customer_id", id),
     ])
-    if (custRes.data) setCustomer(custRes.data as Customer)
-    setAssignments((assignRes.data as CustomerAssignment[]) || [])
+    if (custRes.data) setCustomer(custRes.data as unknown as Customer)
+    setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
 
     // KPIs + tab data
     const [
@@ -177,7 +177,7 @@ export default function CustomerDetailPage() {
     const groupId = custRes.data?.group_id
     let priceQuery = supabase
       .from("price_lists")
-      .select("*, product:products(name, sku, base_unit), group:customer_groups(name)")
+      .select("id, product_id, group_id, unit_name, price, effective_from, effective_to, product:products(name, sku, base_unit), group:customer_groups(name)")
       .order("product_id")
     if (groupId) {
       priceQuery = priceQuery.or(`group_id.eq.${groupId},group_id.is.null`)
@@ -185,7 +185,7 @@ export default function CustomerDetailPage() {
       priceQuery = priceQuery.is("group_id", null)
     }
     const priceRes = await priceQuery
-    setPriceRows((priceRes.data || []) as PriceRow[])
+    setPriceRows((priceRes.data || []) as unknown as PriceRow[])
 
     // Visit history
     const { data: visitData } = await supabase

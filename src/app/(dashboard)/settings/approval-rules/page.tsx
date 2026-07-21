@@ -36,7 +36,7 @@ export default function ApprovalRulesPage() {
       setLoading(true)
       const { data } = await supabase
         .from("approval_rules")
-        .select("*")
+        .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
         .eq("org_id", authUser.org_id)
         .maybeSingle()
 
@@ -95,7 +95,7 @@ export default function ApprovalRulesPage() {
         const { data, error } = await supabase
           .from("approval_rules")
           .insert(payload)
-          .select("*")
+          .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
           .single()
         if (error) throw error
         if (data) setRules(data as ApprovalRules)

@@ -62,9 +62,9 @@ export default function BatchesPage() {
     async function fetch() {
       const { data } = await supabase
         .from("batches")
-        .select("*, product:products(*)")
+        .select("id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)")
         .order("expires_at")
-      setBatches((data as (Batch & { product?: Product })[]) || [])
+      setBatches(((data as unknown) as (Batch & { product?: Product })[]) || [])
       setLoading(false)
     }
     fetch()
@@ -131,9 +131,9 @@ export default function BatchesPage() {
       toast({ title: `Đã rà soát kho`, description: `${moved} lô chuyển sang kho date` })
       const { data: fresh } = await supabase
         .from("batches")
-        .select("*, product:products(*)")
+        .select("id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)")
         .order("expires_at")
-      setBatches((fresh as (Batch & { product?: Product })[]) || [])
+      setBatches(((fresh as unknown) as (Batch & { product?: Product })[]) || [])
     } catch (err) {
       toast({
         title: "Lỗi",

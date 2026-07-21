@@ -43,20 +43,20 @@ export default function ReturnDetailPage() {
     const [retRes, linesRes] = await Promise.all([
       supabase
         .from("returns")
-        .select("*, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)")
+        .select("id, order_id, reason, status, credit_note_amount, photo_url, notes, created_at, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)")
         .eq("id", id)
         .single(),
-      supabase.from("return_lines").select("*, product:products(*)").eq("return_id", id),
+      supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(*)").eq("return_id", id),
     ])
     if (retRes.data) {
-      const r = retRes.data as Return
+      const r = retRes.data as unknown as Return
       setRet(r)
       setEditForm({
         notes: r.notes || "",
         credit_note_amount: r.credit_note_amount != null ? String(r.credit_note_amount) : "",
       })
     }
-    setLines((linesRes.data as ReturnLine[]) || [])
+    setLines((linesRes.data as unknown as ReturnLine[]) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 

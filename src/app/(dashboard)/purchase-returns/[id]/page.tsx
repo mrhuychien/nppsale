@@ -58,18 +58,18 @@ export default function PurchaseReturnDetailPage() {
     const [hdrRes, lineRes] = await Promise.all([
       supabase
         .from("supplier_returns")
-        .select("*, supplier:suppliers(id, name, code)")
+        .select("id, return_code, return_date, reason, notes, subtotal, vat, total, status, warehouse_zone, stock_entry_id, payable_credit_id, completed_at, created_at, supplier:suppliers(id, name, code)")
         .eq("id", id)
         .maybeSingle(),
       supabase
         .from("supplier_return_lines")
-        .select("*, product:products(id, name, sku, base_unit)")
+        .select("id, unit_name, quantity, unit_price, vat_rate, conversion_factor, line_total, product:products(id, name, sku, base_unit)")
         .eq("return_id", id)
         .order("created_at"),
     ])
     if (hdrRes.data) {
-      const hdr = hdrRes.data as Detail
-      hdr.lines = (lineRes.data as LineRow[]) || []
+      const hdr = hdrRes.data as unknown as Detail
+      hdr.lines = (lineRes.data as unknown as LineRow[]) || []
       setData(hdr)
     } else {
       setData(null)

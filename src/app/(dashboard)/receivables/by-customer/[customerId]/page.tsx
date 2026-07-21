@@ -54,34 +54,34 @@ export default function CustomerDebtDetailPage() {
   useEffect(() => {
     async function fetchData() {
       const [custRes, recRes, assignRes] = await Promise.all([
-        supabase.from("customers").select("*").eq("id", customerId).single(),
+        supabase.from("customers").select("id, store_name, phone, address, credit_limit").eq("id", customerId).single(),
         supabase
           .from("receivables")
-          .select("*, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)")
+          .select("id, amount, paid, due_date, status, created_at, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)")
           .eq("customer_id", customerId)
           .order("due_date"),
         supabase
           .from("customer_assignments")
-          .select("*, user:users(full_name, phone)")
+          .select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name, phone)")
           .eq("customer_id", customerId)
           .eq("role", "primary")
           .limit(1),
       ])
 
       setCustomer(custRes.data as Customer | null)
-      const recs = (recRes.data as Receivable[]) || []
+      const recs = (recRes.data as unknown as Receivable[]) || []
       setReceivables(recs)
-      setAssignment(((assignRes.data as CustomerAssignment[]) || [])[0] || null)
+      setAssignment(((assignRes.data as unknown as CustomerAssignment[]) || [])[0] || null)
 
       // Fetch payments for all receivables of this customer
       const recIds = recs.map((r) => r.id)
       if (recIds.length > 0) {
         const { data: payData } = await supabase
           .from("payments")
-          .select("*, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))")
+          .select("id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))")
           .in("receivable_id", recIds)
           .order("collected_at", { ascending: false })
-        setPayments((payData as typeof payments) || [])
+        setPayments((payData as unknown as typeof payments) || [])
       }
 
       setLoading(false)

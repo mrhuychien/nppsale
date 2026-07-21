@@ -7,6 +7,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // Đăng nhập bằng QR: route /qr-login tự đối chiếu token và đặt phiên.
+  // Phải cho qua trước khi middleware đẩy khách chưa đăng nhập về /login.
+  if (request.nextUrl.pathname.startsWith("/qr-login")) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -55,11 +61,17 @@ export async function updateSession(request: NextRequest) {
     .getAll()
     .some((c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token"))
 
+  // getSession() đọc phiên từ cookie — KHÔNG gọi mạng khi access token
+  // còn hạn (chỉ refresh qua mạng khi token hết hạn). Trước đây dùng
+  // getUser() → 1 round-trip đến Supabase Auth cho MỖI lần chuyển trang,
+  // là nguồn chậm chính khi điều hướng. Đánh đổi: middleware chỉ là
+  // cổng định tuyến; dữ liệu luôn được RLS bảo vệ ở tầng PostgREST và
+  // các API nhạy cảm (/api/admin/*, /qr-login) vẫn tự getUser().
   let user = null
   let authCheckFailed = false
   try {
-    const result = await supabase.auth.getUser()
-    user = result.data.user
+    const result = await supabase.auth.getSession()
+    user = result.data.session?.user ?? null
   } catch (err) {
     console.error("[middleware] auth check failed:", err)
     authCheckFailed = true

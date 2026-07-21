@@ -73,7 +73,7 @@ export async function computeOrderCountBonus(
 ): Promise<{ count: number; bonus: number; config: OrderCountBonusConfig | null }> {
   const { data: configs, error: cfgErr } = await supabase
     .from("salary_order_count_bonus_configs")
-    .select("*")
+    .select("id, org_id, user_id, period, min_order_count, min_order_value, bonus_per_order, effective_from, effective_to, created_at")
     .eq("user_id", opts.userId)
     .lte("effective_from", opts.periodEnd)
     .or(`effective_to.is.null,effective_to.gte.${opts.periodStart}`)

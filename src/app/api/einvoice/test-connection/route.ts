@@ -54,7 +54,7 @@ async function handle(req: Request) {
   const admin = createAdminClient()
   const { data: cfg } = await admin
     .from("company_einvoice_config")
-    .select("*")
+    .select("api_base, tax_code, token_path, publish_path, username_enc, password_enc")
     .eq("org_id", orgId)
     .maybeSingle()
   if (!cfg) {

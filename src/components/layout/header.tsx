@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { NotificationBell } from "@/components/layout/notification-bell"
+import { OfflineIndicator } from "@/components/offline/offline-indicator"
 import { ROLE_LABELS } from "@/lib/constants"
 import { LogOut, Menu, Search } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
@@ -100,6 +101,8 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-56 focus:w-64 transition-all"
           />
         </div>
+
+        <OfflineIndicator />
 
         <NotificationBell />
 

@@ -28,6 +28,10 @@ import {
 } from "@/lib/pricing"
 import { RETURN_REASONS } from "@/lib/constants"
 import { getConversionFactor } from "@/lib/inventory/uom"
+import { cacheOrderRefData, getCachedOrderRefData } from "@/lib/offline/ref-cache"
+import { enqueueOrder } from "@/lib/offline/outbox"
+import { useOrderSync } from "@/hooks/use-order-sync"
+import type { OfflineOrderPayload } from "@/lib/orders/create"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
 
 interface OrderLine {
@@ -93,9 +97,32 @@ export function OrderForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { refresh: refreshOutbox } = useOrderSync()
 
   useEffect(() => {
+    async function loadFromCache(reason: string): Promise<boolean> {
+      const cached = await getCachedOrderRefData<
+        Customer,
+        Product & { price_lists?: PriceList[]; units?: ProductUnit[] }
+      >()
+      if (!cached || cached.customers.length === 0) return false
+      setCustomers(cached.customers)
+      setProducts(cached.products)
+      setStockByProduct(cached.stockByProduct || {})
+      toast({
+        title: "Đang dùng dữ liệu ngoại tuyến",
+        description: `${reason} — dữ liệu KH/SP lưu lúc ${new Date(cached.cachedAt).toLocaleString("vi-VN")}. Đơn tạo sẽ được đẩy khi có mạng.`,
+      })
+      const cid = searchParams.get("customerId")
+      if (cid && cached.customers.some((c) => c.id === cid)) setCustomerId(cid)
+      return true
+    }
+
     async function fetch() {
+      // Mất mạng ngay từ đầu → dùng dữ liệu tham chiếu đã cache.
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (await loadFromCache("Không có mạng")) return
+      }
       const results = await Promise.all([
         supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("status", "active").order("store_name"),
         supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
@@ -123,16 +150,27 @@ export function OrderForm() {
           variant: "destructive",
         })
       }
-      setCustomers((custRes.data as unknown as Customer[]) || [])
-      setProducts((prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || [])
+      // Mạng lỗi giữa chừng mà không có dữ liệu → thử cache.
+      const custData = (custRes.data as unknown as Customer[]) || []
+      const prodData =
+        (prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || []
+      if (custData.length === 0 && prodData.length === 0) {
+        if (await loadFromCache("Kết nối không ổn định")) return
+      }
+      setCustomers(custData)
+      setProducts(prodData)
       const stockMap: Record<string, number> = {}
       for (const b of (batchRes.data as Array<{ product_id: string; qty_on_hand: number }>) || []) {
         stockMap[b.product_id] = (stockMap[b.product_id] || 0) + Number(b.qty_on_hand || 0)
       }
       setStockByProduct(stockMap)
+      // Lưu cache để lần sau mở form lúc mất mạng vẫn tạo đơn được.
+      if (custData.length > 0 || prodData.length > 0) {
+        void cacheOrderRefData({ customers: custData, products: prodData, stockByProduct: stockMap })
+      }
       // Deep-link: /orders/new?customerId=X → preselect khách hàng.
       const cid = searchParams.get("customerId")
-      if (cid && (custRes.data as Customer[] | null)?.some((c) => c.id === cid)) {
+      if (cid && custData.some((c) => c.id === cid)) {
         setCustomerId(cid)
       }
     }
@@ -618,6 +656,83 @@ export function OrderForm() {
         toast({
           title: "Giá ngoài giới hạn cho phép",
           description: violations.join(" • "),
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
+    // === MẤT MẠNG: lưu đơn cục bộ, đẩy sau ===
+    // Toàn bộ kiểm tra client-side ở trên (tồn/giá) đã chạy. Đơn được
+    // ghi vào IndexedDB và tự đẩy lên (trạng thái nháp) khi có mạng lại.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      try {
+        const uuid =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        const payload: OfflineOrderPayload = {
+          clientRequestId: uuid,
+          order: {
+            order_code: generateOrderCode(),
+            customer_id: customerId,
+            payment_terms: paymentTerms || selectedCustomer?.payment_terms || "COD",
+            expected_delivery: expectedDelivery || null,
+            subtotal: netAfterDiscount,
+            vat,
+            total,
+            notes: notes || null,
+          },
+          lines: lines.map((l) => {
+            const product = products.find((p) => p.id === l.product_id)
+            const trimmed = l.note?.trim()
+            return {
+              product_id: l.product_id,
+              unit_name: l.unit_name,
+              quantity: l.quantity,
+              unit_price: l.unit_price,
+              line_discount: l.quantity * l.unit_price * (l.line_discount_percent / 100),
+              line_total: l.line_total,
+              conversion_factor: getConversionFactor(product, product?.units, l.unit_name),
+              ...(trimmed ? { note: trimmed } : {}),
+            }
+          }),
+          returns:
+            returnLines.length > 0
+              ? { reason: returnReason, notes: returnNotes || null }
+              : null,
+          returnLines: returnLines.map((l) => {
+            const trimmed = l.note?.trim()
+            return {
+              product_id: l.product_id,
+              unit_name: l.unit_name,
+              quantity: l.quantity,
+              unit_price: l.unit_price,
+              vat_rate: Number(l.vat_rate || 0),
+              line_total: l.line_total,
+              is_exchange: !!l.is_exchange,
+              ...(trimmed ? { note: trimmed } : {}),
+            }
+          }),
+          meta: {
+            customerName: selectedCustomer?.store_name || "Khách hàng",
+            total,
+            createdAt: new Date().toISOString(),
+            lineCount: lines.length,
+          },
+        }
+        await enqueueOrder(payload)
+        await refreshOutbox()
+        toast({
+          title: "Đã lưu đơn (ngoại tuyến)",
+          description: "Đơn được lưu trên máy và sẽ tự đẩy lên khi có mạng.",
+        })
+        router.push("/orders")
+        return
+      } catch (err) {
+        toast({
+          title: "Không lưu được đơn ngoại tuyến",
+          description: err instanceof Error ? err.message : "Lỗi lưu cục bộ",
           variant: "destructive",
         })
         return

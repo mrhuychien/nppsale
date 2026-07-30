@@ -3,6 +3,7 @@ import { Manrope } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/hooks/use-auth"
+import { ServiceWorkerRegister } from "@/components/offline/sw-register"
 
 const manrope = Manrope({
   subsets: ["latin", "vietnamese"],
@@ -14,6 +15,7 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "npp.sale - Mini ERP cho Nhà Phân Phối",
   description: "Quản lý đơn hàng, kho, khách hàng, công nợ, hoa hồng trong một hệ thống duy nhất",
+  manifest: "/manifest.webmanifest",
 }
 
 export default function RootLayout({
@@ -28,6 +30,7 @@ export default function RootLayout({
           {children}
         </AuthProvider>
         <Toaster />
+        <ServiceWorkerRegister />
       </body>
     </html>
   )

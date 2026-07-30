@@ -8,6 +8,7 @@ import { MobileNav } from "@/components/layout/mobile-nav"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
 import { WorkflowResumeBar } from "@/components/dashboard/workflow-resume-bar"
+import { OrderSyncProvider } from "@/hooks/use-order-sync"
 import type { Role } from "@/types"
 
 interface DashboardShellProps {
@@ -22,14 +23,15 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
 
   if (isLauncher) {
     return (
-      <>
+      <OrderSyncProvider>
         <PermissionsLoader />
         {children}
-      </>
+      </OrderSyncProvider>
     )
   }
 
   return (
+    <OrderSyncProvider>
     <div className="flex min-h-screen bg-surface">
       <PermissionsLoader />
       <Sidebar role={role} />
@@ -55,5 +57,6 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
 
       <MobileNav role={role} onMenuClick={() => setMobileOpen(true)} />
     </div>
+    </OrderSyncProvider>
   )
 }

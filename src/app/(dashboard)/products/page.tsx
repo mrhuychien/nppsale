@@ -5,6 +5,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -44,6 +45,7 @@ import {
 export default function ProductsPage() {
   const { user, loading: authLoading } = useRoleGuard("products")
   const [products, setProducts] = useState<Product[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -105,24 +107,33 @@ export default function ProductsPage() {
 
   async function fetchProducts() {
     setLoading(true)
-    let q = supabase
-      .from("products")
-      .select(
-        "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
-        { count: "exact" }
-      )
-      .order("name")
-      .range(pg.from, pg.to)
-    if (debouncedSearch) {
-      const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-      q = q.or(`name.ilike.${term},sku.ilike.${term}`)
+    // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự
+    // thử lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error
+    // để hiển thị nguyên nhân cho người dùng.
+    const build = (select: string) => {
+      let q = supabase
+        .from("products")
+        .select(select, { count: "exact" })
+        .order("name")
+        .range(pg.from, pg.to)
+      if (debouncedSearch) {
+        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+        q = q.or(`name.ilike.${term},sku.ilike.${term}`)
+      }
+      if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+      if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
+      if (statusFilter !== "all") q = q.eq("status", statusFilter)
+      return q
     }
-    if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
-    if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
-    if (statusFilter !== "all") q = q.eq("status", statusFilter)
-    const { data, count } = await q
-    setProducts((data as Product[]) || [])
-    pg.setTotal(count ?? 0)
+    const res = await selectResilient<Product>(
+      build,
+      "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
+      // eslint-disable-next-line no-restricted-syntax
+      "*, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)"
+    )
+    setProducts(res.data)
+    setLoadError(res.error)
+    pg.setTotal(res.count ?? 0)
     setLoading(false)
   }
 
@@ -287,6 +298,14 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách sản phẩm</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -296,11 +315,15 @@ export default function ProductsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Package className="h-8 w-8 text-muted-foreground" />}
-          title="Không có sản phẩm phù hợp"
+          title={loadError ? "Không tải được dữ liệu" : "Không có sản phẩm phù hợp"}
           description={
-            products.length === 0
-              ? "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
-              : "Thử điều chỉnh bộ lọc"
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : products.length === 0
+                ? user?.role === "sales"
+                  ? "Bạn chưa được gán nhà cung cấp nào, hoặc chưa có sản phẩm. NV bán hàng chỉ thấy sản phẩm thuộc NCC được gán — liên hệ quản lý để được gán NCC."
+                  : "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
+                : "Thử điều chỉnh bộ lọc"
           }
         >
           {products.length === 0 &&

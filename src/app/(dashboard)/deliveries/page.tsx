@@ -20,6 +20,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -148,6 +149,7 @@ export default function DeliveriesPage() {
   const { loading: authLoading } = useRoleGuard("deliveries")
   const { user } = useAuth()
   const [deliveries, setDeliveries] = useState<DeliveryWithStats[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<"all" | DerivedStatus>("all")
   const [search, setSearch] = useState("")
@@ -213,23 +215,30 @@ export default function DeliveriesPage() {
     let cancelled = false
     async function fetchAll() {
       setLoading(true)
-      let q = supabase
-        .from("deliveries")
-        .select(
-          "id, org_id, driver_id, vehicle, route_name, status, started_at, completed_at, created_at, warehouse_confirmed_by, warehouse_confirmed_at, driver_confirmed_by, driver_confirmed_at, settled_at, settled_amount, goods_handover_at, goods_handover_by, goods_handover_notes, source_stock_entry_id, driver:users!deliveries_driver_id_fkey(full_name)",
-          { count: "exact" }
-        )
-        .order("created_at", { ascending: false })
-        .range(pg.from, pg.to)
-      // Filter status theo activeTab (cố gắng server-side cho 4/5 trường hợp đơn giản).
-      if (activeTab === "cancelled") q = q.eq("status", "cancelled")
-      else if (activeTab === "in_transit") q = q.eq("status", "in_transit")
-      else if (activeTab === "settled") q = q.not("settled_at", "is", null).not("status", "eq", "cancelled")
-      else if (activeTab === "delivered") q = q.eq("status", "completed").is("settled_at", null)
-      // activeTab === "pending" hoặc "all" → không filter status (pending hiếm, để client lọc nếu cần).
-      const { data: rows, count } = await q
+      // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
+      const build = (select: string) => {
+        let q = supabase
+          .from("deliveries")
+          .select(select, { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(pg.from, pg.to)
+        // Filter status theo activeTab (cố gắng server-side cho 4/5 trường hợp đơn giản).
+        if (activeTab === "cancelled") q = q.eq("status", "cancelled")
+        else if (activeTab === "in_transit") q = q.eq("status", "in_transit")
+        else if (activeTab === "settled") q = q.not("settled_at", "is", null).not("status", "eq", "cancelled")
+        else if (activeTab === "delivered") q = q.eq("status", "completed").is("settled_at", null)
+        // activeTab === "pending" hoặc "all" → không filter status (pending hiếm, để client lọc nếu cần).
+        return q
+      }
+      const res = await selectResilient<DeliveryRow>(
+        build,
+        "id, org_id, driver_id, vehicle, route_name, status, started_at, completed_at, created_at, warehouse_confirmed_by, warehouse_confirmed_at, driver_confirmed_by, driver_confirmed_at, settled_at, settled_amount, goods_handover_at, goods_handover_by, goods_handover_notes, source_stock_entry_id, driver:users!deliveries_driver_id_fkey(full_name)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, driver:users!deliveries_driver_id_fkey(full_name)"
+      )
       if (cancelled) return
-      const list = ((rows as DeliveryRow[]) || [])
+      const count = res.count
+      const list = res.data
 
       // Aggregate stats per delivery from delivery_lines.
       const ids = list.map((d) => d.id)
@@ -285,6 +294,7 @@ export default function DeliveriesPage() {
           )
         }
         setDeliveries(result)
+        setLoadError(res.error)
         pg.setTotal(count ?? 0)
         setLoading(false)
       }
@@ -322,6 +332,8 @@ export default function DeliveriesPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const isDriver = user?.role === "driver"
+  // RLS: sales + accountant không nằm trong policy SELECT của deliveries → luôn rỗng.
+  const isRestrictedRole = user?.role === "sales" || user?.role === "accountant"
 
   return (
     <div className="space-y-4">
@@ -417,6 +429,14 @@ export default function DeliveriesPage() {
         </div>
       </div>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách chuyến giao</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {/* Deliveries table */}
       {loading ? (
         <Skeleton className="h-64" />
@@ -426,14 +446,22 @@ export default function DeliveriesPage() {
             <EmptyState
               icon={<Truck className="h-8 w-8 text-muted-foreground" />}
               title={
-                deliveries.length === 0
-                  ? "Chưa có chuyến giao nào"
-                  : "Không có chuyến phù hợp bộ lọc"
+                loadError
+                  ? "Không tải được dữ liệu"
+                  : deliveries.length === 0
+                    ? isRestrictedRole
+                      ? "Vai trò của bạn không xem được danh sách giao hàng"
+                      : "Chưa có chuyến giao nào"
+                    : "Không có chuyến phù hợp bộ lọc"
               }
               description={
-                deliveries.length === 0
-                  ? "Chuyến giao tự tạo khi bạn bấm Tự giao hàng & thu tiền trên 1 phiếu xuất kho, hoặc bạn có thể tạo thủ công."
-                  : "Đổi tab hoặc xoá tìm kiếm để xem nhiều hơn."
+                loadError
+                  ? "Xem thông báo lỗi phía trên."
+                  : deliveries.length === 0
+                    ? isRestrictedRole
+                      ? "Danh sách trống ở đây không có nghĩa là không có chuyến giao nào. NV bán hàng theo dõi tình trạng giao qua chi tiết đơn hàng; kế toán đối chiếu qua phiếu thu."
+                      : "Chuyến giao tự tạo khi bạn bấm Tự giao hàng & thu tiền trên 1 phiếu xuất kho, hoặc bạn có thể tạo thủ công."
+                    : "Đổi tab hoặc xoá tìm kiếm để xem nhiều hơn."
               }
             />
           </CardContent>

@@ -99,3 +99,27 @@ SELECT
 FROM products
 GROUP BY status
 ORDER BY count(*) DESC;
+
+-- ---------------------------------------------------------------
+-- PHẦN 6: HAI CON SỐ QUYẾT ĐỊNH cho bẫy RLS 081.
+--
+-- Migration 030 đã tự điền primary_supplier_id cho gần như MỌI sản
+-- phẩm từng có phiếu nhập. Migration 080 tạo bảng user_suppliers
+-- RỖNG và không có seed nào. Nên nếu 081 đã chạy mà user_suppliers
+-- trống → MỌI nhân viên bán hàng thấy 0 sản phẩm (không báo lỗi).
+-- ---------------------------------------------------------------
+SELECT
+  '6. BẪY RLS 081' AS kiem_tra,
+  (SELECT count(*) FROM user_suppliers)::text AS so_dong_user_suppliers,
+  (SELECT count(*) FROM products WHERE primary_supplier_id IS NOT NULL)::text AS sp_co_ncc,
+  (SELECT count(*) FROM products)::text AS tong_sp,
+  CASE
+    WHEN (SELECT count(*) FROM pg_policies
+          WHERE tablename = 'products'
+            AND policyname = 'View products (sales scoped by supplier)') = 0
+      THEN 'Policy 081 CHƯA chạy → không phải bẫy này'
+    WHEN (SELECT count(*) FROM user_suppliers) = 0
+     AND (SELECT count(*) FROM products WHERE primary_supplier_id IS NOT NULL) > 0
+      THEN 'ĐÂY LÀ NGUYÊN NHÂN → gán NCC cho NV bán hàng tại Cài đặt › Người dùng, hoặc tạm gỡ policy 081'
+    ELSE 'Không khớp bẫy này → xem phần 2, 3'
+  END AS ket_luan;

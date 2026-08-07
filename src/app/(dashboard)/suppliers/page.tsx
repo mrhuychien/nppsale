@@ -5,6 +5,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -42,6 +43,7 @@ import {
 export default function SuppliersPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
@@ -95,20 +97,31 @@ export default function SuppliersPage() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
-      let q = supabase
-        .from("suppliers")
-        .select("id, code, name, category, contact_name, phone, address, is_verified, is_active", { count: "exact" })
-        .order("name")
-        .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.or(`name.ilike.${term},code.ilike.${term}`)
+      // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
+      // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
+      const build = (select: string) => {
+        let q = supabase
+          .from("suppliers")
+          .select(select, { count: "exact" })
+          .order("name")
+          .range(pg.from, pg.to)
+        if (debouncedSearch) {
+          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+          q = q.or(`name.ilike.${term},code.ilike.${term}`)
+        }
+        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+        if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
+        return q
       }
-      if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
-      if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
-      const { data, count } = await q
-      setSuppliers((data as Supplier[]) || [])
-      pg.setTotal(count ?? 0)
+      const res = await selectResilient<Supplier>(
+        build,
+        "id, code, name, category, contact_name, phone, address, is_verified, is_active",
+        // eslint-disable-next-line no-restricted-syntax
+        "*"
+      )
+      setSuppliers(res.data)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
       setLoading(false)
     }
     fetchData()
@@ -254,6 +267,14 @@ export default function SuppliersPage() {
         </div>
       </div>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách nhà cung cấp</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -263,11 +284,19 @@ export default function SuppliersPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Factory className="h-8 w-8 text-muted-foreground" />}
-          title={suppliers.length === 0 ? "Chưa có nhà cung cấp" : "Không tìm thấy NCC phù hợp"}
+          title={
+            loadError
+              ? "Không tải được dữ liệu"
+              : suppliers.length === 0
+                ? "Chưa có nhà cung cấp"
+                : "Không tìm thấy NCC phù hợp"
+          }
           description={
-            suppliers.length === 0
-              ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên"
-              : "Thử điều chỉnh bộ lọc"
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : suppliers.length === 0
+                ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên"
+                : "Thử điều chỉnh bộ lọc"
           }
         />
       ) : (

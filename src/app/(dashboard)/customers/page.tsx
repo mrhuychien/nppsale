@@ -6,6 +6,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -56,6 +57,7 @@ export default function CustomersPage() {
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
   const [lastOrders, setLastOrders] = useState<Record<string, LastOrderInfo>>({})
   const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -124,23 +126,34 @@ export default function CustomersPage() {
     let cancelled = false
     async function fetchData() {
       setLoading(true)
-      let q = supabase
-        .from("customers")
-        .select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)", { count: "exact" })
-        .order("store_name")
-        .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.or(`store_name.ilike.${term},owner_name.ilike.${term},phone.ilike.${term}`)
+      // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự
+      // thử lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error
+      // để hiển thị nguyên nhân cho người dùng.
+      const build = (select: string) => {
+        let q = supabase
+          .from("customers")
+          .select(select, { count: "exact" })
+          .order("store_name")
+          .range(pg.from, pg.to)
+        if (debouncedSearch) {
+          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+          q = q.or(`store_name.ilike.${term},owner_name.ilike.${term},phone.ilike.${term}`)
+        }
+        if (statusFilter !== "all") q = q.eq("status", statusFilter)
+        if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+        return q
       }
-      if (statusFilter !== "all") q = q.eq("status", statusFilter)
-      if (channelFilter !== "all") q = q.eq("channel", channelFilter)
-
-      const { data: cData, count } = await q
+      const res = await selectResilient<Customer>(
+        build,
+        "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, group:customer_groups(*)"
+      )
       if (cancelled) return
-      const list = (cData as unknown as Customer[]) || []
+      const list = res.data
       setCustomers(list)
-      pg.setTotal(count ?? 0)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
 
       // Load aggregates CHỈ cho khách trên page hiện tại.
       const ids = list.map((c) => c.id)
@@ -449,10 +462,38 @@ export default function CustomersPage() {
         </Button>
       </div>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách khách hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chưa có khách hàng" description="Bắt đầu bằng cách thêm khách hàng đầu tiên" />
+        <EmptyState
+          icon={<Users className="h-8 w-8 text-muted-foreground" />}
+          title={
+            loadError
+              ? "Không tải được dữ liệu"
+              : customers.length === 0
+                ? "Chưa có khách hàng"
+                : "Không có khách hàng phù hợp"
+          }
+          description={
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : customers.length === 0
+                ? user?.role === "sales"
+                  ? "Bạn chưa được phân công khách hàng nào. Vào Thêm KH để tìm và nhận khách có sẵn về danh sách của mình, hoặc nhờ quản lý phân công."
+                  : user?.role === "warehouse" || user?.role === "driver"
+                    ? "Vai trò của bạn chỉ xem được khách hàng gắn với công việc được giao. Liên hệ quản lý hoặc kế toán nếu cần tra cứu khách hàng."
+                    : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
+                : "Thử điều chỉnh bộ lọc"
+          }
+        />
       ) : (
         <>
           {/* Desktop: existing table */}

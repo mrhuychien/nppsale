@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -33,8 +34,10 @@ export default function ReceivablesPage() {
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
   const isDriver = authUser?.role === "driver"
+  const isWarehouse = authUser?.role === "warehouse"
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [allUnpaid, setAllUnpaid] = useState<Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const pg = usePagination(50)
   const supabase = createClient()
@@ -64,17 +67,23 @@ export default function ReceivablesPage() {
     let cancelled = false
     async function fetch() {
       setLoading(true)
-      const { data, count } = await supabase
-        .from("receivables")
-        .select(
-          "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
-          { count: "exact" }
-        )
-        .order("due_date")
-        .range(pg.from, pg.to)
+      // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
+      const build = (select: string) =>
+        supabase
+          .from("receivables")
+          .select(select, { count: "exact" })
+          .order("due_date")
+          .range(pg.from, pg.to)
+      const res = await selectResilient<Receivable>(
+        build,
+        "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)"
+      )
       if (cancelled) return
-      setReceivables((data as unknown as Receivable[]) || [])
-      pg.setTotal(count ?? 0)
+      setReceivables(res.data)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
       setLoading(false)
     }
     fetch()
@@ -196,10 +205,32 @@ export default function ReceivablesPage() {
         />
       </div>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách công nợ</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {loading ? (
         <Skeleton className="h-96" />
       ) : receivables.length === 0 ? (
-        <EmptyState icon={<CreditCard className="h-8 w-8 text-muted-foreground" />} title="Chưa có công nợ" />
+        <EmptyState
+          icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
+          title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ"}
+          description={
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : isWarehouse
+                ? "Vai trò Kho không có quyền xem công nợ phải thu. Liên hệ kế toán để đối chiếu."
+                : isSales
+                  ? "Bạn chỉ thấy công nợ của đơn ghi tên bạn. Công nợ từ đơn nhập liệu cũ (chưa gắn NV phụ trách) sẽ không hiển thị — nhờ kế toán gán lại NV phụ trách."
+                  : isDriver
+                    ? "Bạn chỉ thấy công nợ thuộc các đơn trong chuyến giao của bạn (COD). Chưa có chuyến nào được gán thì danh sách sẽ trống."
+                    : undefined
+          }
+        />
       ) : (
         <>
           {/* Desktop table */}

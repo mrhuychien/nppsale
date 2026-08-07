@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -41,6 +42,7 @@ export default function BatchesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
   const { toast } = useToast()
   const [batches, setBatches] = useState<(Batch & { product?: Product })[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState("all")
@@ -58,13 +60,23 @@ export default function BatchesPage() {
   )
   const show = (k: BatchColumnKey) => visibleColumns.includes(k)
 
+  // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.
+  async function loadBatches() {
+    const build = (select: string) =>
+      supabase.from("batches").select(select).order("expires_at")
+    const res = await selectResilient<Batch & { product?: Product }>(
+      build,
+      "id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)",
+      // eslint-disable-next-line no-restricted-syntax
+      "*, product:products(*)"
+    )
+    setBatches(res.data)
+    setLoadError(res.error)
+  }
+
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
-        .from("batches")
-        .select("id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)")
-        .order("expires_at")
-      setBatches(((data as unknown) as (Batch & { product?: Product })[]) || [])
+      await loadBatches()
       setLoading(false)
     }
     fetch()
@@ -129,11 +141,7 @@ export default function BatchesPage() {
       if (error) throw error
       const moved = Number(data ?? 0)
       toast({ title: `Đã rà soát kho`, description: `${moved} lô chuyển sang kho date` })
-      const { data: fresh } = await supabase
-        .from("batches")
-        .select("id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)")
-        .order("expires_at")
-      setBatches(((fresh as unknown) as (Batch & { product?: Product })[]) || [])
+      await loadBatches()
     } catch (err) {
       toast({
         title: "Lỗi",
@@ -371,6 +379,14 @@ export default function BatchesPage() {
         </div>
       </PageHeader>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách lô hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {expiring.length > 0 && (
         <Card
           className="rounded-2xl border-error/40 bg-gradient-to-r from-error-container to-error-container/40 shadow-card cursor-pointer"
@@ -398,8 +414,12 @@ export default function BatchesPage() {
       {batches.length === 0 ? (
         <EmptyState
           icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có lô hàng"
-          description="Lô hàng sẽ được tạo khi nhập kho hoặc bằng nút 'Tạo lô mới'"
+          title={loadError ? "Không tải được dữ liệu" : "Chưa có lô hàng"}
+          description={
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : "Lô hàng sẽ được tạo khi nhập kho hoặc bằng nút 'Tạo lô mới'"
+          }
         />
       ) : (
         <Tabs value={tab} onValueChange={setTab} className="w-full">

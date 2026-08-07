@@ -5,6 +5,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
@@ -36,8 +37,9 @@ const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "defau
 }
 
 export default function PayablesPage() {
-  const { loading: authLoading } = useRoleGuard("receivables")
+  const { user, loading: authLoading } = useRoleGuard("receivables")
   const [payables, setPayables] = useState<Payable[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [allOpen, setAllOpen] = useState<Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -79,20 +81,31 @@ export default function PayablesPage() {
     let cancelled = false
     async function fetchData() {
       setLoading(true)
-      let q = supabase
-        .from("payables")
-        .select("id, invoice_number, amount, paid, due_date, status, supplier:suppliers(name, code)", { count: "exact" })
-        .order("due_date")
-        .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.ilike("invoice_number", term)
+      // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
+      // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
+      const build = (select: string) => {
+        let q = supabase
+          .from("payables")
+          .select(select, { count: "exact" })
+          .order("due_date")
+          .range(pg.from, pg.to)
+        if (debouncedSearch) {
+          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+          q = q.ilike("invoice_number", term)
+        }
+        if (statusFilter !== "all") q = q.eq("status", statusFilter)
+        return q
       }
-      if (statusFilter !== "all") q = q.eq("status", statusFilter)
-      const { data, count } = await q
+      const res = await selectResilient<Payable>(
+        build,
+        "id, invoice_number, amount, paid, due_date, status, supplier:suppliers(name, code)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, supplier:suppliers(name, code)"
+      )
       if (cancelled) return
-      setPayables((data as unknown as Payable[]) || [])
-      pg.setTotal(count ?? 0)
+      setPayables(res.data)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
       setLoading(false)
     }
     fetchData()
@@ -235,14 +248,31 @@ export default function PayablesPage() {
         </CardContent>
       </Card>
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách công nợ nhà cung cấp</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <Skeleton className="h-96" />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Factory className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có công nợ NCC"
-          description={search || statusFilter !== "all" ? "Thử thay đổi bộ lọc" : "Tạo công nợ nhà cung cấp đầu tiên"}
+          title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ NCC"}
+          description={
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : search || statusFilter !== "all"
+                ? "Thử thay đổi bộ lọc"
+                : payables.length === 0 &&
+                    (user?.role === "sales" || user?.role === "driver" || user?.role === "warehouse")
+                  ? "Vai trò của bạn không có quyền xem công nợ nhà cung cấp (giá vốn nhập). Đây là dữ liệu tài chính chỉ dành cho Chủ, Quản lý và Kế toán — liên hệ kế toán nếu cần đối chiếu."
+                  : "Tạo công nợ nhà cung cấp đầu tiên"
+          }
         />
       ) : (
         <>

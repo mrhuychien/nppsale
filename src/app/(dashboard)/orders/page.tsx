@@ -6,6 +6,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -80,6 +81,7 @@ export default function OrdersPage() {
     Record<string, { amount: number; paid: number; status: string; due_date: string | null }>
   >({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -169,35 +171,42 @@ export default function OrdersPage() {
     let cancelled = false
     async function fetchOrders() {
       setLoading(true)
-      let q = supabase
-        .from("sales_orders")
-        .select(
-          "id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
-          { count: "exact" }
-        )
-        .order("created_at", { ascending: false })
-        .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.ilike("order_code", term)
+      // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự thử
+      // lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error để hiển thị.
+      const build = (select: string) => {
+        let q = supabase
+          .from("sales_orders")
+          .select(select, { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(pg.from, pg.to)
+        if (debouncedSearch) {
+          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+          q = q.ilike("order_code", term)
+        }
+        if (statusFilter === "pending_approval") {
+          q = q.eq("status", "draft").not("approval_reason", "is", null)
+        } else if (statusFilter !== "all") {
+          q = q.eq("status", statusFilter)
+        }
+        if (customerFilter !== "all") q = q.eq("customer_id", customerFilter)
+        if (salesFilter !== "all") q = q.eq("sales_user_id", salesFilter)
+        if (dateFrom) q = q.gte("order_date", dateFrom)
+        if (dateTo) q = q.lte("order_date", dateTo + "T23:59:59")
+        if (amountMin) q = q.gte("total", parseFloat(amountMin))
+        if (amountMax) q = q.lte("total", parseFloat(amountMax))
+        return q
       }
-      if (statusFilter === "pending_approval") {
-        q = q.eq("status", "draft").not("approval_reason", "is", null)
-      } else if (statusFilter !== "all") {
-        q = q.eq("status", statusFilter)
-      }
-      if (customerFilter !== "all") q = q.eq("customer_id", customerFilter)
-      if (salesFilter !== "all") q = q.eq("sales_user_id", salesFilter)
-      if (dateFrom) q = q.gte("order_date", dateFrom)
-      if (dateTo) q = q.lte("order_date", dateTo + "T23:59:59")
-      if (amountMin) q = q.gte("total", parseFloat(amountMin))
-      if (amountMax) q = q.lte("total", parseFloat(amountMax))
-
-      const { data, count } = await q
+      const res = await selectResilient<SalesOrder>(
+        build,
+        "id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+      )
       if (cancelled) return
-      const ordersData = (data as unknown as SalesOrder[]) || []
+      const ordersData = res.data
       setOrders(ordersData)
-      pg.setTotal(count ?? 0)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
 
       // Load receivables + invoices CHỈ cho orders đang hiển thị trên page.
       const ids = ordersData.map((o) => o.id)
@@ -783,6 +792,14 @@ export default function OrdersPage() {
         )
       })()}
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách đơn hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -792,8 +809,24 @@ export default function OrdersPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có đơn hàng"
-          description="Tạo đơn hàng đầu tiên"
+          title={
+            loadError
+              ? "Không tải được dữ liệu"
+              : orders.length === 0
+                ? "Chưa có đơn hàng"
+                : "Không có đơn hàng phù hợp"
+          }
+          description={
+            loadError
+              ? "Xem thông báo lỗi phía trên."
+              : orders.length === 0
+                ? isDriver
+                  ? "Bạn chưa được gán chuyến giao hàng nào. Đơn hàng chỉ hiện sau khi kho lập phiếu giao và gán bạn làm tài xế."
+                  : isSales
+                    ? "Bạn chưa tạo đơn nào và chưa được phân công khách hàng nào. Nhờ quản lý phân công khách hàng, hoặc tạo đơn đầu tiên."
+                    : "Tạo đơn hàng đầu tiên"
+                : "Thử điều chỉnh bộ lọc"
+          }
         />
       ) : (
         <>

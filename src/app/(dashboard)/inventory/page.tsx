@@ -5,6 +5,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -70,8 +71,9 @@ function getBatchExpiryState(
 }
 
 export default function InventoryPage() {
-  const { loading: authLoading } = useRoleGuard("inventory")
+  const { user, loading: authLoading } = useRoleGuard("inventory")
   const [batches, setBatches] = useState<BatchWithProduct[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState("current")
@@ -125,20 +127,29 @@ export default function InventoryPage() {
     let cancelled = false
     async function fetchBatchesList() {
       setLoading(true)
-      let q = supabase
-        .from("batches")
-        .select("id, batch_code, qty_on_hand, expires_at, manufactured_at, location, product:products(*)", { count: "exact" })
-        .gt("qty_on_hand", 0)
-        .order("expires_at")
-        .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.ilike("batch_code", term)
+      // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.
+      const build = (select: string) => {
+        let q = supabase
+          .from("batches")
+          .select(select, { count: "exact" })
+          .gt("qty_on_hand", 0)
+          .order("expires_at")
+          .range(pg.from, pg.to)
+        if (debouncedSearch) {
+          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+          q = q.ilike("batch_code", term)
+        }
+        if (locationFilter !== "all") q = q.eq("location", locationFilter)
+        return q
       }
-      if (locationFilter !== "all") q = q.eq("location", locationFilter)
-      const { data, count } = await q
+      const res = await selectResilient<BatchWithProduct>(
+        build,
+        "id, batch_code, qty_on_hand, expires_at, manufactured_at, location, product:products(*)",
+        // eslint-disable-next-line no-restricted-syntax
+        "*, product:products(*)"
+      )
       if (cancelled) return
-      let list = ((data as unknown) as BatchWithProduct[]) || []
+      let list = res.data
       // Filter brand + search cross-table (product.name/sku) client-side trên page.
       if (brandFilter !== "all") list = list.filter((b) => b.product?.brand === brandFilter)
       if (debouncedSearch) {
@@ -151,7 +162,8 @@ export default function InventoryPage() {
         )
       }
       setBatches(list)
-      pg.setTotal(count ?? 0)
+      setLoadError(res.error)
+      pg.setTotal(res.count ?? 0)
       setLoading(false)
     }
     fetchBatchesList()
@@ -391,6 +403,14 @@ export default function InventoryPage() {
             </CardContent>
           </Card>
 
+          {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+          {loadError && !loading && (
+            <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+              <p className="font-semibold">Không tải được danh sách lô hàng</p>
+              <p className="mt-0.5 break-words">{loadError}</p>
+            </div>
+          )}
+
           <Card>
             <CardContent className="p-0">
               {loading ? (
@@ -400,8 +420,15 @@ export default function InventoryPage() {
               ) : filteredBatches.length === 0 ? (
                 <EmptyState
                   icon={<Package className="h-8 w-8 text-muted-foreground" />}
-                  title="Không có lô hàng phù hợp"
-                  description="Thử điều chỉnh bộ lọc để xem thêm kết quả"
+                  title={loadError ? "Không tải được dữ liệu" : "Không có lô hàng phù hợp"}
+                  description={
+                    loadError
+                      ? "Xem thông báo lỗi phía trên."
+                      : user?.role === "sales" &&
+                          (debouncedSearch !== "" || brandFilter !== "all")
+                        ? "NV bán hàng chỉ xem được sản phẩm thuộc NCC mình phụ trách, nên lô của SP ngoài phạm vi không lọc/tìm được theo tên, SKU hay thương hiệu. Liên hệ quản lý để được gán NCC tại Cài đặt › Người dùng."
+                        : "Thử điều chỉnh bộ lọc để xem thêm kết quả"
+                  }
                 />
               ) : (
                 <Table>

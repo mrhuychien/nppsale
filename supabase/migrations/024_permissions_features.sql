@@ -14,11 +14,16 @@ ALTER TABLE role_permissions
 -- Replace with a much looser shape check so we still reject obviously
 -- bad data without enumerating every feature. Format: lowercase ascii
 -- words separated by dots, max 64 chars.
+--
+-- LƯU Ý: dùng MỘT dấu gạch chéo ( \. ) cho dấu chấm. Postgres mặc định
+-- standard_conforming_strings = on nên \ trong '...' là ký tự literal;
+-- viết \\. sẽ thành "backslash + ký tự bất kỳ" và chặn nhầm mọi khoá
+-- tính năng có dấu chấm (xem migration 090 đã sửa lỗi này).
 ALTER TABLE role_permissions
   ADD CONSTRAINT role_permissions_module_check
   CHECK (
     char_length(module) BETWEEN 1 AND 64
-    AND module ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$'
+    AND module ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$'
   );
 
 COMMENT ON COLUMN role_permissions.module IS

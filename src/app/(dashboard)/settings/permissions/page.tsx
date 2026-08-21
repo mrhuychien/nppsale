@@ -285,9 +285,15 @@ export default function PermissionsPage() {
       .upsert(rows, { onConflict: "org_id,role,module,action" })
     setSaving(false)
     if (error) {
+      // DB chưa chạy migration 090 → constraint cũ chặn mọi khoá tính năng
+      // có dấu chấm (settings.users, analytics.business…). Nói rõ cách xử lý
+      // thay vì để người dùng đối mặt thông báo Postgres khó hiểu.
+      const isModuleCheck = /role_permissions_module_check/i.test(error.message || "")
       toast({
         title: "Lưu thất bại",
-        description: error.message,
+        description: isModuleCheck
+          ? "Cơ sở dữ liệu chưa chạy migration 090_fix_role_permissions_module_check.sql — nó đang chặn các quyền chi tiết (vd settings.users). Chạy migration đó trong Supabase › SQL Editor rồi lưu lại."
+          : error.message,
         variant: "destructive",
       })
       return

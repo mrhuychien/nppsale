@@ -170,10 +170,13 @@ export async function processApprovedReturn(
   }
 
   // 5. Mark return completed
-  await supabase
+  const { error: doneErr } = await supabase
     .from("returns")
     .update({ status: "completed" })
     .eq("id", returnId)
+  if (doneErr) {
+    return { ok: false, error: `Đã nhập kho nhưng không cập nhật được trạng thái phiếu trả: ${doneErr.message}` }
+  }
 
   return { ok: true, entryId }
 }

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { useToast } from "@/hooks/use-toast"
 import {
   MapPin,
   Save,
@@ -57,6 +58,7 @@ function getTodayDow(): number {
 }
 
 export default function PjpPage() {
+  const { toast } = useToast()
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("orders")
   const supabase = useMemo(() => createClient(), [])
@@ -177,11 +179,16 @@ export default function PjpPage() {
     if (!selectedUserId) return
     setSaving(true)
     // Delete existing for this user + day then re-insert
-    await supabase
+    const { error: delErr } = await supabase
       .from("pjp_routes")
       .delete()
       .eq("sales_user_id", selectedUserId)
       .eq("day_of_week", activeDay)
+    if (delErr) {
+      toast({ title: "Lưu lộ trình thất bại", description: delErr.message, variant: "destructive" })
+      setSaving(false)
+      return
+    }
 
     const toInsert = dayRoutes.map((r, idx) => ({
       sales_user_id: selectedUserId,
@@ -192,7 +199,19 @@ export default function PjpPage() {
     }))
 
     if (toInsert.length > 0) {
-      await supabase.from("pjp_routes").insert(toInsert)
+      const { error: insErr } = await supabase.from("pjp_routes").insert(toInsert)
+      if (insErr) {
+        // Nguy hiểm: lộ trình cũ đã bị xoá ở trên mà lộ trình mới không vào
+        // được — phải báo rõ để người dùng nhập lại ngay.
+        toast({
+          title: "Lưu lộ trình thất bại — lộ trình cũ đã bị xoá",
+          description: `${insErr.message}. Vui lòng nhập lại và lưu.`,
+          variant: "destructive",
+        })
+        setSaving(false)
+        fetchRoutes()
+        return
+      }
     }
     setSaving(false)
     fetchRoutes()
@@ -229,10 +248,14 @@ export default function PjpPage() {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const visit = todayVisits.find((v) => v.customer_id === customerId && !v.check_out_at)
     if (!visit) return
-    await supabase
+    const { error: outErr } = await supabase
       .from("visit_logs")
       .update({ check_out_at: new Date().toISOString() })
       .eq("id", visit.id)
+    if (outErr) {
+      toast({ title: "Không ghi được giờ rời điểm", description: outErr.message, variant: "destructive" })
+      return
+    }
     await fetchTodayVisits()
   }
 
@@ -245,6 +268,7 @@ export default function PjpPage() {
       .from("visit_logs")
       .update({ result, check_out_at: new Date().toISOString() })
       .eq("id", visit.id)
+      .throwOnError()
     await fetchTodayVisits()
   }
 

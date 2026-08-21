@@ -357,6 +357,7 @@ export default function DeliverySettlePage() {
           settled_amount: submittedTotal,
         })
         .eq("id", delivery.id)
+        .throwOnError()
 
       await closeSession()
 

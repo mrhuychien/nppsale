@@ -126,7 +126,8 @@ async function handle(req: Request) {
   }
   if (body.username && body.username.trim()) updates.username_enc = encryptSecret(body.username.trim())
   if (body.password && body.password.trim()) updates.password_enc = encryptSecret(body.password.trim())
-  await admin.from("company_einvoice_config").update(updates).eq("org_id", orgId)
+  const { error: updErr } = await admin.from("company_einvoice_config").update(updates).eq("org_id", orgId)
+      if (updErr) console.error("[einvoice/test-connection] cập nhật thất bại:", updErr.message)
 
   return NextResponse.json({
     success: true,

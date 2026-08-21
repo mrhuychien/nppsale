@@ -100,26 +100,34 @@ export default function NotificationsPage() {
     if (n.is_read) return
     setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)))
     setUnreadCount((c) => Math.max(0, c - 1))
-    await supabase
+    const { error } = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("id", n.id)
+    if (error) {
+      // Hoàn tác cập nhật lạc quan để bộ đếm không lệch với database.
+      setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: false } : x)))
+      setUnreadCount((c) => c + 1)
+      console.error("[notifications] không đánh dấu được đã đọc:", error.message)
+    }
   }
 
   const markAllRead = async () => {
     if (!authUser?.id || unreadCount === 0) return
     setItems((prev) => prev.map((n) => ({ ...n, is_read: true })))
     setUnreadCount(0)
-    await supabase
+    const { error: readErr } = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("user_id", authUser.id)
       .eq("is_read", false)
+    if (readErr) console.error("[notifications] đánh dấu đã đọc thất bại:", readErr.message)
   }
 
   const deleteOne = async (id: string) => {
     setItems((prev) => prev.filter((n) => n.id !== id))
-    await supabase.from("notifications").delete().eq("id", id)
+    const { error } = await supabase.from("notifications").delete().eq("id", id)
+    if (error) console.error("[notifications] xoá thất bại:", error.message)
   }
 
   const deleteAllRead = async () => {

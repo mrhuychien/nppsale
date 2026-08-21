@@ -103,7 +103,8 @@ async function handle(req: Request) {
   if (txnId) updates.misa_lookup_code = txnId
   if (nextStatus) updates.misa_status = nextStatus
   if (Object.keys(updates).length) {
-    await admin.from("invoices").update(updates).eq("id", body.invoiceId)
+    const { error: updErr } = await admin.from("invoices").update(updates).eq("id", body.invoiceId)
+      if (updErr) console.error("[einvoice/refresh-status] cập nhật thất bại:", updErr.message)
   }
 
   return NextResponse.json({

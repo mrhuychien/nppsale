@@ -119,21 +119,23 @@ export function NotificationBell() {
     if (n.is_read) return
     setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)))
     setUnreadCount((prev) => Math.max(0, prev - 1))
-    await supabase
+    const { error: readErr } = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("id", n.id)
+    if (readErr) console.error("[notifications] đánh dấu đã đọc thất bại:", readErr.message)
   }
 
   const markAllRead = async () => {
     if (!authUser?.id || unreadCount === 0) return
     setItems((prev) => prev.map((n) => ({ ...n, is_read: true })))
     setUnreadCount(0)
-    await supabase
+    const { error: readErr } = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("user_id", authUser.id)
       .eq("is_read", false)
+    if (readErr) console.error("[notification-bell] đánh dấu tất cả đã đọc thất bại:", readErr.message)
   }
 
   const handleClick = async (n: Notification) => {

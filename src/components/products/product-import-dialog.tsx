@@ -227,7 +227,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
       // Batch insert units cũng để an toàn.
       for (let i = 0; i < unitInserts.length; i += BATCH) {
         const slice = unitInserts.slice(i, i + BATCH)
-        await supabase.from("product_units").insert(slice)
+        await supabase.from("product_units").insert(slice).throwOnError()
       }
 
       toast({

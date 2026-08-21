@@ -342,12 +342,12 @@ export default function PendingStockPage() {
           conversion_factor_snapshot: 1,
           unit_cost: unitCost,
           notes: "Nhập lại",
-        })
+        }).throwOnError()
       }
 
       // 5. Mark sources as completed
       if (retIds.length > 0) {
-        await supabase.from("returns").update({ status: "completed" }).in("id", retIds)
+        await supabase.from("returns").update({ status: "completed" }).in("id", retIds).throwOnError()
       }
       // Failed delivery_lines: no clean status that means "restocked"; we set
       // the original order back to 'cancelled' to remove it from pipelines.

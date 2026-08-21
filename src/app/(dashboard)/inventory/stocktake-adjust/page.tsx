@@ -287,7 +287,7 @@ export default function StocktakeAdjustPage() {
           conversion_factor_snapshot: 1,
           unit_cost: r.batchCost,
           notes: r.notes || null,
-        })
+        }).throwOnError()
       }
 
       toast({

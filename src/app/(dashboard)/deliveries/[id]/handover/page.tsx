@@ -519,7 +519,7 @@ export default function DeliveryHandoverPage() {
             status: "completed",
             completed_at: new Date().toISOString(),
           })
-          .eq("id", delivery.id)
+          .eq("id", delivery.id).throwOnError()
         toast({
           title: "Tất cả đơn giao thành công",
           description: "Không có hàng cần nhập lại. Tiếp tục bước nộp tiền…",
@@ -688,7 +688,7 @@ export default function DeliveryHandoverPage() {
               return_id: returnId,
               ...dl,
             }))
-          )
+          ).throwOnError()
           // Trigger sync_return_credit_amount auto fills
           // returns.credit_note_amount = sum(line_total) where !is_exchange.
 

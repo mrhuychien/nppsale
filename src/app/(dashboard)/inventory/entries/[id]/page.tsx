@@ -257,7 +257,7 @@ export default function StockEntryDetailPage() {
           await supabase
             .from("batches")
             .update({ qty_on_hand: Number(b.qty_on_hand) - take })
-            .eq("id", b.id)
+            .eq("id", b.id).throwOnError()
           costSum += take * Number(b.unit_cost || 0)
           qtyTaken += take
           remaining -= take
@@ -280,7 +280,7 @@ export default function StockEntryDetailPage() {
       await supabase
         .from("stock_entries")
         .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", entry.id)
+        .eq("id", entry.id).throwOnError()
 
       // 3) Đơn → delivering. Lái xe / chủ xe đang trên đường giao;
       // trạng thái sẽ chuyển sang 'delivered' sau khi nộp tiền ở trang
@@ -351,7 +351,7 @@ export default function StockEntryDetailPage() {
           order_id: oid,
           status: "pending",
         }))
-        await supabase.from("delivery_lines").insert(deliveryLineRows)
+        await supabase.from("delivery_lines").insert(deliveryLineRows).throwOnError()
       }
 
       toast({

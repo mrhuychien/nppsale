@@ -206,14 +206,14 @@ export default function AdjustmentsPage() {
           source_type: "stocktake",
           source_id: a.id,
           created_by: user.id,
-        })
+        }).throwOnError()
       }
 
       // 3. Post the entry
       await supabase
         .from("stock_entries")
         .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", a.id)
+        .eq("id", a.id).throwOnError()
 
       toast({
         title: `Đã duyệt ${a.entry_code}`,
@@ -239,7 +239,7 @@ export default function AdjustmentsPage() {
       await supabase
         .from("stock_entries")
         .update({ status: "cancelled" })
-        .eq("id", a.id)
+        .eq("id", a.id).throwOnError()
       toast({ title: `Đã hủy ${a.entry_code}` })
       await fetchData()
     } catch (err) {

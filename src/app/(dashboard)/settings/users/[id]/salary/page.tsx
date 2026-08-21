@@ -229,7 +229,7 @@ export default function UserSalaryPage() {
   const deleteOc = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("salary_order_count_bonus_configs").delete().eq("id", rowId)
+      await supabase.from("salary_order_count_bonus_configs").delete().eq("id", rowId).throwOnError()
       await fetchData()
     } finally {
       setBusy(false)
@@ -267,7 +267,7 @@ export default function UserSalaryPage() {
   const deleteActivity = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("monthly_activity_bonuses").delete().eq("id", rowId)
+      await supabase.from("monthly_activity_bonuses").delete().eq("id", rowId).throwOnError()
       await fetchData()
     } finally {
       setBusy(false)

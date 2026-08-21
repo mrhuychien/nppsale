@@ -215,7 +215,7 @@ export default function PjpPage() {
         check_in_lat: position.coords.latitude,
         check_in_lng: position.coords.longitude,
         result: null,
-      })
+      }).throwOnError()
       await fetchTodayVisits()
     } catch (err) {
       console.error("Check-in error:", err)

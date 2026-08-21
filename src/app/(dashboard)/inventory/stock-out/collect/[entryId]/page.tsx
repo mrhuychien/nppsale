@@ -305,7 +305,7 @@ export default function CollectPaymentPage() {
         await supabase
           .from("receivables")
           .update({ paid: newPaid, status: newStatus })
-          .eq("id", r.receivableId)
+          .eq("id", r.receivableId).throwOnError()
 
         // Insert cash_receipt_line linking everything
         await supabase.from("cash_receipt_lines").insert({
@@ -325,7 +325,7 @@ export default function CollectPaymentPage() {
         await supabase
           .from("sales_orders")
           .update({ status: "delivered" })
-          .in("id", orderIds)
+          .in("id", orderIds).throwOnError()
       }
 
       toast({

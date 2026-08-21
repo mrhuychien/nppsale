@@ -231,7 +231,7 @@ export default function DeliverySettlePage() {
         await supabase
           .from("deliveries")
           .update({ settled_at: new Date().toISOString(), settled_amount: 0 })
-          .eq("id", delivery.id)
+          .eq("id", delivery.id).throwOnError()
         toast({
           title: "Đã hoàn tất chuyến",
           description: "Tất cả đơn giao thất bại — không có tiền cần thu.",
@@ -329,12 +329,12 @@ export default function DeliverySettlePage() {
             verified_by: user.id,
           })
           .select("id")
-          .single()
+          .single().throwOnError()
 
         await supabase
           .from("receivables")
           .update({ paid: newPaid, status })
-          .eq("id", r.id)
+          .eq("id", r.id).throwOnError()
 
         receiptLineRows.push({
           receipt_id: receiptId,
@@ -346,7 +346,7 @@ export default function DeliverySettlePage() {
         })
       }
       if (receiptLineRows.length > 0) {
-        await supabase.from("cash_receipt_lines").insert(receiptLineRows)
+        await supabase.from("cash_receipt_lines").insert(receiptLineRows).throwOnError()
       }
 
       // 4) Mark delivery as settled

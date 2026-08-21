@@ -165,7 +165,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **151 test / 8 file, tất cả xanh** |
+| `npm test` | ✅ **330 test / 14 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -187,9 +187,38 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/aggregate.test.ts` | Lấy đủ dữ liệu khi server chặn 1.000 dòng/lần, chia trang song song | 14 |
 | `tests/stock-check.test.ts` | Kiểm tồn khi soạn đơn: quy đổi đơn vị, cộng dồn nhiều dòng, hàng đổi | 27 |
 | `tests/aging-thresholds.test.ts` | Khoá ngưỡng tuổi nợ giữa SQL và TypeScript; các bất biến bảo mật của migration 093 | 7 |
+| `tests/permissions.test.ts` | Quyền theo module và theo tính năng, override là phần chênh lệch, owner không tự khoá được | 28 |
+| `tests/period.test.ts` | Mốc thời gian báo cáo: tuần bắt đầu thứ Hai, năm nhuận, kỳ so sánh không chồng lấn | 33 |
+| `tests/crypto.test.ts` | Mã hoá credentials MISA: khứ hồi, IV ngẫu nhiên, auth tag chống sửa đổi | 15 |
+| `tests/import-product.test.ts` | Đọc file Excel sản phẩm: header KiotViet, tiền/VAT, gộp đơn vị quy đổi | 39 |
+| `tests/import-customer-supplier.test.ts` | Đọc file khách hàng / NCC: chống trùng, điều khoản thanh toán, kênh bán | 31 |
+| `tests/misa-mapper.test.ts` | Dựng hoá đơn thuế: thuế tính sau chiết khấu, nhiều mức VAT, quy đổi đơn vị không đổi tổng tiền | 33 |
 
-⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
-tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
+**Độ phủ đo bằng `npx vitest run --coverage`** (tính trên `src/lib`):
+
+| Vùng | Dòng được phủ |
+|---|---|
+| `lib/inventory` (UOM, FIFO) | 100% |
+| `lib/customers`, `lib/products`, `lib/suppliers` (nhập file) | 92–99% |
+| `lib/utils` | 95% |
+| `permissions.ts`, `crypto.ts`, `analytics/period.ts`, `salary.ts`, `approval.ts` | 100% |
+| `lib` nói chung | 34,5% |
+
+⚠️ **Vẫn ở mức 0%** — xếp theo mức thiệt hại nếu sai:
+
+| Vùng | Vì sao đáng lo |
+|---|---|
+| `lib/payroll/run.ts`, `lib/payroll/bonus.ts` | Tính lương và thưởng thực trả |
+| `lib/orders/create.ts` + validator | Tạo đơn, kiểm hạn mức |
+| `lib/returns.ts`, `lib/receivables.ts` | Trả hàng và công nợ |
+| `lib/offline/*` | Đồng bộ đơn ngoại tuyến |
+| `lib/handover/confirm.ts`, `lib/locking/entity-lock.ts` | Bàn giao và khoá bản ghi |
+| `lib/misa/client.ts` | Gọi API MISA (phần dựng dữ liệu đã phủ 100%) |
+| Toàn bộ 123 trang giao diện | Chưa có test nào |
+
+Phần lớn nhóm còn lại là hàm bọc quanh truy vấn database, muốn test tử tế
+thì cần dựng client giả như `tests/fifo.test.ts` đang làm — làm được, chỉ
+là chưa làm.
 
 **Lưới an toàn tự động.** `.github/workflows/verify.yml` chạy typecheck → lint →
 test → build trên mỗi push vào `main` và mỗi pull request, cộng một bước **chặn

@@ -111,9 +111,16 @@ function parseChannel(raw: unknown): string | null {
   const s = String(raw ?? "").trim().toUpperCase()
   if (!s) return null
   if (VALID_CHANNELS.has(s)) return s
-  if (s.includes("GT") || s.includes("TRUYEN")) return "GT"
-  if (s.includes("MT") || s.includes("HIEN DAI") || s.includes("SIEU THI")) return "MT"
-  if (s.includes("HORECA") || s.includes("NHA HANG") || s.includes("KHACH SAN")) return "HORECA"
+  // Các nhánh dưới đây so với chuỗi KHÔNG DẤU nên phải bỏ dấu trước.
+  // Trước đây chỉ toUpperCase(): "Truyền thống" thành "TRUYỀN THỐNG",
+  // không bao giờ khớp "TRUYEN" — toàn bộ phần nhận diện tiếng Việt là
+  // code chết, người dùng gõ đúng tiếng Việt lại không được gán kênh.
+  const plain = normHeader(s)
+  if (plain.includes("gt") || plain.includes("truyen")) return "GT"
+  if (plain.includes("mt") || plain.includes("hien dai") || plain.includes("sieu thi")) return "MT"
+  if (plain.includes("horeca") || plain.includes("nha hang") || plain.includes("khach san")) {
+    return "HORECA"
+  }
   return null
 }
 

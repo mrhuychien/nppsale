@@ -72,19 +72,21 @@ export default function AccountantLedgerPage() {
       if (orderDataErr) console.error("[receivables/aging] truy vấn lỗi:", orderDataErr.message)
 
       // fetch payments via receivables for this customer
-      const { data: recData } = await supabase
+      const { data: recData, error: recDataErr } = await supabase
         .from("receivables")
         .select("id")
         .eq("customer_id", selectedId)
+      if (recDataErr) console.error("[receivables/aging] truy vấn lỗi:", recDataErr.message)
       const receivableIds = ((recData || []) as { id: string }[]).map((r) => r.id)
 
       let paymentData: Payment[] = []
       if (receivableIds.length > 0) {
-        const { data: payData } = await supabase
+        const { data: payData, error: payDataErr } = await supabase
           .from("payments")
           .select("id, amount, collected_at")
           .in("receivable_id", receivableIds)
           .order("collected_at")
+        if (payDataErr) console.error("[receivables/aging] truy vấn lỗi:", payDataErr.message)
         paymentData = (payData as Payment[]) || []
       }
 

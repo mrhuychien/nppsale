@@ -14,11 +14,12 @@ async function authorizeOwner(targetId: string) {
   if (!authUser) {
     return { error: NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 }) }
   }
-  const { data: caller } = await supabase
+  const { data: caller, error: callerErr } = await supabase
     .from("users")
     .select("role, org_id")
     .eq("id", authUser.id)
     .maybeSingle()
+  if (callerErr) console.error("[id/qr] truy vấn lỗi:", callerErr.message)
   if (!caller || caller.role !== "owner") {
     return {
       error: NextResponse.json(
@@ -28,11 +29,19 @@ async function authorizeOwner(targetId: string) {
     }
   }
   const admin = createAdminClient()
-  const { data: target } = await admin
+  const { data: target, error: targetErr } = await admin
     .from("users")
     .select("id, org_id, full_name, is_active")
     .eq("id", targetId)
     .maybeSingle()
+  // Truy vấn hỏng cũng cho target = null, tức là sẽ trả 404 "không tìm thấy"
+  // trong khi người dùng vẫn tồn tại. Tách riêng để còn lần ra được.
+  if (targetErr) {
+    console.error("[api/admin/users/qr] truy vấn người dùng lỗi:", targetErr.message)
+    return {
+      error: NextResponse.json({ error: "Lỗi truy vấn người dùng" }, { status: 500 }),
+    }
+  }
   if (!target || target.org_id !== caller.org_id) {
     return {
       error: NextResponse.json(

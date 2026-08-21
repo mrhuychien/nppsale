@@ -137,7 +137,10 @@ export default function StocktakeAdjustPage() {
   const loadAllStock = async () => {
     // Two-step load so products without any batch still show up (operator
     // can record a positive/negative adjustment against them).
-    const [{ data: prodData }, { data: batchData }] = await Promise.all([
+    const [
+      { data: prodData, error: prodErr },
+      { data: batchData, error: batchErr },
+    ] = await Promise.all([
       supabase
         .from("products")
         .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
@@ -149,6 +152,8 @@ export default function StocktakeAdjustPage() {
         .gt("qty_on_hand", 0),
     ])
     const batchesByProduct: Record<string, Batch[]> = {}
+    if (prodErr) console.error("[inventory/stocktake-adjust] truy vấn sản phẩm lỗi:", prodErr.message)
+    if (batchErr) console.error("[inventory/stocktake-adjust] truy vấn lô lỗi:", batchErr.message)
     for (const b of (batchData as Batch[]) || []) {
       if (!batchesByProduct[b.product_id]) batchesByProduct[b.product_id] = []
       batchesByProduct[b.product_id].push(b)

@@ -147,13 +147,26 @@ async function handlePublish(req: Request) {
     }
 
     if (invoice.order_id) {
-      const { data: order } = await admin
+      const { data: order, error: orderErr } = await admin
         .from("sales_orders")
         .select(
           "id, notes, customer:customers(store_name, billing_name, tax_code, billing_address, address, billing_email, channel, payment_method_label), lines:sales_order_lines(unit_name, quantity, unit_price, line_discount, conversion_factor, product:products(name, sku, base_unit, vat_rate))"
         )
         .eq("id", invoice.order_id)
         .maybeSingle()
+      // Đây là dữ liệu người mua trên HOÁ ĐƠN THUẾ. Nếu truy vấn hỏng mà
+      // bỏ qua thì hoá đơn vẫn phát hành nhưng thiếu mã số thuế / địa chỉ,
+      // và hoá đơn đã phát hành thì không sửa được — phải dừng tại đây.
+      if (orderErr) {
+        return NextResponse.json(
+          {
+            error:
+              "Không đọc được thông tin đơn hàng để lập hoá đơn. CHƯA phát hành, vui lòng thử lại: " +
+              orderErr.message,
+          },
+          { status: 500 }
+        )
+      }
       if (order) {
         // Supabase suy luận join là mảng (không biết FK 1-1) — chuẩn hoá:
         const rawCustomer = (order as { customer: unknown }).customer

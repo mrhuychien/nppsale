@@ -58,12 +58,18 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient()
 
     // Token nằm ở bảng riêng service_role-only (migration 088).
-    const { data: tokenRow } = await admin
+    const { data: tokenRow, error: tokenErr } = await admin
       .from("qr_login_tokens")
       .select("user_id, users!inner(is_active)")
       .eq("token", token)
       .maybeSingle()
 
+    // Giữ nguyên fail-closed, nhưng phải ghi log: nếu bảng token hỏng thì
+    // mọi nhân viên đều bị báo "mã QR không hợp lệ" và không ai biết vì sao.
+    if (tokenErr) {
+      console.error("[qr-login] truy vấn token lỗi:", tokenErr.message)
+      return fail("invalid")
+    }
     if (!tokenRow) return fail("invalid")
     const active = Array.isArray(tokenRow.users)
       ? (tokenRow.users[0] as { is_active: boolean } | undefined)?.is_active

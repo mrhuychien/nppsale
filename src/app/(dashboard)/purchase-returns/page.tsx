@@ -69,7 +69,8 @@ export default function PurchaseReturnsPage() {
         .eq("org_id", user.org_id)
         .order("created_at", { ascending: false })
       if (filter !== "all") q = q.eq("status", filter)
-      const { data } = await q
+      const { data , error: qErr } = await q
+      if (qErr) console.error("[purchase-returns] truy vấn lỗi:", qErr.message)
       setRows((data as unknown as Row[]) || [])
       setLoading(false)
     }

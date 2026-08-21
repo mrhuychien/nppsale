@@ -152,7 +152,10 @@ export default function StockEntryDetailPage() {
         ? (entryData.ref_order_ids as string[])
         : []
     if (refOrderIds.length > 0) {
-      const [{ data: orderRows }, { data: returnRows }] = await Promise.all([
+      const [
+        { data: orderRows, error: orderRowsErr },
+        { data: returnRows, error: returnRowsErr },
+      ] = await Promise.all([
         supabase
           .from("sales_orders")
           .select(
@@ -171,6 +174,8 @@ export default function StockEntryDetailPage() {
           .in("order_id", refOrderIds)
           .in("status", ["pending", "approved", "completed"]),
       ])
+      if (orderRowsErr) console.error("[inventory/entries] truy vấn đơn lỗi:", orderRowsErr.message)
+      if (returnRowsErr) console.error("[inventory/entries] truy vấn phiếu trả lỗi:", returnRowsErr.message)
       type ReturnRow = {
         id: string
         order_id: string
@@ -306,11 +311,12 @@ export default function StockEntryDetailPage() {
       // được sau khi thu tiền. Self-deliver = NPP / chủ xe trực tiếp
       // giao, driver_id chính là user hiện tại. Idempotent: nếu đã có
       // delivery cho stock_entry này thì skip (không double-create).
-      const { data: existingDelivery } = await supabase
+      const { data: existingDelivery, error: existingDeliveryErr } = await supabase
         .from("deliveries")
         .select("id")
         .eq("source_stock_entry_id", entry.id)
         .maybeSingle()
+      if (existingDeliveryErr) console.error("[entries/id] truy vấn lỗi:", existingDeliveryErr.message)
       let deliveryId = (existingDelivery as { id: string } | null)?.id ?? null
       if (!deliveryId) {
         const { data: newDelivery, error: delErr } = await supabase

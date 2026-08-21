@@ -151,11 +151,18 @@ export default function OrdersPage() {
           supabase.from("sales_orders").select("id", { count: "exact", head: true }).eq("status", s)
         ),
       ])
+      // Đếm hỏng thì mọi tab hiện 0 — trông y hệt "chưa có đơn nào".
+      const countErr = statusResps.find((r) => r?.error)?.error
+      if (countErr) console.error("[app/orders] đếm theo trạng thái lỗi:", countErr.message)
+
       const pendApprRes = await supabase
         .from("sales_orders")
         .select("id", { count: "exact", head: true })
         .eq("status", "draft")
         .not("approval_reason", "is", null)
+      if (pendApprRes.error) {
+        console.error("[app/orders] đếm đơn chờ duyệt lỗi:", pendApprRes.error.message)
+      }
       const counts: Record<string, number> = { all: totalC ?? 0 }
       statuses.forEach((s, i) => { counts[s] = statusResps[i].count ?? 0 })
       counts.pending_approval = pendApprRes.count ?? 0
@@ -522,11 +529,12 @@ export default function OrdersPage() {
       })
 
       // Refresh invoice map
-      const { data: updatedInv } = await supabase
+      const { data: updatedInv, error: updatedInvErr } = await supabase
         .from("invoices")
         .select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at")
         .eq("id", invoiceId)
         .single()
+      if (updatedInvErr) console.error("[orders] truy vấn lỗi:", updatedInvErr.message)
       if (updatedInv) {
         setInvoiceMap((prev) => ({ ...prev, [order.id]: updatedInv as Invoice }))
       }

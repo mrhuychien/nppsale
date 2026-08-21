@@ -116,10 +116,11 @@ export default function UserDetailPage() {
       }
 
       // Sync user_suppliers — diff state Set vs DB: delete cũ-không-còn, insert mới.
-      const { data: currentRows } = await supabase
+      const { data: currentRows, error: currentRowsErr } = await supabase
         .from("user_suppliers")
         .select("supplier_id")
         .eq("user_id", target.id)
+      if (currentRowsErr) console.error("[users/id] truy vấn lỗi:", currentRowsErr.message)
       const currentIds = new Set(
         ((currentRows as { supplier_id: string }[]) || []).map((r) => r.supplier_id)
       )

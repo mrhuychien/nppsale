@@ -28,10 +28,11 @@ sản phẩm thử nghiệm.
    `CREATE POLICY` thiếu `DROP POLICY IF EXISTS` → chạy lại sẽ lỗi "already
    exists" và dừng giữa chừng. Đây gần như chắc chắn là lý do database bị lệch
    ngay từ đầu. Nay toàn bộ migration đã idempotent.
-3. **Lỗi bị nuốt trên diện rộng** — *đã xử lý xong trong đợt này.* 47 thao tác
-   ghi và 190 truy vấn đọc từng bỏ qua `error`, khiến hệ thống hỏng mà **không
-   báo gì**. Nay thao tác ghi đều báo lỗi cho người dùng, truy vấn đọc đều ghi
-   log chẩn đoán. Duy trì bằng `python3 scripts/audit-unchecked-db.py`.
+3. **Lỗi bị nuốt trên diện rộng** — *đã xử lý xong trong đợt này.* Hàng trăm
+   thao tác ghi/đọc từng bỏ qua `error`, khiến hệ thống hỏng mà **không báo
+   gì**. Nay thao tác ghi đều báo lỗi cho người dùng, truy vấn đọc đều ghi log
+   chẩn đoán, và con số hiện là **0**. CI chạy
+   `scripts/audit-unchecked-db.py --strict` nên không thể tái diễn.
 
 **Có dùng được không?** Có. Cả ba điểm trên đã được xử lý trong đợt chuẩn bị bàn
 giao: schema đã đồng bộ, migration đã chạy lại được, và lỗi không còn bị nuốt.
@@ -69,9 +70,9 @@ Trình duyệt **gọi thẳng Supabase** cho hầu hết thao tác đọc/ghi (
 src/app/(dashboard)/     123 trang nghiệp vụ, nhóm theo module
 src/app/api/             8 route cần service_role (server-only)
 src/components/          75 component; ui/ là shadcn, còn lại theo nghiệp vụ
-src/lib/                 47 file logic thuần — NƠI ĐÁNG TIN CẬY NHẤT để sửa
+src/lib/                 48 file logic thuần — NƠI ĐÁNG TIN CẬY NHẤT để sửa
 src/hooks/               use-auth, use-order-sync, use-role-guard...
-supabase/migrations/     91 file, chạy TUẦN TỰ theo số
+supabase/migrations/     92 file, chạy TUẦN TỰ theo số
 supabase/diagnostics/    công cụ chẩn đoán sự cố (xem mục 8)
 tests/                   test đơn vị (vitest)
 ```
@@ -142,7 +143,8 @@ npm test                       # chỉ chạy test
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
 | `npm test` | ✅ **82 test / 4 file, tất cả xanh** |
-| CI | ✅ `.github/workflows/verify.yml` chạy cả 4 bước trên mỗi push vào `main` và mỗi PR |
+| CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
+| Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
 | `any` trong code | 2 (rất tốt) |
 | TODO/FIXME còn sót | 0 |
@@ -163,8 +165,8 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 tuyến, tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
 
 **Lưới an toàn tự động.** `.github/workflows/verify.yml` chạy typecheck → lint →
-test → build trên mỗi push vào `main` và mỗi pull request, cộng một bước cảnh báo
-(không chặn merge) đếm số truy vấn database chưa kiểm lỗi. Người tiếp nhận không
+test → build trên mỗi push vào `main` và mỗi pull request, cộng một bước **chặn
+merge** nếu xuất hiện truy vấn database không kiểm lỗi. Người tiếp nhận không
 cần nhớ chạy tay.
 
 ---
@@ -210,8 +212,8 @@ quả không có dòng nào = vẫn khớp.
 |---|---|---|---|---|
 | 1 | ✅ Đã sửa | DB production lệch so với migration | Từng là nguyên nhân gốc của ≥3 sự cố | `migrations/091_backfill_missing_objects.sql` |
 | 2 | ✅ Đã sửa | 141 `CREATE POLICY` thiếu `DROP IF EXISTS` | Từng khiến migration không chạy lại được → cài đặt dở dang. Nay đã idempotent | `scripts/make-policies-idempotent.py` |
-| 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi (đo lại: 47, không phải 191) | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | 47 → 0 |
-| 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` (đo lại: 190) | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | 190 → 7 file |
+| 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | **0 còn lại**, CI chặn tái diễn |
+| 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | **0 còn lại**, CI chặn tái diễn |
 | 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
 | 6 | 🟡 Trung | **81 file có truy vấn không giới hạn số dòng** | Chạy tốt lúc dữ liệu nhỏ; chậm dần rồi treo khi dữ liệu lớn | `src/app/(dashboard)/**` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.082) | Khó đọc, khó test, dễ gây hồi quy khi sửa | `orders/[id]/page.tsx`, `order-form.tsx`… |
@@ -225,6 +227,25 @@ quả không có dòng nào = vẫn khớp.
   khai thác**. Chỉ hết cảnh báo khi lên Next 15.
 - `nanoid`, `postcss`, `ws` → phụ thuộc gián tiếp, không nằm trên đường đi của
   dữ liệu người dùng. Rủi ro thực tế thấp.
+
+### 5.1b Về hai con số ở dòng 3–4: bản đo trước đây ĐẾM THIẾU
+
+Bản `scripts/audit-unchecked-db.py` đầu tiên soi trong một cửa sổ cố định
+12 dòng. Cách đó sai theo cả hai chiều:
+
+- **Báo nhầm:** chuỗi dài (`.insert({…10 dòng…}).select().single().throwOnError()`)
+  có phần kiểm lỗi rơi ra ngoài cửa sổ → bị coi là chưa kiểm.
+- **Bỏ sót:** khử trùng theo khoảng cách dòng nên khi hai lời gọi nằm sát
+  nhau, lời gọi thứ hai bị nuốt mất và không bao giờ được báo.
+
+Vì vậy con số "47 ghi / 190 đọc" từng ghi ở đây là **thấp hơn thực tế**.
+Máy dò hiện tại bám theo phạm vi biểu thức thật (độ sâu ngoặc), hiểu bốn
+cách viết đang dùng trong dự án — destructure `{ error }`, `.throwOnError()`,
+`const r = … / if (r.error)`, và kiểm gộp sau `Promise.all([…])` — nên đo
+lại đúng hơn hẳn. Kết quả sau khi vá: **0 và 0**.
+
+`npm run verify` chưa gọi máy dò này, nhưng CI thì có, và chạy ở chế độ
+`--strict`: thêm một truy vấn không kiểm lỗi là pull request đỏ ngay.
 
 ### 5.1a `xlsx` — đã làm gì, còn phải làm gì
 
@@ -324,7 +345,7 @@ nào đã thực sự chạy trên production**.
 7. **Chạy `migrations/092_rls_hardening.sql`**, rồi nhờ mỗi vai trò mở thử một trang (xem 5.2).
 
 **Tháng 1 — ổn định**
-5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — còn 7 file, dùng `scripts/audit-unchecked-db.py` để theo dõi.
+5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — **0 còn lại**; CI chạy `audit-unchecked-db.py --strict` để không tái diễn.
 6. ✅ ~~Cách ly việc phân tích file tải lên~~ — đã có `xlsx-safe.ts`. Còn lệnh nâng thư viện bạn tự chạy, xem 5.1a.
 7. ✅ ~~Phủ test cho lương/thưởng~~ — 21 test. **Còn FIFO kho** — chỗ sai là ra tiền.
 8. Phân trang cho các truy vấn không giới hạn (81 file).

@@ -99,13 +99,93 @@ def span_start(lines, i):
           ? await supabase.from(...).update(...)   ← dòng bị soi
           : await supabase.from(...).insert(...)
     Lùi cố định 4 dòng sẽ bỏ sót chữ `error` và báo nhầm.
+
+    Quy tắc: dòng j thuộc cùng câu lệnh với dòng j+1 khi j+1 là phần NỐI
+    TIẾP của nó — bắt đầu bằng `.` (nối chuỗi) hoặc `?` / `:` (nhánh
+    ternary). Cứ lùi chừng nào điều đó còn đúng.
+
+    Không dùng "dòng kết thúc bằng ; { }" làm mốc dừng: `setLoading(true)`
+    kết thúc bằng `)` nên không khớp, và việc lùi sẽ chạy quá đầu câu lệnh.
     """
-    for j in range(i - 1, max(-1, i - 13), -1):
-        s = lines[j].strip()
-        # Dòng trống hoặc dòng kết thúc câu lệnh/khối → câu lệnh bắt đầu ngay sau.
-        if not s or s.endswith((";", "{", "}")):
-            return j + 1
-    return max(0, i - 12)
+    j = i
+    while j > 0 and j > i - 13:
+        if not lines[j].strip().startswith((".", "?", ":")):
+            break
+        j -= 1
+    return j
+
+
+def promise_all_checked(lines, i):
+    """
+    Mẫu gom nhiều truy vấn:
+
+        const [aRes, bRes] = await Promise.all([
+          supabase.from("a").select(...),     ← từng phần tử KHÔNG có `error`
+          supabase.from("b").select(...),
+        ])
+        const qErr = [aRes, bRes].find((r) => r?.error)?.error   ← kiểm ở đây
+
+    Phần kiểm lỗi nằm SAU cả mảng nên không thể thấy được nếu chỉ soi trong
+    phạm vi từng phần tử. Nếu không xử lý, mỗi phần tử bị báo nhầm một lần —
+    và vài trăm cảnh báo giả sẽ chôn mất những lỗi thật.
+
+    Cách làm: tìm ngược `Promise.all([` bao quanh, nhảy tới `])` đóng của nó,
+    rồi soi vài dòng ngay sau xem có kiểm lỗi không.
+    """
+    open_at = None
+    for j in range(i, max(-1, i - 80), -1):
+        if "Promise.all([" in lines[j]:
+            open_at = j
+            break
+        # Gặp đầu một câu lệnh khác → không nằm trong Promise.all nào.
+        if lines[j].strip().endswith((";", "{", "}")):
+            return False
+    if open_at is None:
+        return False
+
+    # Chỉ đếm ngoặc vuông TỪ SAU token `Promise.all([`. Dòng mở thường là
+    # `] = await Promise.all([` — phần `]` bên trái thuộc về destructure,
+    # nếu đếm luôn thì hai dấu triệt tiêu nhau và mảng bị coi là đóng ngay.
+    head = lines[open_at].split("Promise.all([", 1)[1]
+    depth = 1 + head.count("[") - head.count("]")
+    for j in range(open_at, min(open_at + 200, len(lines))):
+        if j > open_at:
+            depth += lines[j].count("[") - lines[j].count("]")
+        if j > open_at and depth <= 0:
+            after = "\n".join(lines[j : j + 6])
+            return bool(re.search(r"\berror\b|\w+Err\b", after))
+    return False
+
+
+def builder_checked(lines, i):
+    """
+    Mẫu dựng query dần rồi mới await:
+
+        let q = supabase.from("x").select(...)      ← chỗ bị soi
+        if (filter) q = q.eq(...)
+        const { data, error } = await q             ← kiểm lỗi ở đây
+
+    Phần kiểm lỗi cách chỗ khai báo cả chục dòng nên không nằm trong phạm
+    vi biểu thức. Cách xử lý: lấy tên biến rồi tìm chỗ nó được await (hoặc
+    truyền vào selectResilient / trả về cho hàm gọi) và soi ở đó.
+    """
+    # `i` thường trỏ vào dòng `.from("x")` giữa chuỗi, nên phải lùi về đầu
+    # câu lệnh mới thấy được `let q = supabase`.
+    head = span_start(lines, i)
+    m = re.match(r"\s*(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=", lines[head])
+    if not m:
+        return False
+    name = re.escape(m.group(1))
+    for j in range(i + 1, min(i + 60, len(lines))):
+        # Query được nhét vào một Promise.all — phần kiểm lỗi nằm ở đó.
+        if re.match(r"\s*%s\s*,?\s*$" % name, lines[j]):
+            return promise_all_checked(lines, j)
+        if re.search(r"await\s+%s\b" % name, lines[j]):
+            return bool(re.search(r"\berror\b|\w+Err\b", "\n".join(lines[max(0, j - 2) : j + 4])))
+        # Trả query ra ngoài (build = (select) => ...) → nơi gọi chịu trách nhiệm.
+        if re.search(r"return\s+%s\b" % name, lines[j]):
+            return True
+    return False
 
 
 def analyse(path):
@@ -123,7 +203,11 @@ def analyse(path):
             continue
 
         end = span_end(lines, i)
-        window = "\n".join(lines[span_start(lines, i) : end])
+        # Ít nhất 3 dòng phía trên: đủ để thấy `const { data, error } =` và
+        # ghi chú `// audit-ok:` đặt ngay trên lời gọi. Câu lệnh dài hơn thì
+        # span_start lùi xa hơn.
+        start = min(span_start(lines, i), max(0, i - 3))
+        window = "\n".join(lines[start:end])
         # Xác định loại thao tác trong cửa sổ
         op = None
         for w in WRITE_OPS:
@@ -136,13 +220,15 @@ def analyse(path):
             else:
                 continue
 
-        # Đã kiểm lỗi chưa?
-        checked = bool(
-            re.search(r"\berror\b", window)
-            or re.search(r"\w+Err\b", window)
+        # Đã kiểm lỗi chưa? Bốn cách, tương ứng bốn cách viết trong dự án.
+        checked = (
+            re.search(r"\berror\b|\w+Err\b", window)
             or "selectResilient" in window
             or "throwOnError" in window
-        ) or checked_after(lines, end, window)
+            or checked_after(lines, end, window)
+            or promise_all_checked(lines, i)
+            or builder_checked(lines, i)
+        )
         if checked:
             continue
 
@@ -186,7 +272,7 @@ def main():
 
     if "--json" in sys.argv:
         print(json.dumps(dedup, ensure_ascii=False, indent=1))
-        return
+        return 0
 
     ghi = [f for f in dedup if f["op"] == "ghi"]
     doc = [f for f in dedup if f["op"] == "doc"]
@@ -194,14 +280,21 @@ def main():
     print(f"ĐỌC không kiểm lỗi (rỗng im lặng): {len(doc)}")
     print()
 
-    by_file = {}
-    for f in ghi:
-        by_file.setdefault(f["file"], 0)
-        by_file[f["file"]] += 1
-    print("Top file có thao tác GHI chưa kiểm:")
-    for path, n in sorted(by_file.items(), key=lambda x: -x[1])[:20]:
-        print(f"  {n:3d}  {path}")
+    for f in dedup:
+        print(f"  {f['op'].upper()}  {f['file']}:{f['line']}  {f['code']}")
+
+    # Cả hai con số hiện đang bằng 0. Chạy kèm --strict trong CI để giữ
+    # nguyên như vậy: thêm một truy vấn không kiểm lỗi là build đỏ ngay,
+    # thay vì lặng lẽ tích lũy lại như trước.
+    if "--strict" in sys.argv and dedup:
+        print(
+            "\nLỖI: có truy vấn chưa kiểm lỗi. Thêm `error` vào destructure,"
+            "\n     hoặc `.throwOnError()` nếu đang ở trong try/catch."
+            "\n     Nếu CỐ Ý bỏ qua, ghi `// audit-ok: <lý do>` ngay trên lời gọi."
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -22,11 +22,12 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileErr } = await supabase
     .from("users")
     .select("role")
     .eq("id", session.user.id)
     .maybeSingle()
+  if (profileErr) console.error("[src/app/(dashboard)/layout.tsx] truy vấn lỗi:", profileErr.message)
 
   const role: Role = (profile?.role ?? "sales") as Role
 

@@ -41,12 +41,16 @@ async function handle(req: Request) {
   }
 
   const admin = createAdminClient()
-  const { data: invoice } = await admin
+  const { data: invoice, error: invoiceErr } = await admin
     .from("invoices")
     .select("id, misa_lookup_code, misa_invoice_id, org_id")
     .eq("id", body.invoiceId)
     .eq("org_id", profile.org_id)
     .maybeSingle()
+  if (invoiceErr) {
+    console.error("[api/einvoice/refresh-status] truy vấn hoá đơn lỗi:", invoiceErr.message)
+    return NextResponse.json({ error: "Lỗi truy vấn hoá đơn" }, { status: 500 })
+  }
   if (!invoice) return NextResponse.json({ error: "Không tìm thấy HD" }, { status: 404 })
 
   // MISA LAYTHONGTINHD lookup theo RefID (GUID hoá đơn) = misa_invoice_id.
@@ -60,11 +64,15 @@ async function handle(req: Request) {
     )
   }
 
-  const { data: cfg } = await admin
+  const { data: cfg, error: cfgErr } = await admin
     .from("company_einvoice_config")
     .select("api_base, tax_code, token_path, publish_path, username_enc, password_enc, misa_is_invoice_with_code")
     .eq("org_id", profile.org_id)
     .maybeSingle()
+  if (cfgErr) {
+    console.error("[api/einvoice/refresh-status] truy vấn cấu hình lỗi:", cfgErr.message)
+    return NextResponse.json({ error: "Lỗi truy vấn cấu hình MISA" }, { status: 500 })
+  }
   if (!cfg) return NextResponse.json({ error: "Chưa cấu hình MISA" }, { status: 400 })
 
   const misaConfig: MisaConfig = {

@@ -254,10 +254,11 @@ export default function PendingStockPage() {
         if (dLinesErr) console.error("[inventory/pending] truy vấn lỗi:", dLinesErr.message)
         const orderIds = Array.from(new Set(((dLines as Array<{ order_id: string }>) || []).map((l) => l.order_id)))
         if (orderIds.length > 0) {
-          const { data: oLines } = await supabase
+          const { data: oLines, error: oLinesErr } = await supabase
             .from("sales_order_lines")
             .select("product_id, quantity, unit_name")
             .in("order_id", orderIds)
+          if (oLinesErr) console.error("[inventory/pending] truy vấn lỗi:", oLinesErr.message)
           for (const l of (oLines as Array<{ product_id: string; quantity: number; unit_name: string }>) || []) {
             const key = l.product_id
             const entry = byProduct[key] || { qty: 0, unitName: l.unit_name || "" }
@@ -303,12 +304,13 @@ export default function PendingStockPage() {
 
         // Try to add to an existing batch for this product (any with qty_on_hand >= 0)
         // to avoid creating orphan batches on every restock. Fall back to new batch.
-        const { data: existingBatches } = await supabase
+        const { data: existingBatches, error: existingBatchesErr } = await supabase
           .from("batches")
           .select("id, qty_on_hand, unit_cost")
           .eq("product_id", productId)
           .order("expires_at", { ascending: false })
           .limit(1)
+        if (existingBatchesErr) console.error("[inventory/pending] truy vấn lỗi:", existingBatchesErr.message)
         type B = { id: string; qty_on_hand: number; unit_cost: number }
         const first = (existingBatches as B[] | null)?.[0]
         let batchId: string | null = null

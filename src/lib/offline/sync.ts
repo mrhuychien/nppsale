@@ -55,11 +55,12 @@ export async function syncOutbox(): Promise<SyncResult> {
       // Chưa xác thực (token hết hạn khi offline lâu) → để nguyên hàng chờ.
       return { synced: 0, remaining: (await listOutbox()).length, failed: 0 }
     }
-    const { data: profile } = await supabase
+    const { data: profile, error: profileErr } = await supabase
       .from("users")
       .select("org_id")
       .eq("id", user.id)
       .maybeSingle()
+    if (profileErr) console.error("[offline] truy vấn lỗi:", profileErr.message)
     const orgId = (profile as { org_id?: string } | null)?.org_id
     if (!orgId) return { synced: 0, remaining: (await listOutbox()).length, failed: 0 }
 

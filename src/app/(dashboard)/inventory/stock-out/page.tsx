@@ -180,6 +180,7 @@ export default function StockOutPage() {
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
 
+      if (ordersRes.error) console.error("[inventory/stock-out] truy vấn lỗi:", ordersRes.error.message)
       const typed = ((ordersRes.data as unknown) as OrderWithRelations[]) || []
       setOrders(typed)
 

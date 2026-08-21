@@ -130,6 +130,9 @@ export function OrderForm() {
       ])
       let [custRes, prodRes] = results
       const batchRes = results[2]
+      // Không có fallback như hai truy vấn trên, nhưng vẫn phải ghi lại:
+      // lỗi ở đây làm mọi sản phẩm hiện tồn kho 0 mà không báo gì.
+      if (batchRes.error) console.error("[order-form] batches query failed:", batchRes.error.message)
       // Fallback: nếu DB thiếu cột (migration chưa chạy đủ) thì query cột
       // tường minh trả 400 → danh sách rỗng im lặng. Thử lại bằng '*' để
       // form vẫn dùng được, đồng thời log + toast để chẩn đoán.

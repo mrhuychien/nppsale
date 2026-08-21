@@ -70,12 +70,13 @@ export async function fetchPnl(
   }
 
   // Expenses grouped by bucket
-  const { data: expenseRows } = await supabase
+  const { data: expenseRows, error: expenseRowsErr } = await supabase
     .from("expenses")
     .select("amount, category:expense_categories(bucket)")
     .eq("org_id", orgId)
     .gte("expense_date", period.from)
     .lte("expense_date", period.to)
+  if (expenseRowsErr) console.error("[src/lib/finance.ts] truy vấn lỗi:", expenseRowsErr.message)
 
   const expensesByBucket: Record<ExpenseBucket, number> = {
     cogs: 0, operating: 0, hr: 0, financial: 0, tax: 0, other: 0,

@@ -153,23 +153,25 @@ export default function AdjustmentsPage() {
         if (diff === 0) continue
 
         if (l.batch_id) {
-          const { data: b } = await supabase
+          const { data: b, error: bErr } = await supabase
             .from("batches")
             .select("qty_on_hand")
             .eq("id", l.batch_id)
             .maybeSingle()
+          if (bErr) console.error("[inventory/adjustments] truy vấn lỗi:", bErr.message)
           const current = Number((b as { qty_on_hand?: number } | null)?.qty_on_hand) || 0
           const newQty = Math.max(0, current + diff)
           await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", l.batch_id).throwOnError()
         } else if (diff < 0) {
           // Shrinkage, no batch → FEFO deduct
           let remaining = -diff
-          const { data: batches } = await supabase
+          const { data: batches, error: batchesErr } = await supabase
             .from("batches")
             .select("id, qty_on_hand")
             .eq("product_id", l.product_id)
             .gt("qty_on_hand", 0)
             .order("expires_at", { ascending: true })
+          if (batchesErr) console.error("[inventory/adjustments] truy vấn lỗi:", batchesErr.message)
           for (const b of (batches as Array<{ id: string; qty_on_hand: number }>) || []) {
             if (remaining <= 0) break
             const take = Math.min(remaining, Number(b.qty_on_hand))
@@ -178,12 +180,13 @@ export default function AdjustmentsPage() {
           }
         } else if (diff > 0) {
           // Surplus, no batch → add to the latest batch, or create a floating batch
-          const { data: batches } = await supabase
+          const { data: batches, error: batchesErr } = await supabase
             .from("batches")
             .select("id, qty_on_hand")
             .eq("product_id", l.product_id)
             .order("expires_at", { ascending: false })
             .limit(1)
+          if (batchesErr) console.error("[inventory/adjustments] truy vấn lỗi:", batchesErr.message)
           const first = (batches as Array<{ id: string; qty_on_hand: number }>)?.[0]
           if (first) {
             await supabase

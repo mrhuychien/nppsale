@@ -39,11 +39,12 @@ export async function POST(req: Request) {
     if (!authUser) {
       return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
     }
-    const { data: callerProfile } = await supabase
+    const { data: callerProfile, error: callerProfileErr } = await supabase
       .from("users")
       .select("role, org_id")
       .eq("id", authUser.id)
       .maybeSingle()
+    if (callerProfileErr) console.error("[users/qr] truy vấn lỗi:", callerProfileErr.message)
     if (!callerProfile || callerProfile.role !== "owner") {
       return NextResponse.json(
         { error: "Chỉ Chủ sở hữu mới được tạo người dùng" },

@@ -72,12 +72,13 @@ export default function CashReceiptDetailPage() {
     if (rErr) console.error("[cash-receipts/id] truy vấn lỗi:", rErr.message)
     setReceipt((r as unknown as CashReceipt) || null)
 
-    const { data: ls } = await supabase
+    const { data: ls, error: lsErr } = await supabase
       .from("cash_receipt_lines")
       .select(
         "id, payment_id, amount, order:sales_orders(id, order_code, customer:customers(store_name, phone))"
       )
       .eq("receipt_id", id)
+    if (lsErr) console.error("[cash-receipts/id] truy vấn lỗi:", lsErr.message)
     setLines((ls as unknown as ReceiptLineWithOrder[]) || [])
 
     // Resolve linked delivery — used for "Chi tiết chuyến" link in
@@ -98,11 +99,12 @@ export default function CashReceiptDetailPage() {
       setDelivery((d as { id: string; route_name: string | null } | null) || null)
     } else if (sourceType === "manual" && sourceId) {
       // Self-deliver flow — receipt source_id is stock_entry.id.
-      const { data: d } = await supabase
+      const { data: d, error: dErr2 } = await supabase
         .from("deliveries")
         .select("id, route_name")
         .eq("source_stock_entry_id", sourceId)
         .maybeSingle()
+      if (dErr2) console.error("[cash-receipts/id] truy vấn lỗi:", dErr2.message)
       setDelivery((d as { id: string; route_name: string | null } | null) || null)
     } else {
       setDelivery(null)

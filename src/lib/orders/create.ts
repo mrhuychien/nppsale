@@ -94,11 +94,12 @@ export async function createOrderRecords(
   if (orderErr) {
     // 23505 = trùng client_request_id → đơn đã được đẩy ở lần thử trước.
     if ((orderErr as { code?: string }).code === "23505") {
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from("sales_orders")
         .select("id")
         .eq("client_request_id", payload.clientRequestId)
         .maybeSingle()
+      if (existingErr) console.error("[orders] truy vấn lỗi:", existingErr.message)
       if (existing?.id) return { orderId: existing.id as string, alreadyExisted: true }
     }
     throw orderErr

@@ -10,11 +10,17 @@ async function authOrgRole() {
   const supa = createServerSupabaseClient()
   const { data: { user } } = await supa.auth.getUser()
   if (!user) return { error: "Chưa đăng nhập", status: 401 as const }
-  const { data: profile } = await supa
+  const { data: profile, error: profileErr } = await supa
     .from("users")
     .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle()
+  // Truy vấn hỏng → profile null → báo 403 "không đủ quyền" dù người dùng
+  // có quyền thật. Fail-closed nên an toàn, nhưng phải phân biệt được.
+  if (profileErr) {
+    console.error("[api/einvoice/config] truy vấn hồ sơ lỗi:", profileErr.message)
+    return { error: "Lỗi truy vấn hồ sơ người dùng", status: 500 as const }
+  }
   if (!profile || !["owner", "accountant"].includes(profile.role)) {
     return { error: "Chỉ Chủ NPP hoặc Kế toán mới được cấu hình hoá đơn điện tử", status: 403 as const }
   }

@@ -62,17 +62,19 @@ export default function InvoicePrintPage() {
 
     // Fetch order lines if linked to an order
     if (invoiceData.order_id) {
-      const { data: orderData } = await supabase
+      const { data: orderData, error: orderDataErr } = await supabase
         .from("sales_orders")
         .select("id, order_code")
         .eq("id", invoiceData.order_id)
         .single()
+      if (orderDataErr) console.error("[id/print] truy vấn lỗi:", orderDataErr.message)
       if (orderData) setOrder(orderData as SalesOrder)
 
-      const { data: linesData } = await supabase
+      const { data: linesData, error: linesDataErr } = await supabase
         .from("sales_order_lines")
         .select("id, unit_name, quantity, unit_price, line_total, product:products(*)")
         .eq("order_id", invoiceData.order_id)
+      if (linesDataErr) console.error("[id/print] truy vấn lỗi:", linesDataErr.message)
       if (linesData) setLines(linesData as unknown as SalesOrderLine[])
     }
 

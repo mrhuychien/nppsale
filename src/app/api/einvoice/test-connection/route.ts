@@ -52,11 +52,15 @@ async function handle(req: Request) {
   const orgId = profile.org_id as string
 
   const admin = createAdminClient()
-  const { data: cfg } = await admin
+  const { data: cfg, error: cfgErr } = await admin
     .from("company_einvoice_config")
     .select("api_base, tax_code, token_path, publish_path, username_enc, password_enc")
     .eq("org_id", orgId)
     .maybeSingle()
+  if (cfgErr) {
+    console.error("[api/einvoice/test-connection] truy vấn cấu hình lỗi:", cfgErr.message)
+    return NextResponse.json({ error: "Lỗi truy vấn cấu hình MISA" }, { status: 500 })
+  }
   if (!cfg) {
     return NextResponse.json(
       { error: "Chưa có cấu hình. Lưu cấu hình MISA trước (api_base + MST + username/password)." },

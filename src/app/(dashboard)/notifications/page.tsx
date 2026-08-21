@@ -86,7 +86,8 @@ export default function NotificationsPage() {
     if (typeFilter !== "all") q = q.eq("type", typeFilter)
     if (readFilter === "unread") q = q.eq("is_read", false)
     if (readFilter === "read") q = q.eq("is_read", true)
-    const { data, count } = await q
+    const { data, count , error: qErr } = await q
+    if (qErr) console.error("[notifications] truy vấn lỗi:", qErr.message)
     setItems((data as Notification[]) || [])
     pg.setTotal(count ?? 0)
     setLoading(false)

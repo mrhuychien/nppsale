@@ -132,13 +132,14 @@ export default function PjpPage() {
   // Fetch available customers for adding (manager only)
   const fetchCustomers = useCallback(async () => {
     if (!user || !isManager) return
-    const { data } = await supabase
+    const { data, error: dataErr2 } = await supabase
       .from("customers")
       .select("id, store_name, address")
       .eq("org_id", user.org_id)
       .eq("status", "active")
       .order("store_name")
       .limit(500)
+    if (dataErr2) console.error("[sales/pjp] truy vấn lỗi:", dataErr2.message)
     if (data) setCustomers(data)
   }, [user, isManager, supabase])
 

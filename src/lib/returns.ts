@@ -42,19 +42,21 @@ export async function processApprovedReturn(
   returnId: string,
   userId: string
 ): Promise<ProcessResult> {
-  const { data: ret } = await supabase
+  const { data: ret, error: retErr } = await supabase
     .from("returns")
     .select("id, org_id, order_id, customer_id, credit_note_amount, status, notes")
     .eq("id", returnId)
     .single()
+  if (retErr) console.error("[src/lib/returns.ts] truy vấn lỗi:", retErr.message)
   const r = (ret as ReturnRow | null) ?? null
   if (!r) return { ok: false, error: "Không tìm thấy phiếu trả hàng" }
   if (r.status === "completed") return { ok: true }
 
-  const { data: linesData } = await supabase
+  const { data: linesData, error: linesDataErr } = await supabase
     .from("return_lines")
     .select("id, product_id, unit_name, quantity, unit_price, line_total")
     .eq("return_id", returnId)
+  if (linesDataErr) console.error("[src/lib/returns.ts] truy vấn lỗi:", linesDataErr.message)
   const lines = (linesData as ReturnLineRow[]) || []
 
   // 1. Stock entry header (skip when there are no lines — the return is
@@ -93,12 +95,13 @@ export async function processApprovedReturn(
     for (const productId of Object.keys(byProduct)) {
       const qty = byProduct[productId]
       if (qty <= 0) continue
-      const { data: existingBatches } = await supabase
+      const { data: existingBatches, error: existingBatchesErr } = await supabase
         .from("batches")
         .select("id, qty_on_hand, unit_cost")
         .eq("product_id", productId)
         .order("expires_at", { ascending: false })
         .limit(1)
+      if (existingBatchesErr) console.error("[src/lib/returns.ts] truy vấn lỗi:", existingBatchesErr.message)
       type B = { id: string; qty_on_hand: number; unit_cost: number }
       const first = (existingBatches as B[] | null)?.[0]
       if (first) {

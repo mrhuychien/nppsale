@@ -271,11 +271,12 @@ export default function CollectPaymentPage() {
           // Receivable chưa tồn tại — tạo (idempotent)
           const { ensureReceivableForOrder } = await import("@/lib/receivables")
           await ensureReceivableForOrder(supabase, r.orderId)
-          const { data: re } = await supabase
+          const { data: re, error: reErr } = await supabase
             .from("receivables")
             .select("id, amount, paid")
             .eq("order_id", r.orderId)
             .maybeSingle()
+          if (reErr) console.error("[collect/entryId] truy vấn lỗi:", reErr.message)
           if (!re) continue
           r.receivableId = (re as { id: string }).id
           r.alreadyPaid = Number((re as { paid: number }).paid || 0)

@@ -237,11 +237,12 @@ export default function SetupWizardPage() {
   const finish = async () => {
     if (!user?.org_id) return
     setSaving(true)
-    const { data: orgRow } = await supabase
+    const { data: orgRow, error: orgRowErr2 } = await supabase
       .from("organizations")
       .select("settings")
       .eq("id", user.org_id)
       .maybeSingle()
+    if (orgRowErr2) console.error("[setup] truy vấn lỗi:", orgRowErr2.message)
     const existing = ((orgRow as { settings?: Record<string, unknown> } | null)?.settings || {}) as Record<string, unknown>
     const { error } = await supabase
       .from("organizations")

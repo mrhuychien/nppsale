@@ -69,12 +69,13 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
   // Load sales routes (tuyến bán hàng) once
   useEffect(() => {
     async function fetchRoutes() {
-      const { data } = await createClient()
+      const { data, error } = await createClient()
         .from("sales_routes")
         .select("code, name")
         .eq("is_active", true)
         .order("sort_order")
         .order("code")
+      if (error) console.error("[customers/customer-form] truy vấn tuyến lỗi:", error.message)
       setSalesRoutes((data as Array<{ code: string; name: string }>) || [])
     }
     fetchRoutes()
@@ -84,12 +85,13 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
   useEffect(() => {
     if (!customer?.id) return
     async function fetchPjp() {
-      const { data } = await createClient()
+      const { data, error } = await createClient()
         .from("pjp_routes")
         .select("id, day_of_week, sales_user:users(full_name)")
         .eq("customer_id", customer!.id)
         .eq("is_active", true)
         .order("day_of_week")
+      if (error) console.error("[customers/customer-form] truy vấn PJP lỗi:", error.message)
       if (data) {
         setPjpRoutes(
           data.map((r: Record<string, unknown>) => ({

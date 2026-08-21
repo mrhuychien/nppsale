@@ -123,7 +123,8 @@ export default function PurchaseInvoicesLookupPage() {
         q = q.ilike("entry_code", term)
       }
       if (debtFilter === "no_supplier") q = q.is("supplier_id", null)
-      const { data: entriesData, count } = await q
+      const { data: entriesData, count , error: qErr } = await q
+      if (qErr) console.error("[purchasing/invoices] truy vấn lỗi:", qErr.message)
       if (cancelled) return
 
       const entries = (entriesData as unknown as Array<Omit<ImportRow, "payable">>) || []

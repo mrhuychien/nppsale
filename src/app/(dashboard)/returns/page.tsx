@@ -97,10 +97,11 @@ export default function ReturnsPage() {
       const counts: Record<string, number> = {}
       await Promise.all(
         RETURN_REASONS.map(async (r) => {
-          const { count } = await supabase
+          const { count, error: countErr } = await supabase
             .from("returns")
             .select("id", { count: "exact", head: true })
             .eq("reason", r.value)
+          if (countErr) console.error("[app/returns] đếm theo lý do lỗi:", countErr.message)
           counts[r.value] = count ?? 0
         })
       )
@@ -131,7 +132,8 @@ export default function ReturnsPage() {
       if (filterActive("reason") && reasonFilter !== "all") {
         q = q.eq("reason", reasonFilter)
       }
-      const { data, count } = await q
+      const { data, count , error: qErr } = await q
+      if (qErr) console.error("[returns] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       const raw = (data as unknown as Return[]) || []
       // Search cross-table (customer/requester/order) → client-side trên page.

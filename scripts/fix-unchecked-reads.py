@@ -62,9 +62,30 @@ def expression_end(src: str, start: int) -> int:
     return n
 
 
+def route_tag(path: str) -> str:
+    """
+    Nhãn ngắn đứng đầu dòng console.error, để mở console là biết ngay lỗi
+    đến từ trang nào.
+
+    Lấy thư mục cha thôi thì hỏng với route động: `.../cash-receipts/[id]/`
+    cho ra nhãn `[[id]]` — vô nghĩa, mà lại còn khác nhãn của chính file
+    bên cạnh. Nên bỏ các đoạn `(dashboard)` / `[id]` rồi ghép hai đoạn
+    cuối còn lại: `cash-receipts/id`.
+    """
+    parts = [
+        p for p in path.replace("\\", "/").split("/")[:-1]
+        if p not in ("src", "app", "components", "hooks", "lib")
+        and not (p.startswith("(") and p.endswith(")"))
+    ]
+    parts = [p.strip("[]. ") or "x" for p in parts]
+    if not parts:
+        return path
+    return "/".join(parts[-2:])
+
+
 def process(path: str, targets: set, apply: bool):
     src = open(path, encoding="utf-8").read()
-    tag = path.split("/")[-2] if "/" in path else path
+    tag = route_tag(path)
     plan = []
 
     for m in DESTRUCT_RE.finditer(src):

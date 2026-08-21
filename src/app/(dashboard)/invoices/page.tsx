@@ -154,7 +154,8 @@ export default function InvoicesPage() {
         else if (misaFilter === "error") q = q.eq("misa_status", "error")
         else if (misaFilter === "pending") q = q.or("misa_status.is.null,misa_status.eq.pending")
       }
-      const { data, count } = await q
+      const { data, count , error: qErr } = await q
+      if (qErr) console.error("[invoices] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       setInvoices((data as InvoiceRow[]) || [])
       pg.setTotal(count ?? 0)

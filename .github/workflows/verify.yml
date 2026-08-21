@@ -41,8 +41,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
 
-      # Cảnh báo (không chặn merge) khi có thao tác ghi/đọc database
-      # chưa kiểm lỗi — chống tái diễn lỗi "hỏng im lặng".
-      - name: Đếm truy vấn chưa kiểm lỗi
-        run: python3 scripts/audit-unchecked-db.py
-        continue-on-error: true
+      # Chặn merge nếu có truy vấn database không kiểm lỗi. Hiện đang ở
+      # mức 0/0 — đây là cách giữ nguyên, thay vì để tích lũy lại như trước.
+      # Chỗ nào CỐ Ý bỏ qua thì ghi `// audit-ok: <lý do>` ngay trên lời gọi.
+      - name: Truy vấn database phải kiểm lỗi
+        run: python3 scripts/audit-unchecked-db.py --strict

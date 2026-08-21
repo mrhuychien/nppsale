@@ -191,6 +191,7 @@ export default function CustomerDetailPage() {
       priceQuery = priceQuery.is("group_id", null)
     }
     const priceRes = await priceQuery
+    if (priceRes.error) console.error("[customers/id] truy vấn bảng giá lỗi:", priceRes.error.message)
     setPriceRows((priceRes.data || []) as unknown as PriceRow[])
 
     // Visit history

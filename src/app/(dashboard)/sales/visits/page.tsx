@@ -103,7 +103,8 @@ export default function VisitsHistoryPage() {
       query = query.eq("sales_user_id", selectedUserId)
     }
 
-    const { data } = await query
+    const { data , error: qErr } = await query
+    if (qErr) console.error("[sales/visits] truy vấn lỗi:", qErr.message)
     setVisits(((data as unknown) as VisitRow[]) || [])
     setLoading(false)
   }, [selectedUserId, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps

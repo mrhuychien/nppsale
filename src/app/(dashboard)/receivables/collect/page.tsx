@@ -50,7 +50,8 @@ export default function CollectPaymentPage() {
         query = query.eq("customer_id", customerIdParam)
       }
 
-      const { data } = await query
+      const { data , error: qErr } = await query
+      if (qErr) console.error("[receivables/collect] truy vấn lỗi:", qErr.message)
       const list = (data as unknown as Receivable[]) || []
       setReceivables(list)
 

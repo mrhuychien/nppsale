@@ -39,10 +39,12 @@ CREATE TRIGGER trg_sales_routes_touch
 -- RLS
 ALTER TABLE sales_routes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sales_routes_select" ON sales_routes;
 CREATE POLICY "sales_routes_select" ON sales_routes
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "sales_routes_insert" ON sales_routes;
 CREATE POLICY "sales_routes_insert" ON sales_routes
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -50,6 +52,7 @@ CREATE POLICY "sales_routes_insert" ON sales_routes
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "sales_routes_update" ON sales_routes;
 CREATE POLICY "sales_routes_update" ON sales_routes
   FOR UPDATE TO authenticated
   USING (
@@ -61,6 +64,7 @@ CREATE POLICY "sales_routes_update" ON sales_routes
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "sales_routes_delete" ON sales_routes;
 CREATE POLICY "sales_routes_delete" ON sales_routes
   FOR DELETE TO authenticated
   USING (

@@ -27,11 +27,13 @@ CREATE INDEX idx_suppliers_org ON suppliers(org_id);
 -- RLS
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated can view suppliers" ON suppliers;
 CREATE POLICY "Authenticated can view suppliers"
   ON suppliers FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Owner/Manager can manage suppliers" ON suppliers;
 CREATE POLICY "Owner/Manager can manage suppliers"
   ON suppliers FOR ALL
   TO authenticated

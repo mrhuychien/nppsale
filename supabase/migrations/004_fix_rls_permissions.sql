@@ -22,22 +22,26 @@ DROP POLICY IF EXISTS "Owners can manage users" ON users;
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
 
 -- Anyone authenticated can view users in their org (joined queries)
+DROP POLICY IF EXISTS "Authenticated users can view users" ON users;
 CREATE POLICY "Authenticated users can view users"
   ON users FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only owner can insert/update/delete users (enforced in app layer too)
+DROP POLICY IF EXISTS "Owner can insert users" ON users;
 CREATE POLICY "Owner can insert users"
   ON users FOR INSERT
   TO authenticated
   WITH CHECK (public.user_role() = 'owner');
 
+DROP POLICY IF EXISTS "Owner can update users" ON users;
 CREATE POLICY "Owner can update users"
   ON users FOR UPDATE
   TO authenticated
   USING (public.user_role() = 'owner');
 
+DROP POLICY IF EXISTS "Owner can delete users" ON users;
 CREATE POLICY "Owner can delete users"
   ON users FOR DELETE
   TO authenticated

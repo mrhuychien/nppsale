@@ -48,23 +48,27 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_recent
 -- RLS: users only see their own notifications
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "notifications_select_own" ON notifications;
 CREATE POLICY "notifications_select_own" ON notifications
   FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()));
 
 -- Any authenticated user in the org can create notifications for other
 -- users in the same org (they can't forge notifications for other orgs).
+DROP POLICY IF EXISTS "notifications_insert_org" ON notifications;
 CREATE POLICY "notifications_insert_org" ON notifications
   FOR INSERT TO authenticated
   WITH CHECK (org_id = public.user_org_id());
 
 -- Users can update (mark read) their own notifications
+DROP POLICY IF EXISTS "notifications_update_own" ON notifications;
 CREATE POLICY "notifications_update_own" ON notifications
   FOR UPDATE TO authenticated
   USING (user_id = (SELECT auth.uid()))
   WITH CHECK (user_id = (SELECT auth.uid()));
 
 -- Users can delete their own notifications
+DROP POLICY IF EXISTS "notifications_delete_own" ON notifications;
 CREATE POLICY "notifications_delete_own" ON notifications
   FOR DELETE TO authenticated
   USING (user_id = (SELECT auth.uid()));

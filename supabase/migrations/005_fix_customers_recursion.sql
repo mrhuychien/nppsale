@@ -93,6 +93,7 @@ DROP POLICY IF EXISTS "Org members can view assignments" ON customer_assignments
 DROP POLICY IF EXISTS "Owner/Manager can manage assignments" ON customer_assignments;
 
 -- Anyone authenticated in the same org can view assignments (no recursion)
+DROP POLICY IF EXISTS "Authenticated can view assignments" ON customer_assignments;
 CREATE POLICY "Authenticated can view assignments"
   ON customer_assignments FOR SELECT
   TO authenticated

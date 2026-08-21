@@ -58,18 +58,24 @@ ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_order_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_invoices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "View POs" ON purchase_orders;
 CREATE POLICY "View POs" ON purchase_orders FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage POs" ON purchase_orders;
 CREATE POLICY "Manage POs" ON purchase_orders FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager', 'warehouse'));
 
+DROP POLICY IF EXISTS "View PO lines" ON purchase_order_lines;
 CREATE POLICY "View PO lines" ON purchase_order_lines FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM purchase_orders po WHERE po.id = po_id AND po.org_id = public.user_org_id()));
+DROP POLICY IF EXISTS "Manage PO lines" ON purchase_order_lines;
 CREATE POLICY "Manage PO lines" ON purchase_order_lines FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager', 'warehouse'));
 
+DROP POLICY IF EXISTS "View purchase invoices" ON purchase_invoices;
 CREATE POLICY "View purchase invoices" ON purchase_invoices FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage purchase invoices" ON purchase_invoices;
 CREATE POLICY "Manage purchase invoices" ON purchase_invoices FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 

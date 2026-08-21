@@ -25,6 +25,7 @@ CREATE INDEX idx_cash_collections_org ON cash_collections(org_id);
 CREATE INDEX idx_cash_collections_driver ON cash_collections(driver_id, work_date);
 
 ALTER TABLE cash_collections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View cash collections" ON cash_collections;
 CREATE POLICY "View cash collections" ON cash_collections FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -32,12 +33,14 @@ CREATE POLICY "View cash collections" ON cash_collections FOR SELECT
       OR public.user_role() IN ('owner', 'manager', 'accountant')
     )
   );
+DROP POLICY IF EXISTS "Driver submit cash" ON cash_collections;
 CREATE POLICY "Driver submit cash" ON cash_collections FOR INSERT
   TO authenticated WITH CHECK (
     org_id = public.user_org_id()
     AND driver_id = (SELECT auth.uid())
     AND public.user_role() = 'driver'
   );
+DROP POLICY IF EXISTS "Accountant verify cash" ON cash_collections;
 CREATE POLICY "Accountant verify cash" ON cash_collections FOR UPDATE
   TO authenticated USING (
     org_id = public.user_org_id()
@@ -88,6 +91,7 @@ CREATE INDEX idx_visit_logs_customer ON visit_logs(customer_id, visit_date);
 
 -- RLS for PJP
 ALTER TABLE pjp_routes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View own PJP" ON pjp_routes;
 CREATE POLICY "View own PJP" ON pjp_routes FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -95,6 +99,7 @@ CREATE POLICY "View own PJP" ON pjp_routes FOR SELECT
       OR public.user_role() IN ('owner', 'manager')
     )
   );
+DROP POLICY IF EXISTS "Manager manage PJP" ON pjp_routes;
 CREATE POLICY "Manager manage PJP" ON pjp_routes FOR ALL
   TO authenticated USING (
     org_id = public.user_org_id()
@@ -103,6 +108,7 @@ CREATE POLICY "Manager manage PJP" ON pjp_routes FOR ALL
 
 -- RLS for visit logs
 ALTER TABLE visit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View visits" ON visit_logs;
 CREATE POLICY "View visits" ON visit_logs FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -110,11 +116,13 @@ CREATE POLICY "View visits" ON visit_logs FOR SELECT
       OR public.user_role() IN ('owner', 'manager')
     )
   );
+DROP POLICY IF EXISTS "Sales log visits" ON visit_logs;
 CREATE POLICY "Sales log visits" ON visit_logs FOR INSERT
   TO authenticated WITH CHECK (
     org_id = public.user_org_id()
     AND sales_user_id = (SELECT auth.uid())
   );
+DROP POLICY IF EXISTS "Sales update own visits" ON visit_logs;
 CREATE POLICY "Sales update own visits" ON visit_logs FOR UPDATE
   TO authenticated USING (
     sales_user_id = (SELECT auth.uid())

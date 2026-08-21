@@ -114,21 +114,29 @@ ALTER TABLE hr_attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hr_payroll ENABLE ROW LEVEL SECURITY;
 
 -- Config: owner can manage, all authenticated can view
+DROP POLICY IF EXISTS "View salary config" ON hr_salary_config;
 CREATE POLICY "View salary config" ON hr_salary_config FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage salary config" ON hr_salary_config;
 CREATE POLICY "Manage salary config" ON hr_salary_config FOR ALL TO authenticated USING (public.user_role() = 'owner');
 
 -- Monthly bonus: same as config
+DROP POLICY IF EXISTS "View monthly bonus" ON hr_monthly_bonus;
 CREATE POLICY "View monthly bonus" ON hr_monthly_bonus FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage monthly bonus" ON hr_monthly_bonus;
 CREATE POLICY "Manage monthly bonus" ON hr_monthly_bonus FOR ALL TO authenticated USING (public.user_role() = 'owner');
 
 -- Attendance: all can view (for the grid), owner/manager can manage
+DROP POLICY IF EXISTS "View attendance" ON hr_attendance;
 CREATE POLICY "View attendance" ON hr_attendance FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage attendance" ON hr_attendance;
 CREATE POLICY "Manage attendance" ON hr_attendance FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager'));
 
 -- Payroll: owner/accountant can manage, employees see own
+DROP POLICY IF EXISTS "View own payroll" ON hr_payroll;
 CREATE POLICY "View own payroll" ON hr_payroll FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()) OR public.user_role() IN ('owner', 'accountant', 'manager'));
+DROP POLICY IF EXISTS "Manage payroll" ON hr_payroll;
 CREATE POLICY "Manage payroll" ON hr_payroll FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 

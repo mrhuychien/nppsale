@@ -41,10 +41,12 @@ CREATE TRIGGER trg_pricing_rules_touch
 ALTER TABLE pricing_rules ENABLE ROW LEVEL SECURITY;
 
 -- Everyone authenticated can read (so the order form can validate input)
+DROP POLICY IF EXISTS "pricing_rules_select" ON pricing_rules;
 CREATE POLICY "pricing_rules_select" ON pricing_rules
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "pricing_rules_insert" ON pricing_rules;
 CREATE POLICY "pricing_rules_insert" ON pricing_rules
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -52,6 +54,7 @@ CREATE POLICY "pricing_rules_insert" ON pricing_rules
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "pricing_rules_update" ON pricing_rules;
 CREATE POLICY "pricing_rules_update" ON pricing_rules
   FOR UPDATE TO authenticated
   USING (

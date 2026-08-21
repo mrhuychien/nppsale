@@ -30,13 +30,17 @@ CREATE INDEX idx_payable_payments ON payable_payments(payable_id);
 ALTER TABLE payables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payable_payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "View payables" ON payables;
 CREATE POLICY "View payables" ON payables FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage payables" ON payables;
 CREATE POLICY "Manage payables" ON payables FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 
+DROP POLICY IF EXISTS "View payable payments" ON payable_payments;
 CREATE POLICY "View payable payments" ON payable_payments FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM payables p WHERE p.id = payable_id AND p.org_id = public.user_org_id()));
+DROP POLICY IF EXISTS "Manage payable payments" ON payable_payments;
 CREATE POLICY "Manage payable payments" ON payable_payments FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 

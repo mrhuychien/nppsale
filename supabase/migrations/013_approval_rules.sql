@@ -64,6 +64,7 @@ CREATE TRIGGER trg_approval_rules_touch
 -- RLS: only owner/manager can read/write rules
 ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "approval_rules_select" ON approval_rules;
 CREATE POLICY "approval_rules_select" ON approval_rules
   FOR SELECT TO authenticated
   USING (
@@ -71,6 +72,7 @@ CREATE POLICY "approval_rules_select" ON approval_rules
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "approval_rules_insert" ON approval_rules;
 CREATE POLICY "approval_rules_insert" ON approval_rules
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -78,6 +80,7 @@ CREATE POLICY "approval_rules_insert" ON approval_rules
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "approval_rules_update" ON approval_rules;
 CREATE POLICY "approval_rules_update" ON approval_rules
   FOR UPDATE TO authenticated
   USING (

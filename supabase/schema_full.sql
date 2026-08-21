@@ -415,10 +415,12 @@ $$;
 -- ==========================================
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own org" ON organizations;
 CREATE POLICY "Users can view their own org"
   ON organizations FOR SELECT
   USING (id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owners can update their org" ON organizations;
 CREATE POLICY "Owners can update their org"
   ON organizations FOR UPDATE
   USING (id = public.user_org_id() AND public.user_role() = 'owner');
@@ -428,14 +430,17 @@ CREATE POLICY "Owners can update their org"
 -- ==========================================
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view org members" ON users;
 CREATE POLICY "Users can view org members"
   ON users FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owners can manage users" ON users;
 CREATE POLICY "Owners can manage users"
   ON users FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() = 'owner');
 
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
 CREATE POLICY "Users can view own profile"
   ON users FOR SELECT
   USING (id = auth.uid());
@@ -445,10 +450,12 @@ CREATE POLICY "Users can view own profile"
 -- ==========================================
 ALTER TABLE customer_groups ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view customer groups" ON customer_groups;
 CREATE POLICY "Org members can view customer groups"
   ON customer_groups FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Manager can manage customer groups" ON customer_groups;
 CREATE POLICY "Owner/Manager can manage customer groups"
   ON customer_groups FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'manager'));
@@ -459,6 +466,7 @@ CREATE POLICY "Owner/Manager can manage customer groups"
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 
 -- Owner, Manager, Accountant see all customers in org
+DROP POLICY IF EXISTS "Admin roles can view all customers" ON customers;
 CREATE POLICY "Admin roles can view all customers"
   ON customers FOR SELECT
   USING (
@@ -467,6 +475,7 @@ CREATE POLICY "Admin roles can view all customers"
   );
 
 -- Sales only see assigned customers
+DROP POLICY IF EXISTS "Sales see assigned customers" ON customers;
 CREATE POLICY "Sales see assigned customers"
   ON customers FOR SELECT
   USING (
@@ -478,6 +487,7 @@ CREATE POLICY "Sales see assigned customers"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager/Sales can create customers" ON customers;
 CREATE POLICY "Owner/Manager/Sales can create customers"
   ON customers FOR INSERT
   WITH CHECK (
@@ -485,6 +495,7 @@ CREATE POLICY "Owner/Manager/Sales can create customers"
     AND public.user_role() IN ('owner', 'manager', 'sales')
   );
 
+DROP POLICY IF EXISTS "Owner/Manager/Sales can update customers" ON customers;
 CREATE POLICY "Owner/Manager/Sales can update customers"
   ON customers FOR UPDATE
   USING (
@@ -492,6 +503,7 @@ CREATE POLICY "Owner/Manager/Sales can update customers"
     AND public.user_role() IN ('owner', 'manager', 'sales')
   );
 
+DROP POLICY IF EXISTS "Owner can delete customers" ON customers;
 CREATE POLICY "Owner can delete customers"
   ON customers FOR DELETE
   USING (org_id = public.user_org_id() AND public.user_role() = 'owner');
@@ -501,6 +513,7 @@ CREATE POLICY "Owner can delete customers"
 -- ==========================================
 ALTER TABLE customer_assignments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view assignments" ON customer_assignments;
 CREATE POLICY "Org members can view assignments"
   ON customer_assignments FOR SELECT
   USING (
@@ -510,6 +523,7 @@ CREATE POLICY "Org members can view assignments"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can manage assignments" ON customer_assignments;
 CREATE POLICY "Owner/Manager can manage assignments"
   ON customer_assignments FOR ALL
   USING (
@@ -525,10 +539,12 @@ CREATE POLICY "Owner/Manager can manage assignments"
 -- ==========================================
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view products" ON products;
 CREATE POLICY "Org members can view products"
   ON products FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Manager can manage products" ON products;
 CREATE POLICY "Owner/Manager can manage products"
   ON products FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'manager'));
@@ -538,6 +554,7 @@ CREATE POLICY "Owner/Manager can manage products"
 -- ==========================================
 ALTER TABLE product_units ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view product units" ON product_units;
 CREATE POLICY "Org members can view product units"
   ON product_units FOR SELECT
   USING (
@@ -546,6 +563,7 @@ CREATE POLICY "Org members can view product units"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can manage product units" ON product_units;
 CREATE POLICY "Owner/Manager can manage product units"
   ON product_units FOR ALL
   USING (
@@ -560,6 +578,7 @@ CREATE POLICY "Owner/Manager can manage product units"
 -- ==========================================
 ALTER TABLE price_lists ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view price lists" ON price_lists;
 CREATE POLICY "Org members can view price lists"
   ON price_lists FOR SELECT
   USING (
@@ -568,6 +587,7 @@ CREATE POLICY "Org members can view price lists"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can manage price lists" ON price_lists;
 CREATE POLICY "Owner/Manager can manage price lists"
   ON price_lists FOR ALL
   USING (
@@ -582,10 +602,12 @@ CREATE POLICY "Owner/Manager can manage price lists"
 -- ==========================================
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view batches" ON batches;
 CREATE POLICY "Org members can view batches"
   ON batches FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Warehouse can manage batches" ON batches;
 CREATE POLICY "Owner/Warehouse can manage batches"
   ON batches FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'warehouse'));
@@ -595,10 +617,12 @@ CREATE POLICY "Owner/Warehouse can manage batches"
 -- ==========================================
 ALTER TABLE stock_entries ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view stock entries" ON stock_entries;
 CREATE POLICY "Org members can view stock entries"
   ON stock_entries FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Warehouse can manage stock entries" ON stock_entries;
 CREATE POLICY "Owner/Warehouse can manage stock entries"
   ON stock_entries FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'warehouse'));
@@ -608,6 +632,7 @@ CREATE POLICY "Owner/Warehouse can manage stock entries"
 -- ==========================================
 ALTER TABLE stock_entry_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view stock entry lines" ON stock_entry_lines;
 CREATE POLICY "Org members can view stock entry lines"
   ON stock_entry_lines FOR SELECT
   USING (
@@ -616,6 +641,7 @@ CREATE POLICY "Org members can view stock entry lines"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Warehouse can manage stock entry lines" ON stock_entry_lines;
 CREATE POLICY "Owner/Warehouse can manage stock entry lines"
   ON stock_entry_lines FOR ALL
   USING (
@@ -631,6 +657,7 @@ CREATE POLICY "Owner/Warehouse can manage stock entry lines"
 ALTER TABLE sales_orders ENABLE ROW LEVEL SECURITY;
 
 -- Owner, Manager, Accountant, Warehouse see all orders
+DROP POLICY IF EXISTS "Admin roles can view all orders" ON sales_orders;
 CREATE POLICY "Admin roles can view all orders"
   ON sales_orders FOR SELECT
   USING (
@@ -639,6 +666,7 @@ CREATE POLICY "Admin roles can view all orders"
   );
 
 -- Sales only see own orders
+DROP POLICY IF EXISTS "Sales see own orders" ON sales_orders;
 CREATE POLICY "Sales see own orders"
   ON sales_orders FOR SELECT
   USING (
@@ -648,6 +676,7 @@ CREATE POLICY "Sales see own orders"
   );
 
 -- Driver sees orders assigned to their deliveries
+DROP POLICY IF EXISTS "Driver sees delivery orders" ON sales_orders;
 CREATE POLICY "Driver sees delivery orders"
   ON sales_orders FOR SELECT
   USING (
@@ -660,6 +689,7 @@ CREATE POLICY "Driver sees delivery orders"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager/Sales can create orders" ON sales_orders;
 CREATE POLICY "Owner/Manager/Sales can create orders"
   ON sales_orders FOR INSERT
   WITH CHECK (
@@ -667,6 +697,7 @@ CREATE POLICY "Owner/Manager/Sales can create orders"
     AND public.user_role() IN ('owner', 'manager', 'sales')
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can update orders" ON sales_orders;
 CREATE POLICY "Owner/Manager can update orders"
   ON sales_orders FOR UPDATE
   USING (
@@ -674,6 +705,7 @@ CREATE POLICY "Owner/Manager can update orders"
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "Sales can update own draft orders" ON sales_orders;
 CREATE POLICY "Sales can update own draft orders"
   ON sales_orders FOR UPDATE
   USING (
@@ -688,6 +720,7 @@ CREATE POLICY "Sales can update own draft orders"
 -- ==========================================
 ALTER TABLE sales_order_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view order lines of visible orders" ON sales_order_lines;
 CREATE POLICY "Users can view order lines of visible orders"
   ON sales_order_lines FOR SELECT
   USING (
@@ -696,6 +729,7 @@ CREATE POLICY "Users can view order lines of visible orders"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager/Sales can manage order lines" ON sales_order_lines;
 CREATE POLICY "Owner/Manager/Sales can manage order lines"
   ON sales_order_lines FOR ALL
   USING (
@@ -711,6 +745,7 @@ CREATE POLICY "Owner/Manager/Sales can manage order lines"
 -- ==========================================
 ALTER TABLE merged_orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view merged orders" ON merged_orders;
 CREATE POLICY "Org members can view merged orders"
   ON merged_orders FOR SELECT
   USING (
@@ -720,6 +755,7 @@ CREATE POLICY "Org members can view merged orders"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can manage merged orders" ON merged_orders;
 CREATE POLICY "Owner/Manager can manage merged orders"
   ON merged_orders FOR ALL
   USING (
@@ -731,10 +767,12 @@ CREATE POLICY "Owner/Manager can manage merged orders"
 -- ==========================================
 ALTER TABLE commission_policies ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view commission policies" ON commission_policies;
 CREATE POLICY "Org members can view commission policies"
   ON commission_policies FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner can manage commission policies" ON commission_policies;
 CREATE POLICY "Owner can manage commission policies"
   ON commission_policies FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() = 'owner');
@@ -744,10 +782,12 @@ CREATE POLICY "Owner can manage commission policies"
 -- ==========================================
 ALTER TABLE commission_wallets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own wallet" ON commission_wallets;
 CREATE POLICY "Users can view own wallet"
   ON commission_wallets FOR SELECT
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Owner/Accountant can view all wallets" ON commission_wallets;
 CREATE POLICY "Owner/Accountant can view all wallets"
   ON commission_wallets FOR SELECT
   USING (
@@ -757,6 +797,7 @@ CREATE POLICY "Owner/Accountant can view all wallets"
     )
   );
 
+DROP POLICY IF EXISTS "Owner/Accountant can manage wallets" ON commission_wallets;
 CREATE POLICY "Owner/Accountant can manage wallets"
   ON commission_wallets FOR ALL
   USING (
@@ -771,6 +812,7 @@ CREATE POLICY "Owner/Accountant can manage wallets"
 -- ==========================================
 ALTER TABLE receivables ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admin roles can view all receivables" ON receivables;
 CREATE POLICY "Admin roles can view all receivables"
   ON receivables FOR SELECT
   USING (
@@ -778,6 +820,7 @@ CREATE POLICY "Admin roles can view all receivables"
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "Sales see own receivables" ON receivables;
 CREATE POLICY "Sales see own receivables"
   ON receivables FOR SELECT
   USING (
@@ -786,6 +829,7 @@ CREATE POLICY "Sales see own receivables"
     AND sales_user_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Driver see assigned receivables" ON receivables;
 CREATE POLICY "Driver see assigned receivables"
   ON receivables FOR SELECT
   USING (
@@ -798,6 +842,7 @@ CREATE POLICY "Driver see assigned receivables"
     )
   );
 
+DROP POLICY IF EXISTS "Authorized roles can create receivables" ON receivables;
 CREATE POLICY "Authorized roles can create receivables"
   ON receivables FOR INSERT
   WITH CHECK (
@@ -805,6 +850,7 @@ CREATE POLICY "Authorized roles can create receivables"
     AND public.user_role() IN ('owner', 'accountant', 'sales')
   );
 
+DROP POLICY IF EXISTS "Accountant/Owner can update receivables" ON receivables;
 CREATE POLICY "Accountant/Owner can update receivables"
   ON receivables FOR UPDATE
   USING (
@@ -817,6 +863,7 @@ CREATE POLICY "Accountant/Owner can update receivables"
 -- ==========================================
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view payments" ON payments;
 CREATE POLICY "Org members can view payments"
   ON payments FOR SELECT
   USING (
@@ -825,6 +872,7 @@ CREATE POLICY "Org members can view payments"
     )
   );
 
+DROP POLICY IF EXISTS "Sales/Driver/Accountant can create payments" ON payments;
 CREATE POLICY "Sales/Driver/Accountant can create payments"
   ON payments FOR INSERT
   WITH CHECK (
@@ -834,6 +882,7 @@ CREATE POLICY "Sales/Driver/Accountant can create payments"
     )
   );
 
+DROP POLICY IF EXISTS "Accountant can verify payments" ON payments;
 CREATE POLICY "Accountant can verify payments"
   ON payments FOR UPDATE
   USING (
@@ -848,6 +897,7 @@ CREATE POLICY "Accountant can verify payments"
 -- ==========================================
 ALTER TABLE deliveries ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admin roles can view all deliveries" ON deliveries;
 CREATE POLICY "Admin roles can view all deliveries"
   ON deliveries FOR SELECT
   USING (
@@ -855,6 +905,7 @@ CREATE POLICY "Admin roles can view all deliveries"
     AND public.user_role() IN ('owner', 'manager', 'warehouse')
   );
 
+DROP POLICY IF EXISTS "Driver sees own deliveries" ON deliveries;
 CREATE POLICY "Driver sees own deliveries"
   ON deliveries FOR SELECT
   USING (
@@ -863,6 +914,7 @@ CREATE POLICY "Driver sees own deliveries"
     AND driver_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Owner/Manager/Warehouse can manage deliveries" ON deliveries;
 CREATE POLICY "Owner/Manager/Warehouse can manage deliveries"
   ON deliveries FOR ALL
   USING (
@@ -870,6 +922,7 @@ CREATE POLICY "Owner/Manager/Warehouse can manage deliveries"
     AND public.user_role() IN ('owner', 'manager', 'warehouse')
   );
 
+DROP POLICY IF EXISTS "Driver can update own deliveries" ON deliveries;
 CREATE POLICY "Driver can update own deliveries"
   ON deliveries FOR UPDATE
   USING (
@@ -883,6 +936,7 @@ CREATE POLICY "Driver can update own deliveries"
 -- ==========================================
 ALTER TABLE delivery_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view delivery lines" ON delivery_lines;
 CREATE POLICY "Users can view delivery lines"
   ON delivery_lines FOR SELECT
   USING (
@@ -891,6 +945,7 @@ CREATE POLICY "Users can view delivery lines"
     )
   );
 
+DROP POLICY IF EXISTS "Authorized roles can manage delivery lines" ON delivery_lines;
 CREATE POLICY "Authorized roles can manage delivery lines"
   ON delivery_lines FOR ALL
   USING (
@@ -905,10 +960,12 @@ CREATE POLICY "Authorized roles can manage delivery lines"
 -- ==========================================
 ALTER TABLE promotions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view promotions" ON promotions;
 CREATE POLICY "Org members can view promotions"
   ON promotions FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Manager can manage promotions" ON promotions;
 CREATE POLICY "Owner/Manager can manage promotions"
   ON promotions FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'manager'));
@@ -918,10 +975,12 @@ CREATE POLICY "Owner/Manager can manage promotions"
 -- ==========================================
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view invoices" ON invoices;
 CREATE POLICY "Org members can view invoices"
   ON invoices FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner/Accountant can manage invoices" ON invoices;
 CREATE POLICY "Owner/Accountant can manage invoices"
   ON invoices FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'accountant'));
@@ -931,6 +990,7 @@ CREATE POLICY "Owner/Accountant can manage invoices"
 -- ==========================================
 ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admin roles can view all returns" ON returns;
 CREATE POLICY "Admin roles can view all returns"
   ON returns FOR SELECT
   USING (
@@ -938,6 +998,7 @@ CREATE POLICY "Admin roles can view all returns"
     AND public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
   );
 
+DROP POLICY IF EXISTS "Sales see own returns" ON returns;
 CREATE POLICY "Sales see own returns"
   ON returns FOR SELECT
   USING (
@@ -946,6 +1007,7 @@ CREATE POLICY "Sales see own returns"
     AND requested_by = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Sales can create returns" ON returns;
 CREATE POLICY "Sales can create returns"
   ON returns FOR INSERT
   WITH CHECK (
@@ -953,6 +1015,7 @@ CREATE POLICY "Sales can create returns"
     AND public.user_role() IN ('owner', 'manager', 'sales')
   );
 
+DROP POLICY IF EXISTS "Owner/Manager can approve returns" ON returns;
 CREATE POLICY "Owner/Manager can approve returns"
   ON returns FOR UPDATE
   USING (
@@ -965,6 +1028,7 @@ CREATE POLICY "Owner/Manager can approve returns"
 -- ==========================================
 ALTER TABLE return_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view return lines" ON return_lines;
 CREATE POLICY "Users can view return lines"
   ON return_lines FOR SELECT
   USING (
@@ -973,6 +1037,7 @@ CREATE POLICY "Users can view return lines"
     )
   );
 
+DROP POLICY IF EXISTS "Authorized roles can manage return lines" ON return_lines;
 CREATE POLICY "Authorized roles can manage return lines"
   ON return_lines FOR ALL
   USING (
@@ -987,10 +1052,12 @@ CREATE POLICY "Authorized roles can manage return lines"
 -- ==========================================
 ALTER TABLE reports_config ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view reports config" ON reports_config;
 CREATE POLICY "Org members can view reports config"
   ON reports_config FOR SELECT
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner can manage reports config" ON reports_config;
 CREATE POLICY "Owner can manage reports config"
   ON reports_config FOR ALL
   USING (org_id = public.user_org_id() AND public.user_role() = 'owner');
@@ -1024,22 +1091,26 @@ DROP POLICY IF EXISTS "Owners can manage users" ON users;
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
 
 -- Anyone authenticated can view users in their org (joined queries)
+DROP POLICY IF EXISTS "Authenticated users can view users" ON users;
 CREATE POLICY "Authenticated users can view users"
   ON users FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only owner can insert/update/delete users (enforced in app layer too)
+DROP POLICY IF EXISTS "Owner can insert users" ON users;
 CREATE POLICY "Owner can insert users"
   ON users FOR INSERT
   TO authenticated
   WITH CHECK (public.user_role() = 'owner');
 
+DROP POLICY IF EXISTS "Owner can update users" ON users;
 CREATE POLICY "Owner can update users"
   ON users FOR UPDATE
   TO authenticated
   USING (public.user_role() = 'owner');
 
+DROP POLICY IF EXISTS "Owner can delete users" ON users;
 CREATE POLICY "Owner can delete users"
   ON users FOR DELETE
   TO authenticated
@@ -1151,6 +1222,7 @@ DROP POLICY IF EXISTS "Org members can view assignments" ON customer_assignments
 DROP POLICY IF EXISTS "Owner/Manager can manage assignments" ON customer_assignments;
 
 -- Anyone authenticated in the same org can view assignments (no recursion)
+DROP POLICY IF EXISTS "Authenticated can view assignments" ON customer_assignments;
 CREATE POLICY "Authenticated can view assignments"
   ON customer_assignments FOR SELECT
   TO authenticated
@@ -1205,11 +1277,13 @@ CREATE INDEX idx_suppliers_org ON suppliers(org_id);
 -- RLS
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated can view suppliers" ON suppliers;
 CREATE POLICY "Authenticated can view suppliers"
   ON suppliers FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Owner/Manager can manage suppliers" ON suppliers;
 CREATE POLICY "Owner/Manager can manage suppliers"
   ON suppliers FOR ALL
   TO authenticated
@@ -1341,21 +1415,29 @@ ALTER TABLE hr_attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hr_payroll ENABLE ROW LEVEL SECURITY;
 
 -- Config: owner can manage, all authenticated can view
+DROP POLICY IF EXISTS "View salary config" ON hr_salary_config;
 CREATE POLICY "View salary config" ON hr_salary_config FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage salary config" ON hr_salary_config;
 CREATE POLICY "Manage salary config" ON hr_salary_config FOR ALL TO authenticated USING (public.user_role() = 'owner');
 
 -- Monthly bonus: same as config
+DROP POLICY IF EXISTS "View monthly bonus" ON hr_monthly_bonus;
 CREATE POLICY "View monthly bonus" ON hr_monthly_bonus FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage monthly bonus" ON hr_monthly_bonus;
 CREATE POLICY "Manage monthly bonus" ON hr_monthly_bonus FOR ALL TO authenticated USING (public.user_role() = 'owner');
 
 -- Attendance: all can view (for the grid), owner/manager can manage
+DROP POLICY IF EXISTS "View attendance" ON hr_attendance;
 CREATE POLICY "View attendance" ON hr_attendance FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Manage attendance" ON hr_attendance;
 CREATE POLICY "Manage attendance" ON hr_attendance FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager'));
 
 -- Payroll: owner/accountant can manage, employees see own
+DROP POLICY IF EXISTS "View own payroll" ON hr_payroll;
 CREATE POLICY "View own payroll" ON hr_payroll FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()) OR public.user_role() IN ('owner', 'accountant', 'manager'));
+DROP POLICY IF EXISTS "Manage payroll" ON hr_payroll;
 CREATE POLICY "Manage payroll" ON hr_payroll FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 
@@ -1414,21 +1496,25 @@ DROP POLICY IF EXISTS "Owner can insert users" ON users;
 DROP POLICY IF EXISTS "Owner can update users" ON users;
 DROP POLICY IF EXISTS "Owner can delete users" ON users;
 
+DROP POLICY IF EXISTS "Users view own org" ON users;
 CREATE POLICY "Users view own org"
   ON users FOR SELECT
   TO authenticated
   USING (org_id = public.user_org_id() OR id = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS "Owner insert users" ON users;
 CREATE POLICY "Owner insert users"
   ON users FOR INSERT
   TO authenticated
   WITH CHECK (public.user_role() = 'owner' AND org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner update users" ON users;
 CREATE POLICY "Owner update users"
   ON users FOR UPDATE
   TO authenticated
   USING (public.user_role() = 'owner' AND org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner delete users" ON users;
 CREATE POLICY "Owner delete users"
   ON users FOR DELETE
   TO authenticated
@@ -1440,6 +1526,7 @@ CREATE POLICY "Owner delete users"
 DROP POLICY IF EXISTS "Authenticated can view assignments" ON customer_assignments;
 DROP POLICY IF EXISTS "Owner/Manager can manage assignments" ON customer_assignments;
 
+DROP POLICY IF EXISTS "View assignments in org" ON customer_assignments;
 CREATE POLICY "View assignments in org"
   ON customer_assignments FOR SELECT
   TO authenticated
@@ -1451,6 +1538,7 @@ CREATE POLICY "View assignments in org"
     OR user_id = (SELECT auth.uid())
   );
 
+DROP POLICY IF EXISTS "Owner/Manager manage assignments" ON customer_assignments;
 CREATE POLICY "Owner/Manager manage assignments"
   ON customer_assignments FOR ALL
   TO authenticated
@@ -1553,6 +1641,7 @@ CREATE TRIGGER trg_log_order_status
 
 -- RLS for history
 ALTER TABLE order_status_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View order history" ON order_status_history;
 CREATE POLICY "View order history" ON order_status_history FOR SELECT
   TO authenticated USING (true);
 
@@ -1651,6 +1740,7 @@ CREATE INDEX idx_cash_collections_org ON cash_collections(org_id);
 CREATE INDEX idx_cash_collections_driver ON cash_collections(driver_id, work_date);
 
 ALTER TABLE cash_collections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View cash collections" ON cash_collections;
 CREATE POLICY "View cash collections" ON cash_collections FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -1658,12 +1748,14 @@ CREATE POLICY "View cash collections" ON cash_collections FOR SELECT
       OR public.user_role() IN ('owner', 'manager', 'accountant')
     )
   );
+DROP POLICY IF EXISTS "Driver submit cash" ON cash_collections;
 CREATE POLICY "Driver submit cash" ON cash_collections FOR INSERT
   TO authenticated WITH CHECK (
     org_id = public.user_org_id()
     AND driver_id = (SELECT auth.uid())
     AND public.user_role() = 'driver'
   );
+DROP POLICY IF EXISTS "Accountant verify cash" ON cash_collections;
 CREATE POLICY "Accountant verify cash" ON cash_collections FOR UPDATE
   TO authenticated USING (
     org_id = public.user_org_id()
@@ -1714,6 +1806,7 @@ CREATE INDEX idx_visit_logs_customer ON visit_logs(customer_id, visit_date);
 
 -- RLS for PJP
 ALTER TABLE pjp_routes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View own PJP" ON pjp_routes;
 CREATE POLICY "View own PJP" ON pjp_routes FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -1721,6 +1814,7 @@ CREATE POLICY "View own PJP" ON pjp_routes FOR SELECT
       OR public.user_role() IN ('owner', 'manager')
     )
   );
+DROP POLICY IF EXISTS "Manager manage PJP" ON pjp_routes;
 CREATE POLICY "Manager manage PJP" ON pjp_routes FOR ALL
   TO authenticated USING (
     org_id = public.user_org_id()
@@ -1729,6 +1823,7 @@ CREATE POLICY "Manager manage PJP" ON pjp_routes FOR ALL
 
 -- RLS for visit logs
 ALTER TABLE visit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View visits" ON visit_logs;
 CREATE POLICY "View visits" ON visit_logs FOR SELECT
   TO authenticated USING (
     org_id = public.user_org_id() AND (
@@ -1736,11 +1831,13 @@ CREATE POLICY "View visits" ON visit_logs FOR SELECT
       OR public.user_role() IN ('owner', 'manager')
     )
   );
+DROP POLICY IF EXISTS "Sales log visits" ON visit_logs;
 CREATE POLICY "Sales log visits" ON visit_logs FOR INSERT
   TO authenticated WITH CHECK (
     org_id = public.user_org_id()
     AND sales_user_id = (SELECT auth.uid())
   );
+DROP POLICY IF EXISTS "Sales update own visits" ON visit_logs;
 CREATE POLICY "Sales update own visits" ON visit_logs FOR UPDATE
   TO authenticated USING (
     sales_user_id = (SELECT auth.uid())
@@ -1795,13 +1892,17 @@ CREATE INDEX idx_payable_payments ON payable_payments(payable_id);
 ALTER TABLE payables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payable_payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "View payables" ON payables;
 CREATE POLICY "View payables" ON payables FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage payables" ON payables;
 CREATE POLICY "Manage payables" ON payables FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 
+DROP POLICY IF EXISTS "View payable payments" ON payable_payments;
 CREATE POLICY "View payable payments" ON payable_payments FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM payables p WHERE p.id = payable_id AND p.org_id = public.user_org_id()));
+DROP POLICY IF EXISTS "Manage payable payments" ON payable_payments;
 CREATE POLICY "Manage payable payments" ON payable_payments FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 
@@ -1893,18 +1994,24 @@ ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_order_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_invoices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "View POs" ON purchase_orders;
 CREATE POLICY "View POs" ON purchase_orders FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage POs" ON purchase_orders;
 CREATE POLICY "Manage POs" ON purchase_orders FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager', 'warehouse'));
 
+DROP POLICY IF EXISTS "View PO lines" ON purchase_order_lines;
 CREATE POLICY "View PO lines" ON purchase_order_lines FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM purchase_orders po WHERE po.id = po_id AND po.org_id = public.user_org_id()));
+DROP POLICY IF EXISTS "Manage PO lines" ON purchase_order_lines;
 CREATE POLICY "Manage PO lines" ON purchase_order_lines FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'manager', 'warehouse'));
 
+DROP POLICY IF EXISTS "View purchase invoices" ON purchase_invoices;
 CREATE POLICY "View purchase invoices" ON purchase_invoices FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
+DROP POLICY IF EXISTS "Manage purchase invoices" ON purchase_invoices;
 CREATE POLICY "Manage purchase invoices" ON purchase_invoices FOR ALL TO authenticated
   USING (public.user_role() IN ('owner', 'accountant'));
 
@@ -1983,6 +2090,7 @@ CREATE TRIGGER trg_approval_rules_touch
 -- RLS: only owner/manager can read/write rules
 ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "approval_rules_select" ON approval_rules;
 CREATE POLICY "approval_rules_select" ON approval_rules
   FOR SELECT TO authenticated
   USING (
@@ -1990,6 +2098,7 @@ CREATE POLICY "approval_rules_select" ON approval_rules
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "approval_rules_insert" ON approval_rules;
 CREATE POLICY "approval_rules_insert" ON approval_rules
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -1997,6 +2106,7 @@ CREATE POLICY "approval_rules_insert" ON approval_rules
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "approval_rules_update" ON approval_rules;
 CREATE POLICY "approval_rules_update" ON approval_rules
   FOR UPDATE TO authenticated
   USING (
@@ -2142,23 +2252,27 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_recent
 -- RLS: users only see their own notifications
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "notifications_select_own" ON notifications;
 CREATE POLICY "notifications_select_own" ON notifications
   FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()));
 
 -- Any authenticated user in the org can create notifications for other
 -- users in the same org (they can't forge notifications for other orgs).
+DROP POLICY IF EXISTS "notifications_insert_org" ON notifications;
 CREATE POLICY "notifications_insert_org" ON notifications
   FOR INSERT TO authenticated
   WITH CHECK (org_id = public.user_org_id());
 
 -- Users can update (mark read) their own notifications
+DROP POLICY IF EXISTS "notifications_update_own" ON notifications;
 CREATE POLICY "notifications_update_own" ON notifications
   FOR UPDATE TO authenticated
   USING (user_id = (SELECT auth.uid()))
   WITH CHECK (user_id = (SELECT auth.uid()));
 
 -- Users can delete their own notifications
+DROP POLICY IF EXISTS "notifications_delete_own" ON notifications;
 CREATE POLICY "notifications_delete_own" ON notifications
   FOR DELETE TO authenticated
   USING (user_id = (SELECT auth.uid()));
@@ -2281,6 +2395,7 @@ CREATE TRIGGER trg_expenses_touch
 
 -- RLS
 ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "expense_categories_all" ON expense_categories;
 CREATE POLICY "expense_categories_all" ON expense_categories
   FOR ALL TO authenticated
   USING (org_id = public.user_org_id())
@@ -2290,6 +2405,7 @@ CREATE POLICY "expense_categories_all" ON expense_categories
   );
 
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "expenses_select" ON expenses;
 CREATE POLICY "expenses_select" ON expenses
   FOR SELECT TO authenticated
   USING (
@@ -2297,6 +2413,7 @@ CREATE POLICY "expenses_select" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_insert" ON expenses;
 CREATE POLICY "expenses_insert" ON expenses
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -2304,6 +2421,7 @@ CREATE POLICY "expenses_insert" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_update" ON expenses;
 CREATE POLICY "expenses_update" ON expenses
   FOR UPDATE TO authenticated
   USING (
@@ -2315,6 +2433,7 @@ CREATE POLICY "expenses_update" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_delete" ON expenses;
 CREATE POLICY "expenses_delete" ON expenses
   FOR DELETE TO authenticated
   USING (
@@ -2426,10 +2545,12 @@ CREATE TRIGGER trg_sales_routes_touch
 -- RLS
 ALTER TABLE sales_routes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sales_routes_select" ON sales_routes;
 CREATE POLICY "sales_routes_select" ON sales_routes
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "sales_routes_insert" ON sales_routes;
 CREATE POLICY "sales_routes_insert" ON sales_routes
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -2437,6 +2558,7 @@ CREATE POLICY "sales_routes_insert" ON sales_routes
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "sales_routes_update" ON sales_routes;
 CREATE POLICY "sales_routes_update" ON sales_routes
   FOR UPDATE TO authenticated
   USING (
@@ -2448,6 +2570,7 @@ CREATE POLICY "sales_routes_update" ON sales_routes
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "sales_routes_delete" ON sales_routes;
 CREATE POLICY "sales_routes_delete" ON sales_routes
   FOR DELETE TO authenticated
   USING (
@@ -2540,10 +2663,12 @@ CREATE INDEX IF NOT EXISTS idx_cash_receipt_lines_receipt ON cash_receipt_lines(
 ALTER TABLE cash_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_receipt_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cash_receipts_select" ON cash_receipts;
 CREATE POLICY "cash_receipts_select" ON cash_receipts
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "cash_receipts_insert" ON cash_receipts;
 CREATE POLICY "cash_receipts_insert" ON cash_receipts
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -2551,6 +2676,7 @@ CREATE POLICY "cash_receipts_insert" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse', 'driver')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_update" ON cash_receipts;
 CREATE POLICY "cash_receipts_update" ON cash_receipts
   FOR UPDATE TO authenticated
   USING (
@@ -2562,6 +2688,7 @@ CREATE POLICY "cash_receipts_update" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_delete" ON cash_receipts;
 CREATE POLICY "cash_receipts_delete" ON cash_receipts
   FOR DELETE TO authenticated
   USING (
@@ -2570,6 +2697,7 @@ CREATE POLICY "cash_receipts_delete" ON cash_receipts
   );
 
 -- Lines inherit access via parent (cascade delete handles cleanup)
+DROP POLICY IF EXISTS "cash_receipt_lines_select" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_select" ON cash_receipt_lines
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -2578,6 +2706,7 @@ CREATE POLICY "cash_receipt_lines_select" ON cash_receipt_lines
       AND r.org_id = public.user_org_id()
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_insert" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_insert" ON cash_receipt_lines
   FOR INSERT TO authenticated
   WITH CHECK (EXISTS (
@@ -2586,6 +2715,7 @@ CREATE POLICY "cash_receipt_lines_insert" ON cash_receipt_lines
       AND r.org_id = public.user_org_id()
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_update" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_update" ON cash_receipt_lines
   FOR UPDATE TO authenticated
   USING (EXISTS (
@@ -2595,6 +2725,7 @@ CREATE POLICY "cash_receipt_lines_update" ON cash_receipt_lines
       AND public.user_role() IN ('owner', 'manager', 'accountant')
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_delete" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_delete" ON cash_receipt_lines
   FOR DELETE TO authenticated
   USING (EXISTS (
@@ -2655,10 +2786,12 @@ CREATE TRIGGER trg_pricing_rules_touch
 ALTER TABLE pricing_rules ENABLE ROW LEVEL SECURITY;
 
 -- Everyone authenticated can read (so the order form can validate input)
+DROP POLICY IF EXISTS "pricing_rules_select" ON pricing_rules;
 CREATE POLICY "pricing_rules_select" ON pricing_rules
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "pricing_rules_insert" ON pricing_rules;
 CREATE POLICY "pricing_rules_insert" ON pricing_rules
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -2666,6 +2799,7 @@ CREATE POLICY "pricing_rules_insert" ON pricing_rules
     AND public.user_role() IN ('owner', 'manager')
   );
 
+DROP POLICY IF EXISTS "pricing_rules_update" ON pricing_rules;
 CREATE POLICY "pricing_rules_update" ON pricing_rules
   FOR UPDATE TO authenticated
   USING (
@@ -3336,6 +3470,7 @@ END $$;
 -- 1. payables — restrict SELECT to financial roles
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "View payables" ON payables;
+DROP POLICY IF EXISTS "Financial roles view payables" ON payables;
 CREATE POLICY "Financial roles view payables" ON payables
   FOR SELECT TO authenticated
   USING (
@@ -3344,6 +3479,7 @@ CREATE POLICY "Financial roles view payables" ON payables
   );
 
 DROP POLICY IF EXISTS "View payable payments" ON payable_payments;
+DROP POLICY IF EXISTS "Financial roles view payable payments" ON payable_payments;
 CREATE POLICY "Financial roles view payable payments" ON payable_payments
   FOR SELECT TO authenticated
   USING (
@@ -3359,6 +3495,7 @@ CREATE POLICY "Financial roles view payable payments" ON payable_payments
 --    roles. Sales/driver have no business reason to see cost prices.
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "View POs" ON purchase_orders;
+DROP POLICY IF EXISTS "Ops roles view POs" ON purchase_orders;
 CREATE POLICY "Ops roles view POs" ON purchase_orders
   FOR SELECT TO authenticated
   USING (
@@ -3367,6 +3504,7 @@ CREATE POLICY "Ops roles view POs" ON purchase_orders
   );
 
 DROP POLICY IF EXISTS "View PO lines" ON purchase_order_lines;
+DROP POLICY IF EXISTS "Ops roles view PO lines" ON purchase_order_lines;
 CREATE POLICY "Ops roles view PO lines" ON purchase_order_lines
   FOR SELECT TO authenticated
   USING (
@@ -3378,6 +3516,7 @@ CREATE POLICY "Ops roles view PO lines" ON purchase_order_lines
   );
 
 DROP POLICY IF EXISTS "View purchase invoices" ON purchase_invoices;
+DROP POLICY IF EXISTS "Financial roles view purchase invoices" ON purchase_invoices;
 CREATE POLICY "Financial roles view purchase invoices" ON purchase_invoices
   FOR SELECT TO authenticated
   USING (
@@ -3389,6 +3528,7 @@ CREATE POLICY "Financial roles view purchase invoices" ON purchase_invoices
 -- 3. cash_receipts — narrow SELECT for sales/driver to own collections
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "cash_receipts_select" ON cash_receipts;
+DROP POLICY IF EXISTS "cash_receipts_select_admin" ON cash_receipts;
 CREATE POLICY "cash_receipts_select_admin" ON cash_receipts
   FOR SELECT TO authenticated
   USING (
@@ -3396,6 +3536,7 @@ CREATE POLICY "cash_receipts_select_admin" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_select_own" ON cash_receipts;
 CREATE POLICY "cash_receipts_select_own" ON cash_receipts
   FOR SELECT TO authenticated
   USING (
@@ -9668,4 +9809,111 @@ COMMENT ON COLUMN role_permissions.module IS
 --   NOT ('.orders'          ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$') AS chan_dau_cham,
 --   NOT ('orders.'          ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$') AS chan_cuoi_cham,
 --   NOT ('a b'              ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$') AS chan_khoang_trang;
+
+
+-- ####################################################################
+-- # 091_backfill_missing_objects.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 091_backfill_missing_objects
+--
+-- BÙ CÁC ĐỐI TƯỢNG SCHEMA CÒN THIẾU trên database production.
+--
+-- Căn cứ: kết quả chạy supabase/diagnostics/check_migration_drift.sql
+-- ngày 2026-08-21 trên DB production. Kết quả đó liệt kê 14 migration
+-- "thiếu", nhưng sau khi rà từng cái thì PHẦN LỚN LÀ BÁO ĐỘNG GIẢ —
+-- đối tượng bị migration SAU cố ý xoá/thay thế:
+--
+--   • 087 (users.qr_login_token…)  → 088 CỐ Ý xoá, chuyển sang bảng
+--     riêng qr_login_tokens. Thiếu là ĐÚNG.
+--   • 002/004 policy bảng users    → 004 rồi 008 thay thế lần lượt.
+--   • 005/033/036/037 policy       → 042_customer_row_level thay thế.
+--   • 010/012/020 policy           → 034 thay thế.
+--   • 014 policy visit_photos      → nằm ở schema `storage`, công cụ dò
+--     lại tìm trong schema `public` nên báo nhầm (đã sửa công cụ; xem
+--     phần KIỂM TRA THÊM ở cuối file).
+--
+-- CHỈ 3 MỤC DƯỚI ĐÂY LÀ THIẾU THẬT. Migration này bù đúng 3 mục đó.
+-- Toàn bộ đều idempotent — chạy lại nhiều lần không sao.
+-- ====================================================================
+
+
+-- --------------------------------------------------------------------
+-- 1. products: 3 cột của migration 025 (NGUYÊN NHÂN GỐC lỗi trang
+--    Sản phẩm không hiện danh sách).
+--
+--    Ứng dụng SELECT các cột này; thiếu chúng thì PostgREST trả lỗi 400
+--    và danh sách rỗng. Hiện trang vẫn chạy được là nhờ cơ chế dự phòng
+--    tự chuyển sang select('*') — nhưng đó chỉ cứu việc ĐỌC. Thao tác
+--    GHI vào các cột này vẫn hỏng cho tới khi chạy migration này.
+-- --------------------------------------------------------------------
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS allow_price_edit boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS price_edit_max_type text
+    NOT NULL DEFAULT 'percent',
+  ADD COLUMN IF NOT EXISTS price_edit_max numeric NOT NULL DEFAULT 0;
+
+-- CHECK tách riêng để chạy lại không lỗi "constraint already exists".
+ALTER TABLE products DROP CONSTRAINT IF EXISTS products_price_edit_max_type_check;
+ALTER TABLE products
+  ADD CONSTRAINT products_price_edit_max_type_check
+  CHECK (price_edit_max_type IN ('percent', 'value'));
+
+COMMENT ON COLUMN products.allow_price_edit IS
+  'Cho phép nhân viên sửa giá khi tạo đơn cho SKU này.';
+COMMENT ON COLUMN products.price_edit_max_type IS
+  'Đơn vị của trần điều chỉnh: ''percent'' (%) hoặc ''value'' (VND).';
+COMMENT ON COLUMN products.price_edit_max IS
+  'Trần được phép sửa: % giá bán hoặc giá trị tuyệt đối tùy max_type.';
+
+
+-- --------------------------------------------------------------------
+-- 2. sales_orders.client_request_id — migration 089.
+--
+--    Thiếu cột này thì đơn tạo NGOẠI TUYẾN không đẩy lên được: đơn nằm
+--    lại trong hàng chờ trên máy nhân viên vô thời hạn. Index unique là
+--    thứ bảo đảm đồng bộ lại nhiều lần không tạo đơn trùng.
+-- --------------------------------------------------------------------
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS client_request_id uuid;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_orders_client_request_id
+  ON sales_orders (client_request_id)
+  WHERE client_request_id IS NOT NULL;
+
+COMMENT ON COLUMN sales_orders.client_request_id IS
+  'UUID sinh tại thiết bị cho đơn tạo offline. Unique để đồng bộ idempotent (thử lại không tạo trùng). NULL cho đơn tạo online thông thường.';
+
+
+-- --------------------------------------------------------------------
+-- 3. Index tra cứu nhà cung cấp theo tổ chức — migration 006.
+--    Chỉ ảnh hưởng tốc độ, không ảnh hưởng đúng/sai.
+-- --------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_suppliers_org ON suppliers(org_id);
+
+
+-- ====================================================================
+-- KIỂM TRA SAU KHI CHẠY — cả 3 dòng phải trả về true.
+-- ====================================================================
+-- SELECT
+--   (SELECT count(*) = 3 FROM information_schema.columns
+--     WHERE table_schema='public' AND table_name='products'
+--       AND column_name IN ('allow_price_edit','price_edit_max_type','price_edit_max')
+--   ) AS cot_products_du,
+--   (SELECT count(*) = 1 FROM information_schema.columns
+--     WHERE table_schema='public' AND table_name='sales_orders'
+--       AND column_name='client_request_id'
+--   ) AS cot_offline_du,
+--   (SELECT count(*) = 1 FROM pg_indexes
+--     WHERE schemaname='public' AND indexname='idx_suppliers_org'
+--   ) AS index_ncc_du;
+
+-- --------------------------------------------------------------------
+-- KIỂM TRA THÊM (không bắt buộc): policy ảnh chuyến thăm nằm ở schema
+-- `storage`. Nếu trả về ít hơn 3 dòng thì chức năng chụp ảnh viếng thăm
+-- khách hàng đang hỏng — khi đó chạy lại migration 014_visit_photos.sql.
+-- --------------------------------------------------------------------
+-- SELECT policyname FROM pg_policies
+-- WHERE schemaname='storage' AND tablename='objects'
+--   AND policyname LIKE 'visit_photos%';
 

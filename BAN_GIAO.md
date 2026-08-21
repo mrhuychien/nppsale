@@ -23,11 +23,11 @@ sản phẩm thử nghiệm.
 1. **Database production đang lệch so với code.** Đây là nguyên nhân gốc của
    ít nhất 3 sự cố đã ghi nhận (danh sách sản phẩm rỗng, không lưu được phân
    quyền, và một số quy tắc RLS không có hiệu lực). Việc đầu tiên người tiếp
-   nhận nên làm là chạy công cụ dò lệch ở mục 8.
-2. **Migration không chạy lại được.** 144 câu `CREATE POLICY` không có
-   `DROP POLICY IF EXISTS` đứng trước → chạy lại migration sẽ báo lỗi "already
+   nhận nên làm là chạy `migrations/091_backfill_missing_objects.sql` (xem 5.0).
+2. **Migration từng không chạy lại được** (đã sửa trong đợt này). 141 câu
+   `CREATE POLICY` thiếu `DROP POLICY IF EXISTS` → chạy lại sẽ lỗi "already
    exists" và dừng giữa chừng. Đây gần như chắc chắn là lý do database bị lệch
-   ngay từ đầu.
+   ngay từ đầu. Nay toàn bộ migration đã idempotent.
 3. **Lỗi bị nuốt trên diện rộng.** 63 truy vấn đọc bỏ qua `error` và 191 thao
    tác ghi không kiểm tra kết quả. Hậu quả: hệ thống hỏng mà **không báo gì** —
    người dùng chỉ thấy "không có dữ liệu" hoặc tưởng đã lưu thành công.
@@ -69,7 +69,7 @@ src/app/api/             8 route cần service_role (server-only)
 src/components/          75 component; ui/ là shadcn, còn lại theo nghiệp vụ
 src/lib/                 47 file logic thuần — NƠI ĐÁNG TIN CẬY NHẤT để sửa
 src/hooks/               use-auth, use-order-sync, use-role-guard...
-supabase/migrations/     90 file, chạy TUẦN TỰ theo số
+supabase/migrations/     91 file, chạy TUẦN TỰ theo số
 supabase/diagnostics/    công cụ chẩn đoán sự cố (xem mục 8)
 tests/                   test đơn vị (vitest)
 ```
@@ -120,14 +120,15 @@ npm test                       # chỉ chạy test
   SQL Editor. Tuỳ chọn: `supabase/seed_demo.sql` cho dữ liệu mẫu —
   **tuyệt đối không chạy trên production** (chứa tài khoản demo mật khẩu công khai).
 - **DB đã có sẵn:** chỉ chạy các migration **mới**, theo đúng thứ tự số.
-  ⚠️ Không chạy lại `schema_full.sql` — sẽ lỗi (xem mục 5, vấn đề #2).
+  ⚠️ Không chạy lại `schema_full.sql` trên DB đã có dữ liệu — nó chứa
+  `CREATE TABLE` không điều kiện. Chỉ chạy migration mới.
 
 **Migration bắt buộc phải chạy nếu chưa có:**
 
 | Migration | Không chạy thì bị gì |
 |---|---|
-| `089_order_client_request_id.sql` | Đơn tạo ngoại tuyến không đồng bộ lên được |
 | `090_fix_role_permissions_module_check.sql` | Không lưu được phân quyền chi tiết |
+| `091_backfill_missing_objects.sql` | **Bù 3 mục schema đang thiếu trên production** — gồm cả cột của 089 (đơn ngoại tuyến không đồng bộ được) và của 025 (trang Sản phẩm) |
 
 ---
 
@@ -162,12 +163,34 @@ lớn nhất còn lại.
 
 ## 5. Vấn đề đã biết
 
+### 5.0 Kết quả đo lệch schema trên production (2026-08-21)
+
+Đã chạy `check_migration_drift.sql` trên database thật. Công cụ báo 14 migration
+"thiếu", nhưng rà từng cái thì **phần lớn là báo động giả** — đối tượng bị
+migration sau cố ý xoá/thay thế (đổi tên policy qua các đợt sửa RLS; cột
+`qr_login_token` của 087 được 088 chuyển sang bảng riêng). Công cụ đã được sửa
+để tính *trạng thái cuối cùng*, nay không còn báo nhầm.
+
+**Ba mục thiếu thật:**
+
+| Thiếu | Hậu quả | Trạng thái |
+|---|---|---|
+| `products.allow_price_edit`, `price_edit_max_type`, `price_edit_max` (mig 025) | **Nguyên nhân gốc lỗi trang Sản phẩm rỗng.** Hiện chạy được nhờ cơ chế dự phòng, nhưng đó chỉ cứu việc ĐỌC — thao tác GHI vào các cột này vẫn hỏng | Bù ở `091` |
+| `sales_orders.client_request_id` + index (mig 089) | Đơn tạo **ngoại tuyến không đồng bộ lên được** — nằm lại trên máy nhân viên vô thời hạn | Bù ở `091` |
+| index `idx_suppliers_org` (mig 006) | Chỉ ảnh hưởng tốc độ | Bù ở `091` |
+
+**Cần kiểm thêm:** policy `visit_photos_*` nằm ở schema `storage` — nếu thiếu
+thì chức năng chụp ảnh viếng thăm khách hàng đang hỏng. Câu kiểm nằm ở cuối
+file `091`.
+
+➡️ **Việc cần làm ngay: chạy `supabase/migrations/091_backfill_missing_objects.sql`.**
+
 ### 5.1 Đã kiểm chứng bằng bằng chứng cụ thể
 
 | # | Mức | Vấn đề | Ảnh hưởng | Vị trí |
 |---|---|---|---|---|
-| 1 | 🔴 Nghiêm trọng | **DB production lệch so với migration** | Nguyên nhân gốc của ≥3 sự cố production. Đường dự phòng chỉ cứu việc ĐỌC — thao tác GHI vào cột thiếu vẫn hỏng | Chạy `check_migration_drift.sql` để biết chính xác |
-| 2 | 🔴 Nghiêm trọng | **144 `CREATE POLICY` thiếu `DROP IF EXISTS`** | Migration không chạy lại được → cài đặt dở dang, khó phục hồi. Gần như chắc chắn là lý do DB bị lệch | `supabase/migrations/*.sql` (từ 002 trở đi) |
+| 1 | 🔴 Nghiêm trọng | **DB production lệch so với migration** — ĐÃ ĐO, xem 5.0 | Nguyên nhân gốc của ≥3 sự cố production | Sửa bằng `migrations/091_backfill_missing_objects.sql` |
+| 2 | ✅ Đã sửa | 141 `CREATE POLICY` thiếu `DROP IF EXISTS` | Từng khiến migration không chạy lại được → cài đặt dở dang. Nay đã idempotent | `scripts/make-policies-idempotent.py` |
 | 3 | 🟠 Cao | **191 thao tác ghi không kiểm tra lỗi** | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB, **không có cảnh báo nào** | Rải rác `src/app/(dashboard)/**` |
 | 4 | 🟠 Cao | **63 truy vấn đọc bỏ qua `error`** | Lỗi hiện thành "không có dữ liệu" → không thể chẩn đoán. Đã sửa 10 trang chính bằng `selectResilient`, còn lại chưa | Rải rác `src/app/(dashboard)/**` |
 | 5 | 🟠 Cao | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | App **nhận file Excel người dùng tải lên** → có đường khai thác thật | 6 file (import KH/SP/NCC, xuất báo cáo) |
@@ -225,10 +248,11 @@ nào đã thực sự chạy trên production**.
 ## 7. Lộ trình đề xuất
 
 **Tuần 1 — cầm máu**
-1. Chạy `check_migration_drift.sql`, bù đủ migration còn thiếu. *(gỡ nguyên nhân gốc)*
-2. Thêm `DROP POLICY IF EXISTS` cho 144 policy → migration chạy lại được.
-3. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2.
-4. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
+1. ✅ ~~Dò lệch schema~~ — đã đo, xem mục 5.0.
+2. ✅ ~~Làm migration chạy lại được~~ — đã sửa 141 policy.
+3. **Chạy `migrations/091_backfill_missing_objects.sql`** để bù 3 mục thiếu thật. *(gỡ nguyên nhân gốc)*
+4. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2 — làm SAU bước 3, vì trước đó chưa thể tin schema.
+5. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
 
 **Tháng 1 — ổn định**
 5. Nốt 63 truy vấn đọc nuốt lỗi (dùng `selectResilient` sẵn có).

@@ -109,6 +109,7 @@ CREATE TRIGGER trg_expenses_touch
 
 -- RLS
 ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "expense_categories_all" ON expense_categories;
 CREATE POLICY "expense_categories_all" ON expense_categories
   FOR ALL TO authenticated
   USING (org_id = public.user_org_id())
@@ -118,6 +119,7 @@ CREATE POLICY "expense_categories_all" ON expense_categories
   );
 
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "expenses_select" ON expenses;
 CREATE POLICY "expenses_select" ON expenses
   FOR SELECT TO authenticated
   USING (
@@ -125,6 +127,7 @@ CREATE POLICY "expenses_select" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_insert" ON expenses;
 CREATE POLICY "expenses_insert" ON expenses
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -132,6 +135,7 @@ CREATE POLICY "expenses_insert" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_update" ON expenses;
 CREATE POLICY "expenses_update" ON expenses
   FOR UPDATE TO authenticated
   USING (
@@ -143,6 +147,7 @@ CREATE POLICY "expenses_update" ON expenses
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "expenses_delete" ON expenses;
 CREATE POLICY "expenses_delete" ON expenses
   FOR DELETE TO authenticated
   USING (

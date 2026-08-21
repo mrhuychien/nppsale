@@ -45,10 +45,12 @@ CREATE INDEX IF NOT EXISTS idx_cash_receipt_lines_receipt ON cash_receipt_lines(
 ALTER TABLE cash_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_receipt_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cash_receipts_select" ON cash_receipts;
 CREATE POLICY "cash_receipts_select" ON cash_receipts
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "cash_receipts_insert" ON cash_receipts;
 CREATE POLICY "cash_receipts_insert" ON cash_receipts
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -56,6 +58,7 @@ CREATE POLICY "cash_receipts_insert" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse', 'driver')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_update" ON cash_receipts;
 CREATE POLICY "cash_receipts_update" ON cash_receipts
   FOR UPDATE TO authenticated
   USING (
@@ -67,6 +70,7 @@ CREATE POLICY "cash_receipts_update" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_delete" ON cash_receipts;
 CREATE POLICY "cash_receipts_delete" ON cash_receipts
   FOR DELETE TO authenticated
   USING (
@@ -75,6 +79,7 @@ CREATE POLICY "cash_receipts_delete" ON cash_receipts
   );
 
 -- Lines inherit access via parent (cascade delete handles cleanup)
+DROP POLICY IF EXISTS "cash_receipt_lines_select" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_select" ON cash_receipt_lines
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -83,6 +88,7 @@ CREATE POLICY "cash_receipt_lines_select" ON cash_receipt_lines
       AND r.org_id = public.user_org_id()
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_insert" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_insert" ON cash_receipt_lines
   FOR INSERT TO authenticated
   WITH CHECK (EXISTS (
@@ -91,6 +97,7 @@ CREATE POLICY "cash_receipt_lines_insert" ON cash_receipt_lines
       AND r.org_id = public.user_org_id()
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_update" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_update" ON cash_receipt_lines
   FOR UPDATE TO authenticated
   USING (EXISTS (
@@ -100,6 +107,7 @@ CREATE POLICY "cash_receipt_lines_update" ON cash_receipt_lines
       AND public.user_role() IN ('owner', 'manager', 'accountant')
   ));
 
+DROP POLICY IF EXISTS "cash_receipt_lines_delete" ON cash_receipt_lines;
 CREATE POLICY "cash_receipt_lines_delete" ON cash_receipt_lines
   FOR DELETE TO authenticated
   USING (EXISTS (

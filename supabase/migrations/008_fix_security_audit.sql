@@ -11,21 +11,25 @@ DROP POLICY IF EXISTS "Owner can insert users" ON users;
 DROP POLICY IF EXISTS "Owner can update users" ON users;
 DROP POLICY IF EXISTS "Owner can delete users" ON users;
 
+DROP POLICY IF EXISTS "Users view own org" ON users;
 CREATE POLICY "Users view own org"
   ON users FOR SELECT
   TO authenticated
   USING (org_id = public.user_org_id() OR id = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS "Owner insert users" ON users;
 CREATE POLICY "Owner insert users"
   ON users FOR INSERT
   TO authenticated
   WITH CHECK (public.user_role() = 'owner' AND org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner update users" ON users;
 CREATE POLICY "Owner update users"
   ON users FOR UPDATE
   TO authenticated
   USING (public.user_role() = 'owner' AND org_id = public.user_org_id());
 
+DROP POLICY IF EXISTS "Owner delete users" ON users;
 CREATE POLICY "Owner delete users"
   ON users FOR DELETE
   TO authenticated
@@ -37,6 +41,7 @@ CREATE POLICY "Owner delete users"
 DROP POLICY IF EXISTS "Authenticated can view assignments" ON customer_assignments;
 DROP POLICY IF EXISTS "Owner/Manager can manage assignments" ON customer_assignments;
 
+DROP POLICY IF EXISTS "View assignments in org" ON customer_assignments;
 CREATE POLICY "View assignments in org"
   ON customer_assignments FOR SELECT
   TO authenticated
@@ -48,6 +53,7 @@ CREATE POLICY "View assignments in org"
     OR user_id = (SELECT auth.uid())
   );
 
+DROP POLICY IF EXISTS "Owner/Manager manage assignments" ON customer_assignments;
 CREATE POLICY "Owner/Manager manage assignments"
   ON customer_assignments FOR ALL
   TO authenticated
@@ -150,6 +156,7 @@ CREATE TRIGGER trg_log_order_status
 
 -- RLS for history
 ALTER TABLE order_status_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "View order history" ON order_status_history;
 CREATE POLICY "View order history" ON order_status_history FOR SELECT
   TO authenticated USING (true);
 

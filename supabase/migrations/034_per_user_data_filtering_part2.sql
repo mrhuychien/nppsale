@@ -20,6 +20,7 @@
 -- 1. payables — restrict SELECT to financial roles
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "View payables" ON payables;
+DROP POLICY IF EXISTS "Financial roles view payables" ON payables;
 CREATE POLICY "Financial roles view payables" ON payables
   FOR SELECT TO authenticated
   USING (
@@ -28,6 +29,7 @@ CREATE POLICY "Financial roles view payables" ON payables
   );
 
 DROP POLICY IF EXISTS "View payable payments" ON payable_payments;
+DROP POLICY IF EXISTS "Financial roles view payable payments" ON payable_payments;
 CREATE POLICY "Financial roles view payable payments" ON payable_payments
   FOR SELECT TO authenticated
   USING (
@@ -43,6 +45,7 @@ CREATE POLICY "Financial roles view payable payments" ON payable_payments
 --    roles. Sales/driver have no business reason to see cost prices.
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "View POs" ON purchase_orders;
+DROP POLICY IF EXISTS "Ops roles view POs" ON purchase_orders;
 CREATE POLICY "Ops roles view POs" ON purchase_orders
   FOR SELECT TO authenticated
   USING (
@@ -51,6 +54,7 @@ CREATE POLICY "Ops roles view POs" ON purchase_orders
   );
 
 DROP POLICY IF EXISTS "View PO lines" ON purchase_order_lines;
+DROP POLICY IF EXISTS "Ops roles view PO lines" ON purchase_order_lines;
 CREATE POLICY "Ops roles view PO lines" ON purchase_order_lines
   FOR SELECT TO authenticated
   USING (
@@ -62,6 +66,7 @@ CREATE POLICY "Ops roles view PO lines" ON purchase_order_lines
   );
 
 DROP POLICY IF EXISTS "View purchase invoices" ON purchase_invoices;
+DROP POLICY IF EXISTS "Financial roles view purchase invoices" ON purchase_invoices;
 CREATE POLICY "Financial roles view purchase invoices" ON purchase_invoices
   FOR SELECT TO authenticated
   USING (
@@ -73,6 +78,7 @@ CREATE POLICY "Financial roles view purchase invoices" ON purchase_invoices
 -- 3. cash_receipts — narrow SELECT for sales/driver to own collections
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "cash_receipts_select" ON cash_receipts;
+DROP POLICY IF EXISTS "cash_receipts_select_admin" ON cash_receipts;
 CREATE POLICY "cash_receipts_select_admin" ON cash_receipts
   FOR SELECT TO authenticated
   USING (
@@ -80,6 +86,7 @@ CREATE POLICY "cash_receipts_select_admin" ON cash_receipts
     AND public.user_role() IN ('owner', 'manager', 'accountant')
   );
 
+DROP POLICY IF EXISTS "cash_receipts_select_own" ON cash_receipts;
 CREATE POLICY "cash_receipts_select_own" ON cash_receipts
   FOR SELECT TO authenticated
   USING (

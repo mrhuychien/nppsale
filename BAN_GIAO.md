@@ -20,10 +20,10 @@ sản phẩm thử nghiệm.
 
 **Rủi ro lớn nhất — đọc kỹ ba điểm này:**
 
-1. **Database production đang lệch so với code.** Đây là nguyên nhân gốc của
-   ít nhất 3 sự cố đã ghi nhận (danh sách sản phẩm rỗng, không lưu được phân
-   quyền, và một số quy tắc RLS không có hiệu lực). Việc đầu tiên người tiếp
-   nhận nên làm là chạy `migrations/091_backfill_missing_objects.sql` (xem 5.0).
+1. **Schema production từng lệch so với code** — nguyên nhân gốc của ít nhất
+   3 sự cố (sản phẩm rỗng, không lưu được phân quyền, RLS không hiệu lực).
+   **Đã đồng bộ xong** (xem 5.0). Duy trì bằng cách chạy công cụ dò lệch sau
+   mỗi lần deploy có migration mới.
 2. **Migration từng không chạy lại được** (đã sửa trong đợt này). 141 câu
    `CREATE POLICY` thiếu `DROP POLICY IF EXISTS` → chạy lại sẽ lỗi "already
    exists" và dừng giữa chừng. Đây gần như chắc chắn là lý do database bị lệch
@@ -163,33 +163,48 @@ lớn nhất còn lại.
 
 ## 5. Vấn đề đã biết
 
-### 5.0 Kết quả đo lệch schema trên production (2026-08-21)
+### 5.0 Đồng bộ schema production — ĐÃ XỬ LÝ (2026-08-21)
 
-Đã chạy `check_migration_drift.sql` trên database thật. Công cụ báo 14 migration
-"thiếu", nhưng rà từng cái thì **phần lớn là báo động giả** — đối tượng bị
-migration sau cố ý xoá/thay thế (đổi tên policy qua các đợt sửa RLS; cột
-`qr_login_token` của 087 được 088 chuyển sang bảng riêng). Công cụ đã được sửa
-để tính *trạng thái cuối cùng*, nay không còn báo nhầm.
+Đã đo bằng `check_migration_drift.sql` trên database thật, rà từng mục, và bù
+xong bằng `migrations/091_backfill_missing_objects.sql`.
 
-**Ba mục thiếu thật:**
+**Ba mục thiếu thật — đã bù, đã xác nhận biến mất ở lần đo lại:**
 
-| Thiếu | Hậu quả | Trạng thái |
+| Thiếu | Hậu quả khi thiếu | Trạng thái |
 |---|---|---|
-| `products.allow_price_edit`, `price_edit_max_type`, `price_edit_max` (mig 025) | **Nguyên nhân gốc lỗi trang Sản phẩm rỗng.** Hiện chạy được nhờ cơ chế dự phòng, nhưng đó chỉ cứu việc ĐỌC — thao tác GHI vào các cột này vẫn hỏng | Bù ở `091` |
-| `sales_orders.client_request_id` + index (mig 089) | Đơn tạo **ngoại tuyến không đồng bộ lên được** — nằm lại trên máy nhân viên vô thời hạn | Bù ở `091` |
-| index `idx_suppliers_org` (mig 006) | Chỉ ảnh hưởng tốc độ | Bù ở `091` |
+| `products.allow_price_edit`, `price_edit_max_type`, `price_edit_max` (mig 025) | **Nguyên nhân gốc lỗi trang Sản phẩm rỗng** | ✅ đã bù |
+| `sales_orders.client_request_id` + index (mig 089) | Đơn tạo ngoại tuyến không đồng bộ lên được | ✅ đã bù |
+| index `idx_suppliers_org` (mig 006) | Chỉ ảnh hưởng tốc độ | ✅ đã bù |
 
-**Cần kiểm thêm:** policy `visit_photos_*` nằm ở schema `storage` — nếu thiếu
-thì chức năng chụp ảnh viếng thăm khách hàng đang hỏng. Câu kiểm nằm ở cuối
-file `091`.
+**Bài học quan trọng cho người tiếp nhận — cách đọc kết quả dò lệch.**
+Lần đo đầu báo 14 migration "thiếu", nhưng **11/14 là báo động giả**: policy bị
+migration sau cố ý xoá/đổi tên qua nhiều đợt sửa RLS (`004`→`008` cho bảng
+`users`; `042` cho `customers`; `034` cho `payables`/`purchase_orders`/
+`cash_receipts`), và cột `qr_login_token` của `087` được `088` chuyển sang bảng
+riêng `qr_login_tokens`.
 
-➡️ **Việc cần làm ngay: chạy `supabase/migrations/091_backfill_missing_objects.sql`.**
+Công cụ đã được viết lại để tính **trạng thái cuối cùng** của từng đối tượng
+theo đúng thứ tự xuất hiện, nên bản hiện tại không còn báo nhầm. **Nếu thấy kết
+quả có cột `trang_thai` là bạn đang chạy bản cũ** — sinh lại bằng
+`python3 scripts/build-drift-check.py`.
+
+**Còn một mục chưa ngã ngũ:** policy `visit_photos_*` nằm ở schema `storage`
+(bản dò cũ tìm nhầm trong schema `public` nên luôn báo thiếu). Kiểm bằng:
+
+```sql
+SELECT policyname FROM pg_policies
+WHERE schemaname='storage' AND tablename='objects'
+  AND policyname LIKE 'visit_photos%';
+```
+
+Ít hơn 3 dòng ⇒ chức năng **chụp ảnh viếng thăm khách hàng** đang hỏng ⇒ chạy
+lại `migrations/014_visit_photos.sql`.
 
 ### 5.1 Đã kiểm chứng bằng bằng chứng cụ thể
 
 | # | Mức | Vấn đề | Ảnh hưởng | Vị trí |
 |---|---|---|---|---|
-| 1 | 🔴 Nghiêm trọng | **DB production lệch so với migration** — ĐÃ ĐO, xem 5.0 | Nguyên nhân gốc của ≥3 sự cố production | Sửa bằng `migrations/091_backfill_missing_objects.sql` |
+| 1 | ✅ Đã sửa | DB production lệch so với migration | Từng là nguyên nhân gốc của ≥3 sự cố | `migrations/091_backfill_missing_objects.sql` |
 | 2 | ✅ Đã sửa | 141 `CREATE POLICY` thiếu `DROP IF EXISTS` | Từng khiến migration không chạy lại được → cài đặt dở dang. Nay đã idempotent | `scripts/make-policies-idempotent.py` |
 | 3 | 🟠 Cao | **191 thao tác ghi không kiểm tra lỗi** | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB, **không có cảnh báo nào** | Rải rác `src/app/(dashboard)/**` |
 | 4 | 🟠 Cao | **63 truy vấn đọc bỏ qua `error`** | Lỗi hiện thành "không có dữ liệu" → không thể chẩn đoán. Đã sửa 10 trang chính bằng `selectResilient`, còn lại chưa | Rải rác `src/app/(dashboard)/**` |
@@ -250,9 +265,10 @@ nào đã thực sự chạy trên production**.
 **Tuần 1 — cầm máu**
 1. ✅ ~~Dò lệch schema~~ — đã đo, xem mục 5.0.
 2. ✅ ~~Làm migration chạy lại được~~ — đã sửa 141 policy.
-3. **Chạy `migrations/091_backfill_missing_objects.sql`** để bù 3 mục thiếu thật. *(gỡ nguyên nhân gốc)*
-4. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2 — làm SAU bước 3, vì trước đó chưa thể tin schema.
-5. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
+3. ✅ ~~Bù schema thiếu~~ — đã chạy 091, đo lại sạch.
+4. Kiểm `visit_photos` ở schema storage (câu lệnh ở mục 5.0) — mục duy nhất còn treo.
+5. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2 — giờ đã tin được schema nên làm được rồi.
+6. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
 
 **Tháng 1 — ổn định**
 5. Nốt 63 truy vấn đọc nuốt lỗi (dùng `selectResilient` sẵn có).

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { readSheetAsRows } from "@/lib/xlsx-safe"
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
 import {
   parseSupplierSheet,
@@ -67,11 +68,9 @@ export function SupplierImportDialog({ open, onOpenChange, onImported }: Supplie
     setRows([])
     setFileName(file.name)
     try {
-      const XLSX = await import("xlsx")
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: "array" })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" })
+      // readSheetAsRows: cô lập Object.prototype khi phân tích file
+      // người dùng tải lên (xlsx trên npm còn lỗ hổng — xem lib).
+      const aoa = await readSheetAsRows(file)
       const result = parseSupplierSheet(aoa)
       setHeaderError(result.headerError)
       setRows(result.rows)

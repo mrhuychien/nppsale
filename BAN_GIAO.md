@@ -141,8 +141,9 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **61 test / 3 file, tất cả xanh** |
-| Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 47 lib · 90 migration |
+| `npm test` | ✅ **82 test / 4 file, tất cả xanh** |
+| CI | ✅ `.github/workflows/verify.yml` chạy cả 4 bước trên mỗi push vào `main` và mỗi PR |
+| Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
 | `any` trong code | 2 (rất tốt) |
 | TODO/FIXME còn sót | 0 |
 | Lỗ hổng dependency | 5 mức cao (phân tích ở mục 5) |
@@ -156,10 +157,15 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/uom.test.ts` | Quy đổi đơn vị, chặn hệ số 0/âm, hiển thị phiếu | 15 |
 | `tests/approval.test.ts` | Quy tắc duyệt đơn, ngưỡng, hạn mức tín dụng, phân cấp duyệt | 19 |
 | `tests/tien.test.ts` | Định dạng tiền, đọc số thành chữ, luật chặn sửa giá | 27 |
+| `tests/luong-thuong.test.ts` | Hệ số ngày công, vai trò bỏ qua chấm công, thưởng đầu thùng, thưởng theo mốc số đơn | 21 |
 
-⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, tính lương/thưởng, FIFO
-kho, đồng bộ ngoại tuyến, tích hợp hoá đơn điện tử MISA. Đây là khoảng trống
-lớn nhất còn lại.
+⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, FIFO kho, đồng bộ ngoại
+tuyến, tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
+
+**Lưới an toàn tự động.** `.github/workflows/verify.yml` chạy typecheck → lint →
+test → build trên mỗi push vào `main` và mỗi pull request, cộng một bước cảnh báo
+(không chặn merge) đếm số truy vấn database chưa kiểm lỗi. Người tiếp nhận không
+cần nhớ chạy tay.
 
 ---
 
@@ -206,20 +212,47 @@ quả không có dòng nào = vẫn khớp.
 | 2 | ✅ Đã sửa | 141 `CREATE POLICY` thiếu `DROP IF EXISTS` | Từng khiến migration không chạy lại được → cài đặt dở dang. Nay đã idempotent | `scripts/make-policies-idempotent.py` |
 | 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi (đo lại: 47, không phải 191) | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | 47 → 0 |
 | 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` (đo lại: 190) | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | 190 → 7 file |
-| 5 | 🟠 Cao | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | App **nhận file Excel người dùng tải lên** → có đường khai thác thật | 6 file (import KH/SP/NCC, xuất báo cáo) |
+| 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
 | 6 | 🟡 Trung | **81 file có truy vấn không giới hạn số dòng** | Chạy tốt lúc dữ liệu nhỏ; chậm dần rồi treo khi dữ liệu lớn | `src/app/(dashboard)/**` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.082) | Khó đọc, khó test, dễ gây hồi quy khi sửa | `orders/[id]/page.tsx`, `order-form.tsx`… |
 | 8 | 🟢 Thấp | `userSalesCeiling` trả `110000.00000000001` | Chưa gây lỗi (validate có dung sai 0,5đ) nhưng sẽ sinh lỗi lạ nếu dùng làm `max` của ô nhập | `src/lib/pricing.ts` |
 
 **Về lỗ hổng dependency:** 5 cảnh báo mức cao. Đã phân tích từng cái:
 
-- `xlsx` → **rủi ro thật** (mục 5 ở trên). Bản npm mới nhất vẫn dính; SheetJS đã
-  chuyển sang phát hành qua CDN riêng. Cần đánh giá phương án chuyển nguồn cài đặt.
+- `xlsx` → **đã giảm thiểu trong code, còn 1 việc cần bạn làm** (xem 5.1a ngay bên dưới).
 - `next@14.2.35` → là bản mới nhất của dòng 14. Cảnh báo liên quan
   `images.remotePatterns` mà **dự án không cấu hình `images`** → **không có đường
   khai thác**. Chỉ hết cảnh báo khi lên Next 15.
 - `nanoid`, `postcss`, `ws` → phụ thuộc gián tiếp, không nằm trên đường đi của
   dữ liệu người dùng. Rủi ro thực tế thấp.
+
+### 5.1a `xlsx` — đã làm gì, còn phải làm gì
+
+**Phạm vi thật.** Có đúng 3 chỗ phân tích file do người dùng tải lên: nhập khách
+hàng, nhập sản phẩm, nhập nhà cung cấp. Cả 3 đều dùng `await import("xlsx")` →
+**chạy hoàn toàn phía trình duyệt**. Không có đường phân tích file phía máy chủ.
+Nghĩa là hậu quả tệ nhất giới hạn trong phiên của chính người mở file — không
+phải lỗ hổng máy chủ, không lan sang người dùng khác.
+
+**Đã làm.** Thêm `src/lib/xlsx-safe.ts` và chuyển cả 3 hộp thoại nhập liệu sang
+gọi `readSheetAsRows(file)`. Hàm này chụp lại các khoá nguy hiểm trên
+`Object.prototype` trước khi phân tích rồi khôi phục ngay sau, đồng thời lọc
+`__proto__` / `constructor` / `prototype` khỏi dữ liệu trả về. Payload
+Prototype Pollution do đó không bám lại được vào ứng dụng.
+
+> ⚠️ Quy ước bắt buộc: **đừng gọi `XLSX.read()` trực tiếp ở bất kỳ chỗ nào khác.**
+> Mọi nơi đọc file người dùng phải đi qua `readSheetAsRows`.
+
+**Còn lại — bạn cần chạy trên máy mình** (môi trường agent bị chặn ra CDN của
+SheetJS nên tôi không chạy được):
+
+```bash
+npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+npm run verify
+```
+
+Sau lệnh này `npm audit` sẽ còn 4 cảnh báo thay vì 5. Lớp `xlsx-safe.ts` vẫn nên
+giữ nguyên — nó là phòng vệ chiều sâu, không phải giải pháp tạm.
 
 ### 5.2 Nhóm RLS — ĐÃ KIỂM CHỨNG VÀ XỬ LÝ
 
@@ -271,7 +304,7 @@ rỗng bất thường thì dùng lệnh hoàn tác tương ứng trong file.
 - **Tích hợp hoá đơn điện tử MISA.** Phụ thuộc API bên thứ ba, không có test,
   credentials mã hoá bằng khoá không được xoay vòng.
 
-**Thiếu test:** toàn bộ giao diện, lương/thưởng, FIFO kho, đồng bộ ngoại tuyến.
+**Thiếu test:** toàn bộ giao diện, FIFO kho, đồng bộ ngoại tuyến.
 
 **Kiến thức chỉ một người biết:** cấu hình MISA; ý nghĩa nghiệp vụ của các cờ
 `allow_oversell`, `direct_sale`, `is_exchange`; và quan trọng nhất — **migration
@@ -292,13 +325,13 @@ nào đã thực sự chạy trên production**.
 
 **Tháng 1 — ổn định**
 5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — còn 7 file, dùng `scripts/audit-unchecked-db.py` để theo dõi.
-6. Xử lý `xlsx`: đổi nguồn cài đặt hoặc cách ly việc phân tích file tải lên.
-7. Phủ test cho lương/thưởng và FIFO kho — hai chỗ sai là ra tiền.
-8. Phân trang cho các truy vấn không giới hạn.
+6. ✅ ~~Cách ly việc phân tích file tải lên~~ — đã có `xlsx-safe.ts`. Còn lệnh nâng thư viện bạn tự chạy, xem 5.1a.
+7. ✅ ~~Phủ test cho lương/thưởng~~ — 21 test. **Còn FIFO kho** — chỗ sai là ra tiền.
+8. Phân trang cho các truy vấn không giới hạn (81 file).
 
 **Quý 1 — bền vững**
-9. Tách `order-form.tsx` và `orders/[id]/page.tsx`; đưa logic nghiệp vụ về `src/lib` để test được.
-10. Thêm CI chạy `npm run verify` trên mỗi PR.
+9. Tách `order-form.tsx` (1.970 dòng) và `orders/[id]/page.tsx` (2.082 dòng); đưa logic nghiệp vụ về `src/lib` để test được.
+10. ✅ ~~CI chạy `npm run verify` trên mỗi PR~~ — `.github/workflows/verify.yml`.
 11. Test đầu-cuối (Playwright) cho 3 luồng sống còn: tạo đơn → duyệt → giao; thu tiền; nhập kho.
 12. Cân nhắc nâng Next 15.
 

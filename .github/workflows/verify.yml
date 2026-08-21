@@ -1,0 +1,48 @@
+# Chạy toàn bộ kiểm tra chất lượng trên mỗi push và pull request.
+#
+# Mục đích cho việc bàn giao: người tiếp nhận có lưới an toàn tự động,
+# không phải nhớ chạy tay. Một lần chạy gồm: kiểm kiểu → lint → test →
+# build, đúng như lệnh `npm run verify` ở máy cá nhân.
+name: Kiểm tra chất lượng
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cài đặt phụ thuộc
+        run: npm ci
+
+      - name: Kiểm kiểu TypeScript
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Kiểm thử đơn vị
+        run: npm test
+
+      # Build cần 2 biến môi trường công khai. Giá trị giả là đủ vì bước
+      # này chỉ biên dịch, không gọi database.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+
+      # Cảnh báo (không chặn merge) khi có thao tác ghi/đọc database
+      # chưa kiểm lỗi — chống tái diễn lỗi "hỏng im lặng".
+      - name: Đếm truy vấn chưa kiểm lỗi
+        run: python3 scripts/audit-unchecked-db.py
+        continue-on-error: true

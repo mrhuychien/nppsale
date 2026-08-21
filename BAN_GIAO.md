@@ -40,6 +40,23 @@ Khoảng trống lớn nhất còn lại là **thiếu test cho tầng giao di�
 
 ---
 
+## 1b. VIỆC BẠN CẦN LÀM — 4 việc, khoảng 30 phút
+
+Đây là toàn bộ những gì tôi **không tự làm được** (cần quyền trên Supabase,
+hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
+
+| # | Việc | Ở đâu | Vì sao |
+|---|---|---|---|
+| 1 | Chạy `supabase/migrations/092_rls_hardening.sql` | Supabase SQL Editor | Vá 3 lỗ hổng RLS đã kiểm chứng. **Có 1 thay đổi hành vi thật với vai trò `sales`** — xem 5.2 |
+| 2 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
+| 3 | Kiểm `Max rows` | Supabase → Settings → API | Nếu đang là 1.000 thì **các trang tổng hợp có thể ĐANG cộng thiếu tiền ngay lúc này**. Chi tiết + cách xử lý ở 5.1c |
+| 4 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
+
+Việc 1–3 nên làm trước khi bàn giao cho người khác. Việc 4 không gấp — đường
+khai thác đã bị chặn trong mã nguồn rồi.
+
+---
+
 ## 2. Kiến trúc và công nghệ
 
 ### Công nghệ
@@ -231,6 +248,53 @@ quả không có dòng nào = vẫn khớp.
 - `nanoid`, `postcss`, `ws` → phụ thuộc gián tiếp, không nằm trên đường đi của
   dữ liệu người dùng. Rủi ro thực tế thấp.
 
+### 5.1a `xlsx` — đã làm gì, còn phải làm gì
+
+**Phạm vi thật.** Có đúng 3 chỗ phân tích file do người dùng tải lên: nhập khách
+hàng, nhập sản phẩm, nhập nhà cung cấp. Cả 3 đều dùng `await import("xlsx")` →
+**chạy hoàn toàn phía trình duyệt**. Không có đường phân tích file phía máy chủ.
+Nghĩa là hậu quả tệ nhất giới hạn trong phiên của chính người mở file — không
+phải lỗ hổng máy chủ, không lan sang người dùng khác.
+
+**Đã làm.** Thêm `src/lib/xlsx-safe.ts` và chuyển cả 3 hộp thoại nhập liệu sang
+gọi `readSheetAsRows(file)`. Hàm này chụp lại các khoá nguy hiểm trên
+`Object.prototype` trước khi phân tích rồi khôi phục ngay sau, đồng thời lọc
+`__proto__` / `constructor` / `prototype` khỏi dữ liệu trả về. Payload
+Prototype Pollution do đó không bám lại được vào ứng dụng.
+
+> ⚠️ Quy ước bắt buộc: **đừng gọi `XLSX.read()` trực tiếp ở bất kỳ chỗ nào khác.**
+> Mọi nơi đọc file người dùng phải đi qua `readSheetAsRows`.
+
+**Còn lại — bạn cần chạy trên máy mình** (môi trường agent bị chặn ra CDN của
+SheetJS nên tôi không chạy được):
+
+```bash
+npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+npm run verify
+```
+
+Sau lệnh này `npm audit` sẽ còn 4 cảnh báo thay vì 5. Lớp `xlsx-safe.ts` vẫn nên
+giữ nguyên — nó là phòng vệ chiều sâu, không phải giải pháp tạm.
+
+### 5.1b Về hai con số ở dòng 3–4: bản đo trước đây ĐẾM THIẾU
+
+Bản `scripts/audit-unchecked-db.py` đầu tiên soi trong một cửa sổ cố định
+12 dòng. Cách đó sai theo cả hai chiều:
+
+- **Báo nhầm:** chuỗi dài (`.insert({…10 dòng…}).select().single().throwOnError()`)
+  có phần kiểm lỗi rơi ra ngoài cửa sổ → bị coi là chưa kiểm.
+- **Bỏ sót:** khử trùng theo khoảng cách dòng nên khi hai lời gọi nằm sát
+  nhau, lời gọi thứ hai bị nuốt mất và không bao giờ được báo.
+
+Vì vậy con số "47 ghi / 190 đọc" từng ghi ở đây là **thấp hơn thực tế**.
+Máy dò hiện tại bám theo phạm vi biểu thức thật (độ sâu ngoặc), hiểu bốn
+cách viết đang dùng trong dự án — destructure `{ error }`, `.throwOnError()`,
+`const r = … / if (r.error)`, và kiểm gộp sau `Promise.all([…])` — nên đo
+lại đúng hơn hẳn. Kết quả sau khi vá: **0 và 0**.
+
+`npm run verify` chưa gọi máy dò này, nhưng CI thì có, và chạy ở chế độ
+`--strict`: thêm một truy vấn không kiểm lỗi là pull request đỏ ngay.
+
 ### 5.1c Trang tổng hợp: số tiền có thể ĐANG thiếu — cần bạn kiểm
 
 **Vấn đề.** Một số trang tính tổng bằng cách tải nguyên bảng về trình duyệt
@@ -260,53 +324,6 @@ Sau khi chỉnh, mở `/receivables` và `/reports` xem có banner vàng không.
 **Cách sửa triệt để về sau:** cộng ở phía database — tạo view hoặc hàm RPC
 trả sẵn tổng, trang chỉ nhận một dòng kết quả. Vừa đúng tuyệt đối vừa nhanh,
 không phụ thuộc trần dòng. Lớp `aggregate.ts` chỉ là rào chắn trong lúc chờ.
-
-### 5.1b Về hai con số ở dòng 3–4: bản đo trước đây ĐẾM THIẾU
-
-Bản `scripts/audit-unchecked-db.py` đầu tiên soi trong một cửa sổ cố định
-12 dòng. Cách đó sai theo cả hai chiều:
-
-- **Báo nhầm:** chuỗi dài (`.insert({…10 dòng…}).select().single().throwOnError()`)
-  có phần kiểm lỗi rơi ra ngoài cửa sổ → bị coi là chưa kiểm.
-- **Bỏ sót:** khử trùng theo khoảng cách dòng nên khi hai lời gọi nằm sát
-  nhau, lời gọi thứ hai bị nuốt mất và không bao giờ được báo.
-
-Vì vậy con số "47 ghi / 190 đọc" từng ghi ở đây là **thấp hơn thực tế**.
-Máy dò hiện tại bám theo phạm vi biểu thức thật (độ sâu ngoặc), hiểu bốn
-cách viết đang dùng trong dự án — destructure `{ error }`, `.throwOnError()`,
-`const r = … / if (r.error)`, và kiểm gộp sau `Promise.all([…])` — nên đo
-lại đúng hơn hẳn. Kết quả sau khi vá: **0 và 0**.
-
-`npm run verify` chưa gọi máy dò này, nhưng CI thì có, và chạy ở chế độ
-`--strict`: thêm một truy vấn không kiểm lỗi là pull request đỏ ngay.
-
-### 5.1a `xlsx` — đã làm gì, còn phải làm gì
-
-**Phạm vi thật.** Có đúng 3 chỗ phân tích file do người dùng tải lên: nhập khách
-hàng, nhập sản phẩm, nhập nhà cung cấp. Cả 3 đều dùng `await import("xlsx")` →
-**chạy hoàn toàn phía trình duyệt**. Không có đường phân tích file phía máy chủ.
-Nghĩa là hậu quả tệ nhất giới hạn trong phiên của chính người mở file — không
-phải lỗ hổng máy chủ, không lan sang người dùng khác.
-
-**Đã làm.** Thêm `src/lib/xlsx-safe.ts` và chuyển cả 3 hộp thoại nhập liệu sang
-gọi `readSheetAsRows(file)`. Hàm này chụp lại các khoá nguy hiểm trên
-`Object.prototype` trước khi phân tích rồi khôi phục ngay sau, đồng thời lọc
-`__proto__` / `constructor` / `prototype` khỏi dữ liệu trả về. Payload
-Prototype Pollution do đó không bám lại được vào ứng dụng.
-
-> ⚠️ Quy ước bắt buộc: **đừng gọi `XLSX.read()` trực tiếp ở bất kỳ chỗ nào khác.**
-> Mọi nơi đọc file người dùng phải đi qua `readSheetAsRows`.
-
-**Còn lại — bạn cần chạy trên máy mình** (môi trường agent bị chặn ra CDN của
-SheetJS nên tôi không chạy được):
-
-```bash
-npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
-npm run verify
-```
-
-Sau lệnh này `npm audit` sẽ còn 4 cảnh báo thay vì 5. Lớp `xlsx-safe.ts` vẫn nên
-giữ nguyên — nó là phòng vệ chiều sâu, không phải giải pháp tạm.
 
 ### 5.2 Nhóm RLS — ĐÃ KIỂM CHỨNG VÀ XỬ LÝ
 

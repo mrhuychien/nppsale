@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,12 +39,15 @@ export default function ReceivablesByRepPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const res = await fetchForAggregate((cap) =>
+      const res = await fetchAllForAggregate((from, to) =>
         supabase
           .from("receivables")
-          .select("id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)")
+          .select(
+            "id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)",
+            { count: "exact" }
+          )
           .not("sales_user_id", "is", null)
-          .range(0, cap)
+          .range(from, to)
       )
       if (res.error) console.error("[receivables/by-rep] truy vấn lỗi:", res.error)
       setReceivables((res.rows as unknown as Receivable[]) || [])

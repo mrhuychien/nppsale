@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
@@ -35,20 +35,33 @@ export default function PurchasingHubPage() {
           .select("id", { count: "exact", head: true })
           .eq("type", "import")
           .gte("created_at", firstDay),
-        // Tải để cộng → phải có trần, và phải biết khi bị cắt.
-        supabase.from("payables").select("amount, paid").neq("status", "paid").range(0, AGGREGATE_ROW_CAP),
-        supabase.from("payables").select("amount").gte("created_at", firstDay).not("stock_entry_id", "is", null),
+        // Hai truy vấn dưới đây để CỘNG TIỀN → phải lấy đủ, không dừng ở
+        // trần 1.000 dòng mỗi request của server.
+        fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+          supabase
+            .from("payables")
+            .select("amount, paid", { count: "exact" })
+            .neq("status", "paid")
+            .range(from, to)
+        ),
+        fetchAllForAggregate<{ amount: number }>((from, to) =>
+          supabase
+            .from("payables")
+            .select("amount", { count: "exact" })
+            .gte("created_at", firstDay)
+            .not("stock_entry_id", "is", null)
+            .range(from, to)
+        ),
       ])
-      const qErr = ([impRes, payRes, monthPayRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[app/purchasing] truy vấn lỗi:", qErr.message)
-      const pay = capRows<{ amount: number; paid: number }>(payRes.data)
-      setTruncated(pay.truncated)
-      const openPayables = pay.rows.reduce(
+      if (impRes.error) console.error("[app/purchasing] truy vấn lỗi:", impRes.error.message)
+      if (payRes.error) console.error("[app/purchasing] truy vấn lỗi:", payRes.error)
+      if (monthPayRes.error) console.error("[app/purchasing] truy vấn lỗi:", monthPayRes.error)
+      setTruncated(payRes.truncated || monthPayRes.truncated)
+      const openPayables = payRes.rows.reduce(
         (s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)),
         0
       )
-      const monthTotal = ((monthPayRes.data as Array<{ amount: number }>) || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+      const monthTotal = monthPayRes.rows.reduce((s, r) => s + Number(r.amount || 0), 0)
       setStats({ importsThisMonth: impRes.count || 0, monthTotal, openPayables })
       setLoading(false)
     }

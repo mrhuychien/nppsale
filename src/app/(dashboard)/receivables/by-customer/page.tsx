@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -47,19 +47,23 @@ export default function ReceivablesByCustomerPage() {
   useEffect(() => {
     async function fetchData() {
       const [recRes, assignRes] = await Promise.all([
-        supabase
-          .from("receivables")
-          .select("id, customer_id, amount, paid, status, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)")
-          .neq("status", "paid")
-          .range(0, AGGREGATE_ROW_CAP),
+        // Cộng công nợ → phải lấy ĐỦ, không dừng ở trần 1.000 dòng của server.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("receivables")
+            .select(
+              "id, customer_id, amount, paid, status, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+              { count: "exact" }
+            )
+            .neq("status", "paid")
+            .range(from, to)
+        ),
         supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name)").eq("role", "primary"),
       ])
-      const qErr = ([recRes, assignRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[receivables/by-customer] truy vấn lỗi:", qErr.message)
-      const rec = capRows<Receivable>(recRes.data)
-      setTruncated(rec.truncated)
-      setReceivables(rec.rows)
+      if (recRes.error) console.error("[receivables/by-customer] truy vấn lỗi:", recRes.error)
+      if (assignRes.error) console.error("[receivables/by-customer] truy vấn lỗi:", assignRes.error.message)
+      setTruncated(recRes.truncated)
+      setReceivables(recRes.rows as unknown as Receivable[])
       setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
       setLoading(false)
     }

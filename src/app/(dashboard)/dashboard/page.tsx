@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -131,16 +131,23 @@ export default function DashboardPage() {
             .from("sales_orders")
             .select("id", { count: "exact", head: true })
             .gte("order_date", periodStart),
-          supabase
-            .from("sales_orders")
-            .select("total")
-            .gte("order_date", periodStart),
-          // Tải để cộng tổng công nợ → có trần, và báo khi bị cắt.
-          supabase
-            .from("receivables")
-            .select("amount, paid, status")
-            .neq("status", "paid")
-            .range(0, AGGREGATE_ROW_CAP),
+          // Hai truy vấn dưới đây để CỘNG TIỀN. Server trả tối đa 1.000 dòng
+          // mỗi request, nên phải lấy đủ qua nhiều trang — nếu không, doanh
+          // thu và công nợ trên trang chủ sẽ thiếu mà không báo gì.
+          fetchAllForAggregate<{ total: number }>((from, to) =>
+            supabase
+              .from("sales_orders")
+              .select("total", { count: "exact" })
+              .gte("order_date", periodStart)
+              .range(from, to)
+          ),
+          fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+            supabase
+              .from("receivables")
+              .select("amount, paid, status", { count: "exact" })
+              .neq("status", "paid")
+              .range(from, to)
+          ),
           supabase
             .from("receivables")
             .select("id", { count: "exact", head: true })
@@ -168,17 +175,20 @@ export default function DashboardPage() {
             .select("total, customer:customers(channel)")
             .gte("order_date", periodStart),
         ])
-        const qErr = ([todayOrdersRes, monthOrdersRes, receivablesRes, overdueRes, lowStockRes, expiringRes, recentRes, topCustRes, channelRes] as Array<{ error?: { message?: string } | null }>)
+        // monthOrdersRes / receivablesRes đi qua fetchAllForAggregate nên
+        // `error` của chúng là chuỗi, không phải object — kiểm riêng.
+        if (monthOrdersRes.error) console.error("[app/dashboard] truy vấn lỗi:", monthOrdersRes.error)
+        if (receivablesRes.error) console.error("[app/dashboard] truy vấn lỗi:", receivablesRes.error)
+        const qErr = ([todayOrdersRes, overdueRes, lowStockRes, expiringRes, recentRes, topCustRes, channelRes] as Array<{ error?: { message?: string } | null }>)
           .find((r) => r?.error)?.error
         if (qErr) console.error("[app/dashboard] truy vấn lỗi:", qErr.message)
 
-        const monthRevenue = (monthOrdersRes.data || []).reduce(
-          (sum, o: { total: number }) => sum + (o.total || 0),
+        const monthRevenue = monthOrdersRes.rows.reduce(
+          (sum, o) => sum + (o.total || 0),
           0
         )
-        const recv = capRows<{ amount: number; paid: number }>(receivablesRes.data)
-        setTruncated(recv.truncated)
-        const openReceivables = recv.rows.reduce(
+        setTruncated(monthOrdersRes.truncated || receivablesRes.truncated)
+        const openReceivables = receivablesRes.rows.reduce(
           (sum, r) => sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
           0
         )

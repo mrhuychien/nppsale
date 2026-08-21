@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
-import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -56,13 +56,13 @@ export default function ReceivablesPage() {
   // cho UNPAID — 1 lần mount, không join.
   useEffect(() => {
     async function loadSummary() {
-      const res = await fetchForAggregate<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>(
-        (cap) =>
+      const res = await fetchAllForAggregate<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>(
+        (from, to) =>
           supabase
             .from("receivables")
-            .select("amount, paid, due_date, status")
+            .select("amount, paid, due_date, status", { count: "exact" })
             .neq("status", "paid")
-            .range(0, cap)
+            .range(from, to)
       )
       if (res.error) console.error("[app/receivables] truy vấn lỗi:", res.error)
       setAllUnpaid(res.rows)

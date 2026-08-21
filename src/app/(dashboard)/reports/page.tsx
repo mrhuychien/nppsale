@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -75,26 +75,46 @@ export default function ReportsPage() {
     async function fetchAll() {
       setLoading(true)
       const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
-        // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Có trần
-        // để trang không treo khi dữ liệu lớn — và nếu chạm trần thì phải
-        // báo, vì báo cáo thiếu số còn tệ hơn báo cáo chậm.
-        supabase.from("sales_orders").select("id, order_date, status, total, sales_user_id").order("order_date", { ascending: false }).range(0, AGGREGATE_ROW_CAP),
-        supabase.from("receivables").select("id, status, amount, paid, created_at").range(0, AGGREGATE_ROW_CAP),
-        supabase.from("batches").select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)").gt("qty_on_hand", 0).range(0, AGGREGATE_ROW_CAP),
+        // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
+        // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
+        // báo cáo thiếu số còn tệ hơn báo cáo chậm.
+        fetchAllForAggregate<SalesOrder>((from, to) =>
+          supabase
+            .from("sales_orders")
+            .select("id, order_date, status, total, sales_user_id", { count: "exact" })
+            .order("order_date", { ascending: false })
+            .range(from, to)
+        ),
+        fetchAllForAggregate<Receivable>((from, to) =>
+          supabase
+            .from("receivables")
+            .select("id, status, amount, paid, created_at", { count: "exact" })
+            .range(from, to)
+        ),
+        // Không ràng buộc kiểu ở đây: Supabase suy luận join `product` thành
+        // mảng, ép kiểu ở chỗ dùng cho khớp với mã sẵn có.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("batches")
+            .select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)", {
+              count: "exact",
+            })
+            .gt("qty_on_hand", 0)
+            .range(from, to)
+        ),
         supabase.from("users").select("id, full_name, role, is_active, created_at"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
       ])
-      const qErr = ([ordersRes, recvRes, batchesRes, usersRes, prodRes] as Array<{ error?: { message?: string } | null }>)
+      const aggErr = [ordersRes.error, recvRes.error, batchesRes.error].find(Boolean)
+      if (aggErr) console.error("[app/reports] truy vấn lỗi:", aggErr)
+      const qErr = ([usersRes, prodRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/reports] truy vấn lỗi:", qErr.message)
-      const orders = capRows<SalesOrder>(ordersRes.data)
-      const recv = capRows<Receivable>(recvRes.data)
-      const batches = capRows<Batch & { product?: { shelf_life_days: number | null } }>(batchesRes.data)
-      setTruncated(orders.truncated || recv.truncated || batches.truncated)
+      setTruncated(ordersRes.truncated || recvRes.truncated || batchesRes.truncated)
       setData({
-        salesOrders: orders.rows,
-        receivables: recv.rows,
-        batches: batches.rows,
+        salesOrders: ordersRes.rows,
+        receivables: recvRes.rows,
+        batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
         users: (usersRes.data as User[]) || [],
         productCount: prodRes.count || 0,
       })

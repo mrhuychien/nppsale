@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import type { ExpenseBucket } from "@/types"
 
 export interface FinancePeriod {
@@ -32,58 +33,69 @@ export async function fetchPnl(
   const toIso = `${period.to}T23:59:59Z`
 
   // Revenue: delivered orders within the period
-  const { data: orders, error: ordersErr } = await supabase
-    .from("sales_orders")
-    .select("total, order_date, status, org_id")
-    .eq("org_id", orgId)
-    .eq("status", "delivered")
-    .gte("order_date", period.from)
-    .lte("order_date", period.to)
-  if (ordersErr) console.error("[lib/finance] truy vấn lỗi:", ordersErr.message)
-  const revenue = ((orders as Array<{ total: number }>) || []).reduce(
-    (s, o) => s + Number(o.total || 0), 0
+  const ordersRes = await fetchAllForAggregate<{ total: number }>((from, to) =>
+    supabase
+      .from("sales_orders")
+      .select("total, order_date, status, org_id", { count: "exact" })
+      .eq("org_id", orgId)
+      .eq("status", "delivered")
+      .gte("order_date", period.from)
+      .lte("order_date", period.to)
+      .range(from, to)
   )
-  const orderCount = orders?.length ?? 0
+  if (ordersRes.error) console.error("[lib/finance] truy vấn lỗi:", ordersRes.error)
+  const revenue = ordersRes.rows.reduce((s, o) => s + Number(o.total || 0), 0)
+  const orderCount = ordersRes.rows.length
 
   // COGS: export lines posted within the period
-  const { data: exportEntries, error: exportEntriesErr } = await supabase
-    .from("stock_entries")
-    .select("id, type, status, posted_at")
-    .eq("org_id", orgId)
-    .eq("type", "export")
-    .eq("status", "posted")
-    .gte("posted_at", fromIso)
-    .lte("posted_at", toIso)
-  if (exportEntriesErr) console.error("[lib/finance] truy vấn lỗi:", exportEntriesErr.message)
-  const exportIds = ((exportEntries as Array<{ id: string }>) || []).map((e) => e.id)
+  const exportRes = await fetchAllForAggregate<{ id: string }>((from, to) =>
+    supabase
+      .from("stock_entries")
+      .select("id, type, status, posted_at", { count: "exact" })
+      .eq("org_id", orgId)
+      .eq("type", "export")
+      .eq("status", "posted")
+      .gte("posted_at", fromIso)
+      .lte("posted_at", toIso)
+      .range(from, to)
+  )
+  if (exportRes.error) console.error("[lib/finance] truy vấn lỗi:", exportRes.error)
+  const exportIds = exportRes.rows.map((e) => e.id)
 
   let cogs = 0
   if (exportIds.length > 0) {
-    const { data: lines, error: linesErr } = await supabase
-      .from("stock_entry_lines")
-      .select("quantity, unit_cost, entry_id")
-      .in("entry_id", exportIds)
-    if (linesErr) console.error("[lib/finance] truy vấn lỗi:", linesErr.message)
-    for (const l of (lines as Array<{ quantity: number; unit_cost: number }>) || []) {
+    const linesRes = await fetchAllForAggregate<{ quantity: number; unit_cost: number }>(
+      (from, to) =>
+        supabase
+          .from("stock_entry_lines")
+          .select("quantity, unit_cost, entry_id", { count: "exact" })
+          .in("entry_id", exportIds)
+          .range(from, to)
+    )
+    if (linesRes.error) console.error("[lib/finance] truy vấn lỗi:", linesRes.error)
+    for (const l of linesRes.rows) {
       cogs += Math.abs(Number(l.quantity)) * Number(l.unit_cost || 0)
     }
   }
 
   // Expenses grouped by bucket
-  const { data: expenseRows, error: expenseRowsErr } = await supabase
-    .from("expenses")
-    .select("amount, category:expense_categories(bucket)")
-    .eq("org_id", orgId)
-    .gte("expense_date", period.from)
-    .lte("expense_date", period.to)
-  if (expenseRowsErr) console.error("[src/lib/finance.ts] truy vấn lỗi:", expenseRowsErr.message)
+  const expenseRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("expenses")
+      .select("amount, category:expense_categories(bucket)", { count: "exact" })
+      .eq("org_id", orgId)
+      .gte("expense_date", period.from)
+      .lte("expense_date", period.to)
+      .range(from, to)
+  )
+  if (expenseRes.error) console.error("[lib/finance] truy vấn lỗi:", expenseRes.error)
 
   const expensesByBucket: Record<ExpenseBucket, number> = {
     cogs: 0, operating: 0, hr: 0, financial: 0, tax: 0, other: 0,
   }
   let totalExpenses = 0
   type ExpRow = { amount: number; category?: { bucket?: ExpenseBucket } | null }
-  for (const e of ((expenseRows as unknown) as ExpRow[]) || []) {
+  for (const e of (expenseRes.rows as unknown as ExpRow[]) || []) {
     const bucket = (e.category?.bucket || "other") as ExpenseBucket
     const amt = Number(e.amount || 0)
     expensesByBucket[bucket] = (expensesByBucket[bucket] || 0) + amt
@@ -158,60 +170,81 @@ export async function fetchBalanceSheet(
     payablePaymentsRes,
     expensesRes,
   ] = await Promise.all([
-    supabase
-      .from("payments")
-      .select("amount, collected_at, receivable:receivables!inner(org_id)")
-      .eq("receivable.org_id", orgId)
-      .lte("collected_at", asOfIso),
-    supabase
-      .from("receivables")
-      .select("amount, paid")
-      .eq("org_id", orgId)
-      .neq("status", "paid"),
-    supabase
-      .from("batches")
-      .select("qty_on_hand, unit_cost")
-      .eq("org_id", orgId)
-      .gt("qty_on_hand", 0),
-    supabase
-      .from("payables")
-      .select("amount, paid")
-      .eq("org_id", orgId)
-      .neq("status", "paid"),
-    supabase
-      .from("payable_payments")
-      .select("amount, paid_at, payable:payables!inner(org_id)")
-      .eq("payable.org_id", orgId)
-      .lte("paid_at", asOfIso),
-    supabase
-      .from("expenses")
-      .select("amount, is_paid, paid_at, expense_date")
-      .eq("org_id", orgId)
-      .lte("expense_date", asOf),
+    // Toàn bộ số trên bảng cân đối đều là TỔNG. Server chỉ trả 1.000 dòng
+    // mỗi request nên phải lấy đủ qua nhiều trang, nếu không thì cân đối
+    // kế toán sai mà vẫn "cân".
+    fetchAllForAggregate<{ amount: number }>((from, to) =>
+      supabase
+        .from("payments")
+        .select("amount, collected_at, receivable:receivables!inner(org_id)", { count: "exact" })
+        .eq("receivable.org_id", orgId)
+        .lte("collected_at", asOfIso)
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+      supabase
+        .from("receivables")
+        .select("amount, paid", { count: "exact" })
+        .eq("org_id", orgId)
+        .neq("status", "paid")
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ qty_on_hand: number; unit_cost: number }>((from, to) =>
+      supabase
+        .from("batches")
+        .select("qty_on_hand, unit_cost", { count: "exact" })
+        .eq("org_id", orgId)
+        .gt("qty_on_hand", 0)
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+      supabase
+        .from("payables")
+        .select("amount, paid", { count: "exact" })
+        .eq("org_id", orgId)
+        .neq("status", "paid")
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number }>((from, to) =>
+      supabase
+        .from("payable_payments")
+        .select("amount, paid_at, payable:payables!inner(org_id)", { count: "exact" })
+        .eq("payable.org_id", orgId)
+        .lte("paid_at", asOfIso)
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number; is_paid: boolean }>((from, to) =>
+      supabase
+        .from("expenses")
+        .select("amount, is_paid, paid_at, expense_date", { count: "exact" })
+        .eq("org_id", orgId)
+        .lte("expense_date", asOf)
+        .range(from, to)
+    ),
   ])
-  const qErr2 = ([paymentsRes, receivablesRes, batchesRes, payablesRes, payablePaymentsRes, expensesRes] as Array<{ error?: { message?: string } | null }>)
-    .find((r) => r?.error)?.error
-  if (qErr2) console.error("[lib/finance] truy vấn lỗi:", qErr2.message)
+  const qErr2 = [
+    paymentsRes.error, receivablesRes.error, batchesRes.error,
+    payablesRes.error, payablePaymentsRes.error, expensesRes.error,
+  ].find(Boolean)
+  if (qErr2) console.error("[lib/finance] truy vấn lỗi:", qErr2)
 
-  const cashIn = ((paymentsRes.data as Array<{ amount: number }>) || [])
-    .reduce((s, p) => s + Number(p.amount || 0), 0)
-  const paidPayables = ((payablePaymentsRes.data as Array<{ amount: number }>) || [])
-    .reduce((s, p) => s + Number(p.amount || 0), 0)
-  const paidExpenses = ((expensesRes.data as Array<{ amount: number; is_paid: boolean }>) || [])
+  const cashIn = paymentsRes.rows.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const paidPayables = payablePaymentsRes.rows.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const paidExpenses = expensesRes.rows
     .filter((e) => e.is_paid)
     .reduce((s, e) => s + Number(e.amount || 0), 0)
   const cash = cashIn - paidPayables - paidExpenses
 
-  const accountsReceivable = ((receivablesRes.data as Array<{ amount: number; paid: number }>) || [])
+  const accountsReceivable = receivablesRes.rows
     .reduce((s, r) => s + Math.max(0, Number(r.amount) - Number(r.paid)), 0)
 
-  const inventory = ((batchesRes.data as Array<{ qty_on_hand: number; unit_cost: number }>) || [])
+  const inventory = batchesRes.rows
     .reduce((s, b) => s + Number(b.qty_on_hand || 0) * Number(b.unit_cost || 0), 0)
 
-  const accountsPayable = ((payablesRes.data as Array<{ amount: number; paid: number }>) || [])
+  const accountsPayable = payablesRes.rows
     .reduce((s, p) => s + Math.max(0, Number(p.amount) - Number(p.paid)), 0)
 
-  const unpaidExpenses = ((expensesRes.data as Array<{ amount: number; is_paid: boolean }>) || [])
+  const unpaidExpenses = expensesRes.rows
     .filter((e) => !e.is_paid)
     .reduce((s, e) => s + Number(e.amount || 0), 0)
 
@@ -260,36 +293,41 @@ export async function fetchCashFlow(
   const toIso = `${period.to}T23:59:59Z`
 
   const [paymentsRes, payablePaymentsRes, expensesRes] = await Promise.all([
-    supabase
-      .from("payments")
-      .select("amount, collected_at, receivable:receivables!inner(org_id)")
-      .eq("receivable.org_id", orgId)
-      .gte("collected_at", fromIso)
-      .lte("collected_at", toIso),
-    supabase
-      .from("payable_payments")
-      .select("amount, paid_at, payable:payables!inner(org_id)")
-      .eq("payable.org_id", orgId)
-      .gte("paid_at", fromIso)
-      .lte("paid_at", toIso),
-    supabase
-      .from("expenses")
-      .select("amount, paid_at, is_paid")
-      .eq("org_id", orgId)
-      .eq("is_paid", true)
-      .gte("paid_at", fromIso)
-      .lte("paid_at", toIso),
+    fetchAllForAggregate<{ amount: number }>((from, to) =>
+      supabase
+        .from("payments")
+        .select("amount, collected_at, receivable:receivables!inner(org_id)", { count: "exact" })
+        .eq("receivable.org_id", orgId)
+        .gte("collected_at", fromIso)
+        .lte("collected_at", toIso)
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number }>((from, to) =>
+      supabase
+        .from("payable_payments")
+        .select("amount, paid_at, payable:payables!inner(org_id)", { count: "exact" })
+        .eq("payable.org_id", orgId)
+        .gte("paid_at", fromIso)
+        .lte("paid_at", toIso)
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number }>((from, to) =>
+      supabase
+        .from("expenses")
+        .select("amount, paid_at, is_paid", { count: "exact" })
+        .eq("org_id", orgId)
+        .eq("is_paid", true)
+        .gte("paid_at", fromIso)
+        .lte("paid_at", toIso)
+        .range(from, to)
+    ),
   ])
-  const qErr = ([paymentsRes, payablePaymentsRes, expensesRes] as Array<{ error?: { message?: string } | null }>)
-    .find((r) => r?.error)?.error
-  if (qErr) console.error("[lib/finance] truy vấn lỗi:", qErr.message)
+  const qErr = [paymentsRes.error, payablePaymentsRes.error, expensesRes.error].find(Boolean)
+  if (qErr) console.error("[lib/finance] truy vấn lỗi:", qErr)
 
-  const cashFromCustomers = ((paymentsRes.data as Array<{ amount: number }>) || [])
-    .reduce((s, p) => s + Number(p.amount || 0), 0)
-  const cashToSuppliers = ((payablePaymentsRes.data as Array<{ amount: number }>) || [])
-    .reduce((s, p) => s + Number(p.amount || 0), 0)
-  const cashToExpenses = ((expensesRes.data as Array<{ amount: number }>) || [])
-    .reduce((s, e) => s + Number(e.amount || 0), 0)
+  const cashFromCustomers = paymentsRes.rows.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const cashToSuppliers = payablePaymentsRes.rows.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const cashToExpenses = expensesRes.rows.reduce((s, e) => s + Number(e.amount || 0), 0)
 
   const operatingNet = cashFromCustomers - cashToSuppliers - cashToExpenses
 

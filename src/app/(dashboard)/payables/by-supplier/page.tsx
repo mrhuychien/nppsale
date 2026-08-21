@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,12 +39,14 @@ export default function PayablesBySupplierPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const res = await fetchForAggregate((cap) =>
+      const res = await fetchAllForAggregate((from, to) =>
         supabase
           .from("payables")
-          .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)")
+          .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)", {
+            count: "exact",
+          })
           .neq("status", "paid")
-          .range(0, cap)
+          .range(from, to)
       )
       if (res.error) console.error("[payables/by-supplier] truy vấn lỗi:", res.error)
       setPayables((res.rows as unknown as Payable[]) || [])

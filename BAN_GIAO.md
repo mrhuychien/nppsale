@@ -142,7 +142,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **114 test / 6 file, tất cả xanh** |
+| `npm test` | ✅ **141 test / 7 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -162,6 +162,7 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/luong-thuong.test.ts` | Hệ số ngày công, vai trò bỏ qua chấm công, thưởng đầu thùng, thưởng theo mốc số đơn | 21 |
 | `tests/fifo.test.ts` | Gộp giá vốn theo lớp, trừ tồn qua RPC, suy biến khi thiếu migration 040 | 21 |
 | `tests/aggregate.test.ts` | Trần số dòng cho trang tổng hợp, phát hiện dữ liệu bị cắt | 11 |
+| `tests/stock-check.test.ts` | Kiểm tồn khi soạn đơn: quy đổi đơn vị, cộng dồn nhiều dòng, hàng đổi | 27 |
 
 ⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
 tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
@@ -218,7 +219,7 @@ quả không có dòng nào = vẫn khớp.
 | 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | **0 còn lại**, CI chặn tái diễn |
 | 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
 | 6 | 🟠 Cần bạn kiểm chứng | **Trang tổng hợp cộng số phía trình duyệt** | Có thể ĐANG hiển thị số tiền THIẾU mà không báo gì — xem 5.1c | `src/lib/supabase/aggregate.ts` |
-| 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.082) | Khó đọc, khó test, dễ gây hồi quy khi sửa | `orders/[id]/page.tsx`, `order-form.tsx`… |
+| 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.090) | Khó đọc, khó test. Đã rút phần kiểm tồn của `order-form` ra `lib/orders/stock-check.ts` (27 test) | `orders/[id]/page.tsx` |
 | 8 | 🟢 Thấp | `userSalesCeiling` trả `110000.00000000001` | Chưa gây lỗi (validate có dung sai 0,5đ) nhưng sẽ sinh lỗi lạ nếu dùng làm `max` của ô nhập | `src/lib/pricing.ts` |
 
 **Về lỗ hổng dependency:** 5 cảnh báo mức cao. Đã phân tích từng cái:
@@ -383,7 +384,7 @@ nào đã thực sự chạy trên production**.
 8. ⚠️ **Kiểm `db.max_rows` trên Supabase** rồi xử lý trang tổng hợp — xem 5.1c. Việc gấp nhất còn lại.
 
 **Quý 1 — bền vững**
-9. Tách `order-form.tsx` (1.970 dòng) và `orders/[id]/page.tsx` (2.082 dòng); đưa logic nghiệp vụ về `src/lib` để test được.
+9. Tiếp tục rút logic nghiệp vụ ra `src/lib` như đã làm với `stock-check.ts`. Còn lại: `orders/[id]/page.tsx` (2.090 dòng) và phần tính giá trong `order-form.tsx`. **Rút logic ra rồi phủ test — đừng tách component thuần tuý cho ngắn file**, vì tầng giao diện chưa có test nào đỡ lưng.
 10. ✅ ~~CI chạy `npm run verify` trên mỗi PR~~ — `.github/workflows/verify.yml`.
 11. Test đầu-cuối (Playwright) cho 3 luồng sống còn: tạo đơn → duyệt → giao; thu tiền; nhập kho.
 12. Cân nhắc nâng Next 15.

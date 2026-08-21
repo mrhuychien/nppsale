@@ -33,6 +33,13 @@ import { enqueueOrder } from "@/lib/offline/outbox"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import type { OfflineOrderPayload } from "@/lib/orders/create"
 import type { Customer, Product, PriceList, ProductUnit } from "@/types"
+import {
+  toBaseQty,
+  isSaleLineOverstock,
+  availableForExchangeLine,
+  isReturnLineOverstock,
+  hasOverstock as checkOverstock,
+} from "@/lib/orders/stock-check"
 
 interface OrderLine {
   product_id: string
@@ -330,95 +337,21 @@ export function OrderForm() {
   }
 
   // Convert a line's quantity into base-unit terms for stock comparison.
-  const baseQty = (line: OrderLine): number => {
-    const product = products.find((p) => p.id === line.product_id)
-    if (!product) return line.quantity
-    if (line.unit_name === product.base_unit) return line.quantity
-    const u = product.units?.find((x) => x.unit_name === line.unit_name)
-    return line.quantity * (u?.conversion || 1)
-  }
+  // Toàn bộ phép kiểm tồn nằm ở src/lib/orders/stock-check.ts (có test).
+  // Ở đây chỉ là lớp bọc mỏng để gọi cho gọn trong JSX.
+  const baseQty = (line: OrderLine): number => toBaseQty(line, products)
+  const baseQtyReturn = (line: ReturnLineDraft): number => toBaseQty(line, products)
 
-  // Same conversion but for a return-line draft (hàng đi đổi cũng xuất
-  // kho như hàng bán nên cần check tồn).
-  const baseQtyReturn = (line: ReturnLineDraft): number => {
-    const product = products.find((p) => p.id === line.product_id)
-    if (!product) return line.quantity
-    if (line.unit_name === product.base_unit) return line.quantity
-    const u = product.units?.find((x) => x.unit_name === line.unit_name)
-    return line.quantity * (u?.conversion || 1)
-  }
+  const lineOverstock = (line: OrderLine, index: number): boolean =>
+    isSaleLineOverstock(index, lines, products, stockByProduct)
 
-  // Demand per product (base UOM) split by source.
-  const saleDemandByProduct = (() => {
-    const m: Record<string, number> = {}
-    for (const l of lines) {
-      m[l.product_id] = (m[l.product_id] || 0) + baseQty(l)
-    }
-    return m
-  })()
-  const exchangeDemandByProduct = (() => {
-    const m: Record<string, number> = {}
-    for (const l of returnLines) {
-      if (!l.is_exchange) continue
-      m[l.product_id] = (m[l.product_id] || 0) + baseQtyReturn(l)
-    }
-    return m
-  })()
+  const exchangeAvailableForLine = (line: ReturnLineDraft, index: number): number =>
+    availableForExchangeLine(index, returnLines, lines, products, stockByProduct)
 
-  // For a given sale line, return on-hand minus everything already ordered on
-  // OTHER sale lines for the same product. (Hàng đi đổi được tính riêng ở
-  // dòng trả-đổi để "blame" rơi vào dòng đổi — phần thêm vào — chứ không
-  // làm dòng bán đang hợp lệ bỗng nhiên đỏ.)
-  const availableForLine = (line: OrderLine, index: number): number => {
-    const onHand = stockByProduct[line.product_id] ?? 0
-    const otherSale = lines.reduce((sum, l, i) => {
-      if (i === index) return sum
-      if (l.product_id !== line.product_id) return sum
-      return sum + baseQty(l)
-    }, 0)
-    return onHand - otherSale
-  }
+  const returnLineOverstock = (line: ReturnLineDraft, index: number): boolean =>
+    isReturnLineOverstock(index, returnLines, lines, products, stockByProduct)
 
-  // Check if a specific sale line exceeds stock
-  const lineOverstock = (line: OrderLine, index: number): boolean => {
-    return baseQty(line) > availableForLine(line, index)
-  }
-
-  // For an exchange return line: on-hand minus ALL sale demand minus OTHER
-  // exchange lines for the same product. (Non-exchange returns ADD stock so
-  // không cần check.)
-  const exchangeAvailableForLine = (line: ReturnLineDraft, index: number): number => {
-    const onHand = stockByProduct[line.product_id] ?? 0
-    const saleUsed = saleDemandByProduct[line.product_id] || 0
-    const otherExchange = returnLines.reduce((sum, l, i) => {
-      if (i === index) return sum
-      if (!l.is_exchange) return sum
-      if (l.product_id !== line.product_id) return sum
-      return sum + baseQtyReturn(l)
-    }, 0)
-    return onHand - saleUsed - otherExchange
-  }
-  const returnLineOverstock = (line: ReturnLineDraft, index: number): boolean => {
-    if (!line.is_exchange) return false
-    return baseQtyReturn(line) > exchangeAvailableForLine(line, index)
-  }
-
-  // Aggregated check — true if any product's TOTAL demand (sale + exchange)
-  // exceeds on-hand. Vd: tồn 10, bán 9, đổi 2 → 11 > 10 → block.
-  const hasOverstock = (() => {
-    const pids = Array.from(
-      new Set<string>([
-        ...Object.keys(saleDemandByProduct),
-        ...Object.keys(exchangeDemandByProduct),
-      ])
-    )
-    for (const pid of pids) {
-      const total =
-        (saleDemandByProduct[pid] || 0) + (exchangeDemandByProduct[pid] || 0)
-      if (total > (stockByProduct[pid] ?? 0)) return true
-    }
-    return false
-  })()
+  const hasOverstock = checkOverstock(lines, returnLines, products, stockByProduct)
 
   const updateLine = (index: number, field: keyof OrderLine, value: number | string) => {
     const updated = [...lines]

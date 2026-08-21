@@ -5,7 +5,7 @@
 -- MỤC ĐÍCH: trả lời dứt điểm "database này có đủ schema mà mã nguồn
 -- đang mong đợi không?".
 --
--- CÁCH HOẠT ĐỘNG: duyệt toàn bộ 91 migration theo thứ tự và tính
+-- CÁCH HOẠT ĐỘNG: duyệt toàn bộ 92 migration theo thứ tự và tính
 -- TRẠNG THÁI CUỐI CÙNG của từng đối tượng. Đối tượng bị migration sau
 -- xoá/thay thế (vd cột qr_login_token của 087 bị 088 chuyển sang bảng
 -- riêng, hay policy bị đổi tên qua nhiều đợt sửa RLS) sẽ KHÔNG bị kiểm —
@@ -221,7 +221,7 @@ WITH mong_doi(migration, doi_tuong, co) AS (
   UNION ALL
   SELECT '002_rls_policies.sql' AS migration, 'policy receivables/Accountant/Owner can update re' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='receivables' AND policyname='Accountant/Owner can update receivables')) AS co
   UNION ALL
-  SELECT '002_rls_policies.sql' AS migration, 'policy payments/Org members can view payments' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='payments' AND policyname='Org members can view payments')) AS co
+  SELECT '092_rls_hardening.sql' AS migration, 'policy payments/Org members can view payments' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='payments' AND policyname='Org members can view payments')) AS co
   UNION ALL
   SELECT '002_rls_policies.sql' AS migration, 'policy payments/Sales/Driver/Accountant can cr' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='payments' AND policyname='Sales/Driver/Accountant can create payments')) AS co
   UNION ALL
@@ -267,7 +267,7 @@ WITH mong_doi(migration, doi_tuong, co) AS (
   UNION ALL
   SELECT '091_backfill_missing_objects.sql' AS migration, 'index idx_suppliers_org' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='idx_suppliers_org')) AS co
   UNION ALL
-  SELECT '006_suppliers.sql' AS migration, 'policy suppliers/Authenticated can view supplie' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='suppliers' AND policyname='Authenticated can view suppliers')) AS co
+  SELECT '092_rls_hardening.sql' AS migration, 'policy suppliers/Authenticated can view supplie' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='suppliers' AND policyname='Authenticated can view suppliers')) AS co
   UNION ALL
   SELECT '006_suppliers.sql' AS migration, 'policy suppliers/Owner/Manager can manage suppl' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='suppliers' AND policyname='Owner/Manager can manage suppliers')) AS co
   UNION ALL
@@ -641,7 +641,7 @@ WITH mong_doi(migration, doi_tuong, co) AS (
   UNION ALL
   SELECT '032_customers_created_by.sql' AS migration, 'index idx_customers_created_by' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='idx_customers_created_by')) AS co
   UNION ALL
-  SELECT '033_per_user_data_filtering.sql' AS migration, 'policy payments/Sales see own order payments' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='payments' AND policyname='Sales see own order payments')) AS co
+  SELECT '092_rls_hardening.sql' AS migration, 'policy payments/Sales see own order payments' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='payments' AND policyname='Sales see own order payments')) AS co
   UNION ALL
   SELECT '033_per_user_data_filtering.sql' AS migration, 'policy notifications/Users see own notifications' AS doi_tuong, (EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='notifications' AND policyname='Users see own notifications')) AS co
   UNION ALL

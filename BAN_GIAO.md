@@ -219,20 +219,41 @@ quả không có dòng nào = vẫn khớp.
 - `nanoid`, `postcss`, `ws` → phụ thuộc gián tiếp, không nằm trên đường đi của
   dữ liệu người dùng. Rủi ro thực tế thấp.
 
-### 5.2 Cần kiểm chứng thêm — CHƯA xác nhận
+### 5.2 Nhóm RLS — ĐÃ KIỂM CHỨNG VÀ XỬ LÝ
 
-> Nhóm này phát hiện bằng cách đọc migration. Nhưng vì **DB production lệch so
-> với migration**, chưa chắc chúng đang có hiệu lực thật. **Phải xác minh trên
-> database thật trước khi sửa** — sửa mù có thể gây khoá quyền, tệ hơn lỗ hổng.
+Trước đây nhóm này được đánh dấu "cần kiểm chứng thêm" vì database còn
+lệch schema. Nay schema đã khớp, đã rà **từng khẳng định trên mã nguồn**.
 
-| Mức | Nghi vấn | Vì sao chưa chắc |
-|---|---|---|
-| 🟠 | `suppliers` và `users` có policy `USING (true)` không lọc `org_id` | Với mô hình 1 tổ chức/1 DB hiện tại thì **không rò rỉ gì**. Chỉ thành vấn đề nếu sau này gộp nhiều tổ chức chung DB |
-| 🟠 | 4 view thiếu `security_invoker` → chạy bằng quyền owner, bỏ qua RLS | Cần xác nhận trên DB thật. ⚠️ **Bẫy:** bật `security_invoker` theo gợi ý của Supabase Advisor có thể làm các trang dùng view **đột ngột rỗng vĩnh viễn** — view luôn trả 200 nên không bao giờ có lỗi để hiển thị |
-| 🟡 | Policy payments của migration 033 bị OR làm vô hiệu | Siết lại là **đổi hành vi thật** — NV bán hàng sẽ mất quyền xem phiếu thu của người khác. Cần hỏi nghiệp vụ trước |
-| 🟢 | Nghi warehouse/driver bị khoá khỏi `customers`/`invoices` | **Chủ sở hữu đã xác nhận tài xế vẫn xem được khách hàng bình thường** → migration 042 nhiều khả năng chưa chạy trên production. Là bằng chứng cho vấn đề #1 |
+**Kết quả — 2/5 khẳng định ban đầu là SAI:**
 
----
+| Nghi vấn ban đầu | Kết luận sau khi kiểm |
+|---|---|
+| Bảng `users` dùng `USING(true)`, không lọc org | ❌ **SAI** — migration 008 đã siết `org_id` từ lâu; cảnh báo dựa vào 004 vốn đã bị 008 thay thế |
+| `customers` (042) khoá warehouse/driver | ❌ **SAI** — policy có nhánh `user_has_permission(..., 'customer.view_all')`; chủ sở hữu xác nhận tài xế vẫn xem được khách hàng |
+| `suppliers` dùng `USING(true)` | ✅ **ĐÚNG** — đã vá ở `092` |
+| 4 view thiếu `security_invoker` → bỏ qua RLS | ✅ **ĐÚNG** — đã bật ở `092` |
+| Policy `payments` của 033 bị OR làm vô hiệu | ✅ **ĐÚNG** — đã vá ở `092` |
+
+Việc bảng `users` chạy tốt với `user_org_id()` cũng **bác bỏ nỗi lo đệ quy**
+từng khiến migration 004 phải nới lỏng thành `USING(true)`.
+
+**Migration `092_rls_hardening.sql` — cần chạy trên Supabase.** Nội dung:
+
+1. **`suppliers` lọc `org_id`** — không đổi hành vi (1 tổ chức/1 DB), thuần
+   phòng vệ chiều sâu.
+2. **Bật `security_invoker` cho 4 view.** Đã kiểm tác động từng view: cả
+   4 đều an toàn vì `batches` chỉ lọc `org_id` mà không hạn chế vai trò.
+   Đây là chỗ dễ gây sự cố ngầm nhất — view luôn trả `200 + []` nên nếu
+   vỡ thì **không bao giờ có lỗi để hiển thị**; vì vậy file có sẵn lệnh
+   hoàn tác.
+3. **`payments`** — **THAY ĐỔI HÀNH VI THẬT**: nhân viên bán hàng từ nay
+   chỉ thấy phiếu thu của đơn **do mình tạo** (đúng ý đồ gốc của migration
+   033). Các vai trò khác không đổi. Kèm lệnh hoàn tác nếu nghiệp vụ cần
+   cho xem chéo.
+
+⚠️ Sau khi chạy `092`, nhờ **mỗi vai trò mở thử một trang**: kho (Kho hàng
++ lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ). Trang nào
+rỗng bất thường thì dùng lệnh hoàn tác tương ứng trong file.
 
 ## 6. Nợ kỹ thuật và rủi ro bàn giao
 

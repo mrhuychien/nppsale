@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -110,38 +111,59 @@ export default function FinanceReportPage() {
         fetchDeliveredOrders(supabase, user.org_id, r),
         fetchReturnsValue(supabase, user.org_id, r),
         fetchCogsForRange(supabase, user.org_id, r),
-        supabase
-          .from("expenses")
-          .select("amount, expense_date, is_paid, category:expense_categories(id, code, name, bucket)")
-          .eq("org_id", user.org_id)
-          .gte("expense_date", r.from)
-          .lte("expense_date", r.to),
-        supabase
-          .from("receivables")
-          .select("amount, paid, status")
-          .eq("org_id", user.org_id)
-          .in("status", ["open", "partial", "overdue"]),
-        supabase
-          .from("payables")
-          .select("amount, paid, status")
-          .eq("org_id", user.org_id)
-          .in("status", ["open", "partial", "overdue"]),
-        supabase
-          .from("batches")
-          .select("qty_on_hand, unit_cost")
-          .eq("org_id", user.org_id)
-          .gt("qty_on_hand", 0),
-        supabase
-          .from("cash_receipts")
-          .select("submitted_amount, receipt_date, status")
-          .eq("org_id", user.org_id)
-          .gte("receipt_date", r.from)
-          .lte("receipt_date", r.to)
-          .eq("status", "received"),
+        // Năm truy vấn dưới đây đều là TỔNG TIỀN. Server chỉ trả 1.000 dòng
+        // mỗi request nên phải lấy đủ qua nhiều trang, nếu không báo cáo
+        // tài chính sẽ thiếu số mà vẫn trông bình thường.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("expenses")
+            .select(
+              "amount, expense_date, is_paid, category:expense_categories(id, code, name, bucket)",
+              { count: "exact" }
+            )
+            .eq("org_id", user.org_id)
+            .gte("expense_date", r.from)
+            .lte("expense_date", r.to)
+            .range(from, to)
+        ),
+        fetchAllForAggregate<ReceivableRow>((from, to) =>
+          supabase
+            .from("receivables")
+            .select("amount, paid, status", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .in("status", ["open", "partial", "overdue"])
+            .range(from, to)
+        ),
+        fetchAllForAggregate<PayableRow>((from, to) =>
+          supabase
+            .from("payables")
+            .select("amount, paid, status", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .in("status", ["open", "partial", "overdue"])
+            .range(from, to)
+        ),
+        fetchAllForAggregate<BatchRow>((from, to) =>
+          supabase
+            .from("batches")
+            .select("qty_on_hand, unit_cost", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .gt("qty_on_hand", 0)
+            .range(from, to)
+        ),
+        fetchAllForAggregate<CashReceiptRow>((from, to) =>
+          supabase
+            .from("cash_receipts")
+            .select("submitted_amount, receipt_date, status", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .gte("receipt_date", r.from)
+            .lte("receipt_date", r.to)
+            .eq("status", "received")
+            .range(from, to)
+        ),
       ])
-    const qErr = ([cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/finance] truy vấn lỗi:", qErr.message)
+    const aggErr = [expensesRes.error, recvRes.error, payRes.error, batchesRes.error, cashRes.error]
+      .find(Boolean)
+    if (aggErr) console.error("[reports/finance] truy vấn lỗi:", aggErr)
 
     let totalRevenue = 0
     let totalDiscount = 0
@@ -160,7 +182,7 @@ export default function FinanceReportPage() {
       is_paid: boolean
       category?: { id: string; code: string; name: string; bucket: string } | null
     }
-    const exps = ((expensesRes.data as unknown) as ExpRowRaw[] || []).map((e) => ({
+    const exps = ((expensesRes.rows as unknown) as ExpRowRaw[] || []).map((e) => ({
       amount: Number(e.amount || 0),
       expense_date: e.expense_date,
       is_paid: !!e.is_paid,
@@ -169,25 +191,25 @@ export default function FinanceReportPage() {
     setExpenses(exps)
 
     let recvSum = 0
-    for (const x of (recvRes.data as ReceivableRow[]) || []) {
+    for (const x of recvRes.rows) {
       recvSum += Math.max(0, Number(x.amount || 0) - Number(x.paid || 0))
     }
     setRecvOpen(recvSum)
 
     let paySum = 0
-    for (const x of (payRes.data as PayableRow[]) || []) {
+    for (const x of payRes.rows) {
       paySum += Math.max(0, Number(x.amount || 0) - Number(x.paid || 0))
     }
     setPayOpen(paySum)
 
     let inv = 0
-    for (const b of (batchesRes.data as BatchRow[]) || []) {
+    for (const b of batchesRes.rows) {
       inv += Number(b.qty_on_hand || 0) * Number(b.unit_cost || 0)
     }
     setInventoryValue(inv)
 
     let ci = 0
-    for (const x of (cashRes.data as CashReceiptRow[]) || []) {
+    for (const x of cashRes.rows) {
       ci += Number(x.submitted_amount || 0)
     }
     setCashIn(ci)

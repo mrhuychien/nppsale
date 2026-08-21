@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -137,24 +138,28 @@ export default function StocktakeAdjustPage() {
   const loadAllStock = async () => {
     // Two-step load so products without any batch still show up (operator
     // can record a positive/negative adjustment against them).
-    const [
-      { data: prodData, error: prodErr },
-      { data: batchData, error: batchErr },
-    ] = await Promise.all([
+    const [{ data: prodData, error: prodErr }, batchRes] = await Promise.all([
       supabase
         .from("products")
         .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
         .eq("status", "active")
         .order("name"),
-      supabase
-        .from("batches")
-        .select("id, product_id, batch_code, qty_on_hand, unit_cost, expires_at")
-        .gt("qty_on_hand", 0),
+      // Phiếu kiểm kê phải liệt kê ĐỦ lô đang có tồn — thiếu lô nào là lô
+      // đó không được kiểm, chênh lệch sẽ dồn sang lần kiểm sau.
+      fetchAllForAggregate<Batch>((from, to) =>
+        supabase
+          .from("batches")
+          .select("id, product_id, batch_code, qty_on_hand, unit_cost, expires_at", {
+            count: "exact",
+          })
+          .gt("qty_on_hand", 0)
+          .range(from, to)
+      ),
     ])
     const batchesByProduct: Record<string, Batch[]> = {}
     if (prodErr) console.error("[inventory/stocktake-adjust] truy vấn sản phẩm lỗi:", prodErr.message)
-    if (batchErr) console.error("[inventory/stocktake-adjust] truy vấn lô lỗi:", batchErr.message)
-    for (const b of (batchData as Batch[]) || []) {
+    if (batchRes.error) console.error("[inventory/stocktake-adjust] truy vấn lô lỗi:", batchRes.error)
+    for (const b of batchRes.rows) {
       if (!batchesByProduct[b.product_id]) batchesByProduct[b.product_id] = []
       batchesByProduct[b.product_id].push(b)
     }

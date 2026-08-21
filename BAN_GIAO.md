@@ -40,7 +40,7 @@ Khoảng trống lớn nhất còn lại là **thiếu test cho tầng giao di�
 
 ---
 
-## 1b. VIỆC BẠN CẦN LÀM — 4 việc, khoảng 30 phút
+## 1b. VIỆC BẠN CẦN LÀM — 3 việc, khoảng 20 phút
 
 Đây là toàn bộ những gì tôi **không tự làm được** (cần quyền trên Supabase,
 hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
@@ -49,11 +49,14 @@ hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
 |---|---|---|---|
 | 1 | Chạy `supabase/migrations/092_rls_hardening.sql` | Supabase SQL Editor | Vá 3 lỗ hổng RLS đã kiểm chứng. **Có 1 thay đổi hành vi thật với vai trò `sales`** — xem 5.2 |
 | 2 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
-| 3 | Kiểm `Max rows` | Supabase → Settings → API | Nếu đang là 1.000 thì **các trang tổng hợp có thể ĐANG cộng thiếu tiền ngay lúc này**. Chi tiết + cách xử lý ở 5.1c |
-| 4 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
+| 3 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
 
-Việc 1–3 nên làm trước khi bàn giao cho người khác. Việc 4 không gấp — đường
+Việc 1–2 nên làm trước khi bàn giao cho người khác. Việc 3 không gấp — đường
 khai thác đã bị chặn trong mã nguồn rồi.
+
+> `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
+> nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay mã nguồn tự lấy đủ
+> qua nhiều trang — xem 5.1c.
 
 ---
 
@@ -159,7 +162,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **141 test / 7 file, tất cả xanh** |
+| `npm test` | ✅ **144 test / 7 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -178,7 +181,7 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/tien.test.ts` | Định dạng tiền, đọc số thành chữ, luật chặn sửa giá | 27 |
 | `tests/luong-thuong.test.ts` | Hệ số ngày công, vai trò bỏ qua chấm công, thưởng đầu thùng, thưởng theo mốc số đơn | 21 |
 | `tests/fifo.test.ts` | Gộp giá vốn theo lớp, trừ tồn qua RPC, suy biến khi thiếu migration 040 | 21 |
-| `tests/aggregate.test.ts` | Trần số dòng cho trang tổng hợp, phát hiện dữ liệu bị cắt | 11 |
+| `tests/aggregate.test.ts` | Lấy đủ dữ liệu khi server chặn 1.000 dòng/lần, chia trang song song | 14 |
 | `tests/stock-check.test.ts` | Kiểm tồn khi soạn đơn: quy đổi đơn vị, cộng dồn nhiều dòng, hàng đổi | 27 |
 
 ⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
@@ -235,7 +238,7 @@ quả không có dòng nào = vẫn khớp.
 | 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | **0 còn lại**, CI chặn tái diễn |
 | 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | **0 còn lại**, CI chặn tái diễn |
 | 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
-| 6 | 🟠 Cần bạn kiểm chứng | **Trang tổng hợp cộng số phía trình duyệt** | Có thể ĐANG hiển thị số tiền THIẾU mà không báo gì — xem 5.1c | `src/lib/supabase/aggregate.ts` |
+| 6 | ✅ Đã sửa | **Trang tổng hợp cộng số phía trình duyệt, `max_rows=1000` cắt mất dòng** | Từng hiển thị số tiền THIẾU mà không báo gì. Nay lấy đủ qua nhiều trang — xem 5.1c | `src/lib/supabase/aggregate.ts` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.090) | Khó đọc, khó test. Đã rút phần kiểm tồn của `order-form` ra `lib/orders/stock-check.ts` (27 test) | `orders/[id]/page.tsx` |
 | 8 | 🟢 Thấp | `userSalesCeiling` trả `110000.00000000001` | Chưa gây lỗi (validate có dung sai 0,5đ) nhưng sẽ sinh lỗi lạ nếu dùng làm `max` của ô nhập | `src/lib/pricing.ts` |
 
@@ -295,35 +298,41 @@ lại đúng hơn hẳn. Kết quả sau khi vá: **0 và 0**.
 `npm run verify` chưa gọi máy dò này, nhưng CI thì có, và chạy ở chế độ
 `--strict`: thêm một truy vấn không kiểm lỗi là pull request đỏ ngay.
 
-### 5.1c Trang tổng hợp: số tiền có thể ĐANG thiếu — cần bạn kiểm
+### 5.1c Trang tổng hợp và `db.max_rows = 1000` — ĐÃ XỬ LÝ
 
-**Vấn đề.** Một số trang tính tổng bằng cách tải nguyên bảng về trình duyệt
-rồi cộng bằng JavaScript: Công nợ, Công nợ theo NV / theo khách, Công nợ
-phải trả theo NCC, Mua hàng, Tổng quan, và trang Báo cáo.
+**Vấn đề.** Nhiều trang tính tổng bằng cách tải dữ liệu về trình duyệt rồi
+cộng bằng JavaScript: Công nợ (và theo NV / theo khách / theo NCC), Mua hàng,
+Tổng quan, Báo cáo, Báo cáo tài chính, các trang Phân tích, cùng hai module
+dùng chung `src/lib/finance.ts` và `src/lib/analytics/sales.ts`.
 
-Điểm nguy hiểm không phải là chậm, mà là **Supabase có thể đang âm thầm cắt
-bớt dòng**. Cấu hình `db.max_rows` (Dashboard → Settings → API) đặt trần số
-dòng cho mỗi request; khi vượt trần, API trả **200 kèm đúng số dòng tối đa,
-KHÔNG có lỗi**. Trang vẫn hiện một con số trông hoàn toàn bình thường — chỉ
-là nó thiếu. Với công nợ, đó là sai tiền.
+Cấu hình `db.max_rows` trên Supabase của dự án là **1.000**. Khi truy vấn vượt
+trần, API trả **200 kèm đúng 1.000 dòng và KHÔNG có lỗi nào**. Trang vẫn hiện
+một con số trông hoàn toàn bình thường — chỉ là nó thiếu. Với công nợ và bảng
+cân đối kế toán, đó là sai tiền mà không có gì để lần ra.
 
-**Đã làm.** Thêm `src/lib/supabase/aggregate.ts`: các truy vấn kiểu này giờ
-xin đúng `trần + 1` dòng. Nhận về nhiều hơn trần nghĩa là dữ liệu ĐÃ bị cắt
-→ trang hiện banner vàng "Số tổng chưa đầy đủ" thay vì im lặng. Trần đặt ở
-20.000 dòng (`AGGREGATE_ROW_CAP`).
+**Cách xử lý.** `src/lib/supabase/aggregate.ts` → `fetchAllForAggregate()`.
+Dùng `count: "exact"`: header `Content-Range` của PostgREST trả về tổng số
+dòng khớp điều kiện, và con số này **không bị `db.max_rows` cắt**. Nhờ vậy
+biết được còn thiếu bao nhiêu, rồi chia trang gọi **song song** phần còn lại
+và ghép lại. Tổng cộng ra đúng, không phụ thuộc `db.max_rows`.
 
-**Bạn cần làm — 2 phút:** mở Supabase → Settings → API, xem `Max rows`.
+Vẫn giữ trần 20.000 dòng (`AGGREGATE_ROW_CAP`) để một trang không tự bắn hàng
+trăm request khi bảng phình to. Chạm trần thì trang hiện banner vàng "Số tổng
+chưa đầy đủ" — chỉ khi đó số mới thiếu, và khi đó người dùng được báo.
 
-| Giá trị | Nghĩa là |
-|---|---|
-| ≥ 20.000 hoặc để trống | Ổn. Banner sẽ tự xuất hiện nếu dữ liệu vượt 20.000 dòng. |
-| **1.000** (mặc định của nhiều dự án) | ⚠️ **Các trang tổng hợp đang cộng thiếu ngay từ bây giờ** nếu bảng công nợ/đơn hàng đã quá 1.000 dòng. Nâng lên 50.000, hoặc hạ `AGGREGATE_ROW_CAP` xuống dưới giá trị này để banner cảnh báo hoạt động đúng. |
+> ⚠️ Quy ước bắt buộc: **truy vấn nào có kết quả đem đi `.reduce()` cộng tiền
+> hoặc cộng số lượng thì phải đi qua `fetchAllForAggregate`**, và phải có
+> `count: "exact"` trong `.select()`. Thiếu `count` thì hàm không biết còn
+> thiếu bao nhiêu dòng và quay về đúng cái bẫy này.
 
-Sau khi chỉnh, mở `/receivables` và `/reports` xem có banner vàng không.
+**Không cần chỉnh gì trên Supabase.** Có thể giữ `Max rows = 1000`; đó còn là
+một hàng rào chống truy vấn nặng. Nếu sau này muốn giảm số lượt request thì
+nâng lên 5.000–10.000 cũng được, mã nguồn tự thích ứng.
 
-**Cách sửa triệt để về sau:** cộng ở phía database — tạo view hoặc hàm RPC
-trả sẵn tổng, trang chỉ nhận một dòng kết quả. Vừa đúng tuyệt đối vừa nhanh,
-không phụ thuộc trần dòng. Lớp `aggregate.ts` chỉ là rào chắn trong lúc chờ.
+**Cách đúng nhất về lâu dài** vẫn là cộng ở phía database (view hoặc hàm RPC
+trả sẵn tổng): chính xác tuyệt đối và chỉ tốn một request thay vì hàng chục.
+Lớp hiện tại lo phần "số phải đúng ngay bây giờ".
+
 
 ### 5.2 Nhóm RLS — ĐÃ KIỂM CHỨNG VÀ XỬ LÝ
 

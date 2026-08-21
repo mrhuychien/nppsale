@@ -6,6 +6,7 @@
 // =====================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 export type WarehouseZone = "sale" | "date"
 
@@ -90,25 +91,31 @@ export async function getStockValue(
   orgId: string,
   filters: { productId?: string; warehouseZone?: WarehouseZone } = {}
 ): Promise<Array<{ productId: string; warehouseZone: WarehouseZone; qty: number; value: number }>> {
-  let query = supabase
-    .from("fifo_layers")
-    .select("product_id, warehouse_zone, qty_in_base_uom_remaining, unit_cost")
-    .eq("org_id", orgId)
-    .is("closed_at", null)
-    .gt("qty_in_base_uom_remaining", 0)
-  if (filters.productId) query = query.eq("product_id", filters.productId)
-  if (filters.warehouseZone) query = query.eq("warehouse_zone", filters.warehouseZone)
-
-  const { data, error } = await query
-  if (error) throw error
-
-  const agg = new Map<string, { productId: string; warehouseZone: WarehouseZone; qty: number; value: number }>()
-  for (const r of (data as Array<{
+  // Giá trị tồn kho là một con số TIỀN. Server chỉ trả 1.000 dòng mỗi
+  // request nên phải lấy đủ qua nhiều trang, nếu không giá trị tồn báo về
+  // sẽ nhỏ hơn thực tế mà không có lỗi nào.
+  const res = await fetchAllForAggregate<{
     product_id: string
     warehouse_zone: WarehouseZone
     qty_in_base_uom_remaining: number
     unit_cost: number
-  }>) || []) {
+  }>((from, to) => {
+    let query = supabase
+      .from("fifo_layers")
+      .select("product_id, warehouse_zone, qty_in_base_uom_remaining, unit_cost", {
+        count: "exact",
+      })
+      .eq("org_id", orgId)
+      .is("closed_at", null)
+      .gt("qty_in_base_uom_remaining", 0)
+    if (filters.productId) query = query.eq("product_id", filters.productId)
+    if (filters.warehouseZone) query = query.eq("warehouse_zone", filters.warehouseZone)
+    return query.range(from, to)
+  })
+  if (res.error) throw new Error(res.error)
+
+  const agg = new Map<string, { productId: string; warehouseZone: WarehouseZone; qty: number; value: number }>()
+  for (const r of res.rows) {
     const key = `${r.product_id}__${r.warehouse_zone}`
     const prev = agg.get(key)
     const qty = Number(r.qty_in_base_uom_remaining || 0)

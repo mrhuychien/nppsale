@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -55,11 +56,18 @@ export default function CustomerDebtDetailPage() {
     async function fetchData() {
       const [custRes, recRes, assignRes] = await Promise.all([
         supabase.from("customers").select("id, store_name, phone, address, credit_limit").eq("id", customerId).single(),
-        supabase
-          .from("receivables")
-          .select("id, amount, paid, due_date, status, created_at, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)")
-          .eq("customer_id", customerId)
-          .order("due_date"),
+        // Khách lâu năm có thể vượt 1.000 dòng công nợ → lấy đủ.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("receivables")
+            .select(
+              "id, amount, paid, due_date, status, created_at, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+              { count: "exact" }
+            )
+            .eq("customer_id", customerId)
+            .order("due_date")
+            .range(from, to)
+        ),
         supabase
           .from("customer_assignments")
           .select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name, phone)")
@@ -67,25 +75,32 @@ export default function CustomerDebtDetailPage() {
           .eq("role", "primary")
           .limit(1),
       ])
-      const qErr = ([custRes, recRes, assignRes] as Array<{ error?: { message?: string } | null }>)
+      if (recRes.error) console.error("[by-customer/customerId] truy vấn lỗi:", recRes.error)
+      const qErr = ([custRes, assignRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[by-customer/customerId] truy vấn lỗi:", qErr.message)
 
       setCustomer(custRes.data as Customer | null)
-      const recs = (recRes.data as unknown as Receivable[]) || []
+      const recs = recRes.rows as unknown as Receivable[]
       setReceivables(recs)
       setAssignment(((assignRes.data as unknown as CustomerAssignment[]) || [])[0] || null)
 
       // Fetch payments for all receivables of this customer
       const recIds = recs.map((r) => r.id)
       if (recIds.length > 0) {
-        const { data: payData, error: payDataErr } = await supabase
-          .from("payments")
-          .select("id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))")
-          .in("receivable_id", recIds)
-          .order("collected_at", { ascending: false })
-        if (payDataErr) console.error("[by-customer/customerId] truy vấn lỗi:", payDataErr.message)
-        setPayments((payData as unknown as typeof payments) || [])
+        const payRes = await fetchAllForAggregate((from, to) =>
+          supabase
+            .from("payments")
+            .select(
+              "id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))",
+              { count: "exact" }
+            )
+            .in("receivable_id", recIds)
+            .order("collected_at", { ascending: false })
+            .range(from, to)
+        )
+        if (payRes.error) console.error("[by-customer/customerId] truy vấn lỗi:", payRes.error)
+        setPayments(payRes.rows as unknown as typeof payments)
       }
 
       setLoading(false)

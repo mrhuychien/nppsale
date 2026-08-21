@@ -20,6 +20,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -250,17 +251,22 @@ export default function DeliveriesPage() {
         { orderCount: number; deliveredCount: number; failedCount: number; totalValue: number }
       > = {}
       if (ids.length > 0) {
-        const { data: lineRows, error: lineRowsErr } = await supabase
-          .from("delivery_lines")
-          .select("delivery_id, status, order:sales_orders(total)")
-          .in("delivery_id", ids)
-        if (lineRowsErr) console.error("[app/deliveries] truy vấn lỗi:", lineRowsErr.message)
+        // Cộng giá trị đơn theo chuyến → phải lấy đủ dòng, nếu không tổng
+        // tiền của chuyến sẽ nhỏ hơn thực tế.
+        const lineRes = await fetchAllForAggregate((from, to) =>
+          supabase
+            .from("delivery_lines")
+            .select("delivery_id, status, order:sales_orders(total)", { count: "exact" })
+            .in("delivery_id", ids)
+            .range(from, to)
+        )
+        if (lineRes.error) console.error("[app/deliveries] truy vấn lỗi:", lineRes.error)
         type LineRow = {
           delivery_id: string
           status: string
           order?: { total?: number | null } | null
         }
-        ;((lineRows as unknown) as LineRow[] | null)?.forEach((l) => {
+        ;((lineRes.rows as unknown) as LineRow[]).forEach((l) => {
           const s = (statsByDelivery[l.delivery_id] = statsByDelivery[
             l.delivery_id
           ] || { orderCount: 0, deliveredCount: 0, failedCount: 0, totalValue: 0 })

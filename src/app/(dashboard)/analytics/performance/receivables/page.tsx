@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -60,18 +61,26 @@ export default function ReceivablesAnalyticsPage() {
     if (!user?.org_id) return
     setLoading(true)
     const [recvRes, custRes, usersRes] = await Promise.all([
-      supabase
-        .from("receivables")
-        .select("id, customer_id, sales_user_id, amount, paid, due_date, status, created_at")
-        .eq("org_id", user.org_id)
-        .in("status", ["open", "partial", "overdue"]),
+      // Cộng công nợ → phải lấy đủ.
+      fetchAllForAggregate<ReceivableRow>((from, to) =>
+        supabase
+          .from("receivables")
+          .select(
+            "id, customer_id, sales_user_id, amount, paid, due_date, status, created_at",
+            { count: "exact" }
+          )
+          .eq("org_id", user.org_id)
+          .in("status", ["open", "partial", "overdue"])
+          .range(from, to)
+      ),
       supabase.from("customers").select("id, store_name, channel, credit_limit").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
-    const qErr = ([recvRes, custRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+    if (recvRes.error) console.error("[performance/receivables] truy vấn lỗi:", recvRes.error)
+    const qErr = ([custRes, usersRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[performance/receivables] truy vấn lỗi:", qErr.message)
-    setReceivables((recvRes.data as ReceivableRow[]) || [])
+    setReceivables(recvRes.rows)
     setCustomers((custRes.data as CustomerRow[]) || [])
     setUsers((usersRes.data as UserRow[]) || [])
     setLoading(false)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,20 +39,28 @@ export default function ProductsStockPage() {
     if (!user?.org_id) return
     setLoading(true)
     const [batchesRes, productsRes] = await Promise.all([
-      supabase
-        .from("batches")
-        .select("id, product_id, batch_code, expires_at, qty_on_hand, unit_cost, status")
-        .eq("org_id", user.org_id)
-        .gt("qty_on_hand", 0),
+      // Cộng giá trị tồn → phải lấy đủ, server chỉ trả 1.000 dòng mỗi lần.
+      fetchAllForAggregate((from, to) =>
+        supabase
+          .from("batches")
+          .select(
+            "id, product_id, batch_code, expires_at, qty_on_hand, unit_cost, status",
+            { count: "exact" }
+          )
+          .eq("org_id", user.org_id)
+          .gt("qty_on_hand", 0)
+          .range(from, to)
+      ),
       supabase
         .from("products")
         .select("id, sku, name, category, shelf_life_days")
         .eq("org_id", user.org_id),
     ])
-    const qErr = ([batchesRes, productsRes] as Array<{ error?: { message?: string } | null }>)
+    if (batchesRes.error) console.error("[products/stock] truy vấn lỗi:", batchesRes.error)
+    const qErr = ([productsRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[products/stock] truy vấn lỗi:", qErr.message)
-    setBatches((batchesRes.data as BatchRow[]) || [])
+    setBatches(batchesRes.rows as BatchRow[])
     setProducts((productsRes.data as ProductRow[]) || [])
     setLoading(false)
   }, [user?.org_id, supabase])

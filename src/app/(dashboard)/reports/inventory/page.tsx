@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { FilterSearchSelect } from "@/components/analytics/report-shell"
@@ -50,19 +51,32 @@ export default function InventoryReportPage() {
   useEffect(() => {
     async function fetch() {
       const [batchesRes, linesRes, suppliersRes] = await Promise.all([
-        supabase
-          .from("batches")
-          .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)")
-          .gt("qty_on_hand", 0)
-          .order("expires_at"),
-        supabase.from("sales_order_lines").select("id, product_id, quantity"),
+        // Hai truy vấn này để cộng tồn kho và sản lượng bán → phải lấy đủ.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("batches")
+            .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)", {
+              count: "exact",
+            })
+            .gt("qty_on_hand", 0)
+            .order("expires_at")
+            .range(from, to)
+        ),
+        fetchAllForAggregate<SalesOrderLine>((from, to) =>
+          supabase
+            .from("sales_order_lines")
+            .select("id, product_id, quantity", { count: "exact" })
+            .range(from, to)
+        ),
         supabase.from("suppliers").select("id, name").order("name"),
       ])
-      const qErr = ([batchesRes, linesRes, suppliersRes] as Array<{ error?: { message?: string } | null }>)
+      const aggErr = [batchesRes.error, linesRes.error].find(Boolean)
+      if (aggErr) console.error("[reports/inventory] truy vấn lỗi:", aggErr)
+      const qErr = ([suppliersRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[reports/inventory] truy vấn lỗi:", qErr.message)
-      setBatchesAll((batchesRes.data as unknown as (Batch & { product?: Product })[]) || [])
-      setSalesLines((linesRes.data as SalesOrderLine[]) || [])
+      setBatchesAll(batchesRes.rows as unknown as (Batch & { product?: Product })[])
+      setSalesLines(linesRes.rows)
       setSuppliers((suppliersRes.data as SupplierOption[]) || [])
       setLoading(false)
     }

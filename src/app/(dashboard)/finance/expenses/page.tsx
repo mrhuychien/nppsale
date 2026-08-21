@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -66,14 +67,21 @@ export default function ExpensesPage() {
     if (!user?.org_id) return
     setLoading(true)
     const [expensesRes, categoriesRes] = await Promise.all([
-      supabase
-        .from("expenses")
-        .select("id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, category:expense_categories(*)")
-        .eq("org_id", user.org_id)
-        .gte("expense_date", dateFrom)
-        .lte("expense_date", dateTo)
-        .order("expense_date", { ascending: false })
-        .order("created_at", { ascending: false }),
+      // Cộng tổng chi phí trong kỳ → phải lấy đủ.
+      fetchAllForAggregate((from, to) =>
+        supabase
+          .from("expenses")
+          .select(
+            "id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, category:expense_categories(*)",
+            { count: "exact" }
+          )
+          .eq("org_id", user.org_id)
+          .gte("expense_date", dateFrom)
+          .lte("expense_date", dateTo)
+          .order("expense_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
       supabase
         .from("expense_categories")
         .select("id, name, bucket")
@@ -82,10 +90,11 @@ export default function ExpensesPage() {
         .order("bucket")
         .order("code"),
     ])
-    const qErr = ([expensesRes, categoriesRes] as Array<{ error?: { message?: string } | null }>)
+    if (expensesRes.error) console.error("[finance/expenses] truy vấn lỗi:", expensesRes.error)
+    const qErr = ([categoriesRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[finance/expenses] truy vấn lỗi:", qErr.message)
-    setExpenses((expensesRes.data as unknown as Expense[]) || [])
+    setExpenses(expensesRes.rows as unknown as Expense[])
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)
   }, [user?.org_id, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -81,13 +82,18 @@ export default function AccountantLedgerPage() {
 
       let paymentData: Payment[] = []
       if (receivableIds.length > 0) {
-        const { data: payData, error: payDataErr } = await supabase
-          .from("payments")
-          .select("id, amount, collected_at")
-          .in("receivable_id", receivableIds)
-          .order("collected_at")
-        if (payDataErr) console.error("[receivables/aging] truy vấn lỗi:", payDataErr.message)
-        paymentData = (payData as Payment[]) || []
+        // Cộng tiền đã thu → phải lấy đủ; khách lâu năm có thể vượt 1.000
+        // lần thu và khi đó sổ chi tiết sẽ thiếu giao dịch.
+        const payRes = await fetchAllForAggregate<Payment>((from, to) =>
+          supabase
+            .from("payments")
+            .select("id, amount, collected_at", { count: "exact" })
+            .in("receivable_id", receivableIds)
+            .order("collected_at")
+            .range(from, to)
+        )
+        if (payRes.error) console.error("[receivables/aging] truy vấn lỗi:", payRes.error)
+        paymentData = payRes.rows
       }
 
       setOrders((orderData as SalesOrder[]) || [])

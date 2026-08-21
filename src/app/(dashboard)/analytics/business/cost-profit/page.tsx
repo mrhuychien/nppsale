@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -69,13 +70,17 @@ export default function CostProfitPage() {
 
   const fetchExpenses = useCallback(
     async (orgId: string, r: DateRange): Promise<ExpenseRow[]> => {
-      const { data, error: dataErr } = await supabase
-        .from("expenses")
-        .select("amount, expense_date, category:expense_categories(bucket)")
-        .eq("org_id", orgId)
-        .gte("expense_date", r.from)
-        .lte("expense_date", r.to)
-      if (dataErr) console.error("[business/cost-profit] truy vấn lỗi:", dataErr.message)
+      const res = await fetchAllForAggregate((from, to) =>
+        supabase
+          .from("expenses")
+          .select("amount, expense_date, category:expense_categories(bucket)", { count: "exact" })
+          .eq("org_id", orgId)
+          .gte("expense_date", r.from)
+          .lte("expense_date", r.to)
+          .range(from, to)
+      )
+      if (res.error) console.error("[business/cost-profit] truy vấn lỗi:", res.error)
+      const data = res.rows
       type Row = {
         amount: number
         expense_date: string

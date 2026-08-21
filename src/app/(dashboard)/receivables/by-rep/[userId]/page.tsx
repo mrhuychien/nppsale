@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -62,30 +63,44 @@ export default function RepDebtDetailPage() {
     async function fetchData() {
       const [userRes, recRes] = await Promise.all([
         supabase.from("users").select("id, full_name, role, phone").eq("id", userId).single(),
-        supabase
-          .from("receivables")
-          .select("id, customer_id, amount, paid, due_date, status, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date)")
-          .eq("sales_user_id", userId)
-          .order("created_at", { ascending: false }),
+        // Nhân viên làm lâu năm có thể vượt 1.000 dòng công nợ → lấy đủ.
+        fetchAllForAggregate((from, to) =>
+          supabase
+            .from("receivables")
+            .select(
+              "id, customer_id, amount, paid, due_date, status, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date)",
+              { count: "exact" }
+            )
+            .eq("sales_user_id", userId)
+            .order("created_at", { ascending: false })
+            .range(from, to)
+        ),
       ])
-      const qErr = ([userRes, recRes] as Array<{ error?: { message?: string } | null }>)
+      if (recRes.error) console.error("[by-rep/userId] truy vấn lỗi:", recRes.error)
+      const qErr = ([userRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[by-rep/userId] truy vấn lỗi:", qErr.message)
 
       setRepUser(userRes.data as User | null)
-      const recs = (recRes.data as unknown as Receivable[]) || []
+      const recs = recRes.rows as unknown as Receivable[]
       setReceivables(recs)
 
       // Fetch payments for all receivables of this rep
       const recIds = recs.map((r) => r.id)
       if (recIds.length > 0) {
-        const { data: payData, error: payDataErr } = await supabase
-          .from("payments")
-          .select("id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))")
-          .in("receivable_id", recIds)
-          .order("collected_at", { ascending: false })
-        if (payDataErr) console.error("[by-rep/userId] truy vấn lỗi:", payDataErr.message)
-        setPayments((payData as unknown as PaymentWithJoin[]) || [])
+        const payRes = await fetchAllForAggregate((from, to) =>
+          supabase
+            .from("payments")
+            .select(
+              "id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))",
+              { count: "exact" }
+            )
+            .in("receivable_id", recIds)
+            .order("collected_at", { ascending: false })
+            .range(from, to)
+        )
+        if (payRes.error) console.error("[by-rep/userId] truy vấn lỗi:", payRes.error)
+        setPayments(payRes.rows as unknown as PaymentWithJoin[])
       }
 
       setLoading(false)

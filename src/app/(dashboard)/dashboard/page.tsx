@@ -166,20 +166,29 @@ export default function DashboardPage() {
             .select("id, order_code, total, status, created_at, customer:customers(store_name, phone)")
             .order("created_at", { ascending: false })
             .limit(5),
-          supabase
-            .from("sales_orders")
-            .select("customer_id, total, customer:customers(store_name)")
-            .gte("order_date", periodStart),
-          supabase
-            .from("sales_orders")
-            .select("total, customer:customers(channel)")
-            .gte("order_date", periodStart),
+          // Hai truy vấn này cộng doanh thu theo khách / theo kênh → lấy đủ.
+          fetchAllForAggregate((from, to) =>
+            supabase
+              .from("sales_orders")
+              .select("customer_id, total, customer:customers(store_name)", { count: "exact" })
+              .gte("order_date", periodStart)
+              .range(from, to)
+          ),
+          fetchAllForAggregate((from, to) =>
+            supabase
+              .from("sales_orders")
+              .select("total, customer:customers(channel)", { count: "exact" })
+              .gte("order_date", periodStart)
+              .range(from, to)
+          ),
         ])
         // monthOrdersRes / receivablesRes đi qua fetchAllForAggregate nên
         // `error` của chúng là chuỗi, không phải object — kiểm riêng.
         if (monthOrdersRes.error) console.error("[app/dashboard] truy vấn lỗi:", monthOrdersRes.error)
         if (receivablesRes.error) console.error("[app/dashboard] truy vấn lỗi:", receivablesRes.error)
-        const qErr = ([todayOrdersRes, overdueRes, lowStockRes, expiringRes, recentRes, topCustRes, channelRes] as Array<{ error?: { message?: string } | null }>)
+        if (topCustRes.error) console.error("[app/dashboard] truy vấn lỗi:", topCustRes.error)
+        if (channelRes.error) console.error("[app/dashboard] truy vấn lỗi:", channelRes.error)
+        const qErr = ([todayOrdersRes, overdueRes, lowStockRes, expiringRes, recentRes] as Array<{ error?: { message?: string } | null }>)
           .find((r) => r?.error)?.error
         if (qErr) console.error("[app/dashboard] truy vấn lỗi:", qErr.message)
 
@@ -195,7 +204,7 @@ export default function DashboardPage() {
 
         // Group top customers
         const custMap = new Map<string, TopCustomer>()
-        const topRows = (topCustRes.data || []) as unknown as Array<{
+        const topRows = topCustRes.rows as unknown as Array<{
           customer_id: string
           total: number
           customer: { store_name: string } | { store_name: string }[] | null
@@ -223,7 +232,7 @@ export default function DashboardPage() {
 
         // Channel breakdown
         const channelMap = new Map<string, number>()
-        const channelRows = (channelRes.data || []) as unknown as Array<{
+        const channelRows = channelRes.rows as unknown as Array<{
           total: number
           customer: { channel: string | null } | { channel: string | null }[] | null
         }>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -35,12 +36,17 @@ export default function CommissionsPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data, error: dataErr } = await supabase
-        .from("commission_wallets")
-        .select("id, org_id, user_id, period, earned, paid, balance, user:users(*)")
-        .order("earned", { ascending: false })
-      if (dataErr) console.error("[app/commissions] truy vấn lỗi:", dataErr.message)
-      setWallets((data as unknown as CommissionWallet[]) || [])
+      const res = await fetchAllForAggregate((from, to) =>
+        supabase
+          .from("commission_wallets")
+          .select("id, org_id, user_id, period, earned, paid, balance, user:users(*)", {
+            count: "exact",
+          })
+          .order("earned", { ascending: false })
+          .range(from, to)
+      )
+      if (res.error) console.error("[app/commissions] truy vấn lỗi:", res.error)
+      setWallets(res.rows as unknown as CommissionWallet[])
       setLoading(false)
     }
     fetch()

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,16 +38,21 @@ export default function InventoryAuditPage() {
     setLoading(true)
     const [prodRes, batchRes] = await Promise.all([
       supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id").order("name"),
-      supabase
-        .from("batches")
-        .select("product_id, qty_on_hand, unit_cost")
-        .gt("qty_on_hand", 0),
+      // Cộng giá trị tồn → phải lấy đủ.
+      fetchAllForAggregate<Pick<Batch, "product_id" | "qty_on_hand" | "unit_cost">>((from, to) =>
+        supabase
+          .from("batches")
+          .select("product_id, qty_on_hand, unit_cost", { count: "exact" })
+          .gt("qty_on_hand", 0)
+          .range(from, to)
+      ),
     ])
-    const qErr = ([prodRes, batchRes] as Array<{ error?: { message?: string } | null }>)
+    if (batchRes.error) console.error("[inventory/audit] truy vấn lỗi:", batchRes.error)
+    const qErr = ([prodRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[inventory/audit] truy vấn lỗi:", qErr.message)
     const prodList = (prodRes.data as Product[]) || []
-    const batchList = (batchRes.data as Array<Pick<Batch, "product_id" | "qty_on_hand" | "unit_cost">>) || []
+    const batchList = batchRes.rows
 
     const stockByProduct: Record<string, { on_hand: number; value: number; batch_count: number }> = {}
     for (const b of batchList) {

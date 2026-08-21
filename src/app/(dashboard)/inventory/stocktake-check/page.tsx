@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,13 +46,18 @@ export default function StocktakeCheckPage() {
 
   const fetchBatches = useCallback(async () => {
     setLoading(true)
-    const { data, error: dataErr } = await supabase
-      .from("batches")
-      .select("id, product_id, qty_on_hand, product:products(*)")
-      .gt("qty_on_hand", 0)
-      .order("product_id")
-    if (dataErr) console.error("[inventory/stocktake-check] truy vấn lỗi:", dataErr.message)
-    setBatches(((data as unknown) as BatchWithProduct[]) || [])
+    // Phiếu kiểm kê phải liệt kê ĐỦ lô đang có tồn — thiếu lô nào là lô đó
+    // không được kiểm, và chênh lệch sẽ đổ vào lần kiểm sau.
+    const res = await fetchAllForAggregate((from, to) =>
+      supabase
+        .from("batches")
+        .select("id, product_id, qty_on_hand, product:products(*)", { count: "exact" })
+        .gt("qty_on_hand", 0)
+        .order("product_id")
+        .range(from, to)
+    )
+    if (res.error) console.error("[inventory/stocktake-check] truy vấn lỗi:", res.error)
+    setBatches(res.rows as unknown as BatchWithProduct[])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

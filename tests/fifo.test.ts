@@ -15,17 +15,28 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  * không cần database thật.
  */
 
-/** Client giả cho `getStockValue`: chuỗi .eq/.is/.gt trả về chính nó. */
+/**
+ * Client giả cho `getStockValue`: chuỗi .eq/.is/.gt/.range trả về chính nó.
+ *
+ * `getStockValue` đi qua `fetchAllForAggregate` nên phải hỗ trợ `.range()`
+ * và trả `count` — giống PostgREST khi truy vấn có `count: "exact"`.
+ */
 function fakeSelectClient(result: { data?: unknown; error?: unknown }) {
   const calls: Array<[string, unknown]> = []
+  const rows = (result.data as unknown[] | null | undefined) ?? null
   const chain = {
     select: () => chain,
     eq: (col: string, val: unknown) => (calls.push(["eq", `${col}=${val}`]), chain),
     is: (col: string, val: unknown) => (calls.push(["is", `${col}=${val}`]), chain),
     gt: (col: string, val: unknown) => (calls.push(["gt", `${col}=${val}`]), chain),
-    // Được `await` → phải là thenable trả về { data, error }.
+    range: (from: number, to: number) => (calls.push(["range", `${from}-${to}`]), chain),
+    // Được `await` → phải là thenable trả về { data, error, count }.
     then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: result.data ?? null, error: result.error ?? null }).then(resolve),
+      Promise.resolve({
+        data: rows,
+        error: result.error ?? null,
+        count: rows?.length ?? 0,
+      }).then(resolve),
   }
   return {
     client: { from: () => chain } as unknown as SupabaseClient,
@@ -93,7 +104,7 @@ describe("getStockValue — gộp tồn và giá trị theo sản phẩm + kho",
   })
 
   it("truy vấn lỗi thì NÉM, không trả 0 — giá trị tồn 0 giả là sai nguy hiểm", async () => {
-    const { client } = fakeSelectClient({ error: { message: "permission denied" } })
+    const { client } = fakeSelectClient({ data: null, error: { message: "permission denied" } })
     await expect(getStockValue(client, "org1")).rejects.toBeTruthy()
   })
 

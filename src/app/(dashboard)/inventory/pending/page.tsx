@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
@@ -232,12 +233,19 @@ export default function PendingStockPage() {
       // 1. Aggregate product qty from return_lines
       const byProduct: Record<string, { qty: number; unitName: string }> = {}
       if (retIds.length > 0) {
-        const { data: rLines, error: rLinesErr } = await supabase
-          .from("return_lines")
-          .select("product_id, quantity, unit_name")
-          .in("return_id", retIds)
-        if (rLinesErr) console.error("[inventory/pending] truy vấn lỗi:", rLinesErr.message)
-        for (const l of (rLines as Array<{ product_id: string; quantity: number; unit_name: string }>) || []) {
+        // Số lượng gom ở đây được GHI THẲNG vào tồn kho. Thiếu một dòng là
+        // thiếu hàng nhập lại — phải lấy đủ, không dừng ở 1.000 dòng.
+        const rLinesRes = await fetchAllForAggregate<{
+          product_id: string; quantity: number; unit_name: string
+        }>((from, to) =>
+          supabase
+            .from("return_lines")
+            .select("product_id, quantity, unit_name", { count: "exact" })
+            .in("return_id", retIds)
+            .range(from, to)
+        )
+        if (rLinesRes.error) console.error("[inventory/pending] truy vấn lỗi:", rLinesRes.error)
+        for (const l of rLinesRes.rows) {
           const key = l.product_id
           const entry = byProduct[key] || { qty: 0, unitName: l.unit_name || "" }
           entry.qty += Number(l.quantity) || 0
@@ -254,12 +262,17 @@ export default function PendingStockPage() {
         if (dLinesErr) console.error("[inventory/pending] truy vấn lỗi:", dLinesErr.message)
         const orderIds = Array.from(new Set(((dLines as Array<{ order_id: string }>) || []).map((l) => l.order_id)))
         if (orderIds.length > 0) {
-          const { data: oLines, error: oLinesErr } = await supabase
-            .from("sales_order_lines")
-            .select("product_id, quantity, unit_name")
-            .in("order_id", orderIds)
-          if (oLinesErr) console.error("[inventory/pending] truy vấn lỗi:", oLinesErr.message)
-          for (const l of (oLines as Array<{ product_id: string; quantity: number; unit_name: string }>) || []) {
+          const oLinesRes = await fetchAllForAggregate<{
+            product_id: string; quantity: number; unit_name: string
+          }>((from, to) =>
+            supabase
+              .from("sales_order_lines")
+              .select("product_id, quantity, unit_name", { count: "exact" })
+              .in("order_id", orderIds)
+              .range(from, to)
+          )
+          if (oLinesRes.error) console.error("[inventory/pending] truy vấn lỗi:", oLinesRes.error)
+          for (const l of oLinesRes.rows) {
             const key = l.product_id
             const entry = byProduct[key] || { qty: 0, unitName: l.unit_name || "" }
             entry.qty += Number(l.quantity) || 0

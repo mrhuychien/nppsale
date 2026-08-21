@@ -46,14 +46,34 @@ export function getExpiryStatus(
   return "ok"
 }
 
+/**
+ * Phân nhóm tuổi nợ theo số ngày QUÁ HẠN.
+ *
+ * So sánh theo NGÀY LỊCH, cố ý bỏ qua giờ. Bản trước lấy
+ * `now.getTime() - new Date(dueDate).getTime()` rồi `Math.ceil`, sinh hai
+ * lỗi:
+ *
+ *   • `new Date("2026-08-21")` được hiểu là nửa đêm UTC = 07:00 giờ Việt
+ *     Nam. Nên một phiếu đến hạn HÔM NAY hiện "Hiện tại" lúc 6 giờ sáng và
+ *     đột ngột đổi thành "Cảnh báo" lúc 7 giờ — cùng một phiếu, cùng một
+ *     ngày, hai màu khác nhau.
+ *   • Phiếu đến hạn hôm nay bị tính là đã quá hạn 1 ngày. Đến hạn hôm nay
+ *     thì chưa quá hạn.
+ *
+ * Ngưỡng ở đây PHẢI khớp với hàm SQL `receivables_summary()` trong
+ * migration 093 (nơi tính các ô tổng đầu trang Công nợ). Có test khoá hai
+ * bên lại với nhau: tests/aging-thresholds.test.ts.
+ */
 export function getAgingStatus(
   dueDate: string
 ): "current" | "warning" | "overdue" | "critical" {
+  // Cắt phần giờ ở cả hai vế rồi mới trừ.
   const now = new Date()
-  const due = new Date(dueDate)
-  const daysOverdue = Math.ceil(
-    (now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)
-  )
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const [y, m, d] = dueDate.slice(0, 10).split("-").map(Number)
+  const due = Date.UTC(y, (m || 1) - 1, d || 1)
+
+  const daysOverdue = Math.round((today - due) / (1000 * 60 * 60 * 24))
   if (daysOverdue <= 0) return "current"
   if (daysOverdue <= 30) return "warning"
   if (daysOverdue <= 60) return "overdue"

@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -13,7 +12,20 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
 import { UserCog } from "lucide-react"
-import type { Receivable } from "@/types"
+
+/** Một dòng trả về của hàm SQL `receivables_by_rep()` (migration 093). */
+interface RepDebtRowRaw {
+  user_id: string
+  full_name: string
+  customer_count: number
+  customers_with_debt: number
+  total_debt: number
+  total_paid: number
+  total_amount: number
+  overdue_amount: number
+  collection_rate: number
+  dso: number
+}
 
 interface RepDebtRow {
   userId: string
@@ -30,109 +42,37 @@ interface RepDebtRow {
 
 export default function ReceivablesByRepPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
-  const [receivables, setReceivables] = useState<Receivable[]>([])
+  // Database cộng sẵn (hàm SQL `receivables_by_rep`, migration 093): mỗi
+  // nhân viên một dòng, thay vì tải toàn bộ công nợ về rồi gộp bằng
+  // JavaScript. Chính xác tuyệt đối và không phụ thuộc `db.max_rows`.
+  const [rows, setRows] = useState<RepDebtRow[]>([])
   const [loading, setLoading] = useState(true)
-  // true = bảng tổng hợp bên dưới đang cộng thiếu vì dữ liệu bị cắt.
-  const [truncated, setTruncated] = useState(false)
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
-      const res = await fetchAllForAggregate((from, to) =>
-        supabase
-          .from("receivables")
-          .select(
-            "id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)",
-            { count: "exact" }
-          )
-          .not("sales_user_id", "is", null)
-          .range(from, to)
+      const { data, error } = await supabase.rpc("receivables_by_rep")
+      if (error) console.error("[receivables/by-rep] receivables_by_rep lỗi:", error.message)
+      const raw = (data as RepDebtRowRaw[] | null) || []
+      setRows(
+        raw.map((r) => ({
+          userId: r.user_id,
+          fullName: r.full_name || "-",
+          customerCount: Number(r.customer_count || 0),
+          customersWithDebt: Number(r.customers_with_debt || 0),
+          totalDebt: Number(r.total_debt || 0),
+          totalPaid: Number(r.total_paid || 0),
+          totalAmount: Number(r.total_amount || 0),
+          overdueAmount: Number(r.overdue_amount || 0),
+          collectionRate: Number(r.collection_rate || 0),
+          dso: Number(r.dso || 0),
+        }))
       )
-      if (res.error) console.error("[receivables/by-rep] truy vấn lỗi:", res.error)
-      setReceivables((res.rows as unknown as Receivable[]) || [])
-      setTruncated(res.truncated)
       setLoading(false)
     }
     fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const rows: RepDebtRow[] = useMemo(() => {
-    const map = new Map<string, {
-      userId: string
-      fullName: string
-      customers: Set<string>
-      customersWithDebt: Set<string>
-      totalDebt: number
-      totalPaid: number
-      totalAmount: number
-      overdueAmount: number
-      agingDaysSum: number
-      agingCount: number
-    }>()
-
-    receivables.forEach((r) => {
-      if (!r.sales_user_id) return
-      const existing = map.get(r.sales_user_id)
-      const remaining = r.amount - r.paid
-      const isOverdue = r.status === "overdue"
-      const hasDebt = r.status !== "paid"
-
-      // Calculate aging days for DSO
-      let agingDays = 0
-      if (r.due_date) {
-        const now = new Date()
-        const due = new Date(r.due_date)
-        agingDays = Math.max(0, Math.ceil((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)))
-      }
-
-      if (existing) {
-        existing.customers.add(r.customer_id)
-        if (hasDebt) existing.customersWithDebt.add(r.customer_id)
-        existing.totalDebt += remaining
-        existing.totalPaid += r.paid
-        existing.totalAmount += r.amount
-        if (isOverdue) existing.overdueAmount += remaining
-        if (hasDebt) {
-          existing.agingDaysSum += agingDays
-          existing.agingCount += 1
-        }
-      } else {
-        const customers = new Set<string>()
-        customers.add(r.customer_id)
-        const customersWithDebt = new Set<string>()
-        if (hasDebt) customersWithDebt.add(r.customer_id)
-        map.set(r.sales_user_id, {
-          userId: r.sales_user_id,
-          fullName: r.sales_user?.full_name || "-",
-          customers,
-          customersWithDebt,
-          totalDebt: remaining,
-          totalPaid: r.paid,
-          totalAmount: r.amount,
-          overdueAmount: isOverdue ? remaining : 0,
-          agingDaysSum: hasDebt ? agingDays : 0,
-          agingCount: hasDebt ? 1 : 0,
-        })
-      }
-    })
-
-    const result: RepDebtRow[] = Array.from(map.values()).map((v) => ({
-      userId: v.userId,
-      fullName: v.fullName,
-      customerCount: v.customers.size,
-      customersWithDebt: v.customersWithDebt.size,
-      totalDebt: v.totalDebt,
-      totalPaid: v.totalPaid,
-      totalAmount: v.totalAmount,
-      overdueAmount: v.overdueAmount,
-      collectionRate: v.totalAmount > 0 ? Math.round((v.totalPaid / v.totalAmount) * 100) : 0,
-      dso: v.agingCount > 0 ? Math.round(v.agingDaysSum / v.agingCount) : 0,
-    }))
-
-    result.sort((a, b) => b.totalDebt - a.totalDebt)
-    return result
-  }, [receivables])
 
   const totalOutstanding = rows.reduce((s, r) => s + r.totalDebt, 0)
   const repsWithDebt = rows.filter((r) => r.totalDebt > 0).length
@@ -158,13 +98,6 @@ export default function ReceivablesByRepPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo nhân viên bán hàng" backHref="/receivables" />
-
-      {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

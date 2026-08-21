@@ -40,7 +40,7 @@ Khoảng trống lớn nhất còn lại là **thiếu test cho tầng giao di�
 
 ---
 
-## 1b. VIỆC BẠN CẦN LÀM — 3 việc, khoảng 20 phút
+## 1b. VIỆC BẠN CẦN LÀM — 4 việc, khoảng 25 phút
 
 Đây là toàn bộ những gì tôi **không tự làm được** (cần quyền trên Supabase,
 hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
@@ -48,15 +48,17 @@ hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
 | # | Việc | Ở đâu | Vì sao |
 |---|---|---|---|
 | 1 | Chạy `supabase/migrations/092_rls_hardening.sql` | Supabase SQL Editor | Vá 3 lỗ hổng RLS đã kiểm chứng. **Có 1 thay đổi hành vi thật với vai trò `sales`** — xem 5.2 |
-| 2 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
-| 3 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
+| 2 | Chạy `supabase/migrations/093_aggregate_functions.sql` | Supabase SQL Editor | **BẮT BUỘC.** Tạo 13 hàm cộng số. Chưa chạy thì trang Công nợ / Tổng quan / Báo cáo tài chính sẽ lỗi "function does not exist" — xem 5.1c |
+| 3 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
+| 4 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
 
-Việc 1–2 nên làm trước khi bàn giao cho người khác. Việc 3 không gấp — đường
-khai thác đã bị chặn trong mã nguồn rồi.
+**Việc 2 là gấp nhất** — deploy mới đã lên `main`, mã nguồn đang gọi các hàm
+SQL đó. Chưa chạy migration 093 thì trang Công nợ, Tổng quan và Báo cáo tài
+chính sẽ báo lỗi. Việc 4 không gấp — đường khai thác đã bị chặn trong mã
+nguồn rồi.
 
 > `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
-> nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay mã nguồn tự lấy đủ
-> qua nhiều trang — xem 5.1c.
+> nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay đã xử lý — xem 5.1c.
 
 ---
 
@@ -92,7 +94,7 @@ src/app/api/             8 route cần service_role (server-only)
 src/components/          75 component; ui/ là shadcn, còn lại theo nghiệp vụ
 src/lib/                 48 file logic thuần — NƠI ĐÁNG TIN CẬY NHẤT để sửa
 src/hooks/               use-auth, use-order-sync, use-role-guard...
-supabase/migrations/     92 file, chạy TUẦN TỰ theo số
+supabase/migrations/     93 file, chạy TUẦN TỰ theo số
 supabase/diagnostics/    công cụ chẩn đoán sự cố (xem mục 8)
 tests/                   test đơn vị (vitest)
 ```
@@ -151,6 +153,7 @@ npm test                       # chỉ chạy test
 | Migration | Không chạy thì bị gì |
 |---|---|
 | `090_fix_role_permissions_module_check.sql` | Không lưu được phân quyền chi tiết |
+| `093_aggregate_functions.sql` | **Trang Công nợ / Tổng quan / Báo cáo tài chính báo lỗi "function does not exist"** |
 | `091_backfill_missing_objects.sql` | **Bù 3 mục schema đang thiếu trên production** — gồm cả cột của 089 (đơn ngoại tuyến không đồng bộ được) và của 025 (trang Sản phẩm) |
 
 ---
@@ -162,7 +165,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **144 test / 7 file, tất cả xanh** |
+| `npm test` | ✅ **151 test / 8 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -183,6 +186,7 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/fifo.test.ts` | Gộp giá vốn theo lớp, trừ tồn qua RPC, suy biến khi thiếu migration 040 | 21 |
 | `tests/aggregate.test.ts` | Lấy đủ dữ liệu khi server chặn 1.000 dòng/lần, chia trang song song | 14 |
 | `tests/stock-check.test.ts` | Kiểm tồn khi soạn đơn: quy đổi đơn vị, cộng dồn nhiều dòng, hàng đổi | 27 |
+| `tests/aging-thresholds.test.ts` | Khoá ngưỡng tuổi nợ giữa SQL và TypeScript; các bất biến bảo mật của migration 093 | 7 |
 
 ⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
 tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
@@ -238,7 +242,7 @@ quả không có dòng nào = vẫn khớp.
 | 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | **0 còn lại**, CI chặn tái diễn |
 | 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | **0 còn lại**, CI chặn tái diễn |
 | 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
-| 6 | ✅ Đã sửa | **Trang tổng hợp cộng số phía trình duyệt, `max_rows=1000` cắt mất dòng** | Từng hiển thị số tiền THIẾU mà không báo gì. Nay lấy đủ qua nhiều trang — xem 5.1c | `src/lib/supabase/aggregate.ts` |
+| 6 | ✅ Đã sửa | **Trang tổng hợp cộng số phía trình duyệt, `max_rows=1000` cắt mất dòng** | Từng hiển thị số tiền THIẾU mà không báo gì. Nay cộng trong database — xem 5.1c | `migrations/093_aggregate_functions.sql` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.090) | Khó đọc, khó test. Đã rút phần kiểm tồn của `order-form` ra `lib/orders/stock-check.ts` (27 test) | `orders/[id]/page.tsx` |
 | 8 | 🟢 Thấp | `userSalesCeiling` trả `110000.00000000001` | Chưa gây lỗi (validate có dung sai 0,5đ) nhưng sẽ sinh lỗi lạ nếu dùng làm `max` của ô nhập | `src/lib/pricing.ts` |
 
@@ -298,40 +302,63 @@ lại đúng hơn hẳn. Kết quả sau khi vá: **0 và 0**.
 `npm run verify` chưa gọi máy dò này, nhưng CI thì có, và chạy ở chế độ
 `--strict`: thêm một truy vấn không kiểm lỗi là pull request đỏ ngay.
 
-### 5.1c Trang tổng hợp và `db.max_rows = 1000` — ĐÃ XỬ LÝ
+### 5.1c Cộng số ở phía database — ĐÃ XỬ LÝ
 
-**Vấn đề.** Nhiều trang tính tổng bằng cách tải dữ liệu về trình duyệt rồi
-cộng bằng JavaScript: Công nợ (và theo NV / theo khách / theo NCC), Mua hàng,
-Tổng quan, Báo cáo, Báo cáo tài chính, các trang Phân tích, cùng hai module
-dùng chung `src/lib/finance.ts` và `src/lib/analytics/sales.ts`.
+**Vấn đề gốc.** Nhiều trang tính tổng bằng cách tải dữ liệu về trình duyệt
+rồi cộng bằng JavaScript. `db.max_rows` trên Supabase là **1.000**; khi vượt
+trần, API trả **200 kèm đúng 1.000 dòng và KHÔNG có lỗi nào**. Trang hiện
+một con số trông bình thường — chỉ là nó thiếu. Với công nợ và bảng cân đối
+kế toán, đó là sai tiền mà không có gì để lần ra.
 
-Cấu hình `db.max_rows` trên Supabase của dự án là **1.000**. Khi truy vấn vượt
-trần, API trả **200 kèm đúng 1.000 dòng và KHÔNG có lỗi nào**. Trang vẫn hiện
-một con số trông hoàn toàn bình thường — chỉ là nó thiếu. Với công nợ và bảng
-cân đối kế toán, đó là sai tiền mà không có gì để lần ra.
+**Cách xử lý — hai tầng, dùng đúng chỗ.**
 
-**Cách xử lý.** `src/lib/supabase/aggregate.ts` → `fetchAllForAggregate()`.
-Dùng `count: "exact"`: header `Content-Range` của PostgREST trả về tổng số
-dòng khớp điều kiện, và con số này **không bị `db.max_rows` cắt**. Nhờ vậy
-biết được còn thiếu bao nhiêu, rồi chia trang gọi **song song** phần còn lại
-và ghép lại. Tổng cộng ra đúng, không phụ thuộc `db.max_rows`.
+**Tầng 1 — cộng trong database.** `supabase/migrations/093_aggregate_functions.sql`
+tạo 13 hàm SQL trả về SẴN kết quả đã cộng. Một request, vài chục byte, chính
+xác tuyệt đối. Dùng cho những chỗ chỉ cần con số:
 
-Vẫn giữ trần 20.000 dòng (`AGGREGATE_ROW_CAP`) để một trang không tự bắn hàng
-trăm request khi bảng phình to. Chạm trần thì trang hiện banner vàng "Số tổng
-chưa đầy đủ" — chỉ khi đó số mới thiếu, và khi đó người dùng được báo.
+| Hàm | Dùng ở |
+|---|---|
+| `receivables_summary()` | /receivables — tổng + 4 nhóm tuổi nợ |
+| `receivables_by_rep()` | /receivables/by-rep |
+| `receivables_by_customer()` | /receivables/by-customer |
+| `payables_by_supplier()` | /payables/by-supplier |
+| `payables_summary(since)` | /purchasing |
+| `stock_value_summary()` | Báo cáo tài chính — giá trị tồn |
+| `finance_pnl(from,to)` | `lib/finance.ts` — lãi lỗ |
+| `finance_balance_sheet(as_of)` | `lib/finance.ts` — cân đối kế toán |
+| `finance_cash_flow(from,to)` | `lib/finance.ts` — lưu chuyển tiền tệ |
+| `dashboard_summary(start)` | Tổng quan — doanh thu, số đơn, công nợ, quá hạn |
+| `dashboard_top_customers(start,limit)` | Tổng quan — top khách hàng |
+| `dashboard_channel_revenue(start)` | Tổng quan — doanh thu theo kênh |
+| `cash_received_total(from,to)` | Báo cáo tài chính — tiền mặt đã nhận |
 
-> ⚠️ Quy ước bắt buộc: **truy vấn nào có kết quả đem đi `.reduce()` cộng tiền
-> hoặc cộng số lượng thì phải đi qua `fetchAllForAggregate`**, và phải có
-> `count: "exact"` trong `.select()`. Thiếu `count` thì hàm không biết còn
-> thiếu bao nhiêu dòng và quay về đúng cái bẫy này.
+`src/lib/finance.ts` từ 346 dòng còn 200: ba hàm giờ mỗi hàm một lời gọi RPC
+thay cho 11 truy vấn tải cả bảng.
 
-**Không cần chỉnh gì trên Supabase.** Có thể giữ `Max rows = 1000`; đó còn là
-một hàng rào chống truy vấn nặng. Nếu sau này muốn giảm số lượt request thì
-nâng lên 5.000–10.000 cũng được, mã nguồn tự thích ứng.
+**Tầng 2 — lấy đủ qua nhiều trang.** `src/lib/supabase/aggregate.ts` →
+`fetchAllForAggregate()`. Dùng cho những chỗ THẬT SỰ cần các dòng dữ liệu
+chứ không chỉ con số (bảng chi phí theo danh mục, danh sách lô để kiểm kê,
+sổ chi tiết công nợ). Dùng `count: "exact"` để biết tổng số dòng thật —
+con số này không bị `max_rows` cắt — rồi chia trang gọi song song phần còn
+lại. Trần 20.000 dòng; chạm trần thì hiện banner cảnh báo.
 
-**Cách đúng nhất về lâu dài** vẫn là cộng ở phía database (view hoặc hàm RPC
-trả sẵn tổng): chính xác tuyệt đối và chỉ tốn một request thay vì hàng chục.
-Lớp hiện tại lo phần "số phải đúng ngay bây giờ".
+> ⚠️ Quy ước khi thêm mã mới:
+> - Chỉ cần **con số** → viết hàm SQL mới trong migration, đừng tải dữ liệu về.
+> - Cần **các dòng** → dùng `fetchAllForAggregate` kèm `count: "exact"`.
+> - **Không bao giờ** để một truy vấn không giới hạn rồi `.reduce()` cộng tiền.
+
+**Bảo mật của các hàm SQL.** Tất cả để `SECURITY INVOKER` (mặc định) nên RLS
+vẫn áp dụng: nhân viên bán hàng gọi `receivables_by_rep()` chỉ cộng được
+trên phần RLS cho họ thấy. **Tuyệt đối không đổi sang `SECURITY DEFINER`** —
+làm vậy là mở toang số liệu tài chính cho mọi vai trò và không có lỗi nào
+báo ra. Có test chặn: `tests/aging-thresholds.test.ts`.
+
+**Một chỗ trùng lặp cần biết.** Ngưỡng phân nhóm tuổi nợ giờ nằm ở hai nơi:
+`getAgingStatus()` (src/lib/utils.ts, tô màu từng dòng) và hàm SQL
+`receivables_summary()` (các ô tổng). Sửa một bên mà quên bên kia thì tổng
+nhóm "Quá hạn" sẽ khác số badge đỏ đếm được bên dưới. Test
+`tests/aging-thresholds.test.ts` đọc thẳng file SQL và khoá hai bên lại với
+nhau — nó sẽ đỏ nếu lệch.
 
 
 ### 5.2 Nhóm RLS — ĐÃ KIỂM CHỨNG VÀ XỬ LÝ
@@ -407,7 +434,7 @@ nào đã thực sự chạy trên production**.
 5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — **0 còn lại**; CI chạy `audit-unchecked-db.py --strict` để không tái diễn.
 6. ✅ ~~Cách ly việc phân tích file tải lên~~ — đã có `xlsx-safe.ts`. Còn lệnh nâng thư viện bạn tự chạy, xem 5.1a.
 7. ✅ ~~Phủ test cho lương/thưởng và FIFO kho~~ — 21 + 21 test, hai chỗ sai là ra tiền.
-8. ⚠️ **Kiểm `db.max_rows` trên Supabase** rồi xử lý trang tổng hợp — xem 5.1c. Việc gấp nhất còn lại.
+8. ✅ ~~Xử lý truy vấn bị `max_rows` cắt~~ và ✅ ~~cộng ở phía database~~ — 13 hàm SQL, xem 5.1c.
 
 **Quý 1 — bền vững**
 9. Tiếp tục rút logic nghiệp vụ ra `src/lib` như đã làm với `stock-check.ts`. Còn lại: `orders/[id]/page.tsx` (2.090 dòng) và phần tính giá trong `order-form.tsx`. **Rút logic ra rồi phủ test — đừng tách component thuần tuý cho ngắn file**, vì tầng giao diện chưa có test nào đỡ lưng.

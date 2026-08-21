@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -68,8 +67,6 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const isSales = user?.role === "sales"
   const [loading, setLoading] = useState(true)
-  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
-  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [today, setToday] = useState<string>("")
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -117,41 +114,19 @@ export default function DashboardPage() {
         }
 
         const [
-          todayOrdersRes,
-          monthOrdersRes,
-          receivablesRes,
-          overdueRes,
+          sumRes,
+          topCustRes,
+          channelRes,
           lowStockRes,
           expiringRes,
           recentRes,
-          topCustRes,
-          channelRes,
         ] = await Promise.all([
-          supabase
-            .from("sales_orders")
-            .select("id", { count: "exact", head: true })
-            .gte("order_date", periodStart),
-          // Hai truy vấn dưới đây để CỘNG TIỀN. Server trả tối đa 1.000 dòng
-          // mỗi request, nên phải lấy đủ qua nhiều trang — nếu không, doanh
-          // thu và công nợ trên trang chủ sẽ thiếu mà không báo gì.
-          fetchAllForAggregate<{ total: number }>((from, to) =>
-            supabase
-              .from("sales_orders")
-              .select("total", { count: "exact" })
-              .gte("order_date", periodStart)
-              .range(from, to)
-          ),
-          fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
-            supabase
-              .from("receivables")
-              .select("amount, paid, status", { count: "exact" })
-              .neq("status", "paid")
-              .range(from, to)
-          ),
-          supabase
-            .from("receivables")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "overdue"),
+          // Database cộng sẵn (migration 093): doanh thu kỳ, số đơn, tổng
+          // công nợ, số phiếu quá hạn — bốn con số trong một lời gọi, thay
+          // cho việc tải cả bảng đơn hàng và công nợ về trình duyệt.
+          supabase.rpc("dashboard_summary", { p_period_start: periodStart }).maybeSingle(),
+          supabase.rpc("dashboard_top_customers", { p_period_start: periodStart, p_limit: 5 }),
+          supabase.rpc("dashboard_channel_revenue", { p_period_start: periodStart }),
           supabase
             .from("batches")
             .select("id", { count: "exact", head: true })
@@ -166,82 +141,40 @@ export default function DashboardPage() {
             .select("id, order_code, total, status, created_at, customer:customers(store_name, phone)")
             .order("created_at", { ascending: false })
             .limit(5),
-          // Hai truy vấn này cộng doanh thu theo khách / theo kênh → lấy đủ.
-          fetchAllForAggregate((from, to) =>
-            supabase
-              .from("sales_orders")
-              .select("customer_id, total, customer:customers(store_name)", { count: "exact" })
-              .gte("order_date", periodStart)
-              .range(from, to)
-          ),
-          fetchAllForAggregate((from, to) =>
-            supabase
-              .from("sales_orders")
-              .select("total, customer:customers(channel)", { count: "exact" })
-              .gte("order_date", periodStart)
-              .range(from, to)
-          ),
         ])
-        // monthOrdersRes / receivablesRes đi qua fetchAllForAggregate nên
-        // `error` của chúng là chuỗi, không phải object — kiểm riêng.
-        if (monthOrdersRes.error) console.error("[app/dashboard] truy vấn lỗi:", monthOrdersRes.error)
-        if (receivablesRes.error) console.error("[app/dashboard] truy vấn lỗi:", receivablesRes.error)
-        if (topCustRes.error) console.error("[app/dashboard] truy vấn lỗi:", topCustRes.error)
-        if (channelRes.error) console.error("[app/dashboard] truy vấn lỗi:", channelRes.error)
-        const qErr = ([todayOrdersRes, overdueRes, lowStockRes, expiringRes, recentRes] as Array<{ error?: { message?: string } | null }>)
+        const qErr = ([sumRes, topCustRes, channelRes, lowStockRes, expiringRes, recentRes] as Array<{ error?: { message?: string } | null }>)
           .find((r) => r?.error)?.error
         if (qErr) console.error("[app/dashboard] truy vấn lỗi:", qErr.message)
 
-        const monthRevenue = monthOrdersRes.rows.reduce(
-          (sum, o) => sum + (o.total || 0),
-          0
-        )
-        setTruncated(monthOrdersRes.truncated || receivablesRes.truncated)
-        const openReceivables = receivablesRes.rows.reduce(
-          (sum, r) => sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
-          0
-        )
-
-        // Group top customers
-        const custMap = new Map<string, TopCustomer>()
-        const topRows = topCustRes.rows as unknown as Array<{
-          customer_id: string
-          total: number
-          customer: { store_name: string } | { store_name: string }[] | null
-        }>
-        for (const row of topRows) {
-          const id = row.customer_id
-          if (!id) continue
-          const cust = Array.isArray(row.customer) ? row.customer[0] : row.customer
-          const existing = custMap.get(id)
-          if (existing) {
-            existing.total += row.total || 0
-            existing.order_count += 1
-          } else {
-            custMap.set(id, {
-              customer_id: id,
-              store_name: cust?.store_name || "N/A",
-              total: row.total || 0,
-              order_count: 1,
-            })
-          }
+        const sum = (sumRes.data || {}) as {
+          period_revenue?: number
+          period_orders?: number
+          open_receivables?: number
+          overdue_count?: number
         }
-        const topList = Array.from(custMap.values())
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 5)
+        const monthRevenue = Number(sum.period_revenue ?? 0)
+        const openReceivables = Number(sum.open_receivables ?? 0)
 
-        // Channel breakdown
-        const channelMap = new Map<string, number>()
-        const channelRows = channelRes.rows as unknown as Array<{
+        // Top khách hàng: hàm SQL đã gộp, sắp xếp và giới hạn 5 dòng sẵn.
+        const topList: TopCustomer[] = ((topCustRes.data as Array<{
+          customer_id: string
+          store_name: string
           total: number
-          customer: { channel: string | null } | { channel: string | null }[] | null
-        }>
+          order_count: number
+        }> | null) || []).map((r) => ({
+          customer_id: r.customer_id,
+          store_name: r.store_name || "N/A",
+          total: Number(r.total || 0),
+          order_count: Number(r.order_count || 0),
+        }))
+
+        // Doanh thu theo kênh: hàm SQL đã gộp sẵn.
+        const channelMap = new Map<string, number>()
         let channelTotal = 0
-        for (const row of channelRows) {
-          const cust = Array.isArray(row.customer) ? row.customer[0] : row.customer
-          const ch = cust?.channel || "Khác"
-          channelMap.set(ch, (channelMap.get(ch) || 0) + (row.total || 0))
-          channelTotal += row.total || 0
+        for (const row of ((channelRes.data as Array<{ channel: string; total: number }> | null) || [])) {
+          const v = Number(row.total || 0)
+          channelMap.set(row.channel || "Khác", v)
+          channelTotal += v
         }
         const channelList: ChannelBreakdown[] = Array.from(channelMap.entries())
           .map(([channel, revenue]) => ({
@@ -252,10 +185,10 @@ export default function DashboardPage() {
           .sort((a, b) => b.revenue - a.revenue)
 
         setStats({
-          todayOrders: todayOrdersRes.count || 0,
+          todayOrders: Number(sum.period_orders ?? 0),
           monthRevenue,
           openReceivables,
-          overdueCount: overdueRes.count || 0,
+          overdueCount: Number(sum.overdue_count ?? 0),
           lowStockCount: lowStockRes.count || 0,
           expiringSoonCount: expiringRes.count || 0,
         })
@@ -313,12 +246,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-card-gap">
-      {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
       <PageHeader
         title={isSales ? "Tổng quan của tôi" : "Tổng quan kinh doanh"}
         description={today ? `Cập nhật ${today}` : undefined}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
@@ -19,8 +18,6 @@ export default function PurchasingHubPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState({ importsThisMonth: 0, monthTotal: 0, openPayables: 0 })
   const [loading, setLoading] = useState(true)
-  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
-  const [truncated, setTruncated] = useState(false)
   const supabase = createClient()
 
   const canCreate = !!user && hasPermission(user.role, "inventory", "update")
@@ -29,39 +26,21 @@ export default function PurchasingHubPage() {
     async function fetch() {
       const now = new Date()
       const firstDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00`
-      const [impRes, payRes, monthPayRes] = await Promise.all([
+      const [impRes, sumRes] = await Promise.all([
         supabase
           .from("stock_entries")
           .select("id", { count: "exact", head: true })
           .eq("type", "import")
           .gte("created_at", firstDay),
-        // Hai truy vấn dưới đây để CỘNG TIỀN → phải lấy đủ, không dừng ở
-        // trần 1.000 dòng mỗi request của server.
-        fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
-          supabase
-            .from("payables")
-            .select("amount, paid", { count: "exact" })
-            .neq("status", "paid")
-            .range(from, to)
-        ),
-        fetchAllForAggregate<{ amount: number }>((from, to) =>
-          supabase
-            .from("payables")
-            .select("amount", { count: "exact" })
-            .gte("created_at", firstDay)
-            .not("stock_entry_id", "is", null)
-            .range(from, to)
-        ),
+        // Database cộng sẵn hai con số tiền (hàm SQL `payables_summary`,
+        // migration 093) — một lời gọi thay cho việc tải cả bảng công nợ.
+        supabase.rpc("payables_summary", { p_since: firstDay }).maybeSingle(),
       ])
       if (impRes.error) console.error("[app/purchasing] truy vấn lỗi:", impRes.error.message)
-      if (payRes.error) console.error("[app/purchasing] truy vấn lỗi:", payRes.error)
-      if (monthPayRes.error) console.error("[app/purchasing] truy vấn lỗi:", monthPayRes.error)
-      setTruncated(payRes.truncated || monthPayRes.truncated)
-      const openPayables = payRes.rows.reduce(
-        (s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)),
-        0
-      )
-      const monthTotal = monthPayRes.rows.reduce((s, r) => s + Number(r.amount || 0), 0)
+      if (sumRes.error) console.error("[app/purchasing] payables_summary lỗi:", sumRes.error.message)
+      const sum = (sumRes.data || {}) as { open_payables?: number; month_total?: number }
+      const openPayables = Number(sum.open_payables ?? 0)
+      const monthTotal = Number(sum.month_total ?? 0)
       setStats({ importsThisMonth: impRes.count || 0, monthTotal, openPayables })
       setLoading(false)
     }
@@ -87,13 +66,6 @@ export default function PurchasingHubPage() {
           </Button>
         )}
       </PageHeader>
-
-      {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
 
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
         <strong>Quy trình mua hàng:</strong> Vào Kho → Tạo phiếu nhập kho → Lưu xong: tồn kho tăng + ghi công nợ NCC. Xong.

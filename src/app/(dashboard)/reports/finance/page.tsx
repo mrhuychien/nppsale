@@ -37,29 +37,6 @@ interface ExpenseRow {
   category: { id: string; code: string; name: string; bucket: string } | null
 }
 
-interface ReceivableRow {
-  amount: number
-  paid: number
-  status: string
-}
-
-interface PayableRow {
-  amount: number
-  paid: number
-  status: string
-}
-
-interface CashReceiptRow {
-  submitted_amount: number
-  receipt_date: string
-  status: string
-}
-
-interface BatchRow {
-  qty_on_hand: number
-  unit_cost: number
-}
-
 const BUCKET_LABEL: Record<string, string> = {
   cogs: "Điều chỉnh giá vốn",
   operating: "Chi phí vận hành",
@@ -126,44 +103,17 @@ export default function FinanceReportPage() {
             .lte("expense_date", r.to)
             .range(from, to)
         ),
-        fetchAllForAggregate<ReceivableRow>((from, to) =>
-          supabase
-            .from("receivables")
-            .select("amount, paid, status", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .in("status", ["open", "partial", "overdue"])
-            .range(from, to)
-        ),
-        fetchAllForAggregate<PayableRow>((from, to) =>
-          supabase
-            .from("payables")
-            .select("amount, paid, status", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .in("status", ["open", "partial", "overdue"])
-            .range(from, to)
-        ),
-        fetchAllForAggregate<BatchRow>((from, to) =>
-          supabase
-            .from("batches")
-            .select("qty_on_hand, unit_cost", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .gt("qty_on_hand", 0)
-            .range(from, to)
-        ),
-        fetchAllForAggregate<CashReceiptRow>((from, to) =>
-          supabase
-            .from("cash_receipts")
-            .select("submitted_amount, receipt_date, status", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .gte("receipt_date", r.from)
-            .lte("receipt_date", r.to)
-            .eq("status", "received")
-            .range(from, to)
-        ),
+        // Bốn con số dưới đây do DATABASE cộng (migration 093) — mỗi cái
+        // một lời gọi trả về đúng một số, thay cho việc tải cả bảng về.
+        supabase.rpc("receivables_summary").maybeSingle(),
+        supabase.rpc("payables_summary", { p_since: `${r.from}T00:00:00` }).maybeSingle(),
+        supabase.rpc("stock_value_summary").maybeSingle(),
+        supabase.rpc("cash_received_total", { p_from: r.from, p_to: r.to }),
       ])
-    const aggErr = [expensesRes.error, recvRes.error, payRes.error, batchesRes.error, cashRes.error]
-      .find(Boolean)
-    if (aggErr) console.error("[reports/finance] truy vấn lỗi:", aggErr)
+    if (expensesRes.error) console.error("[reports/finance] truy vấn lỗi:", expensesRes.error)
+    const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
+      .find((x) => x?.error)?.error
+    if (rpcErr) console.error("[reports/finance] truy vấn lỗi:", rpcErr.message)
 
     let totalRevenue = 0
     let totalDiscount = 0
@@ -190,29 +140,10 @@ export default function FinanceReportPage() {
     }))
     setExpenses(exps)
 
-    let recvSum = 0
-    for (const x of recvRes.rows) {
-      recvSum += Math.max(0, Number(x.amount || 0) - Number(x.paid || 0))
-    }
-    setRecvOpen(recvSum)
-
-    let paySum = 0
-    for (const x of payRes.rows) {
-      paySum += Math.max(0, Number(x.amount || 0) - Number(x.paid || 0))
-    }
-    setPayOpen(paySum)
-
-    let inv = 0
-    for (const b of batchesRes.rows) {
-      inv += Number(b.qty_on_hand || 0) * Number(b.unit_cost || 0)
-    }
-    setInventoryValue(inv)
-
-    let ci = 0
-    for (const x of cashRes.rows) {
-      ci += Number(x.submitted_amount || 0)
-    }
-    setCashIn(ci)
+    setRecvOpen(Number((recvRes.data as { total_outstanding?: number } | null)?.total_outstanding ?? 0))
+    setPayOpen(Number((payRes.data as { open_payables?: number } | null)?.open_payables ?? 0))
+    setInventoryValue(Number((batchesRes.data as { inventory_value?: number } | null)?.inventory_value ?? 0))
+    setCashIn(Number(cashRes.data ?? 0))
 
     let co = 0
     for (const e of exps) if (e.is_paid) co += e.amount

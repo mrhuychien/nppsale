@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -30,6 +29,19 @@ import type { Receivable } from "@/types"
 
 type BucketKey = "current" | "warning" | "overdue" | "critical"
 
+/** Một dòng trả về của hàm SQL `receivables_summary()` (migration 093). */
+type AgingSummary = {
+  total_outstanding: number
+  current_amount: number
+  current_count: number
+  warning_amount: number
+  warning_count: number
+  overdue_amount: number
+  overdue_count: number
+  critical_amount: number
+  critical_count: number
+}
+
 export default function ReceivablesPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
   const { user: authUser } = useAuth()
@@ -37,10 +49,10 @@ export default function ReceivablesPage() {
   const isDriver = authUser?.role === "driver"
   const isWarehouse = authUser?.role === "warehouse"
   const [receivables, setReceivables] = useState<Receivable[]>([])
-  const [allUnpaid, setAllUnpaid] = useState<Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>>([])
+  // Tổng + phân nhóm tuổi nợ do DATABASE cộng (migration 093), không tải
+  // dữ liệu về trình duyệt nữa.
+  const [summary, setSummary] = useState<AgingSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // true = tổng công nợ bên dưới đang THIẾU vì dữ liệu bị cắt ở trần.
-  const [summaryTruncated, setSummaryTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const pg = usePagination(50)
   const supabase = createClient()
@@ -52,21 +64,13 @@ export default function ReceivablesPage() {
   } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [])
   const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
 
-  // Aging summary: chỉ load các trường nhẹ (amount, paid, due_date, status)
-  // cho UNPAID — 1 lần mount, không join.
+  // Tổng công nợ + phân nhóm tuổi nợ: một lời gọi, Postgres cộng trên TOÀN
+  // BỘ dữ liệu. Không phụ thuộc phân trang, không phụ thuộc `db.max_rows`.
   useEffect(() => {
     async function loadSummary() {
-      const res = await fetchAllForAggregate<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>(
-        (from, to) =>
-          supabase
-            .from("receivables")
-            .select("amount, paid, due_date, status", { count: "exact" })
-            .neq("status", "paid")
-            .range(from, to)
-      )
-      if (res.error) console.error("[app/receivables] truy vấn lỗi:", res.error)
-      setAllUnpaid(res.rows)
-      setSummaryTruncated(res.truncated)
+      const { data, error } = await supabase.rpc("receivables_summary").maybeSingle()
+      if (error) console.error("[app/receivables] receivables_summary lỗi:", error.message)
+      setSummary((data as AgingSummary | null) ?? null)
     }
     loadSummary()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,23 +105,18 @@ export default function ReceivablesPage() {
 
   if (authLoading) return <Skeleton className="h-96" />
 
-  // Tổng + aging dùng allUnpaid (full unpaid set) — chính xác toàn tổng,
-  // không phụ thuộc page hiện tại.
-  const totalOutstanding = allUnpaid.reduce((sum, r) => sum + (Number(r.amount) - Number(r.paid)), 0)
+  const totalOutstanding = Number(summary?.total_outstanding ?? 0)
   const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
     switch (status) { case "current": return "success"; case "warning": return "warning"; case "overdue": return "danger"; case "critical": return "danger"; default: return "default" }
   }
+  // Ngưỡng chia nhóm nằm trong hàm SQL `receivables_summary` và PHẢI khớp
+  // với getAgingStatus() ở src/lib/utils.ts — sửa một bên nhớ sửa bên kia.
   const buckets: Record<BucketKey, { amount: number; count: number }> = {
-    current: { amount: 0, count: 0 },
-    warning: { amount: 0, count: 0 },
-    overdue: { amount: 0, count: 0 },
-    critical: { amount: 0, count: 0 },
+    current: { amount: Number(summary?.current_amount ?? 0), count: Number(summary?.current_count ?? 0) },
+    warning: { amount: Number(summary?.warning_amount ?? 0), count: Number(summary?.warning_count ?? 0) },
+    overdue: { amount: Number(summary?.overdue_amount ?? 0), count: Number(summary?.overdue_count ?? 0) },
+    critical: { amount: Number(summary?.critical_amount ?? 0), count: Number(summary?.critical_count ?? 0) },
   }
-  allUnpaid.forEach((r) => {
-    const key: BucketKey = r.due_date ? getAgingStatus(r.due_date) : "current"
-    buckets[key].amount += Number(r.amount) - Number(r.paid)
-    buckets[key].count += 1
-  })
 
   const bucketConfig: Record<BucketKey, { label: string; sub: string; barClass: string; textClass: string }> = {
     current: { label: "Hiện tại", sub: "0-30 ngày", barClass: "bg-primary", textClass: "text-primary" },
@@ -213,14 +212,6 @@ export default function ReceivablesPage() {
           onReset={resetColumns}
         />
       </div>
-
-      {/* Tổng bị cắt — phải nói ra, vì số công nợ thiếu là số sai. */}
-      {summaryTruncated && !loading && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (

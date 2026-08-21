@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,7 +13,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
 import { Factory, Search } from "lucide-react"
-import type { Payable } from "@/types"
+
+/** Một dòng trả về của hàm SQL `payables_by_supplier()` (migration 093). */
+interface SupplierDebtRowRaw {
+  supplier_id: string
+  supplier_name: string
+  supplier_code: string
+  invoice_count: number
+  total_debt: number
+  total_paid: number
+  remaining: number
+  overdue_count: number
+}
 
 interface SupplierDebtRow {
   supplierId: string
@@ -29,65 +39,35 @@ interface SupplierDebtRow {
 
 export default function PayablesBySupplierPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
-  const [payables, setPayables] = useState<Payable[]>([])
+  // Database cộng sẵn (hàm SQL `payables_by_supplier`, migration 093):
+  // mỗi nhà cung cấp một dòng.
+  const [rows, setRows] = useState<SupplierDebtRow[]>([])
   const [loading, setLoading] = useState(true)
-  // true = bảng tổng hợp bên dưới đang cộng thiếu vì dữ liệu bị cắt.
-  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
-      const res = await fetchAllForAggregate((from, to) =>
-        supabase
-          .from("payables")
-          .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)", {
-            count: "exact",
-          })
-          .neq("status", "paid")
-          .range(from, to)
+      const { data, error } = await supabase.rpc("payables_by_supplier")
+      if (error) console.error("[payables/by-supplier] payables_by_supplier lỗi:", error.message)
+      const raw = (data as SupplierDebtRowRaw[] | null) || []
+      setRows(
+        raw.map((r) => ({
+          supplierId: r.supplier_id,
+          supplierName: r.supplier_name || "-",
+          supplierCode: r.supplier_code || "-",
+          invoiceCount: Number(r.invoice_count || 0),
+          totalDebt: Number(r.total_debt || 0),
+          totalPaid: Number(r.total_paid || 0),
+          remaining: Number(r.remaining || 0),
+          overdueCount: Number(r.overdue_count || 0),
+        }))
       )
-      if (res.error) console.error("[payables/by-supplier] truy vấn lỗi:", res.error)
-      setPayables((res.rows as unknown as Payable[]) || [])
-      setTruncated(res.truncated)
       setLoading(false)
     }
     fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const rows: SupplierDebtRow[] = useMemo(() => {
-    const map = new Map<string, SupplierDebtRow>()
-
-    payables.forEach((p) => {
-      const existing = map.get(p.supplier_id)
-      const remaining = p.amount - p.paid
-      const isOverdue = p.status === "overdue"
-
-      if (existing) {
-        existing.invoiceCount += 1
-        existing.totalDebt += p.amount
-        existing.totalPaid += p.paid
-        existing.remaining += remaining
-        if (isOverdue) existing.overdueCount += 1
-      } else {
-        map.set(p.supplier_id, {
-          supplierId: p.supplier_id,
-          supplierName: p.supplier?.name || "-",
-          supplierCode: p.supplier?.code || "-",
-          invoiceCount: 1,
-          totalDebt: p.amount,
-          totalPaid: p.paid,
-          remaining,
-          overdueCount: isOverdue ? 1 : 0,
-        })
-      }
-    })
-
-    const result = Array.from(map.values())
-    result.sort((a, b) => b.remaining - a.remaining)
-    return result
-  }, [payables])
 
   const filteredRows = useMemo(() => {
     if (!search) return rows
@@ -106,13 +86,6 @@ export default function PayablesBySupplierPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo nhà cung cấp" backHref="/payables" />
-
-      {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">

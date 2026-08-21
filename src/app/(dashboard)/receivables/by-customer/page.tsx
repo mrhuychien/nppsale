@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,9 +13,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
 import { Users, Search } from "lucide-react"
-import type { Receivable, Customer, CustomerAssignment } from "@/types"
 
 type Filter = "all" | "overdue" | "over_limit"
+
+/** Một dòng trả về của hàm SQL `receivables_by_customer()` (migration 093). */
+interface CustomerDebtRowRaw {
+  customer_id: string
+  store_name: string
+  phone: string
+  rep_name: string
+  total_debt: number
+  total_paid: number
+  remaining: number
+  overdue_amount: number
+  credit_limit: number
+}
 
 interface CustomerDebtRow {
   customerId: string
@@ -33,12 +44,11 @@ interface CustomerDebtRow {
 
 export default function ReceivablesByCustomerPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
-  const [receivables, setReceivables] = useState<Receivable[]>([])
-
-  const [assignments, setAssignments] = useState<CustomerAssignment[]>([])
+  // Database cộng sẵn (hàm SQL `receivables_by_customer`, migration 093):
+  // mỗi khách một dòng, kèm sẵn tên người phụ trách chính. Không còn tải
+  // toàn bộ công nợ + bảng phân công về trình duyệt để gộp.
+  const [rows, setRows] = useState<CustomerDebtRow[]>([])
   const [loading, setLoading] = useState(true)
-  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
-  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const supabase = createClient()
@@ -46,76 +56,40 @@ export default function ReceivablesByCustomerPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const [recRes, assignRes] = await Promise.all([
-        // Cộng công nợ → phải lấy ĐỦ, không dừng ở trần 1.000 dòng của server.
-        fetchAllForAggregate((from, to) =>
-          supabase
-            .from("receivables")
-            .select(
-              "id, customer_id, amount, paid, status, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)",
-              { count: "exact" }
-            )
-            .neq("status", "paid")
-            .range(from, to)
-        ),
-        supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name)").eq("role", "primary"),
-      ])
-      if (recRes.error) console.error("[receivables/by-customer] truy vấn lỗi:", recRes.error)
-      if (assignRes.error) console.error("[receivables/by-customer] truy vấn lỗi:", assignRes.error.message)
-      setTruncated(recRes.truncated)
-      setReceivables(recRes.rows as unknown as Receivable[])
-      setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
+      const { data, error } = await supabase.rpc("receivables_by_customer")
+      if (error) console.error("[receivables/by-customer] receivables_by_customer lỗi:", error.message)
+      const raw = (data as CustomerDebtRowRaw[] | null) || []
+      setRows(
+        raw.map((r) => {
+          const remaining = Number(r.remaining || 0)
+          const overdueAmount = Number(r.overdue_amount || 0)
+          const creditLimit = Number(r.credit_limit || 0)
+          // Cùng quy tắc như trước: vượt hạn mức mới là "nguy hiểm", chỉ quá
+          // hạn thôi là "cảnh báo".
+          const status: CustomerDebtRow["status"] =
+            overdueAmount > 0 && creditLimit > 0 && overdueAmount > creditLimit
+              ? "danger"
+              : overdueAmount > 0
+                ? "warning"
+                : "normal"
+          return {
+            customerId: r.customer_id,
+            storeName: r.store_name || "-",
+            phone: r.phone || "-",
+            repName: r.rep_name || "-",
+            totalDebt: Number(r.total_debt || 0),
+            totalPaid: Number(r.total_paid || 0),
+            remaining,
+            overdueAmount,
+            creditLimit,
+            status,
+          }
+        })
+      )
       setLoading(false)
     }
     fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const rows: CustomerDebtRow[] = useMemo(() => {
-    const map = new Map<string, CustomerDebtRow>()
-
-    receivables.forEach((r) => {
-      const existing = map.get(r.customer_id)
-      const remaining = r.amount - r.paid
-      const isOverdue = r.status === "overdue"
-      const creditLimit = (r.customer as Customer & { credit_limit: number })?.credit_limit || 0
-
-      if (existing) {
-        existing.totalDebt += r.amount
-        existing.totalPaid += r.paid
-        existing.remaining += remaining
-        if (isOverdue) existing.overdueAmount += remaining
-      } else {
-        const assignment = assignments.find((a) => a.customer_id === r.customer_id)
-        map.set(r.customer_id, {
-          customerId: r.customer_id,
-          storeName: r.customer?.store_name || "-",
-          phone: r.customer?.phone || "-",
-          repName: assignment?.user?.full_name || r.sales_user?.full_name || "-",
-          totalDebt: r.amount,
-          totalPaid: r.paid,
-          remaining,
-          overdueAmount: isOverdue ? remaining : 0,
-          creditLimit,
-          status: "normal",
-        })
-      }
-    })
-
-    // Compute status
-    map.forEach((row) => {
-      if (row.overdueAmount > 0 && row.overdueAmount > row.creditLimit && row.creditLimit > 0) {
-        row.status = "danger"
-      } else if (row.overdueAmount > 0) {
-        row.status = "warning"
-      } else {
-        row.status = "normal"
-      }
-    })
-
-    const result = Array.from(map.values())
-    result.sort((a, b) => b.remaining - a.remaining)
-    return result
-  }, [receivables, assignments])
 
   const filteredRows = useMemo(() => {
     let result = rows
@@ -152,13 +126,6 @@ export default function ReceivablesByCustomerPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo khách hàng" backHref="/receivables" />
-
-      {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
-          <p className="font-semibold">Số tổng chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{truncationWarning()}</p>
-        </div>
-      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

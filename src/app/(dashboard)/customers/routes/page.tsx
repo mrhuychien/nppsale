@@ -113,11 +113,14 @@ export default function SalesRoutesPage() {
         if (error) throw error
         // If the code changed, update every customer row that referenced the old code
         if (editing.code !== code) {
+          // Nếu bước này hỏng mà bỏ qua: tuyến đã đổi mã nhưng khách hàng
+          // vẫn trỏ mã cũ → khách rơi khỏi mọi báo cáo theo tuyến.
           await supabase
             .from("customers")
             .update({ channel: code })
             .eq("org_id", user.org_id)
             .eq("channel", editing.code)
+            .throwOnError()
         }
         toast({ title: `Đã cập nhật tuyến ${code}` })
       } else {
@@ -160,6 +163,7 @@ export default function SalesRoutesPage() {
           .update({ channel: null })
           .eq("org_id", r.org_id)
           .eq("channel", r.code)
+          .throwOnError()
       }
       const { error } = await supabase.from("sales_routes").delete().eq("id", r.id)
       if (error) throw error

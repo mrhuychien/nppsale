@@ -337,6 +337,9 @@ async function handlePublish(req: Request) {
     const msg = err instanceof Error ? err.message : "Lỗi không xác định khi gọi MISA"
     console.error("[/api/einvoice/publish] uncaught:", err)
     try {
+      // audit-ok: ghi log best-effort trong catch — nếu chính việc ghi log
+      // cũng hỏng thì không còn gì để làm, và lỗi gốc đã được trả về cho
+      // người gọi ở dưới. Kiểm lỗi ở đây chỉ che mất lỗi thật.
       await admin.from("einvoice_logs").insert({
         org_id: orgId,
         invoice_id: invoiceId,

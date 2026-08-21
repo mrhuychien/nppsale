@@ -260,7 +260,7 @@ export default function DeliverySettlePage() {
           updates.delivered_at = new Date().toISOString()
         }
         if (Object.keys(updates).length > 0) {
-          await supabase.from("delivery_lines").update(updates).eq("id", l.id)
+          await supabase.from("delivery_lines").update(updates).eq("id", l.id).throwOnError()
         }
       }
 

@@ -330,7 +330,7 @@ export default function StockEntryDetailPage() {
           // Retry không có cột đó để vẫn tạo delivery.
           const msg = (delErr.message || "").toLowerCase()
           if (msg.includes("source_stock_entry_id")) {
-            const { data: fallback } = await supabase
+            const { data: fallback, error: fallbackErr } = await supabase
               .from("deliveries")
               .insert({
                 org_id: entry.org_id,
@@ -341,6 +341,13 @@ export default function StockEntryDetailPage() {
               })
               .select("id")
               .single()
+            // Cố ý KHÔNG throw: khi không tạo được delivery, luồng bên dưới
+            // vẫn đi tiếp sang trang thu tiền (chỉ mất bước bàn giao). Nhưng
+            // phải ghi lại lý do, nếu không thì bước bàn giao biến mất mà
+            // không ai biết tại sao.
+            if (fallbackErr) {
+              console.error("[inventory/entries] không tạo được delivery:", fallbackErr.message)
+            }
             deliveryId = (fallback as { id: string } | null)?.id ?? null
           } else {
             throw delErr

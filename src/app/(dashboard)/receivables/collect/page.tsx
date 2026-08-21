@@ -102,7 +102,13 @@ export default function CollectPaymentPage() {
 
       const newPaid = (selected?.paid || 0) + parseInt(amount)
       const newStatus = newPaid >= (selected?.amount || 0) ? "paid" : "partial"
-      await supabase.from("receivables").update({ paid: newPaid, status: newStatus }).eq("id", selectedId)
+      // Payment đã ghi ở trên. Nếu bước này hỏng mà bỏ qua thì tiền đã thu
+      // nhưng công nợ vẫn nguyên → khách bị đòi lại số đã trả.
+      await supabase
+        .from("receivables")
+        .update({ paid: newPaid, status: newStatus })
+        .eq("id", selectedId)
+        .throwOnError()
 
       // Notify the sales rep who owns the receivable (if different from collector)
       if (selected && user?.org_id) {

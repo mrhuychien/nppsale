@@ -173,7 +173,7 @@ export default function AdjustmentsPage() {
           for (const b of (batches as Array<{ id: string; qty_on_hand: number }>) || []) {
             if (remaining <= 0) break
             const take = Math.min(remaining, Number(b.qty_on_hand))
-            await supabase.from("batches").update({ qty_on_hand: Number(b.qty_on_hand) - take }).eq("id", b.id)
+            await supabase.from("batches").update({ qty_on_hand: Number(b.qty_on_hand) - take }).eq("id", b.id).throwOnError()
             remaining -= take
           }
         } else if (diff > 0) {
@@ -190,6 +190,7 @@ export default function AdjustmentsPage() {
               .from("batches")
               .update({ qty_on_hand: Number(first.qty_on_hand) + diff })
               .eq("id", first.id)
+              .throwOnError()
           }
           // Silently skip if no batch exists for this product — manager should
           // create a batch first.

@@ -221,20 +221,26 @@ export async function recomputeReceivableForOrder(
 
   const netAmount = Math.max(0, Number(o.total || 0) - credits)
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingErr } = await supabase
     .from("receivables")
     .select("id, paid")
     .eq("order_id", orderId)
     .maybeSingle()
+  if (existingErr) console.error("[lib/returns] truy vấn lỗi:", existingErr.message)
 
   if (existing) {
     const ex = existing as { id: string; paid: number }
     const paid = Number(ex.paid || 0)
     const status = paid >= netAmount ? "paid" : paid > 0 ? "partial" : "open"
-    await supabase
+    const { error: updErr } = await supabase
       .from("receivables")
       .update({ amount: netAmount, status })
       .eq("id", ex.id)
+    if (updErr) {
+      // Cùng lý do với nhánh insert bên dưới: hàm trả void nên không chặn
+      // được luồng gọi. Công nợ giữ số cũ sau khi trả hàng = sai tiền thật.
+      console.error("[recomputeReceivableForOrder] không cập nhật được công nợ:", updErr.message)
+    }
     return
   }
 

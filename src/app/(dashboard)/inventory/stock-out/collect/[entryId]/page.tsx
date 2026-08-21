@@ -317,7 +317,7 @@ export default function CollectPaymentPage() {
           receivable_id: r.receivableId,
           payment_id: (pay as { id: string }).id,
           amount: amt,
-        })
+        }).throwOnError()
       }
 
       // Đẩy tất cả đơn hàng trong lệnh xuất sang trạng thái 'delivered'.
@@ -345,11 +345,12 @@ export default function CollectPaymentPage() {
       // tiền xong → stamp delivery.settled_at + chuyển sang trang
       // phiếu thu để user xem chi tiết + in TT200 nếu cần. Không
       // vòng lại /handover (đã làm rồi).
-      const { data: linkedDelivery } = await supabase
+      const { data: linkedDelivery, error: linkedErr } = await supabase
         .from("deliveries")
         .select("id")
         .eq("source_stock_entry_id", entry.id)
         .maybeSingle()
+      if (linkedErr) console.error("[collect] truy vấn lỗi:", linkedErr.message)
       const deliveryId = (linkedDelivery as { id: string } | null)?.id
       if (deliveryId) {
         await supabase
@@ -359,6 +360,7 @@ export default function CollectPaymentPage() {
             settled_amount: totals.collect,
           })
           .eq("id", deliveryId)
+          .throwOnError()
       }
       router.push(`/finance/cash-receipts/${receiptId}`)
     } catch (err) {

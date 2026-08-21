@@ -287,15 +287,18 @@ export function ProductForm({
         // Update flow: tính diff để insert / update / delete
         const incomingIds = new Set(validUnits.filter((u) => u.id).map((u) => u.id))
         // Xóa những đơn vị không còn trong list
+        // Nếu truy vấn này lỗi mà bỏ qua, `existing` rỗng → removeIds rỗng
+        // → đơn vị đã bỏ vẫn nằm lại trong DB. Phải dừng, không đoán.
         const { data: existing } = await supabase
           .from("product_units")
           .select("id")
           .eq("product_id", saved.id)
+          .throwOnError()
         const removeIds = ((existing as { id: string }[]) || [])
           .map((r) => r.id)
           .filter((id) => !incomingIds.has(id))
         if (removeIds.length > 0) {
-          await supabase.from("product_units").delete().in("id", removeIds)
+          await supabase.from("product_units").delete().in("id", removeIds).throwOnError()
         }
         // Update các dòng có id, insert các dòng chưa có id
         for (const u of validUnits) {
@@ -304,12 +307,13 @@ export function ProductForm({
               .from("product_units")
               .update({ unit_name: u.unit_name, conversion: u.conversion })
               .eq("id", u.id)
+              .throwOnError()
           } else {
             await supabase.from("product_units").insert({
               product_id: saved.id,
               unit_name: u.unit_name,
               conversion: u.conversion,
-            })
+            }).throwOnError()
           }
         }
       } else if (validUnits.length > 0) {
@@ -320,7 +324,7 @@ export function ProductForm({
             unit_name: u.unit_name,
             conversion: u.conversion,
           }))
-        )
+        ).throwOnError()
       }
 
       if (onSaved) {

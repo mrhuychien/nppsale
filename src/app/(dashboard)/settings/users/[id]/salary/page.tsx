@@ -199,7 +199,7 @@ export default function UserSalaryPage() {
   const deleteTier = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("salary_kpi_tiers").delete().eq("id", rowId)
+      await supabase.from("salary_kpi_tiers").delete().eq("id", rowId).throwOnError()
       await fetchData()
     } finally {
       setBusy(false)

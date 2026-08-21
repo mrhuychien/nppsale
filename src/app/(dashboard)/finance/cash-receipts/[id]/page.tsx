@@ -123,10 +123,13 @@ export default function CashReceiptDetailPage() {
       // Mark all linked payments as verified
       const paymentIds = lines.map((l) => l.payment_id).filter(Boolean) as string[]
       if (paymentIds.length > 0) {
+        // Phải dừng nếu hỏng: phiếu thu chuyển sang "đã nhận" ở dưới, nhưng
+        // các payment vẫn chưa được đánh dấu đã đối chiếu → lệch sổ quỹ.
         await supabase
           .from("payments")
           .update({ verified_at: new Date().toISOString(), verified_by: user.id })
           .in("id", paymentIds)
+          .throwOnError()
       }
       const { error } = await supabase
         .from("cash_receipts")

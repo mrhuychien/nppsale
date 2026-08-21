@@ -188,17 +188,13 @@ theo đúng thứ tự xuất hiện, nên bản hiện tại không còn báo n
 quả có cột `trang_thai` là bạn đang chạy bản cũ** — sinh lại bằng
 `python3 scripts/build-drift-check.py`.
 
-**Còn một mục chưa ngã ngũ:** policy `visit_photos_*` nằm ở schema `storage`
-(bản dò cũ tìm nhầm trong schema `public` nên luôn báo thiếu). Kiểm bằng:
+**Đã kiểm nốt mục cuối:** policy `visit_photos_*` ở schema `storage` — xác nhận
+đủ cả 3 (`insert`/`select`/`delete`), chức năng chụp ảnh viếng thăm khách hàng
+hoạt động bình thường. Bản dò cũ báo thiếu là do tìm nhầm trong schema `public`.
 
-```sql
-SELECT policyname FROM pg_policies
-WHERE schemaname='storage' AND tablename='objects'
-  AND policyname LIKE 'visit_photos%';
-```
-
-Ít hơn 3 dòng ⇒ chức năng **chụp ảnh viếng thăm khách hàng** đang hỏng ⇒ chạy
-lại `migrations/014_visit_photos.sql`.
+➡️ **Kết luận: schema production hiện KHỚP HOÀN TOÀN với mã nguồn.** Từ nay chỉ
+cần chạy `check_migration_drift.sql` sau mỗi lần deploy có migration mới; kết
+quả không có dòng nào = vẫn khớp.
 
 ### 5.1 Đã kiểm chứng bằng bằng chứng cụ thể
 
@@ -266,7 +262,7 @@ nào đã thực sự chạy trên production**.
 1. ✅ ~~Dò lệch schema~~ — đã đo, xem mục 5.0.
 2. ✅ ~~Làm migration chạy lại được~~ — đã sửa 141 policy.
 3. ✅ ~~Bù schema thiếu~~ — đã chạy 091, đo lại sạch.
-4. Kiểm `visit_photos` ở schema storage (câu lệnh ở mục 5.0) — mục duy nhất còn treo.
+4. ✅ ~~Kiểm `visit_photos`~~ — đủ 3 policy, không cần làm gì.
 5. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2 — giờ đã tin được schema nên làm được rồi.
 6. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
 

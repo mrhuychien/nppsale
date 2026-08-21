@@ -142,7 +142,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **82 test / 4 file, tất cả xanh** |
+| `npm test` | ✅ **103 test / 5 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -160,9 +160,10 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/approval.test.ts` | Quy tắc duyệt đơn, ngưỡng, hạn mức tín dụng, phân cấp duyệt | 19 |
 | `tests/tien.test.ts` | Định dạng tiền, đọc số thành chữ, luật chặn sửa giá | 27 |
 | `tests/luong-thuong.test.ts` | Hệ số ngày công, vai trò bỏ qua chấm công, thưởng đầu thùng, thưởng theo mốc số đơn | 21 |
+| `tests/fifo.test.ts` | Gộp giá vốn theo lớp, trừ tồn qua RPC, suy biến khi thiếu migration 040 | 21 |
 
-⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, FIFO kho, đồng bộ ngoại
-tuyến, tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
+⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
+tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
 
 **Lưới an toàn tự động.** `.github/workflows/verify.yml` chạy typecheck → lint →
 test → build trên mỗi push vào `main` và mỗi pull request, cộng một bước **chặn
@@ -347,7 +348,7 @@ nào đã thực sự chạy trên production**.
 **Tháng 1 — ổn định**
 5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — **0 còn lại**; CI chạy `audit-unchecked-db.py --strict` để không tái diễn.
 6. ✅ ~~Cách ly việc phân tích file tải lên~~ — đã có `xlsx-safe.ts`. Còn lệnh nâng thư viện bạn tự chạy, xem 5.1a.
-7. ✅ ~~Phủ test cho lương/thưởng~~ — 21 test. **Còn FIFO kho** — chỗ sai là ra tiền.
+7. ✅ ~~Phủ test cho lương/thưởng và FIFO kho~~ — 21 + 21 test, hai chỗ sai là ra tiền.
 8. Phân trang cho các truy vấn không giới hạn (81 file).
 
 **Quý 1 — bền vững**

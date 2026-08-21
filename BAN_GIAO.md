@@ -28,12 +28,14 @@ sản phẩm thử nghiệm.
    `CREATE POLICY` thiếu `DROP POLICY IF EXISTS` → chạy lại sẽ lỗi "already
    exists" và dừng giữa chừng. Đây gần như chắc chắn là lý do database bị lệch
    ngay từ đầu. Nay toàn bộ migration đã idempotent.
-3. **Lỗi bị nuốt trên diện rộng.** 63 truy vấn đọc bỏ qua `error` và 191 thao
-   tác ghi không kiểm tra kết quả. Hậu quả: hệ thống hỏng mà **không báo gì** —
-   người dùng chỉ thấy "không có dữ liệu" hoặc tưởng đã lưu thành công.
+3. **Lỗi bị nuốt trên diện rộng** — *đã xử lý xong trong đợt này.* 47 thao tác
+   ghi và 190 truy vấn đọc từng bỏ qua `error`, khiến hệ thống hỏng mà **không
+   báo gì**. Nay thao tác ghi đều báo lỗi cho người dùng, truy vấn đọc đều ghi
+   log chẩn đoán. Duy trì bằng `python3 scripts/audit-unchecked-db.py`.
 
-**Có dùng được không?** Có, và đang được dùng. Nhưng ba điểm trên khiến việc
-chẩn đoán sự cố rất tốn công, và khiến rủi ro tích tụ âm thầm.
+**Có dùng được không?** Có. Cả ba điểm trên đã được xử lý trong đợt chuẩn bị bàn
+giao: schema đã đồng bộ, migration đã chạy lại được, và lỗi không còn bị nuốt.
+Khoảng trống lớn nhất còn lại là **thiếu test cho tầng giao diện** (mục 4).
 
 ---
 
@@ -202,8 +204,8 @@ quả không có dòng nào = vẫn khớp.
 |---|---|---|---|---|
 | 1 | ✅ Đã sửa | DB production lệch so với migration | Từng là nguyên nhân gốc của ≥3 sự cố | `migrations/091_backfill_missing_objects.sql` |
 | 2 | ✅ Đã sửa | 141 `CREATE POLICY` thiếu `DROP IF EXISTS` | Từng khiến migration không chạy lại được → cài đặt dở dang. Nay đã idempotent | `scripts/make-policies-idempotent.py` |
-| 3 | 🟠 Cao | **191 thao tác ghi không kiểm tra lỗi** | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB, **không có cảnh báo nào** | Rải rác `src/app/(dashboard)/**` |
-| 4 | 🟠 Cao | **63 truy vấn đọc bỏ qua `error`** | Lỗi hiện thành "không có dữ liệu" → không thể chẩn đoán. Đã sửa 10 trang chính bằng `selectResilient`, còn lại chưa | Rải rác `src/app/(dashboard)/**` |
+| 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi (đo lại: 47, không phải 191) | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | 47 → 0 |
+| 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` (đo lại: 190) | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | 190 → 7 file |
 | 5 | 🟠 Cao | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | App **nhận file Excel người dùng tải lên** → có đường khai thác thật | 6 file (import KH/SP/NCC, xuất báo cáo) |
 | 6 | 🟡 Trung | **81 file có truy vấn không giới hạn số dòng** | Chạy tốt lúc dữ liệu nhỏ; chậm dần rồi treo khi dữ liệu lớn | `src/app/(dashboard)/**` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.082) | Khó đọc, khó test, dễ gây hồi quy khi sửa | `orders/[id]/page.tsx`, `order-form.tsx`… |
@@ -285,10 +287,11 @@ nào đã thực sự chạy trên production**.
 3. ✅ ~~Bù schema thiếu~~ — đã chạy 091, đo lại sạch.
 4. ✅ ~~Kiểm `visit_photos`~~ — đủ 3 policy, không cần làm gì.
 5. Kiểm tra RLS thật trên DB (`select * from pg_policies`), đối chiếu mục 5.2 — giờ đã tin được schema nên làm được rồi.
-6. Sửa 191 thao tác ghi không kiểm lỗi — **ưu tiên đường tiền: tạo đơn, thu tiền, phiếu kho.**
+6. ✅ ~~Sửa thao tác ghi không kiểm lỗi~~ — 47 → 0.
+7. **Chạy `migrations/092_rls_hardening.sql`**, rồi nhờ mỗi vai trò mở thử một trang (xem 5.2).
 
 **Tháng 1 — ổn định**
-5. Nốt 63 truy vấn đọc nuốt lỗi (dùng `selectResilient` sẵn có).
+5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — còn 7 file, dùng `scripts/audit-unchecked-db.py` để theo dõi.
 6. Xử lý `xlsx`: đổi nguồn cài đặt hoặc cách ly việc phân tích file tải lên.
 7. Phủ test cho lương/thưởng và FIFO kho — hai chỗ sai là ra tiền.
 8. Phân trang cho các truy vấn không giới hạn.

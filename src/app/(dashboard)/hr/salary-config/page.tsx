@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Save, Plus, Trash2, Loader2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import type { HrSalaryConfig } from "@/types"
+import { useToast } from "@/hooks/use-toast"
 
 interface TierRow {
   /** Ngưỡng % của doanh số chung A để được cộng dồn bonus của bậc này. */
@@ -24,6 +25,7 @@ interface TierRow {
 }
 
 export default function SalaryConfigPage() {
+  const { toast } = useToast()
   const { loading: authLoading } = useRoleGuard("settings")
   const { user: authUser } = useAuth()
   const supabase = createClient()
@@ -107,22 +109,28 @@ export default function SalaryConfigPage() {
       is_active: true,
     }
 
-    if (config?.id) {
-      const { data } = await supabase
-        .from("hr_salary_config")
-        .update(payload)
-        .eq("id", config.id)
-        .select()
-        .single()
-      if (data) setConfig(data as HrSalaryConfig)
-    } else {
-      const { data } = await supabase
-        .from("hr_salary_config")
-        .insert(payload)
-        .select()
-        .single()
-      if (data) setConfig(data as HrSalaryConfig)
+    const { data, error } = config?.id
+      ? await supabase
+          .from("hr_salary_config")
+          .update(payload)
+          .eq("id", config.id)
+          .select()
+          .single()
+      : await supabase
+          .from("hr_salary_config")
+          .insert(payload)
+          .select()
+          .single()
+    if (error) {
+      toast({
+        title: "Lưu cấu hình lương thất bại",
+        description: error.message,
+        variant: "destructive",
+      })
+      setSaving(false)
+      return
     }
+    if (data) setConfig(data as HrSalaryConfig)
 
     setSaving(false)
   }

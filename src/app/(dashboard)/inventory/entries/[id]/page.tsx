@@ -268,6 +268,7 @@ export default function StockEntryDetailPage() {
             .from("stock_entry_lines")
             .update({ unit_cost: avgCost })
             .eq("id", l.id)
+            .throwOnError()
         }
         if (remaining > 0) {
           console.warn(
@@ -289,6 +290,7 @@ export default function StockEntryDetailPage() {
         .from("sales_orders")
         .update({ status: "delivering" })
         .in("id", orderIds)
+        .throwOnError()
 
       // 4) Tạo receivable cho từng đơn (idempotent)
       const { ensureReceivableForOrder } = await import("@/lib/receivables")

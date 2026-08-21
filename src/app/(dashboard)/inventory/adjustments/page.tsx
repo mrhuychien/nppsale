@@ -157,7 +157,7 @@ export default function AdjustmentsPage() {
             .maybeSingle()
           const current = Number((b as { qty_on_hand?: number } | null)?.qty_on_hand) || 0
           const newQty = Math.max(0, current + diff)
-          await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", l.batch_id)
+          await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", l.batch_id).throwOnError()
         } else if (diff < 0) {
           // Shrinkage, no batch → FEFO deduct
           let remaining = -diff

@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/utils"
 import { ROLE_LABELS } from "@/lib/constants"
 import { CheckCircle2, Printer, Trash2, Loader2, Banknote } from "lucide-react"
 import type { HrPayroll } from "@/types"
+import { useToast } from "@/hooks/use-toast"
 
 const STATUS_MAP: Record<string, { label: string; variant: "secondary" | "default" | "success" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -25,6 +26,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "secondary" | "defaul
 }
 
 export default function PayrollDetailPage() {
+  const { toast } = useToast()
   const { loading: authLoading } = useRoleGuard("settings")
   const { user: authUser } = useAuth()
   const params = useParams()
@@ -60,12 +62,17 @@ export default function PayrollDetailPage() {
 
   const updatePayroll = async (updates: Record<string, unknown>) => {
     setSaving(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("hr_payroll")
       .update(updates)
       .eq("id", id)
       .select("id, org_id, user_id, period, working_days, absent_days, total_revenue, target_amount, target_percent, base_salary, gas_allowance, phone_allowance, target_bonus, over_target_bonus, monthly_revenue_bonus, deductions, total_salary, breakdown, status, confirmed_by, confirmed_at, paid_at, notes, created_at, user:users(*)")
       .single()
+    if (error) {
+      toast({ title: "Lưu bảng lương thất bại", description: error.message, variant: "destructive" })
+      setSaving(false)
+      return
+    }
     if (data) {
       const p = data as unknown as HrPayroll
       setPayroll(p)
@@ -97,7 +104,11 @@ export default function PayrollDetailPage() {
 
   const handleDelete = async () => {
     if (!confirm("Xóa bảng lương này?")) return
-    await supabase.from("hr_payroll").delete().eq("id", id)
+    const { error } = await supabase.from("hr_payroll").delete().eq("id", id)
+    if (error) {
+      toast({ title: "Xóa bảng lương thất bại", description: error.message, variant: "destructive" })
+      return
+    }
     router.push("/hr/payroll")
   }
 

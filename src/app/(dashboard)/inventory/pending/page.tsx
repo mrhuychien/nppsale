@@ -309,7 +309,7 @@ export default function PendingStockPage() {
         let unitCost = 0
         if (first) {
           const newQty = Number(first.qty_on_hand || 0) + qty
-          await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", first.id)
+          await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", first.id).throwOnError()
           batchId = first.id
           unitCost = Number(first.unit_cost) || 0
         } else {

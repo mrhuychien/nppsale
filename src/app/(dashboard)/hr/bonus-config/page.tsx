@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table"
 import { Save, Plus, Trash2, ChevronLeft, ChevronRight, Loader2, Package, ListOrdered, Target } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 import type {
   HrMonthlyBonus,
   KpiMetricConfig,
@@ -96,6 +97,7 @@ const DEFAULT_KPI_METRICS: KpiMetricConfig[] = [
 ]
 
 export default function BonusConfigPage() {
+  const { toast } = useToast()
   const { loading: authLoading } = useRoleGuard("settings")
   const { user: authUser } = useAuth()
   const supabase = createClient()
@@ -196,10 +198,17 @@ export default function BonusConfigPage() {
       notes,
     }
 
-    if (config?.id) {
-      await supabase.from("hr_monthly_bonus").update(payload).eq("id", config.id)
-    } else {
-      await supabase.from("hr_monthly_bonus").insert(payload)
+    const { error } = config?.id
+      ? await supabase.from("hr_monthly_bonus").update(payload).eq("id", config.id)
+      : await supabase.from("hr_monthly_bonus").insert(payload)
+    if (error) {
+      toast({
+        title: "Lưu cấu hình thưởng thất bại",
+        description: error.message,
+        variant: "destructive",
+      })
+      setSaving(false)
+      return
     }
 
     await fetchData()

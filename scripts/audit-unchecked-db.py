@@ -40,8 +40,12 @@ def analyse(path):
     for i, line in enumerate(lines):
         if "supabase" not in line and ".from(" not in line and "await" not in line:
             continue
-        # Điểm bắt đầu một lời gọi Supabase
-        if not re.search(r"(await\s+)?supabase\s*[\.\n]|\.from\(", line):
+        # Điểm bắt đầu một lời gọi Supabase.
+        # Loại trừ Buffer.from()/Array.from()/Object.from() — không phải DB.
+        if re.search(r"\b(Buffer|Array|Object|Set|Map)\.from\(", line):
+            continue
+        # Tên bảng luôn là chuỗi: .from("orders"). Tránh khớp .from(bienSo).
+        if not re.search(r'(await\s+)?supabase\s*[\.\n]|\.from\(\s*["\']', line):
             continue
 
         # Cửa sổ phải gồm CẢ phần phía trên: với chuỗi nhiều dòng, phần

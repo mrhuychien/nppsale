@@ -104,18 +104,38 @@ export default function AttendancePage() {
     const ds = dateStr(year, month, day)
     const key = `${userId}_${ds}`
 
-    // Optimistic
-    setAttendance((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], user_id: userId, work_date: ds, status, org_id: authUser.org_id } as HrAttendance,
-    }))
+    // Optimistic — giữ lại giá trị cũ để hoàn tác nếu ghi thất bại.
+    let before: HrAttendance | undefined
+    setAttendance((prev) => {
+      before = prev[key]
+      return {
+        ...prev,
+        [key]: { ...prev[key], user_id: userId, work_date: ds, status, org_id: authUser.org_id } as HrAttendance,
+      }
+    })
     setPopupCell(null)
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("hr_attendance")
       .upsert({ org_id: authUser.org_id, user_id: userId, work_date: ds, status }, { onConflict: "user_id,work_date" })
       .select()
       .single()
+    if (error) {
+      // Giao diện đã cập nhật lạc quan trước đó — phải hoàn tác, nếu không
+      // người chấm công tưởng đã lưu trong khi database không có gì.
+      setAttendance((prev) => {
+        const next = { ...prev }
+        if (before) next[key] = before
+        else delete next[key]
+        return next
+      })
+      toast({
+        title: "Chấm công thất bại",
+        description: error.message,
+        variant: "destructive",
+      })
+      return
+    }
     if (data) setAttendance((prev) => ({ ...prev, [key]: data as HrAttendance }))
   }
 
@@ -129,7 +149,18 @@ export default function AttendancePage() {
       work_date: ds,
       status: "present" as AttendanceStatus,
     }))
-    await supabase.from("hr_attendance").upsert(rows, { onConflict: "user_id,work_date" })
+    const { error } = await supabase
+      .from("hr_attendance")
+      .upsert(rows, { onConflict: "user_id,work_date" })
+    if (error) {
+      toast({
+        title: "Chấm công hàng loạt thất bại",
+        description: error.message,
+        variant: "destructive",
+      })
+      setSaving(false)
+      return
+    }
     toast({ title: `Đã chấm tất cả có mặt ngày ${mobileDay || now.getDate()}/${month}` })
     await fetchData()
     setSaving(false)

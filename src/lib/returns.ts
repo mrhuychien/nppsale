@@ -103,14 +103,20 @@ export async function processApprovedReturn(
       const first = (existingBatches as B[] | null)?.[0]
       if (first) {
         const newQty = Number(first.qty_on_hand || 0) + qty
-        await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", first.id)
+        const { error: upErr } = await supabase
+          .from("batches")
+          .update({ qty_on_hand: newQty })
+          .eq("id", first.id)
+        if (upErr) {
+          return { ok: false, error: `Không cộng được tồn kho khi nhập lại hàng trả: ${upErr.message}` }
+        }
         productBatchMap[productId] = {
           id: first.id,
           unit_cost: Number(first.unit_cost) || 0,
         }
       } else {
         const batchCode = `RESTOCK-${entryCode}-${productId.slice(0, 4)}`
-        const { data: newBatch } = await supabase
+        const { data: newBatch, error: newBatchErr } = await supabase
           .from("batches")
           .insert({
             org_id: r.org_id,
@@ -123,6 +129,9 @@ export async function processApprovedReturn(
           })
           .select("id")
           .single()
+        if (newBatchErr) {
+          return { ok: false, error: `Không tạo được lô nhập lại hàng trả: ${newBatchErr.message}` }
+        }
         const id = (newBatch as { id?: string } | null)?.id
         if (id) productBatchMap[productId] = { id, unit_cost: 0 }
       }
@@ -146,7 +155,12 @@ export async function processApprovedReturn(
       }
     })
     if (entryLineRows.length > 0) {
-      await supabase.from("stock_entry_lines").insert(entryLineRows)
+      const { error: linesErr } = await supabase
+        .from("stock_entry_lines")
+        .insert(entryLineRows)
+      if (linesErr) {
+        return { ok: false, error: `Không ghi được chi tiết phiếu nhập lại: ${linesErr.message}` }
+      }
     }
   }
 
@@ -225,7 +239,7 @@ export async function recomputeReceivableForOrder(
   const dueDate = new Date(baseDate)
   dueDate.setDate(baseDate.getDate() + days)
 
-  await supabase.from("receivables").insert({
+  const { error: recErr } = await supabase.from("receivables").insert({
     org_id: o.org_id,
     order_id: o.id,
     customer_id: o.customer_id,
@@ -235,6 +249,11 @@ export async function recomputeReceivableForOrder(
     due_date: dueDate.toISOString().slice(0, 10),
     status: "open",
   })
+  if (recErr) {
+    // Hàm này trả void nên không chặn được luồng gọi; ít nhất phải để lại
+    // dấu vết thay vì nuốt im lặng — công nợ thiếu là sai tiền thật.
+    console.error("[recomputeReceivableForOrder] không tạo được công nợ:", recErr.message)
+  }
 }
 
 function paymentTermsToDays(terms: string | null | undefined): number {

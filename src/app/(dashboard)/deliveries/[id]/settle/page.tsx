@@ -112,6 +112,9 @@ export default function DeliverySettlePage() {
         )
         .eq("delivery_id", id),
     ])
+    const qErr = ([delRes, linesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[id/settle] truy vấn lỗi:", qErr.message)
 
     if (delRes.data) {
       setDelivery(delRes.data as unknown as typeof delivery)

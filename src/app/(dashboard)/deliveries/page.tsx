@@ -193,6 +193,9 @@ export default function DeliveriesPage() {
         // Đơn giản hoá: count(all) - count(các trên).
         supabase.from("deliveries").select("id", { count: "exact", head: true }),
       ])
+      const qErr = ([cancelledRes, inTransitRes, settledRes, deliveredRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/deliveries] truy vấn lỗi:", qErr.message)
       const cancelled = cancelledRes.count ?? 0
       const inTransit = inTransitRes.count ?? 0
       const settled = settledRes.count ?? 0

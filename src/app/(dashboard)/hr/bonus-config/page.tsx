@@ -148,6 +148,9 @@ export default function BonusConfigPage() {
         .from("product_units")
         .select("product_id, unit_name"),
     ])
+    const qErr = ([currentRes, historyRes, productsRes, unitsRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[hr/bonus-config] truy vấn lỗi:", qErr.message)
     setProducts((productsRes.data as ProductOption[]) || [])
     setProductUnits((unitsRes.data as ProductUnitOption[]) || [])
 

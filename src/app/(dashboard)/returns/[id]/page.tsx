@@ -48,6 +48,9 @@ export default function ReturnDetailPage() {
         .single(),
       supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(*)").eq("return_id", id),
     ])
+    const qErr = ([retRes, linesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[returns/id] truy vấn lỗi:", qErr.message)
     if (retRes.data) {
       const r = retRes.data as unknown as Return
       setRet(r)

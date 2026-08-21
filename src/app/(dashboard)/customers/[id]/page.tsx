@@ -101,6 +101,9 @@ export default function CustomerDetailPage() {
       supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("id", id).single(),
       supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(*)").eq("customer_id", id),
     ])
+    const qErr2 = ([custRes, assignRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[customers/id] truy vấn lỗi:", qErr2.message)
     if (custRes.data) setCustomer(custRes.data as unknown as Customer)
     setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
 
@@ -140,6 +143,9 @@ export default function CustomerDetailPage() {
         .order("collected_at", { ascending: false })
         .limit(5),
     ])
+    const qErr = ([monthOrdersRes, allOrdersRes, receivablesRes, last90Res, recentPayRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[customers/id] truy vấn lỗi:", qErr.message)
 
     // Revenue this month
     const rev = (monthOrdersRes.data || []).reduce(

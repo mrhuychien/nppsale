@@ -108,6 +108,9 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         supabase.from("products").select("sku").eq("org_id", user.org_id),
         supabase.from("suppliers").select("id, name").eq("org_id", user.org_id),
       ])
+      const qErr = ([existingSkuRes, supRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[products/product-import-dialog] truy vấn lỗi:", qErr.message)
       const usedSku = new Set((existingSkuRes.data as { sku: string }[] | null)?.map((r) => r.sku) ?? [])
       const supplierByLower: Record<string, string> = {}
       for (const s of (supRes.data as { id: string; name: string }[] | null) || []) {

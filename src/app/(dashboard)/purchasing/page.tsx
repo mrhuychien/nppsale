@@ -35,6 +35,9 @@ export default function PurchasingHubPage() {
         supabase.from("payables").select("amount, paid").neq("status", "paid"),
         supabase.from("payables").select("amount").gte("created_at", firstDay).not("stock_entry_id", "is", null),
       ])
+      const qErr = ([impRes, payRes, monthPayRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/purchasing] truy vấn lỗi:", qErr.message)
       const openPayables = ((payRes.data as Array<{ amount: number; paid: number }>) || []).reduce(
         (s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)),
         0

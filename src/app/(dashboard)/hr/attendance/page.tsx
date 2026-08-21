@@ -81,6 +81,9 @@ export default function AttendancePage() {
       supabase.from("users").select("id, full_name, role").eq("org_id", authUser.org_id).eq("is_active", true).order("full_name"),
       supabase.from("hr_attendance").select("id, org_id, user_id, work_date, status").eq("org_id", authUser.org_id).gte("work_date", start).lte("work_date", end),
     ])
+    const qErr = ([usersRes, attendRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[hr/attendance] truy vấn lỗi:", qErr.message)
     setEmployees((usersRes.data as User[]) || [])
     const map: Record<string, HrAttendance> = {}
     for (const row of (attendRes.data as HrAttendance[]) || []) {

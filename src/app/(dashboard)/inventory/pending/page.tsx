@@ -115,6 +115,9 @@ export default function PendingStockPage() {
           .eq("status", "failed")
           .order("delivered_at", { ascending: false }),
       ])
+      const qErr = ([confirmedRes, returnsRes, failedRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[inventory/pending] truy vấn lỗi:", qErr.message)
       setConfirmedOrders(((confirmedRes.data as unknown) as ConfirmedOrder[]) || [])
       setApprovedReturns(
         (((returnsRes.data as unknown) as Array<ApprovedReturn & { lines?: { id: string }[] }>) || []).map(

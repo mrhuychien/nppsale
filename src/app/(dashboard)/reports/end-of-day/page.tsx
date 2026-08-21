@@ -85,6 +85,9 @@ export default function EndOfDayPage() {
         .eq("org_id", user.org_id)
         .eq("expense_date", date),
     ])
+    const qErr = ([cogsRes, cashRes, expRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/end-of-day] truy vấn lỗi:", qErr.message)
     setOrders(allOrders)
     setDelivered(delivList)
     setReturnsValue(retVal)

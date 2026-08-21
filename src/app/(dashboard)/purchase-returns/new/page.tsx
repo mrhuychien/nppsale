@@ -79,6 +79,9 @@ export default function NewPurchaseReturnPage() {
           .eq("org_id", user.org_id)
           .order("name"),
       ])
+      const qErr = ([supRes, prodRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[purchase-returns/new] truy vấn lỗi:", qErr.message)
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts((prodRes.data as Array<Product & { units?: ProductUnit[] }>) || [])
     }

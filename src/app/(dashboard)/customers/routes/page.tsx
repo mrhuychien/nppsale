@@ -58,6 +58,9 @@ export default function SalesRoutesPage() {
         .select("channel")
         .eq("org_id", user.org_id),
     ])
+    const qErr = ([routesRes, custRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[customers/routes] truy vấn lỗi:", qErr.message)
     setRoutes((routesRes.data as SalesRoute[]) || [])
     const counts: Record<string, number> = {}
     for (const c of (custRes.data as Array<{ channel: string | null }>) || []) {

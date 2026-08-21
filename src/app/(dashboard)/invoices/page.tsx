@@ -90,6 +90,9 @@ export default function InvoicesPage() {
         supabase.from("invoices").select("id", { count: "exact", head: true }).eq("misa_status", "error"),
         supabase.from("invoices").select("id", { count: "exact", head: true }).or("misa_status.is.null,misa_status.eq.pending"),
       ])
+      const qErr = ([allRes, signedRes, errorRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/invoices] truy vấn lỗi:", qErr.message)
       setStats({
         total: allRes.count ?? 0,
         signed: signedRes.count ?? 0,

@@ -189,6 +189,9 @@ export default function HomeLauncherPage() {
           .select("id", { count: "exact", head: true })
           .eq("status", "active"),
       ])
+      const qErr = ([ordersTodayRes, draftRes, visitsRes, custRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/home] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       const ordersToday = ordersTodayRes.count ?? 0
       const ordersTodayValue = (

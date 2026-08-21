@@ -78,6 +78,9 @@ export default function ReportsPage() {
         supabase.from("users").select("id, full_name, role, is_active, created_at"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
       ])
+      const qErr = ([ordersRes, recvRes, batchesRes, usersRes, prodRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/reports] truy vấn lỗi:", qErr.message)
       setData({
         salesOrders: (ordersRes.data as SalesOrder[]) || [],
         receivables: (recvRes.data as Receivable[]) || [],

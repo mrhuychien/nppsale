@@ -50,6 +50,9 @@ export default function ReceivablesByCustomerPage() {
           .neq("status", "paid"),
         supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name)").eq("role", "primary"),
       ])
+      const qErr = ([recRes, assignRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[receivables/by-customer] truy vấn lỗi:", qErr.message)
       setReceivables((recRes.data as unknown as Receivable[]) || [])
       setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
       setLoading(false)

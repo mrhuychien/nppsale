@@ -64,6 +64,9 @@ export default function SupplierDetailPage() {
         .select("id", { count: "exact", head: true })
         .eq("supplier_id", id),
     ])
+    const qErr = ([supplierRes, entriesRes, countRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[suppliers/id] truy vấn lỗi:", qErr.message)
 
     if (supplierRes.data) {
       const s = supplierRes.data as Supplier

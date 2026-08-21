@@ -82,6 +82,9 @@ export default function ExpensesPage() {
         .order("bucket")
         .order("code"),
     ])
+    const qErr = ([expensesRes, categoriesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[finance/expenses] truy vấn lỗi:", qErr.message)
     setExpenses((expensesRes.data as unknown as Expense[]) || [])
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)

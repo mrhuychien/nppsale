@@ -99,6 +99,9 @@ export default function OrdersReportPage() {
       supabase.from("customers").select("id, store_name, group_id").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
+    const qErr = ([productsRes, customersRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/orders] truy vấn lỗi:", qErr.message)
     const orderIds = orderList
       .filter((o) => (status ? o.status === status : true))
       .map((o) => o.id)

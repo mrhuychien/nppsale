@@ -71,6 +71,9 @@ export default function StockCardPage() {
         )
         .eq("product_id", productId),
     ])
+    const qErr = ([productRes, batchesRes, linesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[stock-card/productId] truy vấn lỗi:", qErr.message)
 
     setProduct((productRes.data as Product) || null)
     setBatches((batchesRes.data as Batch[]) || [])

@@ -84,6 +84,9 @@ export default function EditPurchaseReturnPage() {
       supabase.from("supplier_returns").select("id, supplier_id, return_date, warehouse_zone, reason, notes, status").eq("id", id).maybeSingle(),
       supabase.from("supplier_return_lines").select("id, product_id, unit_name, quantity, unit_price, vat_rate, conversion_factor").eq("return_id", id).order("created_at"),
     ])
+    const qErr = ([supRes, prodRes, hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[id/edit] truy vấn lỗi:", qErr.message)
     const prods = (prodRes.data as Array<Product & { units?: ProductUnit[] }>) || []
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)

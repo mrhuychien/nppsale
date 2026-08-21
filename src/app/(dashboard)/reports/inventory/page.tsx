@@ -58,6 +58,9 @@ export default function InventoryReportPage() {
         supabase.from("sales_order_lines").select("id, product_id, quantity"),
         supabase.from("suppliers").select("id, name").order("name"),
       ])
+      const qErr = ([batchesRes, linesRes, suppliersRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[reports/inventory] truy vấn lỗi:", qErr.message)
       setBatchesAll((batchesRes.data as unknown as (Batch & { product?: Product })[]) || [])
       setSalesLines((linesRes.data as SalesOrderLine[]) || [])
       setSuppliers((suppliersRes.data as SupplierOption[]) || [])

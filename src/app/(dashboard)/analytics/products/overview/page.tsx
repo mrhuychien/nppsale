@@ -56,6 +56,9 @@ export default function ProductsOverviewPage() {
       fetchDeliveredOrders(supabase, user.org_id, prev),
       supabase.from("products").select("id, sku, name, category, brand, status").eq("org_id", user.org_id),
     ])
+    const qErr = ([productsRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[products/overview] truy vấn lỗi:", qErr.message)
     const [lineList, prevLineList] = await Promise.all([
       fetchOrderLines(supabase, orderList.map((o) => o.id)),
       fetchOrderLines(supabase, prevOrderList.map((o) => o.id)),

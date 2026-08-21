@@ -154,6 +154,9 @@ export default function UserSalaryPage() {
         .eq("user_id", id)
         .order("month", { ascending: false }),
     ])
+    const qErr = ([uRes, tRes, oRes, aRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[id/salary] truy vấn lỗi:", qErr.message)
     setUser(((uRes.data as UserRow) || null))
     setTiers(((tRes.data as KpiTier[]) || []))
     setOcs(((oRes.data as OcConfig[]) || []))

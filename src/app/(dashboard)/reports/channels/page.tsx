@@ -43,6 +43,9 @@ export default function ChannelsReportPage() {
       fetchDeliveredOrders(supabase, user.org_id, range),
       supabase.from("customers").select("id, store_name, channel").eq("org_id", user.org_id),
     ])
+    const qErr = ([customersRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/channels] truy vấn lỗi:", qErr.message)
     setOrders(orderList)
     setCustomers((customersRes.data as CustomerRow[]) || [])
     setLoading(false)

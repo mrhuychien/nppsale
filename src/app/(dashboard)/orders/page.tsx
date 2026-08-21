@@ -137,6 +137,9 @@ export default function OrdersPage() {
         supabase.from("customers").select("id, store_name").order("store_name"),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
       ])
+      const qErr2 = ([customersRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr2) console.error("[app/orders] truy vấn lỗi:", qErr2.message)
       setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
 
@@ -218,6 +221,9 @@ export default function OrdersPage() {
             .in("order_id", ids),
           supabase.from("invoices").select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at").in("order_id", ids),
         ])
+        const qErr = ([recvRes, invRes] as Array<{ error?: { message?: string } | null }>)
+          .find((r) => r?.error)?.error
+        if (qErr) console.error("[app/orders] truy vấn lỗi:", qErr.message)
         if (cancelled) return
         const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
         for (const r of (recvRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || []) {

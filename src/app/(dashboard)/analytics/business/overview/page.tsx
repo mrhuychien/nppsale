@@ -107,6 +107,9 @@ export default function BusinessOverviewPage() {
       supabase.from("products").select("id, name, category").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
+    const qErr = ([cogsRes, prevCogsRes, customersRes, productsRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[business/overview] truy vấn lỗi:", qErr.message)
     const orderIds = orderList.map((o) => o.id)
     const prevOrderIds = prevOrderList.map((o) => o.id)
     const [lineList, prevLineList] = await Promise.all([

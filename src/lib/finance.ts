@@ -188,6 +188,9 @@ export async function fetchBalanceSheet(
       .eq("org_id", orgId)
       .lte("expense_date", asOf),
   ])
+  const qErr2 = ([paymentsRes, receivablesRes, batchesRes, payablesRes, payablePaymentsRes, expensesRes] as Array<{ error?: { message?: string } | null }>)
+    .find((r) => r?.error)?.error
+  if (qErr2) console.error("[lib/finance] truy vấn lỗi:", qErr2.message)
 
   const cashIn = ((paymentsRes.data as Array<{ amount: number }>) || [])
     .reduce((s, p) => s + Number(p.amount || 0), 0)
@@ -276,6 +279,9 @@ export async function fetchCashFlow(
       .gte("paid_at", fromIso)
       .lte("paid_at", toIso),
   ])
+  const qErr = ([paymentsRes, payablePaymentsRes, expensesRes] as Array<{ error?: { message?: string } | null }>)
+    .find((r) => r?.error)?.error
+  if (qErr) console.error("[lib/finance] truy vấn lỗi:", qErr.message)
 
   const cashFromCustomers = ((paymentsRes.data as Array<{ amount: number }>) || [])
     .reduce((s, p) => s + Number(p.amount || 0), 0)

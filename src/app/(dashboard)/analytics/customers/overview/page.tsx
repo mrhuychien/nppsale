@@ -50,6 +50,9 @@ export default function CustomersOverviewPage() {
         .select("id, store_name, channel, group_id, created_at, status")
         .eq("org_id", user.org_id),
     ])
+    const qErr = ([customersRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[customers/overview] truy vấn lỗi:", qErr.message)
     setOrders(orderList)
     setPrevOrders(prevOrderList)
     setCustomers((customersRes.data as CustomerRow[]) || [])

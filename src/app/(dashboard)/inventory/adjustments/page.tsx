@@ -86,6 +86,9 @@ export default function AdjustmentsPage() {
         .eq("bucket", "cogs")
         .eq("is_active", true),
     ])
+    const qErr = ([draftsRes, postedRes, catRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[inventory/adjustments] truy vấn lỗi:", qErr.message)
     setDrafts(((draftsRes.data as unknown) as Adjustment[]) || [])
     setRecentPosted(((postedRes.data as unknown) as Adjustment[]) || [])
     setCategories((catRes.data as ExpenseCategory[]) || [])

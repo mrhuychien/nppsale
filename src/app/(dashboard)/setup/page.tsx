@@ -109,6 +109,9 @@ export default function SetupWizardPage() {
         .limit(1)
         .maybeSingle(),
     ])
+    const qErr = ([orgRes, prRes, scRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[app/setup] truy vấn lỗi:", qErr.message)
     const oRow = (orgRes.data || {}) as Record<string, unknown>
     const settings = (oRow.settings || {}) as Record<string, unknown>
     setOrg({

@@ -68,6 +68,9 @@ export default function ReceivablesAnalyticsPage() {
       supabase.from("customers").select("id, store_name, channel, credit_limit").eq("org_id", user.org_id),
       supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
     ])
+    const qErr = ([recvRes, custRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[performance/receivables] truy vấn lỗi:", qErr.message)
     setReceivables((recvRes.data as ReceivableRow[]) || [])
     setCustomers((custRes.data as CustomerRow[]) || [])
     setUsers((usersRes.data as UserRow[]) || [])

@@ -118,6 +118,9 @@ export default function SalesReportPage() {
       supabase.from("suppliers").select("id, name").eq("org_id", user.org_id).order("name"),
       supabase.from("products").select("id, primary_supplier_id").eq("org_id", user.org_id),
     ])
+    const qErr2 = ([customersRes, usersRes, stockEntriesRes, suppliersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[reports/sales] truy vấn lỗi:", qErr2.message)
     const orderIds = orderList.map((o) => o.id)
     const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
     const [linesList, stockLinesRes] = await Promise.all([
@@ -129,6 +132,9 @@ export default function SalesReportPage() {
             .select("entry_id, product_id, quantity, unit_cost")
             .in("entry_id", stockEntryIds),
     ])
+    const qErr = ([stockLinesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/sales] truy vấn lỗi:", qErr.message)
     setOrders(orderList)
     setLines(linesList)
     setReturns(returnsRows)

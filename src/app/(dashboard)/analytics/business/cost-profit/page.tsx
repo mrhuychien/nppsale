@@ -105,6 +105,9 @@ export default function CostProfitPage() {
         fetchExpenses(user.org_id, range),
         fetchExpenses(user.org_id, prev),
       ])
+    const qErr = ([cogsRes, prevCogsRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[business/cost-profit] truy vấn lỗi:", qErr.message)
     setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
     setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
     setReturnsValue(retVal)

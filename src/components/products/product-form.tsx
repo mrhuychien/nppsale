@@ -184,6 +184,9 @@ export function ProductForm({
           .eq("org_id", orgId!)
           .order("name"),
       ])
+      const qErr = ([catsRes, supRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[products/product-form] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       const cats = new Set<string>()
       for (const p of (catsRes.data as { category: string | null }[]) || []) {

@@ -163,6 +163,9 @@ export default function DashboardPage() {
             .select("total, customer:customers(channel)")
             .gte("order_date", periodStart),
         ])
+        const qErr = ([todayOrdersRes, monthOrdersRes, receivablesRes, overdueRes, lowStockRes, expiringRes, recentRes, topCustRes, channelRes] as Array<{ error?: { message?: string } | null }>)
+          .find((r) => r?.error)?.error
+        if (qErr) console.error("[app/dashboard] truy vấn lỗi:", qErr.message)
 
         const monthRevenue = (monthOrdersRes.data || []).reduce(
           (sum, o: { total: number }) => sum + (o.total || 0),

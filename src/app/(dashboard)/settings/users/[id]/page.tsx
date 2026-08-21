@@ -52,6 +52,9 @@ export default function UserDetailPage() {
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
     ])
+    const qErr = ([userRes, supRes, mySupRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[users/id] truy vấn lỗi:", qErr.message)
     if (userRes.data) {
       const u = userRes.data as User
       setTarget(u)

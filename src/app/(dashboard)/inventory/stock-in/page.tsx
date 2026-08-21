@@ -133,6 +133,9 @@ export default function StockInPage() {
           .order("name"),
         supabase.from("suppliers").select("id, code, name").eq("is_active", true).order("name"),
       ])
+      const qErr = ([prodRes, supRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[inventory/stock-in] truy vấn lỗi:", qErr.message)
       setProducts((prodRes.data as ProductWithRelations[]) || [])
       // Suppliers might fail silently if migration 006 not yet run - that's OK
       if (supRes.data) setSuppliers(supRes.data as Supplier[])

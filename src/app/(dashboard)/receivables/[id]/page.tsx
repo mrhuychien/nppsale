@@ -68,6 +68,9 @@ export default function ReceivableDetailPage() {
         .eq("receivable_id", id)
         .order("collected_at", { ascending: false }),
     ])
+    const qErr = ([recRes, payRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[receivables/id] truy vấn lỗi:", qErr.message)
     if (recRes.data) setReceivable(recRes.data as unknown as Receivable)
     setPayments((payRes.data as unknown as Payment[]) || [])
     setLoading(false)

@@ -88,6 +88,9 @@ export function useFilterCatalogs(orgId: string | null | undefined): Catalogs {
           .eq("org_id", orgId)
           .order("name"),
       ])
+      const qErr = ([custRes, userRes, prodRes, groupRes, routeRes, suppRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[analytics/filter-catalogs] truy vấn lỗi:", qErr.message)
       if (cancelled) return
 
       const products =

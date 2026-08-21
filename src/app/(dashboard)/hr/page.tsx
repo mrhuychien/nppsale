@@ -63,6 +63,9 @@ export default function HrPage() {
           .eq("month", monthStart)
           .limit(1),
       ])
+      const qErr = ([usersRes, payrollRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/hr] truy vấn lỗi:", qErr.message)
 
       const totalEmployees = usersRes.count ?? 0
       const payrollData = payrollRes.data as Array<{ status: string; computed_at: string | null }> | null

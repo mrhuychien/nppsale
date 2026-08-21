@@ -42,6 +42,9 @@ export default function InventoryAuditPage() {
         .select("product_id, qty_on_hand, unit_cost")
         .gt("qty_on_hand", 0),
     ])
+    const qErr = ([prodRes, batchRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[inventory/audit] truy vấn lỗi:", qErr.message)
     const prodList = (prodRes.data as Product[]) || []
     const batchList = (batchRes.data as Array<Pick<Batch, "product_id" | "qty_on_hand" | "unit_cost">>) || []
 

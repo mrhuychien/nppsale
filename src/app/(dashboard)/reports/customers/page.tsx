@@ -123,6 +123,9 @@ export default function CustomersReportPage() {
           .gte("posted_at", fromIso)
           .lte("posted_at", toIso),
       ])
+    const qErr2 = ([customersRes, productsRes, receivablesRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[reports/customers] truy vấn lỗi:", qErr2.message)
     const orderIds = orderList.map((o) => o.id)
     const returnIds = returnsRows.map((r) => r.id)
     const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
@@ -141,6 +144,9 @@ export default function CustomersReportPage() {
             .select("entry_id, product_id, quantity, unit_cost")
             .in("entry_id", stockEntryIds),
     ])
+    const qErr = ([retLinesRes, stockLinesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/customers] truy vấn lỗi:", qErr.message)
 
     setOrders(orderList)
     setLines(linesList)

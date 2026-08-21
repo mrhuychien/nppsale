@@ -133,6 +133,9 @@ export default function EmployeesReportPage() {
           .gte("posted_at", fromIso)
           .lte("posted_at", toIso),
       ])
+    const qErr2 = ([usersRes, customersRes, productsRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[reports/employees] truy vấn lỗi:", qErr2.message)
     const orderIds = orderList.map((o) => o.id)
     const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
     const returnIds = returnsRows.map((r) => r.id)
@@ -151,6 +154,9 @@ export default function EmployeesReportPage() {
             .select("return_id, product_id, quantity, line_total")
             .in("return_id", returnIds),
     ])
+    const qErr = ([stockLinesRes, returnLinesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/employees] truy vấn lỗi:", qErr.message)
     setOrders(orderList)
     setLines(linesList)
     setReturns(returnsRows)

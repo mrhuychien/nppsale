@@ -106,6 +106,9 @@ export default function CustomersPage() {
           .select("customer_id")
           .gte("created_at", todayStart.toISOString()),
       ])
+      const qErr2 = ([totalRes, ordersTodayRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr2) console.error("[app/customers] truy vấn lỗi:", qErr2.message)
       const visitsToday = new Set<string>()
       for (const o of (ordersTodayRes.data as Pick<SalesOrder, "customer_id">[]) || []) {
         if (o.customer_id) visitsToday.add(o.customer_id)
@@ -186,6 +189,9 @@ export default function CustomersPage() {
           .eq("role", "primary")
           .eq("status", "active"),
       ])
+      const qErr = ([recvRes, lastOrdersRes, lastVisitsRes, assignsRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/customers] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       const debtMap: Record<string, number> = {}
       for (const r of (recvRes.data as Pick<Receivable, "customer_id" | "amount" | "paid">[]) || []) {

@@ -46,6 +46,9 @@ export default function NewDeliveryPage() {
           .eq("status", "confirmed")
           .order("created_at", { ascending: false }),
       ])
+      const qErr = ([driversRes, ordersRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[deliveries/new] truy vấn lỗi:", qErr.message)
       setDrivers((driversRes.data as User[]) || [])
       setOrders((ordersRes.data as unknown as SalesOrder[]) || [])
       setLoading(false)

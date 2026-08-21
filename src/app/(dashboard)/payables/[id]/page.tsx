@@ -69,6 +69,9 @@ export default function PayableDetailPage() {
         .eq("payable_id", id)
         .order("paid_at", { ascending: false }),
     ])
+    const qErr = ([payRes, pmtRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[payables/id] truy vấn lỗi:", qErr.message)
     if (payRes.data) {
       const p = payRes.data as unknown as Payable
       setPayable(p)

@@ -67,6 +67,9 @@ export default function CustomerDebtDetailPage() {
           .eq("role", "primary")
           .limit(1),
       ])
+      const qErr = ([custRes, recRes, assignRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[by-customer/customerId] truy vấn lỗi:", qErr.message)
 
       setCustomer(custRes.data as Customer | null)
       const recs = (recRes.data as unknown as Receivable[]) || []

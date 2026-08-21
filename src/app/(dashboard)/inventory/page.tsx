@@ -111,6 +111,9 @@ export default function InventoryPage() {
           .select("id", { count: "exact", head: true })
           .eq("status", "draft"),
       ])
+      const qErr = ([statsRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[app/inventory] truy vấn lỗi:", qErr.message)
       setStatsBatches((statsRes.data as Parameters<typeof setStatsBatches>[0]) || [])
       setPendingCount(pendingRes.count ?? 0)
     }

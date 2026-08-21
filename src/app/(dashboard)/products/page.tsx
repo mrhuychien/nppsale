@@ -86,6 +86,9 @@ export default function ProductsPage() {
       supabase.from("products").select("category"),
       supabase.from("suppliers").select("id, name").order("name"),
     ])
+    const qErr = ([catsRes, supRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[app/products] truy vấn lỗi:", qErr.message)
     const cats = new Set<string>()
     for (const p of (catsRes.data as Array<{ category: string | null }>) || []) {
       if (p.category) cats.add(p.category)

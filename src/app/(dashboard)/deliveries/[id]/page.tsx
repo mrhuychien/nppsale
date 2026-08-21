@@ -82,6 +82,9 @@ export default function DeliveryDetailPage() {
         .select("id, delivery_id, order_id, status, notes, amount_collected, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")
         .eq("delivery_id", id),
     ])
+    const qErr2 = ([delRes, linesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[deliveries/id] truy vấn lỗi:", qErr2.message)
     let d: Delivery | null = null
     if (delRes.data) {
       d = delRes.data as unknown as Delivery
@@ -113,6 +116,9 @@ export default function DeliveryDetailPage() {
           .eq("source_id", d.id)
           .order("created_at", { ascending: false }),
       ])
+      const qErr = ([sourceRes, handoverRes, receiptsRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[deliveries/id] truy vấn lỗi:", qErr.message)
       setSourceEntry((sourceRes.data as RelatedStockEntry | null) || null)
       setHandoverEntries((handoverRes.data as RelatedStockEntry[] | null) || [])
       setCashReceipts((receiptsRes.data as RelatedCashReceipt[] | null) || [])

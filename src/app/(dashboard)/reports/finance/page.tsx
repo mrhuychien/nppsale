@@ -139,6 +139,9 @@ export default function FinanceReportPage() {
           .lte("receipt_date", r.to)
           .eq("status", "received"),
       ])
+    const qErr = ([cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/finance] truy vấn lỗi:", qErr.message)
 
     let totalRevenue = 0
     let totalDiscount = 0

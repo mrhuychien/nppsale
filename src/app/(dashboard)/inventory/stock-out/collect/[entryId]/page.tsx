@@ -151,6 +151,9 @@ export default function CollectPaymentPage() {
         .select("id, order_id, customer_id, amount, paid, status")
         .in("order_id", orderIds),
     ])
+    const qErr = ([ordersRes, customersRes, receivablesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[collect/entryId] truy vấn lỗi:", qErr.message)
 
     const orders = (ordersRes.data as OrderRow[]) || []
     const customers = (customersRes.data as CustomerRow[]) || []

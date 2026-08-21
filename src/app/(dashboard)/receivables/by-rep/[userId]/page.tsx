@@ -68,6 +68,9 @@ export default function RepDebtDetailPage() {
           .eq("sales_user_id", userId)
           .order("created_at", { ascending: false }),
       ])
+      const qErr = ([userRes, recRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[by-rep/userId] truy vấn lỗi:", qErr.message)
 
       setRepUser(userRes.data as User | null)
       const recs = (recRes.data as unknown as Receivable[]) || []

@@ -264,6 +264,9 @@ export default function OrderDetailPage() {
         .order("created_at", { ascending: false })
         .limit(100),
     ])
+    const qErr2 = ([orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[orders/id] truy vấn lỗi:", qErr2.message)
     setInvoice((invoiceRes.data as Invoice) || null)
     if (orderRes.data) {
       const o = orderRes.data as unknown as SalesOrder
@@ -419,6 +422,9 @@ export default function OrderDetailPage() {
               .eq("sales_user_id", order.sales_user_id)
               .neq("status", "paid"),
           ])
+        const qErr = ([rulesRes, recRes, repDebtRes] as Array<{ error?: { message?: string } | null }>)
+          .find((r) => r?.error)?.error
+        if (qErr) console.error("[orders/id] truy vấn lỗi:", qErr.message)
         const rulesData = rulesRes.data
 
         type RecRow = { amount: number; paid: number; due_date: string | null }

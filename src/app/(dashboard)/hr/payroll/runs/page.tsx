@@ -111,6 +111,9 @@ export default function PayrollRunsPage() {
           .select("id, full_name, role")
           .eq("org_id", user?.org_id ?? ""),
       ])
+      const qErr = ([runRes, itemRes, userRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[payroll/runs] truy vấn lỗi:", qErr.message)
       setActiveRun((runRes.data as PayrollRun) ?? null)
       setItems((itemRes.data as PayrollRunItem[]) ?? [])
       const m = new Map<string, UserRow>()

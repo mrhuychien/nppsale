@@ -48,6 +48,9 @@ export default function ProductsStockPage() {
         .select("id, sku, name, category, shelf_life_days")
         .eq("org_id", user.org_id),
     ])
+    const qErr = ([batchesRes, productsRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[products/stock] truy vấn lỗi:", qErr.message)
     setBatches((batchesRes.data as BatchRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
     setLoading(false)

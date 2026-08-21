@@ -764,6 +764,9 @@ export function OrderForm() {
               .neq("status", "paid")
           : Promise.resolve({ data: null }),
       ])
+      const qErr = ([rulesRes, recRes, repDebtRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr) console.error("[orders/order-form] truy vấn lỗi:", qErr.message)
       const rulesData = rulesRes.data
 
       type RecRow = { amount: number; paid: number; due_date: string | null; status: string }

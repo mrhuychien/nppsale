@@ -193,6 +193,9 @@ export function PermissionMatrix({
         .select("role, module, action, allowed")
         .eq("org_id", orgId),
     ])
+    const qErr = ([oRes, rpRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[settings/permission-matrix] truy vấn lỗi:", qErr.message)
 
     const omap = new Map<string, boolean>()
     ;(((oRes.data as OverrideRow[]) || [])).forEach((o) =>

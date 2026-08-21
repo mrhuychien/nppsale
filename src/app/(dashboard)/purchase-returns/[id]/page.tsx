@@ -67,6 +67,9 @@ export default function PurchaseReturnDetailPage() {
         .eq("return_id", id)
         .order("created_at"),
     ])
+    const qErr = ([hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[purchase-returns/id] truy vấn lỗi:", qErr.message)
     if (hdrRes.data) {
       const hdr = hdrRes.data as unknown as Detail
       hdr.lines = (lineRes.data as unknown as LineRow[]) || []

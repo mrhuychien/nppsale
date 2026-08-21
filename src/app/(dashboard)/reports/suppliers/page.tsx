@@ -129,6 +129,9 @@ export default function SuppliersReportPage() {
         .gte("posted_at", fromIso)
         .lte("posted_at", toIso),
     ])
+    const qErr2 = ([suppliersRes, productsRes, invoicesRes, payablesRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[reports/suppliers] truy vấn lỗi:", qErr2.message)
     const poIds = ((invoicesRes.data as PurchaseInvoiceRow[]) || [])
       .map((i) => i.po_id)
       .filter((x): x is string => Boolean(x))
@@ -147,6 +150,9 @@ export default function SuppliersReportPage() {
             .select("entry_id, product_id, quantity, unit_cost")
             .in("entry_id", stockEntryIds),
     ])
+    const qErr = ([poLinesRes, stockLinesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[reports/suppliers] truy vấn lỗi:", qErr.message)
     setSuppliers((suppliersRes.data as SupplierRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
     setInvoices((invoicesRes.data as PurchaseInvoiceRow[]) || [])

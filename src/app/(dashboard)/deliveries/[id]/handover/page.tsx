@@ -228,6 +228,9 @@ export default function DeliveryHandoverPage() {
         )
         .eq("delivery_id", id),
     ])
+    const qErr2 = ([delRes, lineRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[id/handover] truy vấn lỗi:", qErr2.message)
 
     setDelivery((delRes.data as unknown as DeliveryRow) || null)
     const linesData =
@@ -612,6 +615,9 @@ export default function DeliveryHandoverPage() {
               .eq("id", po.orderId)
               .single(),
           ])
+          const qErr = ([solRes, soRes] as Array<{ error?: { message?: string } | null }>)
+            .find((r) => r?.error)?.error
+          if (qErr) console.error("[id/handover] truy vấn lỗi:", qErr.message)
           const lineMap = new Map(
             (
               (solRes.data as Array<{

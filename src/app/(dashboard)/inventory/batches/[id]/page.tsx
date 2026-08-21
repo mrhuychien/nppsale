@@ -58,6 +58,9 @@ export default function BatchDetailPage() {
         .select("id, quantity, unit_name, entry:stock_entries(entry_code, type, created_at, creator:users!stock_entries_created_by_fkey(full_name))")
         .eq("batch_id", id),
     ])
+    const qErr = ([batchRes, linesRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[batches/id] truy vấn lỗi:", qErr.message)
     if (batchRes.data) {
       const b = (batchRes.data as unknown) as Batch & { product?: Product }
       setBatch(b)

@@ -129,6 +129,9 @@ export default function StockEntryDetailPage() {
         )
         .eq("stock_entry_id", id),
     ])
+    const qErr = ([entryRes, linesRes, swapRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[entries/id] truy vấn lỗi:", qErr.message)
     setSwapItems(
       ((swapRes.data as unknown) as typeof swapItems) || []
     )

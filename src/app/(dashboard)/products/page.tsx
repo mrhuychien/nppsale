@@ -46,6 +46,7 @@ export default function ProductsPage() {
   const { user, loading: authLoading } = useRoleGuard("products")
   const [products, setProducts] = useState<Product[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [usedFallback, setUsedFallback] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -133,6 +134,7 @@ export default function ProductsPage() {
     )
     setProducts(res.data)
     setLoadError(res.error)
+    setUsedFallback(res.usedFallback)
     pg.setTotal(res.count ?? 0)
     setLoading(false)
   }
@@ -303,6 +305,25 @@ export default function ProductsPage() {
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách sản phẩm</p>
           <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
+      {/* Đang chạy đường dự phòng = DB thiếu cột so với ứng dụng. Trang vẫn
+          dùng được nhưng đây là dấu hiệu chưa chạy đủ migration — phải báo,
+          nếu không sự cố sẽ âm thầm kéo dài và các tính năng GHI dữ liệu
+          vào những cột đó sẽ hỏng. */}
+      {usedFallback && !loading && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <p className="font-semibold text-[#b54708]">
+            Cảnh báo: cơ sở dữ liệu chưa chạy đủ migration
+          </p>
+          <p className="mt-0.5 text-on-surface-variant">
+            Danh sách đang hiển thị bằng phương án dự phòng. Hãy chạy file
+            <code className="mx-1 rounded bg-surface-container px-1 py-0.5 text-xs">
+              supabase/diagnostics/check_migration_drift.sql
+            </code>
+            trong Supabase › SQL Editor để biết thiếu migration nào.
+          </p>
         </div>
       )}
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,18 +31,24 @@ export default function PayablesBySupplierPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
   const [payables, setPayables] = useState<Payable[]>([])
   const [loading, setLoading] = useState(true)
+  // true = bảng tổng hợp bên dưới đang cộng thiếu vì dữ liệu bị cắt.
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
-      const { data, error: dataErr } = await supabase
-        .from("payables")
-        .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)")
-        .neq("status", "paid")
-      if (dataErr) console.error("[payables/by-supplier] truy vấn lỗi:", dataErr.message)
-      setPayables((data as unknown as Payable[]) || [])
+      const res = await fetchForAggregate((cap) =>
+        supabase
+          .from("payables")
+          .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)")
+          .neq("status", "paid")
+          .range(0, cap)
+      )
+      if (res.error) console.error("[payables/by-supplier] truy vấn lỗi:", res.error)
+      setPayables((res.rows as unknown as Payable[]) || [])
+      setTruncated(res.truncated)
       setLoading(false)
     }
     fetchData()
@@ -97,6 +104,13 @@ export default function PayablesBySupplierPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo nhà cung cấp" backHref="/payables" />
+
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">

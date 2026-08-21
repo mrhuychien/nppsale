@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -31,17 +32,23 @@ export default function ReceivablesByRepPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [loading, setLoading] = useState(true)
+  // true = bảng tổng hợp bên dưới đang cộng thiếu vì dữ liệu bị cắt.
+  const [truncated, setTruncated] = useState(false)
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
-      const { data, error: dataErr } = await supabase
-        .from("receivables")
-        .select("id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)")
-        .not("sales_user_id", "is", null)
-      if (dataErr) console.error("[receivables/by-rep] truy vấn lỗi:", dataErr.message)
-      setReceivables((data as unknown as Receivable[]) || [])
+      const res = await fetchForAggregate((cap) =>
+        supabase
+          .from("receivables")
+          .select("id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)")
+          .not("sales_user_id", "is", null)
+          .range(0, cap)
+      )
+      if (res.error) console.error("[receivables/by-rep] truy vấn lỗi:", res.error)
+      setReceivables((res.rows as unknown as Receivable[]) || [])
+      setTruncated(res.truncated)
       setLoading(false)
     }
     fetchData()
@@ -148,6 +155,13 @@ export default function ReceivablesByRepPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo nhân viên bán hàng" backHref="/receivables" />
+
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

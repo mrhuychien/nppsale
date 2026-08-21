@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -67,6 +68,8 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const isSales = user?.role === "sales"
   const [loading, setLoading] = useState(true)
+  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
+  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [today, setToday] = useState<string>("")
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -132,10 +135,12 @@ export default function DashboardPage() {
             .from("sales_orders")
             .select("total")
             .gte("order_date", periodStart),
+          // Tải để cộng tổng công nợ → có trần, và báo khi bị cắt.
           supabase
             .from("receivables")
             .select("amount, paid, status")
-            .neq("status", "paid"),
+            .neq("status", "paid")
+            .range(0, AGGREGATE_ROW_CAP),
           supabase
             .from("receivables")
             .select("id", { count: "exact", head: true })
@@ -171,9 +176,10 @@ export default function DashboardPage() {
           (sum, o: { total: number }) => sum + (o.total || 0),
           0
         )
-        const openReceivables = (receivablesRes.data || []).reduce(
-          (sum, r: { amount: number; paid: number }) =>
-            sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
+        const recv = capRows<{ amount: number; paid: number }>(receivablesRes.data)
+        setTruncated(recv.truncated)
+        const openReceivables = recv.rows.reduce(
+          (sum, r) => sum + Math.max(0, (r.amount || 0) - (r.paid || 0)),
           0
         )
 
@@ -288,6 +294,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-card-gap">
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
       <PageHeader
         title={isSales ? "Tổng quan của tôi" : "Tổng quan kinh doanh"}
         description={today ? `Cập nhật ${today}` : undefined}

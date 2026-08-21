@@ -142,7 +142,7 @@ npm test                       # chỉ chạy test
 | `npm run typecheck` | ✅ sạch |
 | `npm run lint` | ✅ không lỗi (còn cảnh báo nhẹ) |
 | `npm run build` | ✅ 101 trang |
-| `npm test` | ✅ **103 test / 5 file, tất cả xanh** |
+| `npm test` | ✅ **114 test / 6 file, tất cả xanh** |
 | CI | ✅ `.github/workflows/verify.yml` — 4 bước trên + chặn merge nếu có truy vấn DB chưa kiểm lỗi |
 | Truy vấn DB chưa kiểm lỗi | ✅ **0 ghi / 0 đọc** (`scripts/audit-unchecked-db.py`) |
 | Quy mô | 76.290 dòng TS/TSX · 123 trang · 8 API route · 75 component · 48 lib · 92 migration |
@@ -161,6 +161,7 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/tien.test.ts` | Định dạng tiền, đọc số thành chữ, luật chặn sửa giá | 27 |
 | `tests/luong-thuong.test.ts` | Hệ số ngày công, vai trò bỏ qua chấm công, thưởng đầu thùng, thưởng theo mốc số đơn | 21 |
 | `tests/fifo.test.ts` | Gộp giá vốn theo lớp, trừ tồn qua RPC, suy biến khi thiếu migration 040 | 21 |
+| `tests/aggregate.test.ts` | Trần số dòng cho trang tổng hợp, phát hiện dữ liệu bị cắt | 11 |
 
 ⚠️ **Chưa được phủ test:** toàn bộ 123 trang giao diện, đồng bộ ngoại tuyến,
 tích hợp hoá đơn điện tử MISA. Đây là khoảng trống lớn nhất còn lại.
@@ -216,7 +217,7 @@ quả không có dòng nào = vẫn khớp.
 | 3 | ✅ Đã sửa | Thao tác ghi không kiểm lỗi | Người dùng tưởng đã lưu nhưng dữ liệu không vào DB | **0 còn lại**, CI chặn tái diễn |
 | 4 | ✅ Đã sửa | Truy vấn đọc bỏ qua `error` | Lỗi hiện thành "không có dữ liệu" → không chẩn đoán được | **0 còn lại**, CI chặn tái diễn |
 | 5 | 🟡 Đã giảm thiểu | **`xlsx@0.18.5` — Prototype Pollution, chưa có bản vá trên npm** | Đã cô lập đường khai thác (xem 5.1a). Còn lại: nâng thư viện lên bản vá | `src/lib/xlsx-safe.ts` |
-| 6 | 🟡 Trung | **81 file có truy vấn không giới hạn số dòng** | Chạy tốt lúc dữ liệu nhỏ; chậm dần rồi treo khi dữ liệu lớn | `src/app/(dashboard)/**` |
+| 6 | 🟠 Cần bạn kiểm chứng | **Trang tổng hợp cộng số phía trình duyệt** | Có thể ĐANG hiển thị số tiền THIẾU mà không báo gì — xem 5.1c | `src/lib/supabase/aggregate.ts` |
 | 7 | 🟡 Trung | **8 file trên 800 dòng** (lớn nhất 2.082) | Khó đọc, khó test, dễ gây hồi quy khi sửa | `orders/[id]/page.tsx`, `order-form.tsx`… |
 | 8 | 🟢 Thấp | `userSalesCeiling` trả `110000.00000000001` | Chưa gây lỗi (validate có dung sai 0,5đ) nhưng sẽ sinh lỗi lạ nếu dùng làm `max` của ô nhập | `src/lib/pricing.ts` |
 
@@ -228,6 +229,36 @@ quả không có dòng nào = vẫn khớp.
   khai thác**. Chỉ hết cảnh báo khi lên Next 15.
 - `nanoid`, `postcss`, `ws` → phụ thuộc gián tiếp, không nằm trên đường đi của
   dữ liệu người dùng. Rủi ro thực tế thấp.
+
+### 5.1c Trang tổng hợp: số tiền có thể ĐANG thiếu — cần bạn kiểm
+
+**Vấn đề.** Một số trang tính tổng bằng cách tải nguyên bảng về trình duyệt
+rồi cộng bằng JavaScript: Công nợ, Công nợ theo NV / theo khách, Công nợ
+phải trả theo NCC, Mua hàng, Tổng quan, và trang Báo cáo.
+
+Điểm nguy hiểm không phải là chậm, mà là **Supabase có thể đang âm thầm cắt
+bớt dòng**. Cấu hình `db.max_rows` (Dashboard → Settings → API) đặt trần số
+dòng cho mỗi request; khi vượt trần, API trả **200 kèm đúng số dòng tối đa,
+KHÔNG có lỗi**. Trang vẫn hiện một con số trông hoàn toàn bình thường — chỉ
+là nó thiếu. Với công nợ, đó là sai tiền.
+
+**Đã làm.** Thêm `src/lib/supabase/aggregate.ts`: các truy vấn kiểu này giờ
+xin đúng `trần + 1` dòng. Nhận về nhiều hơn trần nghĩa là dữ liệu ĐÃ bị cắt
+→ trang hiện banner vàng "Số tổng chưa đầy đủ" thay vì im lặng. Trần đặt ở
+20.000 dòng (`AGGREGATE_ROW_CAP`).
+
+**Bạn cần làm — 2 phút:** mở Supabase → Settings → API, xem `Max rows`.
+
+| Giá trị | Nghĩa là |
+|---|---|
+| ≥ 20.000 hoặc để trống | Ổn. Banner sẽ tự xuất hiện nếu dữ liệu vượt 20.000 dòng. |
+| **1.000** (mặc định của nhiều dự án) | ⚠️ **Các trang tổng hợp đang cộng thiếu ngay từ bây giờ** nếu bảng công nợ/đơn hàng đã quá 1.000 dòng. Nâng lên 50.000, hoặc hạ `AGGREGATE_ROW_CAP` xuống dưới giá trị này để banner cảnh báo hoạt động đúng. |
+
+Sau khi chỉnh, mở `/receivables` và `/reports` xem có banner vàng không.
+
+**Cách sửa triệt để về sau:** cộng ở phía database — tạo view hoặc hàm RPC
+trả sẵn tổng, trang chỉ nhận một dòng kết quả. Vừa đúng tuyệt đối vừa nhanh,
+không phụ thuộc trần dòng. Lớp `aggregate.ts` chỉ là rào chắn trong lúc chờ.
 
 ### 5.1b Về hai con số ở dòng 3–4: bản đo trước đây ĐẾM THIẾU
 
@@ -349,7 +380,7 @@ nào đã thực sự chạy trên production**.
 5. ✅ ~~Truy vấn đọc nuốt lỗi~~ — **0 còn lại**; CI chạy `audit-unchecked-db.py --strict` để không tái diễn.
 6. ✅ ~~Cách ly việc phân tích file tải lên~~ — đã có `xlsx-safe.ts`. Còn lệnh nâng thư viện bạn tự chạy, xem 5.1a.
 7. ✅ ~~Phủ test cho lương/thưởng và FIFO kho~~ — 21 + 21 test, hai chỗ sai là ra tiền.
-8. Phân trang cho các truy vấn không giới hạn (81 file).
+8. ⚠️ **Kiểm `db.max_rows` trên Supabase** rồi xử lý trang tổng hợp — xem 5.1c. Việc gấp nhất còn lại.
 
 **Quý 1 — bền vững**
 9. Tách `order-form.tsx` (1.970 dòng) và `orders/[id]/page.tsx` (2.082 dòng); đưa logic nghiệp vụ về `src/lib` để test được.

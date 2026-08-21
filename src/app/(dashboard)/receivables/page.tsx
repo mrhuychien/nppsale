@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
+import { fetchForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -38,6 +39,8 @@ export default function ReceivablesPage() {
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [allUnpaid, setAllUnpaid] = useState<Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  // true = tổng công nợ bên dưới đang THIẾU vì dữ liệu bị cắt ở trần.
+  const [summaryTruncated, setSummaryTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const pg = usePagination(50)
   const supabase = createClient()
@@ -53,12 +56,17 @@ export default function ReceivablesPage() {
   // cho UNPAID — 1 lần mount, không join.
   useEffect(() => {
     async function loadSummary() {
-      const { data, error: dataErr } = await supabase
-        .from("receivables")
-        .select("amount, paid, due_date, status")
-        .neq("status", "paid")
-      if (dataErr) console.error("[app/receivables] truy vấn lỗi:", dataErr.message)
-      setAllUnpaid((data as Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>) || [])
+      const res = await fetchForAggregate<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>(
+        (cap) =>
+          supabase
+            .from("receivables")
+            .select("amount, paid, due_date, status")
+            .neq("status", "paid")
+            .range(0, cap)
+      )
+      if (res.error) console.error("[app/receivables] truy vấn lỗi:", res.error)
+      setAllUnpaid(res.rows)
+      setSummaryTruncated(res.truncated)
     }
     loadSummary()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -205,6 +213,14 @@ export default function ReceivablesPage() {
           onReset={resetColumns}
         />
       </div>
+
+      {/* Tổng bị cắt — phải nói ra, vì số công nợ thiếu là số sai. */}
+      {summaryTruncated && !loading && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (

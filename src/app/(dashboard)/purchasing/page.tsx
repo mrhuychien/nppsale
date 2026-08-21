@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
@@ -18,6 +19,8 @@ export default function PurchasingHubPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState({ importsThisMonth: 0, monthTotal: 0, openPayables: 0 })
   const [loading, setLoading] = useState(true)
+  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
+  const [truncated, setTruncated] = useState(false)
   const supabase = createClient()
 
   const canCreate = !!user && hasPermission(user.role, "inventory", "update")
@@ -32,13 +35,16 @@ export default function PurchasingHubPage() {
           .select("id", { count: "exact", head: true })
           .eq("type", "import")
           .gte("created_at", firstDay),
-        supabase.from("payables").select("amount, paid").neq("status", "paid"),
+        // Tải để cộng → phải có trần, và phải biết khi bị cắt.
+        supabase.from("payables").select("amount, paid").neq("status", "paid").range(0, AGGREGATE_ROW_CAP),
         supabase.from("payables").select("amount").gte("created_at", firstDay).not("stock_entry_id", "is", null),
       ])
       const qErr = ([impRes, payRes, monthPayRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/purchasing] truy vấn lỗi:", qErr.message)
-      const openPayables = ((payRes.data as Array<{ amount: number; paid: number }>) || []).reduce(
+      const pay = capRows<{ amount: number; paid: number }>(payRes.data)
+      setTruncated(pay.truncated)
+      const openPayables = pay.rows.reduce(
         (s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)),
         0
       )
@@ -68,6 +74,13 @@ export default function PurchasingHubPage() {
           </Button>
         )}
       </PageHeader>
+
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
         <strong>Quy trình mua hàng:</strong> Vào Kho → Tạo phiếu nhập kho → Lưu xong: tồn kho tăng + ghi công nợ NCC. Xong.

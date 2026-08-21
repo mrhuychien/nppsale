@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -36,6 +37,8 @@ export default function ReceivablesByCustomerPage() {
 
   const [assignments, setAssignments] = useState<CustomerAssignment[]>([])
   const [loading, setLoading] = useState(true)
+  // true = số tổng bên dưới đang cộng thiếu vì dữ liệu bị cắt ở trần.
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const supabase = createClient()
@@ -47,13 +50,16 @@ export default function ReceivablesByCustomerPage() {
         supabase
           .from("receivables")
           .select("id, customer_id, amount, paid, status, customer:customers(store_name, phone, credit_limit), sales_user:users!receivables_sales_user_id_fkey(full_name)")
-          .neq("status", "paid"),
+          .neq("status", "paid")
+          .range(0, AGGREGATE_ROW_CAP),
         supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(full_name)").eq("role", "primary"),
       ])
       const qErr = ([recRes, assignRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[receivables/by-customer] truy vấn lỗi:", qErr.message)
-      setReceivables((recRes.data as unknown as Receivable[]) || [])
+      const rec = capRows<Receivable>(recRes.data)
+      setTruncated(rec.truncated)
+      setReceivables(rec.rows)
       setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
       setLoading(false)
     }
@@ -142,6 +148,13 @@ export default function ReceivablesByCustomerPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo khách hàng" backHref="/receivables" />
+
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

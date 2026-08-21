@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { AGGREGATE_ROW_CAP, capRows, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -57,6 +58,8 @@ interface ReportStats {
 export default function ReportsPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const [loading, setLoading] = useState(true)
+  // true = mọi con số trên trang này đang cộng thiếu vì dữ liệu bị cắt ở trần.
+  const [truncated, setTruncated] = useState(false)
   const [period, setPeriod] = useState<Period>("month")
   const [activeTab, setActiveTab] = useState<TabKey>("sales")
   const [data, setData] = useState<ReportStats>({
@@ -72,19 +75,26 @@ export default function ReportsPage() {
     async function fetchAll() {
       setLoading(true)
       const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
-        supabase.from("sales_orders").select("id, order_date, status, total, sales_user_id").order("order_date", { ascending: false }),
-        supabase.from("receivables").select("id, status, amount, paid, created_at"),
-        supabase.from("batches").select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)").gt("qty_on_hand", 0),
+        // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Có trần
+        // để trang không treo khi dữ liệu lớn — và nếu chạm trần thì phải
+        // báo, vì báo cáo thiếu số còn tệ hơn báo cáo chậm.
+        supabase.from("sales_orders").select("id, order_date, status, total, sales_user_id").order("order_date", { ascending: false }).range(0, AGGREGATE_ROW_CAP),
+        supabase.from("receivables").select("id, status, amount, paid, created_at").range(0, AGGREGATE_ROW_CAP),
+        supabase.from("batches").select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)").gt("qty_on_hand", 0).range(0, AGGREGATE_ROW_CAP),
         supabase.from("users").select("id, full_name, role, is_active, created_at"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
       ])
       const qErr = ([ordersRes, recvRes, batchesRes, usersRes, prodRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/reports] truy vấn lỗi:", qErr.message)
+      const orders = capRows<SalesOrder>(ordersRes.data)
+      const recv = capRows<Receivable>(recvRes.data)
+      const batches = capRows<Batch & { product?: { shelf_life_days: number | null } }>(batchesRes.data)
+      setTruncated(orders.truncated || recv.truncated || batches.truncated)
       setData({
-        salesOrders: (ordersRes.data as SalesOrder[]) || [],
-        receivables: (recvRes.data as Receivable[]) || [],
-        batches: (batchesRes.data as unknown as (Batch & { product?: { shelf_life_days: number | null } })[]) || [],
+        salesOrders: orders.rows,
+        receivables: recv.rows,
+        batches: batches.rows,
         users: (usersRes.data as User[]) || [],
         productCount: prodRes.count || 0,
       })
@@ -235,6 +245,13 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 print:space-y-4">
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
+
       {/* Hero Header */}
       <div className="rounded-2xl bg-gradient-to-br from-primary/5 via-surface-low to-surface-lowest border border-border/40 p-6 lg:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

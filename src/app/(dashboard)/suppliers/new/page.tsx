@@ -50,9 +50,10 @@ export default function NewSupplierPage() {
       // Auto-gen code if empty
       let code = form.code.trim()
       if (!code) {
-        const { count } = await supabase
+        const { count, error: cntErr } = await supabase
           .from("suppliers")
           .select("id", { count: "exact", head: true })
+        if (cntErr) console.error("[suppliers/new] đếm NCC lỗi:", cntErr.message)
         const nextNum = (count || 0) + 1
         code = `NCC-${String(nextNum).padStart(4, "0")}`
       }

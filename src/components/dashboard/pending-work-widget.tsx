@@ -38,7 +38,8 @@ export function PendingWorkWidget() {
     if (!user) return
     const supabase = createClient()
     let cancelled = false
-    listOpenSessions(supabase, user.id).then(({ data }) => {
+    listOpenSessions(supabase, user.id).then(({ data, error }) => {
+      if (error) console.error("[dashboard/pending-work-widget] truy vấn lỗi:", error)
       if (cancelled) return
       setSessions(data)
       setLoading(false)

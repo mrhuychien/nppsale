@@ -45,7 +45,8 @@ export function useOrg() {
       .select("id, name, allow_oversell")
       .eq("id", orgId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error("[hooks/use-org] truy vấn lỗi:", error.message)
         if (cancelled) return
         const raw = data as Partial<OrgRow> | null
         const row: OrgRow | null = raw

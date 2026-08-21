@@ -104,6 +104,11 @@ export function StockBalanceTable() {
         .eq("status", "active"),
     ]).then(([balRes, prodRes]) => {
       if (cancelled) return
+      // View v_stock_balance_by_zone chạy security_invoker (mig 092) nên
+      // chịu RLS. View luôn trả 200 kể cả khi bị chặn → không có lỗi để
+      // hiện; ghi log để còn lần ra nếu bảng bỗng rỗng.
+      const vErr = balRes.error || prodRes.error
+      if (vErr) console.error("[stock-balance-table] truy vấn lỗi:", vErr.message)
       setRows((balRes.data as BalanceRow[]) || [])
       const map = new Map<string, ProductMeta>()
       ;(((prodRes.data as unknown) as ProductMeta[]) || []).forEach((p) =>

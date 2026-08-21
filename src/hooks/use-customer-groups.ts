@@ -45,7 +45,8 @@ export function useCustomerGroups() {
       .select("id, name")
       .eq("org_id", orgId)
       .order("name")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error("[hooks/use-customer-groups] truy vấn lỗi:", error.message)
         if (cancelled) return
         const rows = (data as CustomerGroupRow[] | null) ?? []
         cache.set(orgId, rows)

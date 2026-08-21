@@ -89,9 +89,10 @@ export default function ReturnsPage() {
   // Stats: count theo reason (mount 1 lần, toàn tổng).
   useEffect(() => {
     async function loadStats() {
-      const { count: totalC } = await supabase
+      const { count: totalC, error: totalErr } = await supabase
         .from("returns")
         .select("id", { count: "exact", head: true })
+      if (totalErr) console.error("[returns] đếm tổng lỗi:", totalErr.message)
       setTotalCount(totalC ?? 0)
       const counts: Record<string, number> = {}
       await Promise.all(

@@ -58,11 +58,12 @@ export default function NotificationsPage() {
   // Count unread riêng — không phụ thuộc filter/page.
   const loadUnreadCount = useCallback(async () => {
     if (!authUser?.id) return
-    const { count } = await supabase
+    const { count, error: cntErr } = await supabase
       .from("notifications")
       .select("id", { count: "exact", head: true })
       .eq("user_id", authUser.id)
       .eq("is_read", false)
+    if (cntErr) console.error("[notifications] đếm chưa đọc lỗi:", cntErr.message)
     setUnreadCount(count ?? 0)
   }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -55,11 +55,12 @@ export async function POST(req: Request) {
   }
 
   const admin = createAdminClient()
-  const { data: existing } = await admin
+  const { data: existing, error: existingErr } = await admin
     .from("company_einvoice_config")
     .select("id, username_enc, password_enc")
     .eq("org_id", a.orgId)
     .maybeSingle()
+  if (existingErr) console.error("[einvoice/config] đọc cấu hình lỗi:", existingErr.message)
 
   const str = (k: string) => (typeof body[k] === "string" ? (body[k] as string).trim() : undefined)
 

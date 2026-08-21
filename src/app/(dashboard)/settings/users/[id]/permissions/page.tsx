@@ -43,7 +43,8 @@ export default function UserPermissionsPage() {
       .select("id, org_id, full_name, email, role, is_active")
       .eq("id", id)
       .single()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error("[id/permissions] truy vấn lỗi:", error.message)
         if (cancelled) return
         setUser((data as UserRow) || null)
         setLoading(false)

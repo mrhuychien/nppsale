@@ -99,8 +99,9 @@ export function StockHistoryDrawer({
       .order("posted_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(500)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return
+        if (error) console.error("[stock-history-drawer] truy vấn lỗi:", error.message)
         setRows((data as MovementRow[]) || [])
         setLoading(false)
       })

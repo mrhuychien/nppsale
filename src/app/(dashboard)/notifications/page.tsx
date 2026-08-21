@@ -132,8 +132,17 @@ export default function NotificationsPage() {
 
   const deleteAllRead = async () => {
     if (!authUser?.id) return
+    const before = items
     setItems((prev) => prev.filter((n) => !n.is_read))
-    await supabase.from("notifications").delete().eq("user_id", authUser.id).eq("is_read", true)
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .eq("user_id", authUser.id)
+      .eq("is_read", true)
+    if (error) {
+      setItems(before)
+      console.error("[notifications] xoá thông báo đã đọc thất bại:", error.message)
+    }
   }
 
   const handleClick = async (n: Notification) => {

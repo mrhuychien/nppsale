@@ -295,7 +295,7 @@ async function handlePublish(req: Request) {
     // Đẩy MISA OK → khoá HD nội bộ luôn (status=issued + issued_at), tránh
     // user phải bấm "Phát hành hoá đơn" 2 lần (1 nội bộ + 1 MISA).
     const internalIssuedAt = invoice.status === "draft" ? now : invoice.issued_at
-    await admin
+    const { error: markErr } = await admin
       .from("invoices")
       .update({
         status: "issued",
@@ -310,6 +310,21 @@ async function handlePublish(req: Request) {
         misa_published_at: result.lookup_code ? now : null,
       })
       .eq("id", invoiceId)
+    if (markErr) {
+      // MISA ĐÃ phát hành thành công nhưng hệ thống chưa ghi nhận được.
+      // Nếu im lặng, người dùng sẽ bấm phát hành lần nữa → hoá đơn trùng.
+      console.error("[einvoice/publish] MISA đã phát hành nhưng không cập nhật được hoá đơn:", markErr.message)
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Hoá đơn ĐÃ được phát hành trên MISA nhưng hệ thống chưa cập nhật được trạng thái. " +
+            "KHÔNG phát hành lại — hãy bấm 'Làm mới trạng thái' để đồng bộ.",
+          misa: { lookup_code: result.lookup_code, invoice_url: lookupUrl },
+        },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,

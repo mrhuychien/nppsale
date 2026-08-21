@@ -327,6 +327,7 @@ export default function PendingStockPage() {
             })
             .select("id")
             .single()
+            .throwOnError()
           batchId = (newBatch as { id?: string } | null)?.id ?? null
         }
 

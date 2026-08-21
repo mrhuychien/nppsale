@@ -172,7 +172,8 @@ export async function createOrderRecords(
           unit_price: l.unit_price,
           line_total: l.line_total,
         }))
-        await supabase.from("return_lines").insert(stripped)
+        const { error: strippedErr } = await supabase.from("return_lines").insert(stripped)
+        if (strippedErr) throw strippedErr
       }
     }
   }

@@ -90,10 +90,11 @@ export function SupplierImportDialog({ open, onOpenChange, onImported }: Supplie
     setImporting(true)
     try {
       // 1. Lookup tên NCC + mã NCC đã tồn tại trong org để dedupe.
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from("suppliers")
         .select("name, code")
         .eq("org_id", user.org_id)
+      if (existingErr) console.error("[suppliers/supplier-import-dialog] truy vấn lỗi:", existingErr.message)
       const existingNames = new Set(
         ((existing as { name: string; code: string }[]) || []).map((s) => s.name.toLowerCase())
       )

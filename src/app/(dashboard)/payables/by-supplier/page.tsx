@@ -36,10 +36,11 @@ export default function PayablesBySupplierPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("payables")
         .select("id, supplier_id, amount, paid, status, supplier:suppliers(name, code)")
         .neq("status", "paid")
+      if (dataErr) console.error("[payables/by-supplier] truy vấn lỗi:", dataErr.message)
       setPayables((data as unknown as Payable[]) || [])
       setLoading(false)
     }

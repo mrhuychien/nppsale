@@ -47,7 +47,8 @@ export default function UsersPage() {
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("users").select("id, full_name, role, phone, is_active").order("full_name")
+    const { data, error: dataErr } = await supabase.from("users").select("id, full_name, role, phone, is_active").order("full_name")
+    if (dataErr) console.error("[settings/users] truy vấn lỗi:", dataErr.message)
     setUsers((data as User[]) || [])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

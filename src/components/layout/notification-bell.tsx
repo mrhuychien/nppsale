@@ -48,12 +48,13 @@ export function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     if (!authUser?.id) return
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("notifications")
       .select("id, type, title, body, link_url, is_read, created_at")
       .eq("user_id", authUser.id)
       .order("created_at", { ascending: false })
       .limit(20)
+    if (dataErr) console.error("[layout/notification-bell] truy vấn lỗi:", dataErr.message)
     const rows = (data as Notification[]) || []
     setItems(rows)
     setUnreadCount(rows.filter((n) => !n.is_read).length)

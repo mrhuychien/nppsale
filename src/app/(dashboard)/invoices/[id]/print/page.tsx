@@ -34,11 +34,12 @@ export default function InvoicePrintPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
 
-    const { data: inv } = await supabase
+    const { data: inv, error: invErr } = await supabase
       .from("invoices")
       .select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at")
       .eq("id", id)
       .single()
+    if (invErr) console.error("[id/print] truy vấn lỗi:", invErr.message)
 
     if (!inv) {
       setLoading(false)
@@ -50,11 +51,12 @@ export default function InvoicePrintPage() {
 
     // Fetch organization
     if (invoiceData.org_id) {
-      const { data: orgData } = await supabase
+      const { data: orgData, error: orgDataErr } = await supabase
         .from("organizations")
         .select("id, name, address, phone, tax_code")
         .eq("id", invoiceData.org_id)
         .single()
+      if (orgDataErr) console.error("[id/print] truy vấn lỗi:", orgDataErr.message)
       if (orgData) setOrg(orgData as Organization)
     }
 

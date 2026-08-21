@@ -35,7 +35,8 @@ export default function StocktakePage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("products").select("id, sku, name, base_unit").eq("status", "active").order("name")
+      const { data, error: dataErr } = await supabase.from("products").select("id, sku, name, base_unit").eq("status", "active").order("name")
+      if (dataErr) console.error("[inventory/stocktake] truy vấn lỗi:", dataErr.message)
       setProducts((data as Product[]) || [])
     }
     fetch()

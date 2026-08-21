@@ -32,7 +32,8 @@ export default function NewReturnPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("customers").select("id, store_name").eq("status", "active").order("store_name")
+      const { data, error: dataErr } = await supabase.from("customers").select("id, store_name").eq("status", "active").order("store_name")
+      if (dataErr) console.error("[returns/new] truy vấn lỗi:", dataErr.message)
       setCustomers((data as Customer[]) || [])
     }
     fetch()

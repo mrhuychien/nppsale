@@ -56,7 +56,7 @@ export async function fetchDeliveredOrders(
   orgId: string,
   range: DateRange
 ): Promise<SalesOrderRow[]> {
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("sales_orders")
     .select("id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id")
     .eq("org_id", orgId)
@@ -64,6 +64,7 @@ export async function fetchDeliveredOrders(
     .gte("order_date", range.from)
     .lte("order_date", range.to)
     .order("order_date", { ascending: false })
+  if (dataErr) console.error("[analytics/sales] truy vấn lỗi:", dataErr.message)
   return (data as SalesOrderRow[]) || []
 }
 
@@ -73,13 +74,14 @@ export async function fetchAllOrders(
   orgId: string,
   range: DateRange
 ): Promise<SalesOrderRow[]> {
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("sales_orders")
     .select("id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id")
     .eq("org_id", orgId)
     .gte("order_date", range.from)
     .lte("order_date", range.to)
     .order("order_date", { ascending: false })
+  if (dataErr) console.error("[analytics/sales] truy vấn lỗi:", dataErr.message)
   return (data as SalesOrderRow[]) || []
 }
 
@@ -89,10 +91,11 @@ export async function fetchOrderLines(
   orderIds: string[]
 ): Promise<SalesOrderLineRow[]> {
   if (orderIds.length === 0) return []
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("sales_order_lines")
     .select("id, order_id, product_id, unit_name, quantity, unit_price, line_total")
     .in("order_id", orderIds)
+  if (dataErr) console.error("[analytics/sales] truy vấn lỗi:", dataErr.message)
   return (data as SalesOrderLineRow[]) || []
 }
 
@@ -104,13 +107,14 @@ export async function fetchReturnsValue(
 ): Promise<number> {
   const fromIso = `${range.from}T00:00:00Z`
   const toIso = `${range.to}T23:59:59Z`
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("returns")
     .select("id, status, created_at, credit_note_amount")
     .eq("org_id", orgId)
     .in("status", ["approved", "completed"])
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
+  if (dataErr) console.error("[analytics/sales] truy vấn lỗi:", dataErr.message)
   let total = 0
   for (const r of (data as Array<{ credit_note_amount?: number | null }>) || []) {
     total += Math.abs(Number(r.credit_note_amount || 0))
@@ -133,13 +137,14 @@ export async function fetchReturnsRows(
 ): Promise<ReturnSummaryRow[]> {
   const fromIso = `${range.from}T00:00:00Z`
   const toIso = `${range.to}T23:59:59Z`
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("returns")
     .select("id, status, customer_id, credit_note_amount, created_at")
     .eq("org_id", orgId)
     .in("status", ["approved", "completed"])
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
+  if (dataErr) console.error("[analytics/sales] truy vấn lỗi:", dataErr.message)
   return ((data as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string }>) || []).map((r) => ({
     id: r.id,
     status: r.status,
@@ -158,7 +163,7 @@ export async function fetchCogsForRange(
   const fromIso = `${range.from}T00:00:00Z`
   const toIso = `${range.to}T23:59:59Z`
 
-  const { data: entries } = await supabase
+  const { data: entries, error: entriesErr } = await supabase
     .from("stock_entries")
     .select("id, type, status, posted_at")
     .eq("org_id", orgId)
@@ -166,6 +171,7 @@ export async function fetchCogsForRange(
     .eq("status", "posted")
     .gte("posted_at", fromIso)
     .lte("posted_at", toIso)
+  if (entriesErr) console.error("[analytics/sales] truy vấn lỗi:", entriesErr.message)
   const ids = ((entries as Array<{ id: string; posted_at: string }>) || []).map((e) => e.id)
   if (ids.length === 0) return { cogs: 0, lines: [] }
 
@@ -174,10 +180,11 @@ export async function fetchCogsForRange(
     postedAtMap.set(e.id, e.posted_at)
   }
 
-  const { data: lines } = await supabase
+  const { data: lines, error: linesErr } = await supabase
     .from("stock_entry_lines")
     .select("entry_id, product_id, quantity, unit_cost")
     .in("entry_id", ids)
+  if (linesErr) console.error("[analytics/sales] truy vấn lỗi:", linesErr.message)
   let cogs = 0
   const enriched: StockExportLineRow[] = []
   for (const l of (lines as Array<{ entry_id: string; product_id: string; quantity: number; unit_cost: number }>) || []) {

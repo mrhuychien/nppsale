@@ -144,11 +144,12 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
     try {
       // Check duplicate phone
       if (!customer || customer.phone !== form.phone) {
-        const { data: existing } = await supabase
+        const { data: existing, error: existingErr } = await supabase
           .from("customers")
           .select("id")
           .eq("phone", form.phone)
           .limit(1)
+        if (existingErr) console.error("[customers/customer-form] truy vấn lỗi:", existingErr.message)
         if (existing && existing.length > 0) {
           toast({ title: "Lỗi", description: "Số điện thoại đã tồn tại", variant: "destructive" })
           setLoading(false)

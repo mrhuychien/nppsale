@@ -78,12 +78,13 @@ export async function fetchApproversForOrg(
   supabase: SupabaseClient,
   orgId: string
 ): Promise<string[]> {
-  const { data } = await supabase
+  const { data, error: dataErr } = await supabase
     .from("users")
     .select("id, role")
     .eq("org_id", orgId)
     .in("role", ["owner", "manager"])
     .eq("is_active", true)
+  if (dataErr) console.error("[lib/notifications] truy vấn lỗi:", dataErr.message)
   if (!data) return []
   return (data as Array<{ id: string; role: Role }>).map((u) => u.id)
 }

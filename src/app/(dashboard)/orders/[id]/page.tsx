@@ -279,10 +279,11 @@ export default function OrderDetailPage() {
 
     // T-03: load per-line picked qty (base UOM) from the helper view.
     if (fetchedLines.length > 0) {
-      const { data: pickedRows } = await supabase
+      const { data: pickedRows, error: pickedRowsErr } = await supabase
         .from("v_sales_order_line_picked")
         .select("order_line_id, picked_qty_in_base_uom")
         .eq("order_id", id)
+      if (pickedRowsErr) console.error("[orders/id] truy vấn lỗi:", pickedRowsErr.message)
       const map: Record<string, number> = {}
       ;((pickedRows as Array<{ order_line_id: string; picked_qty_in_base_uom: number }>) || [])
         .forEach((r) => {
@@ -536,11 +537,12 @@ export default function OrderDetailPage() {
     setLinesEditMode(true)
     // Lazy-load product catalog the first time the user opens edit mode
     if (swapCatalog.length === 0) {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("products")
         .select("id, name, sku, sell_price, base_unit")
         .eq("status", "active")
         .order("name")
+      if (dataErr) console.error("[orders/id] truy vấn lỗi:", dataErr.message)
       setSwapCatalog(
         (data as Array<{ id: string; name: string; sku: string; sell_price: number; base_unit: string }>) || []
       )

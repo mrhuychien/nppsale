@@ -103,10 +103,11 @@ export default function InvoicesPage() {
   // Load MISA companyId 1 lần để build deep-link tới HĐ trên MISA web.
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("company_einvoice_config")
         .select("misa_company_id")
         .maybeSingle()
+      if (dataErr) console.error("[app/invoices] truy vấn lỗi:", dataErr.message)
       setMisaCompanyId(data?.misa_company_id ?? null)
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

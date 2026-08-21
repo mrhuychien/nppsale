@@ -44,10 +44,11 @@ export default function AccountantLedgerPage() {
 
   useEffect(() => {
     async function fetchCustomers() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("customers")
         .select("id, store_name, owner_name, phone, address, credit_limit, status")
         .order("store_name")
+      if (dataErr) console.error("[receivables/aging] truy vấn lỗi:", dataErr.message)
       setCustomers((data as Customer[]) || [])
       setLoadingCustomers(false)
     }
@@ -62,12 +63,13 @@ export default function AccountantLedgerPage() {
     }
     async function fetchLedger() {
       setLoadingLedger(true)
-      const { data: orderData } = await supabase
+      const { data: orderData, error: orderDataErr } = await supabase
         .from("sales_orders")
         .select("id, order_code, order_date, total")
         .eq("customer_id", selectedId)
         .eq("status", "delivered")
         .order("order_date")
+      if (orderDataErr) console.error("[receivables/aging] truy vấn lỗi:", orderDataErr.message)
 
       // fetch payments via receivables for this customer
       const { data: recData } = await supabase

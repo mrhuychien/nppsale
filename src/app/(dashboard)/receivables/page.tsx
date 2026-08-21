@@ -53,10 +53,11 @@ export default function ReceivablesPage() {
   // cho UNPAID — 1 lần mount, không join.
   useEffect(() => {
     async function loadSummary() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("receivables")
         .select("amount, paid, due_date, status")
         .neq("status", "paid")
+      if (dataErr) console.error("[app/receivables] truy vấn lỗi:", dataErr.message)
       setAllUnpaid((data as Array<Pick<Receivable, "amount" | "paid" | "due_date" | "status">>) || [])
     }
     loadSummary()

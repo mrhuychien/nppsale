@@ -33,11 +33,12 @@ export default function NewBatchPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("products")
         .select("id, sku, name")
         .eq("status", "active")
         .order("name")
+      if (dataErr) console.error("[batches/new] truy vấn lỗi:", dataErr.message)
       setProducts((data as Product[]) || [])
       setProductsLoading(false)
     }

@@ -152,11 +152,12 @@ export default function SetupWizardPage() {
       toast({ title: "Cần nhập tên NPP", variant: "destructive" })
       return false
     }
-    const { data: orgRow } = await supabase
+    const { data: orgRow, error: orgRowErr } = await supabase
       .from("organizations")
       .select("settings")
       .eq("id", user.org_id)
       .maybeSingle()
+    if (orgRowErr) console.error("[app/setup] truy vấn lỗi:", orgRowErr.message)
     const existing = ((orgRow as { settings?: Record<string, unknown> } | null)?.settings || {}) as Record<string, unknown>
     const settings = {
       ...existing,

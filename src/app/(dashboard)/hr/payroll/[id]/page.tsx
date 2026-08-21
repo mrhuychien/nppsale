@@ -44,11 +44,12 @@ export default function PayrollDetailPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("hr_payroll")
         .select("id, org_id, user_id, period, working_days, absent_days, total_revenue, target_amount, target_percent, base_salary, gas_allowance, phone_allowance, target_bonus, over_target_bonus, monthly_revenue_bonus, deductions, total_salary, breakdown, status, confirmed_by, confirmed_at, paid_at, notes, created_at, user:users(*)")
         .eq("id", id)
         .single()
+      if (dataErr) console.error("[payroll/id] truy vấn lỗi:", dataErr.message)
       if (data) {
         const p = data as unknown as HrPayroll
         setPayroll(p)

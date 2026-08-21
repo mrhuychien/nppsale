@@ -76,11 +76,12 @@ export default function CustomerDebtDetailPage() {
       // Fetch payments for all receivables of this customer
       const recIds = recs.map((r) => r.id)
       if (recIds.length > 0) {
-        const { data: payData } = await supabase
+        const { data: payData, error: payDataErr } = await supabase
           .from("payments")
           .select("id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))")
           .in("receivable_id", recIds)
           .order("collected_at", { ascending: false })
+        if (payDataErr) console.error("[by-customer/customerId] truy vấn lỗi:", payDataErr.message)
         setPayments((payData as unknown as typeof payments) || [])
       }
 

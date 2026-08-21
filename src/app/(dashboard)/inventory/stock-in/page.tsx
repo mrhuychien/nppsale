@@ -109,11 +109,12 @@ export default function StockInPage() {
   // Refetch products and add the newest one to the next empty line so the
   // user can immediately keep filling the import.
   const refetchProductsAndPickLatest = async () => {
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("products")
       .select("id, sku, name, base_unit, barcode, vat_rate, price_lists(*), units:product_units(*)")
       .eq("status", "active")
       .order("created_at", { ascending: false })
+    if (dataErr) console.error("[inventory/stock-in] truy vấn lỗi:", dataErr.message)
     const list = (data as ProductWithRelations[]) || []
     setProducts(list)
     if (list.length > 0) {

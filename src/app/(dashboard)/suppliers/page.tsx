@@ -79,7 +79,8 @@ export default function SuppliersPage() {
   // Distinct categories cho dropdown (load 1 lần).
   useEffect(() => {
     async function loadCats() {
-      const { data } = await supabase.from("suppliers").select("category")
+      const { data, error: dataErr } = await supabase.from("suppliers").select("category")
+      if (dataErr) console.error("[app/suppliers] truy vấn lỗi:", dataErr.message)
       const set = new Set<string>()
       for (const s of (data as Array<{ category: string | null }>) || []) {
         if (s.category) set.add(s.category)

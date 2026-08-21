@@ -209,12 +209,13 @@ export default function StockOutPage() {
       )
 
       if (productIds.length > 0) {
-        const { data: batchData } = await supabase
+        const { data: batchData, error: batchDataErr } = await supabase
           .from("batches")
           .select("id, product_id, location, qty_on_hand, expires_at")
           .in("product_id", productIds)
           .gt("qty_on_hand", 0)
           .order("expires_at", { ascending: true })
+        if (batchDataErr) console.error("[inventory/stock-out] truy vấn lỗi:", batchDataErr.message)
         setBatches((batchData as BatchLite[]) || [])
       } else {
         setBatches([])
@@ -488,11 +489,12 @@ export default function StockOutPage() {
   const openSwapPicker = async () => {
     setSwapPickerOpen(true)
     if (productCatalog.length === 0) {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("products")
         .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)")
         .eq("status", "active")
         .order("name")
+      if (dataErr) console.error("[inventory/stock-out] truy vấn lỗi:", dataErr.message)
       setProductCatalog(
         (data as Array<{
           id: string

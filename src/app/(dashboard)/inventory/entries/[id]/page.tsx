@@ -239,12 +239,13 @@ export default function StockEntryDetailPage() {
         const lineWithBase = l as unknown as { qty_in_base_uom?: number; quantity: number }
         let remaining = Number(lineWithBase.qty_in_base_uom ?? lineWithBase.quantity ?? 0)
         if (remaining <= 0) continue
-        const { data: prodBatches } = await supabase
+        const { data: prodBatches, error: prodBatchesErr } = await supabase
           .from("batches")
           .select("id, qty_on_hand, unit_cost")
           .eq("product_id", l.product_id)
           .gt("qty_on_hand", 0)
           .order("expires_at", { ascending: true })
+        if (prodBatchesErr) console.error("[entries/id] truy vấn lỗi:", prodBatchesErr.message)
         let costSum = 0
         let qtyTaken = 0
         for (const b of (prodBatches as Array<{

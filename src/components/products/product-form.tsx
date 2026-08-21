@@ -117,11 +117,12 @@ export function ProductForm({
     if (!productId) return
     let cancelled = false
     async function load() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("product_units")
         .select("id, unit_name, conversion")
         .eq("product_id", productId!)
         .order("conversion", { ascending: false })
+      if (dataErr) console.error("[products/product-form] truy vấn lỗi:", dataErr.message)
       if (cancelled) return
       const rows = ((data as { id: string; unit_name: string; conversion: number }[]) || []).map((u) => ({
         id: u.id,

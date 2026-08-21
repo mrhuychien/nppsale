@@ -75,10 +75,11 @@ export default function PromotionsPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("promotions")
         .select("id, name, type, priority, starts_at, ends_at, is_active")
         .order("priority", { ascending: false })
+      if (dataErr) console.error("[app/promotions] truy vấn lỗi:", dataErr.message)
       setPromotions((data as Promotion[]) || [])
       setLoading(false)
     }

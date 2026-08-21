@@ -228,12 +228,13 @@ export default function CustomersPage() {
   useEffect(() => {
     if (isSales) return // sales only see their own customers, no need for filter
     async function loadReps() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("users")
         .select("id, full_name, role")
         .in("role", ["sales", "manager", "owner"])
         .eq("is_active", true)
         .order("full_name")
+      if (dataErr) console.error("[app/customers] truy vấn lỗi:", dataErr.message)
       setSalesUsers((data as Array<{ id: string; full_name: string }>) || [])
     }
     loadReps()
@@ -242,11 +243,12 @@ export default function CustomersPage() {
   // Load sales routes for the filter dropdown
   useEffect(() => {
     async function loadRoutes() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("sales_routes")
         .select("code, name")
         .eq("is_active", true)
         .order("sort_order")
+      if (dataErr) console.error("[app/customers] truy vấn lỗi:", dataErr.message)
       setRoutes((data as Array<{ code: string; name: string }>) || [])
     }
     loadRoutes()
@@ -274,12 +276,13 @@ export default function CustomersPage() {
 
   const handleVisitSuccess = async () => {
     // Refresh last visits after check-in
-    const { data: latestVisits } = await supabase
+    const { data: latestVisits, error: latestVisitsErr } = await supabase
       .from("visit_logs")
       .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
       .order("visit_date", { ascending: false })
       .order("check_in_at", { ascending: false })
       .limit(500)
+    if (latestVisitsErr) console.error("[app/customers] truy vấn lỗi:", latestVisitsErr.message)
     const visitMap: Record<string, LastVisitInfo> = {}
     for (const v of (latestVisits as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
       if (v.customer_id && !visitMap[v.customer_id]) {

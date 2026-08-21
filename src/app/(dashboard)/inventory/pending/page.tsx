@@ -130,11 +130,12 @@ export default function PendingStockPage() {
   // Load sales routes once
   useEffect(() => {
     async function loadRoutes() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("sales_routes")
         .select("code, name")
         .eq("is_active", true)
         .order("sort_order")
+      if (dataErr) console.error("[inventory/pending] truy vấn lỗi:", dataErr.message)
       setRoutes((data as Array<{ code: string; name: string }>) || [])
     }
     loadRoutes()
@@ -228,10 +229,11 @@ export default function PendingStockPage() {
       // 1. Aggregate product qty from return_lines
       const byProduct: Record<string, { qty: number; unitName: string }> = {}
       if (retIds.length > 0) {
-        const { data: rLines } = await supabase
+        const { data: rLines, error: rLinesErr } = await supabase
           .from("return_lines")
           .select("product_id, quantity, unit_name")
           .in("return_id", retIds)
+        if (rLinesErr) console.error("[inventory/pending] truy vấn lỗi:", rLinesErr.message)
         for (const l of (rLines as Array<{ product_id: string; quantity: number; unit_name: string }>) || []) {
           const key = l.product_id
           const entry = byProduct[key] || { qty: 0, unitName: l.unit_name || "" }
@@ -242,10 +244,11 @@ export default function PendingStockPage() {
 
       // 2. Aggregate from failed delivery lines → sales_order_lines
       if (dlIds.length > 0) {
-        const { data: dLines } = await supabase
+        const { data: dLines, error: dLinesErr } = await supabase
           .from("delivery_lines")
           .select("order_id")
           .in("id", dlIds)
+        if (dLinesErr) console.error("[inventory/pending] truy vấn lỗi:", dLinesErr.message)
         const orderIds = Array.from(new Set(((dLines as Array<{ order_id: string }>) || []).map((l) => l.order_id)))
         if (orderIds.length > 0) {
           const { data: oLines } = await supabase

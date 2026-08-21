@@ -239,10 +239,11 @@ export default function DeliveryHandoverPage() {
       .filter(Boolean) as string[]
     const paidByOrder = new Map<string, number>()
     if (orderIds.length > 0) {
-      const { data: receivables } = await supabase
+      const { data: receivables, error: receivablesErr } = await supabase
         .from("receivables")
         .select("order_id, paid")
         .in("order_id", orderIds)
+      if (receivablesErr) console.error("[id/handover] truy vấn lỗi:", receivablesErr.message)
       ;(((receivables as ReceivableLite[]) || [])).forEach((r) => {
         if (r.order_id) {
           paidByOrder.set(r.order_id, (paidByOrder.get(r.order_id) || 0) + Number(r.paid || 0))
@@ -311,10 +312,11 @@ export default function DeliveryHandoverPage() {
     // schema có).
     const swapItems: ItemDraft[] = []
     if (orderIds.length > 0) {
-      const { data: entries } = await supabase
+      const { data: entries, error: entriesErr } = await supabase
         .from("stock_entries")
         .select("id, ref_order_ids")
         .eq("type", "export")
+      if (entriesErr) console.error("[id/handover] truy vấn lỗi:", entriesErr.message)
       const entryIds = (
         (entries as Array<{ id: string; ref_order_ids: string[] | null }>) || []
       )
@@ -324,12 +326,13 @@ export default function DeliveryHandoverPage() {
         })
         .map((e) => e.id)
       if (entryIds.length > 0) {
-        const { data: swapRows } = await supabase
+        const { data: swapRows, error: swapRowsErr } = await supabase
           .from("swap_stock_movements")
           .select(
             "id, product_id, qty, unit_name, conversion_factor, qty_in_base_uom, qty_returned_in_base_uom, reason, product:products(name, sku)"
           )
           .in("stock_entry_id", entryIds)
+        if (swapRowsErr) console.error("[id/handover] truy vấn lỗi:", swapRowsErr.message)
         ;(((swapRows as unknown) as Array<{
           id: string
           product_id: string

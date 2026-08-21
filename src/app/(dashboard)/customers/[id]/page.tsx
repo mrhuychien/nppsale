@@ -188,7 +188,7 @@ export default function CustomerDetailPage() {
     setPriceRows((priceRes.data || []) as unknown as PriceRow[])
 
     // Visit history
-    const { data: visitData } = await supabase
+    const { data: visitData, error: visitDataErr } = await supabase
       .from("visit_logs")
       .select(
         "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user:users!visit_logs_sales_user_id_fkey(full_name)"
@@ -196,6 +196,7 @@ export default function CustomerDetailPage() {
       .eq("customer_id", id)
       .order("visit_date", { ascending: false })
       .order("check_in_at", { ascending: false })
+    if (visitDataErr) console.error("[customers/id] truy vấn lỗi:", visitDataErr.message)
     setVisits(
       ((visitData as Array<{
         id: string

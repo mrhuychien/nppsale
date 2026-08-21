@@ -58,11 +58,12 @@ export default function CollectPaymentPage() {
         if (list.length > 0) {
           setCustomerName(list[0].customer?.store_name || null)
         } else {
-          const { data: customerData } = await supabase
+          const { data: customerData, error: customerDataErr } = await supabase
             .from("customers")
             .select("store_name")
             .eq("id", customerIdParam)
             .single()
+          if (customerDataErr) console.error("[receivables/collect] truy vấn lỗi:", customerDataErr.message)
           setCustomerName((customerData as { store_name?: string } | null)?.store_name || null)
         }
       }
@@ -105,11 +106,12 @@ export default function CollectPaymentPage() {
 
       // Notify the sales rep who owns the receivable (if different from collector)
       if (selected && user?.org_id) {
-        const { data: recFull } = await supabase
+        const { data: recFull, error: recFullErr } = await supabase
           .from("receivables")
           .select("sales_user_id, customer:customers(store_name)")
           .eq("id", selectedId)
           .maybeSingle()
+        if (recFullErr) console.error("[receivables/collect] truy vấn lỗi:", recFullErr.message)
         const repId = (recFull as { sales_user_id?: string } | null)?.sales_user_id
         const storeName = (recFull as { customer?: { store_name?: string } } | null)?.customer?.store_name
         if (repId && repId !== user.id) {

@@ -69,12 +69,13 @@ export default function CostProfitPage() {
 
   const fetchExpenses = useCallback(
     async (orgId: string, r: DateRange): Promise<ExpenseRow[]> => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("expenses")
         .select("amount, expense_date, category:expense_categories(bucket)")
         .eq("org_id", orgId)
         .gte("expense_date", r.from)
         .lte("expense_date", r.to)
+      if (dataErr) console.error("[business/cost-profit] truy vấn lỗi:", dataErr.message)
       type Row = {
         amount: number
         expense_date: string

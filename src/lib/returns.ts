@@ -191,11 +191,12 @@ export async function recomputeReceivableForOrder(
   supabase: SupabaseClient,
   orderId: string
 ): Promise<void> {
-  const { data: order } = await supabase
+  const { data: order, error: orderErr } = await supabase
     .from("sales_orders")
     .select("id, org_id, customer_id, sales_user_id, total, payment_terms, order_date")
     .eq("id", orderId)
     .single()
+  if (orderErr) console.error("[lib/returns] truy vấn lỗi:", orderErr.message)
   if (!order) return
   const o = order as {
     id: string
@@ -209,11 +210,12 @@ export async function recomputeReceivableForOrder(
 
   // Sum approved/completed return credits — pending/rejected returns don't
   // affect AR yet (they're proposed, not finalized).
-  const { data: returns } = await supabase
+  const { data: returns, error: returnsErr } = await supabase
     .from("returns")
     .select("credit_note_amount, status")
     .eq("order_id", orderId)
     .in("status", ["approved", "completed"])
+  if (returnsErr) console.error("[lib/returns] truy vấn lỗi:", returnsErr.message)
   const credits = ((returns as Array<{ credit_note_amount: number | null; status: string }>) || [])
     .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
 

@@ -95,11 +95,12 @@ export async function updateSession(request: NextRequest) {
   // Server-side role check for admin routes
   if (user && request.nextUrl.pathname.startsWith("/settings")) {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileErr } = await supabase
         .from("users")
         .select("role")
         .eq("id", user.id)
         .maybeSingle()
+      if (profileErr) console.error("[supabase/middleware] truy vấn lỗi:", profileErr.message)
       if (profile && !["owner", "manager"].includes(profile.role)) {
         const url = request.nextUrl.clone()
         url.pathname = "/dashboard"
@@ -113,11 +114,12 @@ export async function updateSession(request: NextRequest) {
   // Server-side role check for HR routes
   if (user && request.nextUrl.pathname.startsWith("/hr")) {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileErr } = await supabase
         .from("users")
         .select("role")
         .eq("id", user.id)
         .maybeSingle()
+      if (profileErr) console.error("[supabase/middleware] truy vấn lỗi:", profileErr.message)
       if (profile && !["owner", "manager", "accountant"].includes(profile.role)) {
         const url = request.nextUrl.clone()
         url.pathname = "/dashboard"

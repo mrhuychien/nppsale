@@ -36,10 +36,11 @@ export default function ReceivablesByRepPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("receivables")
         .select("id, customer_id, sales_user_id, amount, paid, due_date, status, sales_user:users!receivables_sales_user_id_fkey(id, full_name)")
         .not("sales_user_id", "is", null)
+      if (dataErr) console.error("[receivables/by-rep] truy vấn lỗi:", dataErr.message)
       setReceivables((data as unknown as Receivable[]) || [])
       setLoading(false)
     }

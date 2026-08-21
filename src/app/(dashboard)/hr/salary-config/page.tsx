@@ -55,13 +55,14 @@ export default function SalaryConfigPage() {
   useEffect(() => {
     async function fetch() {
       if (!authUser?.org_id) return
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("hr_salary_config")
         .select("id, name, base_salary, gas_allowance, phone_allowance, working_days_per_month, kpi_target_revenue, target_tiers, over_target_percent, under_70_rule, under_60_percent")
         .eq("org_id", authUser.org_id)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle()
+      if (dataErr) console.error("[hr/salary-config] truy vấn lỗi:", dataErr.message)
       if (data) {
         const c = data as HrSalaryConfig
         setConfig(c)

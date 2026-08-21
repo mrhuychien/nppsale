@@ -186,13 +186,14 @@ export default function DeliveryDetailPage() {
     setOrderDetail(null)
     setOrderDetailLoading(true)
     try {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("sales_orders")
         .select(
           "id, order_code, order_date, payment_terms, notes, subtotal, vat, total, customer:customers(*), lines:sales_order_lines(*, product:products(name, sku, base_unit))"
         )
         .eq("id", orderId)
         .single()
+      if (dataErr) console.error("[deliveries/id] truy vấn lỗi:", dataErr.message)
       setOrderDetail((data as unknown as OrderDetail) || null)
     } finally {
       setOrderDetailLoading(false)

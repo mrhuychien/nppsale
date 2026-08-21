@@ -80,12 +80,13 @@ export default function PjpPage() {
   useEffect(() => {
     if (!user || !isManager) return
     async function fetchUsers() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("users")
         .select("id, full_name, role")
         .eq("org_id", user!.org_id)
         .in("role", ["sales"])
         .eq("is_active", true)
+      if (dataErr) console.error("[sales/pjp] truy vấn lỗi:", dataErr.message)
       if (data) setSalesUsers(data)
     }
     fetchUsers()
@@ -104,12 +105,13 @@ export default function PjpPage() {
   const fetchRoutes = useCallback(async () => {
     if (!selectedUserId) return
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("pjp_routes")
       .select("id, sales_user_id, day_of_week, customer_id, visit_order, is_active, customer:customers(id, store_name, address)")
       .eq("sales_user_id", selectedUserId)
       .eq("is_active", true)
       .order("visit_order", { ascending: true })
+    if (dataErr) console.error("[sales/pjp] truy vấn lỗi:", dataErr.message)
     if (data) setRoutes(data as unknown as PjpRoute[])
     setLoading(false)
   }, [selectedUserId, supabase])
@@ -118,11 +120,12 @@ export default function PjpPage() {
   const fetchTodayVisits = useCallback(async () => {
     if (!selectedUserId) return
     const todayStr = new Date().toISOString().slice(0, 10)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("visit_logs")
       .select("id, customer_id, check_in_at, check_out_at, result")
       .eq("sales_user_id", selectedUserId)
       .eq("visit_date", todayStr)
+    if (dataErr) console.error("[sales/pjp] truy vấn lỗi:", dataErr.message)
     if (data) setTodayVisits(data)
   }, [selectedUserId, supabase])
 

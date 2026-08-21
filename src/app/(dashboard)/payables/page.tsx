@@ -62,10 +62,11 @@ export default function PayablesPage() {
   // Stats: load all UNPAID light fields cho aging summary.
   useEffect(() => {
     async function loadOpen() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("payables")
         .select("amount, paid, due_date, supplier_id, status")
         .neq("status", "paid")
+      if (dataErr) console.error("[app/payables] truy vấn lỗi:", dataErr.message)
       setAllOpen((data as Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>) || [])
     }
     loadOpen()

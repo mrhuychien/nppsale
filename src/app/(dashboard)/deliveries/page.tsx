@@ -247,10 +247,11 @@ export default function DeliveriesPage() {
         { orderCount: number; deliveredCount: number; failedCount: number; totalValue: number }
       > = {}
       if (ids.length > 0) {
-        const { data: lineRows } = await supabase
+        const { data: lineRows, error: lineRowsErr } = await supabase
           .from("delivery_lines")
           .select("delivery_id, status, order:sales_orders(total)")
           .in("delivery_id", ids)
+        if (lineRowsErr) console.error("[app/deliveries] truy vấn lỗi:", lineRowsErr.message)
         type LineRow = {
           delivery_id: string
           status: string

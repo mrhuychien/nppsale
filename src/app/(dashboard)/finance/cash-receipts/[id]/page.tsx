@@ -62,13 +62,14 @@ export default function CashReceiptDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data: r } = await supabase
+    const { data: r, error: rErr } = await supabase
       .from("cash_receipts")
       .select(
         "id, receipt_code, receipt_date, status, source_type, source_id, expected_amount, submitted_amount, received_at, notes, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
       )
       .eq("id", id)
       .single()
+    if (rErr) console.error("[cash-receipts/id] truy vấn lỗi:", rErr.message)
     setReceipt((r as unknown as CashReceipt) || null)
 
     const { data: ls } = await supabase
@@ -88,11 +89,12 @@ export default function CashReceiptDetailPage() {
     const sourceType = (r as { source_type?: string } | null)?.source_type
     const sourceId = (r as { source_id?: string } | null)?.source_id
     if (sourceType === "delivery_settle" && sourceId) {
-      const { data: d } = await supabase
+      const { data: d, error: dErr } = await supabase
         .from("deliveries")
         .select("id, route_name")
         .eq("id", sourceId)
         .maybeSingle()
+      if (dErr) console.error("[cash-receipts/id] truy vấn lỗi:", dErr.message)
       setDelivery((d as { id: string; route_name: string | null } | null) || null)
     } else if (sourceType === "manual" && sourceId) {
       // Self-deliver flow — receipt source_id is stock_entry.id.

@@ -132,10 +132,11 @@ export default function PurchaseInvoicesLookupPage() {
       // 2. Load payables CHỈ cho entries trên page hiện tại.
       const payByEntry = new Map<string, ImportRow["payable"]>()
       if (ids.length > 0) {
-        const { data: payData } = await supabase
+        const { data: payData, error: payDataErr } = await supabase
           .from("payables")
           .select("id, stock_entry_id, amount, paid, status, invoice_number")
           .in("stock_entry_id", ids)
+        if (payDataErr) console.error("[purchasing/invoices] truy vấn lỗi:", payDataErr.message)
         for (const p of (payData as Array<{ id: string; stock_entry_id: string; amount: number; paid: number; status: string; invoice_number: string | null }>) || []) {
           payByEntry.set(p.stock_entry_id, { id: p.id, amount: p.amount, paid: p.paid, status: p.status, invoice_number: p.invoice_number })
         }

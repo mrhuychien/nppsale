@@ -25,11 +25,12 @@ export function SetupBanner() {
     const supabase = createClient()
     let cancelled = false
     ;(async () => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("organizations")
         .select("settings")
         .eq("id", user.org_id)
         .maybeSingle()
+      if (dataErr) console.error("[setup/setup-banner] truy vấn lỗi:", dataErr.message)
       if (cancelled) return
       const settings = ((data as { settings?: Record<string, unknown> } | null)?.settings || {}) as Record<string, unknown>
       if (!settings.setup_completed_at) setShow(true)

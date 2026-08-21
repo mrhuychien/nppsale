@@ -35,10 +35,11 @@ export default function CommissionsPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("commission_wallets")
         .select("id, org_id, user_id, period, earned, paid, balance, user:users(*)")
         .order("earned", { ascending: false })
+      if (dataErr) console.error("[app/commissions] truy vấn lỗi:", dataErr.message)
       setWallets((data as unknown as CommissionWallet[]) || [])
       setLoading(false)
     }

@@ -68,11 +68,12 @@ export default function VisitsHistoryPage() {
   useEffect(() => {
     async function fetchUsers() {
       if (!isManagerLike) return
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("users")
         .select("id, full_name, role")
         .in("role", ["sales", "manager", "owner"])
         .order("full_name")
+      if (dataErr) console.error("[sales/visits] truy vấn lỗi:", dataErr.message)
       setSalesUsers((data as Pick<User, "id" | "full_name" | "role">[]) || [])
     }
     fetchUsers()

@@ -31,7 +31,8 @@ export default function ProductDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id").eq("id", id).single()
+    const { data, error: dataErr } = await supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id").eq("id", id).single()
+    if (dataErr) console.error("[products/id] truy vấn lỗi:", dataErr.message)
     if (data) setProduct(data as Product)
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps

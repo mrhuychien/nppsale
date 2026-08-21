@@ -74,10 +74,11 @@ export default function StockEntriesPage() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("stock_entries")
       .select("id, entry_code, type, status, notes, created_at, creator:users!stock_entries_created_by_fkey(*)")
       .order("created_at", { ascending: false })
+    if (dataErr) console.error("[inventory/entries] truy vấn lỗi:", dataErr.message)
     setEntries(((data as unknown) as StockEntry[]) || [])
     setLoading(false)
   }

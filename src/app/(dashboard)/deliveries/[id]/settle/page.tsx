@@ -303,11 +303,12 @@ export default function DeliverySettlePage() {
         if (amt <= 0) continue
 
         await ensureReceivableForOrder(supabase, l.order.id)
-        const { data: rec } = await supabase
+        const { data: rec, error: recErr } = await supabase
           .from("receivables")
           .select("id, amount, paid")
           .eq("order_id", l.order.id)
           .maybeSingle()
+        if (recErr) console.error("[id/settle] truy vấn lỗi:", recErr.message)
         if (!rec) continue
         const r = rec as { id: string; amount: number | null; paid: number | null }
 

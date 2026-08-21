@@ -87,11 +87,12 @@ export default function PayrollRunsPage() {
   const loadRuns = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("payroll_runs")
       .select("id, org_id, month, status, computed_at, locked_at, locked_by, created_at")
       .eq("org_id", user.org_id)
       .order("month", { ascending: false })
+    if (dataErr) console.error("[payroll/runs] truy vấn lỗi:", dataErr.message)
     setRuns((data as PayrollRun[]) || [])
     setLoading(false)
   }, [user?.org_id, supabase])
@@ -155,7 +156,7 @@ export default function PayrollRunsPage() {
         const ps = (bd.period_start as string) || ""
         const pe = (bd.period_end as string) || ""
         if (ps && pe) {
-          const { data } = await supabase
+          const { data, error: dataErr } = await supabase
             .from("sales_orders")
             .select("id, order_code, order_date, total, status")
             .eq("sales_user_id", item.user_id)
@@ -163,6 +164,7 @@ export default function PayrollRunsPage() {
             .gte("order_date", ps)
             .lte("order_date", pe)
             .order("order_date", { ascending: false })
+          if (dataErr) console.error("[payroll/runs] truy vấn lỗi:", dataErr.message)
           setDetailOrders((data as PayslipOrder[]) || [])
         }
       } finally {
@@ -310,7 +312,7 @@ export default function PayrollRunsPage() {
       const ps = (bd.period_start as string) || ""
       const pe = (bd.period_end as string) || ""
       if (ps && pe) {
-        const { data } = await supabase
+        const { data, error: dataErr } = await supabase
           .from("sales_orders")
           .select("id, order_code, order_date, total, status")
           .eq("sales_user_id", item.user_id)
@@ -318,6 +320,7 @@ export default function PayrollRunsPage() {
           .gte("order_date", ps)
           .lte("order_date", pe)
           .order("order_date", { ascending: false })
+        if (dataErr) console.error("[payroll/runs] truy vấn lỗi:", dataErr.message)
         ords = (data as PayslipOrder[]) || []
       }
     } catch {

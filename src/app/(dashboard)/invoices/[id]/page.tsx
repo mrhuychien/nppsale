@@ -73,7 +73,8 @@ export default function InvoiceDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("invoices").select("id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_lookup_code, misa_published_at").eq("id", id).single()
+    const { data, error: dataErr } = await supabase.from("invoices").select("id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_lookup_code, misa_published_at").eq("id", id).single()
+    if (dataErr) console.error("[invoices/id] truy vấn lỗi:", dataErr.message)
     if (data) {
       const inv = data as Invoice
       setInvoice(inv)
@@ -94,10 +95,11 @@ export default function InvoiceDetailPage() {
   // Load MISA companyId 1 lần để build deep-link tới MISA web.
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("company_einvoice_config")
         .select("misa_company_id")
         .maybeSingle()
+      if (dataErr) console.error("[invoices/id] truy vấn lỗi:", dataErr.message)
       setMisaCompanyId(data?.misa_company_id ?? null)
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

@@ -37,11 +37,12 @@ export default function NewPayablePage() {
 
   useEffect(() => {
     async function fetchSuppliers() {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("suppliers")
         .select("id, code, name, payment_terms")
         .eq("is_active", true)
         .order("name")
+      if (dataErr) console.error("[payables/new] truy vấn lỗi:", dataErr.message)
       setSuppliers((data as Supplier[]) || [])
     }
     fetchSuppliers()
@@ -54,12 +55,13 @@ export default function NewPayablePage() {
         setStockEntries([])
         return
       }
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("stock_entries")
         .select("id, entry_code, created_at")
         .eq("supplier_id", form.supplier_id)
         .eq("type", "import")
         .order("created_at", { ascending: false })
+      if (dataErr) console.error("[payables/new] truy vấn lỗi:", dataErr.message)
       setStockEntries((data as StockEntry[]) || [])
 
       // Auto-calc due_date from supplier payment_terms

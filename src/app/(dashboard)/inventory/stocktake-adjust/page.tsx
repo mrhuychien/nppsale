@@ -62,12 +62,13 @@ export default function StocktakeAdjustPage() {
   useEffect(() => {
     async function loadCategories() {
       if (!user?.org_id) return
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("expense_categories")
         .select("id, code, name")
         .eq("org_id", user.org_id)
         .eq("bucket", "cogs")
         .eq("is_active", true)
+      if (dataErr) console.error("[inventory/stocktake-adjust] truy vấn lỗi:", dataErr.message)
       setCategories((data as ExpenseCategory[]) || [])
     }
     loadCategories()

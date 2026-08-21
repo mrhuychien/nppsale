@@ -45,11 +45,12 @@ export default function StocktakeCheckPage() {
 
   const fetchBatches = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: dataErr } = await supabase
       .from("batches")
       .select("id, product_id, qty_on_hand, product:products(*)")
       .gt("qty_on_hand", 0)
       .order("product_id")
+    if (dataErr) console.error("[inventory/stocktake-check] truy vấn lỗi:", dataErr.message)
     setBatches(((data as unknown) as BatchWithProduct[]) || [])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

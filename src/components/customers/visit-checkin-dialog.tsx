@@ -83,11 +83,12 @@ export function VisitCheckinDialog({
     if (!open || !customerId) return
     let cancelled = false
     ;(async () => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("customers")
         .select("gps_lat, gps_lng")
         .eq("id", customerId)
         .maybeSingle()
+      if (dataErr) console.error("[customers/visit-checkin-dialog] truy vấn lỗi:", dataErr.message)
       if (cancelled) return
       const row = data as { gps_lat: number | null; gps_lng: number | null } | null
       if (row && row.gps_lat != null && row.gps_lng != null) {
@@ -203,12 +204,13 @@ export function VisitCheckinDialog({
 
       // 3. Notify the primary assignee (if different from the visiting user)
       //    This is useful for managers overseeing the rep's portfolio.
-      const { data: primaryAssignment } = await supabase
+      const { data: primaryAssignment, error: primaryAssignmentErr } = await supabase
         .from("customer_assignments")
         .select("user_id")
         .eq("customer_id", customerId)
         .eq("role", "primary")
         .maybeSingle()
+      if (primaryAssignmentErr) console.error("[customers/visit-checkin-dialog] truy vấn lỗi:", primaryAssignmentErr.message)
       const primaryRepId = (primaryAssignment as { user_id?: string } | null)?.user_id
       if (primaryRepId && primaryRepId !== user.id) {
         const { createNotification } = await import("@/lib/notifications")

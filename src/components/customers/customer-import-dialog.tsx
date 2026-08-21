@@ -98,10 +98,11 @@ export function CustomerImportDialog({
     setImporting(true)
     try {
       // Dedupe theo SĐT trong DB hiện có (case stripped khoảng trắng).
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from("customers")
         .select("phone")
         .eq("org_id", user.org_id)
+      if (existingErr) console.error("[customers/customer-import-dialog] truy vấn lỗi:", existingErr.message)
       const existingPhones = new Set(
         ((existing as { phone: string | null }[]) || [])
           .map((r) => (r.phone || "").replace(/\s+/g, ""))

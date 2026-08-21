@@ -32,20 +32,21 @@ export async function fetchPnl(
   const toIso = `${period.to}T23:59:59Z`
 
   // Revenue: delivered orders within the period
-  const { data: orders } = await supabase
+  const { data: orders, error: ordersErr } = await supabase
     .from("sales_orders")
     .select("total, order_date, status, org_id")
     .eq("org_id", orgId)
     .eq("status", "delivered")
     .gte("order_date", period.from)
     .lte("order_date", period.to)
+  if (ordersErr) console.error("[lib/finance] truy vấn lỗi:", ordersErr.message)
   const revenue = ((orders as Array<{ total: number }>) || []).reduce(
     (s, o) => s + Number(o.total || 0), 0
   )
   const orderCount = orders?.length ?? 0
 
   // COGS: export lines posted within the period
-  const { data: exportEntries } = await supabase
+  const { data: exportEntries, error: exportEntriesErr } = await supabase
     .from("stock_entries")
     .select("id, type, status, posted_at")
     .eq("org_id", orgId)
@@ -53,14 +54,16 @@ export async function fetchPnl(
     .eq("status", "posted")
     .gte("posted_at", fromIso)
     .lte("posted_at", toIso)
+  if (exportEntriesErr) console.error("[lib/finance] truy vấn lỗi:", exportEntriesErr.message)
   const exportIds = ((exportEntries as Array<{ id: string }>) || []).map((e) => e.id)
 
   let cogs = 0
   if (exportIds.length > 0) {
-    const { data: lines } = await supabase
+    const { data: lines, error: linesErr } = await supabase
       .from("stock_entry_lines")
       .select("quantity, unit_cost, entry_id")
       .in("entry_id", exportIds)
+    if (linesErr) console.error("[lib/finance] truy vấn lỗi:", linesErr.message)
     for (const l of (lines as Array<{ quantity: number; unit_cost: number }>) || []) {
       cogs += Math.abs(Number(l.quantity)) * Number(l.unit_cost || 0)
     }

@@ -33,12 +33,13 @@ export default function CashReceiptsListPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data } = await supabase
+      const { data, error: dataErr } = await supabase
         .from("cash_receipts")
         .select(
           "id, receipt_code, receipt_date, status, expected_amount, submitted_amount, received_at, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
         )
         .order("created_at", { ascending: false })
+      if (dataErr) console.error("[finance/cash-receipts] truy vấn lỗi:", dataErr.message)
       if (!cancelled) {
         setReceipts((data as unknown as CashReceipt[]) || [])
         setLoading(false)

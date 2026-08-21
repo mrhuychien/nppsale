@@ -43,7 +43,8 @@ export default function PromotionDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from("promotions").select("id, name, type, rules, priority, target_groups, starts_at, ends_at, is_active, created_at").eq("id", id).single()
+    const { data, error: dataErr } = await supabase.from("promotions").select("id, name, type, rules, priority, target_groups, starts_at, ends_at, is_active, created_at").eq("id", id).single()
+    if (dataErr) console.error("[promotions/id] truy vấn lỗi:", dataErr.message)
     if (data) {
       const p = data as Promotion
       setPromotion(p)

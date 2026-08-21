@@ -211,7 +211,12 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
     const base_unit = str(get(raw, "base_unit"))
     const secondary_unit = str(get(raw, "secondary_unit")) || null
     const conversionRaw = str(get(raw, "conversion"))
-    const conversion = conversionRaw ? parseMoney(conversionRaw) : null
+    // KHÔNG dùng parseMoney ở đây. parseMoney xoá mọi ký tự không phải số
+    // để đọc tiền kiểu "15.000" → 15000; áp lên hệ số quy đổi thì 1.688
+    // thành 1688 và 0,167 thành 167 — sai gấp 1000 lần, mà không có lỗi
+    // nào báo ra. Hệ số sai là MỌI phép cộng trừ tồn kho của sản phẩm đó
+    // sai theo. Dùng bản đọc số có hiểu dấu thập phân.
+    const conversion = conversionRaw ? parseNumberOrNull(conversionRaw) : null
     const parent_sku = str(get(raw, "parent_sku")) || null
     const supplier_name = str(get(raw, "supplier_name")) || null
 
@@ -231,6 +236,15 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       base_unit && secondary_unit.toLowerCase() === base_unit.toLowerCase()
     ) {
       errors.push("Đơn vị quy đổi trùng đơn vị tính")
+    }
+    // Hệ số < 1 nghĩa là đơn vị NHỎ HƠN đơn vị cơ sở (KiotViet có xuất
+    // kiểu này, vd 0,167 ≈ 1/6). Schema lưu hệ số nguyên nên không biểu
+    // diễn được. Báo lỗi để người dùng biết, thay vì lặng lẽ làm tròn
+    // thành 1 rồi tính sai tồn kho về sau.
+    if (conversion !== null && conversion > 0 && conversion < 1) {
+      errors.push(
+        `Hệ số quy đổi ${conversionRaw} nhỏ hơn 1 — chưa hỗ trợ đơn vị nhỏ hơn đơn vị tính`
+      )
     }
 
     // Tồn lớn nhất: KiotViet xuất "999999999" cho "không giới hạn" — coi như null.

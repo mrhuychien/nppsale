@@ -289,18 +289,37 @@ describe("computePayrollRun / lockPayrollRun — bọc RPC", () => {
     expect((await computePayrollRun(f.client, "run-1")).count).toBe(0)
   })
 
-  it("kỳ lương đã khoá: lỗi từ database được trả nguyên văn ra giao diện", async () => {
+  it("kỳ lương đã khoá: lỗi nổi lên giao diện, dịch sang tiếng Việt", async () => {
     // SQL raise PAYROLL_RUN_LOCKED. Nuốt lỗi ở đây là người dùng bấm Tính lại
-    // rồi tưởng đã tính, trong khi bảng lương giữ nguyên số cũ.
+    // rồi tưởng đã tính, trong khi bảng lương giữ nguyên số cũ. Nhưng đưa
+    // thẳng mã kỹ thuật lên toast thì kế toán đọc "PAYROLL_RUN_LOCKED" và
+    // cũng không biết phải làm gì — nên bọc lại thành câu đọc được.
     const f = fakeClient({ rpcError: { message: "PAYROLL_RUN_LOCKED" } })
     const r = await computePayrollRun(f.client, "run-1")
-    expect(r.error).toBe("PAYROLL_RUN_LOCKED")
+    expect(r.error).toContain("đã khoá")
+    expect(r.error).not.toContain("PAYROLL_RUN_LOCKED")
     expect(r.count).toBe(0)
   })
 
   it("sai tổ chức: lỗi ORG_MISMATCH cũng phải nổi lên", async () => {
     const f = fakeClient({ rpcError: { message: "ORG_MISMATCH" } })
-    expect((await computePayrollRun(f.client, "run-1")).error).toBe("ORG_MISMATCH")
+    expect((await computePayrollRun(f.client, "run-1")).error).toContain(
+      "không thuộc đơn vị"
+    )
+  })
+
+  it("sai vai trò: nói rõ ai mới được tính lương (mig 094)", async () => {
+    // 094 thêm chốt chặn vai trò trong chính hàm SQL vì hàm là
+    // SECURITY DEFINER và GRANT cho mọi tài khoản đã đăng nhập.
+    const f = fakeClient({ rpcError: { message: "FORBIDDEN_ROLE" } })
+    const r = await computePayrollRun(f.client, "run-1")
+    expect(r.error).toContain("kế toán")
+    expect(r.error).not.toContain("FORBIDDEN_ROLE")
+  })
+
+  it("lỗi lạ không nằm trong bảng dịch thì giữ nguyên văn, không nuốt", async () => {
+    const f = fakeClient({ rpcError: { message: "deadlock detected" } })
+    expect((await computePayrollRun(f.client, "run-1")).error).toBe("deadlock detected")
   })
 
   it("lockPayrollRun gọi đúng RPC và trả null khi thành công", async () => {
@@ -312,6 +331,8 @@ describe("computePayrollRun / lockPayrollRun — bọc RPC", () => {
 
   it("khoá kỳ lương lỗi thì báo ra, không im lặng", async () => {
     const f = fakeClient({ rpcError: { message: "PAYROLL_RUN_NOT_FOUND" } })
-    expect((await lockPayrollRun(f.client, "run-1")).error).toBe("PAYROLL_RUN_NOT_FOUND")
+    expect((await lockPayrollRun(f.client, "run-1")).error).toContain(
+      "Không tìm thấy kỳ lương"
+    )
   })
 })

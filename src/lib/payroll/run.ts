@@ -71,6 +71,26 @@ export async function ensurePayrollRun(
   return { run: data as PayrollRun, error: null }
 }
 
+/**
+ * Các mã lỗi hai hàm RPC bảng lương ném ra (mig 050 + 094). Chúng là mã
+ * kỹ thuật viết hoa, đưa thẳng lên toast thì người dùng đọc được
+ * "FORBIDDEN_ROLE" và không biết phải làm gì tiếp.
+ */
+const PAYROLL_ERRORS: Record<string, string> = {
+  PAYROLL_RUN_NOT_FOUND: "Không tìm thấy kỳ lương này.",
+  PAYROLL_RUN_LOCKED: "Kỳ lương đã khoá — mở khoá trước khi tính lại.",
+  ORG_MISMATCH: "Kỳ lương không thuộc đơn vị của bạn.",
+  FORBIDDEN_ROLE:
+    "Chỉ chủ NPP, quản lý hoặc kế toán mới được tính / khoá bảng lương.",
+}
+
+function payrollError(message: string): string {
+  for (const [code, vi] of Object.entries(PAYROLL_ERRORS)) {
+    if (message.includes(code)) return vi
+  }
+  return message
+}
+
 export async function computePayrollRun(
   supabase: SupabaseClient,
   runId: string
@@ -78,7 +98,7 @@ export async function computePayrollRun(
   const { data, error } = await supabase.rpc("compute_payroll_run", {
     p_run_id: runId,
   })
-  if (error) return { count: 0, error: error.message }
+  if (error) return { count: 0, error: payrollError(error.message) }
   return { count: Number(data || 0), error: null }
 }
 
@@ -89,7 +109,7 @@ export async function lockPayrollRun(
   const { error } = await supabase.rpc("lock_payroll_run", {
     p_run_id: runId,
   })
-  return { error: error?.message ?? null }
+  return { error: error ? payrollError(error.message) : null }
 }
 
 export async function setManualAdjustment(

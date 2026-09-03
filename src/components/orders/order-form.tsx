@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
+import { viMatchAllWords } from "@/lib/search"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
@@ -189,11 +190,14 @@ export function OrderForm() {
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
-  const filteredCustomers = customers.filter((c) => {
-    if (!customerSearch.trim()) return true
-    const q = customerSearch.toLowerCase()
-    return c.store_name.toLowerCase().includes(q) || c.phone.includes(q) || c.owner_name.toLowerCase().includes(q)
-  }).slice(0, 8)
+  // Tìm không dấu, gõ rời rạc theo thứ tự bất kỳ ("xanh q8" ra "Bách Hoá
+  // Xanh Q.8"). NVBH đứng trong cửa hàng gõ một tay, không bỏ dấu.
+  // Trước đây so bằng toLowerCase() nên "bach hoa xanh" không ra gì, và
+  // `c.phone.includes(q)` với q đã lowercase còn phone thì chưa nên mã
+  // dạng "09DEMO000008" không bao giờ khớp chính nó.
+  const filteredCustomers = customers
+    .filter((c) => viMatchAllWords(customerSearch, c.store_name, c.phone, c.owner_name))
+    .slice(0, 8)
 
   const selectCustomer = (id: string) => {
     setCustomerId(id)
@@ -474,11 +478,9 @@ export function OrderForm() {
     return units
   }
 
-  const filteredReturnProducts = products.filter((p) => {
-    if (!returnSearch.trim()) return true
-    const q = returnSearch.toLowerCase()
-    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-  })
+  const filteredReturnProducts = products.filter((p) =>
+    viMatchAllWords(returnSearch, p.name, p.sku)
+  )
 
   // Tổng giá trị trả ĐƯỢC TRỪ vào công nợ — KHÔNG cộng dòng đổi hàng,
   // vì đổi hàng chỉ là vật chất ra/vào, không động đến tiền.
@@ -521,11 +523,9 @@ export function OrderForm() {
 
   // Ô trống → hiện top danh sách để bấm vào là chọn được ngay (không
   // bắt buộc phải gõ). Dropdown chỉ mở khi input đang focus (state open).
-  const filteredProducts = products.filter((p) => {
-    if (!productSearch.trim()) return true
-    const q = productSearch.toLowerCase()
-    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-  })
+  const filteredProducts = products.filter((p) =>
+    viMatchAllWords(productSearch, p.name, p.sku)
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -938,10 +938,10 @@ export function OrderForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      // Mobile: summary nằm inline ở cuối form, chỉ chừa pb nhỏ để
-      // không đụng mobile-nav. Desktop: vẫn fix sticky bar nên cần
-      // pb-32 chừa chỗ.
-      className="flex flex-col gap-card-gap pb-24 lg:pb-32"
+      // Mobile: thanh tổng dính đáy nằm trên thanh nav (đáy 88px, cao ~68px)
+      // nên phần cuối form phải lùi xuống dưới cả hai. Desktop: thanh tổng
+      // cố định ở đáy màn hình, chừa pb-32.
+      className="flex flex-col gap-card-gap pb-[calc(11rem+env(safe-area-inset-bottom,0px))] lg:pb-32"
     >
       {/* Stitch single-column layout — sticky bottom summary bar below */}
       <div className="flex flex-col gap-card-gap max-w-5xl mx-auto w-full">
@@ -1806,19 +1806,34 @@ export function OrderForm() {
             </span>
           </div>
         </div>
-        <div className="flex gap-gutter">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => router.back()}
-          >
-            Huỷ
-          </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => router.back()}
+        >
+          Huỷ
+        </Button>
+      </div>
+
+      {/* Mobile: thanh tổng + nút tạo đơn DÍNH ĐÁY, nằm ngay trên thanh nav.
+          Trước đây tổng tiền chỉ nằm trong thẻ ở cuối form: với đơn 2 dòng,
+          NVBH phải cuộn gần 2.000px mới biết đơn bao nhiêu tiền và mới bấm
+          được nút tạo đơn — trong khi đang đứng trước mặt khách. */}
+      <div className="lg:hidden fixed left-0 right-0 bottom-[88px] z-30 border-t border-outline-variant bg-surface-container-lowest/95 backdrop-blur-xl px-4 py-3 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">
+              Tổng cộng
+            </p>
+            <p className="truncate text-xl font-bold leading-tight text-primary tabular-data">
+              {formatCurrency(Math.max(0, total - returnSubtotal))}
+            </p>
+          </div>
           <Button
             type="submit"
             disabled={loading || (hasOverstock && !allowOversell) || hasPriceViolation || !customerId}
-            className="flex-[2]"
+            className="h-11 shrink-0 px-5"
           >
             {loading
               ? "Đang lưu..."

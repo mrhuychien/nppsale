@@ -55,12 +55,44 @@ const ROLE_NAV: Record<Role, MobileNavItem[]> = {
   ],
 }
 
+/**
+ * Tầng hiển thị trên mobile — giữ cùng một chỗ để không lệch nhau:
+ *   nav + FAB : z-40
+ *   lớp phủ + ngăn kéo menu (Sheet, xem components/ui/sheet.tsx) : z-50
+ * Trước đây cả ba đều z-50 nên mở menu ra mà nav và nút "+" vẫn sáng rõ
+ * và vẫn bấm được xuyên qua lớp phủ.
+ */
+
+/** Chiều cao thực tế của thanh nav (px) — dashboard-shell dùng để chừa đệm. */
+export const MOBILE_NAV_HEIGHT = 88
+/** Đỉnh của nút "+" tính từ đáy màn hình (px) = bottom 88 + cao 48. */
+export const MOBILE_FAB_TOP = 136
+
 // Role-specific quick action (FAB)
 const ROLE_FAB: Partial<Record<Role, { label: string; href: string }>> = {
   sales: { label: "Tạo đơn", href: "/orders/new" },
   owner: { label: "Tạo đơn", href: "/orders/new" },
   manager: { label: "Tạo đơn", href: "/orders/new" },
   warehouse: { label: "Nhập kho", href: "/inventory/stock-in" },
+}
+
+/**
+ * Có hiện nút "+" trên route này không.
+ *
+ * Ẩn ở hai chỗ:
+ *  • Chính trang đích của nút — bấm vào là đứng yên tại chỗ.
+ *  • Các trang biểu mẫu (/new, /edit) — ở đó nút đè lên ô nhập và dòng
+ *    cảnh báo tồn kho, tức là che cả thứ bấm được lẫn thứ cần đọc.
+ *
+ * dashboard-shell dùng chung hàm này để biết có phải chừa thêm đệm đáy
+ * cho nút hay không.
+ */
+export function hasMobileFab(role: Role, pathname: string): boolean {
+  const fab = ROLE_FAB[role]
+  if (!fab) return false
+  if (pathname === fab.href || pathname.startsWith(fab.href + "/")) return false
+  if (/\/(new|edit)(\/|$)/.test(pathname)) return false
+  return true
 }
 
 interface MobileNavProps {
@@ -74,7 +106,7 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
   const items = (ROLE_NAV[role] || ROLE_NAV.sales)
     .filter((item) => canAccessModule(role, item.module))
     .slice(0, 4)
-  const fab = ROLE_FAB[role]
+  const fab = hasMobileFab(role, pathname) ? ROLE_FAB[role] : null
 
   return (
     <>
@@ -82,7 +114,7 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
       {fab && (
         <button
           onClick={() => router.push(fab.href)}
-          className="fixed right-5 bottom-[88px] z-50 lg:hidden w-12 h-12 bg-primary text-on-primary rounded-xl shadow-card-hover flex items-center justify-center active:scale-95 transition-transform"
+          className="fixed right-5 bottom-[88px] z-40 lg:hidden w-12 h-12 bg-primary text-on-primary rounded-xl shadow-card-hover flex items-center justify-center active:scale-95 transition-transform"
           title={fab.label}
         >
           <Plus className="h-5 w-5" />
@@ -90,7 +122,7 @@ export function MobileNav({ role, onMenuClick }: MobileNavProps) {
       )}
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-surface-container-lowest/95 backdrop-blur-xl border-t border-outline-variant/60 rounded-t-2xl safe-area-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-surface-container-lowest/95 backdrop-blur-xl border-t border-outline-variant/60 rounded-t-2xl safe-area-bottom">
         <div className="flex items-center justify-around px-2 pt-2 pb-5">
           {items.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")

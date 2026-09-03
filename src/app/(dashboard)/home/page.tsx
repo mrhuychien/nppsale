@@ -264,7 +264,8 @@ export default function HomeLauncherPage() {
   const dailyQuote = useMemo(() => getDailyQuote(), [])
 
   return (
-    <div className="min-h-screen bg-background pb-24 lg:pb-0">
+    // Đệm đáy khớp với dashboard-shell — trang này nay cũng có thanh nav dưới.
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
       {/* Top bar */}
       <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
         <Link
@@ -391,7 +392,7 @@ export default function HomeLauncherPage() {
                 href="/sales/visits"
                 className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
               >
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đã thăm h.nay</p>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đã thăm hôm nay</p>
                 <p className="mt-1 text-2xl font-black tabular-nums">{snapshot?.visitsToday ?? "—"}</p>
                 <p className="text-[11px] text-muted-foreground">Điểm bán</p>
               </Link>

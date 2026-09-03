@@ -121,10 +121,11 @@ describe("095 — quy phiếu trả về đúng nhân viên", () => {
     )
     expect(sub.length).toBeGreaterThan(0)
     expect(sub).not.toMatch(/\bOR\b/)
-    // …và mốc so sánh phải là ngày tạo phiếu đã đổi về giờ VN, không phải
-    // một hằng số hay ngày khác.
+    // …và mốc so sánh phải là chính mốc xếp kỳ của phiếu, đã đổi về giờ VN
+    // (từ 097 là ngày DUYỆT, dự phòng ngày lập), không phải một hằng số
+    // hay một ngày khác.
     expect(sub).toMatch(
-      /o2\.order_date <= \(\(r\.created_at AT TIME ZONE 'Asia\/Ho_Chi_Minh'\)::date\)/
+      /o2\.order_date <= \(\(COALESCE\(r\.credited_at, r\.created_at\) AT TIME ZONE 'Asia\/Ho_Chi_Minh'\)::date\)/
     )
   })
 
@@ -227,6 +228,73 @@ describe("095 — chặn số âm", () => {
   it("phần hàng trả vượt không bị nuốt im lặng", () => {
     expect(SQL).toContain("'returns_excess'")
     expect(SQL).toContain("GREATEST(0, -v_net_raw)")
+  })
+})
+
+describe("097 — phiếu trả duyệt sang tháng sau không được biến mất", () => {
+  /**
+   * Lỗ thủng của 095/096, dựng lại được trên Postgres 16:
+   *   28/09 bán 30tr, khách trả 25tr → phiếu 'pending'
+   *   01/10 chốt lương T9  → phiếu còn pending, trừ 0
+   *   03/10 thủ kho nhập lại hàng → 'completed'
+   *   05/10 khoá T9
+   *   01/11 chốt lương T10 → không thấy, vì created_at ở tháng 9
+   *   tính lại T9 → ERROR: PAYROLL_RUN_LOCKED
+   * 25.000.000 đ không trừ vào đâu cả, không cảnh báo.
+   * Sau 097: T9 trừ 0, T10 trừ đúng 25tr.
+   */
+  const M097 = MIGRATIONS.find((m) => m.file.startsWith("097_"))!
+
+  it("có cột credited_at và trigger giữ nó", () => {
+    expect(M097).toBeTruthy()
+    const sql = stripComments(M097.raw)
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS credited_at timestamptz")
+    expect(sql).toContain("CREATE TRIGGER trg_returns_credited_at")
+  })
+
+  it("trigger chạy BEFORE và bắt cả INSERT lẫn đổi status", () => {
+    const sql = stripComments(M097.raw)
+    // Có ít nhất 5 chỗ trong mã nguồn ghi vào returns.status; đặt ở tầng
+    // ứng dụng là chắc chắn sẽ sót một chỗ.
+    expect(sql).toContain("BEFORE INSERT OR UPDATE OF status ON returns")
+  })
+
+  it("bù dữ liệu cũ bằng created_at nên kỳ đã chốt không đổi số", () => {
+    const sql = stripComments(M097.raw)
+    expect(sql).toMatch(/UPDATE returns\s+SET credited_at = created_at/)
+    expect(sql).toContain("WHERE credited_at IS NULL")
+  })
+
+  it("phiếu bị trả về pending/rejected thì xoá dấu", () => {
+    const sql = stripComments(M097.raw)
+    // Nếu không xoá, phiếu duyệt→huỷ→duyệt lại sẽ tính vào kỳ duyệt lần
+    // đầu, có thể là kỳ đã khoá.
+    expect(sql).toContain("NEW.credited_at := NULL")
+  })
+
+  it("hàm tính hàng trả gom theo mốc duyệt, có dự phòng ngày lập", () => {
+    expect(RETURNS_FN).toContain("COALESCE(r.credited_at, r.created_at)")
+    // Dùng credited_at trần thì phiếu cũ chưa kịp bù sẽ im lặng biến mất —
+    // đúng cái lỗi migration này đang đi sửa.
+    expect(RETURNS_FN).not.toMatch(/\(r\.credited_at AT TIME ZONE/)
+  })
+
+  it("có hàm cảnh báo phiếu lập trong kỳ nhưng duyệt sau kỳ", () => {
+    const sql = stripComments(M097.raw)
+    expect(sql).toContain("payroll_unbilled_returns")
+    // SECURITY INVOKER (mặc định) để RLS vẫn áp dụng — hàm này đọc số liệu
+    // tài chính nên không được phép bỏ qua RLS.
+    const i = sql.indexOf("CREATE FUNCTION public.payroll_unbilled_returns")
+    expect(sql.slice(i, sql.indexOf("$$;", i))).not.toContain("SECURITY DEFINER")
+  })
+
+  it("báo cáo gom theo cùng một mốc với bảng lương", () => {
+    const src = readFileSync(resolve(__dirname, "../src/lib/analytics/sales.ts"), "utf-8")
+    expect(src).toContain('RETURN_PERIOD_COL = "credited_at"')
+    // Và phải có đường lùi nếu migration chưa chạy, nếu không trang báo cáo
+    // trắng màn hình trong khoảng giữa lúc deploy mã và lúc chạy SQL.
+    expect(src).toContain("isMissingColumn")
+    expect(src).toContain('load("created_at")')
   })
 })
 

@@ -40,7 +40,7 @@ Khoảng trống lớn nhất còn lại là **thiếu test cho tầng giao di�
 
 ---
 
-## 1b. VIỆC BẠN CẦN LÀM — 4 việc, khoảng 25 phút
+## 1b. VIỆC BẠN CẦN LÀM — 6 việc, khoảng 40 phút
 
 Đây là toàn bộ những gì tôi **không tự làm được** (cần quyền trên Supabase,
 hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
@@ -50,8 +50,8 @@ hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
 | 1 | Chạy `supabase/migrations/092_rls_hardening.sql` | Supabase SQL Editor | Vá 3 lỗ hổng RLS đã kiểm chứng. **Có 1 thay đổi hành vi thật với vai trò `sales`** — xem 5.2 |
 | 2 | Chạy `supabase/migrations/093_aggregate_functions.sql` | Supabase SQL Editor | **BẮT BUỘC.** Tạo 13 hàm cộng số. Chưa chạy thì trang Công nợ / Tổng quan / Báo cáo tài chính sẽ lỗi "function does not exist" — xem 5.1c |
 | 3 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
-| 4 | Chạy `094` → `095` → `096` **theo đúng thứ tự** | Supabase SQL Editor | Sửa 5 lỗi bảng lương + chuyển sang doanh số thuần. **ĐỔI SỐ TIỀN THẬT** — đọc mục 0.1 trước khi chạy |
-| 5 | Sau khi chạy 094–096: mở **Bảng lương → Tính lại** cho kỳ đang mở, xuất Excel, **so tay với bảng lương tháng trước** | Trên web | Ba migration này đổi công thức tính tiền. Phải nhìn số trước khi trả lương, không chạy xong là tin ngay |
+| 4 | Chạy `094` → `095` → `096` → `097` **theo đúng thứ tự** | Supabase SQL Editor | Sửa 5 lỗi bảng lương + chuyển sang doanh số thuần. **ĐỔI SỐ TIỀN THẬT** — đọc mục 0.1 trước khi chạy |
+| 5 | Sau khi chạy 094–097: mở **Bảng lương → Tính lại** cho kỳ đang mở, xuất Excel, **so tay với bảng lương tháng trước** | Trên web | Bốn migration này đổi công thức tính tiền. Phải nhìn số trước khi trả lương, không chạy xong là tin ngay |
 | 6 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
 
 **Việc 2 là gấp nhất** — deploy mới đã lên `main`, mã nguồn đang gọi các hàm
@@ -59,11 +59,11 @@ SQL đó. Chưa chạy migration 093 thì trang Công nợ, Tổng quan và Báo
 chính sẽ báo lỗi. Việc 6 không gấp — đường khai thác đã bị chặn trong mã
 nguồn rồi.
 
-### 0.1 Ba migration lương làm ĐỔI SỐ TIỀN — đọc trước khi chạy
+### 0.1 Bốn migration lương làm ĐỔI SỐ TIỀN — đọc trước khi chạy
 
-`094`, `095`, `096` không phải sửa lỗi hiển thị. Chúng đổi công thức trả
-lương. Bốn thay đổi dưới đây đều đã dựng lại trên Postgres thật, so số bản
-cũ với bản mới trên cùng một bộ dữ liệu:
+`094`, `095`, `096`, `097` không phải sửa lỗi hiển thị. Chúng đổi công thức
+trả lương. Mọi thay đổi dưới đây đều đã dựng lại trên Postgres thật, so số
+bản cũ với bản mới trên cùng một bộ dữ liệu:
 
 | Tình huống | Trước | Sau |
 |---|---|---|
@@ -92,6 +92,14 @@ sau; muốn trừ tiếp thì phải quyết chính sách rồi mới làm.
 
 **Phiếu lương in ra nay có dòng "bán X − hàng trả lại Y = Z"** để nhân viên
 tự đối chiếu được, không phải hỏi kế toán.
+
+**Phiếu trả lập cuối tháng, duyệt đầu tháng sau** trừ vào lương THÁNG SAU,
+không phải tháng lập. Trước `097` khoản đó rơi vào khoảng trống giữa hai kỳ
+và mất hẳn — đã dựng lại được: phiếu 25tr lập 28/09, duyệt 03/10, không trừ
+vào T9 (lúc chốt còn `pending`) cũng không vào T10 (gom theo ngày lập), và
+tính lại T9 thì báo `PAYROLL_RUN_LOCKED`. Nay gom theo ngày DUYỆT. Trước khi
+khoá một kỳ, gọi `payroll_unbilled_returns('YYYY-MM-01')` để xem có phiếu
+nào lập trong kỳ mà duyệt sau kỳ không.
 
 > `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
 > nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay đã xử lý — xem 5.1c.
@@ -130,7 +138,7 @@ src/app/api/             8 route cần service_role (server-only)
 src/components/          75 component; ui/ là shadcn, còn lại theo nghiệp vụ
 src/lib/                 48 file logic thuần — NƠI ĐÁNG TIN CẬY NHẤT để sửa
 src/hooks/               use-auth, use-order-sync, use-role-guard...
-supabase/migrations/     93 file, chạy TUẦN TỰ theo số
+supabase/migrations/     97 file, chạy TUẦN TỰ theo số
 supabase/diagnostics/    công cụ chẩn đoán sự cố (xem mục 8)
 tests/                   test đơn vị (vitest)
 ```
@@ -191,7 +199,7 @@ npm test                       # chỉ chạy test
 | `090_fix_role_permissions_module_check.sql` | Không lưu được phân quyền chi tiết |
 | `093_aggregate_functions.sql` | **Trang Công nợ / Tổng quan / Báo cáo tài chính báo lỗi "function does not exist"** |
 | `091_backfill_missing_objects.sql` | **Bù 3 mục schema đang thiếu trên production** — gồm cả cột của 089 (đơn ngoại tuyến không đồng bộ được) và của 025 (trang Sản phẩm) |
-| `094` → `095` → `096` (chạy đủ cả ba, đúng thứ tự) | **Bảng lương trả sai tiền.** Doanh số nhảy theo tiến độ kho; thưởng chu kỳ "Tuần" trả thừa ~4 lần; nút "Tính lại" xoá trắng số kế toán sửa tay; NV bán hàng gọi được RPC tính lương của cả công ty; doanh thu Tổng quan tính cả đơn đã huỷ. Chi tiết + bảng so số ở mục 0.1 |
+| `094` → `095` → `096` → `097` (chạy đủ cả bốn, đúng thứ tự) | **Bảng lương trả sai tiền.** Doanh số nhảy theo tiến độ kho; thưởng chu kỳ "Tuần" trả thừa ~4 lần; nút "Tính lại" xoá trắng số kế toán sửa tay; NV bán hàng gọi được RPC tính lương của cả công ty; doanh thu Tổng quan tính cả đơn đã huỷ. Chi tiết + bảng so số ở mục 0.1 |
 
 ---
 

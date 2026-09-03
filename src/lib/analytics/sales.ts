@@ -25,6 +25,31 @@ export function vnDayRange(range: DateRange): { fromIso: string; toIso: string }
   }
 }
 
+/**
+ * Cột dùng để xếp phiếu trả vào kỳ.
+ *
+ * `credited_at` (mig 097) là thời điểm phiếu được DUYỆT, khác `created_at`
+ * là thời điểm LẬP. Phiếu lập 28/09 duyệt 03/10 phải trừ vào kỳ tháng 10 —
+ * gom theo ngày lập thì nó rơi vào khoảng trống giữa hai kỳ và mất hẳn.
+ * Bảng lương đã gom theo mốc này, báo cáo phải theo cùng thì hai màn hình
+ * mới ra một số.
+ *
+ * Dữ liệu cũ đã được migration bù `credited_at = created_at` nên số của các
+ * kỳ đã chốt KHÔNG đổi.
+ */
+const RETURN_PERIOD_COL = "credited_at"
+
+/**
+ * Mã lỗi PostgREST khi câu truy vấn nhắc tới một cột không tồn tại.
+ * Xảy ra đúng một trường hợp: mã nguồn đã deploy nhưng migration 097 chưa
+ * chạy. Khi đó lùi về `created_at` để trang báo cáo vẫn xem được thay vì
+ * trắng màn hình — số chỉ lệch với đúng những phiếu duyệt khác tháng lập.
+ */
+function isMissingColumn(err: string | null | undefined): boolean {
+  if (!err) return false
+  return err.includes("42703") || err.includes(RETURN_PERIOD_COL)
+}
+
 export interface SalesAggregates {
   invoiceCount: number       // số hóa đơn (đơn đã giao)
   revenue: number            // doanh thu (subtotal-ish gross)
@@ -142,16 +167,19 @@ export async function fetchReturnsValue(
   range: DateRange
 ): Promise<number> {
   const { fromIso, toIso } = vnDayRange(range)
-  const dataRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("returns")
-      .select("id, status, created_at, credit_note_amount", { count: "exact" })
-      .eq("org_id", orgId)
-      .in("status", ["approved", "completed"])
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .range(from, to)
-  )
+  const load = (col: string) =>
+    fetchAllForAggregate((from, to) =>
+      supabase
+        .from("returns")
+        .select(`id, status, ${col}, credit_note_amount`, { count: "exact" })
+        .eq("org_id", orgId)
+        .in("status", ["approved", "completed"])
+        .gte(col, fromIso)
+        .lte(col, toIso)
+        .range(from, to)
+    )
+  let dataRes = await load(RETURN_PERIOD_COL)
+  if (isMissingColumn(dataRes.error)) dataRes = await load("created_at")
   if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
   const data = dataRes.rows
   let total = 0
@@ -175,24 +203,30 @@ export async function fetchReturnsRows(
   range: DateRange
 ): Promise<ReturnSummaryRow[]> {
   const { fromIso, toIso } = vnDayRange(range)
-  const dataRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("returns")
-      .select("id, status, customer_id, credit_note_amount, created_at", { count: "exact" })
-      .eq("org_id", orgId)
-      .in("status", ["approved", "completed"])
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .range(from, to)
-  )
+  const load = (col: string) =>
+    fetchAllForAggregate((from, to) =>
+      supabase
+        .from("returns")
+        .select(`id, status, customer_id, credit_note_amount, created_at, ${col}`, { count: "exact" })
+        .eq("org_id", orgId)
+        .in("status", ["approved", "completed"])
+        .gte(col, fromIso)
+        .lte(col, toIso)
+        .range(from, to)
+    )
+  let dataRes = await load(RETURN_PERIOD_COL)
+  if (isMissingColumn(dataRes.error)) dataRes = await load("created_at")
   if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
   const data = dataRes.rows
-  return ((data as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string }>) || []).map((r) => ({
+  return ((data as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string; credited_at?: string | null }>) || []).map((r) => ({
     id: r.id,
     status: r.status,
     customer_id: r.customer_id,
     credit_note_amount: Number(r.credit_note_amount || 0),
-    created_at: r.created_at,
+    // Ngày dùng để xếp vào cột thời gian trên báo cáo phải là ngày DUYỆT,
+    // khớp với cách bảng lương gom (mig 097). Chưa chạy 097 thì không có
+    // credited_at và lùi về created_at như cũ.
+    created_at: r.credited_at || r.created_at,
   }))
 }
 

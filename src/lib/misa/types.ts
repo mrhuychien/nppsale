@@ -162,8 +162,12 @@ export interface MisaTokenResponse {
 }
 
 export interface MisaPublishResponse {
+  /** TransactionID — mã tra cứu công khai, chỉ có sau khi ký bên MISA. */
   lookup_code?: string | null
+  /** InvNo — SỐ hoá đơn MISA cấp. Không bao giờ chứa GUID (xem mig 099). */
   inv_no?: string | null
+  /** RefID MISA echo lại. Nguồn sự thật vẫn là payload[0].RefID mình gửi. */
+  ref_id?: string | null
   raw: unknown
   ok: boolean
   error?: string

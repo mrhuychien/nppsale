@@ -304,6 +304,7 @@ function looksLikeAuthError(status: number, body: string): boolean {
 function extractPublishResult(data: unknown): {
   lookup: string | null
   invNo: string | null
+  refId: string | null
   innerSuccess: boolean | null
   innerError: string | null
 } {
@@ -361,7 +362,12 @@ function extractPublishResult(data: unknown): {
   }
   return {
     lookup: pick("TransactionID", "transactionID", "LookupCode", "lookupCode", "lookup_code"),
-    invNo: pick("InvNo", "invNo", "InvoiceNumber", "RefID", "refID"),
+    // KHÔNG lùi về RefID ở đây. Trước mig 099 danh sách này kết thúc bằng
+    // "RefID", "refID", nên khi MISA chưa cấp số thì `inv_no` nhận GUID và
+    // einvoice_logs.misa_inv_no lưu GUID thay vì số hoá đơn — cùng một kiểu
+    // lẫn khoá như trên bảng invoices, chỉ ở chỗ khác.
+    invNo: pick("InvNo", "invNo", "InvoiceNumber"),
+    refId: pick("RefID", "refID"),
     innerSuccess,
     innerError,
   }
@@ -441,7 +447,7 @@ export async function publishInvoice(
     }
   }
 
-  const { lookup, invNo, innerSuccess, innerError } = extractPublishResult(data)
+  const { lookup, invNo, refId, innerSuccess, innerError } = extractPublishResult(data)
 
   // Nested success/error từ trong data: refId → {Success, ErrorMessage}.
   if (innerSuccess === false) {
@@ -459,11 +465,15 @@ export async function publishInvoice(
   const dataField = obj["data"]
   const newdataField = obj["newdata"]
   const contentField = obj["content"]
+  // refId nằm trong phép kiểm này: MISA echo lại RefID vẫn LÀ dữ liệu hoá
+  // đơn. Trước mig 099 nó lọt vào qua biến invNo (invNo lùi về RefID), nay
+  // tách ra thì phải kể tên nó ở đây, không thì hoá đơn đẩy thành công mà
+  // chưa cấp số bị báo "MISA trả success nhưng không có dữ liệu".
   const isEmpty =
     (dataField === "" || dataField == null) &&
     (newdataField === "" || newdataField == null) &&
     (contentField == null) &&
-    !lookup && !invNo && innerSuccess !== true
+    !lookup && !invNo && !refId && innerSuccess !== true
   if (isEmpty) {
     return {
       ok: false,
@@ -476,5 +486,5 @@ export async function publishInvoice(
     }
   }
 
-  return { ok: true, raw: data, lookup_code: lookup, inv_no: invNo }
+  return { ok: true, raw: data, lookup_code: lookup, inv_no: invNo, ref_id: refId }
 }

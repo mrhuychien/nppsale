@@ -41,6 +41,9 @@ type InvoiceRow = Pick<
   | "issued_at"
   | "misa_status"
   | "misa_invoice_id"
+  | "misa_ref_id"
+  | "misa_inv_no"
+  | "misa_inv_series"
   | "misa_invoice_url"
   | "misa_lookup_code"
   | "misa_error"
@@ -139,7 +142,7 @@ export default function InvoicesPage() {
           // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
           // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
           // kế toán không biết phải xử lý gì (NPP-15).
-          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code, misa_error",
+          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_invoice_url, misa_lookup_code, misa_error",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -147,7 +150,7 @@ export default function InvoicesPage() {
       if (filterActive("search") && debouncedSearch) {
         const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
         q = q.or(
-          `invoice_number.ilike.${term},customer_name.ilike.${term},misa_invoice_id.ilike.${term}`
+          `invoice_number.ilike.${term},customer_name.ilike.${term},misa_inv_no.ilike.${term},misa_invoice_id.ilike.${term}`
         )
       }
       if (filterActive("status") && statusFilter !== "all") {
@@ -332,10 +335,10 @@ export default function InvoicesPage() {
                       )}
                       {show("lookup") && (
                         <TableCell>
-                          {(inv.misa_lookup_code || inv.misa_invoice_id) ? (
+                          {(inv.misa_ref_id || inv.misa_lookup_code) ? (
                             <div className="flex flex-col gap-0.5">
                               <a
-                                href={buildMisaInvoiceUrl(inv.misa_lookup_code || inv.misa_invoice_id, misaCompanyId) || MISA_LIST_URL}
+                                href={buildMisaInvoiceUrl(inv.misa_ref_id || inv.misa_lookup_code, misaCompanyId) || MISA_LIST_URL}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
@@ -399,10 +402,10 @@ export default function InvoicesPage() {
                       <span className="text-xs text-muted-foreground">Tổng tiền</span>
                       <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
                     </div>
-                    {(inv.misa_lookup_code || inv.misa_invoice_id) && (
+                    {(inv.misa_ref_id || inv.misa_lookup_code) && (
                       <div className="flex items-center gap-3 mt-2">
                         <a
-                          href={buildMisaInvoiceUrl(inv.misa_lookup_code || inv.misa_invoice_id, misaCompanyId) || MISA_LIST_URL}
+                          href={buildMisaInvoiceUrl(inv.misa_ref_id || inv.misa_lookup_code, misaCompanyId) || MISA_LIST_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}

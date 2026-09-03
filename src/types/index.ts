@@ -23,7 +23,35 @@ export type DeliveryStatus = "pending" | "in_transit" | "completed" | "cancelled
 export type DeliveryLineStatus = "pending" | "delivered" | "partial" | "failed"
 export type PromotionType = "trade_discount" | "buy_x_get_y" | "payment_discount" | "cumulative" | "display"
 export type InvoiceStatus = "draft" | "issued" | "cancelled"
-export type MisaStatus = "pending" | "sent" | "signed" | "error"
+/**
+ * Trục PHÁT HÀNH của hoá đơn MISA. Khớp CHECK ở mig 099 — sửa một bên thì
+ * phải sửa bên kia, DB sẽ từ chối giá trị lạ chứ không tự nới.
+ */
+export type MisaStatus =
+  | "pending"          // đang đẩy lên
+  | "sent"             // đã đẩy, MISA chưa cấp số
+  | "waiting_code"     // đã cấp số, chờ cơ quan thuế cấp mã
+  | "signed"           // đã phát hành
+  | "replaced"         // BỊ thay thế → hết hiệu lực
+  | "cancelled"        // bị huỷ trên MISA
+  | "amount_mismatch"  // số tiền / số hoá đơn MISA khác sổ
+  | "error"
+
+/**
+ * Trục QUAN HỆ, đọc từ EInvoiceStatus. Đây là trục KHÁC HẲN trục phát
+ * hành, nằm ở field khác — không phải hai cách đọc một field.
+ *
+ * 'adjusted' (BỊ điều chỉnh) VẪN CÒN hiệu lực: hoá đơn điều chỉnh chỉ cộng
+ * phần chênh, bản gốc vẫn phải kê khai. Gộp nó với 'replaced' là khai
+ * thiếu doanh thu bản gốc.
+ */
+export type MisaRelation =
+  | "new"          // 1
+  | "replacement"  // 3 — tờ này thay cho tờ khác
+  | "adjustment"   // 4 — tờ này điều chỉnh tờ khác
+  | "replaced"     // 7 — BỊ thay thế → hết hiệu lực
+  | "adjusted"     // 8 — BỊ điều chỉnh → vẫn còn hiệu lực
+  | "unknown"      // MISA trả giá trị lạ: không đoán
 export type ReturnReason = "damaged" | "wrong_item" | "near_expiry" | "expired" | "refused"
 export type ReturnStatus = "pending" | "approved" | "rejected" | "completed"
 export type CommissionType = "percentage" | "fixed" | "tiered"
@@ -483,7 +511,25 @@ export interface Invoice {
   issued_at: string | null
   created_at: string
   // MISA meInvoice integration
+  /** @deprecated mig 099 — từng kiêm cả RefID lẫn số HĐ. Dùng misa_ref_id / misa_inv_no. */
   misa_invoice_id: string | null
+  /** RefID (GUID) mình sinh lúc đẩy. BẤT BIẾN — chỉ publish ghi. */
+  misa_ref_id?: string | null
+  /** Số hoá đơn MISA cấp. Chỉ vòng refresh/sync ghi. */
+  misa_inv_no?: string | null
+  /** Ký hiệu hoá đơn (vd 1C25MHG) — số HĐ không định danh được nếu thiếu. */
+  misa_inv_series?: string | null
+  /** Ngày phát hành trên MISA (yyyy-MM-dd) — quyết định kỳ thuế. */
+  misa_inv_date?: string | null
+  /** Mã cơ quan thuế cấp; chỉ đơn vị dùng hoá đơn CÓ MÃ mới có. */
+  misa_invoice_code?: string | null
+  misa_relation?: MisaRelation | null
+  /** RefID hoá đơn GỐC khi tờ này là bản thay thế/điều chỉnh. */
+  misa_org_ref_id?: string | null
+  misa_last_checked_at?: string | null
+  misa_note?: string | null
+  /** true = số hoá đơn do người gán tay; vòng quét không được ghi đè. */
+  misa_no_locked?: boolean | null
   misa_invoice_url: string | null
   misa_status: MisaStatus | null
   misa_error: string | null

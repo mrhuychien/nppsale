@@ -73,7 +73,7 @@ export default function InvoiceDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data, error: dataErr } = await supabase.from("invoices").select("id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_invoice_url, misa_status, misa_error, misa_lookup_code, misa_published_at").eq("id", id).single()
+    const { data, error: dataErr } = await supabase.from("invoices").select("id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_inv_date, misa_invoice_code, misa_relation, misa_org_ref_id, misa_note, misa_no_locked, misa_last_checked_at, misa_invoice_url, misa_status, misa_error, misa_lookup_code, misa_published_at").eq("id", id).single()
     if (dataErr) console.error("[invoices/id] truy vấn lỗi:", dataErr.message)
     if (data) {
       const inv = data as Invoice
@@ -227,14 +227,14 @@ export default function InvoiceDetailPage() {
   const canEdit = user && hasPermission(user.role, "invoices", "update") && invoice.status === "draft"
   const canDelete = user && user.role === "owner" && invoice.status === "draft"
 
-  // misa_invoice_id chỉ "đã đẩy" khi là UUID hợp lệ (loại bỏ data cũ bị bug
-  // lưu "<Chưa cấp số>"). Bug cũ đã fix nhưng data lưu sẵn cần xử lý mềm.
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  const misaRefId = invoice.misa_invoice_id && uuidRe.test(invoice.misa_invoice_id)
-    ? invoice.misa_invoice_id
-    : null
+  // Trước mig 099 chỗ này phải `uuidRe.test(misa_invoice_id)` để đoán xem
+  // cột đó đang giữ RefID hay số hoá đơn. Nay mỗi khoá một cột.
+  const misaRefId = invoice.misa_ref_id || null
   const misaLookup = invoice.misa_lookup_code || null
-  const misaUrlId = misaLookup || misaRefId
+  // Deep-link nhận REF ID: tham số là `viewinvoice.id` và web-url.ts ghi rõ
+  // hợp đồng của nó là {refId}. Trước đây chỗ này truyền lookup_code
+  // (TransactionID) TRƯỚC — một mã khác hẳn, nên link thường trỏ sai.
+  const misaUrlId = misaRefId || misaLookup
   const misaDeepLink = buildMisaInvoiceUrl(misaUrlId, misaCompanyId) || MISA_LIST_URL
 
   return (
@@ -427,10 +427,16 @@ export default function InvoiceDetailPage() {
                   </Badge>
                 </div>
               )}
-              {invoice.misa_invoice_id && (
+              {invoice.misa_inv_no && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Số HĐ MISA</span>
-                  <span className="font-mono font-bold text-sm">{invoice.misa_invoice_id}</span>
+                  {/* Ký hiệu đi kèm số: số hoá đơn một mình KHÔNG định danh
+                      được, hai ký hiệu khác nhau dùng chung dải số là
+                      chuyện thường. */}
+                  <span className="font-mono font-bold text-sm">
+                    {invoice.misa_inv_series ? `${invoice.misa_inv_series} · ` : ""}
+                    {invoice.misa_inv_no}
+                  </span>
                 </div>
               )}
               {invoice.misa_lookup_code && (

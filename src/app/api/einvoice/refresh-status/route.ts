@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { decryptSecret } from "@/lib/crypto"
 import { getInvoiceByRefId } from "@/lib/misa/client"
+import { sameInvNo } from "@/lib/misa/normalize"
 import type { MisaConfig } from "@/lib/misa/types"
 
 export const runtime = "nodejs"
@@ -43,7 +44,7 @@ async function handle(req: Request) {
   const admin = createAdminClient()
   const { data: invoice, error: invoiceErr } = await admin
     .from("invoices")
-    .select("id, misa_lookup_code, misa_invoice_id, org_id")
+    .select("id, misa_lookup_code, misa_ref_id, misa_inv_no, misa_no_locked, org_id")
     .eq("id", body.invoiceId)
     .eq("org_id", profile.org_id)
     .maybeSingle()
@@ -53,11 +54,26 @@ async function handle(req: Request) {
   }
   if (!invoice) return NextResponse.json({ error: "Không tìm thấy HD" }, { status: 404 })
 
-  // MISA LAYTHONGTINHD lookup theo RefID (GUID hoá đơn) = misa_invoice_id.
-  // misa_lookup_code = TransactionID, chỉ có sau khi ký bên MISA — không dùng
-  // làm refID query.
-  const refId = invoice.misa_invoice_id || invoice.misa_lookup_code
+  // MISA LAYTHONGTINHD tra theo RefID (GUID hoá đơn) = misa_ref_id.
+  //
+  // KHÔNG lùi về misa_lookup_code: đó là TransactionID, một mã khác hẳn —
+  // hỏi MISA bằng nó là đoán, MISA trả rỗng, rồi người dùng nhận câu "MISA
+  // không trả về dữ liệu HD." và đi soi nhầm chỗ. Chú thích cũ ở đây đã
+  // viết đúng điều này trong khi dòng code ngay dưới làm ngược lại.
+  const refId = invoice.misa_ref_id
   if (!refId) {
+    // Hai ca khác hẳn nhau, cách xử lý khác nhau — không gộp làm một.
+    if (invoice.misa_inv_no) {
+      return NextResponse.json(
+        {
+          error:
+            "Hoá đơn này đã MẤT RefID (dữ liệu cũ trước bản vá tách khoá) nên không " +
+            "tra cứu lại được trên MISA. Cần gán tay RefID hoặc phát hành lại — xem " +
+            "supabase/diagnostics/einvoice_lost_refid.sql.",
+        },
+        { status: 409 }
+      )
+    }
     return NextResponse.json(
       { error: "HD chưa đẩy lên MISA — không có RefID để tra cứu." },
       { status: 400 }
@@ -106,10 +122,31 @@ async function handle(req: Request) {
     else nextStatus = "sent" // nháp đã đẩy lên, chưa ký
   }
 
+  // Chỉ đưa vào `updates` những khoá THẬT SỰ có giá trị. MISA có lúc trả
+  // thiếu TransactionID (hoá đơn đang chờ cấp mã); ghi `null` vào đó là xoá
+  // trắng mã tra cứu đang đúng ở lượt sau.
   const updates: Record<string, unknown> = {}
-  if (invNo && !invNo.startsWith("<")) updates.misa_invoice_id = invNo
+  // "<Chưa cấp số>" là chỗ MISA giữ chỗ, không phải số hoá đơn.
+  if (invNo && !invNo.startsWith("<")) {
+    // Số do người GÁN TAY thì không đè: misa_ref_id trên hoá đơn đó thường
+    // trỏ về tờ ĐÃ CHẾT, ghi tiếp là đè số chết lên số người vừa gán.
+    if (invoice.misa_no_locked) {
+      // So bằng bản CHUẨN HOÁ: '00012345' và '12345' là cùng một số. Báo
+      // lệch ở đó là cảnh báo giả, mà rổ cảnh báo đầy báo động giả thì
+      // không ai nhìn cả cảnh báo thật.
+      if (invoice.misa_inv_no && !sameInvNo(invoice.misa_inv_no, invNo)) {
+        // Không đè, nhưng cũng KHÔNG im lặng.
+        updates.misa_note =
+          `Sổ ghi số ${invoice.misa_inv_no}, MISA cấp số ${invNo} (khoá gán tay nên không ghi đè).`
+        updates.misa_status = "amount_mismatch"
+      }
+    } else {
+      updates.misa_inv_no = invNo
+    }
+  }
   if (txnId) updates.misa_lookup_code = txnId
-  if (nextStatus) updates.misa_status = nextStatus
+  if (nextStatus && !updates.misa_status) updates.misa_status = nextStatus
+  updates.misa_last_checked_at = new Date().toISOString()
   if (Object.keys(updates).length) {
     const { error: updErr } = await admin.from("invoices").update(updates).eq("id", body.invoiceId)
       if (updErr) console.error("[einvoice/refresh-status] cập nhật thất bại:", updErr.message)

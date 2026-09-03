@@ -10,8 +10,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { OfflineIndicator } from "@/components/offline/offline-indicator"
+import { MobileSearchOverlay } from "@/components/layout/mobile-search-overlay"
+import { usePageTitle } from "@/components/layout/page-title-context"
 import { ROLE_LABELS } from "@/lib/constants"
-import { LogOut, Menu, Search } from "lucide-react"
+import { ArrowLeft, LogOut, Menu, Search } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 
 interface HeaderProps {
@@ -66,7 +68,9 @@ export function Header({ onMenuClick }: HeaderProps) {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const { title: pushedTitle, backHref } = usePageTitle()
   const [quickSearch, setQuickSearch] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const handleSignOut = async () => {
     await signOut()
@@ -89,28 +93,63 @@ export function Header({ onMenuClick }: HeaderProps) {
     .slice(0, 2) || "?"
 
   // Find page title by matching the longest prefix
-  const pageTitle = Object.entries(PAGE_TITLES)
+  const fallbackTitle = Object.entries(PAGE_TITLES)
     .sort(([a], [b]) => b.length - a.length)
     .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "npp.sale"
 
+  /**
+   * Tiêu đề trang thắng tiêu đề nhóm: /receivables/by-rep hiện "Công nợ của
+   * tôi" chứ không phải "Quản lý công nợ". Bảng PAGE_TITLES vẫn cần cho các
+   * trang chưa dùng PageHeader và cho lần render đầu trước khi effect chạy.
+   */
+  const pageTitle = pushedTitle ?? fallbackTitle
+
+  // undefined = trang không khai báo nút back → chỗ đó là nút mở menu.
+  const showBack = backHref !== undefined
+
   return (
-    <header className="sticky top-0 z-40 w-full bg-surface/80 backdrop-blur-xl border-b border-outline-variant/60 px-4 lg:px-8 h-16 flex items-center justify-between">
-      <div className="flex items-center gap-4 min-w-0 flex-1">
+    <>
+    <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-xl border-b border-outline-variant/60 px-1 lg:px-8 h-[var(--app-bar-h)] flex items-center gap-1">
+      {/* Trái: nút back nếu trang khai báo, không thì nút mở menu. Hai nút
+          không bao giờ cùng xuất hiện — mobile chỉ đủ chỗ cho một. */}
+      {showBack ? (
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden h-9 w-9 shrink-0"
+          className="lg:hidden shrink-0"
+          onClick={() => (backHref ? router.push(backHref) : router.back())}
+          aria-label="Quay lại"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden shrink-0"
           onClick={onMenuClick}
+          aria-label="Mở menu"
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h2 className="text-base lg:text-headline-md font-semibold tracking-tight text-on-surface truncate">
-          {pageTitle}
-        </h2>
-      </div>
+      )}
+      <h1 className="flex-1 min-w-0 truncate px-1 text-[17px] font-bold tracking-tight text-on-surface lg:text-headline-md lg:font-semibold">
+        {pageTitle}
+      </h1>
 
-      <div className="flex items-center gap-2 lg:gap-3">
-        {/* Search - hidden on mobile */}
+      <div className="flex items-center gap-0.5 lg:gap-3">
+        {/* Tìm kiếm trên mobile: trước đây ô search là `hidden md:block` nên
+            NVBH không có cách nào tìm một mã đơn trên điện thoại. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden shrink-0"
+          onClick={() => setSearchOpen(true)}
+          aria-label="Tìm đơn hàng"
+        >
+          <Search className="h-5 w-5" />
+        </Button>
+
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant h-4 w-4" />
           <input
@@ -132,7 +171,10 @@ export function Header({ onMenuClick }: HeaderProps) {
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 hover:bg-surface-container-low rounded-lg pl-1 pr-3 py-1 transition-colors">
+            <button
+              aria-label="Tài khoản"
+              className="flex h-11 items-center gap-2 rounded-lg pl-1 pr-1.5 transition-colors hover:bg-surface-container-low lg:h-auto lg:pr-3 lg:py-1"
+            >
               <Avatar className="h-8 w-8 border border-outline-variant/60">
                 <AvatarFallback className="text-xs bg-primary text-on-primary font-semibold">
                   {initials}
@@ -162,5 +204,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         </DropdownMenu>
       </div>
     </header>
+    <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+    </>
   )
 }

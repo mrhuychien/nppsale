@@ -149,7 +149,9 @@ export function NotificationBell() {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
-          className="p-2 text-muted-foreground hover:bg-muted/50 rounded-lg transition-colors relative"
+          // 44px trên mobile (sàn WCAG 2.5.5); desktop giữ p-2 như cũ để
+          // không đẩy rộng cụm điều khiển bên phải app bar.
+          className="relative flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 lg:h-9 lg:w-9"
           aria-label={`Thông báo${unreadCount > 0 ? `, ${unreadCount} chưa đọc` : ""}`}
         >
           <Bell className="h-5 w-5" />

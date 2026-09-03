@@ -185,6 +185,87 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
     router.push("/login")
   }
 
+  /**
+   * Bản mobile: lưới 3 cột icon + nhãn, không phải danh sách dọc có accordion.
+   *
+   * Ngăn kéo giờ là bottom sheet cao tối đa 85vh (xem dashboard-shell). Một
+   * danh sách dọc 8 nhóm trong đó nghĩa là mỗi lần muốn tới một trang phải
+   * bung nhóm rồi cuộn — hai thao tác trước cả cú bấm thật. Lưới cho ngón cái
+   * với tới cả 3 cột và mắt quét theo hàng nhanh hơn theo cột dài.
+   *
+   * Không lặp lại nút "Tạo đơn mới" ở đây: ô giữa thanh nav đã là chính nút
+   * đó và luôn hiện, kể cả khi ngăn kéo đang đóng.
+   */
+  if (mobile) {
+    return (
+      <div className="flex w-full flex-col">
+        <div className="flex items-center justify-between px-4 pb-3">
+          <Link href="/home" onClick={onNavigate} className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-sm font-bold text-white shadow-brand">
+              N
+            </span>
+            <span className="text-sm font-bold text-on-surface">npp.sale</span>
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-on-surface-variant active:bg-error-container active:text-on-error-container"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            Đăng xuất
+          </button>
+        </div>
+
+        <div className="space-y-4 px-3 pb-2">
+          {visibleGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-on-surface-variant">
+                {group.label}
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {group.items.map((item) => {
+                  const isActive =
+                    pathname === item.href || pathname.startsWith(item.href + "/")
+                  return (
+                    <MenuTile
+                      key={item.href}
+                      href={item.href}
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={isActive}
+                      onNavigate={onNavigate}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          <div>
+            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-on-surface-variant">
+              Khác
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              <MenuTile
+                href="/home"
+                icon={Home}
+                label="Trang chủ"
+                isActive={pathname === "/home"}
+                onNavigate={onNavigate}
+              />
+              <MenuTile
+                href="/help"
+                icon={HelpCircle}
+                label="Hỗ trợ"
+                isActive={pathname === "/help"}
+                onNavigate={onNavigate}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <aside className={cn(
       "flex flex-col bg-surface-container-low h-screen",
@@ -316,6 +397,28 @@ interface SidebarLinkProps {
   label: string
   isActive: boolean
   onNavigate?: () => void
+}
+
+/** Ô trong lưới menu mobile — tối thiểu 64px mỗi chiều. */
+function MenuTile({ href, icon: IconComp, label, isActive, onNavigate }: SidebarLinkProps) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={isActive ? "page" : undefined}
+      className={cn(
+        "flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition-colors",
+        isActive
+          ? "bg-primary/[0.08] text-primary"
+          : "bg-surface-container-lowest text-on-surface-variant active:bg-surface-container"
+      )}
+    >
+      <IconComp className={cn("h-5 w-5 shrink-0", isActive && "stroke-[2.25px]")} />
+      {/* Nhãn dài ("Cấu hình HĐ điện tử") xuống 2 dòng rồi mới cắt — cắt ở
+          dòng đầu thì "Trả hàng NCC" và "Trả hàng" trông giống nhau. */}
+      <span className="line-clamp-2 text-[11px] font-medium leading-tight">{label}</span>
+    </Link>
+  )
 }
 
 /**

@@ -1,24 +1,26 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { canAccessModule, type Module } from "@/lib/permissions"
 import type { Role } from "@/types"
 import {
-  ShoppingCart, Users, Package, Boxes, BarChart3, Truck,
-  CreditCard, Home, Plus, Menu, UserCog,
+  ShoppingCart, Users, Boxes, BarChart3, Truck, CreditCard,
+  Home, Plus, Package, UserCog, PackagePlus, type LucideIcon,
 } from "lucide-react"
 
-interface MobileNavItem {
-  label: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-  module: Module
-}
+interface NavItem { label: string; href: string; icon: LucideIcon; module: Module }
+interface NavAction { label: string; href: string; icon: LucideIcon; module: Module }
 
-// Role-specific nav items - show what matters most for each role
-const ROLE_NAV: Record<Role, MobileNavItem[]> = {
+/**
+ * 4 mục điều hướng — 2 bên trái, 2 bên phải nút hành động ở giữa.
+ *
+ * KHÔNG còn mục "Menu": menu mở bằng nút hamburger trên app bar, còn /home
+ * vốn đã là lưới toàn bộ chức năng. Đổi lại có ô giữa cho nút "Tạo đơn" —
+ * vùng ngón cái với tới dễ nhất của cả tay trái và tay phải.
+ */
+const ROLE_NAV: Record<Role, NavItem[]> = {
   owner: [
     { label: "Tổng quan", href: "/dashboard", icon: BarChart3, module: "reports" },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
@@ -28,19 +30,19 @@ const ROLE_NAV: Record<Role, MobileNavItem[]> = {
   manager: [
     { label: "Tổng quan", href: "/dashboard", icon: BarChart3, module: "reports" },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "KH", href: "/customers", icon: Users, module: "customers" },
+    { label: "Khách", href: "/customers", icon: Users, module: "customers" },
     { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries" },
   ],
   accountant: [
     { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Hóa đơn", href: "/invoices", icon: Package, module: "invoices" },
+    { label: "Hoá đơn", href: "/invoices", icon: Package, module: "invoices" },
     { label: "Báo cáo", href: "/reports", icon: BarChart3, module: "reports" },
   ],
   sales: [
     { label: "Trang chủ", href: "/home", icon: Home, module: "orders" },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "KH", href: "/customers", icon: Users, module: "customers" },
+    { label: "Khách", href: "/customers", icon: Users, module: "customers" },
     { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
   ],
   warehouse: [
@@ -55,106 +57,113 @@ const ROLE_NAV: Record<Role, MobileNavItem[]> = {
   ],
 }
 
+/** Hành động chính của từng vai trò — nằm ở ô GIỮA thanh nav, không nổi. */
+const ROLE_ACTION: Partial<Record<Role, NavAction>> = {
+  sales: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
+  owner: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
+  manager: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
+  warehouse: { label: "Nhập kho", href: "/inventory/stock-in", icon: PackagePlus, module: "inventory" },
+}
+
 /**
  * Tầng hiển thị trên mobile — giữ cùng một chỗ để không lệch nhau:
- *   nav + FAB : z-40
+ *   nav : z-40
  *   lớp phủ + ngăn kéo menu (Sheet, xem components/ui/sheet.tsx) : z-50
- * Trước đây cả ba đều z-50 nên mở menu ra mà nav và nút "+" vẫn sáng rõ
- * và vẫn bấm được xuyên qua lớp phủ.
+ *   lớp phủ tìm kiếm : z-[60]
+ * Trước đây nav và nút "+" cũng z-50 nên mở menu ra mà nav vẫn sáng rõ và
+ * vẫn bấm được xuyên qua lớp phủ.
  */
-
-// Chiều cao nav / chỗ cho nút "+" giờ nằm ở --bottom-nav-h và --fab-extra-h
-// trong globals.css. Hai hằng số cũ (88 / 136) lệch với chiều cao thật 103px
-// nên đã xoá — đừng khai báo lại ở đây.
-
-// Role-specific quick action (FAB)
-const ROLE_FAB: Partial<Record<Role, { label: string; href: string }>> = {
-  sales: { label: "Tạo đơn", href: "/orders/new" },
-  owner: { label: "Tạo đơn", href: "/orders/new" },
-  manager: { label: "Tạo đơn", href: "/orders/new" },
-  warehouse: { label: "Nhập kho", href: "/inventory/stock-in" },
+function isActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(href + "/")
 }
 
-/**
- * Có hiện nút "+" trên route này không.
- *
- * Ẩn ở hai chỗ:
- *  • Chính trang đích của nút — bấm vào là đứng yên tại chỗ.
- *  • Các trang biểu mẫu (/new, /edit) — ở đó nút đè lên ô nhập và dòng
- *    cảnh báo tồn kho, tức là che cả thứ bấm được lẫn thứ cần đọc.
- *
- * dashboard-shell dùng chung hàm này để biết có phải chừa thêm đệm đáy
- * cho nút hay không.
- */
-export function hasMobileFab(role: Role, pathname: string): boolean {
-  const fab = ROLE_FAB[role]
-  if (!fab) return false
-  if (pathname === fab.href || pathname.startsWith(fab.href + "/")) return false
-  if (/\/(new|edit)(\/|$)/.test(pathname)) return false
-  return true
-}
-
-interface MobileNavProps {
-  role: Role
-  onMenuClick?: () => void
-}
-
-export function MobileNav({ role, onMenuClick }: MobileNavProps) {
+export function MobileNav({ role }: { role: Role }) {
   const pathname = usePathname()
-  const router = useRouter()
   const items = (ROLE_NAV[role] || ROLE_NAV.sales)
-    .filter((item) => canAccessModule(role, item.module))
+    .filter((i) => canAccessModule(role, i.module))
     .slice(0, 4)
-  const fab = hasMobileFab(role, pathname) ? ROLE_FAB[role] : null
+  const action = ROLE_ACTION[role]
+
+  // Cần ít nhất 2 mục mới chia được hai bên; vai trò `driver` có 2 mục và
+  // không có action nên rơi về grid 2 cột — vẫn đúng.
+  const showAction = !!action && canAccessModule(role, action.module) && items.length >= 2
+  const left = showAction ? items.slice(0, 2) : items
+  const right = showAction ? items.slice(2, 4) : []
+  const cols = left.length + (showAction ? 1 : 0) + right.length
 
   return (
-    <>
-      {/* FAB - floating action button above nav */}
-      {fab && (
-        <button
-          onClick={() => router.push(fab.href)}
-          className="fixed right-5 bottom-[88px] z-40 lg:hidden w-12 h-12 bg-primary text-on-primary rounded-xl shadow-card-hover flex items-center justify-center active:scale-95 transition-transform"
-          title={fab.label}
-        >
-          <Plus className="h-5 w-5" />
-        </button>
-      )}
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden pb-safe bg-surface-container-lowest/95 backdrop-blur-xl border-t border-outline-variant/60"
+      aria-label="Điều hướng chính"
+    >
+      <div
+        className="grid items-stretch h-[var(--bottom-nav-h)]"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}
+      >
+        {left.map((i) => (
+          <NavTab key={i.href} item={i} active={isActive(pathname, i.href)} />
+        ))}
 
-      {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-surface-container-lowest/95 backdrop-blur-xl border-t border-outline-variant/60 rounded-t-2xl safe-area-bottom">
-        <div className="flex items-center justify-around px-2 pt-2 pb-5">
-          {items.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex flex-col items-center justify-center rounded-lg px-3 py-1.5 transition-all min-w-[60px]",
-                  isActive
-                    ? "bg-primary/[0.08] text-primary"
-                    : "text-on-surface-variant active:scale-95"
-                )}
-              >
-                <item.icon className={cn("h-[18px] w-[18px]", isActive && "stroke-[2.5px]")} />
-                <span className={cn(
-                  "text-[10px] mt-0.5 font-medium",
-                  isActive && "font-bold"
-                )}>
-                  {item.label}
-                </span>
-              </Link>
-            )
-          })}
-          <button
-            onClick={onMenuClick}
-            className="flex flex-col items-center justify-center rounded-lg px-3 py-1.5 transition-all min-w-[60px] text-on-surface-variant active:scale-95"
+        {showAction && action && (
+          <Link
+            href={action.href}
+            aria-label={action.label}
+            aria-current={isActive(pathname, action.href) ? "page" : undefined}
+            className="relative flex flex-col items-center justify-end pb-1.5 -mt-2.5"
           >
-            <Menu className="h-[18px] w-[18px]" />
-            <span className="text-[10px] mt-0.5 font-medium">Menu</span>
-          </button>
-        </div>
-      </nav>
-    </>
+            <span
+              className={cn(
+                "flex h-[52px] w-[52px] items-center justify-center rounded-2xl",
+                "shadow-[0_6px_16px_-4px_hsl(222_83%_53%/0.45)] transition-transform active:scale-95",
+                isActive(pathname, action.href)
+                  ? "bg-primary-container text-on-primary ring-4 ring-primary/15"
+                  : "bg-primary text-on-primary"
+              )}
+            >
+              <action.icon className="h-6 w-6" strokeWidth={2.5} />
+            </span>
+            <span className="mt-0.5 text-[10px] font-bold leading-none text-primary">
+              {action.label}
+            </span>
+          </Link>
+        )}
+
+        {right.map((i) => (
+          <NavTab key={i.href} item={i} active={isActive(pathname, i.href)} />
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+function NavTab({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative flex flex-col items-center justify-center gap-0.5 px-1",
+        "transition-colors active:bg-surface-container-low",
+        active ? "text-primary" : "text-on-surface-variant"
+      )}
+    >
+      {/* Chỉ báo trang hiện tại — pill mỏng trên đỉnh ô. Chữ đậm một mình
+          không đủ để nhận ra ở cỡ 10px. */}
+      <span
+        className={cn(
+          "absolute top-0 h-[3px] w-8 rounded-b-full transition-opacity",
+          active ? "bg-primary opacity-100" : "opacity-0"
+        )}
+      />
+      <item.icon className={cn("h-[22px] w-[22px]", active && "stroke-[2.5px]")} />
+      <span
+        className={cn(
+          "max-w-full truncate text-[10px] leading-none",
+          active ? "font-bold" : "font-medium"
+        )}
+      >
+        {item.label}
+      </span>
+    </Link>
   )
 }

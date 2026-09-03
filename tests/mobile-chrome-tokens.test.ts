@@ -74,28 +74,50 @@ describe("M0.1 — viewport cho phép safe-area và cho phép người dùng zoo
 })
 
 describe("M0.2 — token chiều cao chrome là nguồn sự thật duy nhất", () => {
-  it("khai báo đủ 5 token chrome ở :root", () => {
-    for (const token of [
-      "--app-bar-h",
-      "--bottom-nav-h",
-      "--fab-extra-h",
-      "--action-bar-h",
-      "--safe-b",
-    ]) {
+  it("khai báo đủ token chrome ở :root", () => {
+    for (const token of ["--app-bar-h", "--bottom-nav-h", "--action-bar-h", "--safe-b"]) {
       expect(CSS, `thiếu token ${token}`).toContain(`${token}:`)
     }
   })
 
+  /** M1.2 xoá FAB nổi nên token dành riêng cho nó cũng phải đi theo. */
+  it("không còn token --fab-extra-h", () => {
+    expect(CSS).not.toContain("--fab-extra-h:")
+  })
+
   /**
-   * Token phải KHỚP GIAO DIỆN ĐANG CHẠY, không phải đích đến của M1.
-   * Nav hiện tại đo được 103px. Nếu đặt sẵn 64px (số M1.2 sẽ dùng) trong khi
-   * nav cũ còn render thì đệm THIẾU 27px và nav che mất nội dung — mà M0
-   * phải deploy riêng được.
+   * Token phải KHỚP GIAO DIỆN ĐANG CHẠY. Nav cũ đo được 103px và M0 đặt
+   * đúng 103; M1.2 dựng lại nav thành 5 ô cao 64px nên token đổi theo trong
+   * CÙNG pack. Lệch một pack là đệm sai và nav che mất nội dung.
+   *
+   * Con số này phải khớp `h-[var(--bottom-nav-h)]` trong mobile-nav.tsx —
+   * test dưới đây kiểm chính chỗ đó, nên hai bên không tự trôi khỏi nhau.
    */
-  it("--bottom-nav-h khớp chiều cao nav thật hiện tại (103px)", () => {
+  it("--bottom-nav-h khớp chiều cao nav mới (64px)", () => {
     const m = CSS.match(/--bottom-nav-h:\s*(\d+)px/)
     expect(m).not.toBeNull()
-    expect(Number(m![1])).toBe(103)
+    expect(Number(m![1])).toBe(64)
+  })
+
+  /** App bar mobile 52px — trước M1.1 là 64px và hiện tiêu đề trùng lặp. */
+  it("--app-bar-h mobile là 52px, desktop 64px", () => {
+    const m = CSS.match(/--app-bar-h:\s*(\d+)px/)
+    expect(Number(m![1])).toBe(52)
+    const lg = CSS.indexOf("min-width: 1024px")
+    expect(CSS.slice(lg, lg + 300)).toMatch(/--app-bar-h:\s*64px/)
+  })
+
+  /**
+   * Thanh nav phải LẤY chiều cao từ token, không tự đặt một con số khác —
+   * đó chính là cách ba con số cũ trôi khỏi nhau.
+   */
+  it("mobile-nav lấy chiều cao từ var(--bottom-nav-h)", () => {
+    expect(NAV).toContain("h-[var(--bottom-nav-h)]")
+  })
+
+  /** App bar cũng vậy. */
+  it("header lấy chiều cao từ var(--app-bar-h)", () => {
+    expect(read("src/components/layout/header.tsx")).toContain("h-[var(--app-bar-h)]")
   })
 
   /** --safe-b phải là env(), không phải một con số cứng. */
@@ -108,7 +130,7 @@ describe("M0.2 — token chiều cao chrome là nguồn sự thật duy nhất",
    * — cộng bằng biến là toàn bộ lý do pack này tồn tại.
    */
   it("các lớp .pb-nav* cộng --bottom-nav-h và --safe-b", () => {
-    for (const cls of [".pb-nav", ".pb-nav-action", ".pb-nav-fab"]) {
+    for (const cls of [".pb-nav", ".pb-nav-action"]) {
       const i = CSS.indexOf(`${cls} `)
       expect(i, `thiếu lớp ${cls}`).toBeGreaterThan(0)
       const decl = CSS.slice(i, CSS.indexOf("}", i))
@@ -175,16 +197,7 @@ describe("M0.4 — hằng số chiều cao chrome không còn nằm rải rác",
 
   it("dashboard-shell chọn lớp token thay vì chuỗi pb-calc", () => {
     expect(SHELL).not.toMatch(/pb-\[calc\(/)
-    expect(SHELL).toContain('"pb-nav-fab"')
-    expect(SHELL).toContain('"pb-nav"')
-  })
-
-  /**
-   * Trang nào còn FAB nổi phải chừa thêm chỗ cho nó; trang không có thì
-   * không. Nhánh này còn sống tới khi M1.2 xoá FAB.
-   */
-  it("dashboard-shell vẫn phân biệt trang có FAB", () => {
-    expect(SHELL).toMatch(/hasMobileFab\(role,\s*pathname\)\s*\?\s*"pb-nav-fab"\s*:\s*"pb-nav"/)
+    expect(SHELL).toMatch(/pb-nav\b/)
   })
 
   /**
@@ -215,15 +228,14 @@ describe("M0.4 — hằng số chiều cao chrome không còn nằm rải rác",
    * `88px` còn lại trong src/ là CHIỀU RỘNG cột (`min-w-[88px]`, `w-[88px]`)
    * — không liên quan chrome, không được sửa. Cái phải chặn là NEO DỌC theo
    * px: `bottom-[NNpx]` / `top-[NNpx]`, vì đó chính là cách thanh tổng tiền
-   * bị nav đè 15px. Ngoại lệ duy nhất còn sống là nút "+" trong mobile-nav,
-   * M1.2 xoá cả nút.
+   * bị nav đè 15px. Sau khi M1.2 xoá nút "+" nổi thì không còn ngoại lệ nào.
    */
-  it("không còn chỗ nào neo dọc bằng px, trừ nút + của mobile-nav", () => {
+  it("không còn chỗ nào neo dọc bằng px cứng", () => {
     const offenders = sourceFiles()
       .map((p) => ({ rel: p.replace(ROOT + "/", ""), src: code(readFileSync(p, "utf-8")) }))
       .filter(({ src }) => /className="[^"]*\b(?:bottom|top)-\[\d+px\]/.test(src))
       .map(({ rel }) => rel)
-    expect(offenders).toEqual(["src/components/layout/mobile-nav.tsx"])
+    expect(offenders).toEqual([])
   })
 })
 

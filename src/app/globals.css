@@ -58,14 +58,13 @@
        15px, đúng chỗ nút "Tạo đơn hàng". Ba con số ở ba file không bao giờ
        tự khớp lại được.
 
-       GIÁ TRỊ HIỆN TẠI = ĐO THẬT, không phải đích đến. Pack M1 viết lại
-       app bar (52px) và thanh nav (64px) thì đổi hai số dưới đây trong
-       CÙNG pack đó. Đặt sẵn số đích ở đây trong khi giao diện còn cũ sẽ
-       làm đệm THIẾU 27px và nav che mất nội dung — M0 phải deploy riêng
-       được nên token phải khớp thực tế đang chạy. */
-    --app-bar-h: 64px;      /* header hiện tại; M1.1 hạ xuống 52px */
-    --bottom-nav-h: 103px;  /* nav hiện tại (đo trên iPhone); M1.2 hạ xuống 64px */
-    --fab-extra-h: 48px;    /* chỗ cho FAB nổi; M1.2 xoá FAB thì xoá luôn */
+       GIÁ TRỊ PHẢI KHỚP GIAO DIỆN ĐANG CHẠY, không phải đích đến của pack
+       sau. M0 đặt 64px/103px vì đó là số đo thật của app bar và nav CŨ;
+       M1 viết lại cả hai (app bar 52px ở M1.1, nav 64px ở M1.2) nên đổi
+       hai số này trong CÙNG pack M1. Lệch một pack là đệm sai và nav che
+       mất nội dung. */
+    --app-bar-h: 52px;      /* header mobile mới (M1.1); desktop 64px bên dưới */
+    --bottom-nav-h: 64px;   /* thanh nav mới 5 ô (M1.2) */
     --action-bar-h: 64px;   /* thanh hành động dính đáy */
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
@@ -193,8 +192,6 @@
     .pb-nav        { padding-bottom: calc(var(--bottom-nav-h) + var(--safe-b) + var(--content-pad-b)); }
     /* Khi trang còn có thêm một thanh hành động dính đáy. */
     .pb-nav-action { padding-bottom: calc(var(--bottom-nav-h) + var(--action-bar-h) + var(--safe-b) + var(--content-pad-b)); }
-    /* Trang còn FAB nổi (sẽ xoá ở M1.2 cùng với --fab-extra-h). */
-    .pb-nav-fab    { padding-bottom: calc(var(--bottom-nav-h) + var(--fab-extra-h) + var(--safe-b) + var(--content-pad-b)); }
   }
 
   /* Neo cho thanh dính đáy: nằm NGAY TRÊN nav, không chồng lên. */

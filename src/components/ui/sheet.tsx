@@ -32,7 +32,12 @@ const sheetVariants = cva(
     variants: {
       side: {
         top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
-        bottom: "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+        // Bottom sheet là dạng ngăn kéo dùng trên mobile: bo góc trên, cao
+        // tối đa 85vh (chừa chỗ thấy được lớp phủ để biết bấm ra ngoài là
+        // đóng), cuộn được bên trong, và pb-safe cho thanh gạt iPhone.
+        bottom:
+          "inset-x-0 bottom-0 border-t rounded-t-3xl max-h-[85vh] overflow-y-auto pb-safe " +
+          "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
         right: "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
       },
@@ -54,11 +59,24 @@ const SheetContent = React.forwardRef<
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
+      {/* Thanh kéo: dấu hiệu quen thuộc cho "kéo xuống là đóng". Chỉ có ở
+          dạng bottom — ba dạng còn lại không kéo được. */}
+      {side === "bottom" && (
+        <div
+          aria-hidden
+          className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-outline-variant"
+        />
+      )}
       {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Dong</span>
-      </SheetPrimitive.Close>
+      {/* Nút ✕ nằm absolute nên với className `p-0` nó đè lên nội dung —
+          bottom sheet đã có thanh kéo + bấm ra ngoài để đóng, thêm ✕ chỉ
+          che mất ô đầu tiên của lưới menu. */}
+      {side !== "bottom" && (
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Đóng</span>
+        </SheetPrimitive.Close>
+      )}
     </SheetPrimitive.Content>
   </SheetPortal>
 ))

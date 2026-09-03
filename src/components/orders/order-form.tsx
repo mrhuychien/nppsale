@@ -1163,6 +1163,14 @@ export function OrderForm() {
                     const priceEntry = p.price_lists?.find(
                       (pl) => pl.unit_name === p.base_unit && (pl.group_id === groupId || !pl.group_id)
                     )
+                    // Dự phòng sell_price: sản phẩm định giá thẳng ở đó mà
+                    // chưa có bảng giá thì trước đây ô này hiện "—", nhân
+                    // viên phải thêm vào đơn rồi mới biết giá.
+                    const pickerPrice = priceEntry?.price ?? Number(p.sell_price ?? 0)
+                    // Tồn kho: trước đây dropdown không hiện gì, nhân viên
+                    // phải thêm vào đơn mới biết còn hàng hay không — với
+                    // 1.636 SKU thì đây là chỗ chậm nhất khi nhập đơn.
+                    const pickerStock = stockByProduct[p.id] ?? 0
                     return (
                       <button
                         key={p.id}
@@ -1170,13 +1178,26 @@ export function OrderForm() {
                         onClick={() => { addLine(p.id); setProductDropdownOpen(false) }}
                         className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
                       >
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-semibold text-sm">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">SKU: {p.sku} • {p.base_unit}</p>
+                          <p className="text-xs text-muted-foreground">
+                            SKU: {p.sku} • {p.base_unit} •{" "}
+                            <span
+                              className={
+                                pickerStock <= 0
+                                  ? "font-semibold text-destructive"
+                                  : "font-semibold text-foreground"
+                              }
+                            >
+                              {pickerStock <= 0
+                                ? "hết hàng"
+                                : `tồn ${pickerStock.toLocaleString("vi-VN")}`}
+                            </span>
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold text-primary text-sm">
-                            {priceEntry ? formatCurrency(priceEntry.price) : "—"}
+                            {pickerPrice > 0 ? formatCurrency(pickerPrice) : "chưa có giá"}
                           </p>
                           <Plus className="h-4 w-4 text-muted-foreground ml-auto" />
                         </div>

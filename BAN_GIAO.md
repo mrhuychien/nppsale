@@ -129,6 +129,56 @@ Chênh lệch giữa (1) và (2) là câu hỏi kế toán thật: ghi nhận do
 cũng hợp lý. Nên có thể đây KHÔNG phải lỗi — nhưng phải là lựa chọn có ý
 thức, vì hiện hai trang cùng ghi "doanh thu" mà ra hai số khác nhau.
 
+### 0.3 Đối chiếu sổ lỗi bàn giao (34 mục NPP) với mã hiện tại
+
+Đã rà tay từng mục trên mã HEAD. Cột "Trạng thái" là kết quả ĐỌC MÃ, không
+phải mở app kiểm — mấy mục cần chạy thật thì ghi rõ.
+
+**Đã sửa trong đợt này (12 mục)**
+
+| Mục | Sửa gì |
+|---|---|
+| NPP-02 | Doanh thu Tổng quan loại đơn nháp/đã huỷ (mig 094). Vẫn còn lệch với Lãi lỗ — xem 0.2(b) |
+| NPP-05 | Bỏ giới hạn 1.000 dòng: 13 hàm SQL cộng ở database (093) + phân trang phía app |
+| NPP-15 | Hoá đơn "Lỗi" nay hiện lý do (`misa_error` có sẵn trong DB mà chưa từng được truy vấn) |
+| NPP-16 | Cột "Số HĐ" không còn in khoá nội bộ MISA |
+| NPP-21 | Số lượt ghé khớp giữa /home và /customers (cùng đếm số cửa hàng theo `visit_logs`) |
+| NPP-23 | Gỡ "~28%" số cứng, thay bằng số đếm được thật |
+| NPP-24 | Gỡ dải `[SYS] … server: wms-edge-01 …` — tên máy chủ bịa, hard-code |
+| NPP-25 | Thẻ KPI đổi nhãn thành "Đơn cùng khách có thể gộp" |
+| NPP-27 | Thêm tiêu đề cho 8 nhóm route còn ghi "Dashboard" |
+| NPP-28 | Thêm trang 404 tiếng Việt kèm đường ra |
+| NPP-29 | Sửa các nguồn lệch hydration: `formatDate` ghim múi giờ VN + 5 chỗ lấy giờ hiện tại trong lúc render |
+| NPP-32 | Dropdown chọn sản phẩm nay hiện tồn kho và có dự phòng `sell_price` cho giá |
+| — | **Ngoài sổ lỗi**, tìm thấy khi đi tìm NPP-29: biểu đồ "Xu hướng tồn kho" ở /reports/inventory đang vẽ cột bằng `Math.random()` dưới tiêu đề "Tổng tồn kho theo 6 tháng gần nhất". Đã gỡ, thay bằng trạng thái rỗng nói thật |
+
+**Cần chủ NPP quyết, không tự sửa (2 mục)**
+
+| Mục | Vì sao chờ |
+|---|---|
+| NPP-07 | Doanh thu cộng cả VAT. `sales_orders` có đủ `subtotal`/`vat`/`total`, nhưng **mọi** chỗ đều cộng `total`: Lãi lỗ (093:357), Tổng quan (094:474) và **cả bảng lương** (096:207). Với báo cáo lãi lỗ thì gần như chắc chắn sai (VAT là tiền thu hộ nhà nước, không phải doanh thu). Với bảng lương thì là chính sách: đặt chỉ tiêu trên giá gồm VAT hay chưa VAT. Sửa là đổi TOÀN BỘ số doanh thu và số lương — phải bạn chốt |
+| NPP-06 | Giá vốn rỗng → biên lợi nhuận 100%. Nguyên nhân gốc là NPP-18 (phiếu nhập không có NCC và tổng tiền), tức thiếu dữ liệu đầu vào chứ không phải sai công thức |
+
+**Chưa xác minh được bằng cách đọc mã (5 mục)** — cần mở app với dữ liệu thật:
+NPP-01 (xuất kho không trừ tồn), NPP-03 (ba giá trị tồn), NPP-04 (tuổi nợ
+lệch ba trang), NPP-08 (công nợ theo NV thiếu 140.000đ), NPP-14 (cảnh báo
+tồn trên Tổng quan). Cả năm đều là "số A không khớp số B" — phải có dữ liệu
+mới đối chiếu được, đọc mã chỉ đoán ra giả thuyết.
+
+**Còn lại, chưa làm (15 mục)**
+NPP-09 (đơn NET30 mặc định thu đủ tiền mặt) · NPP-10 (công nợ âm vẫn nhãn
+"paid") · NPP-11 (ba con số "số đơn") · NPP-12 (chiết khấu 100% → đơn 0đ
+không cần duyệt) · NPP-13 (xuất kho không gán lô/hạn dùng) · NPP-17 (phiếu
+trả NCC không mã) · NPP-18 (phiếu nhập thiếu NCC + tổng tiền) · NPP-19
+(lịch sử trạng thái đơn trống) · NPP-20 (phiếu thu không ghi người lập) ·
+NPP-22 (thiếu bước phân công lái xe) · NPP-26 (enum tiếng Anh) · NPP-30
+(badge "Đã duyệt" trùng) · NPP-31 (ô số tiền thu nhận giá trị vô lý) ·
+NPP-33 (thẻ KH không hiện dư nợ) · NPP-34 (dữ liệu seed rác).
+
+Trong nhóm này **NPP-12 và NPP-13 đáng làm trước**: một cái cho phép cho
+không hàng mà quy tắc duyệt theo ngưỡng tiền không bắt được (đơn 0đ), một
+cái làm hàng FMCG không truy xuất được hạn dùng.
+
 > `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
 > nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay đã xử lý — xem 5.1c.
 

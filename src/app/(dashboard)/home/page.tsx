@@ -46,7 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, VN_TZ } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { getDailyQuote, QUOTE_CATEGORY_LABEL } from "@/lib/sales-quotes"
 
@@ -263,9 +263,29 @@ export default function HomeLauncherPage() {
     return parts.length ? parts[parts.length - 1] : "bạn"
   }, [user?.full_name])
 
-  const todayLabel = useMemo(() => {
-    const d = new Date()
-    return d.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" })
+  /**
+   * Nhãn ngày hôm nay — tính SAU KHI ĐÃ MOUNT, không tính trong lúc render.
+   *
+   * Trước đây đây là `useMemo(() => new Date().toLocaleDateString(...))`, tức
+   * chạy cả ở server. Server (Vercel) chạy UTC còn điện thoại ở UTC+7 nên
+   * trong khoảng 17:00–24:00 giờ Việt Nam, hai bên ra hai NGÀY khác nhau →
+   * HTML server và HTML client không khớp → React báo lỗi #418/#423 trên mọi
+   * lần mở trang. Đây là màn nhân viên mở đầu tiên nên lỗi lặp liên tục.
+   *
+   * Để rỗng ở lần render đầu (cùng chuỗi ở hai phía) rồi điền sau khi mount
+   * là cách duy nhất chắc chắn khớp — ghim múi giờ thôi vẫn không đủ, vì
+   * dữ liệu locale của Node và của trình duyệt có thể viết thứ khác nhau.
+   */
+  const [todayLabel, setTodayLabel] = useState("")
+  useEffect(() => {
+    setTodayLabel(
+      new Date().toLocaleDateString("vi-VN", {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        timeZone: VN_TZ,
+      })
+    )
   }, [])
 
   // Câu nói hôm nay — same quote cho mọi user trong cùng 1 ngày UTC.

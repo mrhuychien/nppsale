@@ -5,6 +5,7 @@ import { Printer, Download, SlidersHorizontal } from "lucide-react"
 import { DateRangePicker } from "./date-range-picker"
 import { cn } from "@/lib/utils"
 import { type DateRange, type PeriodPreset, formatRangeLabel } from "@/lib/analytics/period"
+import { useClientNow } from "@/hooks/use-client-now"
 
 interface ReportFrameProps {
   title: string
@@ -31,6 +32,7 @@ export function ReportFrame({
   branchName,
   filters,
 }: ReportFrameProps) {
+  const printedAt = useClientNow()
   const [filtersOpen, setFiltersOpen] = useState(false)
   return (
     <div className="space-y-4">
@@ -74,7 +76,7 @@ export function ReportFrame({
       {/* Print header */}
       <div className="hidden print:block">
         <p className="text-xs text-muted-foreground">
-          Ngày lập: {new Date().toLocaleString("vi-VN")}
+          Ngày lập: {printedAt}
         </p>
         <h1 className="mt-1 text-center text-xl font-bold uppercase">{title}</h1>
         {range ? (

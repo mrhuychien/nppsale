@@ -9,12 +9,48 @@ export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(amount)) + "đ"
 }
 
+/**
+ * Múi giờ dùng cho MỌI chỗ hiển thị ngày/giờ.
+ *
+ * VÌ SAO PHẢI GHIM CỨNG
+ * Không đặt `timeZone` thì `toLocaleDateString` lấy múi giờ của MÁY ĐANG
+ * CHẠY. Hai hậu quả:
+ *
+ *  1. SAI NGÀY. Vercel chạy UTC. Một mốc timestamptz lúc 20:00 giờ Việt Nam
+ *     ngày 20/04 là 13:00 UTC cùng ngày — chỗ này thì trùng. Nhưng 02:00
+ *     giờ Việt Nam ngày 21/04 là 19:00 UTC ngày 20/04, nên server in ra
+ *     20/04 còn điện thoại in 21/04. Đơn tạo lúc nửa đêm hiện sai ngày.
+ *
+ *  2. LỆCH HYDRATION. Next.js render trước ở server rồi khớp lại ở trình
+ *     duyệt. Hai bên ra hai chuỗi khác nhau thì React báo lỗi #418/#423 —
+ *     đúng nhóm lỗi console mà đợt kiểm thử trên điện thoại ghi lại.
+ *
+ * Tài liệu thiết kế của dự án (design-ux-ui/SKILL.md) vốn đã ghi
+ * "vi-VN, Asia/Ho_Chi_Minh"; mã nguồn chỉ đơn giản là chưa làm đúng.
+ */
+export const VN_TZ = "Asia/Ho_Chi_Minh"
+
 export function formatDate(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date
   return d.toLocaleDateString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: VN_TZ,
+  })
+}
+
+/** Ngày + giờ, cùng múi giờ với `formatDate`. */
+export function formatDateTime(date: string | Date): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return d.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: VN_TZ,
   })
 }
 

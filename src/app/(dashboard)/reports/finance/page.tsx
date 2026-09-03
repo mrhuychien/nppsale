@@ -21,6 +21,7 @@ import {
 } from "@/lib/analytics/sales"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { useClientNow } from "@/hooks/use-client-now"
 
 type Variant = "income_statement" | "balance" | "cash_flow"
 
@@ -47,6 +48,7 @@ const BUCKET_LABEL: Record<string, string> = {
 }
 
 export default function FinanceReportPage() {
+  const printedAt = useClientNow()
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
   const supabase = createClient()
@@ -276,7 +278,7 @@ export default function FinanceReportPage() {
       }
     >
       <div className="hidden print:block mb-3 text-center">
-        <p className="text-xs text-muted-foreground">Ngày lập: {new Date().toLocaleString("vi-VN")}</p>
+        <p className="text-xs text-muted-foreground">Ngày lập: {printedAt}</p>
         <h2 className="mt-1 text-lg font-bold uppercase">
           {variant === "income_statement"
             ? "Báo cáo kết quả hoạt động kinh doanh"

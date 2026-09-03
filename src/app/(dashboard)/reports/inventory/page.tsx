@@ -141,17 +141,25 @@ export default function InventoryReportPage() {
       .slice(0, 5)
   }, [batches])
 
-  const monthlyTrend = useMemo(() => {
-    const months: { label: string; value: number }[] = []
-    const now = new Date()
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const label = `Th${String(d.getMonth() + 1).padStart(2, "0")}`
-      const sample = stats.totalItems * (0.6 + Math.random() * 0.5)
-      months.push({ label, value: Math.round(sample) })
-    }
-    return months
-  }, [stats.totalItems])
+  /**
+   * ĐÃ GỠ — biểu đồ "Xu hướng tồn kho" từng vẽ bằng Math.random().
+   *
+   * Mã cũ:
+   *     const sample = stats.totalItems * (0.6 + Math.random() * 0.5)
+   *
+   * Nó nằm dưới tiêu đề "Tổng tồn kho theo 6 tháng gần nhất" kèm chú giải
+   * "Tổng đơn vị tồn", nên người xem hoàn toàn tin đó là số thật và có thể
+   * kết luận về xu hướng tồn kho từ số bịa. Cột còn đổi mỗi lần render.
+   * (Math.random() trong render cũng làm HTML server và client khác nhau →
+   * React báo lỗi #418/#423.)
+   *
+   * KHÔNG dựng lại bằng số thật ở đây vì chưa có dữ liệu để dựng: không có
+   * bảng nào lưu tồn kho theo thời điểm. Có thể suy ngược từ stock_entries
+   * nhưng phải giả định lịch sử xuất nhập đầy đủ — nếu tồn đầu kỳ từng được
+   * đặt thẳng vào batches thì con số suy ra sẽ sai. Thay số bịa bằng số có
+   * thể sai thì không hơn gì. Muốn có biểu đồ này thì cần chốt cách ghi
+   * nhận lịch sử tồn trước.
+   */
 
   const attentionRows = useMemo(() => {
     const nearExpiry = batches
@@ -202,7 +210,6 @@ export default function InventoryReportPage() {
 
   if (authLoading || loading) return <Skeleton className="h-[500px]" />
 
-  const maxBar = Math.max(...monthlyTrend.map((m) => m.value), 1)
   const donutColors = ["bg-primary", "bg-primary/60", "bg-primary/40", "bg-secondary", "bg-muted"]
 
   return (
@@ -371,7 +378,7 @@ export default function InventoryReportPage() {
               <div>
                 <h3 className="text-lg font-bold text-foreground">Xu hướng tồn kho</h3>
                 <p className="text-sm text-muted-foreground">
-                  Tổng tồn kho theo 6 tháng gần nhất
+                  Tổng đơn vị tồn hiện tại
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -379,31 +386,15 @@ export default function InventoryReportPage() {
                 <span className="text-xs font-semibold text-muted-foreground">Tổng đơn vị tồn</span>
               </div>
             </div>
-            <div className="relative h-56">
-              <div className="absolute inset-0 flex flex-col justify-between">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} className="border-t border-border/20" />
-                ))}
-              </div>
-              <div className="relative flex h-full items-end gap-3 px-2">
-                {monthlyTrend.map((m, i) => {
-                  const h = Math.max(4, Math.round((m.value / maxBar) * 100))
-                  return (
-                    <div key={i} className="group flex-1 flex flex-col items-center gap-2 h-full justify-end">
-                      <span className="text-[10px] font-bold text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                        {m.value.toLocaleString("vi-VN")}
-                      </span>
-                      <div
-                        className="w-full max-w-[48px] rounded-t-lg bg-gradient-to-t from-primary to-primary/60 shadow-sm transition-all group-hover:brightness-110"
-                        style={{ height: `${h}%` }}
-                      />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        {m.label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+            <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 text-center">
+              <p className="text-sm font-semibold text-muted-foreground">
+                Chưa theo dõi được xu hướng tồn kho
+              </p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Hệ thống chưa lưu tồn kho theo từng thời điểm nên không dựng
+                được biểu đồ 6 tháng. Số tồn hiện tại vẫn chính xác — xem các ô
+                thống kê phía trên.
+              </p>
             </div>
           </CardContent>
         </Card>

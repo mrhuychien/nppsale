@@ -10,6 +10,7 @@ import {
 } from "@/lib/analytics/period"
 import { cn } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
+import { useClientNow } from "@/hooks/use-client-now"
 
 export interface VariantOption<T extends string> {
   key: T
@@ -51,6 +52,7 @@ export function ReportShell<T extends string>({
   // On mobile the filter panel is collapsed by default so the report
   // data is visible immediately. Tapping "Bộ lọc" expands it.
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const printedAt = useClientNow()
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 print:hidden">
@@ -118,7 +120,7 @@ export function ReportShell<T extends string>({
         <div className="min-w-0 space-y-4">
           <div className="hidden print:block">
             <p className="text-xs text-muted-foreground">
-              Ngày lập: {new Date().toLocaleString("vi-VN")}
+              Ngày lập: {printedAt}
             </p>
             <h1 className="mt-1 text-center text-xl font-bold uppercase">{title}</h1>
             <p className="text-center text-sm">

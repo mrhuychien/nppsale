@@ -1,12 +1,13 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, QrCode, ShieldCheck, Truck, BarChart3, Boxes } from "lucide-react"
+import { VN_TZ } from "@/lib/utils"
 
 const QR_MESSAGES: Record<string, string> = {
   invalid: "Mã QR không hợp lệ hoặc đã bị thu hồi. Liên hệ quản lý để được cấp lại.",
@@ -15,6 +16,12 @@ const QR_MESSAGES: Record<string, string> = {
 }
 
 function LoginForm() {
+  // Năm ở chân trang: server chạy UTC, điện thoại ở UTC+7 nên trong 7 tiếng
+  // đầu ngày 1/1 hai bên ra hai năm khác nhau → lệch hydration mỗi đầu năm.
+  const [year, setYear] = useState("")
+  useEffect(() => {
+    setYear(new Date().toLocaleDateString("vi-VN", { year: "numeric", timeZone: VN_TZ }))
+  }, [])
   const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -101,7 +108,7 @@ function LoginForm() {
         </div>
 
         <p className="relative text-xs text-white/60">
-          © {new Date().getFullYear()} npp.sale — nppsale.vercel.app
+          © {year} npp.sale — nppsale.vercel.app
         </p>
       </aside>
 

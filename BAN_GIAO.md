@@ -93,6 +93,14 @@ sau; muốn trừ tiếp thì phải quyết chính sách rồi mới làm.
 **Phiếu lương in ra nay có dòng "bán X − hàng trả lại Y = Z"** để nhân viên
 tự đối chiếu được, không phải hỏi kế toán.
 
+**Phiếu trả lập cuối tháng, duyệt đầu tháng sau** trừ vào lương THÁNG SAU,
+không phải tháng lập. Trước `097` khoản đó rơi vào khoảng trống giữa hai kỳ
+và mất hẳn — đã dựng lại được: phiếu 25tr lập 28/09, duyệt 03/10, không trừ
+vào T9 (lúc chốt còn `pending`) cũng không vào T10 (gom theo ngày lập), và
+tính lại T9 thì báo `PAYROLL_RUN_LOCKED`. Nay gom theo ngày DUYỆT. Trước khi
+khoá một kỳ, gọi `payroll_unbilled_returns('YYYY-MM-01')` để xem có phiếu
+nào lập trong kỳ mà duyệt sau kỳ không.
+
 ### 0.2 Hai điều CHỦ NPP phải quyết — tôi cố ý không tự sửa
 
 Đợt rà soát tìm ra hai chỗ đúng về mã nguồn nhưng câu trả lời là **chính
@@ -120,14 +128,6 @@ Chênh lệch giữa (1) và (2) là câu hỏi kế toán thật: ghi nhận do
 (nhân viên bán xong là xong việc của họ); ghi sổ lãi lỗ theo lúc giao xong
 cũng hợp lý. Nên có thể đây KHÔNG phải lỗi — nhưng phải là lựa chọn có ý
 thức, vì hiện hai trang cùng ghi "doanh thu" mà ra hai số khác nhau.
-
-**Phiếu trả lập cuối tháng, duyệt đầu tháng sau** trừ vào lương THÁNG SAU,
-không phải tháng lập. Trước `097` khoản đó rơi vào khoảng trống giữa hai kỳ
-và mất hẳn — đã dựng lại được: phiếu 25tr lập 28/09, duyệt 03/10, không trừ
-vào T9 (lúc chốt còn `pending`) cũng không vào T10 (gom theo ngày lập), và
-tính lại T9 thì báo `PAYROLL_RUN_LOCKED`. Nay gom theo ngày DUYỆT. Trước khi
-khoá một kỳ, gọi `payroll_unbilled_returns('YYYY-MM-01')` để xem có phiếu
-nào lập trong kỳ mà duyệt sau kỳ không.
 
 > `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
 > nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay đã xử lý — xem 5.1c.

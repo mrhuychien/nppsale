@@ -1367,7 +1367,12 @@ export function OrderForm() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 -mr-1 -mt-1"
+                        // 44px, rộng hơn mức tối thiểu 36px của dự án. Cố ý:
+                        // đây là nút XOÁ dòng vừa nhập, nằm sát tên sản phẩm
+                        // trong thẻ hẹp trên điện thoại. Bấm nhầm là mất dòng
+                        // và không có hoàn tác. Icon giữ nguyên 16px nên trông
+                        // không to hơn, chỉ vùng chạm rộng ra.
+                        className="h-11 w-11 shrink-0 -mr-2 -mt-2"
                         onClick={() => removeLine(i)}
                         aria-label="Xoá sản phẩm khỏi đơn"
                       >
@@ -1613,14 +1618,17 @@ export function OrderForm() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-sm truncate">{line.product_name}</p>
-                            <p className="text-[10px] text-muted-foreground">SKU: {line.sku}</p>
+                            <p className="text-[11px] text-muted-foreground">SKU: {line.sku}</p>
                           </div>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 shrink-0"
+                            // Cùng lý do với nút xoá dòng bán ở trên — bản này
+                            // trước chỉ 28px, dưới cả mức tối thiểu 36px.
+                            className="h-11 w-11 shrink-0 -mr-2 -mt-2"
                             onClick={() => removeReturnLine(i)}
+                            aria-label="Xoá dòng hàng trả"
                           >
                             <X className="h-4 w-4 text-destructive" />
                           </Button>
@@ -1686,12 +1694,12 @@ export function OrderForm() {
                           </div>
                         </div>
                         {isSalesRole && def > 0 && (
-                          <p className="text-[10px] text-muted-foreground mt-1.5">
+                          <p className="text-[11px] text-muted-foreground mt-1.5">
                             Mặc định {formatCurrency(def)} {ceilingValue != null ? `• Tối đa ${formatCurrency(ceilingValue)}` : ""}
                           </p>
                         )}
                         {warning && (
-                          <p className="text-[10px] text-error font-semibold mt-1.5 flex items-center gap-1">
+                          <p className="text-[11px] text-error font-semibold mt-1.5 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" /> {warning}
                           </p>
                         )}
@@ -1720,7 +1728,7 @@ export function OrderForm() {
                           </div>
                         </label>
                         {line.is_exchange && returnLineOverstock(line, i) && (
-                          <p className="text-[10px] text-error font-semibold mt-1.5 flex items-center gap-1">
+                          <p className="text-[11px] text-error font-semibold mt-1.5 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" />
                             Không đủ tồn kho để đổi: cần {baseQtyReturn(line)}{" "}
                             {products.find((p) => p.id === line.product_id)?.base_unit || ""}, chỉ

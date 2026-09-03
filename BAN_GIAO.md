@@ -50,12 +50,48 @@ hoặc cần người thật mở trang kiểm chứng). Làm theo thứ tự.
 | 1 | Chạy `supabase/migrations/092_rls_hardening.sql` | Supabase SQL Editor | Vá 3 lỗ hổng RLS đã kiểm chứng. **Có 1 thay đổi hành vi thật với vai trò `sales`** — xem 5.2 |
 | 2 | Chạy `supabase/migrations/093_aggregate_functions.sql` | Supabase SQL Editor | **BẮT BUỘC.** Tạo 13 hàm cộng số. Chưa chạy thì trang Công nợ / Tổng quan / Báo cáo tài chính sẽ lỗi "function does not exist" — xem 5.1c |
 | 3 | Sau khi chạy 092: nhờ **mỗi vai trò mở thử 1 trang** — kho (Kho hàng + lịch sử xuất nhập), kế toán (Phiếu thu), bán hàng (Công nợ) | Trên web | View luôn trả `200 + []` khi bị RLS chặn, tức là **hỏng mà không có lỗi nào hiện ra**. Chỉ mở mắt nhìn mới biết |
-| 4 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
+| 4 | Chạy `094` → `095` → `096` **theo đúng thứ tự** | Supabase SQL Editor | Sửa 5 lỗi bảng lương + chuyển sang doanh số thuần. **ĐỔI SỐ TIỀN THẬT** — đọc mục 0.1 trước khi chạy |
+| 5 | Sau khi chạy 094–096: mở **Bảng lương → Tính lại** cho kỳ đang mở, xuất Excel, **so tay với bảng lương tháng trước** | Trên web | Ba migration này đổi công thức tính tiền. Phải nhìn số trước khi trả lương, không chạy xong là tin ngay |
+| 6 | Chạy `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` rồi `npm run verify` | Máy của bạn | Nâng `xlsx` lên bản đã vá. Tôi bị chặn ra CDN của SheetJS nên không chạy được. Chi tiết ở 5.1a |
 
 **Việc 2 là gấp nhất** — deploy mới đã lên `main`, mã nguồn đang gọi các hàm
 SQL đó. Chưa chạy migration 093 thì trang Công nợ, Tổng quan và Báo cáo tài
-chính sẽ báo lỗi. Việc 4 không gấp — đường khai thác đã bị chặn trong mã
+chính sẽ báo lỗi. Việc 6 không gấp — đường khai thác đã bị chặn trong mã
 nguồn rồi.
+
+### 0.1 Ba migration lương làm ĐỔI SỐ TIỀN — đọc trước khi chạy
+
+`094`, `095`, `096` không phải sửa lỗi hiển thị. Chúng đổi công thức trả
+lương. Bốn thay đổi dưới đây đều đã dựng lại trên Postgres thật, so số bản
+cũ với bản mới trên cùng một bộ dữ liệu:
+
+| Tình huống | Trước | Sau |
+|---|---|---|
+| NV có đơn đang xuất kho / đang giao lúc bấm "Tính lại" | 447.500 đ | 9.650.000 đ |
+| Cấu hình thưởng chọn chu kỳ **"Tuần"** | 1.200.000 đ | 0 đ |
+| Bấm "Tính lại" sau khi kế toán trừ tạm ứng 2,5tr | trả thừa 2,5tr | giữ đúng |
+| Doanh thu trang Tổng quan (có 1 đơn nháp + 1 đơn huỷ) | 318 triệu | 120 triệu |
+
+**Điều dễ gây tranh cãi nhất — ngưỡng 60% giờ dễ rơi hơn nhiều.** Lương nay
+tính trên doanh số **thuần** (đã trừ hàng trả lại). Chính sách "đạt dưới 60%
+mức A thì mất lương cứng và mất sạch phụ cấp" vốn đã có, nhưng trước đây tỉ
+lệ trả hàng không ảnh hưởng gì tới lương. Nay thì có:
+
+- bán 100tr, khách trả 25tr → thuần 75tr → 75% → lương **9.650.000 đ**
+- bán 100tr, khách trả 45tr → thuần 55tr → 55% → lương **492.250 đ**
+
+Cùng một người bán đúng 100tr, chênh **19 lần** tuỳ tỉ lệ trả hàng. Đây là
+hệ quả của hai chính sách nhân với nhau, không phải lỗi phần mềm — nhưng
+nếu chưa lường trước thì tháng đầu tiên sẽ có nhân viên thắc mắc. Muốn dịu
+đi thì chỉnh `under_60_percent` hoặc hạ ngưỡng 60% trong Cấu hình lương.
+
+Hàng trả nhiều hơn hàng bán thì doanh số thuần **kẹp về 0**, không âm — nếu
+không thì công thức cho ra lương âm (đã chạy thử: −358.000 đ). Phần trả vượt
+được ghi lại trong phiếu lương (`returns_excess`) chứ không tự trừ sang kỳ
+sau; muốn trừ tiếp thì phải quyết chính sách rồi mới làm.
+
+**Phiếu lương in ra nay có dòng "bán X − hàng trả lại Y = Z"** để nhân viên
+tự đối chiếu được, không phải hỏi kế toán.
 
 > `Max rows = 1000` trên Supabase: **giữ nguyên, không cần chỉnh.** Từng là
 > nguyên nhân làm các trang tổng hợp cộng thiếu tiền; nay đã xử lý — xem 5.1c.
@@ -155,6 +191,7 @@ npm test                       # chỉ chạy test
 | `090_fix_role_permissions_module_check.sql` | Không lưu được phân quyền chi tiết |
 | `093_aggregate_functions.sql` | **Trang Công nợ / Tổng quan / Báo cáo tài chính báo lỗi "function does not exist"** |
 | `091_backfill_missing_objects.sql` | **Bù 3 mục schema đang thiếu trên production** — gồm cả cột của 089 (đơn ngoại tuyến không đồng bộ được) và của 025 (trang Sản phẩm) |
+| `094` → `095` → `096` (chạy đủ cả ba, đúng thứ tự) | **Bảng lương trả sai tiền.** Doanh số nhảy theo tiến độ kho; thưởng chu kỳ "Tuần" trả thừa ~4 lần; nút "Tính lại" xoá trắng số kế toán sửa tay; NV bán hàng gọi được RPC tính lương của cả công ty; doanh thu Tổng quan tính cả đơn đã huỷ. Chi tiết + bảng so số ở mục 0.1 |
 
 ---
 
@@ -193,6 +230,9 @@ Test **mới được dựng trong đợt bàn giao này** — trước đó d�
 | `tests/import-product.test.ts` | Đọc file Excel sản phẩm: header KiotViet, tiền/VAT, gộp đơn vị quy đổi | 39 |
 | `tests/import-customer-supplier.test.ts` | Đọc file khách hàng / NCC: chống trùng, điều khoản thanh toán, kênh bán | 31 |
 | `tests/misa-mapper.test.ts` | Dựng hoá đơn thuế: thuế tính sau chiết khấu, nhiều mức VAT, quy đổi đơn vị không đổi tổng tiền | 33 |
+| `tests/search.test.ts` | Tìm kiếm bỏ dấu tiếng Việt, kể cả chữ đ/Đ mà `normalize("NFD")` không tách được | 27 |
+| `tests/payroll-sql.test.ts` | 5 bất biến bảng lương của migration 094: doanh số không bỏ sót đơn đang giao, thưởng theo tuần, "Tính lại" không xoá số sửa tay, chặn vai trò | 24 |
+| `tests/payroll-net-revenue.test.ts` | Doanh số thuần: trừ đúng khoản/đúng phiếu/đúng người/đúng kỳ (giờ VN), chặn số âm. **Tự tìm migration mới nhất định nghĩa hàm** thay vì bám số hiệu cố định | 28 |
 
 **Độ phủ đo bằng `npx vitest run --coverage`** (tính trên `src/lib`):
 

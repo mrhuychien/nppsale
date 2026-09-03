@@ -1007,10 +1007,10 @@ export function OrderForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      // Mobile: thanh tổng dính đáy nằm trên thanh nav (đáy 88px, cao ~68px)
-      // nên phần cuối form phải lùi xuống dưới cả hai. Desktop: thanh tổng
-      // cố định ở đáy màn hình, chừa pb-32.
-      className="flex flex-col gap-card-gap pb-[calc(11rem+env(safe-area-inset-bottom,0px))] lg:pb-32"
+      // Mobile: thanh tổng dính đáy nằm NGAY TRÊN thanh nav, nên phần cuối
+      // form phải lùi xuống dưới cả hai — .pb-nav-action cộng cả hai chiều
+      // cao từ globals.css. Desktop: thanh tổng cố định ở đáy, chừa pb-32.
+      className="flex flex-col gap-card-gap pb-nav-action lg:pb-32"
     >
       {/* Stitch single-column layout — sticky bottom summary bar below */}
       <div className="flex flex-col gap-card-gap max-w-5xl mx-auto w-full">
@@ -1372,7 +1372,7 @@ export function OrderForm() {
                                 value={line.unit_price}
                                 onChange={(v) => updateLine(i, "unit_price", v)}
                                 showSuffix={false}
-                                className={`h-8 w-28 ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
+                                inputClassName={`h-11 lg:h-8 w-28 ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
                               />
                               {isSalesRole && def > 0 && (() => {
                                 const ceiling = userSalesCeiling(def, userRules)
@@ -1547,7 +1547,7 @@ export function OrderForm() {
                             value={line.unit_price}
                             onChange={(v) => updateLine(i, "unit_price", v)}
                             showSuffix={false}
-                            className={`h-9 tabular-nums ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
+                            inputClassName={`h-11 lg:h-9 tabular-nums ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
                           />
                           {warning ? (
                             <p className="text-[10px] text-error font-semibold flex items-center gap-1">
@@ -1766,7 +1766,7 @@ export function OrderForm() {
                               value={line.unit_price}
                               onChange={(v) => updateReturnLine(i, "unit_price", v)}
                               showSuffix={false}
-                              className={`h-9 ${warning ? "border-error/40 focus-visible:ring-error-container0" : ""}`}
+                              inputClassName={`h-11 lg:h-9 ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
                             />
                           </div>
                           <div className="space-y-1">
@@ -1954,7 +1954,7 @@ export function OrderForm() {
           Trước đây tổng tiền chỉ nằm trong thẻ ở cuối form: với đơn 2 dòng,
           NVBH phải cuộn gần 2.000px mới biết đơn bao nhiêu tiền và mới bấm
           được nút tạo đơn — trong khi đang đứng trước mặt khách. */}
-      <div className="lg:hidden fixed left-0 right-0 bottom-[88px] z-30 border-t border-outline-variant bg-surface-container-lowest/95 backdrop-blur-xl px-4 py-3 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)]">
+      <div className="lg:hidden fixed left-0 right-0 bottom-above-nav z-30 border-t border-outline-variant bg-surface-container-lowest/95 backdrop-blur-xl px-4 py-3 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)]">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">

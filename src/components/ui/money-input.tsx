@@ -11,6 +11,19 @@ interface MoneyInputProps
   onChange: (value: number) => void
   /** Show "đ" suffix at the right side. Default true. */
   showSuffix?: boolean
+  /**
+   * Class cho chính `<input>`. `className` vẫn dành cho `<div>` bọc ngoài.
+   *
+   * VÌ SAO PHẢI CÓ PROP RIÊNG
+   * `className` bị destructure ra khỏi `props` rồi gán cho `<div>` bọc
+   * ngoài, còn `<input>` lại đọc `(props as {className?: string}).className`
+   * — luôn `undefined` vì `className` đã bị lấy đi. Nghĩa là MỌI class
+   * truyền vào `<MoneyInput>` trước đây không tác động gì tới ô nhập:
+   * order-form.tsx truyền `h-9 tabular-nums` và nó vô hiệu hoàn toàn.
+   * Không thể sửa bằng cách gán `className` cho cả hai — cỡ chữ/chiều cao
+   * phải vào `<input>` còn định vị phải ở `<div>`, hai việc khác nhau.
+   */
+  inputClassName?: string
 }
 
 /**
@@ -25,7 +38,7 @@ interface MoneyInputProps
  */
 export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
   function MoneyInput(
-    { value, onChange, showSuffix = true, className, ...props },
+    { value, onChange, showSuffix = true, className, inputClassName, ...props },
     forwardedRef
   ) {
     const innerRef = React.useRef<HTMLInputElement | null>(null)
@@ -79,14 +92,15 @@ export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
           ref={setRef}
           type="text"
           inputMode="numeric"
+          enterKeyHint="done"
           autoComplete="off"
           {...props}
           value={display}
           onChange={handleChange}
           className={cn(
-            "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-11 lg:h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
             showSuffix ? "pr-7 text-right" : "",
-            (props as { className?: string }).className
+            inputClassName
           )}
         />
         {showSuffix ? (

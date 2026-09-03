@@ -293,7 +293,7 @@ export default function HomeLauncherPage() {
 
   return (
     // Đệm đáy khớp với dashboard-shell — trang này nay cũng có thanh nav dưới.
-    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
+    <div className="min-h-screen bg-background pb-nav lg:pb-0">
       {/* Top bar */}
       <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
         <Link

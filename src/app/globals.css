@@ -46,6 +46,38 @@
     --warning-light: 38 95% 95%;
     --info: 217 100% 40%;              /* #0052cc primary-container */
     --info-light: 218 100% 88%;        /* #c4d2ff on-primary-container */
+
+    /* === CHIỀU CAO CHROME MOBILE — NGUỒN SỰ THẬT DUY NHẤT ===
+       Mọi padding/offset của app bar, thanh nav dưới và thanh hành động
+       dính đáy phải tính từ đây.
+
+       VÌ SAO CẦN: trước đây 88px nằm rải rác ở ba file — một hằng số trong
+       mobile-nav.tsx, hai chuỗi class 7rem/10rem trong dashboard-shell.tsx
+       và bottom-88px + pb-11rem trong order-form.tsx — trong khi nav THẬT
+       cao 103px. Kết quả: thanh tổng tiền của form tạo đơn bị nav đè mất
+       15px, đúng chỗ nút "Tạo đơn hàng". Ba con số ở ba file không bao giờ
+       tự khớp lại được.
+
+       GIÁ TRỊ HIỆN TẠI = ĐO THẬT, không phải đích đến. Pack M1 viết lại
+       app bar (52px) và thanh nav (64px) thì đổi hai số dưới đây trong
+       CÙNG pack đó. Đặt sẵn số đích ở đây trong khi giao diện còn cũ sẽ
+       làm đệm THIẾU 27px và nav che mất nội dung — M0 phải deploy riêng
+       được nên token phải khớp thực tế đang chạy. */
+    --app-bar-h: 64px;      /* header hiện tại; M1.1 hạ xuống 52px */
+    --bottom-nav-h: 103px;  /* nav hiện tại (đo trên iPhone); M1.2 hạ xuống 64px */
+    --fab-extra-h: 48px;    /* chỗ cho FAB nổi; M1.2 xoá FAB thì xoá luôn */
+    --action-bar-h: 64px;   /* thanh hành động dính đáy */
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+    /* Khoảng thở dưới cùng nội dung, CỘNG THÊM vào chiều cao chrome. */
+    --content-pad-b: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-bar-h: 64px;
+    --bottom-nav-h: 0px;
   }
 }
 
@@ -149,6 +181,47 @@
 }
 
 @layer utilities {
+  /* === Chrome mobile — dùng thay cho mọi hằng số chiều cao hardcode ===
+     Xem khối --app-bar-h ở :root để biết vì sao. */
+
+  /* Đệm đáy cho vùng nội dung cuộn (thay hai chuỗi pb-calc cũ).
+     CHỈ áp dụng dưới lg: các lớp này được sinh SAU utilities của Tailwind
+     nên nếu không giới hạn media query, chúng ghi đè cả `lg:pb-32` /
+     `lg:pb-container-padding` ở nơi gọi và làm desktop tụt đệm. Trên
+     desktop không có nav dưới, mỗi nơi gọi tự giữ lớp `lg:pb-*` của nó. */
+  @media (max-width: 1023px) {
+    .pb-nav        { padding-bottom: calc(var(--bottom-nav-h) + var(--safe-b) + var(--content-pad-b)); }
+    /* Khi trang còn có thêm một thanh hành động dính đáy. */
+    .pb-nav-action { padding-bottom: calc(var(--bottom-nav-h) + var(--action-bar-h) + var(--safe-b) + var(--content-pad-b)); }
+    /* Trang còn FAB nổi (sẽ xoá ở M1.2 cùng với --fab-extra-h). */
+    .pb-nav-fab    { padding-bottom: calc(var(--bottom-nav-h) + var(--fab-extra-h) + var(--safe-b) + var(--content-pad-b)); }
+  }
+
+  /* Neo cho thanh dính đáy: nằm NGAY TRÊN nav, không chồng lên. */
+  .bottom-above-nav { bottom: calc(var(--bottom-nav-h) + var(--safe-b)); }
+  /* Neo cho thanh dính đỉnh: nằm NGAY DƯỚI app bar. */
+  .top-below-appbar { top: var(--app-bar-h); }
+
+  /* Đệm an toàn cho chính thanh nav / bottom sheet. */
+  .pb-safe { padding-bottom: var(--safe-b); }
+  .pt-safe { padding-top: var(--safe-t); }
+
+  /* Vùng chạm tối thiểu — dùng cho MỌI phần tử bấm được trên mobile.
+     44px là sàn của WCAG 2.5.5, không phải mục tiêu. */
+  .tap { min-height: 44px; min-width: 44px; }
+
+  /* Hàng chip cuộn ngang, có snap, ẩn thanh cuộn. */
+  .row-scroll {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .row-scroll::-webkit-scrollbar { display: none; }
+  .row-scroll > * { scroll-snap-align: start; flex: 0 0 auto; }
+
   /* Glassmorphism */
   .glass-panel {
     background: rgba(255, 255, 255, 0.85);

@@ -63,10 +63,9 @@ const ROLE_NAV: Record<Role, MobileNavItem[]> = {
  * và vẫn bấm được xuyên qua lớp phủ.
  */
 
-/** Chiều cao thực tế của thanh nav (px) — dashboard-shell dùng để chừa đệm. */
-export const MOBILE_NAV_HEIGHT = 88
-/** Đỉnh của nút "+" tính từ đáy màn hình (px) = bottom 88 + cao 48. */
-export const MOBILE_FAB_TOP = 136
+// Chiều cao nav / chỗ cho nút "+" giờ nằm ở --bottom-nav-h và --fab-extra-h
+// trong globals.css. Hai hằng số cũ (88 / 136) lệch với chiều cao thật 103px
+// nên đã xoá — đừng khai báo lại ở đây.
 
 // Role-specific quick action (FAB)
 const ROLE_FAB: Partial<Record<Role, { label: string; href: string }>> = {

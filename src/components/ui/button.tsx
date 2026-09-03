@@ -15,11 +15,16 @@ const buttonVariants = cva(
         ghost: "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      /* Sàn vùng chạm trên MOBILE là 44px (WCAG 2.5.5), desktop giữ nguyên
+         cỡ cũ để không phá layout bảng. Trước đây `default` là h-10 cứng và
+         `sm` là h-8 (32px) — mà `sm` đang được dùng cho nút hành động chính
+         trên thẻ mobile (vd "Xuất hoá đơn" ở /orders), tức chỗ cần to nhất
+         lại nhỏ nhất. */
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
+        default: "h-11 px-4 py-2 lg:h-10",
+        sm: "h-10 rounded-md px-3 text-xs lg:h-8",
         lg: "h-12 px-6 text-[15px]",
-        icon: "h-9 w-9 rounded-md",
+        icon: "h-11 w-11 rounded-lg lg:h-9 lg:w-9",
       },
     },
     defaultVariants: {

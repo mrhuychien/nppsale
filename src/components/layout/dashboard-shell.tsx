@@ -20,22 +20,19 @@ interface DashboardShellProps {
 /**
  * Vùng đệm đáy cho nội dung trên mobile.
  *
- * Thanh nav cố định cao 88px và nút "+" nhô lên tới 136px tính từ đáy.
- * Không chừa đủ đệm thì phần cuối danh sách nằm khuất bên dưới — cuộn hết
- * cỡ vẫn không đọc được, cũng không bấm được.
+ * Chiều cao thanh nav và chỗ cho nút "+" nằm trong globals.css
+ * (--bottom-nav-h, --fab-extra-h); ở đây chỉ chọn lớp .pb-nav hoặc
+ * .pb-nav-fab. Không chừa đủ đệm thì phần cuối danh sách nằm khuất dưới
+ * nav — cuộn hết cỡ vẫn không đọc được, cũng không bấm được.
  *
- * Con số khớp với MOBILE_NAV_HEIGHT / MOBILE_FAB_TOP trong mobile-nav.tsx
- * (Tailwind cần chuỗi class tĩnh nên không nội suy biến vào đây được).
- * `env(safe-area-inset-bottom)` lo phần thanh gạt của iPhone.
+ * Trước đây ba file tự giữ ba con số riêng (7rem / 10rem / 88px) trong khi
+ * nav thật cao 103px, nên không bao giờ khớp nhau.
  */
-const PAD_NAV = "pb-[calc(7rem+env(safe-area-inset-bottom,0px))]"
-const PAD_NAV_FAB = "pb-[calc(10rem+env(safe-area-inset-bottom,0px))]"
-
 export function DashboardShell({ role, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const isLauncher = pathname === "/home"
-  const bottomPad = hasMobileFab(role, pathname) ? PAD_NAV_FAB : PAD_NAV
+  const bottomPad = hasMobileFab(role, pathname) ? "pb-nav-fab" : "pb-nav"
 
   // Ngăn kéo menu — dùng chung cho cả trang chủ lẫn các trang còn lại.
   const menuSheet = (

@@ -93,6 +93,34 @@ sau; muốn trừ tiếp thì phải quyết chính sách rồi mới làm.
 **Phiếu lương in ra nay có dòng "bán X − hàng trả lại Y = Z"** để nhân viên
 tự đối chiếu được, không phải hỏi kế toán.
 
+### 0.2 Hai điều CHỦ NPP phải quyết — tôi cố ý không tự sửa
+
+Đợt rà soát tìm ra hai chỗ đúng về mã nguồn nhưng câu trả lời là **chính
+sách**, không phải kỹ thuật. Tôi để nguyên và nêu ra đây.
+
+**a) Một bậc KPI riêng có ngưỡng 0 sẽ vô hiệu hoá toàn bộ mức chung A.**
+Hàm lương xét bậc riêng của nhân viên TRƯỚC; tìm thấy thì bỏ qua cả mức
+chung A lẫn hình phạt dưới 60% / dưới 70%. Đó là ý đồ của chữ "riêng" —
+nhưng màn thêm bậc mặc định điền `min_revenue = 0`
+(`settings/users/[id]/salary/page.tsx:108`), mà ngưỡng 0 thì luôn khớp.
+Nghĩa là chỉ cần thêm một bậc thử rồi quên xoá, nhân viên đó vĩnh viễn
+thoát hình phạt dưới 60% mà không có dấu hiệu nào.
+Tôi đã cho **phiếu lương nói rõ** "áp dụng bậc riêng — KHÔNG áp dụng mức
+chung A và luật dưới 60%/70%" để cấu hình nhầm hiện ra. Còn có nên chặn
+`min_revenue = 0` ở giao diện, hay bậc riêng vẫn phải chịu hình phạt, thì
+là quyết định của bạn.
+
+**b) Ba định nghĩa doanh thu vẫn chưa về một mối.**
+- Bảng lương + Tổng quan: đơn **đã chốt và chưa huỷ** (gồm đang giao)
+- Báo cáo lãi lỗ (`093:360` `finance_pnl`): chỉ đơn **đã giao xong**
+- Báo cáo nhân viên: đơn đã giao, trừ hàng trả
+
+Chênh lệch giữa (1) và (2) là câu hỏi kế toán thật: ghi nhận doanh thu lúc
+**chốt đơn** hay lúc **giao xong**. Trả lương theo lúc chốt đơn là hợp lý
+(nhân viên bán xong là xong việc của họ); ghi sổ lãi lỗ theo lúc giao xong
+cũng hợp lý. Nên có thể đây KHÔNG phải lỗi — nhưng phải là lựa chọn có ý
+thức, vì hiện hai trang cùng ghi "doanh thu" mà ra hai số khác nhau.
+
 **Phiếu trả lập cuối tháng, duyệt đầu tháng sau** trừ vào lương THÁNG SAU,
 không phải tháng lập. Trước `097` khoản đó rơi vào khoảng trống giữa hai kỳ
 và mất hẳn — đã dựng lại được: phiếu 25tr lập 28/09, duyệt 03/10, không trừ

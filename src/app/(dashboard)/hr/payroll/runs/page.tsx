@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/dialog"
 import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer, FileText } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { NON_REVENUE_ORDER_STATUSES } from "@/lib/constants"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { Payslip, type PayslipKpiTier } from "@/components/printing/payslip"
 import {
@@ -159,16 +161,22 @@ export default function PayrollRunsPage() {
         const ps = (bd.period_start as string) || ""
         const pe = (bd.period_end as string) || ""
         if (ps && pe) {
-          const { data, error: dataErr } = await supabase
-            .from("sales_orders")
-            .select("id, order_code, order_date, total, status")
-            .eq("sales_user_id", item.user_id)
-            .in("status", ["delivered", "confirmed"])
-            .gte("order_date", ps)
-            .lte("order_date", pe)
-            .order("order_date", { ascending: false })
-          if (dataErr) console.error("[payroll/runs] truy vấn lỗi:", dataErr.message)
-          setDetailOrders((data as PayslipOrder[]) || [])
+          // Cùng bộ lọc với hàm SQL tính lương (is_revenue_status), và lấy
+          // đủ dòng thay vì để server cắt ở 1.000 — bảng này được cộng lại
+          // thành "Tổng doanh số" nên thiếu dòng là sai tiền hiển thị.
+          const res = await fetchAllForAggregate<PayslipOrder>((from, to) =>
+            supabase
+              .from("sales_orders")
+              .select("id, order_code, order_date, total, status", { count: "exact" })
+              .eq("sales_user_id", item.user_id)
+              .not("status", "in", `(${NON_REVENUE_ORDER_STATUSES.join(",")})`)
+              .gte("order_date", ps)
+              .lte("order_date", pe)
+              .order("order_date", { ascending: false })
+              .range(from, to)
+          )
+          if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)
+          setDetailOrders(res.rows)
         }
       } finally {
         setDetailLoading(false)
@@ -315,16 +323,19 @@ export default function PayrollRunsPage() {
       const ps = (bd.period_start as string) || ""
       const pe = (bd.period_end as string) || ""
       if (ps && pe) {
-        const { data, error: dataErr } = await supabase
-          .from("sales_orders")
-          .select("id, order_code, order_date, total, status")
-          .eq("sales_user_id", item.user_id)
-          .in("status", ["delivered", "confirmed"])
-          .gte("order_date", ps)
-          .lte("order_date", pe)
-          .order("order_date", { ascending: false })
-        if (dataErr) console.error("[payroll/runs] truy vấn lỗi:", dataErr.message)
-        ords = (data as PayslipOrder[]) || []
+        const res = await fetchAllForAggregate<PayslipOrder>((from, to) =>
+          supabase
+            .from("sales_orders")
+            .select("id, order_code, order_date, total, status", { count: "exact" })
+            .eq("sales_user_id", item.user_id)
+            .not("status", "in", `(${NON_REVENUE_ORDER_STATUSES.join(",")})`)
+            .gte("order_date", ps)
+            .lte("order_date", pe)
+            .order("order_date", { ascending: false })
+            .range(from, to)
+        )
+        if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)
+        ords = res.rows
       }
     } catch {
       ords = []
@@ -879,7 +890,7 @@ export default function PayrollRunsPage() {
                     {detailLoading ? (
                       <div className="p-3"><Skeleton className="h-20" /></div>
                     ) : detailOrders.length === 0 ? (
-                      <p className="px-3 py-3 text-xs text-muted-foreground">Không có đơn nào trong kỳ (status delivered / confirmed).</p>
+                      <p className="px-3 py-3 text-xs text-muted-foreground">Không có đơn nào trong kỳ (đã chốt và chưa huỷ).</p>
                     ) : (
                       <div className="max-h-48 overflow-y-auto">
                         <table className="w-full text-xs">

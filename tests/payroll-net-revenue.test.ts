@@ -365,3 +365,57 @@ describe("095 — giữ nguyên phần đã sửa ở 094", () => {
     expect(SQL).toContain("AND total >= v_oc_cfg.min_order_value")
   })
 })
+
+describe("bảng kê đơn trên phiếu lương phải cộng ra đúng doanh số", () => {
+  /**
+   * Hệ quả của 094 mà chính tôi bỏ sót: SQL đổi sang is_revenue_status
+   * (gồm 'picking'/'delivering') nhưng hai truy vấn dựng bảng kê đơn ở
+   * trang bảng lương vẫn giữ bộ lọc cũ IN ('delivered','confirmed').
+   * Phiếu lương ghi "Doanh số kỳ 120tr" trong khi bảng đơn ngay dưới chỉ
+   * cộng ra 65tr — nhân viên không cộng lại được số của chính mình.
+   */
+  const PAGE = readFileSync(
+    resolve(__dirname, "../src/app/(dashboard)/hr/payroll/runs/page.tsx"),
+    "utf-8"
+  )
+
+  it("không còn lọc IN ('delivered','confirmed') ở trang bảng lương", () => {
+    expect(PAGE).not.toContain('["delivered", "confirmed"]')
+  })
+
+  it("dùng chung hằng số với định nghĩa SQL", () => {
+    expect(PAGE).toContain("NON_REVENUE_ORDER_STATUSES")
+  })
+
+  it("hằng số khớp đúng danh sách loại trừ trong is_revenue_status", () => {
+    const C = readFileSync(resolve(__dirname, "../src/lib/constants.ts"), "utf-8")
+    const m = C.match(/NON_REVENUE_ORDER_STATUSES = \[([^\]]*)\]/)
+    expect(m).toBeTruthy()
+    const ts = m![1].split(",").map((x) => x.trim().replace(/["']/g, "")).filter(Boolean).sort()
+    const sqlList = SQL.match(/NOT IN \(([^)]*)\)\s*;/)
+    // Nếu SQL không còn định nghĩa is_revenue_status trong file này thì lấy
+    // từ migration đã định nghĩa nó.
+    const src = sqlList ? sqlList[1] : latestFunction("is_revenue_status").body.match(/NOT IN \(([^)]*)\)/)![1]
+    const sql = src.split(",").map((x) => x.trim().replace(/'/g, "")).sort()
+    expect(ts, "hằng số TypeScript lệch khỏi định nghĩa SQL").toEqual(sql)
+  })
+
+  it("lấy đủ dòng, không để server cắt ở 1.000", () => {
+    // Bảng này được cộng lại thành "Tổng doanh số" trên phiếu lương nên
+    // thiếu dòng là sai tiền hiển thị.
+    const n = (PAGE.match(/fetchAllForAggregate<PayslipOrder>/g) || []).length
+    expect(n, "cả truy vấn dialog lẫn truy vấn bản in đều phải lấy đủ dòng").toBe(2)
+  })
+
+  it("phiếu lương nói rõ bậc KPI riêng bỏ qua luật dưới 60%", () => {
+    // Giao diện thêm bậc mặc định min_revenue = "0" (salary/page.tsx:108),
+    // luôn khớp, nên một bậc thêm nhầm sẽ vô hiệu hoá toàn bộ mức chung A
+    // lẫn hình phạt dưới 60% mà không có dấu hiệu gì.
+    const ps = readFileSync(
+      resolve(__dirname, "../src/components/printing/payslip.tsx"),
+      "utf-8"
+    )
+    expect(ps).toContain("không")
+    expect(ps).toMatch(/dưới 60%\s*\/\s*dưới 70%/)
+  })
+})

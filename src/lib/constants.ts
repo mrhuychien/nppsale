@@ -46,6 +46,22 @@ export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default
   cancelled: { label: "Đã hủy", variant: "danger" },
 }
 
+/**
+ * Trạng thái đơn KHÔNG được tính vào doanh số.
+ *
+ * Phải khớp với hàm SQL `public.is_revenue_status()` (mig 094):
+ *     status NOT IN ('draft', 'cancelled')
+ *
+ * VÌ SAO CẦN HẰNG SỐ NÀY
+ * Trước 094, cả SQL lẫn giao diện đều lọc `IN ('delivered','confirmed')`,
+ * bỏ sót 'picking' và 'delivering' — hai trạng thái mọi đơn đều phải đi
+ * qua. 094 sửa phía SQL nhưng phía giao diện vẫn giữ bộ lọc cũ, nên bảng
+ * kê đơn in kèm phiếu lương cộng ra ít hơn dòng "Doanh số kỳ" ngay trên
+ * cùng tờ phiếu — nhân viên không cộng lại được số của chính mình.
+ * Đặt một chỗ để lần sau đổi định nghĩa thì đổi đúng một nơi.
+ */
+export const NON_REVENUE_ORDER_STATUSES = ["draft", "cancelled"] as const
+
 export const CUSTOMER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   active: { label: "Hoạt động", variant: "success" },
   suspended: { label: "Tạm ngưng", variant: "warning" },

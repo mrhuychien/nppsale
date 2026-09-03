@@ -272,7 +272,11 @@ export function Payslip(p: PayslipProps) {
           {kpiTarget > 0 ? <> / mức chung A = {formatCurrency(kpiTarget)} → đạt <strong>{p.kpiPct != null ? `${p.kpiPct}%` : "—"}</strong></> : null}
         </p>
         {p.kpiModel === "per_user_tier" && (
-          <p style={{ margin: "0 0 1mm", fontStyle: "italic", color: "#555" }}>Áp dụng bậc KPI riêng của nhân viên này.</p>
+          <p style={{ margin: "0 0 1mm", fontStyle: "italic", color: "#555" }}>
+            Áp dụng bậc KPI riêng của nhân viên này — <strong>không</strong> áp
+            dụng mức chung A và các luật dưới 60% / dưới 70%.
+            {kpiTarget > 0 ? " Kiểm lại bậc riêng nếu đây không phải chủ ý." : ""}
+          </p>
         )}
         {lowPerf === "under_60" && (
           <p style={{ margin: "0 0 1mm" }}>

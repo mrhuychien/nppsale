@@ -43,6 +43,7 @@ type InvoiceRow = Pick<
   | "misa_invoice_id"
   | "misa_invoice_url"
   | "misa_lookup_code"
+  | "misa_error"
 >
 
 const MISA_BADGE: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }> = {
@@ -135,7 +136,10 @@ export default function InvoicesPage() {
       let q = supabase
         .from("invoices")
         .select(
-          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code",
+          // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
+          // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
+          // kế toán không biết phải xử lý gì (NPP-15).
+          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_invoice_url, misa_lookup_code, misa_error",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -292,7 +296,7 @@ export default function InvoicesPage() {
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/invoices/${inv.id}`)}>
                       {show("number") && (
                         <TableCell className="font-mono text-sm font-medium">
-                          {inv.misa_invoice_id || inv.invoice_number || "-"}
+                          {inv.invoice_number || <span className="font-sans text-xs text-muted-foreground">chưa cấp số</span>}
                         </TableCell>
                       )}
                       <TableCell className="font-medium">{inv.customer_name}</TableCell>
@@ -310,7 +314,17 @@ export default function InvoicesPage() {
                       {show("misa") && (
                         <TableCell>
                           {misa ? (
-                            <Badge variant={misa.variant}>{misa.label}</Badge>
+                            <div className="flex flex-col gap-0.5">
+                              <Badge variant={misa.variant}>{misa.label}</Badge>
+                              {inv.misa_status === "error" && (
+                                <span
+                                  className="max-w-[220px] truncate text-[11px] text-destructive"
+                                  title={inv.misa_error || undefined}
+                                >
+                                  {inv.misa_error || "Không rõ lý do — xem log MISA"}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
@@ -367,7 +381,7 @@ export default function InvoicesPage() {
                     <div className="flex justify-between items-start gap-3 mb-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-mono text-xs font-bold text-primary">
-                          {inv.misa_invoice_id || inv.invoice_number || "-"}
+                          {inv.invoice_number || <span className="font-sans text-xs text-muted-foreground">chưa cấp số</span>}
                         </p>
                         <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
                           {inv.customer_name}

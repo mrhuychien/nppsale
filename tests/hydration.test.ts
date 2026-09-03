@@ -33,14 +33,18 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const TSX = walk(SRC).map((f) => ({ file: f.slice(SRC.length + 1), src: readFileSync(f, "utf-8") }))
 
-/** Bỏ dòng chú thích — các file này trích lại nguyên văn đoạn mã sai. */
+/**
+ * Bỏ chú thích trước khi kiểm. Cần thiết vì các file này trích lại NGUYÊN
+ * VĂN đoạn mã sai để giải thích vì sao đã sửa — không lọc thì test đỏ vì
+ * chính lời giải thích của mình. Đã bị đúng như vậy với chuỗi "~28%".
+ * Phải bỏ cả chú thích JSX `{/* … *\/}` chứ không chỉ `//`.
+ */
 function code(s: string): string {
-  return s
+  const noJsx = s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+  const noBlock = noJsx.replace(/\/\*[\s\S]*?\*\//g, "")
+  return noBlock
     .split("\n")
-    .filter((l) => {
-      const t = l.trimStart()
-      return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*")
-    })
+    .filter((l) => !l.trimStart().startsWith("//"))
     .join("\n")
 }
 
@@ -139,5 +143,101 @@ describe("không dựng số liệu hiển thị bằng Math.random()", () => {
     expect(f.src).toContain("Chưa theo dõi được xu hướng tồn kho")
     // Và không còn hứa "6 tháng gần nhất" khi không dựng được.
     expect(code(f.src)).not.toContain("Tổng tồn kho theo 6 tháng gần nhất")
+  })
+})
+
+describe("sổ lỗi bàn giao — số bịa và nhãn nói sai", () => {
+  /**
+   * NPP-23: màn Xuất kho & Gộp đơn từng ghi "giúp giảm ~28% quãng đường
+   * nhặt hàng" với 28% là số cứng — không đổi dù gộp 1, 2 hay 3 đơn, và
+   * vẫn khẳng định giảm 28% khi chỉ chọn MỘT đơn (không gộp gì cả).
+   */
+  const STOCK_OUT = TSX.find((t) => t.file === "app/(dashboard)/inventory/stock-out/page.tsx")!
+
+  it("không còn con số ~28% cứng", () => {
+    expect(code(STOCK_OUT.src)).not.toContain("~28%")
+  })
+
+  it("khối gộp đơn chỉ hiện khi thật sự gộp từ 2 đơn", () => {
+    expect(STOCK_OUT.src).toContain("{selectedOrders.length > 1 && (")
+  })
+
+  /**
+   * NPP-25: ô KPI đếm đơn của khách CÓ TỪ 2 ĐƠN trở lên, nên 3 đơn của 3
+   * khách khác nhau cho ra 0 — người dùng đang gộp đơn nhìn thấy 0 và
+   * tưởng hệ thống hỏng.
+   */
+  it("nhãn ô KPI nói đúng cái nó đếm", () => {
+    expect(STOCK_OUT.src).toContain("Đơn cùng khách có thể gộp")
+    expect(code(STOCK_OUT.src)).not.toMatch(/>\s*Sẵn sàng gộp đơn\s*</)
+  })
+
+  /**
+   * NPP-16: cột "Số HĐ" từng ưu tiên misa_invoice_id — đó là khoá nội bộ
+   * của MISA (mig 011:9), không phải số hoá đơn. Hai dòng đầu bảng in ra
+   * UUID, các dòng còn lại trống.
+   */
+  it("cột Số HĐ không in khoá nội bộ MISA", () => {
+    const inv = TSX.find((t) => t.file === "app/(dashboard)/invoices/page.tsx")!
+    expect(code(inv.src)).not.toContain("inv.misa_invoice_id || inv.invoice_number")
+  })
+
+  /**
+   * NPP-15: cột misa_error có sẵn trong DB từ mig 011 nhưng chưa bao giờ
+   * được truy vấn, nên hoá đơn "Lỗi" không hiện lý do.
+   */
+  it("hoá đơn lỗi hiện được lý do", () => {
+    const inv = TSX.find((t) => t.file === "app/(dashboard)/invoices/page.tsx")!
+    expect(inv.src).toContain("misa_error")
+    expect(code(inv.src)).toMatch(/misa_status === "error"/)
+  })
+
+  /**
+   * NPP-27: tám nhóm route không có trong bảng tiêu đề nên thanh trên cùng
+   * ghi "Dashboard" ở cả Lịch sử đi tuyến, Trả hàng NCC, Phiếu thu, Chi phí
+   * và toàn bộ nhóm Phân tích.
+   */
+  it("mọi nhóm route đều có tiêu đề tiếng Việt", () => {
+    const header = readFileSync(
+      resolve(__dirname, "../src/components/layout/header.tsx"),
+      "utf-8"
+    )
+    for (const r of ["/analytics", "/finance", "/sales", "/purchase-returns",
+                     "/notifications", "/operations", "/warehouse", "/setup"]) {
+      expect(header, `thiếu tiêu đề cho ${r}`).toContain(`"${r}":`)
+    }
+    // Mặc định cuối cũng không được là chữ Anh "Dashboard".
+    expect(header).not.toContain('|| "Dashboard"')
+  })
+
+  /** NPP-28: gõ sai đường dẫn ra màn trắng chữ Anh của Next.js. */
+  it("có trang 404 tiếng Việt kèm đường ra", () => {
+    const nf = readFileSync(resolve(__dirname, "../src/app/not-found.tsx"), "utf-8")
+    expect(nf).toContain("Không tìm thấy trang này")
+    expect(nf).toContain('href="/home"')
+  })
+
+  /**
+   * NPP-24: chân trang màn Xuất kho từng in dải
+   *   "[SYS] updated <giờ> · server: wms-edge-01 · merge_code=… · selected=…"
+   * `wms-edge-01` là tên máy chủ BỊA, hard-code trong JSX — app chạy trên
+   * Vercel, không có máy nào tên vậy. `updated <giờ>` lấy từ
+   * useState(new Date()) nên đứng yên khi thao tác, và cũng là một lệch
+   * hydration nữa.
+   */
+  it("không in tên máy chủ bịa ra giao diện", () => {
+    expect(code(STOCK_OUT.src)).not.toContain("wms-edge-01")
+  })
+
+  it("không còn dải [SYS] và chuỗi kỹ thuật ở chân trang", () => {
+    const c = code(STOCK_OUT.src)
+    expect(c).not.toContain("[SYS]")
+    expect(c).not.toContain("merge_code=")
+    expect(c).not.toContain("selected=")
+  })
+
+  it("không lộ tên biến nội bộ ra giao diện", () => {
+    // Dải chẩn đoán phiếu trả từng in "→ pickList".
+    expect(code(STOCK_OUT.src)).not.toContain("→ pickList")
   })
 })

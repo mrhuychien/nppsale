@@ -133,7 +133,6 @@ export default function StockOutPage() {
   const [customerFilter, setCustomerFilter] = useState<string>("all")
   const [mergeCode] = useState<string>(generateMergeCode())
   const [submitting, setSubmitting] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [barcodeOpen, setBarcodeOpen] = useState(false)
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
   // T-12: hàng đem đi đổi (dự phòng) — driver carries spare stock for
@@ -223,7 +222,6 @@ export default function StockOutPage() {
         setBatches([])
       }
       setLoading(false)
-      setLastUpdated(new Date())
     }
     fetchData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -782,8 +780,14 @@ export default function StockOutPage() {
         <Card className="bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border border-primary/30">
           <CardContent className="flex items-center justify-between pt-6">
             <div>
+              {/*
+                Ô này đếm đơn của những KHÁCH CÓ TỪ 2 ĐƠN trở lên (xem
+                readyToMergeCount), nên 3 đơn của 3 khách khác nhau cho ra 0.
+                Nhãn cũ "Sẵn sàng gộp đơn" khiến người dùng đang gộp đơn nhìn
+                thấy số 0 và tưởng hệ thống hỏng. Nói đúng cái đang đếm.
+              */}
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Sẵn sàng gộp đơn
+                Đơn cùng khách có thể gộp
               </p>
               <p className="text-3xl font-black mt-1 text-primary">
                 {readyToMergeCount}
@@ -1060,8 +1064,11 @@ export default function StockOutPage() {
               </div>
             </div>
 
-            {/* Diagnostic — surfaces returns data state so user thấy ngay
-                nếu data không khớp với expectation. */}
+            {/*
+              Dải này có ích thật (cho thấy ngay phiếu trả nào đi kèm), nhưng
+              trước đây in ra tên biến nội bộ "pickList" — người dùng cuối
+              không biết đó là gì. Đổi sang chữ nghĩa được.
+            */}
             {selectedOrders.length > 0 && (
               <div className="mb-3 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-[11px] text-gray-300">
                 <span className="text-gray-400">Phiếu trả gắn đơn:</span>{" "}
@@ -1072,7 +1079,7 @@ export default function StockOutPage() {
                 <span className="text-[#7cc4fa]">
                   ĐỔI <strong>{returnsDiagnostic.exchangeLineCount}</strong> dòng
                 </span>{" "}
-                <span className="text-gray-500">→ pickList</span>{" "}
+                <span className="text-gray-500">→ xuất kho</span>{" "}
                 <span className="text-gray-400">•</span>{" "}
                 <span className="text-[#fcd34d]">
                   TRẢ <strong>{returnsDiagnostic.refundLineCount}</strong> dòng
@@ -1285,31 +1292,39 @@ export default function StockOutPage() {
             )}
           </div>
 
-          {/* Optimized Pathing insight */}
+          {/*
+            Trước đây khối này ghi "giúp giảm ~28% quãng đường nhặt hàng" với
+            28% là SỐ CỨNG: không đổi dù gộp 1, 2 hay 3 đơn, và vẫn khẳng
+            định giảm 28% ngay cả khi chỉ chọn một đơn — tức không gộp gì cả.
+            Không có phép tính lộ trình nào phía sau. Đã thay bằng con số
+            đếm được thật: số dòng hàng gộp lại còn bao nhiêu SKU phải nhặt.
+          */}
+          {selectedOrders.length > 1 && (
           <Card className="bg-surface-container-high border-l-4 border-tertiary/40">
             <CardContent className="pt-6">
               <div className="flex items-start gap-3">
                 <Route className="h-5 w-5 text-tertiary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-tertiary mb-1">
-                    Optimized Pathing
+                    Gộp phiếu nhặt hàng
                   </p>
                   <p className="text-sm text-foreground">
-                    Việc gộp {selectedOrders.length || "N"} đơn này giúp giảm{" "}
-                    <span className="font-black text-tertiary">~28%</span>{" "}
-                    quãng đường nhặt hàng tại{" "}
-                    <span className="font-bold">
-                      Khu vực{" "}
-                      {targetCustomer
-                        ? deriveRoute(targetCustomer)
-                        : "A-B"}
-                    </span>
+                    Gộp {selectedOrders.length} đơn thành{" "}
+                    <span className="font-black text-tertiary">1 phiếu xuất</span>{" "}
+                    — nhặt {uniqueSkuCount} SKU một lượt thay vì đi lại{" "}
+                    {selectedOrders.length} lần
+                    {targetCustomer ? (
+                      <>
+                        {" "}cho <span className="font-bold">{targetCustomer.store_name}</span>
+                      </>
+                    ) : null}
                     .
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
+          )}
         </div>
       </div>
 
@@ -1367,17 +1382,22 @@ export default function StockOutPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Bottom system log */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground font-mono border-t pt-3">
-        <span>[SYS]</span>
-        <span>updated {lastUpdated.toLocaleTimeString("vi-VN")}</span>
-        <span>·</span>
-        <span>server: wms-edge-01</span>
-        <span>·</span>
-        <span>merge_code={mergeCode}</span>
-        <span>·</span>
-        <span>selected={selectedOrders.length}</span>
-      </div>
+      {/*
+        ĐÃ GỠ dải "[SYS] updated … · server: wms-edge-01 · merge_code=… ·
+        selected=…" ở chân trang. Ba lý do, không chỉ là thẩm mỹ:
+
+          • `server: wms-edge-01` là tên máy chủ BỊA, hard-code trong JSX.
+            Không có máy nào tên vậy — app chạy trên Vercel. In thông tin
+            hạ tầng không tồn tại ra giao diện production.
+          • `updated <giờ>` lấy từ `useState(new Date())` nên chỉ đặt một
+            lần lúc mount, đứng yên khi người dùng thao tác — đúng như đợt
+            kiểm thử ghi lại. Nó cũng là một lệch hydration nữa (giờ ở
+            server khác giờ ở máy người dùng).
+          • `[SYS]`, `merge_code=`, `selected=` là chuỗi kỹ thuật; người
+            dùng cuối là chủ NPP và nhân viên kho.
+
+        Mã phiếu gộp vẫn hiện ở panel gộp đơn, nơi nó có nghĩa.
+      */}
     </div>
   )
 }

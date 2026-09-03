@@ -39,6 +39,27 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "Cài đặt",
   "/hr": "Nhân sự",
   "/help": "Trợ giúp & Hướng dẫn",
+  // Tám nhóm dưới đây trước không có trong bảng nên rơi về mặc định
+  // "Dashboard" — thanh trên cùng ghi "Dashboard" ở cả trang Lịch sử đi
+  // tuyến, Trả hàng NCC, Phiếu thu, Chi phí và toàn bộ nhóm Phân tích.
+  // Tiêu đề chi tiết đặt TRƯỚC tiêu đề nhóm không quan trọng: chỗ tra cứu
+  // sắp theo độ dài prefix giảm dần nên prefix dài luôn thắng.
+  "/analytics": "Phân tích",
+  "/analytics/business": "Phân tích kinh doanh",
+  "/analytics/customers": "Phân tích khách hàng",
+  "/analytics/products": "Phân tích sản phẩm",
+  "/analytics/performance": "Phân tích hiệu suất",
+  "/finance": "Tài chính",
+  "/finance/cash-receipts": "Phiếu thu",
+  "/finance/expenses": "Chi phí",
+  "/sales": "Bán hàng",
+  "/sales/visits": "Lịch sử đi tuyến",
+  "/sales/pjp": "Lộ trình viếng thăm",
+  "/purchase-returns": "Trả hàng nhà cung cấp",
+  "/notifications": "Thông báo",
+  "/operations": "Vận hành",
+  "/warehouse": "Kho",
+  "/setup": "Thiết lập ban đầu",
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
@@ -70,7 +91,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   // Find page title by matching the longest prefix
   const pageTitle = Object.entries(PAGE_TITLES)
     .sort(([a], [b]) => b.length - a.length)
-    .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "Dashboard"
+    .find(([prefix]) => pathname.startsWith(prefix))?.[1] || "npp.sale"
 
   return (
     <header className="sticky top-0 z-40 w-full bg-surface/80 backdrop-blur-xl border-b border-outline-variant/60 px-4 lg:px-8 h-16 flex items-center justify-between">

@@ -62,6 +62,17 @@ interface ReceivableRow {
   status: string
 }
 
+/**
+ * Đơn có phải bán công nợ không. Trống hoặc COD = thu ngay; còn lại
+ * (NET7/NET15/NET30/NET45/NET60 — xem PAYMENT_TERMS trong lib/constants)
+ * là bán công nợ, không được điền sẵn tiền thu.
+ */
+function isCreditTerms(terms: string | null | undefined): boolean {
+  const t = (terms || "").trim().toUpperCase()
+  if (!t || t === "COD") return false
+  return true
+}
+
 interface CollectRow {
   orderId: string
   orderCode: string
@@ -76,6 +87,8 @@ interface CollectRow {
   /** Số tiền user nhập để thu trong lượt này. */
   collect: string
   method: PaymentMethod
+  /** COD / NET7 / NET30… — quyết định có điền sẵn tiền thu hay không. */
+  paymentTerms: string | null
 }
 
 function generateReceiptCode(): string {
@@ -182,9 +195,16 @@ export default function CollectPaymentPage() {
         alreadyPaid,
         outstanding,
         receivableId: recv?.id ?? null,
-        // default: thu hết outstanding
-        collect: outstanding.toString(),
+        // Điền sẵn tiền thu CHỈ khi đơn là thu ngay (COD hoặc không đặt
+        // điều khoản). Đơn công nợ (NET7/NET15/NET30…) để TRỐNG.
+        //
+        // `payment_terms` vốn đã được truy vấn ở trên nhưng không dùng, nên
+        // đơn "Công nợ 30 ngày" cũng điền sẵn đủ số tiền + hình thức "Tiền
+        // mặt". Nhân viên bấm nhanh là ghi nhận ĐÃ THU ĐỦ một khoản lẽ ra
+        // phải nằm ở công nợ — tiền không có trong quỹ mà sổ ghi đã thu.
+        collect: isCreditTerms(o.payment_terms) ? "" : outstanding.toString(),
         method: "cash",
+        paymentTerms: o.payment_terms,
       }
     })
     // Sort by customer name then order code for predictability
@@ -496,6 +516,13 @@ export default function CollectPaymentPage() {
                         <p className="text-[11px] text-muted-foreground">
                           {formatDate(r.orderDate)}
                         </p>
+                        {/* Nói rõ vì sao ô tiền thu để trống, nếu không nhân
+                            viên sẽ tưởng hệ thống lỗi rồi tự điền đủ. */}
+                        {isCreditTerms(r.paymentTerms) && (
+                          <p className="text-[11px] font-semibold text-amber-600">
+                            Công nợ {r.paymentTerms} — không thu ngay
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <p className="font-medium text-foreground">{r.customerName}</p>
@@ -521,7 +548,21 @@ export default function CollectPaymentPage() {
                           max={r.outstanding}
                           step="any"
                           value={r.collect}
-                          onChange={(e) => setRowField(idx, "collect", e.target.value)}
+                          onChange={(e) => {
+                            // `max` của HTML chỉ ảnh hưởng nút tăng/giảm và
+                            // validation, KHÔNG chặn người dùng gõ. Trước đây
+                            // gõ 99.999.999.999 thì các ô tổng bên dưới kẹp
+                            // đúng nhưng ô nhập vẫn giữ con số vô lý và không
+                            // cảnh báo gì — kế toán không biết số nào được
+                            // dùng. Kẹp ngay tại đây để cái nhìn thấy và cái
+                            // được ghi luôn là một.
+                            const raw = e.target.value
+                            if (raw === "") return setRowField(idx, "collect", "")
+                            const n = parseFloat(raw)
+                            if (Number.isNaN(n)) return
+                            const clamped = Math.max(0, Math.min(n, r.outstanding))
+                            setRowField(idx, "collect", String(clamped))
+                          }}
                           className="h-9 w-32 rounded-md border border-border/60 bg-background px-2 text-right tabular-nums text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
                         />
                       </td>

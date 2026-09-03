@@ -3,6 +3,25 @@ import { formatCurrency } from "@/lib/utils"
 
 export interface ApprovalContext {
   orderTotal: number
+  /**
+   * Giá trị hàng TRƯỚC chiết khấu và TRƯỚC VAT (tổng qty × đơn giá gốc),
+   * cùng số tiền chiết khấu trên nền đó.
+   *
+   * VÌ SAO CẦN RIÊNG HAI TRƯỜNG NÀY
+   * Mọi quy tắc phía dưới đều xét `orderTotal` — tức số SAU chiết khấu.
+   * Chiết khấu 100% làm đơn 720.000đ thành 0đ, và `0 >= auto_approve_max`
+   * là false nên đơn TỰ ĐỘNG DUYỆT: hàng ra khỏi kho, không ai duyệt,
+   * không cảnh báo. Cho không hàng mà quy tắc theo ngưỡng tiền không bắt
+   * được, vì thứ nó canh đã bị chiết khấu về 0.
+   *
+   * Cố ý KHÔNG suy tỉ lệ chiết khấu bằng `(gross - orderTotal) / gross`:
+   * `orderTotal` đã gồm VAT còn `gross` thì chưa, nên hiệu số đó nhỏ hơn
+   * chiết khấu thật và sẽ TÍNH THIẾU đúng vào lúc cần chặn nhất.
+   * Không truyền thì quy tắc chiết khấu bỏ qua (giữ nguyên hành vi cũ cho
+   * nơi gọi chưa cập nhật).
+   */
+  grossBeforeDiscount?: number
+  discountAmount?: number
   customer: Pick<Customer, "id" | "credit_limit"> | null
   customerDebt: number
   customerOverdue: number
@@ -20,6 +39,15 @@ export interface ApprovalDecision {
   /** Which role is expected to approve when not auto (owner/manager). */
   expectedApprover: "owner" | "manager" | null
 }
+
+/**
+ * Ngưỡng chiết khấu cần duyệt. Đặt trong mã chứ không trong bảng
+ * approval_rules vì đây là chốt chặn AN TOÀN, không phải tham số kinh
+ * doanh: một NPP đặt ngưỡng tiền cao vẫn phải bị chặn khi cho không hàng.
+ * Muốn cấu hình được thì thêm cột vào approval_rules ở migration sau.
+ */
+export const DEEP_DISCOUNT_MANAGER_PCT = 30
+export const DEEP_DISCOUNT_OWNER_PCT = 50
 
 export const DEFAULT_APPROVAL_RULES: Omit<ApprovalRules, "id" | "org_id" | "created_at" | "updated_at" | "updated_by"> = {
   auto_approve_max: 20_000_000,
@@ -99,6 +127,30 @@ export function evaluateApproval(
     if (projected > ctx.customer.credit_limit) {
       reasons.push(
         `Đơn này sẽ đưa dư nợ KH lên ${formatCurrency(projected)}, vượt hạn mức ${formatCurrency(ctx.customer.credit_limit)}`
+      )
+      if (!expectedApprover) expectedApprover = "manager"
+    }
+  }
+
+  // 6. Chiết khấu sâu — canh trên giá trị hàng TRƯỚC chiết khấu.
+  //
+  // Năm quy tắc trên đều xét số sau chiết khấu nên chiết khấu 100% lọt hết:
+  // đơn 720.000đ thành 0đ thì không quy tắc nào chạm tới. Ngưỡng ở đây là
+  // TỈ LỆ chiết khấu, không phải số tiền, để không phụ thuộc cấu hình
+  // ngưỡng tiền của từng NPP.
+  const gross = ctx.grossBeforeDiscount ?? 0
+  const discountAmount = ctx.discountAmount ?? 0
+  if (gross > 0 && discountAmount > 0) {
+    const discountPct = (discountAmount / gross) * 100
+    if (discountPct >= DEEP_DISCOUNT_OWNER_PCT) {
+      reasons.push(
+        `Chiết khấu ${discountPct.toFixed(0)}% (${formatCurrency(discountAmount)}) ` +
+        `trên hàng trị giá ${formatCurrency(gross)} — cần Owner duyệt`
+      )
+      expectedApprover = "owner"
+    } else if (discountPct >= DEEP_DISCOUNT_MANAGER_PCT) {
+      reasons.push(
+        `Chiết khấu ${discountPct.toFixed(0)}% trên hàng trị giá ${formatCurrency(gross)} — cần Manager duyệt`
       )
       if (!expectedApprover) expectedApprover = "manager"
     }

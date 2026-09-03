@@ -547,7 +547,19 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={isSales ? "Đơn của tôi" : "Đơn hàng"} description={`${orders.length} đơn hàng`}>
+      {/*
+        `orders` chỉ là TRANG HIỆN TẠI (50 dòng/trang), không phải tổng. Dòng
+        phụ đề trước đây in ra số đó nên có 125 đơn mà ghi "50 đơn hàng".
+        `pg.total` là số server trả về kèm count: "exact".
+      */}
+      <PageHeader
+        title={isSales ? "Đơn của tôi" : "Đơn hàng"}
+        description={
+          pg.total === orders.length
+            ? `${pg.total} đơn hàng`
+            : `${pg.total} đơn hàng · đang xem ${orders.length}`
+        }
+      >
         {user && hasPermission(user.role, "orders", "create") && (
           <Button onClick={() => router.push("/orders/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn

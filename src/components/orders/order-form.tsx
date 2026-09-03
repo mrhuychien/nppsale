@@ -91,6 +91,16 @@ export function OrderForm() {
   const [returnDropdownOpen, setReturnDropdownOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
+  /**
+   * Dư nợ hiện tại của khách đang chọn.
+   *
+   * Trước đây con số này CHỈ được tính bên trong hàm lưu đơn (để chấm quy
+   * tắc duyệt), nên thẻ khách hàng chỉ hiện "Hạn mức công nợ 30.000.000đ"
+   * mà không hiện đang nợ bao nhiêu. Nhân viên chỉ biết vượt hạn mức SAU
+   * KHI đã bấm tạo đơn — soạn xong cả đơn rồi mới bị chặn.
+   * `null` = chưa tải xong (đừng hiện số 0 gây hiểu sai là không nợ).
+   */
+  const [customerOutstanding, setCustomerOutstanding] = useState<number | null>(null)
 
   // Optional "hàng trả lại" companion to this order. The sales rep can record
   // goods the customer is returning at the same visit; on submit we create a
@@ -551,6 +561,34 @@ export function OrderForm() {
 
   // Ô trống → hiện top danh sách để bấm vào là chọn được ngay (không
   // bắt buộc phải gõ). Dropdown chỉ mở khi input đang focus (state open).
+  // Tải dư nợ ngay khi chọn khách, để thẻ khách hiện được "còn được nợ".
+  useEffect(() => {
+    if (!customerId) {
+      setCustomerOutstanding(null)
+      return
+    }
+    let cancelled = false
+    setCustomerOutstanding(null)
+    ;(async () => {
+      const res = await fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+        supabase
+          .from("receivables")
+          .select("amount, paid", { count: "exact" })
+          .eq("customer_id", customerId)
+          .neq("status", "paid")
+          .range(from, to)
+      )
+      if (res.error) console.error("[order-form] dư nợ KH lỗi:", res.error)
+      if (cancelled) return
+      setCustomerOutstanding(
+        res.rows.reduce((sum, r) => sum + (Number(r.amount) - Number(r.paid)), 0)
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [customerId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredProducts = products.filter((p) =>
     viMatchAllWords(productSearch, p.name, p.sku)
   )
@@ -746,6 +784,9 @@ export function OrderForm() {
 
       const decision = evaluateApproval(rulesData ?? null, {
         orderTotal: total,
+        // Cả hai trên nền CHƯA VAT để tỉ lệ chiết khấu tính đúng.
+        grossBeforeDiscount: subtotal,
+        discountAmount: total_discount,
         customer: selectedCustomer
           ? { id: selectedCustomer.id, credit_limit: selectedCustomer.credit_limit }
           : null,
@@ -1063,11 +1104,47 @@ export function OrderForm() {
                 {selectedCustomer.address && (
                   <p className="text-sm text-muted-foreground">{selectedCustomer.address}</p>
                 )}
-                <div className="pt-2 border-t border-border/50">
-                  <p className="text-xs text-muted-foreground">Hạn mức công nợ</p>
-                  <p className="font-bold text-foreground">
-                    {formatCurrency(selectedCustomer.credit_limit)}
-                  </p>
+                <div className="pt-2 border-t border-border/50 grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Hạn mức</p>
+                    <p className="text-sm font-bold text-foreground tabular-nums">
+                      {formatCurrency(selectedCustomer.credit_limit)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Đang nợ</p>
+                    <p className="text-sm font-bold text-foreground tabular-nums">
+                      {customerOutstanding === null
+                        ? "…"
+                        : formatCurrency(customerOutstanding)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Còn được nợ</p>
+                    {(() => {
+                      if (customerOutstanding === null) {
+                        return <p className="text-sm font-bold tabular-nums">…</p>
+                      }
+                      if (!selectedCustomer.credit_limit) {
+                        return (
+                          <p className="text-sm font-bold text-muted-foreground">
+                            không đặt
+                          </p>
+                        )
+                      }
+                      const left = selectedCustomer.credit_limit - customerOutstanding
+                      return (
+                        <p
+                          className={`text-sm font-bold tabular-nums ${
+                            left <= 0 ? "text-destructive" : "text-foreground"
+                          }`}
+                        >
+                          {formatCurrency(Math.max(0, left))}
+                          {left <= 0 ? " (hết)" : ""}
+                        </p>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
             )}

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { describe, it, expect } from "vitest"
 import {
   evaluateApproval,
@@ -200,5 +202,104 @@ describe("canApproveForLevel — ai được duyệt", () => {
   it("nhân viên bán hàng không được duyệt", () => {
     expect(canApproveForLevel("sales", "manager")).toBe(false)
     expect(canApproveForLevel("sales", "owner")).toBe(false)
+  })
+})
+
+describe("NPP-12 — chiết khấu sâu phải cần duyệt", () => {
+  /**
+   * Mọi quy tắc khác đều xét `orderTotal`, tức số SAU chiết khấu. Chiết
+   * khấu 100% làm đơn 720.000đ thành 0đ và `0 >= auto_approve_max` là
+   * false, nên đơn TỰ ĐỘNG DUYỆT: hàng ra khỏi kho, không ai duyệt, không
+   * cảnh báo. Cho không hàng mà quy tắc theo ngưỡng tiền không bắt được.
+   */
+  const base = {
+    customer: null,
+    customerDebt: 0,
+    customerOverdue: 0,
+    repPortfolioDebt: 0,
+    role: "sales" as const,
+  }
+
+  it("chiết khấu 100% (đơn về 0đ) KHÔNG được tự động duyệt", () => {
+    const d = evaluateApproval(null, {
+      ...base,
+      orderTotal: 0,
+      grossBeforeDiscount: 720_000,
+      discountAmount: 720_000,
+    })
+    expect(d.autoApprove).toBe(false)
+    expect(d.expectedApprover).toBe("owner")
+    expect(d.reason).toContain("Chiết khấu")
+  })
+
+  it("chiết khấu vừa phải vẫn tự động duyệt như cũ", () => {
+    const d = evaluateApproval(null, {
+      ...base,
+      orderTotal: 700_000,
+      grossBeforeDiscount: 720_000,
+      discountAmount: 20_000, // ~2,8%
+    })
+    expect(d.autoApprove).toBe(true)
+  })
+
+  it("ngưỡng 30% cần Manager, 50% cần Owner", () => {
+    const at35 = evaluateApproval(null, {
+      ...base, orderTotal: 650_000, grossBeforeDiscount: 1_000_000, discountAmount: 350_000,
+    })
+    expect(at35.expectedApprover).toBe("manager")
+    const at60 = evaluateApproval(null, {
+      ...base, orderTotal: 400_000, grossBeforeDiscount: 1_000_000, discountAmount: 600_000,
+    })
+    expect(at60.expectedApprover).toBe("owner")
+  })
+
+  it("KHÔNG suy tỉ lệ từ (gross - orderTotal): VAT che mất chiết khấu thật", () => {
+    // Đây là kịch bản mà phép suy bằng hiệu số ra kết quả SAI, và là lý do
+    // phải truyền discountAmount riêng.
+    //
+    //   hàng chưa VAT      1.000.000
+    //   chiết khấu 30%      -300.000   → đúng ngưỡng cần Manager duyệt
+    //   còn                  700.000
+    //   VAT 10%              +70.000
+    //   orderTotal           770.000
+    //
+    //   tỉ lệ đúng   = 300.000 / 1.000.000        = 30%  → cần Manager
+    //   suy hiệu số  = (1.000.000 − 770.000)/1tr  = 23%  → TỰ ĐỘNG DUYỆT
+    //
+    // Tức VAT làm hiệu số nhỏ hơn chiết khấu thật, và đơn lọt qua đúng lúc
+    // cần chặn. Bản đầu của test này kiểm ca chiết khấu = 0 nên đột biến
+    // đổi sang hiệu số vẫn xanh — đã thử và nó lọt thật.
+    const d = evaluateApproval(null, {
+      ...base,
+      orderTotal: 770_000,
+      grossBeforeDiscount: 1_000_000,
+      discountAmount: 300_000,
+    })
+    expect(d.autoApprove).toBe(false)
+    expect(d.expectedApprover).toBe("manager")
+    expect(d.reason).toContain("30%")
+  })
+
+  it("không chiết khấu thì VAT không tự sinh ra cảnh báo", () => {
+    const d = evaluateApproval(null, {
+      ...base, orderTotal: 1_100_000, grossBeforeDiscount: 1_000_000, discountAmount: 0,
+    })
+    expect(d.autoApprove).toBe(true)
+  })
+
+  it("nơi gọi chưa truyền hai trường mới thì giữ nguyên hành vi cũ", () => {
+    const d = evaluateApproval(null, { ...base, orderTotal: 500_000 })
+    expect(d.autoApprove).toBe(true)
+  })
+
+  it("cả hai nơi gọi đều truyền gross + discount", () => {
+    for (const f of [
+      "src/components/orders/order-form.tsx",
+      "src/app/(dashboard)/orders/[id]/page.tsx",
+    ]) {
+      const src = readFileSync(resolve(__dirname, "..", f), "utf-8")
+      expect(src, `${f} chưa truyền grossBeforeDiscount`).toContain("grossBeforeDiscount:")
+      expect(src, `${f} chưa truyền discountAmount`).toContain("discountAmount:")
+    }
   })
 })

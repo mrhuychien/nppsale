@@ -188,7 +188,21 @@ export default function ReceivableDetailPage() {
   if (!receivable) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy công nợ</div>
 
   const balance = receivable.amount - receivable.paid
-  const statusConfig = RECEIVABLE_STATUS_MAP[receivable.status] || { label: receivable.status, variant: "outline" as const }
+  /**
+   * Số dư ÂM = đã thu nhiều hơn số phải thu.
+   *
+   * Xảy ra thật: thu dư, hoặc giảm trừ (hàng trả lại làm `amount` giảm
+   * xuống dưới số đã thu). Bốn trạng thái trong enum không có chỗ nào cho
+   * tình huống này, nên dòng đó hiện "Đã thu đủ" hoặc "Chưa thu" trong khi
+   * thực tế là CÔNG TY ĐANG NỢ LẠI KHÁCH. Đã đọc mã: không có nhánh nào xử
+   * lý số âm ở đây (`balance` chỉ dùng để hiển thị).
+   * Không thêm trạng thái mới vào enum (phải đổi CHECK constraint và mọi
+   * chỗ đọc) — chỉ nói rõ ra để kế toán biết mà xử.
+   */
+  const isOverpaid = balance < 0
+  const statusConfig = isOverpaid
+    ? { label: "Thu dư — cần xử lý", variant: "warning" as const }
+    : RECEIVABLE_STATUS_MAP[receivable.status] || { label: receivable.status, variant: "outline" as const }
 
   const canRecordPayment = user && ["owner", "accountant", "sales", "driver"].includes(user.role) && receivable.status !== "paid"
   const canVerify = user && ["owner", "accountant"].includes(user.role)
@@ -210,6 +224,21 @@ export default function ReceivableDetailPage() {
       >
         <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
       </PageHeader>
+
+      {isOverpaid && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">
+            Đã thu {formatCurrency(receivable.paid)} trên khoản phải thu{" "}
+            {formatCurrency(receivable.amount)} — thu dư{" "}
+            {formatCurrency(Math.abs(balance))}.
+          </p>
+          <p className="mt-1 text-[13px]">
+            Thường do thu dư tiền, hoặc hàng trả lại làm giảm khoản phải thu
+            sau khi đã thu. Hệ thống chưa có đường xử lý tự động: cần hoàn trả
+            khách hoặc cấn trừ sang đơn sau, rồi sửa lại số ở đây.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left - main info + payments */}

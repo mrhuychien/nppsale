@@ -441,6 +441,12 @@ export default function OrderDetailPage() {
 
         const decision = evaluateApproval(rulesData ?? null, {
           orderTotal: order.total,
+          // Đơn đã lưu có sẵn hai cột này, cả hai đều CHƯA gồm VAT — dùng
+          // để quy tắc chiết khấu sâu chạy cả ở màn duyệt, không chỉ ở màn
+          // tạo đơn. Nếu chỉ chặn lúc tạo thì đơn sửa lại thành chiết khấu
+          // 100% sau đó vẫn duyệt được như thường.
+          grossBeforeDiscount: Number(order.subtotal || 0),
+          discountAmount: Number(order.discount || 0),
           customer: order.customer
             ? { id: order.customer.id, credit_limit: order.customer.credit_limit }
             : null,

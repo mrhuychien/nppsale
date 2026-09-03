@@ -1,30 +1,67 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { vnDayRange } from "@/lib/analytics/sales"
 
 /**
- * Khoá lại migration 095 — doanh số tính lương chuyển sang doanh số THUẦN.
+ * Khoá lại doanh số tính lương THUẦN (mig 095 + các chỗ vá ở 096).
  *
  * Mỗi phép kiểm ở đây tương ứng với một kịch bản ĐÃ CHẠY THẬT trên
  * Postgres 16 lúc làm, số liệu ghi trong mô tả để người sau đối chiếu chứ
  * không phải để trang trí.
+ *
+ * VÌ SAO KHÔNG ĐỌC THẲNG FILE 095
+ * Bản đầu của test này đọc đúng file 095. Nhưng migration là append-only:
+ * hàm được định nghĩa lại ở 096, và sẽ còn định nghĩa lại ở 097, 098…
+ * Test bám vào một số hiệu cố định sẽ mãi mãi xanh trong khi hàm đang chạy
+ * đã bị sửa hỏng — đúng kiểu test vô dụng mà vẫn làm người ta yên tâm.
+ * Nên ở đây tự tìm migration MỚI NHẤT có định nghĩa hàm, rồi kiểm bản đó.
  */
 
-const M095 = readFileSync(
-  resolve(__dirname, "../supabase/migrations/095_payroll_net_revenue.sql"),
-  "utf-8"
-)
+const MIG_DIR = resolve(__dirname, "../supabase/migrations")
 
-const SQL = M095.split("\n")
-  .filter((l) => !l.trimStart().startsWith("--"))
-  .join("\n")
+/** Nội dung mọi migration, sắp theo số hiệu tăng dần. */
+const MIGRATIONS = readdirSync(MIG_DIR)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()
+  .map((f) => ({ file: f, raw: readFileSync(resolve(MIG_DIR, f), "utf-8") }))
 
-/** Chỉ phần thân hàm payroll_returns_for. */
-const RETURNS_FN = SQL.slice(
-  SQL.indexOf("CREATE FUNCTION public.payroll_returns_for"),
-  SQL.indexOf("COMMENT ON FUNCTION public.payroll_returns_for")
-)
+/** Bỏ dòng chú thích — chính các file này trích lại nguyên văn đoạn mã sai. */
+function stripComments(s: string): string {
+  return s.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n")
+}
+
+/**
+ * Thân của bản định nghĩa MỚI NHẤT cho một hàm SQL, kèm tên file để khi
+ * test đỏ thì biết ngay đang nói về migration nào.
+ */
+function latestFunction(name: string): { file: string; body: string } {
+  const re = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION (?:public\\.)?${name}\\b`)
+  for (let i = MIGRATIONS.length - 1; i >= 0; i--) {
+    const sql = stripComments(MIGRATIONS[i].raw)
+    const m = sql.match(re)
+    if (!m) continue
+    const start = m.index!
+    const end = sql.indexOf("$$;", start)
+    return { file: MIGRATIONS[i].file, body: sql.slice(start, end === -1 ? undefined : end + 3) }
+  }
+  throw new Error(`không tìm thấy migration nào định nghĩa ${name}`)
+}
+
+const COMPUTE = latestFunction("compute_payroll_run")
+const RETURNS = latestFunction("payroll_returns_for")
+const SQL = COMPUTE.body
+const RETURNS_FN = RETURNS.body
+
+describe("bản đang chạy là bản mới nhất", () => {
+  it("tìm được định nghĩa mới nhất của cả hai hàm", () => {
+    // In ra tên file để khi có ai thêm 097 thì thấy ngay test đang soi đâu.
+    expect(COMPUTE.file, `compute_payroll_run mới nhất ở ${COMPUTE.file}`).toMatch(/^\d{3}_/)
+    expect(RETURNS.file, `payroll_returns_for mới nhất ở ${RETURNS.file}`).toMatch(/^\d{3}_/)
+    expect(SQL.length).toBeGreaterThan(500)
+    expect(RETURNS_FN.length).toBeGreaterThan(200)
+  })
+})
 
 describe("095 — trừ đúng khoản, đúng phiếu", () => {
   /**
@@ -95,6 +132,25 @@ describe("095 — quy phiếu trả về đúng nhân viên", () => {
     expect(RETURNS_FN).toContain("public.is_revenue_status(o2.status)")
   })
 
+  /**
+   * Lỗi thật do chính 095 tạo ra, tìm ra khi rà lại và sửa ở 096.
+   * Chạy thật: đơn A 100tr đã giao + đơn B 50tr ĐÃ HUỶ, phiếu trả 10tr
+   * của đơn B.
+   *   095 → gộp 100tr, trừ 10tr, thuần  90tr  ← phạt NV cho đơn không tồn tại
+   *   096 → gộp 100tr, trừ    0đ, thuần 100tr
+   */
+  it("KHÔNG trừ phiếu trả gắn vào đơn nháp/đã huỷ — đơn đó chưa từng được cộng", () => {
+    expect(RETURNS_FN).toContain(
+      "(r.order_id IS NULL OR public.is_revenue_status(o.status))"
+    )
+  })
+
+  it("phiếu KHÔNG gắn đơn thì vẫn tính — không có đơn gốc để xét", () => {
+    // Điều kiện phải là OR với `r.order_id IS NULL`, không phải AND thuần,
+    // nếu không mọi phiếu tạo tay ở /returns/new sẽ bị bỏ hết.
+    expect(RETURNS_FN).toMatch(/r\.order_id IS NULL OR/)
+  })
+
   it("không rò dữ liệu sang tổ chức khác", () => {
     expect(RETURNS_FN).toContain("r.org_id = p_org")
     expect(RETURNS_FN).toContain("o2.org_id = r.org_id")
@@ -161,6 +217,32 @@ describe("095 — chặn số âm", () => {
     for (const k of ["revenue_gross", "returns_deducted", "revenue_net_raw", "revenue_clamped"]) {
       expect(SQL, `breakdown thiếu "${k}"`).toContain(`'${k}'`)
     }
+  })
+
+  /**
+   * Chạy thật: bán 100tr, trả 145tr → thuần thật -45tr, kẹp về 0,
+   * returns_excess = 45.000.000. Không ghi ra thì 45tr biến mất khỏi mọi
+   * báo cáo mà không ai biết.
+   */
+  it("phần hàng trả vượt không bị nuốt im lặng", () => {
+    expect(SQL).toContain("'returns_excess'")
+    expect(SQL).toContain("GREATEST(0, -v_net_raw)")
+  })
+})
+
+describe("096 — hàm bỏ qua RLS phải tự lọc org", () => {
+  it("câu tính doanh số gộp có lọc org_id", () => {
+    // SECURITY DEFINER → RLS không áp dụng. Trước 096 câu này chỉ lọc
+    // sales_user_id, an toàn nhờ ăn may chứ không nhờ thiết kế.
+    const i = SQL.indexOf("INTO v_gross")
+    expect(i).toBeGreaterThan(0)
+    const q = SQL.slice(i, SQL.indexOf(";", i))
+    expect(q).toContain("org_id = v_org")
+  })
+
+  it("hàm tính hàng trả cũng lọc org ở cả hai vế", () => {
+    expect(RETURNS_FN).toContain("r.org_id = p_org")
+    expect(RETURNS_FN).toContain("o2.org_id = r.org_id")
   })
 
   it("phiếu lương hiển thị được phép trừ, không chỉ số cuối", () => {

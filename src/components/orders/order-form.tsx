@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
@@ -131,47 +132,74 @@ export function OrderForm() {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         if (await loadFromCache("Không có mạng")) return
       }
+      const CUST_COLS = "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)"
+      const PROD_COLS = "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)"
+      // Cả ba truy vấn đều PHẢI phân trang. Nhà phân phối có hơn 1.000 khách
+      // hoặc hơn 1.000 lô còn hàng là chuyện thường, mà server cắt ở 1.000
+      // dòng/lần: khách nằm sau dòng 1.000 không tìm thấy trong ô chọn khách,
+      // lô nằm sau dòng 1.000 làm sản phẩm hiện tồn 0.
+      const pageAll = <T,>(cols: string, table: "customers" | "products", orderBy: string) =>
+        fetchAllForAggregate<T>((from, to) =>
+          supabase
+            .from(table)
+            .select(cols, { count: "exact" })
+            .eq("status", "active")
+            .order(orderBy)
+            .range(from, to)
+        )
       const results = await Promise.all([
-        supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("status", "active").order("store_name"),
-        supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)").eq("status", "active").order("name"),
-        supabase.from("batches").select("product_id, qty_on_hand").gt("qty_on_hand", 0),
+        pageAll<Customer>(CUST_COLS, "customers", "store_name"),
+        pageAll<Product & { price_lists?: PriceList[]; units?: ProductUnit[] }>(PROD_COLS, "products", "name"),
+        // PHẢI phân trang. Bản đồ tồn kho dựng từ truy vấn này là thứ dùng
+        // để CHẶN LƯU ĐƠN (isSaleLineOverstock / hasOverstock). Trước đây
+        // truy vấn không giới hạn nên server cắt ở 1.000 dòng: nhà phân phối
+        // có hơn 1.000 lô còn hàng thì mọi sản phẩm có lô nằm sau dòng
+        // thứ 1.000 hiện tồn = 0 → nhân viên đứng ở quầy khách, gõ đúng số
+        // lượng, bị báo "vượt tồn" và KHÔNG lưu được đơn hợp lệ. Không có
+        // lỗi nào hiện ra để đoán được nguyên nhân.
+        fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
+          supabase
+            .from("batches")
+            .select("product_id, qty_on_hand", { count: "exact" })
+            .gt("qty_on_hand", 0)
+            .range(from, to)
+        ),
       ])
       let [custRes, prodRes] = results
       const batchRes = results[2]
       // Không có fallback như hai truy vấn trên, nhưng vẫn phải ghi lại:
       // lỗi ở đây làm mọi sản phẩm hiện tồn kho 0 mà không báo gì.
-      if (batchRes.error) console.error("[order-form] batches query failed:", batchRes.error.message)
+      if (batchRes.error) console.error("[order-form] batches query failed:", batchRes.error)
       // Fallback: nếu DB thiếu cột (migration chưa chạy đủ) thì query cột
       // tường minh trả 400 → danh sách rỗng im lặng. Thử lại bằng '*' để
       // form vẫn dùng được, đồng thời log + toast để chẩn đoán.
       if (prodRes.error) {
-        console.error("[order-form] products query failed:", prodRes.error.message)
-        // eslint-disable-next-line no-restricted-syntax
-        prodRes = (await supabase.from("products").select("*, price_lists(*), units:product_units(*)").eq("status", "active").order("name")) as unknown as typeof prodRes
+        console.error("[order-form] products query failed:", prodRes.error)
+        prodRes = await pageAll<Product & { price_lists?: PriceList[]; units?: ProductUnit[] }>(
+          "*, price_lists(*), units:product_units(*)", "products", "name"
+        )
       }
       if (custRes.error) {
-        console.error("[order-form] customers query failed:", custRes.error.message)
-        // eslint-disable-next-line no-restricted-syntax
-        custRes = (await supabase.from("customers").select("*, group:customer_groups(*)").eq("status", "active").order("store_name")) as unknown as typeof custRes
+        console.error("[order-form] customers query failed:", custRes.error)
+        custRes = await pageAll<Customer>("*, group:customer_groups(*)", "customers", "store_name")
       }
       if (prodRes.error || custRes.error) {
         toast({
           title: "Không tải được dữ liệu sản phẩm/khách hàng",
-          description: prodRes.error?.message || custRes.error?.message || "Lỗi không xác định",
+          description: prodRes.error || custRes.error || "Lỗi không xác định",
           variant: "destructive",
         })
       }
       // Mạng lỗi giữa chừng mà không có dữ liệu → thử cache.
-      const custData = (custRes.data as unknown as Customer[]) || []
-      const prodData =
-        (prodRes.data as (Product & { price_lists?: PriceList[]; units?: ProductUnit[] })[]) || []
+      const custData = custRes.rows
+      const prodData = prodRes.rows
       if (custData.length === 0 && prodData.length === 0) {
         if (await loadFromCache("Kết nối không ổn định")) return
       }
       setCustomers(custData)
       setProducts(prodData)
       const stockMap: Record<string, number> = {}
-      for (const b of (batchRes.data as Array<{ product_id: string; qty_on_hand: number }>) || []) {
+      for (const b of batchRes.rows) {
         stockMap[b.product_id] = (stockMap[b.product_id] || 0) + Number(b.qty_on_hand || 0)
       }
       setStockByProduct(stockMap)

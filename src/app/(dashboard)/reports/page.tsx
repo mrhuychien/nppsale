@@ -372,11 +372,11 @@ export default function ReportsPage() {
               momPct={momAov}
             />
             <KpiCard
-              label="Sản phẩm"
+              label="Sản phẩm đang bán"
               value={String(data.productCount)}
               icon={Package}
               accent="primary"
-              hint="Đang hoạt động"
+              hint="Không tính sản phẩm đã ngừng"
             />
           </div>
           <Link

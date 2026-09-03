@@ -560,7 +560,10 @@ export default function OrdersPage() {
           <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
           <span>
             {isSales
-              ? "Bạn chỉ thấy đơn do bạn tạo. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
+              // RLS lọc theo `sales_user_id = auth.uid()` (002_rls_policies.sql:292),
+              // tức đơn BẠN PHỤ TRÁCH — không phải đơn bạn bấm nút tạo. Quản lý
+              // tạo đơn rồi giao cho bạn thì bạn vẫn thấy, dù không phải bạn tạo.
+              ? "Bạn chỉ thấy đơn bạn phụ trách. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
               : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
           </span>
         </div>

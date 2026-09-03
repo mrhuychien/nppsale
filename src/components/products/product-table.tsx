@@ -122,7 +122,14 @@ export function ProductTable({
       {/* Mobile card list — layout cố định, không phụ thuộc visibleColumns */}
       <div className="lg:hidden space-y-3">
         {products.map((product) => {
-          const defaultPrice = product.price_lists?.find((p) => !p.group_id)
+          // Cùng công thức với bản bảng ở trên (dòng 68). Trước đây thẻ mobile
+          // chỉ đọc price_lists, KHÔNG có dự phòng sell_price — sản phẩm nào
+          // định giá thẳng ở sell_price mà chưa có bảng giá thì trên điện
+          // thoại hiện "-" trong khi trên máy tính vẫn ra giá đúng. Nhân viên
+          // đứng trong cửa hàng không đọc được giá để báo khách.
+          const defaultPrice =
+            product.price_lists?.find((p) => !p.group_id)?.price ??
+            Number(product.sell_price ?? 0)
           const checked = selectedIds?.has(product.id) ?? false
           return (
             <div
@@ -167,7 +174,7 @@ export function ProductTable({
                 <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
                   <span className="text-xs text-muted-foreground">Giá bán</span>
                   <span className="font-bold text-base tabular-nums">
-                    {defaultPrice ? formatCurrency(defaultPrice.price) : "-"}
+                    {defaultPrice > 0 ? formatCurrency(defaultPrice) : "-"}
                   </span>
                 </div>
               </div>

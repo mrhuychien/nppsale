@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -42,6 +43,12 @@ interface RepDebtRow {
 
 export default function ReceivablesByRepPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
+  // Vai trò `sales` có quyền receivables:read (permissions.ts:118) nên vào
+  // được trang này, nhưng RLS chỉ trả về phần công nợ của chính họ. Gọi con
+  // số đó là "Tổng nợ NPP" là nói sai: nhân viên tưởng cả nhà phân phối chỉ
+  // nợ bằng đúng phần mình đang gánh.
+  const { user } = useAuth()
+  const isSales = user?.role === "sales"
   // Database cộng sẵn (hàm SQL `receivables_by_rep`, migration 093): mỗi
   // nhân viên một dòng, thay vì tải toàn bộ công nợ về rồi gộp bằng
   // JavaScript. Chính xác tuyệt đối và không phụ thuộc `db.max_rows`.
@@ -97,33 +104,46 @@ export default function ReceivablesByRepPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Công nợ theo nhân viên bán hàng" backHref="/receivables" />
+      <PageHeader
+        title={isSales ? "Công nợ của bạn" : "Công nợ theo nhân viên bán hàng"}
+        backHref="/receivables"
+      />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className={`grid grid-cols-1 gap-3 ${isSales ? "" : "sm:grid-cols-3"}`}>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tổng nợ NPP</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              {isSales ? "Tổng nợ bạn gánh" : "Tổng nợ NPP"}
+            </p>
             <p className="text-xl font-black mt-1">{formatCurrency(totalOutstanding)}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Số NVBH có nợ</p>
-            <p className="text-xl font-black mt-1">{repsWithDebt}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">NVBH nợ quá hạn nhiều nhất</p>
-            <p className="text-xl font-black mt-1">
-              {worstRep && worstRep.overdueAmount > 0
-                ? `${worstRep.fullName} (${formatCurrency(worstRep.overdueAmount)})`
-                : "-"
-              }
-            </p>
-          </CardContent>
-        </Card>
+        {/* Hai ô so sánh giữa các nhân viên chỉ có nghĩa khi nhìn thấy cả
+            đội. Với vai trò `sales`, RLS chỉ trả về chính họ nên "Số NVBH có
+            nợ" luôn là 1 và "nợ quá hạn nhiều nhất" luôn là chính mình —
+            thà không hiện còn hơn hiện một con số vô nghĩa. */}
+        {!isSales && (
+          <>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Số NVBH có nợ</p>
+                <p className="text-xl font-black mt-1">{repsWithDebt}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">NVBH nợ quá hạn nhiều nhất</p>
+                <p className="text-xl font-black mt-1">
+                  {worstRep && worstRep.overdueAmount > 0
+                    ? `${worstRep.fullName} (${formatCurrency(worstRep.overdueAmount)})`
+                    : "-"
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Table */}

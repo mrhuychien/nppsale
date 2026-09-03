@@ -180,9 +180,12 @@ export default function HomeLauncherPage() {
           .select("id", { count: "exact", head: true })
           .eq("sales_user_id", user.id)
           .eq("status", "draft"),
+        // Ô này ghi "Điểm bán" nên phải đếm SỐ CỬA HÀNG đã ghé, không phải
+        // số lượt: ghé lại một cửa hàng lần thứ hai không thành hai điểm bán.
+        // Cũng là cách màn Khách hàng đang đếm, để hai màn khớp nhau.
         supabase
           .from("visit_logs")
-          .select("id", { count: "exact", head: true })
+          .select("customer_id")
           .eq("sales_user_id", user.id)
           .eq("visit_date", todayDate),
         supabase
@@ -202,7 +205,11 @@ export default function HomeLauncherPage() {
         ordersToday,
         ordersTodayValue,
         draftOrders: draftRes.count ?? 0,
-        visitsToday: visitsRes.count ?? 0,
+        visitsToday: new Set(
+          ((visitsRes.data as Array<{ customer_id: string | null }> | null) || [])
+            .map((v) => v.customer_id)
+            .filter(Boolean)
+        ).size,
         myCustomers: custRes.count ?? 0,
       })
     })()

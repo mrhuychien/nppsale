@@ -97,21 +97,32 @@ export default function CustomersPage() {
   // Stats: tổng KH + KH đã ghé hôm nay — count query, không phụ thuộc pagination.
   useEffect(() => {
     async function loadStats() {
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const [totalRes, ordersTodayRes] = await Promise.all([
+      // "Đã ghé hôm nay" phải đếm LƯỢT GHÉ, không phải đơn hàng.
+      //
+      // Trước đây chỗ này đếm distinct customer_id trong sales_orders tạo
+      // hôm nay. Ghé thăm và bán được hàng là hai việc khác nhau: nhân viên
+      // ghé 10 cửa hàng, lấy được 3 đơn thì màn Khách hàng hiện "3" còn màn
+      // Trang chủ (đếm visit_logs) hiện "10" — hai con số cùng tên "hôm nay"
+      // trên hai màn hình. Và huy hiệu "Đã ghé hôm nay" trên từng dòng khách
+      // cũng sai theo: ghé mà không bán được thì không có huy hiệu.
+      //
+      // Ngày lấy theo lịch máy của người dùng (điện thoại ở Việt Nam) chứ
+      // không phải UTC — visit_date là cột `date` nên so bằng chuỗi YYYY-MM-DD.
+      const today = new Date()
+      const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+      const [totalRes, visitsTodayRes] = await Promise.all([
         supabase.from("customers").select("id", { count: "exact", head: true }),
         supabase
-          .from("sales_orders")
+          .from("visit_logs")
           .select("customer_id")
-          .gte("created_at", todayStart.toISOString()),
+          .eq("visit_date", todayDate),
       ])
-      const qErr2 = ([totalRes, ordersTodayRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr2 = ([totalRes, visitsTodayRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr2) console.error("[app/customers] truy vấn lỗi:", qErr2.message)
       const visitsToday = new Set<string>()
-      for (const o of (ordersTodayRes.data as Pick<SalesOrder, "customer_id">[]) || []) {
-        if (o.customer_id) visitsToday.add(o.customer_id)
+      for (const v of (visitsTodayRes.data as Array<{ customer_id: string | null }>) || []) {
+        if (v.customer_id) visitsToday.add(v.customer_id)
       }
       setStats({ total: totalRes.count ?? 0, visited: visitsToday.size })
       setVisitedToday(visitsToday)

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import {
   Filter,
   Inbox,
@@ -1328,12 +1329,12 @@ export default function StockOutPage() {
           />
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = swapSearch.trim().toLowerCase()
+              const q = viNormalize(swapSearch)
               const list = productCatalog.filter(
                 (p) =>
                   !q ||
-                  p.name.toLowerCase().includes(q) ||
-                  p.sku.toLowerCase().includes(q)
+                  viIncludes(p.name, q) ||
+                  viIncludes(p.sku, q)
               )
               if (list.length === 0) {
                 return (

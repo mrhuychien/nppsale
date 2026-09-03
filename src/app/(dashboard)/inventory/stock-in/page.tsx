@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import Link from "next/link"
 import {
   Dialog,
@@ -169,9 +170,9 @@ export default function StockInPage() {
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return []
-    const q = productSearch.toLowerCase()
+    const q = viNormalize(productSearch)
     return products.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      (p) => viIncludes(p.name, q) || viIncludes(p.sku, q)
     )
   }, [productSearch, products])
 

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { Plus, Search, Trash2, Wallet, Receipt, Info } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
 
@@ -105,11 +106,11 @@ export default function ExpensesPage() {
     return expenses.filter((e) => {
       if (categoryFilter !== "all" && e.category_id !== categoryFilter) return false
       if (search) {
-        const q = search.toLowerCase()
+        const q = viNormalize(search)
         if (
-          !e.description?.toLowerCase().includes(q) &&
-          !e.reference_code?.toLowerCase().includes(q) &&
-          !e.category?.name.toLowerCase().includes(q)
+          !viIncludes(e.description, q) &&
+          !viIncludes(e.reference_code, q) &&
+          !viIncludes(e.category?.name, q)
         ) {
           return false
         }

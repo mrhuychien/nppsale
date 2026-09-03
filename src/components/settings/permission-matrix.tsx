@@ -45,6 +45,7 @@ import {
   type FeatureGroup,
 } from "@/lib/permissions-features"
 import { cn } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 
 const ACTION_ICONS: Record<Action, typeof Eye> = {
   read: Eye,
@@ -222,13 +223,13 @@ export function PermissionMatrix({
   const filteredGroups = useMemo(() => {
     const grouped = featuresByGroup()
     if (!search.trim()) return grouped
-    const q = search.trim().toLowerCase()
+    const q = viNormalize(search)
     const out: Record<FeatureGroup, FeatureDef[]> = {} as Record<FeatureGroup, FeatureDef[]>
     for (const g of FEATURE_GROUPS) {
       const list = (grouped[g] || []).filter(
         (f) =>
-          f.label.toLowerCase().includes(q) ||
-          f.key.toLowerCase().includes(q)
+          viIncludes(f.label, q) ||
+          viIncludes(f.key, q)
       )
       if (list.length > 0) out[g] = list
     }

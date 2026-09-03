@@ -25,6 +25,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
@@ -150,10 +151,10 @@ export default function StockEntriesPage() {
   const filtered = useMemo(() => {
     return entries.filter((e) => {
       if (filterActive("search") && search) {
-        const q = search.toLowerCase()
+        const q = viNormalize(search)
         const matches =
-          e.entry_code.toLowerCase().includes(q) ||
-          (e.notes || "").toLowerCase().includes(q)
+          viIncludes(e.entry_code, q) ||
+          viIncludes((e.notes || ""), q)
         if (!matches) return false
       }
       if (filterActive("type") && typeFilter !== "all" && e.type !== typeFilter)

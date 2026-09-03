@@ -16,6 +16,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 
 type Variant = "purchase" | "payable" | "purchase_by_supplier"
 
@@ -190,11 +191,11 @@ export default function SuppliersReportPage() {
       if (!s) return false
       if (supplierFilter.length && !supplierFilter.includes(s.id)) return false
       if (!search) return true
-      const q = search.toLowerCase()
+      const q = viNormalize(search)
       return (
-        s.name.toLowerCase().includes(q) ||
-        (s.code || "").toLowerCase().includes(q) ||
-        (s.phone || "").toLowerCase().includes(q)
+        viIncludes(s.name, q) ||
+        viIncludes((s.code || ""), q) ||
+        viIncludes((s.phone || ""), q)
       )
     },
     [search, supplierFilter]

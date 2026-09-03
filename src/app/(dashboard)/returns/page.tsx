@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { RETURN_REASONS } from "@/lib/constants"
 import { RotateCcw, PieChart, Search, Info } from "lucide-react"
 import type { Return } from "@/types"
@@ -139,11 +140,11 @@ export default function ReturnsPage() {
       // Search cross-table (customer/requester/order) → client-side trên page.
       let list = raw
       if (filterActive("search") && debouncedSearch) {
-        const term = debouncedSearch.toLowerCase()
+        const term = viNormalize(debouncedSearch)
         list = raw.filter((r) =>
-          (r.customer?.store_name || "").toLowerCase().includes(term) ||
-          (r.requester?.full_name || "").toLowerCase().includes(term) ||
-          ((r as Return & { order?: { order_code?: string } }).order?.order_code || "").toLowerCase().includes(term)
+          viIncludes((r.customer?.store_name || ""), term) ||
+          viIncludes((r.requester?.full_name || ""), term) ||
+          viIncludes(((r as Return & { order?: { order_code?: string } }).order?.order_code || ""), term)
         )
       }
       setReturns(list)

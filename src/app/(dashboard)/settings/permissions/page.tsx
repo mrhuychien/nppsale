@@ -24,6 +24,7 @@ import {
   type FeatureGroup,
 } from "@/lib/permissions-features"
 import { cn } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import {
   ShieldCheck,
   RefreshCcw,
@@ -179,15 +180,15 @@ export default function PermissionsPage() {
   )
 
   const filteredGroups = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = viNormalize(search)
     if (!q) return grouped
     const out: Record<FeatureGroup, FeatureDef[]> = {} as Record<FeatureGroup, FeatureDef[]>
     for (const g of FEATURE_GROUPS) {
       out[g] = grouped[g].filter(
         (f) =>
-          f.label.toLowerCase().includes(q) ||
-          f.key.toLowerCase().includes(q) ||
-          f.module.toLowerCase().includes(q)
+          viIncludes(f.label, q) ||
+          viIncludes(f.key, q) ||
+          viIncludes(f.module, q)
       )
     }
     return out

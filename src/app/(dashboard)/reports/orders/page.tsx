@@ -20,6 +20,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { OrderStatus } from "@/types"
 
 type Variant = "by_product" | "by_transaction"
@@ -126,8 +127,8 @@ export default function OrdersReportPage() {
       if (customerSearch) {
         const c = customers.find((x) => x.id === o.customer_id)
         if (
-          !(c?.store_name || "").toLowerCase().includes(customerSearch.toLowerCase()) &&
-          !o.order_code.toLowerCase().includes(customerSearch.toLowerCase())
+          !viIncludes((c?.store_name || ""), viNormalize(customerSearch)) &&
+          !viIncludes(o.order_code, viNormalize(customerSearch))
         )
           return false
       }
@@ -184,8 +185,8 @@ export default function OrdersReportPage() {
         if (c?.group_id !== groupFilter) continue
       }
       if (productSearch) {
-        const q = productSearch.toLowerCase()
-        if (!p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) continue
+        const q = viNormalize(productSearch)
+        if (!viIncludes(p.name, q) && !viIncludes(p.sku, q)) continue
       }
       const k = groupSameType ? p.name.split(" ")[0] : p.id
       const sku = groupSameType ? "" : p.sku

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import {
   Search, Package, ChevronRight, Warehouse, AlertCircle,
 } from "lucide-react"
@@ -76,12 +77,12 @@ export default function InventoryAuditPage() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return products
-    const q = search.trim().toLowerCase()
+    const q = viNormalize(search)
     return products.filter(
       (p) =>
-        p.sku.toLowerCase().includes(q) ||
-        p.name.toLowerCase().includes(q) ||
-        (p.brand || "").toLowerCase().includes(q)
+        viIncludes(p.sku, q) ||
+        viIncludes(p.name, q) ||
+        viIncludes((p.brand || ""), q)
     )
   }, [products, search])
 

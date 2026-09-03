@@ -20,6 +20,7 @@ import {
   DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { Search, FileText, Plus, Columns3, X, Pencil } from "lucide-react"
 
 type ColKey = "entry_code" | "supplier" | "invoice_number" | "date" | "total" | "paid" | "remaining" | "debt_status"
@@ -150,12 +151,12 @@ export default function PurchaseInvoicesLookupPage() {
       if (debtFilter === "open") list = list.filter((r) => !!r.payable && r.payable.status !== "paid")
       else if (debtFilter === "paid") list = list.filter((r) => !!r.payable && r.payable.status === "paid")
       if (debouncedSearch) {
-        const term = debouncedSearch.toLowerCase()
+        const term = viNormalize(debouncedSearch)
         list = list.filter((r) =>
-          r.entry_code.toLowerCase().includes(term) ||
-          (r.supplier?.name || "").toLowerCase().includes(term) ||
-          (r.supplier?.code || "").toLowerCase().includes(term) ||
-          (r.payable?.invoice_number || "").toLowerCase().includes(term)
+          viIncludes(r.entry_code, term) ||
+          viIncludes((r.supplier?.name || ""), term) ||
+          viIncludes((r.supplier?.code || ""), term) ||
+          viIncludes((r.payable?.invoice_number || ""), term)
         )
       }
       setRows(list)

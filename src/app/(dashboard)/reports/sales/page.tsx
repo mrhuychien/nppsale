@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -244,8 +245,8 @@ export default function SalesReportPage() {
       const code = o.order_code
       if (
         !search ||
-        code.toLowerCase().includes(search.toLowerCase()) ||
-        (customerMap.get(o.customer_id)?.store_name || "").toLowerCase().includes(search.toLowerCase())
+        viIncludes(code, viNormalize(search)) ||
+        viIncludes((customerMap.get(o.customer_id)?.store_name || ""), viNormalize(search))
       ) {
         e.invoices.push({
           id: o.id,
@@ -307,10 +308,10 @@ export default function SalesReportPage() {
       .filter((o) => Number(o.discount || 0) > 0)
       .filter((o) => {
         if (!search) return true
-        const q = search.toLowerCase()
+        const q = viNormalize(search)
         return (
-          o.order_code.toLowerCase().includes(q) ||
-          (customerMap.get(o.customer_id)?.store_name || "").toLowerCase().includes(q)
+          viIncludes(o.order_code, q) ||
+          viIncludes((customerMap.get(o.customer_id)?.store_name || ""), q)
         )
       })
       .map((o) => {
@@ -406,7 +407,7 @@ export default function SalesReportPage() {
       }))
       .filter((r) => {
         if (!search) return true
-        return r.name.toLowerCase().includes(search.toLowerCase())
+        return viIncludes(r.name, viNormalize(search))
       })
       .sort((a, b) => b.revenue - a.revenue)
   }, [filteredOrders, filteredLines, stockLines, stockEntryMap, userMap, search])

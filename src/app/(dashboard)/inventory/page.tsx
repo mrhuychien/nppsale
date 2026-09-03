@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { StockBalanceTable } from "@/components/inventory/stock-balance-table"
 import {
   Activity,
@@ -156,12 +157,12 @@ export default function InventoryPage() {
       // Filter brand + search cross-table (product.name/sku) client-side trên page.
       if (brandFilter !== "all") list = list.filter((b) => b.product?.brand === brandFilter)
       if (debouncedSearch) {
-        const term = debouncedSearch.toLowerCase()
+        const term = viNormalize(debouncedSearch)
         list = list.filter(
           (b) =>
-            (b.product?.name || "").toLowerCase().includes(term) ||
-            (b.product?.sku || "").toLowerCase().includes(term) ||
-            b.batch_code.toLowerCase().includes(term)
+            viIncludes((b.product?.name || ""), term) ||
+            viIncludes((b.product?.sku || ""), term) ||
+            viIncludes(b.batch_code, term)
         )
       }
       setBatches(list)

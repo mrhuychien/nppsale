@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList, Truck, AlertCircle,
   Package, CircleX, RotateCcw, Search,
@@ -153,8 +154,8 @@ export default function PendingStockPage() {
   ): boolean => {
     if (routeFilter !== "all" && route !== routeFilter) return false
     if (searchText) {
-      const q = searchText.trim().toLowerCase()
-      if (!(storeName || "").toLowerCase().includes(q)) return false
+      const q = viNormalize(searchText)
+      if (!viIncludes((storeName || ""), q)) return false
     }
     if (date && dateFrom && date.slice(0, 10) < dateFrom) return false
     if (date && dateTo && date.slice(0, 10) > dateTo) return false

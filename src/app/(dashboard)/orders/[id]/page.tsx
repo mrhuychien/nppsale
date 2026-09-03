@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
 import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus } from "lucide-react"
@@ -1992,12 +1993,12 @@ export default function OrderDetailPage() {
           />
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = swapSearch.trim().toLowerCase()
+              const q = viNormalize(swapSearch)
               const list = swapCatalog.filter(
                 (p) =>
                   !q ||
-                  p.name.toLowerCase().includes(q) ||
-                  p.sku.toLowerCase().includes(q)
+                  viIncludes(p.name, q) ||
+                  viIncludes(p.sku, q)
               )
               if (list.length === 0) {
                 return (
@@ -2045,12 +2046,12 @@ export default function OrderDetailPage() {
           />
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = addLineSearch.trim().toLowerCase()
+              const q = viNormalize(addLineSearch)
               const list = swapCatalog.filter(
                 (p) =>
                   !q ||
-                  p.name.toLowerCase().includes(q) ||
-                  p.sku.toLowerCase().includes(q)
+                  viIncludes(p.name, q) ||
+                  viIncludes(p.sku, q)
               )
               if (list.length === 0) {
                 return (

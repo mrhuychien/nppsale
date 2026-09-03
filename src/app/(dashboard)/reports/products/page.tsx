@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -237,8 +238,8 @@ export default function ProductsReportPage() {
   const filterFn = useCallback(
     (p: ProductRow) => {
       if (!search) return true
-      const q = search.toLowerCase()
-      return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      const q = viNormalize(search)
+      return viIncludes(p.name, q) || viIncludes(p.sku, q)
     },
     [search]
   )

@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { Search } from "lucide-react"
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
 
@@ -167,11 +168,11 @@ export function StockBalanceTable() {
     let arr = Array.from(map.values())
     if (onlyOnHand) arr = arr.filter((r) => r.totalQty > 0)
     if (search.trim()) {
-      const q = search.trim().toLowerCase()
+      const q = viNormalize(search)
       arr = arr.filter(
         (r) =>
-          r.product.name.toLowerCase().includes(q) ||
-          r.product.sku.toLowerCase().includes(q)
+          viIncludes(r.product.name, q) ||
+          viIncludes(r.product.sku, q)
       )
     }
     return arr.sort((a, b) => a.product.name.localeCompare(b.product.name, "vi"))

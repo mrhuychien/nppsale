@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { Factory, Plus, Search } from "lucide-react"
 import Link from "next/link"
 import type { Payable, PayableStatus } from "@/types"
@@ -117,14 +118,14 @@ export default function PayablesPage() {
   // không trực tiếp được trên server-side với Supabase).
   const filtered = useMemo(() => {
     if (!debouncedSearch) return payables
-    const q = debouncedSearch.toLowerCase()
+    const q = viNormalize(debouncedSearch)
     // Nếu invoice_number đã match server-side, mọi row đều OK.
     // Đồng thời also lọc theo supplier nếu user search tên NCC.
     return payables.filter(
       (p) =>
-        p.invoice_number?.toLowerCase().includes(q) ||
-        p.supplier?.name?.toLowerCase().includes(q) ||
-        p.supplier?.code?.toLowerCase().includes(q)
+        viIncludes(p.invoice_number, q) ||
+        viIncludes(p.supplier?.name, q) ||
+        viIncludes(p.supplier?.code, q)
     )
   }, [payables, debouncedSearch])
 

@@ -200,7 +200,7 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         if (error) {
           // If created_by column missing (mig 032 not applied), retry without it
           if (
-            (error.message || "").toLowerCase().includes("created_by") ||
+            (error.message || "").includes("created_by") ||
             error.code === "PGRST204"
           ) {
             delete insertPayload.created_by

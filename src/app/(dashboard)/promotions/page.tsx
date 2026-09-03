@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { formatDate } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { PROMOTION_TYPES } from "@/lib/constants"
 import { Tag, Plus, TrendingUp, Trophy, Search, Power, PowerOff } from "lucide-react"
 import type { Promotion } from "@/types"
@@ -92,7 +93,7 @@ export default function PromotionsPage() {
   const filtered = useMemo(() => {
     return promotions.filter((p) => {
       if (filterActive("search") && search) {
-        if (!p.name.toLowerCase().includes(search.toLowerCase())) return false
+        if (!viIncludes(p.name, viNormalize(search))) return false
       }
       if (filterActive("type") && typeFilter !== "all" && p.type !== typeFilter)
         return false

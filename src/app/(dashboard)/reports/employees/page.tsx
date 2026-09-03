@@ -24,6 +24,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 
 type Variant = "sales" | "profit" | "by_customer" | "products" | "summary"
 
@@ -235,7 +236,7 @@ export default function EmployeesReportPage() {
       if (!search) return true
       const u = userMap.get(uid)
       if (!u) return false
-      return u.full_name.toLowerCase().includes(search.toLowerCase())
+      return viIncludes(u.full_name, viNormalize(search))
     },
     [search, salesUserFilter, userMap]
   )

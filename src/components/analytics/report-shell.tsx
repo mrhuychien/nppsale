@@ -9,6 +9,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { cn } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 
 export interface VariantOption<T extends string> {
   key: T
@@ -246,13 +247,13 @@ export function FilterSearchSelect({
   }, [open])
 
   const selected = options.find((o) => o.id === value)
-  const q = query.trim().toLowerCase()
+  const q = viNormalize(query)
   const filtered = !q
     ? options
     : options.filter(
         (o) =>
-          o.label.toLowerCase().includes(q) ||
-          (o.hint || "").toLowerCase().includes(q)
+          viIncludes(o.label, q) ||
+          viIncludes((o.hint || ""), q)
       )
 
   return (
@@ -388,13 +389,13 @@ export function FilterMultiSelect({
 
   const selectedSet = new Set(value)
   const selectedOpts = options.filter((o) => selectedSet.has(o.id))
-  const q = query.trim().toLowerCase()
+  const q = viNormalize(query)
   const filtered = !q
     ? options
     : options.filter(
         (o) =>
-          o.label.toLowerCase().includes(q) ||
-          (o.hint || "").toLowerCase().includes(q)
+          viIncludes(o.label, q) ||
+          viIncludes((o.hint || ""), q)
       )
 
   const toggle = (id: string) => {

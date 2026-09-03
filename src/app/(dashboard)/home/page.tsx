@@ -47,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 import { getDailyQuote, QUOTE_CATEGORY_LABEL } from "@/lib/sales-quotes"
 
 type TileColor =
@@ -228,10 +229,10 @@ export default function HomeLauncherPage() {
   }, [role])
 
   const filteredTiles = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = viNormalize(search)
     if (!q) return visibleTiles
     return visibleTiles.filter(
-      (t) => t.label.toLowerCase().includes(q) || t.href.toLowerCase().includes(q)
+      (t) => viIncludes(t.label, q) || viIncludes(t.href, q)
     )
   }, [search, visibleTiles])
 

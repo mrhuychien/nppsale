@@ -24,6 +24,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
+import { viIncludes, viNormalize } from "@/lib/search"
 
 type Variant = "sales" | "profit" | "receivables" | "products"
 
@@ -187,11 +188,11 @@ export default function CustomersReportPage() {
       if (!c) return false
       if (customerFilter.length && !customerFilter.includes(c.id)) return false
       if (!search) return true
-      const q = search.toLowerCase()
+      const q = viNormalize(search)
       return (
-        c.store_name.toLowerCase().includes(q) ||
-        (c.phone || "").toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q)
+        viIncludes(c.store_name, q) ||
+        viIncludes((c.phone || ""), q) ||
+        viIncludes(c.id, q)
       )
     },
     [search, customerFilter]

@@ -10,8 +10,14 @@ interface ApprovalBadgeProps {
 
 export function ApprovalBadge({ total, status, approvedBy }: ApprovalBadgeProps) {
   if (status !== "draft") {
-    if (approvedBy) return <Badge variant="success">Đã duyệt</Badge>
-    if (status === "confirmed") return <Badge variant="success">Tự động duyệt</Badge>
+    // KHÔNG lặp lại chữ "Đã duyệt" — StatusBadge ngay bên cạnh đã in nhãn
+    // đó cho trạng thái `confirmed` (ORDER_STATUS_MAP trong lib/constants).
+    // Trước đây hai badge cùng chữ "Đã duyệt" nằm sát nhau, một xanh dương
+    // một xanh lá, không ai biết chúng khác nhau chỗ nào.
+    // Badge này chỉ nói thêm điều StatusBadge KHÔNG nói: duyệt tay hay tự
+    // động.
+    if (approvedBy) return <Badge variant="success">Duyệt tay</Badge>
+    if (status === "confirmed") return <Badge variant="outline">Tự động duyệt</Badge>
     return null
   }
 

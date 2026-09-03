@@ -143,7 +143,20 @@ export default function PurchaseReturnsPage() {
                       className="border-t cursor-pointer hover:bg-muted/40"
                       onClick={() => router.push(`/purchase-returns/${r.id}`)}
                     >
-                      <td className="px-3 py-2 font-mono">{r.return_code || "—"}</td>
+                      {/*
+                        Mã phiếu chỉ được sinh khi GỬI cho NCC, nên phiếu
+                        nháp chưa có mã — đó là thiết kế, không phải lỗi.
+                        Nhưng để "—" thì trông y như dữ liệu bị mất; trang
+                        chi tiết đã ghi rõ "(chưa sinh — sẽ tạo khi gửi)"
+                        còn danh sách thì không.
+                      */}
+                      <td className="px-3 py-2 font-mono">
+                        {r.return_code || (
+                          <span className="font-sans text-xs text-muted-foreground">
+                            chưa sinh mã
+                          </span>
+                        )}
+                      </td>
                       {show("date") && <td className="px-3 py-2">{formatDate(r.return_date)}</td>}
                       {show("supplier") && <td className="px-3 py-2">{r.supplier?.name || "—"}</td>}
                       {show("warehouse") && <td className="px-3 py-2">{ZONE_LABEL[r.warehouse_zone] || r.warehouse_zone}</td>}

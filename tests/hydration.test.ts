@@ -241,3 +241,106 @@ describe("sổ lỗi bàn giao — số bịa và nhãn nói sai", () => {
     expect(code(STOCK_OUT.src)).not.toContain("→ pickList")
   })
 })
+
+describe("sổ lỗi bàn giao — kho & phiếu", () => {
+  const MIG = resolve(__dirname, "../supabase/migrations")
+
+  /**
+   * NPP-03: view v_stock_balance_by_zone (mig 048:36-47) dùng
+   *     COALESCE(tổng_FIFO, giá_vốn_lô)
+   * để ưu tiên giá vốn FIFO. Nhưng COALESCE chỉ lùi khi truy vấn con trả
+   * NULL; SUM trên các lô có unit_cost = 0 trả về **0**, và
+   * COALESCE(0, giá_lô) = 0 — ghi đè mất giá vốn theo lô vẫn còn đúng.
+   *
+   * unit_cost = 0 không phải ca hiếm: fifo_layers chỉ được ghi ở nhánh
+   * nhận hàng chưa dùng về từ tài xế (057:143 dùng COALESCE(unit_cost, 0)),
+   * mà nhánh xuất chưa từng đóng giá vốn (NPP-01).
+   *
+   * Đã dựng lại trên Postgres 16: SP còn 100 hộp giá vốn 8.000 mà hiện
+   * 0đ chỉ vì có một lô nhận về giá vốn 0. Sau mig 098: 800.000.
+   */
+  it("mig 098 lùi về giá vốn theo lô khi FIFO ra 0", () => {
+    const sql = readFileSync(resolve(MIG, "098_stock_value_zero_fallback.sql"), "utf-8")
+    expect(sql).toContain("NULLIF(")
+    // Phần còn lại của view phải giữ nguyên văn mig 048.
+    expect(sql).toContain("COALESCE(b.warehouse_zone, 'sale')")
+    expect(sql).not.toContain("NULLIF(b.warehouse_zone")
+  })
+
+  it("mig 098 đặt lại security_invoker sau khi DROP view", () => {
+    // Mig 092 bật security_invoker để RLS vẫn áp dụng; DROP + CREATE làm
+    // mất thuộc tính đó. Bỏ quên là mở toàn bộ số liệu tồn kho cho mọi vai
+    // trò mà không có lỗi nào báo ra.
+    const sql = readFileSync(resolve(MIG, "098_stock_value_zero_fallback.sql"), "utf-8")
+    expect(sql).toContain("SET (security_invoker = true)")
+  })
+
+  /**
+   * NPP-13: vòng lặp FEFO ở entries/[id] chọn lô rồi trừ tồn nhưng chỉ
+   * đóng unit_cost, KHÔNG lưu lô nào đã dùng — cột "LÔ / SKU" trên phiếu
+   * xuất luôn là "–", tab FEFO và thẻ "Sắp hết hạn" không có dữ liệu xuất.
+   */
+  it("phiếu xuất ghi lại lô đã lấy hàng", () => {
+    const f = TSX.find((t) => t.file === "app/(dashboard)/inventory/entries/[id]/page.tsx")!
+    expect(f.src).toContain("patch.batch_id")
+    // Phải lấy cả batch_code về mới ghi được danh sách lô cho người đọc.
+    expect(f.src).toContain('"id, qty_on_hand, unit_cost, batch_code, expires_at"')
+  })
+
+  /** NPP-30: hai badge cùng chữ "Đã duyệt" nằm sát nhau sau khi duyệt. */
+  it("badge duyệt không lặp lại nhãn của badge trạng thái", () => {
+    const b = readFileSync(
+      resolve(__dirname, "../src/components/orders/approval-badge.tsx"),
+      "utf-8"
+    )
+    expect(code(b)).not.toContain(">Đã duyệt<")
+    expect(b).toContain("Duyệt tay")
+  })
+
+  /** NPP-09: đơn công nợ vẫn điền sẵn thu đủ tiền mặt. */
+  it("chỉ điền sẵn tiền thu cho đơn thu ngay", () => {
+    const f = TSX.find((t) =>
+      t.file === "app/(dashboard)/inventory/stock-out/collect/[entryId]/page.tsx"
+    )!
+    expect(f.src).toContain("isCreditTerms(o.payment_terms)")
+    expect(f.src).toContain("không thu ngay")
+  })
+
+  /** NPP-31: `max` của HTML không chặn gõ; phải kẹp tại ô nhập. */
+  it("ô số tiền thu kẹp ngay khi gõ", () => {
+    const f = TSX.find((t) =>
+      t.file === "app/(dashboard)/inventory/stock-out/collect/[entryId]/page.tsx"
+    )!
+    expect(f.src).toContain("Math.min(n, r.outstanding)")
+  })
+
+  /** NPP-33: thẻ khách chỉ hiện hạn mức, không hiện dư nợ. */
+  it("thẻ khách hiện đủ hạn mức / đang nợ / còn được nợ", () => {
+    const f = TSX.find((t) => t.file === "components/orders/order-form.tsx")!
+    expect(f.src).toContain("customerOutstanding")
+    expect(f.src).toContain("Còn được nợ")
+  })
+
+  /** NPP-11: phụ đề in số dòng của trang hiện tại, không phải tổng. */
+  it("số đơn trên phụ đề là tổng từ server", () => {
+    const f = TSX.find((t) => t.file === "app/(dashboard)/orders/page.tsx")!
+    expect(f.src).toContain("pg.total")
+    expect(code(f.src)).not.toContain("description={`${orders.length} đơn hàng`}")
+  })
+
+  /** Công cụ đo NPP-01 phải tồn tại và chỉ đọc. */
+  it("có công cụ đo tồn kho chưa bị trừ, và nó không sửa dữ liệu", () => {
+    const sql = readFileSync(
+      resolve(__dirname, "../supabase/diagnostics/check_stock_not_deducted.sql"),
+      "utf-8"
+    )
+    expect(sql).toContain("stock_entry_lines")
+    for (const danger of ["UPDATE ", "DELETE ", "INSERT ", "ALTER ", "DROP "]) {
+      const bare = sql
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith("--"))
+        .join("\n")
+      expect(bare, `công cụ chẩn đoán không được chứa ${danger.trim()}`).not.toContain(danger)
+    }
+  })
+})

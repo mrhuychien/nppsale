@@ -249,17 +249,25 @@ export default function StockEntryDetailPage() {
         if (remaining <= 0) continue
         const { data: prodBatches, error: prodBatchesErr } = await supabase
           .from("batches")
-          .select("id, qty_on_hand, unit_cost")
+          .select("id, qty_on_hand, unit_cost, batch_code, expires_at")
           .eq("product_id", l.product_id)
           .gt("qty_on_hand", 0)
           .order("expires_at", { ascending: true })
         if (prodBatchesErr) console.error("[entries/id] truy vấn lỗi:", prodBatchesErr.message)
         let costSum = 0
         let qtyTaken = 0
+        // Ghi lại ĐÃ LẤY TỪ LÔ NÀO. Vòng lặp này vốn đã chọn lô theo FEFO
+        // nhưng chỉ đóng giá vốn, không lưu lô — nên cột "LÔ / SKU" trên
+        // phiếu xuất luôn là "–", tab "Theo lô hàng (FEFO)" và thẻ "Sắp hết
+        // hạn" không bao giờ có dữ liệu xuất. Hàng FMCG không truy xuất được
+        // hạn dùng là rủi ro thật (sổ lỗi NPP-13).
+        const takenFrom: Array<{ code: string | null; qty: number; id: string }> = []
         for (const b of (prodBatches as Array<{
           id: string
           qty_on_hand: number
           unit_cost: number
+          batch_code?: string | null
+          expires_at?: string | null
         }>) || []) {
           if (remaining <= 0) break
           const take = Math.min(remaining, Number(b.qty_on_hand))
@@ -270,12 +278,32 @@ export default function StockEntryDetailPage() {
           costSum += take * Number(b.unit_cost || 0)
           qtyTaken += take
           remaining -= take
+          takenFrom.push({ code: b.batch_code ?? null, qty: take, id: b.id })
         }
         const avgCost = qtyTaken > 0 ? costSum / qtyTaken : 0
-        if (avgCost > 0) {
+        // `batch_id` là khoá đơn nên chỉ ghi được MỘT lô. Một dòng có thể ăn
+        // nhiều lô, nên ghi lô LỚN NHẤT vào batch_id (để cột LÔ có thứ hiển
+        // thị và join được) và ghi đầy đủ danh sách vào notes để truy xuất
+        // không mất thông tin. Tách dòng theo lô là đổi ngữ nghĩa bảng,
+        // không làm ở đây.
+        const patch: Record<string, unknown> = {}
+        if (avgCost > 0) patch.unit_cost = avgCost
+        if (takenFrom.length > 0) {
+          const biggest = takenFrom.reduce((a, b) => (b.qty > a.qty ? b : a))
+          patch.batch_id = biggest.id
+          if (takenFrom.length > 1) {
+            const detail = takenFrom
+              .map((t) => `${t.code || t.id.slice(0, 8)}×${t.qty}`)
+              .join(", ")
+            patch.notes = `${(l as { notes?: string | null }).notes || ""}${
+              (l as { notes?: string | null }).notes ? " • " : ""
+            }Lô: ${detail}`.trim()
+          }
+        }
+        if (Object.keys(patch).length > 0) {
           await supabase
             .from("stock_entry_lines")
-            .update({ unit_cost: avgCost })
+            .update(patch)
             .eq("id", l.id)
             .throwOnError()
         }

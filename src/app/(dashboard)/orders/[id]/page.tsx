@@ -1931,7 +1931,23 @@ export default function OrderDetailPage() {
         </CardHeader>
         <CardContent>
           {statusHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có thay đổi trạng thái</p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Chưa có thay đổi trạng thái nào được ghi nhận
+              </p>
+              {/*
+                "Chờ duyệt" KHÔNG phải một trạng thái — nó là status='draft'
+                kèm approval_reason. Trigger trg_log_order_status (mig
+                008:152) chỉ ghi khi cột `status` thật sự đổi, nên đơn vừa
+                chuyển sang chờ duyệt thì đúng là chưa có gì để ghi. Nói rõ
+                ra, không thì người dùng thấy đơn đã "đi qua nháp → chờ
+                duyệt" mà lịch sử trống và tưởng mất dữ liệu.
+              */}
+              <p className="text-xs text-muted-foreground">
+                Đơn chờ duyệt vẫn ở trạng thái Nháp nên chưa tính là thay đổi
+                trạng thái. Lịch sử bắt đầu ghi từ lúc đơn được duyệt.
+              </p>
+            </div>
           ) : (
             <div className="relative pl-6">
               {/* Vertical line */}

@@ -68,6 +68,16 @@ export interface PayslipProps {
   ocMinCount?: number | null
   ocMinValue?: number | null
   ocBonusPerOrder?: number | null
+  /**
+   * Doanh số THUẦN (mig 095) — `revenue` ở trên đã là số thuần dùng để tính
+   * lương. Ba trường này để phiếu lương chỉ ra được phép trừ, nếu không thì
+   * NV bán 100tr nhìn thấy "Doanh số kỳ 55.000.000" và tưởng phần mềm sai.
+   */
+  revenueGross?: number | null
+  returnsDeducted?: number | null
+  /** Doanh số thuần THẬT, có thể âm; `revenue` đã kẹp về 0. */
+  revenueNetRaw?: number | null
+  revenueClamped?: boolean
   periodStart?: string | null
   periodEnd?: string | null
   /** Đơn hàng tính lương trong kỳ. */
@@ -118,6 +128,11 @@ export function Payslip(p: PayslipProps) {
   const lowPerf = p.lowPerf || "normal"
   const kpiTarget = p.kpiTargetRevenue ?? 0
   const revenue = p.revenue ?? 0
+  // Kỳ lương tính TRƯỚC mig 095 không có ba trường này → returns = 0 và
+  // phiếu in ra y như cũ, không hiện dòng giải thích thừa.
+  const gross = p.revenueGross ?? revenue
+  const returns = p.returnsDeducted ?? 0
+  const clamped = p.revenueClamped === true
   const tiers = p.kpiTierBreakdown ?? []
   const ocMinCount = p.ocMinCount ?? 0
   const ocCount = p.ocCount ?? 0
@@ -192,13 +207,35 @@ export function Payslip(p: PayslipProps) {
           </tr>
           <tr>
             <td style={{ padding: "0.6mm 0" }}>Doanh số kỳ</td>
-            <td style={{ padding: "0.6mm 0", fontWeight: 600 }}>{formatCurrency(revenue)}</td>
+            <td style={{ padding: "0.6mm 0", fontWeight: 600 }}>
+              {formatCurrency(revenue)}
+              {returns > 0 ? (
+                <span style={{ color: "#666", fontWeight: 400 }}>
+                  {" "}(thuần)
+                </span>
+              ) : null}
+            </td>
             <td style={{ padding: "0.6mm 0" }}>Mức chung A</td>
             <td style={{ padding: "0.6mm 0" }}>
               {kpiTarget > 0 ? formatCurrency(kpiTarget) : "—"}
               {p.kpiPct != null ? ` · đạt ${p.kpiPct}%` : ""}
             </td>
           </tr>
+          {returns > 0 && (
+            <tr>
+              <td style={{ padding: "0.6mm 0" }}>Cách ra doanh số</td>
+              <td style={{ padding: "0.6mm 0" }} colSpan={3}>
+                bán {formatCurrency(gross)} − hàng trả lại {formatCurrency(returns)} ={" "}
+                <strong>{formatCurrency(revenue)}</strong>
+                {clamped ? (
+                  <span style={{ color: "#666" }}>
+                    {" "}· hàng trả nhiều hơn hàng bán ({formatCurrency(p.revenueNetRaw ?? 0)}),
+                    tính doanh số bằng 0
+                  </span>
+                ) : null}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 
@@ -227,6 +264,11 @@ export function Payslip(p: PayslipProps) {
       <div style={{ fontSize: "8.5pt", lineHeight: 1.35 }}>
         <p style={{ margin: "0 0 1mm" }}>
           Doanh số trong kỳ: <strong>{formatCurrency(revenue)}</strong>
+          {returns > 0 ? (
+            <span style={{ color: "#555" }}>
+              {" "}(đã bán {formatCurrency(gross)}, trừ hàng trả lại {formatCurrency(returns)})
+            </span>
+          ) : null}
           {kpiTarget > 0 ? <> / mức chung A = {formatCurrency(kpiTarget)} → đạt <strong>{p.kpiPct != null ? `${p.kpiPct}%` : "—"}</strong></> : null}
         </p>
         {p.kpiModel === "per_user_tier" && (

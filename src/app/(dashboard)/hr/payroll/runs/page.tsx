@@ -952,6 +952,10 @@ export default function PayrollRunsPage() {
               computedAt={activeRun.computed_at}
               lockedAt={activeRun.locked_at}
               revenue={bd.revenue != null ? Number(bd.revenue) : null}
+              revenueGross={bd.revenue_gross != null ? Number(bd.revenue_gross) : null}
+              returnsDeducted={bd.returns_deducted != null ? Number(bd.returns_deducted) : null}
+              revenueNetRaw={bd.revenue_net_raw != null ? Number(bd.revenue_net_raw) : null}
+              revenueClamped={bd.revenue_clamped === true}
               kpiPct={bd.kpi_pct != null ? Number(bd.kpi_pct) : null}
               kpiTargetRevenue={bd.kpi_target_revenue != null ? Number(bd.kpi_target_revenue) : null}
               kpiModel={bd.kpi_model != null ? String(bd.kpi_model) : null}

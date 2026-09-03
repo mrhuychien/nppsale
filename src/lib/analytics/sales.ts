@@ -2,6 +2,29 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import type { DateRange } from "./period"
 
+/**
+ * Đổi một khoảng NGÀY (theo lịch Việt Nam) thành khoảng thời điểm để so với
+ * các cột timestamptz.
+ *
+ * VÌ SAO KHÔNG DÙNG "Z"
+ * Ba hàm dưới đây từng ghép `${range.from}T00:00:00Z`. Database chạy UTC còn
+ * người dùng ở múi giờ +07, nên mốc đó là 07:00 sáng giờ Việt Nam: mọi phiếu
+ * trả hoặc phiếu xuất kho tạo từ 0h đến 7h sáng ngày đầu kỳ bị đẩy sang KỲ
+ * TRƯỚC. Với báo cáo tháng thì đó là hàng trả của tháng này bị trừ vào doanh
+ * thu tháng trước — và tháng trước có thể đã chốt sổ.
+ *
+ * Cùng lỗi này đã sửa ở phía SQL trong migration 095 (AT TIME ZONE
+ * 'Asia/Ho_Chi_Minh'). Hai bên phải dùng chung một mốc thì số mới khớp.
+ */
+const VN_OFFSET = "+07:00"
+
+export function vnDayRange(range: DateRange): { fromIso: string; toIso: string } {
+  return {
+    fromIso: `${range.from}T00:00:00${VN_OFFSET}`,
+    toIso: `${range.to}T23:59:59.999${VN_OFFSET}`,
+  }
+}
+
 export interface SalesAggregates {
   invoiceCount: number       // số hóa đơn (đơn đã giao)
   revenue: number            // doanh thu (subtotal-ish gross)
@@ -118,8 +141,7 @@ export async function fetchReturnsValue(
   orgId: string,
   range: DateRange
 ): Promise<number> {
-  const fromIso = `${range.from}T00:00:00Z`
-  const toIso = `${range.to}T23:59:59Z`
+  const { fromIso, toIso } = vnDayRange(range)
   const dataRes = await fetchAllForAggregate((from, to) =>
     supabase
       .from("returns")
@@ -152,8 +174,7 @@ export async function fetchReturnsRows(
   orgId: string,
   range: DateRange
 ): Promise<ReturnSummaryRow[]> {
-  const fromIso = `${range.from}T00:00:00Z`
-  const toIso = `${range.to}T23:59:59Z`
+  const { fromIso, toIso } = vnDayRange(range)
   const dataRes = await fetchAllForAggregate((from, to) =>
     supabase
       .from("returns")
@@ -181,8 +202,7 @@ export async function fetchCogsForRange(
   orgId: string,
   range: DateRange
 ): Promise<{ cogs: number; lines: StockExportLineRow[] }> {
-  const fromIso = `${range.from}T00:00:00Z`
-  const toIso = `${range.to}T23:59:59Z`
+  const { fromIso, toIso } = vnDayRange(range)
 
   const entriesRes = await fetchAllForAggregate((from, to) =>
     supabase

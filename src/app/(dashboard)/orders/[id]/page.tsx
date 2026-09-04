@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
@@ -1455,16 +1456,8 @@ export default function OrderDetailPage() {
                     {invoice.misa_status && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Trạng thái MISA</span>
-                        <Badge variant={
-                          invoice.misa_status === "signed" ? "success"
-                          : invoice.misa_status === "error" ? "danger"
-                          : invoice.misa_status === "sent" ? "default"
-                          : "warning"
-                        }>
-                          {invoice.misa_status === "signed" ? "Đã ký"
-                          : invoice.misa_status === "error" ? "Lỗi"
-                          : invoice.misa_status === "sent" ? "Đã gửi"
-                          : "Đang chờ"}
+                        <Badge variant={misaStatusBadge(invoice.misa_status)!.variant}>
+                          {misaStatusBadge(invoice.misa_status)!.label}
                         </Badge>
                       </div>
                     )}

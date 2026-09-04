@@ -3,7 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { decryptSecret } from "@/lib/crypto"
 import { getInvoiceByRefId } from "@/lib/misa/client"
-import { sameInvNo } from "@/lib/misa/normalize"
+import { applyMisaSnapshot } from "@/lib/misa/apply"
+import { markOriginalReplaced } from "@/lib/misa/mark-replaced"
 import type { MisaConfig } from "@/lib/misa/types"
 
 export const runtime = "nodejs"
@@ -44,7 +45,7 @@ async function handle(req: Request) {
   const admin = createAdminClient()
   const { data: invoice, error: invoiceErr } = await admin
     .from("invoices")
-    .select("id, misa_lookup_code, misa_ref_id, misa_inv_no, misa_no_locked, org_id")
+    .select("id, misa_lookup_code, misa_ref_id, misa_inv_no, misa_no_locked, misa_status, subtotal, vat, total, org_id")
     .eq("id", body.invoiceId)
     .eq("org_id", profile.org_id)
     .maybeSingle()
@@ -111,53 +112,54 @@ async function handle(req: Request) {
     return NextResponse.json({ error: "MISA không trả về dữ liệu HD." }, { status: 404 })
   }
 
-  // Update các trường có ý nghĩa cho user: InvNo, TransactionID, PublishStatus.
-  const invNo = typeof misaInvoice["InvNo"] === "string" ? (misaInvoice["InvNo"] as string) : null
-  const txnId = typeof misaInvoice["TransactionID"] === "string" ? (misaInvoice["TransactionID"] as string) : null
-  const publishStatus = typeof misaInvoice["PublishStatus"] === "number" ? (misaInvoice["PublishStatus"] as number) : null
-  // PublishStatus 0=chưa phát hành (nháp), >=1 = đã phát hành (MISA enum cụ thể có thể khác).
-  let nextStatus: string | null = null
-  if (publishStatus != null) {
-    if (publishStatus >= 1) nextStatus = "signed"
-    else nextStatus = "sent" // nháp đã đẩy lên, chưa ký
-  }
+  // Suy trạng thái + quan hệ bằng module dùng CHUNG với vòng quét
+  // (src/lib/misa/apply.ts) — hai đường không được kết luận khác nhau về
+  // cùng một hoá đơn.
+  const applied = applyMisaSnapshot(
+    misaInvoice,
+    {
+      id: invoice.id,
+      misa_ref_id: invoice.misa_ref_id,
+      misa_inv_no: invoice.misa_inv_no,
+      misa_status: invoice.misa_status,
+      misa_no_locked: invoice.misa_no_locked,
+      subtotal: invoice.subtotal,
+      vat: invoice.vat,
+      total: invoice.total,
+    },
+    { orgUsesInvoiceCode: !!cfg.misa_is_invoice_with_code, now: new Date().toISOString() }
+  )
 
-  // Chỉ đưa vào `updates` những khoá THẬT SỰ có giá trị. MISA có lúc trả
-  // thiếu TransactionID (hoá đơn đang chờ cấp mã); ghi `null` vào đó là xoá
-  // trắng mã tra cứu đang đúng ở lượt sau.
-  const updates: Record<string, unknown> = {}
-  // "<Chưa cấp số>" là chỗ MISA giữ chỗ, không phải số hoá đơn.
-  if (invNo && !invNo.startsWith("<")) {
-    // Số do người GÁN TAY thì không đè: misa_ref_id trên hoá đơn đó thường
-    // trỏ về tờ ĐÃ CHẾT, ghi tiếp là đè số chết lên số người vừa gán.
-    if (invoice.misa_no_locked) {
-      // So bằng bản CHUẨN HOÁ: '00012345' và '12345' là cùng một số. Báo
-      // lệch ở đó là cảnh báo giả, mà rổ cảnh báo đầy báo động giả thì
-      // không ai nhìn cả cảnh báo thật.
-      if (invoice.misa_inv_no && !sameInvNo(invoice.misa_inv_no, invNo)) {
-        // Không đè, nhưng cũng KHÔNG im lặng.
-        updates.misa_note =
-          `Sổ ghi số ${invoice.misa_inv_no}, MISA cấp số ${invNo} (khoá gán tay nên không ghi đè).`
-        updates.misa_status = "amount_mismatch"
-      }
-    } else {
-      updates.misa_inv_no = invNo
-    }
-  }
-  if (txnId) updates.misa_lookup_code = txnId
-  if (nextStatus && !updates.misa_status) updates.misa_status = nextStatus
-  updates.misa_last_checked_at = new Date().toISOString()
-  if (Object.keys(updates).length) {
-    const { error: updErr } = await admin.from("invoices").update(updates).eq("id", body.invoiceId)
-      if (updErr) console.error("[einvoice/refresh-status] cập nhật thất bại:", updErr.message)
+  const { error: updErr } = await admin
+    .from("invoices")
+    .update(applied.updates)
+    .eq("id", body.invoiceId)
+  if (updErr) console.error("[einvoice/refresh-status] cập nhật thất bại:", updErr.message)
+
+  // Tờ này là bản THAY THẾ → tờ gốc phải được đánh dấu hết hiệu lực.
+  // Không làm thì hai hoá đơn cùng hiện "đã ký" cho một lần bán và doanh
+  // thu / thuế đầu ra khai GẤP ĐÔI.
+  let originalMarked: string | null = null
+  if (applied.markOriginalReplaced) {
+    originalMarked = await markOriginalReplaced(
+      admin,
+      profile.org_id as string,
+      applied.markOriginalReplaced,
+      invoice.id
+    )
   }
 
   return NextResponse.json({
     success: true,
     misa: {
-      InvNo: invNo,
-      TransactionID: txnId,
-      PublishStatus: publishStatus,
+      InvNo: applied.summary.invNo,
+      TransactionID: applied.updates.misa_lookup_code ?? null,
+      PublishStatus: misaInvoice["PublishStatus"] ?? null,
+      EInvoiceStatus: misaInvoice["EInvoiceStatus"] ?? null,
+      relation: applied.summary.relation,
+      status: applied.summary.status,
+      notes: applied.summary.notes,
+      original_marked_replaced: originalMarked,
     },
   })
 }

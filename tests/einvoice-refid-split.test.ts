@@ -26,9 +26,38 @@ function code(src: string): string {
     .replace(/^[ \t]*\/\/.*$/gm, "")
 }
 
+/**
+ * Lấy nội dung mọi object truyền vào `.update({...})` — tức những gì THẬT
+ * SỰ được ghi xuống DB. Khớp ngoặc nhọn để không cắt nhầm giữa chừng.
+ */
+function updatePayloads(src: string): string[] {
+  const out: string[] = []
+  const re = /\.update\(\s*\{/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    let depth = 1
+    let i = m.index + m[0].length
+    for (; i < src.length && depth > 0; i++) {
+      if (src[i] === "{") depth++
+      else if (src[i] === "}") depth--
+    }
+    out.push(src.slice(m.index, i))
+  }
+  return out
+}
+
 const PUBLISH = read("src/app/api/einvoice/publish/route.ts")
 const REFRESH = read("src/app/api/einvoice/refresh-status/route.ts")
 const CLIENT = read("src/lib/misa/client.ts")
+const SYNC = read("src/app/api/einvoice/sync/route.ts")
+/**
+ * §2 chuyển phần suy trạng thái + dựng `updates` từ trong route ra module
+ * dùng chung `apply.ts` (để refresh và vòng quét không kết luận khác nhau).
+ * Các chốt dưới đây vì thế soi apply.ts — nhưng vẫn kiểm CẢ HAI route để
+ * chắc không ai lén ghi thẳng vào cột khoá.
+ */
+const APPLY = read("src/lib/misa/apply.ts")
+const STATUS = read("src/lib/misa/status.ts")
 
 /** Migration 099 — tìm theo tên, không theo số cố định (migration chỉ thêm). */
 function migration(namePart: string): string {
@@ -44,15 +73,24 @@ describe("⚠ khoá nối phải BẤT BIẾN — refresh không được ghi đ
    * Đây là chốt trung tâm của cả §1. `refresh` ghi vào `misa_inv_no`; chạm
    * vào `misa_ref_id` là tái lập đúng con bug đã sửa.
    */
-  it("refresh KHÔNG ghi vào misa_ref_id, cũng không ghi vào cột cũ", () => {
-    const c = code(REFRESH)
-    expect(c).not.toMatch(/misa_ref_id\s*[:=]\s*[^=]/)
-    expect(c).not.toMatch(/updates\.misa_invoice_id/)
-    expect(c).not.toMatch(/misa_invoice_id\s*:/)
+  it("không đường nào ngoài publish GHI vào misa_ref_id", () => {
+    for (const [name, src] of [["refresh", REFRESH], ["sync", SYNC], ["apply", APPLY]] as const) {
+      const c = code(src)
+      // Chỉ soi VIỆC GHI, không soi việc đọc: `const refId = invoice.misa_ref_id`
+      // và khai báo kiểu đều hợp lệ và phải còn.
+      for (const payload of updatePayloads(c)) {
+        expect(payload, `${name} ghi misa_ref_id trong .update()`).not.toContain("misa_ref_id")
+        expect(payload, `${name} ghi cột cũ trong .update()`).not.toContain("misa_invoice_id")
+      }
+      expect(c, `${name} gán updates.misa_ref_id`).not.toMatch(/updates\.misa_ref_id\s*=/)
+      expect(c, `${name} gán updates.misa_invoice_id`).not.toMatch(/updates\.misa_invoice_id\s*=/)
+    }
+    // Và chốt ngược: publish thì PHẢI ghi.
+    expect(updatePayloads(code(PUBLISH)).join("\n")).toContain("misa_ref_id")
   })
 
-  it("refresh ghi số hoá đơn vào đúng cột của nó", () => {
-    expect(code(REFRESH)).toContain("updates.misa_inv_no = invNo")
+  it("số hoá đơn ghi vào đúng cột của nó", () => {
+    expect(code(APPLY)).toContain("updates.misa_inv_no = snap.invNo")
   })
 
   it("chỉ publish ghi misa_ref_id", () => {
@@ -147,18 +185,16 @@ describe("⚠ cùng kiểu lẫn khoá ở einvoice_logs — inv_no không đư�
 
 describe("⚠ không đè số người gán tay — và cũng không im lặng", () => {
   it("misa_no_locked chặn ghi đè", () => {
-    const c = code(REFRESH)
-    expect(c).toContain("invoice.misa_no_locked")
-    const i = c.indexOf("if (invoice.misa_no_locked)")
+    const c = code(APPLY)
+    const i = c.indexOf("if (book.misa_no_locked)")
     expect(i).toBeGreaterThan(0)
     // Nhánh khoá KHÔNG được chứa lệnh ghi số.
     const branch = c.slice(i, c.indexOf("} else {", i))
-    expect(branch).not.toContain("updates.misa_inv_no = invNo")
+    expect(branch).not.toContain("updates.misa_inv_no =")
   })
 
-  it("lệch số thì ghi misa_note nói rõ hai bên, không nuốt", () => {
-    const c = code(REFRESH)
-    expect(c).toContain("updates.misa_note")
+  it("lệch số thì ghi ghi chú nói rõ hai bên, không nuốt", () => {
+    const c = code(APPLY)
     expect(c).toMatch(/Sổ ghi số \$\{[^}]+\}, MISA cấp số \$\{[^}]+\}/)
   })
 
@@ -167,9 +203,9 @@ describe("⚠ không đè số người gán tay — và cũng không im lặng"
    * lệch. Rổ cảnh báo đầy báo động giả thì không ai nhìn cả cảnh báo thật.
    */
   it("so số hoá đơn qua bản chuẩn hoá, không so thẳng chuỗi", () => {
-    const c = code(REFRESH)
-    expect(c).toContain("sameInvNo(invoice.misa_inv_no, invNo)")
-    expect(c).not.toMatch(/invoice\.misa_inv_no\s*!==\s*invNo/)
+    expect(code(APPLY)).toContain("invNoConflict(book.misa_inv_no, snap.invNo)")
+    expect(code(STATUS)).toContain("return !sameInvNo(bookInvNo, misaInvNo)")
+    expect(code(APPLY)).not.toMatch(/book\.misa_inv_no\s*!==\s*snap\.invNo/)
   })
 })
 
@@ -179,15 +215,14 @@ describe("⚠ đừng gán null đè lên cột đang có giá trị tốt", () 
    * đó là xoá trắng mã tra cứu đang đúng ở lượt quét sau.
    */
   it("chỉ đưa vào updates những khoá có giá trị", () => {
-    const c = code(REFRESH)
-    expect(c).toContain("if (txnId) updates.misa_lookup_code = txnId")
-    expect(c).not.toMatch(/misa_lookup_code\s*:\s*txnId\s*\|\|\s*null/)
-    expect(c).not.toMatch(/updates\.misa_lookup_code\s*=\s*txnId\s*\|\|/)
+    const c = code(APPLY)
+    expect(c).toContain("if (snap.transactionId) updates.misa_lookup_code = snap.transactionId")
+    expect(c).not.toMatch(/updates\.misa_lookup_code\s*=\s*snap\.transactionId\s*\|\|/)
   })
 
   /** Luôn cập nhật thời điểm quét, kể cả khi chưa có số. */
   it("luôn ghi misa_last_checked_at", () => {
-    const c = code(REFRESH)
+    const c = code(APPLY)
     const i = c.indexOf("updates.misa_last_checked_at")
     expect(i).toBeGreaterThan(0)
     // Không nằm trong nhánh if nào — phải ở ngay thân hàm.
@@ -197,8 +232,8 @@ describe("⚠ đừng gán null đè lên cột đang có giá trị tốt", () 
 })
 
 describe("⚠ '<Chưa cấp số>' là chỗ giữ chỗ, không phải số hoá đơn", () => {
-  it("refresh vẫn loại chuỗi bắt đầu bằng '<'", () => {
-    expect(code(REFRESH)).toContain('invNo.startsWith("<")')
+  it("vẫn loại chuỗi bắt đầu bằng '<'", () => {
+    expect(code(STATUS)).toContain('t.startsWith("<")')
   })
 
   it("backfill của migration cũng bỏ qua rác đó", () => {

@@ -19,6 +19,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
+import { misaStatusBadge } from "@/lib/misa/labels"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
 import {
@@ -49,12 +50,7 @@ type InvoiceRow = Pick<
   | "misa_error"
 >
 
-const MISA_BADGE: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }> = {
-  signed: { label: "Đã ký số", variant: "success" },
-  sent: { label: "Đã gửi MISA", variant: "default" },
-  pending: { label: "Chờ gửi", variant: "warning" },
-  error: { label: "Lỗi", variant: "danger" },
-}
+
 
 export default function InvoicesPage() {
   const { user, loading: authLoading } = useRoleGuard("invoices")
@@ -160,6 +156,11 @@ export default function InvoicesPage() {
         if (misaFilter === "signed") q = q.eq("misa_status", "signed")
         else if (misaFilter === "error") q = q.eq("misa_status", "error")
         else if (misaFilter === "pending") q = q.or("misa_status.is.null,misa_status.eq.pending")
+        // Không có bộ lọc này thì hoá đơn bị huỷ / bị thay thế / lệch tiền
+        // nằm lẫn trong danh sách và không ai tìm ra chúng.
+        else if (misaFilter === "attention") {
+          q = q.in("misa_status", ["replaced", "cancelled", "amount_mismatch", "waiting_code"])
+        }
       }
       const { data, count , error: qErr } = await q
       if (qErr) console.error("[invoices] truy vấn lỗi:", qErr.message)
@@ -249,6 +250,7 @@ export default function InvoicesPage() {
               <SelectItem value="signed">Đã ký số</SelectItem>
               <SelectItem value="pending">Chờ gửi</SelectItem>
               <SelectItem value="error">Lỗi</SelectItem>
+              <SelectItem value="attention">Cần xử lý</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -294,7 +296,7 @@ export default function InvoicesPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((inv) => {
-                  const misa = inv.misa_status ? MISA_BADGE[inv.misa_status] : null
+                  const misa = misaStatusBadge(inv.misa_status)
                   return (
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/invoices/${inv.id}`)}>
                       {show("number") && (
@@ -373,7 +375,7 @@ export default function InvoicesPage() {
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
             {filtered.map((inv) => {
-              const misa = inv.misa_status ? MISA_BADGE[inv.misa_status] : null
+              const misa = misaStatusBadge(inv.misa_status)
               return (
                 <div
                   key={inv.id}

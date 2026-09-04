@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
+import { misaRelationLabel, misaStatusBadge } from "@/lib/misa/labels"
 import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 
@@ -236,6 +237,8 @@ export default function InvoiceDetailPage() {
   // (TransactionID) TRƯỚC — một mã khác hẳn, nên link thường trỏ sai.
   const misaUrlId = misaRefId || misaLookup
   const misaDeepLink = buildMisaInvoiceUrl(misaUrlId, misaCompanyId) || MISA_LIST_URL
+  const misaBadge = misaStatusBadge(invoice.misa_status)
+  const misaRelation = misaRelationLabel(invoice.misa_relation)
 
   return (
     <div className="space-y-4">
@@ -411,20 +414,24 @@ export default function InvoiceDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {invoice.misa_status && (
+              {misaBadge && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Trạng thái</span>
-                  <Badge variant={
-                    invoice.misa_status === "signed" ? "success"
-                    : invoice.misa_status === "error" ? "danger"
-                    : invoice.misa_status === "sent" ? "default"
-                    : "warning"
-                  }>
-                    {invoice.misa_status === "signed" ? "Đã phát hành"
-                    : invoice.misa_status === "error" ? "Lỗi"
-                    : invoice.misa_status === "sent" ? "Đã gửi"
-                    : "Đang xử lý"}
-                  </Badge>
+                  <Badge variant={misaBadge.variant}>{misaBadge.label}</Badge>
+                </div>
+              )}
+              {/* Quan hệ với hoá đơn khác — trục KHÁC HẲN trục phát hành.
+                  Không hiện thì kế toán không biết tờ này là bản thay thế
+                  hay đang bị thay thế. */}
+              {misaRelation && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Quan hệ</span>
+                  <span className="text-sm font-medium">{misaRelation}</span>
+                </div>
+              )}
+              {invoice.misa_note && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 whitespace-pre-line">
+                  {invoice.misa_note}
                 </div>
               )}
               {invoice.misa_inv_no && (

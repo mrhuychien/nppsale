@@ -16,12 +16,14 @@ interface ConfirmDialogProps {
   variant?: "default" | "destructive"
   onConfirm: () => void
   loading?: boolean
+  /** Nội dung xen giữa mô tả và hàng nút — vd một ô nhập cần điền. */
+  children?: React.ReactNode
 }
 
 export function ConfirmDialog({
   open, onOpenChange, title, description,
   confirmLabel = "Xác nhận", cancelLabel = "Hủy",
-  variant = "default", onConfirm, loading,
+  variant = "default", onConfirm, loading, children,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -30,6 +32,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel}

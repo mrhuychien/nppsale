@@ -15,7 +15,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { misaRelationLabel } from "@/lib/misa/labels"
-import { AlertTriangle, ExternalLink, FileWarning } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Input } from "@/components/ui/input"
+import { AlertTriangle, ExternalLink, FileWarning, Link2, Link2Off, FilePlus2 } from "lucide-react"
 
 /**
  * Đối soát hoá đơn MISA ↔ sổ.
@@ -73,7 +76,12 @@ export default function ReconcilePage() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(DEFAULT_FILTER)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [linking, setLinking] = useState<SnapshotRow | null>(null)
+  const [linkTarget, setLinkTarget] = useState("")
+  const [creating, setCreating] = useState<SnapshotRow | null>(null)
   const supabase = createClient()
+  const { toast } = useToast()
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -108,6 +116,39 @@ export default function ReconcilePage() {
   }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  const act = useCallback(
+    async (action: "link" | "unlink" | "create", snapshotId: string, invoiceId?: string) => {
+      setBusy(snapshotId)
+      try {
+        const res = await fetch("/api/einvoice/reconcile-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, snapshotId, invoiceId }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || `Lỗi HTTP ${res.status}`)
+        // Cảnh báo KHÔNG phải lỗi, nhưng cũng không được nuốt.
+        if (Array.isArray(data.warnings) && data.warnings.length) {
+          toast({
+            title: "Đã nối, nhưng có điểm cần xem lại",
+            description: data.warnings.join(" "),
+          })
+        } else {
+          toast({ title: "Xong" })
+        }
+        setLinking(null)
+        setCreating(null)
+        setLinkTarget("")
+        fetchData()
+      } catch (e) {
+        toast({ title: "Không thực hiện được", description: (e as Error).message, variant: "destructive" })
+      } finally {
+        setBusy(null)
+      }
+    },
+    [fetchData, toast]
+  )
 
   const attention = useMemo(
     () => (counts.misa_only || 0) + (counts.amount_diff || 0) + (counts.needs_review || 0),
@@ -174,16 +215,17 @@ export default function ReconcilePage() {
               <TableHead className="text-xs uppercase text-muted-foreground">Quan hệ</TableHead>
               <TableHead className="text-xs uppercase text-muted-foreground">Đối soát</TableHead>
               <TableHead className="text-xs uppercase text-muted-foreground">Ghi chú</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground">Thao tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7}><Skeleton className="h-8" /></TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-8" /></TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                   Không có dòng nào trong rổ này.
                   {filter === "attention" && " Chưa chạy đối soát bao giờ thì bảng còn trống — vòng kéo chạy 1h sáng mỗi ngày."}
                 </TableCell>
@@ -234,6 +276,38 @@ export default function ReconcilePage() {
                       )}
                       {r.match_note || "—"}
                     </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {r.invoice_id ? (
+                          <Button
+                            variant="ghost" size="sm" className="justify-start"
+                            disabled={busy === r.id}
+                            onClick={() => act("unlink", r.id)}
+                          >
+                            <Link2Off className="mr-1 h-3.5 w-3.5" /> Gỡ nối
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost" size="sm" className="justify-start"
+                              disabled={busy === r.id}
+                              onClick={() => { setLinking(r); setLinkTarget("") }}
+                            >
+                              <Link2 className="mr-1 h-3.5 w-3.5" /> Nối tay
+                            </Button>
+                            {r.match_status === "misa_only" && (
+                              <Button
+                                variant="ghost" size="sm" className="justify-start"
+                                disabled={busy === r.id}
+                                onClick={() => setCreating(r)}
+                              >
+                                <FilePlus2 className="mr-1 h-3.5 w-3.5" /> Dựng hoá đơn
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 )
               })
@@ -241,6 +315,46 @@ export default function ReconcilePage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Nối tay: nhận ID hoá đơn trong sổ. Không có ô tìm kiếm ở đây —
+          người dùng mở hoá đơn ở tab khác rồi chép ID, và như thế họ NHÌN
+          thấy tờ mình đang nối thay vì chọn mù từ một danh sách. */}
+      <ConfirmDialog
+        open={!!linking}
+        onOpenChange={(o) => { if (!o) setLinking(null) }}
+        title="Nối tay với hoá đơn trong sổ"
+        description={
+          linking
+            ? `Hoá đơn MISA ${linking.inv_series || "?"} · ${linking.inv_no || "?"}. ` +
+              `Dán ID hoá đơn trong sổ (lấy từ thanh địa chỉ trang chi tiết hoá đơn).`
+            : ""
+        }
+        confirmLabel="Nối"
+        onConfirm={() => linking && act("link", linking.id, linkTarget.trim())}
+      >
+        <Input
+          value={linkTarget}
+          onChange={(e) => setLinkTarget(e.target.value)}
+          placeholder="vd 3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+          autoFocus
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!creating}
+        onOpenChange={(o) => { if (!o) setCreating(null) }}
+        title="Dựng hoá đơn trong sổ"
+        description={
+          creating
+            ? `Tạo một hoá đơn mới trong sổ từ hoá đơn MISA ${creating.inv_series || "?"} · ` +
+              `${creating.inv_no || "?"}. Tiền hàng và thuế lấy từ MISA. ` +
+              `Hoá đơn tạo ra CHƯA gắn đơn hàng nào, và kỳ ghi nhận lấy theo ngày phát ` +
+              `hành trên MISA — không phải hôm nay.`
+            : ""
+        }
+        confirmLabel="Dựng hoá đơn"
+        onConfirm={() => creating && act("create", creating.id)}
+      />
     </div>
   )
 }

@@ -58,10 +58,87 @@ Locked / picked rows use **amber** (`text-amber-600`, `border-amber-300`)
   + side rail. Side rail is `<aside className="space-y-4 lg:sticky lg:top-4 self-start">`
   for action panels.
 - **Mobile:** assume mobile-first. Phone use cases for warehouse / driver
-  are real users. Tap targets ≥ 36px. `md:hidden` card lists for tables
-  whose desktop view doesn't fit narrow screens.
+  are real users. Tap targets **≥ 44px** (WCAG 2.5.5 — 36px was the old
+  number here and it is what produced 107 sub-44px targets on `/orders`
+  alone). `lg:hidden` card lists for tables whose desktop view doesn't fit
+  narrow screens — see §2b.
 - **PageHeader** with `title`, `description`, `backHref` is the standard
   page header. Children = badges + secondary actions.
+
+## 2b. Mobile — chrome, primitives, and the rules that produced them
+
+Everything here comes from measuring the running app on a real phone
+(iPhone UA, viewport 317×691, role `sales`), not from taste.
+
+### Chrome heights live in ONE place
+
+`globals.css` `:root` owns `--app-bar-h`, `--bottom-nav-h`,
+`--action-bar-h`, `--safe-b`, `--safe-t`, `--content-pad-b`. Never write a
+chrome height as a literal. Three files once held three different numbers
+(88px, 7rem, 10rem) while the real nav was 103px, and the order form's
+total bar sat under the nav — hiding the "Tạo đơn hàng" button.
+
+Use the utilities, not arithmetic:
+
+| Need | Class |
+|---|---|
+| Bottom padding under a fixed nav | `.pb-nav` |
+| …plus a sticky action bar | `.pb-nav-action` |
+| Anchor a bar just above the nav | `.bottom-above-nav` |
+| Anchor a bar just below the app bar | `.top-below-appbar` |
+| Safe-area padding | `.pb-safe` / `.pt-safe` |
+| 44px minimum hit area | `.tap` |
+| Horizontal chip row | `.row-scroll` |
+
+`viewport-fit=cover` in `layout.tsx` is load-bearing: without it every
+`env(safe-area-inset-*)` returns 0 and all of the above silently
+under-pad. Never set `maximumScale: 1` or `userScalable: false` — older
+reps pinch-zoom to read price lists.
+
+### Shared mobile primitives — use these, don't re-roll
+
+| Component | Use for |
+|---|---|
+| `MobileFilterBar` | search + filter sheet on any list screen |
+| `SegmentedScroller` | one scrolling chip row instead of wrapping chip grids |
+| `MobileRecordCard` | list rows: title + **money** on line 1, badges line 2 |
+| `LoadMore` | replaces arrow pagination on mobile |
+| `QtyStepper` | any quantity field (44px, selects on focus) |
+| `StickyActionBar` | the one primary action of a screen |
+| `ProductPickerSheet` | picking from a long catalogue |
+
+### Rules with a measured reason behind them
+
+1. **Money goes on the first line of a card, right-aligned.** It is what
+   reps scan for; buried in row four they read the whole card.
+2. **Card actions live OUTSIDE the main tap area.** Inside, tapping the
+   button also opens the record.
+3. **Text inputs are `text-base` (16px).** iOS zooms the page on focus for
+   anything smaller and does not zoom back out.
+4. **Never `type="number"` for quantities or money.** iOS shows a keypad
+   with `.` and `e`, and scrolling changes the value. Use
+   `type="text" inputMode="numeric"`, or `MoneyInput` for money —
+   `type="number"` also refuses to group thousands, so `12400000` is
+   uncountable at a glance.
+5. **`max` on an input does not stop typed input.** Validate in the submit
+   handler AND disable the button with the reason in `title`.
+6. **Sticky bars must carry `kb-hide`.** The virtual keyboard pushes
+   bottom-fixed bars over the field being typed in. `dashboard-shell`
+   sets `body.kb-open` from `useKeyboardOpen()`; detect with
+   `visualViewport`, never `window.innerHeight` (unchanged on iOS).
+7. **Selection mode beats per-row checkboxes.** A "Chọn" button or a
+   500ms long-press; long-press timers belong in a `ref`, and must cancel
+   on `touchmove` or scrolling triggers them.
+8. **One chip row, not two.** Merge secondary status chips into the same
+   `SegmentedScroller`; route by key.
+9. **A hidden filter must still show its count.** Badge the filter button,
+   otherwise hiding filters hides state.
+10. **`AbortError` is not an error.** Fast navigation cancels requests;
+    `selectResilient` returns `aborted` — return early rather than
+    painting a red banner and blanking the list.
+11. **One-time hints are dismissible and remembered** (`localStorage`),
+    initialised `false` and enabled in an effect — reading storage during
+    the first render is a hydration mismatch.
 
 ## 3. Tables
 

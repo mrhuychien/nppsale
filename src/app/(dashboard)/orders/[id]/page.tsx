@@ -1211,17 +1211,27 @@ export default function OrderDetailPage() {
                         {lineLocked && (
                           <Lock className="h-3.5 w-3.5 text-[#b54708] shrink-0" />
                         )}
-                        {line.product?.name || "-"}
+                        {/* "-" khiến người dùng tưởng giao diện hỏng.
+                            Sản phẩm bị xoá khỏi danh mục sau khi lên đơn
+                            là chuyện có thật — nói thẳng ra. */}
+                        {line.product?.name || (
+                          <span className="italic text-on-surface-variant">Sản phẩm đã xoá</span>
+                        )}
                       </p>
                       {line.note && (
                         <p className="text-[11px] text-muted-foreground italic mt-1">
                           ✏ {line.note}
                         </p>
                       )}
-                      <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                        <div>
-                          <p className="text-muted-foreground">SL ({line.unit_name})</p>
-                          {inEdit ? (
+                      {/* Ở 317px, lưới 3 cột cho mỗi cột ~95px, mà
+                          "26.400.000" cần ~105px → cột Thành tiền BỊ CẮT.
+                          Chế độ xem: SL × đơn giá một dòng, thành tiền
+                          tách riêng canh phải. Chế độ sửa mới bung hai ô
+                          nhập xếp dọc, mỗi ô 44px. */}
+                      {inEdit ? (
+                        <div className="mt-2 space-y-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">SL ({line.unit_name})</p>
                             <Input
                               type="number"
                               min={minQtyForLine}
@@ -1230,7 +1240,7 @@ export default function OrderDetailPage() {
                               onChange={(e) =>
                                 setEditedLineField(line.id, "quantity", parseFloat(e.target.value) || 0)
                               }
-                              className={`h-8 mt-0.5 ${lineLocked ? "border-[#fdb022]/40" : ""}`}
+                              className={`mt-0.5 h-11 ${lineLocked ? "border-[#fdb022]/40" : ""}`}
                               disabled={lockReadonly}
                               title={
                                 lockReadonly
@@ -1240,13 +1250,9 @@ export default function OrderDetailPage() {
                                     : undefined
                               }
                             />
-                          ) : (
-                            <p className="font-medium">{line.quantity}</p>
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Đơn giá</p>
-                          {inEdit ? (
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Đơn giá</p>
                             <Input
                               type="number"
                               min={0}
@@ -1255,18 +1261,27 @@ export default function OrderDetailPage() {
                               onChange={(e) =>
                                 setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
                               }
-                              className="h-8 mt-0.5"
+                              className="mt-0.5 h-11"
                               disabled={lockReadonly}
                             />
-                          ) : (
-                            <p className="font-medium">{formatCurrency(line.unit_price)}</p>
-                          )}
+                          </div>
+                          <div className="flex items-baseline justify-between border-t pt-2">
+                            <span className="text-xs text-muted-foreground">Thành tiền</span>
+                            <span className="text-[15px] font-bold tabular-data">
+                              {formatCurrency(liveTotal)}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-muted-foreground">Thành tiền</p>
-                          <p className="font-bold tabular-nums">{formatCurrency(liveTotal)}</p>
+                      ) : (
+                        <div className="mt-2 space-y-1 text-[13px]">
+                          <p className="text-on-surface-variant">
+                            {line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}
+                          </p>
+                          <p className="text-right text-[15px] font-bold tabular-data">
+                            {formatCurrency(liveTotal)}
+                          </p>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 })

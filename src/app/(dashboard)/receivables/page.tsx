@@ -91,7 +91,11 @@ export default function ReceivablesPage() {
         supabase
           .from("receivables")
           .select(select, { count: "exact" })
-          .order("due_date")
+          // Hạn cũ nhất TRƯỚC = quá hạn nhiều ngày nhất trước. NVBH đi
+          // thu cần biết khoản nào gấp nhất, không phải khoản nào mới tạo.
+          // nullsFirst: false để khoản KHÔNG đặt hạn xuống cuối — không có
+          // hạn thì không thể là khoản gấp nhất.
+          .order("due_date", { ascending: true, nullsFirst: false })
           .range(pg.from, pg.to)
       const res = await selectResilient<Receivable>(
         build,

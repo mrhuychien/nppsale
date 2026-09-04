@@ -27,6 +27,8 @@ import { useToast } from "@/hooks/use-toast"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
+  Navigation,
+  Phone,
   Play, XCircle, Trash2,
   PackageCheck, Wallet,
   Eye,
@@ -374,7 +376,84 @@ export default function DeliveryDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-xl border">
+            {/* MOBILE: mỗi điểm dừng là một thẻ có ba nút 44px. Tài xế
+                đi xe máy, dừng bên đường — không mở được menu con, và
+                bảng cuộn ngang thì càng không. */}
+            <div className="space-y-3 lg:hidden">
+              {lines.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Chưa có đơn hàng trong chuyến giao này.
+                </p>
+              )}
+              {lines.map((line) => {
+                const cust = line.order?.customer
+                const addr = cust?.address || ""
+                const done = line.status === "delivered"
+                return (
+                  <div
+                    key={line.id}
+                    className={`rounded-xl border p-3 ${
+                      done ? "border-tertiary/40 bg-tertiary/[0.04]" : "border-outline-variant"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[15px] font-bold text-on-surface">
+                          {cust?.store_name || "—"}
+                        </p>
+                        <p className="truncate text-xs text-on-surface-variant">
+                          {line.order?.order_code || ""}
+                          {addr ? ` · ${addr}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[15px] font-bold tabular-data">
+                        {formatCurrency(Number(line.order?.total || 0))}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {cust?.phone ? (
+                        <a
+                          href={`tel:${cust.phone}`}
+                          className="flex h-11 items-center justify-center gap-1 rounded-lg border border-outline-variant text-[12px] font-semibold"
+                        >
+                          <Phone className="h-3.5 w-3.5" /> Gọi
+                        </a>
+                      ) : (
+                        <span className="flex h-11 items-center justify-center rounded-lg border border-dashed border-outline-variant text-[12px] text-on-surface-variant">
+                          Chưa có SĐT
+                        </span>
+                      )}
+                      {addr ? (
+                        <a
+                          // Mở app bản đồ mặc định của máy. encodeURIComponent
+                          // là bắt buộc — địa chỉ Việt Nam có dấu và dấu phẩy.
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex h-11 items-center justify-center gap-1 rounded-lg border border-outline-variant text-[12px] font-semibold"
+                        >
+                          <Navigation className="h-3.5 w-3.5" /> Chỉ đường
+                        </a>
+                      ) : (
+                        <span className="flex h-11 items-center justify-center rounded-lg border border-dashed border-outline-variant text-[12px] text-on-surface-variant">
+                          Chưa có địa chỉ
+                        </span>
+                      )}
+                      <Button
+                        variant="outline"
+                        className="h-11 text-[12px]"
+                        onClick={() => openOrderDetail(line.order_id)}
+                      >
+                        <Eye className="mr-1 h-3.5 w-3.5" /> Chi tiết
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-xl border lg:block">
               <Table>
                 <TableHeader>
                   <TableRow>

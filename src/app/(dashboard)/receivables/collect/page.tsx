@@ -8,9 +8,11 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MoneyInput } from "@/components/ui/money-input"
+import { StickyActionBar } from "@/components/ui/sticky-action-bar"
+import { AlertTriangle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { useToast } from "@/hooks/use-toast"
@@ -84,24 +86,54 @@ export default function CollectPaymentPage() {
     [receivables, selectedId]
   )
   const remaining = selected ? selected.amount - selected.paid : 0
+  const amountNum = parseInt(amount || "0", 10) || 0
+  const afterCollect = remaining - amountNum
+  const overCollect = amountNum > remaining
+  // Làm tròn XUỐNG tới trăm nghìn — khách trả chẵn là chuyện thường.
+  const roundedDown = Math.floor(remaining / 100_000) * 100_000
+
+  /**
+   * Vì sao KHÔNG cho bấm. `max` trên <input type="number"> không chặn được
+   * khi gõ tay — trình duyệt chỉ dùng nó cho nút tăng/giảm. Chặn phải nằm
+   * ở đây và ở handleSubmit, và phải NÓI RA lý do (SKILL.md §4: disable +
+   * tooltip dễ tìm hơn là ẩn nút).
+   */
+  const submitBlockReason = !selectedId
+    ? "Chọn khoản nợ"
+    : amountNum <= 0
+      ? "Nhập số tiền"
+      : overCollect
+        ? "Vượt số còn nợ"
+        : null
+  const canSubmit = !loading && !submitBlockReason
 
   if (authLoading) return <Skeleton className="h-96" />
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedId || !amount) return
+    // Chặn LẠI ở đây, không chỉ ở nút: Enter trên bàn phím ảo gửi form mà
+    // không đi qua nút, và ghi thừa tiền vào công nợ là sai sổ.
+    if (amountNum <= 0 || amountNum > remaining) {
+      toast({
+        title: "Số tiền không hợp lệ",
+        description: `Chỉ thu được tối đa ${formatCurrency(remaining)}.`,
+        variant: "destructive",
+      })
+      return
+    }
     setLoading(true)
 
     try {
       const { error } = await supabase.from("payments").insert({
         receivable_id: selectedId,
         collected_by: user?.id,
-        amount: parseInt(amount),
+        amount: amountNum,
         method,
       })
       if (error) throw error
 
-      const newPaid = (selected?.paid || 0) + parseInt(amount)
+      const newPaid = (selected?.paid || 0) + amountNum
       const newStatus = newPaid >= (selected?.amount || 0) ? "paid" : "partial"
       // Payment đã ghi ở trên. Nếu bước này hỏng mà bỏ qua thì tiền đã thu
       // nhưng công nợ vẫn nguyên → khách bị đòi lại số đã trả.
@@ -127,15 +159,15 @@ export default function CollectPaymentPage() {
             orgId: user.org_id,
             userId: repId,
             type: "payment_received",
-            title: `Đã thu ${formatCurrency(parseInt(amount))}`,
+            title: `Đã thu ${formatCurrency(amountNum)}`,
             body: `${storeName || "Khách hàng"}${newStatus === "paid" ? " — đã thanh toán đủ" : ""}`,
             linkUrl: `/receivables/${selectedId}`,
-            metadata: { receivable_id: selectedId, amount: parseInt(amount), method },
+            metadata: { receivable_id: selectedId, amount: amountNum, method },
           })
         }
       }
 
-      toast({ title: `Đã thu ${formatCurrency(parseInt(amount))}` })
+      toast({ title: `Đã thu ${formatCurrency(amountNum)}` })
       if (customerIdParam) {
         router.push(`/customers/${customerIdParam}`)
       } else {
@@ -157,7 +189,7 @@ export default function CollectPaymentPage() {
   const totalOutstanding = receivables.reduce((sum, r) => sum + (r.amount - r.paid), 0)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-nav-action lg:pb-0">
       <PageHeader
         title={pageTitle}
         description={customerIdParam
@@ -179,61 +211,147 @@ export default function CollectPaymentPage() {
           <CardHeader><CardTitle>Thông tin thu tiền</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* CHỌN CÔNG NỢ BẰNG THẺ, không bằng <Select>.
+                  Select chỉ hiện một dòng chữ dài và bị cắt trên điện
+                  thoại — NVBH đang cầm tiền của khách, không được đoán
+                  mình chọn đúng khoản chưa. */}
+              <div className="space-y-2">
+                <Label>Công nợ *</Label>
                 <div className="space-y-2">
-                  <Label>Công nợ *</Label>
-                  <Select value={selectedId} onValueChange={setSelectedId}>
-                    <SelectTrigger><SelectValue placeholder="Chọn công nợ" /></SelectTrigger>
-                    <SelectContent>
-                      {receivables.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {customerIdParam
-                            ? `${r.due_date ? formatDate(r.due_date) : "Không hạn"} - Còn: ${formatCurrency(r.amount - r.paid)}`
-                            : `${r.customer?.store_name} - Còn nợ: ${formatCurrency(r.amount - r.paid)}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {receivables.map((r) => {
+                    const rem = r.amount - r.paid
+                    const active = selectedId === r.id
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setSelectedId(r.id)}
+                        aria-pressed={active}
+                        className={`flex min-h-16 w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors ${
+                          active
+                            ? "border-primary bg-primary-fixed/40"
+                            : "border-outline-variant bg-surface-container-lowest"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-semibold text-on-surface">
+                            {r.customer?.store_name || "Khách hàng"}
+                          </p>
+                          <p className="text-xs text-on-surface-variant">
+                            Hạn {r.due_date ? formatDate(r.due_date) : "không đặt"}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[15px] font-bold tabular-data text-error">
+                          {formatCurrency(rem)}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-                <div className="space-y-2">
-                  <Label>Hình thức *</Label>
-                  <Select value={method} onValueChange={setMethod}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Số tiền thu *</Label>
-                  <Input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    max={remaining}
-                    required
-                    placeholder="Nhập số tiền"
-                  />
-                  {selected && <p className="text-xs text-muted-foreground">Còn nợ: {formatCurrency(remaining)}</p>}
-                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Hình thức *</Label>
+                <Select value={method} onValueChange={setMethod}>
+                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Số tiền thu *</Label>
+                {/* MoneyInput chứ KHÔNG <Input type="number">: type=number
+                    không nhóm hàng nghìn, NVBH gõ 12400000 và không đếm
+                    được số 0. Đây là con số quan trọng nhất màn hình nên
+                    để to hẳn. */}
+                <MoneyInput
+                  value={amountNum}
+                  onChange={(v) => setAmount(v ? String(v) : "")}
+                  inputClassName="h-14 text-right text-2xl font-bold"
+                  placeholder="0"
+                />
+
                 {selected && (
-                  <div className="space-y-2">
-                    <Label>Thao tác nhanh</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setAmount(String(remaining))}
-                    >
-                      Thu toàn bộ ({formatCurrency(remaining)})
-                    </Button>
-                  </div>
+                  <>
+                    {/* Chip số tiền nhanh, mỗi chip 44px. */}
+                    <div className="row-scroll pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setAmount(String(remaining))}
+                        className="tap shrink-0 rounded-full border border-primary bg-primary/[0.08] px-3 text-[13px] font-semibold text-primary"
+                      >
+                        Thu đủ ({formatCurrency(remaining)})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount(String(Math.round(remaining / 2)))}
+                        className="tap shrink-0 rounded-full border border-outline-variant px-3 text-[13px] font-semibold text-on-surface-variant"
+                      >
+                        50%
+                      </button>
+                      {roundedDown > 0 && roundedDown < remaining && (
+                        <button
+                          type="button"
+                          onClick={() => setAmount(String(roundedDown))}
+                          className="tap shrink-0 rounded-full border border-outline-variant px-3 text-[13px] font-semibold text-on-surface-variant"
+                        >
+                          Làm tròn {formatCurrency(roundedDown)}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setAmount("")}
+                        className="tap shrink-0 rounded-full border border-outline-variant px-3 text-[13px] font-semibold text-on-surface-variant"
+                      >
+                        Xoá
+                      </button>
+                    </div>
+
+                    {/* DƯ NỢ SAU KHI THU — trước đây chỉ hiện nợ TRƯỚC khi
+                        thu, NVBH phải tự trừ nhẩm ngay lúc đang đếm tiền. */}
+                    <div className="flex items-baseline justify-between rounded-lg bg-surface-container-low px-3 py-2">
+                      <span className="text-sm text-on-surface-variant">Còn nợ sau khi thu</span>
+                      <span
+                        className={`text-[15px] font-bold tabular-data ${
+                          afterCollect > 0 ? "text-error" : "text-tertiary"
+                        }`}
+                      >
+                        {formatCurrency(Math.max(0, afterCollect))}
+                      </span>
+                    </div>
+
+                    {overCollect && (
+                      <p className="flex items-start gap-1.5 text-[12px] font-semibold text-error">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        Số tiền thu vượt quá số còn nợ {formatCurrency(remaining)}.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
-              <div className="flex gap-2 justify-end">
+
+              <div className="hidden lg:flex gap-2 justify-end">
                 <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
-                <Button type="submit" disabled={loading}>{loading ? "Đang xử lý..." : "Xác nhận thu tiền"}</Button>
+                <Button type="submit" disabled={!canSubmit} title={submitBlockReason || undefined}>
+                  {loading ? "Đang xử lý..." : "Xác nhận thu tiền"}
+                </Button>
               </div>
+
+              {/* Mobile: nút xác nhận vào thanh dính đáy. Nút "Huỷ" bỏ —
+                  app bar đã có nút back, và ở màn đang cầm tiền thì hai
+                  nút cạnh nhau là mời bấm nhầm. */}
+              <StickyActionBar>
+                <Button
+                  type="submit"
+                  className="h-12 flex-1"
+                  disabled={!canSubmit}
+                  title={submitBlockReason || undefined}
+                >
+                  {loading ? "Đang xử lý..." : submitBlockReason || "Xác nhận thu tiền"}
+                </Button>
+              </StickyActionBar>
             </form>
           </CardContent>
         </Card>

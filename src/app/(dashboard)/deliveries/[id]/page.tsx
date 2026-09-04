@@ -24,6 +24,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { PodCaptureSheet } from "@/components/deliveries/pod-capture-sheet"
 import { DELIVERY_STATUS_MAP } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
@@ -34,6 +35,7 @@ import {
   Eye,
   Link as LinkIcon, ArrowDownToLine, ArrowUpFromLine, Receipt, FileText,
   Truck, CheckCircle2, Banknote,
+  PenLine, Camera,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryStatus, SalesOrder, SalesOrderLine } from "@/types"
 
@@ -56,6 +58,9 @@ export default function DeliveryDetailPage() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+
+  /** M6.3 — dòng đang mở màn ký nhận. null = sheet đóng. */
+  const [podLine, setPodLine] = useState<DeliveryLine | null>(null)
 
   const [orderDetailOpen, setOrderDetailOpen] = useState(false)
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
@@ -81,7 +86,7 @@ export default function DeliveryDetailPage() {
         .single(),
       supabase
         .from("delivery_lines")
-        .select("id, delivery_id, order_id, status, notes, amount_collected, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")
+        .select("id, delivery_id, order_id, status, notes, amount_collected, pod_photo_url, pod_signature, delivered_at, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")
         .eq("delivery_id", id),
     ])
     const qErr2 = ([delRes, linesRes] as Array<{ error?: { message?: string } | null }>)
@@ -213,6 +218,21 @@ export default function DeliveryDetailPage() {
 
   const isSelfDeliver = !!delivery.source_stock_entry_id
   const alreadySettled = !!delivery.settled_at
+
+  /**
+   * M6.3 — ai được ký nhận, và khi nào.
+   *
+   * Vai trò khớp đúng policy RLS "Authorized roles can manage delivery
+   * lines" ở migration 002; kiểm ở đây chỉ để KHÔNG hiện nút sẽ chắc chắn
+   * bị từ chối — RLS mới là hàng rào thật.
+   *
+   * Chỉ ở `in_transit`: chưa xuất kho thì chưa có gì để giao, và sau khi
+   * bàn giao lại thì trạng thái dòng đã do bước bàn giao chốt.
+   */
+  const canCapturePod =
+    !!user &&
+    ["owner", "manager", "warehouse", "driver"].includes(user.role) &&
+    delivery.status === "in_transit"
 
   // Derived workflow state
   const stage: "pending" | "in_transit" | "completed" | "settled" | "cancelled" =
@@ -389,6 +409,8 @@ export default function DeliveryDetailPage() {
                 const cust = line.order?.customer
                 const addr = cust?.address || ""
                 const done = line.status === "delivered"
+                const hasSignature = !!line.pod_signature
+                const hasPhoto = !!line.pod_photo_url
                 return (
                   <div
                     key={line.id}
@@ -448,6 +470,47 @@ export default function DeliveryDetailPage() {
                         <Eye className="mr-1 h-3.5 w-3.5" /> Chi tiết
                       </Button>
                     </div>
+
+                    {/* M6.3 — ký nhận. Nút cao 48px và chiếm trọn chiều
+                        ngang: đây là việc tài xế tới đây để làm, không
+                        phải hành động thứ tư trong một hàng ba nút. */}
+                    {canCapturePod && !done && (
+                      <Button
+                        className="mt-2 h-12 w-full"
+                        onClick={() => setPodLine(line)}
+                      >
+                        <PenLine className="mr-2 h-4 w-4" /> Ký nhận & xác nhận giao
+                      </Button>
+                    )}
+
+                    {done && (hasSignature || hasPhoto) && (
+                      <div className="mt-2 flex items-center gap-3 text-[12px] text-tertiary">
+                        {hasSignature && (
+                          <span className="flex items-center gap-1">
+                            <PenLine className="h-3.5 w-3.5" /> Có chữ ký
+                          </span>
+                        )}
+                        {hasPhoto && (
+                          <a
+                            href={line.pod_photo_url as string}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="tap flex items-center gap-1 underline"
+                          >
+                            <Camera className="h-3.5 w-3.5" /> Xem ảnh
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Giao xong mà KHÔNG có bằng chứng nào thì nói ra,
+                        đừng để trống — lúc khách khiếu nại mới phát hiện
+                        là muộn. */}
+                    {done && !hasSignature && !hasPhoto && (
+                      <p className="mt-2 text-[12px] text-on-surface-variant">
+                        Đã giao — chưa có chữ ký hay ảnh
+                      </p>
+                    )}
                   </div>
                 )
               })}
@@ -514,14 +577,39 @@ export default function DeliveryDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openOrderDetail(line.order_id)}
-                            title="Xem chi tiết đơn"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {line.pod_signature && (
+                              <PenLine className="h-3.5 w-3.5 text-tertiary" aria-label="Có chữ ký" />
+                            )}
+                            {line.pod_photo_url && (
+                              <a
+                                href={line.pod_photo_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Xem ảnh giao hàng"
+                              >
+                                <Camera className="h-3.5 w-3.5 text-tertiary" />
+                              </a>
+                            )}
+                            {canCapturePod && line.status !== "delivered" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setPodLine(line)}
+                                title="Ký nhận & xác nhận giao"
+                              >
+                                <PenLine className="mr-1 h-3.5 w-3.5" /> Ký nhận
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openOrderDetail(line.order_id)}
+                              title="Xem chi tiết đơn"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -887,6 +975,25 @@ export default function DeliveryDetailPage() {
         confirmLabel="Xoá vĩnh viễn"
         onConfirm={handleDelete}
         loading={actionLoading}
+      />
+
+      {/* M6.3 — màn ký nhận. Đóng sheet thì nạp lại danh sách để dòng vừa
+          xác nhận đổi trạng thái ngay, không phải kéo để làm mới. */}
+      <PodCaptureSheet
+        open={!!podLine}
+        onOpenChange={(o) => !o && setPodLine(null)}
+        orgId={delivery.org_id}
+        line={
+          podLine
+            ? {
+                id: podLine.id,
+                orderCode: podLine.order?.order_code || podLine.order_id.slice(0, 8),
+                storeName: podLine.order?.customer?.store_name || "Khách hàng",
+                total: Number(podLine.order?.total || 0),
+              }
+            : null
+        }
+        onSaved={fetchData}
       />
     </div>
   )

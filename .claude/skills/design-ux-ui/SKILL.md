@@ -110,6 +110,7 @@ reps pinch-zoom to read price lists.
 | `CollapsibleSection` | history/audit blocks — collapsed on mobile, always open on desktop |
 | `SwipeToDelete` | removing a row from a scrolling list, without spending width on a button |
 | `useUndoableRemove` | the 5-second undo any swipe-delete must have |
+| `PodCaptureSheet` | signature + delivery photo when a stop is confirmed |
 
 ### Rules with a measured reason behind them
 
@@ -166,6 +167,23 @@ reps pinch-zoom to read price lists.
     body prints. And never invent a document number: `/receivables/collect`
     derives the receipt number from the `payments` row id because it does
     not create a `cash_receipts` row.
+17. **A signature canvas needs `touch-none`, a DPR-scaled backing store,
+    and a size measured after the sheet has opened.** Without
+    `touch-action: none` a finger drag scrolls the page instead of
+    drawing; without DPR scaling the stroke is aliased; measured during
+    the sheet's slide-in, `getBoundingClientRect()` returns 0 and the
+    canvas stays blank forever. Cap DPR at 2 — a signature lives in a
+    Postgres `text` column.
+18. **Shrink a camera photo before uploading it** (1280px long edge, JPEG
+    0.7): straight off a phone it is 3–8MB, and the person uploading is
+    standing at a customer's door on 3G. If shrinking throws, upload the
+    original — slow beats losing the evidence.
+19. **Proof-of-delivery is proof or it is a tick box.** Require at least a
+    signature or a photo before "đã giao", disable with the reason, and
+    write only the columns that actually have a value — `null` over last
+    week's signature is evidence destroyed by a mis-tap. When a delivered
+    row has no proof at all, say so on the card rather than showing
+    nothing.
 
 ### Testing UI by reading source — the trap that keeps recurring
 
@@ -173,17 +191,35 @@ These packs are tested by asserting on the source text. Strip comments
 first, or a comment that merely *mentions* a class name keeps the test
 green after the class is deleted (four occurrences so far).
 
-Strip with `/\/\*[\s\S]*?\*\//g` then line comments — and **do not** add a
-rule for `{/* … */}`. That rule has to match through to `*/}`, so
-`interface X {` followed by a doc comment sends it hunting for the next
-`*/}` far below: measured 19,294 characters (39% of `handover/page.tsx`)
-deleted, which makes every assertion in that region pass because there is
-nothing left to be wrong. Leftover empty `{ }` braces are harmless.
+**Scan line by line; do not use a regex.** Two separate measurements say
+why:
+
+- A rule for `{/* … */}` must match through to `*/}`, so `interface X {`
+  followed by a doc comment sends it hunting for the next `*/}` far
+  below — 19,294 characters deleted, 39% of `handover/page.tsx`.
+- Even a plain `/* … */` rule is wrong: `accept="image/*"` contains `/*`
+  inside a string literal, which ate 815 characters of
+  `pod-capture-sheet.tsx` — including the `capture="environment"` the
+  test was asserting on.
+
+Both times the swallowed region made assertions **pass**, because there
+was nothing left to be wrong. Drop whole lines whose trimmed form starts
+with `{/*`, `/*`, `*`, or `//`, tracking an in-block flag until a line
+containing `*/`.
 
 After writing an assertion, **break the production code and confirm the
 test goes red.** Anchor on a string unique to the block under test — the
 first `{inEdit ? (` in `/orders/[id]` belongs to the desktop table, and
 bare `"Tổng đơn"` matches a toast 140 lines above the summary card.
+
+**Counting occurrences is not the same as checking the thing.** Asserting
+`h-[220px]` appears twice survived shrinking the signature canvas,
+because the photo block contributed two matches of its own. Slice to the
+element under test and read its value.
+
+**When a mutation leaves the suite green, check the mutation applied
+first.** Two of the mutations written for this pack never matched their
+target string, which reads exactly like a test that has no teeth.
 
 ## 3. Tables
 

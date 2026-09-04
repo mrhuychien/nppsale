@@ -19,8 +19,43 @@ import {
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
-const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "")
+/**
+ * Bỏ chú thích trước khi soi mã — chú thích nhắc tên một lớp CSS làm test
+ * xanh oan (đã dính bốn lần).
+ *
+ * QUÉT THEO DÒNG, KHÔNG DÙNG REGEX. Hai lần đo cho thấy vì sao:
+ *
+ *  1. Luật cho chú thích JSX phải khớp tới `*\/}`. `interface X {` mở
+ *     ngoặc rồi tới một khối tài liệu sẽ khiến nó chạy tiếp xuống tận
+ *     `*\/}` xa phía dưới — nuốt 19.294 ký tự (39%) của handover/page.tsx.
+ *  2. Ngay cả luật `/*` … `*\/` trần cũng sai: `accept="image/*"` có
+ *     `/*` bên trong một chuỗi, và nó nuốt 815 ký tự của
+ *     pod-capture-sheet.tsx — mất luôn `capture="environment"` mà test
+ *     đang đòi.
+ *
+ * Cả hai lần, vùng bị nuốt đều làm test XANH vì không còn gì để sai.
+ *
+ * Giới hạn đã biết: chỉ bỏ chú thích CHIẾM TRỌN DÒNG. Repo này viết chú
+ * thích như vậy; `code() /* ghi chú *\/` giữa dòng sẽ không bị bỏ.
+ */
+const strip = (s: string) => {
+  const out: string[] = []
+  let inBlock = false
+  for (const line of s.split("\n")) {
+    const t = line.trim()
+    if (inBlock) {
+      if (t.includes("*/")) inBlock = false
+      continue
+    }
+    if (t.startsWith("{/*") || t.startsWith("/*")) {
+      if (!t.includes("*/")) inBlock = true
+      continue
+    }
+    if (t.startsWith("*") || t.startsWith("//")) continue
+    out.push(line)
+  }
+  return out.join("\n")
+}
 
 function migration(namePart: string): string {
   const dir = resolve(ROOT, "supabase/migrations")

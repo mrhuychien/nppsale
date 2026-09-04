@@ -14,16 +14,42 @@ import { resolve } from "node:path"
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 /**
- * Bỏ chú thích TRƯỚC khi soi: chú thích nhắc tên lớp làm test xanh oan.
+ * Bỏ chú thích trước khi soi mã — chú thích nhắc tên một lớp CSS làm test
+ * xanh oan (đã dính bốn lần).
  *
- * KHÔNG có luật riêng cho chú thích JSX. Luật đó phải khớp tới `*\/}`, mà
- * `interface X {` mở ngoặc rồi tới ngay một khối tài liệu sẽ khiến nó
- * chạy tiếp xuống tận `*\/}` xa phía dưới. Đo trên handover/page.tsx:
- * nuốt 19.294 ký tự (39% file) — mọi assert trong vùng đó xanh vì KHÔNG
- * CÒN GÌ ĐỂ SAI. Bỏ chú thích khối trước là đủ; cặp `{ }` rỗng vô hại.
+ * QUÉT THEO DÒNG, KHÔNG DÙNG REGEX. Hai lần đo cho thấy vì sao:
+ *
+ *  1. Luật cho chú thích JSX phải khớp tới `*\/}`. `interface X {` mở
+ *     ngoặc rồi tới một khối tài liệu sẽ khiến nó chạy tiếp xuống tận
+ *     `*\/}` xa phía dưới — nuốt 19.294 ký tự (39%) của handover/page.tsx.
+ *  2. Ngay cả luật `/*` … `*\/` trần cũng sai: `accept="image/*"` có
+ *     `/*` bên trong một chuỗi, và nó nuốt 815 ký tự của
+ *     pod-capture-sheet.tsx — mất luôn `capture="environment"` mà test
+ *     đang đòi.
+ *
+ * Cả hai lần, vùng bị nuốt đều làm test XANH vì không còn gì để sai.
+ *
+ * Giới hạn đã biết: chỉ bỏ chú thích CHIẾM TRỌN DÒNG. Repo này viết chú
+ * thích như vậy; `code() /* ghi chú *\/` giữa dòng sẽ không bị bỏ.
  */
-const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "")
+const strip = (s: string) => {
+  const out: string[] = []
+  let inBlock = false
+  for (const line of s.split("\n")) {
+    const t = line.trim()
+    if (inBlock) {
+      if (t.includes("*/")) inBlock = false
+      continue
+    }
+    if (t.startsWith("{/*") || t.startsWith("/*")) {
+      if (!t.includes("*/")) inBlock = true
+      continue
+    }
+    if (t.startsWith("*") || t.startsWith("//")) continue
+    out.push(line)
+  }
+  return out.join("\n")
+}
 
 const ORDER_DETAIL = strip(read("src/app/(dashboard)/orders/[id]/page.tsx"))
 const ORDER_FORM = strip(read("src/components/orders/order-form.tsx"))
@@ -318,5 +344,218 @@ describe("M6.3 — màn tài xế / thủ kho", () => {
     expect(tall).toBeGreaterThan(mq)
     expect(tall).toBeLessThan(CSS.indexOf("}", CSS.indexOf(".pb-nav-action-tall")) + 200)
     expect(CSS.slice(mq, CSS.indexOf("/* Neo cho thanh dính đáy"))).toContain(".pb-nav-action-tall")
+  })
+})
+
+const POD = strip(read("src/components/deliveries/pod-capture-sheet.tsx"))
+const DELIVERY_DETAIL = strip(read("src/app/(dashboard)/deliveries/[id]/page.tsx"))
+const MIG_101 = read("supabase/migrations/101_pod_photos_bucket.sql")
+
+describe("M6.3 — ký nhận & ảnh giao hàng (POD)", () => {
+  /**
+   * ⚠ Cột pod_photo_url / pod_signature có từ migration 001 và
+   * /orders/[id] đã HIỂN THỊ ảnh POD — nhưng chưa màn nào ghi vào.
+   */
+  it("ghi vào đúng cặp cột đã có sẵn", () => {
+    expect(POD).toContain("updates.pod_signature")
+    expect(POD).toContain("updates.pod_photo_url")
+    expect(POD).toContain('from("delivery_lines").update(updates)')
+  })
+
+  /**
+   * Brief: ô ký ≥ 200px. Dưới ngưỡng đó chữ ký bị bó thành một vệt.
+   *
+   * Đếm số lần `h-[220px]` xuất hiện là ĐO SAI: khối ảnh có hai ô cùng
+   * cỡ (ảnh xem trước + ô rỗng), nên bóp riêng canvas xuống h-24 vẫn còn
+   * đủ 2 lần và test vẫn xanh (đã đo). Phải soi ĐÚNG thẻ <canvas>.
+   */
+  it("ô ký cao ít nhất 200px", () => {
+    const i = POD.indexOf("<canvas")
+    expect(i).toBeGreaterThan(0)
+    const tag = POD.slice(i, POD.indexOf(">", i))
+    const px = tag.match(/h-\[(\d+)px\]/)
+    expect(px, "canvas không đặt chiều cao bằng px cố định").not.toBeNull()
+    expect(Number(px![1])).toBeGreaterThanOrEqual(200)
+  })
+
+  /** Ô ảnh cũng phải cao bằng, cả lúc có ảnh lẫn lúc còn rỗng. */
+  it("ô ảnh cao ít nhất 200px ở cả hai trạng thái", () => {
+    const i = POD.indexOf("Ảnh giao hàng")
+    const block = POD.slice(i, POD.indexOf("Ghi chú giao hàng", i))
+    const sizes = (block.match(/h-\[(\d+)px\]/g) || []).map((m) => Number(m.slice(3, -3)))
+    expect(sizes.length, "thiếu ô xem trước hoặc ô rỗng").toBe(2)
+    for (const px of sizes) expect(px).toBeGreaterThanOrEqual(200)
+  })
+
+  /**
+   * ⚠ Không có touch-none thì ngón tay kéo trên canvas sẽ CUỘN TRANG
+   * thay vì vẽ — ô ký trở thành ô trang trí.
+   */
+  it("canvas chặn cử chỉ cuộn mặc định", () => {
+    const i = POD.indexOf("<canvas")
+    expect(i).toBeGreaterThan(0)
+    expect(POD.slice(i, i + 400)).toContain("touch-none")
+  })
+
+  /**
+   * ⚠ Đo bằng rAF sau khi sheet mở: lúc sheet còn trượt vào,
+   * getBoundingClientRect trả 0 và canvas rỗng vĩnh viễn.
+   */
+  it("chỉnh kích thước canvas sau khi sheet đã mở, chặn DPR ở 2", () => {
+    expect(POD).toContain("requestAnimationFrame")
+    expect(POD).toContain("Math.min(2, window.devicePixelRatio || 1)")
+  })
+
+  /**
+   * ⚠ Đo một khung hình rồi bỏ cuộc thì canvas giữ cỡ mặc định 300×150:
+   * nét ký lệch hẳn so với ngón tay, và không có gì báo hiệu.
+   */
+  it("đo lại nhiều khung hình chứ không bỏ cuộc sau khung đầu", () => {
+    const i = POD.indexOf("const measure = () => {")
+    expect(i, "không thấy vòng đo lại").toBeGreaterThan(0)
+    // Cắt tới hết effect, KHÔNG cắt tại "id = requestAnimationFrame(
+    // measure)": chuỗi đó xuất hiện lần đầu ngay TRONG dòng thử lại, nên
+    // lát cắt sẽ chặt đúng dòng mình đang muốn kiểm (đã đo).
+    const fn = POD.slice(i, POD.indexOf("}, [open])", i))
+    expect(fn).toContain("if (rect.width === 0) {")
+    expect(fn).toMatch(/if \(\+\+tries < \d+\) id = requestAnimationFrame\(measure\)/)
+  })
+
+  /** POD không có bằng chứng nào thì chỉ là một ô tick. */
+  it("khoá nút khi chưa có chữ ký lẫn ảnh, và NÓI lý do", () => {
+    expect(POD).toContain(
+      'const blockReason = !hasStroke && !photo ? "Cần chữ ký hoặc ảnh giao hàng" : null'
+    )
+    expect(POD).toContain("disabled={saving || !!blockReason}")
+    expect(POD).toContain("title={blockReason || undefined}")
+  })
+
+  it("nút xác nhận h-14", () => {
+    expect(POD).toContain('className="h-14 w-full text-base"')
+  })
+
+  /**
+   * ⚠ Đừng gán null đè lên cột đang có giá trị tốt: ghi null lên chữ ký
+   * của lần xác nhận trước là xoá bằng chứng bằng một lần bấm nhầm.
+   */
+  it("chỉ ghi cột THỰC SỰ có giá trị mới", () => {
+    expect(POD).toContain("if (hasStroke && canvasRef.current) {")
+    expect(POD).toContain("if (uploadedUrl) updates.pod_photo_url = uploadedUrl")
+    expect(POD).not.toContain("pod_signature: null")
+    expect(POD).not.toContain("pod_photo_url: null")
+  })
+
+  /** Đóng sheet khi lỗi = mất chữ ký khách vừa ký, phải mời họ ký lại. */
+  it("lỗi thì KHÔNG đóng sheet", () => {
+    const i = POD.indexOf("} catch (err: unknown) {")
+    expect(i).toBeGreaterThan(0)
+    const block = POD.slice(i, POD.indexOf("} finally {", i))
+    expect(block).not.toContain("onOpenChange(false)")
+    expect(block).toContain("variant: \"destructive\"")
+  })
+
+  /**
+   * ⚠ Ảnh gốc từ camera là 3–8MB. Tài xế đứng trước cửa khách, sóng 3G.
+   * Nén hỏng thì trả BLOB GỐC — thà tải chậm còn hơn mất bằng chứng.
+   */
+  it("nén ảnh trước khi tải lên, hỏng thì dùng ảnh gốc", () => {
+    expect(POD).toContain("const blob = await shrinkImage(photo)")
+    expect(POD).toMatch(/MAX_EDGE = \d+/)
+    const i = POD.indexOf("async function shrinkImage")
+    const fn = POD.slice(i, POD.indexOf("\n}", i))
+    expect(fn).toContain("} catch {")
+    expect(fn).toContain("return file")
+    expect(fn).not.toContain("throw")
+  })
+
+  /** Không có capture thì máy hiện bộ chọn ảnh — tài xế qua thêm một màn. */
+  it("mở thẳng camera sau", () => {
+    expect(POD).toContain('capture="environment"')
+  })
+
+  /**
+   * ⚠ Thiếu org_id thì đường dẫn không qua nổi policy storage. Bỏ qua ảnh
+   * rồi vẫn lưu dòng là mất bằng chứng mà không ai biết — SAI theo
+   * "tách VẤN ĐỀ khỏi THÔNG TIN": phải dừng và nói ra.
+   */
+  it("thiếu org_id thì DỪNG, không lặng lẽ lưu thiếu ảnh", () => {
+    const i = POD.indexOf("if (photo) {")
+    expect(i, "nhánh tải ảnh phải chỉ phụ thuộc vào việc CÓ ảnh").toBeGreaterThan(0)
+    expect(POD.slice(i, i + 300)).toContain("if (!orgId) throw new Error(")
+    expect(POD).not.toContain("if (photo && orgId)")
+  })
+})
+
+describe("M6.3 — POD gắn vào màn chuyến giao", () => {
+  /**
+   * ⚠ Không select hai cột này thì chỉ báo "đã ký / có ảnh" luôn rỗng,
+   * và trang trông như chưa ai ký bao giờ.
+   */
+  it("truy vấn lấy cả cột POD, và select là MỘT chuỗi literal", () => {
+    expect(DELIVERY_DETAIL).toContain(
+      '.select("id, delivery_id, order_id, status, notes, amount_collected, pod_photo_url, pod_signature, delivered_at, order:sales_orders(order_code, total, status, customer:customers(store_name, phone, address))")'
+    )
+    // Nối chuỗi bằng + làm Supabase suy kiểu ra GenericStringError.
+    const i = DELIVERY_DETAIL.indexOf('.select("id, delivery_id, order_id')
+    expect(DELIVERY_DETAIL.slice(i, DELIVERY_DETAIL.indexOf("\n", i))).not.toContain('" +')
+  })
+
+  /** Vai trò phải khớp policy RLS ở migration 002 — RLS mới là hàng rào. */
+  it("chỉ vai trò được RLS cho phép, và chỉ khi đang giao", () => {
+    const i = DELIVERY_DETAIL.indexOf("const canCapturePod")
+    expect(i).toBeGreaterThan(0)
+    const block = DELIVERY_DETAIL.slice(i, i + 300)
+    expect(block).toContain('["owner", "manager", "warehouse", "driver"].includes(user.role)')
+    expect(block).toContain('delivery.status === "in_transit"')
+  })
+
+  it("nút ký nhận chiếm trọn chiều ngang, chỉ hiện khi chưa giao", () => {
+    expect(DELIVERY_DETAIL).toContain("{canCapturePod && !done && (")
+    const i = DELIVERY_DETAIL.indexOf("{canCapturePod && !done && (")
+    expect(DELIVERY_DETAIL.slice(i, i + 300)).toContain('className="mt-2 h-12 w-full"')
+  })
+
+  /** Giao xong mà không có bằng chứng thì phải NÓI RA, không để trống. */
+  it("đã giao nhưng thiếu bằng chứng thì nói thẳng", () => {
+    expect(DELIVERY_DETAIL).toContain("{done && !hasSignature && !hasPhoto && (")
+    expect(DELIVERY_DETAIL).toContain("Đã giao — chưa có chữ ký hay ảnh")
+  })
+
+  /** Xác nhận xong phải nạp lại, không bắt người ta kéo để làm mới. */
+  it("lưu xong thì nạp lại danh sách", () => {
+    expect(DELIVERY_DETAIL).toContain("onSaved={fetchData}")
+  })
+})
+
+describe("Migration 101 — bucket ảnh POD", () => {
+  /** Đã chạy hai lần trên Postgres 16 thật: 2 bucket / 3 policy cả hai lần. */
+  it("chạy lại được, không nhân bản", () => {
+    expect(MIG_101).toContain("ON CONFLICT (id) DO NOTHING")
+    expect(MIG_101.match(/IF NOT EXISTS \(\s*SELECT 1 FROM pg_policies/g)?.length).toBe(2)
+  })
+
+  /**
+   * ⚠ Ảnh POD là chứng từ. Cho xoá từ client thì lúc tranh chấp với
+   * khách, bên xoá được là bên thắng. visit-photos có DELETE vì ảnh viếng
+   * thăm là ghi nhận nội bộ.
+   */
+  it("KHÔNG có policy DELETE", () => {
+    expect(MIG_101).not.toContain("FOR DELETE")
+  })
+
+  /** Ghi bị khoá trong thư mục org của người dùng. */
+  it("ghi chỉ trong thư mục org", () => {
+    expect(MIG_101).toContain("(split_part(name, '/', 1))::uuid = public.user_org_id()")
+  })
+
+  /** Không thêm cột — hai cột POD đã có từ migration 001. */
+  it("không đụng vào schema bảng", () => {
+    expect(MIG_101).not.toMatch(/ALTER TABLE|ADD COLUMN/)
+  })
+
+  /** Đánh đổi "bucket public" phải được ghi ra, không để người sau tự đoán. */
+  it("nói rõ đánh đổi của bucket public", () => {
+    expect(MIG_101).toContain("ĐÁNH ĐỔI ĐÃ BIẾT")
+    expect(MIG_101).toContain("public = true")
   })
 })

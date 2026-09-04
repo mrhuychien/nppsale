@@ -8,6 +8,9 @@ import { useOrg } from "@/hooks/use-org"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
+import { QtyStepper } from "@/components/ui/qty-stepper"
+import { ProductPickerSheet } from "@/components/orders/product-picker-sheet"
+import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -1004,6 +1007,44 @@ export function OrderForm() {
     ? CUSTOMER_STATUS_MAP[selectedCustomer.status] ?? { label: selectedCustomer.status, variant: "outline" as const }
     : null
 
+  const [pickerOpen, setPickerOpen] = useState(false)
+  // SP khách này hay lấy — nạp khi đổi khách, đưa lên đầu bộ chọn.
+  const [frequentIds, setFrequentIds] = useState<string[]>([])
+
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
+
+  useEffect(() => {
+    if (!customerId) {
+      setFrequentIds([])
+      return
+    }
+    let cancelled = false
+    fetchFrequentProducts(customerId)
+      .then((ids) => { if (!cancelled) setFrequentIds(ids) })
+      // Đây là tiện ích SẮP XẾP. Hỏng nó không được chặn việc tạo đơn,
+      // và cũng không đáng làm phiền người dùng bằng một thông báo lỗi.
+      .catch(() => { if (!cancelled) setFrequentIds([]) })
+    return () => { cancelled = true }
+  }, [customerId])
+
+  /**
+   * Đơn này có đẩy khách vượt hạn mức không.
+   *
+   * `null` khi chưa đủ dữ liệu để kết luận: chưa chọn khách, chưa nạp xong
+   * công nợ, hoặc khách không đặt hạn mức. Đoán khi thiếu dữ liệu ở đây
+   * nghĩa là hiện cảnh báo sai cho một khách hoàn toàn bình thường.
+   */
+  const creditWarning = (() => {
+    if (!selectedCustomer) return null
+    if (customerOutstanding === null) return null
+    const limit = Number(selectedCustomer.credit_limit || 0)
+    if (limit <= 0) return null
+    const orderTotal = Math.max(0, total - returnSubtotal)
+    const projected = customerOutstanding + orderTotal
+    if (projected <= limit) return null
+    return { limit, projected, over: projected - limit }
+  })()
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -1016,10 +1057,10 @@ export function OrderForm() {
       <div className="flex flex-col gap-card-gap max-w-5xl mx-auto w-full">
         {/* Customer info card */}
         <Card className="rounded-xl shadow-card">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <CardTitle className="text-base font-bold">Thông tin khách hàng</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Khách hàng *</Label>
               <div className="relative">
@@ -1146,6 +1187,26 @@ export function OrderForm() {
                     })()}
                   </div>
                 </div>
+
+                {/* CẢNH BÁO VƯỢT HẠN MỨC — so nợ hiện tại CỘNG đơn này với
+                    hạn mức. Trước đây form hiện hạn mức và nợ cạnh nhau
+                    nhưng KHÔNG cộng đơn đang lập vào, nên NVBH chốt xong
+                    mới biết vượt — lúc đó đơn đã nằm chờ duyệt.
+                    Amber theo SKILL.md §1: đây là cảnh báo, không phải lỗi
+                    cứng; đỏ dành cho thứ chặn hẳn việc lưu. */}
+                {creditWarning && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <p className="text-[12px] leading-snug text-amber-900">
+                      Đơn này đưa công nợ lên{" "}
+                      <span className="font-bold tabular-nums">{formatCurrency(creditWarning.projected)}</span>,
+                      vượt hạn mức{" "}
+                      <span className="font-bold tabular-nums">{formatCurrency(creditWarning.limit)}</span>{" "}
+                      <span className="font-bold">({formatCurrency(creditWarning.over)} quá mức)</span>.
+                      Đơn vẫn lưu được nhưng sẽ cần duyệt.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -1153,10 +1214,10 @@ export function OrderForm() {
 
         {/* Terms & delivery card */}
         <Card className="rounded-xl shadow-card">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Điều khoản thanh toán
@@ -1189,10 +1250,13 @@ export function OrderForm() {
 
         {/* Products card */}
         <Card className="rounded-xl shadow-card flex-1">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base font-bold">Sản phẩm</CardTitle>
-              <div className="relative w-64">
+              {/* Có HAI cách thêm sản phẩm: Select này và ô tìm bên dưới.
+                  Trên mobile hai cách cạnh nhau chỉ gây phân vân và tốn
+                  chỗ — giữ Select cho desktop, mobile dùng ô tìm + sheet. */}
+              <div className="relative hidden w-64 lg:block">
                 <Select onValueChange={addLine}>
                   <SelectTrigger>
                     <Plus className="h-4 w-4 mr-2" />
@@ -1219,11 +1283,38 @@ export function OrderForm() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
             {/* Product search + barcode scan — sticky trên mobile để
                 user thêm nhiều SP không phải kéo về đầu trang. Sticky
                 ràng buộc trong CardContent → cuộn qua hết card sẽ nhả. */}
-            <div className="flex gap-2 lg:static sticky top-16 z-20 bg-card -mx-2 px-2 py-2 lg:m-0 lg:p-0">
+            {/* MOBILE: mở bộ chọn dạng bottom sheet.
+                Dropdown cũ là `absolute` bên trong thẻ nên bàn phím ảo đẩy
+                trang lên là che mất kết quả, người dùng gõ mù. Sheet chiếm
+                88vh nên kết quả luôn nằm trên bàn phím, và nó KHÔNG tự
+                đóng sau mỗi lần chọn — NVBH gõ 3–8 mặt hàng một lượt. */}
+            <div className="flex gap-2 lg:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 flex-1 justify-start text-on-surface-variant"
+                onClick={() => setPickerOpen(true)}
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Thêm sản phẩm…
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="tap h-12 w-12 shrink-0"
+                onClick={handleBarcodeScan}
+                aria-label="Quét mã vạch"
+              >
+                <ScanBarcode className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="hidden lg:static lg:flex gap-2 z-20 bg-card lg:m-0 lg:p-0">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -1498,34 +1589,18 @@ export function OrderForm() {
                           <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                         </Select>
                       )}
-                      <div className="flex items-stretch flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => updateLine(i, "quantity", Math.max(1, line.quantity - 1))}
-                          className="w-9 h-9 rounded-l-lg border border-r-0 border-input bg-muted/30 flex items-center justify-center text-lg font-semibold hover:bg-muted/50 active:bg-muted/70"
-                          aria-label="Giảm"
-                        >
-                          −
-                        </button>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          value={line.quantity}
-                          onChange={(e) => updateLine(i, "quantity", parseInt(e.target.value) || 1)}
-                          className={`h-9 text-center font-semibold tabular-nums rounded-none border-x-0 flex-1 min-w-0 px-1 ${
-                            over ? "border-amber-300 focus-visible:ring-amber-200" : ""
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => updateLine(i, "quantity", line.quantity + 1)}
-                          className="w-9 h-9 rounded-r-lg border border-l-0 border-input bg-muted/30 flex items-center justify-center text-lg font-semibold hover:bg-muted/50 active:bg-muted/70"
-                          aria-label="Tăng"
-                        >
-                          +
-                        </button>
-                      </div>
+                      {/* Nút −/+ cũ là 36×36 và ô số h-9 — dưới sàn 44px,
+                          mà đây là thứ NVBH bấm nhiều nhất khi đứng trước
+                          mặt khách. QtyStepper cũng bôi đen sẵn khi chạm
+                          vào ô, để gõ "24" đè lên "1" thay vì phải xoá. */}
+                      <QtyStepper
+                        value={line.quantity}
+                        onChange={(n) => updateLine(i, "quantity", n)}
+                        min={1}
+                        warn={over}
+                        className="flex-1 min-w-0"
+                        ariaLabel={`Số lượng ${line.product_name || "sản phẩm"}`}
+                      />
                       <div className="text-right shrink-0 min-w-[88px]">
                         <p className="text-sm font-bold text-primary tabular-nums">{formatCurrency(line.line_total)}</p>
                       </div>
@@ -1608,7 +1683,7 @@ export function OrderForm() {
 
         {/* Hàng trả lại (tuỳ chọn) — companion return tied to this order */}
         <Card className="rounded-xl shadow-card border-l-4 border-l-[#fdb022]">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <button
               type="button"
               onClick={() => setReturnOpen((v) => !v)}
@@ -1634,7 +1709,7 @@ export function OrderForm() {
             </button>
           </CardHeader>
           {returnOpen && (
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Lý do trả</Label>
@@ -1875,7 +1950,7 @@ export function OrderForm() {
 
         {/* Notes card — main column */}
         <Card className="rounded-xl shadow-card">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <CardTitle className="text-base font-bold">Ghi chú nội bộ</CardTitle>
           </CardHeader>
           <CardContent>
@@ -1883,7 +1958,7 @@ export function OrderForm() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Yêu cầu đặc biệt về đóng gói, thời gian giao, ghi chú kế toán..."
-              rows={6}
+              rows={3}
             />
           </CardContent>
         </Card>
@@ -1909,61 +1984,79 @@ export function OrderForm() {
         onScan={processBarcodeResult}
       />
 
+      <ProductPickerSheet
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        products={products}
+        stockByProduct={stockByProduct}
+        groupId={selectedCustomer?.group_id}
+        onPick={addLine}
+        onScan={handleBarcodeScan}
+        recentIds={frequentIds}
+        addedIds={new Set(lines.map((l) => l.product_id))}
+        addedCount={lines.length}
+      />
+
       {/* ===== Sticky bottom summary bar (Stitch design) ===== */}
 
       {/* Mobile: card inline ở cuối form — không sticky để tăng không
           gian hiển thị nội dung phía trên. */}
-      <div className="lg:hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-card p-4">
-        <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm text-on-surface-variant">
-            <span>Tạm tính</span>
-            <span className="text-on-surface tabular-data">{formatCurrency(subtotal)}</span>
-          </div>
-          <div className="flex justify-between text-sm text-on-surface-variant">
-            <span>Tổng chiết khấu</span>
-            <span className="text-error tabular-data">-{formatCurrency(total_discount)}</span>
-          </div>
-          <div className="flex justify-between text-sm text-on-surface-variant">
-            <span>VAT</span>
-            <span className="text-on-surface tabular-data">{formatCurrency(vat)}</span>
-          </div>
-          {returnLines.length > 0 && (
-            <div className="flex justify-between text-sm text-on-surface-variant">
-              <span>Trừ hàng trả</span>
-              <span className="text-error tabular-data">-{formatCurrency(returnSubtotal)}</span>
-            </div>
-          )}
-          <div className="flex justify-between items-end border-t border-outline-variant pt-2 mt-2">
-            <span className="text-sm font-bold text-on-surface">TỔNG CỘNG</span>
-            <span className="text-headline-lg font-bold text-primary tabular-data leading-none">
-              {formatCurrency(Math.max(0, total - returnSubtotal))}
-            </span>
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => router.back()}
-        >
-          Huỷ
-        </Button>
-      </div>
-
+      {/* Thẻ tổng tiền inline đã BỎ: nó trùng với thanh dính đáy ngay
+          dưới (~230px cho cùng một con số). Chi tiết tạm tính / chiết khấu
+          / VAT nay bung ra TỪ thanh đó khi bấm vào con số tổng. */}
       {/* Mobile: thanh tổng + nút tạo đơn DÍNH ĐÁY, nằm ngay trên thanh nav.
           Trước đây tổng tiền chỉ nằm trong thẻ ở cuối form: với đơn 2 dòng,
           NVBH phải cuộn gần 2.000px mới biết đơn bao nhiêu tiền và mới bấm
           được nút tạo đơn — trong khi đang đứng trước mặt khách. */}
-      <div className="lg:hidden fixed left-0 right-0 bottom-above-nav z-30 border-t border-outline-variant bg-surface-container-lowest/95 backdrop-blur-xl px-4 py-3 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)]">
+      <div className="lg:hidden fixed left-0 right-0 bottom-above-nav z-30 border-t border-outline-variant bg-surface-container-lowest/95 px-4 py-3 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)] backdrop-blur-xl transition-transform duration-150 kb-hide">
+        {/* Chi tiết bung ra TỪ thanh này, thay cho thẻ tổng inline đã bỏ. */}
+        {breakdownOpen && (
+          <div className="mb-3 space-y-1.5 border-b border-outline-variant pb-3">
+            <div className="flex justify-between text-sm text-on-surface-variant">
+              <span>Tạm tính</span>
+              <span className="tabular-data text-on-surface">{formatCurrency(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-on-surface-variant">
+              <span>Tổng chiết khấu</span>
+              <span className="tabular-data text-error">-{formatCurrency(total_discount)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-on-surface-variant">
+              <span>VAT</span>
+              <span className="tabular-data text-on-surface">{formatCurrency(vat)}</span>
+            </div>
+            {returnLines.length > 0 && (
+              <div className="flex justify-between text-sm text-on-surface-variant">
+                <span>Trừ hàng trả</span>
+                <span className="tabular-data text-error">-{formatCurrency(returnSubtotal)}</span>
+              </div>
+            )}
+            {/* Nút Huỷ bỏ khỏi thanh chính (app bar đã có nút back); giữ
+                một chỗ huỷ ở đây cho người tìm nó. */}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2 h-11 w-full"
+              onClick={() => router.back()}
+            >
+              Huỷ đơn
+            </Button>
+          </div>
+        )}
         <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">
-              Tổng cộng
+          <button
+            type="button"
+            onClick={() => setBreakdownOpen((v) => !v)}
+            aria-expanded={breakdownOpen}
+            className="tap min-w-0 flex-1 text-left"
+          >
+            <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">
+              Tổng cộng · {lines.length} SP
+              {breakdownOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
             </p>
             <p className="truncate text-xl font-bold leading-tight text-primary tabular-data">
               {formatCurrency(Math.max(0, total - returnSubtotal))}
             </p>
-          </div>
+          </button>
           <Button
             type="submit"
             disabled={loading || (hasOverstock && !allowOversell) || hasPriceViolation || !customerId}

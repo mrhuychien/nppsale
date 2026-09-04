@@ -199,6 +199,22 @@
   /* Neo cho thanh dính đỉnh: nằm NGAY DƯỚI app bar. */
   .top-below-appbar { top: var(--app-bar-h); }
 
+  /* Bàn phím ảo đang mở: giấu thanh nav dưới.
+     Thanh nav và thanh hành động cùng ở đáy màn; bàn phím đẩy chúng lên
+     đè vào giữa màn hình, che đúng ô đang gõ. Dùng transform chứ không
+     `display:none` để còn hiệu ứng trượt, và để chiều cao layout không
+     nhảy khi bàn phím đóng lại. */
+  /* Thanh hành động dính đáy của biểu mẫu cũng phải trốn khi gõ. */
+  body.kb-open .kb-hide {
+    transform: translateY(120%);
+    pointer-events: none;
+  }
+
+  body.kb-open nav[aria-label="Điều hướng chính"] {
+    transform: translateY(100%);
+    transition: transform 150ms ease-out;
+  }
+
   /* Đệm an toàn cho chính thanh nav / bottom sheet. */
   .pb-safe { padding-bottom: var(--safe-b); }
   .pt-safe { padding-top: var(--safe-t); }

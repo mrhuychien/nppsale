@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -10,6 +10,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
 import { WorkflowResumeBar } from "@/components/dashboard/workflow-resume-bar"
 import { OrderSyncProvider } from "@/hooks/use-order-sync"
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import type { Role } from "@/types"
 
 interface DashboardShellProps {
@@ -21,6 +22,15 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const isLauncher = pathname === "/home"
+
+  // Một chỗ duy nhất theo dõi bàn phím ảo, gắn cờ lên <body>. Mọi thanh
+  // dính đáy đọc cờ đó bằng CSS — rẻ hơn nhiều so với truyền state xuống
+  // từng màn, và không cần context.
+  const keyboardOpen = useKeyboardOpen()
+  useEffect(() => {
+    document.body.classList.toggle("kb-open", keyboardOpen)
+    return () => document.body.classList.remove("kb-open")
+  }, [keyboardOpen])
 
   /**
    * Ngăn kéo menu — dùng chung cho cả trang chủ lẫn các trang còn lại.

@@ -9,6 +9,9 @@ import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { SegmentedScroller } from "@/components/ui/segmented-scroller"
+import { MobileRecordCard } from "@/components/ui/mobile-record-card"
+import { LoadMore } from "@/components/ui/load-more"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { PageHeader } from "@/components/ui/page-header"
 import {
@@ -22,8 +25,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
-import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
-import { CreditCard, Eye, FileText } from "lucide-react"
+import { formatCurrency, formatDate, getAgingStatus, VN_TZ } from "@/lib/utils"
+import {
+  HandCoins, CreditCard, Eye, FileText } from "lucide-react"
 import Link from "next/link"
 import type { Receivable } from "@/types"
 
@@ -48,6 +52,8 @@ export default function ReceivablesPage() {
   const isSales = authUser?.role === "sales"
   const isDriver = authUser?.role === "driver"
   const isWarehouse = authUser?.role === "warehouse"
+  // Lọc theo khoảng tuổi nợ — chỉ dùng ở bản mobile (chip dưới thanh).
+  const [agingFilter, setAgingFilter] = useState<string | null>(null)
   const [receivables, setReceivables] = useState<Receivable[]>([])
   // Tổng + phân nhóm tuổi nợ do DATABASE cộng (migration 093), không tải
   // dữ liệu về trình duyệt nữa.
@@ -93,7 +99,8 @@ export default function ReceivablesPage() {
         // eslint-disable-next-line no-restricted-syntax
         "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)"
       )
-      if (cancelled) return
+      // Huỷ request khi điều hướng nhanh — không phải lỗi.
+      if (cancelled || res.aborted) return
       setReceivables(res.data)
       setLoadError(res.error)
       pg.setTotal(res.count ?? 0)
@@ -124,6 +131,26 @@ export default function ReceivablesPage() {
     overdue: { label: "Quá hạn", sub: "61-90 ngày", barClass: "bg-[#f97316]", textClass: "text-[#c2410c]" },
     critical: { label: "Khẩn cấp", sub: ">90 ngày", barClass: "bg-error", textClass: "text-error" },
   }
+
+  // Tổng bốn khoảng — mẫu số của thanh xếp chồng. 0 thì không chia.
+  // Chip tuổi nợ chỉ lọc DANH SÁCH MOBILE — desktop có cột và bộ lọc
+  // riêng, đổi chung sẽ làm hai bên hiểu khác nhau về "đang lọc gì".
+  const mobileReceivables = agingFilter
+    ? receivables.filter((r) => (r.due_date ? getAgingStatus(r.due_date) : "current") === agingFilter)
+    : receivables
+
+  /**
+   * Số ngày quá hạn. Dùng VN_TZ cho cả hai vế — so ngày bằng giờ máy
+   * chủ (UTC) thì suốt 7 tiếng đầu mỗi ngày kết quả lệch một ngày.
+   */
+  const daysOverdue = (due: string) => {
+    const today = new Date(new Date().toLocaleDateString("en-CA", { timeZone: VN_TZ }))
+    const d = new Date(due.slice(0, 10))
+    return Math.max(0, Math.round((today.getTime() - d.getTime()) / 86400000))
+  }
+
+  const totalAging =
+    buckets.current.amount + buckets.warning.amount + buckets.overdue.amount + buckets.critical.amount
 
   const maxAmount = Math.max(
     buckets.current.amount,
@@ -157,7 +184,7 @@ export default function ReceivablesPage() {
 
       {/* Aging Chart */}
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 lg:p-6">
           <div className="mb-4 flex items-end justify-between">
             <div>
               <h3 className="text-lg font-bold">Biểu đồ tuổi nợ</h3>
@@ -167,7 +194,49 @@ export default function ReceivablesPage() {
               Cập nhật: {formatDate(new Date())}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* Mobile: MỘT thanh xếp chồng ngang thay cho lưới 2 cột bốn ô
+              (mỗi ô cao 200px, chữ "Hiện tại 0-30 NGÀY" xuống dòng gãy).
+              Tiết kiệm ~180px và đọc nhanh hơn: tỉ lệ giữa bốn khoảng nhìn
+              thấy ngay trong một thanh. ĐÚNG BỐN khoảng theo bucketConfig —
+              dữ liệu tổng hợp phía DB chỉ có bốn, đừng phát minh khoảng
+              thứ năm. */}
+          <div className="lg:hidden">
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-container">
+              {(Object.keys(bucketConfig) as BucketKey[]).map((key) => {
+                const cfg = bucketConfig[key]
+                const pct = totalAging > 0 ? (buckets[key].amount / totalAging) * 100 : 0
+                if (pct <= 0) return null
+                return (
+                  <div
+                    key={key}
+                    className={cfg.barClass}
+                    style={{ width: `${pct}%` }}
+                    title={`${cfg.label}: ${formatCurrency(buckets[key].amount)}`}
+                  />
+                )
+              })}
+            </div>
+            <SegmentedScroller
+              segments={(Object.keys(bucketConfig) as BucketKey[]).map((key) => ({
+                key,
+                label: bucketConfig[key].label,
+                count: buckets[key].count,
+              }))}
+              value={agingFilter}
+              onChange={setAgingFilter}
+              ariaLabel="Lọc theo tuổi nợ"
+            />
+            {agingFilter && (
+              <p className="px-1 text-xs text-on-surface-variant">
+                {bucketConfig[agingFilter as BucketKey].sub} ·{" "}
+                <span className="font-semibold tabular-nums">
+                  {formatCurrency(buckets[agingFilter as BucketKey].amount)}
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="hidden lg:grid grid-cols-2 gap-4 md:grid-cols-4">
             {(Object.keys(bucketConfig) as BucketKey[]).map((key) => {
               const cfg = bucketConfig[key]
               const b = buckets[key]
@@ -204,7 +273,7 @@ export default function ReceivablesPage() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
+      <div className="hidden lg:flex justify-end">
         <ColumnPicker
           available={RECEIVABLE_COLUMNS}
           value={visibleColumns}
@@ -298,65 +367,50 @@ export default function ReceivablesPage() {
 
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
-            {receivables.map((r) => {
+            {mobileReceivables.map((r) => {
               const remaining = r.amount - r.paid
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
+              const overdueDays = r.due_date ? daysOverdue(r.due_date) : 0
               return (
-                <div
+                <MobileRecordCard
                   key={r.id}
-                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                  onClick={() => router.push(`/receivables/${r.id}`)}
-                >
-                  <div className="p-4">
-                    <div className="flex justify-between items-start gap-3 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-extrabold text-base leading-tight truncate">
-                          {r.customer?.store_name || "-"}
-                        </h3>
-                        {r.sales_user?.full_name && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            NV: {r.sales_user.full_name}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Hạn: {r.due_date ? formatDate(r.due_date) : "-"}
-                        </p>
-                      </div>
-                      <div className="shrink-0">
-                        <Badge variant={agingVariant(aging)}>{r.status}</Badge>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
-                      <div>
-                        <p className="text-muted-foreground">Phải thu</p>
-                        <p className="font-medium">{formatCurrency(r.amount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Đã thu</p>
-                        <p className="font-medium">{formatCurrency(r.paid)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Còn lại</p>
-                        <p className="font-bold text-destructive">{formatCurrency(remaining)}</p>
-                      </div>
-                    </div>
-                    <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => handleExportStatement()}
-                      >
-                        <FileText className="mr-1 h-3.5 w-3.5" />
-                        Xuất bản kê
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                  href={`/receivables/${r.id}`}
+                  title={r.customer?.store_name || "-"}
+                  // Số CÒN NỢ là con số cần thấy, không phải số phải thu
+                  // ban đầu — nó quyết định có đi thu hay không.
+                  amount={formatCurrency(remaining)}
+                  amountTone="danger"
+                  accent={aging === "critical" ? "danger" : aging === "overdue" ? "warning" : null}
+                  subtitle={
+                    <>
+                      {overdueDays > 0 ? (
+                        <span className="font-semibold text-error">Quá hạn {overdueDays} ngày</span>
+                      ) : (
+                        <span>Hạn {r.due_date ? formatDate(r.due_date) : "-"}</span>
+                      )}
+                      <span>· Đã thu {formatCurrency(r.paid)}</span>
+                      {r.sales_user?.full_name && <span>· {r.sales_user.full_name}</span>}
+                    </>
+                  }
+                  badges={<Badge variant={agingVariant(aging)}>{r.status}</Badge>}
+                  footer={
+                    // "Xuất bản kê" chuyển vào màn chi tiết — trong thẻ
+                    // danh sách nó chiếm chỗ của việc NVBH thật sự tới đây
+                    // để làm: đi thu tiền.
+                    <Button className="h-11 w-full" asChild>
+                      <Link href={`/receivables/collect?receivableId=${r.id}`}>
+                        <HandCoins className="mr-1.5 h-4 w-4" /> Thu tiền
+                      </Link>
+                    </Button>
+                  }
+                />
               )
             })}
+            <LoadMore pg={pg} shown={receivables.length} />
           </div>
-          <DataPagination pg={pg} shownCount={receivables.length} />
+          <div className="hidden lg:block">
+            <DataPagination pg={pg} shownCount={receivables.length} />
+          </div>
         </>
       )}
     </div>

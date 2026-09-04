@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { MobileRecordCard } from "@/components/ui/mobile-record-card"
+import { LoadMore } from "@/components/ui/load-more"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -24,7 +27,8 @@ import { Badge } from "@/components/ui/badge"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { CustomerImportDialog } from "@/components/customers/customer-import-dialog"
-import { Plus, Search, Users, MapPin, HandCoins, ClipboardList, Navigation, Calendar, ShoppingBag, Route, FilePlus2, Power, PowerOff, Upload } from "lucide-react"
+import {
+  Phone, Plus, Search, Users, HandCoins, ClipboardList, Navigation, Route, FilePlus2, Power, PowerOff, Upload } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Customer, Receivable, SalesOrder } from "@/types"
 import {
@@ -60,6 +64,7 @@ export default function CustomersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [filterSheet, setFilterSheet] = useState(false)
   const [statusFilter, setStatusFilter] = useState("all")
   const [channelFilter, setChannelFilter] = useState("all")
   const [salesUserFilter, setSalesUserFilter] = useState("all")
@@ -163,7 +168,9 @@ export default function CustomersPage() {
         // eslint-disable-next-line no-restricted-syntax
         "*, group:customer_groups(*)"
       )
-      if (cancelled) return
+      // Huỷ request khi điều hướng nhanh — không phải lỗi, và không
+      // được ghi mảng rỗng đè lên danh sách đang hiện.
+      if (cancelled || res.aborted) return
       const list = res.data
       setCustomers(list)
       setLoadError(res.error)
@@ -380,6 +387,18 @@ export default function CustomersPage() {
 
   if (authLoading) return <Skeleton className="h-96" />
 
+  // Bộ lọc đang bật (ngoài ô tìm) — hiện lên badge nút Lọc.
+  const activeFilterCount =
+    (statusFilter !== "all" ? 1 : 0) +
+    (channelFilter !== "all" ? 1 : 0) +
+    (salesUserFilter !== "all" ? 1 : 0)
+
+  const clearFilters = () => {
+    setStatusFilter("all")
+    setChannelFilter("all")
+    setSalesUserFilter("all")
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title={isSales ? "Khách hàng của tôi" : "Khách hàng"} description={`${customers.length} khách hàng`}>
@@ -400,27 +419,88 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Route progress (visible on all sizes; prominent on mobile) */}
-      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card p-4">
-        <div className="flex items-baseline justify-between mb-2">
-          <div>
-            <p className="text-label-md uppercase text-on-surface-variant">Lộ trình hôm nay</p>
-            <p className="text-xl font-bold tracking-tight text-on-surface tabular-data">
-              {visitedCount}
-              <span className="text-sm font-medium text-on-surface-variant"> / {totalRoute} điểm đã ghé</span>
-            </p>
+      {/* Lộ trình hôm nay — mobile thu về MỘT dòng có thanh tiến độ
+          (56px thay vì 96px). Cùng số liệu, chỉ bớt chỗ trống. */}
+      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card p-3 lg:p-4">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="truncate text-label-md uppercase text-on-surface-variant">Lộ trình hôm nay</p>
+              <span className="shrink-0 text-sm font-bold text-primary tabular-data">{progressPct}%</span>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <p className="shrink-0 text-base font-bold tracking-tight text-on-surface tabular-data lg:text-xl">
+                {visitedCount}
+                <span className="text-xs font-medium text-on-surface-variant lg:text-sm">
+                  {" "}/ {totalRoute} điểm
+                </span>
+              </p>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-container">
+                <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+              </div>
+            </div>
           </div>
-          <span className="text-sm font-bold text-primary tabular-data">{progressPct}%</span>
-        </div>
-        <div className="h-2 rounded-full bg-surface-container overflow-hidden">
-          <div
-            className="h-full bg-primary transition-all"
-            style={{ width: `${progressPct}%` }}
-          />
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm tên cửa hàng, SĐT…"
+        activeCount={activeFilterCount}
+        onClear={clearFilters}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Trạng thái</label>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger><SelectValue placeholder="Tất cả" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả</SelectItem>
+                <SelectItem value="active">Đang hoạt động</SelectItem>
+                <SelectItem value="suspended">Tạm ngưng</SelectItem>
+                <SelectItem value="locked">Đã khoá</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Tuyến</label>
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger><SelectValue placeholder="Tất cả tuyến" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tuyến</SelectItem>
+                {routes.map((r) => (
+                  <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {!isSales && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Nhân viên</label>
+              <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
+                <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả nhân viên</SelectItem>
+                  <SelectItem value="_none">Chưa phân công</SelectItem>
+                  {salesUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button variant="outline" className="h-11 w-full" asChild>
+            <Link href="/customers/routes">
+              <Route className="mr-1.5 h-4 w-4" /> Quản lý tuyến
+            </Link>
+          </Button>
+        </div>
+      </MobileFilterBar>
+
+      <div className="hidden lg:flex flex-wrap items-center gap-2">
         {filterActive("search") && (
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -543,138 +623,100 @@ export default function CustomersPage() {
               const lastOrder = lastOrders[c.id]
               const lastVisit = lastVisits[c.id]
               return (
-                <div
+                <MobileRecordCard
                   key={c.id}
-                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden"
-                >
-                  <div
-                    className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${
-                      isBadDebt ? "bg-danger" : hasVisited ? "bg-success" : "bg-primary"
-                    }`}
-                  />
-                  <div
-                    className="p-4 pl-5 cursor-pointer active:scale-[0.99] transition-transform"
-                    onClick={() => router.push(`/customers/${c.id}`)}
-                  >
-                    <div className="flex justify-between items-start gap-3 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-extrabold text-base leading-tight truncate">
-                          {c.store_name}
-                        </h3>
-                        {c.owner_name && (
-                          <p className="text-xs font-medium text-primary/80 mt-0.5 truncate">
-                            {c.owner_name}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1">{c.phone}</p>
-                        <div className="flex items-center gap-1 text-muted-foreground mt-1">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          <p className="text-xs truncate">{c.address || "-"}</p>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        {hasVisited && (
-                          <Badge variant="success" className="whitespace-nowrap mb-1">Đã ghé hôm nay</Badge>
-                        )}
-                        {c.channel && <Badge variant="outline">{c.channel}</Badge>}
-                      </div>
-                    </div>
-
-                    {/* Summary row: last visit, last order, debt */}
-                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
-                      <div>
-                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
-                          <Navigation className="h-3 w-3 shrink-0" />
-                          <span>Ghé thăm</span>
-                        </div>
-                        {lastVisit ? (
-                          <p className="font-medium">{formatDate(lastVisit.visit_date)}</p>
+                  href={`/customers/${c.id}`}
+                  title={c.store_name}
+                  // Công nợ là con số NVBH quét mắt tìm khi mở danh sách
+                  // khách — đưa lên dòng đầu thay vì chôn ở ô thứ ba của
+                  // lưới tóm tắt.
+                  amount={debt > 0 ? formatCurrency(debt) : undefined}
+                  amountTone={debt > 0 ? "danger" : "default"}
+                  accent={isBadDebt ? "danger" : hasVisited ? "warning" : null}
+                  subtitle={
+                    <>
+                      {c.owner_name && <span className="font-medium text-primary/80">{c.owner_name}</span>}
+                      {c.phone && <span>· {c.phone}</span>}
+                      {lastVisit && <span>· Ghé {formatDate(lastVisit.visit_date)}</span>}
+                      {lastOrder && <span>· Đơn {formatDate(lastOrder.order_date)}</span>}
+                    </>
+                  }
+                  badges={
+                    <>
+                      {hasVisited && <Badge variant="success">Đã ghé hôm nay</Badge>}
+                      {c.channel && <Badge variant="outline">{c.channel}</Badge>}
+                      {isBadDebt && (
+                        <span className="rounded-full bg-error-container px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-on-error-container">
+                          Nợ xấu
+                        </span>
+                      )}
+                    </>
+                  }
+                  footer={
+                    <>
+                      {/* Hai việc NVBH làm nhiều nhất khi mở danh sách
+                          khách — trước đây phải vào chi tiết mới làm được
+                          (gọi điện) hoặc nằm trong nút 40px (tạo đơn). */}
+                      <div className="flex gap-2">
+                        {c.phone ? (
+                          <a
+                            href={`tel:${c.phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-outline-variant text-[13px] font-semibold text-on-surface active:bg-surface-container"
+                          >
+                            <Phone className="h-4 w-4" /> Gọi
+                          </a>
                         ) : (
-                          <p className="text-muted-foreground italic">Chưa có</p>
+                          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-outline-variant text-[13px] text-on-surface-variant">
+                            Chưa có SĐT
+                          </span>
                         )}
+                        <Button variant="outline" className="h-11 flex-1" asChild>
+                          {/* Tham số là `customerId` — order-form đọc đúng
+                              tên này rồi tự chọn khách. */}
+                          <Link href={`/orders/new?customerId=${c.id}`}>
+                            <FilePlus2 className="mr-1.5 h-4 w-4" /> Tạo đơn
+                          </Link>
+                        </Button>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
-                          <ShoppingBag className="h-3 w-3 shrink-0" />
-                          <span>Đơn gần nhất</span>
-                        </div>
-                        {lastOrder ? (
-                          <>
-                            <p className="font-medium truncate">{formatDate(lastOrder.order_date)}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">
-                              {formatCurrency(lastOrder.total)}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="text-muted-foreground italic">Chưa có</p>
-                        )}
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          variant="ghost"
+                          className="h-11 text-[12px]"
+                          onClick={() => handleCheckIn(c)}
+                        >
+                          <Navigation className="mr-1 h-3.5 w-3.5" /> Ghé thăm
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="h-11 text-[12px] text-error disabled:opacity-40"
+                          disabled={debt <= 0}
+                          asChild={debt > 0}
+                        >
+                          {debt > 0 ? (
+                            <Link href={`/receivables/collect?customerId=${c.id}`}>
+                              <HandCoins className="mr-1 h-3.5 w-3.5" /> Thu tiền
+                            </Link>
+                          ) : (
+                            <span>
+                              <HandCoins className="mr-1 h-3.5 w-3.5" /> Thu tiền
+                            </span>
+                          )}
+                        </Button>
+                        <Button variant="ghost" className="h-11 text-[12px]" onClick={handleInventoryCheck}>
+                          <ClipboardList className="mr-1 h-3.5 w-3.5" /> Kiểm tồn
+                        </Button>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
-                          <Calendar className="h-3 w-3 shrink-0" />
-                          <span>Công nợ</span>
-                        </div>
-                        {debt > 0 ? (
-                          <p className={`font-bold ${isBadDebt ? "text-danger" : "text-warning-foreground"}`}>
-                            {formatCurrency(debt)}
-                          </p>
-                        ) : (
-                          <p className="text-muted-foreground">0đ</p>
-                        )}
-                        {isBadDebt && (
-                          <p className="text-[10px] font-bold text-danger">Nợ xấu</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 border-t divide-x">
-                    <button
-                      type="button"
-                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-primary hover:bg-muted/50 active:scale-95 transition"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/orders/new?customerId=${c.id}`)
-                      }}
-                    >
-                      <FilePlus2 className="h-4 w-4" /> Tạo đơn
-                    </button>
-                    <button
-                      type="button"
-                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleCheckIn(c)
-                      }}
-                    >
-                      <Navigation className="h-4 w-4" /> Ghé thăm
-                    </button>
-                    <button
-                      type="button"
-                      disabled={debt <= 0}
-                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-error hover:bg-muted/50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/receivables/collect?customerId=${c.id}`)
-                      }}
-                    >
-                      <HandCoins className="h-4 w-4" /> Thu tiền
-                    </button>
-                    <button
-                      type="button"
-                      className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold text-on-surface hover:bg-muted/50 active:scale-95 transition"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleInventoryCheck()
-                      }}
-                    >
-                      <ClipboardList className="h-4 w-4" /> Kiểm tồn
-                    </button>
-                  </div>
-                </div>
+                    </>
+                  }
+                />
               )
             })}
+            <LoadMore pg={pg} shown={filtered.length} />
           </div>
-          <DataPagination pg={pg} shownCount={filtered.length} />
+          <div className="hidden lg:block">
+            <DataPagination pg={pg} shownCount={filtered.length} />
+          </div>
         </>
       )}
 

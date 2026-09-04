@@ -39,6 +39,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { Input } from "@/components/ui/input"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -240,7 +241,8 @@ export default function DeliveriesPage() {
         // eslint-disable-next-line no-restricted-syntax
         "*, driver:users!deliveries_driver_id_fkey(full_name)"
       )
-      if (cancelled) return
+      // Huỷ request khi điều hướng nhanh — không phải lỗi.
+      if (cancelled || res.aborted) return
       const count = res.count
       const list = res.data
 
@@ -361,7 +363,9 @@ export default function DeliveriesPage() {
       </PageHeader>
 
       {/* Stats cards */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+      {/* Mobile: một hàng CUỘN NGANG các thẻ nhỏ (~72px) thay cho lưới
+          2 cột năm thẻ chiếm ~250px. Desktop giữ lưới 5 cột. */}
+      <div className="row-scroll -mx-4 px-4 lg:mx-0 lg:grid lg:gap-3 lg:px-0 lg:grid-cols-5 lg:overflow-visible">
         {(["in_transit", "delivered", "settled", "pending", "cancelled"] as DerivedStatus[]).map(
           (s) => {
             const meta = DERIVED_STATUS_META[s]
@@ -380,18 +384,18 @@ export default function DeliveriesPage() {
             return (
               <Card
                 key={s}
-                className={`border-l-4 ${accent} cursor-pointer hover:shadow-sm transition-shadow ${
+                className={`shrink-0 w-[108px] lg:w-auto border-l-4 ${accent} cursor-pointer hover:shadow-sm transition-shadow ${
                   activeTab === s ? "ring-2 ring-primary" : ""
                 }`}
                 onClick={() => setActiveTab(s)}
               >
-                <CardContent className="p-3 flex items-center gap-3">
-                  <Icon className="h-7 w-7 text-muted-foreground" />
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <CardContent className="flex items-center gap-2 p-2.5 lg:gap-3 lg:p-3">
+                  <Icon className="h-5 w-5 shrink-0 text-muted-foreground lg:h-7 lg:w-7" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {meta.label}
                     </p>
-                    <p className="text-2xl font-bold tabular-nums">{count}</p>
+                    <p className="text-xl font-bold tabular-nums lg:text-2xl">{count}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -402,10 +406,25 @@ export default function DeliveriesPage() {
 
       {/* Filter toolbar */}
       <div className="flex flex-wrap items-center gap-3">
+        {/* Mobile: hàng chip cuộn ngang. TabsList cũ `flex-wrap` nên ba
+            tab "Tất cả / Đang giao / Đã giao — chờ thu tiền" xuống dòng ở
+            320px và chiếm hai hàng. */}
+        <div className="w-full lg:hidden">
+          <SegmentedScroller
+            segments={TAB_FILTERS.filter((t) => t.value !== "all").map((t) => ({
+              key: t.value,
+              label: t.label,
+              count: stats.counts[t.value as DerivedStatus],
+            }))}
+            value={activeTab === "all" ? null : activeTab}
+            onChange={(k) => setActiveTab((k as typeof activeTab) ?? "all")}
+            ariaLabel="Lọc chuyến giao"
+          />
+        </div>
         <Tabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as typeof activeTab)}
-          className="flex-1"
+          className="hidden lg:block flex-1"
         >
           <TabsList className="overflow-x-auto justify-start gap-1 h-auto flex-wrap">
             {TAB_FILTERS.map((t) => (

@@ -1128,14 +1128,14 @@ export default function OrdersPage() {
                     // chưa giao là mời người ta bấm rồi nhận lỗi.
                     showInvoiceAction && !selectMode ? (
                       invoice?.misa_status === "signed" ? (
-                        <div className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#ecfdf3] text-xs font-medium text-[#027a48]">
+                        <div className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-[#ecfdf3] text-xs font-medium text-[#027a48]">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Đã xuất hoá đơn
                         </div>
                       ) : (
                         <Button
                           variant="outline"
-                          className="h-11 flex-1"
+                          className="h-11 w-full"
                           disabled={misaLoadingId === order.id}
                           onClick={() => handleXuatHoaDonList(order)}
                         >

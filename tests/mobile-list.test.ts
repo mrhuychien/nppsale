@@ -25,6 +25,9 @@ const PIPELINE = read("src/components/orders/order-pipeline.tsx")
 const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
 const ORDERS_CODE = strip(ORDERS)
 const RESILIENT = read("src/lib/supabase/resilient.ts")
+const CUSTOMERS = strip(read("src/app/(dashboard)/customers/page.tsx"))
+const RECEIVABLES = strip(read("src/app/(dashboard)/receivables/page.tsx"))
+const DELIVERIES = strip(read("src/app/(dashboard)/deliveries/page.tsx"))
 
 describe("M2.1 — MobileFilterBar", () => {
   /**
@@ -314,5 +317,122 @@ describe("primitive mới không phá quy ước sẵn có", () => {
     for (const banned of ["react-hook-form", "framer-motion", "@tanstack/react-query", "swr"]) {
       expect(deps, `đã thêm ${banned}`).not.toContain(banned)
     }
+  })
+})
+
+describe("M2.3 — /customers", () => {
+  /**
+   * Hai việc NVBH làm nhiều nhất khi mở danh sách khách. Gọi điện trước
+   * đây phải vào màn chi tiết mới làm được.
+   */
+  it("thẻ khách có nút Gọi (tel:) và Tạo đơn", () => {
+    expect(CUSTOMERS).toMatch(/href=\{`tel:\$\{c\.phone\}`\}/)
+    expect(CUSTOMERS).toContain("/orders/new?customerId=${c.id}")
+  })
+
+  /**
+   * ⚠ Tham số là `customerId`, KHÔNG phải `customer` — order-form đọc đúng
+   * tên này rồi tự chọn khách; sai tên thì link mở form trống.
+   */
+  it("dùng đúng tên tham số customerId", () => {
+    expect(CUSTOMERS).not.toMatch(/orders\/new\?customer=/)
+    const form = read("src/components/orders/order-form.tsx")
+    expect(form).toContain('searchParams.get("customerId")')
+  })
+
+  /** Không có SĐT thì không render link tel: rỗng. */
+  it("khách chưa có SĐT thì không có link gọi hỏng", () => {
+    // Khối <a> khá dài — cửa sổ hẹp làm test đỏ dù mã đúng.
+    expect(CUSTOMERS).toMatch(/c\.phone \? \([\s\S]{0,1200}?Chưa có SĐT/)
+  })
+
+  /** Công nợ lên dòng đầu, chỉ hiện khi > 0. */
+  it("công nợ là amount của thẻ, tô đỏ", () => {
+    expect(CUSTOMERS).toContain("amount={debt > 0 ? formatCurrency(debt) : undefined}")
+    expect(CUSTOMERS).toContain('amountTone={debt > 0 ? "danger" : "default"}')
+  })
+
+  it("thẻ lộ trình thu về một dòng trên mobile", () => {
+    expect(CUSTOMERS).toContain("p-3 lg:p-4")
+    expect(CUSTOMERS).toMatch(/h-2 flex-1 overflow-hidden rounded-full/)
+  })
+
+  it("có MobileFilterBar và LoadMore", () => {
+    expect(CUSTOMERS).toContain("<MobileFilterBar")
+    expect(CUSTOMERS).toContain("<LoadMore")
+    expect(CUSTOMERS).toContain("if (cancelled || res.aborted) return")
+  })
+})
+
+describe("M2.4 — /receivables", () => {
+  /**
+   * ⚠ ĐÚNG BỐN khoảng theo bucketConfig. Dữ liệu tổng hợp phía DB chỉ có
+   * bốn — phát minh khoảng thứ năm là bịa số.
+   */
+  it("thanh xếp chồng dựng từ chính bucketConfig, không hardcode", () => {
+    expect(RECEIVABLES).toContain("(Object.keys(bucketConfig) as BucketKey[])")
+    // Cắt từ dấu `= {` — khai báo KIỂU phía trước cũng chứa `label:` nên
+    // cắt từ đầu dòng sẽ đếm ra 5.
+    const at = RECEIVABLES.indexOf("const bucketConfig")
+    const body = RECEIVABLES.slice(RECEIVABLES.indexOf("= {", at), RECEIVABLES.indexOf("\n  }", at))
+    expect(body.match(/label:/g)?.length, "phải đúng 4 khoảng tuổi nợ").toBe(4)
+  })
+
+  /** Chia cho 0 khi chưa có nợ nào — không được ra NaN%. */
+  it("không chia cho 0", () => {
+    expect(RECEIVABLES).toContain("totalAging > 0 ?")
+  })
+
+  /** Số CÒN NỢ mới là con số quyết định có đi thu hay không. */
+  it("thẻ hiện số còn nợ, không phải số phải thu ban đầu", () => {
+    expect(RECEIVABLES).toContain("amount={formatCurrency(remaining)}")
+    expect(RECEIVABLES).toContain('amountTone="danger"')
+  })
+
+  /** Đã kiểm: collect/page.tsx đọc `receivableId`. */
+  it("nút Thu tiền dẫn thẳng tới màn thu với đúng tham số", () => {
+    expect(RECEIVABLES).toContain("/receivables/collect?receivableId=${r.id}")
+    const collect = read("src/app/(dashboard)/receivables/collect/page.tsx")
+    expect(collect).toContain('"receivableId"')
+  })
+
+  /**
+   * ⚠ So ngày quá hạn phải dùng VN_TZ cho cả hai vế: so bằng giờ máy chủ
+   * (UTC) thì suốt 7 tiếng đầu mỗi ngày kết quả lệch một ngày.
+   */
+  it("đếm ngày quá hạn theo giờ Việt Nam", () => {
+    const i = RECEIVABLES.indexOf("const daysOverdue")
+    expect(i).toBeGreaterThan(0)
+    expect(RECEIVABLES.slice(i, i + 320)).toContain("VN_TZ")
+  })
+
+  /** Chip tuổi nợ chỉ lọc danh sách mobile — desktop có bộ lọc riêng. */
+  it("chip tuổi nợ không đụng danh sách desktop", () => {
+    expect(RECEIVABLES).toContain("const mobileReceivables = agingFilter")
+    expect(RECEIVABLES).toMatch(/\{mobileReceivables\.map/)
+  })
+})
+
+describe("M2.5 — /deliveries", () => {
+  /** 5 thẻ thống kê ~250px → một hàng cuộn ngang ~72px. */
+  it("thẻ thống kê thành hàng cuộn ngang trên mobile", () => {
+    expect(DELIVERIES).toContain("row-scroll -mx-4 px-4 lg:mx-0 lg:grid")
+    expect(DELIVERIES).toContain('shrink-0 w-[108px] lg:w-auto')
+  })
+
+  /** TabsList `flex-wrap` nên ba tab xuống dòng ở 320px. */
+  it("tabs thành SegmentedScroller trên mobile", () => {
+    expect(DELIVERIES).toContain("<SegmentedScroller")
+    expect(DELIVERIES).toMatch(/className="hidden lg:block flex-1"/)
+  })
+
+  /** Chip dựng từ TAB_FILTERS, bỏ "all" vì bỏ chọn chip = tất cả. */
+  it("chip dựng từ chính TAB_FILTERS", () => {
+    expect(DELIVERIES).toContain('TAB_FILTERS.filter((t) => t.value !== "all")')
+    expect(DELIVERIES).toContain('setActiveTab((k as typeof activeTab) ?? "all")')
+  })
+
+  it("bỏ qua kết quả bị huỷ", () => {
+    expect(DELIVERIES).toContain("if (cancelled || res.aborted) return")
   })
 })

@@ -35,7 +35,11 @@ export function MobileRecordCard({
   amountTone?: "default" | "danger" | "success"
   badges?: React.ReactNode
   accent?: "warning" | "danger" | null
-  /** Hàng nút hành động dưới thẻ — nằm NGOÀI vùng chạm chính. */
+  /**
+   * Hàng nút hành động dưới thẻ — nằm NGOÀI vùng chạm chính.
+   * Trang gọi tự quyết bố cục (một hàng hay nhiều hàng): /orders cần một
+   * nút, /customers cần năm, ép cùng một `flex` là bắt bên kia phải lách.
+   */
   footer?: React.ReactNode
   selected?: boolean
   /** Chỉ truyền khi đang ở chế độ chọn nhiều. Có nó thì thẻ là nút, không phải link. */
@@ -96,7 +100,7 @@ export function MobileRecordCard({
       )}
       {/* Hành động nằm NGOÀI vùng chạm chính: nằm trong thì bấm nút cũng
           mở luôn bản ghi, và người dùng không hiểu vì sao. */}
-      {footer && <div className="mt-1.5 flex gap-2">{footer}</div>}
+      {footer && <div className="mt-1.5 space-y-1.5">{footer}</div>}
     </div>
   )
 }

@@ -60,7 +60,10 @@ async function handle(req: Request) {
   const admin = createAdminClient()
   const { data: snap, error: snapErr } = await admin
     .from("misa_invoice_snapshots")
-    .select("*")
+    // Liệt kê cột thay vì '*': giảm payload và buộc kiểu hẹp lại.
+    // Phải là MỘT chuỗi literal — Supabase suy kiểu từ chính chuỗi đó, nối
+    // chuỗi bằng `+` làm nó mất kiểu và trả về GenericStringError.
+    .select("id, org_id, ref_id, inv_series, inv_no, inv_date, buyer_name, buyer_tax_code, total_amount, relation, is_deleted, invoice_id, match_method")
     .eq("id", body.snapshotId)
     .eq("org_id", orgId)
     .maybeSingle()

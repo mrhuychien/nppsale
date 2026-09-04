@@ -19,6 +19,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
+import Link from "next/link"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
 import type { Invoice } from "@/types"
@@ -254,6 +255,11 @@ export default function InvoicesPage() {
             </SelectContent>
           </Select>
         )}
+        {/* Đối soát hai chiều: rổ "chỉ có trên MISA" không hiện được ở
+            danh sách này vì những tờ đó KHÔNG CÓ trong bảng invoices. */}
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/invoices/reconcile">Đối soát MISA</Link>
+        </Button>
         <div className="ml-auto flex items-center gap-2">
           <FilterPicker
             available={INVOICE_FILTERS}

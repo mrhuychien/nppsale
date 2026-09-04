@@ -434,11 +434,22 @@ describe("§3.2 vòng quét — hai lượt, xác thực, chịu lỗi", () => {
     expect(branch).not.toContain("misa_status")
   })
 
-  /** Cron chạy khi không ai đăng nhập → không được dùng phiên người dùng. */
-  it("xác thực bằng CRON_SECRET, không dùng session", () => {
-    expect(code).toContain("process.env.CRON_SECRET")
-    expect(code).not.toContain("createServerSupabaseClient")
-    expect(code).not.toContain("auth.getUser")
+  /**
+   * Cron chạy khi không ai đăng nhập → không được dùng phiên người dùng.
+   * Xác thực nay nằm ở src/lib/misa/cron-auth.ts, DÙNG CHUNG cho mọi route
+   * chạy theo lịch — hai bản sao là hai cơ hội để một bản bị nới lỏng mà
+   * không ai để ý.
+   */
+  it("mọi route cron xác thực bằng CRON_SECRET, không dùng session", () => {
+    for (const [name, src] of [
+      ["sync", SYNC],
+      ["pull-snapshots", read("src/app/api/einvoice/pull-snapshots/route.ts")],
+    ] as const) {
+      const c = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "")
+      expect(c, `${name} không gọi requireCronSecret`).toContain("requireCronSecret(req)")
+      expect(c, `${name} dùng session người dùng`).not.toContain("createServerSupabaseClient")
+      expect(c, `${name} dùng session người dùng`).not.toContain("auth.getUser")
+    }
   })
 
   /**
@@ -446,23 +457,28 @@ describe("§3.2 vòng quét — hai lượt, xác thực, chịu lỗi", () => {
    * DUY NHẤT. Thiếu biến môi trường phải TỪ CHỐI, không được mở cửa.
    */
   it("thiếu CRON_SECRET ⇒ tắt hẳn, không chạy", () => {
-    const i = code.indexOf("if (!secret)")
+    const auth = read("src/lib/misa/cron-auth.ts")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "")
+    const i = auth.indexOf("if (!secret)")
     expect(i).toBeGreaterThan(0)
-    // Tới câu lệnh kế tiếp sau nhánh này.
-    const branch = code.slice(i, code.indexOf("const auth", i))
+    const branch = auth.slice(i, auth.indexOf("const auth =", i))
     expect(branch).toContain("503")
     expect(branch).toContain("return")
   })
 
   it("so bí mật không phụ thuộc thời gian", () => {
-    expect(code).toContain("timingSafeEqual(provided, secret)")
-    expect(code).not.toMatch(/provided\s*===\s*secret/)
+    const auth = read("src/lib/misa/cron-auth.ts")
+    expect(auth).toContain("timingSafeEqual(provided, secret)")
+    expect(auth).not.toMatch(/provided\s*===\s*secret/)
   })
 
-  it("có lịch cron trỏ đúng route", () => {
+  it("có lịch cron cho CẢ HAI route", () => {
     const vercel = JSON.parse(read("vercel.json"))
-    expect(vercel.crons?.[0]?.path).toBe("/api/einvoice/sync")
-    expect(vercel.crons?.[0]?.schedule).toBeTruthy()
+    const paths = (vercel.crons || []).map((c: { path: string }) => c.path)
+    expect(paths).toContain("/api/einvoice/sync")
+    expect(paths).toContain("/api/einvoice/pull-snapshots")
+    for (const c of vercel.crons) expect(c.schedule, `${c.path} thiếu lịch`).toBeTruthy()
   })
 
   it("CRON_SECRET có trong .env.example", () => {

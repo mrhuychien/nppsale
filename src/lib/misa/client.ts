@@ -178,6 +178,81 @@ export async function getInvoiceByRefId(
 }
 
 /**
+ * POST /code/v3sainvoice/paging — danh sách hoá đơn theo khoảng ngày.
+ *
+ * Đây là đường DUY NHẤT thấy được hoá đơn phát hành THẲNG trên web MISA
+ * (không qua app này) — thứ mà getInvoiceByRefId không bao giờ thấy vì nó
+ * chỉ hỏi đúng những tờ mình đã đẩy.
+ *
+ * HỢP ĐỒNG ĐÃ XÁC MINH trên tài khoản thật (§P.2), ba chỗ dễ sai:
+ *
+ *  1. NGÀY KHÔNG ĐƯỢC BỌC NHÁY KÉP. Lưới web app3 gửi
+ *     `fromDate="2026-07-18T..."` vì tầng của nó tự bóc nháy; bề mặt
+ *     /api/v2 model-bind thẳng vào DateTime nên chuỗi có nháy parse hỏng,
+ *     rơi về khoảng rỗng — và KHÔNG ném lỗi, chỉ trả 0 dòng. Chép quirk
+ *     của tầng này sang tầng kia là gốc của cả chuỗi "0 bản ghi".
+ *  2. THIẾU NGÀY = 0 dòng. Ngày là bắt buộc, không có mặc định.
+ *  3. Tiền tố `code/` bắt buộc với hoá đơn CÓ MÃ; bỏ đi thì trả 0 dòng
+ *     chứ không báo lỗi.
+ *
+ * Body là form-urlencoded, KHÔNG phải JSON — khác mọi endpoint khác ở
+ * file này. Bộ tối giản 4 tham số là đủ; 17 tham số chép từ lưới web đều
+ * không cần.
+ */
+export async function listInvoices(
+  cfg: MisaConfig,
+  params: { fromDate: string; toDate: string; start: number; length: number }
+): Promise<{ rows: Array<Record<string, unknown>>; recordsTotal: number | null }> {
+  const token = await getToken(cfg)
+  const segment = cfg.isInvoiceWithCode ? "code/" : ""
+  const form = new URLSearchParams()
+  form.set("start", String(params.start))
+  form.set("length", String(params.length))
+  // Ngày TRẦN, không nháy kép, không bọc thêm gì.
+  form.set("fromDate", `${params.fromDate}T00:00:00.000Z`)
+  form.set("toDate", `${params.toDate}T23:59:59.000Z`)
+
+  const res = await fetch(`${cfg.apiBase}/${segment}v3sainvoice/paging`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Bearer ${token}`,
+      TaxCode: cfg.taxCode,
+    },
+    body: form.toString(),
+  })
+  const text = await res.text()
+  let obj: Record<string, unknown> = {}
+  try { obj = text ? JSON.parse(text) : {} } catch { /* */ }
+  if (!res.ok) {
+    throw new Error(`Lấy danh sách HD lỗi ${res.status}: ${extractErrorMessage(obj, text)}`)
+  }
+  // Wrapper của bộ web app viết THƯỜNG ({success, data}), bộ official viết
+  // HOA ({Success, Data}) — đọc cả hai, không cứng một kiểu.
+  if (obj["success"] === false || obj["Success"] === false) {
+    throw new Error(`Lấy danh sách HD thất bại: ${extractErrorMessage(obj, text)}`)
+  }
+
+  const totalRaw = obj["recordsTotal"] ?? obj["RecordsTotal"]
+  const recordsTotal = typeof totalRaw === "number" ? totalRaw : null
+
+  const dataStr = obj["data"] ?? obj["Data"]
+  if (typeof dataStr !== "string" || !dataStr) return { rows: [], recordsTotal }
+  try {
+    // `data` là CHUỖI JSON lồng — parse hai lần.
+    const arr = JSON.parse(dataStr)
+    return {
+      rows: Array.isArray(arr) ? (arr as Array<Record<string, unknown>>) : [],
+      recordsTotal,
+    }
+  } catch {
+    // Parse phòng thủ: trả rỗng + để caller ghi log, không ném làm hỏng
+    // cả lượt kéo vì một trang méo.
+    return { rows: [], recordsTotal }
+  }
+}
+
+/**
  * Gọi /oauth + trả response thô để caller tự extract IDs.
  * Dùng cho luồng "Test connection & auto-fill IDs" ở Settings.
  */

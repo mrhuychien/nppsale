@@ -90,6 +90,8 @@ export interface MisaSnapshot {
   cancelled: boolean
   /** Tên field đã dùng để kết luận `cancelled` — để ghi lại, xem readCancelled. */
   cancelledSource: string | null
+  /** DeletedReason của MISA (§M.3) — lý do huỷ, có thì ghi vào ghi chú. */
+  deletedReason: string | null
   totalAmount: number | null
   totalWithoutVat: number | null
   totalVat: number | null
@@ -109,20 +111,28 @@ function str(v: unknown): string | null {
 }
 
 /**
- * Cờ "đã huỷ" — TÊN FIELD CHƯA ĐƯỢC XÁC MINH trên hợp đồng API của repo
- * này (doc MISA trong repo không mô tả field huỷ, và EInvoiceStatus đo
- * được không có giá trị nào mang nghĩa huỷ).
+ * Cờ "đã huỷ" = `IsInvoiceDeleted`.
  *
- * Nên ở đây CHỈ nhận `=== true` của đúng kiểu boolean, từ một danh sách
- * tên hẹp, và ghi lại tên field đã kích hoạt. Nhận cả số hay chuỗi
- * "truthy" là mở đường cho `CancelStatus: 0` bị đọc thành "đã huỷ" — dán
- * nhãn huỷ lên một hoá đơn còn hiệu lực là hỏng sổ.
+ * ĐÃ XÁC MINH bằng `afterpublishing/{RefID}` chạy trên tài khoản thật
+ * (hợp đồng API MISA §M.3): object 194 field, `IsInvoiceDeleted` là cờ
+ * huỷ, đi kèm `DeletedDate` / `DeletedReason`. Trước đây chỗ này đoán ba
+ * cái tên khác và cả ba đều SAI — giữ lại làm dự phòng, nhưng tên đã xác
+ * minh phải đứng đầu.
  *
- * Nếu MISA dùng tên khác thì hàm này im lặng trả false; vòng quét sẽ ghi
- * nguyên các field lạ vào ghi chú, và lần chạy thật đầu tiên sẽ cho biết
- * tên đúng. Đó là chỗ hở ĐÃ BIẾT, không phải chỗ hở giấu đi.
+ * §M.3 cũng chốt: nhận biết vòng đời phải đọc CỜ THẬT, không suy từ
+ * `EInvoiceStatus`. Trục quan hệ chỉ trả lời "bị thay thế / bị điều
+ * chỉnh", nó không nói gì về việc huỷ.
+ *
+ * CHỈ nhận `=== true` của đúng kiểu boolean. Nhận cả số hay chuỗi
+ * "truthy" là mở đường cho một field kiểu `CancelStatus: 0` bị đọc thành
+ * "đã huỷ" — dán nhãn huỷ lên hoá đơn còn hiệu lực là hỏng sổ.
  */
-const CANCEL_FIELDS = ["IsInvoiceCanceled", "IsCanceled", "IsCancelled", "Cancelled"] as const
+const CANCEL_FIELDS = [
+  "IsInvoiceDeleted", // ← đã xác minh
+  "IsInvoiceCanceled",
+  "IsCanceled",
+  "IsCancelled",
+] as const
 
 export function readCancelled(raw: Record<string, unknown>): {
   cancelled: boolean
@@ -138,6 +148,7 @@ export function readCancelled(raw: Record<string, unknown>): {
 export function readSnapshot(raw: Record<string, unknown>): MisaSnapshot {
   const { cancelled, source } = readCancelled(raw)
   return {
+    deletedReason: str(raw["DeletedReason"]),
     invNo: str(raw["InvNo"]),
     invSeries: str(raw["InvSeries"]),
     invDate: str(raw["InvDate"]),
@@ -184,7 +195,10 @@ export function deriveState({ snap, orgUsesInvoiceCode, currentStatus }: DeriveI
 
   // --- Trạng thái CUỐI: huỷ và bị thay thế thắng mọi thứ khác ---------
   if (snap.cancelled) {
-    notes.push(`MISA báo hoá đơn đã huỷ (field ${snap.cancelledSource}).`)
+    notes.push(
+      `MISA báo hoá đơn ĐÃ HUỶ (${snap.cancelledSource})` +
+        (snap.deletedReason ? ` — lý do: ${snap.deletedReason}.` : ".")
+    )
     return { status: "cancelled", relation, note: notes.join(" ") || null }
   }
   if (relationVoidsInvoice(relation)) {

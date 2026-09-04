@@ -4,6 +4,10 @@
     {
       "path": "/api/einvoice/sync",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/einvoice/pull-snapshots",
+      "schedule": "0 18 * * *"
     }
   ]
 }

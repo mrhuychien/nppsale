@@ -4,6 +4,7 @@ import { decryptSecret } from "@/lib/crypto"
 import { getInvoiceByRefId } from "@/lib/misa/client"
 import { applyMisaSnapshot, type BookInvoice } from "@/lib/misa/apply"
 import { markOriginalReplaced } from "@/lib/misa/mark-replaced"
+import { requireCronSecret } from "@/lib/misa/cron-auth"
 import type { MisaConfig } from "@/lib/misa/types"
 
 export const runtime = "nodejs"
@@ -53,24 +54,9 @@ const PASS_LIMIT = 200
 /** Chỉ quét hoá đơn trong 60 ngày gần đây. */
 const WINDOW_DAYS = 60
 
-function unauthorized() {
-  return NextResponse.json({ error: "Không có quyền" }, { status: 401 })
-}
-
 async function handle(req: Request) {
-  const secret = process.env.CRON_SECRET
-  if (!secret) {
-    // Không có bí mật thì KHÔNG chạy. Để route admin-quyền mở toang chỉ vì
-    // quên đặt biến môi trường là tệ hơn nhiều so với việc cron báo lỗi.
-    console.error("[einvoice/sync] thiếu CRON_SECRET — từ chối chạy")
-    return NextResponse.json(
-      { error: "Server chưa đặt CRON_SECRET — vòng quét bị tắt." },
-      { status: 503 }
-    )
-  }
-  const auth = req.headers.get("authorization") || ""
-  const provided = auth.startsWith("Bearer ") ? auth.slice(7) : req.headers.get("x-cron-secret") || ""
-  if (!timingSafeEqual(provided, secret)) return unauthorized()
+  const denied = requireCronSecret(req)
+  if (denied) return denied
 
   const admin = createAdminClient()
   const since = new Date(Date.now() - WINDOW_DAYS * 86400_000).toISOString()
@@ -222,17 +208,4 @@ async function handle(req: Request) {
   }
 
   return NextResponse.json({ success: true, ...report })
-}
-
-/**
- * So chuỗi không phụ thuộc thời gian.
- *
- * `a === b` thoát ngay ở byte đầu khác nhau, nên thời gian trả lời rò rỉ
- * độ dài tiền tố đúng — đủ để dò ra bí mật từng ký tự.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
 }

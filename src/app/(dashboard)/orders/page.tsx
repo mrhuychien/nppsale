@@ -19,6 +19,9 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { MobileRecordCard } from "@/components/ui/mobile-record-card"
+import { LoadMore } from "@/components/ui/load-more"
 import {
   ORDER_COLUMNS,
   DEFAULT_ORDER_COLUMNS,
@@ -67,6 +70,9 @@ import {
 } from "lucide-react"
 import type { Customer, Invoice, SalesOrder, User } from "@/types"
 
+/** Khoá nhớ "đã đọc" của banner phạm vi dữ liệu. */
+const SCOPE_HINT_KEY = "npp.hint.orders-scope"
+
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
   const { user: authUser } = useAuth()
@@ -88,6 +94,15 @@ export default function OrdersPage() {
   const [pipelineStep, setPipelineStep] = useState<PipelineStepKey | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
+  // Sheet lọc trên mobile (thay ô tìm + "Bộ lọc nâng cao" + FilterPicker).
+  const [filterSheet, setFilterSheet] = useState(false)
+  // Chế độ chọn nhiều: bật rồi thì CHẠM CẢ THẺ là chọn, không cần checkbox
+  // 16px trên mỗi thẻ — riêng màn này đo được 107 vùng chạm dưới 44px.
+  const [selectMode, setSelectMode] = useState(false)
+  // Banner phạm vi dữ liệu: thông tin một lần, nhớ bằng localStorage.
+  // Khởi tạo `false` rồi bật trong effect — đọc localStorage ngay lúc
+  // render đầu làm HTML máy chủ khác HTML máy khách (lỗi hydrate #418).
+  const [showScopeHint, setShowScopeHint] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [customerFilter, setCustomerFilter] = useState("all")
@@ -212,7 +227,11 @@ export default function OrdersPage() {
         // eslint-disable-next-line no-restricted-syntax
         "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
       )
-      if (cancelled) return
+      // Điều hướng nhanh làm request bị huỷ. Đó không phải lỗi — ghi
+      // mảng rỗng đè lên danh sách đang hiện, kèm một thẻ đỏ
+      // "signal is aborted without reason", là ném chuyện nội bộ vào mặt
+      // người dùng.
+      if (cancelled || res.aborted) return
       const ordersData = res.data
       setOrders(ordersData)
       setLoadError(res.error)
@@ -256,6 +275,21 @@ export default function OrdersPage() {
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
   // Note: pipeline filter chỉ áp dụng trên trang hiện tại — chấp nhận trade-off
   // để khỏi phải replicate classifyOrder() trong SQL.
+  useEffect(() => {
+    try {
+      setShowScopeHint(localStorage.getItem(SCOPE_HINT_KEY) !== "1")
+    } catch {
+      // Trình duyệt chặn localStorage (chế độ riêng tư) — cứ hiện, thà
+      // hiện thừa còn hơn nuốt mất lời giải thích vì sao danh sách ngắn.
+      setShowScopeHint(true)
+    }
+  }, [])
+
+  const dismissScopeHint = () => {
+    setShowScopeHint(false)
+    try { localStorage.setItem(SCOPE_HINT_KEY, "1") } catch { /* không sao */ }
+  }
+
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
     return orders.filter(
@@ -545,138 +579,24 @@ export default function OrdersPage() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      {/*
-        `orders` chỉ là TRANG HIỆN TẠI (50 dòng/trang), không phải tổng. Dòng
-        phụ đề trước đây in ra số đó nên có 125 đơn mà ghi "50 đơn hàng".
-        `pg.total` là số server trả về kèm count: "exact".
-      */}
-      <PageHeader
-        title={isSales ? "Đơn của tôi" : "Đơn hàng"}
-        description={
-          pg.total === orders.length
-            ? `${pg.total} đơn hàng`
-            : `${pg.total} đơn hàng · đang xem ${orders.length}`
-        }
-      >
-        {user && hasPermission(user.role, "orders", "create") && (
-          <Button onClick={() => router.push("/orders/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Tạo đơn
-          </Button>
-        )}
-      </PageHeader>
+  // Số bộ lọc đang bật, KHÔNG tính ô tìm — hiện trên badge nút Lọc để
+  // việc giấu bộ lọc vào sheet không thành giấu mất trạng thái.
+  const activeFilterCount =
+    (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
+    (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
+    (amountMin ? 1 : 0) + (amountMax ? 1 : 0)
 
-      {(isSales || isDriver) && (
-        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
-          <span>
-            {isSales
-              // RLS lọc theo `sales_user_id = auth.uid()` (002_rls_policies.sql:292),
-              // tức đơn BẠN PHỤ TRÁCH — không phải đơn bạn bấm nút tạo. Quản lý
-              // tạo đơn rồi giao cho bạn thì bạn vẫn thấy, dù không phải bạn tạo.
-              ? "Bạn chỉ thấy đơn bạn phụ trách. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
-              : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
-          </span>
-        </div>
-      )}
+  const clearAdvancedFilters = () => {
+    setDateFrom(""); setDateTo("")
+    setCustomerFilter("all"); setSalesFilter("all")
+    setAmountMin(""); setAmountMax("")
+  }
 
-      {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
-      {filterActive("pipeline") && (
-        <OrderPipeline
-          orders={orders}
-          receivables={receivablesByOrder}
-          invoices={invoiceMap}
-          active={pipelineStep}
-          onChange={(next) => {
-            setPipelineStep(next)
-            // Picking a pipeline step clears the special-state chip filter
-            // so the two filters don't fight each other.
-            if (next) setStatusFilter("all")
-          }}
-        />
-      )}
-
-      {/* Special-state quick filter chips (mutually exclusive with pipeline) */}
-      {filterActive("specialStatus") && (
-      <div className="flex flex-wrap gap-2">
-        {([
-          { value: "all", label: "Tất cả", color: "" },
-          { value: "pending_approval", label: "Chờ duyệt", color: "border-[#fdb022] text-[#b54708] bg-[#fff4ed]" },
-          { value: "cancelled", label: "Đã hủy", color: "border-error/40 text-on-error-container bg-error-container" },
-        ] as const).map((s) => {
-          const count = statusCounts[s.value] || 0
-          const active = statusFilter === s.value && !pipelineStep
-          return (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => {
-                setStatusFilter(s.value)
-                setPipelineStep(null)
-              }}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-primary text-on-primary border-primary"
-                  : s.color || "bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface-container-low"
-              }`}
-            >
-              {s.label}
-              {count > 0 && (
-                <span className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
-                  active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
-                }`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm mã đơn hàng..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        )}
-        {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
-          <Button
-            variant="outline"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className="gap-2"
-          >
-            <Filter className="h-4 w-4" />
-            Bộ lọc nâng cao
-            {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <FilterPicker
-            available={ORDER_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={ORDER_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-        </div>
-      </div>
-
-      {showAdvanced && (
-        <Card className="rounded-2xl border-dashed">
-          <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
+  // Các ô lọc nâng cao — DÙNG CHUNG cho thẻ desktop và sheet mobile.
+  // Nhân đôi JSX là để hai bên trôi khỏi nhau: thêm một ô lọc ở desktop
+  // rồi quên bên mobile thì trên điện thoại lọc đó biến mất không dấu vết.
+  const advancedFilterFields = (
+    <>
             {filterActive("date") && (
               <>
                 <div className="space-y-2">
@@ -752,6 +672,180 @@ export default function OrdersPage() {
                 Xóa bộ lọc
               </Button>
             </div>
+    </>
+  )
+
+  return (
+    <div className="space-y-4">
+      {/*
+        `orders` chỉ là TRANG HIỆN TẠI (50 dòng/trang), không phải tổng. Dòng
+        phụ đề trước đây in ra số đó nên có 125 đơn mà ghi "50 đơn hàng".
+        `pg.total` là số server trả về kèm count: "exact".
+      */}
+      <PageHeader
+        title={isSales ? "Đơn của tôi" : "Đơn hàng"}
+        description={
+          pg.total === orders.length
+            ? `${pg.total} đơn hàng`
+            : `${pg.total} đơn hàng · đang xem ${orders.length}`
+        }
+      >
+        {user && hasPermission(user.role, "orders", "create") && (
+          <Button onClick={() => router.push("/orders/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Tạo đơn
+          </Button>
+        )}
+      </PageHeader>
+
+      {(isSales || isDriver) && showScopeHint && (
+        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
+          <span>
+            {isSales
+              // RLS lọc theo `sales_user_id = auth.uid()` (002_rls_policies.sql:292),
+              // tức đơn BẠN PHỤ TRÁCH — không phải đơn bạn bấm nút tạo. Quản lý
+              // tạo đơn rồi giao cho bạn thì bạn vẫn thấy, dù không phải bạn tạo.
+              ? "Bạn chỉ thấy đơn bạn phụ trách. Ban quản lý sẽ thấy tất cả đơn của tổ chức."
+              : "Bạn chỉ thấy đơn thuộc chuyến giao của bạn."}
+          </span>
+          {/* Đây là thông tin MỘT LẦN, không phải cảnh báo thường trực —
+              để nó chiếm 56px trên mọi lần mở danh sách là lấy mất chỗ của
+              chính những đơn nó đang nói tới. */}
+          <button
+            type="button"
+            onClick={dismissScopeHint}
+            aria-label="Đã hiểu, ẩn thông báo"
+            className="tap ml-auto shrink-0 flex items-center justify-center text-on-primary-fixed-variant/70"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
+      {filterActive("pipeline") && (
+        <OrderPipeline
+          orders={orders}
+          receivables={receivablesByOrder}
+          invoices={invoiceMap}
+          active={pipelineStep}
+          onChange={(next) => {
+            setPipelineStep(next)
+            // Picking a pipeline step clears the special-state chip filter
+            // so the two filters don't fight each other.
+            if (next) setStatusFilter("all")
+          }}
+          extra={{
+            segments: [
+              { key: "pending_approval", label: "Chờ duyệt", count: statusCounts.pending_approval || 0 },
+              { key: "cancelled", label: "Đã hủy", count: statusCounts.cancelled || 0 },
+            ],
+            value: statusFilter === "all" ? null : statusFilter,
+            onChange: (k) => {
+              setStatusFilter((k as typeof statusFilter) ?? "all")
+              if (k) setPipelineStep(null)
+            },
+          }}
+        />
+      )}
+
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm mã đơn, tên khách…"
+        activeCount={activeFilterCount}
+        onClear={clearAdvancedFilters}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">{advancedFilterFields}</div>
+      </MobileFilterBar>
+
+      {/* Special-state quick filter chips (mutually exclusive with pipeline) */}
+      {/* Hàng chip này chỉ còn trên desktop — mobile đã gộp vào cùng
+          SegmentedScroller của OrderPipeline để chỉ có MỘT hàng chip. */}
+      {filterActive("specialStatus") && (
+      <div className="hidden lg:flex flex-wrap gap-2">
+        {([
+          { value: "all", label: "Tất cả", color: "" },
+          { value: "pending_approval", label: "Chờ duyệt", color: "border-[#fdb022] text-[#b54708] bg-[#fff4ed]" },
+          { value: "cancelled", label: "Đã hủy", color: "border-error/40 text-on-error-container bg-error-container" },
+        ] as const).map((s) => {
+          const count = statusCounts[s.value] || 0
+          const active = statusFilter === s.value && !pipelineStep
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => {
+                setStatusFilter(s.value)
+                setPipelineStep(null)
+              }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-primary text-on-primary border-primary"
+                  : s.color || "bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface-container-low"
+              }`}
+            >
+              {s.label}
+              {count > 0 && (
+                <span className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                  active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      )}
+
+      {/* Hàng lọc cũ chỉ còn trên desktop. Mobile dùng MobileFilterBar:
+          một hàng [ô tìm][nút Lọc], mọi thứ khác vào bottom sheet. */}
+      <div className="hidden lg:flex flex-wrap items-center gap-2">
+        {filterActive("search") && (
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Tìm mã đơn hàng..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        )}
+        {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
+          <Button
+            variant="outline"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            Bộ lọc nâng cao
+            {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <FilterPicker
+            available={ORDER_FILTERS}
+            value={activeFilters}
+            onChange={setFilters}
+            onReset={resetFilters}
+          />
+          <ColumnPicker
+            available={ORDER_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
+        </div>
+      </div>
+
+      {showAdvanced && (
+        <Card className="hidden lg:block rounded-2xl border-dashed">
+          <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
+            {advancedFilterFields}
           </CardContent>
         </Card>
       )}
@@ -972,17 +1066,25 @@ export default function OrdersPage() {
 
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
-            {/* Select all bar (mobile) */}
-            <div className="flex items-center gap-2 px-1">
-              <Checkbox
-                checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                onCheckedChange={toggleAll}
-                aria-label="Chọn tất cả"
-                id="orders-select-all-mobile"
-              />
-              <label htmlFor="orders-select-all-mobile" className="text-xs font-medium text-muted-foreground">
-                Chọn tất cả ({filtered.length})
-              </label>
+            {/* Chế độ chọn thay cho checkbox trên từng thẻ. Tắt thì chạm
+                thẻ = mở đơn; bật thì chạm thẻ = chọn. Nhấn giữ 500ms trên
+                một thẻ cũng bật. Đây là chỗ xoá được ~51 vùng chạm 16px. */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={selectMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectMode((v) => !v)
+                  if (selectMode) setSelectedIds(new Set())
+                }}
+              >
+                {selectMode ? `Xong (${selectedIds.size})` : "Chọn"}
+              </Button>
+              {selectMode && (
+                <Button variant="ghost" size="sm" onClick={toggleAll}>
+                  {allSelected ? "Bỏ chọn tất cả" : `Chọn tất cả (${filtered.length})`}
+                </Button>
+              )}
             </div>
 
             {filtered.map((order) => {
@@ -991,83 +1093,66 @@ export default function OrdersPage() {
               const showInvoiceAction = order.status === "delivered"
               const isPendingApproval = order.status === "draft" && !!order.approval_reason
               return (
-                <div
+                <MobileRecordCard
                   key={order.id}
-                  className={`relative rounded-xl border bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
-                    checked ? "border-primary bg-primary-fixed/40" : "border-outline-variant/60"
-                  } ${isPendingApproval ? "border-l-4 border-l-[#fdb022]" : ""}`}
-                  onClick={() => router.push(`/orders/${order.id}`)}
-                >
-                  <div className="p-4">
-                    <div className="flex items-start gap-2">
-                      <div onClick={(e) => e.stopPropagation()} className="pt-0.5 shrink-0">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleOne(order.id)}
-                          aria-label={`Chọn ${order.order_code}`}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-mono text-xs font-bold text-primary">{order.order_code}</p>
-                          <span className="text-xs text-on-surface-variant">• {formatDate(order.order_date)}</span>
-                        </div>
-                        <h3 className="font-bold text-base text-on-surface leading-tight truncate mt-0.5">
-                          {order.customer?.store_name || "-"}
-                        </h3>
-                        {order.sales_user?.full_name && (
-                          <p className="text-xs text-on-surface-variant truncate">NV: {order.sales_user.full_name}</p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                          <StatusBadge status={order.status} type="order" />
-                          <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {isPendingApproval && (
-                      <div className="mt-2 rounded-lg bg-[#fff4ed] border border-[#fdb022]/40 p-2">
-                        <p className="text-[10px] font-bold text-[#b54708] uppercase tracking-wider mb-0.5">
+                  href={`/orders/${order.id}`}
+                  title={order.customer?.store_name || "-"}
+                  amount={formatCurrency(order.total)}
+                  accent={isPendingApproval ? "warning" : null}
+                  selected={checked}
+                  onSelect={selectMode ? () => toggleOne(order.id) : undefined}
+                  onLongPress={() => {
+                    setSelectMode(true)
+                    toggleOne(order.id)
+                  }}
+                  subtitle={
+                    <>
+                      <span className="font-mono font-semibold text-primary">{order.order_code}</span>
+                      <span>· {formatDate(order.order_date)}</span>
+                      {order.sales_user?.full_name && <span>· {order.sales_user.full_name}</span>}
+                    </>
+                  }
+                  badges={
+                    <>
+                      <StatusBadge status={order.status} type="order" />
+                      <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
+                      {isPendingApproval && (
+                        <span className="rounded-full bg-[#fff4ed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#b54708]">
                           Cần duyệt
-                        </p>
-                        <p className="text-[11px] text-[#b54708] leading-snug whitespace-pre-wrap line-clamp-3">
-                          {order.approval_reason}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t border-outline-variant/40">
-                      <span className="text-xs text-on-surface-variant">Tổng tiền</span>
-                      <span className="font-bold text-base text-on-surface tabular-data">{formatCurrency(order.total)}</span>
-                    </div>
-
-                    {showInvoiceAction && (
-                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                        {invoice?.misa_status === "signed" ? (
-                          <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-[#027a48] bg-[#ecfdf3] rounded-lg py-2">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Đã xuất hóa đơn
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full"
-                            disabled={misaLoadingId === order.id}
-                            onClick={() => handleXuatHoaDonList(order)}
-                          >
-                            <FileText className="h-3.5 w-3.5 mr-2" />
-                            {misaLoadingId === order.id ? "Đang xuất..." : "Xuất hóa đơn"}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                        </span>
+                      )}
+                    </>
+                  }
+                  footer={
+                    // Chỉ hiện khi ĐÃ GIAO — nút xuất hoá đơn trên một đơn
+                    // chưa giao là mời người ta bấm rồi nhận lỗi.
+                    showInvoiceAction && !selectMode ? (
+                      invoice?.misa_status === "signed" ? (
+                        <div className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#ecfdf3] text-xs font-medium text-[#027a48]">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Đã xuất hoá đơn
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="h-11 flex-1"
+                          disabled={misaLoadingId === order.id}
+                          onClick={() => handleXuatHoaDonList(order)}
+                        >
+                          <FileText className="mr-2 h-3.5 w-3.5" />
+                          {misaLoadingId === order.id ? "Đang xuất..." : "Xuất hoá đơn"}
+                        </Button>
+                      )
+                    ) : null
+                  }
+                />
               )
             })}
+            <LoadMore pg={pg} shown={filtered.length} />
           </div>
-          <DataPagination pg={pg} shownCount={filtered.length} />
+          <div className="hidden lg:block">
+            <DataPagination pg={pg} shownCount={filtered.length} />
+          </div>
         </>
       )}
     </div>

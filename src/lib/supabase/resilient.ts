@@ -26,6 +26,23 @@ export interface ResilientResult<T> {
   error: string | null
   /** True khi đã phải dùng select dự phòng vì DB thiếu cột. */
   usedFallback: boolean
+  /**
+   * True khi request bị HUỶ (người dùng điều hướng đi chỗ khác).
+   *
+   * Đây KHÔNG phải lỗi: không có gì hỏng, chỉ là câu hỏi không còn ai cần
+   * câu trả lời. Trang gọi phải `return` sớm khi thấy cờ này — vừa để
+   * không hiện thẻ đỏ "signal is aborted without reason" vào mặt người
+   * dùng, vừa để không ghi mảng rỗng đè lên danh sách đang hiển thị.
+   */
+  aborted?: boolean
+}
+
+/** Lỗi do huỷ request, không phải hỏng hóc. */
+export function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const e = err as { name?: unknown; message?: unknown }
+  if (e.name === "AbortError") return true
+  return typeof e.message === "string" && e.message.includes("aborted")
 }
 
 /** Lỗi do DB thiếu cột / quan hệ (lệch schema) — đáng thử lại với '*'. */
@@ -70,6 +87,9 @@ export async function selectResilient<T>(
   try {
     res = await build(select)
   } catch (err) {
+    if (isAbortError(err)) {
+      return { data: [], count: null, error: null, usedFallback: false, aborted: true }
+    }
     return {
       data: [],
       count: null,

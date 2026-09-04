@@ -1,6 +1,7 @@
 "use client"
 
 import { ChevronRight } from "lucide-react"
+import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import type { SalesOrder } from "@/types"
 
 // 7-step pipeline (Update #2 v2 — §8). Each order falls in exactly one
@@ -22,9 +23,15 @@ export interface OrderPipelineProps {
   invoices?: Record<string, { misa_status?: string | null }>
   active: PipelineStepKey | null
   onChange: (next: PipelineStepKey | null) => void
+  /** Chip trạng thái đặc biệt, gộp vào CÙNG hàng chip trên mobile. */
+  extra?: {
+    segments: Array<{ key: string; label: string; count?: number }>
+    value: string | null
+    onChange: (k: string | null) => void
+  }
 }
 
-interface StepDef {
+export interface StepDef {
   key: PipelineStepKey
   label: string
   activeBg: string
@@ -32,7 +39,7 @@ interface StepDef {
   activeRing: string
 }
 
-const STEPS: StepDef[] = [
+export const STEPS: StepDef[] = [
   {
     key: "draft",
     label: "Mới tạo",
@@ -110,6 +117,7 @@ export function OrderPipeline({
   invoices = {},
   active,
   onChange,
+  extra,
 }: OrderPipelineProps) {
   const counts: Record<PipelineStepKey, number> = {
     draft: 0,
@@ -125,8 +133,43 @@ export function OrderPipeline({
     if (step) counts[step] += 1
   }
 
+  // Mobile: một hàng chip cuộn ngang (SegmentedScroller) thay cho dãy 7 ô
+  // 96px + mũi tên — dãy đó cao 68px và vẫn tràn ngang ở 320px.
+  // classifyOrder và STEPS giữ NGUYÊN: chúng quyết định phân loại đơn, đây
+  // chỉ là lớp trình bày.
+  // Trên mobile gộp cả chip trạng thái đặc biệt (Chờ duyệt / Đã huỷ) vào
+  // CÙNG một hàng — trước đây chúng là hàng chip thứ hai, tự xuống dòng.
+  const stepKeys = new Set<string>(STEPS.map((s) => s.key))
+  const segments = [
+    ...STEPS.map((s) => ({ key: s.key, label: s.label, count: counts[s.key] })),
+    ...(extra?.segments ?? []),
+  ]
+  const mobileValue = active ?? extra?.value ?? null
+
   return (
-    <div className="sticky top-14 z-20 -mx-4 lg:mx-0 px-4 lg:px-3 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b lg:border lg:rounded-2xl lg:bg-card lg:shadow-sm">
+    <>
+    <div className="lg:hidden sticky top-below-appbar z-30 -mx-4 px-4 bg-surface/95 backdrop-blur border-b border-outline-variant/50">
+      <SegmentedScroller
+        segments={segments}
+        value={mobileValue}
+        onChange={(k) => {
+          // Một hàng chip, hai bộ lọc loại trừ nhau — định tuyến theo khoá
+          // thay vì bắt trang gọi tự đoán.
+          if (k === null) {
+            onChange(null)
+            extra?.onChange(null)
+          } else if (stepKeys.has(k)) {
+            onChange(k as PipelineStepKey)
+          } else {
+            extra?.onChange(k)
+          }
+        }}
+        ariaLabel="Lọc đơn hàng"
+      />
+    </div>
+    {/* `top-14` cũ = 56px trong khi app bar cao 64px, nên dãy này bị header
+        đè mất 8px. Desktop nay neo theo --app-bar-h như mọi thanh dính khác. */}
+    <div className="hidden lg:block sticky top-below-appbar z-20 -mx-4 lg:mx-0 px-4 lg:px-3 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b lg:border lg:rounded-2xl lg:bg-card lg:shadow-sm">
       <div className="flex items-center gap-0 overflow-x-auto pb-1 -mb-1 [scrollbar-width:thin]">
         {STEPS.map((step, idx) => {
           const isActive = active === step.key
@@ -170,5 +213,6 @@ export function OrderPipeline({
         })}
       </div>
     </div>
+    </>
   )
 }

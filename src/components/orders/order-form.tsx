@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { QtyStepper } from "@/components/ui/qty-stepper"
+import { SwipeToDelete } from "@/components/ui/swipe-to-delete"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useUndoableRemove } from "@/hooks/use-undoable-remove"
 import { ProductPickerSheet } from "@/components/orders/product-picker-sheet"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { Label } from "@/components/ui/label"
@@ -88,6 +91,8 @@ export function OrderForm() {
   const [paymentTerms, setPaymentTerms] = useState("COD")
   const [expectedDelivery, setExpectedDelivery] = useState("")
   const [notes, setNotes] = useState("")
+  /** M3.3e — dòng đang mở trong sheet "Sửa dòng". null = sheet đóng. */
+  const [editLineIndex, setEditLineIndex] = useState<number | null>(null)
   const [lines, setLines] = useState<OrderLine[]>([])
   const [productSearch, setProductSearch] = useState("")
   const [productDropdownOpen, setProductDropdownOpen] = useState(false)
@@ -432,6 +437,21 @@ export function OrderForm() {
   const removeLine = (index: number) => {
     setLines(lines.filter((_, i) => i !== index))
   }
+
+  /**
+   * M3.3e — xoá dòng có đường lùi 5 giây.
+   *
+   * Chèn lại ĐÚNG vị trí cũ chứ không đẩy xuống cuối: NVBH đọc đơn theo
+   * thứ tự đã gõ, dòng nhảy chỗ sau khi hoàn tác trông như hoàn tác hỏng.
+   * Dùng dạng hàm của setLines vì có thể có thao tác khác xen giữa lúc
+   * xoá và lúc bấm hoàn tác.
+   */
+  const undoableRemove = useUndoableRemove<OrderLine>({
+    onRemove: removeLine,
+    onRestore: (index, item) =>
+      setLines((prev) => [...prev.slice(0, index), item, ...prev.slice(index)]),
+    label: (item) => item.product_name || "dòng hàng",
+  })
 
   // ---- Return-line helpers (companion to the sale order) ----
 
@@ -1520,163 +1540,246 @@ export function OrderForm() {
               </table>
             </div>
 
-            {/* MOBILE: Card view */}
+            {/* MOBILE: thẻ dòng hàng, nén còn HAI hàng (M3.3e).
+
+                Bản cũ mỗi dòng chiếm ~250px vì nhét cả ô ghi chú, ô giá,
+                ô VAT và ô chiết khấu vào thẻ. Đơn 10 dòng = 2.500px cuộn,
+                trong khi 90% lần nhập chỉ đổi ĐÚNG số lượng. Giá / VAT /
+                CK / ghi chú chuyển vào sheet "Sửa dòng"; những gì đã bị
+                đổi khác mặc định thì hiện thành chip nhỏ để không giấu
+                mất thông tin. */}
             <div className="lg:hidden space-y-2">
               {lines.length === 0 && (
                 <div className="py-8 text-center text-muted-foreground text-sm">Tìm hoặc quét sản phẩm phía trên</div>
               )}
               {lines.map((line, i) => {
-                const units = getAvailableUnits(line)
                 const product = products.find((p) => p.id === line.product_id)
                 const onHand = stockByProduct[line.product_id] ?? 0
                 const over = lineOverstock(line, i)
                 const warning = canEditPrice ? getLinePriceWarning(line) : null
-                const def = canEditPrice && isSalesRole ? getLineDefaultPrice(line) : 0
-                const ceiling = def > 0 ? userSalesCeiling(def, userRules) : 0
                 return (
-                  <div
+                  <SwipeToDelete
                     key={i}
-                    className={`border rounded-xl p-3 space-y-2.5 ${
-                      over ? "border-amber-300 bg-amber-50/40" : "border-border/40 bg-card"
-                    }`}
+                    onDelete={() => undoableRemove.remove(i, line)}
+                    className="rounded-xl"
                   >
-                    {/* Header: tên + sku + tồn + close */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm leading-tight">{line.product_name}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                          <span>SKU: {line.sku}</span>
-                          <span aria-hidden>•</span>
-                          <span className={over ? "text-amber-700 font-semibold" : ""}>
-                            Tồn: {onHand} {product?.base_unit}
-                          </span>
-                        </div>
+                    <div
+                      className={`border rounded-xl p-3 space-y-2 ${
+                        over || warning ? "border-amber-300 bg-amber-50/40" : "border-border/40 bg-card"
+                      }`}
+                    >
+                      {/* HÀNG 1 — tên + thành tiền. */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight">
+                          {line.product_name}
+                        </p>
+                        <span className="shrink-0 text-sm font-bold text-primary tabular-nums">
+                          {formatCurrency(line.line_total)}
+                        </span>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        // 44px, rộng hơn mức tối thiểu 36px của dự án. Cố ý:
-                        // đây là nút XOÁ dòng vừa nhập, nằm sát tên sản phẩm
-                        // trong thẻ hẹp trên điện thoại. Bấm nhầm là mất dòng
-                        // và không có hoàn tác. Icon giữ nguyên 16px nên trông
-                        // không to hơn, chỉ vùng chạm rộng ra.
-                        className="h-11 w-11 shrink-0 -mr-2 -mt-2"
-                        onClick={() => removeLine(i)}
-                        aria-label="Xoá sản phẩm khỏi đơn"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
 
-                    {/* Ghi chú dòng */}
-                    <Input
-                      value={line.note}
-                      onChange={(e) => updateLine(i, "note", e.target.value)}
-                      placeholder="Ghi chú dòng (tuỳ chọn)…"
-                      className="h-9 text-xs"
-                    />
-
-                    {/* SL: ĐVT + stepper + thành tiền */}
-                    <div className="flex items-center gap-2">
-                      {units.length <= 1 ? (
-                        <span className="inline-flex items-center text-xs text-muted-foreground bg-muted/50 px-2.5 h-9 rounded-lg shrink-0">
+                      {/* HÀNG 2 — ĐVT + số lượng + nút mở sheet sửa. */}
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-11 shrink-0 items-center rounded-lg bg-muted/50 px-2.5 text-xs text-muted-foreground">
                           {line.unit_name}
                         </span>
-                      ) : (
-                        <Select value={line.unit_name} onValueChange={(v) => updateLine(i, "unit_name", v)}>
-                          <SelectTrigger className="h-9 w-[88px] text-xs shrink-0"><SelectValue /></SelectTrigger>
-                          <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                        </Select>
-                      )}
-                      {/* Nút −/+ cũ là 36×36 và ô số h-9 — dưới sàn 44px,
-                          mà đây là thứ NVBH bấm nhiều nhất khi đứng trước
-                          mặt khách. QtyStepper cũng bôi đen sẵn khi chạm
-                          vào ô, để gõ "24" đè lên "1" thay vì phải xoá. */}
-                      <QtyStepper
-                        value={line.quantity}
-                        onChange={(n) => updateLine(i, "quantity", n)}
-                        min={1}
-                        warn={over}
-                        className="flex-1 min-w-0"
-                        ariaLabel={`Số lượng ${line.product_name || "sản phẩm"}`}
-                      />
-                      <div className="text-right shrink-0 min-w-[88px]">
-                        <p className="text-sm font-bold text-primary tabular-nums">{formatCurrency(line.line_total)}</p>
+                        <QtyStepper
+                          value={line.quantity}
+                          onChange={(n) => updateLine(i, "quantity", n)}
+                          min={1}
+                          warn={over}
+                          className="flex-1 min-w-0"
+                          ariaLabel={`Số lượng ${line.product_name || "sản phẩm"}`}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="tap h-11 shrink-0 px-3 text-xs"
+                          onClick={() => setEditLineIndex(i)}
+                        >
+                          Sửa
+                        </Button>
                       </div>
-                    </div>
 
-                    {over && (
-                      <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        Vượt tồn ({baseQty(line)}/{onHand} {product?.base_unit})
-                      </p>
-                    )}
-
-                    {/* Giá + VAT cùng hàng (grid 1fr / auto) */}
-                    {canEditPrice ? (
-                      <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
-                        <div className="space-y-1">
-                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Giá</Label>
-                          <MoneyInput
-                            value={line.unit_price}
-                            onChange={(v) => updateLine(i, "unit_price", v)}
-                            showSuffix={false}
-                            inputClassName={`h-11 lg:h-9 tabular-nums ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
-                          />
-                          {warning ? (
-                            <p className="text-[10px] text-error font-semibold flex items-center gap-1">
+                      {/* Chip — CHỈ hiện thứ đã lệch khỏi mặc định. Không
+                          có gì lệch thì không tốn hàng nào. */}
+                      {(over || warning || line.line_discount_percent > 0 || !!line.note?.trim()) && (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                          {over && (
+                            <span className="flex items-center gap-1 font-semibold text-amber-700">
+                              <AlertTriangle className="h-3 w-3" />
+                              Vượt tồn ({baseQty(line)}/{onHand} {product?.base_unit})
+                            </span>
+                          )}
+                          {warning && (
+                            <span className="flex items-center gap-1 font-semibold text-error">
                               <AlertTriangle className="h-3 w-3" /> {warning}
-                            </p>
-                          ) : isSalesRole && def > 0 ? (
-                            <p className="text-[10px] text-muted-foreground">
-                              Mặc định {formatCurrency(def)}
-                              {ceiling > def + 0.5 ? ` • Tối đa ${formatCurrency(ceiling)}` : ""}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT</Label>
-                          <Select
-                            value={String(Math.round(line.vat_rate * 100))}
-                            onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
-                          >
-                            <SelectTrigger className="h-9 w-[76px] text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0">0%</SelectItem>
-                              <SelectItem value="5">5%</SelectItem>
-                              <SelectItem value="8">8%</SelectItem>
-                              <SelectItem value="10">10%</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {canEditDiscount && line.line_discount_percent > 0 && (
-                            <p className="text-[10px] text-muted-foreground text-center">CK {line.line_discount_percent}%</p>
+                            </span>
+                          )}
+                          {line.line_discount_percent > 0 && (
+                            <span className="text-muted-foreground">CK {line.line_discount_percent}%</span>
+                          )}
+                          {!!line.note?.trim() && (
+                            <span className="min-w-0 truncate text-muted-foreground">
+                              Ghi chú: {line.note.trim()}
+                            </span>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        {canEditDiscount && line.line_discount_percent > 0 && (
-                          <span className="text-[11px] text-muted-foreground">CK {line.line_discount_percent}%</span>
-                        )}
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT</Label>
-                        <Select
-                          value={String(Math.round(line.vat_rate * 100))}
-                          onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
-                        >
-                          <SelectTrigger className="h-8 w-[76px] text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="0">0%</SelectItem>
-                            <SelectItem value="5">5%</SelectItem>
-                            <SelectItem value="8">8%</SelectItem>
-                            <SelectItem value="10">10%</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  </SwipeToDelete>
                 )
               })}
+
+              {/* Thanh hoàn tác. Nằm TRONG danh sách chứ không dính đáy:
+                  đáy đã có thanh hành động, chồng hai thanh lên nhau thì
+                  cái dưới ăn mất nút "Hoàn tác". */}
+              {undoableRemove.pending && (
+                <div className="flex items-center justify-between gap-2 rounded-xl bg-inverse-surface px-3 py-2 text-inverse-on-surface">
+                  <span className="min-w-0 truncate text-xs">
+                    Đã xoá {undoableRemove.pendingLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={undoableRemove.undo}
+                    className="tap shrink-0 px-2 text-xs font-bold uppercase tracking-wider text-inverse-primary"
+                  >
+                    Hoàn tác
+                  </button>
+                </div>
+              )}
+
+            {/* SHEET "Sửa dòng" (M3.3e) — nơi ở mới của giá / VAT / CK /
+                ghi chú. Mở từ nút Sửa trên thẻ; desktop không dùng vì
+                bảng đã có sẵn mọi cột. */}
+            <Sheet open={editLineIndex !== null} onOpenChange={(o) => !o && setEditLineIndex(null)}>
+              <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto lg:hidden">
+                {editLineIndex !== null && lines[editLineIndex] ? (() => {
+                  const i = editLineIndex
+                  const line = lines[i]
+                  const units = getAvailableUnits(line)
+                  const warning = canEditPrice ? getLinePriceWarning(line) : null
+                  const def = canEditPrice && isSalesRole ? getLineDefaultPrice(line) : 0
+                  const ceiling = def > 0 ? userSalesCeiling(def, userRules) : 0
+                  return (
+                    <>
+                      <SheetHeader>
+                        <SheetTitle className="truncate text-left">{line.product_name}</SheetTitle>
+                        <p className="text-left text-xs text-muted-foreground">SKU: {line.sku}</p>
+                      </SheetHeader>
+
+                      <div className="mt-4 space-y-4 pb-safe">
+                        {units.length > 1 && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Đơn vị tính</Label>
+                            <Select value={line.unit_name} onValueChange={(v) => updateLine(i, "unit_name", v)}>
+                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                              <SelectContent>{units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {canEditPrice && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
+                            <MoneyInput
+                              value={line.unit_price}
+                              onChange={(v) => updateLine(i, "unit_price", v)}
+                              showSuffix={false}
+                              inputClassName={`h-12 text-right text-lg font-bold tabular-nums ${warning ? "border-error/40 focus-visible:ring-error/20" : ""}`}
+                            />
+                            {warning ? (
+                              <p className="flex items-center gap-1 text-xs font-semibold text-error">
+                                <AlertTriangle className="h-3 w-3" /> {warning}
+                              </p>
+                            ) : isSalesRole && def > 0 ? (
+                              <p className="text-xs text-muted-foreground">
+                                Mặc định {formatCurrency(def)}
+                                {ceiling > def + 0.5 ? ` • Tối đa ${formatCurrency(ceiling)}` : ""}
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs uppercase tracking-wider text-muted-foreground">VAT</Label>
+                            <Select
+                              value={String(Math.round(line.vat_rate * 100))}
+                              onValueChange={(v) => updateLine(i, "vat_rate", parseInt(v) / 100)}
+                            >
+                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">0%</SelectItem>
+                                <SelectItem value="5">5%</SelectItem>
+                                <SelectItem value="8">8%</SelectItem>
+                                <SelectItem value="10">10%</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {canEditDiscount && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Chiết khấu %</Label>
+                              {/* inputMode="numeric" chứ không type="number":
+                                  bàn phím số của iOS cho gõ "e" và cuộn trang
+                                  làm đổi giá trị. */}
+                              <Input
+                                inputMode="numeric"
+                                value={String(line.line_discount_percent)}
+                                onChange={(e) => {
+                                  const n = parseFloat(e.target.value.replace(/[^\d.]/g, "")) || 0
+                                  updateLine(i, "line_discount_percent", Math.min(100, Math.max(0, n)))
+                                }}
+                                onFocus={(e) => e.currentTarget.select()}
+                                className="h-11 text-center tabular-nums"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú dòng</Label>
+                          <Input
+                            value={line.note}
+                            onChange={(e) => updateLine(i, "note", e.target.value)}
+                            placeholder="VD: giao đợt sau, hàng cận date…"
+                            className="h-11"
+                          />
+                        </div>
+
+                        <div className="flex items-baseline justify-between border-t pt-3">
+                          <span className="text-sm text-muted-foreground">Thành tiền</span>
+                          <span className="text-xl font-bold tabular-nums text-primary">
+                            {formatCurrency(line.line_total)}
+                          </span>
+                        </div>
+
+                        <div className="flex gap-2">
+                          {/* Xoá từ trong sheet cũng đi qua đường hoàn tác —
+                              một lối xoá duy nhất, không có lối tắt mất
+                              dữ liệu. */}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="tap h-12 shrink-0 text-error"
+                            onClick={() => {
+                              setEditLineIndex(null)
+                              undoableRemove.remove(i, line)
+                            }}
+                            aria-label="Xoá dòng khỏi đơn"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" className="h-12 flex-1" onClick={() => setEditLineIndex(null)}>
+                            Xong
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })() : null}
+              </SheetContent>
+            </Sheet>
             </div>
           </CardContent>
         </Card>

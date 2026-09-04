@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
@@ -412,8 +413,13 @@ export default function DeliverySettlePage() {
 
   const driverName = delivery.driver?.full_name || "—"
 
+  // Thanh dính đáy chỉ có ở nhánh CÒN VIỆC (chưa nộp, còn tiền, chưa lập
+  // phiếu). Ba nhánh kia không có thanh nên cũng không cần chừa đệm —
+  // chừa thừa thì cuối trang hở một khoảng trống không ai giải thích được.
+  const showSettleBar = !alreadySettled && !hasNothingToCollect && !saved
+
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${showSettleBar ? "pb-nav-action-tall" : ""}`}>
       <div className="no-print">
         <PageHeader
           title="Nộp tiền chuyến giao"
@@ -610,7 +616,11 @@ export default function DeliverySettlePage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <>
+              {/* M6.3 — desktop giữ ba nút một hàng; mobile chỉ còn MỘT
+                  nút chính trên thanh dính đáy (bên dưới). Tài xế nộp
+                  tiền xong mới in, và máy in không nằm trong túi họ. */}
+              <div className="hidden lg:flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button variant="outline" asChild>
                   <Link href={`/deliveries/${delivery.id}`}>Huỷ</Link>
                 </Button>
@@ -629,6 +639,16 @@ export default function DeliverySettlePage() {
                   {submitting ? "Đang xử lý…" : "Lập phiếu thu & In TT200"}
                 </Button>
               </div>
+              <StickyActionBar>
+                <Button
+                  onClick={() => finalize({ withPrint: false })}
+                  disabled={submitting}
+                  className="h-14 flex-1 text-base"
+                >
+                  {submitting ? "Đang xử lý…" : "Lập phiếu thu"}
+                </Button>
+              </StickyActionBar>
+              </>
             )}
           </>
         )}

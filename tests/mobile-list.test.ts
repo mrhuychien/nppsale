@@ -12,10 +12,18 @@ import { isAbortError } from "@/lib/supabase/resilient"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
+/**
+ * Bỏ chú thích trước khi soi mã. Chú thích nhắc tên một lớp CSS làm test
+ * xanh oan — đã dính bốn lần.
+ *
+ * KHÔNG có luật riêng cho `{/* … *\/}`: luật đó là `\{ … \*\/\s*\}`, mà
+ * `interface X {` mở ngoặc rồi tới một khối `/** … *\/` sẽ khiến nó chạy
+ * tiếp tới `*\/}` xa tít phía dưới. Đo trên handover/page.tsx: nuốt mất
+ * 19.294 ký tự (39% file) — mọi assert trong vùng đó xanh vì KHÔNG CÒN
+ * GÌ ĐỂ SAI. Xoá `/* … *\/` trước là đủ; cặp `{ }` rỗng còn lại vô hại.
+ */
 const strip = (s: string) =>
-  s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^[ \t]*\/\/.*$/gm, "")
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "")
 
 const FILTER_BAR = read("src/components/ui/mobile-filter-bar.tsx")
 const SCROLLER = read("src/components/ui/segmented-scroller.tsx")

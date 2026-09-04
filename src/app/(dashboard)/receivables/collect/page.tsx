@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useOrg } from "@/hooks/use-org"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,14 +13,19 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MoneyInput } from "@/components/ui/money-input"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Printer } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_METHODS } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard } from "lucide-react"
+import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { Receivable } from "@/types"
+
+/** Nhãn hình thức thu — tra từ PAYMENT_METHODS, không gõ lại chuỗi. */
+const labelMethod = (v: string) =>
+  PAYMENT_METHODS.find((m) => m.value === v)?.label || v
 
 export default function CollectPaymentPage() {
   const { user } = useAuth()
@@ -35,6 +41,27 @@ export default function CollectPaymentPage() {
   const [method, setMethod] = useState("cash")
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
+  /**
+   * M5.1 mục 7 — sau khi thu xong KHÔNG điều hướng ngay.
+   *
+   * VÌ SAO: NVBH vừa cầm tiền của khách, và khách đang đứng đó chờ xem
+   * "đã ghi chưa, còn nợ bao nhiêu". Đá thẳng về danh sách rồi hiện một
+   * toast 3 giây là bắt họ vừa cất tiền vừa đọc. Còn phiếu thu thì không
+   * có đường nào in được nữa ngoài mở lại màn khác.
+   *
+   * `paymentId` là id THẬT của dòng payments vừa ghi — số phiếu in ra
+   * được suy ra từ nó chứ không phải một dãy số tự bịa (xem receiptNo).
+   */
+  const [done, setDone] = useState<{
+    paymentId: string
+    amount: number
+    method: string
+    storeName: string
+    remainingAfter: number
+    at: Date
+  } | null>(null)
+  const { org } = useOrg()
+  const orgName = org?.name ?? ""
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -125,12 +152,19 @@ export default function CollectPaymentPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.from("payments").insert({
-        receivable_id: selectedId,
-        collected_by: user?.id,
-        amount: amountNum,
-        method,
-      })
+      // .select("id") để lấy id dòng vừa ghi — cần cho số phiếu thu ở màn
+      // xác nhận. Không có nó thì phải bịa số, mà bịa số trên chứng từ
+      // tiền mặt là thứ không được phép.
+      const { data: paymentRow, error } = await supabase
+        .from("payments")
+        .insert({
+          receivable_id: selectedId,
+          collected_by: user?.id,
+          amount: amountNum,
+          method,
+        })
+        .select("id")
+        .single()
       if (error) throw error
 
       const newPaid = (selected?.paid || 0) + amountNum
@@ -168,11 +202,15 @@ export default function CollectPaymentPage() {
       }
 
       toast({ title: `Đã thu ${formatCurrency(amountNum)}` })
-      if (customerIdParam) {
-        router.push(`/customers/${customerIdParam}`)
-      } else {
-        router.push("/receivables")
-      }
+      // M5.1 mục 7 — dừng lại ở màn xác nhận, KHÔNG router.push ngay.
+      setDone({
+        paymentId: (paymentRow as { id: string }).id,
+        amount: amountNum,
+        method,
+        storeName: selected?.customer?.store_name || customerName || "Khách hàng",
+        remainingAfter: Math.max(0, (selected?.amount || 0) - newPaid),
+        at: new Date(),
+      })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
       toast({ title: "Lỗi", description: message, variant: "destructive" })
@@ -188,8 +226,36 @@ export default function CollectPaymentPage() {
 
   const totalOutstanding = receivables.reduce((sum, r) => sum + (r.amount - r.paid), 0)
 
+  /** Rời màn — đúng chỗ trước đây gọi thẳng sau khi ghi xong. */
+  const finish = () => {
+    if (customerIdParam) router.push(`/customers/${customerIdParam}`)
+    else router.push("/receivables")
+  }
+
+  /**
+   * Số phiếu thu SUY RA từ id dòng payments, không phải một dãy tự tăng
+   * mới. Lý do: màn này ghi vào `payments`, không lập `cash_receipts` —
+   * in ra một số thuộc dải phiếu thu của phòng kế toán sẽ đụng số thật.
+   * Suy ra từ id thì bất biến (in lại vẫn ra đúng số đó) và tra ngược
+   * được về dòng đã ghi.
+   */
+  const receiptNo = done ? `PT-${done.paymentId.slice(0, 8).toUpperCase()}` : ""
+
+  const printReceipt = () => {
+    const html = document.documentElement
+    html.setAttribute("data-print-mode", "receipt-tt200")
+    requestAnimationFrame(() => {
+      window.print()
+      setTimeout(() => html.removeAttribute("data-print-mode"), 200)
+    })
+  }
+
   return (
     <div className="space-y-4 pb-nav-action lg:pb-0">
+      {/* Mọi thứ trên màn nằm trong `no-print`: @media print chỉ ẩn sẵn
+          aside/header/nav, phần thân trang vẫn in ra. Không bọc thì tờ
+          phiếu thu in kèm cả thẻ xác nhận và hai cái nút. */}
+      <div className="space-y-4 no-print">
       <PageHeader
         title={pageTitle}
         description={customerIdParam
@@ -198,7 +264,62 @@ export default function CollectPaymentPage() {
         backHref={backHref}
       />
 
-      {fetching ? (
+      {done ? (
+        <>
+          <Card className="border-tertiary/40">
+            <CardContent className="space-y-4 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-8 w-8 shrink-0 text-tertiary" />
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-tertiary">
+                    Đã thu {formatCurrency(done.amount)}
+                  </p>
+                  <p className="truncate text-sm text-on-surface-variant">
+                    {done.storeName} • {labelMethod(done.method)} • {formatDate(done.at)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 rounded-xl bg-surface-container p-3 text-sm">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-on-surface-variant">Số phiếu</span>
+                  <span className="font-mono font-semibold">{receiptNo}</span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-on-surface-variant">Còn nợ khoản này</span>
+                  <span
+                    className={`text-lg font-bold tabular-data ${
+                      done.remainingAfter > 0 ? "text-error" : "text-tertiary"
+                    }`}
+                  >
+                    {formatCurrency(done.remainingAfter)}
+                  </span>
+                </div>
+              </div>
+
+              {/* In là hành động PHỤ nhưng phải thấy được ngay: khách còn
+                  đứng đó. Để trong thân thẻ, full width, 44px. */}
+              <Button
+                type="button"
+                variant="outline"
+                className="tap h-12 w-full"
+                onClick={printReceipt}
+              >
+                <Printer className="mr-2 h-4 w-4" /> In phiếu thu
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="hidden lg:flex justify-end">
+            <Button onClick={finish}>Xong</Button>
+          </div>
+          <StickyActionBar>
+            <Button className="h-12 flex-1" onClick={finish}>
+              Xong
+            </Button>
+          </StickyActionBar>
+        </>
+      ) : fetching ? (
         <Skeleton className="h-64" />
       ) : customerIdParam && receivables.length === 0 ? (
         <EmptyState
@@ -355,6 +476,22 @@ export default function CollectPaymentPage() {
             </form>
           </CardContent>
         </Card>
+      )}
+      </div>
+
+      {/* Chỉ hiện khi in — dùng lại đúng mẫu 01-TT của màn nộp tiền
+          chuyến giao, không dựng mẫu thứ hai để lệch nhau. */}
+      {done && (
+        <div className="print-receipt-tt200-only">
+          <PaymentReceiptTT200
+            organizationName={orgName || "—"}
+            receiptNo={receiptNo}
+            date={done.at}
+            payerName={done.storeName}
+            reason={`Thu tiền công nợ ${done.storeName}`}
+            amount={done.amount}
+          />
+        </div>
       )}
     </div>
   )

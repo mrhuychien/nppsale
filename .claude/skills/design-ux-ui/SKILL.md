@@ -84,6 +84,7 @@ Use the utilities, not arithmetic:
 |---|---|
 | Bottom padding under a fixed nav | `.pb-nav` |
 | …plus a sticky action bar | `.pb-nav-action` |
+| …when that bar holds an `h-14` button | `.pb-nav-action-tall` |
 | Anchor a bar just above the nav | `.bottom-above-nav` |
 | Anchor a bar just below the app bar | `.top-below-appbar` |
 | Safe-area padding | `.pb-safe` / `.pt-safe` |
@@ -106,6 +107,9 @@ reps pinch-zoom to read price lists.
 | `QtyStepper` | any quantity field (44px, selects on focus) |
 | `StickyActionBar` | the one primary action of a screen |
 | `ProductPickerSheet` | picking from a long catalogue |
+| `CollapsibleSection` | history/audit blocks — collapsed on mobile, always open on desktop |
+| `SwipeToDelete` | removing a row from a scrolling list, without spending width on a button |
+| `useUndoableRemove` | the 5-second undo any swipe-delete must have |
 
 ### Rules with a measured reason behind them
 
@@ -139,6 +143,47 @@ reps pinch-zoom to read price lists.
 11. **One-time hints are dismissible and remembered** (`localStorage`),
     initialised `false` and enabled in an effect — reading storage during
     the first render is a hydration mismatch.
+12. **A screen has ONE primary action, and it is never destructive.**
+    `/orders/[id]` derives it from `STATUS_FLOW` filtered by role, takes
+    the first non-`cancelled` transition, and puts everything else —
+    cancel, delete — behind a ⋮ menu. When a status has no forward
+    transition but still has work (`delivered` → ghi nhận công nợ → xuất
+    hoá đơn), the bar carries that instead of standing empty.
+13. **Compress a repeated row to two lines; put the rest in a sheet.**
+    Order lines went from ~250px to ~90px each by moving price / VAT /
+    discount / note into a "Sửa dòng" sheet. Anything edited away from
+    its default comes back as a chip — compressing must not *hide*.
+14. **Swipe-to-delete needs an axis lock and an undo.** Decide horizontal
+    vs vertical once, on the first move, then hold it; a list that scrolls
+    will otherwise shed rows. Delete for real immediately and keep the
+    item + index for 5s — a row left "pending deletion" in the array makes
+    totals and stock warnings wrong for exactly that long.
+15. **Collapse history, never actionable blocks.** Build it from state,
+    not `<details>`: "closed on mobile, open on desktop" means fighting
+    each browser's own hiding rule.
+16. **Printing from a screen means wrapping the screen in `no-print`.**
+    `@media print` only hides `aside, header, nav, .no-print` — the page
+    body prints. And never invent a document number: `/receivables/collect`
+    derives the receipt number from the `payments` row id because it does
+    not create a `cash_receipts` row.
+
+### Testing UI by reading source — the trap that keeps recurring
+
+These packs are tested by asserting on the source text. Strip comments
+first, or a comment that merely *mentions* a class name keeps the test
+green after the class is deleted (four occurrences so far).
+
+Strip with `/\/\*[\s\S]*?\*\//g` then line comments — and **do not** add a
+rule for `{/* … */}`. That rule has to match through to `*/}`, so
+`interface X {` followed by a doc comment sends it hunting for the next
+`*/}` far below: measured 19,294 characters (39% of `handover/page.tsx`)
+deleted, which makes every assertion in that region pass because there is
+nothing left to be wrong. Leftover empty `{ }` braces are harmless.
+
+After writing an assertion, **break the production code and confirm the
+test goes red.** Anchor on a string unique to the block under test — the
+first `{inEdit ? (` in `/orders/[id]` belongs to the desktop table, and
+bare `"Tổng đơn"` matches a toast 140 lines above the summary card.
 
 ## 3. Tables
 

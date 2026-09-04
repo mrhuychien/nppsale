@@ -25,7 +25,15 @@ import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone } from "lucide-react"
+import { StickyActionBar } from "@/components/ui/sticky-action-bar"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   validateOrderEdit,
   isLineLocked,
@@ -856,8 +864,32 @@ export default function OrderDetailPage() {
       (order.status === "picking" && isWarehouseRole))
   const canDelete = user && hasPermission(user.role, "orders", "delete") && ["draft", "cancelled"].includes(order.status)
 
+  // M4.2 — trên điện thoại, thẻ "Thao tác" nằm CUỐI cột phụ, tức là sau
+  // khách hàng + thông tin đơn + công nợ + hoá đơn. Đo trên đơn 8 dòng:
+  // phải cuộn 3.400px mới thấy nút "Duyệt đơn". Gom lại thành MỘT thanh
+  // dính đáy: hành động chính hiện thành nút, phần còn lại vào menu ⋮.
+  const roleTransitions = availableTransitions.filter(
+    (t) => !!user && t.roles.includes(user.role)
+  )
+  // Hành động chính = bước TIẾN của luồng. "Hủy đơn" không bao giờ là
+  // hành động chính — để nó ở nút to là mời người ta bấm nhầm.
+  const primaryTransition = roleTransitions.find((t) => t.value !== "cancelled") || null
+  const menuTransitions = roleTransitions.filter((t) => t !== primaryTransition)
+  // Đơn đã giao không còn bước chuyển nào trong STATUS_FLOW, nhưng việc
+  // CHƯA XONG thì vẫn còn: ghi nhận công nợ rồi xuất hoá đơn. Không đưa
+  // lên thanh thì đúng trạng thái có việc lại là trạng thái thanh rỗng.
+  const deliveredNext =
+    order.status === "delivered"
+      ? !receivableId
+        ? { label: actionLoading ? "Đang tạo..." : "Ghi nhận công nợ", icon: CreditCard, onClick: handleCreateReceivable, busy: actionLoading }
+        : !invoice
+          ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
+          : null
+      : null
+  const hasMobileActions = !!primaryTransition || !!deliveredNext || menuTransitions.length > 0 || !!canDelete
+
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${hasMobileActions ? "pb-nav-action" : ""}`}>
       <PageHeader
         title={order.order_code}
         description={`Ngày đặt: ${formatDate(order.order_date)}${order.approved_at ? ` • Duyệt: ${formatDate(order.approved_at)}` : ""}`}
@@ -882,6 +914,35 @@ export default function OrderDetailPage() {
           </div>
         </div>
       )}
+
+      {/* M4.3 — tóm tắt cho mobile, đặt NGAY dưới tiêu đề.
+          Hai thứ người ta mở đơn ra để xem đầu tiên là "của khách nào" và
+          "bao nhiêu tiền". Trước đây tên khách nằm ở cột phụ (sau toàn bộ
+          bảng hàng) còn tổng tiền nằm cuối thẻ sản phẩm — cả hai đều dưới
+          màn hình đầu. Trên desktop hai cột nên đã thấy sẵn: lg:hidden. */}
+      <div className="lg:hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-bold">{order.customer?.store_name || "Khách lẻ"}</p>
+            <p className="truncate text-xs text-on-surface-variant">
+              {order.customer?.owner_name || "—"}
+            </p>
+          </div>
+          {order.customer?.phone ? (
+            <a
+              href={`tel:${order.customer.phone}`}
+              className="tap flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-outline-variant"
+              aria-label={`Gọi ${order.customer.store_name || "khách"}`}
+            >
+              <Phone className="h-4 w-4 text-primary" />
+            </a>
+          ) : null}
+        </div>
+        <div className="mt-3 flex items-baseline justify-between border-t border-outline-variant pt-3">
+          <span className="text-xs uppercase tracking-wider text-on-surface-variant">Tổng đơn</span>
+          <span className="text-2xl font-bold tabular-data">{formatCurrency(order.total)}</span>
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column - details */}
@@ -1525,9 +1586,10 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Status transitions */}
+          {/* Status transitions — desktop giữ nguyên thẻ dọc; mobile dùng
+              StickyActionBar ở cuối trang (M4.2), không hiện hai lần. */}
           {(availableTransitions.length > 0 || canDelete) && (
-            <Card>
+            <Card className="hidden lg:block">
               <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {availableTransitions.map((trans) => {
@@ -1562,8 +1624,9 @@ export default function OrderDetailPage() {
 
       {/* Stock History */}
       {(deliveryLines.length > 0 || stockEntries.length > 0) && (
-        <Card>
-          <CardHeader>
+        <CollapsibleSection title="Lịch sử kho">
+        <Card className="border-0 bg-transparent shadow-none lg:border lg:bg-surface-container-lowest lg:shadow-card">
+          <CardHeader className="hidden lg:flex">
             <CardTitle className="flex items-center gap-2">
               <Package2 className="h-4 w-4" /> Lịch sử kho
             </CardTitle>
@@ -1685,6 +1748,7 @@ export default function OrderDetailPage() {
             )}
           </CardContent>
         </Card>
+        </CollapsibleSection>
       )}
 
       {/* Linked returns: companion returns recorded with this order */}
@@ -1867,8 +1931,12 @@ export default function OrderDetailPage() {
 
       {/* Q6 — line-edit activity log */}
       {activityLog.length > 0 && (
-        <Card>
-          <CardHeader>
+        <CollapsibleSection
+          title={`Lịch sử sửa dòng đơn (${activityLog.length})`}
+          subtitle="Audit log — 100 entry gần nhất"
+        >
+        <Card className="border-0 bg-transparent shadow-none lg:border lg:bg-surface-container-lowest lg:shadow-card">
+          <CardHeader className="hidden lg:flex">
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-4 w-4" /> Lịch sử sửa dòng đơn ({activityLog.length})
             </CardTitle>
@@ -1928,11 +1996,13 @@ export default function OrderDetailPage() {
             </ul>
           </CardContent>
         </Card>
+        </CollapsibleSection>
       )}
 
       {/* Status History */}
-      <Card>
-        <CardHeader>
+      <CollapsibleSection title="Lịch sử trạng thái">
+      <Card className="border-0 bg-transparent shadow-none lg:border lg:bg-surface-container-lowest lg:shadow-card">
+        <CardHeader className="hidden lg:flex">
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-4 w-4" /> Lịch sử trạng thái
           </CardTitle>
@@ -1985,6 +2055,62 @@ export default function OrderDetailPage() {
           )}
         </CardContent>
       </Card>
+      </CollapsibleSection>
+
+      {/* M4.2 — một thanh hành động duy nhất cho mobile.
+          Một nút chính + menu ⋮ cho phần còn lại; "Hủy đơn" và "Xóa đơn"
+          KHÔNG bao giờ là nút chính. */}
+      {hasMobileActions && (
+        <StickyActionBar>
+          {primaryTransition ? (
+            <Button
+              className="h-12 flex-1"
+              onClick={() =>
+                setConfirmOpen({ status: primaryTransition.value, label: primaryTransition.label })
+              }
+            >
+              <primaryTransition.icon className="mr-2 h-4 w-4" />
+              {primaryTransition.label}
+            </Button>
+          ) : deliveredNext ? (
+            <Button className="h-12 flex-1" onClick={deliveredNext.onClick} disabled={deliveredNext.busy}>
+              <deliveredNext.icon className="mr-2 h-4 w-4" />
+              {deliveredNext.label}
+            </Button>
+          ) : (
+            // Không còn bước tiến nào: chừa chỗ để menu ⋮ vẫn nằm bên phải
+            // như mọi trạng thái khác, thay vì nhảy sang trái.
+            <span className="flex-1 text-sm text-on-surface-variant">
+              {ORDER_STATUS_MAP[order.status]?.label || order.status}
+            </span>
+          )}
+          {(menuTransitions.length > 0 || canDelete) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-12 w-12 shrink-0 p-0" aria-label="Thao tác khác">
+                  <MoreVertical className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="min-w-52">
+                {menuTransitions.map((trans) => (
+                  <DropdownMenuItem
+                    key={trans.value}
+                    className={`h-11 ${trans.value === "cancelled" ? "text-error" : ""}`}
+                    onSelect={() => setConfirmOpen({ status: trans.value, label: trans.label })}
+                  >
+                    <trans.icon className="mr-2 h-4 w-4" /> {trans.label}
+                  </DropdownMenuItem>
+                ))}
+                {canDelete && (
+                  <DropdownMenuItem className="h-11 text-error" onSelect={() => setDeleteOpen(true)}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Xóa đơn hàng
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </StickyActionBar>
+      )}
 
       {/* Status change confirm */}
       <ConfirmDialog

@@ -65,7 +65,8 @@
        mất nội dung. */
     --app-bar-h: 52px;      /* header mobile mới (M1.1); desktop 64px bên dưới */
     --bottom-nav-h: 64px;   /* thanh nav mới 5 ô (M1.2) */
-    --action-bar-h: 64px;   /* thanh hành động dính đáy */
+    --action-bar-h: 64px;   /* thanh hành động dính đáy (nút h-12 + py-2.5) */
+    --action-bar-h-tall: 76px; /* bản nút h-14 cho màn tài xế (M6.3) */
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
     /* Khoảng thở dưới cùng nội dung, CỘNG THÊM vào chiều cao chrome. */
@@ -192,6 +193,11 @@
     .pb-nav        { padding-bottom: calc(var(--bottom-nav-h) + var(--safe-b) + var(--content-pad-b)); }
     /* Khi trang còn có thêm một thanh hành động dính đáy. */
     .pb-nav-action { padding-bottom: calc(var(--bottom-nav-h) + var(--action-bar-h) + var(--safe-b) + var(--content-pad-b)); }
+    /* Bản CAO: thanh chứa nút h-14 (56px) — màn của tài xế, xem M6.3.
+       Dùng --action-bar-h (64px) cho thanh 76px thì thiếu đúng 12px và
+       dòng cuối trang bị che; đó là lý do có token thứ hai chứ không
+       phải gõ tay một con số khác. */
+    .pb-nav-action-tall { padding-bottom: calc(var(--bottom-nav-h) + var(--action-bar-h-tall) + var(--safe-b) + var(--content-pad-b)); }
   }
 
   /* Neo cho thanh dính đáy: nằm NGAY TRÊN nav, không chồng lên. */

@@ -55,6 +55,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { PackageOpen, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -745,8 +746,18 @@ export default function DeliveryHandoverPage() {
     )
   }
 
+  // Một nhãn duy nhất cho cả nút desktop lẫn nút trên thanh dính đáy —
+  // hai chỗ nói khác nhau là cách chắc nhất để một chỗ bị bỏ quên.
+  const allDeliveredOk = summary.orderCount === 0 && summary.itemCount === 0
+  const submitLabel = (
+    <>
+      <CheckCircle2 className="mr-1.5 h-4 w-4" />
+      {allDeliveredOk ? "Tất cả đã giao OK — Tiếp tục →" : "Xác nhận bàn giao & nhập lại kho"}
+    </>
+  )
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-nav-action-tall">
       <PageHeader
         title="Nhận bàn giao lại từ tài xế"
         description={`${delivery.route_name || "Chuyến giao"} • Lái xe: ${delivery.driver?.full_name || "—"}`}
@@ -1157,24 +1168,14 @@ export default function DeliveryHandoverPage() {
             placeholder="VD: Lái xe báo 1 thùng móp do mưa, đã chuyển kho date."
             rows={3}
           />
-          <div className="flex justify-end gap-2">
+          {/* M6.3 — mobile dùng thanh dính đáy ở cuối trang; desktop giữ
+              hàng nút tại chỗ. hidden lg:flex để không hiện hai lần. */}
+          <div className="hidden lg:flex justify-end gap-2">
             <Button variant="outline" asChild>
               <Link href={`/deliveries/${delivery.id}`}>Huỷ</Link>
             </Button>
             <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? (
-                "Đang xử lý..."
-              ) : summary.orderCount === 0 && summary.itemCount === 0 ? (
-                <>
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Tất cả đã giao OK
-                  — Tiếp tục →
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Xác nhận bàn giao &
-                  nhập lại kho
-                </>
-              )}
+              {submitting ? "Đang xử lý..." : submitLabel}
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground italic">
@@ -1369,6 +1370,16 @@ export default function DeliveryHandoverPage() {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* M6.3 — nút xác nhận của thủ kho/tài xế: h-14 chứ không h-12.
+          Người bấm màn này đang đứng ở cửa kho, một tay giữ hàng; bấm
+          nhầm thì phải làm lại cả phiếu nhập. Trang dùng
+          `pb-nav-action-tall` cho khớp chiều cao thanh này. */}
+      <StickyActionBar>
+        <Button onClick={handleSubmit} disabled={submitting} className="h-14 flex-1 text-base">
+          {submitting ? "Đang xử lý..." : submitLabel}
+        </Button>
+      </StickyActionBar>
     </div>
   )
 }

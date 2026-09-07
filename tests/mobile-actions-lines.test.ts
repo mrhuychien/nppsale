@@ -459,10 +459,13 @@ describe("M6.3 — ký nhận & ảnh giao hàng (POD)", () => {
    * Nén hỏng thì trả BLOB GỐC — thà tải chậm còn hơn mất bằng chứng.
    */
   it("nén ảnh trước khi tải lên, hỏng thì dùng ảnh gốc", () => {
-    expect(POD).toContain("const blob = await shrinkImage(photo)")
-    expect(POD).toMatch(/MAX_EDGE = \d+/)
-    const i = POD.indexOf("async function shrinkImage")
-    const fn = POD.slice(i, POD.indexOf("\n}", i))
+    // Hàm nén đã chuyển sang lib dùng chung (POD và ảnh điểm bán cùng
+    // dùng). Test đi theo chỗ ở mới của nó, chứ logic không biến mất.
+    expect(POD).toContain("const blob = await prepareImage(photo)")
+    const PREP = strip(read("src/lib/images/prepare.ts"))
+    expect(PREP).toMatch(/MAX_EDGE = \d+/)
+    const i = PREP.indexOf("export async function prepareImage")
+    const fn = PREP.slice(i)
     expect(fn).toContain("} catch {")
     expect(fn).toContain("return file")
     expect(fn).not.toContain("throw")

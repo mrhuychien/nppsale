@@ -9,43 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { prepareImage } from "@/lib/images/prepare"
 
 /** Bucket ảnh POD — tạo ở migration 101, cùng khuôn với `visit-photos`. */
 const BUCKET = "pod-photos"
-/** Cạnh dài tối đa của ảnh sau khi nén, tính bằng px. */
-const MAX_EDGE = 1280
-/** Chất lượng JPEG sau khi nén. */
-const JPEG_QUALITY = 0.7
-
-/**
- * Nén ảnh TRƯỚC khi tải lên.
- *
- * Ảnh gốc từ camera điện thoại là 3–8MB. Tài xế đang đứng trước cửa nhà
- * khách, sóng 3G — tải 6MB là đứng đó chờ hoặc bỏ dở. 1280px đủ để đọc
- * thùng hàng và tên đường, và xuống còn ~200KB.
- *
- * Hỏng thì trả về BLOB GỐC chứ không ném: thà tải chậm còn hơn mất bằng
- * chứng giao hàng.
- */
-async function shrinkImage(file: File): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
-    if (scale >= 1) return file
-    const canvas = document.createElement("canvas")
-    canvas.width = Math.round(bitmap.width * scale)
-    canvas.height = Math.round(bitmap.height * scale)
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return file
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, "image/jpeg", JPEG_QUALITY)
-    )
-    return blob || file
-  } catch {
-    return file
-  }
-}
 
 /**
  * Màn ký nhận + chụp ảnh giao hàng (POD).
@@ -176,7 +143,7 @@ export function PodCaptureSheet({
         // và im lặng lưu dòng KHÔNG kèm ảnh là mất bằng chứng mà không
         // ai biết. Dừng lại và nói ra.
         if (!orgId) throw new Error("Thiếu org_id — không tải được ảnh lên. Tải lại trang rồi thử lại.")
-        const blob = await shrinkImage(photo)
+        const blob = await prepareImage(photo)
         const path = `${orgId}/${line.id}/${Date.now()}.jpg`
         const { error: upErr } = await supabase.storage
           .from(BUCKET)

@@ -9,6 +9,7 @@ import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CustomerPhotoCapture } from "@/components/customers/customer-photo-capture"
 import { CustomerForm } from "@/components/customers/customer-form"
 import { AssignmentManager } from "@/components/customers/assignment-manager"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -389,6 +390,26 @@ export default function CustomerDetailPage() {
 
             {/* Tab: Tổng quan */}
             <TabsContent value="overview" className="space-y-4 mt-4">
+              {/* Ảnh điểm bán — đặt TRÊN đơn hàng vì đây là việc còn
+                  thiếu ở điểm bán mới tạo, và là thứ NVBH mở app ra để
+                  làm khi đang đứng trước cửa hàng. */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Ảnh điểm bán</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CustomerPhotoCapture
+                    customerId={customer.id}
+                    customerName={customer.store_name}
+                    storeGps={{
+                      lat: customer.gps_lat != null ? Number(customer.gps_lat) : null,
+                      lng: customer.gps_lng != null ? Number(customer.gps_lng) : null,
+                    }}
+                    onChanged={fetchData}
+                  />
+                </CardContent>
+              </Card>
+
               {/* Recent orders */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">

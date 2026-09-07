@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button"
 import {
   Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check,
+  Clock, Navigation, Info, Check, Camera,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
@@ -20,6 +20,7 @@ const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = 
   payment_received: { icon: CreditCard, color: "text-[#175cd3] bg-[#eff8ff]" },
   receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10" },
+  customer_photo_missing: { icon: Camera, color: "text-[#b54708] bg-[#fff4ed]" },
   info: { icon: Info, color: "text-muted-foreground bg-muted" },
 }
 

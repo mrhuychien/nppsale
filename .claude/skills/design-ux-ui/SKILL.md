@@ -185,6 +185,48 @@ reps pinch-zoom to read price lists.
     row has no proof at all, say so on the card rather than showing
     nothing.
 
+### Field capture (photo + GPS)
+
+`CustomerPhotoCapture` and `PodCaptureSheet` share `prepareImage()` and the
+same rules:
+
+1. **Read the GPS the moment the block mounts**, not behind a button. The
+   rep is standing in front of the shop; every extra tap is a reason to
+   skip it.
+2. **Never block the capture on the fix.** Location denied still has to
+   save the photo — flag it as having no location instead, on screen *and
+   burned into the image*, so a photo without proof does not look
+   identical to one with it.
+3. **One timestamp per capture.** Reuse the same `Date` for the burned-in
+   caption and the `taken_at` column; calling `new Date()` twice leaves
+   two values seconds apart and nobody can later say which is real.
+4. **The burned caption is for humans; the columns are the data.** Do not
+   invert that — text on a JPEG is not queryable and any phone app can
+   edit it.
+5. **Auto-pin the outlet from the first photo's fix, but only when it has
+   no coordinates yet,** and only when the reported accuracy is good.
+   Overwriting an existing pin silently relocates the shop.
+6. **Cap the collection with declarative constraints, not a counting
+   trigger.** `slot smallint CHECK (slot BETWEEN 1 AND 3)` plus a unique
+   index on `(customer_id, slot)` cannot race; count-then-insert can.
+   Refill the *lowest free* slot so deleting photo 2 reuses slot 2.
+
+### Reminders that people don't switch off
+
+1. **Group per person, not per record.** A rep with 80 new outlets gets
+   one "12 outlets missing photos", not 80 notifications.
+2. **Cool down and stamp it.** Store `*_reminder_sent_at` and skip rows
+   reminded inside the window — and only stamp *after* the notification
+   actually wrote, or a failed send buys another week of silence.
+3. **A corrupt timestamp means "not reminded", never "reminded".** One
+   bad cell must not silence a record forever.
+4. **Send the reminder somewhere actionable.** The notification links to a
+   worklist with a navigate button per row; without that the message is a
+   complaint, not a task. Rows with no coordinates route by *address*, and
+   say so.
+5. **Records with nobody assigned can't be reminded** — count them
+   separately in the run report instead of dropping them.
+
 ### Bulk import / export screens
 
 Any screen that writes many rows from a file follows the same shape, and
@@ -261,6 +303,14 @@ the trailing `[^a-z0-9]` filter already dropped the marks — the line was
 redundant, not untested. Removing it was the fix; the load-bearing parts
 (`normalize("NFD")`, and the manual `đ` → `d`, which NFD does *not*
 decompose) each now have a mutation that bites.
+
+**A name assertion is not a behaviour assertion.** `toContain("customer_photos_delete")`
+still passed after the policy was renamed `customer_photos_delete_disabled`
+— the old name is a substring of the new one. Assert the whole statement
+(`CREATE POLICY "x" ON storage.objects` … `FOR DELETE`). Better still,
+assert the *invariant*: every `CREATE POLICY "X"` in a migration must have
+a matching `policyname = 'X'` guard, or the second run dies on "already
+exists".
 
 **Window your slice to the statement, not to N characters.** Asserting
 `WHERE opening_balance` within 200 chars of `uq_receivables_opening`

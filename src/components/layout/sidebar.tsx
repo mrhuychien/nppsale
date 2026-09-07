@@ -11,7 +11,7 @@ import {
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
-  TrendingUp, FileBarChart2, ShieldCheck, QrCode, FileSpreadsheet,
+  TrendingUp, FileBarChart2, ShieldCheck, QrCode, FileSpreadsheet, Camera,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -40,6 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders", feature: "orders" },
       { label: "Khách hàng", href: "/customers", icon: Users, module: "customers", feature: "customers" },
+      { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera, module: "customers", feature: "customers" },
       { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers", feature: "customers.visits" },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions", feature: "promotions" },
     ],

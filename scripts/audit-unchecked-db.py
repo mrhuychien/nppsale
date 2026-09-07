@@ -28,7 +28,11 @@ TRAILING_CHECK_LINES = 3
 
 
 def iter_files():
-    for root in ROOTS:
+    # Đối số không phải cờ = thư mục cần quét, thay cho ROOTS. Dùng để
+    # tests/audit-detector.test.ts soi chính máy dò này bằng mã mồi: một
+    # máy dò không có test thì lần sau nới lỏng cũng không ai biết.
+    roots = [a for a in sys.argv[1:] if not a.startswith("-")] or ROOTS
+    for root in roots:
         for dirpath, _, names in os.walk(root):
             for n in names:
                 if n.endswith((".ts", ".tsx")):
@@ -112,6 +116,13 @@ def span_start(lines, i):
         if not lines[j].strip().startswith((".", "?", ":")):
             break
         j -= 1
+    # Dòng trên kết thúc bằng `=` / `=>` thì câu lệnh vẫn còn tiếp:
+    #     const build = (select: string) =>
+    #       supabase.from("batches").select(select)…
+    # Không lùi qua nó thì không thấy được `const build =`, và một hàm dựng
+    # query bị coi là truy vấn chưa kiểm lỗi.
+    while j > 0 and j > i - 13 and lines[j - 1].rstrip().endswith(("=", "=>")):
+        j -= 1
     return j
 
 
@@ -129,32 +140,196 @@ def promise_all_checked(lines, i):
     phạm vi từng phần tử. Nếu không xử lý, mỗi phần tử bị báo nhầm một lần —
     và vài trăm cảnh báo giả sẽ chôn mất những lỗi thật.
 
-    Cách làm: tìm ngược `Promise.all([` bao quanh, nhảy tới `])` đóng của nó,
-    rồi soi vài dòng ngay sau xem có kiểm lỗi không.
-    """
-    open_at = None
-    for j in range(i, max(-1, i - 80), -1):
-        if "Promise.all([" in lines[j]:
-            open_at = j
-            break
-        # Gặp đầu một câu lệnh khác → không nằm trong Promise.all nào.
-        if lines[j].strip().endswith((";", "{", "}")):
-            return False
-    if open_at is None:
-        return False
+    Cách làm CŨ là dò ngược tới chữ `Promise.all([`, và dừng lại khi gặp một
+    dòng kết thúc bằng `;` `{` `}` — coi đó là đầu một câu lệnh khác.
 
-    # Chỉ đếm ngoặc vuông TỪ SAU token `Promise.all([`. Dòng mở thường là
-    # `] = await Promise.all([` — phần `]` bên trái thuộc về destructure,
-    # nếu đếm luôn thì hai dấu triệt tiêu nhau và mảng bị coi là đóng ngay.
-    head = lines[open_at].split("Promise.all([", 1)[1]
-    depth = 1 + head.count("[") - head.count("]")
-    for j in range(open_at, min(open_at + 200, len(lines))):
-        if j > open_at:
-            depth += lines[j].count("[") - lines[j].count("]")
-        if j > open_at and depth <= 0:
-            after = "\n".join(lines[j : j + 6])
-            return bool(re.search(r"\berror\b|\w+Err\b", after))
+    ⚠ MỐC DỪNG ĐÓ SAI, và đã trả giá: một phần tử bình thường của mảng cũng
+    kết thúc bằng `}`:
+
+        supabase.from("batches").select("id, qty", {
+          count: "exact",                      ← dòng này…
+        })                                     ← …và dòng này kết thúc bằng `}`
+
+    Gặp nó là hàm bỏ cuộc giữa chừng và báo "không nằm trong Promise.all
+    nào", dù đang đứng ngay trong một cái. Nay dùng ĐỘ SÂU NGOẶC thay cho
+    hình dạng cuối dòng — xem `enclosing_assignment`, hàm này chỉ còn là lớp
+    vỏ mỏng gọi sang đó.
+    """
+    return enclosing_assignment_checked(lines, line_depths(lines), i)
+
+
+def line_depths(lines):
+    """Độ sâu ngoặc (gộp cả ba loại) tại ĐẦU mỗi dòng."""
+    d, out = 0, []
+    for l in lines:
+        out.append(d)
+        d += l.count("(") + l.count("[") + l.count("{")
+        d -= l.count(")") + l.count("]") + l.count("}")
+    return out
+
+
+def enclosing_assignment_checked(lines, depths, i):
+    """
+    Truy vấn nằm LỒNG trong một câu lệnh, và phần kiểm lỗi ở ngay SAU câu
+    lệnh đó. Ba hình dạng đang dùng trong dự án:
+
+        const [aRes, bRes] = await Promise.all([
+          supabase.from("a").select(...),          ← chỗ bị soi
+          supabase.from("b").select(...),
+        ])
+        const qErr = [aRes, bRes].find((r) => r?.error)?.error   ← kiểm ở đây
+
+        const res = await fetchAllForAggregate((from, to) =>
+          supabase.from("x").select(..., { count: "exact" }).range(from, to)
+        )                                          ← truy vấn là ĐỐI SỐ
+        if (res.error) console.error(...)          ← kiểm ở đây
+
+        Promise.all([
+          supabase.from("a").select(...),
+        ]).then(([aRes, bRes]) => {
+          const vErr = aRes.error || bRes.error    ← kiểm trong THÂN handler
+        })
+
+    ⚠ Hình dạng thứ hai là thứ đã làm cổng này đỏ suốt 30 commit. Nó xuất
+    hiện khi các trang báo cáo chuyển sang `fetchAllForAggregate` để lấy đủ
+    dòng; phần kiểm lỗi vẫn còn nguyên, chỉ là máy dò không nhìn thấy. 35
+    trong 38 cảnh báo lúc đó là BÁO NHẦM — và chính vì chúng mà cái cổng
+    này bị bỏ mặc, kéo theo 3 lỗi THẬT nằm lẫn trong đống báo nhầm.
+    """
+    for j in ancestors(lines, depths, i):
+        names = assigned_names(lines, j)
+        # `const { data, error } = …` — đã kiểm ngay tại chỗ gán.
+        if "error" in names:
+            return True
+        end = statement_end(lines, depths, j)
+        if names and trailing_checked(lines, end, names):
+            return True
+        # Không có phép gán: phần nhận kết quả có thể là handler `.then(…)`,
+        # và khi đó chỗ kiểm lỗi nằm TRONG thân handler chứ không phải sau
+        # câu lệnh — `end` lúc này đã trỏ ra tận sau dấu `})` đóng handler.
+        if not names:
+            for k in range(j, end):
+                if ".then(" not in lines[k] or "=>" not in lines[k]:
+                    continue
+                params = handler_params(lines, k)
+                if params and trailing_checked(lines, k + 1, params):
+                    return True
+                break
     return False
+
+
+def ancestors(lines, depths, i, limit=120):
+    """
+    Các dòng MỞ khối đang bao quanh dòng `i`, từ trong ra ngoài.
+
+    Dòng j bao quanh dòng i khi ngoặc nó mở vẫn còn mở tại i — tức
+    `depths[j]` nhỏ hơn mọi độ sâu trong khoảng (j, i]. Đây là chỗ cách làm
+    trước đó sai: nó nhận cả những câu lệnh ANH EM đứng trên (cùng độ sâu,
+    đã đóng xong), rồi mượn phần kiểm lỗi của chúng.
+    """
+    m = depths[i]
+    for j in range(i - 1, max(-1, i - limit), -1):
+        if depths[j] < m:
+            m = depths[j]
+            yield j
+
+
+CONT_ENDINGS = ("=", "=>", "&&", "||", "(", "[", ",")
+
+
+def assigned_names(lines, start):
+    """
+    Tên các biến được gán cho câu lệnh mở ở dòng `start`, hoặc [].
+
+    Phải gom NGƯỢC lên nhiều dòng vì phần `const … =` hay nằm cách chỗ mở
+    ngoặc:
+
+        const [                       ← tên biến bắt đầu ở đây
+          orderList,
+          expensesRes,
+        ] = await Promise.all([       ← còn đây mới là dòng mở khối
+
+    Điều kiện dừng: dòng phía trên không kết thúc bằng dấu nối tiếp. Nhờ vậy
+    `Promise.all([` đứng ngay dưới `setLoading(true)` KHÔNG mượn được tên
+    của `const supabase = createClient()` ở xa hơn nữa.
+    """
+    text = lines[start]
+    j = start
+    while start - j < 20:
+        m = re.search(r"=(?!=|>)", text)
+        if m and re.search(r"\b(?:const|let|var)\b", text[: m.start()]):
+            return [
+                w
+                for w in re.findall(r"[A-Za-z_$][\w$]*", text[: m.start()])
+                if w not in ("const", "let", "var", "await")
+            ]
+        if j == 0 or not lines[j - 1].rstrip().endswith(CONT_ENDINGS):
+            return []
+        j -= 1
+        text = lines[j] + "\n" + text
+    return []
+
+
+def handler_params(lines, close_line):
+    """
+    Tham số của `.then((…) => {` nằm ở dòng ĐÓNG của câu lệnh.
+
+        }).then(([balRes, prodRes]) => {
+
+    Không có phép gán nào, nhưng `balRes` / `prodRes` chính là chỗ nhận kết
+    quả — kiểm lỗi nằm trong thân handler ngay dưới.
+    """
+    if close_line < 0 or ".then(" not in lines[close_line]:
+        return []
+    tail = lines[close_line].split(".then(", 1)[1]
+    m = re.match(r"\s*\(?\s*[\[\{]?([^)\]\}]*)", tail)
+    if not m:
+        return []
+    return re.findall(r"[A-Za-z_$][\w$]*", m.group(1))
+
+
+def trailing_checked(lines, end, names, span=8):
+    """
+    Vài dòng ngay sau câu lệnh có kiểm lỗi CỦA ĐÚNG BIẾN vừa nhận kết quả
+    không?
+
+    ⚠ PHẢI GẮN VỚI TÊN BIẾN, không chỉ "có chữ error đâu đó trong vùng".
+    Đã trả giá: route đối soát có
+
+        const { data: taken } = await admin.from("misa_invoice_snapshots")…
+        if (taken) return NextResponse.json({ error: "…đã nối rồi" })
+
+    Chữ `error:` ở đây là KHOÁ CỦA JSON TRẢ VỀ, chẳng liên quan gì tới việc
+    truy vấn có lỗi hay không — mà truy vấn đó thì thật sự không kiểm. Nới
+    tới mức nhận cả nó là bỏ lọt một lỗi thật.
+    """
+    names = set(names)
+    for line in lines[end : end + span]:
+        for n in names:
+            if re.search(r"\b%s\s*[?.]?\.\s*error\b" % re.escape(n), line):
+                return True
+            # Cùng MỘT DÒNG: `const qErr = ([aRes] as Array<{ error?… }>)`
+            if re.search(r"\b%s\b" % re.escape(n), line) and re.search(r"\berror\b", line):
+                return True
+        # Bí danh: `const batchRes = results[2]` rồi mới `if (batchRes.error)`.
+        m = re.match(r"\s*(?:const|let)\s+(?:\[([^\]]*)\]|([A-Za-z_$][\w$]*))\s*=\s*(.+)", line)
+        if m and any(re.search(r"\b%s\b" % re.escape(n), m.group(3)) for n in names):
+            names |= set(re.findall(r"[A-Za-z_$][\w$]*", m.group(1) or m.group(2) or ""))
+    return False
+
+
+def statement_end(lines, depths, start):
+    """Chỉ số dòng ngay SAU câu lệnh mở ở `start` (theo độ sâu ngoặc)."""
+    base = depths[start]
+    for k in range(start, min(start + 200, len(lines) - 1)):
+        if depths[k + 1] > base:
+            continue
+        nxt = lines[k + 1].strip()
+        # Còn nối chuỗi / còn nhánh ternary thì câu lệnh chưa hết.
+        if nxt.startswith((".", "?", ":")):
+            continue
+        return k + 1
+    return min(start + 200, len(lines))
 
 
 def builder_checked(lines, i):
@@ -190,6 +365,7 @@ def builder_checked(lines, i):
 
 def analyse(path):
     lines = open(path, encoding="utf-8").read().split("\n")
+    depths = line_depths(lines)
     out = []
     for i, line in enumerate(lines):
         if "supabase" not in line and ".from(" not in line and "await" not in line:
@@ -203,11 +379,22 @@ def analyse(path):
             continue
 
         end = span_end(lines, i)
-        # Ít nhất 3 dòng phía trên: đủ để thấy `const { data, error } =` và
-        # ghi chú `// audit-ok:` đặt ngay trên lời gọi. Câu lệnh dài hơn thì
-        # span_start lùi xa hơn.
-        start = min(span_start(lines, i), max(0, i - 3))
+        # Cửa sổ soi = ĐÚNG câu lệnh này, không hơn. `span_start` lùi tới đầu
+        # câu lệnh nên `const { data, error } =` ở trên vẫn nằm trong.
+        #
+        # ⚠ Trước đây còn lùi cứng thêm 3 dòng nữa. Ba dòng đó thường thuộc
+        # câu lệnh KHÁC, và chỉ cần câu lệnh trên có kiểm lỗi là câu lệnh
+        # dưới được ăn theo:
+        #     const okRes = await …            ← đã kiểm
+        #     if (okRes.error) …               ← chữ `error` nằm đây
+        #     const badRes = await supabase…   ← KHÔNG kiểm, mà được tha
+        # Chính cái docstring của hàm `checked_after` cảnh báo lỗi này, rồi
+        # `analyse` lại tự mắc.
+        start = span_start(lines, i)
         window = "\n".join(lines[start:end])
+        # Ghi chú `// audit-ok:` thì được phép đứng NGAY TRÊN lời gọi — nó là
+        # chú thích của lời gọi, không phải của câu lệnh trên.
+        preamble = "\n".join(lines[max(0, i - 3) : start])
         # Xác định loại thao tác trong cửa sổ
         op = None
         for w in WRITE_OPS:
@@ -226,7 +413,7 @@ def analyse(path):
             or "selectResilient" in window
             or "throwOnError" in window
             or checked_after(lines, end, window)
-            or promise_all_checked(lines, i)
+            or enclosing_assignment_checked(lines, depths, i)
             or builder_checked(lines, i)
         )
         if checked:
@@ -241,7 +428,11 @@ def analyse(path):
         # không làm gì được). Đánh dấu bằng `// audit-ok: <lý do>` ngay
         # trên lời gọi. Bắt buộc có lý do để không bị lạm dụng làm cách
         # tắt cảnh báo cho tiện.
-        if re.search(r"//\s*audit-ok:\s*\S", window):
+        # `[^\S\n]*` chứ KHÔNG phải `\s*`: `\s` gồm cả ký tự xuống dòng, nên
+        # `// audit-ok:` bỏ trống vẫn khớp — nó nuốt dấu xuống dòng rồi lấy
+        # chữ đầu của DÒNG KẾ TIẾP làm "lý do". Luật "bắt buộc có lý do" khi
+        # đó chỉ còn trên giấy.
+        if re.search(r"//[^\S\n]*audit-ok:[^\S\n]*\S", preamble + "\n" + window):
             continue
 
         out.append({

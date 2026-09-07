@@ -44,11 +44,18 @@ async function handlePublish(req: Request) {
   const supa = createServerSupabaseClient()
   const { data: { user: authUser } } = await supa.auth.getUser()
   if (!authUser) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
-  const { data: profile } = await supa
+  const { data: profile, error: profileErr } = await supa
     .from("users")
     .select("id, role, org_id")
     .eq("id", authUser.id)
     .maybeSingle()
+  // Truy vấn hỏng ≠ không đủ quyền — xem ghi chú ở reconcile-action.
+  if (profileErr) {
+    return NextResponse.json(
+      { error: `Không đọc được hồ sơ người dùng: ${profileErr.message}` },
+      { status: 500 }
+    )
+  }
   if (!profile || !["owner", "accountant", "manager"].includes(profile.role)) {
     return NextResponse.json(
       { error: "Chỉ Chủ NPP, Kế toán hoặc Quản lý mới được phát hành hoá đơn" },
@@ -120,6 +127,12 @@ async function handlePublish(req: Request) {
       admin.from("company_einvoice_config").select("is_active, username_enc, password_enc, api_base, tax_code, token_path, publish_path, seller_name, seller_address, misa_company_id, misa_org_unit_id, misa_template_id, misa_user_id, misa_inv_series, misa_inv_template_no, invoice_type, is_inherit_from_old_template, misa_is_invoice_with_code, sandbox").eq("org_id", orgId).maybeSingle(),
       admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
     ])
+    // Truy vấn HỎNG khác hẳn "chưa cấu hình". Không tách ra thì cả hai đều
+    // ra `cfg == null` và người dùng bị đẩy vào trang Cài đặt để xem một
+    // cấu hình vốn đã đúng — sai chẩn đoán, và lỗi thật thì không ai thấy.
+    // Ném ra để catch ở dưới đưa hoá đơn khỏi trạng thái 'pending'.
+    const cfgErr = cfgRes.error || orgRes.error
+    if (cfgErr) throw new Error(`Không đọc được cấu hình MISA: ${cfgErr.message}`)
     const cfg = cfgRes.data
     if (!cfg || !cfg.is_active) {
       await admin.from("invoices").update({ misa_status: "error", misa_error: "Chưa cấu hình tài khoản MISA" }).eq("id", invoiceId)

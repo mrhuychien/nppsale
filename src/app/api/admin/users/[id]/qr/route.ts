@@ -61,11 +61,19 @@ export async function GET(
   const auth = await authorizeOwner(params.id)
   if (auth.error) return auth.error
   const { admin, target } = auth
-  const { data } = await admin
+  const { data, error: tokenErr } = await admin
     .from("qr_login_tokens")
     .select("token, issued_at")
     .eq("user_id", params.id)
     .maybeSingle()
+  // Hỏng mà im thì màn hình hiện "chưa phát QR" cho người ĐÃ có QR — và
+  // chủ NPP bấm phát lại, làm QR đang dùng của nhân viên hết hiệu lực.
+  if (tokenErr) {
+    return NextResponse.json(
+      { error: `Không đọc được QR hiện tại: ${tokenErr.message}` },
+      { status: 500 }
+    )
+  }
   const token = data?.token || null
   return NextResponse.json({
     token,

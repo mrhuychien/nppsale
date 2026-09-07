@@ -38,11 +38,18 @@ async function handle(req: Request) {
   const supa = createServerSupabaseClient()
   const { data: { user: authUser } } = await supa.auth.getUser()
   if (!authUser) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
-  const { data: profile } = await supa
+  const { data: profile, error: profileErr } = await supa
     .from("users")
     .select("role, org_id")
     .eq("id", authUser.id)
     .maybeSingle()
+  // Truy vấn hỏng ≠ không đủ quyền — xem ghi chú ở reconcile-action.
+  if (profileErr) {
+    return NextResponse.json(
+      { error: `Không đọc được hồ sơ người dùng: ${profileErr.message}` },
+      { status: 500 }
+    )
+  }
   if (!profile || !["owner", "accountant"].includes(profile.role)) {
     return NextResponse.json(
       { error: "Chỉ Chủ NPP hoặc Kế toán mới được test kết nối" },

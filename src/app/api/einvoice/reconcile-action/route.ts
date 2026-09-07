@@ -47,11 +47,19 @@ async function handle(req: Request) {
     data: { user: authUser },
   } = await supa.auth.getUser()
   if (!authUser) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
-  const { data: profile } = await supa
+  const { data: profile, error: profileErr } = await supa
     .from("users")
     .select("id, role, org_id")
     .eq("id", authUser.id)
     .maybeSingle()
+  // Truy vấn hỏng ≠ không đủ quyền. Gộp hai thứ vào một câu 403 là bảo
+  // người dùng đi xin quyền cho một thứ họ đã có, còn lỗi thật thì mất dấu.
+  if (profileErr) {
+    return NextResponse.json(
+      { error: `Không đọc được hồ sơ người dùng: ${profileErr.message}` },
+      { status: 500 }
+    )
+  }
   if (!profile || !["owner", "accountant", "manager"].includes(profile.role)) {
     return NextResponse.json({ error: "Không có quyền" }, { status: 403 })
   }
@@ -123,13 +131,22 @@ async function link(admin: Admin, orgId: string, snap: Snap, invoiceId?: string)
     )
   }
 
-  const { data: taken } = await admin
+  // ⚠ Truy vấn này là HÀNG RÀO chống nối hai hoá đơn MISA vào cùng một lần
+  // bán. Không kiểm lỗi thì lúc nó hỏng, `taken` là null — y hệt "chưa ai
+  // nối" — và hàng rào lặng lẽ mở ra. Hỏng thì phải DỪNG, không được đoán.
+  const { data: taken, error: takenErr } = await admin
     .from("misa_invoice_snapshots")
     .select("id, inv_series, inv_no")
     .eq("org_id", orgId)
     .eq("invoice_id", invoiceId)
     .neq("id", snap.id)
     .maybeSingle()
+  if (takenErr) {
+    return NextResponse.json(
+      { error: `Không kiểm tra được hoá đơn này đã nối chưa: ${takenErr.message}` },
+      { status: 500 }
+    )
+  }
   if (taken) {
     return NextResponse.json(
       {
@@ -195,11 +212,17 @@ async function createFromSnapshot(admin: Admin, orgId: string, snap: Snap) {
   const refId = snap.ref_id as string
   if (!refId) return NextResponse.json({ error: "Dòng này không có RefID." }, { status: 400 })
 
-  const { data: cfg } = await admin
+  const { data: cfg, error: cfgErr } = await admin
     .from("company_einvoice_config")
     .select("api_base, tax_code, token_path, username_enc, password_enc, misa_is_invoice_with_code")
     .eq("org_id", orgId)
     .maybeSingle()
+  if (cfgErr) {
+    return NextResponse.json(
+      { error: `Không đọc được cấu hình MISA: ${cfgErr.message}` },
+      { status: 500 }
+    )
+  }
   if (!cfg) return NextResponse.json({ error: "Chưa cấu hình MISA" }, { status: 400 })
 
   let misaConfig: MisaConfig

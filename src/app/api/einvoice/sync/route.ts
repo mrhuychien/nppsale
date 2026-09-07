@@ -150,10 +150,20 @@ async function handle(req: Request) {
         if (!raw) {
           // MISA không trả gì. ĐỪNG hạ một trạng thái đang đúng — có thể
           // chỉ là lỗi tạm. Chỉ ghi nhận là đã hỏi.
-          await admin
+          const { error: touchErr } = await admin
             .from("invoices")
             .update({ misa_last_checked_at: new Date().toISOString() })
             .eq("id", inv.id)
+          // Mốc "đã hỏi lúc nào" là thứ vòng quét lượt sau dựa vào để xếp
+          // thứ tự. Ghi hỏng mà im thì tờ này bị hỏi lại mãi, còn tờ khác
+          // thì không tới lượt — và không có gì để lần ra vì sao.
+          if (touchErr) {
+            report.errors.push({
+              org_id: cfg.org_id,
+              invoice_id: inv.id,
+              message: `Không ghi được mốc đã hỏi: ${touchErr.message}`,
+            })
+          }
           continue
         }
 
@@ -185,7 +195,7 @@ async function handle(req: Request) {
         // Ghi log những tờ có chuyện đáng nói — không log tờ bình thường,
         // nếu không einvoice_logs thành bãi rác và không ai đọc nữa.
         if (applied.summary.notes.length) {
-          await admin.from("einvoice_logs").insert({
+          const { error: logErr } = await admin.from("einvoice_logs").insert({
             org_id: cfg.org_id,
             invoice_id: inv.id,
             request_payload: { source: "sync", ref_id: inv.misa_ref_id },
@@ -194,6 +204,16 @@ async function handle(req: Request) {
             error_message: applied.summary.notes.join("\n"),
             misa_inv_no: applied.summary.invNo,
           })
+          // Đây KHÔNG phải log best-effort: chỗ này chỉ ghi những tờ có
+          // chuyện đáng nói. Mất một dòng là mất đúng cái ghi chú mà kế
+          // toán cần đọc, nên hỏng thì phải nói ra.
+          if (logErr) {
+            report.errors.push({
+              org_id: cfg.org_id,
+              invoice_id: inv.id,
+              message: `Không ghi được nhật ký hoá đơn: ${logErr.message}`,
+            })
+          }
         }
       } catch (e) {
         // ⚠ Lỗi MỘT hoá đơn không được kéo theo cả lượt: gom lại, chạy

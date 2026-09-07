@@ -32,11 +32,20 @@ export async function GET() {
   const a = await authOrgRole()
   if ("error" in a) return NextResponse.json({ error: a.error }, { status: a.status })
   const admin = createAdminClient()
-  const { data } = await admin
+  // Không kiểm lỗi ở đây thì truy vấn hỏng cũng ra `config: null`, tức là
+  // màn Cài đặt hiện "chưa cấu hình" cho một đơn vị ĐÃ cấu hình xong — và
+  // người dùng nhập lại từ đầu.
+  const { data, error: cfgErr } = await admin
     .from("company_einvoice_config")
     .select("id, org_id, provider, api_base, tax_code, seller_name, seller_address, misa_company_id, misa_org_unit_id, misa_template_id, misa_user_id, misa_inv_series, misa_inv_template_no, username_enc, password_enc, sandbox, is_active, token_path, publish_path, misa_app_id, sign_type, invoice_type, is_inherit_from_old_template, misa_is_invoice_with_code, created_at, updated_at")
     .eq("org_id", a.orgId)
     .maybeSingle()
+  if (cfgErr) {
+    return NextResponse.json(
+      { error: `Không đọc được cấu hình MISA: ${cfgErr.message}` },
+      { status: 500 }
+    )
+  }
   if (!data) return NextResponse.json({ config: null })
   const { username_enc, password_enc, ...rest } = data
   return NextResponse.json({

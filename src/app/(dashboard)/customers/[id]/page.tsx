@@ -10,6 +10,8 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CustomerPhotoCapture } from "@/components/customers/customer-photo-capture"
+import { CustomerManagers } from "@/components/customers/customer-managers"
+import { buildManagers, type Manager } from "@/lib/customers/managers"
 import { CustomerForm } from "@/components/customers/customer-form"
 import { AssignmentManager } from "@/components/customers/assignment-manager"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -58,6 +60,8 @@ export default function CustomerDetailPage() {
   const { groups } = useCustomerGroups()
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [assignments, setAssignments] = useState<CustomerAssignment[]>([])
+  /** Ai phụ trách điểm bán này + mỗi người bán ngành hàng gì. */
+  const [managers, setManagers] = useState<Manager[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -106,7 +110,34 @@ export default function CustomerDetailPage() {
       .find((r) => r?.error)?.error
     if (qErr2) console.error("[customers/id] truy vấn lỗi:", qErr2.message)
     if (custRes.data) setCustomer(custRes.data as unknown as Customer)
-    setAssignments((assignRes.data as unknown as CustomerAssignment[]) || [])
+    const assignRows = (assignRes.data as unknown as CustomerAssignment[]) || []
+    setAssignments(assignRows)
+
+    // Ngành hàng của từng người phụ trách. Hỏi RIÊNG hai bảng rồi ghép ở
+    // lib thuần: nhúng lồng ba tầng qua PostgREST vừa khó đọc vừa phụ
+    // thuộc cách RLS áp lên từng bảng cha.
+    const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
+    if (managerIds.length === 0) {
+      setManagers([])
+    } else {
+      const [linkRes, supRes] = await Promise.all([
+        supabase.from("user_suppliers").select("user_id, supplier_id").in("user_id", managerIds),
+        supabase.from("suppliers").select("id, name"),
+      ])
+      const linkErr = [linkRes, supRes].find((r) => r.error)?.error
+      if (linkErr) console.error("[customers/id] truy vấn lỗi:", linkErr.message)
+      setManagers(
+        buildManagers(
+          assignRows.map((a) => ({ user_id: a.user_id, role: a.role, status: a.status })),
+          assignRows
+            .map((a) => a.user)
+            .filter((u): u is NonNullable<typeof u> => !!u)
+            .map((u) => ({ id: u.id, full_name: u.full_name, is_active: u.is_active })),
+          (linkRes.data as Array<{ user_id: string; supplier_id: string }>) || [],
+          (supRes.data as Array<{ id: string; name: string }>) || []
+        )
+      )
+    }
 
     // KPIs + tab data
     const [
@@ -407,6 +438,20 @@ export default function CustomerDetailPage() {
                     }}
                     onChanged={fetchData}
                   />
+                </CardContent>
+              </Card>
+
+              {/* Ai phụ trách — đặt cạnh ảnh vì cùng trả lời câu hỏi
+                  "điểm bán này là của ai, gọi ai". */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">Phụ trách điểm bán</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab("assignments")}>
+                    Sửa phân công
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <CustomerManagers managers={managers} />
                 </CardContent>
               </Card>
 
@@ -799,7 +844,15 @@ export default function CustomerDetailPage() {
             </TabsContent>
 
             {/* Tab: Phân công */}
-            <TabsContent value="assignments">
+            <TabsContent value="assignments" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Đang phụ trách</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CustomerManagers managers={managers} />
+                </CardContent>
+              </Card>
               <AssignmentManager customerId={customer.id} assignments={assignments} onUpdate={fetchData} />
             </TabsContent>
           </Tabs>

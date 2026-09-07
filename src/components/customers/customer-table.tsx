@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Eye, Phone, User, Banknote } from "lucide-react"
 import type { Customer } from "@/types"
+import { CustomerManagersCell } from "@/components/customers/customer-managers"
+import type { Manager } from "@/lib/customers/managers"
 import type { CustomerColumnKey } from "@/app/(dashboard)/customers/list-config"
 
 interface LastOrderInfo {
@@ -28,6 +30,8 @@ interface CustomerTableProps {
   debts?: Record<string, number>
   lastOrders?: Record<string, LastOrderInfo>
   lastVisits?: Record<string, LastVisitInfo>
+  /** Người phụ trách theo customer_id — xem lib/customers/managers. */
+  managers?: Record<string, Manager[]>
   canCollect?: boolean
   visibleColumns: CustomerColumnKey[]
   selectable?: boolean
@@ -43,6 +47,7 @@ export function CustomerTable({
   debts = {},
   lastOrders = {},
   lastVisits = {},
+  managers = {},
   canCollect = false,
   visibleColumns,
   selectable = false,
@@ -79,6 +84,7 @@ export function CustomerTable({
               {show("owner") && <TableHead>Chủ cửa hàng</TableHead>}
               {show("phone") && <TableHead>SĐT</TableHead>}
               {show("channel") && <TableHead>Tuyến</TableHead>}
+              {show("managers") && <TableHead>Phụ trách</TableHead>}
               {show("lastVisit") && showEnrichment && <TableHead>Ghé thăm</TableHead>}
               {show("lastOrder") && showEnrichment && <TableHead>Đơn gần nhất</TableHead>}
               {show("debt") && showEnrichment && <TableHead className="text-right">Công nợ</TableHead>}
@@ -122,6 +128,11 @@ export function CustomerTable({
                   {show("channel") && (
                     <TableCell>
                       {c.channel && <Badge variant="outline">{c.channel}</Badge>}
+                    </TableCell>
+                  )}
+                  {show("managers") && (
+                    <TableCell className="max-w-[200px]">
+                      <CustomerManagersCell managers={managers[c.id] || []} />
                     </TableCell>
                   )}
                   {show("lastVisit") && showEnrichment && (

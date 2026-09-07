@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
 import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
 import Link from "next/link"
@@ -95,6 +96,7 @@ export default function CustomersPage() {
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])
   const [primaryRepMap, setPrimaryRepMap] = useState<Record<string, string>>({})
+  const [managersMap, setManagersMap] = useState<Record<string, Manager[]>>({})
   const [visitTarget, setVisitTarget] = useState<Customer | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -200,11 +202,13 @@ export default function CustomersPage() {
           .in("customer_id", ids)
           .order("visit_date", { ascending: false })
           .order("check_in_at", { ascending: false }),
+        // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
+        // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
+        // vẫn chỉ lấy người CHÍNH — xem repMap.
         supabase
           .from("customer_assignments")
-          .select("customer_id, user_id, role, status")
+          .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
           .in("customer_id", ids)
-          .eq("role", "primary")
           .eq("status", "active"),
       ])
       const qErr = ([recvRes, lastOrdersRes, lastVisitsRes, assignsRes] as Array<{ error?: { message?: string } | null }>)
@@ -236,11 +240,52 @@ export default function CustomersPage() {
         }
       }
       setLastVisits(visitMap)
+      type AssignRow = {
+        customer_id: string
+        user_id: string
+        role: string | null
+        status: string | null
+        user?: { id: string; full_name: string; is_active: boolean | null } | null
+      }
+      const assignRows = (assignsRes.data as unknown as AssignRow[]) || []
       const repMap: Record<string, string> = {}
-      for (const a of (assignsRes.data as Array<{ customer_id: string; user_id: string }>) || []) {
-        if (!repMap[a.customer_id]) repMap[a.customer_id] = a.user_id
+      for (const a of assignRows) {
+        // Bộ lọc "nhân viên phụ trách" vẫn hiểu là người CHÍNH — giữ
+        // nguyên hành vi cũ, đừng để việc thêm cột đổi nghĩa bộ lọc.
+        if (a.role === "primary" && !repMap[a.customer_id]) repMap[a.customer_id] = a.user_id
       }
       setPrimaryRepMap(repMap)
+
+      // Ngành hàng của những người đang phụ trách trang này.
+      const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
+      let links: Array<{ user_id: string; supplier_id: string }> = []
+      let sups: Array<{ id: string; name: string }> = []
+      if (managerIds.length > 0) {
+        const [linkRes, supRes] = await Promise.all([
+          supabase.from("user_suppliers").select("user_id, supplier_id").in("user_id", managerIds),
+          supabase.from("suppliers").select("id, name"),
+        ])
+        const linkErr = [linkRes, supRes].find((r) => r.error)?.error
+        if (linkErr) console.error("[app/customers] truy vấn lỗi:", linkErr.message)
+        links = (linkRes.data as typeof links) || []
+        sups = (supRes.data as typeof sups) || []
+      }
+      const byCustomer = new Map<string, AssignRow[]>()
+      for (const a of assignRows) {
+        const arr = byCustomer.get(a.customer_id)
+        if (arr) arr.push(a)
+        else byCustomer.set(a.customer_id, [a])
+      }
+      const mgrMap: Record<string, Manager[]> = {}
+      for (const [cid, rows] of Array.from(byCustomer.entries())) {
+        mgrMap[cid] = buildManagers(
+          rows.map((r) => ({ user_id: r.user_id, role: r.role, status: r.status })),
+          rows.map((r) => r.user).filter((u): u is NonNullable<typeof u> => !!u),
+          links,
+          sups
+        )
+      }
+      setManagersMap(mgrMap)
 
       setLoading(false)
     }
@@ -603,6 +648,7 @@ export default function CustomersPage() {
               debts={debts}
               lastOrders={lastOrders}
               lastVisits={lastVisits}
+              managers={managersMap}
               canCollect={!!user && hasPermission(user.role, "receivables", "create")}
               visibleColumns={visibleColumns}
               selectable={canEdit}
@@ -639,6 +685,10 @@ export default function CustomersPage() {
                       {c.phone && <span>· {c.phone}</span>}
                       {lastVisit && <span>· Ghé {formatDate(lastVisit.visit_date)}</span>}
                       {lastOrder && <span>· Đơn {formatDate(lastOrder.order_date)}</span>}
+                      {/* Trên điện thoại không có cột riêng — nhét vào
+                          dòng phụ dạng gọn, vì "ai phụ trách" là thứ NVBH
+                          hỏi ngay khi thấy một điểm bán lạ. */}
+                      <span>· {managersSummary(managersMap[c.id] || [])}</span>
                     </>
                   }
                   badges={

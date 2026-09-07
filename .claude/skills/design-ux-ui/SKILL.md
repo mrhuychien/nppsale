@@ -211,6 +211,30 @@ same rules:
    index on `(customer_id, slot)` cannot race; count-then-insert can.
    Refill the *lowest free* slot so deleting photo 2 reuses slot 2.
 
+### Showing "who owns this record"
+
+An outlet can be worked by several reps at once, each carrying a different
+product range — so the answer to "who do I call" is a *list*, not one name.
+`lib/customers/managers.ts` builds it from `customer_assignments` ×
+`user_suppliers`; no new table was needed.
+
+1. **Show every assignee, not just the primary.** Collapsing to one name
+   answers a different question than the one being asked.
+2. **Show what each of them sells** — the product range is the *reason*
+   there are several names, and without it the list looks like duplicates.
+3. **An empty scope is a gap, not "everything".** Migration 081 scopes a
+   rep's product visibility to their `user_suppliers`, so a rep with none
+   sees almost nothing. Label it "Chưa gán ngành hàng", never "all".
+4. **Keep assignments to departed staff visible, flagged.** Hiding them
+   makes the outlet look unassigned with no explanation; showing them lets
+   a manager fix it.
+5. **Adding a column must not redefine an existing filter.** The customer
+   list now loads *all* assignments for the new column, but the "rep"
+   filter still keys off `role = 'primary'` exactly as before.
+6. **Sort Vietnamese names with `localeCompare(b, "vi")`.** Plain `<`
+   orders by code point, which puts every capitalised name ahead of every
+   lower-cased one — and field data has both.
+
 ### Reminders that people don't switch off
 
 1. **Group per person, not per record.** A rep with 80 new outlets gets
@@ -303,6 +327,18 @@ the trailing `[^a-z0-9]` filter already dropped the marks — the line was
 redundant, not untested. Removing it was the fix; the load-bearing parts
 (`normalize("NFD")`, and the manual `đ` → `d`, which NFD does *not*
 decompose) each now have a mutation that bites.
+
+**An anchor that does not exist silently widens the slice.** Searching for
+`DEFAULT_CUSTOMER_COLUMNS = ` when the source reads
+`DEFAULT_CUSTOMER_COLUMNS: CustomerColumnKey[] = ` returns -1, the slice
+then starts at the top of the file, and the assertion matched a *different*
+array — staying green after the value was removed. Assert the anchor index
+is `> 0` before slicing from it.
+
+**Pick fixture values that can actually tell the two behaviours apart.**
+A test for Vietnamese collation using "Ánh" vs "Đã" passes under plain
+code-point comparison too, because those happen to order the same way. It
+only bites once the fixture mixes case ("an nguyễn" vs "Bảo").
 
 **A name assertion is not a behaviour assertion.** `toContain("customer_photos_delete")`
 still passed after the policy was renamed `customer_photos_delete_disabled`

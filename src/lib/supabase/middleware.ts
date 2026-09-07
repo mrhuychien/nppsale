@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import {
+  classifyAuthFailure,
+  isSupabaseAuthCookie,
+  type AuthFailureKind,
+} from "./auth-failure"
 
 export async function updateSession(request: NextRequest) {
   // Bypass auth for debug page so users can diagnose even when auth is broken
@@ -57,9 +62,8 @@ export async function updateSession(request: NextRequest) {
   // Nếu có cookie Supabase (sb-*-auth-token) → user đã từng đăng nhập
   // trên device này. Khi getUser() timeout/lỗi, ta TIN cookie thay vì
   // đuổi về /login, để network chập chờn không log user ra.
-  const hasAuthCookie = request.cookies
-    .getAll()
-    .some((c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token"))
+  const authCookies = request.cookies.getAll().filter((c) => isSupabaseAuthCookie(c.name))
+  const hasAuthCookie = authCookies.length > 0
 
   // getSession() đọc phiên từ cookie — KHÔNG gọi mạng khi access token
   // còn hạn (chỉ refresh qua mạng khi token hết hạn). Trước đây dùng
@@ -68,20 +72,30 @@ export async function updateSession(request: NextRequest) {
   // cổng định tuyến; dữ liệu luôn được RLS bảo vệ ở tầng PostgREST và
   // các API nhạy cảm (/api/admin/*, /qr-login) vẫn tự getUser().
   let user = null
-  let authCheckFailed = false
+  let authFailure: AuthFailureKind | null = null
   try {
-    const result = await supabase.auth.getSession()
-    user = result.data.session?.user ?? null
+    // Bắt CẢ HAI đường: supabase-js có lúc ném, có lúc trả `error` trong
+    // kết quả. Chỉ bắt một đường là bỏ lọt đúng nửa còn lại.
+    const { data, error } = await supabase.auth.getSession()
+    user = data.session?.user ?? null
+    if (error) authFailure = classifyAuthFailure(error)
   } catch (err) {
-    console.error("[middleware] auth check failed:", err)
-    authCheckFailed = true
+    authFailure = classifyAuthFailure(err)
+    console.error("[middleware] kiểm phiên ném lỗi:", err)
   }
 
-  // Redirect unauthenticated users to login — TRỪ khi auth check fail
-  // nhưng cookie sb-* vẫn còn (giữ session trên device đã đăng nhập).
+  // Redirect unauthenticated users to login — TRỪ khi việc kiểm phiên hỏng
+  // TẠM THỜI mà cookie sb-* vẫn còn (giữ session trên device đã đăng nhập).
+  //
+  // ⚠ "Dứt khoát" thì KHÔNG được tin cookie nữa. Đo được trên production:
+  // `refresh_token_not_found` rơi vào nhánh tin-cookie, nên người dùng
+  // được cho qua vào trang cần đăng nhập mà không hề có phiên — trang
+  // rỗng, không lời giải thích, và lần vào sau vẫn y như vậy vì cái cookie
+  // chết đó không ai xoá.
+  const trustCookie = authFailure === "transient" && hasAuthCookie
   if (
     !user &&
-    !(authCheckFailed && hasAuthCookie) &&
+    !trustCookie &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     !request.nextUrl.pathname.startsWith("/debug") &&
@@ -89,7 +103,13 @@ export async function updateSession(request: NextRequest) {
   ) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
-    return NextResponse.redirect(url)
+    const redirect = NextResponse.redirect(url)
+    // Phiên đã mất hẳn → dọn cookie chết, nếu không lần sau lại vào đúng
+    // nhánh này và người dùng không bao giờ đăng nhập lại sạch sẽ được.
+    if (authFailure === "definitive") {
+      for (const c of authCookies) redirect.cookies.delete(c.name)
+    }
+    return redirect
   }
 
   // Server-side role check for admin routes

@@ -394,10 +394,12 @@ describe("Cron nhắc nhở", () => {
     expect(CRON).toContain("report.unassigned +=")
   })
 
-  it("đã đăng ký lịch chạy", () => {
-    const vercel = JSON.parse(read("vercel.json")) as { crons: Array<{ path: string; schedule: string }> }
-    const hit = vercel.crons.find((c) => c.path === "/api/customers/photo-reminders")
-    expect(hit, "chưa khai báo cron trong vercel.json").toBeTruthy()
+  /** Không còn cron riêng — chạy qua cửa chung, mỗi thứ Hai. */
+  it("được lịch hằng ngày gọi tới vào thứ Hai", () => {
+    const DISPATCH = read("src/app/api/cron/daily/route.ts")
+    expect(DISPATCH).toContain('from "@/app/api/customers/photo-reminders/route"')
+    expect(DISPATCH).toContain("isWeeklyDue(now, MONDAY_VN)")
+    expect(DISPATCH).toContain('runJob("customer-photo-reminders"')
   })
 })
 

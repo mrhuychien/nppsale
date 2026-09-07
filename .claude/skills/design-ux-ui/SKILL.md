@@ -259,6 +259,33 @@ product range — so the answer to "who do I call" is a *list*, not one name.
 5. **Records with nobody assigned can't be reminded** — count them
    separately in the run report instead of dropping them.
 
+### Scheduled jobs on this project
+
+The project runs on Vercel **Hobby**, which does not accept a schedule
+more frequent than once a day. This was paid for: the first commit that
+added `"schedule": "0 * * * *"` to `vercel.json` was the exact commit
+Vercel stopped producing deployments — no commit in between, and **13
+commits shipped to `main` with nothing deployed**. There was no failed
+build to look at either; the deployment is rejected before a deployment
+record exists, so the dashboard just looks quiet.
+
+1. **Declare exactly one cron**, `/api/cron/daily`, at a daily schedule.
+   `tests/cron-daily.test.ts` parses `vercel.json` and fails the build if
+   any schedule fires more than once a day.
+2. **The dispatcher calls the real route handlers**, it does not
+   reimplement them — so each endpoint stays independently callable by
+   hand for debugging, with no second copy to drift.
+3. **Order jobs most-important first.** Hobby cuts the function off well
+   before the `maxDuration` in the code; whatever is last is what gets
+   lost. Heaviest job goes last, and it must be safe to skip a day.
+4. **Every job is wrapped individually.** One failure must not take the
+   others down, and a job skipped by schedule reports `skipped` with a
+   reason rather than vanishing from the run report.
+5. **Vercel cron fires on UTC; convert before reading a weekday.**
+   `0 18 * * *` is 01:00 the *next day* in Vietnam, so a "Monday" job
+   keyed off the UTC weekday runs on the wrong day. `lib/cron/schedule.ts`
+   owns that conversion — no route recomputes the offset.
+
 ### Bulk import / export screens
 
 Any screen that writes many rows from a file follows the same shape, and

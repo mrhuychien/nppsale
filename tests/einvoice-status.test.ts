@@ -473,12 +473,17 @@ describe("§3.2 vòng quét — hai lượt, xác thực, chịu lỗi", () => {
     expect(auth).not.toMatch(/provided\s*===\s*secret/)
   })
 
-  it("có lịch cron cho CẢ HAI route", () => {
-    const vercel = JSON.parse(read("vercel.json"))
-    const paths = (vercel.crons || []).map((c: { path: string }) => c.path)
-    expect(paths).toContain("/api/einvoice/sync")
-    expect(paths).toContain("/api/einvoice/pull-snapshots")
-    for (const c of vercel.crons) expect(c.schedule, `${c.path} thiếu lịch`).toBeTruthy()
+  /**
+   * Cả hai route giờ chạy qua MỘT cửa /api/cron/daily, không khai riêng
+   * trong vercel.json nữa — xem tests/cron-daily.test.ts để biết vì sao
+   * (gói Hobby không nhận lịch dày hơn một lần mỗi ngày).
+   */
+  it("cả hai route đều được lịch hằng ngày gọi tới", () => {
+    const DISPATCH = read("src/app/api/cron/daily/route.ts")
+    expect(DISPATCH).toContain('from "@/app/api/einvoice/sync/route"')
+    expect(DISPATCH).toContain('from "@/app/api/einvoice/pull-snapshots/route"')
+    expect(DISPATCH).toContain('runJob("einvoice-sync"')
+    expect(DISPATCH).toContain('runJob("einvoice-pull-snapshots"')
   })
 
   it("CRON_SECRET có trong .env.example", () => {

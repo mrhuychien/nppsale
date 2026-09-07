@@ -234,6 +234,14 @@ product range — so the answer to "who do I call" is a *list*, not one name.
 6. **Sort Vietnamese names with `localeCompare(b, "vi")`.** Plain `<`
    orders by code point, which puts every capitalised name ahead of every
    lower-cased one — and field data has both.
+7. **Adding a column to a list is not finished when the column renders.**
+   `useListViewPrefs` persists the chosen columns per browser, and the
+   saved list is a *closed set*: it filtered out unknown keys but never
+   adopted newly-added ones, so the people most likely to want a new
+   column — the ones who had customised their columns — were the only
+   ones who never saw it. Store the catalog as `knownColumns` alongside
+   the selection, so "new key" is distinguishable from "key the user
+   switched off", and adopt only the former.
 
 ### Reminders that people don't switch off
 

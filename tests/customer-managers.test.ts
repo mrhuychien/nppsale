@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { adoptNewKeys } from "../src/hooks/use-list-view-prefs"
 import {
   buildManagers,
   scopeLabel,
@@ -277,5 +278,84 @@ describe("Khối hiển thị", () => {
 
   it("phân biệt phụ trách chính với phụ", () => {
     expect(CMP).toContain('m.isPrimary ? "Phụ trách chính" : "Phụ"')
+  })
+})
+
+// =====================================================================
+describe("Tuỳ chọn cột đã lưu gặp cột MỚI", () => {
+  const CAT = ["owner", "phone", "channel", "managers", "lastVisit"] as const
+  type K = (typeof CAT)[number]
+
+  /**
+   * ⚠ ĐÂY LÀ LÝ DO cột "Phụ trách" không hiện dù đã thêm vào danh mục.
+   * localStorage giữ danh sách cột từ trước; mã cũ chỉ LỌC BỎ key lạ, không
+   * bao giờ THÊM key mới — nên ai đã từng mở bảng chọn cột sẽ không bao giờ
+   * thấy cột mới, dù chú thích của hook hứa ngược lại.
+   */
+  it("dữ liệu lưu từ trước (chưa có `known`) thì nhận cột mới", () => {
+    const saved: K[] = ["owner", "phone", "channel", "lastVisit"]
+    expect(adoptNewKeys(saved, undefined, CAT)).toContain("managers")
+  })
+
+  it("giữ đúng thứ tự danh mục, không nối vào cuối", () => {
+    const saved: K[] = ["owner", "phone", "channel", "lastVisit"]
+    expect(adoptNewKeys(saved, undefined, CAT)).toEqual([
+      "owner", "phone", "channel", "managers", "lastVisit",
+    ])
+  })
+
+  /** Cột người dùng CỐ Ý tắt thì phải nằm im — đừng bật lại sau mỗi lần nạp. */
+  it("cột đã tắt (có trong `known`) không bị bật lại", () => {
+    const saved: K[] = ["owner", "phone"]
+    const known: K[] = ["owner", "phone", "channel", "lastVisit"]
+    const out = adoptNewKeys(saved, known, CAT)
+    expect(out).not.toContain("channel")
+    expect(out).not.toContain("lastVisit")
+    // "managers" chưa từng có trong `known` → là cột MỚI → bật lên.
+    expect(out).toContain("managers")
+  })
+
+  it("không có gì mới thì trả về nguyên si", () => {
+    const saved: K[] = ["owner", "managers"]
+    expect(adoptNewKeys(saved, [...CAT], CAT)).toEqual(saved)
+  })
+
+  it("danh sách lưu rỗng vẫn nhận cột mới", () => {
+    expect(adoptNewKeys([] as K[], ["owner", "phone"] as K[], CAT)).toEqual([
+      "channel", "managers", "lastVisit",
+    ])
+  })
+})
+
+describe("Hook lưu tuỳ chọn cột", () => {
+  const HOOK = strip(read("src/hooks/use-list-view-prefs.ts"))
+
+  it("CẢ HAI nhánh cột và bộ lọc đều đi qua adoptNewKeys", () => {
+    const i = HOOK.indexOf("const raw = window.localStorage.getItem")
+    expect(i).toBeGreaterThan(0)
+    const load = HOOK.slice(i, HOOK.indexOf("}, [storageKey", i))
+    // Soi TỪNG nhánh. Chỉ đếm "có chứa adoptNewKeys" là xanh cả khi một
+    // nhánh đã bị gỡ, vì nhánh kia vẫn còn (đã đo).
+    expect(load).toContain("parsed.knownColumns")
+    expect(load).toContain("parsed.knownFilters")
+    expect(load.match(/adoptNewKeys\(/g)?.length).toBe(2)
+  })
+
+  /** Không ghi `known` thì lần nạp sau lại coi mọi cột đã tắt là cột mới. */
+  it("khi ghi có đóng dấu danh mục hiện tại", () => {
+    expect(HOOK).toContain("knownColumns: [...defaultColsRef.current]")
+    expect(HOOK).toContain("knownFilters: [...defaultFiltersRef.current]")
+  })
+
+  /**
+   * ⚠ `persist` phải khai báo TRƯỚC effect nạp: effect đưa nó vào mảng
+   * deps, mà mảng deps được đọc lúc render — một `const` đứng sau sẽ còn
+   * trong vùng chết và nổ ReferenceError.
+   */
+  it("persist khai báo trước effect dùng nó", () => {
+    expect(HOOK.indexOf("const persist = useCallback")).toBeLessThan(
+      HOOK.indexOf("const raw = window.localStorage.getItem")
+    )
+    expect(HOOK).toContain("}, [storageKey, persist])")
   })
 })

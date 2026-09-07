@@ -185,6 +185,40 @@ reps pinch-zoom to read price lists.
     row has no proof at all, say so on the card rather than showing
     nothing.
 
+### Bulk import / export screens
+
+Any screen that writes many rows from a file follows the same shape, and
+`/finance/opening-balances` is the reference implementation:
+
+1. **Export first, import the same shape back.** One `columnsFor(kind)`
+   feeds both the export headers and the import header-matcher, so they
+   cannot drift. Match columns by *normalised header name*, never by
+   position — people reorder columns in Excel.
+2. **Round-tripping an untouched export must produce zero writes.** If a
+   blank cell exports as `0` and `0` means delete, re-importing the file
+   you just downloaded wipes the book. There is a test for exactly this.
+3. **Blank ≠ zero.** Blank is "don't touch this row" (you export 500
+   customers and fill in 40); `0` is an explicit instruction, here "remove
+   the opening balance".
+4. **Refuse ambiguity instead of resolving it.** `12.5` in a VND column is
+   either 125 or 12.5 depending on which convention the typist used —
+   guessing is a 10× error in a money column, so the row becomes an error
+   with the reason shown. Same for two customers matching one name.
+5. **Preview with a plan fingerprint.** Show create / update / delete /
+   unchanged / skip / error counts and a per-row before → after, then gate
+   the write button on the user confirming *that* fingerprint. Re-picking
+   the file changes the fingerprint and re-locks the button.
+6. **Write row by row and collect failures with the Excel row number.**
+   One bad row must not roll back 499 good ones, and "row 37" is what the
+   user needs to fix it. Say plainly that there is no enclosing
+   transaction, and make re-running the same file converge (a partial
+   unique index turns the second run into updates, not duplicates).
+7. **Excel dates need local-time extraction.** `toISOString()` on a date
+   Excel gave you shifts a day in every positive offset, and Vietnam is
+   UTC+7.
+8. **Never silently truncate the fetch.** If the entity list hits its cap,
+   the exported file is missing customers — say so on screen.
+
 ### Testing UI by reading source — the trap that keeps recurring
 
 These packs are tested by asserting on the source text. Strip comments
@@ -220,6 +254,19 @@ element under test and read its value.
 **When a mutation leaves the suite green, check the mutation applied
 first.** Two of the mutations written for this pack never matched their
 target string, which reads exactly like a test that has no teeth.
+
+**A green mutation can also mean the code is dead.** Deleting the explicit
+diacritic-stripping line from `normalizeHeader` changed nothing, because
+the trailing `[^a-z0-9]` filter already dropped the marks — the line was
+redundant, not untested. Removing it was the fix; the load-bearing parts
+(`normalize("NFD")`, and the manual `đ` → `d`, which NFD does *not*
+decompose) each now have a mutation that bites.
+
+**Window your slice to the statement, not to N characters.** Asserting
+`WHERE opening_balance` within 200 chars of `uq_receivables_opening`
+passed even after that clause was deleted — the window reached into the
+*next* index definition, which still had one. Slice to the terminating
+`;`.
 
 ## 3. Tables
 

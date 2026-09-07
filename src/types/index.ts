@@ -408,6 +408,9 @@ export interface Receivable {
   paid: number
   due_date: string | null
   status: ReceivableStatus
+  /** true = số dư đầu kỳ mang sang từ sổ cũ, không sinh từ đơn hàng. */
+  opening_balance?: boolean
+  note?: string | null
   created_at: string
   // Joined
   customer?: Customer
@@ -615,6 +618,8 @@ export interface Payable {
   due_date: string | null
   status: PayableStatus
   notes: string | null
+  /** true = số dư đầu kỳ mang sang từ sổ cũ, không sinh từ phiếu nhập. */
+  opening_balance?: boolean
   created_at: string
   // Joined
   supplier?: Supplier

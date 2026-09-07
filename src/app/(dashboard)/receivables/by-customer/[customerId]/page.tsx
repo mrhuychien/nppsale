@@ -33,7 +33,8 @@ const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warnin
 interface TimelineEntry {
   id: string
   date: string
-  type: "order" | "payment"
+  /** "opening" = số dư mang sang từ sổ cũ, không gắn đơn hàng nào. */
+  type: "order" | "payment" | "opening"
   amount: number
   balance: number
   label: string
@@ -61,7 +62,7 @@ export default function CustomerDebtDetailPage() {
           supabase
             .from("receivables")
             .select(
-              "id, amount, paid, due_date, status, created_at, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+              "id, amount, paid, due_date, status, created_at, opening_balance, note, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)",
               { count: "exact" }
             )
             .eq("customer_id", customerId)
@@ -128,6 +129,21 @@ export default function CustomerDebtDetailPage() {
     const entries: TimelineEntry[] = []
 
     receivables.forEach((r) => {
+      // Công nợ đầu kỳ KHÔNG gắn đơn hàng nào. Nhánh dưới chỉ dựng dòng
+      // khi có `r.order`, nên trước đây khoản đầu kỳ biến mất khỏi sổ chi
+      // tiết dù vẫn cộng vào tổng nợ — nhìn vào là thấy sổ không khớp
+      // tổng mà không hiểu vì sao.
+      if (r.opening_balance) {
+        entries.push({
+          id: `opening-${r.id}`,
+          date: r.created_at,
+          type: "opening",
+          amount: r.amount,
+          balance: 0,
+          label: r.note || "Công nợ đầu kỳ",
+        })
+        return
+      }
       if (r.order) {
         entries.push({
           id: `order-${r.id}`,
@@ -158,13 +174,13 @@ export default function CustomerDebtDetailPage() {
 
     entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
+    // Đầu kỳ và đơn hàng đều LÀM TĂNG nợ; chỉ thanh toán mới giảm.
+    // Viết "if order thì cộng, còn lại thì trừ" là đúng khi chỉ có hai
+    // loại — thêm loại thứ ba vào là đầu kỳ bị TRỪ khỏi nợ.
+    const increasesDebt = (t: TimelineEntry["type"]) => t === "order" || t === "opening"
     let running = 0
     entries.forEach((e) => {
-      if (e.type === "order") {
-        running += e.amount
-      } else {
-        running -= e.amount
-      }
+      running += increasesDebt(e.type) ? e.amount : -e.amount
       e.balance = running
     })
 
@@ -387,19 +403,19 @@ export default function CustomerDebtDetailPage() {
                   {timeline.map((entry) => (
                     <div key={entry.id} className="flex items-start gap-3 rounded-lg border p-3">
                       <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${
-                        entry.type === "order"
-                          ? "bg-[#eff8ff] text-[#175cd3]"
-                          : "bg-[#ecfdf3] text-tertiary"
+                        entry.type === "payment"
+                          ? "bg-[#ecfdf3] text-tertiary"
+                          : "bg-[#eff8ff] text-[#175cd3]"
                       }`}>
-                        {entry.type === "order" ? "\u{1F4E6}" : "\u{1F4B0}"}
+                        {entry.type === "payment" ? "\u{1F4B0}" : entry.type === "opening" ? "\u{1F4C2}" : "\u{1F4E6}"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-sm">{entry.label}</p>
                           <p className={`font-bold text-sm ${
-                            entry.type === "order" ? "text-destructive" : "text-tertiary"
+                            entry.type === "payment" ? "text-tertiary" : "text-destructive"
                           }`}>
-                            {entry.type === "order" ? "+" : "-"}{formatCurrency(entry.amount)}
+                            {entry.type === "payment" ? "-" : "+"}{formatCurrency(entry.amount)}
                           </p>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">

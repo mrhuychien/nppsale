@@ -22,6 +22,22 @@
 > giữ lại** — nên bảng thêm về sau tự động được xoá, không cần ai nhớ sửa
 > file. Nó cũng dọn storage và tài khoản đăng nhập.
 >
+> ### `05_reset_blank.sql` có hai chế độ
+>
+> Sửa dòng `keep_owner` ở đầu khối `DO $$`:
+>
+> | `keep_owner` | Còn lại | Dùng khi |
+> |---|---|---|
+> | `true` (mặc định) | 1 org + 1 chủ NPP | muốn đăng nhập được ngay sau khi bàn giao |
+> | `false` | **0 org, 0 người, 0 tài khoản đăng nhập** | muốn trắng tinh; người nhận tự tạo tài khoản ở Dashboard rồi chạy `supabase/bootstrap_owner.sql` |
+>
+> Cả hai chế độ đều xoá 70 bảng dữ liệu, mọi file trong storage, và giữ
+> nguyên 3 bucket rỗng. Đã đo trên PostgreSQL 16 với dữ liệu trồng sẵn.
+>
+> ⚠ Chế độ `false` **không còn đường đăng nhập nào** cho tới khi chạy
+> `bootstrap_owner.sql` — app đá về `/login` vì `user_org_id()` trả NULL.
+> Đó là đúng ý đồ, không phải hỏng.
+>
 > ### Hai cách bàn giao — chọn một
 >
 > | | Cách A: Supabase project MỚI | Cách B: xoá sạch project đang dùng |

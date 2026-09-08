@@ -151,6 +151,38 @@ describe("Bộ xoá sạch để bàn giao", () => {
     expect(reset).not.toContain("n_live_tup")
     expect(reset).toContain("query_to_xml")
   })
+
+  /** Hai chế độ: giữ 1 chủ, hoặc trắng tinh 0 org / 0 người. */
+  it("có cờ chọn chế độ, mặc định là GIỮ chủ", () => {
+    expect(reset).toMatch(/keep_owner\s+boolean\s*:=\s*true;/)
+  })
+
+  /**
+   * ⚠ BẪY NULL. Ở chế độ trắng tinh, keep_user là NULL — mà
+   * `WHERE id <> NULL` cho ra NULL chứ KHÔNG phải TRUE, tức là xoá 0
+   * dòng. Dùng chung một câu cho cả hai chế độ thì lệnh chạy êm ru và
+   * toàn bộ người dùng cũ vẫn còn nguyên: đúng thứ đang cần xoá.
+   * Bốn lệnh xoá theo người phải nằm trong nhánh IF keep_owner.
+   */
+  it("chế độ trắng tinh xoá không điều kiện, không so với NULL", () => {
+    const body = reset.slice(reset.indexOf("EXECUTE 'TRUNCATE TABLE "))
+    for (const stmt of [
+      "DELETE FROM public.users;",
+      "DELETE FROM public.organizations;",
+      "DELETE FROM auth.identities;",
+      "DELETE FROM auth.users;",
+    ]) {
+      expect(body, `thiếu nhánh trắng tinh: ${stmt}`).toContain(stmt)
+    }
+    // Và nhánh giữ-chủ vẫn phải lọc theo đúng người.
+    expect(body).toContain("WHERE id <> keep_user")
+    expect(body).toContain("WHERE user_id <> keep_user")
+  })
+
+  /** Trắng tinh xong thì phải có đường dựng lại, nếu không là khoá chết. */
+  it("chỉ ra đường dựng lại sau khi xoá trắng", () => {
+    expect(reset).toContain("bootstrap_owner.sql")
+  })
 })
 
 describe("Cài mới trên project trống — bootstrap", () => {

@@ -47,7 +47,21 @@ BEGIN;
 
 DO $$
 DECLARE
-  -- ⚠⚠ SỬA DÒNG NÀY trước khi chạy: email của tài khoản owner được giữ.
+  -- ⚠⚠ CHỌN MỘT TRONG HAI, sửa ngay đây trước khi chạy:
+  --
+  --   true  — GIỮ 1 org + 1 owner (điền keep_email bên dưới).
+  --           Bàn giao xong đăng nhập được ngay bằng tài khoản đó.
+  --
+  --   false — TRẮNG TINH: 0 org, 0 người dùng, 0 tài khoản đăng nhập.
+  --           Người nhận tự tạo tài khoản ở Supabase Dashboard rồi chạy
+  --           supabase/bootstrap_owner.sql để dựng NPP của họ.
+  --           ⚠ Ở chế độ này KHÔNG còn đường đăng nhập nào cho tới khi
+  --           chạy bootstrap — app sẽ đá về /login, vì user_org_id() trả
+  --           NULL nên mọi policy RLS chặn hết. Đó là đúng ý đồ, không
+  --           phải hỏng.
+  keep_owner  boolean := true;
+
+  -- Chỉ dùng khi keep_owner = true.
   keep_email  text := 'owner@nppsale.vn';
 
   keep_user   uuid;
@@ -58,32 +72,39 @@ BEGIN
   ------------------------------------------------------------------
   -- 1. Xác định người được giữ. KHÔNG tìm thấy thì DỪNG, không xoá gì.
   ------------------------------------------------------------------
-  -- Email nằm ở auth.users, KHÔNG ở public.users — bảng đó chỉ có
-  -- `username`. (04_reset_auth_profile.sql cũ tra `users.email` nên hỏng
-  -- ngay khi chạy; đo được trên bản dựng lại từ migration.)
-  -- Hai bảng dùng CHUNG id, nên nối thẳng theo id.
-  SELECT u.id, u.org_id INTO keep_user, keep_org
-  FROM public.users u
-  JOIN auth.users a ON a.id = u.id
-  WHERE lower(a.email) = lower(keep_email);
+  IF keep_owner THEN
+    -- Email nằm ở auth.users, KHÔNG ở public.users — bảng đó chỉ có
+    -- `username`. (04_reset_auth_profile.sql cũ tra `users.email` nên hỏng
+    -- ngay khi chạy; đo được trên bản dựng lại từ migration.)
+    -- Hai bảng dùng CHUNG id, nên nối thẳng theo id.
+    SELECT u.id, u.org_id INTO keep_user, keep_org
+    FROM public.users u
+    JOIN auth.users a ON a.id = u.id
+    WHERE lower(a.email) = lower(keep_email);
 
-  IF keep_user IS NULL THEN
-    RAISE EXCEPTION
-      'Không thấy tài khoản "%". DỪNG, chưa xoá gì. Chạy câu này để lấy '
-      'đúng email: SELECT a.email, u.role, u.full_name FROM public.users u '
-      'JOIN auth.users a ON a.id = u.id ORDER BY u.role;',
-      keep_email;
+    IF keep_user IS NULL THEN
+      RAISE EXCEPTION
+        'Không thấy tài khoản "%". DỪNG, chưa xoá gì. Chạy câu này để lấy '
+        'đúng email: SELECT a.email, u.role, u.full_name FROM public.users u '
+        'JOIN auth.users a ON a.id = u.id ORDER BY u.role;',
+        keep_email;
+    END IF;
+
+    IF keep_org IS NULL THEN
+      RAISE EXCEPTION
+        'Tài khoản "%" không thuộc org nào (org_id NULL). DỪNG, chưa xoá gì. '
+        'Sửa org_id cho tài khoản này trước đã, nếu không sau khi xoá sẽ '
+        'không đăng nhập vào đâu được.',
+        keep_email;
+    END IF;
+
+    RAISE NOTICE 'Giữ lại: user=% org=%', keep_user, keep_org;
+  ELSE
+    -- keep_user / keep_org để NULL. Mọi phép so `<> keep_user` ở dưới sẽ
+    -- ra NULL (không phải TRUE), tức là xoá nhầm ai cả — nên các lệnh
+    -- xoá bên dưới phải viết riêng cho nhánh này, không dùng chung.
+    RAISE NOTICE 'Chế độ TRẮNG TINH: xoá cả org và mọi tài khoản.';
   END IF;
-
-  IF keep_org IS NULL THEN
-    RAISE EXCEPTION
-      'Tài khoản "%" không thuộc org nào (org_id NULL). DỪNG, chưa xoá gì. '
-      'Sửa org_id cho tài khoản này trước đã, nếu không sau khi xoá sẽ '
-      'không đăng nhập vào đâu được.',
-      keep_email;
-  END IF;
-
-  RAISE NOTICE 'Giữ lại: user=% org=%', keep_user, keep_org;
 
   ------------------------------------------------------------------
   -- 2. Dựng danh sách bảng cần xoá TỪ CHÍNH SCHEMA, không viết tay.
@@ -112,8 +133,17 @@ BEGIN
   EXECUTE 'TRUNCATE TABLE ' || wipe_list || ' RESTART IDENTITY';
   RAISE NOTICE 'Đã xoá sạch % bảng.', wiped;
 
-  DELETE FROM public.users        WHERE id <> keep_user;
-  DELETE FROM public.organizations WHERE id <> keep_org;
+  -- ⚠ `WHERE id <> keep_user` với keep_user = NULL cho ra NULL, KHÔNG phải
+  -- TRUE — nghĩa là không xoá ai cả. Ở chế độ trắng tinh mà dùng chung
+  -- câu đó thì lệnh chạy êm ru và người dùng cũ vẫn còn nguyên. Nên hai
+  -- nhánh viết riêng.
+  IF keep_owner THEN
+    DELETE FROM public.users         WHERE id <> keep_user;
+    DELETE FROM public.organizations WHERE id <> keep_org;
+  ELSE
+    DELETE FROM public.users;
+    DELETE FROM public.organizations;
+  END IF;
 
   ------------------------------------------------------------------
   -- 4. File trong storage. Bảng SQL sạch mà ảnh còn nằm đó thì chưa
@@ -127,8 +157,13 @@ BEGIN
   -- 5. Tài khoản đăng nhập. Xoá identities trước rồi mới tới users —
   --    không phải bản Supabase nào cũng đặt ON DELETE CASCADE.
   ------------------------------------------------------------------
-  DELETE FROM auth.identities WHERE user_id <> keep_user;
-  DELETE FROM auth.users      WHERE id      <> keep_user;
+  IF keep_owner THEN
+    DELETE FROM auth.identities WHERE user_id <> keep_user;
+    DELETE FROM auth.users      WHERE id      <> keep_user;
+  ELSE
+    DELETE FROM auth.identities;
+    DELETE FROM auth.users;
+  END IF;
 END $$;
 
 COMMIT;

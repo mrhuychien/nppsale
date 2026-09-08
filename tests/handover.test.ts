@@ -183,6 +183,54 @@ describe("Bộ xoá sạch để bàn giao", () => {
   it("chỉ ra đường dựng lại sau khi xoá trắng", () => {
     expect(reset).toContain("bootstrap_owner.sql")
   })
+
+  /**
+   * ⚠ GIỮ ORG LẠI LÀ GIỮ LUÔN DANH TÍNH NPP CŨ. `organizations.name` là
+   * tên công ty, và `settings` chứa mã số thuế, địa chỉ, điện thoại,
+   * email. Bàn giao mà để nguyên thì người nhận mở app thấy thông tin của
+   * người khác — và mọi phiếu in ra mang thông tin đó.
+   */
+  it("tẩy tên công ty, MST, địa chỉ của NPP cũ", () => {
+    expect(reset).toMatch(/scrub_identity\s+boolean\s*:=\s*true;/)
+    const block = reset.slice(reset.indexOf("IF keep_owner AND scrub_identity"))
+    expect(block).toContain("UPDATE public.organizations")
+    expect(block).toContain("name           = new_org_name")
+    expect(block).toContain("slug           = new_org_slug")
+    // settings chứa MST/địa chỉ/SĐT — phải xoá cả cụm, không sửa lẻ.
+    expect(block).toContain("settings       = '{}'::jsonb")
+  })
+
+  /**
+   * Xoá `setup_completed_at` thì banner hướng dẫn hiện lại và chủ mới
+   * được dẫn qua /setup. Không xoá thì họ không bao giờ thấy màn đó, và
+   * thông tin công ty cũ nằm im trong hoá đơn.
+   */
+  it("xoá cờ setup để chủ mới được dẫn qua màn cài đặt", () => {
+    const banner = read("src/components/setup/setup-banner.tsx")
+    expect(banner).toContain("setup_completed_at")
+    // Cờ nằm trong settings, nên xoá sạch settings là xoá luôn cờ.
+    expect(reset).toContain("setup_completed_at")
+  })
+
+  /** Hồ sơ cá nhân của chủ cũ cũng là danh tính. */
+  it("xoá tên / SĐT / username của chủ cũ", () => {
+    const block = reset.slice(reset.indexOf("IF keep_owner AND scrub_identity"))
+    expect(block).toContain("UPDATE public.users")
+    expect(block).toContain("full_name = new_owner_name")
+    expect(block).toContain("phone     = NULL")
+    expect(block).toContain("username  = NULL")
+  })
+
+  /**
+   * ⚠ VẾ NGƯỢC LẠI, quan trọng không kém: email + mật khẩu ở auth.users
+   * là ĐƯỜNG ĐĂNG NHẬP đang cần giữ. Tẩy nhầm nó là khoá luôn tài khoản
+   * vừa cố tình giữ lại.
+   */
+  it("KHÔNG đụng vào email/mật khẩu đăng nhập", () => {
+    const block = reset.slice(reset.indexOf("IF keep_owner AND scrub_identity"))
+    expect(block).not.toMatch(/UPDATE auth\.users/)
+    expect(block).not.toMatch(/encrypted_password/)
+  })
 })
 
 describe("Cài mới trên project trống — bootstrap", () => {

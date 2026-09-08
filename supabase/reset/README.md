@@ -34,6 +34,21 @@
 > Cả hai chế độ đều xoá 70 bảng dữ liệu, mọi file trong storage, và giữ
 > nguyên 3 bucket rỗng. Đã đo trên PostgreSQL 16 với dữ liệu trồng sẵn.
 >
+> **Với `keep_owner = true`, cờ `scrub_identity` (mặc định `true`) còn tẩy
+> danh tính NPP cũ.** Giữ dòng `organizations` lại là giữ luôn tên công ty,
+> và `settings` của nó chứa mã số thuế / địa chỉ / điện thoại / email — để
+> nguyên thì người nhận mở app thấy thông tin của người khác, và mọi phiếu
+> in ra mang thông tin đó. Bật thì:
+>
+> | Bị xoá | Giữ nguyên |
+> |---|---|
+> | tên + slug công ty, toàn bộ `settings` (MST, địa chỉ, SĐT, email) | **email + mật khẩu đăng nhập** |
+> | cờ `setup_completed_at` → màn `/setup` hiện lại cho chủ mới | `role = owner`, `is_active` |
+> | tên, SĐT, username của chủ cũ | |
+>
+> Tắt (`false`) khi đây là môi trường của chính bạn và chỉ muốn dọn dữ liệu
+> giao dịch, không muốn khai báo lại thông tin công ty.
+>
 > ⚠ Chế độ `false` **không còn đường đăng nhập nào** cho tới khi chạy
 > `bootstrap_owner.sql` — app đá về `/login` vì `user_org_id()` trả NULL.
 > Đó là đúng ý đồ, không phải hỏng.
@@ -134,8 +149,16 @@ FROM users WHERE email = 'owner@...';`).
 
 ```
 00_inspect.sql              — đếm dòng tất cả bảng (read-only)
-01_reset_transactions.sql   — xóa giao dịch, giữ danh mục
-02_reset_catalog.sql        — xóa thêm KH / SP / NCC / khuyến mãi
-03_reseed_defaults.sql      — tạo lại config mặc định (an toàn)
-04_reset_auth_profile.sql   — xóa users (trừ 1 owner)
+03_reseed_defaults.sql      — tạo lại config mặc định (an toàn, idempotent)
+05_reset_blank.sql          — ★ DÙNG CÁI NÀY để bàn giao. Xoá mọi bảng trừ
+                              danh sách giữ lại; dọn cả storage và tài
+                              khoản đăng nhập; tẩy danh tính NPP cũ.
+
+── để lại tham khảo, KHÔNG dùng để bàn giao (xem cảnh báo đầu file) ──
+01_reset_transactions.sql   — liệt kê bảng bằng tay, sót 32 bảng
+02_reset_catalog.sql        — cùng vấn đề
+04_reset_auth_profile.sql   — cùng vấn đề, VÀ chạy là lỗi (tra users.email)
 ```
+
+Cần dựng chủ NPP trên một database vừa cài xong (0 org, 0 người):
+`supabase/bootstrap_owner.sql`. Cài mới từ đầu: `supabase/INSTALL.md`.

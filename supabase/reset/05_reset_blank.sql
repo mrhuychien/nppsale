@@ -64,6 +64,28 @@ DECLARE
   -- Chỉ dùng khi keep_owner = true.
   keep_email  text := 'owner@nppsale.vn';
 
+  -- ⚠ TẨY DANH TÍNH NPP CŨ. Chỉ có tác dụng khi keep_owner = true.
+  --
+  -- Giữ dòng `organizations` lại là giữ luôn TÊN CÔNG TY CŨ, và
+  -- `settings` của nó chứa MÃ SỐ THUẾ, ĐỊA CHỈ, ĐIỆN THOẠI, EMAIL của
+  -- nhà phân phối cũ. Bàn giao mà để nguyên thì người nhận mở app ra thấy
+  -- tên và mã số thuế của người khác — và tệ hơn, hoá đơn/phiếu in ra
+  -- mang thông tin đó.
+  --
+  -- Bật (true) thì: đổi tên org về chỗ trống, xoá sạch `settings` (kể cả
+  -- cờ `setup_completed_at`, nên màn /setup hiện lại để chủ mới nhập
+  -- thông tin của họ), và xoá tên/điện thoại/username của chủ cũ.
+  -- Tài khoản đăng nhập (email + mật khẩu) GIỮ NGUYÊN — đó là thứ đang
+  -- cần giữ để còn vào được app.
+  --
+  -- Tắt (false) khi đây là môi trường của chính bạn và bạn chỉ muốn dọn
+  -- dữ liệu giao dịch, không muốn khai báo lại thông tin công ty.
+  scrub_identity boolean := true;
+
+  new_org_name  text := 'Nhà phân phối (chưa đặt tên)';
+  new_org_slug  text := 'npp';
+  new_owner_name text := 'Chủ nhà phân phối';
+
   keep_user   uuid;
   keep_org    uuid;
   wipe_list   text;
@@ -163,6 +185,35 @@ BEGIN
   ELSE
     DELETE FROM auth.identities;
     DELETE FROM auth.users;
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 6. Tẩy danh tính NPP cũ khỏi hai dòng được giữ lại.
+  --
+  -- Xoá dữ liệu giao dịch mà để nguyên tên công ty, mã số thuế, địa chỉ
+  -- thì chưa phải bàn giao — mọi phiếu in ra vẫn mang thông tin NPP cũ.
+  ------------------------------------------------------------------
+  IF keep_owner AND scrub_identity THEN
+    UPDATE public.organizations
+    SET name           = new_org_name,
+        slug           = new_org_slug,
+        -- Xoá cả `setup_completed_at` → banner hướng dẫn hiện lại, chủ
+        -- mới được dẫn qua /setup để tự nhập thông tin công ty.
+        settings       = '{}'::jsonb,
+        allow_oversell = false
+    WHERE id = keep_org;
+
+    -- Email + mật khẩu ở auth.users KHÔNG đụng tới — đó là đường đăng
+    -- nhập đang cần giữ. Chỉ xoá phần nhận dạng cá nhân ở hồ sơ.
+    UPDATE public.users
+    SET full_name = new_owner_name,
+        phone     = NULL,
+        username  = NULL
+    WHERE id = keep_user;
+
+    RAISE NOTICE 'Đã tẩy danh tính NPP cũ (tên, MST, địa chỉ, SĐT).';
+  ELSIF keep_owner THEN
+    RAISE NOTICE 'GIỮ NGUYÊN danh tính NPP cũ (scrub_identity = false).';
   END IF;
 END $$;
 

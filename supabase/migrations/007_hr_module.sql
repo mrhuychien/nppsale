@@ -149,9 +149,18 @@ GRANT SELECT ON hr_payroll TO authenticated;
 -- ==========================================
 -- Seed default salary config
 -- ==========================================
+-- ⚠ Hai lệnh dưới đây trước kia là `VALUES ('a0000000-…-0001', …)` — gắn
+-- cứng UUID của org DEMO do 003_seed.sql tạo. Hệ quả đo được: cài mới mà
+-- BỎ QUA 003_seed (đúng cách cài cho bản giao, vì 003 kèm 6 tài khoản demo
+-- mật khẩu công khai) thì migration này ĐỨT ở đây với lỗi khoá ngoại —
+-- người cài tưởng schema hỏng, trong khi thứ thiếu chỉ là dữ liệu mẫu.
+--
+-- Nay dùng `SELECT … FROM organizations WHERE id = …`: có org demo thì
+-- chèn y như cũ, không có thì chèn 0 dòng và đi tiếp. Không nới lỏng gì —
+-- vẫn đúng một org đó, không đụng org thật của ai.
 INSERT INTO hr_salary_config (org_id, name, base_salary, gas_allowance, phone_allowance, target_tiers)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
+SELECT
+  o.id,
   'Cấu hình lương NVBH',
   3700000, 1000000, 300000,
   '[
@@ -160,12 +169,13 @@ VALUES (
     {"min_percent": 90, "bonus": 1000000, "label": "Đạt 90%"},
     {"min_percent": 100, "bonus": 1000000, "label": "Đạt 100%"}
   ]'
-);
+FROM organizations o
+WHERE o.id = 'a0000000-0000-0000-0000-000000000001';
 
 -- Seed April 2026 bonus tiers
 INSERT INTO hr_monthly_bonus (org_id, period, tiers, notes)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
+SELECT
+  o.id,
   '2026-04',
   '[
     {"min_revenue": 150000000, "bonus": 1000000},
@@ -175,4 +185,5 @@ VALUES (
     {"min_revenue": 350000000, "bonus": 3000000}
   ]',
   'Thưởng doanh số tháng 4/2026'
-);
+FROM organizations o
+WHERE o.id = 'a0000000-0000-0000-0000-000000000001';

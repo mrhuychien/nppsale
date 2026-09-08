@@ -1450,9 +1450,18 @@ GRANT SELECT ON hr_payroll TO authenticated;
 -- ==========================================
 -- Seed default salary config
 -- ==========================================
+-- ⚠ Hai lệnh dưới đây trước kia là `VALUES ('a0000000-…-0001', …)` — gắn
+-- cứng UUID của org DEMO do 003_seed.sql tạo. Hệ quả đo được: cài mới mà
+-- BỎ QUA 003_seed (đúng cách cài cho bản giao, vì 003 kèm 6 tài khoản demo
+-- mật khẩu công khai) thì migration này ĐỨT ở đây với lỗi khoá ngoại —
+-- người cài tưởng schema hỏng, trong khi thứ thiếu chỉ là dữ liệu mẫu.
+--
+-- Nay dùng `SELECT … FROM organizations WHERE id = …`: có org demo thì
+-- chèn y như cũ, không có thì chèn 0 dòng và đi tiếp. Không nới lỏng gì —
+-- vẫn đúng một org đó, không đụng org thật của ai.
 INSERT INTO hr_salary_config (org_id, name, base_salary, gas_allowance, phone_allowance, target_tiers)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
+SELECT
+  o.id,
   'Cấu hình lương NVBH',
   3700000, 1000000, 300000,
   '[
@@ -1461,12 +1470,13 @@ VALUES (
     {"min_percent": 90, "bonus": 1000000, "label": "Đạt 90%"},
     {"min_percent": 100, "bonus": 1000000, "label": "Đạt 100%"}
   ]'
-);
+FROM organizations o
+WHERE o.id = 'a0000000-0000-0000-0000-000000000001';
 
 -- Seed April 2026 bonus tiers
 INSERT INTO hr_monthly_bonus (org_id, period, tiers, notes)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
+SELECT
+  o.id,
   '2026-04',
   '[
     {"min_revenue": 150000000, "bonus": 1000000},
@@ -1476,7 +1486,8 @@ VALUES (
     {"min_revenue": 350000000, "bonus": 3000000}
   ]',
   'Thưởng doanh số tháng 4/2026'
-);
+FROM organizations o
+WHERE o.id = 'a0000000-0000-0000-0000-000000000001';
 
 
 -- ####################################################################
@@ -12530,4 +12541,728 @@ COMMENT ON VIEW v_stock_balance_by_zone IS
   'được coi là KHÔNG CÓ THÔNG TIN và lùi về giá vốn theo lô (mig 098).';
 
 GRANT SELECT ON v_stock_balance_by_zone TO authenticated;
+
+
+-- ####################################################################
+-- # 099_einvoice_refid_split.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 099 — Tách RefID khỏi số hoá đơn MISA
+--
+-- LỖI ĐANG CHẠY
+-- `invoices.misa_invoice_id` đang kiêm HAI vai, và vai sau xoá mất vai
+-- trước:
+--
+--   publish/route.ts:307  ghi RefID (GUID mình sinh) vào cột này
+--   refresh-status:110    ghi InvNo (số hoá đơn MISA cấp) ĐÈ LÊN
+--
+-- Dây chuyền hậu quả:
+--   1. Lần refresh đầu chạy đúng, ghi InvNo đè GUID.
+--   2. Lần refresh thứ hai gọi ?refID=<số hoá đơn> → MISA không biết →
+--      "MISA không trả về dữ liệu HD." Câu đó chỉ người dùng đi soi MISA,
+--      trong khi lỗi nằm ở chính chỗ này.
+--   3. Mất khoá là mất đường hỏi: KHÔNG BAO GIỜ biết hoá đơn bị huỷ hay
+--      bị thay thế trên MISA sau đó.
+--   4. Deep-link MISA (src/lib/misa/web-url.ts) gãy.
+--   5. Đã có người vá ở chỗ DÙNG thay vì chỗ GÂY RA: cả
+--      publish/route.ts:84 lẫn invoices/[id]/page.tsx:231 đều phải
+--      `uuidRe.test(misa_invoice_id)` để đoán xem cột này lúc này đang
+--      giữ vai nào.
+--
+-- CÁCH SỬA: hai khoá, hai cột. Đây là ràng buộc kiến trúc, không phải
+-- chuyện đặt tên.
+--
+--   misa_ref_id      GUID mình sinh, BẤT BIẾN     — chỉ publish ghi
+--   misa_inv_no      số hoá đơn MISA cấp          — chỉ refresh ghi
+--   misa_inv_series  ký hiệu (vd 1C25MHG)         — chỉ refresh ghi
+--   misa_lookup_code TransactionID                — chỉ refresh ghi
+--
+-- BACKFILL — đọc kỹ phần này
+-- Dòng nào `misa_invoice_id` còn đúng khuôn UUID thì RefID vẫn còn:
+-- chép sang `misa_ref_id`. Dòng nào KHÔNG đúng khuôn UUID thì refresh đã
+-- ghi đè mất RefID: chép giá trị đó sang `misa_inv_no` (nó là số hoá đơn),
+-- để `misa_ref_id = NULL`, và ĐÁNH DẤU vào `misa_note`.
+--
+-- Không dọn im lặng. Những hoá đơn đó cần phát hành lại hoặc gán tay
+-- RefID; không ai biết là bao nhiêu tờ thì không ai làm. Migration
+-- RAISE NOTICE số lượng, và `misa_note` giữ dấu vết để tra lại bất cứ lúc
+-- nào (xem supabase/diagnostics/einvoice_lost_refid.sql).
+--
+-- KHÔNG đụng RLS: invoices đã bật RLS ở mức DÒNG (mig 002/084), cột mới
+-- tự nằm trong policy sẵn có. Cũng không có GRANT theo danh sách cột nào
+-- trên bảng này nên cột mới thừa hưởng quyền hiện tại.
+-- ====================================================================
+
+-- --- 1. Cột mới -----------------------------------------------------
+ALTER TABLE invoices
+  ADD COLUMN IF NOT EXISTS misa_ref_id text,
+  ADD COLUMN IF NOT EXISTS misa_inv_no text,
+  ADD COLUMN IF NOT EXISTS misa_inv_series text,
+  ADD COLUMN IF NOT EXISTS misa_inv_date date,
+  ADD COLUMN IF NOT EXISTS misa_invoice_code text,
+  ADD COLUMN IF NOT EXISTS misa_relation text,
+  ADD COLUMN IF NOT EXISTS misa_org_ref_id text,
+  ADD COLUMN IF NOT EXISTS misa_last_checked_at timestamptz,
+  ADD COLUMN IF NOT EXISTS misa_note text,
+  ADD COLUMN IF NOT EXISTS misa_no_locked boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN invoices.misa_ref_id IS
+  'RefID (GUID) mình sinh lúc đẩy hoá đơn. BẤT BIẾN — chỉ publish được '
+  'ghi. Đây là khoá DUY NHẤT để hỏi lại MISA về hoá đơn này; ghi đè nó là '
+  'cắt đường hỏi.';
+COMMENT ON COLUMN invoices.misa_inv_no IS
+  'Số hoá đơn MISA cấp (InvNo). Chỉ vòng refresh/sync được ghi.';
+COMMENT ON COLUMN invoices.misa_inv_series IS
+  'Ký hiệu hoá đơn (vd 1C25MHG). Số hoá đơn KHÔNG định danh được nếu '
+  'thiếu ký hiệu — hai ký hiệu khác nhau dùng chung dải số là chuyện '
+  'thường.';
+COMMENT ON COLUMN invoices.misa_inv_date IS
+  'Ngày phát hành trên MISA (InvDate). Khác ngày ghi sổ — thiếu nó thì '
+  'không biết kỳ thuế.';
+COMMENT ON COLUMN invoices.misa_invoice_code IS
+  'Mã cơ quan thuế cấp (InvoiceCode). Chỉ đơn vị dùng hoá đơn CÓ MÃ mới '
+  'có; xem company_einvoice_config.misa_is_invoice_with_code.';
+COMMENT ON COLUMN invoices.misa_relation IS
+  'Trục QUAN HỆ, đọc từ EInvoiceStatus: new/replacement/adjustment/'
+  'replaced/adjusted. Khác hẳn trục phát hành (PublishStatus) — hai trục '
+  'nằm ở hai field.';
+COMMENT ON COLUMN invoices.misa_org_ref_id IS
+  'RefID của hoá đơn GỐC khi tờ này là bản thay thế/điều chỉnh.';
+COMMENT ON COLUMN invoices.misa_no_locked IS
+  'true = số hoá đơn do người GÁN TAY. Vòng quét không được ghi đè: '
+  'misa_ref_id trên hoá đơn đó thường trỏ về tờ ĐÃ CHẾT, quét tiếp là ghi '
+  'số chết đè lên số người vừa gán, lặng lẽ, mỗi lần chạy.';
+
+-- --- 2. Nới CHECK của misa_status -----------------------------------
+-- Ràng buộc gốc nằm ở mig 011, thêm KÈM cột bằng
+-- `ADD COLUMN IF NOT EXISTS ... CHECK (...)`. Nếu cột đã tồn tại từ trước
+-- thì cả câu lệnh bị bỏ qua — CHECK bao gồm. Nên KHÔNG được đoán tên
+-- ràng buộc, cũng không được cho rằng nó tồn tại: tra trong catalog rồi
+-- mới xử lý.
+DO $$
+DECLARE
+  v_name text;
+BEGIN
+  FOR v_name IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+    WHERE ns.nspname = 'public'
+      AND rel.relname = 'invoices'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) ILIKE '%misa_status%'
+  LOOP
+    EXECUTE format('ALTER TABLE invoices DROP CONSTRAINT %I', v_name);
+    RAISE NOTICE 'Đã bỏ ràng buộc cũ trên misa_status: %', v_name;
+  END LOOP;
+END $$;
+
+ALTER TABLE invoices
+  ADD CONSTRAINT invoices_misa_status_check CHECK (
+    misa_status IS NULL OR misa_status IN (
+      'pending',          -- đang đẩy lên
+      'sent',             -- đã đẩy, MISA chưa cấp số
+      'waiting_code',     -- đã cấp số, chờ cơ quan thuế cấp mã
+      'signed',           -- đã phát hành (PublishStatus = 3, hoặc đã có mã CQT)
+      'replaced',         -- BỊ thay thế → hết hiệu lực
+      'cancelled',        -- bị huỷ trên MISA
+      'amount_mismatch',  -- số tiền MISA khác sổ
+      'error'
+    )
+  );
+
+-- --- 3. Trục quan hệ: giá trị hợp lệ --------------------------------
+ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_misa_relation_check;
+ALTER TABLE invoices
+  ADD CONSTRAINT invoices_misa_relation_check CHECK (
+    misa_relation IS NULL OR misa_relation IN (
+      'new',          -- 1 = hoá đơn mới
+      'replacement',  -- 3 = hoá đơn thay thế (tờ này thay cho tờ khác)
+      'adjustment',   -- 4 = hoá đơn điều chỉnh (tờ này điều chỉnh tờ khác)
+      'replaced',     -- 7 = BỊ thay thế → hết hiệu lực
+      'adjusted',     -- 8 = BỊ điều chỉnh → VẪN CÒN hiệu lực
+      'unknown'       -- MISA trả giá trị lạ: KHÔNG ĐOÁN
+    )
+  );
+
+-- --- 4. Backfill ----------------------------------------------------
+DO $$
+DECLARE
+  v_uuid_re constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_kept    integer;
+  v_lost    integer;
+BEGIN
+  -- 4a. Còn đúng khuôn UUID → RefID vẫn nguyên.
+  UPDATE invoices
+     SET misa_ref_id = misa_invoice_id
+   WHERE misa_ref_id IS NULL
+     AND misa_invoice_id IS NOT NULL
+     AND misa_invoice_id ~* v_uuid_re;
+  GET DIAGNOSTICS v_kept = ROW_COUNT;
+
+  -- 4b. Không đúng khuôn UUID → refresh đã ghi đè mất RefID. Giá trị
+  --     đang nằm đó là SỐ HOÁ ĐƠN, chuyển sang đúng cột của nó.
+  --     Bỏ qua rác cũ '<Chưa cấp số>' (bug cũ đã fix, xem publish:82).
+  --
+  --     `misa_inv_no IS NULL` KHÔNG thừa. Thiếu nó thì chạy lại migration
+  --     lần hai vẫn khớp đúng những dòng đó (misa_ref_id còn NULL,
+  --     misa_invoice_id còn nguyên) và nối thêm đoạn ghi chú lần nữa —
+  --     đã đo: lần 2 báo "2 hoá đơn MẤT RefID" y như lần 1. Nó cũng
+  --     chặn việc đè số cũ lên số mà vòng refresh đã ghi đúng.
+  UPDATE invoices
+     SET misa_inv_no = misa_invoice_id,
+         misa_note = COALESCE(misa_note || E'\n', '')
+                     || 'MẤT RefID: cột misa_invoice_id cũ đã bị số hoá đơn ghi đè '
+                     || '(mig 099). Không tra cứu lại được trên MISA — cần phát hành '
+                     || 'lại hoặc gán tay RefID.'
+   WHERE misa_ref_id IS NULL
+     AND misa_inv_no IS NULL
+     AND misa_invoice_id IS NOT NULL
+     AND misa_invoice_id !~* v_uuid_re
+     AND misa_invoice_id NOT LIKE '<%';
+  GET DIAGNOSTICS v_lost = ROW_COUNT;
+
+  RAISE NOTICE '=====================================================';
+  RAISE NOTICE 'BACKFILL 099';
+  RAISE NOTICE '  % hoá đơn giữ được RefID.', v_kept;
+  RAISE NOTICE '  % hoá đơn MẤT RefID — đã đánh dấu vào misa_note.', v_lost;
+  IF v_lost > 0 THEN
+    RAISE NOTICE '  Những tờ này KHÔNG hỏi lại MISA được. Liệt kê bằng:';
+    RAISE NOTICE '    supabase/diagnostics/einvoice_lost_refid.sql';
+  END IF;
+  RAISE NOTICE '=====================================================';
+END $$;
+
+-- --- 5. Hai hoá đơn cùng số là lỗi, chặn ở tầng DB ------------------
+-- Partial: chỉ ràng buộc khi đã có số. Hoá đơn chưa cấp số (NULL) thì
+-- bao nhiêu tờ cũng được.
+-- Ký hiệu vào khoá vì hai ký hiệu khác nhau dùng chung dải số là chuyện
+-- thường; COALESCE để ký hiệu NULL không làm rỗng cả khoá (NULL trong
+-- unique index là "khác nhau hết", tức không chặn được gì).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_misa_inv_no
+  ON invoices (org_id, COALESCE(misa_inv_series, ''), misa_inv_no)
+  WHERE misa_inv_no IS NOT NULL;
+
+-- --- 6. Chỉ mục cho vòng quét ---------------------------------------
+-- Lượt 2 sắp theo misa_last_checked_at NULLS FIRST; không có chỉ mục thì
+-- mỗi lần chạy là một lần quét toàn bảng invoices.
+CREATE INDEX IF NOT EXISTS idx_invoices_misa_sync
+  ON invoices (org_id, misa_last_checked_at NULLS FIRST)
+  WHERE misa_ref_id IS NOT NULL;
+
+-- --- 7. Cột cũ: giữ lại, đánh dấu không dùng nữa ---------------------
+-- KHÔNG drop trong migration này. Còn mã đang chạy đọc nó (danh sách hoá
+-- đơn, trang chi tiết), và drop cột là thao tác không lùi được. Drop ở
+-- migration sau, khi đã xác nhận không còn ai đọc.
+COMMENT ON COLUMN invoices.misa_invoice_id IS
+  'KHÔNG DÙNG NỮA (mig 099) — cột này từng kiêm cả RefID lẫn số hoá đơn '
+  'và vai sau xoá mất vai trước. Dùng misa_ref_id / misa_inv_no. Giữ lại '
+  'để đối chiếu; sẽ drop ở migration sau.';
+
+
+-- ####################################################################
+-- # 100_misa_invoice_snapshots.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 100 — Bảng snapshot hoá đơn kéo từ MISA về
+--
+-- VÌ SAO CẦN
+-- Toàn bộ luồng hiện tại đi MỘT CHIỀU: app đẩy hoá đơn lên MISA rồi hỏi
+-- lại đúng những tờ mình đã đẩy (qua misa_ref_id). Hệ quả: hoá đơn phát
+-- hành THẲNG trên web MISA — kế toán tự lập, hoá đơn thay thế do MISA
+-- sinh, hoá đơn của người khác trong cùng MST — là VÔ HÌNH với sổ. Đó
+-- đúng loại hoá đơn ngoài sổ mà kiểm toán sẽ hỏi.
+--
+-- Bảng này là bản sao ĐỌC-VỀ của danh sách hoá đơn bên MISA. Nó KHÔNG
+-- phải nguồn sự thật của sổ; nó là thứ để đối chiếu hai chiều:
+--   • hoá đơn có trên MISA mà không có trong sổ  → "Chỉ có trên MISA"
+--   • hoá đơn có trong sổ mà không có trên MISA  → tra ngược bằng ref_id
+--
+-- KHOÁ TỰ NHIÊN
+-- (org_id, ref_id) — RefID là GUID do MISA quản lý, duy nhất tuyệt đối.
+-- Thêm chỉ mục phụ trên (org_id, inv_series_norm, inv_no_norm) vì đối
+-- soát dữ liệu CŨ phải dựa vào ký hiệu + số: hoá đơn có sẵn trên MISA
+-- không mang RefID do app này sinh, nên tầng khớp theo ref_id không bao
+-- giờ trúng với chúng. Đã đo trên 30 hoá đơn thật: khoá (ký hiệu, số đã
+-- chuẩn hoá) là DUY NHẤT.
+--
+-- CHUẨN HOÁ KHI SO, GIỮ NGUYÊN KHI LƯU
+-- inv_no / inv_series giữ NGUYÊN VĂN chuỗi MISA trả về (số hoá đơn thật
+-- là '00007140', 8 chữ số). Hai cột `*_norm` là bản đã chuẩn hoá, sinh
+-- tự động, chỉ dùng để khớp — không hiển thị, không xuất báo cáo.
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS misa_invoice_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+
+  -- --- Định danh bên MISA ------------------------------------------
+  ref_id text NOT NULL,
+  inv_series text,
+  inv_no text,
+  inv_date date,
+  transaction_id text,
+  invoice_code text,
+
+  -- --- Người mua ----------------------------------------------------
+  buyer_tax_code text,
+  buyer_name text,
+
+  -- --- Tiền ---------------------------------------------------------
+  -- CÓ THỂ ÂM: hoá đơn điều chỉnh giảm mang số chênh âm (đã đo trên dữ
+  -- liệu thật). Mọi phép so tiền phải xử dấu.
+  total_amount numeric,
+  amount_before_vat numeric,
+  vat_amount numeric,
+
+  -- --- Hai trục trạng thái -------------------------------------------
+  publish_status integer,
+  einvoice_status integer,
+  relation text,
+  is_deleted boolean NOT NULL DEFAULT false,
+  org_ref_id text,
+
+  -- --- Đối soát ------------------------------------------------------
+  invoice_id uuid REFERENCES invoices(id) ON DELETE SET NULL,
+  match_method text,
+  match_confidence text,
+  match_status text,
+  match_note text,
+
+  -- Bản ghi thô, để tra lại khi phát hiện mình bóc field sai. Không có
+  -- nó thì mỗi lần nghi ngờ phải đi kéo lại toàn bộ từ MISA.
+  raw jsonb,
+
+  pulled_at timestamptz NOT NULL DEFAULT now(),
+  matched_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Chuẩn hoá để KHỚP. Sinh tự động nên không thể quên cập nhật.
+--   số hoá đơn : bỏ khoảng trắng + số 0 ở đầu ('00007140' → '7140');
+--                chuỗi toàn số 0 giữ nguyên để không nuốt mất dữ liệu
+--   ký hiệu    : bỏ khoảng trắng + viết hoa. KHÔNG bỏ chữ số đầu ở đây —
+--                '1C25MHG' và '2C25MHG' là hai MẪU SỐ khác nhau, gộp
+--                chúng ở tầng lưu là mất dữ liệu. Việc bỏ chữ số đầu chỉ
+--                được làm ở tầng khớp DỰ PHÒNG, có gắn "cần review".
+ALTER TABLE misa_invoice_snapshots
+  ADD COLUMN IF NOT EXISTS inv_no_norm text
+    GENERATED ALWAYS AS (
+      CASE
+        WHEN inv_no IS NULL THEN NULL
+        WHEN regexp_replace(replace(inv_no, ' ', ''), '^0+', '') = '' THEN replace(inv_no, ' ', '')
+        ELSE regexp_replace(replace(inv_no, ' ', ''), '^0+', '')
+      END
+    ) STORED,
+  ADD COLUMN IF NOT EXISTS inv_series_norm text
+    GENERATED ALWAYS AS (upper(replace(COALESCE(inv_series, ''), ' ', ''))) STORED;
+
+-- Một RefID = một hoá đơn. Kéo lại nhiều lần thì UPSERT, không nhân bản.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_misa_snapshot_ref
+  ON misa_invoice_snapshots (org_id, ref_id);
+
+-- Đường khớp chính cho dữ liệu cũ (ký hiệu + số).
+CREATE INDEX IF NOT EXISTS idx_misa_snapshot_no
+  ON misa_invoice_snapshots (org_id, inv_series_norm, inv_no_norm);
+
+-- Rổ "chỉ có trên MISA" và các rổ cần xử lý khác.
+CREATE INDEX IF NOT EXISTS idx_misa_snapshot_status
+  ON misa_invoice_snapshots (org_id, match_status, inv_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_misa_snapshot_invoice
+  ON misa_invoice_snapshots (invoice_id)
+  WHERE invoice_id IS NOT NULL;
+
+-- Khớp theo mã tra cứu (tầng 2).
+CREATE INDEX IF NOT EXISTS idx_misa_snapshot_txn
+  ON misa_invoice_snapshots (org_id, transaction_id)
+  WHERE transaction_id IS NOT NULL;
+
+ALTER TABLE misa_invoice_snapshots
+  DROP CONSTRAINT IF EXISTS misa_snapshot_match_status_check;
+ALTER TABLE misa_invoice_snapshots
+  ADD CONSTRAINT misa_snapshot_match_status_check CHECK (
+    match_status IS NULL OR match_status IN (
+      'matched',        -- khớp, tiền cũng khớp
+      'amount_diff',    -- khớp được hoá đơn nhưng lệch tiền
+      'misa_only',      -- CHỈ có trên MISA — hoá đơn ngoài sổ
+      'cancelled',      -- đã huỷ bên MISA
+      'replaced',       -- đã bị thay thế → hết hiệu lực
+      'needs_review'    -- khớp bằng suy đoán, người phải xác nhận
+    )
+  );
+
+ALTER TABLE misa_invoice_snapshots
+  DROP CONSTRAINT IF EXISTS misa_snapshot_match_method_check;
+ALTER TABLE misa_invoice_snapshots
+  ADD CONSTRAINT misa_snapshot_match_method_check CHECK (
+    match_method IS NULL OR match_method IN (
+      'ref_id',          -- tầng 1 — chắc chắn
+      'transaction_id',  -- tầng 2 — chắc chắn
+      'inv_no',          -- tầng 3 — chắc chắn (khoá tự nhiên, đã đo là duy nhất)
+      'inv_no_loose',    -- tầng 3b — khớp sau khi bỏ chữ số đầu ký hiệu: CẦN REVIEW
+      'tax_date_amount', -- tầng 4 — suy đoán, chỉ nhận khi duy nhất: CẦN REVIEW
+      'manual'           -- người chốt tay — vòng khớp KHÔNG được đụng vào
+    )
+  );
+
+COMMENT ON TABLE misa_invoice_snapshots IS
+  'Bản sao đọc-về của danh sách hoá đơn bên MISA, để đối soát hai chiều. '
+  'KHÔNG phải nguồn sự thật của sổ.';
+COMMENT ON COLUMN misa_invoice_snapshots.match_method IS
+  'Cách khớp được. ''manual'' = người chốt tay, vòng khớp tự động phải bỏ qua.';
+COMMENT ON COLUMN misa_invoice_snapshots.total_amount IS
+  'CÓ THỂ ÂM (hoá đơn điều chỉnh giảm). Mọi phép so tiền phải xử dấu.';
+COMMENT ON COLUMN misa_invoice_snapshots.inv_no IS
+  'Số hoá đơn NGUYÊN VĂN MISA trả về (thường 8 chữ số, vd 00007140). '
+  'Bản chuẩn hoá để khớp nằm ở inv_no_norm.';
+
+-- --- RLS -------------------------------------------------------------
+-- Đây là dữ liệu hoá đơn thuế: cùng mức nhạy cảm với bảng invoices, nên
+-- cùng bộ vai trò. Không mở cho sales/warehouse/driver.
+ALTER TABLE misa_invoice_snapshots ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "View misa snapshots" ON misa_invoice_snapshots;
+CREATE POLICY "View misa snapshots" ON misa_invoice_snapshots FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() IN ('owner','accountant','manager'));
+
+DROP POLICY IF EXISTS "Manage misa snapshots" ON misa_invoice_snapshots;
+CREATE POLICY "Manage misa snapshots" ON misa_invoice_snapshots FOR ALL TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() IN ('owner','accountant','manager'))
+  WITH CHECK (org_id = public.user_org_id() AND public.user_role() IN ('owner','accountant','manager'));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON misa_invoice_snapshots TO authenticated;
+
+
+-- ####################################################################
+-- # 101_pod_photos_bucket.sql
+-- ####################################################################
+
+-- =====================================================================
+-- Migration 101: bucket ảnh giao hàng (POD)
+-- =====================================================================
+-- KHÔNG thêm cột nào. `delivery_lines.pod_photo_url` và `.pod_signature`
+-- đã có từ migration 001 và trang chi tiết đơn đã hiển thị ảnh POD — chỉ
+-- chưa bao giờ có màn nào GHI vào. Migration này chỉ tạo chỗ chứa ảnh.
+--
+-- Chữ ký KHÔNG vào bucket: nó nằm trong cột `pod_signature` (text, data
+-- URL PNG) và được RLS của `delivery_lines` bảo vệ theo org. Chữ ký là
+-- thứ nhạy cảm hơn ảnh thùng hàng nên để nó trong DB là cố ý.
+--
+-- ĐÁNH ĐỔI ĐÃ BIẾT: bucket để `public = true`, giống hệt `visit-photos`
+-- ở migration 014. Nghĩa là ai có URL đều xem được ảnh, không cần đăng
+-- nhập. Chọn vậy vì trang /orders/[id] render thẳng
+-- <img src={dl.pod_photo_url}> — chuyển sang bucket riêng tư thì phải ký
+-- URL tạm và URL đã lưu trong DB sẽ hết hạn. Đường dẫn có org_id +
+-- delivery_line_id (đều là uuid) nên không đoán được, nhưng đó là che
+-- giấu chứ không phải kiểm soát truy cập. Muốn siết thì phải đổi cả
+-- đường đọc, làm riêng.
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('pod-photos', 'pod-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Ghi và xoá bị giới hạn trong thư mục org của người dùng; đọc thì mở
+-- cho mọi tài khoản đã đăng nhập (bucket vốn đã public).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'pod_photos_insert'
+  ) THEN
+    CREATE POLICY "pod_photos_insert" ON storage.objects
+      FOR INSERT TO authenticated
+      WITH CHECK (
+        bucket_id = 'pod-photos'
+        AND (split_part(name, '/', 1))::uuid = public.user_org_id()
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'pod_photos_select'
+  ) THEN
+    CREATE POLICY "pod_photos_select" ON storage.objects
+      FOR SELECT TO authenticated
+      USING (bucket_id = 'pod-photos');
+  END IF;
+
+  -- KHÔNG có policy DELETE. Ảnh POD là bằng chứng giao hàng: xoá được
+  -- từ phía client thì lúc có tranh chấp với khách, bên xoá được là bên
+  -- thắng. `visit-photos` có DELETE vì ảnh viếng thăm là ghi nhận nội
+  -- bộ, không phải chứng từ.
+END $$;
+
+
+-- ####################################################################
+-- # 102_opening_balances.sql
+-- ####################################################################
+
+-- =====================================================================
+-- Migration 102: công nợ ĐẦU KỲ cho khách hàng và nhà cung cấp
+-- =====================================================================
+-- Trước đây `receivables` chỉ sinh ra từ đơn đã giao, `payables` từ phiếu
+-- nhập. Số dư mang sang từ sổ cũ không có chỗ đứng, nên NPP mới lên hệ
+-- thống hoặc phải bịa đơn hàng giả (bẩn tồn kho + doanh số), hoặc bỏ hẳn
+-- công nợ cũ ra ngoài phần mềm.
+--
+-- KHÔNG tạo bảng mới. Công nợ đầu kỳ VẪN LÀ công nợ: mọi báo cáo tuổi nợ,
+-- màn thu tiền, tổng nợ theo khách đều đã đọc hai bảng này. Tách sang
+-- bảng riêng là buộc phải sửa lại từng chỗ đó, và chỗ nào quên sẽ báo
+-- thiếu tiền mà không ai biết.
+--
+-- Chỉ thêm một CỜ để phân biệt và một chỉ mục để mỗi đối tượng có đúng
+-- MỘT dòng đầu kỳ — nhờ đó nhập lại file là cập nhật, không nhân bản.
+
+-- ---------------------------------------------------------------------
+-- 1. Cột
+-- ---------------------------------------------------------------------
+ALTER TABLE receivables
+  ADD COLUMN IF NOT EXISTS opening_balance boolean NOT NULL DEFAULT false,
+  -- receivables chưa hề có cột ghi chú. Dòng đầu kỳ cần nói rõ "chốt sổ
+  -- ngày nào", nếu không thì sang năm không ai giải thích được con số.
+  ADD COLUMN IF NOT EXISTS note text;
+
+ALTER TABLE payables
+  ADD COLUMN IF NOT EXISTS opening_balance boolean NOT NULL DEFAULT false;
+
+-- ---------------------------------------------------------------------
+-- 2. Mỗi đối tượng đúng MỘT dòng đầu kỳ
+-- ---------------------------------------------------------------------
+-- Chỉ mục BỘ PHẬN (chỉ áp lên dòng đầu kỳ): công nợ thường thì một khách
+-- có bao nhiêu dòng cũng được, ràng buộc này không được đụng tới chúng.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_receivables_opening
+  ON receivables (org_id, customer_id)
+  WHERE opening_balance;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payables_opening
+  ON payables (org_id, supplier_id)
+  WHERE opening_balance;
+
+-- ---------------------------------------------------------------------
+-- 3. Tra cứu nhanh khi màn nhập liệu nạp danh sách đang có
+-- ---------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_receivables_opening
+  ON receivables (org_id) WHERE opening_balance;
+CREATE INDEX IF NOT EXISTS idx_payables_opening
+  ON payables (org_id) WHERE opening_balance;
+
+-- ---------------------------------------------------------------------
+-- 4. RLS: NVBH không được tạo công nợ đầu kỳ
+-- ---------------------------------------------------------------------
+-- Policy cũ cho 'sales' chèn receivables (đúng — màn tạo đơn cần thế).
+-- Nhưng công nợ đầu kỳ là việc chốt sổ của kế toán: mở cho NVBH nghĩa là
+-- một người bán hàng có thể tự ghi cho khách của mình một khoản nợ đầu
+-- kỳ. Siết lại đúng một vế, phần còn lại giữ nguyên hành vi cũ (đơn hàng
+-- sinh receivable với opening_balance = false nên vẫn qua).
+DROP POLICY IF EXISTS "Authorized roles can create receivables" ON receivables;
+CREATE POLICY "Authorized roles can create receivables"
+  ON receivables FOR INSERT
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND (
+      public.user_role() IN ('owner', 'accountant')
+      OR (public.user_role() = 'sales' AND opening_balance = false)
+    )
+  );
+
+-- Xoá: trước đây KHÔNG có policy DELETE trên receivables, nghĩa là không
+-- ai xoá được dòng nào qua RLS. Màn nhập cần xoá được dòng ĐẦU KỲ (điền
+-- số 0) — mở đúng phạm vi đó, không mở cho công nợ sinh từ đơn hàng.
+DROP POLICY IF EXISTS "Accountant can delete opening receivables" ON receivables;
+CREATE POLICY "Accountant can delete opening receivables"
+  ON receivables FOR DELETE
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'accountant')
+    AND opening_balance
+  );
+
+-- payables đã có policy "Manage payables" FOR ALL cho owner/accountant —
+-- đủ cho cả tạo, sửa lẫn xoá dòng đầu kỳ. Không đụng vào.
+
+
+-- ####################################################################
+-- # 103_customer_photos.sql
+-- ####################################################################
+
+-- =====================================================================
+-- Migration 103: ảnh điểm bán (tối đa 3) + nhắc nhở cập nhật
+-- =====================================================================
+-- NVBH thường dựng danh sách điểm bán ở nhà cho nhanh, rồi đi tuyến mới
+-- chụp ảnh và lấy toạ độ. Hệ thống phải chịu được trạng thái "có khách
+-- nhưng chưa có ảnh / chưa có vị trí" và TỰ NHẮC, chứ không im lặng để
+-- danh sách rỗng ảnh nằm đó nhiều tháng.
+
+-- ---------------------------------------------------------------------
+-- 1. Bảng ảnh
+-- ---------------------------------------------------------------------
+-- Bảng riêng chứ không phải 3 cột photo_1/2/3 trên `customers`: mỗi ảnh
+-- mang theo THỜI GIAN và TOẠ ĐỘ lúc chụp — đó là bằng chứng "đã tới tận
+-- nơi", nhồi vào cột phẳng thì thành 9 cột và không cách nào thêm ảnh
+-- thứ tư sau này.
+CREATE TABLE IF NOT EXISTS customer_photos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+
+  -- Ô ảnh 1..3. Trần "tối đa 3 ảnh" được ép bằng CHECK + chỉ mục duy
+  -- nhất, KHÔNG bằng trigger đếm: đếm rồi chèn là hai bước, hai người
+  -- bấm cùng lúc sẽ lọt ảnh thứ tư. Ràng buộc khai báo thì không lọt.
+  slot smallint NOT NULL CHECK (slot BETWEEN 1 AND 3),
+
+  photo_url text NOT NULL,
+
+  -- Thời điểm CHỤP, do máy của người chụp báo. Khác created_at (lúc ghi
+  -- vào DB) — hai cái này lệch nhau khi máy mất mạng lúc ở điểm bán.
+  taken_at timestamptz NOT NULL,
+
+  -- Toạ độ lúc chụp. Cho phép NULL: máy từ chối quyền định vị thì vẫn
+  -- phải lưu được ảnh, chỉ là ảnh đó không có giá trị làm bằng chứng vị
+  -- trí. Để trống còn hơn ghi một toạ độ bịa.
+  gps_lat numeric,
+  gps_lng numeric,
+  /** Sai số máy báo, mét. 5m và 500m là hai chất lượng khác hẳn nhau. */
+  gps_accuracy numeric,
+
+  uploaded_by uuid REFERENCES users(id),
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_photos_slot
+  ON customer_photos (customer_id, slot);
+CREATE INDEX IF NOT EXISTS idx_customer_photos_customer
+  ON customer_photos (customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_photos_org
+  ON customer_photos (org_id);
+
+-- ---------------------------------------------------------------------
+-- 2. Mốc đã nhắc — để cron không nhắc lại mỗi ngày
+-- ---------------------------------------------------------------------
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS photo_reminder_sent_at timestamptz;
+
+-- ---------------------------------------------------------------------
+-- 3. RLS — bám đúng quyền đã có trên `customers`
+-- ---------------------------------------------------------------------
+ALTER TABLE customer_photos ENABLE ROW LEVEL SECURITY;
+
+-- Nhìn thấy ảnh khi và chỉ khi nhìn thấy khách. Viết bằng EXISTS trên
+-- `customers` thay vì chép lại luật vai trò: chép lại là hai bản sao, và
+-- bản ở đây sẽ không được sửa cùng lúc khi luật kia đổi.
+DROP POLICY IF EXISTS "View customer photos" ON customer_photos;
+CREATE POLICY "View customer photos"
+  ON customer_photos FOR SELECT
+  USING (EXISTS (SELECT 1 FROM customers c WHERE c.id = customer_id));
+
+DROP POLICY IF EXISTS "Manage customer photos" ON customer_photos;
+CREATE POLICY "Manage customer photos"
+  ON customer_photos FOR ALL
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'sales')
+    AND EXISTS (SELECT 1 FROM customers c WHERE c.id = customer_id)
+  )
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'sales')
+    AND EXISTS (SELECT 1 FROM customers c WHERE c.id = customer_id)
+  );
+
+-- ---------------------------------------------------------------------
+-- 4. Loại thông báo mới
+-- ---------------------------------------------------------------------
+-- TRA TÊN RÀNG BUỘC trong pg_constraint, KHÔNG đoán. Tên do Postgres tự
+-- sinh (notifications_type_check) chỉ đúng khi CHECK được khai báo inline
+-- và chưa ai đổi tên; đoán sai thì lệnh DROP âm thầm không làm gì và
+-- CHECK cũ vẫn chặn giá trị mới.
+DO $$
+DECLARE
+  v_name text;
+BEGIN
+  SELECT con.conname INTO v_name
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  WHERE rel.relname = 'notifications'
+    AND con.contype = 'c'
+    AND pg_get_constraintdef(con.oid) ILIKE '%order_pending_approval%'
+  LIMIT 1;
+
+  IF v_name IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE notifications DROP CONSTRAINT %I', v_name);
+  END IF;
+
+  ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (
+    'order_pending_approval',
+    'order_approved',
+    'order_cancelled',
+    'payment_received',
+    'receivable_overdue',
+    'visit_logged',
+    'customer_photo_missing',
+    'info'
+  ));
+EXCEPTION
+  WHEN duplicate_object THEN
+    -- Chạy lại lần hai: ràng buộc mới đã có tên đó rồi, không sao.
+    NULL;
+END $$;
+
+-- ---------------------------------------------------------------------
+-- 5. Kho ảnh điểm bán
+-- ---------------------------------------------------------------------
+-- Cùng khuôn với `visit-photos` (mig 014) và `pod-photos` (mig 101).
+-- ĐÁNH ĐỔI ĐÃ BIẾT: bucket public, ai có URL đều xem được. Ảnh mặt tiền
+-- cửa hàng không phải dữ liệu cá nhân nhạy cảm, và để public thì thẻ
+-- khách render thẳng <img src> không cần ký URL tạm.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('customer-photos', 'customer-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'customer_photos_insert'
+  ) THEN
+    CREATE POLICY "customer_photos_insert" ON storage.objects
+      FOR INSERT TO authenticated
+      WITH CHECK (
+        bucket_id = 'customer-photos'
+        AND (split_part(name, '/', 1))::uuid = public.user_org_id()
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'customer_photos_select'
+  ) THEN
+    CREATE POLICY "customer_photos_select" ON storage.objects
+      FOR SELECT TO authenticated
+      USING (bucket_id = 'customer-photos');
+  END IF;
+
+  -- CÓ policy DELETE ở đây (khác pod-photos): ảnh điểm bán là dữ liệu
+  -- vận hành, chụp mờ / chụp nhầm cửa hàng là chuyện thường và NVBH phải
+  -- thay được. Ảnh POD thì không, vì nó là chứng từ giao hàng.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'customer_photos_delete'
+  ) THEN
+    CREATE POLICY "customer_photos_delete" ON storage.objects
+      FOR DELETE TO authenticated
+      USING (
+        bucket_id = 'customer-photos'
+        AND (split_part(name, '/', 1))::uuid = public.user_org_id()
+      );
+  END IF;
+END $$;
 

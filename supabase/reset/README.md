@@ -1,5 +1,47 @@
 # Làm sạch dữ liệu để bàn giao
 
+> ## ⚠ ĐỌC TRƯỚC — cập nhật 08/09/2026
+>
+> **Muốn "database trắng để bàn giao" thì dùng `05_reset_blank.sql`.**
+> Ba file `01` / `02` / `04` bên dưới vẫn để lại làm tham khảo, nhưng
+> KHÔNG dùng chúng cho việc đó nữa:
+>
+> - Chúng liệt kê tên bảng **bằng tay**. Đo được: schema có **72 bảng**,
+>   ba file đó chạm tới **40** — sót **32**, trong đó có cấu hình tài
+>   khoản MISA (`company_einvoice_config`), mã đăng nhập QR của nhân viên
+>   (`qr_login_tokens`), ảnh điểm bán, giá vốn FIFO, phiếu thu, bảng
+>   lương, nhật ký hoá đơn. Bàn giao bằng chúng là bàn giao kèm dữ liệu và
+>   thông tin đăng nhập của NPP cũ.
+> - Không file nào xoá **file trong storage** — ảnh mặt tiền cửa hàng và
+>   chữ ký người nhận hàng vẫn nằm nguyên đó.
+> - `04_reset_auth_profile.sql` **chạy là lỗi**: nó tra `users.email`,
+>   trong khi `public.users` không có cột `email` (email nằm ở
+>   `auth.users`, hai bảng dùng chung `id`).
+>
+> `05_reset_blank.sql` lật ngược mặc định — **xoá mọi bảng trừ danh sách
+> giữ lại** — nên bảng thêm về sau tự động được xoá, không cần ai nhớ sửa
+> file. Nó cũng dọn storage và tài khoản đăng nhập.
+>
+> ### Hai cách bàn giao — chọn một
+>
+> | | Cách A: Supabase project MỚI | Cách B: xoá sạch project đang dùng |
+> |---|---|---|
+> | Sạch | Tuyệt đối — không có gì sót | Sạch phần dữ liệu; cấu hình project (secrets, webhook, log cũ) vẫn là của bạn |
+> | Cách làm | Tạo project mới → dán `supabase/schema_full.sql` vào SQL Editor → tạo tài khoản owner đầu tiên | Backup → sửa email trong `05_reset_blank.sql` → chạy → chạy `03_reseed_defaults.sql` |
+> | Rủi ro | Phải cấu hình lại env cho app | Không hoàn tác được nếu quên backup |
+>
+> **Khuyến nghị: cách A.** Bàn giao *code* thì thứ cần chứng minh là "cài
+> từ đầu chạy được", và cách A chứng minh đúng điều đó. Đã đo trên
+> PostgreSQL 16 dựng từ số 0: 102 migration (bỏ `003_seed`) chạy **0
+> lỗi**, ra **72 bảng** và **3 bucket**.
+>
+> ⚠ **Đừng chạy `seed_demo.sql` cho bản bàn giao** — nó tạo 6 tài khoản
+> `*@demo.com` mật khẩu công khai `Demo@123456`.
+>
+> Sau khi xong, đổi lại các bí mật: `CRON_SECRET`, khoá Supabase, tài
+> khoản MISA. Xoá dữ liệu không đổi được khoá.
+
+
 Bộ script SQL để reset dữ liệu Supabase trước khi bàn giao NPP. Chạy
 thủ công qua **Supabase Dashboard → SQL Editor**, không nằm trong
 pipeline migration.

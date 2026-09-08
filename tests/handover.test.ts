@@ -152,3 +152,97 @@ describe("Bộ xoá sạch để bàn giao", () => {
     expect(reset).toContain("query_to_xml")
   })
 })
+
+describe("Cài mới trên project trống — bootstrap", () => {
+  const boot = read("supabase/bootstrap_owner.sql")
+  const install = read("supabase/INSTALL.md")
+
+  /**
+   * ⚠ LỖ KHOÁ NGOÀI. Cài xong schema_full.sql thì có đủ 72 bảng nhưng
+   * KHÔNG org nào, KHÔNG người dùng nào — và dự án không có trigger nào
+   * trên auth.users, nên tạo tài khoản ở Dashboard cũng không sinh dòng
+   * trong public.users. Thiếu bootstrap thì đăng nhập xong app đá về
+   * /login mãi vì user_org_id() trả NULL.
+   */
+  it("không có trigger nào tự tạo public.users từ auth.users", () => {
+    const withTrigger = MIGRATIONS.filter((f) =>
+      /CREATE\s+TRIGGER[\s\S]{0,200}?ON\s+auth\.users/i.test(read(`supabase/migrations/${f}`))
+    )
+    // Nếu về sau thêm trigger đó thì bootstrap_owner.sql thành thừa —
+    // test này đỏ để nhắc xem lại, chứ không phải để cấm.
+    expect(withTrigger, "có trigger rồi thì sửa lại INSTALL.md bước 4").toEqual([])
+  })
+
+  /** Chạy nhầm trên DB đang hoạt động sẽ đẻ org thứ hai, vô hình vì RLS. */
+  it("chặn trước khi tạo: DB đã có người, hoặc chưa có tài khoản đăng nhập", () => {
+    expect(boot).toContain("IF EXISTS (SELECT 1 FROM public.users)")
+    expect(boot).toContain("FROM auth.users WHERE lower(email) = lower(owner_email)")
+    const firstInsert = boot.indexOf("INSERT INTO public.organizations")
+    expect(boot.indexOf("RAISE EXCEPTION")).toBeLessThan(firstInsert)
+    expect(boot.lastIndexOf("RAISE EXCEPTION")).toBeLessThan(firstInsert)
+  })
+
+  /** users.id PHẢI dùng chung id với auth.users — đó là cách RLS nối phiên. */
+  it("chủ NPP dùng chung id với tài khoản đăng nhập", () => {
+    expect(boot).toContain("INSERT INTO public.users (id, org_id, full_name, role, is_active)")
+    expect(boot).toContain("VALUES (owner_id, new_org")
+    expect(boot).toContain("'owner'")
+  })
+
+  /** Không chép nội dung 03 vào đây — hai bản sao là hai cơ hội để lệch. */
+  it("không chép lại phần seed cấu hình mặc định", () => {
+    expect(boot).not.toContain("INSERT INTO sales_routes")
+    expect(boot).not.toContain("INSERT INTO expense_categories")
+    expect(boot).toContain("03_reseed_defaults.sql")
+  })
+
+  /**
+   * ⚠ Tài liệu ghi số đo được (72 bảng / 167 policy / 3 bucket). Số đó
+   * trôi theo migration mới mà không ai sửa thì người cài tưởng mình cài
+   * hỏng. Buộc nó khớp với schema_full.sql hiện tại.
+   */
+  it("số trong INSTALL.md khớp schema_full.sql", () => {
+    const schemaFull = read("supabase/schema_full.sql")
+    const count = (re: RegExp) => (schemaFull.match(re) || []).length
+    const buckets = new Set<string>()
+    const bRe = /INSERT INTO storage\.buckets[\s\S]{0,200}?VALUES\s*\(\s*'([a-z0-9-]+)'/gi
+    let bm: RegExpExecArray | null
+    while ((bm = bRe.exec(schemaFull)) !== null) buckets.add(bm[1])
+
+    // Bảng: đếm CREATE TABLE trong schema gộp.
+    const tables = count(/^CREATE TABLE (IF NOT EXISTS )?(public\.)?[a-z_]+/gim)
+    expect(install, `INSTALL.md phải ghi ${tables} bảng`).toContain(`| **${tables}** |`)
+    expect(install, `INSTALL.md phải ghi ${buckets.size} bucket`).toContain(`**${buckets.size}** (`)
+    for (const b of Array.from(buckets)) expect(install, `thiếu bucket ${b}`).toContain(b)
+  })
+
+  /** Seed demo có 6 tài khoản mật khẩu công khai. */
+  it("INSTALL.md cảnh báo KHÔNG chạy seed demo", () => {
+    expect(install).toContain("seed_demo.sql")
+    expect(install).toContain("Demo@123456")
+    expect(install).toMatch(/KHÔNG chạy[\s\S]{0,40}seed_demo/)
+  })
+
+  /** Service role key lọt vào NEXT_PUBLIC_* là mở toang database. */
+  it("INSTALL.md liệt kê đủ biến môi trường app thật sự đọc", () => {
+    for (const v of [
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "NEXT_PUBLIC_APP_URL",
+      "EINVOICE_ENC_KEY",
+      "CRON_SECRET",
+    ]) {
+      expect(install, `INSTALL.md thiếu ${v}`).toContain(v)
+    }
+    expect(install).toMatch(/CHỈ server/)
+  })
+
+  /** Lịch trong tài liệu phải là lịch thật trong vercel.json. */
+  it("lịch cron trong INSTALL.md khớp vercel.json", () => {
+    const crons = (JSON.parse(read("vercel.json")) as { crons: { path: string; schedule: string }[] }).crons
+    expect(crons).toHaveLength(1)
+    expect(install).toContain(crons[0].path)
+    expect(install).toContain(crons[0].schedule)
+  })
+})

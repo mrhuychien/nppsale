@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server"
+import { randomBytes } from "crypto"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isValidPhone, syntheticEmailForPhone } from "@/lib/users/phone"
+import { qrLoginUrl } from "@/lib/qr-login"
 
 /**
- * POST /api/admin/users - create a new user (auth + profile)
- * Requires authenticated owner role.
+ * POST /api/admin/users — tạo nhân viên: tài khoản đăng nhập + hồ sơ + MÃ QR.
+ *
+ * VÌ SAO PHÁT QR NGAY Ở ĐÂY
+ *   Trước đây có hai màn tạo người dùng: một bằng mật khẩu, một bằng QR.
+ *   Người vận hành phải chọn trước "nhân viên này đăng nhập kiểu gì" — mà
+ *   lúc mới tạo thì chưa ai biết. Chọn sai là phải xoá đi tạo lại.
+ *
+ *   Nay một đường: tạo xong có CẢ HAI. Nhân viên quét QR cho nhanh, hoặc
+ *   gõ SĐT + mật khẩu khi mất điện thoại. Không phải quyết định gì trước.
+ *
+ * Chỉ Chủ sở hữu được gọi.
  */
 export async function POST(req: Request) {
   try {
@@ -104,7 +115,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: friendly }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true, id: created.user.id })
+    // Mã QR đăng nhập. Bảng riêng, chỉ service_role đọc được (088).
+    //
+    // Hỏng ở đây thì XOÁ luôn tài khoản vừa tạo: để lại một nhân viên có
+    // hồ sơ mà không có QR nghĩa là người vận hành tưởng đã xong, đưa máy
+    // cho nhân viên quét, và không quét được — không có gì báo.
+    const qrToken = randomBytes(32).toString("base64url")
+    const { error: tokenErr } = await admin.from("qr_login_tokens").insert({
+      user_id: created.user.id,
+      token: qrToken,
+    })
+    if (tokenErr) {
+      // Xoá auth user → cascade xoá hồ sơ, tránh tài khoản mồ côi.
+      await admin.auth.admin.deleteUser(created.user.id)
+      return NextResponse.json(
+        { error: `Tạo được tài khoản nhưng không phát được mã QR: ${tokenErr.message}` },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      id: created.user.id,
+      token: qrToken,
+      loginUrl: qrLoginUrl(qrToken),
+    })
   } catch (err) {
     console.error("[/api/admin/users] error:", err)
     const message = err instanceof Error ? err.message : "Lỗi không xác định"

@@ -44,3 +44,41 @@ export async function printQrLoginCard(userName: string, loginUrl: string) {
     </body></html>`)
   w.document.close()
 }
+
+/**
+ * Tải mã QR đăng nhập về máy dưới dạng PNG, để gửi cho nhân viên qua Zalo
+ * / tin nhắn.
+ *
+ * VÌ SAO CẦN, TRONG KHI ĐÃ CÓ "IN"
+ *   In cần máy in. Phần lớn NPP gửi mã cho nhân viên qua điện thoại, nên
+ *   thứ họ cần là một tấm ảnh gửi được — không phải một trang để in.
+ *
+ * PNG chứ không phải SVG: Zalo và các ứng dụng nhắn tin phổ biến không
+ * hiện trước SVG, người nhận thấy một file lạ không mở được.
+ *
+ * Dựng hoàn toàn phía trình duyệt — token đăng nhập không đi qua dịch vụ
+ * ngoài nào.
+ */
+export async function downloadQrLoginPng(name: string, loginUrl: string): Promise<void> {
+  const QRCode = (await import("qrcode")).default
+  const dataUrl = await QRCode.toDataURL(loginUrl, {
+    margin: 2,
+    width: 720, // đủ nét khi người nhận phóng to trên điện thoại
+    errorCorrectionLevel: "M",
+    color: { dark: "#0b1220", light: "#ffffff" },
+  })
+  const a = document.createElement("a")
+  a.href = dataUrl
+  // Bỏ dấu và ký tự lạ khỏi tên file — Windows không nhận / \ : * ? " < > |
+  const safe =
+    name
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/đ/gi, "d")
+      .replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "nhan-vien"
+  a.download = `qr-dang-nhap-${safe}.png`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}

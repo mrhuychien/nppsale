@@ -11,7 +11,7 @@ import {
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
-  TrendingUp, FileBarChart2, ShieldCheck, QrCode, FileSpreadsheet, Camera, Route,
+  TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -87,7 +87,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Danh sách nhân viên", href: "/settings/users", icon: Users, module: "settings", feature: "settings.users" },
       { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus, module: "settings", feature: "settings.users" },
-      { label: "Tạo NV quét QR", href: "/settings/users/qr-new", icon: QrCode, module: "settings", feature: "settings.users" },
       { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
       { label: "Chấm công", href: "/hr/attendance", icon: UserCog, module: "settings", feature: "hr" },
       { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },

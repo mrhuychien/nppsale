@@ -115,16 +115,9 @@ export default function UsersPage() {
             onReset={resetColumns}
           />
           {isOwner && (
-            <Button asChild variant="outline">
-              <Link href="/settings/users/qr-new">
-                <QrCode className="mr-2 h-4 w-4" /> Tạo NV quét QR
-              </Link>
-            </Button>
-          )}
-          {isOwner && (
             <Button asChild>
               <Link href="/settings/users/new">
-                <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
+                <Plus className="mr-2 h-4 w-4" /> Tạo nhân viên
               </Link>
             </Button>
           )}

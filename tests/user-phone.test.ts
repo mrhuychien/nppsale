@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   normalizePhone,
@@ -205,9 +205,13 @@ describe("Tạo người dùng: SĐT là chính, email là phụ", () => {
     expect(form).toContain("isValidPhone(phone)")
   })
 
-  /** Tạo xong đi thẳng sang phân quyền — không bỏ lửng ở đó. */
-  it("tạo xong chuyển sang trang phân quyền chi tiết", () => {
-    expect(form).toContain("router.push(`/settings/users/${newUserId}`)")
+  /**
+   * Tạo xong dừng lại ở màn phát mã QR (mã + mật khẩu chỉ hiện một lần),
+   * nhưng vẫn có nút đi tiếp sang phân quyền — không bỏ lửng người dùng.
+   */
+  it("có đường đi tiếp sang phân quyền chi tiết", () => {
+    expect(form).toContain("router.push(`/settings/users/${created.id}`)")
+    expect(form).toContain("Phân quyền chi tiết")
   })
 
   /** SĐT là thứ nhân viên gõ để đăng nhập, nên nhãn phải nói đúng thế. */
@@ -245,7 +249,6 @@ describe("Menu: Tuyến bán hàng nằm trong Bán hàng", () => {
 describe("Bỏ hẳn username — chỉ còn SĐT và email chủ", () => {
   const sql105 = read("supabase/migrations/105_drop_username_login.sql")
   const api = read("src/app/api/admin/users/route.ts")
-  const qrApi = read("src/app/api/admin/users/qr/route.ts")
 
   /**
    * `username` là định danh đăng nhập THỨ BA. Sau khi SĐT thành định danh
@@ -286,29 +289,27 @@ describe("Bỏ hẳn username — chỉ còn SĐT và email chủ", () => {
 
   /** Một định danh là đủ — nhận thêm email là mở lại câu hỏi vừa bỏ. */
   it("API không nhận email lẫn username từ ngoài", () => {
-    for (const src of [api, qrApi]) {
-      expect(src).not.toMatch(/const \{[^}]*\busername\b/)
-      expect(src).not.toContain("providedEmail")
-      expect(src).not.toContain("username: cleanUsername")
-    }
+    expect(api).not.toMatch(/const \{[^}]*\busername\b/)
+    expect(api).not.toContain("providedEmail")
+    expect(api).not.toContain("username: cleanUsername")
     expect(api).toContain("const authEmail = syntheticEmailForPhone(phone)")
   })
 
   /**
-   * ⚠ Route QR trước đây sinh email từ randomUUID(), nên cùng một người
-   * tạo hai lần ra hai tài khoản Auth khác nhau mà không gì nối lại được.
+   * ⚠ Đường tạo bằng QR trước đây sinh email từ một chuỗi ngẫu nhiên, nên
+   * cùng một người tạo hai lần ra hai tài khoản Auth khác nhau mà không gì
+   * nối lại được. Nay đã gộp vào một route, sinh từ SĐT.
    */
-  it("route QR sinh email từ SĐT, không từ số ngẫu nhiên", () => {
-    expect(qrApi).toContain("syntheticEmailForPhone(phone)")
-    expect(qrApi).not.toContain("randomUUID")
-    expect(qrApi).toContain("isValidPhone(phone)")
+  it("email kỹ thuật sinh từ SĐT, không từ số ngẫu nhiên", () => {
+    expect(api).toContain("syntheticEmailForPhone(phone)")
+    expect(api).not.toContain("randomUUID")
+    expect(api).toContain("isValidPhone(phone)")
   })
 
   /** Không màn nào còn hỏi tên tài khoản. */
-  it("hai màn tạo người dùng không còn ô username", () => {
+  it("màn tạo và màn sửa không còn ô username", () => {
     for (const f of [
       "src/app/(dashboard)/settings/users/new/page.tsx",
-      "src/app/(dashboard)/settings/users/qr-new/page.tsx",
       "src/app/(dashboard)/settings/users/[id]/page.tsx",
     ]) {
       expect(read(f), f).not.toMatch(/form\.username|setUsername/)
@@ -352,5 +353,85 @@ describe("Chủ NPP cũng đăng nhập bằng SĐT (106)", () => {
   /** Không tiết lộ số nào đang tồn tại: sai số thì trả NULL, client báo chung. */
   it("số không hợp lệ trả NULL, không báo lỗi riêng", () => {
     expect(sql106).toContain("IF v_phone = '' THEN RETURN NULL; END IF;")
+  })
+})
+
+describe("Gộp hai màn tạo nhân viên thành một", () => {
+  const api = read("src/app/api/admin/users/route.ts")
+  const form = read("src/app/(dashboard)/settings/users/new/page.tsx")
+
+  /**
+   * Trước đây có hai màn: tạo bằng mật khẩu, và tạo bằng QR. Người vận
+   * hành phải chọn TRƯỚC "nhân viên này đăng nhập kiểu gì" — mà lúc mới
+   * tạo thì chưa ai biết. Chọn sai là xoá đi tạo lại.
+   */
+  it("chỉ còn MỘT màn và MỘT route tạo nhân viên", () => {
+    expect(existsSync(resolve(ROOT, "src/app/(dashboard)/settings/users/qr-new"))).toBe(false)
+    expect(existsSync(resolve(ROOT, "src/app/api/admin/users/qr"))).toBe(false)
+  })
+
+  /** Không còn lối vào nào trỏ tới màn đã gỡ. */
+  it("không còn link tới màn cũ", () => {
+    for (const f of [
+      "src/components/layout/sidebar.tsx",
+      "src/app/(dashboard)/settings/users/page.tsx",
+    ]) {
+      expect(read(f), f).not.toContain("qr-new")
+    }
+  })
+
+  /**
+   * ⚠ Phát QR hỏng thì phải XOÁ luôn tài khoản vừa tạo. Để lại một nhân
+   * viên có hồ sơ mà không có QR nghĩa là người vận hành tưởng đã xong,
+   * đưa máy cho nhân viên quét, và không quét được — không có gì báo.
+   */
+  it("API tạo tài khoản VÀ phát QR, hỏng thì dọn sạch", () => {
+    expect(api).toContain('from("qr_login_tokens")')
+    expect(api).toContain("loginUrl: qrLoginUrl(qrToken)")
+    const failBlock = api.slice(api.indexOf("if (tokenErr)"))
+    expect(failBlock).toContain("deleteUser(created.user.id)")
+  })
+
+  /** Token QR phải đủ dài để không đoán được — nó là chìa khoá vào tài khoản. */
+  it("token QR sinh ngẫu nhiên 32 byte", () => {
+    expect(api).toContain('randomBytes(32).toString("base64url")')
+  })
+
+  /**
+   * ⚠ Mật khẩu và token QR chỉ có ĐÚNG MỘT LẦN: server lưu mật khẩu đã
+   * băm, và token chỉ trả về lúc tạo. Điều hướng ngay sang trang phân
+   * quyền là người vận hành mất cả hai mà chưa kịp gửi cho nhân viên.
+   */
+  it("hiện kết quả tại chỗ, KHÔNG đá sang trang khác ngay", () => {
+    const submit = form.slice(form.indexOf("const handleSubmit"), form.indexOf("const copyLink"))
+    expect(submit).toContain("setCreated({")
+    expect(submit).not.toMatch(/router\.push/)
+    // Và phải nói rõ là chỉ hiện một lần.
+    expect(form).toContain("Mật khẩu chỉ hiện MỘT LẦN")
+  })
+
+  /** Thiếu QR mà vẫn báo thành công là để người vận hành đi vào ngõ cụt. */
+  it("báo lỗi nếu tạo được tài khoản nhưng không có mã QR", () => {
+    expect(form).toContain("if (!newUserId || !data?.loginUrl)")
+  })
+
+  /** Ba cách đưa mã cho nhân viên: quét tại chỗ, gửi ảnh, in ra giấy. */
+  it("có đủ tải ảnh / chép link / in", () => {
+    expect(form).toContain("downloadQrLoginPng(created.name, created.loginUrl)")
+    expect(form).toContain("navigator.clipboard.writeText(created.loginUrl)")
+    expect(form).toContain("printQrLoginCard(created.name, created.loginUrl)")
+    expect(form).toContain("<QrCode value={created.loginUrl}")
+  })
+
+  /**
+   * PNG chứ không phải SVG: Zalo và các app nhắn tin không hiện trước
+   * SVG, người nhận thấy một file lạ không mở được.
+   */
+  it("tải về dạng PNG, dựng phía trình duyệt", () => {
+    const lib = read("src/lib/qr-print.ts")
+    expect(lib).toContain("QRCode.toDataURL")
+    expect(lib).toContain(".png")
+    // Tên file phải bỏ dấu — Windows không nhận nhiều ký tự.
+    expect(lib).toContain('normalize("NFD")')
   })
 })

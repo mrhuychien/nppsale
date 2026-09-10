@@ -229,21 +229,29 @@ describe("M1.3 — ngăn kéo menu là bottom sheet", () => {
   })
 })
 
-describe("M1 — /home: câu quote không chiếm màn hình đầu", () => {
+describe("M1 — /home: vị trí câu quote", () => {
   /**
-   * Quote nằm ngay dưới lời chào tức chiếm chỗ đẹp nhất và đẩy nút "Tạo đơn
-   * hàng mới" xuống dưới mép nhìn thấy. Thứ tự mới: lời chào → 4 ô số liệu →
-   * CTA lớn → lưới chức năng → quote.
+   * ⚠ QUYẾT ĐỊNH ĐÃ ĐẢO — ghi lại để người sau không tưởng là lỗi.
+   *
+   * M1 từng đẩy quote xuống CUỐI trang, vì đặt ngay dưới lời chào thì nó
+   * chiếm chỗ đẹp nhất của màn hình đầu và đẩy nút "Tạo đơn hàng mới"
+   * xuống dưới mép nhìn thấy. Test cũ giữ đúng thứ tự đó.
+   *
+   * Ngày 10/09/2026 chủ dự án yêu cầu đưa quote LÊN ĐẦU. Đó là lựa chọn
+   * của họ, và cái giá kia vẫn có thật — nên đổi lại kèm điều kiện: khối
+   * quote phải GỌN (padding và cỡ chữ nhỏ hơn bản cũ), để phần bị đẩy
+   * xuống ít nhất có thể. Ràng buộc gọn đó do tests/home-quote.test.ts
+   * giữ; ở đây chỉ chốt vị trí.
    */
-  it("quote nằm SAU lưới chức năng", () => {
+  it("quote nằm ĐẦU trang, trước CTA và lưới chức năng", () => {
     const cta = HOME.indexOf("Tạo đơn hàng mới")
     const grid = HOME.indexOf("Tất cả chức năng")
     const quote = HOME.indexOf("QUOTE_CATEGORY_LABEL[dailyQuote.category]")
     expect(cta).toBeGreaterThan(0)
     expect(grid).toBeGreaterThan(0)
     expect(quote).toBeGreaterThan(0)
-    expect(quote, "quote phải nằm sau CTA tạo đơn").toBeGreaterThan(cta)
-    expect(quote, "quote phải nằm sau lưới chức năng").toBeGreaterThan(grid)
+    expect(quote, "quote phải nằm trước CTA tạo đơn").toBeLessThan(cta)
+    expect(quote, "quote phải nằm trước lưới chức năng").toBeLessThan(grid)
   })
 
   /** Đang tìm kiếm thì không hiện quote — nó không phải kết quả tìm kiếm. */

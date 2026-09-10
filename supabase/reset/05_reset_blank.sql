@@ -90,7 +90,32 @@ DECLARE
   keep_org    uuid;
   wipe_list   text;
   wiped       int;
+  files_left  bigint;
 BEGIN
+  ------------------------------------------------------------------
+  -- 0. File trong Storage phải được dọn TRƯỚC, bằng Storage API.
+  --
+  -- ⚠ KHÔNG XOÁ ĐƯỢC BẰNG SQL. Supabase chặn thẳng:
+  --     ERROR 42501: Direct deletion from storage tables is not allowed.
+  --                  Use the Storage API instead.
+  -- Trigger storage.protect_delete() dựng ra để tránh chuyện xoá dòng
+  -- trong storage.objects mà file thật vẫn nằm lại trên S3 — hàng trong
+  -- kho không ai biết, không ai dọn được nữa.
+  --
+  -- Chặn ở ĐÂY, trước mọi thao tác xoá, vì thứ tự ngược lại là cái bẫy:
+  -- xoá sạch bảng trước rồi mới phát hiện không xoá được ảnh, thì lúc đó
+  -- ảnh mặt tiền cửa hàng và chữ ký người nhận hàng của NPP cũ vẫn nằm
+  -- nguyên trong Storage — và đường liên kết tới chúng thì vừa mất.
+  ------------------------------------------------------------------
+  SELECT count(*) INTO files_left FROM storage.objects;
+  IF files_left > 0 THEN
+    RAISE EXCEPTION
+      'Storage còn % file. DỪNG, chưa xoá gì. Dọn Storage TRƯỚC bằng: '
+      'SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… npx tsx scripts/reset-storage.ts '
+      '(chạy không tham số để xem trước, thêm --yes để xoá thật), rồi chạy lại file này.',
+      files_left;
+  END IF;
+
   ------------------------------------------------------------------
   -- 1. Xác định người được giữ. KHÔNG tìm thấy thì DỪNG, không xoá gì.
   ------------------------------------------------------------------
@@ -166,14 +191,6 @@ BEGIN
     DELETE FROM public.users;
     DELETE FROM public.organizations;
   END IF;
-
-  ------------------------------------------------------------------
-  -- 4. File trong storage. Bảng SQL sạch mà ảnh còn nằm đó thì chưa
-  --    gọi là bàn giao sạch — ảnh điểm bán có mặt tiền cửa hàng, ảnh
-  --    giao hàng có chữ ký người nhận.
-  --    Giữ lại bucket (rỗng): migration 101/103 tạo ra chúng.
-  ------------------------------------------------------------------
-  DELETE FROM storage.objects;
 
   ------------------------------------------------------------------
   -- 5. Tài khoản đăng nhập. Xoá identities trước rồi mới tới users —

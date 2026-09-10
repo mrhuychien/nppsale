@@ -20,7 +20,8 @@
 >
 > `05_reset_blank.sql` lật ngược mặc định — **xoá mọi bảng trừ danh sách
 > giữ lại** — nên bảng thêm về sau tự động được xoá, không cần ai nhớ sửa
-> file. Nó cũng dọn storage và tài khoản đăng nhập.
+> file. Nó cũng dọn tài khoản đăng nhập; file trong Storage thì dọn bằng
+> `scripts/reset-storage.ts` (xem thứ tự bắt buộc bên dưới).
 >
 > ### `05_reset_blank.sql` có hai chế độ
 >
@@ -31,8 +32,9 @@
 > | `true` (mặc định) | 1 org + 1 chủ NPP | muốn đăng nhập được ngay sau khi bàn giao |
 > | `false` | **0 org, 0 người, 0 tài khoản đăng nhập** | muốn trắng tinh; người nhận tự tạo tài khoản ở Dashboard rồi chạy `supabase/bootstrap_owner.sql` |
 >
-> Cả hai chế độ đều xoá 70 bảng dữ liệu, mọi file trong storage, và giữ
-> nguyên 3 bucket rỗng. Đã đo trên PostgreSQL 16 với dữ liệu trồng sẵn.
+> Cả hai chế độ đều xoá 70 bảng dữ liệu và giữ nguyên 3 bucket rỗng. Đã đo
+> trên PostgreSQL 16 với dữ liệu trồng sẵn. **File trong Storage dọn ở bước
+> riêng** — xem phần thứ tự bắt buộc bên dưới.
 >
 > **Với `keep_owner = true`, cờ `scrub_identity` (mặc định `true`) còn tẩy
 > danh tính NPP cũ.** Giữ dòng `organizations` lại là giữ luôn tên công ty,
@@ -48,6 +50,34 @@
 >
 > Tắt (`false`) khi đây là môi trường của chính bạn và chỉ muốn dọn dữ liệu
 > giao dịch, không muốn khai báo lại thông tin công ty.
+>
+> ### ⚠ THỨ TỰ BẮT BUỘC: dọn Storage TRƯỚC, rồi mới chạy SQL
+>
+> Supabase **chặn xoá file bằng SQL**:
+>
+> ```
+> ERROR 42501: Direct deletion from storage tables is not allowed.
+>              Use the Storage API instead.
+> ```
+>
+> Trigger `storage.protect_delete()` dựng ra để tránh xoá dòng trong
+> `storage.objects` mà file thật vẫn nằm lại trên S3. Nên phải chạy hai
+> bước, đúng thứ tự:
+>
+> ```bash
+> # 1. Xem trước (không xoá gì)
+> SUPABASE_URL=https://<proj>.supabase.co \
+> SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+> npx tsx scripts/reset-storage.ts
+>
+> # 2. Xoá thật
+> … npx tsx scripts/reset-storage.ts --yes
+> ```
+>
+> Rồi mới dán `05_reset_blank.sql`. Nó **tự chặn ngay từ đầu** nếu Storage
+> còn file — thứ tự ngược lại là bẫy: xoá sạch bảng rồi mới biết không dọn
+> được ảnh, lúc đó ảnh mặt tiền cửa hàng và chữ ký người nhận hàng vẫn còn
+> nguyên, mà đường lần tới chúng thì vừa mất.
 >
 > ⚠ Chế độ `false` **không còn đường đăng nhập nào** cho tới khi chạy
 > `bootstrap_owner.sql` — app đá về `/login` vì `user_org_id()` trả NULL.
@@ -151,8 +181,11 @@ FROM users WHERE email = 'owner@...';`).
 00_inspect.sql              — đếm dòng tất cả bảng (read-only)
 03_reseed_defaults.sql      — tạo lại config mặc định (an toàn, idempotent)
 05_reset_blank.sql          — ★ DÙNG CÁI NÀY để bàn giao. Xoá mọi bảng trừ
-                              danh sách giữ lại; dọn cả storage và tài
-                              khoản đăng nhập; tẩy danh tính NPP cũ.
+                              danh sách giữ lại; dọn tài khoản đăng nhập;
+                              tẩy danh tính NPP cũ. CHẶN nếu Storage chưa dọn.
+
+(ngoài thư mục này)
+scripts/reset-storage.ts    — dọn file Storage qua Storage API. CHẠY TRƯỚC 05.
 
 ── để lại tham khảo, KHÔNG dùng để bàn giao (xem cảnh báo đầu file) ──
 01_reset_transactions.sql   — liệt kê bảng bằng tay, sót 32 bảng

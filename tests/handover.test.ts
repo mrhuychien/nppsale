@@ -130,10 +130,35 @@ describe("Bộ xoá sạch để bàn giao", () => {
     expect(reset).not.toMatch(/u\.email/)
   })
 
-  /** Bảng sạch mà ảnh còn thì chưa phải bàn giao sạch. */
-  it("xoá cả file trong storage, nhưng giữ bucket", () => {
-    expect(reset).toContain("DELETE FROM storage.objects")
-    expect(reset).not.toMatch(/DELETE FROM storage\.buckets/)
+  /**
+   * ⚠ LỖI ĐÃ TRẢ GIÁ TRÊN PRODUCTION. Bản đầu có `DELETE FROM
+   * storage.objects` và chạy trót lọt trên Postgres tạm dùng để kiểm — vì
+   * bảng đó do chính bộ kiểm tự tạo, không có trigger của Supabase. Trên
+   * production thì:
+   *   ERROR 42501: Direct deletion from storage tables is not allowed.
+   *                Use the Storage API instead.
+   * Trigger storage.protect_delete() chặn để tránh xoá dòng mà file thật
+   * vẫn nằm lại trên S3.
+   *
+   * Nay việc dọn Storage nằm ở scripts/reset-storage.ts, và SQL chỉ CHẶN
+   * nếu chưa dọn.
+   */
+  it("KHÔNG xoá thẳng storage bằng SQL", () => {
+    expect(reset).not.toMatch(/DELETE FROM storage\./)
+    expect(reset).not.toMatch(/TRUNCATE[^\n;]*storage\./)
+  })
+
+  /**
+   * Chặn phải nằm TRƯỚC mọi thao tác xoá. Thứ tự ngược lại là bẫy: xoá
+   * sạch bảng rồi mới biết không dọn được ảnh — lúc đó ảnh mặt tiền cửa
+   * hàng và chữ ký người nhận vẫn còn, mà đường lần tới chúng thì mất.
+   */
+  it("chặn ngay từ đầu nếu Storage chưa dọn", () => {
+    const check = reset.indexOf("FROM storage.objects")
+    const wipe = reset.indexOf("EXECUTE 'TRUNCATE TABLE ")
+    expect(check).toBeGreaterThan(0)
+    expect(check).toBeLessThan(wipe)
+    expect(reset).toContain("scripts/reset-storage.ts")
   })
 
   /** Tài khoản đăng nhập của nhân viên cũ phải đi. */
@@ -324,5 +349,41 @@ describe("Cài mới trên project trống — bootstrap", () => {
     expect(crons).toHaveLength(1)
     expect(install).toContain(crons[0].path)
     expect(install).toContain(crons[0].schedule)
+  })
+})
+
+describe("Script dọn Storage", () => {
+  const st = read("scripts/reset-storage.ts")
+
+  /** Thao tác hàng loạt không hoàn tác được thì phải XEM TRƯỚC. */
+  it("mặc định chỉ xem trước, phải có --yes mới xoá", () => {
+    expect(st).toContain('process.argv.includes("--yes")')
+    const removeAt = st.indexOf(".remove(chunk)")
+    expect(removeAt).toBeGreaterThan(0)
+    // Lệnh xoá phải nằm sau một cửa chặn CONFIRM.
+    expect(st.slice(0, removeAt)).toContain("if (!CONFIRM")
+  })
+
+  /**
+   * ⚠ Storage list KHÔNG đệ quy và có phân trang. Không đi vào thư mục con
+   * thì ảnh nằm trong org/<id>/… không bao giờ được liệt kê — script báo
+   * "đã sạch" trong khi ảnh còn nguyên.
+   */
+  it("đi hết thư mục con và hết trang", () => {
+    expect(st).toContain("listAll(bucket, path)")
+    expect(st).toContain("entry.id === null")
+    expect(st).toContain("offset")
+  })
+
+  /** Đếm lại từ đầu, không tin biến đếm của chính mình. */
+  it("kiểm lại sau khi xoá và báo lỗi nếu còn sót", () => {
+    expect(st).toContain("left > 0")
+    expect(st).toMatch(/process\.exit\(1\)/)
+  })
+
+  /** service_role bỏ qua RLS — nhầm sang anon là script im lặng không xoá gì. */
+  it("dùng service role key, không dùng anon", () => {
+    expect(st).toContain("SUPABASE_SERVICE_ROLE_KEY")
+    expect(st).not.toContain("ANON_KEY")
   })
 })

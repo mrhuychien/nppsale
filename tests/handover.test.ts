@@ -161,6 +161,28 @@ describe("Bộ xoá sạch để bàn giao", () => {
     expect(reset).toContain("scripts/reset-storage.ts")
   })
 
+  /**
+   * ⚠ BẾ TẮC THẬT TRÊN PRODUCTION. Supabase tự tạo file RỖNG
+   * `.emptyFolderPlaceholder` khi người dùng tạo thư mục trong Dashboard,
+   * và ẨN nó khỏi giao diện. Bản đầu đếm cả nó: chốt chặn báo "còn 1
+   * file", người chạy vào Dashboard xoá thì KHÔNG THẤY gì để xoá.
+   *
+   * Chặn bằng một thứ mà giao diện không cho gỡ là chặn chết. Nó cũng
+   * không chứa dữ liệu gì, nên không thuộc thứ cần chặn.
+   */
+  it("không chặn vì thư mục rỗng Supabase tự tạo", () => {
+    const guard = reset.slice(
+      reset.indexOf("SELECT count(*) INTO files_left"),
+      reset.indexOf("RAISE EXCEPTION")
+    )
+    expect(guard).toContain("NOT LIKE '%.emptyFolderPlaceholder'")
+  })
+
+  /** Nhưng vẫn phải NÓI RA, không im lặng bỏ qua. */
+  it("vẫn báo số thư mục rỗng còn sót", () => {
+    expect(reset).toMatch(/RAISE NOTICE[\s\S]{0,120}emptyFolderPlaceholder/)
+  })
+
   /** Tài khoản đăng nhập của nhân viên cũ phải đi. */
   it("xoá tài khoản đăng nhập khác trong auth", () => {
     expect(reset).toContain("DELETE FROM auth.identities WHERE user_id <> keep_user")

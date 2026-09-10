@@ -107,12 +107,35 @@ BEGIN
   -- ảnh mặt tiền cửa hàng và chữ ký người nhận hàng của NPP cũ vẫn nằm
   -- nguyên trong Storage — và đường liên kết tới chúng thì vừa mất.
   ------------------------------------------------------------------
-  SELECT count(*) INTO files_left FROM storage.objects;
+  -- ⚠ BỎ QUA `.emptyFolderPlaceholder`. Supabase tự tạo file RỖNG này khi
+  -- người dùng tạo thư mục trong Dashboard, và ẩn nó khỏi giao diện. Nó
+  -- không chứa dữ liệu gì — nhưng vẫn là một dòng trong storage.objects.
+  --
+  -- Bản đầu đếm cả nó, và tạo ra bế tắc thật: chốt chặn báo "còn 1 file",
+  -- người chạy vào Dashboard xoá thì KHÔNG THẤY file nào để xoá. Chặn
+  -- bằng một thứ mà giao diện không cho gỡ là chặn chết.
+  SELECT count(*) INTO files_left
+  FROM storage.objects
+  WHERE name NOT LIKE '%.emptyFolderPlaceholder';
+
   IF files_left > 0 THEN
     RAISE EXCEPTION
-      'Storage còn % file. DỪNG, chưa xoá gì. Dọn Storage TRƯỚC bằng: '
-      'SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… npx tsx scripts/reset-storage.ts '
-      '(chạy không tham số để xem trước, thêm --yes để xoá thật), rồi chạy lại file này.',
+      'Storage còn % file có dữ liệu. DỪNG, chưa xoá gì. Xem chúng ở đâu: '
+      'SELECT bucket_id, name FROM storage.objects '
+      'WHERE name NOT LIKE ''%%.emptyFolderPlaceholder'' ORDER BY 1,2; — rồi xoá ở '
+      'Dashboard → Storage, hoặc chạy: npx tsx scripts/reset-storage.ts --yes',
+      files_left;
+  END IF;
+
+  -- Thư mục rỗng còn sót thì chỉ là vệt hiển thị, không phải dữ liệu.
+  -- Nói ra để người chạy biết mà dọn nốt nếu muốn, chứ không chặn.
+  SELECT count(*) INTO files_left
+  FROM storage.objects
+  WHERE name LIKE '%.emptyFolderPlaceholder';
+  IF files_left > 0 THEN
+    RAISE NOTICE
+      'Storage còn % thư mục rỗng (.emptyFolderPlaceholder) — không phải dữ '
+      'liệu, không chặn. Muốn sạch hẳn thì xoá cả THƯ MỤC ở Dashboard.',
       files_left;
   END IF;
 

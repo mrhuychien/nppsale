@@ -122,12 +122,17 @@ describe("Bộ xoá sạch để bàn giao", () => {
   })
 
   /**
-   * Email nằm ở auth.users, KHÔNG ở public.users (bảng đó chỉ có
-   * `username`). File 04 cũ tra `users.email` nên hỏng ngay khi chạy.
+   * Sau 106, SĐT là định danh đăng nhập DUY NHẤT — nên bộ reset cũng tra
+   * owner bằng SĐT. (File 04 cũ tra `users.email`, cột đó không tồn tại
+   * nên chạy là lỗi.)
+   *
+   * ⚠ So theo DẠNG CHUẨN HOÁ: "0909 123 456" và "0909123456" là cùng một
+   * người. So chuỗi thô thì người chạy gõ đúng số của chủ mà script vẫn
+   * báo "không thấy tài khoản" và từ chối chạy.
    */
-  it("tra owner qua auth.users, không qua users.email", () => {
-    expect(reset).toContain("JOIN auth.users a ON a.id = u.id")
-    expect(reset).not.toMatch(/u\.email/)
+  it("tra owner bằng SĐT chuẩn hoá, không bằng email", () => {
+    expect(reset).toContain("public.normalize_phone(u.phone) = public.normalize_phone(keep_phone)")
+    expect(reset).not.toMatch(/u\.email|a\.email/)
   })
 
   /**
@@ -259,13 +264,21 @@ describe("Bộ xoá sạch để bàn giao", () => {
     expect(reset).toContain("setup_completed_at")
   })
 
-  /** Hồ sơ cá nhân của chủ cũ cũng là danh tính. */
-  it("xoá tên / SĐT / username của chủ cũ", () => {
+  /** Tên chủ cũ là danh tính — xoá được. */
+  it("xoá tên của chủ cũ", () => {
     const block = reset.slice(reset.indexOf("IF keep_owner AND scrub_identity"))
     expect(block).toContain("UPDATE public.users")
     expect(block).toContain("full_name = new_owner_name")
-    expect(block).toContain("phone     = NULL")
-    expect(block).toContain("username  = NULL")
+  })
+
+  /**
+   * ⚠ NHƯNG KHÔNG ĐƯỢC XOÁ SĐT. Sau 106 đó là đường đăng nhập DUY NHẤT
+   * của chủ NPP — tẩy nó đi là khoá luôn tài khoản vừa cố tình giữ lại,
+   * và không có đường nào sửa từ giao diện.
+   */
+  it("GIỮ số điện thoại — đó là chìa khoá, không phải danh tính", () => {
+    const block = reset.slice(reset.indexOf("IF keep_owner AND scrub_identity"))
+    expect(block).not.toMatch(/phone\s*=\s*NULL/)
   })
 
   /**
@@ -311,9 +324,20 @@ describe("Cài mới trên project trống — bootstrap", () => {
 
   /** users.id PHẢI dùng chung id với auth.users — đó là cách RLS nối phiên. */
   it("chủ NPP dùng chung id với tài khoản đăng nhập", () => {
-    expect(boot).toContain("INSERT INTO public.users (id, org_id, full_name, role, is_active)")
+    expect(boot).toContain("INSERT INTO public.users (id, org_id, full_name, role, phone, is_active)")
     expect(boot).toContain("VALUES (owner_id, new_org")
     expect(boot).toContain("'owner'")
+  })
+
+  /**
+   * ⚠ Chủ NPP cũng đăng nhập bằng SĐT (106). Bootstrap PHẢI ghi phone,
+   * nếu không tài khoản vừa dựng không có đường nào vào app.
+   */
+  it("dựng chủ NPP theo SĐT, và ghi phone vào hồ sơ", () => {
+    expect(boot).toContain("owner_phone")
+    expect(boot).toContain("public.normalize_phone(owner_phone) || '@nppsale.local'")
+    expect(boot).toContain("'owner', owner_phone")
+    expect(boot).not.toMatch(/owner_email text :=/)
   })
 
   /** Không chép nội dung 03 vào đây — hai bản sao là hai cơ hội để lệch. */

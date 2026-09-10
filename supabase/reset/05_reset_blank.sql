@@ -49,7 +49,7 @@ DO $$
 DECLARE
   -- ⚠⚠ CHỌN MỘT TRONG HAI, sửa ngay đây trước khi chạy:
   --
-  --   true  — GIỮ 1 org + 1 owner (điền keep_email bên dưới).
+  --   true  — GIỮ 1 org + 1 owner (điền keep_phone bên dưới).
   --           Bàn giao xong đăng nhập được ngay bằng tài khoản đó.
   --
   --   false — TRẮNG TINH: 0 org, 0 người dùng, 0 tài khoản đăng nhập.
@@ -61,8 +61,9 @@ DECLARE
   --           phải hỏng.
   keep_owner  boolean := true;
 
-  -- Chỉ dùng khi keep_owner = true.
-  keep_email  text := 'owner@nppsale.vn';
+  -- Chỉ dùng khi keep_owner = true. SĐT là định danh đăng nhập duy nhất
+  -- (migration 106) — không còn tra bằng email nữa.
+  keep_phone  text := '0909123456';
 
   -- ⚠ TẨY DANH TÍNH NPP CŨ. Chỉ có tác dụng khi keep_owner = true.
   --
@@ -74,9 +75,9 @@ DECLARE
   --
   -- Bật (true) thì: đổi tên org về chỗ trống, xoá sạch `settings` (kể cả
   -- cờ `setup_completed_at`, nên màn /setup hiện lại để chủ mới nhập
-  -- thông tin của họ), và xoá tên/điện thoại/username của chủ cũ.
-  -- Tài khoản đăng nhập (email + mật khẩu) GIỮ NGUYÊN — đó là thứ đang
-  -- cần giữ để còn vào được app.
+  -- thông tin của họ), và xoá TÊN của chủ cũ.
+  -- GIỮ NGUYÊN: số điện thoại + mật khẩu — sau 106 đó là đường đăng nhập
+  -- duy nhất, tẩy đi là khoá luôn tài khoản vừa cố tình giữ lại.
   --
   -- Tắt (false) khi đây là môi trường của chính bạn và bạn chỉ muốn dọn
   -- dữ liệu giao dịch, không muốn khai báo lại thông tin công ty.
@@ -143,29 +144,27 @@ BEGIN
   -- 1. Xác định người được giữ. KHÔNG tìm thấy thì DỪNG, không xoá gì.
   ------------------------------------------------------------------
   IF keep_owner THEN
-    -- Email nằm ở auth.users, KHÔNG ở public.users — bảng đó chỉ có
-    -- `username`. (04_reset_auth_profile.sql cũ tra `users.email` nên hỏng
-    -- ngay khi chạy; đo được trên bản dựng lại từ migration.)
-    -- Hai bảng dùng CHUNG id, nên nối thẳng theo id.
+    -- So theo DẠNG CHUẨN HOÁ, không so chuỗi thô: "0909 123 456" và
+    -- "0909123456" là cùng một người. (04_reset_auth_profile.sql cũ tra
+    -- `users.email` — cột đó không tồn tại nên chạy là lỗi.)
     SELECT u.id, u.org_id INTO keep_user, keep_org
     FROM public.users u
-    JOIN auth.users a ON a.id = u.id
-    WHERE lower(a.email) = lower(keep_email);
+    WHERE u.phone IS NOT NULL
+      AND public.normalize_phone(u.phone) = public.normalize_phone(keep_phone);
 
     IF keep_user IS NULL THEN
       RAISE EXCEPTION
-        'Không thấy tài khoản "%". DỪNG, chưa xoá gì. Chạy câu này để lấy '
-        'đúng email: SELECT a.email, u.role, u.full_name FROM public.users u '
-        'JOIN auth.users a ON a.id = u.id ORDER BY u.role;',
-        keep_email;
+        'Không thấy tài khoản có SĐT "%". DỪNG, chưa xoá gì. Chạy câu này để '
+        'lấy đúng số: SELECT phone, role, full_name FROM public.users ORDER BY role;',
+        keep_phone;
     END IF;
 
     IF keep_org IS NULL THEN
       RAISE EXCEPTION
-        'Tài khoản "%" không thuộc org nào (org_id NULL). DỪNG, chưa xoá gì. '
+        'Tài khoản SĐT "%" không thuộc org nào (org_id NULL). DỪNG, chưa xoá gì. '
         'Sửa org_id cho tài khoản này trước đã, nếu không sau khi xoá sẽ '
         'không đăng nhập vào đâu được.',
-        keep_email;
+        keep_phone;
     END IF;
 
     RAISE NOTICE 'Giữ lại: user=% org=%', keep_user, keep_org;
@@ -245,13 +244,14 @@ BEGIN
 
     -- Email + mật khẩu ở auth.users KHÔNG đụng tới — đó là đường đăng
     -- nhập đang cần giữ. Chỉ xoá phần nhận dạng cá nhân ở hồ sơ.
+    -- ⚠ KHÔNG xoá `phone`: sau 106 đó là đường đăng nhập DUY NHẤT của chủ
+    -- NPP. Tẩy nó đi là khoá luôn tài khoản vừa cố tình giữ lại. Tên thì
+    -- xoá được — nó là danh tính, không phải chìa khoá.
     UPDATE public.users
-    SET full_name = new_owner_name,
-        phone     = NULL,
-        username  = NULL
+    SET full_name = new_owner_name
     WHERE id = keep_user;
 
-    RAISE NOTICE 'Đã tẩy danh tính NPP cũ (tên, MST, địa chỉ, SĐT).';
+    RAISE NOTICE 'Đã tẩy danh tính NPP cũ (tên công ty, MST, địa chỉ, tên chủ). SĐT đăng nhập giữ nguyên.';
   ELSIF keep_owner THEN
     RAISE NOTICE 'GIỮ NGUYÊN danh tính NPP cũ (scrub_identity = false).';
   END IF;

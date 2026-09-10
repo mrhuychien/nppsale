@@ -322,3 +322,35 @@ describe("Bỏ hẳn username — chỉ còn SĐT và email chủ", () => {
     expect(user).not.toContain("username")
   })
 })
+
+describe("Chủ NPP cũng đăng nhập bằng SĐT (106)", () => {
+  const sql106 = read("supabase/migrations/106_owner_login_by_phone.sql")
+
+  /** Sau 106 chỉ còn MỘT định danh — hết câu hỏi "người này đăng nhập bằng gì". */
+  it("RPC chỉ còn tra theo SĐT", () => {
+    const rpc = sql106.slice(sql106.indexOf("FUNCTION public.lookup_email_by_identifier"))
+    expect(rpc).toContain("public.normalize_phone(u.phone) = v_phone")
+    expect(rpc).not.toContain("LIKE '%@%'")
+    expect(rpc).not.toContain("lower(au.email) = v_id")
+  })
+
+  /**
+   * ⚠ RỦI RO PHẢI CHẶN. Bỏ nhánh email nghĩa là tài khoản KHÔNG CÓ SĐT
+   * mất sạch đường đăng nhập — kể cả chủ NPP. Nếu đó là tài khoản duy
+   * nhất thì mất luôn quyền vào hệ thống, và không sửa được từ giao diện.
+   */
+  it("DỪNG nếu còn tài khoản đang hoạt động mà thiếu SĐT", () => {
+    const guard = sql106.indexOf("RAISE EXCEPTION")
+    const replaceFn = sql106.indexOf("CREATE OR REPLACE FUNCTION")
+    expect(guard).toBeGreaterThan(0)
+    expect(guard).toBeLessThan(replaceFn)
+    expect(sql106).toContain("phone IS NULL OR public.normalize_phone(phone) = ''")
+    // Chỉ xét người còn hoạt động — tài khoản đã tắt thì không cần SĐT.
+    expect(sql106).toContain("coalesce(is_active, true)")
+  })
+
+  /** Không tiết lộ số nào đang tồn tại: sai số thì trả NULL, client báo chung. */
+  it("số không hợp lệ trả NULL, không báo lỗi riêng", () => {
+    expect(sql106).toContain("IF v_phone = '' THEN RETURN NULL; END IF;")
+  })
+})

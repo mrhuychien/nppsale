@@ -63,8 +63,15 @@ SELECT
 
 Dashboard → **Authentication → Users → Add user**:
 
-- Email + Password
+- **Email**: `<số điện thoại>@nppsale.local` — ví dụ SĐT `0909123456` thì
+  điền `0909123456@nppsale.local`
+- **Password**: đặt mật khẩu
 - Bật **Auto Confirm User**
+
+> ⚠ Chuỗi email đó **thuần kỹ thuật**. Supabase Auth bắt buộc phải có email,
+> nhưng chủ NPP đăng nhập vào app bằng **số điện thoại** và không bao giờ gõ
+> chuỗi này. Điền sai dạng cũng không sao — bước 4 sẽ nêu ra đúng chuỗi cần
+> tạo.
 
 Phải làm ở Dashboard, không làm bằng SQL: băm mật khẩu là việc của Supabase
 Auth, chèn tay vào `auth.users` sẽ ra tài khoản không đăng nhập được.
@@ -74,7 +81,7 @@ Auth, chèn tay vào `auth.users` sẽ ra tài khoản không đăng nhập đư
 ## Bước 4 — Dựng NPP đầu tiên
 
 SQL Editor → dán `supabase/bootstrap_owner.sql` → **sửa 3 dòng đầu**
-(email vừa tạo, tên NPP, slug) → **Run**.
+(số điện thoại chủ NPP, tên NPP, slug) → **Run**.
 
 **Không bỏ được bước này.** Sau bước 2 database có đủ 72 bảng nhưng *không
 có org nào và không có người dùng nào*, và dự án **không có trigger nào
@@ -150,7 +157,9 @@ curl -s -H "x-cron-secret: $CRON_SECRET" https://<domain>/api/cron/daily
 
 - [ ] `/home` — vào được, KPI = 0
 - [ ] `/setup` — chạy để đặt thông tin NPP, ngưỡng giá, cấu hình lương
-- [ ] `/settings/users` — thêm được nhân viên (cần `SUPABASE_SERVICE_ROLE_KEY`)
+- [ ] Đăng nhập bằng **số điện thoại**, không phải email
+- [ ] `/settings/users` — thêm được nhân viên (cần `SUPABASE_SERVICE_ROLE_KEY`);
+      màn tạo chỉ hỏi 4 thứ: họ tên, SĐT, mật khẩu, vai trò
 - [ ] `/products`, `/customers` — thêm được bản ghi
 - [ ] `/orders/new` — tạo được đơn
 - [ ] `/inventory` — tồn = 0
@@ -161,8 +170,7 @@ Lỗi 500 kèm danh sách rỗng ở một trang nào đó thường là bước
 hoặc `org_id` của tài khoản bị NULL:
 
 ```sql
-SELECT a.email, u.role, u.org_id FROM public.users u
-JOIN auth.users a ON a.id = u.id;
+SELECT u.phone, u.role, u.org_id, u.full_name FROM public.users u;
 ```
 
 ---

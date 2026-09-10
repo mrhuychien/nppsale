@@ -16,11 +16,18 @@
 --
 -- LÀM TRƯỚC (bắt buộc, không làm được bằng SQL)
 --   Supabase Dashboard → Authentication → Users → "Add user"
---     • Email: điền đúng email dưới đây
+--     • Email:    <số điện thoại>@nppsale.local
+--                 Ví dụ SĐT 0909123456 → 0909123456@nppsale.local
 --     • Password: đặt mật khẩu
 --     • Bật "Auto Confirm User"
---   Băm mật khẩu là việc của Supabase Auth; chèn tay vào auth.users bằng
---   SQL sẽ ra tài khoản không đăng nhập được.
+--
+--   ⚠ Email đó là THUẦN KỸ THUẬT. Supabase Auth bắt buộc phải có email,
+--   nhưng chủ NPP sẽ đăng nhập vào app bằng SỐ ĐIỆN THOẠI, không bao giờ
+--   gõ chuỗi này. Phải đúng dạng trên thì hệ thống mới nối được.
+--
+--   Chạy sai dạng cũng không sao: script bên dưới nêu ra đúng chuỗi cần
+--   tạo. Băm mật khẩu là việc của Supabase Auth; chèn tay vào auth.users
+--   bằng SQL sẽ ra tài khoản không đăng nhập được.
 --
 -- SAU KHI CHẠY FILE NÀY
 --   Chạy tiếp supabase/reset/03_reseed_defaults.sql để có tuyến bán hàng,
@@ -33,11 +40,12 @@ BEGIN;
 DO $$
 DECLARE
   -- ⚠⚠ SỬA 3 DÒNG NÀY
-  owner_email text := 'chu@npp-cua-ban.vn';   -- đúng email vừa tạo ở Dashboard
+  owner_phone text := '0909123456';           -- SĐT chủ NPP, cũng là tên đăng nhập
   org_name    text := 'Nhà phân phối ABC';    -- tên hiển thị trong app
   org_slug    text := 'npp-abc';              -- không dấu, không khoảng trắng
 
   owner_full_name text := 'Chủ nhà phân phối';
+  owner_email text;
   owner_id  uuid;
   new_org   uuid;
 BEGIN
@@ -56,15 +64,26 @@ BEGIN
 
   ------------------------------------------------------------------
   -- 2. Tài khoản đăng nhập phải được tạo TRƯỚC ở Dashboard.
+  --
+  -- Email kỹ thuật suy ra từ SĐT — cùng quy tắc với hàm sinh email ở
+  -- src/lib/users/phone.ts, để tài khoản chủ và tài khoản nhân viên do
+  -- app tạo nằm trên cùng một luật.
   ------------------------------------------------------------------
+  IF public.normalize_phone(owner_phone) = '' THEN
+    RAISE EXCEPTION 'Số điện thoại "%" không hợp lệ. DỪNG, chưa tạo gì.', owner_phone;
+  END IF;
+
+  owner_email := public.normalize_phone(owner_phone) || '@nppsale.local';
+
   SELECT id INTO owner_id FROM auth.users WHERE lower(email) = lower(owner_email);
 
   IF owner_id IS NULL THEN
     RAISE EXCEPTION
-      'Chưa có tài khoản đăng nhập "%". DỪNG, chưa tạo gì. Vào Supabase '
-      'Dashboard → Authentication → Users → Add user (nhớ bật Auto Confirm '
-      'User), rồi chạy lại file này.',
-      owner_email;
+      'Chưa có tài khoản đăng nhập cho SĐT %. DỪNG, chưa tạo gì. Vào Supabase '
+      'Dashboard → Authentication → Users → Add user, điền ĐÚNG email này: %  '
+      '(nhớ bật Auto Confirm User), đặt mật khẩu, rồi chạy lại file này. '
+      'Chủ NPP sẽ đăng nhập vào app bằng SĐT %, không phải bằng chuỗi email đó.',
+      owner_phone, owner_email, owner_phone;
   END IF;
 
   ------------------------------------------------------------------
@@ -75,17 +94,17 @@ BEGIN
   VALUES (org_name, org_slug)
   RETURNING id INTO new_org;
 
-  INSERT INTO public.users (id, org_id, full_name, role, is_active)
-  VALUES (owner_id, new_org, owner_full_name, 'owner', true);
+  INSERT INTO public.users (id, org_id, full_name, role, phone, is_active)
+  VALUES (owner_id, new_org, owner_full_name, 'owner', owner_phone, true);
 
-  RAISE NOTICE 'Xong. org=% (%), chủ NPP=% (%)', org_name, new_org, owner_email, owner_id;
+  RAISE NOTICE 'Xong. org=% (%), chủ NPP đăng nhập bằng SĐT %', org_name, new_org, owner_phone;
   RAISE NOTICE 'Bước tiếp theo: chạy supabase/reset/03_reseed_defaults.sql';
 END $$;
 
 COMMIT;
 
 -- Kiểm lại: phải ra đúng 1 dòng.
-SELECT o.name AS npp, o.slug, a.email, u.role, u.full_name
+SELECT o.name AS npp, o.slug, u.phone AS dang_nhap_bang, u.role, u.full_name
 FROM public.users u
 JOIN public.organizations o ON o.id = u.org_id
 JOIN auth.users a ON a.id = u.id;

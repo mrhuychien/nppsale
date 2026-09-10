@@ -35,7 +35,6 @@ export default function UserDetailPage() {
     full_name: "",
     role: "sales" as Role,
     phone: "",
-    username: "",
     is_active: true,
     allow_price_edit: false,
     price_edit_max_increase_pct: 0,
@@ -48,7 +47,7 @@ export default function UserDetailPage() {
   const fetchUser = useCallback(async () => {
     setLoading(true)
     const [userRes, supRes, mySupRes] = await Promise.all([
-      supabase.from("users").select("id, org_id, full_name, role, phone, username, is_active, allow_price_edit, price_edit_max_increase_pct, created_at").eq("id", id).maybeSingle(),
+      supabase.from("users").select("id, org_id, full_name, role, phone, is_active, allow_price_edit, price_edit_max_increase_pct, created_at").eq("id", id).maybeSingle(),
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
     ])
@@ -62,7 +61,6 @@ export default function UserDetailPage() {
         full_name: u.full_name || "",
         role: u.role,
         phone: u.phone || "",
-        username: u.username || "",
         is_active: u.is_active,
         allow_price_edit: u.allow_price_edit ?? false,
         price_edit_max_increase_pct: u.price_edit_max_increase_pct ?? 0,
@@ -90,14 +88,12 @@ export default function UserDetailPage() {
     if (!target) return
     setSaving(true)
     try {
-      const cleanUsername = form.username.trim()
       const { error } = await supabase
         .from("users")
         .update({
           full_name: form.full_name,
           role: form.role,
           phone: form.phone || null,
-          username: cleanUsername || null,
           is_active: form.is_active,
           allow_price_edit: form.allow_price_edit,
           price_edit_max_increase_pct: form.allow_price_edit
@@ -106,9 +102,6 @@ export default function UserDetailPage() {
         })
         .eq("id", target.id)
       if (error) {
-        if (/idx_users_username_unique/i.test(error.message)) {
-          throw new Error("Tên tài khoản đã được dùng. Chọn tên khác.")
-        }
         if (/idx_users_phone_unique/i.test(error.message)) {
           throw new Error("Số điện thoại đã được dùng. Chọn số khác.")
         }
@@ -237,18 +230,6 @@ export default function UserDetailPage() {
                 />
                 <p className="text-[10px] text-muted-foreground">
                   Dùng được làm tên đăng nhập (nếu duy nhất).
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Tài khoản đăng nhập</Label>
-                <Input
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  placeholder="nguyenvana"
-                  autoComplete="off"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Tuỳ chọn. Chữ + số, không khoảng trắng. Dùng đăng nhập thay email.
                 </p>
               </div>
               <div className="space-y-2">

@@ -141,10 +141,11 @@ describe("Hai bản chuẩn hoá phải cùng luật", () => {
 
   /**
    * ⚠ RPC đăng nhập PHẢI dùng cùng hàm đó. Bản 085 tự bỏ khoảng trắng
-   * tại chỗ — đúng cái đã gây lỗi.
+   * tại chỗ — đúng cái đã gây lỗi. Bản CUỐI CÙNG nằm ở 105.
    */
   it("RPC đăng nhập so bằng chính hàm chuẩn hoá", () => {
-    const rpc = sql.slice(sql.indexOf("FUNCTION public.lookup_email_by_identifier"))
+    const final = read("supabase/migrations/105_drop_username_login.sql")
+    const rpc = final.slice(final.indexOf("FUNCTION public.lookup_email_by_identifier"))
     expect(rpc).toContain("public.normalize_phone(u.phone) = v_phone")
     expect(rpc).not.toContain("regexp_replace")
   })
@@ -238,5 +239,86 @@ describe("Menu: Tuyến bán hàng nằm trong Bán hàng", () => {
   /** Trang đã tồn tại từ trước, chỉ là không có lối vào từ menu. */
   it("trỏ đúng trang đang có", () => {
     expect(read("src/app/(dashboard)/customers/routes/page.tsx")).toContain("Tuyến bán hàng")
+  })
+})
+
+describe("Bỏ hẳn username — chỉ còn SĐT và email chủ", () => {
+  const sql105 = read("supabase/migrations/105_drop_username_login.sql")
+  const api = read("src/app/api/admin/users/route.ts")
+  const qrApi = read("src/app/api/admin/users/qr/route.ts")
+
+  /**
+   * `username` là định danh đăng nhập THỨ BA. Sau khi SĐT thành định danh
+   * chính, nó chỉ còn làm một việc: thêm một cách nữa để cùng một người
+   * đăng nhập — đổi lại một chỉ mục phải giữ đồng bộ, một nhánh trong RPC,
+   * một ô trên hai màn tạo người dùng, và một câu hỏi cho người vận hành
+   * ("người này đăng nhập bằng số hay bằng tên?").
+   */
+  it("migration bỏ cả cột lẫn chỉ mục", () => {
+    expect(sql105).toContain("DROP INDEX IF EXISTS idx_users_username_unique")
+    expect(sql105).toContain("ALTER TABLE public.users DROP COLUMN IF EXISTS username")
+  })
+
+  /** Có người đang dùng thì phải DỪNG — bỏ cột là họ mất đường đăng nhập. */
+  it("chặn nếu còn tài khoản đang đặt username", () => {
+    const guard = sql105.indexOf("RAISE EXCEPTION")
+    const drop = sql105.indexOf("DROP INDEX")
+    expect(guard).toBeGreaterThan(0)
+    expect(guard).toBeLessThan(drop)
+  })
+
+  /**
+   * ⚠ VẾ PHẢI GIỮ: email vẫn là đường đăng nhập của CHỦ NPP — tài khoản
+   * đầu tiên tạo từ Supabase Dashboard (bootstrap_owner.sql). Bỏ nốt vế
+   * này là khoá luôn đường vào của một bản cài mới.
+   */
+  it("GIỮ đường đăng nhập bằng email cho chủ NPP", () => {
+    const rpc = sql105.slice(sql105.indexOf("FUNCTION public.lookup_email_by_identifier"))
+    expect(rpc).toContain("v_id LIKE '%@%'")
+    expect(rpc).toContain("lower(au.email) = v_id")
+  })
+
+  /** Không còn nhánh username trong RPC. */
+  it("RPC không còn tra theo username", () => {
+    const rpc = sql105.slice(sql105.indexOf("FUNCTION public.lookup_email_by_identifier"))
+    expect(rpc).not.toContain("u.username")
+  })
+
+  /** Một định danh là đủ — nhận thêm email là mở lại câu hỏi vừa bỏ. */
+  it("API không nhận email lẫn username từ ngoài", () => {
+    for (const src of [api, qrApi]) {
+      expect(src).not.toMatch(/const \{[^}]*\busername\b/)
+      expect(src).not.toContain("providedEmail")
+      expect(src).not.toContain("username: cleanUsername")
+    }
+    expect(api).toContain("const authEmail = syntheticEmailForPhone(phone)")
+  })
+
+  /**
+   * ⚠ Route QR trước đây sinh email từ randomUUID(), nên cùng một người
+   * tạo hai lần ra hai tài khoản Auth khác nhau mà không gì nối lại được.
+   */
+  it("route QR sinh email từ SĐT, không từ số ngẫu nhiên", () => {
+    expect(qrApi).toContain("syntheticEmailForPhone(phone)")
+    expect(qrApi).not.toContain("randomUUID")
+    expect(qrApi).toContain("isValidPhone(phone)")
+  })
+
+  /** Không màn nào còn hỏi tên tài khoản. */
+  it("hai màn tạo người dùng không còn ô username", () => {
+    for (const f of [
+      "src/app/(dashboard)/settings/users/new/page.tsx",
+      "src/app/(dashboard)/settings/users/qr-new/page.tsx",
+      "src/app/(dashboard)/settings/users/[id]/page.tsx",
+    ]) {
+      expect(read(f), f).not.toMatch(/form\.username|setUsername/)
+    }
+  })
+
+  /** Kiểu User không còn trường đã bỏ khỏi schema. */
+  it("type User không còn username", () => {
+    const types = read("src/types/index.ts")
+    const user = types.slice(types.indexOf("interface User"), types.indexOf("interface User") + 600)
+    expect(user).not.toContain("username")
   })
 })

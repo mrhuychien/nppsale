@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
-import { randomBytes, randomUUID } from "crypto"
+import { randomBytes } from "crypto"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { qrLoginUrl } from "@/lib/qr-login"
+import { isValidPhone, syntheticEmailForPhone } from "@/lib/users/phone"
 
 /**
  * POST /api/admin/users/qr — tạo tài khoản nhân viên đăng nhập bằng QR.
@@ -14,19 +15,17 @@ import { qrLoginUrl } from "@/lib/qr-login"
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const {
-      full_name,
-      role,
-      phone,
-      username,
-      email: providedEmail,
-      allow_price_edit,
-      price_edit_max_increase_pct,
-    } = body
+    const { full_name, role, phone, allow_price_edit, price_edit_max_increase_pct } = body
 
-    if (!full_name || !role) {
+    if (!full_name || !role || !phone) {
       return NextResponse.json(
-        { error: "Thiếu thông tin bắt buộc: full_name, role" },
+        { error: "Thiếu thông tin bắt buộc: họ tên, vai trò, số điện thoại" },
+        { status: 400 }
+      )
+    }
+    if (!isValidPhone(phone)) {
+      return NextResponse.json(
+        { error: `Số điện thoại không hợp lệ: "${phone}". Ví dụ đúng: 0909123456` },
         { status: 400 }
       )
     }
@@ -52,14 +51,13 @@ export async function POST(req: Request) {
       )
     }
 
-    // Email tổng hợp khi không nhập — chỉ dùng nội bộ cho Supabase Auth,
+    // Email tổng hợp từ chính SĐT — chỉ dùng nội bộ cho Supabase Auth,
     // nhân viên không cần biết. email_confirm:true nên không gửi mail.
-    const cleanUsername =
-      typeof username === "string" ? username.trim() : ""
-    const email =
-      typeof providedEmail === "string" && providedEmail.includes("@")
-        ? providedEmail.trim()
-        : `qr.${randomUUID().slice(0, 12)}@nppsale.local`
+    //
+    // Trước đây sinh từ một chuỗi ngẫu nhiên, nên cùng một người tạo hai lần ra
+    // hai tài khoản Auth khác nhau mà không có gì nối lại được. Sinh từ
+    // SĐT thì email suy ra được và duy nhất theo đúng định danh thật.
+    const email = syntheticEmailForPhone(phone)
     const password = randomBytes(18).toString("base64url") + "Aa1@"
     const qrToken = randomBytes(32).toString("base64url")
 
@@ -84,7 +82,6 @@ export async function POST(req: Request) {
       full_name,
       role,
       phone: phone || null,
-      username: cleanUsername || null,
       is_active: true,
       allow_price_edit: free
         ? true
@@ -99,9 +96,7 @@ export async function POST(req: Request) {
     if (profErr) {
       await admin.auth.admin.deleteUser(created.user.id)
       const msg = profErr.message || ""
-      const friendly = /idx_users_username_unique/i.test(msg)
-        ? "Tên tài khoản đã được dùng. Chọn tên khác."
-        : /idx_users_phone_unique/i.test(msg)
+      const friendly = /idx_users_phone_unique/i.test(msg)
           ? "Số điện thoại đã được dùng. Chọn số khác."
           : `Tạo hồ sơ thất bại: ${msg}`
       return NextResponse.json({ error: friendly }, { status: 400 })

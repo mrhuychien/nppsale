@@ -32,7 +32,6 @@ export default function QrNewUserPage() {
 
   const [fullName, setFullName] = useState("")
   const [phone, setPhone] = useState("")
-  const [username, setUsername] = useState("")
   const [templateKey, setTemplateKey] = useState<TemplateKey>("sales_basic")
   const [submitting, setSubmitting] = useState(false)
   const [created, setCreated] = useState<CreatedEmployee | null>(null)
@@ -68,8 +67,7 @@ export default function QrNewUserPage() {
         body: JSON.stringify({
           full_name: fullName.trim(),
           role: t?.role || "sales",
-          phone: phone.trim() || null,
-          username: username.trim() || null,
+          phone: phone.trim(),
           allow_price_edit: t?.allow_price_edit ?? false,
           price_edit_max_increase_pct: t?.price_edit_max_increase_pct ?? 0,
         }),
@@ -149,7 +147,6 @@ export default function QrNewUserPage() {
                   setCreated(null)
                   setFullName("")
                   setPhone("")
-                  setUsername("")
                 }}
               >
                 <UserPlus className="mr-1.5 h-4 w-4" />
@@ -171,11 +168,11 @@ export default function QrNewUserPage() {
     <div className="space-y-4 max-w-lg">
       <PageHeader
         title="Tạo nhân viên quét QR"
-        description="Nhân viên quét mã QR bằng điện thoại là đăng nhập, không cần email/mật khẩu"
+        description="Nhân viên quét mã QR bằng điện thoại là đăng nhập, không cần mật khẩu"
         backHref="/settings/users"
       >
         <Link href="/settings/users/new" className="text-sm text-primary hover:underline">
-          Tạo bằng email/mật khẩu →
+          Tạo bằng SĐT + mật khẩu →
         </Link>
       </PageHeader>
 
@@ -208,20 +205,20 @@ export default function QrNewUserPage() {
                 autoFocus
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Số điện thoại</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0901234567" />
-              </div>
-              <div className="space-y-2">
-                <Label>Tài khoản (tuỳ chọn)</Label>
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="nguyenvana"
-                  autoComplete="off"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Số điện thoại *</Label>
+              <Input
+                type="tel"
+                inputMode="numeric"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0909123456"
+                required
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Bắt buộc: đây là định danh của nhân viên, và là cách đăng nhập
+                dự phòng khi mất mã QR.
+              </p>
             </div>
 
             <div className="space-y-3">

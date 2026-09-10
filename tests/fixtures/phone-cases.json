@@ -1,0 +1,34 @@
+{
+  "_": [
+    "Bộ ca kiểm DÙNG CHUNG cho hai bản chuẩn hoá số điện thoại:",
+    "  TS  — src/lib/users/phone.ts        normalizePhone()",
+    "  SQL — migration 104                  public.normalize_phone()",
+    "Hai bản phải cho CÙNG kết quả trên mọi ca dưới đây. Lệch nhau thì",
+    "tài khoản tạo bằng dạng này sẽ không đăng nhập được bằng dạng kia."
+  ],
+  "normalize": [
+    { "in": "0909123456", "out": "0909123456", "note": "dạng chuẩn, giữ nguyên" },
+    { "in": "0909 123 456", "out": "0909123456", "note": "có khoảng trắng" },
+    { "in": "0909.123.456", "out": "0909123456", "note": "có dấu chấm" },
+    { "in": "0909-123-456", "out": "0909123456", "note": "có gạch nối" },
+    { "in": "(090) 912 3456", "out": "0909123456", "note": "có ngoặc" },
+    { "in": " 0909123456 ", "out": "0909123456", "note": "thừa khoảng trắng hai đầu" },
+    { "in": "+84909123456", "out": "0909123456", "note": "mã quốc gia có dấu +" },
+    { "in": "+84 909 123 456", "out": "0909123456", "note": "mã quốc gia có khoảng trắng" },
+    { "in": "84909123456", "out": "0909123456", "note": "mã quốc gia không dấu +" },
+    { "in": "0084909123456", "out": "0909123456", "note": "tiền tố quay số quốc tế 00" },
+    { "in": "909123456", "out": "0909123456", "note": "thiếu số 0 đầu" },
+    { "in": "02838221234", "out": "02838221234", "note": "số cố định 11 chữ số" },
+    { "in": "", "out": "", "note": "rỗng" },
+    { "in": "abc", "out": "", "note": "không có chữ số nào" }
+  ],
+  "valid": [
+    { "in": "0909123456", "out": true },
+    { "in": "+84 909 123 456", "out": true },
+    { "in": "02838221234", "out": true, "note": "cố định 11 số vẫn nhận" },
+    { "in": "0909", "out": false, "note": "quá ngắn" },
+    { "in": "090912345678901", "out": false, "note": "quá dài" },
+    { "in": "", "out": false },
+    { "in": "abc", "out": false }
+  ]
+}

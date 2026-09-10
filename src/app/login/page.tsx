@@ -137,13 +137,13 @@ function LoginForm() {
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="identifier" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Email / SĐT / Tài khoản
+                  Số điện thoại
                 </Label>
                 <Input
                   id="identifier"
                   type="text"
                   autoComplete="username"
-                  placeholder="email, số điện thoại hoặc tên tài khoản"
+                  placeholder="0909123456"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   required

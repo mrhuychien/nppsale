@@ -1,0 +1,165 @@
+name: Sao lưu database
+
+# 03:00 UTC = 10:00 sáng giờ Việt Nam — sau giờ mở hàng, trước giờ cao điểm
+# nhập liệu buổi chiều, nên bản sao bắt được trọn ngày làm việc trước đó.
+#
+# ⚠ KHÔNG phải cron của Vercel. Đây là GitHub Actions, không dính giới hạn
+# "một lần mỗi ngày" của gói Hobby bên Vercel.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: # chạy tay khi cần một bản ngay
+
+concurrency:
+  # Hai lượt chạy chồng nhau sẽ upload hai file cùng tên trong cùng một
+  # ngày, và phần xoay vòng đếm nhầm.
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # Dump + restore kiểm chứng + upload. Chưa bao giờ chạm 10 phút, nhưng
+    # đặt trần để một lần treo không ăn hết hạn mức Actions của tháng.
+    timeout-minutes: 30
+
+    services:
+      # Postgres tạm để KIỂM CHỨNG bản dump khôi phục được. Một bản sao
+      # chưa từng restore thì không phải bản sao, chỉ là một file.
+      verify_db:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: verify
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5433:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cài đặt phụ thuộc
+        run: npm ci
+
+      # pg_dump CHỈ tương thích xuôi: bản mới dump được server cũ, bản cũ
+      # KHÔNG dump được server mới ("server version mismatch"). Nên lấy
+      # client mới nhất, đừng dùng bản có sẵn của runner.
+      - name: Cài pg_dump mới nhất + age
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age
+          pg_dump --version
+          age --version
+
+      # --- Kết xuất -----------------------------------------------------
+      #
+      # Lấy CẢ schema `auth`: bảng người dùng của Supabase Auth nằm ở đó.
+      # Thiếu nó thì restore xong không ai đăng nhập được — bản sao trông
+      # đầy đủ mà thực chất vô dụng.
+      - name: Kết xuất database
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          [ -n "$PGURL" ] || { echo "::error::Thiếu secret SUPABASE_DB_URL"; exit 1; }
+          mkdir -p out
+          pg_dump "$PGURL" \
+            --format=custom \
+            --no-owner --no-privileges \
+            --schema=public --schema=auth --schema=storage \
+            --file=out/dump.pgc
+          ls -lh out/dump.pgc
+
+      # --- Kiểm chứng: khôi phục thật rồi đếm ---------------------------
+      #
+      # Chạy TRƯỚC khi mã hoá, vì khoá riêng cố ý KHÔNG có mặt trong CI —
+      # nên CI không giải mã được bản đã mã hoá. Kiểm ở đây là kiểm đúng
+      # thứ sắp được mã hoá, chỉ khác một bước bọc ngoài.
+      - name: Khôi phục thử vào Postgres tạm
+        env:
+          PGPASSWORD: verify
+        run: |
+          set -euo pipefail
+          pg_restore --dbname "postgresql://postgres@localhost:5433/verify" \
+            --no-owner --no-privileges --clean --if-exists \
+            out/dump.pgc 2>restore.log || true
+          # pg_restore kêu nhiều cảnh báo vô hại (extension, role không có
+          # trên máy tạm). Không lấy mã thoát làm chuẩn — đếm bảng mới là
+          # bằng chứng.
+          tail -20 restore.log || true
+
+      - name: Đối chiếu số bảng và số dòng
+        env:
+          PGPASSWORD: verify
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          q="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
+          src=$(psql "$PGURL" -tAc "$q")
+          dst=$(psql "postgresql://postgres@localhost:5433/verify" -tAc "$q")
+          echo "Bảng — nguồn: $src, bản khôi phục: $dst"
+          [ "$src" = "$dst" ] || { echo "::error::Số bảng lệch: nguồn $src, khôi phục $dst"; exit 1; }
+          [ "$dst" -gt 0 ] || { echo "::error::Bản khôi phục không có bảng nào"; exit 1; }
+
+          # Dữ liệu, không chỉ schema. Một bản dump --schema-only cũng qua
+          # được phép đếm bảng ở trên — phép này mới bắt được.
+          usq="SELECT count(*) FROM auth.users;"
+          su=$(psql "$PGURL" -tAc "$usq")
+          du=$(psql "postgresql://postgres@localhost:5433/verify" -tAc "$usq")
+          echo "auth.users — nguồn: $su, bản khôi phục: $du"
+          [ "$su" = "$du" ] || { echo "::error::Số người dùng lệch: $su vs $du"; exit 1; }
+
+      # --- Mã hoá -------------------------------------------------------
+      #
+      # Mã hoá bằng KHOÁ CÔNG KHAI. Khoá riêng không bao giờ có mặt ở đây,
+      # nên kể cả toàn bộ CI và cả Drive bị lộ thì bản sao vẫn vô dụng với
+      # kẻ lấy được. Đây là lý do Drive chỉ cần là ổ đĩa câm.
+      - name: Mã hoá
+        env:
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$AGE_PUBLIC_KEY" ] || { echo "::error::Thiếu secret AGE_PUBLIC_KEY"; exit 1; }
+          stamp=$(date -u +%Y%m%d)
+          age -r "$AGE_PUBLIC_KEY" -o "out/nppsale-$stamp.pgc.age" out/dump.pgc
+          rm -f out/dump.pgc   # không để bản thô nằm lại trên runner
+          ls -lh out/
+
+          # File mã hoá phải bắt đầu bằng header của age. Không kiểm thì
+          # một lỗi im lặng có thể đẩy lên Drive một file rỗng, và người ta
+          # chỉ biết vào ngày cần restore.
+          head -c 22 "out/nppsale-$stamp.pgc.age" | grep -q "age-encryption.org" \
+            || { echo "::error::File mã hoá không đúng định dạng age"; exit 1; }
+          [ "$(stat -c%s "out/nppsale-$stamp.pgc.age")" -gt 1024 ] \
+            || { echo "::error::File mã hoá quá nhỏ — nhiều khả năng rỗng"; exit 1; }
+
+      # --- Đưa lên Google Drive ----------------------------------------
+      - name: Tải lên Google Drive + xoay vòng bản cũ
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: npx tsx scripts/backup/upload-drive.ts out
+
+      # Bản sao thứ hai, miễn phí, giữ 90 ngày. Repo đã chuyển Private nên
+      # artifact không công khai — nhưng nó vẫn ĐÃ MÃ HOÁ, nên an toàn kể
+      # cả khi ai đó đổi lại thành Public.
+      - name: Giữ thêm một bản trong artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_number }}
+          path: out/*.age
+          retention-days: 90
+          if-no-files-found: error

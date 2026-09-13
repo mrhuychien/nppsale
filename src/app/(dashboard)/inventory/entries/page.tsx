@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
+import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
@@ -107,6 +108,20 @@ export default function StockEntriesPage() {
   const handleApprove = async (e: StockEntry) => {
     if (!confirm(`Duyệt phiếu ${e.entry_code}?`)) return
     try {
+      // Phiếu XUẤT phải đi qua RPC: duyệt bằng một lệnh update trạng thái
+      // là ghi sổ mà KHÔNG trừ tồn — đúng lỗi NPP-01 (tồn kho cao hơn
+      // thật, giá vốn không được ghi, lãi gộp ra 100%).
+      if (e.type === "export") {
+        const r = await postStockExport(supabase, e.id)
+        const warn = warningsFor(r)
+        toast({
+          title: r.posted ? `Đã duyệt phiếu ${e.entry_code}` : "Phiếu đã được ghi sổ từ trước",
+          description: warn ?? (r.posted ? "Đã trừ tồn kho theo FIFO." : undefined),
+          variant: warn ? "destructive" : undefined,
+        })
+        fetchData()
+        return
+      }
       const { error } = await supabase
         .from("stock_entries")
         .update({ status: "posted", posted_at: new Date().toISOString() })
@@ -207,16 +222,46 @@ export default function StockEntriesPage() {
       return
     }
     setBulkSaving(true)
-    const { error } = await supabase
-      .from("stock_entries")
-      .update({ status: "posted", posted_at: new Date().toISOString() })
-      .in("id", ids)
-    setBulkSaving(false)
-    if (error) {
-      toast({ title: "Lỗi duyệt phiếu", description: error.message, variant: "destructive" })
-      return
+    // Tách hai loại: phiếu XUẤT phải đi qua RPC để trừ tồn theo FIFO,
+    // phiếu còn lại chỉ đổi trạng thái như cũ.
+    const selected = entries.filter((e) => ids.includes(e.id))
+    const exportIds = selected.filter((e) => e.type === "export").map((e) => e.id)
+    const otherIds = selected.filter((e) => e.type !== "export").map((e) => e.id)
+
+    let okCount = 0
+    const failures: string[] = []
+
+    // Từng phiếu một, KHÔNG gom thành một lệnh: mỗi phiếu là một giao
+    // dịch riêng, nên một phiếu thiếu tồn chỉ làm hỏng chính nó. Gom lại
+    // thì một phiếu hỏng kéo đổ cả lô, và người dùng không biết phiếu nào.
+    for (const id of exportIds) {
+      const code = selected.find((e) => e.id === id)?.entry_code || id.slice(0, 8)
+      try {
+        const r = await postStockExport(supabase, id)
+        if (r.posted) okCount++
+        else failures.push(`${code}: đã ghi sổ từ trước`)
+      } catch (err) {
+        failures.push(`${code}: ${(err as Error).message}`)
+      }
     }
-    toast({ title: `Đã duyệt ${ids.length} phiếu` })
+
+    if (otherIds.length > 0) {
+      const { error } = await supabase
+        .from("stock_entries")
+        .update({ status: "posted", posted_at: new Date().toISOString() })
+        .in("id", otherIds)
+      if (error) failures.push(`${otherIds.length} phiếu nhập/chuyển: ${error.message}`)
+      else okCount += otherIds.length
+    }
+
+    setBulkSaving(false)
+    toast({
+      title: `Đã duyệt ${okCount}/${ids.length} phiếu`,
+      // Không nuốt phiếu hỏng. Báo "đã duyệt 5 phiếu" trong khi 2 phiếu
+      // trượt là để người ta tưởng hàng đã trừ khỏi kho.
+      description: failures.length > 0 ? failures.join(" · ") : undefined,
+      variant: failures.length > 0 ? "destructive" : undefined,
+    })
     clearSelection()
     fetchData()
   }

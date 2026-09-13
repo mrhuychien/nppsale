@@ -1,286 +1,292 @@
-import { describe, it, expect, vi } from "vitest"
-import {
-  createFifoLayer,
-  consumeFifoLayers,
-  getStockValue,
-} from "@/lib/inventory/fifo"
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { describe, it, expect } from "vitest"
+import { readFileSync, existsSync } from "node:fs"
+import { resolve } from "node:path"
+import { explainPostError, warningsFor } from "../src/lib/inventory/post-export"
+
+const ROOT = resolve(__dirname, "..")
+const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
+const MIG = read("supabase/migrations/107_fifo_one_ledger.sql")
+const ENTRY = read("src/app/(dashboard)/inventory/entries/[id]/page.tsx")
+const LIST = read("src/app/(dashboard)/inventory/entries/page.tsx")
+const STOCK_IN = read("src/app/(dashboard)/inventory/stock-in/page.tsx")
+const PLAN = read("src/lib/products/opening-stock-plan.ts")
 
 /**
- * Giá vốn FIFO — sai ở đây là sai giá vốn, tức là sai lãi/lỗ trên mọi báo
- * cáo tài chính. Và vì các hàm này chỉ trả số chứ không hiện gì lên giao
- * diện, sai âm thầm rất lâu mới bị phát hiện.
+ * Hành vi thật của RPC đã được dựng lại và đo trên PostgreSQL 16 với dữ
+ * liệu trồng sẵn (hai lô: lô cũ hạn xa giá 5.000, lô mới hạn gần giá
+ * 7.000; xuất 150):
  *
- * Các hàm đều nhận `supabase` làm tham số nên test được bằng client giả,
- * không cần database thật.
- */
-
-/**
- * Client giả cho `getStockValue`: chuỗi .eq/.is/.gt/.range trả về chính nó.
+ *   FIFO   → ăn hết lô CŨ trước, giá vốn 850.000 — đúng
+ *   FEFO   → ăn lô MỚI trước,    giá vốn 950.000 — sai thứ tự đã chốt
+ *   bấm 2 lần → lần hai posted = false, tồn không đổi
+ *   thiếu tồn → chặn, tồn giữ nguyên, phiếu vẫn nháp
  *
- * `getStockValue` đi qua `fetchAllForAggregate` nên phải hỗ trợ `.range()`
- * và trả `count` — giống PostgREST khi truy vấn có `count: "exact"`.
+ * Bộ test dưới đây không chạy được PostgreSQL, nên nó giữ những TÍNH
+ * CHẤT mà phép đo ấy phụ thuộc vào. Sửa một trong số đó là con số đo
+ * được sẽ khác.
  */
-function fakeSelectClient(result: { data?: unknown; error?: unknown }) {
-  const calls: Array<[string, unknown]> = []
-  const rows = (result.data as unknown[] | null | undefined) ?? null
-  const chain = {
-    select: () => chain,
-    eq: (col: string, val: unknown) => (calls.push(["eq", `${col}=${val}`]), chain),
-    is: (col: string, val: unknown) => (calls.push(["is", `${col}=${val}`]), chain),
-    gt: (col: string, val: unknown) => (calls.push(["gt", `${col}=${val}`]), chain),
-    range: (from: number, to: number) => (calls.push(["range", `${from}-${to}`]), chain),
-    // Được `await` → phải là thenable trả về { data, error, count }.
-    then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({
-        data: rows,
-        error: result.error ?? null,
-        count: rows?.length ?? 0,
-      }).then(resolve),
-  }
-  return {
-    client: { from: () => chain } as unknown as SupabaseClient,
-    calls,
-  }
-}
-
-const layer = (product_id: string, warehouse_zone: string, qty: number, cost: number) => ({
-  product_id,
-  warehouse_zone,
-  qty_in_base_uom_remaining: qty,
-  unit_cost: cost,
-})
-
-describe("getStockValue — gộp tồn và giá trị theo sản phẩm + kho", () => {
-  it("cộng dồn nhiều lớp của cùng sản phẩm và cùng kho", async () => {
-    const { client } = fakeSelectClient({
-      data: [layer("p1", "sale", 10, 1000), layer("p1", "sale", 5, 2000)],
-    })
-    const r = await getStockValue(client, "org1")
-    expect(r).toHaveLength(1)
-    expect(r[0].qty).toBe(15)
-    // 10×1000 + 5×2000 — giá vốn bình quân KHÁC nhau giữa các lớp, đây
-    // chính là điểm cốt lõi của FIFO: không được nhân tổng qty với 1 giá.
-    expect(r[0].value).toBe(20000)
+describe("FIFO — một sổ kho duy nhất", () => {
+  /**
+   * ⚠ TÍNH CHẤT QUAN TRỌNG NHẤT. Đổi cột sắp xếp là đổi hẳn nghiệp vụ:
+   * `expires_at` cho ra FEFO, `created_at` cho ra "thứ tự gõ máy" — và
+   * với phiếu tồn đầu kỳ ghi lùi ngày thì `created_at` xếp hàng cũ nhất
+   * xuống CUỐI, tức FIFO chạy ngược.
+   */
+  it("xếp lô theo received_at, không phải hạn dùng hay lúc tạo dòng", () => {
+    expect(MIG).toContain("ORDER BY received_at ASC, created_at ASC, id ASC")
   })
 
-  it("tách riêng khi khác kho, dù cùng sản phẩm", async () => {
-    const { client } = fakeSelectClient({
-      data: [layer("p1", "sale", 10, 1000), layer("p1", "date", 3, 1000)],
-    })
-    const r = await getStockValue(client, "org1")
-    expect(r).toHaveLength(2)
-    expect(r.find((x) => x.warehouseZone === "sale")?.qty).toBe(10)
-    expect(r.find((x) => x.warehouseZone === "date")?.qty).toBe(3)
+  /**
+   * ⚠ Hai lô cùng mốc mà không có khoá phụ thì Postgres tự chọn thứ tự,
+   * và mỗi lần chạy một khác — giá vốn của cùng một phiếu sẽ nhảy.
+   */
+  it("có khoá phụ để hai lô cùng mốc vẫn có thứ tự cố định", () => {
+    const order = MIG.slice(MIG.indexOf("ORDER BY received_at"))
+    expect(order.slice(0, 60)).toContain("created_at ASC, id ASC")
   })
 
-  it("tách riêng khi khác sản phẩm", async () => {
-    const { client } = fakeSelectClient({
-      data: [layer("p1", "sale", 1, 100), layer("p2", "sale", 2, 100)],
-    })
-    expect(await getStockValue(client, "org1")).toHaveLength(2)
+  /** ⚠ Không khoá thì hai lượt xuất song song cùng thấy một lô còn hàng. */
+  it("khoá lô khi trừ", () => {
+    expect(MIG).toContain("FOR UPDATE")
   })
 
-  it("không có lớp nào thì trả mảng rỗng, không lỗi", async () => {
-    const { client } = fakeSelectClient({ data: [] })
-    expect(await getStockValue(client, "org1")).toEqual([])
+  /**
+   * ⚠ Khoá phiếu TRƯỚC khi đọc trạng thái. Đọc rồi mới khoá thì hai lượt
+   * chạy song song đều thấy 'draft' và cùng đi tiếp — trừ tồn hai lần.
+   */
+  it("khoá phiếu trước khi đọc trạng thái", () => {
+    const head = MIG.slice(MIG.indexOf("SELECT org_id, status, type"))
+    const lock = head.indexOf("FOR UPDATE")
+    const check = head.indexOf("IF v_status <> 'draft'")
+    expect(lock).toBeGreaterThan(0)
+    expect(check).toBeGreaterThan(lock)
   })
 
-  it("data null (truy vấn không trả gì) cũng không làm vỡ hàm", async () => {
-    const { client } = fakeSelectClient({ data: null })
-    expect(await getStockValue(client, "org1")).toEqual([])
+  /**
+   * ⚠ Lá chắn chống trừ hai lần. Bấm lại là chuyện bình thường (mạng
+   * chập, hai người cùng duyệt) — phải trả về "không làm gì", không phải
+   * báo lỗi, và tuyệt đối không trừ thêm.
+   */
+  it("phiếu đã ghi sổ thì không trừ lại", () => {
+    expect(MIG).toContain("IF v_status <> 'draft' THEN")
+    expect(MIG).toContain("RETURN QUERY SELECT false, 0::numeric, 0::numeric, 0;")
   })
 
-  it("qty/cost null được coi là 0 thay vì thành NaN", async () => {
-    const { client } = fakeSelectClient({
-      data: [
-        { product_id: "p1", warehouse_zone: "sale", qty_in_base_uom_remaining: null, unit_cost: null },
-      ],
-    })
-    const r = await getStockValue(client, "org1")
-    expect(r[0].qty).toBe(0)
-    expect(r[0].value).toBe(0)
-    expect(Number.isNaN(r[0].value)).toBe(false)
+  /** Gọi nhầm vào phiếu nhập thì phải chặn, không âm thầm trừ tồn. */
+  it("chặn phiếu không phải phiếu xuất", () => {
+    expect(MIG).toContain("NOT_AN_EXPORT")
   })
 
-  it("truy vấn lỗi thì NÉM, không trả 0 — giá trị tồn 0 giả là sai nguy hiểm", async () => {
-    const { client } = fakeSelectClient({ data: null, error: { message: "permission denied" } })
-    await expect(getStockValue(client, "org1")).rejects.toBeTruthy()
+  /** Phiếu của đơn vị khác thì không đụng tới được. */
+  it("chặn phiếu khác đơn vị", () => {
+    expect(MIG).toContain("ORG_MISMATCH")
   })
 
-  it("chỉ lấy lớp chưa đóng và còn hàng", async () => {
-    const { client, calls } = fakeSelectClient({ data: [] })
-    await getStockValue(client, "org1")
-    expect(calls).toContainEqual(["is", "closed_at=null"])
-    expect(calls).toContainEqual(["gt", "qty_in_base_uom_remaining=0"])
-    expect(calls).toContainEqual(["eq", "org_id=org1"])
+  /**
+   * ⚠ Thiếu tồn mà vẫn ghi sổ là làm tồn kho ÂM. Mặc định phải chặn; chỉ
+   * đơn vị bật cho phép bán âm mới đi tiếp, và khi đó phải trả về thiếu
+   * bao nhiêu chứ không im lặng.
+   */
+  it("thiếu tồn thì chặn, trừ khi đơn vị cho phép bán âm", () => {
+    expect(MIG).toContain("INSUFFICIENT_STOCK")
+    expect(MIG).toContain("IF NOT v_allow_oversell THEN")
+    expect(MIG).toContain("v_short := v_short + v_remaining")
   })
 
-  it("chỉ thêm điều kiện lọc khi có truyền vào", async () => {
-    const a = fakeSelectClient({ data: [] })
-    await getStockValue(a.client, "org1")
-    expect(a.calls.some(([, v]) => String(v).startsWith("product_id="))).toBe(false)
+  /**
+   * Cái giá phải trả của FIFO: lô cận hạn có thể nằm lại trong kho, vì lô
+   * nhập sau đôi khi có hạn gần hơn lô nhập trước. Không tự đổi thứ tự —
+   * thứ tự là việc của người quyết — nhưng phải ĐẾM và nói ra.
+   */
+  it("đếm số lần bỏ qua lô cận hạn hơn", () => {
+    expect(MIG).toContain("v_near := v_near + 1")
+    expect(MIG).toContain("near_expiry_skipped")
+  })
 
-    const b = fakeSelectClient({ data: [] })
-    await getStockValue(b.client, "org1", { productId: "p1", warehouseZone: "date" })
-    expect(b.calls).toContainEqual(["eq", "product_id=p1"])
-    expect(b.calls).toContainEqual(["eq", "warehouse_zone=date"])
+  /** Giá vốn là bình quân theo lượng lấy từ từng lô, không phải giá lô đầu. */
+  it("giá vốn tính bình quân theo lượng thực lấy", () => {
+    expect(MIG).toContain("v_cost_sum / v_qty_taken")
   })
 })
 
-/** Client giả cho `consumeFifoLayers`: chỉ cần `rpc`. */
-function fakeRpcClient(result: { data?: unknown; error?: { message: string } }) {
-  const rpc = vi.fn().mockResolvedValue({
-    data: result.data ?? null,
-    error: result.error ?? null,
-  })
-  return { client: { rpc } as unknown as SupabaseClient, rpc }
-}
-
-describe("consumeFifoLayers — trừ tồn theo lớp", () => {
-  it("đọc kết quả khi RPC trả về mảng một dòng", async () => {
-    const { client } = fakeRpcClient({ data: [{ total_cost: 45000, layers_used: 2 }] })
-    const r = await consumeFifoLayers(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 10, outLineId: "line1",
-    })
-    expect(r).toEqual({ totalCost: 45000, layersUsed: 2, skipped: false })
+describe("Sổ thứ hai đã được gỡ", () => {
+  /**
+   * ⚠ Trước mig 107 có HAI sổ kho: `batches.qty_on_hand` (sổ thật) và
+   * `fifo_layers` (chỉ một nhánh ghi, không ai đọc trong mã ứng dụng).
+   * View giá trị tồn lại ưu tiên đọc sổ thứ hai — nên đúng những sản phẩm
+   * từng đi qua nhánh bàn giao sẽ báo theo cuốn sổ không ai cập nhật.
+   */
+  it("bỏ bảng và hàm của sổ thứ hai", () => {
+    expect(MIG).toContain("DROP TABLE IF EXISTS fifo_layers")
+    expect(MIG).toContain("DROP TABLE IF EXISTS fifo_consumptions")
+    expect(MIG).toContain("DROP FUNCTION IF EXISTS fifo_consume")
   })
 
-  it("đọc được cả khi RPC trả về object đơn thay vì mảng", async () => {
-    const { client } = fakeRpcClient({ data: { total_cost: 1000, layers_used: 1 } })
-    const r = await consumeFifoLayers(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 1, outLineId: "line1",
-    })
-    expect(r.totalCost).toBe(1000)
+  /** Bỏ bảng mà quên gỡ lệnh ghi là RPC bàn giao nổ lúc tài xế về kho. */
+  it("RPC bàn giao thôi ghi sổ thứ hai", () => {
+    const fn = MIG.slice(MIG.indexOf("CREATE OR REPLACE FUNCTION confirm_driver_handover"))
+    expect(fn).not.toContain("INSERT INTO fifo_layers")
+    // Và vẫn phải cộng vào sổ thật.
+    expect(fn).toContain("SET qty_on_hand = qty_on_hand + r.qty_in_base_uom")
   })
 
-  it("truyền đúng tên tham số cho hàm SQL", async () => {
-    const { client, rpc } = fakeRpcClient({ data: [{ total_cost: 0, layers_used: 0 }] })
-    await consumeFifoLayers(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "date",
-      qtyInBaseUom: 7, outLineId: "line9",
-    })
-    expect(rpc).toHaveBeenCalledWith("fifo_consume", {
-      p_org_id: "org1",
-      p_product_id: "p1",
-      p_warehouse_zone: "date",
-      p_qty_needed: 7,
-      p_out_line_id: "line9",
-    })
+  /** Không còn mã ứng dụng nào trỏ vào sổ cũ. */
+  it("mã ứng dụng không còn nhắc tới fifo_layers", () => {
+    expect(existsSync(resolve(ROOT, "src/lib/inventory/fifo.ts"))).toBe(false)
+    expect(ENTRY).not.toContain("fifo_layers")
+    expect(LIST).not.toContain("fifo_layers")
   })
 
-  it("DB chưa chạy migration 040 → bỏ qua chứ không làm hỏng luồng xuất kho", async () => {
-    const { client } = fakeRpcClient({
-      error: { message: 'function public.fifo_consume(...) does not exist' },
-    })
-    const r = await consumeFifoLayers(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 5, outLineId: "line1",
-    })
-    expect(r).toEqual({ totalCost: 0, layersUsed: 0, skipped: true })
+  /** View giá trị tồn giờ đọc thẳng batches — một chỗ để sai, không phải hai. */
+  it("view giá trị tồn đọc thẳng batches", () => {
+    // Cắt đúng câu CREATE VIEW. Cắt tới cuối file thì nuốt cả lệnh
+    // DROP TABLE fifo_layers ở dưới và phép kiểm thành vô nghĩa.
+    const from = MIG.indexOf("CREATE VIEW v_stock_balance_by_zone")
+    const view = MIG.slice(from, MIG.indexOf("ALTER VIEW v_stock_balance_by_zone", from))
+    expect(view).toContain("FROM batches b")
+    expect(view).not.toContain("fifo_layers")
   })
 
-  it("thiếu tồn thì NÉM lỗi — tuyệt đối không được lặng lẽ trả 0", async () => {
-    const { client } = fakeRpcClient({ error: { message: "FIFO_INSUFFICIENT_STOCK" } })
-    await expect(
-      consumeFifoLayers(client, {
-        orgId: "org1", productId: "p1", warehouseZone: "sale",
-        qtyInBaseUom: 999, outLineId: "line1",
-      })
-    ).rejects.toBeTruthy()
+  /**
+   * ⚠ Mig 092 bật security_invoker để RLS vẫn áp dụng. DROP + CREATE làm
+   * mất thuộc tính đó — bỏ quên là mở toàn bộ số liệu tồn kho cho mọi vai
+   * trò mà không có lỗi nào báo ra.
+   */
+  it("đặt lại security_invoker sau khi dựng lại view", () => {
+    expect(MIG).toContain("ALTER VIEW v_stock_balance_by_zone SET (security_invoker = true)")
   })
 
-  it("lỗi khác (mất mạng, RLS chặn) cũng phải ném, không nhầm với thiếu migration", async () => {
-    const { client } = fakeRpcClient({ error: { message: "permission denied for table fifo_layers" } })
-    await expect(
-      consumeFifoLayers(client, {
-        orgId: "org1", productId: "p1", warehouseZone: "sale",
-        qtyInBaseUom: 1, outLineId: "line1",
-      })
-    ).rejects.toBeTruthy()
-  })
-
-  it("RPC trả rỗng thì quy về 0, không thành NaN", async () => {
-    const { client } = fakeRpcClient({ data: [] })
-    const r = await consumeFifoLayers(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 1, outLineId: "line1",
-    })
-    expect(r.totalCost).toBe(0)
-    expect(Number.isNaN(r.totalCost)).toBe(false)
+  /**
+   * ⚠ Postgres từ chối ALTER COLUMN TYPE khi còn view đọc cột đó. Phải gỡ
+   * view TRƯỚC. (Đúng lỗi migration này vấp lần chạy đầu trên Postgres 16.)
+   */
+  it("gỡ view trước khi đổi kiểu cột", () => {
+    const drop = MIG.indexOf("DROP VIEW IF EXISTS v_stock_balance_by_zone")
+    const alter = MIG.indexOf("ALTER COLUMN qty_on_hand TYPE")
+    expect(drop).toBeGreaterThan(0)
+    expect(drop).toBeLessThan(alter)
   })
 })
 
-/** Client giả cho `createFifoLayer`: .insert().select().single() */
-function fakeInsertClient(result: { data?: unknown; error?: unknown }) {
-  const insert = vi.fn()
-  const chain = {
-    insert: (row: unknown) => (insert(row), chain),
-    select: () => chain,
-    single: () => Promise.resolve({ data: result.data ?? null, error: result.error ?? null }),
-  }
-  return { client: { from: () => chain } as unknown as SupabaseClient, insert }
-}
-
-describe("createFifoLayer — tạo lớp giá vốn khi nhập kho", () => {
-  it("trả về id lớp vừa tạo", async () => {
-    const { client } = fakeInsertClient({ data: { id: "layer-1" } })
-    const r = await createFifoLayer(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 100, unitCost: 12000,
-    })
-    expect(r.layerId).toBe("layer-1")
+describe("received_at — khoá thứ tự FIFO", () => {
+  /**
+   * ⚠ `created_at` là lúc TẠO DÒNG. Phiếu tồn đầu kỳ ghi lùi ngày (chốt
+   * sổ 31/12) tạo dòng hôm nay, nên xếp theo created_at thì hàng cũ nhất
+   * nằm SAU hàng nhập tuần này — FIFO lấy ngược, và hàng cũ nhất nằm lại
+   * trong kho mãi mãi.
+   */
+  it("bù dữ liệu cũ từ ngày ghi sổ của phiếu nhập, không phải created_at", () => {
+    const backfill = MIG.slice(MIG.indexOf("UPDATE batches b"))
+    expect(backfill).toContain("SELECT MIN(se.posted_at)")
+    expect(backfill).toContain("se.type = 'import'")
   })
 
-  it("ghi đúng số lượng và giá vốn, mặc định source_line_id là null", async () => {
-    const { client, insert } = fakeInsertClient({ data: { id: "layer-1" } })
-    await createFifoLayer(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "date",
-      qtyInBaseUom: 100, unitCost: 12000,
-    })
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        org_id: "org1",
-        product_id: "p1",
-        warehouse_zone: "date",
-        qty_in_base_uom_remaining: 100,
-        unit_cost: 12000,
-        source_line_id: null,
-      })
-    )
+  /**
+   * ⚠ Lô không có chỗ đứng trong hàng đợi sẽ bị bỏ qua vĩnh viễn và nằm
+   * lại trong kho mà không ai hiểu vì sao.
+   */
+  it("không cho phép rỗng", () => {
+    expect(MIG).toContain("ALTER COLUMN received_at SET NOT NULL")
+    expect(MIG).toContain("ALTER COLUMN received_at SET DEFAULT now()")
   })
 
-  it("dùng thời điểm ghi sổ được truyền vào thay vì thời điểm hiện tại", async () => {
-    const { client, insert } = fakeInsertClient({ data: { id: "layer-1" } })
-    const postingAt = new Date("2026-01-15T03:00:00.000Z")
-    await createFifoLayer(client, {
-      orgId: "org1", productId: "p1", warehouseZone: "sale",
-      qtyInBaseUom: 1, unitCost: 1, postingAt,
-    })
-    expect(insert.mock.calls[0][0]).toMatchObject({
-      posting_at: "2026-01-15T03:00:00.000Z",
-    })
+  /** Màn nhập kho và phiếu tồn đầu kỳ đều phải đóng mốc này. */
+  it("hai chỗ tạo lô đều ghi received_at", () => {
+    expect(STOCK_IN).toContain("received_at: postedAt")
+    expect(PLAN).toContain("received_at: postedAt")
   })
 
-  it("insert lỗi thì ném — không được trả về id rỗng rồi đi tiếp", async () => {
-    const { client } = fakeInsertClient({ error: { message: "violates not-null" } })
-    await expect(
-      createFifoLayer(client, {
-        orgId: "org1", productId: "p1", warehouseZone: "sale",
-        qtyInBaseUom: 1, unitCost: 1,
-      })
-    ).rejects.toBeTruthy()
+  /**
+   * ⚠ Phiếu và lô phải dùng CÙNG một mốc. Tính hai lần thì lệch vài mili
+   * giây — đủ để thứ tự FIFO không khớp ngày ghi trên phiếu.
+   */
+  it("phiếu và lô dùng chung một mốc", () => {
+    expect(STOCK_IN).toContain("const postedAt = postedAtFor(entryDate, new Date())")
+    expect(STOCK_IN).toContain("posted_at: postedAt,")
+    expect(PLAN).toContain("const postedAt = postedAtFor(opts.entryDate, opts.now)")
+    expect(PLAN).toContain("posted_at: postedAt,")
   })
 
-  it("không lỗi nhưng cũng không trả dòng nào → vẫn phải ném", async () => {
-    const { client } = fakeInsertClient({ data: null })
-    await expect(
-      createFifoLayer(client, {
-        orgId: "org1", productId: "p1", warehouseZone: "sale",
-        qtyInBaseUom: 1, unitCost: 1,
-      })
-    ).rejects.toBeTruthy()
+  /** Số lượng lô phải là numeric: FIFO cắt lô làm đôi, phần dư có thể lẻ. */
+  it("số lượng lô là numeric, không phải integer", () => {
+    expect(MIG).toContain("ALTER COLUMN qty_on_hand TYPE numeric(18, 6)")
+    expect(MIG).toContain("ALTER COLUMN qty_initial TYPE numeric(18, 6)")
+  })
+})
+
+describe("Mọi nút ghi sổ phiếu xuất đều trừ tồn", () => {
+  /**
+   * ⚠ SỔ LỖI NPP-01. Trước đây tồn kho chỉ bị trừ ở ĐÚNG MỘT nút ("Tự
+   * giao hàng"). Duyệt phiếu ở danh sách chỉ đổi trạng thái — đơn giao
+   * qua tài xế đạt "đã giao" mà tồn kho giữ nguyên, giá vốn không được
+   * ghi, lãi gộp ra 100%.
+   */
+  it("nút tự giao hàng gọi RPC", () => {
+    expect(ENTRY).toContain("postStockExport(supabase, entry.id)")
+  })
+
+  it("duyệt một phiếu ở danh sách cũng gọi RPC", () => {
+    const fn = LIST.slice(LIST.indexOf("const handleApprove"), LIST.indexOf("const handleCancel"))
+    expect(fn).toContain('e.type === "export"')
+    expect(fn).toContain("postStockExport(supabase, e.id)")
+  })
+
+  it("duyệt hàng loạt cũng gọi RPC cho phiếu xuất", () => {
+    const fn = LIST.slice(LIST.indexOf("const approveBulk"), LIST.indexOf("const cancelBulk"))
+    expect(fn).toContain("postStockExport(supabase, id)")
+    // Từng phiếu một giao dịch riêng: một phiếu thiếu tồn không kéo đổ cả lô.
+    expect(fn).toContain("for (const id of exportIds)")
+  })
+
+  /**
+   * ⚠ Báo "đã duyệt 5 phiếu" trong khi 2 phiếu trượt là để người ta tưởng
+   * hàng đã trừ khỏi kho.
+   */
+  it("duyệt hàng loạt không nuốt phiếu trượt", () => {
+    const fn = LIST.slice(LIST.indexOf("const approveBulk"), LIST.indexOf("const cancelBulk"))
+    expect(fn).toContain("failures.push")
+    expect(fn).toContain("okCount}/${ids.length}")
+  })
+
+  /** Không còn chỗ nào trừ tồn bằng lệnh update rời từ trình duyệt. */
+  it("màn phiếu xuất không tự trừ batches nữa", () => {
+    expect(ENTRY).not.toContain('.from("batches")')
+    expect(ENTRY).not.toContain('status: "posted"')
+  })
+})
+
+describe("Dịch lỗi cho người dùng", () => {
+  it("nói rõ thiếu tồn", () => {
+    expect(
+      explainPostError('INSUFFICIENT_STOCK: thiếu 150 đơn vị của "Coca 330ml" — ghi sổ...')
+    ).toContain("Không đủ tồn: thiếu 150")
+  })
+
+  /**
+   * ⚠ Mã đã deploy mà migration chưa chạy thì lỗi Postgres trả về là
+   * "function does not exist" — người dùng đọc sẽ tưởng phiếu hỏng.
+   */
+  it("nói đúng việc cần làm khi chưa chạy migration", () => {
+    const m = explainPostError('function public.post_stock_export(uuid) does not exist')
+    expect(m).toContain("migration 107")
+    expect(m).toContain("db push")
+  })
+
+  /**
+   * ⚠ Lỗi không nhận ra thì trả NGUYÊN VĂN. Nuốt thành một câu chung
+   * chung là người dùng đi sửa nhầm chỗ.
+   */
+  it("lỗi lạ giữ nguyên văn", () => {
+    expect(explainPostError("deadlock detected")).toBe("deadlock detected")
+  })
+
+  it("ghi sổ sạch thì không có cảnh báo nào", () => {
+    expect(warningsFor({ posted: true, totalCost: 100, shortQty: 0, nearExpirySkipped: 0 })).toBeNull()
+  })
+
+  it("bán âm và bỏ qua lô cận hạn đều được nói ra", () => {
+    const w = warningsFor({ posted: true, totalCost: 0, shortQty: 12, nearExpirySkipped: 3 })!
+    expect(w).toContain("Thiếu 12")
+    expect(w).toContain("3 lượt")
   })
 })

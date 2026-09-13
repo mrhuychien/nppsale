@@ -281,10 +281,13 @@ describe("sổ lỗi bàn giao — kho & phiếu", () => {
    * xuất luôn là "–", tab FEFO và thẻ "Sắp hết hạn" không có dữ liệu xuất.
    */
   it("phiếu xuất ghi lại lô đã lấy hàng", () => {
-    const f = TSX.find((t) => t.file === "app/(dashboard)/inventory/entries/[id]/page.tsx")!
-    expect(f.src).toContain("patch.batch_id")
-    // Phải lấy cả batch_code về mới ghi được danh sách lô cho người đọc.
-    expect(f.src).toContain('"id, qty_on_hand, unit_cost, batch_code, expires_at"')
+    // Từ mig 107 việc này làm trong RPC, không còn ở trình duyệt — nhưng
+    // TÍNH CHẤT phải giữ: dòng xuất mang theo lô đã lấy, và mang cả danh
+    // sách khi ăn nhiều lô.
+    const sql = readFileSync(resolve(MIG, "107_fifo_one_ledger.sql"), "utf-8")
+    expect(sql).toContain("batch_id  = COALESCE(v_best_id, batch_id)")
+    expect(sql).toContain("'Lô: ' || v_detail")
+    expect(sql).toContain("b.batch_code")
   })
 
   /** NPP-30: hai badge cùng chữ "Đã duyệt" nằm sát nhau sau khi duyệt. */

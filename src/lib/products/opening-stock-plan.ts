@@ -115,6 +115,8 @@ export interface OpeningEntryPayload {
     qty_initial: number
     qty_on_hand: number
     unit_cost: number
+    /** Khoá thứ tự FIFO (mig 107) — bằng đúng ngày ghi sổ của phiếu. */
+    received_at: string
   }>
 }
 
@@ -134,13 +136,20 @@ export function buildOpeningEntry(opts: {
   lines: OpeningStockLine[]
 }): OpeningEntryPayload {
   const code = openingEntryCode(opts.entryDate, opts.rand)
+  // MỘT mốc cho cả phiếu lẫn mọi lô của nó.
+  //
+  // ⚠ Hàng tồn đầu kỳ là hàng CŨ NHẤT trong kho, nên phải đứng ĐẦU hàng
+  // đợi FIFO. Nếu lô mang mốc "lúc tạo dòng" (hôm nay) thì nó xếp sau cả
+  // hàng nhập trong tuần, và FIFO lấy ngược — hàng cũ nhất nằm lại trong
+  // kho mãi mãi.
+  const postedAt = postedAtFor(opts.entryDate, opts.now)
   return {
     entry: {
       org_id: opts.orgId,
       entry_code: code,
       type: "import",
       status: "posted",
-      posted_at: postedAtFor(opts.entryDate, opts.now),
+      posted_at: postedAt,
       created_by: opts.userId,
       notes: `Tồn kho đầu kỳ — nhập từ file Excel sản phẩm (${opts.lines.length} mặt hàng)`,
     },
@@ -152,6 +161,7 @@ export function buildOpeningEntry(opts: {
       qty_initial: l.qty,
       qty_on_hand: l.qty,
       unit_cost: l.unitCost,
+      received_at: postedAt,
     })),
   }
 }

@@ -357,6 +357,10 @@ export default function StockInPage() {
       if (invoiceNo.trim()) notesParts.push(`HĐ: ${invoiceNo.trim()}`)
       if (warehouse.trim()) notesParts.push(`Kho: ${warehouse.trim()}`)
       const notes = notesParts.join(" • ") || null
+      // Một mốc duy nhất cho cả phiếu lẫn mọi lô của nó. Tính hai lần thì
+      // lô và phiếu lệch nhau vài mili giây — đủ để thứ tự FIFO không
+      // khớp với ngày trên phiếu.
+      const postedAt = postedAtFor(entryDate, new Date())
 
       const insertPayload: Record<string, unknown> = {
         org_id: user.org_id,
@@ -366,7 +370,7 @@ export default function StockInPage() {
         // Ngày người dùng chọn, không phải lúc bấm nút. Phiếu tồn ĐẦU KỲ
         // ghi lùi ngày (chốt sổ 31/12) phải nằm đúng ngày đó — thẻ kho,
         // báo cáo nhập xuất tồn và giá vốn hàng bán đều gom theo cột này.
-        posted_at: postedAtFor(entryDate, new Date()),
+        posted_at: postedAt,
         created_by: user.id,
         notes,
       }
@@ -409,6 +413,11 @@ export default function StockInPage() {
           qty_initial: baseQty,
           qty_on_hand: baseQty,
           unit_cost: baseCost,
+          // Khoá thứ tự FIFO (mig 107). Phải là ngày GHI SỔ của phiếu,
+          // không phải lúc dòng được tạo: phiếu tồn đầu kỳ ghi lùi ngày
+          // mà xếp theo lúc tạo thì hàng cũ nhất nằm sau hàng nhập tuần
+          // này, và FIFO lấy ngược.
+          received_at: postedAt,
         }
       })
       const { data: insertedBatches, error: batchErr } = await supabase

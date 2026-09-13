@@ -308,7 +308,9 @@ describe("groupRowsForImport — gộp dòng đơn vị quy đổi vào sản ph
 
   it("không có dòng nào thì trả về cấu trúc rỗng, không ném", () => {
     expect(groupRowsForImport([])).toEqual({
-      baseRows: [], unitsByParentSku: {}, orphanedRows: [],
+      // droppedOpeningQtyRows: số dòng quy đổi có ghi tồn kho đã bị bỏ để
+      // không nhân đôi kho. File rỗng thì đương nhiên bằng 0.
+      baseRows: [], unitsByParentSku: {}, orphanedRows: [], droppedOpeningQtyRows: 0,
     })
   })
 })

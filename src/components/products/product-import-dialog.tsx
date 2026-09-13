@@ -9,7 +9,15 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { formatCurrency } from "@/lib/utils"
+import { vnToday } from "@/lib/inventory/opening-stock"
+import {
+  buildOpeningEntry,
+  canPostOpeningStock,
+  planOpeningStock,
+} from "@/lib/products/opening-stock-plan"
 import { readSheetAsRows } from "@/lib/xlsx-safe"
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
 import {
@@ -44,6 +52,9 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
   const [rows, setRows] = useState<ParsedProductRow[]>([])
   const [headerError, setHeaderError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  // Ngày chốt sổ của bên bàn giao, không phải ngày bấm nút. Mặc định hôm
+  // nay theo lịch Việt Nam.
+  const [openingDate, setOpeningDate] = useState<string>(vnToday(new Date()))
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
@@ -52,6 +63,12 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
   const productCount = grouped.baseRows.length
   const unitCount = Object.values(grouped.unitsByParentSku).reduce((s, u) => s + u.length, 0)
   const orphanCount = grouped.orphanedRows.length
+  // Xem trước phần tồn đầu kỳ, tính thẳng từ các dòng sản phẩm.
+  const withStock = grouped.baseRows.filter((r) => r.opening_qty > 0)
+  const openingRowCount = withStock.length
+  const openingValue = withStock.reduce((s, r) => s + r.opening_qty * r.cost_price, 0)
+  const openingNoCost = withStock.filter((r) => r.cost_price <= 0).length
+  const canPostStock = canPostOpeningStock(user?.role)
 
   const reset = () => {
     setFileName(null)
@@ -95,6 +112,103 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
       setHeaderError("Không đọc được file. Chỉ hỗ trợ .xlsx, .xls, .csv.")
     } finally {
       setParsing(false)
+    }
+  }
+
+  /**
+   * Ghi phiếu tồn đầu kỳ. Trả về một câu để ghép vào thông báo — kể cả
+   * khi hỏng.
+   *
+   * ⚠ KHÔNG ném lỗi ra ngoài. Sản phẩm đã nằm trong cơ sở dữ liệu rồi;
+   * để lỗi nổ lên sẽ hiện "Lỗi nhập sản phẩm" trong khi sản phẩm đã nhập
+   * xong — người dùng nhập lại lần nữa là trùng SKU toàn bộ. Hỏng thì nói
+   * đúng là hỏng chỗ nào và còn phải làm gì.
+   */
+  const importOpeningStock = async (
+    idBySku: Record<string, string>
+  ): Promise<string | null> => {
+    if (!user?.org_id || openingRowCount === 0) return null
+    if (!canPostStock) {
+      return `⚠ CHƯA tạo phiếu tồn đầu kỳ cho ${openingRowCount} mặt hàng: chỉ tài khoản chủ NPP mới ghi được kho`
+    }
+
+    const plan = planOpeningStock(
+      grouped.baseRows.map((r) => ({
+        sku: r.sku,
+        name: r.name,
+        opening_qty: r.opening_qty,
+        cost_price: r.cost_price,
+      })),
+      idBySku
+    )
+    if (plan.lines.length === 0) return null
+
+    try {
+      const payload = buildOpeningEntry({
+        orgId: user.org_id,
+        userId: user.id,
+        entryDate: openingDate,
+        now: new Date(),
+        rand: Math.random(),
+        lines: plan.lines,
+      })
+
+      const { data: entry, error: entryErr } = await supabase
+        .from("stock_entries")
+        .insert(payload.entry)
+        .select("id")
+        .single()
+      if (entryErr || !entry) throw entryErr || new Error("không tạo được phiếu")
+
+      const { data: batchRows, error: batchErr } = await supabase
+        .from("batches")
+        .insert(payload.batches)
+        .select("id")
+      if (batchErr) throw batchErr
+
+      // Lô hàng trả về theo ĐÚNG thứ tự đã gửi, nên ghép được theo chỉ số.
+      // Thiếu lô thì để batch_id rỗng còn hơn gắn nhầm dòng này vào lô của
+      // mặt hàng khác — gắn nhầm là sai giá vốn mà không ai dò ra.
+      const ids = (batchRows as { id: string }[] | null) ?? []
+      const entryLines = plan.lines.map((l, i) => ({
+        entry_id: entry.id,
+        product_id: l.productId,
+        batch_id: ids[i]?.id ?? null,
+        unit_name: "",
+        quantity: l.qty,
+        qty_in_base_uom: l.qty,
+        qty_in_transaction_uom: l.qty,
+        transaction_uom: "",
+        conversion_factor_snapshot: 1,
+        unit_cost: l.unitCost,
+      }))
+      // Tên đơn vị lấy từ chính dòng file — đơn vị tính của sản phẩm.
+      const unitBySku: Record<string, string> = {}
+      for (const r of grouped.baseRows) unitBySku[r.sku] = r.base_unit
+      for (let i = 0; i < entryLines.length; i++) {
+        const u = unitBySku[plan.lines[i].sku] || "cái"
+        entryLines[i].unit_name = u
+        entryLines[i].transaction_uom = u
+      }
+
+      const { error: lineErr } = await supabase.from("stock_entry_lines").insert(entryLines)
+      if (lineErr) throw lineErr
+
+      const parts = [
+        `tồn đầu kỳ ${plan.lines.length} mặt hàng (${formatCurrency(plan.totalValue)})`,
+      ]
+      if (plan.missingCost.length > 0) {
+        parts.push(`⚠ ${plan.missingCost.length} mặt hàng chưa có giá vốn — lãi gộp sẽ tính sai`)
+      }
+      if (plan.unmatched > 0) {
+        parts.push(`${plan.unmatched} dòng có tồn nhưng SKU đã tồn tại — bỏ qua, nhập kho tay nếu cần`)
+      }
+      return parts.join(" · ")
+    } catch (e) {
+      console.error("[products/product-import-dialog] tồn đầu kỳ lỗi:", e)
+      return `⚠ Sản phẩm đã nhập xong nhưng CHƯA tạo được phiếu tồn đầu kỳ (${
+        (e as Error)?.message || "lỗi không rõ"
+      }) — vào Kho › Nhập kho để tạo tay`
     }
   }
 
@@ -232,12 +346,24 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         await supabase.from("product_units").insert(slice).throwOnError()
       }
 
+      // 5. Tồn kho đầu kỳ — một phiếu nhập ghi lùi ngày, định giá bằng
+      //    cột "Giá vốn" của chính file này.
+      //
+      //    Chạy SAU khi sản phẩm đã vào. Sản phẩm vào rồi mà phiếu kho
+      //    hỏng thì vẫn còn danh mục để nhập kho tay; làm ngược lại thì
+      //    phiếu kho trỏ vào sản phẩm chưa tồn tại.
+      const openingNote = await importOpeningStock(idBySku)
+
       toast({
         title: `Đã nhập ${insertedRows.length} sản phẩm`,
         description: [
           unitInserts.length > 0 ? `${unitInserts.length} đơn vị quy đổi` : null,
+          openingNote,
           skipped > 0 ? `Bỏ qua ${skipped} SKU trùng` : null,
           orphanCount > 0 ? `${orphanCount} dòng quy đổi mồ côi (không tìm thấy SKU cha)` : null,
+          grouped.droppedOpeningQtyRows > 0
+            ? `${grouped.droppedOpeningQtyRows} dòng quy đổi có ghi tồn — đã bỏ để không nhân đôi kho`
+            : null,
         ].filter(Boolean).join(" · ") || undefined,
       })
       onImported?.()
@@ -256,6 +382,8 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
           <DialogTitle>Nhập sản phẩm từ Excel</DialogTitle>
           <DialogDescription>
             Tải file mẫu, điền dữ liệu rồi tải lên. Cột bắt buộc: Tên sản phẩm, Đơn vị tính.
+            Điền thêm cột &quot;Tồn kho đầu kỳ&quot; và &quot;Giá vốn&quot; thì hệ thống tạo luôn
+            phiếu nhập tồn đầu kỳ — không phải gõ tay lại ở màn Nhập kho.
           </DialogDescription>
         </DialogHeader>
 
@@ -317,10 +445,64 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                   {orphanCount} quy đổi không có SP cha
                 </Badge>
               )}
+              {openingRowCount > 0 && (
+                <Badge variant="default" className="gap-1">
+                  {openingRowCount} mặt hàng có tồn đầu kỳ
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">
                 {validRows.length} dòng hợp lệ → {productCount} sản phẩm + {unitCount} ĐV quy đổi. SKU trùng sẽ bị bỏ qua.
               </span>
             </div>
+
+            {/* Tồn kho đầu kỳ — chỉ hiện khi file thật sự có cột tồn. */}
+            {openingRowCount > 0 && (
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold">Tồn kho đầu kỳ</p>
+                    <p className="text-xs text-muted-foreground">
+                      Sẽ tạo thêm <strong>1 phiếu nhập kho</strong> cho {openingRowCount} mặt hàng,
+                      trị giá {formatCurrency(openingValue)} theo cột &quot;Giá vốn&quot; trong file.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Ngày chốt sổ
+                    </Label>
+                    <Input
+                      type="date"
+                      value={openingDate}
+                      onChange={(e) => setOpeningDate(e.target.value)}
+                      className="h-9 w-[160px]"
+                    />
+                  </div>
+                </div>
+                {/* Ngày này đi thẳng vào sổ kho, nên phải nói rõ nó làm gì. */}
+                <p className="text-[11px] text-muted-foreground">
+                  Phiếu ghi vào ngày này, không phải hôm nay — chọn đúng ngày chốt sổ của phần mềm cũ
+                  thì báo cáo nhập xuất tồn mới khớp.
+                </p>
+                {openingNoCost > 0 && (
+                  <p className="text-xs font-semibold text-amber-600">
+                    ⚠ {openingNoCost} mặt hàng có tồn nhưng chưa có giá vốn — lãi gộp của số hàng
+                    này sẽ tính sai cho tới khi bổ sung.
+                  </p>
+                )}
+                {!canPostStock && (
+                  <p className="text-xs font-semibold text-destructive">
+                    ⚠ Tài khoản này nhập được danh mục nhưng không ghi được kho — chỉ chủ NPP mới
+                    tạo được phiếu tồn đầu kỳ. Sản phẩm vẫn nhập bình thường.
+                  </p>
+                )}
+                {grouped.droppedOpeningQtyRows > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {grouped.droppedOpeningQtyRows} dòng đơn vị quy đổi cũng ghi tồn — đã bỏ, vì đó
+                    là cùng lô hàng đếm theo đơn vị khác.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="overflow-x-auto rounded-xl border bg-card max-h-[40vh] overflow-y-auto">
               <table className="w-full text-sm">
@@ -330,7 +512,9 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                     <th className="px-2 py-2 text-left font-medium">Tên</th>
                     <th className="px-2 py-2 text-left font-medium">ĐVT</th>
                     <th className="px-2 py-2 text-left font-medium">NCC</th>
+                    <th className="px-2 py-2 text-right font-medium">Giá vốn</th>
                     <th className="px-2 py-2 text-right font-medium">Giá bán</th>
+                    <th className="px-2 py-2 text-right font-medium">Tồn ĐK</th>
                     <th className="px-2 py-2 text-left font-medium">Ghi chú</th>
                   </tr>
                 </thead>
@@ -349,7 +533,27 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                         </td>
                         <td className="px-2 py-1.5">{r.base_unit || "—"}</td>
                         <td className="px-2 py-1.5 text-muted-foreground">{r.supplier_name || "—"}</td>
+                        {/* Giá vốn 0 mà dòng có tồn thì tô vàng: đó là lô
+                            hàng sắp vào kho không mang theo giá nào. */}
+                        <td
+                          className={`px-2 py-1.5 text-right tabular-nums${
+                            ok && !isUnit && r.opening_qty > 0 && r.cost_price <= 0
+                              ? " font-semibold text-amber-600"
+                              : ""
+                          }`}
+                        >
+                          {r.cost_price ? formatCurrency(r.cost_price) : "—"}
+                        </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.sell_price ? formatCurrency(r.sell_price) : "—"}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {isUnit && r.opening_qty > 0 ? (
+                            <span className="text-muted-foreground line-through">{r.opening_qty}</span>
+                          ) : r.opening_qty > 0 ? (
+                            r.opening_qty
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">
                           {!ok ? (
                             <span className="text-xs text-destructive">{r.errors.join("; ")}</span>

@@ -15,6 +15,7 @@ export type ProductField =
   | "cost_price"
   | "sell_price"
   | "vat_rate"
+  | "opening_qty"
   | "min_stock"
   | "max_stock"
   | "shelf_life_days"
@@ -41,6 +42,14 @@ export interface ParsedProductRow {
   vat_rate: number
   cost_price: number
   sell_price: number
+  /**
+   * Tồn kho ĐẦU KỲ, theo ĐƠN VỊ TÍNH của dòng. 0 = không có tồn.
+   *
+   * Chỉ đọc ở dòng SẢN PHẨM. File KiotViet xuất mỗi đơn vị quy đổi thành
+   * một dòng riêng và lặp lại cột "Tồn kho" trên dòng đó — cùng một lô
+   * hàng, chỉ đổi cách đếm. Cộng cả hai là nhân đôi tồn kho.
+   */
+  opening_qty: number
   min_stock: number
   max_stock: number | null
   shelf_life_days: number | null
@@ -102,6 +111,15 @@ const HEADER_MAP: Record<string, ProductField> = {
   "gia ban": "sell_price", "don gia": "sell_price", "gia ban le": "sell_price", "gia": "sell_price",
   // vat_rate
   "thue vat": "vat_rate", "vat": "vat_rate", "thue gtgt": "vat_rate", "thue": "vat_rate", "thue suat": "vat_rate",
+  // opening_qty — tồn kho đầu kỳ. CHỈ nhận những tên không thể hiểu nhầm
+  // sang ngưỡng tồn. Cố ý KHÔNG map "so luong" trần: trong một file danh
+  // mục sản phẩm nó có thể là số lượng đóng gói, số lượng đặt hàng… Map
+  // nhầm là tự dựng ra một kho hàng không có thật, mà không có lỗi nào.
+  "ton kho": "opening_qty", "ton": "opening_qty", "ton dau ky": "opening_qty",
+  "ton kho dau ky": "opening_qty", "so luong ton": "opening_qty",
+  "sl ton": "opening_qty", "ton hien tai": "opening_qty",
+  "ton kho hien tai": "opening_qty", "ton cuoi ky": "opening_qty",
+  "ton cuoi": "opening_qty",
   // min_stock — KiotViet: "Tồn nhỏ nhất"
   "ton toi thieu": "min_stock", "ton min": "min_stock", "dinh muc ton toi thieu": "min_stock",
   "ton kho toi thieu": "min_stock", "ton nho nhat": "min_stock",
@@ -247,6 +265,16 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       )
     }
 
+    // Tồn đầu kỳ. KHÔNG dùng parseMoney — nó xoá dấu chấm để đọc tiền
+    // ("15.000" → 15000), áp lên số lượng thì "1.5 thùng" thành 15 thùng.
+    // Cùng cái bẫy đã ghi ở hệ số quy đổi ngay trên.
+    const opening_raw = str(get(raw, "opening_qty"))
+    const opening_num = opening_raw ? parseNumberOrNull(opening_raw) : null
+    if (opening_num !== null && opening_num < 0) {
+      errors.push(`Tồn kho đầu kỳ âm (${opening_raw})`)
+    }
+    const opening_qty = opening_num !== null && opening_num > 0 ? opening_num : 0
+
     // Tồn lớn nhất: KiotViet xuất "999999999" cho "không giới hạn" — coi như null.
     const max_stock_raw = parseNumberOrNull(get(raw, "max_stock"))
     const max_stock = max_stock_raw != null && max_stock_raw < 999999999 ? max_stock_raw : null
@@ -262,6 +290,7 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       vat_rate: parseVat(get(raw, "vat_rate")),
       cost_price: parseMoney(get(raw, "cost_price")),
       sell_price: parseMoney(get(raw, "sell_price")),
+      opening_qty,
       min_stock: parseMoney(get(raw, "min_stock")),
       max_stock,
       shelf_life_days: parseIntOrNull(get(raw, "shelf_life_days")),
@@ -300,6 +329,16 @@ export interface GroupedImport {
   unitsByParentSku: Record<string, Array<{ unit_name: string; conversion: number }>>
   /** Dòng bị bỏ qua vì parent_sku không tìm thấy trong file. */
   orphanedRows: ParsedProductRow[]
+  /**
+   * Số dòng QUY ĐỔI có ghi tồn kho — và tồn đó đã bị bỏ.
+   *
+   * ⚠ File KiotViet lặp cột "Tồn kho" trên cả dòng thùng lẫn dòng hộp:
+   * cùng một lô hàng, chỉ đổi cách đếm. Cộng cả hai là nhân đôi tồn kho
+   * — sai theo hướng NGUY HIỂM, vì kho ảo thì bán được đơn mà không có
+   * hàng giao. Chỉ lấy tồn ở dòng sản phẩm, nhưng phải đếm lại số dòng
+   * đã bỏ để màn hình còn nói ra, thay vì im lặng.
+   */
+  droppedOpeningQtyRows: number
 }
 
 export function groupRowsForImport(rows: ParsedProductRow[]): GroupedImport {
@@ -311,8 +350,10 @@ export function groupRowsForImport(rows: ParsedProductRow[]): GroupedImport {
   const baseRows: ParsedProductRow[] = []
   const unitsByParentSku: Record<string, Array<{ unit_name: string; conversion: number }>> = {}
   const orphanedRows: ParsedProductRow[] = []
+  let droppedOpeningQtyRows = 0
 
   for (const r of validRows) {
+    if (r.parent_sku && r.opening_qty > 0) droppedOpeningQtyRows++
     if (r.parent_sku && baseSet.has(r.parent_sku)) {
       // Là đơn vị quy đổi của 1 SKU base trong file.
       const unitName = r.base_unit || r.secondary_unit || ""
@@ -342,7 +383,7 @@ export function groupRowsForImport(rows: ParsedProductRow[]): GroupedImport {
     }
   }
 
-  return { baseRows, unitsByParentSku, orphanedRows }
+  return { baseRows, unitsByParentSku, orphanedRows, droppedOpeningQtyRows }
 }
 
 /** Cột header dùng cho file mẫu — khớp HEADER_MAP. */
@@ -356,6 +397,10 @@ export const TEMPLATE_HEADERS = [
   "Giá vốn",
   "Giá bán",
   "Thuế VAT (%)",
+  // Hai cột này đi cùng nhau: nhập xong sẽ sinh một phiếu nhập tồn đầu kỳ
+  // định giá bằng đúng cột "Giá vốn". Để trống cột tồn thì không sinh
+  // phiếu nào — file danh mục thuần vẫn nhập được như cũ.
+  "Tồn kho đầu kỳ",
   "Tồn tối thiểu",
   "Hạn SD (ngày)",
   "Trạng thái",
@@ -365,6 +410,6 @@ export const TEMPLATE_HEADERS = [
 
 /** 2 dòng ví dụ minh hoạ trong file mẫu. */
 export const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
-  ["Nước ngọt Coca 330ml", "lon", "Coca-Cola VN", "", "Nước giải khát", "8935001712345", 6000, 8000, 8, 24, "", "active", "thùng", 24],
-  ["Mì gói Hảo Hảo", "gói", "Acecook VN", "", "Thực phẩm khô", "", 3000, 4000, 8, 50, "", "active", "thùng", 30],
+  ["Nước ngọt Coca 330ml", "lon", "Coca-Cola VN", "", "Nước giải khát", "8935001712345", 6000, 8000, 8, 480, 24, "", "active", "thùng", 24],
+  ["Mì gói Hảo Hảo", "gói", "Acecook VN", "", "Thực phẩm khô", "", 3000, 4000, 8, 1200, 50, "", "active", "thùng", 30],
 ]

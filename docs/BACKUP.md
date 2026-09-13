@@ -40,69 +40,238 @@ Ba thứ đó phải cất riêng, **không cùng chỗ với backup**.
 
 ## Cài đặt — 3 việc
 
-### 1. Cặp khoá mã hoá
+Làm một lần, khoảng 20–30 phút. Việc 2 (Google) là việc rối nhất; làm theo
+đúng thứ tự thì không vướng.
 
-Trên máy bạn (không phải trên CI):
+---
+
+### Việc 1 — Cặp khoá mã hoá (5 phút)
+
+**Cài `age`:**
+
+| Hệ điều hành | Lệnh |
+|---|---|
+| Windows | `winget install FiloSottile.age` |
+| macOS | `brew install age` |
+| Ubuntu/Debian | `sudo apt install age` |
+
+Không cài được thì tải bản chạy sẵn ở
+<https://github.com/FiloSottile/age/releases> (chọn file theo hệ điều hành,
+giải nén, chạy trong thư mục đó).
+
+**Sinh khoá:**
 
 ```bash
-# macOS:  brew install age
-# Ubuntu: sudo apt install age
 age-keygen -o nppsale-backup-key.txt
 ```
 
-Ra hai thứ:
+Màn hình in ra dòng bắt đầu bằng `Public key:`. Mở file
+`nppsale-backup-key.txt` sẽ thấy:
 
 ```
-# public key: age1ql3z7hjy54pw3hyww5ay...    ← DÁN VÀO GITHUB
-AGE-SECRET-KEY-1QXYZ...                      ← CẤT RIÊNG, KHÔNG ĐƯA LÊN GITHUB
+# created: 2026-09-13T10:00:00+07:00
+# public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+AGE-SECRET-KEY-1GFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFP
 ```
 
-- **Khoá công khai** → GitHub → Settings → Secrets → Actions → `AGE_PUBLIC_KEY`
-- **Khoá riêng** → cất ở nơi *không phải* GitHub và *không phải* Drive:
-  trình quản lý mật khẩu, hoặc in ra giấy cất két.
+| Dòng | Là gì | Đưa đi đâu |
+|---|---|---|
+| `age1...` (sau `# public key:`) | khoá **công khai** — chỉ dùng để mã hoá | dán vào GitHub ở việc 3 |
+| `AGE-SECRET-KEY-1...` | khoá **riêng** — thứ duy nhất giải mã được | **KHÔNG** đưa lên GitHub |
+
+**Cất khoá riêng ở ít nhất hai nơi**, ví dụ:
+
+- trình quản lý mật khẩu (1Password, Bitwarden…)
+- in ra giấy, cất két
+- USB để ở nhà
 
 > ⚠ **Mất khoá riêng là mất toàn bộ bản sao.** Không có cửa sau, không ai
-> khôi phục hộ được. Cất ít nhất hai nơi.
+> khôi phục hộ được — kể cả tôi, kể cả Google. Đây là cái giá của việc
+> Drive không đọc được dữ liệu của bạn.
+>
+> ⚠ **Đừng cất khoá riêng trong chính Drive đang chứa backup.** Mất tài
+> khoản Google là mất cả hai cùng lúc.
 
-### 2. Google Drive
+---
 
-1. Tạo một thư mục trên Drive, ví dụ `nppsale-backup`. Mở nó, lấy `FOLDER_ID`
-   từ thanh địa chỉ: `drive.google.com/drive/folders/`**`<FOLDER_ID>`**
-2. [Google Cloud Console](https://console.cloud.google.com) → tạo project →
-   **APIs & Services**:
-   - Bật **Google Drive API**
-   - **OAuth consent screen**: chọn External, rồi **PUBLISH APP**
-     (để ở Testing thì refresh token **hết hạn sau 7 ngày** — backup sẽ
-     lặng lẽ ngừng chạy sau một tuần)
-   - **Credentials** → Create OAuth client ID → **Desktop app**
-3. Lấy refresh token với scope **`drive.file`** (chỉ thấy file do chính ứng
-   dụng tạo — token lộ cũng không đọc được phần còn lại trong Drive của bạn):
+### Việc 2 — Google Drive (15 phút)
 
-```bash
-# Thay CLIENT_ID / CLIENT_SECRET rồi mở link, đồng ý, copy `code` trên URL
-open "https://accounts.google.com/o/oauth2/v2/auth?client_id=CLIENT_ID&redirect_uri=http://localhost&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent"
+#### 2.1 Tạo thư mục đích
 
-curl -s https://oauth2.googleapis.com/token \
-  -d client_id=CLIENT_ID -d client_secret=CLIENT_SECRET \
-  -d code=MA_VUA_COPY -d grant_type=authorization_code \
-  -d redirect_uri=http://localhost | grep refresh_token
+Vào <https://drive.google.com> → **Mới → Thư mục mới** → đặt tên
+`nppsale-backup` → mở thư mục đó.
+
+Nhìn thanh địa chỉ:
+
+```
+https://drive.google.com/drive/folders/1A2b3C4d5E6f7G8h9I0jK
+                                        └──── đây là FOLDER_ID ────┘
 ```
 
-### 3. Nhập vào GitHub Secrets
+Chép đoạn đó lại.
 
-Settings → Secrets and variables → Actions:
+#### 2.2 Bật Google Drive API
 
-| Secret | Lấy ở đâu |
-|---|---|
-| `SUPABASE_DB_URL` | Supabase → Settings → Database → Connection string (URI) |
-| `AGE_PUBLIC_KEY` | bước 1 |
-| `GDRIVE_CLIENT_ID` | bước 2 |
-| `GDRIVE_CLIENT_SECRET` | bước 2 |
-| `GDRIVE_REFRESH_TOKEN` | bước 2 |
-| `GDRIVE_FOLDER_ID` | bước 2 |
+1. Vào <https://console.cloud.google.com>
+2. Thanh trên cùng → menu chọn project → **NEW PROJECT** → tên
+   `nppsale-backup` → **CREATE**
+3. Đợi vài giây, rồi **chọn đúng project vừa tạo** (hay quên bước này)
+4. Menu trái → **APIs & Services → Library** → tìm `Google Drive API` →
+   **ENABLE**
 
-Chạy thử: **Actions → Sao lưu database → Run workflow**. Xong thì Drive có
-một file `nppsale-YYYYMMDD.pgc.age`.
+#### 2.3 Màn hình đồng ý (OAuth consent screen)
+
+Menu trái → **APIs & Services → OAuth consent screen**:
+
+1. User Type: **External** → **CREATE**
+2. App name: `nppsale backup` · User support email: email của bạn ·
+   Developer contact: email của bạn → **SAVE AND CONTINUE**
+3. Scopes → **ADD OR REMOVE SCOPES** → ô lọc gõ `drive.file` → tích dòng
+   `.../auth/drive.file` → **UPDATE** → **SAVE AND CONTINUE**
+4. Test users → bỏ qua → **SAVE AND CONTINUE**
+5. Về lại màn OAuth consent screen → bấm **PUBLISH APP** → xác nhận
+
+> ⚠ **Bước "PUBLISH APP" là bắt buộc.** Để ở chế độ *Testing* thì refresh
+> token **hết hạn sau 7 ngày** — backup chạy ngon một tuần rồi lặng lẽ
+> ngừng, và không ai nhận ra cho tới lúc cần khôi phục.
+>
+> Google có thể hiện cảnh báo "app chưa được xác minh". Không sao: app này
+> chỉ mình bạn dùng, và scope `drive.file` không đụng được gì ngoài file
+> do chính nó tạo.
+
+#### 2.4 Tạo OAuth client
+
+Menu trái → **APIs & Services → Credentials** → **+ CREATE CREDENTIALS** →
+**OAuth client ID**:
+
+- Application type: **Desktop app**
+- Name: `nppsale backup`
+- **CREATE**
+
+Hộp thoại hiện **Client ID** và **Client secret** — chép cả hai.
+
+#### 2.5 Lấy refresh token
+
+**Bước a — xin mã uỷ quyền.** Thay `CLIENT_ID_CUA_BAN` rồi dán cả dòng vào
+trình duyệt:
+
+```
+https://accounts.google.com/o/oauth2/v2/auth?client_id=CLIENT_ID_CUA_BAN&redirect_uri=http://localhost&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent
+```
+
+Chọn tài khoản Google → **Continue** (qua cảnh báo chưa xác minh) →
+**Continue** lần nữa để cấp quyền.
+
+Trình duyệt sẽ báo **"không kết nối được"** — **đúng như vậy, không phải
+lỗi**. Thứ cần lấy nằm trên thanh địa chỉ:
+
+```
+http://localhost/?code=4%2F0AVMBsJi...&scope=https://www.googleapis.com/auth/drive.file
+                       └──────── chép đoạn này ────────┘
+```
+
+Chép phần giữa `code=` và `&scope`.
+
+> ⚠ Đoạn mã đó bị **mã hoá URL**: `%2F` chính là dấu `/`. Dán nguyên vào
+> lệnh dưới thì Google báo `invalid_grant`. Lệnh dưới đã dùng
+> `--data-urlencode` nên tự xử lý — cứ dán **y nguyên** đoạn vừa chép.
+
+**Bước b — đổi mã lấy refresh token.** Mã này chỉ dùng được **một lần** và
+hết hạn sau vài phút, nên làm ngay:
+
+```bash
+curl -s https://oauth2.googleapis.com/token \
+  -d client_id=CLIENT_ID_CUA_BAN \
+  -d client_secret=CLIENT_SECRET_CUA_BAN \
+  --data-urlencode code=MA_VUA_CHEP \
+  -d grant_type=authorization_code \
+  -d redirect_uri=http://localhost
+```
+
+Trên **Windows PowerShell** dùng lệnh này thay thế:
+
+```powershell
+$body = @{
+  client_id     = "CLIENT_ID_CUA_BAN"
+  client_secret = "CLIENT_SECRET_CUA_BAN"
+  code          = "MA_VUA_CHEP"
+  grant_type    = "authorization_code"
+  redirect_uri  = "http://localhost"
+}
+Invoke-RestMethod -Uri https://oauth2.googleapis.com/token -Method Post -Body $body
+```
+
+Kết quả:
+
+```json
+{
+  "access_token": "ya29...",
+  "refresh_token": "1//0gFx...",   ← CHÉP DÒNG NÀY
+  "expires_in": 3599
+}
+```
+
+**Không thấy `refresh_token`?** Do đã từng cấp quyền cho app này rồi. Thêm
+`&prompt=consent` vào URL bước a (đã có sẵn trong URL trên) và làm lại; nếu
+vẫn không có thì vào
+<https://myaccount.google.com/permissions> gỡ quyền của app rồi làm lại từ
+bước a.
+
+---
+
+### Việc 3 — Nhập vào GitHub (5 phút)
+
+Vào repo → **Settings → Secrets and variables → Actions** → nút
+**New repository secret**. Thêm lần lượt **6 secret**:
+
+| Tên secret | Giá trị | Lấy ở đâu |
+|---|---|---|
+| `SUPABASE_DB_URL` | `postgresql://postgres.xxx:MATKHAU@aws-0-...pooler.supabase.com:5432/postgres` | xem ô cảnh báo ngay dưới |
+| `AGE_PUBLIC_KEY` | `age1ql3z7...` | việc 1 — dòng `public key`, **không** phải dòng SECRET |
+| `GDRIVE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | việc 2.4 |
+| `GDRIVE_CLIENT_SECRET` | `GOCSPX-...` | việc 2.4 |
+| `GDRIVE_REFRESH_TOKEN` | `1//0gFx...` | việc 2.5 |
+| `GDRIVE_FOLDER_ID` | `1A2b3C4d5E6f...` | việc 2.1 |
+
+> ### ⚠ Chọn đúng chuỗi kết nối Supabase
+>
+> Supabase → **Settings → Database → Connection string** cho **ba** lựa
+> chọn. Chỉ một cái dùng được:
+>
+> | Lựa chọn | Cổng | Dùng được? |
+> |---|---|---|
+> | **Session pooler** | 5432 | ✅ **DÙNG CÁI NÀY** |
+> | Direct connection | 5432 | ⚠ chỉ có IPv6 với project mới — GitHub Actions không có IPv6, sẽ báo `could not translate host name` hoặc `Network is unreachable` |
+> | Transaction pooler | 6543 | ❌ `pg_dump` không chạy được qua chế độ transaction |
+>
+> Nhớ thay `[YOUR-PASSWORD]` trong chuỗi bằng mật khẩu database thật (mật
+> khẩu đặt lúc tạo project; quên thì **Settings → Database → Reset database
+> password**).
+
+#### Chạy thử
+
+Repo → tab **Actions** → chọn **Sao lưu database** ở cột trái → nút **Run
+workflow** → **Run workflow**.
+
+Khoảng 2–4 phút. Xong thì:
+
+- Actions hiện dấu ✓ xanh
+- Thư mục Drive có file `nppsale-YYYYMMDD.pgc.age`
+- Trong log, bước *"Đối chiếu số bảng và số dòng"* in ra hai con số **bằng
+  nhau**
+
+Từ đó nó tự chạy **10:00 sáng mỗi ngày**.
+
+#### Kiểm thật: thử khôi phục một lần
+
+Đừng đợi tới lúc cần. Tải file `.age` về, rồi:
+
+```bash
+age --decrypt -i nppsale-backup-key.txt -o thu.pgc nppsale-20260913.pgc.age
+```
+
+Ra file `thu.pgc` vài MB là khoá riêng đúng và bản sao đọc được. Quy trình
+khôi phục đầy đủ ở mục [Khôi phục](#khôi-phục) bên dưới.
 
 ---
 

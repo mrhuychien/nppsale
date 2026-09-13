@@ -19,6 +19,13 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import {
+  linesMissingCost,
+  postedAtFor,
+  resolveUnitCost,
+  seedUnitCost,
+  vnToday,
+} from "@/lib/inventory/opening-stock"
 import { viIncludes, viNormalize } from "@/lib/search"
 import Link from "next/link"
 import {
@@ -97,9 +104,9 @@ export default function StockInPage() {
   const [supplierId, setSupplierId] = useState("")
   const [supplier, setSupplier] = useState("")
   const [invoiceNo, setInvoiceNo] = useState("")
-  const [entryDate, setEntryDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  )
+  // Lịch Việt Nam, không phải lịch UTC: từ 0h đến 7h sáng giờ Việt thì
+  // `toISOString()` trả về ngày HÔM QUA — sai đúng vào ca nhập hàng sớm.
+  const [entryDate, setEntryDate] = useState<string>(vnToday(new Date()))
   const [warehouse, setWarehouse] = useState("Kho chính")
   const [lines, setLines] = useState<LineItem[]>([newLine()])
   const [productSearch, setProductSearch] = useState("")
@@ -112,7 +119,10 @@ export default function StockInPage() {
   const refetchProductsAndPickLatest = async () => {
     const { data, error: dataErr } = await supabase
       .from("products")
-      .select("id, sku, name, base_unit, barcode, vat_rate, price_lists(*), units:product_units(*)")
+      // cost_price = giá vốn mặc định của sản phẩm (nhập từ file Excel sản
+      // phẩm). Trước đây không lấy về, nên ô "Giá vốn" đành mồi bằng giá
+      // BÁN — lãi gộp ra 0 mà không ai hay.
+      .select("id, sku, name, base_unit, barcode, vat_rate, cost_price, price_lists(*), units:product_units(*)")
       .eq("status", "active")
       .order("created_at", { ascending: false })
     if (dataErr) console.error("[inventory/stock-in] truy vấn lỗi:", dataErr.message)
@@ -129,7 +139,10 @@ export default function StockInPage() {
       const [prodRes, supRes] = await Promise.all([
         supabase
           .from("products")
-          .select("id, sku, name, base_unit, barcode, vat_rate, price_lists(*), units:product_units(*)")
+          // cost_price = giá vốn mặc định của sản phẩm (nhập từ file Excel sản
+      // phẩm). Trước đây không lấy về, nên ô "Giá vốn" đành mồi bằng giá
+      // BÁN — lãi gộp ra 0 mà không ai hay.
+      .select("id, sku, name, base_unit, barcode, vat_rate, cost_price, price_lists(*), units:product_units(*)")
           .eq("status", "active")
           .order("name"),
         supabase.from("suppliers").select("id, code, name").eq("is_active", true).order("name"),
@@ -202,6 +215,12 @@ export default function StockInPage() {
     return units
   }
 
+  /** Hệ số quy đổi từ `unitName` về đơn vị cơ bản của sản phẩm. */
+  function conversionFor(product: ProductWithRelations, unitName: string): number {
+    if (!unitName || unitName === product.base_unit) return 1
+    return Number(product.units?.find((u) => u.unit_name === unitName)?.conversion ?? 1) || 1
+  }
+
   function getDefaultUnitPrice(product: ProductWithRelations, unitName: string): number {
     const match = product.price_lists?.find(
       (pl) => pl.unit_name === unitName && !pl.group_id
@@ -225,7 +244,10 @@ export default function StockInPage() {
       unit_name: unitName,
       quantity: "1",
       unit_price: price > 0 ? String(price) : "",
-      unit_cost: price > 0 ? String(price) : "",
+      // Giá vốn mồi từ giá vốn của SẢN PHẨM, không phải giá bán. Sản phẩm
+      // chưa có giá vốn thì để TRỐNG — ô trống nói thật là "chưa biết",
+      // còn điền giá bán vào thì lãi gộp ra 0 mà trông vẫn như số thật.
+      unit_cost: seedUnitCost(product.cost_price, conversionFor(product, unitName)),
       vat_rate: product.vat_rate ?? 0,
       batch_code: "",
       manufactured_at: "",
@@ -268,6 +290,14 @@ export default function StockInPage() {
           if (product) {
             const newPrice = getDefaultUnitPrice(product, patch.unit_name)
             if (newPrice > 0) next.unit_price = String(newPrice)
+            // Giá vốn theo ĐƠN VỊ CỦA DÒNG. Đổi hộp sang thùng mà giữ
+            // nguyên con số cũ là khai giá vốn thấp đi đúng bằng hệ số quy
+            // đổi. Chỉ mồi lại khi người dùng CHƯA tự sửa ô này — số người
+            // ta gõ tay thì không đè.
+            const seededBefore = seedUnitCost(product.cost_price, conversionFor(product, l.unit_name))
+            if (!l.unit_cost || l.unit_cost === seededBefore) {
+              next.unit_cost = seedUnitCost(product.cost_price, conversionFor(product, patch.unit_name))
+            }
           }
         }
         return next
@@ -290,7 +320,7 @@ export default function StockInPage() {
     setSupplier("")
     setSupplierId("")
     setInvoiceNo("")
-    setEntryDate(new Date().toISOString().slice(0, 10))
+    setEntryDate(vnToday(new Date()))
     setWarehouse("Kho chính")
     setLines([newLine()])
     setProductSearch("")
@@ -333,7 +363,10 @@ export default function StockInPage() {
         entry_code: entryCode,
         type: "import",
         status: "posted",
-        posted_at: new Date().toISOString(),
+        // Ngày người dùng chọn, không phải lúc bấm nút. Phiếu tồn ĐẦU KỲ
+        // ghi lùi ngày (chốt sổ 31/12) phải nằm đúng ngày đó — thẻ kho,
+        // báo cáo nhập xuất tồn và giá vốn hàng bán đều gom theo cột này.
+        posted_at: postedAtFor(entryDate, new Date()),
         created_by: user.id,
         notes,
       }
@@ -363,7 +396,7 @@ export default function StockInPage() {
         const baseQty = qty * conv
         const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
         const expiresAt = l.expires_at || "2099-12-31"
-        const txCost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const txCost = resolveUnitCost(l.unit_cost).cost
         const baseCost = conv > 0 ? txCost / conv : txCost
         const lineLocation = l.location.trim() || warehouse.trim() || null
         return {
@@ -390,7 +423,7 @@ export default function StockInPage() {
         const qty = parseFloat(l.quantity) || 0
         const { unit, conv } = lineConversion(l)
         const baseQty = qty * conv
-        const txCost = parseFloat(l.unit_cost) || parseFloat(l.unit_price) || 0
+        const txCost = resolveUnitCost(l.unit_cost).cost
         const baseCost = conv > 0 ? txCost / conv : txCost
         return {
           entry_id: entry.id,
@@ -427,11 +460,21 @@ export default function StockInPage() {
         else console.warn("[stock-in] không tạo được công nợ NCC:", payErr)
       }
 
+      // Thiếu giá vốn không chặn phiếu — nhiều khi người ta thật sự chưa
+      // có số. Nhưng cũng KHÔNG im lặng: giá vốn 0 sẽ kéo lãi gộp của
+      // những lô này lên bằng đúng doanh thu, và không có màn nào khác
+      // báo ra chuyện đó.
+      const noCost = linesMissingCost(validLines)
+      const done = payableCreated
+        ? `Đã ghi công nợ NCC ${formatCurrency(summary.total)}.`
+        : "Tồn kho đã được cập nhật."
       toast({
         title: `Đã tạo phiếu nhập ${entryCode}`,
-        description: payableCreated
-          ? `Đã ghi công nợ NCC ${formatCurrency(summary.total)}.`
-          : "Tồn kho đã được cập nhật.",
+        description:
+          noCost.length > 0
+            ? `${done} ⚠ ${noCost.length} dòng chưa có giá vốn (dòng ${noCost.join(", ")}) — lãi gộp của số hàng này sẽ tính sai cho tới khi bổ sung.`
+            : done,
+        variant: noCost.length > 0 ? "destructive" : undefined,
       })
       router.push(`/inventory/entries/${entry.id}`)
     } catch (err) {
@@ -721,6 +764,7 @@ export default function StockInPage() {
               const price = parseFloat(line.unit_price) || 0
               const lineTotal = qty * price
               const hasProduct = !!line.product_id
+              const costMissing = qty > 0 && !resolveUnitCost(line.unit_cost).known
               return (
                 <div key={line.id} className="rounded-xl border bg-card p-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -799,10 +843,20 @@ export default function StockInPage() {
                         min={0}
                         value={line.unit_cost}
                         onChange={(e) => updateLine(line.id, { unit_cost: e.target.value })}
-                        placeholder={line.unit_price || "0"}
-                        className="h-9 text-right tabular-nums"
+                        // Placeholder cũ là giá BÁN, đọc như thể bỏ trống
+                        // thì hệ thống lấy giá bán làm giá vốn — mà đúng
+                        // là nó đã làm thế thật.
+                        placeholder="Chưa biết"
+                        className={`h-9 text-right tabular-nums${
+                          hasProduct && costMissing ? " border-amber-300 bg-amber-50/50" : ""
+                        }`}
                         disabled={!hasProduct}
                       />
+                      {hasProduct && costMissing && (
+                        <p className="mt-1 text-[10px] leading-tight text-amber-600">
+                          Chưa có giá vốn — lãi gộp của lô này sẽ tính sai.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">VAT %</Label>

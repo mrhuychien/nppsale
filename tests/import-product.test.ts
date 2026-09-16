@@ -135,10 +135,16 @@ describe("đọc số tiền và thuế", () => {
     expect(withVat("0,08")).toBeCloseTo(0.08)
   })
 
-  it("VAT trống thì mặc định 10%, không phải 0", () => {
-    // Mặc định 0 sẽ làm mọi hoá đơn thiếu thuế.
-    expect(withVat("")).toBeCloseTo(0.1)
-    expect(withVat("linh tinh")).toBeCloseTo(0.1)
+  /**
+   * ⚠ ĐẢO CHIỀU CÓ CHỦ Ý. Phép kiểm này trước đây canh mặc định 10%; chủ
+   * NPP chốt đổi sang 8% vì phần lớn hàng FMCG đang chịu mức đó. Điều
+   * KHÔNG đổi — và mới là lý do phép kiểm tồn tại — là mặc định phải khác
+   * 0: mặc định 0 làm mọi hoá đơn thiếu thuế.
+   */
+  it("VAT trống thì mặc định 8%, không phải 0", () => {
+    expect(withVat("")).toBeCloseTo(0.08)
+    expect(withVat("linh tinh")).toBeCloseTo(0.08)
+    expect(withVat("")).not.toBe(0)
   })
 
   it("VAT 0% được giữ nguyên là 0", () => {

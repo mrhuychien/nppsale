@@ -147,3 +147,17 @@ export const APPROVAL_THRESHOLDS = {
   AUTO_APPROVE: 20_000_000,
   MANAGER_APPROVE: 50_000_000,
 } as const
+
+/**
+ * Thuế suất VAT mặc định cho sản phẩm mới: 8%.
+ *
+ * Một CHỖ DUY NHẤT. Trước đây con số này nằm rải ở ba nơi — mặc định của
+ * cột trong migration, giá trị khởi tạo của form, và giá trị lùi của bộ
+ * đọc file Excel. Sửa một chỗ quên hai chỗ thì sản phẩm tạo bằng form và
+ * sản phẩm nhập bằng file mang hai thuế suất khác nhau, mà không có gì
+ * báo ra.
+ *
+ * Lưu dạng tỉ lệ (0.08), không phải phần trăm (8) — đúng như cột
+ * `products.vat_rate` trong cơ sở dữ liệu.
+ */
+export const DEFAULT_VAT_RATE = 0.08

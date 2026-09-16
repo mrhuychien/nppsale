@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { DEFAULT_VAT_RATE } from "@/lib/constants"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -87,7 +88,10 @@ export function ProductForm({
     primary_supplier_id: product?.primary_supplier_id || "",
     barcode: product?.barcode || "",
     base_unit: product?.base_unit || "",
-    vat_rate: product?.vat_rate?.toString() || "0.1",
+    // Sản phẩm đã có thì giữ nguyên thuế của nó; chỉ sản phẩm MỚI
+    // mới lấy mặc định. Đè thuế của hàng đang có là sửa dữ liệu
+    // người ta đã nhập.
+    vat_rate: product?.vat_rate?.toString() ?? String(DEFAULT_VAT_RATE),
     shelf_life_days: product?.shelf_life_days?.toString() || "",
     status: product?.status || "active",
     description: product?.description || "",

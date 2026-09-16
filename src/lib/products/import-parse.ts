@@ -5,6 +5,8 @@
  * tự bulk insert.
  */
 
+import { DEFAULT_VAT_RATE } from "@/lib/constants"
+
 export type ProductField =
   | "name"
   | "sku"
@@ -152,12 +154,18 @@ function parseMoney(raw: unknown): number {
   return digits ? parseInt(digits, 10) : 0
 }
 
-/** VAT: chấp nhận 0.1 / "10%" / "10" → 0.1. Mặc định 0.1 nếu trống. */
+/**
+ * VAT: chấp nhận 0.08 / "8%" / "8" → 0.08.
+ *
+ * Mặc định là {@link DEFAULT_VAT_RATE} khi cột trống hoặc không đọc được —
+ * áp đúng vào dòng KHÔNG KHAI thuế, còn dòng có khai thì giữ nguyên số
+ * người ta ghi, kể cả 0%.
+ */
 function parseVat(raw: unknown): number {
   const s = String(raw ?? "").replace("%", "").replace(",", ".").trim()
-  if (!s) return 0.1
+  if (!s) return DEFAULT_VAT_RATE
   let n = parseFloat(s)
-  if (isNaN(n)) return 0.1
+  if (isNaN(n)) return DEFAULT_VAT_RATE
   if (n > 1) n = n / 100
   return Math.max(0, n)
 }

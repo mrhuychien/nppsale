@@ -23,11 +23,13 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { Search } from "lucide-react"
+import { Download, Search } from "lucide-react"
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
+import { buildStockExportAoa, stockExportFileName } from "@/lib/inventory/stock-export"
 
 interface BalanceRow {
   product_id: string
@@ -89,6 +91,8 @@ export function StockBalanceTable() {
   const [search, setSearch] = useState("")
   const [onlyOnHand, setOnlyOnHand] = useState(true)
   const [drawerProductId, setDrawerProductId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user?.org_id) return
@@ -200,8 +204,60 @@ export function StockBalanceTable() {
     )
   }, [pivot])
 
+  /**
+   * Xuất đúng những dòng ĐANG HIỆN ra Excel.
+   *
+   * `xlsx` nạp động: nó nặng vài trăm KB và phần lớn người mở trang Kho
+   * không bấm nút này lần nào — nhét vào gói chính là bắt mọi người tải
+   * cho một người dùng.
+   */
+  const handleExport = async () => {
+    if (pivot.length === 0) return
+    setExporting(true)
+    try {
+      const XLSX = await import("xlsx")
+      const aoa = buildStockExportAoa(
+        pivot.map((r) => ({
+          sku: r.product.sku,
+          name: r.product.name,
+          baseUnit: r.product.base_unit,
+          saleQty: r.saleQty,
+          saleValue: r.saleValue,
+          dateQty: r.dateQty,
+          dateValue: r.dateValue,
+          totalQty: r.totalQty,
+          totalValue: r.totalValue,
+        }))
+      )
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      ws["!cols"] = [
+        { wch: 12 }, { wch: 46 }, { wch: 8 },
+        { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 16 },
+        { wch: 12 }, { wch: 18 },
+      ]
+      // Khoá hàng tiêu đề: bảng vài trăm dòng mà cuộn xuống là quên mất
+      // cột nào là kho bán, cột nào là kho date.
+      ws["!freeze"] = { xSplit: "0", ySplit: "1" }
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Ton kho")
+      XLSX.writeFile(wb, stockExportFileName(new Date()))
+    } catch (e) {
+      // Không nuốt: nút bấm xong không thấy gì thì người dùng bấm tiếp
+      // mấy lần rồi tưởng máy treo.
+      console.error("[stock-balance-table] xuất Excel lỗi:", e)
+      setExportError((e as Error)?.message || "Không xuất được file")
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {exportError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Không xuất được file Excel: {exportError}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -219,6 +275,23 @@ export function StockBalanceTable() {
           />
           Chỉ hiện hàng còn tồn
         </label>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          disabled={loading || exporting || pivot.length === 0}
+          // Xuất đúng những dòng ĐANG HIỆN, không phải toàn bộ kho: người
+          // ta lọc rồi mới bấm xuất thì mong nhận đúng phần đã lọc.
+          title={
+            pivot.length === 0
+              ? "Không có dòng nào để xuất"
+              : `Xuất ${pivot.length} dòng đang hiện ra Excel`
+          }
+        >
+          <Download className="mr-1.5 h-4 w-4" />
+          {exporting ? "Đang xuất…" : "Xuất Excel"}
+        </Button>
         <span className="ml-auto text-xs text-muted-foreground">
           {pivot.length} sản phẩm — tổng giá trị{" "}
           <strong className="text-foreground">{formatCurrency(totals.totalValue)}</strong>

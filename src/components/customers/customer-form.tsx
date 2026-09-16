@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
+import { assignCustomerToCreator, assignNote } from "@/lib/customers/assign-creator"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { WARDS_HAI_PHONG } from "@/lib/constants/wards-hai-phong"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
@@ -196,7 +197,14 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
           org_id: user?.org_id,
         }
         if (user?.id) insertPayload.created_by = user.id
-        const { error } = await supabase.from("customers").insert(insertPayload)
+        // Lấy về `id`: không có nó thì không phân công được cho người vừa
+        // tạo, và điểm bán mới sẽ không thuộc về ai.
+        let newId: string | null = null
+        const { data, error } = await supabase
+          .from("customers")
+          .insert(insertPayload)
+          .select("id")
+          .single()
         if (error) {
           // If created_by column missing (mig 032 not applied), retry without it
           if (
@@ -204,13 +212,32 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
             error.code === "PGRST204"
           ) {
             delete insertPayload.created_by
-            const retry = await supabase.from("customers").insert(insertPayload)
+            const retry = await supabase
+              .from("customers")
+              .insert(insertPayload)
+              .select("id")
+              .single()
             if (retry.error) throw retry.error
+            newId = (retry.data as { id: string } | null)?.id ?? null
           } else {
             throw error
           }
+        } else {
+          newId = (data as { id: string } | null)?.id ?? null
         }
-        toast({ title: "Đã tạo khách hàng mới" })
+
+        // Phân công ngay cho người vừa tạo. NVBH đứng tại cửa hàng nhập
+        // điểm bán mới mà không được phân công thì chính họ cũng không mở
+        // lại được — RLS chỉ cho NVBH thấy khách ĐƯỢC PHÂN CÔNG.
+        const outcome = newId
+          ? await assignCustomerToCreator(supabase, { customerId: newId, role: user?.role })
+          : ({ kind: "skipped", reason: "không lấy được mã điểm bán" } as const)
+        const note = assignNote(outcome)
+        toast({
+          title: "Đã tạo khách hàng mới",
+          description: note ?? undefined,
+          variant: outcome.kind === "failed" ? "destructive" : undefined,
+        })
       }
 
       router.push("/customers")

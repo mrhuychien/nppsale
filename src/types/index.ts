@@ -110,6 +110,14 @@ export interface Customer {
   gps_lat: number | null
   gps_lng: number | null
   created_at: string
+  /**
+   * Nhân viên đã tạo điểm bán này (mig 032).
+   *
+   * Cột đã có từ lâu và màn tạo khách vẫn đóng dấu vào đó, nhưng kiểu
+   * `Customer` thì thiếu — nên không màn nào đọc tới được, và câu hỏi
+   * "ai nhập điểm bán này" không có chỗ trả lời.
+   */
+  created_by: string | null
   // Billing fields for VAT invoice
   billing_name: string | null
   tax_code: string | null

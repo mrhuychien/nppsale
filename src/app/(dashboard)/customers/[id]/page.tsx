@@ -14,6 +14,7 @@ import { CustomerManagers } from "@/components/customers/customer-managers"
 import { buildManagers, type Manager } from "@/lib/customers/managers"
 import { CustomerForm } from "@/components/customers/customer-form"
 import { AssignmentManager } from "@/components/customers/assignment-manager"
+import { CustomerProfileCard } from "@/components/customers/customer-profile-card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -60,6 +61,10 @@ export default function CustomerDetailPage() {
   const { groups } = useCustomerGroups()
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [assignments, setAssignments] = useState<CustomerAssignment[]>([])
+  // Tên người TẠO điểm bán. Tra riêng: người tạo có thể đã nghỉ, hoặc
+  // không nằm trong danh sách đang phụ trách, nên không lấy ké được từ
+  // bảng phân công.
+  const [creatorName, setCreatorName] = useState<string | null>(null)
   /** Ai phụ trách điểm bán này + mỗi người bán ngành hàng gì. */
   const [managers, setManagers] = useState<Manager[]>([])
   const [loading, setLoading] = useState(true)
@@ -116,6 +121,22 @@ export default function CustomerDetailPage() {
     // Ngành hàng của từng người phụ trách. Hỏi RIÊNG hai bảng rồi ghép ở
     // lib thuần: nhúng lồng ba tầng qua PostgREST vừa khó đọc vừa phụ
     // thuộc cách RLS áp lên từng bảng cha.
+    // Người tạo — tra tên riêng. `created_by` có thể trỏ tới một nhân
+    // viên KHÔNG còn nằm trong danh sách phụ trách (đã nghỉ, đã đổi
+    // tuyến), nên lấy ké từ `assignRows` là có lúc ra rỗng.
+    const creatorId = (custRes.data as { created_by?: string | null } | null)?.created_by
+    if (creatorId) {
+      const { data: cu, error: cuErr } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", creatorId)
+        .maybeSingle()
+      if (cuErr) console.error("[customers/id] truy vấn lỗi:", cuErr.message)
+      setCreatorName((cu as { full_name?: string } | null)?.full_name ?? null)
+    } else {
+      setCreatorName(null)
+    }
+
     const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
     if (managerIds.length === 0) {
       setManagers([])
@@ -839,7 +860,12 @@ export default function CustomerDetailPage() {
             </TabsContent>
 
             {/* Tab: Thông tin */}
-            <TabsContent value="info">
+            <TabsContent value="info" className="space-y-4">
+              <CustomerProfileCard
+                customer={customer}
+                creatorName={creatorName}
+                managerNames={managers.map((m) => m.fullName)}
+              />
               <CustomerForm customer={customer} groups={groups} />
             </TabsContent>
 

@@ -536,9 +536,27 @@ export default function OrderDetailPage() {
     if (!order) return
     setActionLoading(true)
     try {
-      // Delete order lines first, then order (schema: order_lines has ON DELETE CASCADE so just delete order)
-      const { error } = await supabase.from("sales_orders").delete().eq("id", order.id)
+      // ⚠ PHẢI LẤY VỀ DÒNG ĐÃ XOÁ, không chỉ kiểm `error`.
+      //
+      // RLS chặn thì PostgREST trả 200 kèm mảng RỖNG và KHÔNG có lỗi —
+      // trước mig 113 `sales_orders` không hề có policy DELETE, nên mọi
+      // lần bấm xoá đều "thành công" mà không xoá gì. Người dùng quay về
+      // danh sách và thấy đơn vẫn nằm đó.
+      //
+      // Dòng hàng có ON DELETE CASCADE nên chỉ cần xoá đơn.
+      const { data, error } = await supabase
+        .from("sales_orders")
+        .delete()
+        .eq("id", order.id)
+        .select("id")
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error(
+          "Không xoá được đơn này. Chỉ chủ NPP hoặc quản lý mới xoá được, " +
+            "và chỉ với đơn còn nháp hoặc đã huỷ. Nếu cơ sở dữ liệu chưa chạy " +
+            "migration 113 thì chạy `supabase db push` rồi thử lại."
+        )
+      }
       toast({ title: "Đã xóa đơn hàng" })
       router.push("/orders")
     } catch (error) {

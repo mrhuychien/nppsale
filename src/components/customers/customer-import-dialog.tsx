@@ -110,6 +110,8 @@ export function CustomerImportDialog({
 
       type Payload = {
         org_id: string
+        /** Nhân viên nhập file — người tạo của mọi dòng trong lần nhập này. */
+        created_by: string
         store_name: string
         owner_name: string
         phone: string
@@ -139,6 +141,11 @@ export function CustomerImportDialog({
         if (pk) existingPhones.add(pk)
         payloads.push({
           org_id: user.org_id,
+          // ⚠ Trước đây màn này KHÔNG đóng dấu người tạo, nên mọi điểm bán
+          // nhập từ Excel đều "không rõ ai tạo" — mà đó lại là đường vào
+          // của phần lớn dữ liệu. Cột đã có từ mig 032; chỉ là chỗ này
+          // quên điền.
+          created_by: user.id,
           store_name: r.store_name,
           owner_name: r.owner_name,
           phone: r.phone,

@@ -157,9 +157,13 @@ describe("Thuế VAT mặc định của sản phẩm", () => {
    * form và sản phẩm chèn thẳng bằng SQL mang hai thuế suất khác nhau.
    */
   it("mặc định của cột khớp với hằng số trong mã", () => {
-    expect(MIG108).toContain("ALTER COLUMN vat_rate SET DEFAULT 0.08")
+    expect(MIG108).toContain("ALTER COLUMN vat_rate SET DEFAULT 0.08;")
+    // ⚠ Phải có DẤU CHẤM PHẨY. Không có nó thì `toContain("SET DEFAULT 0")`
+    // khớp luôn cả "SET DEFAULT 0.08" — chuỗi con — và phép kiểm này xanh
+    // kể cả khi migration đặt sai mức. Đã đo: đổi 110 thành 0.08 mà test
+    // vẫn xanh, cho tới khi thêm dấu này.
     expect(read("supabase/migrations/110_default_vat_0.sql"))
-      .toContain(`ALTER COLUMN vat_rate SET DEFAULT ${DEFAULT_VAT_RATE}`)
+      .toContain(`ALTER COLUMN vat_rate SET DEFAULT ${DEFAULT_VAT_RATE};`)
   })
 
   /**

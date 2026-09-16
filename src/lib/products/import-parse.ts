@@ -67,6 +67,15 @@ export interface ParsedProductRow {
   warranty_info: string | null
   direct_sale: boolean
   errors: string[]
+  /**
+   * Chuyện đáng nói nhưng KHÔNG chặn dòng này.
+   *
+   * ⚠ Khác `errors` ở đúng một điểm, và điểm đó quyết định tất cả: dòng
+   * có `errors` bị LOẠI khỏi lần nhập, dòng chỉ có `warnings` vẫn vào.
+   * Một cột tuỳ chọn để trống thuộc về đây, không thuộc về `errors` —
+   * xoá mất sản phẩm vì thiếu một thông tin điền sau được là quá tay.
+   */
+  warnings: string[]
 }
 
 export interface ParseResult {
@@ -247,10 +256,26 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
     const supplier_name = str(get(raw, "supplier_name")) || null
 
     const errors: string[] = []
+    const warnings: string[] = []
     if (!name) errors.push("Thiếu tên sản phẩm")
-    // Dòng base (không có parent_sku) bắt buộc có NCC. Dòng quy đổi
-    // (KiotViet xuất thùng/lốc) không cần — kế thừa NCC của SP cha.
-    if (!parent_sku && !supplier_name) errors.push("Thiếu nhà cung cấp")
+
+    // ⚠ THIẾU NCC LÀ CẢNH BÁO, KHÔNG PHẢI LỖI.
+    //
+    // Luật cũ đẩy dòng thiếu NCC vào `errors`, mà dòng có lỗi thì bị loại
+    // hẳn khỏi lần nhập. Hậu quả đã đo trên file thật của NPP (3.359
+    // dòng, xuất từ KiotViet):
+    //
+    //   40 dòng để trống cột NCC   → mất 40 sản phẩm
+    //   17 dòng quy đổi của chúng  → thành mồ côi, mất thêm 17 mã
+    //   → 57 mã biến mất, trong đó 8 mã CÓ TỒN: 707 đơn vị, 22.162.989đ
+    //
+    // Và lần nhập vẫn báo thành công.
+    //
+    // `products.primary_supplier_id` cho phép rỗng. Một cột TUỲ CHỌN để
+    // trống không được phép xoá mất cả sản phẩm lẫn tồn kho của nó. Nhập
+    // vào, gắn nhãn "chưa có NCC", để người ta điền sau trên trang sản
+    // phẩm — chứ không phải bắt họ sửa 40 dòng Excel rồi nhập lại.
+    if (!parent_sku && !supplier_name) warnings.push("Chưa có nhà cung cấp")
     // base_unit trống ở dòng base → default "cái" (KiotViet bỏ ĐVT khi
     // SP chỉ bán theo lô — hợp lệ). Trống ở dòng secondary (có parent_sku)
     // thì lỗi vì cần tên unit. Đã default "cái" ở output bên dưới.
@@ -316,6 +341,7 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       warranty_info: str(get(raw, "warranty_info")) || null,
       direct_sale: parseBool(get(raw, "direct_sale"), true),
       errors,
+      warnings,
     })
   }
 

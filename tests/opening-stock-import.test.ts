@@ -320,3 +320,28 @@ describe("Màn nhập sản phẩm có nối đúng", () => {
     expect(DIALOG).toContain("droppedOpeningQtyRows")
   })
 })
+
+describe("Màn nhập không được im lặng nuốt dòng", () => {
+  /**
+   * ⚠ ĐÂY LÀ LÝ DO LỖI SỐNG ĐƯỢC. 40 sản phẩm (kèm 17 mã quy đổi, kèm
+   * 22 triệu tiền hàng) biến mất, mà thông báo cuối vẫn là "Đã nhập N sản
+   * phẩm" — không một chữ nào nhắc tới dòng bị loại. Người dùng chỉ phát
+   * hiện khi tự dò danh sách.
+   */
+  it("thông báo nói ra số dòng bị loại vì lỗi", () => {
+    expect(DIALOG).toContain("errorRows.length > 0")
+    expect(DIALOG).toContain("dòng lỗi — những mã này KHÔNG được tạo")
+  })
+
+  /** Có dòng bị loại thì thông báo phải đỏ, không phải màu thành công. */
+  it("có dòng bị loại thì thông báo báo đỏ", () => {
+    expect(DIALOG).toContain('variant: errorRows.length > 0 ? "destructive" : undefined')
+  })
+
+  /** Dòng chỉ thiếu thông tin tuỳ chọn thì vẫn nhập, nhưng phải nhìn thấy. */
+  it("phân biệt dòng BỊ BỎ với dòng thiếu thông tin", () => {
+    expect(DIALOG).toContain("dòng BỊ BỎ")
+    expect(DIALOG).toContain("dòng thiếu thông tin (vẫn nhập)")
+    expect(DIALOG).toContain("r.warnings.length > 0")
+  })
+})

@@ -164,9 +164,53 @@ describe("kiểm tra từng dòng", () => {
     expect(r.rows[0].errors).toContain("Thiếu tên sản phẩm")
   })
 
-  it("dòng gốc thiếu nhà cung cấp → báo lỗi", () => {
+  /**
+   * ⚠ ĐẢO CHIỀU CÓ CHỦ Ý, SAU KHI ĐO TRÊN FILE THẬT.
+   *
+   * Luật cũ đẩy "thiếu NCC" vào `errors`, mà dòng có lỗi thì bị loại hẳn
+   * khỏi lần nhập. Trên file KiotViet thật của NPP (3.359 dòng):
+   *   40 dòng trống cột NCC → mất 40 sản phẩm
+   *   17 dòng quy đổi của chúng → thành mồ côi, mất thêm 17 mã
+   *   → 57 mã biến mất, trong đó 8 mã CÓ TỒN: 707 đơn vị, 22.162.989đ
+   * Và lần nhập vẫn báo thành công.
+   *
+   * `products.primary_supplier_id` cho phép rỗng. Một cột TUỲ CHỌN để
+   * trống không được xoá mất cả sản phẩm lẫn tồn kho của nó.
+   */
+  it("dòng gốc thiếu nhà cung cấp → CẢNH BÁO, vẫn nhập được", () => {
     const r = parseProductSheet(sheet(BASIC, ["Sữa", "hộp", ""]))
-    expect(r.rows[0].errors).toContain("Thiếu nhà cung cấp")
+    expect(r.rows[0].errors).toEqual([])
+    expect(r.rows[0].warnings).toContain("Chưa có nhà cung cấp")
+    // Và phải thật sự lọt vào danh sách sẽ tạo.
+    expect(groupRowsForImport(r.rows).baseRows).toHaveLength(1)
+  })
+
+  /**
+   * ⚠ DÂY CHUYỀN — đây mới là chỗ mất nhiều mã nhất. Dòng gốc bị loại thì
+   * các dòng ĐƠN VỊ QUY ĐỔI của nó không còn cha, thành mồ côi, và cũng
+   * bị loại nốt. Một ô Excel để trống kéo theo cả cụm sản phẩm.
+   */
+  it("thiếu NCC không kéo theo dòng quy đổi thành mồ côi", () => {
+    const r = parseProductSheet(
+      sheet(
+        [...BASIC, "Mã hàng", "Mã ĐVT Cơ bản", "Quy đổi", "Tồn kho"],
+        ["Sữa hộp", "hộp", "", "SUA", "", "", 50],
+        ["Sữa thùng", "thùng", "", "SUA-T", "SUA", "12", 0]
+      )
+    )
+    const g = groupRowsForImport(r.rows)
+    expect(g.baseRows.map((x) => x.sku)).toEqual(["SUA"])
+    expect(g.orphanedRows).toHaveLength(0)
+    expect(g.unitsByParentSku["SUA"]).toEqual([{ unit_name: "thùng", conversion: 12 }])
+    // Và tồn kho của nó không mất theo.
+    expect(g.baseRows[0].opening_qty).toBe(50)
+  })
+
+  /** Thiếu TÊN thì vẫn là lỗi thật — không tạo nổi sản phẩm không tên. */
+  it("thiếu tên vẫn là lỗi, không hạ xuống cảnh báo", () => {
+    const r = parseProductSheet(sheet(BASIC, ["", "hộp", "NCC A"]))
+    expect(r.rows[0].errors).toContain("Thiếu tên sản phẩm")
+    expect(groupRowsForImport(r.rows).baseRows).toHaveLength(0)
   })
 
   it("dòng ĐƠN VỊ QUY ĐỔI (có Mã ĐVT Cơ bản) KHÔNG cần nhà cung cấp", () => {

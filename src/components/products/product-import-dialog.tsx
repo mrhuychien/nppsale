@@ -58,6 +58,8 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
+  // Dòng vẫn được nhập nhưng có chuyện đáng nói (vd chưa có NCC).
+  const warnRows = rows.filter((r) => r.errors.length === 0 && r.warnings.length > 0)
   // Group theo cấu trúc KiotViet: dòng có "Mã ĐVT Cơ bản" sẽ thành đơn vị quy đổi.
   const grouped = groupRowsForImport(rows)
   const productCount = grouped.baseRows.length
@@ -359,12 +361,20 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         description: [
           unitInserts.length > 0 ? `${unitInserts.length} đơn vị quy đổi` : null,
           openingNote,
+          // ⚠ Trước đây thông báo KHÔNG hề nhắc tới dòng bị loại vì lỗi.
+          // 40 sản phẩm biến mất mà lần nhập vẫn báo thành công — đó là
+          // lý do không ai phát hiện ra suốt từ đầu.
+          errorRows.length > 0
+            ? `⚠ BỎ ${errorRows.length} dòng lỗi — những mã này KHÔNG được tạo`
+            : null,
+          warnRows.length > 0 ? `${warnRows.length} dòng thiếu NCC (vẫn nhập)` : null,
           skipped > 0 ? `Bỏ qua ${skipped} SKU trùng` : null,
           orphanCount > 0 ? `${orphanCount} dòng quy đổi mồ côi (không tìm thấy SKU cha)` : null,
           grouped.droppedOpeningQtyRows > 0
             ? `${grouped.droppedOpeningQtyRows} dòng quy đổi có ghi tồn — đã bỏ để không nhân đôi kho`
             : null,
         ].filter(Boolean).join(" · ") || undefined,
+        variant: errorRows.length > 0 ? "destructive" : undefined,
       })
       onImported?.()
       handleClose(false)
@@ -437,7 +447,12 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
               )}
               {errorRows.length > 0 && (
                 <Badge variant="danger" className="gap-1">
-                  <AlertCircle className="h-3.5 w-3.5" /> {errorRows.length} lỗi
+                  <AlertCircle className="h-3.5 w-3.5" /> {errorRows.length} dòng BỊ BỎ
+                </Badge>
+              )}
+              {warnRows.length > 0 && (
+                <Badge variant="warning" className="gap-1">
+                  {warnRows.length} dòng thiếu thông tin (vẫn nhập)
                 </Badge>
               )}
               {orphanCount > 0 && (
@@ -561,6 +576,8 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
                             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                               1 {r.base_unit} = {r.conversion} của {r.parent_sku}
                             </span>
+                          ) : r.warnings.length > 0 ? (
+                            <span className="text-xs text-amber-600">{r.warnings.join("; ")}</span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs text-tertiary">
                               <CheckCircle2 className="h-3 w-3" />

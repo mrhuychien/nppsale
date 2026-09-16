@@ -3,15 +3,16 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { canAccessModule, type Module } from "@/lib/permissions"
+import { canSeeHref, filterByPermission } from "@/lib/nav/nav-permission"
 import type { Role } from "@/types"
 import {
   ShoppingCart, Users, Boxes, BarChart3, Truck, CreditCard,
   Home, Plus, Package, UserCog, PackagePlus, type LucideIcon,
 } from "lucide-react"
 
-interface NavItem { label: string; href: string; icon: LucideIcon; module: Module }
-interface NavAction { label: string; href: string; icon: LucideIcon; module: Module }
+// Quyền tra theo `href` trong `@/lib/nav/nav-permission` — không khai ở đây.
+interface NavItem { label: string; href: string; icon: LucideIcon }
+type NavAction = NavItem
 
 /**
  * 4 mục điều hướng — 2 bên trái, 2 bên phải nút hành động ở giữa.
@@ -22,47 +23,47 @@ interface NavAction { label: string; href: string; icon: LucideIcon; module: Mod
  */
 const ROLE_NAV: Record<Role, NavItem[]> = {
   owner: [
-    { label: "Tổng quan", href: "/dashboard", icon: BarChart3, module: "reports" },
-    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Kho", href: "/inventory", icon: Boxes, module: "inventory" },
-    { label: "Nhân sự", href: "/hr", icon: UserCog, module: "settings" },
+    { label: "Tổng quan", href: "/dashboard", icon: BarChart3 },
+    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+    { label: "Kho", href: "/inventory", icon: Boxes },
+    { label: "Nhân sự", href: "/hr", icon: UserCog },
   ],
   manager: [
-    { label: "Tổng quan", href: "/dashboard", icon: BarChart3, module: "reports" },
-    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Khách", href: "/customers", icon: Users, module: "customers" },
-    { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries" },
+    { label: "Tổng quan", href: "/dashboard", icon: BarChart3 },
+    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+    { label: "Khách", href: "/customers", icon: Users },
+    { label: "Giao hàng", href: "/deliveries", icon: Truck },
   ],
   accountant: [
-    { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
-    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Hoá đơn", href: "/invoices", icon: Package, module: "invoices" },
-    { label: "Báo cáo", href: "/reports", icon: BarChart3, module: "reports" },
+    { label: "Công nợ", href: "/receivables", icon: CreditCard },
+    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+    { label: "Hoá đơn", href: "/invoices", icon: Package },
+    { label: "Báo cáo", href: "/reports", icon: BarChart3 },
   ],
   sales: [
-    { label: "Trang chủ", href: "/home", icon: Home, module: "orders" },
-    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Khách", href: "/customers", icon: Users, module: "customers" },
-    { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables" },
+    { label: "Trang chủ", href: "/home", icon: Home },
+    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+    { label: "Khách", href: "/customers", icon: Users },
+    { label: "Công nợ", href: "/receivables", icon: CreditCard },
   ],
   warehouse: [
-    { label: "Kho", href: "/inventory", icon: Boxes, module: "inventory" },
-    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders" },
-    { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries" },
-    { label: "Sản phẩm", href: "/products", icon: Package, module: "products" },
+    { label: "Kho", href: "/inventory", icon: Boxes },
+    { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+    { label: "Giao hàng", href: "/deliveries", icon: Truck },
+    { label: "Sản phẩm", href: "/products", icon: Package },
   ],
   driver: [
-    { label: "Chuyến", href: "/deliveries", icon: Truck, module: "deliveries" },
-    { label: "Thu tiền", href: "/receivables/collect", icon: CreditCard, module: "receivables" },
+    { label: "Chuyến", href: "/deliveries", icon: Truck },
+    { label: "Thu tiền", href: "/receivables/collect", icon: CreditCard },
   ],
 }
 
 /** Hành động chính của từng vai trò — nằm ở ô GIỮA thanh nav, không nổi. */
 const ROLE_ACTION: Partial<Record<Role, NavAction>> = {
-  sales: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
-  owner: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
-  manager: { label: "Tạo đơn", href: "/orders/new", icon: Plus, module: "orders" },
-  warehouse: { label: "Nhập kho", href: "/inventory/stock-in", icon: PackagePlus, module: "inventory" },
+  sales: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
+  owner: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
+  manager: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
+  warehouse: { label: "Nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
 }
 
 /**
@@ -79,14 +80,13 @@ function isActive(pathname: string, href: string) {
 
 export function MobileNav({ role }: { role: Role }) {
   const pathname = usePathname()
-  const items = (ROLE_NAV[role] || ROLE_NAV.sales)
-    .filter((i) => canAccessModule(role, i.module))
-    .slice(0, 4)
+  // Lọc bằng phép lọc dùng chung — không tự chế lại ở đây.
+  const items = filterByPermission(role, ROLE_NAV[role] || ROLE_NAV.sales).slice(0, 4)
   const action = ROLE_ACTION[role]
 
   // Cần ít nhất 2 mục mới chia được hai bên; vai trò `driver` có 2 mục và
   // không có action nên rơi về grid 2 cột — vẫn đúng.
-  const showAction = !!action && canAccessModule(role, action.module) && items.length >= 2
+  const showAction = !!action && canSeeHref(role, action.href) && items.length >= 2
   const left = showAction ? items.slice(0, 2) : items
   const right = showAction ? items.slice(2, 4) : []
   const cols = left.length + (showAction ? 1 : 0) + right.length

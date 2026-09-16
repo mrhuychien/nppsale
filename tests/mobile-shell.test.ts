@@ -140,9 +140,16 @@ describe("M1.2 — thanh nav 5 ô, không còn FAB nổi", () => {
     expect(NAV).toMatch(/items\.length >= 2/)
   })
 
-  /** Quyền phải được kiểm cho cả ô hành động, không chỉ 4 mục điều hướng. */
-  it("ô hành động cũng qua canAccessModule", () => {
-    expect(NAV).toMatch(/canAccessModule\(role,\s*action\.module\)/)
+  /**
+   * Quyền phải được kiểm cho cả ô hành động, không chỉ 4 mục điều hướng.
+   *
+   * Trước kiểm tới MÔ-ĐUN (`canAccessModule(role, action.module)`); nay
+   * tra bảng quyền dùng chung theo đường dẫn, nên "Tạo đơn" còn đòi đúng
+   * quyền TẠO chứ không chỉ quyền xem đơn.
+   */
+  it("ô hành động cũng qua bảng quyền dùng chung", () => {
+    expect(NAV).toMatch(/canSeeHref\(role,\s*action\.href\)/)
+    expect(code(NAV)).not.toContain("canAccessModule(")
   })
 
   it("bỏ mục Menu khỏi thanh nav", () => {

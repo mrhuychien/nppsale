@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
-import { canAccessModule, type Module } from "@/lib/permissions"
+import { filterByPermission } from "@/lib/nav/nav-permission"
 import { SetupBanner } from "@/components/setup/setup-banner"
 import {
   ShoppingCart,
@@ -90,45 +90,46 @@ interface Tile {
   href: string
   icon: LucideIcon
   color: TileColor
-  module: Module
+  /** Quyền tra theo `href` trong `@/lib/nav/nav-permission` — không khai
+   * ở đây, để ô trên lưới này và mục trong ngăn kéo không thể lệch nhau. */
   caption?: string
 }
 
 const TILES: Tile[] = [
   // Bán hàng
-  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "blue", module: "orders" },
-  { label: "Khách hàng", href: "/customers", icon: Users, color: "green", module: "customers" },
-  { label: "Sản phẩm", href: "/products", icon: Package, color: "orange", module: "products" },
-  { label: "Khuyến mãi", href: "/promotions", icon: Tag, color: "pink", module: "promotions" },
-  { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, color: "indigo", module: "customers" },
+  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "blue" },
+  { label: "Khách hàng", href: "/customers", icon: Users, color: "green" },
+  { label: "Sản phẩm", href: "/products", icon: Package, color: "orange" },
+  { label: "Khuyến mãi", href: "/promotions", icon: Tag, color: "pink" },
+  { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, color: "indigo" },
 
   // Vận hành
-  { label: "Kho hàng", href: "/inventory", icon: Boxes, color: "blue", module: "inventory" },
-  { label: "Giao hàng", href: "/deliveries", icon: Truck, color: "indigo", module: "deliveries" },
-  { label: "Trả hàng", href: "/returns", icon: RotateCcw, color: "rose", module: "returns" },
+  { label: "Kho hàng", href: "/inventory", icon: Boxes, color: "blue" },
+  { label: "Giao hàng", href: "/deliveries", icon: Truck, color: "indigo" },
+  { label: "Trả hàng", href: "/returns", icon: RotateCcw, color: "rose" },
 
   // Mua hàng
-  { label: "Hoá đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple", module: "inventory" },
-  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "cyan", module: "inventory" },
+  { label: "Hoá đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple" },
+  { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "cyan" },
 
   // Kế toán & Tài chính
-  { label: "Hóa đơn bán", href: "/invoices", icon: FileText, color: "blue", module: "invoices" },
-  { label: "Công nợ KH", href: "/receivables", icon: CreditCard, color: "red", module: "receivables" },
-  { label: "Công nợ NCC", href: "/payables", icon: CreditCard, color: "rose", module: "receivables" },
-  { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, color: "emerald", module: "receivables" },
-  { label: "Chi phí", href: "/finance/expenses", icon: Wallet, color: "amber", module: "settings" },
-  { label: "Hoa hồng", href: "/commissions", icon: Award, color: "yellow", module: "commissions" },
+  { label: "Hóa đơn bán", href: "/invoices", icon: FileText, color: "blue" },
+  { label: "Công nợ KH", href: "/receivables", icon: CreditCard, color: "red" },
+  { label: "Công nợ NCC", href: "/payables", icon: CreditCard, color: "rose" },
+  { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, color: "emerald" },
+  { label: "Chi phí", href: "/finance/expenses", icon: Wallet, color: "amber" },
+  { label: "Hoa hồng", href: "/commissions", icon: Award, color: "yellow" },
 
   // Báo cáo & Phân tích
-  { label: "Phân tích", href: "/analytics/business/overview", icon: TrendingUp, color: "purple", module: "reports" },
-  { label: "Báo cáo", href: "/reports", icon: BarChart3, color: "blue", module: "reports" },
-  { label: "Tài chính", href: "/reports/finance", icon: PieChart, color: "emerald", module: "reports" },
+  { label: "Phân tích", href: "/analytics/business/overview", icon: TrendingUp, color: "purple" },
+  { label: "Báo cáo", href: "/reports", icon: BarChart3, color: "blue" },
+  { label: "Tài chính", href: "/reports/finance", icon: PieChart, color: "emerald" },
 
   // Hệ thống
-  { label: "Nhân sự", href: "/hr", icon: UserCog, color: "orange", module: "settings" },
-  { label: "Cài đặt", href: "/settings", icon: Settings, color: "slate", module: "settings" },
-  { label: "Phân quyền", href: "/settings/permissions", icon: ShieldCheck, color: "zinc", module: "settings" },
-  { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue", module: "settings" },
+  { label: "Nhân sự", href: "/hr", icon: UserCog, color: "orange" },
+  { label: "Cài đặt", href: "/settings", icon: Settings, color: "slate" },
+  { label: "Phân quyền", href: "/settings/permissions", icon: ShieldCheck, color: "zinc" },
+  { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue" },
 ]
 
 function startOfTodayISO(): string {
@@ -150,7 +151,7 @@ interface SalesSnapshot {
 }
 
 export default function HomeLauncherPage() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, loading: authLoading } = useAuth()
   const { org } = useOrg()
   const router = useRouter()
   const [search, setSearch] = useState("")
@@ -230,10 +231,15 @@ export default function HomeLauncherPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  const visibleTiles = useMemo(() => {
-    if (!role) return TILES
-    return TILES.filter((t) => canAccessModule(role, t.module))
-  }, [role])
+  /**
+   * ⚠ Chưa biết vai trò thì KHÔNG hiện ô nào.
+   *
+   * Bản trước là `if (!role) return TILES` — chờ hồ sơ tải xong thì mọi
+   * người đều thấy đủ 23 ô, kể cả Phân quyền và Nhân sự, rồi mới co lại.
+   * Phía dưới có khung xương chờ nên khoảng trống này không thành màn
+   * hình trống.
+   */
+  const visibleTiles = useMemo(() => filterByPermission(role, TILES), [role])
 
   const filteredTiles = useMemo(() => {
     const q = viNormalize(search)
@@ -478,11 +484,29 @@ export default function HomeLauncherPage() {
             <span className="h-px flex-1 bg-border" />
           </div>
         )}
-        {filteredTiles.length === 0 ? (
+        {/* Khung xương trong lúc chờ hồ sơ: chưa biết vai trò thì chưa biết
+            được thấy gì, mà đoán rộng ra là lộ màn hình không nên lộ. */}
+        {authLoading ? (
+          <div
+            className="grid grid-cols-3 gap-x-4 gap-y-7 sm:grid-cols-4 sm:gap-x-6 md:grid-cols-5 lg:grid-cols-6"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2">
+                <div className="h-14 w-14 animate-pulse rounded-2xl bg-muted sm:h-16 sm:w-16" />
+                <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+              </div>
+            ))}
+          </div>
+        ) : filteredTiles.length === 0 ? (
           <div className="py-20 text-center">
-            <p className="text-base font-medium text-foreground">Không tìm thấy tính năng</p>
+            <p className="text-base font-medium text-foreground">
+              {searching ? "Không tìm thấy tính năng" : "Chưa có tính năng nào được cấp"}
+            </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Thử từ khóa khác hoặc xóa ô tìm kiếm.
+              {searching
+                ? "Thử từ khóa khác hoặc xóa ô tìm kiếm."
+                : "Liên hệ quản lý để được cấp quyền."}
             </p>
           </div>
         ) : (

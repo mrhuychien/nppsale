@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { canAccessFeature, canAccessModule, hasPermission, type Module } from "@/lib/permissions"
+import { canSeeHref, filterNavGroups } from "@/lib/nav/nav-permission"
 import type { Role } from "@/types"
 import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
@@ -21,10 +21,9 @@ interface NavLink {
   label: string
   href: string
   icon: React.ComponentType<{ className?: string }>
-  module: Module
-  /** Optional finer-grained permission feature key. When set, this is
-   * checked first; otherwise the parent module's permission is used. */
-  feature?: string
+  /** Quyền cần có KHÔNG khai ở đây — tra theo `href` trong
+   * `@/lib/nav/nav-permission`, để ngăn kéo, lưới Trang chủ và thanh dưới
+   * không thể trả lời khác nhau cho cùng một đường dẫn. */
 }
 
 interface NavGroup {
@@ -38,97 +37,97 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Bán hàng",
     icon: ShoppingCart,
     items: [
-      { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, module: "orders", feature: "orders" },
-      { label: "Khách hàng", href: "/customers", icon: Users, module: "customers", feature: "customers" },
-      { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route, module: "customers", feature: "customers" },
-      { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera, module: "customers", feature: "customers" },
-      { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation, module: "customers", feature: "customers.visits" },
-      { label: "Khuyến mãi", href: "/promotions", icon: Tag, module: "promotions", feature: "promotions" },
+      { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+      { label: "Khách hàng", href: "/customers", icon: Users },
+      { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route },
+      { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera },
+      { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation },
+      { label: "Khuyến mãi", href: "/promotions", icon: Tag },
     ],
   },
   {
     label: "Mua hàng",
     icon: ClipboardList,
     items: [
-      { label: "Tạo phiếu nhập kho", href: "/inventory/stock-in", icon: ShoppingCart, module: "inventory", feature: "inventory" },
-      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText, module: "inventory", feature: "purchasing.invoices" },
-      { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw, module: "inventory", feature: "purchasing.returns" },
-      { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, module: "inventory", feature: "suppliers" },
-      { label: "Công nợ NCC", href: "/payables", icon: CreditCard, module: "receivables", feature: "payables" },
+      { label: "Tạo phiếu nhập kho", href: "/inventory/stock-in", icon: ShoppingCart },
+      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText },
+      { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw },
+      { label: "Nhà cung cấp", href: "/suppliers", icon: Factory },
+      { label: "Công nợ NCC", href: "/payables", icon: CreditCard },
     ],
   },
   {
     label: "Kho vận",
     icon: Boxes,
     items: [
-      { label: "Kho hàng", href: "/inventory", icon: Boxes, module: "inventory", feature: "inventory" },
-      { label: "Sản phẩm", href: "/products", icon: Package, module: "products", feature: "products" },
-      { label: "Giao hàng", href: "/deliveries", icon: Truck, module: "deliveries", feature: "deliveries" },
-      { label: "Trả hàng", href: "/returns", icon: RotateCcw, module: "returns", feature: "returns" },
+      { label: "Kho hàng", href: "/inventory", icon: Boxes },
+      { label: "Sản phẩm", href: "/products", icon: Package },
+      { label: "Giao hàng", href: "/deliveries", icon: Truck },
+      { label: "Trả hàng", href: "/returns", icon: RotateCcw },
     ],
   },
   {
     label: "Kế toán",
     icon: CreditCard,
     items: [
-      { label: "Công nợ", href: "/receivables", icon: CreditCard, module: "receivables", feature: "receivables" },
-      { label: "CN theo KH", href: "/receivables/by-customer", icon: Users, module: "receivables", feature: "receivables.by_customer" },
-      { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog, module: "receivables", feature: "receivables.by_rep" },
-      { label: "Công nợ đầu kỳ", href: "/finance/opening-balances", icon: FileSpreadsheet, module: "receivables", feature: "finance.opening_balances" },
-      { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, module: "receivables", feature: "finance.cash_receipts" },
-      { label: "Chi phí", href: "/finance/expenses", icon: Wallet, module: "settings", feature: "finance.expenses" },
-      { label: "Hóa đơn", href: "/invoices", icon: FileText, module: "invoices", feature: "invoices" },
-      { label: "Cấu hình HĐ điện tử", href: "/settings/einvoice", icon: Settings, module: "settings", feature: "einvoice.config" },
+      { label: "Công nợ", href: "/receivables", icon: CreditCard },
+      { label: "CN theo KH", href: "/receivables/by-customer", icon: Users },
+      { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog },
+      { label: "Công nợ đầu kỳ", href: "/finance/opening-balances", icon: FileSpreadsheet },
+      { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt },
+      { label: "Chi phí", href: "/finance/expenses", icon: Wallet },
+      { label: "Hóa đơn", href: "/invoices", icon: FileText },
+      { label: "Cấu hình HĐ điện tử", href: "/settings/einvoice", icon: Settings },
     ],
   },
   {
     label: "Nhân sự",
     icon: UserCog,
     items: [
-      { label: "Danh sách nhân viên", href: "/settings/users", icon: Users, module: "settings", feature: "settings.users" },
-      { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus, module: "settings", feature: "settings.users" },
-      { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck, module: "settings", feature: "settings.permissions" },
-      { label: "Chấm công", href: "/hr/attendance", icon: UserCog, module: "settings", feature: "hr" },
-      { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award, module: "settings", feature: "hr" },
-      { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet, module: "settings", feature: "hr" },
-      { label: "Bảng lương", href: "/hr/payroll/runs", icon: Receipt, module: "settings", feature: "hr" },
-      { label: "Hoa hồng (báo cáo)", href: "/commissions", icon: Award, module: "commissions", feature: "commissions" },
+      { label: "Danh sách nhân viên", href: "/settings/users", icon: Users },
+      { label: "Tạo nhân viên", href: "/settings/users/new", icon: Plus },
+      { label: "Phân quyền & Template", href: "/settings/permissions", icon: ShieldCheck },
+      { label: "Chấm công", href: "/hr/attendance", icon: UserCog },
+      { label: "Cấu hình thưởng", href: "/hr/bonus-config", icon: Award },
+      { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet },
+      { label: "Bảng lương", href: "/hr/payroll/runs", icon: Receipt },
+      { label: "Hoa hồng (báo cáo)", href: "/commissions", icon: Award },
     ],
   },
   {
     label: "Phân tích",
     icon: TrendingUp,
     items: [
-      { label: "Kinh doanh", href: "/analytics/business/overview", icon: TrendingUp, module: "reports", feature: "analytics.business" },
-      { label: "Hàng hóa", href: "/analytics/products/overview", icon: Package, module: "reports", feature: "analytics.products" },
-      { label: "Khách hàng", href: "/analytics/customers/overview", icon: Users, module: "reports", feature: "analytics.customers" },
-      { label: "Công nợ khách hàng", href: "/analytics/performance/receivables", icon: CreditCard, module: "reports", feature: "analytics.performance" },
+      { label: "Kinh doanh", href: "/analytics/business/overview", icon: TrendingUp },
+      { label: "Hàng hóa", href: "/analytics/products/overview", icon: Package },
+      { label: "Khách hàng", href: "/analytics/customers/overview", icon: Users },
+      { label: "Công nợ khách hàng", href: "/analytics/performance/receivables", icon: CreditCard },
     ],
   },
   {
     label: "Báo cáo",
     icon: BarChart3,
     items: [
-      { label: "Tổng quan", href: "/dashboard", icon: LayoutDashboard, module: "reports", feature: "reports.dashboard" },
-      { label: "Cuối ngày", href: "/reports/end-of-day", icon: FileBarChart2, module: "reports", feature: "reports.end_of_day" },
-      { label: "Bán hàng", href: "/reports/sales", icon: Receipt, module: "reports", feature: "reports.sales" },
-      { label: "Đặt hàng", href: "/reports/orders", icon: ShoppingCart, module: "reports", feature: "reports.orders" },
-      { label: "Hàng hóa", href: "/reports/products", icon: Boxes, module: "reports", feature: "reports.products" },
-      { label: "Khách hàng", href: "/reports/customers", icon: Users, module: "reports", feature: "reports.customers" },
-      { label: "Nhà cung cấp", href: "/reports/suppliers", icon: Factory, module: "reports", feature: "reports.suppliers" },
-      { label: "Nhân viên", href: "/reports/employees", icon: UserCog, module: "reports", feature: "reports.employees" },
-      { label: "Kênh bán hàng", href: "/reports/channels", icon: BarChart3, module: "reports", feature: "reports.channels" },
-      { label: "Tài chính", href: "/reports/finance", icon: Wallet, module: "reports", feature: "reports.finance" },
+      { label: "Tổng quan", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Cuối ngày", href: "/reports/end-of-day", icon: FileBarChart2 },
+      { label: "Bán hàng", href: "/reports/sales", icon: Receipt },
+      { label: "Đặt hàng", href: "/reports/orders", icon: ShoppingCart },
+      { label: "Hàng hóa", href: "/reports/products", icon: Boxes },
+      { label: "Khách hàng", href: "/reports/customers", icon: Users },
+      { label: "Nhà cung cấp", href: "/reports/suppliers", icon: Factory },
+      { label: "Nhân viên", href: "/reports/employees", icon: UserCog },
+      { label: "Kênh bán hàng", href: "/reports/channels", icon: BarChart3 },
+      { label: "Tài chính", href: "/reports/finance", icon: Wallet },
     ],
   },
   {
     label: "Cài đặt",
     icon: Settings,
     items: [
-      { label: "Tổng quan", href: "/settings", icon: Settings, module: "settings", feature: "settings" },
-      { label: "Trình hướng dẫn cài đặt", href: "/setup", icon: Plus, module: "settings", feature: "settings.org" },
-      { label: "Tổ chức / NPP", href: "/settings/org", icon: Settings, module: "settings", feature: "settings.org" },
-      { label: "Duyệt đơn tự động", href: "/settings/approval-rules", icon: ShieldCheck, module: "settings", feature: "settings.approval_rules" },
+      { label: "Tổng quan", href: "/settings", icon: Settings },
+      { label: "Trình hướng dẫn cài đặt", href: "/setup", icon: Plus },
+      { label: "Tổ chức / NPP", href: "/settings/org", icon: Settings },
+      { label: "Duyệt đơn tự động", href: "/settings/approval-rules", icon: ShieldCheck },
     ],
   },
 ]
@@ -143,19 +142,13 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { signOut } = useAuth()
-  const canCreateOrder = hasPermission(role, "orders", "create")
+  // Nút "Tạo đơn mới" cũng tra cùng một bảng — `/orders/new` khai
+  // `action: "create"`, nên vai trò chỉ được XEM đơn sẽ không thấy nút.
+  const canCreateOrder = canSeeHref(role, "/orders/new")
 
-  // Determine which groups have visible items. When a feature key is
-  // specified, prefer the granular check; otherwise fall back to the
-  // module-level access.
-  const visibleGroups = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) =>
-      item.feature
-        ? canAccessFeature(role, item.feature, item.module)
-        : canAccessModule(role, item.module)
-    ),
-  })).filter((group) => group.items.length > 0)
+  // Phép lọc nằm trong `@/lib/nav/nav-permission`, không viết lại ở đây —
+  // viết lại là mở đường cho ngăn kéo và lưới Trang chủ lệch nhau lần nữa.
+  const visibleGroups = filterNavGroups(role, NAV_GROUPS)
 
   // Auto-expand the group containing the current active route
   const activeGroupIndex = visibleGroups.findIndex((g) =>

@@ -153,9 +153,17 @@ jobs:
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: npx tsx scripts/backup/upload-drive.ts out
 
-      # Bản sao thứ hai, miễn phí, giữ 90 ngày. Repo đã chuyển Private nên
-      # artifact không công khai — nhưng nó vẫn ĐÃ MÃ HOÁ, nên an toàn kể
-      # cả khi ai đó đổi lại thành Public.
+      # Bản sao thứ hai, miễn phí, giữ 90 ngày.
+      #
+      # ⚠ SỬA LẠI MỘT CÂU SAI. Dòng này từng ghi "Repo đã chuyển Private
+      # nên artifact không công khai". Kiểm lại qua GitHub API ngày
+      # 16/09/2026: repo vẫn là PUBLIC. Artifact của repo public thì ai
+      # đọc được repo cũng tải được — tức là tất cả mọi người.
+      #
+      # Không sập hầm, vì file ĐÃ MÃ HOÁ bằng khoá công khai age và khoá
+      # riêng không bao giờ có mặt trong CI. Đó chính là lý do phải mã hoá
+      # ngay từ đầu thay vì dựa vào quyền riêng tư của repo — quyền đó có
+      # thể sai, và ở đây nó đã sai thật.
       - name: Giữ thêm một bản trong artifact
         uses: actions/upload-artifact@v4
         with:

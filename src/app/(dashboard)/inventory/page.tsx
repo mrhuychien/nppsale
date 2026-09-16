@@ -6,6 +6,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -54,7 +55,13 @@ import {
 } from "lucide-react"
 import type { Batch, Product } from "@/types"
 
-type BatchWithProduct = Batch & { product?: Product; avg_price?: number | null }
+type BatchWithProduct = Batch & { product?: Product }
+
+/** Các cột đủ để tính ba thẻ đầu trang — không hơn. */
+type StatsBatch = Pick<Batch, "qty_on_hand" | "unit_cost" | "expires_at"> & {
+  location?: string | null
+  product?: { shelf_life_days?: number | null; brand?: string | null } | null
+}
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -82,7 +89,11 @@ export default function InventoryPage() {
   const [brandFilter, setBrandFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [now, setNow] = useState<Date>(new Date())
-  const [statsBatches, setStatsBatches] = useState<Array<Pick<BatchWithProduct, "qty_on_hand" | "unit_cost" | "avg_price" | "expires_at"> & { product?: { shelf_life_days?: number | null; brand?: string | null } | null; location?: string | null }>>([])
+  const [statsBatches, setStatsBatches] = useState<StatsBatch[]>([])
+  // Lỗi của truy vấn số liệu. Phải giữ lại để MÀN HÌNH nói ra — ghi vào
+  // console thôi thì người dùng chỉ thấy ba số 0 trông như thật.
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [statsTruncated, setStatsTruncated] = useState(false)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -96,26 +107,50 @@ export default function InventoryPage() {
     return () => clearInterval(t)
   }, [])
 
-  // Stats query: lightweight load tất cả batches qty_on_hand > 0 — chỉ fields
-  // cần cho expiry calc + valuation. Chạy 1 lần khi mount.
+  // Số liệu cho ba thẻ đầu trang.
+  //
+  // ⚠ Truy vấn này từng hỏi cột `avg_price` — một cột KHÔNG TỒN TẠI trong
+  // bất kỳ migration nào. PostgREST trả lỗi, `data` về null, và cả ba thẻ
+  // hiện 0: "Sắp hết hạn 0", "Cần đẩy hàng 0", "Tổng giá trị tồn kho 0đ"
+  // — trong khi bảng ngay bên dưới hiện 434 triệu. Lỗi chỉ được ghi ra
+  // console, còn màn hình thì đưa ra ba con số trông hoàn toàn bình
+  // thường. `unit_cost` vốn ĐÃ là giá vốn bình quân theo đơn vị cơ bản
+  // (mig 016), nên `avg_price` không những không có mà còn không cần.
+  //
+  // ⚠ Và nó không phân trang. Supabase chặn 1.000 dòng mỗi request mà
+  // KHÔNG báo lỗi — quá 1.000 lô là giá trị tồn kho tự nhiên thiếu đi một
+  // khúc, vẫn trông như số thật. Dùng `fetchAllForAggregate` như mọi chỗ
+  // cộng tiền khác trong dự án.
   useEffect(() => {
     async function loadStatsData() {
       const [statsRes, pendingRes] = await Promise.all([
-        supabase
-          .from("batches")
-          .select(
-            "qty_on_hand, unit_cost, avg_price, expires_at, location, product:products(shelf_life_days, brand)"
-          )
-          .gt("qty_on_hand", 0),
+        fetchAllForAggregate<StatsBatch>((from, to) =>
+          supabase
+            .from("batches")
+            .select(
+              "qty_on_hand, unit_cost, expires_at, location, product:products(shelf_life_days, brand)",
+              { count: "exact" }
+            )
+            .gt("qty_on_hand", 0)
+            .range(from, to)
+        ),
         supabase
           .from("stock_entries")
           .select("id", { count: "exact", head: true })
           .eq("status", "draft"),
       ])
-      const qErr = ([statsRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[app/inventory] truy vấn lỗi:", qErr.message)
-      setStatsBatches((statsRes.data as Parameters<typeof setStatsBatches>[0]) || [])
+      if (statsRes.error) {
+        console.error("[app/inventory] truy vấn lỗi:", statsRes.error)
+        setStatsError(statsRes.error)
+        setStatsBatches([])
+      } else {
+        setStatsError(null)
+        setStatsBatches(statsRes.rows)
+        // Chạm trần thì con số cộng ra THIẾU — phải nói, không được để nó
+        // đi ra như một con số đầy đủ.
+        setStatsTruncated(statsRes.truncated)
+      }
+      if (pendingRes.error) console.error("[app/inventory] truy vấn lỗi:", pendingRes.error.message)
       setPendingCount(pendingRes.count ?? 0)
     }
     loadStatsData()
@@ -182,8 +217,9 @@ export default function InventoryPage() {
       const state = getBatchExpiryState(b.expires_at, b.product?.shelf_life_days ?? undefined)
       if (state === "critical" || state === "expired") expiringSoon++
       if (state === "push") needsPush++
-      const cost = Number(b.unit_cost ?? 0) || (typeof b.avg_price === "number" ? b.avg_price : 0)
-      totalValue += (Number(b.qty_on_hand) || 0) * cost
+      // `unit_cost` LÀ giá vốn bình quân theo đơn vị cơ bản (mig 016) —
+      // không có cột nào khác để lùi về.
+      totalValue += (Number(b.qty_on_hand) || 0) * (Number(b.unit_cost) || 0)
     }
     return { expiringSoon, needsPush, totalValue }
   }, [statsBatches])
@@ -284,6 +320,21 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* ⚠ Không có dải này thì lỗi truy vấn đi ra màn hình dưới dạng ba
+          con số 0 — trông y hệt "kho đang trống", và không ai đi tìm lỗi
+          vì không có gì báo là có lỗi. Dấu "—" trên thẻ nói rằng KHÔNG
+          BIẾT; dải này nói vì sao không biết. */}
+      {statsError && (
+        <div className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <strong>Không đọc được số liệu tồn kho.</strong> Ba thẻ dưới đây hiện &quot;—&quot; vì
+            chưa có số, không phải vì kho trống. Bảng &quot;Tồn kho hiện tại&quot; bên dưới đọc từ
+            nguồn khác nên vẫn đúng. Lỗi: {statsError}
+          </span>
+        </div>
+      )}
+
       {/* Thống kê tồn kho — luôn hiển thị (mọi tab) */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="border-l-4 border-l-destructive">
@@ -294,7 +345,7 @@ export default function InventoryPage() {
                   Sắp hết hạn
                 </div>
                 <div className="mt-2 text-2xl font-bold text-destructive">
-                  {stats.expiringSoon}
+                  {statsError ? "—" : stats.expiringSoon}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   Lô có HSD &lt; 30 ngày
@@ -315,7 +366,7 @@ export default function InventoryPage() {
                   Cần đẩy hàng
                 </div>
                 <div className="mt-2 text-2xl font-bold text-primary">
-                  {stats.needsPush}
+                  {statsError ? "—" : stats.needsPush}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   HSD còn &lt; 1/3 tuổi thọ
@@ -336,10 +387,12 @@ export default function InventoryPage() {
                   Tổng giá trị tồn kho
                 </div>
                 <div className="mt-2 text-xl font-bold text-tertiary">
-                  {formatCurrency(stats.totalValue)}
+                  {statsError ? "—" : formatCurrency(stats.totalValue)}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Tính theo giá vốn trung bình
+                  {statsTruncated
+                    ? "⚠ Quá nhiều lô — con số này còn THIẾU"
+                    : "Tính theo giá vốn trung bình"}
                 </div>
               </div>
               <div className="rounded-xl bg-[#ecfdf3] p-3 text-tertiary">

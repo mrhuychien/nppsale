@@ -112,9 +112,9 @@ describe("Xuất tồn kho ra Excel", () => {
   })
 })
 
-describe("Thuế VAT mặc định 8%", () => {
-  it("hằng số là 0.08", () => {
-    expect(DEFAULT_VAT_RATE).toBe(0.08)
+describe("Thuế VAT mặc định của sản phẩm", () => {
+  it("hằng số là 0 — hàng xuất không kèm VAT", () => {
+    expect(DEFAULT_VAT_RATE).toBe(0)
   })
 
   /**
@@ -129,12 +129,12 @@ describe("Thuế VAT mặc định 8%", () => {
     expect(read("src/lib/products/import-parse.ts")).toContain("return DEFAULT_VAT_RATE")
   })
 
-  it("cột trống trong file Excel thì nhận 8%", () => {
+  it("cột trống trong file Excel thì nhận đúng mặc định của dự án", () => {
     const r = parseProductSheet([
       ["Tên sản phẩm", "Đơn vị tính", "Nhà cung cấp"],
       ["Coca", "lon", "Coca VN"],
     ])
-    expect(r.rows[0].vat_rate).toBe(0.08)
+    expect(r.rows[0].vat_rate).toBe(DEFAULT_VAT_RATE)
   })
 
   /**
@@ -151,8 +151,15 @@ describe("Thuế VAT mặc định 8%", () => {
     expect(parseProductSheet(sheet("5")).rows[0].vat_rate).toBe(0.05)
   })
 
-  it("migration đổi mặc định của cột", () => {
+  /**
+   * Mig 108 (10% → 8%) là lịch sử, giữ nguyên. Mig 110 là mức đang dùng —
+   * và nó phải KHỚP với hằng số trong mã, nếu không thì sản phẩm tạo bằng
+   * form và sản phẩm chèn thẳng bằng SQL mang hai thuế suất khác nhau.
+   */
+  it("mặc định của cột khớp với hằng số trong mã", () => {
     expect(MIG108).toContain("ALTER COLUMN vat_rate SET DEFAULT 0.08")
+    expect(read("supabase/migrations/110_default_vat_0.sql"))
+      .toContain(`ALTER COLUMN vat_rate SET DEFAULT ${DEFAULT_VAT_RATE}`)
   })
 
   /**

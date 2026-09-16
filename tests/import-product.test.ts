@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { DEFAULT_VAT_RATE } from "../src/lib/constants"
 import {
   parseProductSheet,
   groupRowsForImport,
@@ -136,15 +137,20 @@ describe("đọc số tiền và thuế", () => {
   })
 
   /**
-   * ⚠ ĐẢO CHIỀU CÓ CHỦ Ý. Phép kiểm này trước đây canh mặc định 10%; chủ
-   * NPP chốt đổi sang 8% vì phần lớn hàng FMCG đang chịu mức đó. Điều
-   * KHÔNG đổi — và mới là lý do phép kiểm tồn tại — là mặc định phải khác
-   * 0: mặc định 0 làm mọi hoá đơn thiếu thuế.
+   * ⚠ ĐẢO CHIỀU LẦN HAI, VÀ LẦN NÀY GỠ HẲN MỘT CHỐT.
+   *
+   * Phép kiểm này lúc đầu canh mặc định 10%, rồi 8%, và lần nào cũng kèm
+   * câu "mặc định phải khác 0 — mặc định 0 làm mọi hoá đơn thiếu thuế".
+   * Chủ NPP chốt ngược lại: hàng ở đây xuất KHÔNG kèm VAT, nên 0 mới là
+   * con số đúng, còn 8% mới là thứ bắt người ta sửa tay mỗi lần.
+   *
+   * Nên giờ phép kiểm canh điều khác: mặc định phải lấy từ MỘT hằng số
+   * duy nhất, chứ không phải một số gõ thẳng vào bộ đọc file. Ai muốn đổi
+   * thì đổi ở `DEFAULT_VAT_RATE` và cả ba nơi đi theo.
    */
-  it("VAT trống thì mặc định 8%, không phải 0", () => {
-    expect(withVat("")).toBeCloseTo(0.08)
-    expect(withVat("linh tinh")).toBeCloseTo(0.08)
-    expect(withVat("")).not.toBe(0)
+  it("VAT trống thì lấy đúng mặc định của dự án", () => {
+    expect(withVat("")).toBeCloseTo(DEFAULT_VAT_RATE)
+    expect(withVat("linh tinh")).toBeCloseTo(DEFAULT_VAT_RATE)
   })
 
   it("VAT 0% được giữ nguyên là 0", () => {

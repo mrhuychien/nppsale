@@ -149,7 +149,7 @@ export const APPROVAL_THRESHOLDS = {
 } as const
 
 /**
- * Thuế suất VAT mặc định cho sản phẩm mới: 8%.
+ * Thuế suất VAT mặc định cho sản phẩm mới: 0%.
  *
  * Một CHỖ DUY NHẤT. Trước đây con số này nằm rải ở ba nơi — mặc định của
  * cột trong migration, giá trị khởi tạo của form, và giá trị lùi của bộ
@@ -157,7 +157,16 @@ export const APPROVAL_THRESHOLDS = {
  * sản phẩm nhập bằng file mang hai thuế suất khác nhau, mà không có gì
  * báo ra.
  *
- * Lưu dạng tỉ lệ (0.08), không phải phần trăm (8) — đúng như cột
- * `products.vat_rate` trong cơ sở dữ liệu.
+ * Lưu dạng tỉ lệ (0 = 0%, 0.08 = 8%) — đúng như cột `products.vat_rate`
+ * trong cơ sở dữ liệu.
+ *
+ * ⚠ 0 LÀ MỘT LỰA CHỌN, KHÔNG PHẢI CHỖ CHƯA ĐIỀN. Mã nguồn này từng có
+ * một phép kiểm mang tên "VAT trống thì mặc định 8%, không phải 0" với lý
+ * do "mặc định 0 sẽ làm mọi hoá đơn thiếu thuế". Chủ NPP đã chốt ngược
+ * lại: hàng ở đây xuất không kèm VAT, nên 0 mới là con số đúng và mặc
+ * định 8% mới là thứ bắt người ta phải sửa tay mỗi lần.
+ *
+ * Ghi lại ở đây để người sau đọc mã đừng tưởng đây là chỗ bị bỏ quên rồi
+ * "sửa" nó về 8% — mặt hàng nào có thuế thì khai trên chính sản phẩm đó.
  */
-export const DEFAULT_VAT_RATE = 0.08
+export const DEFAULT_VAT_RATE = 0

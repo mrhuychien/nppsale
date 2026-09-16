@@ -11,6 +11,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import { usePagination } from "@/hooks/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import {
@@ -97,6 +99,7 @@ export function StockBalanceTable() {
   // Lỗi/thiếu dữ liệu của chính bảng này — phải hiện ra, vì một bảng
   // thiếu dòng trông y hệt một bảng đủ dòng.
   const [loadError, setLoadError] = useState<string | null>(null)
+  const pg = usePagination(50)
 
   useEffect(() => {
     if (!user?.org_id) return
@@ -211,6 +214,34 @@ export function StockBalanceTable() {
     }
     return arr.sort((a, b) => a.product.name.localeCompare(b.product.name, "vi"))
   }, [rows, products, search, onlyOnHand])
+
+  /**
+   * ⚠ CHIA TRANG CHỈ Ở PHẦN VẼ, KHÔNG Ở PHẦN ĐỌC.
+   *
+   * Đọc phải ĐỦ: dòng "N sản phẩm — tổng giá trị X", dòng Tổng cộng cuối
+   * bảng, ô tìm kiếm và nút Xuất Excel đều chạy trên TOÀN BỘ danh sách đã
+   * lọc. Chia trang ở tầng truy vấn thì bốn thứ đó chỉ còn đúng cho một
+   * trang — mà một con số tiền đúng cho một trang thì là con số sai.
+   *
+   * Cái phải chia là số dòng ĐƯA RA MÀN HÌNH: vẽ 1.700 dòng một lúc thì
+   * trình duyệt ì, cuộn giật, và trên điện thoại thì gần như không dùng
+   * được.
+   */
+  const pageRows = useMemo(
+    () => pivot.slice(pg.from, pg.from + pg.pageSize),
+    [pivot, pg.from, pg.pageSize]
+  )
+
+  // Tổng số dòng để thanh phân trang biết có bao nhiêu trang.
+  useEffect(() => {
+    pg.setTotal(pivot.length)
+  }, [pivot.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lọc hay tìm kiếm đổi thì về trang 1 — đứng ở trang 12 của kết quả cũ
+  // rồi lọc còn 3 dòng thì màn hình trống trơn mà không hiểu vì sao.
+  useEffect(() => {
+    pg.reset()
+  }, [search, onlyOnHand]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => {
     return pivot.reduce(
@@ -358,7 +389,7 @@ export function StockBalanceTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                pivot.map((r) => (
+                pageRows.map((r) => (
                   <TableRow
                     key={r.product.id}
                     className="cursor-pointer hover:bg-muted/40"
@@ -433,6 +464,8 @@ export function StockBalanceTable() {
           </Table>
         </div>
       )}
+
+      {!loading && <DataPagination pg={pg} shownCount={pageRows.length} />}
 
       <StockHistoryDrawer
         productId={drawerProductId}

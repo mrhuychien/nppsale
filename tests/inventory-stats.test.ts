@@ -157,3 +157,49 @@ describe("Bảng tồn kho phải đọc ĐỦ", () => {
     expect(CUSTIMPORT).toContain("dừng, vì nhập tiếp sẽ tạo khách trùng")
   })
 })
+
+describe("Bảng tồn kho chia trang phần VẼ, không chia phần ĐỌC", () => {
+  const TABLE = read("src/components/inventory/stock-balance-table.tsx")
+
+  /** Vẽ 1.700 dòng một lúc thì trình duyệt ì, trên điện thoại gần như không dùng được. */
+  it("chỉ vẽ dòng của trang hiện tại", () => {
+    expect(TABLE).toContain("const pageRows = useMemo(")
+    expect(TABLE).toContain("pivot.slice(pg.from, pg.from + pg.pageSize)")
+    expect(TABLE).toContain("pageRows.map((r) => (")
+    // Không còn vòng lặp vẽ TOÀN BỘ danh sách.
+    expect(TABLE).not.toContain("pivot.map((r) => (\n")
+  })
+
+  it("có thanh phân trang dưới bảng", () => {
+    expect(TABLE).toContain("<DataPagination pg={pg} shownCount={pageRows.length} />")
+  })
+
+  /**
+   * ⚠ TÍNH CHẤT QUAN TRỌNG NHẤT. Dòng "N sản phẩm — tổng giá trị X", dòng
+   * Tổng cộng cuối bảng, và nút Xuất Excel phải chạy trên TOÀN BỘ danh
+   * sách đã lọc — không phải trên trang đang xem. Một con số tiền chỉ
+   * đúng cho một trang là một con số sai.
+   */
+  it("tổng tiền và số sản phẩm tính trên TOÀN BỘ, không theo trang", () => {
+    expect(TABLE).toContain("return pivot.reduce(")
+    expect(TABLE).toContain("{pivot.length} sản phẩm — tổng giá trị")
+    // Không được cộng trên pageRows.
+    expect(TABLE).not.toContain("pageRows.reduce(")
+  })
+
+  it("xuất Excel vẫn xuất cả danh sách đã lọc, không chỉ trang đang xem", () => {
+    const i = TABLE.indexOf("const handleExport")
+    const fn = TABLE.slice(i, TABLE.indexOf("<div className=\"space-y-3\">", i))
+    expect(fn).toContain("pivot.map((r) => ({")
+    expect(fn).not.toContain("pageRows")
+  })
+
+  /**
+   * ⚠ Đứng ở trang 12 của kết quả cũ rồi lọc còn 3 dòng thì màn hình
+   * trống trơn mà không hiểu vì sao.
+   */
+  it("đổi tìm kiếm hay bộ lọc thì về trang 1", () => {
+    expect(TABLE).toContain("pg.reset()")
+    expect(TABLE).toContain("}, [search, onlyOnHand])")
+  })
+})

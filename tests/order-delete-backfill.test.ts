@@ -133,3 +133,112 @@ describe("Bù người tạo cho điểm bán cũ", () => {
     expect(strip(MIG112)).toContain("ON CONFLICT (customer_id, user_id) DO NOTHING")
   })
 })
+
+describe("Trigger nhật ký không được làm đổ lệnh xoá đơn", () => {
+  const MIG114 = read("supabase/migrations/114_fix_activity_log_on_order_delete.sql")
+  const CODE114 = strip(MIG114)
+
+  /**
+   * ⚠ Đã dựng lại trên PostgreSQL 16 và gặp ĐÚNG lỗi người dùng báo:
+   *   null value in column "org_id" of relation "order_activity_log"
+   *
+   * Xoá `sales_orders` → `sales_order_lines` cascade xoá → trigger chạy
+   * cho từng dòng → nó `SELECT org_id FROM sales_orders WHERE id =
+   * OLD.order_id`, nhưng đơn CHA đã biến mất trong cùng câu lệnh. `v_org`
+   * NULL, và INSERT ngay sau đổ vì cột NOT NULL.
+   *
+   * Trước mig 113 không ai gặp: RLS chặn từ vòng ngoài nên lệnh xoá chưa
+   * bao giờ chạm tới trigger. Sửa lỗi thứ nhất thì lỗi thứ hai lộ ra.
+   */
+  it("đơn cha không còn thì thôi ghi, cả nhánh DELETE lẫn INSERT/UPDATE", () => {
+    expect((CODE114.match(/IF v_org IS NULL THEN/g) ?? []).length).toBe(2)
+    expect(CODE114).toContain("RETURN OLD;")
+    expect(CODE114).toContain("RETURN NEW;")
+  })
+
+  /**
+   * Không phải vá cho qua chuyện: `order_activity_log.order_id` có khoá
+   * ngoại ON DELETE CASCADE, nên dòng nhật ký vừa ghi cũng bị xoá ngay
+   * trong cùng câu lệnh. Ghi để rồi xoá là việc vô nghĩa — mà lại đang
+   * làm hỏng cả thao tác xoá.
+   */
+  it("giữ nguyên khoá ngoại cascade, không nới NOT NULL", () => {
+    expect(CODE114).not.toMatch(/ALTER\s+TABLE\s+order_activity_log/i)
+    expect(CODE114).not.toMatch(/DROP\s+NOT\s+NULL/i)
+  })
+
+  /**
+   * ⚠ Chép lại cả một hàm thì dễ đánh rơi một nhánh. Đối chiếu với mig
+   * 052 cho thấy đúng MỘT khác biệt ngoài hai chốt NULL — và nó phải được
+   * nói ra trong phần chú thích, không lẫn vào bản vá.
+   */
+  it("thay đổi hành vi thêm vào được ghi rõ trong migration", () => {
+    expect(CODE114).toContain("'line_discount', CASE WHEN NEW.line_discount IS DISTINCT FROM OLD.line_discount")
+    expect(MIG114).toContain("SỬA THÊM MỘT CHỖ, NÓI RÕ RA ĐÂY")
+  })
+
+  /** Nhánh UPDATE vẫn phải bỏ qua khi không có gì đổi. */
+  it("giữ phép bỏ qua khi không có gì thay đổi", () => {
+    expect(CODE114).toContain("NEW.line_total IS NOT DISTINCT FROM OLD.line_total THEN")
+  })
+})
+
+describe("Nhóm hàng(3 Cấp) là nhà cung cấp", () => {
+  const PARSE = read("src/lib/products/import-parse.ts")
+  const DLG = read("src/components/products/product-import-dialog.tsx")
+
+  /**
+   * ⚠ Đo trên file thật của NPP: cột "Nhóm hàng(3 Cấp)" chứa TÊN CÔNG TY
+   * ("Cty Tân Việt", "Cty lào cái"), không phải nhóm hàng. 56/57 dòng bị
+   * bỏ vì thiếu NCC đều có sẵn giá trị ở đó.
+   */
+  it("Nhóm hàng map sang nhà cung cấp, không còn là danh mục", () => {
+    expect(PARSE).toContain('"nhom hang": "supplier_group"')
+    expect(PARSE).not.toContain('"nhom hang": "category"')
+  })
+
+  /**
+   * ⚠ Ưu tiên theo NGUỒN, không theo vị trí cột. Trước đây hai tiêu đề
+   * cùng map vào một trường thì cột nào đứng trước trong file sẽ thắng —
+   * đổi thứ tự cột là đổi luôn dữ liệu, không gì báo ra.
+   *
+   * Đo trên 679 dòng có cả hai mà khác nhau: "Nhóm hàng" là tên sạch hơn
+   * ("Cty phương huyền" thay vì "Cty phương huyền ăn vặt").
+   */
+  it("ba tầng ưu tiên: NCC → Nhóm hàng → Thương hiệu", () => {
+    expect(PARSE).toContain('"nha cung cap": "supplier_name"')
+    expect(PARSE).toContain('"thuong hieu": "supplier_brand"')
+    const resolve = PARSE.slice(PARSE.indexOf("const supplier_name ="))
+    expect(resolve.slice(0, 220)).toContain('get(raw, "supplier_name")')
+    expect(resolve.slice(0, 220)).toContain('get(raw, "supplier_group")')
+    expect(resolve.slice(0, 220)).toContain('get(raw, "supplier_brand")')
+  })
+
+  /**
+   * ⚠ ĐÃ MẮC ĐÚNG LỖI NÀY MỘT LẦN. Phần ghi ra dòng đọc THẲNG cột
+   * `supplier_name` trong khi phép kiểm ở trên dùng biến đã giải ba tầng.
+   * Hai bên đọc khác nhau → đo trên file thật ra 0 nhà cung cấp.
+   */
+  it("dòng xuất ra dùng BIẾN đã giải, không đọc lại cột", () => {
+    expect(PARSE).not.toContain('supplier_name: str(get(raw, "supplier_name")) || null')
+  })
+
+  /**
+   * ⚠ `.select("sku")` trần: Supabase chặn 1.000 dòng và trả 200 KHÔNG
+   * kèm lỗi. Với 1.740 sản phẩm thì ~740 mã không lọt vào danh sách "đã
+   * có", nên nhập lại file cũ là TẠO TRÙNG chứ không bỏ qua.
+   */
+  it("đối chiếu mã trùng đọc ĐỦ danh mục, có phân trang", () => {
+    expect(DLG).toContain("fetchAllForAggregate<{ sku: string }>")
+    expect(DLG).not.toContain('supabase.from("products").select("sku").eq("org_id", user.org_id)')
+  })
+
+  /**
+   * ⚠ Đọc thiếu danh sách này thì KHÔNG được nhập tiếp. Bỏ qua lỗi là đẩy
+   * vào cơ sở dữ liệu một mớ sản phẩm trùng mã, mà gỡ ra phải dò tay.
+   */
+  it("đọc hỏng hoặc chạm trần thì DỪNG, không nhập một phần", () => {
+    expect(DLG).toContain("vì nhập tiếp sẽ tạo ra sản phẩm trùng mã")
+    expect(DLG).toContain("skuRes.truncated")
+  })
+})

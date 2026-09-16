@@ -13,6 +13,8 @@ export type ProductField =
   | "base_unit"
   | "category"
   | "supplier_name"
+  | "supplier_group"
+  | "supplier_brand"
   | "barcode"
   | "cost_price"
   | "sell_price"
@@ -105,15 +107,25 @@ const HEADER_MAP: Record<string, ProductField> = {
   "sku": "sku", "ma sku": "sku", "ma hang": "sku", "ma san pham": "sku", "ma sp": "sku",
   // base_unit — KiotViet: "ĐVT"; chú ý KHÔNG map "don vi quy doi"
   "don vi tinh": "base_unit", "dvt": "base_unit", "don vi": "base_unit", "don vi co so": "base_unit",
-  // category — KiotViet: "Nhóm hàng(3 Cấp)". Không map "loai hang" vì
-  // KiotViet xuất cố định "Hàng hóa" — sẽ nuốt mất "Nhóm hàng" thực sự.
-  "danh muc": "category", "nhom hang": "category", "nhom hang 3 cap": "category",
-  "nhom": "category",
-  // supplier — header chính "Nhà cung cấp". Giữ alias "Thương hiệu"/"Nhãn hàng"
-  // để file mẫu/KiotViet cũ dùng được — tên cột đó sẽ map thành tên NCC.
+  // category — chỉ từ cột nói đúng nghĩa danh mục. Không map "loai hang"
+  // vì KiotViet xuất cố định "Hàng hóa".
+  "danh muc": "category", "nhom": "category",
+  // supplier — ba nguồn, xếp theo ĐỘ TIN CẬY chứ không theo vị trí cột
+  // (xem `supplier_name` ở phần đọc từng dòng):
+  //   1. "Nhà cung cấp" / "NCC"  — nói thẳng ra là NCC
+  //   2. "Nhóm hàng"             — nguồn CHÍNH của file KiotViet
+  //   3. "Thương hiệu"           — dự phòng
+  //
+  // ⚠ "Nhóm hàng" từng map sang `category`. Trên dữ liệu thật của NPP,
+  // cột ấy chứa TÊN CÔNG TY ("Cty Tân Việt", "Cty lào cái") chứ không
+  // phải nhóm hàng — và 56/57 dòng bị bỏ vì thiếu NCC đều có sẵn giá trị
+  // ở đó. Đối chiếu 679 dòng có cả hai mà khác nhau thì "Nhóm hàng" cũng
+  // là tên sạch hơn: "Cty phương huyền" thay vì "Cty phương huyền ăn
+  // vặt", "cty Hương Đạt" thay vì hai biến thể hoa thường.
   "nha cung cap": "supplier_name", "ncc": "supplier_name",
-  "nhan hang": "supplier_name", "thuong hieu": "supplier_name",
-  "hang": "supplier_name", "brand": "supplier_name",
+  "nhom hang": "supplier_group", "nhom hang 3 cap": "supplier_group",
+  "nhan hang": "supplier_brand", "thuong hieu": "supplier_brand",
+  "hang": "supplier_brand", "brand": "supplier_brand",
   // barcode
   "ma vach": "barcode", "barcode": "barcode", "ma vach san pham": "barcode",
   // cost_price
@@ -253,7 +265,14 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
     // sai theo. Dùng bản đọc số có hiểu dấu thập phân.
     const conversion = conversionRaw ? parseNumberOrNull(conversionRaw) : null
     const parent_sku = str(get(raw, "parent_sku")) || null
-    const supplier_name = str(get(raw, "supplier_name")) || null
+    // ⚠ Ưu tiên theo NGUỒN, không theo vị trí cột. Trước đây hai tiêu đề
+    // cùng map vào một trường thì cột nào ĐỨNG TRƯỚC trong file sẽ thắng
+    // — đổi thứ tự cột là đổi luôn dữ liệu, mà không có gì báo ra.
+    const supplier_name =
+      str(get(raw, "supplier_name")) ||
+      str(get(raw, "supplier_group")) ||
+      str(get(raw, "supplier_brand")) ||
+      null
 
     const errors: string[] = []
     const warnings: string[] = []
@@ -317,7 +336,13 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       sku: str(get(raw, "sku")),
       name,
       category: str(get(raw, "category")) || null,
-      supplier_name: str(get(raw, "supplier_name")) || null,
+      // Dùng BIẾN đã giải ở trên, không đọc lại cột.
+      //
+      // ⚠ Chỗ này từng đọc thẳng `get(raw, "supplier_name")` trong khi
+      // phần kiểm tra ở trên dùng biến đã giải theo ba tầng ưu tiên. Hai
+      // bên đọc khác nhau nghĩa là dòng "có NCC" theo phép kiểm vẫn ghi
+      // xuống NCC rỗng — đo trên file thật: 0 nhà cung cấp được tạo.
+      supplier_name,
       barcode: str(get(raw, "barcode")) || null,
       base_unit: base_unit || "cái",
       vat_rate: parseVat(get(raw, "vat_rate")),

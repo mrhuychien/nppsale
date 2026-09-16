@@ -19,6 +19,7 @@ import {
   planOpeningStock,
 } from "@/lib/products/opening-stock-plan"
 import { readSheetAsRows } from "@/lib/xlsx-safe"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
 import {
   parseProductSheet,
@@ -219,16 +220,50 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
     setImporting(true)
     try {
       // 1. Lấy SKU đã tồn tại + NCC hiện có trong org.
-      const [existingSkuRes, supRes] = await Promise.all([
-        supabase.from("products").select("sku").eq("org_id", user.org_id),
-        supabase.from("suppliers").select("id, name").eq("org_id", user.org_id),
+      //
+      // ⚠ PHẢI PHÂN TRANG. Câu này từng là `.select("sku")` trần: Supabase
+      // chặn 1.000 dòng mỗi request và trả 200 KHÔNG kèm lỗi. Với 1.740
+      // sản phẩm thì ~740 mã không lọt vào danh sách "đã có", nên nhập
+      // lại file cũ là TẠO TRÙNG chứ không bỏ qua — đúng triệu chứng
+      // "thử import chưa thấy bỏ qua mã trùng".
+      //
+      // Danh sách này quyết định tạo hay bỏ qua, nên thiếu một phần là
+      // sai theo hướng nguy hiểm: sinh ra sản phẩm trùng mã.
+      const [skuRes, supRes] = await Promise.all([
+        fetchAllForAggregate<{ sku: string }>((from, to) =>
+          supabase
+            .from("products")
+            .select("sku", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .range(from, to)
+        ),
+        fetchAllForAggregate<{ id: string; name: string }>((from, to) =>
+          supabase
+            .from("suppliers")
+            .select("id, name", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .range(from, to)
+        ),
       ])
-      const qErr = ([existingSkuRes, supRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[products/product-import-dialog] truy vấn lỗi:", qErr.message)
-      const usedSku = new Set((existingSkuRes.data as { sku: string }[] | null)?.map((r) => r.sku) ?? [])
+      // Đọc thiếu danh sách này thì KHÔNG được nhập tiếp: bỏ qua lỗi là
+      // đẩy vào cơ sở dữ liệu một mớ sản phẩm trùng mã, mà gỡ ra thì phải
+      // dò tay từng dòng.
+      const readErr = skuRes.error || supRes.error
+      if (readErr) {
+        throw new Error(
+          `Không đọc được danh sách sản phẩm hiện có (${readErr}) — dừng, ` +
+            `vì nhập tiếp sẽ tạo ra sản phẩm trùng mã.`
+        )
+      }
+      if (skuRes.truncated) {
+        throw new Error(
+          "Danh mục quá lớn để đối chiếu mã trùng trong một lần. Dừng lại " +
+            "thay vì nhập một phần rồi tạo ra sản phẩm trùng mã."
+        )
+      }
+      const usedSku = new Set(skuRes.rows.map((r) => r.sku))
       const supplierByLower: Record<string, string> = {}
-      for (const s of (supRes.data as { id: string; name: string }[] | null) || []) {
+      for (const s of supRes.rows) {
         supplierByLower[s.name.toLowerCase()] = s.id
       }
 

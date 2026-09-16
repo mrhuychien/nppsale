@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, generateOrderCode } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
+import { compareByStockDesc } from "@/lib/orders/product-order"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
@@ -100,6 +101,17 @@ export function OrderForm() {
   const [loading, setLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
   /**
+   * Danh mục tham chiếu đã tải xong chưa.
+   *
+   * ⚠ Trước đây KHÔNG có trạng thái này. Tải 1.740 sản phẩm kèm bảng giá
+   * và đơn vị quy đổi mất vài giây; trong lúc đó `products` rỗng, nên gõ
+   * vào ô tìm sản phẩm ra 0 kết quả — mà dropdown lại chỉ hiện khi có kết
+   * quả, nên màn hình im lặng hoàn toàn. Người dùng kết luận "tìm kiếm
+   * không hoạt động", và họ đúng: nó không hoạt động, chỉ là vì lý do
+   * khác với cái họ đoán.
+   */
+  const [refLoading, setRefLoading] = useState(true)
+  /**
    * Dư nợ hiện tại của khách đang chọn.
    *
    * Trước đây con số này CHỈ được tính bên trong hàm lưu đơn (để chấm quy
@@ -135,6 +147,7 @@ export function OrderForm() {
       if (!cached || cached.customers.length === 0) return false
       setCustomers(cached.customers)
       setProducts(cached.products)
+      setRefLoading(false)
       setStockByProduct(cached.stockByProduct || {})
       toast({
         title: "Đang dùng dữ liệu ngoại tuyến",
@@ -216,6 +229,7 @@ export function OrderForm() {
       }
       setCustomers(custData)
       setProducts(prodData)
+      setRefLoading(false)
       const stockMap: Record<string, number> = {}
       for (const b of batchRes.rows) {
         stockMap[b.product_id] = (stockMap[b.product_id] || 0) + Number(b.qty_on_hand || 0)
@@ -612,9 +626,24 @@ export function OrderForm() {
     }
   }, [customerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredProducts = products.filter((p) =>
-    viMatchAllWords(productSearch, p.name, p.sku)
-  )
+  /**
+   * Kết quả tìm sản phẩm, xếp TỒN KHO NHIỀU TRƯỚC.
+   *
+   * Xếp theo tên thì mặt hàng hết sạch nằm lẫn với mặt hàng còn đầy kho,
+   * và NVBH đứng ở quầy khách phải bấm từng cái để biết còn hàng không.
+   * Hàng còn nhiều là hàng bán được — đưa lên đầu.
+   *
+   * Hết hàng KHÔNG bị ẩn, chỉ xuống cuối: khách vẫn hỏi, và nhân viên vẫn
+   * cần tra được giá.
+   *
+   * `useMemo` chứ không tính thẳng trong thân hàm: 1.740 sản phẩm nhân
+   * mỗi lần gõ một phím, lại thêm phép sắp xếp.
+   */
+  const filteredProducts = useMemo(() => {
+    return products
+      .filter((p) => viMatchAllWords(productSearch, p.name, p.sku))
+      .sort(compareByStockDesc(stockByProduct))
+  }, [products, productSearch, stockByProduct])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1344,7 +1373,17 @@ export function OrderForm() {
                   placeholder="Chạm để chọn hoặc gõ tên / mã SKU..."
                   className="pl-9"
                 />
-              {productDropdownOpen && filteredProducts.length > 0 && (
+              {/* ⚠ Trước đây chỉ hiện khi CÓ kết quả. Đang tải hoặc không
+                  tìm thấy đều ra cùng một thứ: im lặng. Giờ ba trạng thái
+                  nói ba câu khác nhau. */}
+              {productDropdownOpen && (refLoading || filteredProducts.length === 0) && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-xl border border-border/50 bg-card p-3 text-sm text-muted-foreground shadow-md">
+                  {refLoading
+                    ? "Đang tải danh mục sản phẩm…"
+                    : `Không tìm thấy sản phẩm nào khớp "${productSearch}"`}
+                </div>
+              )}
+              {productDropdownOpen && !refLoading && filteredProducts.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-md max-h-72 overflow-y-auto">
                   {filteredProducts.slice(0, 10).map((p) => {
                     const groupId = selectedCustomer?.group_id

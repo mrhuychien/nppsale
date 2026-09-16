@@ -6,6 +6,7 @@ import { Search, ScanBarcode, Plus, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
+import { compareByStockDesc } from "@/lib/orders/product-order"
 import type { Product, PriceList, ProductUnit } from "@/types"
 
 type P = Product & { price_lists?: PriceList[]; units?: ProductUnit[] }
@@ -65,22 +66,47 @@ export function ProductPickerSheet({
     if (!open) setQ("")
   }, [open])
 
+  /**
+   * Xếp TỒN KHO NHIỀU TRƯỚC.
+   *
+   * Xếp theo tên thì mặt hàng hết sạch nằm lẫn với mặt hàng còn đầy kho,
+   * và NVBH đứng ở quầy khách phải bấm từng cái để biết còn hàng không.
+   * Hàng còn nhiều là hàng bán được — đưa lên đầu.
+   *
+   * Hết hàng KHÔNG bị ẩn, chỉ xuống cuối: khách vẫn hỏi, nhân viên vẫn
+   * cần tra được giá.
+   *
+   * ⚠ Cùng mức tồn thì xếp theo tên. Không có vế này thì hai lần gõ cùng
+   * một từ có thể ra hai thứ tự khác nhau.
+   */
+  const byStock = React.useMemo(
+    () => compareByStockDesc(stockByProduct),
+    [stockByProduct]
+  )
+
   const list = React.useMemo(() => {
     const term = q.trim()
     if (term) {
       // Chữ ký là (rawQuery, ...values) — query đứng TRƯỚC.
-      return products.filter((p) => viMatchAllWords(term, p.name, p.sku)).slice(0, RENDER_CAP)
+      // ⚠ Sắp xếp TRƯỚC khi cắt `RENDER_CAP`. Cắt trước thì 60 dòng lấy
+      // ra là 60 dòng đầu theo tên, và thứ tự tồn kho chỉ áp lên đúng
+      // phần đã bị cắt — mặt hàng còn nhiều nhất có thể không lọt vào.
+      return products.filter((p) => viMatchAllWords(term, p.name, p.sku)).sort(byStock).slice(0, RENDER_CAP)
     }
     if (recentIds.length) {
       const rank = new Map(recentIds.map((id, i) => [id, i]))
-      // SP hay lấy lên đầu theo đúng thứ tự tần suất; phần còn lại giữ
-      // nguyên thứ tự danh mục.
+      // SP hay lấy vẫn lên đầu — đó là thứ NVBH gõ nhiều nhất. Phần còn
+      // lại mới xếp theo tồn kho.
       return [...products]
-        .sort((a, b) => (rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999))
+        .sort((a, b) => {
+          const ra = rank.get(a.id) ?? 9999
+          const rb = rank.get(b.id) ?? 9999
+          return ra !== rb ? ra - rb : byStock(a, b)
+        })
         .slice(0, RENDER_CAP)
     }
-    return products.slice(0, RENDER_CAP)
-  }, [q, products, recentIds])
+    return [...products].sort(byStock).slice(0, RENDER_CAP)
+  }, [q, products, recentIds, byStock])
 
   const priceOf = (p: P) =>
     p.price_lists?.find(

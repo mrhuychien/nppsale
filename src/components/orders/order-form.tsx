@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, generateOrderCode } from "@/lib/utils"
+import { formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
@@ -127,6 +127,14 @@ export function OrderForm() {
   // returns row + return_lines linked to this order_id, status='pending' so
   // the manager can approve at /returns.
   const [returnOpen, setReturnOpen] = useState(false)
+  /**
+   * Khối "Điều khoản & Giao hàng" gập lại, mở khi bấm.
+   *
+   * Hai ô trong đó gần như luôn để mặc định — điều khoản lấy theo khách,
+   * ngày giao thường bỏ trống. Mở sẵn thì chúng đẩy phần SẢN PHẨM (chỗ
+   * NVBH thật sự làm việc) xuống một màn cuộn, mỗi lần tạo đơn.
+   */
+  const [termsOpen, setTermsOpen] = useState(false)
   const [returnLines, setReturnLines] = useState<ReturnLineDraft[]>([])
   const [returnReason, setReturnReason] = useState<ReturnReason>("damaged")
   const [returnNotes, setReturnNotes] = useState("")
@@ -639,6 +647,26 @@ export function OrderForm() {
    * `useMemo` chứ không tính thẳng trong thân hàm: 1.740 sản phẩm nhân
    * mỗi lần gõ một phím, lại thêm phép sắp xếp.
    */
+  /**
+   * Tóm tắt hiện trên đầu khối đang gập.
+   *
+   * Dùng NHÃN của điều khoản chứ không phải mã ("COD - Thanh toán khi
+   * giao", không phải "NET30"): người đọc dòng này là NVBH đứng ở quầy
+   * khách, không phải người viết mã.
+   *
+   * Chưa chọn ngày giao thì nói "chưa chọn ngày giao" — để trống chỗ đó
+   * là người ta không phân biệt được "chưa điền" với "màn hình chưa tải
+   * xong".
+   */
+  const termsSummary = useMemo(() => {
+    const term =
+      PAYMENT_TERMS.find((t) => t.value === paymentTerms)?.label ?? paymentTerms ?? "—"
+    const giao = expectedDelivery
+      ? `giao ${formatDate(expectedDelivery)}`
+      : "chưa chọn ngày giao"
+    return `${term} · ${giao}`
+  }, [paymentTerms, expectedDelivery])
+
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => viMatchAllWords(productSearch, p.name, p.sku))
@@ -1261,12 +1289,33 @@ export function OrderForm() {
           </CardContent>
         </Card>
 
-        {/* Terms & delivery card */}
+        {/* Terms & delivery card — gập lại, bấm mới xổ ra. */}
         <Card className="rounded-xl shadow-card">
-          <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
-            <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
+          <CardHeader className="p-4 lg:p-6">
+            <button
+              type="button"
+              onClick={() => setTermsOpen((v) => !v)}
+              aria-expanded={termsOpen}
+              aria-controls="terms-delivery-body"
+              className="tap w-full flex items-center justify-between gap-3 text-left"
+            >
+              <div className="min-w-0">
+                <CardTitle className="text-base font-bold">Điều khoản &amp; Giao hàng</CardTitle>
+                {/* ⚠ Gập lại mà không cho thấy ĐANG ĐẶT GÌ thì người dùng
+                    phải mở ra mới biết đúng hay sai — tức là gập xong vẫn
+                    phải bấm, không tiết kiệm được gì. Dòng tóm tắt này là
+                    lý do khối gập được. */}
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{termsSummary}</p>
+              </div>
+              {termsOpen ? (
+                <ChevronUp className="h-5 w-5 shrink-0" />
+              ) : (
+                <ChevronDown className="h-5 w-5 shrink-0" />
+              )}
+            </button>
           </CardHeader>
-          <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
+          {termsOpen && (
+          <CardContent id="terms-delivery-body" className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Điều khoản thanh toán
@@ -1295,6 +1344,7 @@ export function OrderForm() {
               />
             </div>
           </CardContent>
+          )}
         </Card>
 
         {/* Products card */}

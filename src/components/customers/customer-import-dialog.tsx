@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
 import { readSheetAsRows } from "@/lib/xlsx-safe"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
 import {
   parseCustomerSheet,
@@ -97,13 +98,31 @@ export function CustomerImportDialog({
     setImporting(true)
     try {
       // Dedupe theo SĐT trong DB hiện có (case stripped khoảng trắng).
-      const { data: existing, error: existingErr } = await supabase
-        .from("customers")
-        .select("phone")
-        .eq("org_id", user.org_id)
-      if (existingErr) console.error("[customers/customer-import-dialog] truy vấn lỗi:", existingErr.message)
+      //
+      // ⚠ PHẢI PHÂN TRANG. Câu này từng là `.select("phone")` trần:
+      // Supabase chặn 1.000 dòng và trả 200 KHÔNG kèm lỗi. Quá 1.000
+      // khách hàng thì số còn lại không lọt vào danh sách "đã có", nên
+      // nhập lại file cũ là TẠO TRÙNG chứ không bỏ qua — đúng lỗi đã gặp
+      // ở màn nhập sản phẩm.
+      //
+      // Danh sách này quyết định tạo hay bỏ qua, nên thiếu một phần là
+      // sai theo hướng nguy hiểm.
+      const existingRes = await fetchAllForAggregate<{ phone: string | null }>((from, to) =>
+        supabase
+          .from("customers")
+          .select("phone", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .range(from, to)
+      )
+      if (existingRes.error || existingRes.truncated) {
+        throw new Error(
+          existingRes.error
+            ? `Không đọc được danh sách khách hàng hiện có (${existingRes.error}) — dừng, vì nhập tiếp sẽ tạo khách trùng.`
+            : "Danh sách khách hàng quá lớn để đối chiếu trùng trong một lần. Dừng lại thay vì tạo ra khách trùng."
+        )
+      }
       const existingPhones = new Set(
-        ((existing as { phone: string | null }[]) || [])
+        existingRes.rows
           .map((r) => (r.phone || "").replace(/\s+/g, ""))
           .filter(Boolean)
       )

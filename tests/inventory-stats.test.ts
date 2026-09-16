@@ -114,3 +114,46 @@ describe("Cộng tiền phải cộng đủ", () => {
     expect(PAGE).toContain("(Number(b.qty_on_hand) || 0) * (Number(b.unit_cost) || 0)")
   })
 })
+
+describe("Bảng tồn kho phải đọc ĐỦ", () => {
+  const TABLE = read("src/components/inventory/stock-balance-table.tsx")
+  const CUSTIMPORT = read("src/components/customers/customer-import-dialog.tsx")
+
+  /**
+   * ⚠ LỖI ĐÃ GẶP NGOÀI ĐỜI. Nhập 40 sản phẩm, phiếu nhập kho có, lô hàng
+   * có, mà bảng "Tồn kho hiện tại" không hiện dòng nào của chúng.
+   *
+   * Hai truy vấn đều không phân trang. Supabase chặn 1.000 dòng và trả
+   * 200 KHÔNG kèm lỗi; với 1.740 sản phẩm thì `products` chỉ về 1.000 —
+   * và phần gộp bỏ qua LẶNG LẼ mọi dòng tồn không tra ra sản phẩm
+   * (`if (!product) continue`). Đúng 40 mã mới nhất nằm ngoài 1.000 dòng
+   * đầu nên biến mất.
+   */
+  it("cả hai truy vấn đều phân trang", () => {
+    expect(TABLE).toContain("fetchAllForAggregate<BalanceRow>")
+    expect(TABLE).toContain("fetchAllForAggregate<ProductMeta>")
+    expect(TABLE).not.toContain('.select("product_id, warehouse_zone, qty_in_base_uom, value"),')
+  })
+
+  /**
+   * ⚠ Phần gộp vẫn `continue` khi không tra ra sản phẩm — đó là hành vi
+   * đúng khi dữ liệu ĐỦ. Cái phải chặn là đọc THIẾU rồi im lặng, nên
+   * chạm trần phải nói ra.
+   */
+  it("đọc hỏng hoặc chạm trần thì nói ra trên màn hình", () => {
+    expect(TABLE).toContain("setLoadError(")
+    expect(TABLE).toContain("còn THIẾU dòng")
+    expect(TABLE).toContain("Không đọc được số liệu tồn kho")
+  })
+
+  /**
+   * ⚠ CÙNG LỖI, Ở MÀN NHẬP KHÁCH HÀNG. Phép đối chiếu SĐT trùng cũng đọc
+   * cả bảng không phân trang — quá 1.000 khách thì nhập lại file cũ là
+   * tạo khách trùng chứ không bỏ qua.
+   */
+  it("nhập khách hàng đối chiếu SĐT trùng cũng đọc đủ", () => {
+    expect(CUSTIMPORT).toContain('fetchAllForAggregate<{ phone: string | null }>')
+    expect(CUSTIMPORT).not.toContain('.select("phone")\n        .eq("org_id", user.org_id)')
+    expect(CUSTIMPORT).toContain("dừng, vì nhập tiếp sẽ tạo khách trùng")
+  })
+})

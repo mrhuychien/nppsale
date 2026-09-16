@@ -30,6 +30,7 @@ import { viIncludes, viNormalize } from "@/lib/search"
 import { Download, Search } from "lucide-react"
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
 import { buildStockExportAoa, stockExportFileName } from "@/lib/inventory/stock-export"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 interface BalanceRow {
   product_id: string
@@ -93,32 +94,61 @@ export function StockBalanceTable() {
   const [drawerProductId, setDrawerProductId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  // Lỗi/thiếu dữ liệu của chính bảng này — phải hiện ra, vì một bảng
+  // thiếu dòng trông y hệt một bảng đủ dòng.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user?.org_id) return
     let cancelled = false
     const supabase = createClient()
     setLoading(true)
+    // ⚠ PHẢI PHÂN TRANG CẢ HAI. Supabase chặn 1.000 dòng mỗi request và
+    // trả 200 KHÔNG kèm lỗi.
+    //
+    // Với 1.740 sản phẩm thì truy vấn `products` chỉ về 1.000 dòng, và ở
+    // phần gộp dưới đây mỗi dòng tồn không tra ra sản phẩm bị BỎ QUA
+    // LẶNG LẼ (`if (!product) continue`). Hậu quả đã gặp: nhập 40 sản
+    // phẩm, phiếu nhập kho có, lô hàng có, mà bảng tồn kho không hiện
+    // dòng nào của chúng — vì chính 40 mã mới nhất nằm ngoài 1.000 dòng
+    // đầu.
+    //
+    // Cùng cái bẫy với thẻ KPI đầu trang Kho và với phép đối chiếu mã
+    // trùng lúc nhập sản phẩm. Ở đâu cộng hay gộp trên TOÀN BỘ bảng thì ở
+    // đó phải đọc đủ.
     Promise.all([
-      supabase
-        .from("v_stock_balance_by_zone")
-        .select("product_id, warehouse_zone, qty_in_base_uom, value"),
-      supabase
-        .from("products")
-        .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)")
-        .eq("status", "active"),
+      fetchAllForAggregate<BalanceRow>((from, to) =>
+        supabase
+          .from("v_stock_balance_by_zone")
+          .select("product_id, warehouse_zone, qty_in_base_uom, value", { count: "exact" })
+          .range(from, to)
+      ),
+      fetchAllForAggregate<ProductMeta>((from, to) =>
+        supabase
+          .from("products")
+          .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)", {
+            count: "exact",
+          })
+          .eq("status", "active")
+          .range(from, to)
+      ),
     ]).then(([balRes, prodRes]) => {
       if (cancelled) return
       // View v_stock_balance_by_zone chạy security_invoker (mig 092) nên
       // chịu RLS. View luôn trả 200 kể cả khi bị chặn → không có lỗi để
-      // hiện; ghi log để còn lần ra nếu bảng bỗng rỗng.
+      // hiện; giữ lỗi lại để MÀN HÌNH nói ra, đừng chỉ ghi console.
       const vErr = balRes.error || prodRes.error
-      if (vErr) console.error("[stock-balance-table] truy vấn lỗi:", vErr.message)
-      setRows((balRes.data as BalanceRow[]) || [])
-      const map = new Map<string, ProductMeta>()
-      ;(((prodRes.data as unknown) as ProductMeta[]) || []).forEach((p) =>
-        map.set(p.id, p)
+      if (vErr) console.error("[stock-balance-table] truy vấn lỗi:", vErr)
+      setLoadError(
+        vErr
+          ? `Không đọc được số liệu tồn kho: ${vErr}`
+          : balRes.truncated || prodRes.truncated
+            ? "Danh mục quá lớn để đọc hết trong một lần — bảng dưới đây còn THIẾU dòng."
+            : null
       )
+      setRows(balRes.rows)
+      const map = new Map<string, ProductMeta>()
+      prodRes.rows.forEach((p) => map.set(p.id, p))
       setProducts(map)
       setLoading(false)
     })
@@ -253,6 +283,11 @@ export function StockBalanceTable() {
 
   return (
     <div className="space-y-3">
+      {loadError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          ⚠ {loadError}
+        </div>
+      )}
       {exportError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           Không xuất được file Excel: {exportError}

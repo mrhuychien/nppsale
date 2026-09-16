@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
-import { useViewportHeight } from "@/hooks/use-viewport-height"
+import { useViewportInsets, bottomSheetBox } from "@/hooks/use-viewport-insets"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import type { Product, PriceList, ProductUnit } from "@/types"
 
@@ -87,7 +87,8 @@ export function ProductPickerSheet({
   )
 
   // Chỉ đo khi tấm trượt đang mở — không gắn bộ lắng nghe suốt đời trang.
-  const vh = useViewportHeight(open)
+  const vp = useViewportInsets(open)
+  const box = vp ? bottomSheetBox(vp, 0.92) : null
 
   const list = React.useMemo(() => {
     const term = q.trim()
@@ -120,15 +121,18 @@ export function ProductPickerSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      {/* ⚠ Chiều cao theo phần màn hình CÒN NHÌN THẤY, không theo `vh`.
-          `vh` không trừ bàn phím: mở bàn phím lên thì gần một nửa tấm
-          trượt nằm dưới nó, và danh sách kết quả biến mất đúng lúc người
-          dùng đang gõ để tìm. `h-[88vh]` giữ làm đường lùi cho trình
-          duyệt không có `visualViewport`. */}
+      {/* ⚠ PHẢI ĐẶT CẢ `height` LẪN `bottom`.
+          Chiều cao theo phần màn hình CÒN NHÌN THẤY, vì `vh` không trừ bàn
+          phím. Nhưng tấm trượt neo `bottom: 0` — mà đáy khung trang nằm
+          DƯỚI bàn phím. Chỉ hạ chiều cao thôi thì cả tấm trượt tụt xuống
+          dưới bàn phím, chỉ ló một sợi trắng: ô tìm, danh sách và nút Xong
+          đều không thấy đâu. `bottom` nhấc nó lên khỏi bàn phím.
+          `h-[88vh]` giữ làm đường lùi cho trình duyệt không có
+          `visualViewport`. */}
       <SheetContent
         side="bottom"
         className="flex h-[88vh] flex-col p-0"
-        style={vh ? { height: Math.round(vh * 0.92) } : undefined}
+        style={box ? { height: box.height, bottom: box.bottom } : undefined}
       >
         <div className="flex items-center gap-2 border-b border-outline-variant p-3">
           <div className="relative flex-1">

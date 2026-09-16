@@ -6,6 +6,8 @@ import { Search, ScanBarcode, Plus, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
+import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
+import { useViewportHeight } from "@/hooks/use-viewport-height"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import type { Product, PriceList, ProductUnit } from "@/types"
 
@@ -84,6 +86,9 @@ export function ProductPickerSheet({
     [stockByProduct]
   )
 
+  // Chỉ đo khi tấm trượt đang mở — không gắn bộ lắng nghe suốt đời trang.
+  const vh = useViewportHeight(open)
+
   const list = React.useMemo(() => {
     const term = q.trim()
     if (term) {
@@ -115,7 +120,16 @@ export function ProductPickerSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="flex h-[88vh] flex-col p-0">
+      {/* ⚠ Chiều cao theo phần màn hình CÒN NHÌN THẤY, không theo `vh`.
+          `vh` không trừ bàn phím: mở bàn phím lên thì gần một nửa tấm
+          trượt nằm dưới nó, và danh sách kết quả biến mất đúng lúc người
+          dùng đang gõ để tìm. `h-[88vh]` giữ làm đường lùi cho trình
+          duyệt không có `visualViewport`. */}
+      <SheetContent
+        side="bottom"
+        className="flex h-[88vh] flex-col p-0"
+        style={vh ? { height: Math.round(vh * 0.92) } : undefined}
+      >
         <div className="flex items-center gap-2 border-b border-outline-variant p-3">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
@@ -124,9 +138,8 @@ export function ProductPickerSheet({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Tên hoặc mã SKU…"
-              inputMode="search"
-              enterKeyHint="search"
               aria-label="Tìm sản phẩm"
+              {...SEARCH_FIELD_PROPS}
               className="h-11 w-full rounded-xl border border-outline-variant bg-surface-container-lowest pl-9 pr-3 text-base"
             />
           </div>

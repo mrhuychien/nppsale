@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { isAbortError } from "@/lib/supabase/resilient"
+import { SEARCH_FIELD_PROPS } from "../src/lib/ui/search-field"
 
 /**
  * Pack M2 — khuôn danh sách chung cho mobile.
@@ -92,9 +93,15 @@ describe("M2.1 — MobileFilterBar", () => {
     expect(input).not.toMatch(/text-(xs|sm)\b/)
   })
 
+  /**
+   * Tính chất KHÔNG đổi: bàn phím ảo phải hiện nút "Tìm". Chỉ đổi chỗ
+   * khai — giờ lấy từ SEARCH_FIELD_PROPS dùng chung cho cả ba ô tìm,
+   * kèm `type="search"` để iOS thôi dựng thanh điền tự động che kết quả.
+   */
   it("bàn phím ảo hiện nút Tìm", () => {
-    expect(FILTER_BAR).toContain('enterKeyHint="search"')
-    expect(FILTER_BAR).toContain('inputMode="search"')
+    expect(FILTER_BAR).toContain("{...SEARCH_FIELD_PROPS}")
+    expect(SEARCH_FIELD_PROPS.enterKeyHint).toBe("search")
+    expect(SEARCH_FIELD_PROPS.inputMode).toBe("search")
   })
 
   /** Thanh dính phải neo theo token, không phải một con số cứng. */

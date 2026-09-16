@@ -3,6 +3,7 @@
 import { Search, SlidersHorizontal, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
+import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
 
 /**
  * Một hàng lọc duy nhất trên mobile: [ô tìm][nút Lọc + số badge].
@@ -50,8 +51,7 @@ export function MobileFilterBar({
               value={value}
               onChange={(e) => onChange(e.target.value)}
               placeholder={placeholder}
-              inputMode="search"
-              enterKeyHint="search"
+              {...SEARCH_FIELD_PROPS}
               aria-label={placeholder}
               // text-base (16px): iOS tự phóng to trang khi focus vào ô
               // nhập nhỏ hơn 16px, và không tự thu lại.

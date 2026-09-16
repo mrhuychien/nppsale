@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { SEARCH_FIELD_PROPS } from "../src/lib/ui/search-field"
 
 /**
  * Pack M1 — app bar + thanh nav dưới + ngăn kéo menu.
@@ -92,8 +93,10 @@ describe("M1.1 — app bar: hết trùng tiêu đề", () => {
   it("lớp phủ tìm kiếm đi tới /orders?q= và đóng được bằng Esc", () => {
     expect(OVERLAY).toContain("/orders?q=${encodeURIComponent(term)}")
     expect(OVERLAY).toContain('e.key === "Escape"')
-    // Bàn phím ảo phải hiện nút "Tìm", không phải "Xuống dòng".
-    expect(OVERLAY).toContain('enterKeyHint="search"')
+    // Bàn phím ảo phải hiện nút "Tìm", không phải "Xuống dòng". Khai
+    // từ SEARCH_FIELD_PROPS dùng chung — xem tests/search-field.test.ts.
+    expect(OVERLAY).toContain("{...SEARCH_FIELD_PROPS}")
+    expect(SEARCH_FIELD_PROPS.enterKeyHint).toBe("search")
   })
 
   it("app bar và lớp phủ nằm trong Provider", () => {

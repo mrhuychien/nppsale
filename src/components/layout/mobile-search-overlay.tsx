@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
 
 /**
  * Tìm đơn hàng trên mobile.
@@ -62,8 +63,7 @@ export function MobileSearchOverlay({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && go()}
-          inputMode="search"
-          enterKeyHint="search"
+          {...SEARCH_FIELD_PROPS}
           placeholder="Mã đơn, tên khách…"
           aria-label="Tìm đơn hàng"
           className="flex-1 h-11 min-w-0 bg-transparent text-base outline-none placeholder:text-on-surface-variant/60"

@@ -7,9 +7,11 @@ import { bottomInsetOf, bottomSheetBox } from "../src/hooks/use-viewport-insets"
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 
-/** Ba màn có ô tìm gõ tay — để một màn tự khai riêng là màn đó sẽ quên. */
+/** Mọi ô tìm gõ tay — để một màn tự khai riêng là màn đó sẽ quên. */
 const FIELDS = [
-  "src/components/orders/product-picker-sheet.tsx",
+  "src/app/(dashboard)/sell/page.tsx",
+  "src/app/(dashboard)/sell/customer/page.tsx",
+  "src/app/(dashboard)/sell/returns/page.tsx",
   "src/components/ui/mobile-filter-bar.tsx",
   "src/components/layout/mobile-search-overlay.tsx",
 ].map((f) => ({ file: f, src: read(f) }))
@@ -53,8 +55,11 @@ describe("Ô tìm kiếm không được gọi thanh điền tự động của 
   })
 })
 
-describe("Tấm trượt chọn sản phẩm phải nằm TRÊN bàn phím", () => {
-  const PICKER = read("src/components/orders/product-picker-sheet.tsx")
+describe("Tấm trượt đáy phải nằm TRÊN bàn phím", () => {
+  // Tấm trượt chọn sản phẩm của màn tạo đơn cũ là chỗ lỗi này lộ ra; màn đó
+  // đã bị xoá. Tấm trượt còn lại có ô gõ tay là `LineEditSheet` (sửa dòng
+  // hàng: số lượng, giá, ghi chú) — nó dùng đúng phép đo đó.
+  const SHEET_USER = read("src/components/sell/line-edit-sheet.tsx")
   const HOOK = read("src/hooks/use-viewport-insets.ts")
 
   /**
@@ -124,8 +129,10 @@ describe("Tấm trượt chọn sản phẩm phải nằm TRÊN bàn phím", () 
   })
 
   it("tấm trượt đặt cả hai giá trị, không chỉ chiều cao", () => {
-    expect(PICKER).toContain("bottomSheetBox(vp, 0.92)")
-    expect(PICKER).toContain("style={box ? { height: box.height, bottom: box.bottom } : undefined}")
+    expect(SHEET_USER).toContain("bottomSheetBox(vp, 0.92)")
+    expect(SHEET_USER).toContain(
+      "style={box ? { height: box.height, bottom: box.bottom } : undefined}"
+    )
   })
 
   /**
@@ -144,14 +151,22 @@ describe("Tấm trượt chọn sản phẩm phải nằm TRÊN bàn phím", () 
    * phải còn đường lùi bằng CSS. Để chiều cao thành 0 là tấm trượt biến
    * mất hẳn.
    */
+  /**
+   * ⚠ Trình duyệt không có `visualViewport`, hoặc render ở máy chủ, thì
+   * `box` là `null` và không có `style` nào được đặt. Đường lùi khi đó là
+   * class của chính `SheetContent`; để nó không khai chiều cao nào thì tấm
+   * trượt cao 0 và biến mất hẳn.
+   */
   it("có đường lùi CSS khi chưa đo được", () => {
     expect(HOOK).toContain("): ViewportInsets | null {")
-    expect(PICKER).toContain('className="flex h-[88vh] flex-col p-0"')
+    expect(SHEET_USER).toContain("style={box ? ")
+    const SHEET = read("src/components/ui/sheet.tsx")
+    expect(SHEET).toContain("max-h-[85vh]")
   })
 
   /** Chỉ đo khi tấm trượt đang mở — đừng gắn bộ lắng nghe suốt đời trang. */
   it("chỉ lắng nghe khi đang mở", () => {
     expect(HOOK).toContain("if (!active) return")
-    expect(PICKER).toContain("useViewportInsets(open)")
+    expect(SHEET_USER).toContain("useViewportInsets(open)")
   })
 })

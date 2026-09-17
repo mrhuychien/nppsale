@@ -102,6 +102,15 @@ describe("Quyết trạng thái đơn khi gửi", () => {
     expect(r.reason.length).toBeGreaterThan(0)
   })
 
+  /**
+   * ⚠ `approval_reason` để trống nghĩa là "đã duyệt, không có gì vướng".
+   * Đơn nháp chưa ai xem nên phải nói rõ vì sao nó còn nằm đó.
+   */
+  it("đơn nháp có ghi lý do, không để trống", () => {
+    expect(DRAFT_APPROVAL_REASON.trim().length).toBeGreaterThan(0)
+    expect(DRAFT_APPROVAL_REASON).toContain("nháp")
+  })
+
   it("chiết khấu sâu vẫn bị chặn dù tổng nhỏ", () => {
     const deep = [line({ qty: 10, price: 100_000, listPrice: 1_000_000 })]
     expect(decideStatus(input(deep)).status).toBe("draft")
@@ -162,10 +171,44 @@ describe("Màn giỏ hàng", () => {
    * ⚠ Lưu tạm KHÔNG chặn theo tồn kho — bản tạm không ra kho hôm nay mà
    * tồn đổi từng giờ. Vẫn chặn theo giá vì thẩm quyền không đổi theo
    * thời gian.
+   *
+   * ⚠ Lưu tạm cũng KHÔNG đòi phải có hàng. Đó chính là lúc cần lưu tạm
+   * nhất — đang đứng ở quầy, ghi được tên khách thì khách bận.
    */
-  it("nút Lưu tạm không khoá theo tồn kho, vẫn khoá theo giá", () => {
+  it("nút Lưu tạm không khoá theo tồn kho và không đòi có hàng, vẫn khoá theo giá", () => {
     const m = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad\}/.exec(CART_PAGE)
     expect(m, "không tìm thấy nút Lưu tạm").toBeTruthy()
+    expect(m![0]).not.toContain("hasOver")
+    expect(m![0]).not.toContain("cart.cart.length")
+  })
+
+  /**
+   * ⚠ LƯU TẠM KHÔNG ĐƯỢC THÀNH ĐƯỜNG VÒNG. Cái gì nút "Đặt hàng" chặn mà
+   * nút "Lưu tạm" cho qua thì đó là cách lách: lưu tạm giá dưới sàn rồi
+   * nhờ duyệt — mà bước duyệt KHÔNG kiểm lại giá sàn. Hai nút chỉ được
+   * khác nhau ở tồn kho và ở số dòng hàng.
+   */
+  it("hai nút chặn giá và chặn thiếu khách như nhau", () => {
+    const draftBtn = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad\}/.exec(
+      CART_PAGE
+    )!![0]
+    const sendBtn = /disabled=\{submitting \|\| cart\.cart\.length === 0[^}]*\}/.exec(CART_PAGE)
+    expect(sendBtn, "không tìm thấy nút Đặt hàng").toBeTruthy()
+    for (const b of [draftBtn, sendBtn![0]]) {
+      expect(b, `nút không chặn giá sàn: ${b}`).toContain("hasPriceBad")
+      expect(b, `nút không đòi có khách: ${b}`).toContain("!cart.customerId")
+    }
+    // Đơn GỬI ĐI thì phải có hàng và phải đủ tồn.
+    expect(sendBtn![0]).toContain("cart.cart.length === 0")
+    expect(sendBtn![0]).toContain("hasOver")
+  })
+
+  /**
+   * ⚠ Chưa gửi đi mà đã kêu quản lý vào duyệt thì lần sau họ bỏ qua thông
+   * báo thật. `!asDraft` là vế giữ cho chuyện đó không xảy ra.
+   */
+  it("bản lưu tạm không báo cho người duyệt", () => {
+    expect(CART_PAGE).toContain('out.status === "draft" && !asDraft')
   })
 
   /**

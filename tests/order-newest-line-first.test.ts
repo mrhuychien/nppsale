@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { SHEET_CLOSE_MS } from "../src/components/ui/sheet"
+import { addLine, type CartLine } from "../src/lib/sell/cart"
 import {
   isSaleLineOverstock,
   type StockCheckLine,
@@ -11,89 +12,73 @@ import {
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 
-const FORM = read("src/components/orders/order-form.tsx")
+const POS = read("src/app/(dashboard)/sell/page.tsx")
 const SHEET = read("src/components/ui/sheet.tsx")
-const CSS = read("src/app/globals.css")
 
-/** Thân hàm `addLine` — cắt tới khai báo cùng cấp thụt lề kế tiếp. */
-const ADD_LINE = (() => {
-  const i = FORM.indexOf("const addLine = (productId: string) => {")
-  expect(i, "không tìm thấy addLine").toBeGreaterThanOrEqual(0)
-  const j = FORM.indexOf("\n  const ", i + 10)
-  expect(j, "không tìm thấy điểm kết thúc addLine").toBeGreaterThan(i)
-  return FORM.slice(i, j)
-})()
+const line = (over: Partial<CartLine> = {}): CartLine => ({
+  productId: "p1",
+  unit: "thùng",
+  qty: 1,
+  price: 1000,
+  listPrice: 1000,
+  note: "",
+  conversion: 1,
+  vatRate: 0,
+  ...over,
+})
 
-describe("Dòng vừa thêm nằm ở ĐẦU danh sách", () => {
+describe("Dòng vừa thêm nằm ở ĐẦU giỏ", () => {
   /**
    * ⚠ Thứ vừa thêm là thứ sắp phải sửa: nhập số lượng, đổi đơn vị, có khi
    * sửa giá. Nối vào đuôi thì đơn 15 dòng đẩy nó xuống dưới mép màn, và
    * mỗi mặt hàng tốn thêm một lượt kéo chỉ để chạm tới ô số lượng.
    */
-  it("mảng mới bắt đầu bằng dòng mới, không bắt đầu bằng ...prev", () => {
-    expect(ADD_LINE).toMatch(/setLines\(\(prev\) => \[\s*\{/)
-    expect(ADD_LINE).not.toMatch(/setLines\(\(prev\) => \[\s*\.\.\.prev/)
-  })
-
-  it("các dòng cũ vẫn giữ đủ, nằm phía sau", () => {
-    expect(ADD_LINE).toMatch(/\.\.\.prev,\s*\]\)/)
+  it("dòng mới đứng trước, dòng cũ giữ đủ phía sau", () => {
+    const cart = addLine(addLine([], line({ productId: "a" })), line({ productId: "b" }))
+    expect(cart.map((l) => l.productId)).toEqual(["b", "a"])
   })
 
   /**
-   * ⚠ KHÔNG ĐƯỢC GỘP DÒNG TRÙNG. Một sản phẩm có thể đặt hai đơn vị khác
-   * nhau (3 thùng + 5 hộp) nên hai dòng cùng sản phẩm là hợp lệ. Gộp lại
-   * là làm hỏng một cách dùng có thật.
+   * ⚠ Cộng dồn KHÔNG được làm dòng nhảy lên đầu. Thêm lại một mặt hàng đã
+   * có thì người dùng nhìn số lượng của nó tăng tại chỗ; kéo nó lên đầu là
+   * xáo lại cả danh sách vì một cú chạm.
    */
-  it("không tự gộp dòng cùng sản phẩm", () => {
-    expect(ADD_LINE).not.toContain("findIndex")
-    expect(ADD_LINE).not.toMatch(/prev\.map\(/)
+  it("cộng dồn giữ nguyên chỗ của dòng cũ", () => {
+    const cart = addLine(addLine([], line({ productId: "a" })), line({ productId: "b" }))
+    const after = addLine(cart, line({ productId: "a" }))
+    expect(after.map((l) => l.productId)).toEqual(["b", "a"])
+    expect(after.find((l) => l.productId === "a")!.qty).toBe(2)
+  })
+
+  /**
+   * ⚠ Một sản phẩm có thể đặt hai đơn vị khác nhau (3 thùng + 5 chai) nên
+   * hai dòng cùng sản phẩm là hợp lệ. Khoá gộp là sản phẩm + ĐƠN VỊ.
+   */
+  it("cùng sản phẩm khác đơn vị vẫn là hai dòng", () => {
+    const cart = addLine(addLine([], line({ unit: "thùng" })), line({ unit: "chai" }))
+    expect(cart).toHaveLength(2)
   })
 })
 
 describe("Thêm xong phải NHÌN THẤY dòng vừa thêm", () => {
   /**
-   * ⚠ Dòng mới ở đầu danh sách, mà đầu danh sách có thể đang ở trên mép
-   * màn hình — nhất là sau khi ô tìm thành ô DÍNH, vì nay thêm hàng được
-   * từ bất kỳ chỗ nào trong danh sách. Không kéo màn thì thêm xong màn
-   * hình không đổi gì, trông hệt như bấm hụt.
+   * ⚠ Ở màn tạo đơn cũ, thêm hàng xong danh sách nằm im tại chỗ — trông hệt
+   * như bấm hụt, và phải kéo màn mới thấy dòng mới. Màn bán hàng bỏ hẳn vấn
+   * đề đó: chạm một cái là đi thẳng vào giỏ, nơi dòng vừa thêm nằm trên
+   * cùng kèm bộ đếm số lượng.
    */
-  it("thêm dòng thì kéo thẻ Sản phẩm lên đầu màn", () => {
-    expect(ADD_LINE).toContain("scrollToProductsTop()")
-    expect(FORM).toContain("productsCardRef.current?.scrollIntoView(")
-    expect(FORM).toContain('block: "start"')
-  })
-
-  it("thẻ Sản phẩm có neo và chừa chỗ cho app bar", () => {
-    expect(FORM).toMatch(/<Card ref=\{productsCardRef\}[^>]*scroll-mt-appbar/)
-    expect(CSS).toContain(".scroll-mt-appbar { scroll-margin-top: var(--app-bar-h); }")
-  })
-
-  /**
-   * ⚠ Tấm trượt chọn sản phẩm KHOÁ cuộn trang lúc đang mở, nên lệnh kéo
-   * gọi trong `addLine` không có tác dụng gì khi thêm từ đó. Phải kéo lại
-   * sau khi tấm trượt đóng hẳn.
-   */
-  it("đóng tấm trượt xong cũng kéo lại một lần", () => {
-    const i = FORM.indexOf("<ProductPickerSheet")
-    const block = FORM.slice(i, FORM.indexOf("/>", i))
-    expect(block).toMatch(/if \(!o\) setTimeout\(scrollToProductsTop, SHEET_CLOSE_MS \+ \d+\)/)
-  })
-
-  /**
-   * ⚠ Chờ phải ĐỦ LÂU. Khoá cuộn chỉ nhả khi tấm trượt rời khỏi DOM, tức
-   * sau đúng thời lượng đóng của nó. Chờ hụt thì lệnh kéo rơi vào lúc
-   * trang còn bị khoá và không có gì xảy ra — lỗi im lặng, không báo gì.
-   */
-  it("thời gian chờ không ngắn hơn thời lượng đóng tấm trượt", () => {
-    const m = /if \(!o\) setTimeout\(scrollToProductsTop, SHEET_CLOSE_MS \+ (\d+)\)/.exec(FORM)
-    expect(m, "không đọc được thời gian chờ").toBeTruthy()
-    expect(Number(m![1])).toBeGreaterThan(0)
+  it("chạm vào thẻ hàng là mở giỏ ngay", () => {
+    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
+    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    expect(body).toContain('router.push("/sell/cart")')
   })
 
   /**
    * ⚠ `SHEET_CLOSE_MS` phải KHỚP thời lượng trong class của Sheet. Đây là
-   * hai con số ở hai nơi nói về cùng một khoảng thời gian — đổi một chỗ mà
-   * quên chỗ kia thì lệnh kéo lại rơi vào lúc trang còn khoá.
+   * hai con số ở hai nơi nói về cùng một khoảng thời gian; lệch nhau thì
+   * mọi thao tác hẹn giờ sau khi đóng tấm trượt rơi vào lúc trang còn bị
+   * khoá cuộn — hỏng trong im lặng, không báo gì.
    */
   it("hằng số chờ khớp đúng thời lượng đóng trong class", () => {
     const m = /data-\[state=closed\]:duration-(\d+)/.exec(SHEET)

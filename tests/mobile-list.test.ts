@@ -378,13 +378,15 @@ describe("M2.3 — /customers", () => {
    * Đích nay là luồng bán hàng `/sell`; cả nó lẫn màn tạo đơn cũ đều đọc
    * cùng một tên tham số, nên đổi đường dẫn không làm đứt đường tắt này.
    */
-  it("dùng đúng tên tham số customerId ở cả hai màn nhận", () => {
+  it("dùng đúng tên tham số customerId, và chuyển hướng cũ giữ được nó", () => {
     expect(newOrderHref("x1")).toContain("customerId=")
     expect(read("src/components/sell/customer-deeplink.tsx")).toContain(
       'params.get("customerId")'
     )
-    const form = read("src/components/orders/order-form.tsx")
-    expect(form).toContain('searchParams.get("customerId")')
+    // Màn tạo đơn cũ cũng đọc cùng tên tham số; nó đã bị xoá và đường dẫn
+    // `/orders/new` nay chỉ chuyển hướng — chuyển hướng đó phải giữ tham số.
+    const redirect = read("src/app/(dashboard)/orders/new/page.tsx")
+    expect(redirect).toContain("newOrderHref(searchParams.customerId)")
   })
 
   /** Không có SĐT thì không render link tel: rỗng. */

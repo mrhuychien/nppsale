@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
 import { NEW_ORDER_HREF, newOrderHref } from "../src/lib/nav/new-order"
 import { canSeeHref, NAV_PERMISSION } from "../src/lib/nav/nav-permission"
@@ -61,9 +61,15 @@ describe("Đường vào tạo đơn", () => {
     expect(canSeeHref("driver", NEW_ORDER_HREF)).toBe(false)
   })
 
-  /** Màn cũ vẫn gác quyền: mở bằng đường dẫn đã lưu cũng không lọt. */
-  it("màn tạo đơn cũ vẫn còn trong bảng phân quyền", () => {
-    expect(NAV_PERMISSION["/orders/new"]).toBeTruthy()
+  /**
+   * Màn cũ đã bị xoá nên không còn gì để gác — đường dẫn `/orders/new` nay
+   * chỉ chuyển hướng sang `/sell`, và `/sell` mới là chỗ gác quyền.
+   *
+   * ⚠ Khai quyền cho một màn không còn tồn tại là RÁC, và rác trong bảng
+   * này che mất chỗ đang thiếu.
+   */
+  it("màn tạo đơn cũ không còn trong bảng phân quyền", () => {
+    expect(NAV_PERMISSION["/orders/new"]).toBeUndefined()
   })
 })
 
@@ -78,14 +84,33 @@ describe("Không còn nút nào trỏ về màn tạo đơn cũ", () => {
    * những chỗ đã biết, mà lỗi nằm ở chỗ chưa biết.
    */
   it("không file nào còn dựng đường dẫn /orders/new", () => {
-    const offenders = sources().filter(
-      (f) =>
-        // Bảng phân quyền PHẢI còn khai màn cũ — nó là nơi gác quyền, không
-        // phải một cái nút.
-        f.rel !== "src/lib/nav/nav-permission.ts" &&
-        /["'`]\/orders\/new/.test(f.src)
-    )
+    const offenders = sources().filter((f) => /["'`]\/orders\/new/.test(f.src))
     expect(offenders.map((f) => f.rel)).toEqual([])
+  })
+
+  /**
+   * ⚠ Màn cũ đã xoá nhưng ĐƯỜNG DẪN thì không: `/orders/new` nằm trong dấu
+   * trang của người dùng, trong tin nhắn hướng dẫn nhau, trong lịch sử
+   * trình duyệt của mọi máy đang dùng. Để nó trả 404 thì người mở lên không
+   * kết luận "màn này đổi chỗ" mà kết luận "app hỏng".
+   */
+  it("đường dẫn cũ chuyển hướng sang màn mới và giữ mã khách", () => {
+    const redirect = code(read("src/app/(dashboard)/orders/new/page.tsx"))
+    expect(redirect).toContain("redirect(newOrderHref(searchParams.customerId))")
+    // Không còn dựng lại màn nào ở đây.
+    expect(redirect).not.toContain("OrderForm")
+  })
+
+  /** Màn cũ và mọi thứ chỉ nó dùng đã đi hẳn, không để lại mã chết. */
+  it.each([
+    "src/components/orders/order-form.tsx",
+    "src/components/orders/product-picker-sheet.tsx",
+    "src/components/ui/qty-stepper.tsx",
+    "src/components/ui/swipe-to-delete.tsx",
+    "src/hooks/use-undoable-remove.ts",
+    "src/lib/inventory/uom.ts",
+  ])("%s đã bị xoá", (rel) => {
+    expect(existsSync(resolve(ROOT, rel)), `${rel} vẫn còn`).toBe(false)
   })
 
   /** Đích đến phải là hằng số dùng chung, không phải chuỗi chép tay. */

@@ -147,6 +147,20 @@ export default function SellCustomerPage() {
                   <span className="block text-[11px] font-semibold text-on-surface-variant">
                     {limit > 0 ? `HM ${formatCurrency(limit)}` : "không hạn mức"}
                   </span>
+                  {/* ⚠ CÒN ĐƯỢC NỢ mới là con số quyết định đơn sắp ghi có
+                      phải chờ duyệt hay không. Hạn mức và dư nợ đứng cạnh
+                      nhau bắt nhân viên trừ nhẩm ngay lúc khách đang đứng
+                      đợi — và trừ nhẩm sai thì biết vào lúc bấm gửi. */}
+                  {limit > 0 && debt !== undefined && (
+                    <span
+                      className={cn(
+                        "block text-[11px] font-extrabold tabular-data",
+                        limit - debt <= 0 ? "text-error" : "text-on-surface-variant"
+                      )}
+                    >
+                      Còn được nợ {formatCurrency(Math.max(0, limit - debt))}
+                    </span>
+                  )}
                 </span>
               </button>
             )

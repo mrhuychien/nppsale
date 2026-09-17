@@ -467,3 +467,45 @@ describe("Màn nạp đơn để sửa", () => {
     expect(LOADER).toContain("openedRef.current = true")
   })
 })
+
+describe("Hàng ĐỔI cũng ăn tồn kho", () => {
+  const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
+  const RET = code(read("src/app/(dashboard)/sell/returns/page.tsx"))
+
+  /**
+   * ⚠ LỖ HỔNG ĐÃ CÓ TỪ BẢN ĐẦU CỦA MÀN BÁN HÀNG. Phép kiểm tồn chỉ cộng
+   * các dòng BÁN rồi so với tồn; dòng "đổi hàng" bị bỏ qua hoàn toàn. Nhưng
+   * đổi hàng là lấy hàng mới TRONG KHO đưa cho khách — nó ăn tồn y như một
+   * dòng bán. Tồn 10, bán 9, đổi 2 thì cả hai phần đều "gần đủ" mà tổng 11
+   * > 10, và thủ kho là người phát hiện ra lúc không còn hàng để lấy.
+   */
+  it("điều kiện chặn lưu xét CẢ dòng bán lẫn dòng đổi", () => {
+    expect(CART).toContain(
+      "const hasOver = hasOverstock(stockLines, stockReturns, products, stockByProduct)"
+    )
+  })
+
+  /**
+   * ⚠ Không viết lại quy tắc ở màn hình. `@/lib/orders/stock-check` đã có
+   * đủ ba luật khó (quy về đơn vị cơ sở, cộng dồn dòng cùng sản phẩm, hàng
+   * đổi tính vào nhu cầu) kèm test riêng — chép sang là mở đường cho hai
+   * bản lệch nhau.
+   */
+  it("dùng phép kiểm dùng chung, không tự cộng lấy", () => {
+    expect(CART).toContain('from "@/lib/orders/stock-check"')
+    expect(CART).not.toContain("baseQtyOf(cart.cart")
+  })
+
+  /**
+   * ⚠ Nút báo "Vượt tồn kho" mà không dòng bán nào tô đỏ thì người dùng
+   * soi mãi danh sách hàng bán không hiểu sai ở đâu — hàng đổi nằm ở một
+   * màn khác.
+   */
+  it("nói ra ở cả màn giỏ lẫn màn hàng trả", () => {
+    expect(CART).toContain("{exchangeOver > 0 && (")
+    expect(CART).toContain("dòng đổi hàng vượt tồn kho")
+    expect(RET).toContain("const over = isReturnLineOverstock(")
+    expect(RET).toContain("{over && (")
+    expect(RET).toContain("kho không đủ hàng để đổi")
+  })
+})

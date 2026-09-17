@@ -317,10 +317,17 @@ describe("sổ lỗi bàn giao — kho & phiếu", () => {
     expect(f.src).toContain("Math.min(n, r.outstanding)")
   })
 
-  /** NPP-33: thẻ khách chỉ hiện hạn mức, không hiện dư nợ. */
+  /**
+   * NPP-33: thẻ khách chỉ hiện hạn mức, không hiện dư nợ.
+   *
+   * ⚠ CÒN ĐƯỢC NỢ mới là con số quyết định đơn sắp ghi có phải chờ duyệt
+   * hay không. Hạn mức và dư nợ đứng cạnh nhau bắt nhân viên trừ nhẩm ngay
+   * lúc khách đang đứng đợi.
+   */
   it("thẻ khách hiện đủ hạn mức / đang nợ / còn được nợ", () => {
-    const f = TSX.find((t) => t.file === "components/orders/order-form.tsx")!
-    expect(f.src).toContain("customerOutstanding")
+    const f = TSX.find((t) => t.file === "app/(dashboard)/sell/customer/page.tsx")!
+    expect(f.src).toContain("debtByCustomer")
+    expect(f.src).toContain("HM ${formatCurrency(limit)}")
     expect(f.src).toContain("Còn được nợ")
   })
 

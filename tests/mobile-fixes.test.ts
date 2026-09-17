@@ -14,14 +14,14 @@ function read(rel: string): string {
   return readFileSync(resolve(__dirname, "..", rel), "utf-8")
 }
 
-const ORDER_FORM = read("src/components/orders/order-form.tsx")
+const REF_DATA = read("src/lib/sell/ref-data.ts")
 const HOME = read("src/app/(dashboard)/home/page.tsx")
 const CUSTOMERS = read("src/app/(dashboard)/customers/page.tsx")
 const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
 const BY_REP = read("src/app/(dashboard)/receivables/by-rep/page.tsx")
 const PROD_TABLE = read("src/components/products/product-table.tsx")
 
-describe("màn tạo đơn — tồn kho phải lấy đủ, không để server cắt 1.000 dòng", () => {
+describe("màn bán hàng — tồn kho phải lấy đủ, không để server cắt 1.000 dòng", () => {
   /**
    * Nặng nhất trong nhóm này. `stockByProduct` dựng từ truy vấn `batches`
    * là thứ dùng để CHẶN LƯU ĐƠN (isSaleLineOverstock / hasOverstock). Truy
@@ -32,14 +32,17 @@ describe("màn tạo đơn — tồn kho phải lấy đủ, không để server
    *
    * Trang /reports đã phân trang từ trước nên hai màn đếm tồn khác nhau
    * thật — không phải chỉ là rủi ro trên lý thuyết.
+   *
+   * Chốt này theo màn tạo đơn cũ; màn đó đã bị xoá và cả luồng bán hàng nay
+   * đọc danh mục qua `loadSellRefData`, nên chốt chuyển sang đó.
    */
   it("truy vấn batches có phân trang", () => {
-    const i = ORDER_FORM.indexOf('.from("batches")')
+    const i = REF_DATA.indexOf('.from("batches")')
     expect(i).toBeGreaterThan(0)
     // Khối bao quanh truy vấn phải là fetchAllForAggregate.
-    const before = ORDER_FORM.slice(Math.max(0, i - 400), i)
+    const before = REF_DATA.slice(Math.max(0, i - 400), i)
     expect(before).toContain("fetchAllForAggregate")
-    const after = ORDER_FORM.slice(i, i + 300)
+    const after = REF_DATA.slice(i, i + 300)
     expect(after).toContain('count: "exact"')
     expect(after).toContain(".range(from, to)")
   })
@@ -47,17 +50,17 @@ describe("màn tạo đơn — tồn kho phải lấy đủ, không để server
   it("truy vấn khách hàng và sản phẩm cũng phân trang", () => {
     // Hơn 1.000 khách là chuyện thường với nhà phân phối; khách nằm sau
     // dòng 1.000 không tìm thấy trong ô chọn khách → không tạo được đơn.
-    expect(ORDER_FORM).toContain("const pageAll =")
-    expect(ORDER_FORM).toContain('pageAll<Customer>(CUST_COLS, "customers", "store_name")')
-    expect(ORDER_FORM).toMatch(/pageAll<[^>]*>\(PROD_COLS, "products", "name"\)/)
+    expect(REF_DATA).toContain("const pageAll =")
+    expect(REF_DATA).toContain('pageAll<Customer>(CUST_COLS, "customers", "store_name")')
+    expect(REF_DATA).toMatch(/pageAll<[^>]*>\(PROD_COLS, "products", "name"\)/)
   })
 
   it("đường dự phòng khi thiếu cột cũng phân trang", () => {
     // Nhánh này chạy khi migration chưa đủ cột. Nếu nó không phân trang thì
     // ở chế độ suy biến lại tái hiện đúng lỗi vừa sửa.
-    const i = ORDER_FORM.indexOf("if (prodRes.error)")
+    const i = REF_DATA.indexOf("if (prodRes.error) {")
     expect(i).toBeGreaterThan(0)
-    const block = ORDER_FORM.slice(i, i + 600)
+    const block = REF_DATA.slice(i, i + 600)
     expect(block).toContain("pageAll")
     expect(block).not.toMatch(/await supabase\.from\("products"\)/)
   })

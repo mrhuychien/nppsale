@@ -12,6 +12,8 @@ import { RETURN_REASONS, returnReasonLabel } from "@/lib/sell/returns"
 import { selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findReturnLine } from "@/lib/sell/returns"
 import { compareByStockDesc } from "@/lib/orders/product-order"
+import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
+import { isReturnLineOverstock } from "@/lib/orders/stock-check"
 import { viMatchAllWords } from "@/lib/search"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -22,6 +24,10 @@ export default function SellReturnsPage() {
   const router = useRouter()
   const cart = useSellCart()
   const { products, productById, customerById, stockByProduct } = useSellData()
+
+  // Nhu cầu xuất kho gồm cả dòng bán lẫn dòng đổi — xem `@/lib/sell/stock`.
+  const stockLines = useMemo(() => toStockLines(cart.cart), [cart.cart])
+  const stockReturns = useMemo(() => toStockReturnLines(cart.returnLines), [cart.returnLines])
   const [q, setQ] = useState("")
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
 
@@ -172,6 +178,16 @@ export default function SellReturnsPage() {
           <section className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
             {cart.returnLines.map((r, i) => {
               const p = productById(r.productId)
+              // ⚠ Dòng ĐỔI ăn tồn kho như một dòng bán: hàng thay thế lấy
+              // từ kho đưa cho khách. Dòng trả tiền thì ngược lại (nhập
+              // lại kho) nên không bao giờ vượt tồn.
+              const over = isReturnLineOverstock(
+                i,
+                stockReturns,
+                stockLines,
+                products,
+                stockByProduct
+              )
               return (
                 <div
                   key={`${r.productId}|${r.unit}`}
@@ -185,6 +201,11 @@ export default function SellReturnsPage() {
                       <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
                         {returnReasonLabel(cart.returnReason)} · {formatCurrency(r.price)}/{r.unit}
                       </span>
+                      {over && (
+                        <span className="mt-0.5 block text-xs font-extrabold text-error">
+                          Vượt tồn kho — kho không đủ hàng để đổi
+                        </span>
+                      )}
                     </span>
                     <button
                       type="button"

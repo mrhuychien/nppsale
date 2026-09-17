@@ -37,9 +37,9 @@ export interface NavPermission {
 }
 
 /**
- * ⚠ Khoá là đường dẫn ĐÍCH DANH, không phải tiền tố. `/orders` và
- * `/orders/new` cần hai quyền khác nhau (xem và tạo), nên so theo tiền tố
- * là mở nhầm.
+ * ⚠ Khoá là đường dẫn ĐÍCH DANH, không phải tiền tố. `/orders` và `/sell`
+ * cần hai quyền khác nhau (xem đơn và tạo đơn), nên so theo tiền tố là mở
+ * nhầm.
  */
 export const NAV_PERMISSION: Record<string, NavPermission> = {
   // Luôn hiện — không có gì để giấu.
@@ -52,7 +52,6 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   // Nó tạo đơn nên đòi đúng quyền TẠO, không phải quyền xem.
   "/sell": { module: "orders", feature: "orders", action: "create" },
   "/orders": { module: "orders", feature: "orders" },
-  "/orders/new": { module: "orders", feature: "orders", action: "create" },
   "/customers": { module: "customers", feature: "customers" },
   "/customers/routes": { module: "customers", feature: "customers" },
   "/customers/missing-photos": { module: "customers", feature: "customers" },

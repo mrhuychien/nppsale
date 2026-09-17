@@ -292,9 +292,15 @@ describe("NPP-12 — chiết khấu sâu phải cần duyệt", () => {
     expect(d.autoApprove).toBe(true)
   })
 
-  it("cả hai nơi gọi đều truyền gross + discount", () => {
+  /**
+   * ⚠ MỌI nơi gọi `evaluateApproval` đều phải truyền hai trường này, không
+   * chỉ những nơi nhớ ra. Thiếu một chỗ là chỗ đó cho không hàng lọt qua:
+   * sửa giá về 0 làm đơn trăm triệu tụt xuống dưới ngưỡng và tự động duyệt.
+   */
+  it("mọi nơi gọi đều truyền gross + discount", () => {
     for (const f of [
-      "src/components/orders/order-form.tsx",
+      "src/lib/sell/submit.ts",
+      "src/lib/sell/order-edit.ts",
       "src/app/(dashboard)/orders/[id]/page.tsx",
     ]) {
       const src = readFileSync(resolve(__dirname, "..", f), "utf-8")

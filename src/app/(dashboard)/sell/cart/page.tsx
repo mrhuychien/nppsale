@@ -16,7 +16,9 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
-import { baseQtyOf, priceViolation } from "@/lib/sell/cart"
+import { priceViolation } from "@/lib/sell/cart"
+import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
+import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
@@ -34,7 +36,7 @@ export default function SellCartPage() {
   const router = useRouter()
   const { user } = useAuth()
   const cart = useSellCart()
-  const { productById, customerById, stockByProduct, loading } = useSellData()
+  const { products, productById, customerById, stockByProduct, loading } = useSellData()
 
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
@@ -51,6 +53,10 @@ export default function SellCartPage() {
   const canEditPrice = !isSales || rules.allow_price_edit
   const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
 
+  // Nhu cầu xuất kho gồm CẢ dòng bán lẫn dòng ĐỔI — xem `@/lib/sell/stock`.
+  const stockLines = useMemo(() => toStockLines(cart.cart), [cart.cart])
+  const stockReturns = useMemo(() => toStockReturnLines(cart.returnLines), [cart.returnLines])
+
   const rows = useMemo(
     () =>
       cart.cart.map((l, i) => {
@@ -58,7 +64,7 @@ export default function SellCartPage() {
         const onHand = stockByProduct[l.productId] ?? 0
         // ⚠ Vượt tồn xét trên TỔNG mọi dòng cùng sản phẩm. Hai dòng mỗi
         // dòng 6 thùng trên tồn 10 thì từng dòng đều "hợp lệ".
-        const over = baseQtyOf(cart.cart, l.productId) > onHand
+        const over = isSaleLineOverstock(i, stockLines, products, stockByProduct)
         const listNow = p ? unitPriceFor(p, l.unit, groupId) : l.listPrice
         return {
           i,
@@ -74,10 +80,28 @@ export default function SellCartPage() {
           priceBad: priceViolation(l, { canEditPrice, maxIncreasePct }) !== null,
         }
       }),
-    [cart.cart, productById, stockByProduct, groupId, canEditPrice, maxIncreasePct]
+    [cart.cart, stockLines, products, productById, stockByProduct, groupId, canEditPrice, maxIncreasePct]
   )
 
-  const hasOver = rows.some((r) => r.over)
+  /**
+   * ⚠ ĐIỀU KIỆN CHẶN LƯU XÉT TỔNG, không phải "có dòng nào bị tô đỏ".
+   * Tồn 10, bán 9, đổi 2 → từng dòng đều "gần đủ" mà tổng 11 > 10. Tô đỏ
+   * từng dòng chỉ để người dùng biết nhìn vào đâu.
+   */
+  const hasOver = hasOverstock(stockLines, stockReturns, products, stockByProduct)
+  /**
+   * ⚠ Dòng ĐỔI vượt tồn phải hiện được Ở ĐÂY. Nút bấm báo "Vượt tồn kho"
+   * mà không dòng bán nào tô đỏ thì người dùng soi mãi danh sách hàng bán
+   * không hiểu sai ở đâu — hàng đổi nằm trong một màn khác.
+   */
+  const exchangeOver = useMemo(
+    () =>
+      stockReturns.filter((_, i) =>
+        isReturnLineOverstock(i, stockReturns, stockLines, products, stockByProduct)
+      ).length,
+    [stockReturns, stockLines, products, stockByProduct]
+  )
+
   const hasPriceBad = rows.some((r) => r.priceBad)
   const staleCount = rows.filter((r) => r.staleList).length
 
@@ -393,6 +417,11 @@ export default function SellCartPage() {
                 ? `${cart.returnLines.length} dòng · trừ ${formatCurrency(cart.returnCredit)}`
                 : "Chưa có"}
             </span>
+            {exchangeOver > 0 && (
+              <span className="mt-0.5 block text-xs font-extrabold text-error">
+                {exchangeOver} dòng đổi hàng vượt tồn kho
+              </span>
+            )}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
         </button>

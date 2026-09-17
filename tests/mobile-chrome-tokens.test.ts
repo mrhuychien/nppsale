@@ -24,7 +24,7 @@ function read(rel: string): string {
 const CSS = read("src/app/globals.css")
 const SHELL = read("src/components/layout/dashboard-shell.tsx")
 const NAV = read("src/components/layout/mobile-nav.tsx")
-const ORDER_FORM = read("src/components/orders/order-form.tsx")
+const ACTION_BAR = read("src/components/ui/sticky-action-bar.tsx")
 const HOME = read("src/app/(dashboard)/home/page.tsx")
 const LAYOUT = read("src/app/layout.tsx")
 
@@ -201,23 +201,31 @@ describe("M0.4 — hằng số chiều cao chrome không còn nằm rải rác",
   })
 
   /**
-   * Đây là lỗi ĐO ĐƯỢC mà M0 sửa: thanh tổng tiền của form tạo đơn neo ở
-   * bottom-[88px] trong khi nav cao 103px, nên bị đè mất 15px — che đúng nút
-   * "Tạo đơn hàng".
+   * Đây là lỗi ĐO ĐƯỢC mà M0 sửa: thanh dính đáy từng neo ở `bottom-[88px]`
+   * trong khi nav cao 103px, nên bị đè mất 15px — che đúng nút hành động
+   * chính. Thanh của màn tạo đơn cũ là chỗ lỗi đó lộ ra; màn đó đã bị xoá,
+   * còn `StickyActionBar` là thanh dùng chung của mọi màn còn lại.
    */
-  it("thanh tổng tiền order-form neo theo token, không phải 88px", () => {
-    const i = ORDER_FORM.indexOf("Tổng cộng")
-    expect(i).toBeGreaterThan(0)
-    // Thẻ bọc thanh dính đáy = thẻ `lg:hidden fixed` gần nhất TRƯỚC nhãn.
-    const barStart = ORDER_FORM.lastIndexOf("lg:hidden fixed", i)
-    expect(barStart).toBeGreaterThan(0)
-    const bar = ORDER_FORM.slice(barStart, ORDER_FORM.indexOf(">", barStart))
-    expect(bar).toContain("bottom-above-nav")
-    expect(bar).not.toMatch(/bottom-\[\d+px\]/)
+  it("thanh hành động dùng chung neo theo token, không phải px cứng", () => {
+    expect(ACTION_BAR).toContain("bottom-above-nav")
+    expect(ACTION_BAR).not.toMatch(/bottom-\[\d+px\]/)
   })
 
-  it("order-form dùng .pb-nav-action cho đệm cuối form", () => {
-    expect(ORDER_FORM).toContain("pb-nav-action")
+  /**
+   * ⚠ Lớp đệm phải có NƠI DÙNG. Thanh neo đúng mà trang không chừa đệm thì
+   * nội dung cuối trang vẫn chui xuống dưới nó — và `.pb-nav-action` không
+   * còn ai gọi là một lớp CSS chết, im lặng mục ra.
+   */
+  it("các màn có thanh hành động đều chừa đệm .pb-nav-action", () => {
+    expect(ACTION_BAR).toContain("pb-nav-action")
+    const users = sourceFiles()
+      .map((p) => p.replace(ROOT + "/", ""))
+      .filter(
+        (rel) =>
+          rel !== "src/components/ui/sticky-action-bar.tsx" &&
+          /pb-nav-action/.test(readFileSync(resolve(ROOT, rel), "utf-8"))
+      )
+    expect(users.length, "không màn nào chừa đệm cho thanh hành động").toBeGreaterThan(0)
   })
 
   it("trang chủ NVBH dùng .pb-nav", () => {

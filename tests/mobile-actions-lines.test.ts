@@ -52,12 +52,9 @@ const strip = (s: string) => {
 }
 
 const ORDER_DETAIL = strip(read("src/app/(dashboard)/orders/[id]/page.tsx"))
-const ORDER_FORM = strip(read("src/components/orders/order-form.tsx"))
 const COLLECT = strip(read("src/app/(dashboard)/receivables/collect/page.tsx"))
 const HANDOVER = strip(read("src/app/(dashboard)/deliveries/[id]/handover/page.tsx"))
 const SETTLE = strip(read("src/app/(dashboard)/deliveries/[id]/settle/page.tsx"))
-const SWIPE = strip(read("src/components/ui/swipe-to-delete.tsx"))
-const UNDO = strip(read("src/hooks/use-undoable-remove.ts"))
 const COLLAPSE = strip(read("src/components/ui/collapsible-section.tsx"))
 const CSS = read("src/app/globals.css")
 
@@ -167,95 +164,17 @@ describe("M4.3 — thứ tự khối trên mobile", () => {
   })
 })
 
-describe("M3.3e — dòng hàng nén còn 2 hàng", () => {
-  /**
-   * ⚠ Thẻ cũ có ô ghi chú + ô giá + ô VAT + ô CK ngay trên thẻ →
-   * ~250px/dòng. Đơn 10 dòng phải cuộn 2.500px để xem lại đơn.
-   */
-  it("ô ghi chú và ô giá rời khỏi thẻ, vào sheet", () => {
-    const i = ORDER_FORM.indexOf('<div className="lg:hidden space-y-2">')
-    expect(i).toBeGreaterThan(0)
-    const card = ORDER_FORM.slice(i, ORDER_FORM.indexOf("<Sheet open={editLineIndex", i))
-    expect(card).not.toContain('placeholder="Ghi chú dòng (tuỳ chọn)…"')
-    expect(card).not.toContain("<MoneyInput")
-    // Còn đúng hai thứ bấm được trong thẻ: stepper và nút Sửa.
-    expect(card).toContain("<QtyStepper")
-    expect(card).toContain("onClick={() => setEditLineIndex(i)}")
-  })
-
-  /** Nén không được phép GIẤU thứ đã sửa — hiện lại bằng chip. */
-  it("chip chỉ hiện khi có gì lệch mặc định", () => {
-    expect(ORDER_FORM).toMatch(
-      /\{\(over \|\| warning \|\| line\.line_discount_percent > 0 \|\| !!line\.note\?\.trim\(\)\) && \(/
-    )
-  })
-
-  it("sheet Sửa dòng mang đủ giá / VAT / CK / ghi chú", () => {
-    const i = ORDER_FORM.indexOf("<Sheet open={editLineIndex")
-    expect(i).toBeGreaterThan(0)
-    const sheet = ORDER_FORM.slice(i, ORDER_FORM.indexOf("</Sheet>", i))
-    for (const label of ["Đơn giá", "VAT", "Chiết khấu %", "Ghi chú dòng"]) {
-      expect(sheet, `sheet thiếu ${label}`).toContain(label)
-    }
-    expect(sheet).toContain("<MoneyInput")
-  })
-
-  /**
-   * ⚠ type="number" trên iOS: bàn phím có "e", cuộn trang làm đổi giá
-   * trị. Ô CK là ô duy nhất còn nhập số tay trong sheet.
-   */
-  it("ô chiết khấu không dùng type=number", () => {
-    const i = ORDER_FORM.indexOf("Chiết khấu %")
-    const block = ORDER_FORM.slice(i, i + 800)
-    expect(block).not.toContain('type="number"')
-    expect(block).toContain('inputMode="numeric"')
-    expect(block).toContain("Math.min(100, Math.max(0, n))")
-  })
-})
-
-describe("M3.3e — vuốt xoá có hoàn tác", () => {
-  /**
-   * ⚠ Danh sách dòng hàng CUỘN DỌC. Không khoá trục thì cuộn hơi chéo
-   * tay là kéo trôi một dòng ra — và NVBH cuộn danh sách này liên tục.
-   */
-  it("khoá trục ở lần di chuyển đầu, cuộn dọc thì bỏ qua", () => {
-    expect(SWIPE).toContain('axis.current = Math.abs(mx) > Math.abs(my) ? "x" : "y"')
-    expect(SWIPE).toContain('if (axis.current !== "x") return')
-    expect(SWIPE).toMatch(/AXIS_LOCK = \d+/)
-  })
-
-  /** Chỉ kéo sang TRÁI, và phải qua ngưỡng mới tính là xoá. */
-  it("chỉ xoá khi vuốt trái quá ngưỡng", () => {
-    expect(SWIPE).toContain("Math.max(-THRESHOLD * 1.4, Math.min(0, mx))")
-    expect(SWIPE).toMatch(/const shouldDelete = axis\.current === "x" && dx <= -THRESHOLD/)
-  })
-
-  /**
-   * ⚠ Xoá THẬT ngay, chỉ nhớ lại phần tử: giữ dòng "đang chờ xoá" trong
-   * danh sách làm tổng tiền và cảnh báo tồn kho sai trong đúng 5 giây đó.
-   */
-  it("xoá ngay, hoàn tác chèn lại ĐÚNG vị trí cũ", () => {
-    expect(UNDO).toContain("onRemove(index)")
-    expect(ORDER_FORM).toContain(
-      "setLines((prev) => [...prev.slice(0, index), item, ...prev.slice(index)])"
-    )
-  })
-
-  /** setTimeout gọi setState sau khi component chết = cảnh báo + rò rỉ. */
-  it("hẹn giờ nằm trong ref và huỷ khi unmount", () => {
-    expect(UNDO).toContain("const timer = useRef")
-    expect(UNDO).toContain("useEffect(() => clearTimer, [])")
-    expect(UNDO).toMatch(/UNDO_MS = 5000/)
-  })
-
-  /** Một lối xoá duy nhất — nút xoá trong sheet cũng đi qua hoàn tác. */
-  it("mọi đường xoá dòng đều qua undoableRemove", () => {
-    const mobile = ORDER_FORM.slice(ORDER_FORM.indexOf('<div className="lg:hidden space-y-2">'))
-    expect(mobile).not.toMatch(/onClick=\{\(\) => removeLine\(i\)\}/)
-    expect(mobile.match(/undoableRemove\.remove\(i, line\)/g)?.length).toBeGreaterThanOrEqual(2)
-    expect(mobile).toContain("undoableRemove.undo")
-  })
-})
+/*
+ * Hai khối chốt của Pack M3.3e — "dòng hàng nén còn 2 hàng" và "vuốt xoá có
+ * hoàn tác" — đã bị xoá cùng màn tạo đơn cũ (`order-form.tsx`).
+ *
+ * Màn bán hàng thay chúng bằng cách khác, và có chốt riêng:
+ *   · Thẻ dòng hàng gọn sẵn, phần giá / VAT / ghi chú nằm trong
+ *     `LineEditSheet` — xem `tests/sell-line-controls`.
+ *   · Không vuốt xoá nữa: nút thùng rác LUÔN có mặt trên mỗi dòng, nên
+ *     không cần hoàn tác cho một thao tác không thể lỡ tay — xem
+ *     `tests/sell-line-controls` và `tests/sell-submit`.
+ */
 
 describe("M5.1 mục 7 — màn xác nhận sau khi thu tiền", () => {
   /**

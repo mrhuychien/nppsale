@@ -107,8 +107,9 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
   /** Khai quyền mà không dùng thì là rác — và rác che mất chỗ thiếu. */
   it("không có khai quyền thừa", () => {
     const used = new Set(MENUS.flatMap((m) => m.hrefs))
-    // `/orders/new` chỉ xuất hiện trong JSX của nút CTA, không trong mảng.
-    used.add("/orders/new")
+    // `/sell` cũng là đích của nút CTA "Tạo đơn mới" — nó nằm trong JSX
+    // chứ không trong mảng menu.
+    used.add("/sell")
     for (const h of Object.keys(NAV_PERMISSION)) {
       expect(used.has(h), `khai quyền cho ${h} nhưng không menu nào dùng`).toBe(true)
     }
@@ -222,7 +223,7 @@ describe("Từng vai trò chỉ thấy phần của mình", () => {
       rowsToCache([{ role: "sales", module: "orders", action: "create", allowed: false }])
     )
     expect(canSeeHref("sales", "/orders")).toBe(true)
-    expect(canSeeHref("sales", "/orders/new")).toBe(false)
+    expect(canSeeHref("sales", "/sell")).toBe(false)
   })
 })
 

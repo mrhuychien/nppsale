@@ -114,13 +114,43 @@ describe("Mở điểm bán ra là thấy đủ", () => {
    * ⚠ Trước đây tab "Thông tin" chỉ có biểu mẫu SỬA: muốn xem địa chỉ hay
    * hạn mức thì phải đọc trong ô nhập, còn NGƯỜI TẠO và NGÀY TẠO thì
    * không có mặt ở đâu cả.
+   *
+   * ⚠ Rồi thẻ hồ sơ lại nằm TRONG tab "Sửa thông tin": mở điểm bán ra vẫn
+   * không thấy số điện thoại, địa chỉ hay ai phụ trách — phải bấm sang một
+   * tab tên là "Sửa" để ĐỌC. Nay nó đứng ĐẦU tab Tổng quan, trước cả ảnh
+   * điểm bán và đơn hàng gần đây.
    */
-  it("tab Thông tin có thẻ hồ sơ đọc được, đặt trên biểu mẫu sửa", () => {
-    const tab = DETAIL.slice(DETAIL.indexOf('<TabsContent value="info"'))
+  it("thẻ hồ sơ đứng đầu tab Tổng quan", () => {
+    const i = DETAIL.indexOf('<TabsContent value="overview"')
+    expect(i).toBeGreaterThan(0)
+    const tab = DETAIL.slice(i, DETAIL.indexOf('<TabsContent value="orders"'))
     const card = tab.indexOf("<CustomerProfileCard")
-    const form = tab.indexOf("<CustomerForm")
-    expect(card).toBeGreaterThan(0)
-    expect(card).toBeLessThan(form)
+    expect(card, "tab Tổng quan không có thẻ hồ sơ").toBeGreaterThan(0)
+    expect(card, "thẻ hồ sơ không đứng đầu").toBeLessThan(tab.indexOf("<CustomerPhotoCapture"))
+    expect(card).toBeLessThan(tab.indexOf("Đơn hàng gần đây"))
+  })
+
+  /**
+   * ⚠ MỘT CHUYỆN KỂ MỘT LẦN. Để thẻ hồ sơ ở cả hai tab thì tab "Sửa thông
+   * tin" mở ra là một bảng đọc rồi mới tới biểu mẫu nói y hệt nội dung đó
+   * bằng các ô nhập.
+   */
+  it("tab Sửa thông tin chỉ còn biểu mẫu sửa", () => {
+    const tab = DETAIL.slice(
+      DETAIL.indexOf('<TabsContent value="info"'),
+      DETAIL.indexOf('<TabsContent value="assignments"')
+    )
+    expect(tab).toContain("<CustomerForm")
+    expect(tab).not.toContain("<CustomerProfileCard")
+  })
+
+  /** Đọc xong sửa được ngay, không phải đi tìm tab. */
+  it("thẻ hồ sơ có lối sang sửa thông tin", () => {
+    const i = DETAIL.indexOf("<CustomerProfileCard")
+    const block = DETAIL.slice(i, DETAIL.indexOf("/>", i))
+    expect(block).toContain('setActiveTab("info")')
+    // ⚠ Chỉ hiện cho người được sửa — nút bấm vào rồi mới bị chặn là nút tồi.
+    expect(block).toContain('hasPermission(user.role, "customers", "update")')
   })
 
   it("thẻ hồ sơ hiện người tạo, ngày tạo và người phụ trách", () => {

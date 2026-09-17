@@ -1,12 +1,17 @@
 "use client"
 
 /**
- * Hồ sơ điểm bán — bản ĐỌC, đặt trên đầu tab "Thông tin".
+ * Hồ sơ điểm bán — bản ĐỌC, đặt trên đầu tab "Tổng quan".
  *
  * Trước đây mở một điểm bán ra là gặp ngay biểu mẫu SỬA: muốn xem địa
  * chỉ hay hạn mức công nợ thì phải đọc trong ô nhập, và hai thứ KHÔNG hề
  * có mặt ở đâu cả là NGƯỜI TẠO và NGÀY TẠO. Khi cần hỏi "ai nhập điểm
  * bán này", không có chỗ nào trả lời.
+ *
+ * ⚠ Rồi thẻ này lại nằm trong tab "Sửa thông tin", nên mở điểm bán ra vẫn
+ * KHÔNG thấy số điện thoại, địa chỉ hay ai phụ trách — phải bấm sang một
+ * tab tên là "Sửa" để ĐỌC. Nay nó đứng đầu tab Tổng quan, đúng chỗ người
+ * ta nhìn đầu tiên.
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +25,13 @@ export interface CustomerProfileCardProps {
   creatorName: string | null
   /** Người đang phụ trách, đã xếp người chính lên trước. */
   managerNames: string[]
+  /**
+   * Nút hành động ở góc thẻ (Sửa thông tin / Sửa phân công).
+   *
+   * ⚠ Nhận từ ngoài chứ không tự dựng: quyền sửa và cách chuyển tab là
+   * việc của trang, còn thẻ này chỉ biết trình bày.
+   */
+  actions?: React.ReactNode
 }
 
 /** Một ô nhãn + giá trị. Giá trị rỗng hiện "—", không hiện ô trống. */
@@ -54,6 +66,7 @@ export function CustomerProfileCard({
   customer: c,
   creatorName,
   managerNames,
+  actions,
 }: CustomerProfileCardProps) {
   const diaChi = [c.address, c.ward, c.district, c.province].filter(Boolean).join(", ")
   const st = STATUS_LABEL[c.status] ?? { text: c.status, variant: "warning" as const }
@@ -62,7 +75,10 @@ export function CustomerProfileCard({
     <Card className="rounded-xl">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="text-base font-bold">Hồ sơ điểm bán</CardTitle>
-        <Badge variant={st.variant}>{st.text}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={st.variant}>{st.text}</Badge>
+          {actions}
+        </div>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Tên cửa hàng" value={c.store_name} />

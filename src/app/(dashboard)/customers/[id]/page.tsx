@@ -444,6 +444,43 @@ export default function CustomerDetailPage() {
 
             {/* Tab: Tổng quan */}
             <TabsContent value="overview" className="space-y-4 mt-4">
+              {/* ⚠ HỒ SƠ ĐIỂM BÁN ĐỨNG ĐẦU TAB TỔNG QUAN.
+                  Trước đây nó nằm trong tab "Sửa thông tin", nên mở một
+                  điểm bán ra là KHÔNG thấy số điện thoại, địa chỉ, hạn mức
+                  hay ai phụ trách — muốn xem thì phải bấm sang một tab tên
+                  là "Sửa", tức là phải vào màn SỬA để ĐỌC. Đó chính là ba
+                  câu hỏi người ta mở điểm bán ra để trả lời. */}
+              <CustomerProfileCard
+                customer={customer}
+                creatorName={creatorName}
+                managerNames={managers.map((m) => m.fullName)}
+                actions={
+                  user && hasPermission(user.role, "customers", "update") ? (
+                    <Button variant="ghost" size="sm" onClick={() => setActiveTab("info")}>
+                      Sửa thông tin
+                    </Button>
+                  ) : null
+                }
+              />
+
+              {/* Ai phụ trách — giữ thẻ riêng chứ không gộp vào hồ sơ: chỉ ở
+                  đây mới thấy NGÀNH HÀNG từng người được gán, và mới có
+                  cảnh báo "chưa được gán ngành hàng". Dòng tên trong hồ sơ
+                  chỉ trả lời "gọi ai", không trả lời "ai bán được hàng gì". */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">Phụ trách điểm bán</CardTitle>
+                  {user && hasPermission(user.role, "customers", "update") && (
+                    <Button variant="ghost" size="sm" onClick={() => setActiveTab("assignments")}>
+                      Sửa phân công
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <CustomerManagers managers={managers} />
+                </CardContent>
+              </Card>
+
               {/* Ảnh điểm bán — đặt TRÊN đơn hàng vì đây là việc còn
                   thiếu ở điểm bán mới tạo, và là thứ NVBH mở app ra để
                   làm khi đang đứng trước cửa hàng. */}
@@ -461,20 +498,6 @@ export default function CustomerDetailPage() {
                     }}
                     onChanged={fetchData}
                   />
-                </CardContent>
-              </Card>
-
-              {/* Ai phụ trách — đặt cạnh ảnh vì cùng trả lời câu hỏi
-                  "điểm bán này là của ai, gọi ai". */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">Phụ trách điểm bán</CardTitle>
-                  <Button variant="ghost" size="sm" onClick={() => setActiveTab("assignments")}>
-                    Sửa phân công
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <CustomerManagers managers={managers} />
                 </CardContent>
               </Card>
 
@@ -861,13 +884,9 @@ export default function CustomerDetailPage() {
               </Card>
             </TabsContent>
 
-            {/* Tab: Thông tin */}
+            {/* Tab: Thông tin — chỉ còn biểu mẫu SỬA. Bản ĐỌC đã lên đầu
+                tab Tổng quan, để hai nơi không kể cùng một chuyện. */}
             <TabsContent value="info" className="space-y-4">
-              <CustomerProfileCard
-                customer={customer}
-                creatorName={creatorName}
-                managerNames={managers.map((m) => m.fullName)}
-              />
               <CustomerForm customer={customer} groups={groups} />
             </TabsContent>
 

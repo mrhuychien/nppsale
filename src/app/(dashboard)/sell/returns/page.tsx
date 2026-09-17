@@ -18,6 +18,7 @@ import {
   type ReturnPriceRules,
 } from "@/lib/sell/returns"
 import { unitPriceFor } from "@/lib/sell/pricing"
+import { backToOrder } from "@/lib/nav/sell-nav"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { isReturnLineOverstock } from "@/lib/orders/stock-check"
@@ -86,7 +87,7 @@ export default function SellReturnsPage() {
       <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-0.5">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => backToOrder(router)}
           aria-label="Quay lại"
           className="tap grid h-11 w-11 place-items-center text-on-surface"
         >
@@ -311,7 +312,7 @@ export default function SellReturnsPage() {
       <SellBottomBar>
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => backToOrder(router)}
           className="h-13 w-full rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary"
         >
           Xong · về đơn hàng

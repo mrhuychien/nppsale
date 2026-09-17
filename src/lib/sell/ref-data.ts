@@ -65,6 +65,84 @@ type Client = {
   }
 }
 
+/** Đủ để chạy phép DÒ NGUYÊN NHÂN khi danh mục về rỗng. */
+interface ProbeClient {
+  auth: { getUser: () => PromiseLike<{ data: { user: { id: string } | null }; error: unknown }> }
+  from: (t: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    select: (cols: string, opts?: unknown) => any
+  }
+}
+
+/**
+ * VÌ SAO PHẢI DÒ.
+ *
+ * ⚠ Danh mục về 0 dòng KHÔNG nói lên điều gì. PostgREST trả HTTP 200,
+ * `error === null`, mảng rỗng cho CẢ BỐN chuyện dưới đây:
+ *
+ *   1. Phiên đăng nhập hết hạn → request đi bằng khoá ẩn danh, RLS từ chối.
+ *   2. Tài khoản chưa gắn `org_id` → `public.user_org_id()` trả NULL, và
+ *      mọi policy `org_id = user_org_id()` thành sai với MỌI dòng. Lúc đó
+ *      cả app rỗng: sản phẩm rỗng, khách rỗng, đơn rỗng.
+ *   3. Có dữ liệu nhưng không dòng nào ở trạng thái `active` — danh mục
+ *      này lọc `status = 'active'`, nhập liệu sai một chữ là mất sạch.
+ *   4. Đơn vị này thật sự chưa nhập gì.
+ *
+ * Bốn chuyện, bốn việc phải làm khác hẳn nhau, và màn hình đang nói đúng
+ * MỘT câu cho cả bốn: "Chưa có sản phẩm nào" — câu đó đúng ở trường hợp
+ * 4 và là lời nói dối ở ba trường hợp còn lại.
+ *
+ * Phép dò này KHÔNG sửa được gì; việc của nó là nói ra người dùng đang ở
+ * trường hợp nào. Nó chỉ chạy khi danh mục đã rỗng, nên không tốn gì của
+ * đường đi bình thường.
+ *
+ * ⚠ Số đếm cũng đi qua RLS. `count > 0` nghĩa là đọc được → lỗi nằm ở bộ
+ * lọc trạng thái. `count === 0` thì KHÔNG phân biệt được "rỗng thật" với
+ * "bị RLS chặn" — nên câu trả lời phải nói ra cả hai khả năng, đừng chọn
+ * bừa một cái nghe xuôi tai.
+ */
+export async function diagnoseEmptyCatalog(supabase: unknown): Promise<string> {
+  const sb = supabase as ProbeClient
+
+  let userId: string | null = null
+  try {
+    const { data } = await sb.auth.getUser()
+    userId = data?.user?.id ?? null
+  } catch {
+    return "Không kiểm tra được phiên đăng nhập. Tải lại trang; nếu vẫn vậy thì đăng nhập lại."
+  }
+  if (!userId) {
+    return "Phiên đăng nhập đã hết hạn nên máy chủ không trả về dữ liệu nào. Đăng nhập lại rồi mở lại màn này."
+  }
+
+  const { data: prof, error: profErr } = await sb
+    .from("users")
+    .select("org_id")
+    .eq("id", userId)
+    .maybeSingle()
+  if (profErr) {
+    return `Không đọc được hồ sơ tài khoản (${profErr.message}). Báo quản trị viên — nhiều khả năng là quyền trên bảng người dùng.`
+  }
+  if (!prof?.org_id) {
+    return "Tài khoản này chưa được gắn ĐƠN VỊ (org_id rỗng), nên mọi danh mục đều về rỗng. Quản trị viên cần gán đơn vị cho tài khoản."
+  }
+
+  // Đếm KHÔNG kèm bộ lọc trạng thái — để tách "lọc sai" khỏi "không đọc được".
+  const [p, c] = await Promise.all([
+    sb.from("products").select("id", { count: "exact", head: true }),
+    sb.from("customers").select("id", { count: "exact", head: true }),
+  ])
+  if (p.error || c.error) {
+    return `Không đọc được danh mục: ${p.error?.message || c.error?.message}.`
+  }
+  const nProd = Number(p.count ?? 0)
+  const nCust = Number(c.count ?? 0)
+  if (nProd > 0 || nCust > 0) {
+    return `Đơn vị có ${nProd} sản phẩm và ${nCust} khách, nhưng KHÔNG dòng nào ở trạng thái "đang hoạt động" (status = 'active') nên màn này không hiện được gì. Vào Sản phẩm / Khách hàng bật lại trạng thái.`
+  }
+  return "Đơn vị này đọc về 0 sản phẩm và 0 khách. Hoặc dữ liệu chưa được nhập, hoặc tài khoản không có quyền đọc (RLS chặn theo org_id). Kiểm tra đơn vị của tài khoản trước."
+}
+
 async function fromCache(reason: string): Promise<SellRefData | null> {
   const cached = await getCachedOrderRefData<Customer, SellProduct>()
   if (!cached) return null
@@ -132,6 +210,12 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   if (customers.length === 0 && products.length === 0) {
     const c = await fromCache("Kết nối không ổn định")
     if (c) return c
+    // ⚠ KHÔNG trả về rỗng KÈM IM LẶNG. Xem `diagnoseEmptyCatalog`: 0 dòng
+    // là câu trả lời giống hệt nhau cho bốn nguyên nhân khác hẳn nhau, và
+    // màn hình đang chọn giúp người dùng một cái nghe xuôi tai nhất
+    // ("Chưa có sản phẩm nào") — thứ họ không kiểm chứng được và cũng
+    // không sửa được.
+    warnings.push(await diagnoseEmptyCatalog(supabase))
     return { customers: [], products: [], stockByProduct: {}, source: "empty", warnings }
   }
 

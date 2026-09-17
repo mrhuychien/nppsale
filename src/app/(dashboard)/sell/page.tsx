@@ -11,6 +11,7 @@ import type { SellProduct } from "@/lib/sell/ref-data"
 import { conversionFor, selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
 import { findReturnLine } from "@/lib/sell/returns"
+import { backToReturnSlip } from "@/lib/nav/sell-nav"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { viMatchAllWords } from "@/lib/search"
 import { compareByStockDesc } from "@/lib/orders/product-order"
@@ -38,7 +39,8 @@ export default function SellPage() {
   const returning = searchParams.get("mode") === "return"
   // ⚠ Cảnh báo tải danh mục phải NÓI RA. Danh mục thiếu một khúc mà im
   // lặng là để nhân viên gõ đúng mã có thật rồi kết luận "tìm kiếm hỏng".
-  const { products, stockByProduct, loading, warnings: loadWarnings, customerById } = useSellData()
+  const { products, stockByProduct, loading, warnings: loadWarnings, reload, customerById } =
+    useSellData()
 
   const [q, setQ] = useState("")
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
@@ -112,7 +114,7 @@ export default function SellPage() {
         isExchange: false,
         note: "",
       })
-      router.push("/sell/returns")
+      backToReturnSlip(router)
       return
     }
 
@@ -157,7 +159,7 @@ export default function SellPage() {
           {returning ? (
             <button
               type="button"
-              onClick={() => router.push("/sell/returns")}
+              onClick={() => backToReturnSlip(router)}
               className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-extrabold text-primary"
             >
               <RotateCcw className="h-[18px] w-[18px]" />
@@ -284,10 +286,20 @@ export default function SellPage() {
       </div>
 
       {loadWarnings.length > 0 && (
-        <div className="mx-3 mb-2 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
+        <div className="mx-3 mb-2 grid gap-2 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
           {loadWarnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
+          {/* ⚠ Nói ra vấn đề rồi bỏ đó là mới xong một nửa. Người đứng ở
+              quầy khách cần một cú chạm để thử lại, không phải phải nghĩ
+              ra là mình phải tắt app mở lại. */}
+          <button
+            type="button"
+            onClick={reload}
+            className="h-10 w-fit rounded-lg border-[1.5px] border-[#7a4b00]/30 px-4 text-[13px] font-extrabold"
+          >
+            Tải lại danh mục
+          </button>
         </div>
       )}
 
@@ -296,7 +308,16 @@ export default function SellPage() {
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[116px] rounded-2xl" />)
         ) : list.length === 0 ? (
           <p className="py-10 text-center text-sm text-on-surface-variant">
-            {q.trim() ? `Không tìm thấy sản phẩm khớp “${q.trim()}”` : "Chưa có sản phẩm nào"}
+            {q.trim()
+              ? `Không tìm thấy sản phẩm khớp “${q.trim()}”`
+              : /* ⚠ "Chưa có sản phẩm nào" là một KẾT LUẬN, và màn hình
+                   không có cơ sở nào để kết luận như vậy: 0 dòng cũng là
+                   thứ ta nhận được khi phiên hết hạn hoặc RLS chặn. Có
+                   cảnh báo thì cảnh báo mới là câu trả lời — ô vàng ở
+                   trên đang nói rõ vì sao. */
+                loadWarnings.length > 0
+                ? "Không lấy được danh mục — xem lý do ở khung vàng phía trên."
+                : "Chưa có sản phẩm nào"}
           </p>
         ) : (
           list.map((p) => {
@@ -334,7 +355,7 @@ export default function SellPage() {
         <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"
-            onClick={() => router.push("/sell/returns")}
+            onClick={() => backToReturnSlip(router)}
             className="flex h-14 w-full items-center gap-3 rounded-2xl bg-primary pl-4 pr-2 text-on-primary shadow-[0_12px_28px_-8px_rgba(37,99,235,.55)]"
           >
             <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-white/20 px-1.5 text-sm font-extrabold">

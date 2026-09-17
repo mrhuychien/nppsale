@@ -58,7 +58,9 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
     const branch = body.slice(body.indexOf("if (returning) {"))
     expect(branch).toContain("unit,")
     expect(branch).toContain("price,")
-    expect(branch).toContain('router.push("/sell/returns")')
+    // ⚠ `replace`, không `push` — xem tests/sell-nav.test.ts. Đẩy thêm một
+    // tầng phiếu trả là bấm "Xong · về đơn hàng" lại rơi vào màn chọn hàng.
+    expect(branch).toContain("backToReturnSlip(router)")
   })
 
   /**

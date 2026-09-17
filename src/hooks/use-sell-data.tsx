@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
 import type { Customer } from "@/types"
@@ -21,6 +21,8 @@ interface SellDataValue {
   warnings: string[]
   /** Đang dùng bản lưu ngoại tuyến. */
   offline: boolean
+  /** Tải lại danh mục. Màn hình rỗng phải có đường đi tiếp, không phải ngõ cụt. */
+  reload: () => void
   productById: (id: string) => SellProduct | undefined
   customerById: (id: string | null) => Customer | undefined
 }
@@ -34,9 +36,19 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
   const [warnings, setWarnings] = useState<string[]>([])
   const [offline, setOffline] = useState(false)
   const [loading, setLoading] = useState(true)
+  /**
+   * ⚠ Bản đầu nạp ĐÚNG MỘT LẦN với `[]` và không có đường tải lại. Danh
+   * mục rỗng vì phiên hết hạn, vì mạng chập, vì bất cứ gì — màn hình ở
+   * nguyên trạng thái rỗng đó cho tới khi người dùng tự nghĩ ra là phải
+   * tắt app mở lại. Đó là ngõ cụt, và ngõ cụt thì người dùng đọc thành
+   * "phần mềm hỏng".
+   */
+  const [tick, setTick] = useState(0)
+  const reload = useCallback(() => setTick((t) => t + 1), [])
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
     ;(async () => {
       const data = await loadSellRefData(createClient())
       if (cancelled) return
@@ -50,7 +62,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [tick])
 
   const productIndex = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const customerIndex = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers])
@@ -63,10 +75,11 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       loading,
       warnings,
       offline,
+      reload,
       productById: (id) => productIndex.get(id),
       customerById: (id) => (id ? customerIndex.get(id) : undefined),
     }),
-    [products, customers, stockByProduct, loading, warnings, offline, productIndex, customerIndex]
+    [products, customers, stockByProduct, loading, warnings, offline, reload, productIndex, customerIndex]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

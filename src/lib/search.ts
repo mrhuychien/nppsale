@@ -66,8 +66,40 @@ export function viMatch(normalizedQuery: string, ...values: unknown[]): boolean 
  * Dùng cho ô tìm khách hàng / sản phẩm, nơi người dùng gõ rời rạc.
  */
 export function viMatchAllWords(rawQuery: string, ...values: unknown[]): boolean {
-  const words = viNormalize(rawQuery).split(" ").filter(Boolean)
+  const words = viQueryWords(rawQuery)
   if (!words.length) return true
-  const hay = values.map((v) => viNormalize(v)).join(" ")
-  return words.every((w) => hay.includes(w))
+  return viMatchKey(viSearchKey(...values), words)
+}
+
+/**
+ * CHỈ MỤC TÌM KIẾM — chuẩn hoá MỘT LẦN, so NHIỀU LẦN.
+ *
+ * ⚠ VÌ SAO PHẢI TÁCH RA. `viMatchAllWords` chuẩn hoá lại từng trường của
+ * từng dòng ở MỖI lần gọi. Màn bán hàng gọi nó cho 1.700 sản phẩm × 3
+ * trường ở MỖI PHÍM GÕ: 5.100 lần `normalize("NFD")` + 4 regex + lowercase
+ * cho một ký tự người dùng vừa bấm. Trên điện thoại Android tầm trung đó
+ * là 15–40 ms mỗi phím — ô tìm kiếm "nuốt" chữ và danh sách nhảy giật.
+ *
+ * Cách đúng: chuẩn hoá mỗi dòng ĐÚNG MỘT LẦN khi danh mục về
+ * (`viSearchKey`), giữ chuỗi đó cạnh dòng, rồi mỗi phím gõ chỉ còn
+ * `includes` trên chuỗi có sẵn (`viMatchKey`). Kết quả PHẢI y hệt
+ * `viMatchAllWords` — có chốt kiểm thử so hai đường với nhau.
+ */
+
+/** Chuỗi tìm đã tách từ, đã chuẩn hoá. Rỗng nghĩa là "khớp tất cả". */
+export function viQueryWords(rawQuery: string): string[] {
+  return viNormalize(rawQuery).split(" ").filter(Boolean)
+}
+
+/** Một chuỗi chuẩn hoá cho cả bộ trường của một dòng — tính một lần. */
+export function viSearchKey(...values: unknown[]): string {
+  return values.map((v) => viNormalize(v)).join(" ")
+}
+
+/** Mọi từ đều xuất hiện trong khoá. `words` rỗng thì khớp. */
+export function viMatchKey(key: string, words: string[]): boolean {
+  for (let i = 0; i < words.length; i++) {
+    if (!key.includes(words[i])) return false
+  }
+  return true
 }

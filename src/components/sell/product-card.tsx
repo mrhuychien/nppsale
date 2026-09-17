@@ -1,6 +1,7 @@
 "use client"
 
-import { cn, formatCurrency } from "@/lib/utils"
+import { memo } from "react"
+import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { sellableUnits, stockInUnit, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 
 /**
@@ -13,6 +14,12 @@ import { sellableUnits, stockInUnit, unitPriceFor, type PricedProduct } from "@/
  * ⚠ Nút đổi đơn vị phải CHẶN sự kiện nổi lên thẻ. Thiếu vế đó thì bấm
  * "thùng" vừa đổi đơn vị vừa thêm luôn một dòng — mỗi lần đổi đơn vị là
  * một dòng rác trong giỏ.
+ *
+ * ⚠ THẺ ĐƯỢC `memo`, VÀ HAI CALLBACK NHẬN SẢN PHẨM LÀM THAM SỐ. Bản đầu
+ * nhận `onAdd={() => addToCart(p)}` — closure MỚI ở mỗi lần vẽ, nên mỗi
+ * phím gõ ở ô tìm là 60 thẻ vẽ lại toàn bộ dù chẳng thẻ nào đổi. Nay màn
+ * truyền một hàm ổn định, thẻ tự đưa `product` vào, và `memo` chỉ vẽ lại
+ * thẻ có prop đổi thật.
  */
 export interface ProductCardProps {
   product: PricedProduct
@@ -20,8 +27,8 @@ export interface ProductCardProps {
   baseOnHand: number
   groupId: string | null | undefined
   unit: string
-  onPickUnit: (unit: string) => void
-  onAdd: () => void
+  onPickUnit: (productId: string, unit: string) => void
+  onAdd: (product: PricedProduct) => void
   /** Số lượng đang có trong giỏ ở ĐÚNG đơn vị này. */
   inCartQty: number
   /**
@@ -36,7 +43,7 @@ export interface ProductCardProps {
   badgeLabel?: string
 }
 
-export function ProductCard({
+export const ProductCard = memo(function ProductCard({
   product,
   baseOnHand,
   groupId,
@@ -57,15 +64,24 @@ export function ProductCard({
     <div
       role="button"
       tabIndex={0}
-      onClick={onAdd}
+      onClick={() => onAdd(product)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
-          onAdd()
+          onAdd(product)
         }
       }}
       className={cn(
-        "cursor-pointer rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 shadow-card",
+        "cursor-pointer select-none rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 shadow-card",
+        // Phản hồi lúc CHẠM — ngón tay đặt xuống là thẻ tối đi ngay, không
+        // đợi đến lúc nhả. Thiếu nó thì chạm trên điện thoại cảm giác
+        // "không ăn" dù đã ăn.
+        "transition-[background-color,transform] duration-100 active:scale-[0.985] active:bg-surface-container",
+        // ⚠ Thẻ ngoài màn hình KHÔNG dựng bố cục, không vẽ. 60 thẻ là
+        // ~7.000 px chiều cao; không có dòng này thì cuộn là trình duyệt
+        // tính lại cả 60 dù chỉ 5 thẻ đang hiện. Kích thước ước lượng
+        // giữ thanh cuộn không nhảy.
+        "[content-visibility:auto] [contain-intrinsic-size:auto_116px]",
         // ⚠ CHƯA CÓ ẢNH THÌ KHÔNG CHỪA CHỖ CHO ẢNH.
         //
         // Bản đầu để một ô xám 56px ghi "ảnh SP" cho mọi mặt hàng chưa có
@@ -84,6 +100,7 @@ export function ProductCard({
           alt=""
           className="h-14 w-14 shrink-0 rounded-xl object-cover"
           loading="lazy"
+          decoding="async"
         />
       )}
 
@@ -100,7 +117,7 @@ export function ProductCard({
                   outOfStock ? "font-extrabold text-error" : stock < 20 ? "font-extrabold text-[#8a5a00]" : ""
                 )}
               >
-                {outOfStock ? "Hết hàng" : `Tồn ${stock.toLocaleString("vi-VN")} ${unit}`}
+                {outOfStock ? "Hết hàng" : `Tồn ${formatInt(stock)} ${unit}`}
               </span>
             )}
             {inCartQty > 0 && (
@@ -128,7 +145,7 @@ export function ProductCard({
                     // ⚠ Xem chú thích đầu file — thiếu dòng này là mỗi lần
                     // đổi đơn vị lại thêm một dòng rác vào giỏ.
                     e.stopPropagation()
-                    onPickUnit(u)
+                    onPickUnit(product.id, u)
                   }}
                   className={cn(
                     "h-10 min-w-[64px] shrink-0 rounded-[9px] px-3.5 text-sm font-extrabold transition-colors",
@@ -151,4 +168,4 @@ export function ProductCard({
       </div>
     </div>
   )
-}
+})

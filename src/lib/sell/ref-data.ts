@@ -158,6 +158,27 @@ async function fromCache(reason: string): Promise<SellRefData | null> {
   }
 }
 
+/**
+ * Bản lưu ngoại tuyến để HIỆN TRƯỚC trong lúc tải bản mới — KHÔNG kèm cảnh
+ * báo, vì đây không phải tình huống mất mạng: bản mới đang trên đường về
+ * và sẽ thay vào. Xem `@/lib/sell/ref-store`.
+ *
+ * Trả `null` khi bản lưu rỗng: hiện một danh mục trống rồi thay bằng danh
+ * mục đầy thì còn giật hơn là hiện khung xương.
+ */
+export async function peekCachedSellRefData(): Promise<SellRefData | null> {
+  const cached = await getCachedOrderRefData<Customer, SellProduct>()
+  if (!cached || (cached.products.length === 0 && cached.customers.length === 0)) return null
+  return {
+    customers: cached.customers,
+    products: cached.products,
+    stockByProduct: cached.stockByProduct || {},
+    source: "cache",
+    cachedAt: cached.cachedAt,
+    warnings: [],
+  }
+}
+
 export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   const sb = supabase as Client
   const warnings: string[] = []

@@ -68,7 +68,7 @@ describe("Thêm xong phải NHÌN THẤY dòng vừa thêm", () => {
    * cùng kèm bộ đếm số lượng.
    */
   it("chạm vào thẻ hàng là mở giỏ ngay", () => {
-    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
     expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
     const body = POS.slice(i, POS.indexOf("\n  }", i))
     expect(body).toContain('router.push("/sell/cart")')

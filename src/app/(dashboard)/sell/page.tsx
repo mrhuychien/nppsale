@@ -1,19 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
 import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
-import type { SellProduct } from "@/lib/sell/ref-data"
-import { conversionFor, selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
+import { conversionFor, selectedUnitOf, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
 import { findReturnLine } from "@/lib/sell/returns"
 import { backToReturnSlip } from "@/lib/nav/sell-nav"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
-import { viMatchAllWords } from "@/lib/search"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -39,13 +37,40 @@ export default function SellPage() {
   const returning = searchParams.get("mode") === "return"
   // ⚠ Cảnh báo tải danh mục phải NÓI RA. Danh mục thiếu một khúc mà im
   // lặng là để nhân viên gõ đúng mã có thật rồi kết luận "tìm kiếm hỏng".
-  const { products, stockByProduct, loading, warnings: loadWarnings, reload, customerById } =
-    useSellData()
+  const {
+    stockByProduct,
+    loading,
+    warnings: loadWarnings,
+    reload,
+    customerById,
+    filterProducts,
+    listMemory,
+  } = useSellData()
 
-  const [q, setQ] = useState("")
+  /**
+   * ⚠ Ô TÌM VÀ TAB NHỚ LẠI CHỖ NGƯỜI DÙNG VỪA ĐỨNG. Chạm thẻ là sang giỏ;
+   * từ giỏ chạm "tìm" là về đây — và bản đầu về với ô tìm TRỐNG, cuộn ở
+   * ĐỈNH. Nhân viên vừa gõ "coca" cho thùng thứ nhất phải gõ lại "coca"
+   * cho thùng thứ hai, mười lăm dòng là mười lăm lần gõ lại. Trí nhớ nằm ở
+   * provider của layout nên sống qua việc chuyển màn; xem `ListMemory`.
+   */
+  const [q, setQ] = useState(() => listMemory.current.q)
+  const [tab, setTab] = useState<"freq" | "all">(() => listMemory.current.tab)
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
-  const [tab, setTab] = useState<"freq" | "all">("freq")
   const [frequentIds, setFrequentIds] = useState<string[]>([])
+  useEffect(() => {
+    listMemory.current.q = q
+    listMemory.current.tab = tab
+  }, [q, tab, listMemory])
+
+  /**
+   * ⚠ Ô TÌM KHÔNG ĐƯỢC "NUỐT" CHỮ. Chữ gõ vào ô là việc KHẨN — phải hiện
+   * ngay ở phím kế tiếp; lọc lại 1.700 dòng và vẽ 60 thẻ là việc CÓ THỂ
+   * CHẬM MỘT NHỊP. `useDeferredValue` tách hai việc đó: React vẽ ô tìm
+   * trước, danh sách theo sau, và nếu người dùng gõ tiếp thì lượt lọc dở
+   * bị bỏ chứ không xếp hàng.
+   */
+  const deferredQ = useDeferredValue(q)
 
   const customer = customerById(cart.customerId) ?? null
   const groupId = customer?.group_id ?? null
@@ -61,7 +86,9 @@ export default function SellPage() {
       .then((ids) => {
         if (cancelled) return
         setFrequentIds(ids)
-        setTab(ids.length ? "freq" : "all")
+        // Về từ giỏ thì giữ tab người dùng đã chọn; chỉ lần đầu mới tự
+        // chọn giúp.
+        setTab((t) => (ids.length ? t : "all"))
       })
       // Đây là tiện ích SẮP XẾP. Hỏng nó không được chặn việc bán hàng.
       .catch(() => {
@@ -74,29 +101,49 @@ export default function SellPage() {
 
   // Phép chọn đơn vị nằm ở lib dùng chung — màn hàng trả cũng dùng đúng
   // phép đó, để hai màn không mặc định hai đơn vị khác nhau.
-  const unitOf = useCallback((p: SellProduct) => selectedUnitOf(unitSel, p), [unitSel])
+  const unitOf = useCallback((p: PricedProduct) => selectedUnitOf(unitSel, p), [unitSel])
 
   const byStock = useMemo(() => compareByStockDesc(stockByProduct), [stockByProduct])
 
   const list = useMemo(() => {
-    const term = q.trim()
+    const term = deferredQ.trim()
     if (term) {
-      return products
-        .filter((p) => viMatchAllWords(term, p.name, p.sku, p.barcode ?? ""))
-        .sort(byStock)
-        .slice(0, RENDER_CAP)
+      // ⚠ Lọc qua CHỈ MỤC đã chuẩn hoá sẵn ở provider, không chuẩn hoá lại
+      // 1.700 × 3 trường ở mỗi phím gõ. Xem `viSearchKey`.
+      return filterProducts(term).sort(byStock).slice(0, RENDER_CAP)
     }
+    const all = filterProducts("")
     if (tab === "freq" && frequentIds.length) {
       const rank = new Map(frequentIds.map((id, i) => [id, i]))
-      return products
+      return all
         .filter((p) => rank.has(p.id))
         .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0))
         .slice(0, RENDER_CAP)
     }
-    return [...products].sort(byStock).slice(0, RENDER_CAP)
-  }, [q, products, tab, frequentIds, byStock])
+    return [...all].sort(byStock).slice(0, RENDER_CAP)
+  }, [deferredQ, filterProducts, tab, frequentIds, byStock])
 
-  const addToCart = (p: SellProduct) => {
+  /**
+   * ⚠ KHÔI PHỤC VỊ TRÍ CUỘN — một lần, sau khi danh sách đã vẽ. Ghi liên
+   * tục bằng listener `scroll` (thụ động, chỉ gán một con số) vì lúc
+   * component gỡ ra thì trang có thể đã bị cuộn về đỉnh rồi.
+   */
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    const onScroll = () => {
+      listMemory.current.scrollY = window.scrollY
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [listMemory])
+  useEffect(() => {
+    if (restoredRef.current || loading || list.length === 0) return
+    restoredRef.current = true
+    const y = listMemory.current.scrollY
+    if (y > 0) window.scrollTo(0, y)
+  }, [loading, list.length, listMemory])
+
+  const addToCart = (p: PricedProduct) => {
     const unit = unitOf(p)
     const price = unitPriceFor(p, unit, groupId)
 
@@ -137,6 +184,19 @@ export default function SellPage() {
     // lượng của nó, không phải đoán xem cú chạm có ăn không.
     router.push("/sell/cart")
   }
+
+  /**
+   * ⚠ HAI CALLBACK ỔN ĐỊNH CHO 60 THẺ `memo`. `addToCart` đổi theo giỏ,
+   * khách, tồn kho… nên không đưa thẳng vào thẻ được — đưa qua một ref:
+   * thẻ giữ một hàm không bao giờ đổi, hàm đó gọi bản `addToCart` mới nhất.
+   */
+  const addRef = useRef(addToCart)
+  addRef.current = addToCart
+  const onAdd = useCallback((p: PricedProduct) => addRef.current(p), [])
+  const onPickUnit = useCallback(
+    (productId: string, u: string) => setUnitSel((s) => ({ ...s, [productId]: u })),
+    []
+  )
 
   const cartCount = cart.cart.length
   const showTabs = frequentIds.length > 0 && !q.trim()
@@ -332,8 +392,8 @@ export default function SellPage() {
                 baseOnHand={stockByProduct[p.id] ?? 0}
                 groupId={groupId}
                 unit={unit}
-                onPickUnit={(u) => setUnitSel((s) => ({ ...s, [p.id]: u }))}
-                onAdd={() => addToCart(p)}
+                onPickUnit={onPickUnit}
+                onAdd={onAdd}
                 inCartQty={
                   i >= 0 ? (returning ? cart.returnLines[i].qty : cart.cart[i].qty) : 0
                 }

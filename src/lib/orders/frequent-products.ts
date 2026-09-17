@@ -21,11 +21,31 @@ const LINE_CAP = 2000
  * Lỗi thì trả mảng RỖNG, không ném: đây là tiện ích sắp xếp, hỏng nó không
  * được chặn người ta tạo đơn.
  */
+/**
+ * ⚠ Bộ nhớ theo khách, sống trong phiên. Màn bán hàng MỞ LẠI mỗi lần quay
+ * về từ giỏ (thêm một dòng là một lần), và mỗi lần mở là hai truy vấn
+ * này chạy lại cho cùng một khách — thói quen mua của khách không đổi
+ * trong năm phút người ta đang ghi đơn cho họ.
+ */
+const FREQ_TTL_MS = 5 * 60_000
+const freqCache = new Map<string, { ids: string[]; at: number }>()
+
 export async function fetchFrequentProducts(
   customerId: string,
   limit = 20
 ): Promise<string[]> {
   if (!customerId) return []
+  const hit = freqCache.get(customerId)
+  if (hit && Date.now() - hit.at < FREQ_TTL_MS) return hit.ids
+  const ids = await fetchFrequentProductsUncached(customerId, limit)
+  freqCache.set(customerId, { ids, at: Date.now() })
+  return ids
+}
+
+async function fetchFrequentProductsUncached(
+  customerId: string,
+  limit: number
+): Promise<string[]> {
   const supabase = createClient()
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000)
     .toISOString()

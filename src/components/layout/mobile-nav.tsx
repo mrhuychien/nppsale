@@ -95,7 +95,11 @@ export function MobileNav({ role }: { role: Role }) {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden pb-safe bg-surface-container-lowest/95 backdrop-blur-xl border-t border-outline-variant/60"
+      /* ⚠ KHÔNG `backdrop-blur`. Thanh này `fixed` đè lên danh sách đang
+         cuộn; làm mờ nền là bắt GPU vẽ lại vùng phía sau nó Ở MỖI KHUNG
+         HÌNH cuộn — trên Android tầm trung là cuộn giật thấy rõ. Nền đặc
+         trông gần như hệt và không tốn gì. */
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden pb-safe bg-surface-container-lowest border-t border-outline-variant/60"
       aria-label="Điều hướng chính"
     >
       <div

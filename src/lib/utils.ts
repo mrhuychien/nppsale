@@ -5,8 +5,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * ⚠ Tạo `Intl.NumberFormat` MỘT LẦN. Dựng mới ở mỗi lần gọi tốn ~20–50 µs
+ * (tra bảng locale), mà màn bán hàng gọi hàm này cho 60 thẻ × vài chỗ ở
+ * mỗi lần vẽ lại — cộng lại là vài mili-giây bỏ đi ở từng phím gõ. Bộ định
+ * dạng không có trạng thái, dùng chung là an toàn.
+ */
+const VND = new Intl.NumberFormat("vi-VN")
+
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("vi-VN").format(Math.round(amount)) + "đ"
+  return VND.format(Math.round(amount)) + "đ"
+}
+
+/** Số nguyên có dấu chấm hàng nghìn — cho số lượng, tồn kho. */
+export function formatInt(n: number): string {
+  return VND.format(Math.round(n))
 }
 
 /**

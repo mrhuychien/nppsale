@@ -49,7 +49,7 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
    * thùng mà dòng trả lại ghi theo chai thì số tiền trừ lệch mười mấy lần.
    */
   it("thêm dòng trả dùng đúng đơn vị và giá đang hiện trên thẻ", () => {
-    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
     expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
     const body = POS.slice(i, POS.indexOf("\n  }", i))
     expect(body).toContain("const unit = unitOf(p)")
@@ -69,7 +69,7 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
    * "Hết hàng" tô đỏ trông như đang chặn nên nhân viên sẽ không dám bấm.
    */
   it("chọn hàng trả thì không chặn theo tồn và không hiện tồn", () => {
-    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
     const body = POS.slice(i, POS.indexOf("\n  }", i))
     /**
      * ⚠ Cắt nhánh theo DẤU ĐÓNG NGOẶC của chính nó, không cắt tới chỗ

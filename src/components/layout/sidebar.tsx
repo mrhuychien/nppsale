@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { canSeeHref, filterNavGroups } from "@/lib/nav/nav-permission"
+import { NEW_ORDER_HREF } from "@/lib/nav/new-order"
 import type { Role } from "@/types"
 import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
@@ -143,9 +144,9 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { signOut } = useAuth()
-  // Nút "Tạo đơn mới" cũng tra cùng một bảng — `/orders/new` khai
+  // Nút "Tạo đơn mới" cũng tra cùng một bảng — `/sell` khai
   // `action: "create"`, nên vai trò chỉ được XEM đơn sẽ không thấy nút.
-  const canCreateOrder = canSeeHref(role, "/orders/new")
+  const canCreateOrder = canSeeHref(role, NEW_ORDER_HREF)
 
   // Phép lọc nằm trong `@/lib/nav/nav-permission`, không viết lại ở đây —
   // viết lại là mở đường cho ngăn kéo và lưới Trang chủ lệch nhau lần nữa.
@@ -286,7 +287,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
       {canCreateOrder && (
         <div className="px-4 mb-3">
           <Link
-            href="/orders/new"
+            href={NEW_ORDER_HREF}
             onClick={onNavigate}
             className="w-full bg-primary text-on-primary py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-primary-container transition-colors"
           >

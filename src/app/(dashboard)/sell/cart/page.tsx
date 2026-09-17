@@ -13,6 +13,7 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
+import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import { baseQtyOf, priceViolation } from "@/lib/sell/cart"
@@ -420,7 +421,7 @@ export default function SellCartPage() {
         </button>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2.5 border-t border-outline-variant/60 bg-surface-container-lowest/95 px-4 pb-[calc(var(--safe-b)+16px)] pt-2.5 backdrop-blur-xl">
+      <SellBottomBar className="flex flex-col gap-2.5">
         {breakdownOpen && (
           <div className="flex flex-col gap-1.5 border-b border-outline-variant/40 pb-1.5 text-[13px] font-semibold text-on-surface-variant">
             <Row label="Tạm tính" value={formatCurrency(cart.totals.subtotal)} />
@@ -513,7 +514,7 @@ export default function SellCartPage() {
                       : "Đặt hàng"}
           </button>
         </div>
-      </div>
+      </SellBottomBar>
 
       <LineEditSheet
         line={edit}

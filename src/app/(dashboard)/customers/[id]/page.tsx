@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
+import { newOrderHref } from "@/lib/nav/new-order"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CustomerPhotoCapture } from "@/components/customers/customer-photo-capture"
 import { CustomerManagers } from "@/components/customers/customer-managers"
@@ -314,7 +315,7 @@ export default function CustomerDetailPage() {
           {user && hasPermission(user.role, "orders", "create") && (
             <Button
               size="sm"
-              onClick={() => router.push(`/orders/new?customerId=${customer.id}`)}
+              onClick={() => router.push(newOrderHref(customer.id))}
             >
               <FilePlus2 className="h-4 w-4 mr-1.5" />
               Tạo đơn

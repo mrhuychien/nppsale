@@ -10,6 +10,8 @@ import {
   Home, Plus, Package, UserCog, PackagePlus, type LucideIcon,
 } from "lucide-react"
 
+import { NEW_ORDER_HREF } from "@/lib/nav/new-order"
+
 // Quyền tra theo `href` trong `@/lib/nav/nav-permission` — không khai ở đây.
 interface NavItem { label: string; href: string; icon: LucideIcon }
 type NavAction = NavItem
@@ -60,9 +62,9 @@ const ROLE_NAV: Record<Role, NavItem[]> = {
 
 /** Hành động chính của từng vai trò — nằm ở ô GIỮA thanh nav, không nổi. */
 const ROLE_ACTION: Partial<Record<Role, NavAction>> = {
-  sales: { label: "Bán hàng", href: "/sell", icon: Plus },
-  owner: { label: "Bán hàng", href: "/sell", icon: Plus },
-  manager: { label: "Bán hàng", href: "/sell", icon: Plus },
+  sales: { label: "Bán hàng", href: NEW_ORDER_HREF, icon: Plus },
+  owner: { label: "Bán hàng", href: NEW_ORDER_HREF, icon: Plus },
+  manager: { label: "Bán hàng", href: NEW_ORDER_HREF, icon: Plus },
   warehouse: { label: "Nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
 }
 

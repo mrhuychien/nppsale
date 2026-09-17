@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
+import { newOrderHref } from "@/lib/nav/new-order"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
@@ -454,7 +455,7 @@ export default function HomeLauncherPage() {
             {/* Quick actions */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Link
-                href="/orders/new"
+                href={newOrderHref()}
                 className="col-span-2 flex items-center gap-3 rounded-2xl bg-primary px-4 py-3.5 text-primary-foreground shadow-sm transition-transform active:scale-[0.99] sm:col-span-2"
               >
                 <FilePlus2 className="h-5 w-5 shrink-0" />

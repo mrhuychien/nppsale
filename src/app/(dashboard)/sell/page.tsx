@@ -6,6 +6,7 @@ import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag } from 
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
+import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
 import type { SellProduct } from "@/lib/sell/ref-data"
 import { conversionFor, selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
@@ -133,6 +134,8 @@ export default function SellPage() {
             </button>
           </div>
         </div>
+
+        <SellCustomerDeepLink />
 
         {/* ⚠ ĐANG SỬA ĐƠN THÌ PHẢI NÓI RA Ở ĐÂY. Vào thẳng màn này từ trang
             chủ mà giỏ còn mang mã một đơn cũ thì mọi thứ thêm vào sẽ GHI ĐÈ
@@ -266,7 +269,7 @@ export default function SellPage() {
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30">
+        <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"
             onClick={() => router.push("/sell/cart")}

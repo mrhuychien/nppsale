@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
+import { newOrderHref } from "@/lib/nav/new-order"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CustomerTable } from "@/components/customers/customer-table"
@@ -722,9 +723,9 @@ export default function CustomersPage() {
                           </span>
                         )}
                         <Button variant="outline" className="h-11 flex-1" asChild>
-                          {/* Tham số là `customerId` — order-form đọc đúng
-                              tên này rồi tự chọn khách. */}
-                          <Link href={`/orders/new?customerId=${c.id}`}>
+                          {/* Tham số là `customerId` — màn bán hàng đọc
+                              đúng tên này rồi tự chọn khách. */}
+                          <Link href={newOrderHref(c.id)}>
                             <FilePlus2 className="mr-1.5 h-4 w-4" /> Tạo đơn
                           </Link>
                         </Button>

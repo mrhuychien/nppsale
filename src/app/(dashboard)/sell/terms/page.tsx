@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { ChevronLeft, Check } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
+import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -121,7 +122,7 @@ export default function SellTermsPage() {
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-outline-variant/60 bg-surface-container-lowest/95 px-4 pb-[calc(var(--safe-b)+16px)] pt-2.5 backdrop-blur-xl">
+      <SellBottomBar>
         <button
           type="button"
           onClick={() => router.back()}
@@ -129,7 +130,7 @@ export default function SellTermsPage() {
         >
           Xong · về đơn hàng
         </button>
-      </div>
+      </SellBottomBar>
     </div>
   )
 }

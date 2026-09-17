@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { newOrderHref } from "../src/lib/nav/new-order"
 import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { isAbortError } from "@/lib/supabase/resilient"
@@ -367,15 +368,21 @@ describe("M2.3 — /customers", () => {
    */
   it("thẻ khách có nút Gọi (tel:) và Tạo đơn", () => {
     expect(CUSTOMERS).toMatch(/href=\{`tel:\$\{c\.phone\}`\}/)
-    expect(CUSTOMERS).toContain("/orders/new?customerId=${c.id}")
+    expect(CUSTOMERS).toContain("href={newOrderHref(c.id)}")
   })
 
   /**
-   * ⚠ Tham số là `customerId`, KHÔNG phải `customer` — order-form đọc đúng
-   * tên này rồi tự chọn khách; sai tên thì link mở form trống.
+   * ⚠ Tham số là `customerId`, KHÔNG phải `customer` — màn nhận nó đọc đúng
+   * tên này rồi tự chọn khách; sai tên thì link mở màn trống.
+   *
+   * Đích nay là luồng bán hàng `/sell`; cả nó lẫn màn tạo đơn cũ đều đọc
+   * cùng một tên tham số, nên đổi đường dẫn không làm đứt đường tắt này.
    */
-  it("dùng đúng tên tham số customerId", () => {
-    expect(CUSTOMERS).not.toMatch(/orders\/new\?customer=/)
+  it("dùng đúng tên tham số customerId ở cả hai màn nhận", () => {
+    expect(newOrderHref("x1")).toContain("customerId=")
+    expect(read("src/components/sell/customer-deeplink.tsx")).toContain(
+      'params.get("customerId")'
+    )
     const form = read("src/components/orders/order-form.tsx")
     expect(form).toContain('searchParams.get("customerId")')
   })

@@ -24,13 +24,19 @@ function sellScreens(): Array<{ route: string; src: string }> {
 /**
  * Màn có tự dựng khối DÍNH ĐÁY hoặc phủ TOÀN MÀN của riêng nó không.
  *
- * `BarcodeScanner` tự dựng lớp phủ `fixed inset-0` bên trong nó, nên màn
- * quét mã tính là có, dù mã của chính trang không chứa lớp `fixed`.
+ * `BarcodeScanner` tự dựng lớp phủ `fixed inset-0` bên trong nó, và
+ * `SellBottomBar` giữ lớp `fixed inset-x-0 bottom-0` bên trong nó — nên cả
+ * hai đều tính là có, dù mã của chính trang không chứa lớp `fixed` nào.
+ *
+ * ⚠ Gỡ một trong ba vế là phép quét lặng lẽ bỏ sót cả một nhóm màn, và
+ * chốt "có thanh riêng thì tắt nav" tưởng là xanh vì không còn màn nào để
+ * xét.
  */
 function hasOwnBottomChrome(src: string): boolean {
   return (
     /fixed inset-x-0 bottom-0/.test(src) ||
     /fixed inset-0/.test(src) ||
+    /<SellBottomBar\b/.test(src) ||
     /<BarcodeScanner\b/.test(src)
   )
 }
@@ -76,7 +82,7 @@ describe("Không màn nào có HAI thanh dính đáy chồng nhau", () => {
    */
   it.each(
     sellScreens().filter(
-      (s) => /fixed inset-x-0 bottom-0/.test(s.src)
+      (s) => /fixed inset-x-0 bottom-0/.test(s.src) || /<SellBottomBar\b/.test(s.src)
     )
   )("$route: chừa đệm đáy cho thanh của chính nó", ({ src }) => {
     const root = /<div className="([^"]*min-h-screen[^"]*)"/.exec(src)

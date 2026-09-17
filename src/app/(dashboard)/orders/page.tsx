@@ -14,6 +14,7 @@ import { hasPermission } from "@/lib/permissions"
 import { canEditOrder } from "@/lib/orders/edit-permission"
 import { isSentForApproval } from "@/lib/sell/send-approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
+import { newOrderHref } from "@/lib/nav/new-order"
 import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -705,7 +706,7 @@ export default function OrdersPage() {
         }
       >
         {user && hasPermission(user.role, "orders", "create") && (
-          <Button onClick={() => router.push("/orders/new")}>
+          <Button onClick={() => router.push(newOrderHref())}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn
           </Button>
         )}

@@ -24,6 +24,7 @@ import {
   Navigation,
 } from "lucide-react"
 import Link from "next/link"
+import { newOrderHref } from "@/lib/nav/new-order"
 
 interface PjpRoute {
   id?: string
@@ -454,7 +455,7 @@ export default function PjpPage() {
                       )}
                       {status === "checked_in" && (
                         <>
-                          <Link href={`/orders/new?customerId=${route.customer_id}`}>
+                          <Link href={newOrderHref(route.customer_id)}>
                             <Button size="sm" className="text-xs">
                               <ShoppingCart className="h-3.5 w-3.5 mr-1" />
                               Tạo đơn

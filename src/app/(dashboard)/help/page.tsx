@@ -86,8 +86,8 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
     description: "Bạn tạo đơn hàng cho khách hàng được phân công và theo dõi công nợ của họ.",
     workflow: [
       "Sáng: nhận lịch viếng thăm / danh sách khách hàng",
-      "Tại cửa hàng: mở /orders/new → tạo đơn",
-      "Chọn KH → thêm SP → kiểm tra giá → Lưu",
+      "Tại cửa hàng: mở /sell → tìm hàng, chạm để thêm vào giỏ",
+      "Chọn khách → kiểm tra giá → Đặt hàng (hoặc Lưu tạm rồi Gửi duyệt)",
       "Theo dõi đơn của mình ở /orders (lọc trạng thái)",
       "Khi giao xong: hỗ trợ thu tiền nếu cần (/receivables/collect)",
     ],

@@ -125,6 +125,18 @@ const config: Config = {
         "data-tabular": ["14px", { lineHeight: "20px", fontWeight: "500" }],
       },
       spacing: {
+        /**
+         * ⚠ `13` KHÔNG CÓ trong thang mặc định của Tailwind (…12, 14, 16…).
+         * Mà `h-13` đang được dùng cho NÚT HÀNH ĐỘNG CHÍNH của cả luồng bán
+         * hàng: "Đặt hàng", "Lưu tạm", "Xong · về đơn hàng", "Tạo đơn tiếp".
+         * Lớp không tồn tại thì Tailwind sinh ra ĐÚNG KHÔNG GÌ CẢ — chiều
+         * cao nút rơi vào tay `py-3.5`, tức là đổi cỡ chữ hay bỏ padding là
+         * nút co lại mà không ai thấy lỗi ở đâu.
+         *
+         * 52px = đúng chiều cao các nút đó đang có, nên khai vào thang là
+         * ghim lại hiện trạng chứ không xê dịch gì.
+         */
+        13: "3.25rem",
         "stack-sm": "8px",
         gutter: "16px",
         "stack-md": "16px",

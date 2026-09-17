@@ -117,6 +117,15 @@ export default function SellReturnsPage() {
           </span>
         </button>
 
+        {/* ⚠ Chưa có dòng nào thì NÓI RA. Giữa chip lý do và dòng chú
+            thích cuối trang là một khoảng trống, và khoảng trống đó trông
+            như màn hình chưa tải xong chứ không như "chưa chọn gì". */}
+        {cart.returnLines.length === 0 && (
+          <p className="px-1 py-6 text-center text-sm font-semibold text-on-surface-variant">
+            Chưa có hàng trả nào. Chạm ô tìm ở trên để chọn hàng khách đưa lại.
+          </p>
+        )}
+
         {cart.returnLines.length > 0 && (
           <section className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
             {cart.returnLines.map((r, i) => {

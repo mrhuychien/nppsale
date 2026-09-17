@@ -53,6 +53,7 @@ import {
   sendDraftForApproval,
 } from "@/lib/sell/send-approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
+import { returnReasonLabel } from "@/lib/sell/returns"
 import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -1992,14 +1993,10 @@ export default function OrderDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {linkedReturns.map((r) => {
-              const reasonLabel =
-                {
-                  damaged: "Hư hỏng",
-                  wrong_item: "Sai hàng",
-                  near_expiry: "Gần hết hạn",
-                  expired: "Hết hạn",
-                  refused: "Khách từ chối",
-                }[r.reason] || r.reason
+              // ⚠ BẢN CHÉP THỨ BA của danh sách lý do trả. Hai bản kia vừa
+              // gộp về `@/lib/constants`; để bản này lại là chỗ duy nhất
+              // còn nói khác đi khi ai đó thêm một lý do mới.
+              const reasonLabel = returnReasonLabel(r.reason)
               const statusVariant: "warning" | "success" | "danger" | "secondary" =
                 r.status === "approved" || r.status === "completed"
                   ? "success"

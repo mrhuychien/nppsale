@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
+import { showsBottomNav } from "@/lib/nav/mobile-chrome"
 import { PageTitleProvider } from "@/components/layout/page-title-context"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
@@ -26,6 +27,10 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
   // hình có hai hàng tiêu đề, và trên điện thoại hai hàng đó ăn gần một
   // phần tư chiều cao.
   const isLauncher = pathname === "/home" || pathname.startsWith("/sell")
+  // ⚠ Màn có thanh hành động dính đáy của riêng nó thì KHÔNG hiện nav —
+  // hai thanh `fixed` chồng nhau thì thanh dưới che mất nút của thanh
+  // trên, mà cuộn không đẩy được khối `fixed`. Xem @/lib/nav/mobile-chrome.
+  const showNav = showsBottomNav(pathname)
 
   // Một chỗ duy nhất theo dõi bàn phím ảo, gắn cờ lên <body>. Mọi thanh
   // dính đáy đọc cờ đó bằng CSS — rẻ hơn nhiều so với truyền state xuống
@@ -69,7 +74,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
         <OrderSyncProvider>
           <PermissionsLoader />
           {children}
-          <MobileNav role={role} />
+          {showNav && <MobileNav role={role} />}
         </OrderSyncProvider>
       </PageTitleProvider>
     )
@@ -99,7 +104,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
         </main>
       </div>
 
-      <MobileNav role={role} />
+      {showNav && <MobileNav role={role} />}
     </div>
     </OrderSyncProvider>
     </PageTitleProvider>

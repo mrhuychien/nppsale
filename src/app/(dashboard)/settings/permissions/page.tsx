@@ -74,8 +74,13 @@ const ACTION_DESC: Record<Action, string> = {
 }
 
 function defaultActionsForFeature(role: Role, feature: FeatureDef): Action[] {
-  // Every feature inherits from its parent module's defaults — that's
-  // the baseline before any per-feature override is applied.
+  // ⚠ TÍNH NĂNG KHAI `defaultRoles` THÌ KHÔNG THỪA HƯỞNG MÔ-ĐUN CHA.
+  // Thiếu vế này thì màn phân quyền vẽ ra một sự thật khác với sự thật lúc
+  // chạy: bảng ở đây tick sẵn "Công nợ NCC" cho NVBH, còn menu của họ thì
+  // không có mục đó. Người quản lý nhìn bảng, tưởng đã cấp rồi, và đi tìm
+  // xem "app hỏng ở đâu".
+  if (feature.defaultRoles && !feature.defaultRoles.includes(role)) return []
+  // Còn lại thừa hưởng mặc định của mô-đun cha — nền trước khi áp tuỳ chỉnh.
   return DEFAULT_PERMISSION_MAP[role][feature.module] ?? []
 }
 

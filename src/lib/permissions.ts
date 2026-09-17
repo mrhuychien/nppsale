@@ -1,3 +1,5 @@
+import { FEATURES } from "./permissions-features"
+
 export type Role = "owner" | "manager" | "accountant" | "sales" | "warehouse" | "driver"
 export type Module =
   | "orders"
@@ -176,12 +178,66 @@ function buildCacheFromMap(map: Record<Role, Record<Module, Action[]>>): Permiss
     for (const mod of MODULES) {
       m[mod] = new Set(map[role]?.[mod] ?? [])
     }
+    // ⚠ Tính năng có khai `defaultRoles` thì phải có Ô RIÊNG trong bộ nhớ
+    // này, kể cả ô RỖNG. Không có ô thì phép tra rơi về mô-đun cha, và
+    // đúng chỗ đó là chỗ "Hoá đơn mua" / "Công nợ NCC" lọt vào màn hình
+    // của NVBH chỉ vì họ được đọc kho.
+    for (const f of FEATURES) {
+      if (!f.defaultRoles) continue
+      m[f.key] = f.defaultRoles.includes(role)
+        ? new Set(map[role]?.[f.module] ?? [])
+        : new Set<Action>()
+    }
     out[role] = m
   }
   return out
 }
 
 let runtimeCache: PermissionsCache | null = null
+
+/**
+ * Quyền TUỲ CHỈNH THEO TỪNG NGƯỜI của người đang đăng nhập.
+ *
+ * ⚠ BẢNG `user_permission_overrides` TỪNG BỊ GHI MÀ KHÔNG AI ĐỌC. Màn
+ * /settings/users/[id]/permissions lưu xuống đó từ lâu, nhưng lúc chạy chỉ
+ * có bảng theo VAI TRÒ được nạp — nên quản lý thu hồi quyền của một nhân
+ * viên, thấy báo "Đã lưu", rồi nhân viên đó vẫn thấy và vẫn vào được đúng
+ * màn vừa bị thu hồi. Không có chỗ nào trong hệ thống nói ra chuyện đó.
+ *
+ * Khoá là `<feature>.<action>` — đúng dạng màn kia ghi xuống.
+ *
+ * ⚠ ĐÂY LÀ QUYỀN CỦA MỘT NGƯỜI, KHÔNG PHẢI CỦA MỘT VAI TRÒ. Vì vậy nó
+ * KHÔNG được trộn vào `hasPermission(role, …)`: màn phân quyền vẽ ma trận
+ * cho MỌI vai trò, và trộn vào đó là hiện quyền riêng của người đang xem
+ * như thể đó là mặc định của cả vai trò.
+ */
+export type UserOverrides = Record<string, boolean>
+
+let userOverrides: UserOverrides | null = null
+
+export function setUserOverrides(map: UserOverrides | null) {
+  userOverrides = map
+}
+
+export function getUserOverrides(): UserOverrides | null {
+  return userOverrides
+}
+
+/**
+ * Tra quyền tuỳ chỉnh cho một danh sách khoá, ưu tiên khoá CHI TIẾT trước.
+ *
+ * Trả `null` nghĩa là "không có tuỳ chỉnh" — nơi gọi rơi về quyền vai trò.
+ * Đây là điểm khác quan trọng so với `false`: không tuỳ chỉnh KHÔNG có
+ * nghĩa là bị cấm.
+ */
+export function overrideFor(keys: string[], action: Action): boolean | null {
+  if (!userOverrides) return null
+  for (const k of keys) {
+    const v = userOverrides[`${k}.${action}`]
+    if (typeof v === "boolean") return v
+  }
+  return null
+}
 
 /**
  * Replace the runtime cache. Called by PermissionsLoader after fetching

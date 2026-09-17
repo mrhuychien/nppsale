@@ -3,6 +3,8 @@ import {
   canAccessModule,
   hasFeaturePermission,
   hasPermission,
+  overrideFor,
+  ACTIONS,
   type Action,
   type Module,
   type Role,
@@ -59,7 +61,10 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/promotions": { module: "promotions", feature: "promotions" },
 
   // Mua hàng
-  "/inventory/stock-in": { module: "inventory", feature: "inventory" },
+  // ⚠ LẬP PHIẾU NHẬP KHO đòi quyền TẠO, không phải quyền xem. NVBH được
+  // đọc tồn kho để biết còn hàng không — chừng đó không phải là lý do để
+  // họ thấy nút lập phiếu nhập hàng của nhà cung cấp.
+  "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
   "/purchasing/invoices": { module: "inventory", feature: "purchasing.invoices" },
   "/purchase-returns": { module: "inventory", feature: "purchasing.returns" },
   "/suppliers": { module: "inventory", feature: "suppliers" },
@@ -140,6 +145,15 @@ export function canSeeHref(role: Role | null | undefined, href: string): boolean
   const p = NAV_PERMISSION[href]
   if (!p) return false
   if (p.always) return true
+
+  // ⚠ QUYỀN RIÊNG CỦA NGƯỜI DÙNG ĐÈ LÊN QUYỀN VAI TRÒ, và phải xét TRƯỚC.
+  // Quản lý thu hồi một mục của đúng một nhân viên thì mục đó phải biến
+  // mất khỏi menu của nhân viên đó — trước đây bảng tuỳ chỉnh được ghi
+  // xuống nhưng lúc chạy không ai đọc, nên thu hồi xong không đổi gì.
+  const keys = p.feature ? [p.feature, p.module] : [p.module]
+  const ov = p.action ? overrideFor(keys, p.action) : viewOverride(keys)
+  if (ov !== null) return ov
+
   if (p.action) {
     return p.feature
       ? hasFeaturePermission(role, p.feature, p.module, p.action)
@@ -148,6 +162,25 @@ export function canSeeHref(role: Role | null | undefined, href: string): boolean
   return p.feature
     ? canAccessFeature(role, p.feature, p.module)
     : canAccessModule(role, p.module)
+}
+
+/**
+ * Tuỳ chỉnh riêng nói gì về việc VÀO XEM một trang.
+ *
+ * ⚠ VÀO XEM ỨNG VỚI HÀNH ĐỘNG `read`, không phải "mọi hành động". Thu hồi
+ * riêng quyền `delete` của một người mà giấu luôn cả mục là lấy mất đường
+ * XEM — đúng thứ họ vẫn còn quyền làm.
+ *
+ * Nhưng CẤP riêng một hành động bất kỳ thì cũng có nghĩa là vào được: cấp
+ * quyền `create` mà vẫn giấu mục thì không có đường nào bấm tới.
+ */
+function viewOverride(keys: string[]): boolean | null {
+  const r = overrideFor(keys, "read")
+  if (r !== null) return r
+  for (const a of ACTIONS) {
+    if (overrideFor(keys, a) === true) return true
+  }
+  return null
 }
 
 /** Lọc một danh sách mục menu bất kỳ, miễn là mục có `href`. */

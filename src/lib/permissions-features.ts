@@ -1,4 +1,4 @@
-import type { Module, Action } from "./permissions"
+import type { Module, Action, Role } from "./permissions"
 
 /**
  * Granular feature keys used for fine-grained per-menu-item permissions.
@@ -24,7 +24,29 @@ export interface FeatureDef {
   /** When true, the feature inherits its defaults from the parent module
    * (no explicit per-feature defaults). All current features inherit. */
   inherits?: boolean
+  /**
+   * Vai trò được thấy tính năng này theo MẶC ĐỊNH. Bỏ trống = thừa hưởng
+   * mô-đun cha (mặc định cũ).
+   *
+   * ⚠ VÌ SAO PHẢI CÓ. Một mô-đun gộp nhiều việc khác hẳn nhau: `inventory`
+   * vừa là kho hàng vừa là MUA HÀNG; `receivables` vừa là công nợ khách
+   * vừa là công nợ NHÀ CUNG CẤP; `reports` vừa là báo cáo bán hàng của
+   * chính mình vừa là báo cáo tài chính toàn NPP. Thừa hưởng nguyên xi
+   * nghĩa là mở quyền đọc kho cho NVBH thì họ thấy luôn hoá đơn mua và
+   * công nợ NCC — đúng cái màn hình chật cứng mà người dùng phàn nàn, và
+   * cũng là dữ liệu họ không có việc gì phải xem.
+   *
+   * Đây chỉ là MẶC ĐỊNH: quản lý vẫn cấp lại được ở /settings/permissions
+   * (theo vai trò) hoặc ở trang phân quyền của từng người.
+   */
+  defaultRoles?: Role[]
 }
+
+/** Ba vai trò làm việc với đầu MUA và với sổ sách toàn NPP. */
+const BACK_OFFICE: Role[] = ["owner", "manager", "accountant"]
+
+/** Trả hàng cho NCC là việc của kho: chính họ đóng hàng gửi đi. */
+const BACK_OFFICE_AND_WAREHOUSE: Role[] = [...BACK_OFFICE, "warehouse"]
 
 export const FEATURE_GROUPS = [
   "Bán hàng",
@@ -53,10 +75,10 @@ export const FEATURES: FeatureDef[] = [
   { key: "returns", label: "Trả hàng", module: "returns", group: "Vận hành" },
 
   // Mua hàng
-  { key: "purchasing.invoices", label: "Hoá đơn mua hàng (tra cứu)", module: "inventory", group: "Mua hàng", inherits: true },
-  { key: "purchasing.returns", label: "Trả hàng NCC", module: "inventory", group: "Mua hàng", inherits: true },
-  { key: "suppliers", label: "Nhà cung cấp", module: "inventory", group: "Mua hàng", inherits: true },
-  { key: "payables", label: "Công nợ NCC", module: "receivables", group: "Mua hàng", inherits: true },
+  { key: "purchasing.invoices", label: "Hoá đơn mua hàng (tra cứu)", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "purchasing.returns", label: "Trả hàng NCC", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
+  { key: "suppliers", label: "Nhà cung cấp", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "payables", label: "Công nợ NCC", module: "receivables", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
 
   // Kho vận
   { key: "inventory", label: "Kho hàng", module: "inventory", group: "Kho vận" },
@@ -65,20 +87,21 @@ export const FEATURES: FeatureDef[] = [
   // Kế toán
   { key: "receivables", label: "Công nợ KH", module: "receivables", group: "Kế toán" },
   { key: "receivables.by_customer", label: "Công nợ theo khách hàng", module: "receivables", group: "Kế toán", inherits: true },
-  { key: "receivables.by_rep", label: "Công nợ theo nhân viên", module: "receivables", group: "Kế toán", inherits: true },
+  { key: "receivables.by_rep", label: "Công nợ theo nhân viên", module: "receivables", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "finance.cash_receipts", label: "Phiếu thu", module: "receivables", group: "Kế toán", inherits: true },
-  { key: "finance.expenses", label: "Chi phí", module: "settings", group: "Kế toán", inherits: true },
+  { key: "finance.opening_balances", label: "Số dư đầu kỳ", module: "receivables", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "finance.expenses", label: "Chi phí", module: "settings", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "invoices", label: "Hóa đơn bán", module: "invoices", group: "Kế toán" },
-  { key: "einvoice.config", label: "Cấu hình hoá đơn điện tử (MISA)", module: "settings", group: "Kế toán", inherits: true },
+  { key: "einvoice.config", label: "Cấu hình hoá đơn điện tử (MISA)", module: "settings", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
 
   // Nhân sự
   { key: "hr", label: "Nhân sự", module: "settings", group: "Nhân sự", inherits: true },
 
   // Phân tích
-  { key: "analytics.business", label: "Phân tích kinh doanh", module: "reports", group: "Phân tích", inherits: true },
-  { key: "analytics.products", label: "Phân tích hàng hóa", module: "reports", group: "Phân tích", inherits: true },
-  { key: "analytics.customers", label: "Phân tích khách hàng (tổng)", module: "reports", group: "Phân tích", inherits: true },
-  { key: "analytics.performance", label: "Phân tích hiệu quả", module: "reports", group: "Phân tích", inherits: true },
+  { key: "analytics.business", label: "Phân tích kinh doanh", module: "reports", group: "Phân tích", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "analytics.products", label: "Phân tích hàng hóa", module: "reports", group: "Phân tích", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "analytics.customers", label: "Phân tích khách hàng (tổng)", module: "reports", group: "Phân tích", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "analytics.performance", label: "Phân tích hiệu quả", module: "reports", group: "Phân tích", inherits: true, defaultRoles: BACK_OFFICE },
 
   // Báo cáo
   { key: "reports.dashboard", label: "Tổng quan", module: "reports", group: "Báo cáo", inherits: true },
@@ -87,10 +110,10 @@ export const FEATURES: FeatureDef[] = [
   { key: "reports.orders", label: "Báo cáo đặt hàng", module: "reports", group: "Báo cáo", inherits: true },
   { key: "reports.products", label: "Báo cáo hàng hóa", module: "reports", group: "Báo cáo", inherits: true },
   { key: "reports.customers", label: "Báo cáo khách hàng", module: "reports", group: "Báo cáo", inherits: true },
-  { key: "reports.suppliers", label: "Báo cáo nhà cung cấp", module: "reports", group: "Báo cáo", inherits: true },
-  { key: "reports.employees", label: "Báo cáo nhân viên", module: "reports", group: "Báo cáo", inherits: true },
-  { key: "reports.channels", label: "Báo cáo kênh bán hàng", module: "reports", group: "Báo cáo", inherits: true },
-  { key: "reports.finance", label: "Báo cáo tài chính", module: "reports", group: "Báo cáo", inherits: true },
+  { key: "reports.suppliers", label: "Báo cáo nhà cung cấp", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "reports.employees", label: "Báo cáo nhân viên", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "reports.channels", label: "Báo cáo kênh bán hàng", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "reports.finance", label: "Báo cáo tài chính", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
 
   // Cài đặt
   { key: "settings", label: "Cài đặt chung", module: "settings", group: "Cài đặt" },

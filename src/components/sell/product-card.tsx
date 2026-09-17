@@ -53,11 +53,19 @@ export function ProductCard({
         }
       }}
       className={cn(
-        "grid cursor-pointer grid-cols-[56px_minmax(0,1fr)] gap-3 rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 shadow-card",
+        "cursor-pointer rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 shadow-card",
+        // ⚠ CHƯA CÓ ẢNH THÌ KHÔNG CHỪA CHỖ CHO ẢNH.
+        //
+        // Bản đầu để một ô xám 56px ghi "ảnh SP" cho mọi mặt hàng chưa có
+        // ảnh. Danh mục hiện gần như chưa mặt hàng nào có ảnh, nên cả màn
+        // hình thành một cột ô xám giống hệt nhau: chiếm 68px bề ngang của
+        // mỗi thẻ, đẩy tên hàng dài xuống thêm một dòng, mà không nói được
+        // điều gì. Thẻ không ảnh nay dùng trọn bề ngang.
+        image ? "grid grid-cols-[56px_minmax(0,1fr)] gap-3" : "block",
         inCartQty > 0 ? "border-primary/35" : "border-transparent"
       )}
     >
-      {image ? (
+      {image && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={image}
@@ -65,10 +73,6 @@ export function ProductCard({
           className="h-14 w-14 shrink-0 rounded-xl object-cover"
           loading="lazy"
         />
-      ) : (
-        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-surface-container text-[9px] text-on-surface-variant">
-          ảnh SP
-        </div>
       )}
 
       <div className="flex min-w-0 flex-col gap-2.5">

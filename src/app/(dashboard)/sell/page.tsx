@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { Search, History, ChevronRight, User, Tag } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
+import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
-import { loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
+import type { SellProduct } from "@/lib/sell/ref-data"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
@@ -16,7 +16,6 @@ import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
 import { toast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Customer } from "@/types"
 
 /** Trần số thẻ vẽ một lúc — 1.700 thẻ thì điện thoại đứng hình. */
 const RENDER_CAP = 60
@@ -24,39 +23,16 @@ const RENDER_CAP = 60
 export default function SellPage() {
   const router = useRouter()
   const cart = useSellCart()
+  // ⚠ Cảnh báo tải danh mục phải NÓI RA. Danh mục thiếu một khúc mà im
+  // lặng là để nhân viên gõ đúng mã có thật rồi kết luận "tìm kiếm hỏng".
+  const { products, stockByProduct, loading, warnings: loadWarnings, customerById } = useSellData()
 
-  const [products, setProducts] = useState<SellProduct[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
-  const [loadWarnings, setLoadWarnings] = useState<string[]>([])
   const [q, setQ] = useState("")
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<"freq" | "all">("freq")
   const [frequentIds, setFrequentIds] = useState<string[]>([])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const data = await loadSellRefData(createClient())
-      if (cancelled) return
-      setProducts(data.products)
-      setCustomers(data.customers)
-      setStockByProduct(data.stockByProduct)
-      // ⚠ Cảnh báo phải NÓI RA. Danh mục thiếu một khúc mà im lặng là để
-      // nhân viên gõ đúng mã có thật rồi kết luận "tìm kiếm hỏng".
-      setLoadWarnings(data.warnings)
-      setLoading(false)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const customer = useMemo(
-    () => customers.find((c) => c.id === cart.customerId) ?? null,
-    [customers, cart.customerId]
-  )
+  const customer = customerById(cart.customerId) ?? null
   const groupId = customer?.group_id ?? null
 
   useEffect(() => {
@@ -140,14 +116,8 @@ export default function SellPage() {
             {cartCount ? "Thêm hàng" : "Đặt hàng"}
           </h1>
           <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => router.push("/sell/drafts")}
-              aria-label="Đơn tạm"
-              className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
-            >
-              <FileText className="h-[22px] w-[22px]" />
-            </button>
+            {/* Nút "Đơn tạm" và "Quét mã" sẽ bật lại khi hai màn đó có
+                thật. Nối vào ngõ cụt còn tệ hơn là chưa có nút. */}
             <button
               type="button"
               onClick={() => router.push("/orders")}
@@ -184,14 +154,6 @@ export default function SellPage() {
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => router.push("/sell/scan")}
-            aria-label="Quét mã"
-            className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-container text-on-surface"
-          >
-            <ScanBarcode className="h-[22px] w-[22px]" />
-          </button>
         </div>
 
         <div className="mt-2.5 flex items-center gap-2">

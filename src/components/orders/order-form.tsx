@@ -24,6 +24,8 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { compareByStockDesc } from "@/lib/orders/product-order"
+import { gateForSave, DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
+import type { ApprovalDecision } from "@/lib/approval"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { PAYMENT_TERMS, CUSTOMER_STATUS_MAP } from "@/lib/constants"
 import { Trash2, Plus, ExternalLink, Search, ScanBarcode, X, AlertTriangle, RotateCcw, ChevronDown, ChevronUp } from "lucide-react"
@@ -699,12 +701,21 @@ export function OrderForm() {
       .sort(compareByStockDesc(stockByProduct))
   }, [products, productSearch, stockByProduct])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!customerId || lines.length === 0) {
-      toast({ title: "Vui lòng chọn khách hàng và thêm sản phẩm", variant: "destructive" })
-      return
-    }
+  /**
+   * Lưu đơn.
+   *
+   * `asDraft` = bấm "Lưu nháp": đơn nằm lại ở trạng thái nháp, KHÔNG chạy
+   * bộ quy tắc duyệt và KHÔNG báo cho người duyệt — vì chưa gửi đi thì
+   * chưa có gì để duyệt. Khác biệt giữa hai nút nằm hết trong `gateForSave`
+   * và vài nhánh `asDraft` bên dưới, không phải hai hàm riêng: hai hàm
+   * riêng là cách chắc chắn nhất để nút này thành đường vòng của nút kia.
+   */
+  const handleSubmit = async (
+    e: React.FormEvent | null,
+    opts?: { asDraft?: boolean }
+  ) => {
+    e?.preventDefault()
+    const asDraft = opts?.asDraft === true
 
     // Block orders that exceed current on-hand stock. Aggregated across
     // sale lines + hàng đi đổi (is_exchange) — cả hai đều xuất kho nên
@@ -731,44 +742,35 @@ export function OrderForm() {
         )
       }
     }
-    if (overstock.length > 0) {
-      if (allowOversell) {
-        // NPP đã bật cho phép bán vượt tồn → chỉ cảnh báo, không chặn.
-        toast({
-          title: "Cảnh báo: bán vượt tồn",
-          description: overstock.join(" • "),
-        })
-      } else {
-        toast({
-          title: "Số lượng vượt tồn kho",
-          description: overstock.join(" • "),
-          variant: "destructive",
-        })
-        return
-      }
-    }
 
-    // Sales-rep price floor (when allowed at all). Block submit if any line
-    // is below the floor — manager/owner skip this since they have authority.
+    // Giá sàn của NVBH (khi NPP có cho sửa giá). Quản lý / chủ bỏ qua vì
+    // họ có thẩm quyền.
+    const priceViolations: string[] = []
     if (isSalesRole) {
-      const violations: string[] = []
       for (const l of lines) {
         const w = getLinePriceWarning(l)
-        if (w) violations.push(`${l.product_name}: ${w}`)
+        if (w) priceViolations.push(`${l.product_name}: ${w}`)
       }
       for (const l of returnLines) {
         const w = getReturnLinePriceWarning(l)
-        if (w) violations.push(`Trả ${l.product_name}: ${w}`)
-      }
-      if (violations.length > 0) {
-        toast({
-          title: "Giá ngoài giới hạn cho phép",
-          description: violations.join(" • "),
-          variant: "destructive",
-        })
-        return
+        if (w) priceViolations.push(`Trả ${l.product_name}: ${w}`)
       }
     }
+
+    // MỘT bộ luật cho cả hai nút — xem src/lib/orders/save-gate.ts.
+    const gate = gateForSave({
+      asDraft,
+      hasCustomer: !!customerId,
+      lineCount: lines.length,
+      overstock,
+      allowOversell,
+      priceViolations,
+    })
+    if (gate.block) {
+      toast({ ...gate.block, variant: "destructive" })
+      return
+    }
+    if (gate.warn) toast(gate.warn)
 
     // === MẤT MẠNG: lưu đơn cục bộ, đẩy sau ===
     // Toàn bộ kiểm tra client-side ở trên (tồn/giá) đã chạy. Đơn được
@@ -888,19 +890,34 @@ export function OrderForm() {
       const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }> | null) || [])
         .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
 
-      const decision = evaluateApproval(rulesData ?? null, {
-        orderTotal: total,
-        // Cả hai trên nền CHƯA VAT để tỉ lệ chiết khấu tính đúng.
-        grossBeforeDiscount: subtotal,
-        discountAmount: total_discount,
-        customer: selectedCustomer
-          ? { id: selectedCustomer.id, credit_limit: selectedCustomer.credit_limit }
-          : null,
-        customerDebt,
-        customerOverdue,
-        repPortfolioDebt,
-        role: user?.role || "sales",
-      })
+      /**
+       * ⚠ ĐƠN NHÁP KHÔNG CHẠY BỘ QUY TẮC DUYỆT.
+       *
+       * Bản nháp chưa gửi đi thì chưa có gì để duyệt — chạy quy tắc lúc
+       * này chỉ tạo ra một kết quả sẽ cũ mất trước khi ai kịp đọc, vì
+       * người dùng còn sửa tiếp. Quy tắc chạy khi họ bấm Duyệt ở màn chi
+       * tiết đơn, trên số liệu cuối cùng.
+       */
+      const decision: ApprovalDecision = asDraft
+        ? {
+            autoApprove: false,
+            reason: DRAFT_APPROVAL_REASON,
+            reasons: [DRAFT_APPROVAL_REASON],
+            expectedApprover: null,
+          }
+        : evaluateApproval(rulesData ?? null, {
+            orderTotal: total,
+            // Cả hai trên nền CHƯA VAT để tỉ lệ chiết khấu tính đúng.
+            grossBeforeDiscount: subtotal,
+            discountAmount: total_discount,
+            customer: selectedCustomer
+              ? { id: selectedCustomer.id, credit_limit: selectedCustomer.credit_limit }
+              : null,
+            customerDebt,
+            customerOverdue,
+            repPortfolioDebt,
+            role: user?.role || "sales",
+          })
 
       const orderCode = generateOrderCode()
       const { data: order, error: orderErr } = await supabase
@@ -1066,7 +1083,9 @@ export function OrderForm() {
       // Thông báo cho người duyệt — chạy NỀN thật sự (không await) để
       // không chặn điều hướng sau khi lưu. Lỗi ở nhánh này chỉ log,
       // không ảnh hưởng đơn đã tạo thành công.
-      if (user?.org_id && !decision.autoApprove) {
+      // ⚠ Bản nháp KHÔNG báo cho người duyệt. Chưa gửi đi mà đã kêu quản
+      // lý vào duyệt thì lần sau họ bỏ qua thông báo thật.
+      if (user?.org_id && !asDraft && !decision.autoApprove) {
         const orgId = user.org_id
         void (async () => {
           try {
@@ -1089,7 +1108,15 @@ export function OrderForm() {
         })()
       }
 
-      if (decision.autoApprove) {
+      if (asDraft) {
+        toast({
+          title: `Đã lưu nháp đơn ${orderCode}`,
+          description:
+            lines.length === 0
+              ? "Chưa có mặt hàng nào — mở lại trong danh sách đơn để thêm."
+              : `${lines.length} mặt hàng • mở lại trong danh sách đơn để gửi duyệt.`,
+        })
+      } else if (decision.autoApprove) {
         toast({ title: `Đã tạo và tự động duyệt đơn ${orderCode}` })
       } else {
         toast({
@@ -2313,6 +2340,18 @@ export function OrderForm() {
               {formatCurrency(Math.max(0, total - returnSubtotal))}
             </p>
           </button>
+          {/* ⚠ Nút nháp KHÔNG khoá theo tồn kho — bản nháp không ra kho hôm
+              nay mà tồn thì đổi từng giờ. Vẫn khoá theo giá sàn: xem
+              src/lib/orders/save-gate.ts. */}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || hasPriceViolation || !customerId}
+            onClick={() => handleSubmit(null, { asDraft: true })}
+            className="h-11 shrink-0 px-3"
+          >
+            Nháp
+          </Button>
           <Button
             type="submit"
             disabled={loading || (hasOverstock && !allowOversell) || hasPriceViolation || !customerId}
@@ -2382,6 +2421,14 @@ export function OrderForm() {
                 onClick={() => router.back()}
               >
                 Huỷ
+              </Button>
+              <Button
+                type="button"
+                disabled={loading || hasPriceViolation || !customerId}
+                onClick={() => handleSubmit(null, { asDraft: true })}
+                className="bg-on-primary/10 hover:bg-on-primary/20 text-on-primary border border-on-primary/20 font-medium"
+              >
+                Lưu nháp
               </Button>
               <Button
                 type="submit"

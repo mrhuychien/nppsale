@@ -251,13 +251,13 @@ describe("M2.2 — /orders", () => {
    * hiện khi người dùng tự bật bộ lọc "pipeline" trong FilterPicker. Tức
    * là trên điện thoại, lọc theo trạng thái có thể KHÔNG có đường nào tới.
    */
-  it("chỉ có một hàng chip trạng thái, không ẩn theo khổ màn", () => {
-    // Không còn hàng chip riêng cho desktop.
-    expect(ORDERS_CODE).not.toContain('<div className="hidden lg:flex flex-wrap gap-2">')
-    // Và pipeline không còn kiêm luôn việc lọc trạng thái.
+  it("một JSX chip trạng thái cho cả hai khổ màn", () => {
+    // Pipeline không còn kiêm luôn việc lọc trạng thái.
     expect(ORDERS_CODE).not.toContain("extra={{")
-    // Hàng chip duy nhất dựng từ danh sách trạng thái dùng chung.
-    expect(ORDERS_CODE).toContain('{(["all", ...COUNTED_STATUSES] as const).map((k) => {')
+    // Hàng chip dựng từ danh sách trạng thái dùng chung, khai ĐÚNG MỘT lần;
+    // máy tính vẽ ngoài, điện thoại vẽ trong sheet lọc (người dùng yêu cầu).
+    expect(ORDERS_CODE.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(1)
+    expect(ORDERS_CODE.match(/\{statusChips\}/g)?.length).toBe(2)
   })
 
   /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */

@@ -49,9 +49,12 @@ describe("Bộ lọc tuyến: tìm được, tuyến có đơn đã duyệt xế
     expect(fn).toContain("console.warn(")
   })
 
-  it("mobile và desktop dùng CÙNG một component, cùng một bộ số", () => {
-    const uses = ORDERS.match(/<RouteFilter routes=\{routes\} counts=\{routeCounts\} value=\{routeFilter\} onChange=\{setRouteFilter\}/g) ?? []
-    expect(uses.length).toBe(2)
+  it("mobile (trong sheet, inline) và desktop (popover) dùng CÙNG một component, cùng một bộ số", () => {
+    expect(ORDERS).toContain("<RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />")
+    expect(ORDERS).toContain("<RouteFilter inline routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />")
+    // Popover lồng trong sheet là hai lớp phủ chồng nhau — trong sheet vẽ thẳng.
+    expect(RF).toContain("if (inline) {")
+    expect(RF).toContain("autoFocus={!inline}")
   })
 })
 

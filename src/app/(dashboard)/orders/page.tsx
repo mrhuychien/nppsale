@@ -55,6 +55,7 @@ import {
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import {
   OrderPipeline,
+  STEPS,
   classifyOrder,
   type PipelineStepKey,
 } from "@/components/orders/order-pipeline"
@@ -731,12 +732,18 @@ export default function OrdersPage() {
 
   // Số bộ lọc đang bật, KHÔNG tính ô tìm — hiện trên badge nút Lọc để
   // việc giấu bộ lọc vào sheet không thành giấu mất trạng thái.
+  // ⚠ Trên điện thoại MỌI bộ lọc nằm trong sheet (người dùng yêu cầu), nên
+  // con số trên nút Lọc phải đếm cả trạng thái, tuyến và bước xử lý — không
+  // thì đang lọc "Đã duyệt" mà nút Lọc báo 0, người ta không hiểu vì sao
+  // danh sách thiếu đơn.
   const activeFilterCount =
+    (statusFilter !== "all" ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (amountMin ? 1 : 0) + (amountMax ? 1 : 0)
 
   const clearAdvancedFilters = () => {
+    setStatusFilter("all"); setRouteFilter("all"); setPipelineStep(null)
     setDateFrom(""); setDateTo("")
     setCustomerFilter("all"); setSalesFilter("all")
     setAmountMin(""); setAmountMax("")
@@ -825,6 +832,83 @@ export default function OrdersPage() {
     </>
   )
 
+  /** Hàng chip trạng thái — cuộn ngang trên điện thoại, xuống dòng trên máy tính. */
+  const statusChips = (
+    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
+          {(["all", ...COUNTED_STATUSES] as const).map((k) => {
+            const active = statusFilter === k && !pipelineStep
+            const count = statusCounts[k] ?? 0
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(k)
+                  // Hai bộ lọc loại trừ nhau — chọn cái này thì buông cái kia.
+                  setPipelineStep(null)
+                }}
+                aria-pressed={active}
+                className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
+                  active
+                    ? "border-on-surface bg-on-surface text-surface"
+                    : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                }`}
+              >
+                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k]}
+                <span
+                  className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${
+                    active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+    </div>
+  )
+
+  /**
+   * Bước xử lý (pipeline) cho sheet lọc điện thoại — cùng phép phân loại
+   * `classifyOrder` với thanh pipeline desktop, đếm trên trang đang xem.
+   */
+  const pipelineChips = (() => {
+    const counts: Record<string, number> = {}
+    for (const o of orders) {
+      const k = classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id])
+      if (k) counts[k] = (counts[k] || 0) + 1
+    }
+    return (
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {STEPS.map((st) => {
+          const active = pipelineStep === st.key
+          return (
+            <button
+              key={st.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                const next = active ? null : st.key
+                setPipelineStep(next)
+                if (next) setStatusFilter("all")
+              }}
+              className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold ${
+                active
+                  ? "border-on-surface bg-on-surface text-surface"
+                  : "border-outline-variant bg-surface-container-lowest text-on-surface-variant"
+              }`}
+            >
+              {st.label}
+              <span className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"}`}>
+                {counts[st.key] ?? 0}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  })()
+
   return (
     <div className="space-y-4">
       {/*
@@ -879,65 +963,28 @@ export default function OrdersPage() {
           Tuyến bán hàng thì KHÔNG lọc được ở đâu cả. Đây là hai câu hỏi
           mở danh sách đơn ra để trả lời: "tuyến này hôm nay ra sao" và
           "đơn nào còn đang chờ". */}
-      <div className="flex flex-col gap-2">
-        {routes.length > 0 && (
-          // Điện thoại: bộ lọc tuyến đứng trên hàng chip. Máy tính: cùng
-          // bộ lọc này nằm cạnh ô "Tìm mã đơn hàng" ở hàng lọc desktop.
-          <div className="lg:hidden">
-            <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
-          </div>
-        )}
+      {/* ⚠ TRÊN ĐIỆN THOẠI MỌI BỘ LỌC NẰM TRONG SHEET (người dùng yêu cầu):
+          hàng chip trạng thái, tuyến và bước xử lý chỉ đứng ngoài ở máy
+          tính. Cùng một JSX (`statusChips`, `pipelineChips`) vẽ ở cả hai
+          chỗ — nhân đôi là để hai bên trôi khỏi nhau. */}
+      <div className="hidden lg:flex flex-col gap-2">{statusChips}</div>
 
-        {/* Cuộn ngang trên điện thoại: bảy chip không xuống dòng thành ba
-            hàng, và không chip nào bị cắt mất. */}
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
-          {(["all", ...COUNTED_STATUSES] as const).map((k) => {
-            const active = statusFilter === k && !pipelineStep
-            const count = statusCounts[k] ?? 0
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setStatusFilter(k)
-                  // Hai bộ lọc loại trừ nhau — chọn cái này thì buông cái kia.
-                  setPipelineStep(null)
-                }}
-                aria-pressed={active}
-                className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
-                  active
-                    ? "border-on-surface bg-on-surface text-surface"
-                    : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
-                }`}
-              >
-                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k]}
-                <span
-                  className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${
-                    active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
+      {/* Pipeline 7-step status bar (Update #2 v2 §8) — máy tính. */}
       {filterActive("pipeline") && (
-        <OrderPipeline
-          orders={orders}
-          receivables={receivablesByOrder}
-          invoices={invoiceMap}
-          active={pipelineStep}
-          onChange={(next) => {
-            setPipelineStep(next)
-            // Picking a pipeline step clears the special-state chip filter
-            // so the two filters don't fight each other.
-            if (next) setStatusFilter("all")
-          }}
-        />
+        <div className="hidden lg:block">
+          <OrderPipeline
+            orders={orders}
+            receivables={receivablesByOrder}
+            invoices={invoiceMap}
+            active={pipelineStep}
+            onChange={(next) => {
+              setPipelineStep(next)
+              // Picking a pipeline step clears the special-state chip filter
+              // so the two filters don't fight each other.
+              if (next) setStatusFilter("all")
+            }}
+          />
+        </div>
       )}
 
       <MobileFilterBar
@@ -949,7 +996,25 @@ export default function OrdersPage() {
         open={filterSheet}
         onOpenChange={setFilterSheet}
       >
-        <div className="grid gap-4">{advancedFilterFields}</div>
+        <div className="grid gap-4">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Trạng thái</p>
+            {statusChips}
+          </div>
+          {routes.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
+              <RouteFilter inline routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
+            </div>
+          )}
+          {filterActive("pipeline") && (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Bước xử lý</p>
+              {pipelineChips}
+            </div>
+          )}
+          {advancedFilterFields}
+        </div>
       </MobileFilterBar>
 
       {/* Hàng lọc cũ chỉ còn trên desktop. Mobile dùng MobileFilterBar:

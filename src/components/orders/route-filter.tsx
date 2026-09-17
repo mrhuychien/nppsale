@@ -30,6 +30,7 @@ export function RouteFilter({
   value,
   onChange,
   className,
+  inline = false,
 }: {
   routes: RouteOption[]
   /** mã tuyến → số đơn đã duyệt. */
@@ -38,6 +39,12 @@ export function RouteFilter({
   value: string
   onChange: (code: string) => void
   className?: string
+  /**
+   * Vẽ thẳng ô tìm + danh sách, không bọc popover. Dùng TRONG sheet lọc
+   * trên điện thoại: popover lồng trong sheet là hai lớp phủ chồng nhau,
+   * chạm ra ngoài đóng nhầm lớp.
+   */
+  inline?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState("")
@@ -56,7 +63,62 @@ export function RouteFilter({
   const pick = (code: string) => {
     onChange(code)
     setOpen(false)
-    setQ("")
+    if (!inline) setQ("")
+  }
+
+  const list = (
+    <>
+      <div className="relative border-b border-outline-variant/60 p-2">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
+        <input
+          autoFocus={!inline}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Tìm tuyến…"
+          aria-label="Tìm tuyến"
+          className="h-10 w-full rounded-lg border-0 bg-surface-container pl-8 pr-3 text-sm font-semibold outline-none"
+        />
+      </div>
+      <div className={cn("overflow-y-auto py-1", inline ? "max-h-56" : "max-h-80")}>
+        {!q.trim() && (
+          <Row selected={value === "all"} onClick={() => pick("all")} label="Tất cả tuyến" />
+        )}
+        {active.length > 0 && (
+          <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">
+            Đang có đơn đã duyệt
+          </p>
+        )}
+        {active.map((r) => (
+          <Row
+            key={r.code}
+            selected={value === r.code}
+            onClick={() => pick(r.code)}
+            label={r.name}
+            hint={r.code}
+            count={counts[r.code]}
+          />
+        ))}
+        {idle.length > 0 && (
+          <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">
+            {active.length > 0 ? "Chưa có đơn đã duyệt" : "Tuyến"}
+          </p>
+        )}
+        {idle.map((r) => (
+          <Row key={r.code} selected={value === r.code} onClick={() => pick(r.code)} label={r.name} hint={r.code} />
+        ))}
+        {active.length === 0 && idle.length === 0 && (
+          <p className="px-3 py-6 text-center text-sm text-on-surface-variant">Không có tuyến khớp “{q.trim()}”</p>
+        )}
+      </div>
+    </>
+  )
+
+  if (inline) {
+    return (
+      <div className={cn("overflow-hidden rounded-xl border border-outline-variant/60 bg-surface-container-lowest", className)}>
+        {list}
+      </div>
+    )
   }
 
   return (
@@ -82,48 +144,7 @@ export function RouteFilter({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-0">
-        <div className="relative border-b border-outline-variant/60 p-2">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Tìm tuyến…"
-            aria-label="Tìm tuyến"
-            className="h-10 w-full rounded-lg border-0 bg-surface-container pl-8 pr-3 text-sm font-semibold outline-none"
-          />
-        </div>
-        <div className="max-h-80 overflow-y-auto py-1">
-          {!q.trim() && (
-            <Row selected={value === "all"} onClick={() => pick("all")} label="Tất cả tuyến" />
-          )}
-          {active.length > 0 && (
-            <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">
-              Đang có đơn đã duyệt
-            </p>
-          )}
-          {active.map((r) => (
-            <Row
-              key={r.code}
-              selected={value === r.code}
-              onClick={() => pick(r.code)}
-              label={r.name}
-              hint={r.code}
-              count={counts[r.code]}
-            />
-          ))}
-          {idle.length > 0 && (
-            <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">
-              {active.length > 0 ? "Chưa có đơn đã duyệt" : "Tuyến"}
-            </p>
-          )}
-          {idle.map((r) => (
-            <Row key={r.code} selected={value === r.code} onClick={() => pick(r.code)} label={r.name} hint={r.code} />
-          ))}
-          {active.length === 0 && idle.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-on-surface-variant">Không có tuyến khớp “{q.trim()}”</p>
-          )}
-        </div>
+        {list}
       </PopoverContent>
     </Popover>
   )

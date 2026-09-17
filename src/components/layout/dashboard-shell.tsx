@@ -68,12 +68,22 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
   // (nó có ô tìm kiếm + avatar riêng) nên sẽ không có gì mở được ngăn kéo —
   // và bản thân trang chủ đã là lưới toàn bộ chức năng, đúng thứ ngăn kéo
   // định hiện.
+  //
+  // ⚠ NGƯỜI DÙNG BÁO (máy tính): "Ấn vào Bán hàng > Bán hàng → không thoát
+  // ra được". Nhánh này bỏ CẢ Sidebar lẫn Header, còn thanh nav dưới thì
+  // `lg:hidden` — trên màn lớn không còn một đường nào ra khỏi /sell ngoài
+  // gõ lại địa chỉ. Các màn /sell vốn đã chừa chỗ cho menu trái (thanh
+  // dính đáy `lg:left-60`), nên chỉ cần dựng lại Sidebar; Header vẫn bỏ
+  // vì màn có đầu trang riêng.
   if (isLauncher) {
     return (
       <PageTitleProvider>
         <OrderSyncProvider>
           <PermissionsLoader />
-          {children}
+          <div className="flex min-h-screen bg-surface">
+            <Sidebar role={role} />
+            <div className="min-w-0 flex-1">{children}</div>
+          </div>
           {showNav && <MobileNav role={role} />}
         </OrderSyncProvider>
       </PageTitleProvider>

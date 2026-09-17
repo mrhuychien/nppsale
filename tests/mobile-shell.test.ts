@@ -236,6 +236,9 @@ describe("M1.3 — ngăn kéo menu là bottom sheet", () => {
     expect(branch).not.toContain("{menuSheet}")
     // Nhưng thanh nav dưới thì vẫn phải có.
     expect(branch).toContain("<MobileNav role={role} />")
+    // ⚠ Và trên MÁY TÍNH phải có menu trái — không thì vào /sell là kẹt:
+    // không Header, không Sidebar, nav dưới thì lg:hidden (người dùng báo).
+    expect(branch).toContain("<Sidebar role={role} />")
   })
 })
 

@@ -50,8 +50,10 @@ describe("Hai bộ lọc dùng nhiều nhất nằm NGOÀI, không trong sheet",
    */
   it.each([
     ["hàng chip trạng thái", '{(["all", ...COUNTED_STATUSES] as const).map((k) => {'],
-    ["ô chọn tuyến", "<Select value={routeFilter}"],
-  ])("%s không bị ẩn theo khổ màn và nằm ngoài sheet lọc", (_label, needle) => {
+    // Bản MOBILE của bộ lọc tuyến (bản thứ nhất trong file). Bản desktop
+    // nằm cạnh ô "Tìm mã đơn hàng" — chốt riêng ở dưới.
+    ["ô chọn tuyến", "<RouteFilter routes={routes}"],
+  ])("%s không bị ẩn trên điện thoại và nằm ngoài sheet lọc", (_label, needle) => {
     const i = ORDERS.indexOf(needle)
     expect(i, `không tìm thấy ${_label}`).toBeGreaterThan(0)
     /**
@@ -65,7 +67,9 @@ describe("Hai bộ lọc dùng nhiều nhất nằm NGOÀI, không trong sheet",
      */
     for (const cls of enclosingClasses(ORDERS, i)) {
       const tokens = cls.split(/\s+/)
-      for (const bad of ["hidden", "sm:hidden", "md:hidden", "lg:hidden"]) {
+      // `lg:hidden` là ẩn trên MÁY TÍNH — bản mobile được phép, vì máy tính
+      // có bản riêng cạnh ô tìm. Ba lớp còn lại là ẩn trên điện thoại.
+      for (const bad of ["hidden", "sm:hidden", "md:hidden"]) {
         expect(tokens, `bị ẩn bởi lớp "${bad}" trong: ${cls}`).not.toContain(bad)
       }
     }
@@ -76,6 +80,21 @@ describe("Hai bộ lọc dùng nhiều nhất nằm NGOÀI, không trong sheet",
   /** Chưa khai tuyến nào thì đừng hiện một ô chọn rỗng. */
   it("chưa có tuyến thì không hiện ô chọn", () => {
     expect(ORDERS).toContain("{routes.length > 0 && (")
+  })
+
+  /**
+   * NGƯỜI DÙNG YÊU CẦU (máy tính): bộ lọc tuyến "cho xuống cạnh Tìm mã đơn
+   * hàng". Bản desktop phải nằm TRONG hàng lọc desktop, ngay sau ô tìm.
+   */
+  it("máy tính: bộ lọc tuyến đứng cạnh ô tìm mã đơn", () => {
+    const row = ORDERS.indexOf('<div className="hidden lg:flex flex-wrap items-center gap-2">')
+    const search = ORDERS.indexOf('placeholder="Tìm mã đơn hàng..."', row)
+    const route = ORDERS.indexOf("<RouteFilter routes={routes}", search)
+    const advanced = ORDERS.indexOf("Bộ lọc nâng cao", search)
+    expect(row).toBeGreaterThan(0)
+    expect(search).toBeGreaterThan(row)
+    expect(route, "bộ lọc tuyến không nằm sau ô tìm").toBeGreaterThan(search)
+    expect(route, "bộ lọc tuyến phải đứng trước nút Bộ lọc nâng cao").toBeLessThan(advanced)
   })
 })
 

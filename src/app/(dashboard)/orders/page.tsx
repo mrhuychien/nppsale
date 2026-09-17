@@ -24,6 +24,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
+import { RouteFilter } from "@/components/orders/route-filter"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
 import {
@@ -162,6 +164,8 @@ export default function OrdersPage() {
    */
   const [routeFilter, setRouteFilter] = useState("all")
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
+  /** mã tuyến → số đơn ĐÃ DUYỆT (chưa giao) — để bộ lọc tuyến xếp tuyến đang có hàng lên đầu. */
+  const [routeCounts, setRouteCounts] = useState<Record<string, number>>({})
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -202,6 +206,35 @@ export default function OrdersPage() {
 
   // Load metadata (customers, users) + counts theo status — 1 lần khi mount.
   useEffect(() => {
+    /**
+     * Số đơn ĐÃ DUYỆT theo tuyến — gợi ý cho bộ lọc tuyến ("tuyến nào đang
+     * có hàng chờ ra xe"). Đơn đã duyệt chưa giao thường vài trăm, nên kéo
+     * về đếm ở trình duyệt là đủ; PHẢI phân trang vì server cắt 1.000.
+     * ⚠ Đây là gợi ý, không phải con số kế toán: đọc hỏng thì ghi log và
+     * bộ lọc vẫn dùng được, chỉ không xếp tuyến theo số đơn.
+     */
+    async function loadRouteCounts() {
+      const res = await fetchAllForAggregate<{ customer: { channel: string | null } | null }>(
+        (from, to) =>
+          supabase
+            .from("sales_orders")
+            .select("id, customer:customers!inner(channel)", { count: "exact" })
+            .eq("status", "confirmed")
+            .range(from, to)
+      )
+      if (res.error) {
+        console.warn("[orders] không đếm được đơn theo tuyến:", res.error)
+        return
+      }
+      const m: Record<string, number> = {}
+      for (const r of res.rows) {
+        const code = r.customer?.channel
+        if (code) m[code] = (m[code] || 0) + 1
+      }
+      setRouteCounts(m)
+    }
+    void loadRouteCounts()
+
     async function loadMeta() {
       const [customersRes, usersRes, routesRes] = await Promise.all([
         supabase.from("customers").select("id, store_name").order("store_name"),
@@ -848,23 +881,10 @@ export default function OrdersPage() {
           "đơn nào còn đang chờ". */}
       <div className="flex flex-col gap-2">
         {routes.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Tuyến
-            </span>
-            <Select value={routeFilter} onValueChange={setRouteFilter}>
-              <SelectTrigger className="h-10 w-full max-w-xs">
-                <SelectValue placeholder="Tất cả tuyến" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả tuyến</SelectItem>
-                {routes.map((r) => (
-                  <SelectItem key={r.code} value={r.code}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          // Điện thoại: bộ lọc tuyến đứng trên hàng chip. Máy tính: cùng
+          // bộ lọc này nằm cạnh ô "Tìm mã đơn hàng" ở hàng lọc desktop.
+          <div className="lg:hidden">
+            <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
           </div>
         )}
 
@@ -945,6 +965,9 @@ export default function OrdersPage() {
               className="pl-10"
             />
           </div>
+        )}
+        {routes.length > 0 && (
+          <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
         )}
         {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
           <Button

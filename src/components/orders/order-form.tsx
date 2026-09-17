@@ -1383,15 +1383,29 @@ export function OrderForm() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 p-4 pt-0 lg:p-6 lg:pt-0">
-            {/* Product search + barcode scan — sticky trên mobile để
-                user thêm nhiều SP không phải kéo về đầu trang. Sticky
-                ràng buộc trong CardContent → cuộn qua hết card sẽ nhả. */}
             {/* MOBILE: mở bộ chọn dạng bottom sheet.
                 Dropdown cũ là `absolute` bên trong thẻ nên bàn phím ảo đẩy
                 trang lên là che mất kết quả, người dùng gõ mù. Sheet chiếm
                 88vh nên kết quả luôn nằm trên bàn phím, và nó KHÔNG tự
-                đóng sau mỗi lần chọn — NVBH gõ 3–8 mặt hàng một lượt. */}
-            <div className="flex gap-2 lg:hidden">
+                đóng sau mỗi lần chọn — NVBH gõ 3–8 mặt hàng một lượt.
+
+                DÍNH ĐỈNH khi cuộn. Một đơn 15 dòng dài hơn màn hình, nên
+                thêm mặt hàng thứ 16 phải kéo ngược lên đầu thẻ rồi kéo
+                xuống lại để xem vừa thêm đúng chưa — mỗi mặt hàng hai lượt
+                kéo thừa.
+
+                ⚠ Ô dính nằm TRONG CardContent nên nó chỉ dính trong phạm
+                vi thẻ Sản phẩm: cuộn hết danh sách hàng là nó trôi đi
+                theo, không đeo bám sang phần Điều khoản hay Tổng tiền.
+                Đó là lý do không đưa nó ra ngoài thẻ.
+
+                ⚠ `-mx-4 px-4` bù đúng `p-4` của CardContent để nền ô phủ
+                kín bề ngang thẻ. Thiếu vế này thì hai mép 16px hở ra, và
+                dòng hàng chạy lấp ló hai bên ô đang dính.
+
+                ⚠ `top-below-appbar` neo theo `--app-bar-h`, không gõ tay
+                một con số: app bar mobile 52px còn desktop 64px. */}
+            <div className="sticky top-below-appbar z-30 -mx-4 flex gap-2 border-b border-outline-variant/50 bg-surface-container-lowest/95 px-4 py-2 backdrop-blur lg:hidden">
               <Button
                 type="button"
                 variant="outline"
@@ -1413,7 +1427,11 @@ export function OrderForm() {
               </Button>
             </div>
 
-            <div className="hidden lg:static lg:flex gap-2 z-20 bg-card lg:m-0 lg:p-0">
+            {/* DESKTOP: cùng cách dính. Lớp cũ là `lg:static` kèm `z-20
+                bg-card` — hai thứ chỉ có nghĩa cho một ô ĐANG dính, tức
+                là phần dính đã bị gỡ mà quên dọn. Bảng hàng trên desktop
+                cũng dài hơn màn hình, vấn đề y hệt bản mobile. */}
+            <div className="hidden lg:sticky lg:flex top-below-appbar gap-2 z-20 -mx-6 border-b border-outline-variant/50 bg-surface-container-lowest/95 px-6 py-2 backdrop-blur">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -1926,9 +1944,21 @@ export function OrderForm() {
                 </div>
               </div>
 
-              {/* Product picker — sticky trên mobile như picker bên trên,
-                  cuộn qua hết card "Hàng trả lại" sẽ tự nhả. */}
-              <div className="relative lg:static sticky top-16 z-20 bg-card -mx-2 px-2 py-2 lg:m-0 lg:p-0">
+              {/* Product picker — dính đỉnh y như picker bên trên, và cuộn
+                  qua hết thẻ "Hàng trả lại" thì tự nhả.
+
+                  ⚠ SỬA HAI CHỖ SAI CÙNG MỘT LÚC:
+                  · `top-16` là 64px gõ tay, trong khi app bar mobile chỉ
+                    cao 52px — ô dính thấp hơn app bar đúng 12px, và dòng
+                    hàng chạy qua khe đó.
+                  · `-mx-2 px-2` bù có 8px trong khi CardContent đệm 16px —
+                    hụt 8px mỗi bên, hàng lấp ló hai mép.
+
+                  Bỏ `relative lg:static`: `sticky` vốn đã là vị trí có
+                  định vị nên nó làm khung neo cho dropdown bên dưới. Với
+                  `lg:static` thì trên desktop khung neo tuột lên tổ tiên
+                  xa hơn và `top-full` của dropdown tính sai. */}
+              <div className="sticky top-below-appbar z-30 -mx-4 border-b border-outline-variant/50 bg-surface-container-lowest/95 px-4 py-2 backdrop-blur lg:-mx-6 lg:px-6">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input

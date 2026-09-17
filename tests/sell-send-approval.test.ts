@@ -50,8 +50,13 @@ describe("Phân biệt bản nháp tự lưu với đơn đã gửi chờ duyệ
 
   /** Màn danh sách phải dùng CHUNG phép này, không tự viết lại biểu thức. */
   it("danh sách đơn dùng chung phép phân biệt, cả mobile lẫn desktop", () => {
+    // Desktop gọi thẳng; hàng mobile đi qua `orderTone`, và `orderTone`
+    // phải gọi đúng hàm này chứ không tự chế phép phân biệt.
     const uses = ORDERS.match(/isSentForApproval\(order\.status, order\.approval_reason\)/g) ?? []
-    expect(uses.length, "phải dùng ở cả thẻ mobile và cột trạng thái desktop").toBe(2)
+    expect(uses.length, "cột trạng thái desktop").toBeGreaterThanOrEqual(1)
+    const TONE = read("src/lib/orders/status-tone.ts")
+    expect(TONE).toContain("if (isSentForApproval(status, approvalReason)) {")
+    expect(TONE).not.toContain('=== "draft" && !!')
     expect(ORDERS).not.toContain('order.status === "draft" && !!order.approval_reason')
     expect(ORDERS).not.toContain('order.status === "draft" && order.approval_reason &&')
   })
@@ -294,9 +299,10 @@ describe("Nơi bấm Gửi duyệt", () => {
 
   /** "Sửa đơn" mở lại ĐÚNG màn bán hàng đã dùng lúc tạo. */
   it("nút Sửa đơn đưa về màn bán hàng", () => {
-    expect(ORDERS).toContain("? `/sell/edit/${order.id}`")
-    expect(ORDERS).toContain("isSellEditable(order.status)")
+    // Danh sách không còn nút Sửa trên từng hàng (mẫu "Đơn của tôi");
+    // việc sửa nằm ở màn chi tiết và ở Đơn tạm.
     expect(DRAFTS).toContain('router.push(`/sell/edit/${o.id}`)')
     expect(DETAIL).toContain("router.push(`/sell/edit/${order.id}`)")
+    expect(DETAIL).toContain("const sellEdit = canEdit && isSellEditable(order.status)")
   })
 })

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -18,6 +19,8 @@ import { useRouter, usePathname } from "next/navigation"
 
 interface HeaderProps {
   onMenuClick?: () => void
+  /** Ví dụ `hidden lg:flex` — màn có đầu trang riêng trên điện thoại. */
+  className?: string
 }
 
 const PAGE_TITLES: Record<string, string> = {
@@ -64,7 +67,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/setup": "Thiết lập ban đầu",
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick, className }: HeaderProps) {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -109,7 +112,12 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <>
-    <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-xl border-b border-outline-variant/60 px-1 lg:px-8 h-[var(--app-bar-h)] flex items-center gap-1">
+    <header
+      className={cn(
+        "sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-xl border-b border-outline-variant/60 px-1 lg:px-8 h-[var(--app-bar-h)] flex items-center gap-1",
+        className
+      )}
+    >
       {/* Trái: nút back nếu trang khai báo, không thì nút mở menu. Hai nút
           không bao giờ cùng xuất hiện — mobile chỉ đủ chỗ cho một. */}
       {showBack ? (

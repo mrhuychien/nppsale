@@ -28,6 +28,7 @@ import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
 import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
+import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import {
   DropdownMenu,
@@ -1069,20 +1070,39 @@ export default function OrderDetailPage() {
           ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
           : null
       : null
-  const hasMobileActions = !!primaryTransition || !!deliveredNext || menuTransitions.length > 0 || !!canDelete
+  /**
+   * Hai việc của mẫu thiết kế "Chi tiết đơn": SỬA ĐƠN (mở lại đúng màn
+   * bán hàng) và ĐẶT LẠI ĐƠN NÀY (chép dòng vào đơn mới, giá hôm nay).
+   * Chúng chỉ là nút CHÍNH khi không còn bước chuyển trạng thái nào —
+   * quản lý mở đơn chờ duyệt thì "Duyệt" vẫn đứng trước.
+   */
+  const sellEdit = canEdit && isSellEditable(order.status)
+  const canReorder = !!user && hasPermission(user.role, "orders", "create")
+  const editAction = sellEdit
+    ? { label: "Sửa đơn", icon: Pencil, onClick: () => router.push(`/sell/edit/${order.id}`), busy: false }
+    : null
+  const reorderAction = canReorder
+    ? { label: "Đặt lại đơn này", icon: RefreshCw, onClick: () => router.push(`/sell/reorder/${order.id}`), busy: false }
+    : null
+  const mobilePrimary = primaryTransition
+    ? null
+    : deliveredNext ?? editAction ?? reorderAction
+  // Nút nào không làm nút chính thì vào menu ⋮.
+  const mobileExtras = [editAction, reorderAction].filter(
+    (a): a is NonNullable<typeof a> => !!a && a !== mobilePrimary
+  )
+  const hasMobileActions =
+    !!primaryTransition || !!mobilePrimary || menuTransitions.length > 0 || mobileExtras.length > 0 || !!canDelete
+  /**
+   * ⚠ Bản mobile theo mẫu là MÀN ĐỌC. Đang sửa dòng (kho/quản lý ở bước
+   * lấy hàng) hay sửa thông tin đơn thì trang quay về bản có ô nhập —
+   * mẫu không vẽ ô nhập nào, và nhét vào là vẽ lại toàn bộ luật khoá dòng.
+   */
+  const mobileTemplate = !linesEditMode && !editMode
 
-  return (
-    <div className={`space-y-4 ${hasMobileActions ? "pb-nav-action" : ""}`}>
-      <PageHeader
-        title={order.order_code}
-        description={`Ngày đặt: ${formatDate(order.order_date)}${order.approved_at ? ` • Duyệt: ${formatDate(order.approved_at)}` : ""}`}
-        backHref="/orders"
-      >
-        <StatusBadge status={order.status} type="order" />
-        <PaymentStatusBadge receivable={receivable} />
-        <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
-      </PageHeader>
-
+  // Hai khung cảnh báo — dùng cho CẢ bản desktop lẫn bản mobile, một JSX.
+  const callouts = (
+    <>
       {/* Approval reason callout — only for draft orders awaiting manual approval */}
       {isSentForApproval(order.status, order.approval_reason) && (
         <div className="rounded-xl border border-[#fdb022]/40 bg-[#fff4ed] p-4 flex items-start gap-3">
@@ -1117,6 +1137,42 @@ export default function OrderDetailPage() {
           )}
         </div>
       )}
+    </>
+  )
+
+  return (
+    <div className={`space-y-4 ${hasMobileActions ? "pb-nav-action" : ""}`}>
+      {mobileTemplate && (
+        <div className="lg:hidden">
+          <MobileOrderDetail
+            order={order}
+            lines={lines}
+            statusHistory={statusHistory}
+            receivable={receivable}
+            receivableId={receivableId}
+            invoice={invoice}
+            deliveryLines={deliveryLines}
+            linkedReturns={linkedReturns}
+            activityLog={activityLog}
+            showSalesName={user?.role !== "sales"}
+            callout={callouts}
+            onBack={() => router.push("/orders")}
+          />
+        </div>
+      )}
+
+      <div className={mobileTemplate ? "hidden lg:block space-y-4" : "space-y-4"}>
+      <PageHeader
+        title={order.order_code}
+        description={`Ngày đặt: ${formatDate(order.order_date)}${order.approved_at ? ` • Duyệt: ${formatDate(order.approved_at)}` : ""}`}
+        backHref="/orders"
+      >
+        <StatusBadge status={order.status} type="order" />
+        <PaymentStatusBadge receivable={receivable} />
+        <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
+      </PageHeader>
+
+      {callouts}
 
       {/* M4.3 — tóm tắt cho mobile, đặt NGAY dưới tiêu đề.
           Hai thứ người ta mở đơn ra để xem đầu tiên là "của khách nào" và
@@ -2277,6 +2333,8 @@ export default function OrderDetailPage() {
       </Card>
       </CollapsibleSection>
 
+      </div>
+
       {/* M4.2 — một thanh hành động duy nhất cho mobile.
           Một nút chính + menu ⋮ cho phần còn lại; "Hủy đơn" và "Xóa đơn"
           KHÔNG bao giờ là nút chính. */}
@@ -2292,10 +2350,10 @@ export default function OrderDetailPage() {
               <primaryTransition.icon className="mr-2 h-4 w-4" />
               {primaryTransition.label}
             </Button>
-          ) : deliveredNext ? (
-            <Button className="h-12 flex-1" onClick={deliveredNext.onClick} disabled={deliveredNext.busy}>
-              <deliveredNext.icon className="mr-2 h-4 w-4" />
-              {deliveredNext.label}
+          ) : mobilePrimary ? (
+            <Button className="h-12 flex-1" onClick={mobilePrimary.onClick} disabled={mobilePrimary.busy}>
+              <mobilePrimary.icon className="mr-2 h-4 w-4" />
+              {mobilePrimary.label}
             </Button>
           ) : (
             // Không còn bước tiến nào: chừa chỗ để menu ⋮ vẫn nằm bên phải
@@ -2304,7 +2362,7 @@ export default function OrderDetailPage() {
               {ORDER_STATUS_MAP[order.status]?.label || order.status}
             </span>
           )}
-          {(menuTransitions.length > 0 || canDelete) && (
+          {(menuTransitions.length > 0 || mobileExtras.length > 0 || canDelete) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="h-12 w-12 shrink-0 p-0" aria-label="Thao tác khác">
@@ -2319,6 +2377,11 @@ export default function OrderDetailPage() {
                     onSelect={() => setConfirmOpen({ status: trans.value, label: trans.label })}
                   >
                     <trans.icon className="mr-2 h-4 w-4" /> {trans.label}
+                  </DropdownMenuItem>
+                ))}
+                {mobileExtras.map((a) => (
+                  <DropdownMenuItem key={a.label} className="h-11" onSelect={a.onClick}>
+                    <a.icon className="mr-2 h-4 w-4" /> {a.label}
                   </DropdownMenuItem>
                 ))}
                 {canDelete && (

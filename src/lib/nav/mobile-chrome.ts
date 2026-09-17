@@ -32,3 +32,13 @@ export const OWN_ACTION_BAR_ROUTES = [
 export function showsBottomNav(pathname: string): boolean {
   return !OWN_ACTION_BAR_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
 }
+
+/**
+ * Màn tự dựng ĐẦU TRANG riêng trên điện thoại (nút lùi + mã đơn + huy hiệu
+ * trạng thái, theo mẫu thiết kế "Chi tiết đơn"). Để app bar chuẩn chồng
+ * lên là hai hàng tiêu đề cho một màn — đúng lỗi mà /home và /sell đã
+ * tránh. Desktop vẫn có app bar: ở đó bố cục hai cột cần nó.
+ */
+export function hidesMobileAppBar(pathname: string): boolean {
+  return /^\/orders\/[^/]+$/.test(pathname)
+}

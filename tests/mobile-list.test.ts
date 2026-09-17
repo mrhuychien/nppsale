@@ -263,7 +263,8 @@ describe("M2.2 — /orders", () => {
   /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */
   it("hàng chip cuộn ngang trên điện thoại", () => {
     expect(ORDERS_CODE).toContain("overflow-x-auto")
-    expect(ORDERS_CODE).toContain("shrink-0 whitespace-nowrap rounded-full")
+    // Chip theo mẫu "Đơn của tôi": 34px, không co, không xuống dòng.
+    expect(ORDERS_CODE).toContain("h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full")
   })
 
   /**
@@ -316,14 +317,23 @@ describe("M2.2 — /orders", () => {
   })
 
   it("chế độ chọn: tắt thì mở đơn, bật thì chọn", () => {
-    expect(ORDERS_CODE).toContain("onSelect={selectMode ? () => toggleOne(order.id) : undefined}")
-    expect(ORDERS_CODE).toContain("onLongPress")
+    // Danh sách theo mẫu mới nằm ở MobileOrderList; hàng là Link khi tắt
+    // chọn, là button khi bật — xem tests/orders-mobile-template.
+    expect(ORDERS_CODE).toContain("selectMode={selectMode}")
+    expect(ORDERS_CODE).toContain("onToggle={toggleOne}")
+    expect(ORDERS_CODE).toContain("onEnterSelect=")
   })
 
-  /** Nút xuất hoá đơn chỉ khi ĐÃ GIAO — mời bấm rồi báo lỗi là tệ hơn. */
-  it("nút xuất hoá đơn chỉ hiện khi đã giao", () => {
-    expect(ORDERS_CODE).toContain('const showInvoiceAction = order.status === "delivered"')
-    expect(ORDERS_CODE).toMatch(/showInvoiceAction && !selectMode \?/)
+  /**
+   * Nút xuất hoá đơn KHÔNG còn trên từng hàng của danh sách (mẫu "Đơn của
+   * tôi": cả hàng là một vùng chạm). Việc đó ở màn chi tiết, và ở đó vẫn
+   * chỉ hiện khi ĐÃ GIAO — mời bấm rồi báo lỗi là tệ hơn.
+   */
+  it("xuất hoá đơn nằm ở màn chi tiết, chỉ khi đã giao", () => {
+    const DETAIL = strip(read("src/app/(dashboard)/orders/[id]/page.tsx"))
+    expect(ORDERS_CODE).not.toContain("showInvoiceAction")
+    const i = DETAIL.indexOf("const deliveredNext")
+    expect(DETAIL.slice(i, i + 700)).toContain('order.status === "delivered"')
   })
 
   it("phân trang desktop ẩn trên mobile, thay bằng LoadMore", () => {

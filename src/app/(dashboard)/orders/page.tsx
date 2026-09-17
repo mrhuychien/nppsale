@@ -11,9 +11,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
-import { canEditOrder } from "@/lib/orders/edit-permission"
 import { isSentForApproval } from "@/lib/sell/send-approval"
-import { isSellEditable } from "@/lib/sell/order-edit"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
 import { useToast } from "@/hooks/use-toast"
@@ -25,7 +23,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
-import { MobileRecordCard } from "@/components/ui/mobile-record-card"
+import { MobileOrderList } from "@/components/orders/mobile-order-list"
+import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
 import {
   ORDER_COLUMNS,
@@ -68,7 +67,6 @@ import {
   FileText,
   Filter,
   Plus,
-  Pencil,
   Search,
   ShoppingCart,
   X,
@@ -120,6 +118,9 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
+  // Đơn tạo ngoại tuyến còn nằm trong hộp chờ — mẫu thiết kế đặt băng báo
+  // ngay trên danh sách, không giấu trong một trang khác.
+  const { pendingCount: outboxCount } = useOrderSync()
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
   const isDriver = authUser?.role === "driver"
@@ -882,16 +883,17 @@ export default function OrdersPage() {
                   // Hai bộ lọc loại trừ nhau — chọn cái này thì buông cái kia.
                   setPipelineStep(null)
                 }}
-                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                aria-pressed={active}
+                className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
                   active
-                    ? "border-primary bg-primary text-on-primary"
+                    ? "border-on-surface bg-on-surface text-surface"
                     : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
                 }`}
               >
                 {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k]}
                 <span
-                  className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
-                    active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
+                  className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${
+                    active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"
                   }`}
                 >
                   {count}
@@ -1196,8 +1198,8 @@ export default function OrdersPage() {
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
             {/* Chế độ chọn thay cho checkbox trên từng thẻ. Tắt thì chạm
-                thẻ = mở đơn; bật thì chạm thẻ = chọn. Nhấn giữ 500ms trên
-                một thẻ cũng bật. Đây là chỗ xoá được ~51 vùng chạm 16px. */}
+                hàng = mở đơn; bật thì chạm hàng = chọn. Nhấn giữ 500ms trên
+                một hàng cũng bật. Đây là chỗ xoá được ~51 vùng chạm 16px. */}
             <div className="flex items-center gap-2">
               <Button
                 variant={selectMode ? "default" : "outline"}
@@ -1216,98 +1218,28 @@ export default function OrdersPage() {
               )}
             </div>
 
-            {filtered.map((order) => {
-              const checked = selectedIds.has(order.id)
-              const invoice = invoiceMap[order.id]
-              const showInvoiceAction = order.status === "delivered"
-              const isPendingApproval = isSentForApproval(order.status, order.approval_reason)
-              // Sửa được thì đưa nút lên ngay thẻ. Luật ai-sửa-được-gì nằm
-              // ở `@/lib/orders/edit-permission`, không chép lại ở đây.
-              const canQuickEdit =
-                !!user &&
-                canEditOrder({
-                  role: user.role,
-                  userId: user.id,
-                  status: order.status,
-                  salesUserId: order.sales_user_id ?? null,
-                  hasUpdatePermission: hasPermission(user.role, "orders", "update"),
-                })
-              return (
-                <MobileRecordCard
-                  key={order.id}
-                  href={`/orders/${order.id}`}
-                  title={order.customer?.store_name || "-"}
-                  amount={formatCurrency(order.total)}
-                  accent={isPendingApproval ? "warning" : null}
-                  selected={checked}
-                  onSelect={selectMode ? () => toggleOne(order.id) : undefined}
-                  onLongPress={() => {
-                    setSelectMode(true)
-                    toggleOne(order.id)
-                  }}
-                  subtitle={
-                    <>
-                      <span className="font-mono font-semibold text-primary">{order.order_code}</span>
-                      <span>· {formatDate(order.order_date)}</span>
-                      {order.sales_user?.full_name && <span>· {order.sales_user.full_name}</span>}
-                    </>
-                  }
-                  badges={
-                    <>
-                      <StatusBadge status={order.status} type="order" />
-                      <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
-                      {isPendingApproval && (
-                        <span className="rounded-full bg-[#fff4ed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#b54708]">
-                          Cần duyệt
-                        </span>
-                      )}
-                    </>
-                  }
-                  footer={
-                    // Chỉ hiện khi ĐÃ GIAO — nút xuất hoá đơn trên một đơn
-                    // chưa giao là mời người ta bấm rồi nhận lỗi.
-                    canQuickEdit && !selectMode ? (
-                      <Button
-                        variant="outline"
-                        className="h-11 w-full"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          // ⚠ Sửa đơn mở lại ĐÚNG màn bán hàng đã dùng lúc
-                          // tạo, không phải màn chi tiết. Màn chi tiết là
-                          // màn ĐỌC; nhét phần sửa vào đó bắt NVBH học hai
-                          // cách nhập hàng khác nhau cho cùng một việc.
-                          router.push(
-                            isSellEditable(order.status)
-                              ? `/sell/edit/${order.id}`
-                              : `/orders/${order.id}`
-                          )
-                        }}
-                      >
-                        <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa đơn
-                      </Button>
-                    ) : showInvoiceAction && !selectMode ? (
-                      invoice?.misa_status === "signed" ? (
-                        <div className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-[#ecfdf3] text-xs font-medium text-[#027a48]">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Đã xuất hoá đơn
-                        </div>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          className="h-11 w-full"
-                          disabled={misaLoadingId === order.id}
-                          onClick={() => handleXuatHoaDonList(order)}
-                        >
-                          <FileText className="mr-2 h-3.5 w-3.5" />
-                          {misaLoadingId === order.id ? "Đang xuất..." : "Xuất hoá đơn"}
-                        </Button>
-                      )
-                    ) : null
-                  }
-                />
-              )
-            })}
+            {outboxCount > 0 && (
+              <div className="flex items-center gap-2.5 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-bold text-[#7a4b00]">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-[#fdb022]" />
+                {outboxCount} đơn chờ đẩy lên khi có mạng
+              </div>
+            )}
+
+            {/* ⚠ Theo mẫu thiết kế "Đơn của tôi": nhóm theo ngày, mỗi đơn
+                một hàng có vạch màu trạng thái. Cả hàng là một vùng chạm —
+                không nút "Sửa" / "Xuất hoá đơn" trên từng hàng nữa; hai việc
+                đó nằm ở màn chi tiết, nơi có đủ ngữ cảnh để làm. */}
+            <MobileOrderList
+              orders={filtered}
+              showSalesName={!isSales}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggle={toggleOne}
+              onEnterSelect={(id) => {
+                setSelectMode(true)
+                toggleOne(id)
+              }}
+            />
             <LoadMore pg={pg} shown={filtered.length} />
           </div>
           <div className="hidden lg:block">

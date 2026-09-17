@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
-import { showsBottomNav } from "@/lib/nav/mobile-chrome"
+import { hidesMobileAppBar, showsBottomNav } from "@/lib/nav/mobile-chrome"
 import { PageTitleProvider } from "@/components/layout/page-title-context"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
@@ -90,7 +90,10 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
       {menuSheet}
 
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
-        <Header onMenuClick={() => setMobileOpen(true)} />
+        <Header
+          onMenuClick={() => setMobileOpen(true)}
+          className={hidesMobileAppBar(pathname) ? "hidden lg:flex" : undefined}
+        />
         <WorkflowResumeBar />
         {/* key={pathname}: remount main mỗi lần đổi route để chạy hiệu ứng
             page-enter (fadeInUp 0.3s) — app cảm giác mượt hơn khi điều hướng.

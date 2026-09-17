@@ -25,7 +25,7 @@ import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone } from "lucide-react"
+import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import {
@@ -46,6 +46,13 @@ import {
   whyCannotEdit,
 } from "@/lib/orders/edit-permission"
 import { needsReapprovalAfterEdit, reapprovalReason } from "@/lib/orders/reapproval"
+import { loadApprovalContext } from "@/lib/sell/approval-context"
+import {
+  grossFromSavedLines,
+  isSentForApproval,
+  sendDraftForApproval,
+} from "@/lib/sell/send-approval"
+import { isSellEditable } from "@/lib/sell/order-edit"
 import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -342,6 +349,61 @@ export default function OrderDetailPage() {
       fetchData()
     } catch (error) {
       toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  /**
+   * NVBH gửi đơn nháp của mình đi duyệt.
+   *
+   * ⚠ TRƯỚC ĐÂY KHÔNG CÓ ĐƯỜNG NÀY. Bảng `STATUS_FLOW` chỉ cho owner/manager
+   * bấm "Duyệt đơn", còn NVBH chỉ có "Huỷ đơn" — lưu nháp xong là đơn nằm
+   * im, quản lý không thấy, và người duy nhất biết nó tồn tại là người soạn
+   * nó. Nút này KHÔNG phải tự duyệt: nó chạy bộ quy tắc rồi hoặc tự duyệt
+   * (nếu quy tắc cho phép) hoặc đánh dấu chờ duyệt và báo cho quản lý.
+   */
+  const handleSendForApproval = async () => {
+    if (!order || !user?.org_id) return
+    setActionLoading(true)
+    try {
+      const ctx = await loadApprovalContext(supabase, {
+        orgId: order.org_id,
+        customerId: order.customer_id,
+        salesUserId: order.sales_user_id ?? user.id,
+      })
+      const out = await sendDraftForApproval(supabase, {
+        orderId: order.id,
+        orderCode: order.order_code,
+        orgId: order.org_id,
+        userId: user.id,
+        orderTotal: Number(order.total || 0),
+        subtotal: Number(order.subtotal || 0),
+        // Số TRƯỚC chiết khấu lấy từ dòng đã lưu — xem chú thích của
+        // `grossFromSavedLines`.
+        grossBeforeDiscount: grossFromSavedLines(Number(order.subtotal || 0), lines),
+        customer: order.customer
+          ? { id: order.customer_id, credit_limit: Number(order.customer.credit_limit || 0) }
+          : null,
+        rules: ctx.rules,
+        customerDebt: ctx.customerDebt,
+        customerOverdue: ctx.customerOverdue,
+        repPortfolioDebt: ctx.repPortfolioDebt,
+        contextFailed: ctx.failed,
+        role: user.role,
+      })
+      toast(
+        out.status === "confirmed"
+          ? { title: "Đơn đã được duyệt tự động" }
+          : { title: "Đã gửi cho quản lý duyệt", description: out.reason || undefined }
+      )
+      fetchData()
+    } catch (error) {
+      toast({
+        title: "Không gửi được đơn",
+        description: (error as Error).message,
+        variant: "destructive",
+      })
     } finally {
       setActionLoading(false)
     }
@@ -1025,7 +1087,7 @@ export default function OrderDetailPage() {
       </PageHeader>
 
       {/* Approval reason callout — only for draft orders awaiting manual approval */}
-      {order.status === "draft" && order.approval_reason && (
+      {isSentForApproval(order.status, order.approval_reason) && (
         <div className="rounded-xl border border-[#fdb022]/40 bg-[#fff4ed] p-4 flex items-start gap-3">
           <div className="shrink-0 h-8 w-8 rounded-full bg-[#fdb022] text-on-primary flex items-center justify-center font-bold text-sm">
             !
@@ -1036,6 +1098,26 @@ export default function OrderDetailPage() {
               {order.approval_reason}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ⚠ BẢN NHÁP CHƯA GỬI KHÁC HẲN ĐƠN ĐANG CHỜ DUYỆT. Trước đây hai loại
+          hiện cùng một dòng "Đơn đang chờ duyệt", nên NVBH lưu tạm xong tưởng
+          là đã gửi rồi — và ngồi đợi một cái duyệt không bao giờ tới. */}
+      {order.status === "draft" && !isSentForApproval(order.status, order.approval_reason) && (
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm">Bản nháp — chưa gửi duyệt</p>
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              Quản lý chưa nhìn thấy đơn này. Bấm Gửi duyệt khi đã nhập xong.
+            </p>
+          </div>
+          {canEdit && (
+            <Button onClick={handleSendForApproval} disabled={actionLoading || lines.length === 0}>
+              <Send className="h-4 w-4 mr-1.5" />
+              {actionLoading ? "Đang gửi..." : "Gửi duyệt"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -1131,9 +1213,25 @@ export default function OrderDetailPage() {
                   </Button>
                 </div>
               ) : (
-                <Button size="sm" variant="ghost" onClick={startLinesEdit}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa SL & đơn giá
-                </Button>
+                <div className="flex gap-1">
+                  {/* ⚠ Trên điện thoại, bảng SL/đơn giá ở đây là một cách
+                      nhập hàng KHÁC với màn bán hàng đã dùng lúc tạo đơn —
+                      hai cách cho cùng một việc. Nút này đưa về đúng màn đó:
+                      thêm hàng, đổi đơn vị, sửa giá, rồi Lưu. */}
+                  {isSellEditable(order.status) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="md:hidden"
+                      onClick={() => router.push(`/sell/edit/${order.id}`)}
+                    >
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa bằng màn bán hàng
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={startLinesEdit}>
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa SL &amp; đơn giá
+                  </Button>
+                </div>
               )
             ) : null}
           </CardHeader>

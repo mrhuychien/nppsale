@@ -33,7 +33,21 @@ function DoneBody() {
   const code = params.get("code") ?? ""
   const status = params.get("status") ?? "draft"
   const reason = params.get("reason") ?? ""
-  const info = LABEL[status] ?? LABEL.draft
+  const edited = params.get("edited") === "1"
+  const base = LABEL[status] ?? LABEL.draft
+  // ⚠ Sửa đơn xong mà màn này báo "Đã TẠO đơn" thì nhân viên tưởng vừa tạo
+  // thêm một đơn nữa cho cùng số hàng, và sẽ đi tìm đơn cũ để xoá.
+  const info = edited
+    ? {
+        ...base,
+        title:
+          status === "confirmed" ? "Đã lưu thay đổi — đơn đã duyệt" : "Đã lưu thay đổi — chờ duyệt",
+        sub:
+          status === "confirmed"
+            ? "Đơn giữ nguyên mã cũ và đã sang kho."
+            : "Đơn giữ nguyên mã cũ. Quản lý sẽ duyệt lại trước khi kho soạn hàng.",
+      }
+    : base
   const queued = status === "queued"
 
   return (
@@ -69,7 +83,7 @@ function DoneBody() {
           onClick={() => router.push("/sell")}
           className="h-13 rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary"
         >
-          Tạo đơn tiếp
+          {edited ? "Bán tiếp" : "Tạo đơn tiếp"}
         </button>
         <Link
           href="/orders"

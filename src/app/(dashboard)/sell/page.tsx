@@ -112,7 +112,7 @@ export default function SellPage() {
       <div className="shrink-0 px-4 pb-2.5 pt-1.5">
         <div className="flex h-10 items-center justify-between">
           <h1 className="text-2xl font-extrabold tracking-tight text-on-surface">
-            {cartCount ? "Thêm hàng" : "Đặt hàng"}
+            {cart.editing ? "Thêm hàng vào đơn" : cartCount ? "Thêm hàng" : "Đặt hàng"}
           </h1>
           <div className="flex gap-1">
             <button
@@ -133,6 +133,25 @@ export default function SellPage() {
             </button>
           </div>
         </div>
+
+        {/* ⚠ ĐANG SỬA ĐƠN THÌ PHẢI NÓI RA Ở ĐÂY. Vào thẳng màn này từ trang
+            chủ mà giỏ còn mang mã một đơn cũ thì mọi thứ thêm vào sẽ GHI ĐÈ
+            lên đơn đó — người dùng tưởng mình đang soạn đơn mới. */}
+        {cart.editing && (
+          <div className="mt-1.5 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-[13px] font-extrabold text-primary">
+            <span className="min-w-0 flex-1 truncate">Đang sửa đơn {cart.editing.orderCode}</span>
+            <button
+              type="button"
+              onClick={() => {
+                cart.clear()
+                toast({ title: "Đã thoát khỏi phần sửa đơn", description: "Đơn cũ vẫn nguyên." })
+              }}
+              className="h-8 shrink-0 rounded-lg px-2 font-extrabold text-error"
+            >
+              Thoát
+            </button>
+          </div>
+        )}
 
         <div className="mt-1.5 flex gap-2">
           <div className="relative flex-1">

@@ -2,8 +2,6 @@ import { createOrderRecords, type OfflineOrderPayload } from "@/lib/orders/creat
 import { enqueueOrder } from "@/lib/offline/outbox"
 import { evaluateApproval } from "@/lib/approval"
 import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
-import { grossBeforeDiscountOf } from "@/lib/sell/create-order"
-import type { CartLine } from "@/lib/sell/cart"
 import type { ApprovalRules, Customer, Role } from "@/types"
 
 /**
@@ -19,18 +17,32 @@ export type SubmitOutcome =
   | { kind: "queued"; orderCode: string }
   | { kind: "created"; orderCode: string; orderId: string; status: "draft" | "confirmed"; reason: string }
 
-export interface SubmitInput {
+export interface SubmitInput extends StatusDecisionInput {
   payload: OfflineOrderPayload
+  online: boolean
+}
+
+/**
+ * Đầu vào để quyết trạng thái đơn.
+ *
+ * ⚠ CHỈ NHẬN CON SỐ, không nhận giỏ hàng hay gói đơn. Ba nơi cần phép
+ * này — gửi đơn mới, lưu đơn đang sửa, gửi duyệt một đơn nháp từ danh
+ * sách — và nơi thứ ba không có giỏ hàng trong tay, chỉ có dòng đã lưu.
+ */
+export interface StatusDecisionInput {
   /** Bấm "Lưu tạm" — đơn nằm lại ở nháp, không chạy quy tắc duyệt. */
   asDraft: boolean
-  cart: CartLine[]
+  orderTotal: number
+  /** SAU chiết khấu, TRƯỚC thuế. */
+  subtotal: number
+  /** TRƯỚC chiết khấu, TRƯỚC thuế. */
+  grossBeforeDiscount: number
   customer: Pick<Customer, "id" | "credit_limit"> | null
   rules: ApprovalRules | null
   customerDebt: number
   customerOverdue: number
   repPortfolioDebt: number
   role: Role
-  online: boolean
   /**
    * Đọc ngữ cảnh duyệt (quy tắc, công nợ) có hỏng không.
    *
@@ -51,7 +63,10 @@ export interface SubmitInput {
  * khấu, nên chiết khấu 100% làm đơn tụt xuống dưới ngưỡng và tự động duyệt
  * — cho không hàng mà không ai được hỏi.
  */
-export function decideStatus(i: SubmitInput): { status: "draft" | "confirmed"; reason: string } {
+export function decideStatus(i: StatusDecisionInput): {
+  status: "draft" | "confirmed"
+  reason: string
+} {
   if (i.asDraft) return { status: "draft", reason: DRAFT_APPROVAL_REASON }
   if (i.contextFailed) {
     return {
@@ -60,9 +75,9 @@ export function decideStatus(i: SubmitInput): { status: "draft" | "confirmed"; r
     }
   }
   const decision = evaluateApproval(i.rules, {
-    orderTotal: i.payload.order.total,
-    grossBeforeDiscount: grossBeforeDiscountOf(i.cart),
-    discountAmount: Math.max(0, grossBeforeDiscountOf(i.cart) - i.payload.order.subtotal),
+    orderTotal: i.orderTotal,
+    grossBeforeDiscount: i.grossBeforeDiscount,
+    discountAmount: Math.max(0, i.grossBeforeDiscount - i.subtotal),
     customer: i.customer,
     customerDebt: i.customerDebt,
     customerOverdue: i.customerOverdue,

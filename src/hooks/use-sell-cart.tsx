@@ -38,6 +38,23 @@ export interface SellCartState {
   expectedDelivery: string
   returnReason: string
   returnLines: ReturnCartLine[]
+  /** Đang sửa đơn đã lưu hay đang soạn đơn mới. */
+  editing: EditingOrder | null
+}
+
+/**
+ * Đơn đang được nạp ngược vào giỏ để sửa.
+ *
+ * VÌ SAO GIỎ PHẢI BIẾT MÌNH ĐANG SỬA
+ *   NVBH sửa đơn bằng CHÍNH màn bán hàng, không phải một màn sửa riêng.
+ *   Nếu giỏ không mang theo mã đơn thì bấm Lưu là TẠO THÊM một đơn nữa —
+ *   khách có hai đơn, kho xuất hai lần.
+ */
+export interface EditingOrder {
+  orderId: string
+  orderCode: string
+  /** Trạng thái LÚC MỞ RA SỬA — quyết định nhãn nút và lời nhắc. */
+  status: "draft" | "confirmed"
 }
 
 interface SellCartValue extends SellCartState {
@@ -53,6 +70,8 @@ interface SellCartValue extends SellCartState {
   setExpectedDelivery: (v: string) => void
   /** Xoá sạch giỏ — dùng sau khi tạo đơn xong hoặc khi người dùng huỷ. */
   clear: () => void
+  /** Nạp một đơn đã lưu vào giỏ để sửa. Thay TOÀN BỘ giỏ hiện tại. */
+  loadForEdit: (next: SellCartState) => void
   /** Tiền hàng trả trừ vào đơn — chỉ dòng TRẢ TIỀN, không tính dòng đổi. */
   returnCredit: number
   setReturnReason: (v: string) => void
@@ -69,11 +88,20 @@ const EMPTY: SellCartState = {
   expectedDelivery: "",
   returnReason: "damaged",
   returnLines: [],
+  editing: null,
 }
 
 const STORAGE_KEY = "npp.sell.cart.v1"
 
 const Ctx = createContext<SellCartValue | null>(null)
+
+function validEditing(v: unknown): EditingOrder | null {
+  if (!v || typeof v !== "object") return null
+  const e = v as Partial<EditingOrder>
+  if (typeof e.orderId !== "string" || !e.orderId) return null
+  if (e.status !== "draft" && e.status !== "confirmed") return null
+  return { orderId: e.orderId, orderCode: e.orderCode ?? "", status: e.status }
+}
 
 export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SellCartState>(EMPTY)
@@ -95,6 +123,10 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
           expectedDelivery: saved.expectedDelivery ?? "",
           returnReason: saved.returnReason ?? "damaged",
           returnLines: Array.isArray(saved.returnLines) ? saved.returnLines : [],
+          // ⚠ Đọc lại có kiểm: bản lưu cũ (trước khi có tính năng sửa đơn)
+          // không có khoá này, và một `editing` méo mó thì mọi lần Lưu sau
+          // đó ghi đè lên một đơn không ai biết là đơn nào.
+          editing: validEditing(saved.editing),
         })
       }
     } catch {
@@ -137,7 +169,10 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
     (v: string) => setState((s) => ({ ...s, expectedDelivery: v })),
     []
   )
+  // ⚠ `clear` phải trả cả `editing` về rỗng. Còn sót mã đơn thì đơn TIẾP
+  // THEO người ta soạn sẽ ghi đè lên đơn vừa sửa xong.
   const clear = useCallback(() => setState(EMPTY), [])
+  const loadForEdit = useCallback((next: SellCartState) => setState(next), [])
   const setReturnReason = useCallback(
     (v: string) => setState((s) => ({ ...s, returnReason: v })),
     []
@@ -168,6 +203,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setPaymentTerms,
       setExpectedDelivery,
       clear,
+      loadForEdit,
       returnCredit,
       setReturnReason,
       addReturnLine,
@@ -186,6 +222,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setPaymentTerms,
       setExpectedDelivery,
       clear,
+      loadForEdit,
       returnCredit,
       setReturnReason,
       addReturnLine,

@@ -12,6 +12,9 @@ import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { canEditOrder } from "@/lib/orders/edit-permission"
+import { isSentForApproval } from "@/lib/sell/send-approval"
+import { isSellEditable } from "@/lib/sell/order-edit"
+import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -172,11 +175,16 @@ export default function OrdersPage() {
       const countErr = statusResps.find((r) => r?.error)?.error
       if (countErr) console.error("[app/orders] đếm theo trạng thái lỗi:", countErr.message)
 
+      // ⚠ TRỪ bản nháp NVBH tự lưu ra. Nó cũng mang `status = 'draft'` và
+      // cũng có `approval_reason`, nên trước đây đếm chung — quản lý mở ra
+      // thấy đơn người ta còn đang soạn dở, và sau vài lần như vậy thì con
+      // số "chờ duyệt" mất hết ý nghĩa.
       const pendApprRes = await supabase
         .from("sales_orders")
         .select("id", { count: "exact", head: true })
         .eq("status", "draft")
         .not("approval_reason", "is", null)
+        .neq("approval_reason", DRAFT_APPROVAL_REASON)
       if (pendApprRes.error) {
         console.error("[app/orders] đếm đơn chờ duyệt lỗi:", pendApprRes.error.message)
       }
@@ -211,7 +219,11 @@ export default function OrdersPage() {
           q = q.ilike("order_code", term)
         }
         if (statusFilter === "pending_approval") {
-          q = q.eq("status", "draft").not("approval_reason", "is", null)
+          q = q
+            .eq("status", "draft")
+            .not("approval_reason", "is", null)
+            // Xem chú thích ở phép đếm: bản nháp tự lưu không phải đơn chờ duyệt.
+            .neq("approval_reason", DRAFT_APPROVAL_REASON)
         } else if (statusFilter !== "all") {
           q = q.eq("status", statusFilter)
         }
@@ -1025,10 +1037,10 @@ export default function OrdersPage() {
                           <div className="flex flex-col gap-0.5">
                             <StatusBadge status={order.status} type="order" />
                             <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
-                            {order.status === "draft" && order.approval_reason && (
+                            {isSentForApproval(order.status, order.approval_reason) && (
                               <span
                                 className="text-[10px] text-[#b54708] font-semibold"
-                                title={order.approval_reason}
+                                title={order.approval_reason ?? undefined}
                               >
                                 Cần duyệt
                               </span>
@@ -1093,7 +1105,7 @@ export default function OrdersPage() {
               const checked = selectedIds.has(order.id)
               const invoice = invoiceMap[order.id]
               const showInvoiceAction = order.status === "delivered"
-              const isPendingApproval = order.status === "draft" && !!order.approval_reason
+              const isPendingApproval = isSentForApproval(order.status, order.approval_reason)
               // Sửa được thì đưa nút lên ngay thẻ. Luật ai-sửa-được-gì nằm
               // ở `@/lib/orders/edit-permission`, không chép lại ở đây.
               const canQuickEdit =
@@ -1146,7 +1158,15 @@ export default function OrdersPage() {
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          router.push(`/orders/${order.id}`)
+                          // ⚠ Sửa đơn mở lại ĐÚNG màn bán hàng đã dùng lúc
+                          // tạo, không phải màn chi tiết. Màn chi tiết là
+                          // màn ĐỌC; nhét phần sửa vào đó bắt NVBH học hai
+                          // cách nhập hàng khác nhau cho cùng một việc.
+                          router.push(
+                            isSellEditable(order.status)
+                              ? `/sell/edit/${order.id}`
+                              : `/orders/${order.id}`
+                          )
                         }}
                       >
                         <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa đơn

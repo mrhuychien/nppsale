@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { decideStatus } from "../src/lib/sell/submit"
-import { buildOrderPayload } from "../src/lib/sell/create-order"
+import { buildOrderPayload, grossBeforeDiscountOf } from "../src/lib/sell/create-order"
 import { cartTotals, type CartLine } from "../src/lib/sell/cart"
 import { DRAFT_APPROVAL_REASON } from "../src/lib/orders/save-gate"
 import { DEFAULT_APPROVAL_RULES } from "../src/lib/approval"
@@ -16,6 +16,7 @@ const code = (s: string) =>
 const SUBMIT = code(read("src/lib/sell/submit.ts"))
 const CART_PAGE = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
 const POS_PAGE = code(read("src/app/(dashboard)/sell/page.tsx"))
+const CTX = code(read("src/lib/sell/approval-context.ts"))
 
 const rules = { ...DEFAULT_APPROVAL_RULES } as unknown as ApprovalRules
 
@@ -32,6 +33,9 @@ const line = (over: Partial<CartLine> = {}): CartLine => ({
 })
 
 const input = (cart: CartLine[], over: Record<string, unknown> = {}) => ({
+  orderTotal: cartTotals(cart).grandTotal,
+  subtotal: cartTotals(cart).subtotal,
+  grossBeforeDiscount: grossBeforeDiscountOf(cart),
   payload: buildOrderPayload({
     clientRequestId: "r1",
     orderCode: "DH-1",
@@ -216,10 +220,19 @@ describe("Đọc hỏng ngữ cảnh duyệt thì KHÔNG được tự duyệt",
     expect(r.reason).toContain("Không đọc được")
   })
 
-  it("màn giỏ hàng có gắn cờ khi truy vấn hỏng", () => {
-    expect(CART_PAGE).toContain(
-      "contextFailed = !!(rulesRes.error || recRes.error || repRes.error)"
-    )
-    expect(CART_PAGE).toContain("contextFailed,")
+  /**
+   * Ba nơi cần ngữ cảnh duyệt — gửi đơn mới, lưu đơn đang sửa, gửi duyệt một
+   * đơn nháp — nên phép đọc gom về `loadApprovalContext`. Cờ hỏng phải bật ở
+   * ĐÓ, và màn giỏ phải chuyển tiếp nó đi.
+   */
+  it("phép đọc ngữ cảnh gắn cờ khi bất kỳ truy vấn nào hỏng", () => {
+    expect(CTX).toContain("failed: !!(rulesRes.error || recRes.error || repRes.error)")
+  })
+
+  it("màn giỏ hàng chuyển tiếp cờ hỏng vào phép quyết trạng thái", () => {
+    expect(CART_PAGE).toContain("contextFailed: ctx.failed,")
+    // ⚠ Không đọc được thì phải để EMPTY mang cờ mặc định, đừng bịa số 0
+    // ngay tại chỗ gọi — 0 nghĩa là "khách không nợ gì".
+    expect(CART_PAGE).toContain("EMPTY_APPROVAL_CONTEXT")
   })
 })

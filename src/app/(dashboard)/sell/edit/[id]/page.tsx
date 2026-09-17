@@ -1,0 +1,230 @@
+"use client"
+
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { ChevronLeft, TriangleAlert } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
+import { useSellCart } from "@/hooks/use-sell-cart"
+import { useSellData } from "@/hooks/use-sell-data"
+import { canEditOrder, whyCannotEdit } from "@/lib/orders/edit-permission"
+import { hasPermission } from "@/lib/permissions"
+import { isSellEditable, orderLinesToCart, type OrderLineRow } from "@/lib/sell/order-edit"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "@/hooks/use-toast"
+import type { OrderStatus } from "@/types"
+
+/**
+ * Nạp một đơn đã lưu ngược vào giỏ rồi mở màn giỏ hàng.
+ *
+ * VÌ SAO LÀ MỘT MÀN RIÊNG CHỨ KHÔNG PHẢI THAM SỐ CỦA MÀN GIỎ
+ *   Màn giỏ đã có đủ việc phải làm. Nhét thêm "nếu có ?orderId thì tải đơn
+ *   về, trừ khi đã tải rồi" vào đó là thêm một trạng thái chỉ sai khi mạng
+ *   chậm. Ở đây thì việc tải có màn riêng, có ô chờ, có chỗ báo lỗi, và
+ *   khi xong thì `replace` — nút Back của điện thoại không quay lại đây.
+ */
+
+interface OrderHead {
+  id: string
+  order_code: string
+  status: string
+  customer_id: string
+  payment_terms: string | null
+  expected_delivery: string | null
+  notes: string | null
+  sales_user_id: string | null
+}
+
+export default function SellEditLoaderPage() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
+  const { user } = useAuth()
+  const cart = useSellCart()
+  const { products, loading: dataLoading, customerById } = useSellData()
+
+  const [error, setError] = useState<string | null>(null)
+  const [head, setHead] = useState<OrderHead | null>(null)
+  const [lines, setLines] = useState<OrderLineRow[] | null>(null)
+  // ⚠ Chỉ hỏi MỘT lần. Người dùng bấm "Thay giỏ" xong mà câu hỏi hiện lại
+  // vì effect chạy lượt nữa thì họ kẹt trong vòng lặp.
+  const [confirmed, setConfirmed] = useState(false)
+  const openedRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const supabase = createClient()
+      const [headRes, lineRes] = await Promise.all([
+        supabase
+          .from("sales_orders")
+          .select(
+            "id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id"
+          )
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("sales_order_lines")
+          .select("product_id, unit_name, quantity, unit_price, conversion_factor, note")
+          .eq("order_id", id)
+          // Bảng dòng đơn KHÔNG ghi lại thứ tự nhập, nên xếp theo một khoá
+          // cố định. Không xếp gì thì mỗi lần mở lại đơn, các dòng có thể
+          // đảo chỗ — nhìn như đơn vừa bị ai sửa.
+          .order("product_id", { ascending: true })
+          .order("unit_name", { ascending: true }),
+      ])
+      if (cancelled) return
+      if (headRes.error) return setError(headRes.error.message)
+      if (lineRes.error) return setError(lineRes.error.message)
+      // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. "Không thấy đơn" và
+      // "không được xem đơn" nhìn giống hệt nhau từ đây, nên nói cả hai.
+      if (!headRes.data) {
+        return setError("Không mở được đơn này — đơn không tồn tại hoặc bạn không có quyền xem.")
+      }
+      setHead(headRes.data as OrderHead)
+      setLines((lineRes.data as OrderLineRow[]) ?? [])
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  const open = useCallback(() => {
+    if (!head || !lines || openedRef.current) return
+    openedRef.current = true
+    const customer = customerById(head.customer_id)
+    const rows = orderLinesToCart(lines, products, customer?.group_id ?? null)
+
+    // ⚠ Mặt hàng không còn trong danh mục thì KHÔNG có giá gốc để đối
+    // chiếu — nhãn "Giá sửa" và chốt giá sàn im lặng bỏ qua dòng đó. Nói
+    // ra, đừng để nhân viên tưởng mọi dòng đều đã được kiểm.
+    const missing = lines.filter((l) => !products.some((p) => p.id === l.product_id)).length
+    if (missing > 0) {
+      toast({
+        title: `${missing} mặt hàng không còn trong danh mục`,
+        description: "Các dòng đó giữ nguyên giá đã lưu và không kiểm được theo bảng giá hiện tại.",
+      })
+    }
+
+    cart.loadForEdit({
+      cart: rows,
+      customerId: head.customer_id,
+      notes: head.notes ?? "",
+      paymentTerms: head.payment_terms ?? "",
+      expectedDelivery: head.expected_delivery ?? "",
+      // Hàng trả của đơn cũ nằm ở phiếu trả riêng, không kéo vào giỏ:
+      // lưu lại sẽ tạo thêm một phiếu trả thứ hai cho cùng số hàng.
+      returnReason: "damaged",
+      returnLines: [],
+      editing: {
+        orderId: head.id,
+        orderCode: head.order_code,
+        status: head.status === "confirmed" ? "confirmed" : "draft",
+      },
+    })
+    router.replace("/sell/cart")
+  }, [head, lines, products, customerById, cart, router])
+
+  const editCtx = user && head
+    ? {
+        role: user.role,
+        userId: user.id,
+        status: head.status as OrderStatus,
+        salesUserId: head.sales_user_id ?? null,
+        hasUpdatePermission: hasPermission(user.role, "orders", "update"),
+      }
+    : null
+  const blocked =
+    head && !isSellEditable(head.status)
+      ? `Đơn đang ở trạng thái “${head.status}” — kho đã bắt đầu xử lý nên không sửa được bằng màn bán hàng.`
+      : editCtx && !canEditOrder(editCtx)
+        ? (whyCannotEdit(editCtx) ?? "Bạn không có quyền sửa đơn này.")
+        : null
+
+  // Giỏ đang có hàng chưa gửi của một đơn KHÁC thì phải hỏi trước.
+  const clash =
+    cart.ready &&
+    cart.cart.length > 0 &&
+    cart.editing?.orderId !== id &&
+    !confirmed
+
+  useEffect(() => {
+    if (!head || !lines || dataLoading || !cart.ready || blocked || clash) return
+    open()
+  }, [head, lines, dataLoading, cart.ready, blocked, clash, open])
+
+  return (
+    <div className="flex min-h-screen flex-col bg-surface pb-nav">
+      <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-0.5">
+        <button
+          type="button"
+          onClick={() => router.push(`/orders/${id}`)}
+          aria-label="Quay lại"
+          className="tap grid h-11 w-11 place-items-center text-on-surface"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+        <h1 className="min-w-0 flex-1 truncate text-[22px] font-extrabold">
+          {head ? `Sửa ${head.order_code}` : "Mở đơn để sửa"}
+        </h1>
+      </div>
+
+      <div className="grid content-start gap-2.5 px-3 pt-1">
+        {error && (
+          <div className="rounded-xl bg-error/10 px-3 py-2.5 text-[13px] font-semibold leading-snug text-error">
+            {error}
+          </div>
+        )}
+
+        {blocked && (
+          <div className="grid gap-2.5 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card">
+            <p className="flex items-start gap-2 text-[15px] font-bold leading-snug">
+              <TriangleAlert className="mt-px h-5 w-5 shrink-0 text-[#8a5a00]" />
+              {blocked}
+            </p>
+            <button
+              type="button"
+              onClick={() => router.replace(`/orders/${id}`)}
+              className="h-12 rounded-2xl bg-primary text-base font-extrabold text-on-primary"
+            >
+              Xem chi tiết đơn
+            </button>
+          </div>
+        )}
+
+        {!blocked && clash && (
+          <div className="grid gap-2.5 rounded-2xl bg-surface-container-lowest p-3.5 shadow-card">
+            <p className="text-[15px] font-bold leading-snug">
+              Giỏ đang có {cart.cart.length} mặt hàng chưa gửi
+              {cart.editing ? ` của đơn ${cart.editing.orderCode}` : ""}. Mở{" "}
+              {head?.order_code ?? "đơn này"} để sửa sẽ thay toàn bộ giỏ hiện tại.
+            </p>
+            <button
+              type="button"
+              onClick={() => setConfirmed(true)}
+              className="h-12 rounded-2xl bg-primary text-base font-extrabold text-on-primary"
+            >
+              Thay giỏ, mở đơn này
+            </button>
+            <button
+              type="button"
+              onClick={() => router.replace("/sell/cart")}
+              className="h-12 rounded-2xl border-[1.5px] border-primary text-base font-extrabold text-primary"
+            >
+              Giữ giỏ đang có
+            </button>
+          </div>
+        )}
+
+        {!error && !blocked && !clash && (
+          <>
+            <Skeleton className="h-24 rounded-2xl" />
+            <Skeleton className="h-24 rounded-2xl" />
+            <p className="pt-1 text-center text-sm font-semibold text-on-surface-variant">
+              Đang mở đơn…
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -22,10 +22,12 @@ import { useAuth } from "@/hooks/use-auth"
 import { cn, formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/client"
-import { buildOrderPayload } from "@/lib/sell/create-order"
+import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-order"
+import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
 import { submitSellOrder } from "@/lib/sell/submit"
+import { applyOrderEdit, decideEditStatus, editHint } from "@/lib/sell/order-edit"
+import { notifyApprovers } from "@/lib/sell/send-approval"
 import { toast } from "@/hooks/use-toast"
-import type { ApprovalRules } from "@/types"
 
 export default function SellCartPage() {
   const router = useRouter()
@@ -39,6 +41,8 @@ export default function SellCartPage() {
 
   const customer = customerById(cart.customerId) ?? null
   const groupId = customer?.group_id ?? null
+  // Đang sửa một đơn đã lưu, hay đang soạn đơn mới.
+  const editing = cart.editing
 
   // Quyền sửa giá theo từng người — NVBH phải được bật riêng.
   const rules = userPriceRulesFrom(user)
@@ -106,12 +110,20 @@ export default function SellCartPage() {
     try {
       const supabase = createClient()
       const online = typeof navigator === "undefined" || navigator.onLine
+      // ⚠ SỬA ĐƠN KHÔNG XẾP ĐƯỢC VÀO HÀNG ĐỢI. Hàng đợi ngoại tuyến chỉ
+      // biết TẠO đơn mới; gói một bản sửa vào đó là lát nữa có mạng sẽ ra
+      // đơn thứ hai cho cùng số hàng. Nói thẳng là chưa lưu được.
+      if (editing && !online) {
+        throw new Error(
+          "Mất mạng nên chưa lưu được thay đổi. Đơn cũ vẫn nguyên — thử lại khi có sóng."
+        )
+      }
       const payload = buildOrderPayload({
         clientRequestId:
           typeof crypto !== "undefined" && crypto.randomUUID
             ? crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        orderCode: generateOrderCode(),
+        orderCode: editing?.orderCode || generateOrderCode(),
         customerId: cart.customerId,
         customerName: customer?.store_name ?? "",
         paymentTerms: cart.paymentTerms || customer?.payment_terms || "COD",
@@ -125,68 +137,78 @@ export default function SellCartPage() {
       })
 
       // Ngữ cảnh duyệt chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
-      let rules: ApprovalRules | null = null
-      let customerDebt = 0
-      let customerOverdue = 0
-      let repPortfolioDebt = 0
-      let contextFailed = false
-      if (online && !asDraft) {
-        const [rulesRes, recRes, repRes] = await Promise.all([
-          supabase
-            .from("approval_rules")
-            .select(
-              "id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at"
-            )
-            .eq("org_id", user.org_id)
-            .maybeSingle(),
-          supabase
-            .from("receivables")
-            .select("amount, paid, due_date")
-            .eq("customer_id", cart.customerId)
-            .neq("status", "paid"),
-          supabase
-            .from("receivables")
-            .select("amount, paid")
-            .eq("sales_user_id", user.id)
-            .neq("status", "paid"),
-        ])
-        // ⚠ Đọc hỏng thì công nợ về 0, mà 0 nghĩa là "khách không nợ gì" —
-        // đúng cái làm mọi ngưỡng đều lọt. Gắn cờ để đơn rơi về chờ duyệt
-        // tay thay vì tự duyệt trên một con số chưa bao giờ đọc được.
-        contextFailed = !!(rulesRes.error || recRes.error || repRes.error)
-        rules = (rulesRes.data as ApprovalRules) ?? null
-        const rows = (recRes.data as Array<{ amount: number; paid: number; due_date: string | null }>) || []
-        customerDebt = rows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-        const now = Date.now()
-        customerOverdue = rows
-          .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
-          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-        repPortfolioDebt = ((repRes.data as Array<{ amount: number; paid: number }>) || []).reduce(
-          (s, r) => s + (Number(r.amount) - Number(r.paid)),
-          0
+      const ctx =
+        online && !asDraft
+          ? await loadApprovalContext(supabase, {
+              orgId: user.org_id,
+              customerId: cart.customerId,
+              salesUserId: user.id,
+            })
+          : EMPTY_APPROVAL_CONTEXT
+
+      const decisionInput = {
+        asDraft,
+        orderTotal: cart.totals.grandTotal,
+        subtotal: cart.totals.subtotal,
+        grossBeforeDiscount: grossBeforeDiscountOf(cart.cart),
+        customer: customer ? { id: customer.id, credit_limit: customer.credit_limit } : null,
+        rules: ctx.rules,
+        customerDebt: ctx.customerDebt,
+        customerOverdue: ctx.customerOverdue,
+        repPortfolioDebt: ctx.repPortfolioDebt,
+        contextFailed: ctx.failed,
+        role: user.role,
+      }
+
+      // ĐANG SỬA ĐƠN ĐÃ LƯU: ghi đè lên đơn đó, không tạo đơn mới.
+      if (editing) {
+        const { status, reason } = decideEditStatus({
+          prevStatus: editing.status,
+          decision: decisionInput,
+        })
+        await applyOrderEdit(supabase, {
+          orderId: editing.orderId,
+          payload,
+          cart: cart.cart,
+          status,
+          reason,
+          userId: user.id,
+        })
+        // Đơn nằm chờ duyệt mà không ai biết thì bằng như chưa gửi.
+        if (!asDraft && status === "draft") {
+          await notifyApprovers(supabase, {
+            orgId: user.org_id,
+            orderId: editing.orderId,
+            orderCode: editing.orderCode,
+            reason,
+          })
+        }
+        cart.clear()
+        router.replace(
+          `/sell/done?code=${encodeURIComponent(editing.orderCode)}&status=${status}&edited=1` +
+            (reason ? `&reason=${encodeURIComponent(reason)}` : "")
         )
+        return
       }
 
       const out = await submitSellOrder(
         supabase,
-        {
-          payload,
-          asDraft,
-          cart: cart.cart,
-          customer: customer ? { id: customer.id, credit_limit: customer.credit_limit } : null,
-          rules,
-          customerDebt,
-          customerOverdue,
-          repPortfolioDebt,
-          role: user.role,
-          online,
-          contextFailed,
-        },
+        { payload, online, ...decisionInput },
         { userId: user.id, orgId: user.org_id }
       )
 
       const status = out.kind === "queued" ? "queued" : out.status
       const reason = out.kind === "queued" ? "" : out.reason
+      // ⚠ Đơn mới rơi về chờ duyệt cũng phải BÁO cho người duyệt. Thiếu
+      // bước này thì đơn nằm im tới khi có ai tình cờ mở danh sách ra xem.
+      if (out.kind === "created" && out.status === "draft" && !asDraft) {
+        await notifyApprovers(supabase, {
+          orgId: user.org_id,
+          orderId: out.orderId,
+          orderCode: out.orderCode,
+          reason: out.reason,
+        })
+      }
       cart.clear()
       router.replace(
         `/sell/done?code=${encodeURIComponent(out.orderCode)}&status=${status}` +
@@ -216,7 +238,7 @@ export default function SellCartPage() {
           <ChevronLeft className="h-6 w-6" />
         </button>
         <h1 className="min-w-0 flex-1 truncate text-[22px] font-extrabold">
-          Đơn hàng{" "}
+          {editing ? `Sửa ${editing.orderCode}` : "Đơn hàng"}{" "}
           <span className="text-[15px] font-bold text-on-surface-variant">
             · {cart.cart.length} mặt hàng
           </span>
@@ -265,6 +287,15 @@ export default function SellCartPage() {
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
         </button>
+
+        {/* ⚠ Nói TRƯỚC rằng đơn đã duyệt có thể quay lại chờ duyệt. Biết
+            sau khi bấm Lưu là quá muộn — nhân viên đã hứa với khách là
+            hàng ra trong hôm nay. */}
+        {editing && (
+          <div className="rounded-xl bg-primary/8 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
+            {editHint(editing.status)}
+          </div>
+        )}
 
         {projectedOver > 0 && (
           <div className="flex items-start gap-2.5 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
@@ -404,11 +435,13 @@ export default function SellCartPage() {
               type="button"
               onClick={() => {
                 cart.clear()
-                router.push("/sell")
+                // ⚠ Đang sửa đơn thì "Bỏ sửa" KHÔNG được xoá đơn — nó chỉ
+                // buông giỏ ra. Đơn cũ vẫn nằm nguyên trên máy chủ.
+                router.push(editing ? `/orders/${editing.orderId}` : "/sell")
               }}
               className="h-8 self-start text-[13px] font-extrabold text-error"
             >
-              Huỷ đơn
+              {editing ? "Bỏ sửa, giữ nguyên đơn cũ" : "Huỷ đơn"}
             </button>
           </div>
         )}
@@ -434,14 +467,31 @@ export default function SellCartPage() {
           </span>
         </button>
         <div className="flex gap-2.5">
-          <button
-            type="button"
-            disabled={submitting || !cart.customerId || hasPriceBad}
-            onClick={() => submit(true)}
-            className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
-          >
-            Lưu tạm
-          </button>
+          {/* Đơn ĐÃ DUYỆT không có "Lưu tạm": lưu mà không chạy lại quy tắc
+              là đúng cái lỗ hổng gửi đơn nhỏ cho duyệt rồi sửa lên gấp
+              mười. Chỗ đó để nút thoát khỏi phần sửa. */}
+          {editing?.status === "confirmed" ? (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                cart.clear()
+                router.replace(`/orders/${editing.orderId}`)
+              }}
+              className="h-13 flex-1 rounded-2xl border-[1.5px] border-outline-variant bg-surface-container-lowest py-3.5 text-base font-extrabold text-on-surface-variant disabled:opacity-40"
+            >
+              Bỏ sửa
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting || !cart.customerId || hasPriceBad}
+              onClick={() => submit(true)}
+              className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
+            >
+              Lưu tạm
+            </button>
+          )}
           <button
             type="button"
             disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasOver || hasPriceBad}
@@ -456,7 +506,11 @@ export default function SellCartPage() {
                 ? "Vượt tồn kho"
                 : hasPriceBad
                   ? "Giá ngoài hạn mức"
-                  : "Đặt hàng"}
+                  : editing?.status === "confirmed"
+                    ? "Lưu thay đổi"
+                    : editing
+                      ? "Gửi duyệt"
+                      : "Đặt hàng"}
           </button>
         </div>
       </div>

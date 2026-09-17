@@ -1287,9 +1287,9 @@ export default function StockEntryDetailPage() {
                 </tfoot>
               </table>
 
-              {/* Hàng trả về — in luôn trên phiếu giao để lái xe nhớ
-                  thu hàng trả. Nếu không có phiếu trả nào, vẫn in
-                  bảng trống với 3 dòng để ghi tay. */}
+              {/* Hàng trả về — chỉ in khi đơn CÓ phiếu trả thật. Đơn không có
+                  phiếu trả thì KHÔNG in bảng trống/ghi tay (người dùng yêu cầu
+                  bỏ); chỉ còn dòng "Số phải thu". */}
               {(() => {
                 const allReturnLines = (o.returns || []).flatMap((r) => r.lines || [])
                 // Refund-side total only — exchange items don't deduct
@@ -1310,40 +1310,40 @@ export default function StockEntryDetailPage() {
                   0
                 )
                 const hasReturns = allReturnLines.length > 0
+                const netDue = Number(o.total || orderTotal) - totalReturnValue
                 return (
                   <div className="mb-2">
-                    <h2 className="font-bold mt-2 mb-1" style={{ fontSize: "9pt" }}>
-                      Hàng trả về (thu về kho)
-                    </h2>
-                    <p className="text-gray-500 mb-1" style={{ fontSize: "7pt" }}>
-                      {hasReturns
-                        ? "Thu lại các SP dưới đây và đối chiếu với khách trước khi rời điểm giao."
-                        : "Đơn chưa có yêu cầu trả. Nếu khách trả tại điểm giao, ghi tay vào các dòng trống."}
-                    </p>
-                    <table className="w-full border-collapse" style={{ fontSize: "8pt" }}>
-                      <colgroup>
-                        <col style={{ width: "8mm" }} />
-                        <col />
-                        <col style={{ width: "20mm" }} />
-                        <col style={{ width: "11mm" }} />
-                        <col style={{ width: "13mm" }} />
-                        <col style={{ width: "20mm" }} />
-                        <col style={{ width: "22mm" }} />
-                      </colgroup>
-                      <thead>
-                        <tr className="border-b border-gray-400">
-                          <th className="py-0.5 text-left font-bold">STT</th>
-                          <th className="py-0.5 text-left font-bold">Sản phẩm</th>
-                          <th className="py-0.5 text-left font-bold">SKU</th>
-                          <th className="py-0.5 text-center font-bold">ĐVT</th>
-                          <th className="py-0.5 text-right font-bold">SL</th>
-                          <th className="py-0.5 text-right font-bold">Đơn giá</th>
-                          <th className="py-0.5 text-right font-bold">Thành tiền</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {hasReturns
-                          ? allReturnLines.map((l, i) => {
+                    {hasReturns && (
+                      <>
+                        <h2 className="font-bold mt-2 mb-1" style={{ fontSize: "9pt" }}>
+                          Hàng trả về (thu về kho)
+                        </h2>
+                        <p className="text-gray-500 mb-1" style={{ fontSize: "7pt" }}>
+                          Thu lại các SP dưới đây và đối chiếu với khách trước khi rời điểm giao.
+                        </p>
+                        <table className="w-full border-collapse" style={{ fontSize: "8pt" }}>
+                          <colgroup>
+                            <col style={{ width: "8mm" }} />
+                            <col />
+                            <col style={{ width: "20mm" }} />
+                            <col style={{ width: "11mm" }} />
+                            <col style={{ width: "13mm" }} />
+                            <col style={{ width: "20mm" }} />
+                            <col style={{ width: "22mm" }} />
+                          </colgroup>
+                          <thead>
+                            <tr className="border-b border-gray-400">
+                              <th className="py-0.5 text-left font-bold">STT</th>
+                              <th className="py-0.5 text-left font-bold">Sản phẩm</th>
+                              <th className="py-0.5 text-left font-bold">SKU</th>
+                              <th className="py-0.5 text-center font-bold">ĐVT</th>
+                              <th className="py-0.5 text-right font-bold">SL</th>
+                              <th className="py-0.5 text-right font-bold">Đơn giá</th>
+                              <th className="py-0.5 text-right font-bold">Thành tiền</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allReturnLines.map((l, i) => {
                               const lineTotal = Number(
                                 l.line_total != null
                                   ? l.line_total
@@ -1392,105 +1392,77 @@ export default function StockEntryDetailPage() {
                                   </td>
                                 </tr>
                               )
-                            })
-                          : Array.from({ length: 3 }, (_, i) => (
-                              <tr key={`blank-${i}`} className="border-b border-gray-300">
-                                <td style={{ height: "5mm" }}>{i + 1}</td>
-                                <td></td>
-                                <td></td>
-                                <td className="text-center"></td>
-                                <td className="text-right"></td>
-                                <td className="text-right"></td>
-                                <td className="text-right"></td>
-                              </tr>
-                            ))}
-                      </tbody>
-                      {hasReturns ? (
-                        <tfoot>
-                          <tr className="border-t border-gray-400 font-bold">
-                            <td colSpan={4} className="py-0.5 text-right">
-                              Tổng trả (trừ công nợ):
-                            </td>
-                            <td className="py-0.5 text-right">{totalReturnQty}</td>
-                            <td className="py-0.5"></td>
-                            <td className="py-0.5 text-right">
-                              {formatCurrency(totalReturnValue)}
-                            </td>
-                          </tr>
-                          {allReturnLines.some((l) => l.is_exchange) && (
-                            <tr>
-                              <td
-                                colSpan={7}
-                                className="italic text-[#175cd3]"
-                                style={{ fontSize: "7pt" }}
-                              >
-                                * ĐỔI = thu về kho, KHÔNG trừ công nợ.
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-gray-400 font-bold">
+                              <td colSpan={4} className="py-0.5 text-right">
+                                Tổng trả (trừ công nợ):
+                              </td>
+                              <td className="py-0.5 text-right">{totalReturnQty}</td>
+                              <td className="py-0.5"></td>
+                              <td className="py-0.5 text-right">
+                                {formatCurrency(totalReturnValue)}
                               </td>
                             </tr>
-                          )}
-                        </tfoot>
-                      ) : (
-                        <tfoot>
-                          <tr className="border-t border-gray-400 font-bold">
-                            <td colSpan={4} className="py-0.5 text-right">
-                              Tổng trả (ghi tay):
-                            </td>
-                            <td className="py-0.5 text-right">_______</td>
-                            <td className="py-0.5"></td>
-                            <td className="py-0.5 text-right">_______</td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                    {(o.returns || []).map((r, ri) => {
-                      const reasonText = r.reason
-                        ? ({
-                            damaged: "Hỏng/vỡ",
-                            wrong_item: "Sai hàng",
-                            near_expiry: "Cận date",
-                            expired: "Hết hạn",
-                            refused: "Khách từ chối",
-                          } as Record<string, string>)[r.reason] || r.reason
-                        : "—"
-                      const statusText = r.status
-                        ? ({
-                            pending: "Chờ duyệt",
-                            approved: "Đã duyệt",
-                            completed: "Hoàn tất",
-                          } as Record<string, string>)[r.status] || r.status
-                        : ""
-                      return (
-                        <p
-                          key={r.id}
-                          className="text-gray-600 mt-0.5"
-                          style={{ fontSize: "7pt" }}
-                        >
-                          <span className="font-semibold">Phiếu trả {ri + 1}:</span>{" "}
-                          {statusText ? `[${statusText}] ` : ""}Lý do: {reasonText}
-                          {r.credit_note_amount != null
-                            ? ` • Credit note: ${formatCurrency(Number(r.credit_note_amount))}`
-                            : ""}
-                          {r.notes ? ` • ${r.notes}` : ""}
-                        </p>
-                      )
-                    })}
-                    {(() => {
-                      const netDue =
-                        Number(o.total || orderTotal) - totalReturnValue
-                      return (
-                        <div
-                          className="mt-1 flex items-center justify-end gap-2 border-t border-gray-400 pt-1"
-                          style={{ fontSize: "9pt" }}
-                        >
-                          <span className="text-gray-500">
-                            {hasReturns ? "Còn phải thu:" : "Số phải thu:"}
-                          </span>
-                          <span className="font-bold" style={{ fontSize: "10pt" }}>
-                            {formatCurrency(Math.max(0, netDue))}
-                          </span>
-                        </div>
-                      )
-                    })()}
+                            {allReturnLines.some((l) => l.is_exchange) && (
+                              <tr>
+                                <td
+                                  colSpan={7}
+                                  className="italic text-[#175cd3]"
+                                  style={{ fontSize: "7pt" }}
+                                >
+                                  * ĐỔI = thu về kho, KHÔNG trừ công nợ.
+                                </td>
+                              </tr>
+                            )}
+                          </tfoot>
+                        </table>
+                        {(o.returns || []).map((r, ri) => {
+                          const reasonText = r.reason
+                            ? ({
+                                damaged: "Hỏng/vỡ",
+                                wrong_item: "Sai hàng",
+                                near_expiry: "Cận date",
+                                expired: "Hết hạn",
+                                refused: "Khách từ chối",
+                              } as Record<string, string>)[r.reason] || r.reason
+                            : "—"
+                          const statusText = r.status
+                            ? ({
+                                pending: "Chờ duyệt",
+                                approved: "Đã duyệt",
+                                completed: "Hoàn tất",
+                              } as Record<string, string>)[r.status] || r.status
+                            : ""
+                          return (
+                            <p
+                              key={r.id}
+                              className="text-gray-600 mt-0.5"
+                              style={{ fontSize: "7pt" }}
+                            >
+                              <span className="font-semibold">Phiếu trả {ri + 1}:</span>{" "}
+                              {statusText ? `[${statusText}] ` : ""}Lý do: {reasonText}
+                              {r.credit_note_amount != null
+                                ? ` • Credit note: ${formatCurrency(Number(r.credit_note_amount))}`
+                                : ""}
+                              {r.notes ? ` • ${r.notes}` : ""}
+                            </p>
+                          )
+                        })}
+                      </>
+                    )}
+                    <div
+                      className="mt-1 flex items-center justify-end gap-2 border-t border-gray-400 pt-1"
+                      style={{ fontSize: "9pt" }}
+                    >
+                      <span className="text-gray-500">
+                        {hasReturns ? "Còn phải thu:" : "Số phải thu:"}
+                      </span>
+                      <span className="font-bold" style={{ fontSize: "10pt" }}>
+                        {formatCurrency(Math.max(0, netDue))}
+                      </span>
+                    </div>
                   </div>
                 )
               })()}

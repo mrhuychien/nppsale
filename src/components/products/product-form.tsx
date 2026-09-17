@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { DEFAULT_VAT_RATE } from "@/lib/constants"
+import { DEFAULT_VAT_RATE, VAT_RATES } from "@/lib/constants"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,12 +36,8 @@ interface ProductFormProps {
   hideFooter?: boolean
 }
 
-const VAT_OPTIONS = [
-  { value: "0", label: "0%" },
-  { value: "0.05", label: "5%" },
-  { value: "0.08", label: "8%" },
-  { value: "0.1", label: "10%" },
-]
+// Bậc thuế dùng chung với sheet sửa dòng trong đơn — xem VAT_RATES.
+const VAT_OPTIONS = VAT_RATES.map((r) => ({ value: String(r.value), label: r.label }))
 
 const WEIGHT_UNITS = [
   { value: "g", label: "g" },

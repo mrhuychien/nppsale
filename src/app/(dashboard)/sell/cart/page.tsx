@@ -24,7 +24,7 @@ import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
 import { cn, formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
-import { PAYMENT_TERMS } from "@/lib/constants"
+import { PAYMENT_TERMS, vatLabel } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/client"
 import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-order"
 import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
@@ -397,6 +397,10 @@ export default function SellCartPage() {
                           Giá sửa
                         </span>
                       )}
+                      {/* Dòng chịu thuế phải NHÌN THẤY được từ danh sách —
+                          tổng tiền có VAT mà không dòng nào nói mình có
+                          thuế thì người dùng không lần ra vì sao. */}
+                      {(r.line.vatRate || 0) > 0 && <span>VAT {vatLabel(r.line.vatRate)}</span>}
                       {r.line.note && <span className="italic">“{r.line.note}”</span>}
                     </span>
                   </span>

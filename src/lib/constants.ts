@@ -170,3 +170,23 @@ export const APPROVAL_THRESHOLDS = {
  * "sửa" nó về 8% — mặt hàng nào có thuế thì khai trên chính sản phẩm đó.
  */
 export const DEFAULT_VAT_RATE = 0
+
+/**
+ * Các bậc thuế suất VAT chọn được — MỘT danh sách cho form sản phẩm lẫn
+ * sheet sửa dòng trong đơn. Hai nơi hai danh sách là có ngày một bên thêm
+ * bậc mà bên kia không hiểu.
+ *
+ * Lưu dạng tỉ lệ như `products.vat_rate`.
+ */
+export const VAT_RATES = [
+  { value: 0, label: "0%" },
+  { value: 0.05, label: "5%" },
+  { value: 0.08, label: "8%" },
+  { value: 0.1, label: "10%" },
+] as const
+
+/** "8%" cho 0.08; thuế suất lạ (0.07) vẫn in ra "7%", không ép về bậc gần nhất. */
+export function vatLabel(rate: number): string {
+  const r = Number(rate) || 0
+  return VAT_RATES.find((v) => Math.abs(v.value - r) < 1e-9)?.label ?? `${Math.round(r * 100)}%`
+}

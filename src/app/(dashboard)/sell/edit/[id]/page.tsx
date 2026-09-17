@@ -119,6 +119,7 @@ export default function SellEditLoaderPage() {
         orderId: head.id,
         orderCode: head.order_code,
         status: head.status === "confirmed" ? "confirmed" : "draft",
+        salesUserId: head.sales_user_id ?? null,
       },
     })
     router.replace("/sell/cart")

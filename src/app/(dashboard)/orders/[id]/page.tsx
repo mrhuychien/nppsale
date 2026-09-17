@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
+import { canDeleteOrder, deleteOrder } from "@/lib/orders/delete"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -646,20 +647,9 @@ export default function OrderDetailPage() {
       // lần bấm xoá đều "thành công" mà không xoá gì. Người dùng quay về
       // danh sách và thấy đơn vẫn nằm đó.
       //
-      // Dòng hàng có ON DELETE CASCADE nên chỉ cần xoá đơn.
-      const { data, error } = await supabase
-        .from("sales_orders")
-        .delete()
-        .eq("id", order.id)
-        .select("id")
-      if (error) throw error
-      if (!data || data.length === 0) {
-        throw new Error(
-          "Không xoá được đơn này. Chỉ chủ NPP hoặc quản lý mới xoá được, " +
-            "và chỉ với đơn còn nháp hoặc đã huỷ. Nếu cơ sở dữ liệu chưa chạy " +
-            "migration 113 thì chạy `supabase db push` rồi thử lại."
-        )
-      }
+      // Dòng hàng có ON DELETE CASCADE, phiếu trả chưa duyệt đi theo nhờ
+      // trigger mig 118 — chỉ cần xoá đơn. Xem `deleteOrder`.
+      await deleteOrder(supabase, order.id)
       toast({ title: "Đã xóa đơn hàng" })
       router.push("/orders")
     } catch (error) {
@@ -1050,7 +1040,12 @@ export default function OrderDetailPage() {
   const canEdit = !!editCtx && canEditOrder(editCtx)
   const fullEdit = !!editCtx && canFullEditOrder(editCtx)
   const cannotEditReason = editCtx ? whyCannotEdit(editCtx) : null
-  const canDelete = user && hasPermission(user.role, "orders", "delete") && ["draft", "cancelled"].includes(order.status)
+  // ⚠ Một phép gài cho cả ba màn, chép đúng chính sách database (mig 113 +
+  // 117) — trước đây nút này gài theo bảng phân quyền, mà bảng đó không
+  // cấp orders.delete cho NVBH, nên NVBH không thấy nút xoá nháp của mình.
+  const canDelete =
+    !!user &&
+    canDeleteOrder(user, order, hasPermission(user.role, "orders", "delete"))
 
   // M4.2 — trên điện thoại, thẻ "Thao tác" nằm CUỐI cột phụ, tức là sau
   // khách hàng + thông tin đơn + công nợ + hoá đơn. Đo trên đơn 8 dòng:

@@ -38,7 +38,9 @@ describe("Xoá đơn hàng đã huỷ", () => {
    */
   it("chỉ xoá được đơn nháp hoặc đã huỷ", () => {
     expect(strip(MIG113)).toContain("status IN ('draft', 'cancelled')")
-    expect(ORDER).toContain('["draft", "cancelled"].includes(order.status)')
+    // Phép gài nay là MỘT hàm cho ba màn, chép đúng chính sách DB —
+    // xem tests/order-delete.test.ts cho bảng chân trị.
+    expect(ORDER).toContain('canDeleteOrder(user, order, hasPermission(user.role, "orders", "delete"))')
   })
 
   it("chỉ chủ NPP và quản lý", () => {
@@ -52,25 +54,18 @@ describe("Xoá đơn hàng đã huỷ", () => {
    * đơn vẫn nằm đó. Chỉ kiểm `error` là không đủ: RLS chặn thì không có
    * lỗi nào cả. Phải đếm dòng thật sự bị xoá.
    */
-  it("màn đơn hàng đếm dòng đã xoá, không chỉ kiểm lỗi", () => {
-    const fn = ORDER.slice(ORDER.indexOf("const handleDelete"), ORDER.indexOf("const startLinesEdit"))
-    expect(fn).toContain('.select("id")')
-    expect(fn).toContain("if (!data || data.length === 0)")
-    expect(fn).toContain("Không xoá được đơn này")
-  })
-
-  /** Không xoá được thì phải nói VÌ SAO và làm gì tiếp. */
-  it("báo lỗi nêu rõ điều kiện và nhắc migration", () => {
-    const fn = ORDER.slice(ORDER.indexOf("const handleDelete"), ORDER.indexOf("const startLinesEdit"))
-    expect(fn).toContain("chủ NPP hoặc quản lý")
-    expect(fn).toContain("migration 113")
-  })
-
   /**
-   * KHÔNG nới khoá ngoại. Đơn còn dính công nợ hay phiếu thu thì Postgres
-   * chặn — và chặn ở đó là đúng. Lỗi khoá ngoại có nội dung thật, hiện
-   * thẳng lên màn hình.
+   * ⚠ Phép xoá nay nằm ở MỘT chỗ (`deleteOrder`) cho ba màn; màn đơn hàng
+   * chỉ gọi nó. Phép đếm dòng đã xoá và câu báo lỗi được chốt ở
+   * tests/order-delete.test.ts.
    */
+  it("màn đơn hàng xoá qua hàm dùng chung, không tự viết lại", () => {
+    const i = ORDER.indexOf("const handleDelete = async () => {")
+    const fn = ORDER.slice(i, ORDER.indexOf("\n  }", i))
+    expect(fn).toContain("await deleteOrder(supabase, order.id)")
+    expect(fn, "tự viết lại phép xoá là mất chốt đếm dòng").not.toContain('.from("sales_orders")')
+  })
+
   it("không đụng tới khoá ngoại", () => {
     expect(strip(MIG113)).not.toMatch(/ON DELETE CASCADE/i)
     expect(strip(MIG113)).not.toMatch(/DROP CONSTRAINT/i)

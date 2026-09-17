@@ -227,10 +227,10 @@ describe("Xoá đơn tạm", () => {
     expect(MIG117).not.toContain("'confirmed'")
   })
 
-  it("màn Đơn tạm đếm số dòng xoá được, không chỉ kiểm error", () => {
-    expect(DRAFTS).toContain('.select("id")')
-    expect(DRAFTS).toMatch(/if \(!data \|\| data\.length === 0\)/)
+  it("màn Đơn tạm xoá qua hàm dùng chung — chốt đếm dòng nằm ở đó", () => {
+    expect(DRAFTS).toContain("await deleteOrder(createClient(), o.id)")
     expect(DRAFTS).toContain("Không xoá được đơn này")
+    expect(DRAFTS, "tự viết lại phép xoá là mất chốt đếm dòng").not.toContain('.delete()')
   })
 
   /** Đọc hỏng mà hiện "chưa có đơn tạm" là nói dối. */

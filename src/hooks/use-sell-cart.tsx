@@ -55,6 +55,8 @@ export interface EditingOrder {
   orderCode: string
   /** Trạng thái LÚC MỞ RA SỬA — quyết định nhãn nút và lời nhắc. */
   status: "draft" | "confirmed"
+  /** NVBH phụ trách — để biết nháp này có phải "của mình" mà xoá được không. */
+  salesUserId?: string | null
 }
 
 interface SellCartValue extends SellCartState {
@@ -100,7 +102,12 @@ function validEditing(v: unknown): EditingOrder | null {
   const e = v as Partial<EditingOrder>
   if (typeof e.orderId !== "string" || !e.orderId) return null
   if (e.status !== "draft" && e.status !== "confirmed") return null
-  return { orderId: e.orderId, orderCode: e.orderCode ?? "", status: e.status }
+  return {
+    orderId: e.orderId,
+    orderCode: e.orderCode ?? "",
+    status: e.status,
+    salesUserId: typeof e.salesUserId === "string" ? e.salesUserId : null,
+  }
 }
 
 export function SellCartProvider({ children }: { children: React.ReactNode }) {

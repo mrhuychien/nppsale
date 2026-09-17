@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { listOutbox, removeEntry, type OutboxEntry } from "@/lib/offline/outbox"
 import { useAuth } from "@/hooks/use-auth"
+import { deleteOrder } from "@/lib/orders/delete"
+import { errorMessage } from "@/lib/errors"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
@@ -134,23 +136,12 @@ export default function SellDraftsPage() {
   }
 
   const doDelete = async (o: DraftOrder) => {
-    const { data, error } = await createClient()
-      .from("sales_orders")
-      .delete()
-      .eq("id", o.id)
-      .select("id")
-    if (error) {
-      toast({ title: "Không xoá được", description: error.message, variant: "destructive" })
-      return
-    }
-    // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi — "đã xoá" trong khi
-    // đơn vẫn nằm đó. Đúng cái bẫy migration 117 sinh ra để bịt.
-    if (!data || data.length === 0) {
-      toast({
-        title: "Không xoá được đơn này",
-        description: "Có thể đơn đã được duyệt. Tải lại danh sách để xem trạng thái mới.",
-        variant: "destructive",
-      })
+    // ⚠ Một chỗ xoá cho cả ba màn — xem `deleteOrder`: RLS từ chối thì 0
+    // dòng, HTTP 200, không lỗi, và hàm đó ném lỗi thay vì báo "đã xoá".
+    try {
+      await deleteOrder(createClient(), o.id)
+    } catch (err) {
+      toast({ title: "Không xoá được đơn này", description: errorMessage(err), variant: "destructive" })
       return
     }
     toast({ title: `Đã xoá đơn ${o.order_code}` })

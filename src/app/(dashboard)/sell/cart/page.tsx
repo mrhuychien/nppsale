@@ -23,6 +23,10 @@ import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
+import { hasPermission } from "@/lib/permissions"
+import { canDeleteOrder, deleteOrder } from "@/lib/orders/delete"
+import { errorMessage } from "@/lib/errors"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn, formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, vatLabel } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/client"
@@ -42,11 +46,46 @@ export default function SellCartPage() {
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const customer = customerById(cart.customerId) ?? null
   const groupId = customer?.group_id ?? null
   // Đang sửa một đơn đã lưu, hay đang soạn đơn mới.
   const editing = cart.editing
+
+  /**
+   * ⚠ NGƯỜI DÙNG BÁO: "NV bán hàng chưa xoá được đơn nháp. Phải có nút
+   * xoá trong màn sửa đơn chứ?" Đang mở một nháp ra sửa mà muốn bỏ nó thì
+   * phải thoát ra, tìm lại trong Đơn tạm, rồi mới xoá được — trong khi
+   * database (mig 117) đã cho NVBH xoá nháp của chính mình. Nút nằm ngay
+   * đây, gài đúng theo chính sách database qua `canDeleteOrder`.
+   */
+  const canDeleteDraft =
+    !!editing &&
+    editing.status === "draft" &&
+    canDeleteOrder(
+      user,
+      { status: "draft", sales_user_id: editing.salesUserId ?? user?.id },
+      !!user && hasPermission(user.role, "orders", "delete")
+    )
+
+  const deleteDraft = async () => {
+    if (!editing || deleting) return
+    setDeleting(true)
+    try {
+      await deleteOrder(createClient(), editing.orderId)
+      // ⚠ Xoá xong phải BUÔNG giỏ. Giỏ còn mang mã đơn vừa xoá thì cú Lưu
+      // kế tiếp ghi đè lên một đơn không còn tồn tại — lỗi khoá ngoại.
+      cart.clear()
+      toast({ title: `Đã xoá đơn nháp ${editing.orderCode}` })
+      router.replace("/sell")
+    } catch (err) {
+      toast({ title: "Không xoá được đơn", description: errorMessage(err), variant: "destructive" })
+      setDeleting(false)
+      setDeleteOpen(false)
+    }
+  }
 
   // Quyền sửa giá theo từng người — NVBH phải được bật riêng.
   const rules = userPriceRulesFrom(user)
@@ -338,8 +377,17 @@ export default function SellCartPage() {
             sau khi bấm Lưu là quá muộn — nhân viên đã hứa với khách là
             hàng ra trong hôm nay. */}
         {editing && (
-          <div className="rounded-xl bg-primary/8 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
-            {editHint(editing.status)}
+          <div className="flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
+            <span className="min-w-0 flex-1">{editHint(editing.status)}</span>
+            {canDeleteDraft && (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="tap flex shrink-0 items-center gap-1 rounded-lg px-2 font-extrabold text-error"
+              >
+                <Trash2 className="h-4 w-4" /> Xoá nháp
+              </button>
+            )}
           </div>
         )}
 
@@ -576,6 +624,17 @@ export default function SellCartPage() {
           </button>
         </div>
       </SellBottomBar>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(o) => !deleting && setDeleteOpen(o)}
+        title={`Xoá đơn nháp ${editing?.orderCode ?? ""}?`}
+        description="Đơn nháp này sẽ bị xoá hẳn khỏi hệ thống, kể cả hàng trả kèm theo chưa duyệt. Không hoàn tác được."
+        confirmLabel="Xoá đơn nháp"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={deleteDraft}
+      />
 
       <LineEditSheet
         line={edit}

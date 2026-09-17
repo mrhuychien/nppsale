@@ -66,6 +66,49 @@ const CONSTRAINT_VI: Array<[RegExp, string]> = [
 /** Câu RLS của Postgres không có mã riêng — nhận bằng nội dung. */
 const RLS_RE = /row-level security|violates row-level security policy/i
 
+/**
+ * Tên bảng → tên người dùng gọi. Chỉ để câu lỗi khoá ngoại nói được
+ * "đang được PHIẾU TRẢ HÀNG tham chiếu" thay vì "table returns".
+ */
+const TABLE_VI: Record<string, string> = {
+  returns: "phiếu trả hàng",
+  receivables: "công nợ",
+  invoices: "hoá đơn",
+  delivery_lines: "phiếu giao hàng",
+  cash_receipt_lines: "phiếu thu",
+  visit_logs: "nhật ký viếng thăm",
+  driver_handover_items: "bàn giao tài xế",
+  driver_handover_failed_orders: "bàn giao tài xế",
+  sales_orders: "đơn hàng",
+  sales_order_lines: "dòng hàng",
+  customers: "khách hàng",
+  products: "sản phẩm",
+}
+
+/**
+ * ⚠ 23503 CÓ HAI CHIỀU, và bản đầu chỉ dịch một chiều.
+ *
+ *   · GHI/SỬA trỏ vào bản ghi không có: "is not present in table" →
+ *     "dữ liệu liên kết không còn tồn tại". Đúng.
+ *   · XOÁ bản ghi đang bị bảng khác trỏ vào: "is still referenced from
+ *     table" → cũng in ra "dữ liệu liên kết không còn tồn tại". SAI NGƯỢC:
+ *     dữ liệu liên kết CÒN ĐÓ mới là vấn đề. Chủ NPP xoá đơn huỷ, đọc câu
+ *     đó rồi không hiểu phải làm gì — vì câu đó nói ngược lại sự thật.
+ */
+function foreignKeyMessage(haystack: string): string | null {
+  const still = haystack.match(/still referenced from table "([^"]+)"/i)
+  if (still) {
+    const t = TABLE_VI[still[1]] ?? still[1]
+    return `Bản ghi này đang được ${t} tham chiếu nên chưa xoá được — gỡ hoặc xoá ${t} đó trước, rồi xoá lại.`
+  }
+  const missing = haystack.match(/is not present in table "([^"]+)"/i)
+  if (missing) {
+    const t = TABLE_VI[missing[1]] ?? missing[1]
+    return `Dữ liệu liên kết không còn tồn tại (${t}).`
+  }
+  return null
+}
+
 function textOf(v: unknown): string {
   return typeof v === "string" ? v.trim() : ""
 }
@@ -96,6 +139,7 @@ export function errorMessage(err: unknown, fallback = "Lỗi không xác định
       break
     }
   }
+  if (!vi && code === "23503") vi = foreignKeyMessage(haystack) ?? ""
   if (!vi && code && CODE_VI[code]) vi = CODE_VI[code]
   if (!vi && RLS_RE.test(haystack)) vi = CODE_VI["42501"]
 

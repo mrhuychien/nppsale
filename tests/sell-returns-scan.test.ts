@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
+  RETURN_REASONS,
   addReturnLine,
   patchReturnLine,
   returnCreditOf,
@@ -14,6 +15,7 @@ import { findByCode, shouldAcceptScan, SCAN_DEDUPE_MS } from "../src/lib/sell/sc
 import { buildOrderPayload } from "../src/lib/sell/create-order"
 import { cartTotals, type CartLine } from "../src/lib/sell/cart"
 import type { SellProduct } from "../src/lib/sell/ref-data"
+import { RETURN_REASONS as CONSTANT_REASONS } from "../src/lib/constants"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -96,8 +98,21 @@ describe("Dòng trả — thêm, sửa, xoá", () => {
   })
 
   it("nhãn lý do tra được, không tra ra thì trả nguyên giá trị", () => {
-    expect(returnReasonLabel("damaged")).toBe("Hư hỏng")
+    expect(returnReasonLabel("damaged")).toBe("Hàng hư hỏng")
     expect(returnReasonLabel("khac")).toBe("khac")
+  })
+
+  /**
+   * ⚠ MỘT DANH SÁCH LÝ DO DUY NHẤT, khớp ràng buộc CHECK của cột
+   * `returns.reason`. Màn bán hàng từng có bản riêng THIẾU "Hết hạn sử
+   * dụng" — cùng một việc mà hai màn cho hai bộ lựa chọn, và lý do hay gặp
+   * nhất của hàng FMCG thì chỉ một màn chọn được.
+   */
+  it("dùng chung danh sách lý do với cả app, đủ 5 giá trị DB cho phép", () => {
+    const allowed = ["damaged", "wrong_item", "near_expiry", "expired", "refused"]
+    expect(RETURN_REASONS.map((r) => r.value).sort()).toEqual([...allowed].sort())
+    // Cùng một mảng, không phải bản chép.
+    expect(RETURN_REASONS).toBe(CONSTANT_REASONS)
   })
 })
 

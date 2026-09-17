@@ -1,4 +1,5 @@
 import type { OfflineReturnLine } from "@/lib/orders/create"
+import { RETURN_REASONS as CONSTANT_REASONS } from "@/lib/constants"
 
 /**
  * Hàng trả / đổi đi kèm một đơn bán.
@@ -23,15 +24,16 @@ export interface ReturnCartLine {
   note: string
 }
 
-export const RETURN_REASONS = [
-  { value: "damaged", label: "Hư hỏng" },
-  { value: "near_expiry", label: "Gần hết hạn" },
-  { value: "wrong_item", label: "Sai hàng" },
-  { value: "refused", label: "Từ chối nhận" },
-] as const
+/**
+ * ⚠ MỘT DANH SÁCH LÝ DO DUY NHẤT, và nó phải khớp ràng buộc CHECK của cột
+ * `returns.reason` dưới database. Trước đây màn bán hàng có bản riêng
+ * THIẾU "Hết hạn sử dụng": cùng một việc mà hai màn cho hai bộ lựa chọn,
+ * và lý do hay gặp nhất của hàng FMCG thì chỉ một màn chọn được.
+ */
+export { RETURN_REASONS } from "@/lib/constants"
 
 export function returnReasonLabel(value: string): string {
-  return RETURN_REASONS.find((r) => r.value === value)?.label ?? value
+  return CONSTANT_REASONS.find((r) => r.value === value)?.label ?? value
 }
 
 /**

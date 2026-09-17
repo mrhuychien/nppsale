@@ -165,35 +165,43 @@ export default function SellReturnsPage() {
                       ×
                     </button>
                   </div>
+                  {/* ⚠ Hai loại khác nhau ở CHỖ TIỀN: đổi hàng không trừ
+                      đồng nào. Nhầm là sai tiền theo cả hai chiều.
+
+                      ⚠ BỘ CHỌN NẰM RIÊNG MỘT HÀNG. Xếp cạnh bộ đếm số
+                      lượng thì trên màn 375px hai khối cộng lại rộng hơn
+                      thẻ (~162px + 164px + lề) — bộ đếm bị đẩy tràn ra
+                      ngoài mép phải, bấm không tới nút +. */}
+                  <div className="flex gap-1 rounded-[10px] bg-surface-container p-[3px]">
+                    {[
+                      { ex: false, label: "Trả tiền" },
+                      { ex: true, label: "Đổi hàng" },
+                    ].map((o) => (
+                      <button
+                        key={o.label}
+                        type="button"
+                        onClick={() => cart.patchReturnLine(i, { isExchange: o.ex })}
+                        className={cn(
+                          "h-10 flex-1 rounded-lg text-[13px] font-extrabold",
+                          r.isExchange === o.ex
+                            ? "bg-surface-container-lowest text-primary shadow-sm"
+                            : "text-on-surface-variant"
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between gap-2">
-                    {/* ⚠ Hai loại khác nhau ở CHỖ TIỀN: đổi hàng không trừ
-                        đồng nào. Nhầm là sai tiền theo cả hai chiều. */}
-                    <div className="flex gap-1 rounded-[10px] bg-surface-container p-[3px]">
-                      {[
-                        { ex: false, label: "Trả tiền" },
-                        { ex: true, label: "Đổi hàng" },
-                      ].map((o) => (
-                        <button
-                          key={o.label}
-                          type="button"
-                          onClick={() => cart.patchReturnLine(i, { isExchange: o.ex })}
-                          className={cn(
-                            "h-9 rounded-lg px-3 text-[13px] font-extrabold",
-                            r.isExchange === o.ex
-                              ? "bg-surface-container-lowest text-primary shadow-sm"
-                              : "text-on-surface-variant"
-                          )}
-                        >
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="w-[152px]">
-                      <Stepper
-                        qty={r.qty}
-                        onChange={(v) => cart.setReturnQty(i, v)}
-                        onRemove={() => cart.setReturnQty(i, 0)}
-                      />
+                    <span className="min-w-0 truncate text-[15px] font-extrabold tabular-data">
+                      {r.isExchange ? (
+                        <span className="text-on-surface-variant">Đổi hàng · không trừ tiền</span>
+                      ) : (
+                        <>−{formatCurrency(Math.round(r.qty * r.price * (1 + (r.vatRate || 0))))}</>
+                      )}
+                    </span>
+                    <div className="w-[164px] shrink-0">
+                      <Stepper qty={r.qty} onChange={(v) => cart.setReturnQty(i, v)} />
                     </div>
                   </div>
                 </div>

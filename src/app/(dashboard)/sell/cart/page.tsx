@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Search,
   ScanBarcode,
+  Trash2,
   TriangleAlert,
 } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
@@ -295,10 +296,11 @@ export default function SellCartPage() {
                 key={`${r.line.productId}|${r.line.unit}`}
                 className="flex flex-col gap-2 border-b border-outline-variant/30 p-3 last:border-0"
               >
+                <div className="flex items-start gap-1">
                 <button
                   type="button"
                   onClick={() => setEditIdx(r.i)}
-                  className="flex items-start gap-2.5 text-left"
+                  className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] font-bold leading-snug">
@@ -322,16 +324,24 @@ export default function SellCartPage() {
                     </span>
                   </span>
                 </button>
+                {/* ⚠ NÚT XOÁ LUÔN CÓ MẶT, không nấp sau nút − ở số 1: muốn
+                    bỏ một dòng đang để 8 thùng thì không phải bấm − bảy
+                    lần mới thấy nó. */}
+                <button
+                  type="button"
+                  onClick={() => cart.setQty(r.i, 0)}
+                  aria-label={`Xoá ${r.product?.name ?? "dòng"}`}
+                  className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl text-on-surface-variant active:bg-error/10 active:text-error"
+                >
+                  <Trash2 className="h-[18px] w-[18px]" />
+                </button>
+                </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[17px] font-extrabold tabular-data">
                     {formatCurrency(r.line.qty * r.line.price)}
                   </span>
                   <div className="w-[164px]">
-                    <Stepper
-                      qty={r.line.qty}
-                      onChange={(q) => cart.setQty(r.i, q)}
-                      onRemove={() => cart.setQty(r.i, 0)}
-                    />
+                    <Stepper qty={r.line.qty} onChange={(q) => cart.setQty(r.i, q)} />
                   </div>
                 </div>
               </div>

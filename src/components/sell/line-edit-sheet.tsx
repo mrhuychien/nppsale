@@ -197,26 +197,36 @@ function Label({ children }: { children: React.ReactNode }) {
 export function Stepper({
   qty,
   onChange,
-  onRemove,
 }: {
   qty: number
   onChange: (q: number) => void
-  /** Có thì nút − ở số 1 thành nút XOÁ. */
-  onRemove?: () => void
 }) {
-  const atOne = qty <= 1
+  /**
+   * ⚠ NÚT − KHÔNG BAO GIỜ XOÁ DÒNG.
+   *
+   * Bản trước biến nút − thành thùng rác khi số lượng bằng 1. Nghĩa là
+   * cùng một chỗ trên màn hình làm hai việc khác hẳn nhau tuỳ con số đang
+   * hiện: bấm − từ 2 xuống 1 rồi bấm tiếp theo quán tính là mất dòng. Và
+   * muốn xoá một dòng đang để 8 thùng thì phải bấm − bảy lần mới thấy nút
+   * xoá xuất hiện.
+   *
+   * Nay xoá là một nút RIÊNG, luôn có mặt trên mỗi dòng. Nút − chỉ giảm,
+   * và dừng ở 1.
+   */
+  const atMin = qty <= 1
   return (
     <div className="flex h-12 items-center overflow-hidden rounded-xl border-[1.5px] border-outline-variant">
       <button
         type="button"
-        aria-label={atOne && onRemove ? "Xoá dòng" : "Giảm"}
-        onClick={() => (atOne && onRemove ? onRemove() : onChange(qty - 1))}
+        aria-label="Giảm"
+        disabled={atMin}
+        onClick={() => onChange(qty - 1)}
         className={cn(
           "h-12 w-12 shrink-0 text-xl",
-          atOne && onRemove ? "text-error" : "text-primary"
+          atMin ? "text-on-surface-variant/40" : "text-primary"
         )}
       >
-        {atOne && onRemove ? "🗑" : "−"}
+        −
       </button>
       <input
         value={qty}
@@ -226,7 +236,7 @@ export function Stepper({
         onChange={(e) => {
           const digits = e.target.value.replace(/\D/g, "")
           if (digits === "") return
-          onChange(parseInt(digits, 10))
+          onChange(Math.max(1, parseInt(digits, 10)))
         }}
         className="h-12 w-full min-w-0 flex-1 border-x-[1.5px] border-surface-container bg-surface-container-lowest text-center text-lg font-extrabold outline-none"
       />

@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, Plus, Search } from "lucide-react"
+import { ChevronLeft, Search } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { Stepper } from "@/components/sell/line-edit-sheet"
+import { ProductCard } from "@/components/sell/product-card"
 import { RETURN_REASONS, returnReasonLabel } from "@/lib/sell/returns"
-import { sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
+import { selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
+import { findReturnLine } from "@/lib/sell/returns"
+import { compareByStockDesc } from "@/lib/orders/product-order"
 import { viMatchAllWords } from "@/lib/search"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -17,8 +20,9 @@ const PICK_CAP = 20
 export default function SellReturnsPage() {
   const router = useRouter()
   const cart = useSellCart()
-  const { products, productById, customerById } = useSellData()
+  const { products, productById, customerById, stockByProduct } = useSellData()
   const [q, setQ] = useState("")
+  const [unitSel, setUnitSel] = useState<Record<string, string>>({})
 
   const groupId = customerById(cart.customerId)?.group_id ?? null
 
@@ -28,24 +32,39 @@ export default function SellReturnsPage() {
    * ⚠ Ưu tiên hàng ĐANG CÓ TRONG ĐƠN. Khách trả hàng ngay lúc giao là ca
    * hay gặp nhất, và lúc đó món phải trả gần như chắc chắn nằm trong đơn
    * này — bắt gõ tìm lại từ 1.700 mặt hàng là thừa.
+   *
+   * ⚠ Đơn chưa có hàng thì KHÔNG để trống: khách vẫn trả được hàng mua từ
+   * chuyến trước, nên rơi về cả danh mục.
    */
+  const byStock = useMemo(() => compareByStockDesc(stockByProduct), [stockByProduct])
+
+  const inOrder = useMemo(() => {
+    const ids = Array.from(new Set(cart.cart.map((l) => l.productId)))
+    return ids.map((id) => productById(id)).filter(Boolean) as typeof products
+  }, [cart.cart, productById])
+
   const pickables = useMemo(() => {
     const term = q.trim()
     if (term) {
-      return products.filter((p) => viMatchAllWords(term, p.name, p.sku)).slice(0, PICK_CAP)
+      return products
+        .filter((p) => viMatchAllWords(term, p.name, p.sku, p.barcode ?? ""))
+        .sort(byStock)
+        .slice(0, PICK_CAP)
     }
-    const inCart = Array.from(new Set(cart.cart.map((l) => l.productId)))
-      .map((id) => productById(id))
-      .filter(Boolean)
-    return inCart.slice(0, PICK_CAP) as typeof products
-  }, [q, products, cart.cart, productById])
+    if (inOrder.length) return inOrder.slice(0, PICK_CAP)
+    return [...products].sort(byStock).slice(0, PICK_CAP)
+  }, [q, products, inOrder, byStock])
 
-  const add = (productId: string) => {
-    const p = productById(productId)
-    if (!p) return
-    const unit = sellableUnits(p)[0]
+  const listLabel = q.trim()
+    ? `Kết quả cho “${q.trim()}”`
+    : inOrder.length
+      ? "Hàng trong đơn này"
+      : "Tất cả sản phẩm"
+
+  const add = (p: (typeof products)[number]) => {
+    const unit = selectedUnitOf(unitSel, p)
     cart.addReturnLine({
-      productId,
+      productId: p.id,
       unit,
       qty: 1,
       price: unitPriceFor(p, unit, groupId),
@@ -55,7 +74,6 @@ export default function SellReturnsPage() {
       isExchange: false,
       note: "",
     })
-    setQ("")
   }
 
   return (
@@ -108,7 +126,7 @@ export default function SellReturnsPage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm ngoài đơn này…"
+              placeholder="Tên, mã hàng, mã vạch…"
               aria-label="Tìm sản phẩm trả"
               {...SEARCH_FIELD_PROPS}
               className={cn(
@@ -117,23 +135,34 @@ export default function SellReturnsPage() {
               )}
             />
           </div>
-          <div className="grid gap-1.5">
+          <p className="mb-1.5 text-[11px] font-bold text-on-surface-variant">{listLabel}</p>
+          <div className="grid gap-2">
             {pickables.length === 0 ? (
               <p className="py-3 text-center text-[13px] font-semibold text-on-surface-variant">
-                {q.trim() ? "Không tìm thấy sản phẩm" : "Đơn chưa có mặt hàng nào để trả."}
+                {q.trim() ? `Không tìm thấy sản phẩm khớp “${q.trim()}”` : "Chưa có sản phẩm nào"}
               </p>
             ) : (
-              pickables.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => add(p.id)}
-                  className="flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-outline-variant px-3 text-left text-[13px] font-bold text-primary"
-                >
-                  <Plus className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                </button>
-              ))
+              pickables.map((p) => {
+                const unit = selectedUnitOf(unitSel, p)
+                const i = findReturnLine(cart.returnLines, p.id, unit)
+                return (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    baseOnHand={stockByProduct[p.id] ?? 0}
+                    groupId={groupId}
+                    unit={unit}
+                    onPickUnit={(u) => setUnitSel((m) => ({ ...m, [p.id]: u }))}
+                    onAdd={() => add(p)}
+                    inCartQty={i >= 0 ? cart.returnLines[i].qty : 0}
+                    // ⚠ Không hiện tồn kho ở đây: khách đưa hàng LẠI cho
+                    // mình, nên "Hết hàng" tô đỏ trông như đang chặn và
+                    // nhân viên sẽ không dám bấm.
+                    showStock={false}
+                    badgeLabel="Đã trả"
+                  />
+                )
+              })
             )}
           </div>
         </section>

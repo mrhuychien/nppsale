@@ -7,7 +7,7 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
 import type { SellProduct } from "@/lib/sell/ref-data"
-import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
+import { conversionFor, selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { viMatchAllWords } from "@/lib/search"
@@ -57,10 +57,9 @@ export default function SellPage() {
     }
   }, [cart.customerId])
 
-  const unitOf = useCallback(
-    (p: SellProduct) => unitSel[p.id] ?? sellableUnits(p)[0],
-    [unitSel]
-  )
+  // Phép chọn đơn vị nằm ở lib dùng chung — màn hàng trả cũng dùng đúng
+  // phép đó, để hai màn không mặc định hai đơn vị khác nhau.
+  const unitOf = useCallback((p: SellProduct) => selectedUnitOf(unitSel, p), [unitSel])
 
   const byStock = useMemo(() => compareByStockDesc(stockByProduct), [stockByProduct])
 

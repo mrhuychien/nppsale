@@ -75,6 +75,21 @@ export function sellableUnits(product: PricedProduct): string[] {
   return [base, ...Array.from(new Set(rest))]
 }
 
+/**
+ * Đơn vị đang chọn trên thẻ sản phẩm.
+ *
+ * ⚠ MỘT chỗ duy nhất cho MỌI màn có thẻ sản phẩm. Chưa bấm gì thì mặc
+ * định là đơn vị CƠ SỞ — không phải đơn vị đầu tiên trong bảng quy đổi,
+ * vì bảng đó có thể xếp thùng lên trước và khi ấy chạm một cái là thêm cả
+ * thùng thay vì một chai.
+ */
+export function selectedUnitOf(
+  unitSel: Record<string, string>,
+  product: PricedProduct
+): string {
+  return unitSel[product.id] ?? sellableUnits(product)[0]
+}
+
 /** Tồn kho quy ra số nguyên đơn vị đang chọn (2.5 thùng thì bán được 2). */
 export function stockInUnit(
   product: PricedProduct,

@@ -24,6 +24,16 @@ export interface ProductCardProps {
   onAdd: () => void
   /** Số lượng đang có trong giỏ ở ĐÚNG đơn vị này. */
   inCartQty: number
+  /**
+   * Hiện dòng tồn kho không.
+   *
+   * ⚠ Màn HÀNG TRẢ phải tắt. Khách đưa hàng lại cho mình, nên "Hết hàng"
+   * tô đỏ ở đó là câu trả lời cho một câu hỏi không ai hỏi — tệ hơn, nó
+   * trông như đang chặn, và nhân viên sẽ không dám bấm.
+   */
+  showStock?: boolean
+  /** Nhãn của huy hiệu đếm. Màn hàng trả gọi là "Đã trả". */
+  badgeLabel?: string
 }
 
 export function ProductCard({
@@ -34,6 +44,8 @@ export function ProductCard({
   onPickUnit,
   onAdd,
   inCartQty,
+  showStock = true,
+  badgeLabel = "Trong giỏ",
 }: ProductCardProps) {
   const units = sellableUnits(product)
   const price = unitPriceFor(product, unit, groupId)
@@ -82,23 +94,30 @@ export function ProductCard({
             <span>{product.sku}</span>
             {/* ⚠ Hết hàng tô ĐỎ, sắp hết tô hổ phách. Biết trước khi thêm
                 rẻ hơn nhiều so với biết lúc bấm lưu đơn. */}
-            <span
-              className={cn(
-                outOfStock ? "font-extrabold text-error" : stock < 20 ? "font-extrabold text-[#8a5a00]" : ""
-              )}
-            >
-              {outOfStock ? "Hết hàng" : `Tồn ${stock.toLocaleString("vi-VN")} ${unit}`}
-            </span>
+            {showStock && (
+              <span
+                className={cn(
+                  outOfStock ? "font-extrabold text-error" : stock < 20 ? "font-extrabold text-[#8a5a00]" : ""
+                )}
+              >
+                {outOfStock ? "Hết hàng" : `Tồn ${stock.toLocaleString("vi-VN")} ${unit}`}
+              </span>
+            )}
             {inCartQty > 0 && (
               <span className="rounded-md bg-primary/10 px-1.5 py-px font-extrabold text-primary">
-                Trong giỏ: {inCartQty} {unit}
+                {badgeLabel}: {inCartQty} {unit}
               </span>
             )}
           </div>
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-1 rounded-xl bg-surface-container p-[3px]">
+          {/* ⚠ Nhóm nút đơn vị phải CO ĐƯỢC và cuộn ngang khi chật. Mặt
+              hàng khai ba đơn vị (chai · lốc · thùng) thì ba nút cộng lại
+              rộng hơn phần còn lại của thẻ, và nếu nhóm này không co thì
+              nó đẩy GIÁ ra ngoài mép phải — đúng kiểu tràn vừa phải sửa ở
+              màn hàng trả. */}
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-surface-container p-[3px]">
             {units.map((u) => {
               const active = u === unit
               return (
@@ -112,7 +131,7 @@ export function ProductCard({
                     onPickUnit(u)
                   }}
                   className={cn(
-                    "h-10 min-w-[72px] rounded-[9px] px-3.5 text-sm font-extrabold transition-colors",
+                    "h-10 min-w-[64px] shrink-0 rounded-[9px] px-3.5 text-sm font-extrabold transition-colors",
                     active
                       ? "bg-surface-container-lowest text-primary shadow-sm"
                       : "text-on-surface-variant"
@@ -125,7 +144,7 @@ export function ProductCard({
           </div>
           {/* ⚠ Giá 0 nghĩa là CHƯA CÓ GIÁ, không phải miễn phí. In "0đ" ở
               đây là mời nhân viên bán không công. */}
-          <span className="whitespace-nowrap text-[18px] font-extrabold tabular-data text-primary">
+          <span className="shrink-0 whitespace-nowrap text-[18px] font-extrabold tabular-data text-primary">
             {price > 0 ? formatCurrency(price) : "chưa có giá"}
           </span>
         </div>

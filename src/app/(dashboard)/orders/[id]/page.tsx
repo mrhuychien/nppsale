@@ -40,6 +40,12 @@ import {
   type OrderLineChange,
   type WorkflowStage,
 } from "@/lib/orders/edit-validator"
+import {
+  canEditOrder,
+  canFullEditOrder,
+  whyCannotEdit,
+} from "@/lib/orders/edit-permission"
+import { needsReapprovalAfterEdit, reapprovalReason } from "@/lib/orders/reapproval"
 import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -393,6 +399,70 @@ export default function OrderDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  /**
+   * Chạy lại bộ quy tắc duyệt trên MỘT bộ số liệu bất kỳ của đơn này.
+   *
+   * Tách ra vì nay có HAI chỗ cần: lúc bấm Duyệt, và lúc NVBH sửa xong
+   * một đơn ĐÃ duyệt. Hai chỗ mà chép hai bản thì bản nào sửa sau sẽ lệch,
+   * và chỗ lệch là chỗ đơn lọt qua.
+   */
+  const fetchApprovalDecision = async (totals: {
+    orderTotal: number
+    grossBeforeDiscount: number
+    discountAmount: number
+  }) => {
+    if (!order || !user) return null
+    // 3 query ngữ cảnh duyệt độc lập nhau — chạy song song để bước
+    // "Duyệt" không cộng dồn round-trip tuần tự.
+    const [{ evaluateApproval }, rulesRes, recRes, repDebtRes] = await Promise.all([
+      import("@/lib/approval"),
+      supabase
+        .from("approval_rules")
+        .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
+        .eq("org_id", user.org_id)
+        .maybeSingle(),
+      supabase
+        .from("receivables")
+        .select("amount, paid, due_date")
+        .eq("customer_id", order.customer_id)
+        .neq("status", "paid"),
+      supabase
+        .from("receivables")
+        .select("amount, paid")
+        .eq("sales_user_id", order.sales_user_id)
+        .neq("status", "paid"),
+    ])
+    const qErr = ([rulesRes, recRes, repDebtRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[orders/id] truy vấn lỗi:", qErr.message)
+
+    type RecRow = { amount: number; paid: number; due_date: string | null }
+    const recRows = (recRes.data as RecRow[]) || []
+    const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+    const now = Date.now()
+    const customerOverdue = recRows
+      .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
+      .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+    const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }>) || [])
+      .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
+
+    return evaluateApproval(rulesRes.data ?? null, {
+      orderTotal: totals.orderTotal,
+      // Hai cột này đều CHƯA gồm VAT — dùng để quy tắc chiết khấu sâu chạy
+      // được cả ở đây, không chỉ ở màn tạo đơn. Nếu chỉ chặn lúc tạo thì
+      // đơn sửa lại thành chiết khấu 100% sau đó vẫn lọt như thường.
+      grossBeforeDiscount: totals.grossBeforeDiscount,
+      discountAmount: totals.discountAmount,
+      customer: order.customer
+        ? { id: order.customer.id, credit_limit: order.customer.credit_limit }
+        : null,
+      customerDebt,
+      customerOverdue,
+      repPortfolioDebt,
+      role: user.role,
+    })
+  }
+
   const handleChangeStatus = async (newStatus: OrderStatus) => {
     if (!order || !user) return
 
@@ -411,59 +481,16 @@ export default function OrderDetailPage() {
 
       // If confirming an order, evaluate rules + check permission
       if (newStatus === "confirmed") {
-        // 3 query ngữ cảnh duyệt độc lập nhau — chạy song song để bước
-        // "Duyệt" không cộng dồn round-trip tuần tự.
-        const [{ evaluateApproval, canApproveForLevel }, rulesRes, recRes, repDebtRes] =
-          await Promise.all([
-            import("@/lib/approval"),
-            supabase
-              .from("approval_rules")
-              .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
-              .eq("org_id", user.org_id)
-              .maybeSingle(),
-            supabase
-              .from("receivables")
-              .select("amount, paid, due_date")
-              .eq("customer_id", order.customer_id)
-              .neq("status", "paid"),
-            supabase
-              .from("receivables")
-              .select("amount, paid")
-              .eq("sales_user_id", order.sales_user_id)
-              .neq("status", "paid"),
-          ])
-        const qErr = ([rulesRes, recRes, repDebtRes] as Array<{ error?: { message?: string } | null }>)
-          .find((r) => r?.error)?.error
-        if (qErr) console.error("[orders/id] truy vấn lỗi:", qErr.message)
-        const rulesData = rulesRes.data
-
-        type RecRow = { amount: number; paid: number; due_date: string | null }
-        const recRows = (recRes.data as RecRow[]) || []
-        const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-        const now = Date.now()
-        const customerOverdue = recRows
-          .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
-          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-
-        const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }>) || [])
-          .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-
-        const decision = evaluateApproval(rulesData ?? null, {
+        const { canApproveForLevel } = await import("@/lib/approval")
+        const decision = await fetchApprovalDecision({
           orderTotal: order.total,
-          // Đơn đã lưu có sẵn hai cột này, cả hai đều CHƯA gồm VAT — dùng
-          // để quy tắc chiết khấu sâu chạy cả ở màn duyệt, không chỉ ở màn
-          // tạo đơn. Nếu chỉ chặn lúc tạo thì đơn sửa lại thành chiết khấu
-          // 100% sau đó vẫn duyệt được như thường.
           grossBeforeDiscount: Number(order.subtotal || 0),
           discountAmount: Number(order.discount || 0),
-          customer: order.customer
-            ? { id: order.customer.id, credit_limit: order.customer.credit_limit }
-            : null,
-          customerDebt,
-          customerOverdue,
-          repPortfolioDebt,
-          role: user.role,
         })
+        if (!decision) {
+          setActionLoading(false)
+          return
+        }
 
         if (!decision.autoApprove && !canApproveForLevel(user.role, decision.expectedApprover)) {
           toast({
@@ -480,8 +507,20 @@ export default function OrderDetailPage() {
         updates.approval_reason = null
       }
 
-      const { error } = await supabase.from("sales_orders").update(updates).eq("id", order.id)
+      const { data: statusRows, error } = await supabase
+        .from("sales_orders")
+        .update(updates)
+        .eq("id", order.id)
+        .select("id")
       if (error) throw error
+      // ⚠ Cùng bẫy RLS như hai chỗ lưu kia: 0 dòng, HTTP 200, không lỗi.
+      // Báo "Đã chuyển trạng thái" cho một lệnh chưa chạy là cách nhanh
+      // nhất để hai người hiểu đơn đang ở hai bước khác nhau.
+      if (!statusRows || statusRows.length === 0) {
+        throw new Error(
+          "Không đổi được trạng thái đơn — bạn không có quyền ở bước này. Tải lại trang để xem trạng thái mới."
+        )
+      }
 
       // Notifications for status change (fire-and-forget)
       if (user.org_id && order.sales_user_id && order.sales_user_id !== user.id) {
@@ -808,16 +847,68 @@ export default function OrderDetailPage() {
       // Tính lại tổng đơn — subtotal = existing edited + new added.
       const subtotal = editedLinesTotal + addedLinesTotal
       const total = Math.max(0, subtotal - Number(order.discount || 0) + Number(order.vat || 0))
-      const { error: orderErr } = await supabase
-        .from("sales_orders")
-        .update({ subtotal, total })
-        .eq("id", order.id)
-      if (orderErr) throw orderErr
 
-      toast({
-        title: "Đã cập nhật dòng đơn hàng",
-        description: `Tổng đơn mới: ${formatCurrency(total)}`,
-      })
+      /**
+       * Sửa đơn ĐÃ DUYỆT thì chạy lại bộ quy tắc trên số MỚI.
+       *
+       * ⚠ Không có bước này thì bước duyệt thành vô nghĩa: gửi một đơn nhỏ
+       * cho quản lý bấm duyệt, xong sửa lên gấp mười. Người duyệt đã ký
+       * vào một tờ giấy khác với tờ cuối cùng ra kho.
+       */
+      const headerUpdate: Record<string, unknown> = { subtotal, total }
+      let bouncedReason: string | null = null
+      if (order.status === "confirmed" && user) {
+        const decision = await fetchApprovalDecision({
+          orderTotal: total,
+          grossBeforeDiscount: subtotal,
+          discountAmount: Number(order.discount || 0),
+        })
+        if (
+          decision &&
+          needsReapprovalAfterEdit({
+            status: order.status,
+            decision,
+            editorRole: user.role,
+          })
+        ) {
+          bouncedReason = reapprovalReason(decision)
+          headerUpdate.status = "draft"
+          headerUpdate.approval_reason = bouncedReason
+          headerUpdate.approved_by = null
+          headerUpdate.approved_at = null
+        }
+      }
+
+      const { data: headerRows, error: orderErr } = await supabase
+        .from("sales_orders")
+        .update(headerUpdate)
+        .eq("id", order.id)
+        .select("id")
+      if (orderErr) throw orderErr
+      /**
+       * ⚠ RLS TỪ CHỐI MÀ KHÔNG BÁO LỖI. Lệnh UPDATE không khớp chính sách
+       * nào thì Postgres sửa 0 dòng, PostgREST trả HTTP 200 và `error` là
+       * null. Không kiểm số dòng ở đây thì màn hình báo "Đã cập nhật" trong
+       * khi dòng hàng đã đổi còn tổng tiền thì không — đơn sai lệch mà
+       * không ai được báo.
+       */
+      if (!headerRows || headerRows.length === 0) {
+        throw new Error(
+          "Đã sửa dòng hàng nhưng KHÔNG cập nhật được tổng đơn — bạn không còn quyền sửa đơn này. Tải lại trang và báo quản lý."
+        )
+      }
+
+      toast(
+        bouncedReason
+          ? {
+              title: "Đã sửa — đơn quay lại chờ duyệt",
+              description: `Tổng đơn mới ${formatCurrency(total)} vượt ngưỡng tự duyệt. ${bouncedReason}`,
+            }
+          : {
+              title: "Đã cập nhật dòng đơn hàng",
+              description: `Tổng đơn mới: ${formatCurrency(total)}`,
+            }
+      )
       setLinesEditMode(false)
       setEditedLines([])
       setAddedLines([])
@@ -851,11 +942,20 @@ export default function OrderDetailPage() {
         updates.payment_terms = editForm.payment_terms
         updates.expected_delivery = editForm.expected_delivery || null
       }
-      const { error } = await supabase
+      const { data: rows, error } = await supabase
         .from("sales_orders")
         .update(updates)
         .eq("id", order.id)
+        .select("id")
       if (error) throw error
+      // ⚠ Cùng cái bẫy như bên lưu dòng hàng: RLS từ chối thì 0 dòng, HTTP
+      // 200, không lỗi. Không kiểm thì màn hình báo thành công cho một
+      // lệnh chưa bao giờ chạy.
+      if (!rows || rows.length === 0) {
+        throw new Error(
+          "Không lưu được — bạn không còn quyền sửa đơn này (có thể kho đã bắt đầu lấy hàng). Tải lại trang để xem trạng thái mới."
+        )
+      }
       toast({ title: "Đã cập nhật đơn hàng" })
       setEditMode(false)
       fetchData()
@@ -870,16 +970,22 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy đơn hàng</div>
 
   const availableTransitions = STATUS_FLOW[order.status] || []
-  // Allow edit for all non-terminal statuses. Draft/confirmed get full
-  // edit; picking gets full edit ONLY for warehouse/owner/manager (§4.4
-  // — chỉnh đơn ở bước xuất hàng); picking/delivering for sales rep
-  // can edit notes only; delivered/cancelled cannot edit at all.
-  const canEdit = !!(user && hasPermission(user.role, "orders", "update") && !["delivered", "cancelled"].includes(order.status))
-  const isWarehouseRole = user?.role === "warehouse" || user?.role === "owner" || user?.role === "manager"
-  const fullEdit =
-    canEdit &&
-    (["draft", "confirmed"].includes(order.status) ||
-      (order.status === "picking" && isWarehouseRole))
+  // Luật "ai sửa được gì" nằm trong `@/lib/orders/edit-permission`, không
+  // viết thẳng ở đây nữa: nó phải KHỚP chính sách RLS (mig 115), và một
+  // biểu thức boolean giữa trang 2.300 dòng thì không đối chiếu được với
+  // gì cả.
+  const editCtx = user
+    ? {
+        role: user.role,
+        userId: user.id,
+        status: order.status,
+        salesUserId: order.sales_user_id ?? null,
+        hasUpdatePermission: hasPermission(user.role, "orders", "update"),
+      }
+    : null
+  const canEdit = !!editCtx && canEditOrder(editCtx)
+  const fullEdit = !!editCtx && canFullEditOrder(editCtx)
+  const cannotEditReason = editCtx ? whyCannotEdit(editCtx) : null
   const canDelete = user && hasPermission(user.role, "orders", "delete") && ["draft", "cancelled"].includes(order.status)
 
   // M4.2 — trên điện thoại, thẻ "Thao tác" nằm CUỐI cột phụ, tức là sau
@@ -1420,6 +1526,11 @@ export default function OrderDetailPage() {
                 <Button size="sm" variant="ghost" onClick={() => setEditMode(true)}>
                   <Pencil className="h-4 w-4 mr-1" /> Sửa
                 </Button>
+              )}
+              {/* ⚠ Nút biến mất không một lời giải thích là lý do người
+                  dùng phải nhắn đi hỏi. Nói thẳng vì sao không sửa được. */}
+              {!canEdit && cannotEditReason && (
+                <span className="text-xs text-muted-foreground">{cannotEditReason}</span>
               )}
               {editMode && (
                 <Button size="sm" variant="ghost" onClick={() => {

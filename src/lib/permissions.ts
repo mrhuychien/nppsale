@@ -113,7 +113,11 @@ export const DEFAULT_PERMISSION_MAP: Record<Role, Record<Module, Action[]>> = {
     settings: ["read"],
   },
   sales: {
-    orders: ["read", "create"],
+    // `update` mở ra để NVBH sửa được đơn của CHÍNH MÌNH sau khi đơn đã
+    // duyệt mà chưa lấy hàng. Phạm vi hẹp đó do hai chốt khác giữ, không
+    // phải do ô này: `canEditOrder` (src/lib/orders/edit-permission.ts) và
+    // chính sách RLS ở migration 115. Ô này chỉ là công tắc tổng.
+    orders: ["read", "create", "update"],
     customers: ["read", "create", "update"],
     inventory: ["read"],
     products: ["read"],

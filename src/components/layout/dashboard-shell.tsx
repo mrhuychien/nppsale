@@ -21,7 +21,11 @@ interface DashboardShellProps {
 export function DashboardShell({ role, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
-  const isLauncher = pathname === "/home"
+  // Trang chủ NVBH và luồng bán hàng đều tự dựng đầu trang riêng (tiêu đề
+  // lớn + ô tìm + chip khách). Để app bar chuẩn chồng lên trên thì màn
+  // hình có hai hàng tiêu đề, và trên điện thoại hai hàng đó ăn gần một
+  // phần tư chiều cao.
+  const isLauncher = pathname === "/home" || pathname.startsWith("/sell")
 
   // Một chỗ duy nhất theo dõi bàn phím ảo, gắn cờ lên <body>. Mọi thanh
   // dính đáy đọc cờ đó bằng CSS — rẻ hơn nhiều so với truyền state xuống

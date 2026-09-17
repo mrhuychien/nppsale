@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
@@ -11,7 +10,6 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
-import { isSentForApproval } from "@/lib/sell/send-approval"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
 import { useToast } from "@/hooks/use-toast"
@@ -19,12 +17,16 @@ import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
 import { RouteFilter } from "@/components/orders/route-filter"
+import { PipelineTabs } from "@/components/orders/pipeline-tabs"
+import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
+import { OrderDrawer } from "@/components/orders/order-drawer"
+import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
+import { canEditOrder } from "@/lib/orders/edit-permission"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
@@ -45,29 +47,18 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
-import {
   OrderPipeline,
   STEPS,
   classifyOrder,
   type PipelineStepKey,
 } from "@/components/orders/order-pipeline"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import {
   ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Download,
-  Eye,
-  FileText,
   Filter,
   Plus,
   Search,
@@ -82,8 +73,8 @@ import { errorMessage } from "@/lib/errors"
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
 
 /** Phần nhúng khách hàng trong câu select — hai bản, chỉ khác `!inner`. */
-const CUSTOMER_EMBED = "customer:customers(store_name, phone)"
-const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone)"
+const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel)"
 /**
  * Câu select cho phép ĐẾM khi đang lọc theo tuyến.
  *
@@ -167,6 +158,14 @@ export default function OrdersPage() {
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   /** mã tuyến → số đơn ĐÃ DUYỆT (chưa giao) — để bộ lọc tuyến xếp tuyến đang có hàng lên đầu. */
   const [routeCounts, setRouteCounts] = useState<Record<string, number>>({})
+  /** Số mặt hàng của từng đơn trên trang đang xem (cột "SL MH"). */
+  const [lineCountByOrder, setLineCountByOrder] = useState<Record<string, number>>({})
+  /** Đơn đang mở ở ngăn chi tiết bên phải (máy tính). */
+  const [drawerId, setDrawerId] = useState<string | null>(null)
+  const [sort, setSort] = useState<OrderSort | null>(null)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  /** "N đơn hôm nay · tổng" cho dòng mô tả đầu trang — null = chưa đọc được. */
+  const [todaySummary, setTodaySummary] = useState<{ count: number; total: number } | null>(null)
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -235,6 +234,31 @@ export default function OrdersPage() {
       setRouteCounts(m)
     }
     void loadRouteCounts()
+
+    /**
+     * "N đơn hôm nay · tổng tiền" — dòng mô tả đầu trang theo mẫu. Đếm
+     * theo ngày đặt (giờ VN), bỏ đơn huỷ. Đọc hỏng thì dòng đó KHÔNG hiện
+     * con số, thay vì hiện 0.
+     */
+    async function loadTodaySummary() {
+      const res = await fetchAllForAggregate<{ total: number }>((from, to) =>
+        supabase
+          .from("sales_orders")
+          .select("total", { count: "exact" })
+          .eq("order_date", vnDateKey(new Date()))
+          .neq("status", "cancelled")
+          .range(from, to)
+      )
+      if (res.error) {
+        console.warn("[orders] không đọc được tổng hôm nay:", res.error)
+        return
+      }
+      setTodaySummary({
+        count: res.rows.length,
+        total: res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0),
+      })
+    }
+    void loadTodaySummary()
 
     async function loadMeta() {
       const [customersRes, usersRes, routesRes] = await Promise.all([
@@ -441,6 +465,31 @@ export default function OrdersPage() {
     try { localStorage.setItem(SCOPE_HINT_KEY, "1") } catch { /* không sao */ }
   }
 
+  // Cột "SL MH": đếm dòng hàng của đúng các đơn đang hiện. Một truy vấn
+  // cho cả trang, phân trang vì 50 đơn × vài chục dòng có thể vượt 1.000.
+  useEffect(() => {
+    if (orders.length === 0) return
+    let cancelled = false
+    const ids = orders.map((o) => o.id)
+    ;(async () => {
+      const res = await fetchAllForAggregate<{ order_id: string }>((from, to) =>
+        supabase.from("sales_order_lines").select("order_id", { count: "exact" }).in("order_id", ids).range(from, to)
+      )
+      if (cancelled) return
+      if (res.error) {
+        console.warn("[orders] không đếm được số mặt hàng:", res.error)
+        return
+      }
+      const m: Record<string, number> = {}
+      for (const id of ids) m[id] = 0
+      for (const r of res.rows) m[r.order_id] = (m[r.order_id] || 0) + 1
+      setLineCountByOrder((prev) => ({ ...prev, ...m }))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orders]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
     return orders.filter(
@@ -448,8 +497,12 @@ export default function OrdersPage() {
     )
   }, [orders, pipelineStep, receivablesByOrder, invoiceMap])
 
-  if (authLoading) return <Skeleton className="h-96" />
+  const routeNameByCode = useMemo(
+    () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
+    [routes]
+  )
 
+  if (authLoading) return <Skeleton className="h-96" />
   const allSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id))
   const someSelected = filtered.some((o) => selectedIds.has(o.id))
 
@@ -474,10 +527,14 @@ export default function OrdersPage() {
 
   const canApprove = user && hasPermission(user.role, "orders", "approve")
 
-  const handleBulkApprove = async () => {
-    if (!user || !canApprove) return
-    const ids = Array.from(selectedIds)
+  /**
+   * Duyệt một hoặc nhiều đơn — MỘT hàm cho thanh chọn nhiều, nút "Duyệt"
+   * trên từng dòng và ngăn chi tiết. Ba chỗ ba phép ghi là ba chỗ để lệch.
+   */
+  const approveOrders = async (ids: string[]) => {
+    if (!user || !canApprove || ids.length === 0) return
     setBulkLoading(true)
+    if (ids.length === 1) setApprovingId(ids[0])
     try {
       const { error } = await supabase
         .from("sales_orders")
@@ -523,8 +580,10 @@ export default function OrdersPage() {
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setBulkLoading(false)
+      setApprovingId(null)
     }
   }
+  const handleBulkApprove = () => approveOrders(Array.from(selectedIds))
 
   // Bulk cancel — only applies to orders not yet delivered/cancelled
   const handleBulkCancel = async () => {
@@ -832,6 +891,101 @@ export default function OrdersPage() {
     </>
   )
 
+  const drawerOrder = drawerId ? (orders.find((o) => o.id === drawerId) ?? null) : null
+  const onSort = (key: OrderSortKey) =>
+    setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))
+
+  /**
+   * Khoảng ngày theo mẫu: Hôm nay / 7 ngày / 30 ngày / Tất cả — chỉ là
+   * cách đặt nhanh `dateFrom`/`dateTo`; ô ngày trong bộ lọc nâng cao vẫn
+   * là nguồn thật, nên chọn tay một khoảng lạ thì ô này hiện "Tuỳ chọn".
+   */
+  const rangeOf = (days: number) => {
+    const to = vnDateKey(new Date())
+    const from = vnDateKey(new Date(Date.now() - (days - 1) * 86_400_000))
+    return { from, to }
+  }
+  const rangePreset = (() => {
+    if (!dateFrom && !dateTo) return "all"
+    for (const [k, d] of [["today", 1], ["7d", 7], ["30d", 30]] as const) {
+      const r = rangeOf(d)
+      if (dateFrom === r.from && dateTo === r.to) return k
+    }
+    return "custom"
+  })()
+  const applyRangePreset = (k: string) => {
+    if (k === "all") { setDateFrom(""); setDateTo(""); return }
+    if (k === "custom") return
+    const d = k === "today" ? 1 : k === "7d" ? 7 : 30
+    const r = rangeOf(d)
+    setDateFrom(r.from); setDateTo(r.to)
+  }
+
+  const bulkBar = selectedIds.size > 0 && (() => {
+        const selectedOrders = orders.filter((o) => selectedIds.has(o.id))
+        const allSameStatus = selectedOrders.length > 0 &&
+          selectedOrders.every((o) => o.status === selectedOrders[0].status)
+        const sharedStatus = allSameStatus ? selectedOrders[0].status : null
+        const next = sharedStatus ? NEXT_STATUS[sharedStatus] : null
+        const cancellableCount = selectedOrders.filter(
+          (o) => o.status !== "delivered" && o.status !== "cancelled"
+        ).length
+        const hasDraftNeedingApproval = selectedOrders.some((o) => o.status === "draft")
+
+        return (
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#d3e0f7] bg-[#e3edfb] px-4 py-2 text-[13px] font-bold text-[#1e3a8a] lg:rounded-none rounded-xl lg:border-b">
+              <div className="mr-1">
+                Đã chọn {selectedIds.size} đơn ·{" "}
+                {formatCurrency(selectedOrders.reduce((a, o) => a + (Number(o.total) || 0), 0))}
+                {allSameStatus && sharedStatus && (
+                  <span className="ml-2 text-xs text-on-surface-variant font-normal">
+                    • cùng trạng thái: {sharedStatus}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canApprove && hasDraftNeedingApproval && (
+                  <Button size="sm" onClick={handleBulkApprove} disabled={bulkLoading}>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Duyệt đơn nháp
+                  </Button>
+                )}
+                {next && (
+                  <Button
+                    size="sm"
+                    onClick={handleBulkAdvance}
+                    disabled={bulkLoading}
+                  >
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                    {next.label}
+                  </Button>
+                )}
+                {cancellableCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleBulkCancel}
+                    disabled={bulkLoading}
+                    className="border-error/40 text-on-error-container hover:bg-error-container"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hủy {cancellableCount} đơn
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={handleExportCsv}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Xuất CSV
+                </Button>
+                <Button size="sm" variant="ghost" onClick={clearSelection}>
+                  <X className="mr-2 h-4 w-4" />
+                  Hủy chọn
+                </Button>
+              </div>
+          </div>
+        )
+      })()
+
+
   /** Hàng chip trạng thái — cuộn ngang trên điện thoại, xuống dòng trên máy tính. */
   const statusChips = (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
@@ -918,11 +1072,13 @@ export default function OrdersPage() {
       */}
       <PageHeader
         title={isSales ? "Đơn của tôi" : "Đơn hàng"}
-        description={
-          pg.total === orders.length
-            ? `${pg.total} đơn hàng`
-            : `${pg.total} đơn hàng · đang xem ${orders.length}`
-        }
+        description={[
+          todaySummary ? `${todaySummary.count} đơn hôm nay · ${formatCurrency(todaySummary.total)}` : null,
+          (statusCounts.pending_approval ?? 0) > 0 ? `${statusCounts.pending_approval} đơn cần duyệt` : null,
+          pg.total === orders.length ? `${pg.total} đơn` : `${pg.total} đơn · đang xem ${orders.length}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       >
         {user && hasPermission(user.role, "orders", "create") && (
           <Button onClick={() => router.push(newOrderHref())}>
@@ -967,7 +1123,20 @@ export default function OrdersPage() {
           hàng chip trạng thái, tuyến và bước xử lý chỉ đứng ngoài ở máy
           tính. Cùng một JSX (`statusChips`, `pipelineChips`) vẽ ở cả hai
           chỗ — nhân đôi là để hai bên trôi khỏi nhau. */}
-      <div className="hidden lg:flex flex-col gap-2">{statusChips}</div>
+      <PipelineTabs
+        className="hidden lg:grid"
+        active={pipelineStep ? "" : statusFilter}
+        onPick={(k) => {
+          setStatusFilter(k)
+          setPipelineStep(null)
+        }}
+        tabs={(["all", ...COUNTED_STATUSES] as const).map((k) => ({
+          key: k,
+          label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k],
+          count: statusCounts[k] ?? 0,
+          accent: k === "all" ? "#181c1e" : orderTone(k === "pending_approval" ? "draft" : k, k === "pending_approval" ? "x" : null).accent,
+        }))}
+      />
 
       {/* Pipeline 7-step status bar (Update #2 v2 §8) — máy tính. */}
       {filterActive("pipeline") && (
@@ -1017,14 +1186,16 @@ export default function OrdersPage() {
         </div>
       </MobileFilterBar>
 
-      {/* Hàng lọc cũ chỉ còn trên desktop. Mobile dùng MobileFilterBar:
-          một hàng [ô tìm][nút Lọc], mọi thứ khác vào bottom sheet. */}
-      <div className="hidden lg:flex flex-wrap items-center gap-2">
+      {/* ⚠ MÁY TÍNH — theo mẫu thiết kế "Đơn hàng": một thẻ trắng gồm thanh
+          công cụ (tìm · tuyến · NVBH · khoảng ngày · xoá lọc), dải chọn
+          nhiều, bảng, và phân trang. Điện thoại có danh sách riêng ở dưới. */}
+      <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
+      <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
         {filterActive("search") && (
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Tìm mã đơn hàng..."
+              placeholder="Tìm mã đơn hàng…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -1033,6 +1204,36 @@ export default function OrdersPage() {
         )}
         {routes.length > 0 && (
           <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
+        )}
+        {!isSales && salesUsers.length > 0 && (
+          <Select value={salesFilter} onValueChange={setSalesFilter}>
+            <SelectTrigger className="h-10 w-[180px] rounded-xl font-semibold">
+              <SelectValue placeholder="Tất cả NVBH" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả NVBH</SelectItem>
+              {salesUsers.map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={rangePreset} onValueChange={applyRangePreset}>
+          <SelectTrigger className="h-10 w-[130px] rounded-xl font-semibold">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="today">Hôm nay</SelectItem>
+            <SelectItem value="7d">7 ngày</SelectItem>
+            <SelectItem value="30d">30 ngày</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
+            {rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}
+          </SelectContent>
+        </Select>
+        {activeFilterCount + (search ? 1 : 0) > 0 && (
+          <Button variant="ghost" size="sm" className="font-extrabold text-primary" onClick={() => { clearAdvancedFilters(); setSearch("") }}>
+            Xoá lọc
+          </Button>
         )}
         {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
           <Button
@@ -1062,77 +1263,48 @@ export default function OrdersPage() {
       </div>
 
       {showAdvanced && (
-        <Card className="hidden lg:block rounded-2xl border-dashed">
+        <Card className="mx-4 my-3 rounded-2xl border-dashed">
           <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
             {advancedFilterFields}
           </CardContent>
         </Card>
       )}
 
-      {selectedIds.size > 0 && (() => {
-        const selectedOrders = orders.filter((o) => selectedIds.has(o.id))
-        const allSameStatus = selectedOrders.length > 0 &&
-          selectedOrders.every((o) => o.status === selectedOrders[0].status)
-        const sharedStatus = allSameStatus ? selectedOrders[0].status : null
-        const next = sharedStatus ? NEXT_STATUS[sharedStatus] : null
-        const cancellableCount = selectedOrders.filter(
-          (o) => o.status !== "delivered" && o.status !== "cancelled"
-        ).length
-        const hasDraftNeedingApproval = selectedOrders.some((o) => o.status === "draft")
-
-        return (
-          <Card className="rounded-xl border-primary/40 bg-primary-fixed shadow-card sticky top-16 z-20">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <div className="text-sm font-semibold text-on-primary-fixed-variant">
-                {selectedIds.size} đơn đã chọn
-                {allSameStatus && sharedStatus && (
-                  <span className="ml-2 text-xs text-on-surface-variant font-normal">
-                    • cùng trạng thái: {sharedStatus}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canApprove && hasDraftNeedingApproval && (
-                  <Button size="sm" onClick={handleBulkApprove} disabled={bulkLoading}>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Duyệt đơn nháp
-                  </Button>
-                )}
-                {next && (
-                  <Button
-                    size="sm"
-                    onClick={handleBulkAdvance}
-                    disabled={bulkLoading}
-                  >
-                    <ArrowRight className="mr-2 h-4 w-4" />
-                    {next.label}
-                  </Button>
-                )}
-                {cancellableCount > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleBulkCancel}
-                    disabled={bulkLoading}
-                    className="border-error/40 text-on-error-container hover:bg-error-container"
-                  >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Hủy {cancellableCount} đơn
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={handleExportCsv}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Xuất CSV
-                </Button>
-                <Button size="sm" variant="ghost" onClick={clearSelection}>
-                  <X className="mr-2 h-4 w-4" />
-                  Hủy chọn
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })()}
+        {bulkBar}
+        {loading ? (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12" />
+            ))}
+          </div>
+        ) : (
+          <DesktopOrderTable
+            orders={filtered}
+            routeNameByCode={routeNameByCode}
+            lineCountByOrder={lineCountByOrder}
+            receivablesByOrder={receivablesByOrder}
+            invoiceMap={invoiceMap}
+            show={show}
+            selectedIds={selectedIds}
+            allSelected={allSelected}
+            someSelected={someSelected}
+            onToggleAll={toggleAll}
+            onToggleOne={toggleOne}
+            activeId={drawerId}
+            onOpen={(o) => setDrawerId(o.id)}
+            canApprove={!!canApprove}
+            approvingId={approvingId}
+            onApprove={(o) => approveOrders([o.id])}
+            misaLoadingId={misaLoadingId}
+            onInvoice={handleXuatHoaDonList}
+            sort={sort}
+            onSort={onSort}
+          />
+        )}
+        <div className="hidden lg:block px-4 pb-3">
+          <DataPagination pg={pg} shownCount={filtered.length} />
+        </div>
+      </div>
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (
@@ -1142,6 +1314,10 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Điện thoại: khung xương / trạng thái rỗng / danh sách nhóm theo
+          ngày. Máy tính có thẻ bảng riêng ở trên với thanh công cụ của nó. */}
+      <div className="lg:hidden">
+      {bulkBar}
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -1172,116 +1348,6 @@ export default function OrdersPage() {
         />
       ) : (
         <>
-          {/* Desktop table */}
-          <div className="hidden lg:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                      onCheckedChange={toggleAll}
-                      aria-label="Chọn tất cả"
-                    />
-                  </TableHead>
-                  <TableHead>Mã đơn</TableHead>
-                  {show("customer") && <TableHead>Khách hàng</TableHead>}
-                  {show("salesUser") && <TableHead>NV bán hàng</TableHead>}
-                  {show("date") && <TableHead>Ngày đặt</TableHead>}
-                  {show("total") && <TableHead className="text-right">Tổng tiền</TableHead>}
-                  {show("status") && <TableHead>Trạng thái</TableHead>}
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((order) => {
-                  const checked = selectedIds.has(order.id)
-                  return (
-                    <TableRow
-                      key={order.id}
-                      data-state={checked ? "selected" : undefined}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/orders/${order.id}`)}
-                    >
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleOne(order.id)}
-                          aria-label={`Chọn ${order.order_code}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/orders/${order.id}`}
-                          className="font-mono text-sm text-primary font-bold hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {order.order_code}
-                        </Link>
-                      </TableCell>
-                      {show("customer") && (
-                        <TableCell className="font-medium">{order.customer?.store_name || "-"}</TableCell>
-                      )}
-                      {show("salesUser") && (
-                        <TableCell>
-                          {order.sales_user?.full_name || "-"}
-                        </TableCell>
-                      )}
-                      {show("date") && (
-                        <TableCell>
-                          {formatDate(order.order_date)}
-                        </TableCell>
-                      )}
-                      {show("total") && (
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {formatCurrency(order.total)}
-                        </TableCell>
-                      )}
-                      {show("status") && (
-                        <TableCell>
-                          <div className="flex flex-col gap-0.5">
-                            <StatusBadge status={order.status} type="order" />
-                            <PaymentStatusBadge receivable={receivablesByOrder[order.id]} />
-                            {isSentForApproval(order.status, order.approval_reason) && (
-                              <span
-                                className="text-[10px] text-[#b54708] font-semibold"
-                                title={order.approval_reason ?? undefined}
-                              >
-                                Cần duyệt
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          {order.status === "delivered" && (
-                            invoiceMap[order.id]?.misa_status === "signed" ? (
-                              <span title="Đã xuất HĐ" className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-[#ecfdf3] text-[#027a48]">
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                              </span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                disabled={misaLoadingId === order.id}
-                                onClick={() => handleXuatHoaDonList(order)}
-                              >
-                                <FileText className="h-3 w-3 mr-1" />
-                                {misaLoadingId === order.id ? "..." : "HĐ"}
-                              </Button>
-                            )
-                          )}
-                          <Eye className="h-4 w-4 text-on-surface-variant" />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
 
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
@@ -1330,11 +1396,29 @@ export default function OrdersPage() {
             />
             <LoadMore pg={pg} shown={filtered.length} />
           </div>
-          <div className="hidden lg:block">
-            <DataPagination pg={pg} shownCount={filtered.length} />
-          </div>
         </>
       )}
+      </div>
+
+      <OrderDrawer
+        order={drawerOrder}
+        routeName={drawerOrder?.customer?.channel ? (routeNameByCode[drawerOrder.customer.channel] ?? null) : null}
+        onClose={() => setDrawerId(null)}
+        canApprove={!!canApprove}
+        canEdit={
+          !!user &&
+          !!drawerOrder &&
+          canEditOrder({
+            role: user.role,
+            userId: user.id,
+            status: drawerOrder.status,
+            salesUserId: drawerOrder.sales_user_id ?? null,
+            hasUpdatePermission: hasPermission(user.role, "orders", "update"),
+          })
+        }
+        approving={approvingId === drawerOrder?.id}
+        onApprove={(o) => approveOrders([o.id])}
+      />
     </div>
   )
 }

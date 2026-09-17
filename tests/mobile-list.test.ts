@@ -256,8 +256,11 @@ describe("M2.2 — /orders", () => {
     expect(ORDERS_CODE).not.toContain("extra={{")
     // Hàng chip dựng từ danh sách trạng thái dùng chung, khai ĐÚNG MỘT lần;
     // máy tính vẽ ngoài, điện thoại vẽ trong sheet lọc (người dùng yêu cầu).
-    expect(ORDERS_CODE.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(1)
-    expect(ORDERS_CODE.match(/\{statusChips\}/g)?.length).toBe(2)
+    // Điện thoại: chip trong sheet lọc. Máy tính: thẻ PipelineTabs — cùng
+    // một danh sách COUNTED_STATUSES và cùng bộ số đếm từ máy chủ.
+    expect(ORDERS_CODE.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(2)
+    expect(ORDERS_CODE.match(/\{statusChips\}/g)?.length).toBe(1)
+    expect(ORDERS_CODE).toContain("<PipelineTabs")
   })
 
   /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */

@@ -1,0 +1,167 @@
+import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import { repAvatar } from "../src/components/orders/desktop-order-table"
+
+const ROOT = resolve(__dirname, "..")
+const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
+const code = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+
+const PAGE = code(read("src/app/(dashboard)/orders/page.tsx"))
+const TABS = code(read("src/components/orders/pipeline-tabs.tsx"))
+const TABLE = code(read("src/components/orders/desktop-order-table.tsx"))
+const DRAWER = code(read("src/components/orders/order-drawer.tsx"))
+
+/**
+ * Màn "Đơn hàng" trên MÁY TÍNH theo mẫu claude.ai/artifact/N59JiSWXwcUd4ReoTRZC9m:
+ * thẻ trạng thái có số to, một thẻ bảng gồm thanh công cụ + dải chọn nhiều +
+ * bảng + phân trang, và ngăn chi tiết bên phải khi chạm một dòng.
+ */
+describe("Thẻ trạng thái (PipelineTabs) — cùng số với bảng bên dưới", () => {
+  it("dựng từ COUNTED_STATUSES với số đếm từ máy chủ, vạch màu theo orderTone", () => {
+    const i = PAGE.indexOf("<PipelineTabs")
+    const block = PAGE.slice(i, PAGE.indexOf("/>", i))
+    expect(block).toContain('(["all", ...COUNTED_STATUSES] as const).map')
+    expect(block).toContain("count: statusCounts[k] ?? 0")
+    expect(block).toContain("orderTone(")
+    // Chọn thẻ thì buông bước pipeline — hai bộ lọc loại trừ nhau.
+    expect(block).toContain("setPipelineStep(null)")
+  })
+
+  it("chỉ máy tính; ô 0 đơn mờ đi, ô đang chọn có vạch đáy", () => {
+    expect(PAGE).toContain('className="hidden lg:grid"')
+    expect(TABS).toContain('t.count === 0 ? "text-outline-variant" : "text-on-surface"')
+    expect(TABS).toContain("background: on ? t.accent : \"transparent\"")
+    expect(TABS).toContain("aria-selected={on}")
+  })
+})
+
+describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng · phân trang", () => {
+  it("một thẻ, thứ tự đúng, chỉ máy tính", () => {
+    const card = PAGE.indexOf('<div className="hidden lg:flex flex-col overflow-hidden rounded-2xl')
+    expect(card).toBeGreaterThan(0)
+    const toolbar = PAGE.indexOf('placeholder="Tìm mã đơn hàng…"', card)
+    const bulk = PAGE.indexOf("{bulkBar}", card)
+    const table = PAGE.indexOf("<DesktopOrderTable", card)
+    const pager = PAGE.indexOf("<DataPagination", card)
+    expect(toolbar).toBeGreaterThan(card)
+    expect(bulk).toBeGreaterThan(toolbar)
+    expect(table).toBeGreaterThan(bulk)
+    expect(pager).toBeGreaterThan(table)
+  })
+
+  it("thanh công cụ có tuyến, NVBH (trừ NVBH tự xem), khoảng ngày, Xoá lọc", () => {
+    expect(PAGE).toContain("<RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />")
+    expect(PAGE).toContain("{!isSales && salesUsers.length > 0 && (")
+    expect(PAGE).toContain('<Select value={rangePreset} onValueChange={applyRangePreset}>')
+    expect(PAGE).toContain("Xoá lọc")
+  })
+
+  /**
+   * Khoảng ngày chỉ là cách đặt nhanh dateFrom/dateTo. Người dùng chọn tay
+   * một khoảng lạ trong bộ lọc nâng cao thì ô này phải nói "Tuỳ chọn", không
+   * được hiện "Hôm nay" cho một khoảng không phải hôm nay.
+   */
+  it("khoảng ngày nhận ra khoảng tuỳ chọn, không gán bừa", () => {
+    expect(PAGE).toContain('if (!dateFrom && !dateTo) return "all"')
+    expect(PAGE).toContain('return "custom"')
+    expect(PAGE).toContain('{rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}')
+  })
+
+  /** Ô tìm chỉ khớp MÃ ĐƠN trên máy chủ — placeholder không được hứa tìm tên khách. */
+  it("placeholder ô tìm nói đúng thứ nó tìm", () => {
+    expect(PAGE).not.toContain('placeholder="Tìm mã đơn, tên khách, SĐT…"')
+    expect(PAGE).toContain('x = x.ilike("order_code", term)')
+  })
+
+  it("dải chọn nhiều là một JSX dùng cho cả hai khổ màn, in tổng tiền đã chọn", () => {
+    expect(PAGE).toContain("const bulkBar = selectedIds.size > 0 && (() => {")
+    expect(PAGE.match(/\{bulkBar\}/g)?.length).toBe(2)
+    expect(PAGE).toContain("Đã chọn {selectedIds.size} đơn ·")
+  })
+})
+
+describe("Bảng: cột theo mẫu, số liệu thật", () => {
+  it("SL MH đếm từ sales_order_lines cho đúng trang, có phân trang, chưa đếm thì '…'", () => {
+    const i = PAGE.indexOf('supabase.from("sales_order_lines").select("order_id", { count: "exact" }).in("order_id", ids)')
+    expect(i).toBeGreaterThan(0)
+    expect(PAGE.slice(i - 400, i)).toContain("fetchAllForAggregate<")
+    expect(TABLE).toContain('{lines == null ? "…" : lines}')
+  })
+
+  it("tuyến của khách lấy từ customers.channel qua bảng tên tuyến", () => {
+    expect(PAGE).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel)"')
+    expect(TABLE).toContain("routeNameByCode[o.customer.channel] ?? o.customer.channel")
+  })
+
+  it("avatar NVBH: hai chữ cái cuối, màu ổn định theo tên", () => {
+    expect(repAvatar("Nguyễn Thị Hòa").initials).toBe("TH")
+    expect(repAvatar("Trần Tiến").initials).toBe("TT")
+    expect(repAvatar(null).initials).toBe("?")
+    expect(repAvatar("Nguyễn Thị Hòa").color).toBe(repAvatar("Nguyễn Thị Hòa").color)
+  })
+
+  /** ⚠ Sắp xếp là trên TRANG đang xem — nói rõ trong mã, không giả vờ sắp toàn bộ. */
+  it("sắp xếp trong trang, đổi chiều khi bấm lại", () => {
+    expect(TABLE).toContain("if (!sort) return orders")
+    expect(PAGE).toContain('setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))')
+  })
+
+  it("nút Duyệt trên dòng chỉ khi đơn chờ duyệt và người dùng được duyệt", () => {
+    expect(TABLE).toContain("{pending && canApprove ? (")
+    expect(TABLE).toContain("onClick={() => onApprove(o)}")
+  })
+})
+
+describe("Duyệt đơn: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", () => {
+  it("approveOrders(ids) được ba nơi gọi", () => {
+    expect(PAGE).toContain("const approveOrders = async (ids: string[]) => {")
+    expect(PAGE).toContain("const handleBulkApprove = () => approveOrders(Array.from(selectedIds))")
+    expect(PAGE.match(/onApprove=\{\(o\) => approveOrders\(\[o\.id\]\)\}/g)?.length).toBe(2)
+    // Không còn phép ghi duyệt thứ hai.
+    expect(PAGE.match(/\.update\(\{\s*status: "confirmed",\s*approved_by: user\.id/g)?.length).toBe(1)
+  })
+})
+
+describe("Ngăn chi tiết bên phải", () => {
+  it("tải dòng hàng khi mở; tải hỏng thì nói ra, không hiện 0 mặt hàng", () => {
+    expect(DRAWER).toContain('.from("sales_order_lines")')
+    // ⚠ Chốt này từng chỉ soi câu chữ: bỏ nhánh `if (error)` đi mà vẫn
+    // xanh vì câu báo lỗi còn nguyên trong JSX. Soi cả nhánh.
+    expect(DRAWER).toContain("if (error) {\n        setError(errorMessage(error))\n        return\n      }")
+    expect(DRAWER).toContain("Không tải được dòng hàng — {error}")
+    expect(DRAWER).toContain('{lines ? `${lines.length} mặt hàng` : "Mặt hàng"}')
+  })
+
+  it("tổng lấy từ đơn đã lưu, không cộng lại; sản phẩm đã xoá nói thẳng", () => {
+    expect(DRAWER).toContain("formatCurrency(order.subtotal)")
+    expect(DRAWER).toContain("formatCurrency(order.total)")
+    expect(DRAWER).not.toMatch(/lines\.reduce\(/)
+    expect(DRAWER).toContain("Sản phẩm đã xoá")
+  })
+
+  it("nút Duyệt / Sửa / Chi tiết gài đúng quyền", () => {
+    expect(DRAWER).toContain("{pending && canApprove && (")
+    expect(DRAWER).toContain("{canEdit && (")
+    expect(DRAWER).toContain("isSellEditable(order.status) ? `/sell/edit/${order.id}` : `/orders/${order.id}`")
+    expect(PAGE).toContain("hasUpdatePermission: hasPermission(user.role, \"orders\", \"update\"),")
+  })
+
+  it("dòng đang mở được tô nền trên bảng", () => {
+    expect(PAGE).toContain("activeId={drawerId}")
+    expect(TABLE).toContain('activeId === o.id ? "bg-surface-container-low"')
+  })
+})
+
+describe("Dòng mô tả đầu trang: hôm nay · cần duyệt", () => {
+  it("tổng hôm nay đọc theo ngày VN, bỏ đơn huỷ, đọc hỏng thì không hiện số", () => {
+    const i = PAGE.indexOf("async function loadTodaySummary()")
+    const fn = PAGE.slice(i, PAGE.indexOf("\n    }", i))
+    expect(fn).toContain('.eq("order_date", vnDateKey(new Date()))')
+    expect(fn).toContain('.neq("status", "cancelled")')
+    expect(fn).toContain("fetchAllForAggregate<")
+    expect(PAGE).toContain("todaySummary ? `${todaySummary.count} đơn hôm nay · ${formatCurrency(todaySummary.total)}` : null")
+    expect(PAGE).toContain("(statusCounts.pending_approval ?? 0) > 0 ? `${statusCounts.pending_approval} đơn cần duyệt` : null")
+  })
+})

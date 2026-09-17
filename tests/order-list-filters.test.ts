@@ -49,7 +49,7 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
    * cho máy tính, một cho điện thoại — nên chốt kiểm cả hai.
    */
   it.each([
-    ["hàng chip trạng thái", '<div className="hidden lg:flex flex-col gap-2">{statusChips}</div>'],
+    ["thẻ trạng thái (PipelineTabs)", '<PipelineTabs'],
     ["ô chọn tuyến (máy tính)", "<RouteFilter routes={routes} counts={routeCounts}"],
   ])("máy tính: %s đứng NGOÀI sheet lọc", (_label, needle) => {
     const i = ORDERS.indexOf(needle)
@@ -74,10 +74,12 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
   })
 
   /** Cùng một JSX cho hai chỗ — nhân đôi là để hai bên trôi khỏi nhau. */
-  it("chip trạng thái là một JSX dùng chung", () => {
+  it("chip (điện thoại) và thẻ PipelineTabs (máy tính) dựng từ CÙNG danh sách trạng thái, cùng bộ số", () => {
     expect(ORDERS).toContain("const statusChips = (")
-    expect(ORDERS.match(/\{statusChips\}/g)?.length).toBe(2)
-    expect(ORDERS.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(1)
+    expect(ORDERS.match(/\{statusChips\}/g)?.length).toBe(1)
+    expect(ORDERS.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(2)
+    expect(ORDERS.match(/count: statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
+    expect(ORDERS.match(/const count = statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
   })
 
   /**
@@ -106,8 +108,8 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
    * hàng". Bản desktop phải nằm TRONG hàng lọc desktop, ngay sau ô tìm.
    */
   it("máy tính: bộ lọc tuyến đứng cạnh ô tìm mã đơn", () => {
-    const row = ORDERS.indexOf('<div className="hidden lg:flex flex-wrap items-center gap-2">')
-    const search = ORDERS.indexOf('placeholder="Tìm mã đơn hàng..."', row)
+    const row = ORDERS.indexOf('<div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">')
+    const search = ORDERS.indexOf('placeholder="Tìm mã đơn hàng…"', row)
     const route = ORDERS.indexOf("<RouteFilter routes={routes}", search)
     const advanced = ORDERS.indexOf("Bộ lọc nâng cao", search)
     expect(row).toBeGreaterThan(0)
@@ -135,7 +137,7 @@ describe("Lọc theo tuyến bán hàng", () => {
    * dòng "—" trông như dữ liệu hỏng, chứ không phải như một bộ lọc.
    */
   it("bật !inner khi lọc tuyến", () => {
-    expect(ORDERS).toContain('const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone)"')
+    expect(ORDERS).toContain('const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel)"')
     expect(ORDERS).toContain(
       "const cust = routeFilter !== \"all\" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED"
     )
@@ -146,7 +148,7 @@ describe("Lọc theo tuyến bán hàng", () => {
    * biến mất khỏi danh sách mà không ai biết vì sao.
    */
   it("không lọc thì giữ nguyên phép nối cũ", () => {
-    expect(ORDERS).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone)"')
+    expect(ORDERS).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel)"')
   })
 
   /** Đổi bộ lọc mà không tải lại là bộ lọc không có tác dụng. */

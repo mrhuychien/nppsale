@@ -52,8 +52,12 @@ describe("Phân biệt bản nháp tự lưu với đơn đã gửi chờ duyệ
   it("danh sách đơn dùng chung phép phân biệt, cả mobile lẫn desktop", () => {
     // Desktop gọi thẳng; hàng mobile đi qua `orderTone`, và `orderTone`
     // phải gọi đúng hàm này chứ không tự chế phép phân biệt.
-    const uses = ORDERS.match(/isSentForApproval\(order\.status, order\.approval_reason\)/g) ?? []
-    expect(uses.length, "cột trạng thái desktop").toBeGreaterThanOrEqual(1)
+    // Cột trạng thái desktop nay ở DesktopOrderTable; cả hai bảng đi qua
+    // `orderTone` + `isSentForApproval`, không tự chế.
+    const DTABLE = read("src/components/orders/desktop-order-table.tsx")
+    expect(DTABLE).toContain("isSentForApproval(o.status, o.approval_reason)")
+    expect(DTABLE).toContain("orderTone(o.status, o.approval_reason)")
+    expect(ORDERS).not.toContain('order.status === "draft" && !!order.approval_reason')
     const TONE = read("src/lib/orders/status-tone.ts")
     expect(TONE).toContain("if (isSentForApproval(status, approvalReason)) {")
     expect(TONE).not.toContain('=== "draft" && !!')

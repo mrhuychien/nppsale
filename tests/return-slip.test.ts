@@ -88,13 +88,17 @@ describe("Giá trả bám theo giá ĐÃ BÁN", () => {
     expect(NEW).toContain(
       "const ceiling = sold ? Number(sold.unit_price) : Number(p?.sell_price ?? 0)"
     )
-    expect(NEW).toContain("returnPriceViolation(l, ceiling)")
+    expect(NEW).toContain("returnPriceViolation(l, ceiling, priceRules)")
+    // ⚠ Trần giá trả = trần giá bán của chính người đó, ở CẢ hai màn lập
+    // phiếu trả. Hai màn hai trần là mở đường cho người ta chọn màn dễ hơn.
+    expect(NEW).toContain("const priceRules = (() => {")
+    expect(NEW).toContain("userPriceRulesFrom(user)")
   })
 
   /** ⚠ Trả cao hơn giá đã bán là một đường rút tiền — phải CHẶN, không chỉ tô đỏ. */
   it("giá vượt trần thì không lưu được", () => {
     expect(NEW).toContain("priceBad > 0")
-    expect(NEW).toContain("Có dòng trả cao hơn giá đã bán")
+    expect(NEW).toContain("Có dòng trả vượt trần giá")
   })
 
   /** Gắn phiếu vào đơn để đối chiếu được, nhưng KHÔNG bắt buộc. */

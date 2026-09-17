@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { selectedUnitOf, type PricedProduct } from "../src/lib/sell/pricing"
-import { returnPriceViolation } from "../src/lib/sell/returns"
+import { returnCeilingFor, returnPriceViolation } from "../src/lib/sell/returns"
+import { ceilingFor } from "../src/lib/sell/cart"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -262,11 +263,36 @@ describe("Luật giá của dòng trả NGƯỢC với dòng bán", () => {
   /**
    * ⚠ Dòng BÁN bị chặn khi giá THẤP hơn bảng giá — bán rẻ là mất tiền.
    * Dòng TRẢ thì ngược: tiền đi RA khỏi công ty, nên chỗ nguy hiểm là giá
-   * CAO. Trả về cao hơn giá bán là một đường rút tiền: mua 100k, trả lại
-   * 150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng bán.
+   * CAO. Trả về cao hơn mức cho phép là một đường rút tiền: mua 100k, trả
+   * lại 150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng bán.
    */
-  it("trả cao hơn giá bảng là vi phạm", () => {
-    expect(returnPriceViolation({ price: 150_000 }, 100_000)).toBe("above_list")
+  it("không có biên độ thì trần đúng bằng giá bảng", () => {
+    expect(returnPriceViolation({ price: 150_000 }, 100_000)).toBe("above_ceiling")
+    expect(returnPriceViolation({ price: 100_001 }, 100_000)).toBe("above_ceiling")
+  })
+
+  /**
+   * ⚠ TRẦN GIÁ TRẢ = TRẦN GIÁ BÁN CỦA CHÍNH NGƯỜI ĐÓ. Ai được nâng giá bán
+   * trong biên độ 5% thì cũng được trả trong biên độ 5% — cùng một thẩm
+   * quyền về tiền, cùng một con số. Hai bên hai trần khác nhau là bắt người
+   * dùng nhớ hai luật cho một việc.
+   */
+  it("có biên độ 5% thì trả tới 105% giá bảng vẫn hợp lệ", () => {
+    const rules = { maxIncreasePct: 5 }
+    expect(returnPriceViolation({ price: 105_000 }, 100_000, rules)).toBeNull()
+    expect(returnPriceViolation({ price: 105_001 }, 100_000, rules)).toBe("above_ceiling")
+  })
+
+  it("trần khớp đúng phép tính của giá bán", () => {
+    expect(returnCeilingFor(100_000, { maxIncreasePct: 5 })).toBe(ceilingFor(100_000, 5))
+    expect(returnCeilingFor(100_000, { maxIncreasePct: 0 })).toBe(100_000)
+  })
+
+  /** Chủ / kế toán không có trần — xem `userPriceRulesFrom`. */
+  it("người được miễn trần thì không bị chặn", () => {
+    expect(returnPriceViolation({ price: 999_000 }, 100_000, { maxIncreasePct: 0, free: true }))
+      .toBeNull()
+    expect(returnCeilingFor(100_000, { maxIncreasePct: 0, free: true })).toBe(Infinity)
   })
 
   /**
@@ -274,18 +300,21 @@ describe("Luật giá của dòng trả NGƯỢC với dòng bán", () => {
    * lẻ — mỗi ca một mức bù khác nhau. Đây cũng là chiều AN TOÀN: công ty
    * chi ít đi.
    */
-  it.each([0, 1_000, 99_999, 100_000])("trả %s (≤ giá bảng) thì hợp lệ", (p) => {
+  it.each([0, 1_000, 99_999, 100_000])("trả %s (≤ trần) thì hợp lệ", (p) => {
     expect(returnPriceViolation({ price: p }, 100_000)).toBeNull()
   })
 
-  it("giá âm bị chặn", () => {
+  it("giá âm bị chặn, kể cả người được miễn trần", () => {
     expect(returnPriceViolation({ price: -1 }, 100_000)).toBe("negative")
+    expect(returnPriceViolation({ price: -1 }, 100_000, { maxIncreasePct: 0, free: true })).toBe(
+      "negative"
+    )
   })
 
   /**
-   * ⚠ Chưa tra ra giá bảng (bằng 0) thì KHÔNG lấy 0 làm trần — làm vậy là
-   * chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn đang
-   * đứng đó với hàng trên tay.
+   * ⚠ Chưa tra ra giá tham chiếu (bằng 0) thì KHÔNG lấy 0 làm trần — làm
+   * vậy là chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn
+   * đang đứng đó với hàng trên tay.
    */
   it("mặt hàng chưa có giá bảng thì không chặn", () => {
     expect(returnPriceViolation({ price: 50_000 }, 0)).toBeNull()
@@ -298,13 +327,69 @@ describe("Giá trả sai thì KHÔNG gửi được đơn", () => {
   /** Tô đỏ ở màn hàng trả mà vẫn gửi được thì vệt đỏ đó chỉ là trang trí. */
   it("màn giỏ đếm dòng trả sai giá và nói ra", () => {
     expect(CART).toContain("const returnPriceBad = useMemo(")
-    expect(CART).toContain("returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0)")
-    expect(CART).toContain("dòng trả cao hơn giá bảng")
+    expect(CART).toContain("returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0, {")
+    // ⚠ Chốt chặn gửi phải dùng CÙNG trần với màn hàng trả — hai trần khác
+    // nhau thì tô đỏ một đằng, chặn một nẻo.
+    expect(CART).toContain("maxIncreasePct,")
+    expect(CART).toContain("free: rules.free,")
+    expect(CART).toContain("dòng trả vượt trần giá")
     expect(CART).toContain('"Giá hàng trả quá cao"')
   })
 
-  it("màn hàng trả tô đỏ đúng dòng", () => {
+  /**
+   * ⚠ Câu báo lỗi phải nói TRẦN LÀ BAO NHIÊU. "Cao hơn giá bảng" đúng khi
+   * trần bằng đúng giá bảng, nhưng từ khi người dùng được nâng theo biên
+   * độ thì câu đó chỉ sai đường: đọc nó xong người ta hạ về giá bảng, bỏ
+   * mất phần mình được phép, và số tiền trả cho khách thấp hơn thực tế.
+   */
+  it("màn hàng trả tô đỏ đúng dòng và nói trần ở đâu", () => {
     expect(RET).toContain("const priceBadOf =")
-    expect(RET).toContain("Giá trả cao hơn giá bảng")
+    expect(RET).toContain("const ceiling = returnCeilingFor(listPriceOf(r), priceRules)")
+    expect(RET).toContain("Giá trả vượt trần — tối đa ${formatCurrency(ceiling)}")
+    expect(RET, "câu cũ nói sai trần").not.toContain("Giá trả cao hơn giá bảng")
+  })
+})
+
+/**
+ * ⚠ CHỐT NÀY SINH RA TỪ MỘT LẦN "THỬ PHÁ".
+ *
+ * Đổi `maxIncreasePct: Number(rules.price_edit_max_increase_pct ?? 0)` ở
+ * màn hàng trả thành `maxIncreasePct: 0` thì TOÀN BỘ bộ kiểm thử vẫn
+ * xanh: phép tính trần vẫn đúng, chỉ có điều màn hình không còn đưa biên
+ * độ của người dùng vào nữa. Người được nâng 5% bị chặn ở đúng giá bảng,
+ * và không chốt nào kêu.
+ *
+ * Nên soi theo NGUỒN của con số: mọi màn kiểm giá phải lấy biên độ từ
+ * `price_edit_max_increase_pct` của người dùng, và không màn nào được gán
+ * một con số chết vào `maxIncreasePct`.
+ */
+describe("Biên độ giá phải LẤY TỪ NGƯỜI DÙNG, không gõ cứng", () => {
+  const SCREENS: [string, string][] = [
+    ["màn hàng trả", "src/app/(dashboard)/sell/returns/page.tsx"],
+    ["màn giỏ hàng", "src/app/(dashboard)/sell/cart/page.tsx"],
+    ["màn lập phiếu trả", "src/app/(dashboard)/returns/new/page.tsx"],
+  ]
+
+  it.each(SCREENS)("%s đọc biên độ từ quyền của người dùng", (_l, rel) => {
+    const src = code(read(rel))
+    expect(src).toContain("userPriceRulesFrom(")
+    expect(src, "không đọc price_edit_max_increase_pct").toContain(
+      "price_edit_max_increase_pct"
+    )
+  })
+
+  it.each(SCREENS)("%s không gán số chết cho maxIncreasePct", (_l, rel) => {
+    const src = code(read(rel))
+    const hardcoded = src.match(/maxIncreasePct\s*[:=]\s*[0-9]/g) ?? []
+    expect(hardcoded, `gõ cứng biên độ: ${hardcoded.join(", ")}`).toHaveLength(0)
+  })
+
+  /**
+   * Và biên độ đó phải đi CHUNG với cờ `free` — bỏ cờ đi là chủ / kế toán
+   * bị chặn ở trần của nhân viên, ngay giữa lúc đang sửa cho nhân viên.
+   */
+  it.each(SCREENS)("%s truyền kèm cờ miễn trần", (_l, rel) => {
+    const src = code(read(rel))
+    expect(src).toMatch(/free:\s*r(ules)?\.free/)
   })
 })

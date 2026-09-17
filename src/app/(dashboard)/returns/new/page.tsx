@@ -20,6 +20,7 @@ import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { viMatchAllWords } from "@/lib/search"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { userPriceRulesFrom } from "@/lib/pricing"
 import {
   RETURN_REASONS,
   addReturnLine,
@@ -82,6 +83,15 @@ export default function NewReturnPage() {
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
+  /**
+   * ⚠ TRẦN GIÁ TRẢ = TRẦN GIÁ BÁN CỦA CHÍNH NGƯỜI ĐÓ — cùng một thẩm quyền
+   * về tiền, cùng một con số. Để hai màn lập phiếu trả hai trần khác nhau
+   * là mở đường cho người ta chọn màn nào dễ hơn.
+   */
+  const priceRules = (() => {
+    const r = userPriceRulesFrom(user)
+    return { maxIncreasePct: Number(r.price_edit_max_increase_pct ?? 0), free: r.free }
+  })()
 
   const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
   const [products, setProducts] = useState<ProductLite[]>([])
@@ -228,7 +238,7 @@ export default function NewReturnPage() {
   const priceBad = lines.filter((l) => {
     const sold = orderLines.find((o) => o.product_id === l.productId && o.unit_name === l.unit)
     const ceiling = sold ? Number(sold.unit_price) : Number(productById(l.productId)?.sell_price ?? 0)
-    return returnPriceViolation(l, ceiling) !== null
+    return returnPriceViolation(l, ceiling, priceRules) !== null
   }).length
 
   const blocked =
@@ -241,7 +251,7 @@ export default function NewReturnPage() {
             // biết phải nhận lại cái gì. Đó chính là lỗi của bản trước.
             "Thêm ít nhất một mặt hàng"
           : priceBad > 0
-            ? "Có dòng trả cao hơn giá đã bán"
+            ? "Có dòng trả vượt trần giá"
             : null
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -452,7 +462,7 @@ export default function NewReturnPage() {
                     (o) => o.product_id === l.productId && o.unit_name === l.unit
                   )
                   const ceiling = sold ? Number(sold.unit_price) : Number(p?.sell_price ?? 0)
-                  const bad = returnPriceViolation(l, ceiling) !== null
+                  const bad = returnPriceViolation(l, ceiling, priceRules) !== null
                   return (
                     <div
                       key={`${l.productId}|${l.unit}`}
@@ -466,7 +476,7 @@ export default function NewReturnPage() {
                         </p>
                         {bad && (
                           <p className="mt-0.5 text-xs font-bold text-destructive">
-                            Giá trả cao hơn {sold ? "giá đã bán" : "giá bảng"}
+                            Giá trả vượt trần so với {sold ? "giá đã bán" : "giá bảng"}
                           </p>
                         )}
                       </div>

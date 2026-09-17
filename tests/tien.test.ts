@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest"
 import { formatCurrency } from "@/lib/utils"
 import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
-import {
-  userPriceRulesFrom,
-  validateUserSalesPrice,
-  validateUserReturnPrice,
-  userSalesCeiling,
-} from "@/lib/pricing"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import { userPriceRulesFrom } from "@/lib/pricing"
+import { ceilingFor, priceViolation } from "@/lib/sell/cart"
+import { returnCeilingFor, returnPriceViolation } from "@/lib/sell/returns"
 
 /**
  * Tiền: định dạng, đọc thành chữ (phiếu thu TT200), và luật chặn sửa giá.
@@ -91,88 +90,92 @@ describe("userPriceRulesFrom — suy ra luật sửa giá theo người dùng", 
   })
 })
 
-describe("validateUserSalesPrice — chặn bán sai giá", () => {
-  const nvKhongSua = userPriceRulesFrom({ role: "sales", allow_price_edit: false })
-  const nvSua10 = userPriceRulesFrom({
+describe("Luật giá bán và luật giá trả dùng CHUNG một biên độ", () => {
+  const nvSua5 = userPriceRulesFrom({
     role: "sales",
     allow_price_edit: true,
-    price_edit_max_increase_pct: 10,
+    price_edit_max_increase_pct: 5,
   })
 
-  it("chủ sở hữu nhập giá nào cũng hợp lệ", () => {
-    const free = userPriceRulesFrom({ role: "owner" })
-    expect(validateUserSalesPrice(1, 100_000, free)).toBeNull()
+  /**
+   * ⚠ NGƯỜI DÙNG BÁO. "Nếu người dùng được cho sửa giá bán biên độ 5% thì
+   * giá trả về cũng được sửa biên độ 5%." Trước đây dòng trả bị chặn cứng
+   * ở đúng giá bảng, nên cùng một nhân viên được nâng giá bán lên 105.000
+   * mà trả lại chính món đó ở 105.000 thì không lưu được.
+   */
+  it("trần giá trả bằng đúng trần giá bán", () => {
+    const list = 100_000
+    expect(returnCeilingFor(list, { maxIncreasePct: 5 })).toBe(
+      ceilingFor(list, nvSua5.price_edit_max_increase_pct)
+    )
+    expect(returnCeilingFor(list, { maxIncreasePct: 5 })).toBe(105_000)
   })
 
-  it("NV không có quyền sửa giá thì phải đúng bằng giá list", () => {
-    expect(validateUserSalesPrice(100_000, 100_000, nvKhongSua)).toBeNull()
-    expect(validateUserSalesPrice(90_000, 100_000, nvKhongSua)).toContain("không có quyền")
+  it("bán 105.000 được thì trả 105.000 cũng được", () => {
+    const list = 100_000
+    expect(
+      priceViolation({ price: 105_000, listPrice: list }, {
+        canEditPrice: true,
+        maxIncreasePct: 5,
+      })
+    ).toBeNull()
+    expect(
+      returnPriceViolation({ price: 105_000 }, list, { maxIncreasePct: 5 })
+    ).toBeNull()
   })
 
-  it("chặn bán DƯỚI giá list", () => {
-    expect(validateUserSalesPrice(90_000, 100_000, nvSua10)).toContain("≥ giá list")
+  /** Hai đầu vẫn chặn ở cùng một mốc — hơn một đồng là hỏng cả hai. */
+  it("vượt một đồng thì cả hai đều chặn", () => {
+    const list = 100_000
+    expect(
+      priceViolation({ price: 105_001, listPrice: list }, {
+        canEditPrice: true,
+        maxIncreasePct: 5,
+      })
+    ).toBe("above_ceiling")
+    expect(
+      returnPriceViolation({ price: 105_001 }, list, { maxIncreasePct: 5 })
+    ).toBe("above_ceiling")
   })
 
-  it("cho phép tăng trong hạn mức phần trăm", () => {
-    expect(validateUserSalesPrice(105_000, 100_000, nvSua10)).toBeNull()
-    expect(validateUserSalesPrice(110_000, 100_000, nvSua10)).toBeNull()
-  })
-
-  it("chặn khi vượt trần phần trăm", () => {
-    expect(validateUserSalesPrice(120_000, 100_000, nvSua10)).toContain("tối đa")
-  })
-
-  it("bỏ qua lệch nhỏ hơn nửa đồng (chống lỗi làm tròn)", () => {
-    expect(validateUserSalesPrice(99_999.7, 100_000, nvSua10)).toBeNull()
-  })
-
-  it("từ chối giá không hợp lệ", () => {
-    expect(validateUserSalesPrice(NaN, 100_000, nvSua10)).toBe("Giá không hợp lệ")
-    expect(validateUserSalesPrice(-1, 100_000, nvSua10)).toBe("Giá không hợp lệ")
-    expect(validateUserSalesPrice(Infinity, 100_000, nvSua10)).toBe("Giá không hợp lệ")
+  /**
+   * ⚠ ĐÂY LÀ CHỖ HAI LUẬT KHÁC NHAU, và nó có chủ đích: dòng bán có SÀN
+   * (bán rẻ là mất tiền), dòng trả KHÔNG có sàn (bù ít cho hàng hư là
+   * chiều an toàn — công ty chi ít đi).
+   */
+  it("bán dưới giá bảng bị chặn, trả dưới giá bảng thì không", () => {
+    expect(
+      priceViolation({ price: 80_000, listPrice: 100_000 }, {
+        canEditPrice: true,
+        maxIncreasePct: 5,
+      })
+    ).toBe("below_list")
+    expect(
+      returnPriceViolation({ price: 80_000 }, 100_000, { maxIncreasePct: 5 })
+    ).toBeNull()
   })
 })
 
-describe("validateUserReturnPrice — chặn trả hàng giá cao hơn giá đã bán", () => {
-  const nvSua10 = userPriceRulesFrom({
-    role: "sales",
-    allow_price_edit: true,
-    price_edit_max_increase_pct: 10,
-  })
-
-  it("cho phép trả bằng hoặc thấp hơn giá đã bán", () => {
-    expect(validateUserReturnPrice(100_000, 100_000, nvSua10)).toBeNull()
-    expect(validateUserReturnPrice(80_000, 100_000, nvSua10)).toBeNull()
-  })
-
-  it("chặn trả giá CAO HƠN giá đã bán (chống rút tiền qua đơn trả)", () => {
-    expect(validateUserReturnPrice(120_000, 100_000, nvSua10)).toContain("≤ giá đã bán")
-  })
-})
-
-describe("userSalesCeiling — trần giá hiển thị trên giao diện", () => {
-  it("người tự do nhìn thấy trần = giá list", () => {
-    const free = userPriceRulesFrom({ role: "owner" })
-    expect(userSalesCeiling(100_000, free)).toBe(100_000)
-  })
-
-  it("NV được sửa 10% thì trần cao hơn 10%", () => {
-    const r = userPriceRulesFrom({
-      role: "sales",
-      allow_price_edit: true,
-      price_edit_max_increase_pct: 10,
-    })
-    // LỖI NHẸ ĐÃ BIẾT: phép tính 100000 * (1 + 10/100) cho
-    // 110000.00000000001 do sai số dấu phẩy động. Không gây chặn nhầm
-    // (validate có dung sai 0.5đ) và hiển thị vẫn đúng vì formatCurrency
-    // làm tròn. Nhưng nếu giá trị này được dùng làm max của ô nhập số
-    // hoặc đem so sánh tuyệt đối ở chỗ khác thì sẽ sinh lỗi khó hiểu.
-    // Nên bọc Math.round() trong userSalesCeiling.
-    expect(userSalesCeiling(100_000, r)).toBeCloseTo(110_000, 2)
-  })
-
-  it("NV không được sửa giá thì trần đúng bằng giá list", () => {
-    const r = userPriceRulesFrom({ role: "sales", allow_price_edit: false })
-    expect(userSalesCeiling(100_000, r)).toBe(100_000)
+describe("Phép kiểm giá chỉ có MỘT bản", () => {
+  /**
+   * ⚠ `src/lib/pricing.ts` từng giữ thêm ba hàm kiểm giá không màn nào
+   * gọi: `validateUserSalesPrice`, `userSalesCeiling` và
+   * `validateUserReturnPrice`. Chúng vẫn có chốt kiểm thử xanh nên đọc
+   * code là tưởng luật giá nằm ở đó — trong khi `validateUserReturnPrice`
+   * ghi "đơn trả: giá ≤ giá đã bán", KHÔNG có biên độ, tức là ngược hẳn
+   * với luật đang chạy. Chốt này giữ cho chúng đừng quay lại.
+   */
+  it("pricing.ts không còn hàm kiểm giá chết nào", () => {
+    const src = readFileSync(
+      resolve(__dirname, "..", "src/lib/pricing.ts"),
+      "utf-8"
+    )
+    for (const name of [
+      "validateUserSalesPrice",
+      "userSalesCeiling",
+      "validateUserReturnPrice",
+    ]) {
+      expect(src, `${name} đã sống lại`).not.toContain(`export function ${name}`)
+    }
   })
 })

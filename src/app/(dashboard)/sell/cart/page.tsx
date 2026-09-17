@@ -115,9 +115,14 @@ export default function SellCartPage() {
     () =>
       cart.returnLines.filter((r) => {
         const p = productById(r.productId)
-        return returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0) !== null
+        return (
+          returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0, {
+            maxIncreasePct,
+            free: rules.free,
+          }) !== null
+        )
       }).length,
-    [cart.returnLines, productById, groupId]
+    [cart.returnLines, productById, groupId, maxIncreasePct, rules.free]
   )
   const staleCount = rows.filter((r) => r.staleList).length
 
@@ -440,7 +445,7 @@ export default function SellCartPage() {
             )}
             {returnPriceBad > 0 && (
               <span className="mt-0.5 block text-xs font-extrabold text-error">
-                {returnPriceBad} dòng trả cao hơn giá bảng
+                {returnPriceBad} dòng trả vượt trần giá
               </span>
             )}
           </span>

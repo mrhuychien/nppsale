@@ -2,11 +2,20 @@
 // Per-USER price-edit rules (migration 027 — Update #2 v2 §4.6)
 // =====================================================================
 //
-// 3 ràng buộc:
-//   1) Đơn bán: giá ≥ giá list.
-//   2) Đơn bán: giá ≤ giá list × (1 + max_increase_pct/100).
-//   3) Đơn trả: giá ≤ giá đã bán trong đơn gốc tham chiếu (fallback giá
-//      list nếu không link đơn gốc).
+// File này CHỈ còn đọc quyền của người dùng ra thành luật. Phép KIỂM giá
+// không ở đây:
+//   • Dòng bán  → `priceViolation` trong `@/lib/sell/cart`
+//     (sàn = giá bảng, trần = giá bảng + max_increase_pct).
+//   • Dòng trả  → `returnPriceViolation` trong `@/lib/sell/returns`
+//     (không có sàn, trần = giá tham chiếu + CÙNG max_increase_pct).
+//
+// ⚠ Ở đây từng có ba hàm kiểm giá nữa — `validateUserSalesPrice`,
+// `userSalesCeiling`, `validateUserReturnPrice`. Không màn nào gọi tới
+// chúng, nhưng chúng vẫn có chốt kiểm thử xanh, nên đọc code là tưởng
+// luật giá nằm ở đây. Tệ hơn: `validateUserReturnPrice` ghi "đơn trả:
+// giá ≤ giá đã bán" — KHÔNG có biên độ — trong khi luật đang chạy cho
+// phép nâng đúng bằng biên độ của giá bán. Hai câu trả lời khác nhau cho
+// cùng một câu hỏi thì sớm muộn có người đọc nhầm câu chết. Đã xoá.
 //
 // Owner & accountant có flag free → bỏ qua check (UI cho nhập tự do).
 
@@ -37,68 +46,4 @@ export function userPriceRulesFrom(
     ),
     free,
   }
-}
-
-/** Trả về null khi giá hợp lệ, ngược lại là chuỗi lỗi tiếng Việt. */
-export function validateUserSalesPrice(
-  enteredPrice: number,
-  listPrice: number,
-  rules: UserPriceEditRules
-): string | null {
-  if (!Number.isFinite(enteredPrice) || enteredPrice < 0) return "Giá không hợp lệ"
-  if (rules.free) return null
-  if (!rules.allow_price_edit) {
-    if (Math.abs(enteredPrice - listPrice) > 0.5) {
-      return `Bạn không có quyền sửa giá (giá list ${formatVnd(listPrice)})`
-    }
-    return null
-  }
-  // Ràng buộc 1: ≥ giá list
-  if (enteredPrice < listPrice - 0.5) {
-    return `Đơn bán: giá ≥ giá list ${formatVnd(listPrice)}`
-  }
-  // Ràng buộc 2: ≤ list × (1 + max%)
-  const ceiling = listPrice * (1 + rules.price_edit_max_increase_pct / 100)
-  if (enteredPrice > ceiling + 0.5) {
-    return `Đơn bán: tối đa được tăng ${rules.price_edit_max_increase_pct}% = ${formatVnd(ceiling)}`
-  }
-  return null
-}
-
-/** Trần giá khi bán theo per-user rule. Trả về listPrice nếu không
- *  được sửa giá. Dùng cho UI hint "Tối đa". */
-export function userSalesCeiling(
-  listPrice: number,
-  rules: UserPriceEditRules
-): number {
-  if (rules.free || !rules.allow_price_edit) return listPrice
-  return listPrice * (1 + rules.price_edit_max_increase_pct / 100)
-}
-
-/**
- * Đơn trả: giá ≤ giá đã bán (truyền vào `originalPrice`). Nếu không
- * link đơn gốc → caller truyền listPrice làm fallback.
- */
-export function validateUserReturnPrice(
-  enteredPrice: number,
-  originalPrice: number,
-  rules: UserPriceEditRules
-): string | null {
-  if (!Number.isFinite(enteredPrice) || enteredPrice < 0) return "Giá không hợp lệ"
-  if (rules.free) return null
-  if (!rules.allow_price_edit) {
-    if (Math.abs(enteredPrice - originalPrice) > 0.5) {
-      return `Bạn không có quyền sửa giá (giá tham chiếu ${formatVnd(originalPrice)})`
-    }
-    return null
-  }
-  // Ràng buộc 3: ≤ giá đã bán
-  if (enteredPrice > originalPrice + 0.5) {
-    return `Đơn trả: giá ≤ giá đã bán ${formatVnd(originalPrice)}`
-  }
-  return null
-}
-
-function formatVnd(n: number): string {
-  return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + "đ"
 }

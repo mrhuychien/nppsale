@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn, formatCurrency } from "@/lib/utils"
-import { returnPriceViolation, type ReturnCartLine } from "@/lib/sell/returns"
+import {
+  returnCeilingFor,
+  returnPriceViolation,
+  type ReturnCartLine,
+  type ReturnPriceRules,
+} from "@/lib/sell/returns"
 import { sellableUnits, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { useViewportInsets, bottomSheetBox } from "@/hooks/use-viewport-insets"
 import { Stepper } from "@/components/sell/line-edit-sheet"
@@ -26,6 +31,7 @@ export function ReturnLineSheet({
   product,
   groupId,
   canEditPrice,
+  priceRules,
   onPatch,
   onRemove,
   onClose,
@@ -39,6 +45,8 @@ export function ReturnLineSheet({
    * một bên rồi mở bên kia thì "trả hàng" thành đường vòng.
    */
   canEditPrice: boolean
+  /** Biên độ nâng giá — CÙNG con số với giá bán. */
+  priceRules: ReturnPriceRules
   onPatch: (patch: Partial<ReturnCartLine>) => void
   onRemove: () => void
   onClose: () => void
@@ -58,17 +66,20 @@ export function ReturnLineSheet({
 
   const units = sellableUnits(product)
   const listPrice = unitPriceFor(product, line.unit, groupId)
-  const bad = returnPriceViolation(line, listPrice)
+  const bad = returnPriceViolation(line, listPrice, priceRules)
+  const ceiling = returnCeilingFor(listPrice, priceRules)
 
   const hint = !canEditPrice
     ? `Bạn không có quyền sửa giá (giá bảng ${formatCurrency(listPrice)})`
-    : bad === "above_list"
-      ? `Không trả cao hơn giá bảng ${formatCurrency(listPrice)}`
+    : bad === "above_ceiling"
+      ? `Tối đa ${formatCurrency(ceiling)} (giá bảng ${formatCurrency(listPrice)}${priceRules.maxIncreasePct > 0 ? ` +${priceRules.maxIncreasePct}%` : ""})`
       : bad === "negative"
         ? "Đơn giá không được âm"
-        : listPrice > 0
-          ? `Giá bảng ${formatCurrency(listPrice)} · hạ xuống bao nhiêu cũng được`
-          : "Mặt hàng này chưa có giá bảng để đối chiếu"
+        : listPrice <= 0
+          ? "Mặt hàng này chưa có giá bảng để đối chiếu"
+          : Number.isFinite(ceiling)
+            ? `Tối đa ${formatCurrency(ceiling)} · hạ xuống bao nhiêu cũng được`
+            : "Hạ hay nâng bao nhiêu cũng được"
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>

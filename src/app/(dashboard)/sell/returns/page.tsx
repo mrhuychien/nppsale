@@ -10,7 +10,13 @@ import { useSellData } from "@/hooks/use-sell-data"
 import { Stepper } from "@/components/sell/line-edit-sheet"
 import { ReturnLineSheet } from "@/components/sell/return-line-sheet"
 import { ReturnPriceInput } from "@/components/sell/return-price-input"
-import { RETURN_REASONS, returnReasonLabel, returnPriceViolation } from "@/lib/sell/returns"
+import {
+  RETURN_REASONS,
+  returnReasonLabel,
+  returnCeilingFor,
+  returnPriceViolation,
+  type ReturnPriceRules,
+} from "@/lib/sell/returns"
 import { unitPriceFor } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
@@ -39,6 +45,15 @@ export default function SellReturnsPage() {
    */
   const rules = userPriceRulesFrom(user)
   const canEditPrice = user?.role !== "sales" || !!rules.allow_price_edit
+  /**
+   * ⚠ TRẦN GIÁ TRẢ = TRẦN GIÁ BÁN CỦA CHÍNH NGƯỜI ĐÓ. Ai được nâng giá bán
+   * trong biên độ 5% thì cũng được trả trong biên độ 5% — cùng một thẩm
+   * quyền về tiền, cùng một con số.
+   */
+  const priceRules: ReturnPriceRules = {
+    maxIncreasePct: Number(rules.price_edit_max_increase_pct ?? 0),
+    free: rules.free,
+  }
 
   /** Giá bảng của đúng đơn vị đang chọn trên dòng trả. */
   const listPriceOf = (r: { productId: string; unit: string }) => {
@@ -50,9 +65,20 @@ export default function SellReturnsPage() {
     const list = listPriceOf(r)
     return list > 0 && r.price !== list
   }
-  /** ⚠ Trả CAO hơn giá bảng là một đường rút tiền — tô đỏ ngay trên dòng. */
+  /** ⚠ Trả CAO hơn trần là một đường rút tiền — tô đỏ ngay trên dòng. */
   const priceBadOf = (r: { productId: string; unit: string; price: number }) =>
-    returnPriceViolation(r, listPriceOf(r)) !== null
+    returnPriceViolation(r, listPriceOf(r), priceRules) !== null
+  /**
+   * Câu báo lỗi phải nói con số DỪNG Ở ĐÂU. "Cao hơn giá bảng" là sai kể
+   * từ khi có biên độ — người được nâng 5% đọc câu đó rồi hạ về đúng giá
+   * bảng, tức là bỏ mất phần mình được phép.
+   */
+  const priceBadText = (r: { productId: string; unit: string; price: number }) => {
+    const ceiling = returnCeilingFor(listPriceOf(r), priceRules)
+    return Number.isFinite(ceiling)
+      ? `Giá trả vượt trần — tối đa ${formatCurrency(ceiling)}`
+      : "Đơn giá không được âm"
+  }
 
 
   return (
@@ -179,7 +205,7 @@ export default function SellReturnsPage() {
                       )}
                       {priceBadOf(r) && (
                         <span className="mt-0.5 block text-xs font-extrabold text-error">
-                          Giá trả cao hơn giá bảng
+                          {priceBadText(r)}
                         </span>
                       )}
                       {r.note && (
@@ -299,6 +325,7 @@ export default function SellReturnsPage() {
         }
         groupId={groupId}
         canEditPrice={canEditPrice}
+        priceRules={priceRules}
         onPatch={(patch) => editIdx != null && cart.patchReturnLine(editIdx, patch)}
         onRemove={() => {
           if (editIdx != null) cart.setReturnQty(editIdx, 0)

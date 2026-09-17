@@ -1,5 +1,6 @@
 import type { OfflineReturnLine } from "@/lib/orders/create"
 import { RETURN_REASONS as CONSTANT_REASONS } from "@/lib/constants"
+import { ceilingFor } from "@/lib/sell/cart"
 
 /**
  * Hàng trả / đổi đi kèm một đơn bán.
@@ -114,25 +115,47 @@ export function toReturnLine(l: ReturnCartLine): OfflineReturnLine {
  * VÌ SAO LUẬT NGƯỢC VỚI DÒNG BÁN
  *   Dòng BÁN bị chặn khi giá THẤP hơn bảng giá — bán rẻ là mất tiền.
  *   Dòng TRẢ thì ngược: tiền đi RA khỏi công ty, nên chỗ nguy hiểm là giá
- *   CAO. Trả về cao hơn giá bán là một đường rút tiền: mua 100k, trả lại
- *   150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng bán.
+ *   CAO. Trả về cao hơn mức cho phép là một đường rút tiền: mua 100k, trả
+ *   lại 150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng
+ *   bán.
+ *
+ * ⚠ TRẦN GIÁ TRẢ = TRẦN GIÁ BÁN CỦA CHÍNH NGƯỜI ĐÓ. Ai được nâng giá bán
+ * trong biên độ 5% thì cũng được trả trong biên độ 5% — cùng một thẩm
+ * quyền về tiền, cùng một con số. Để hai bên hai trần khác nhau là bắt
+ * người dùng nhớ hai luật cho một việc, và cái nào chặt hơn thì trông như
+ * lỗi.
  *
  * ⚠ HẠ GIÁ THÌ LUÔN ĐƯỢC, kể cả xuống 0. Hàng hư hỏng, hàng cận date, hàng
  * đã bóc lẻ — mỗi ca một mức bù khác nhau, và bắt trả đúng giá bảng là ép
  * công ty trả tiền cho thứ không bán lại được. Đây cũng là chiều AN TOÀN:
  * hạ giá là công ty chi ít đi.
  */
-export type ReturnPriceIssue = "above_list" | "negative"
+export type ReturnPriceIssue = "above_ceiling" | "negative"
+
+export interface ReturnPriceRules {
+  /** % được nâng so với giá tham chiếu — CÙNG con số với giá bán. */
+  maxIncreasePct: number
+  /** Chủ / kế toán: không trần. Xem `userPriceRulesFrom`. */
+  free?: boolean
+}
 
 export function returnPriceViolation(
   line: Pick<ReturnCartLine, "price">,
-  listPrice: number
+  listPrice: number,
+  rules: ReturnPriceRules = { maxIncreasePct: 0 }
 ): ReturnPriceIssue | null {
   const p = Number(line.price)
   if (!Number.isFinite(p) || p < 0) return "negative"
-  // ⚠ Chưa tra ra giá bảng (bằng 0) thì KHÔNG lấy 0 làm trần — làm vậy là
-  // chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn đang
-  // đứng đó với hàng trên tay.
-  if (listPrice > 0 && p > listPrice) return "above_list"
+  if (rules.free) return null
+  // ⚠ Chưa tra ra giá tham chiếu (bằng 0) thì KHÔNG lấy 0 làm trần — làm
+  // vậy là chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn
+  // đang đứng đó với hàng trên tay.
+  if (listPrice <= 0) return null
+  if (p > ceilingFor(listPrice, rules.maxIncreasePct)) return "above_ceiling"
   return null
+}
+
+/** Trần giá trả — hiện lên màn hình để người dùng biết mình đi tới đâu. */
+export function returnCeilingFor(listPrice: number, rules: ReturnPriceRules): number {
+  return rules.free ? Infinity : ceilingFor(listPrice, rules.maxIncreasePct)
 }

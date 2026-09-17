@@ -204,6 +204,9 @@
   .bottom-above-nav { bottom: calc(var(--bottom-nav-h) + var(--safe-b)); }
   /* Neo cho thanh dính đỉnh: nằm NGAY DƯỚI app bar. */
   .top-below-appbar { top: var(--app-bar-h); }
+  /* Chừa chỗ cho app bar khi `scrollIntoView` kéo một khối lên đỉnh màn —
+     thiếu nó thì đỉnh khối chui xuống dưới app bar. */
+  .scroll-mt-appbar { scroll-margin-top: var(--app-bar-h); }
 
   /* Bàn phím ảo đang mở: giấu thanh nav dưới.
      Thanh nav và thanh hành động cùng ở đáy màn; bàn phím đẩy chúng lên

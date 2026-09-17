@@ -26,6 +26,16 @@ const SheetOverlay = React.forwardRef<
 ))
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 
+/**
+ * Thời lượng đóng tấm trượt, tính bằng ms.
+ *
+ * ⚠ PHẢI KHỚP `data-[state=closed]:duration-300` ở ngay dưới. Radix chỉ
+ * nhả KHOÁ CUỘN TRANG khi tấm trượt rời khỏi DOM, tức là sau đúng khoảng
+ * này. Nơi nào cần cuộn trang ngay sau khi đóng thì phải chờ bằng con số
+ * này, không phải một con số đoán.
+ */
+export const SHEET_CLOSE_MS = 300
+
 const sheetVariants = cva(
   "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {

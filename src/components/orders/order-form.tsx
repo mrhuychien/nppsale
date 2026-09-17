@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { QtyStepper } from "@/components/ui/qty-stepper"
 import { SwipeToDelete } from "@/components/ui/swipe-to-delete"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SHEET_CLOSE_MS } from "@/components/ui/sheet"
 import { useUndoableRemove } from "@/hooks/use-undoable-remove"
 import { ProductPickerSheet } from "@/components/orders/product-picker-sheet"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
@@ -95,6 +95,7 @@ export function OrderForm() {
   /** M3.3e — dòng đang mở trong sheet "Sửa dòng". null = sheet đóng. */
   const [editLineIndex, setEditLineIndex] = useState<number | null>(null)
   const [lines, setLines] = useState<OrderLine[]>([])
+  const productsCardRef = useRef<HTMLDivElement>(null)
   const [productSearch, setProductSearch] = useState("")
   const [productDropdownOpen, setProductDropdownOpen] = useState(false)
   const [returnDropdownOpen, setReturnDropdownOpen] = useState(false)
@@ -338,6 +339,21 @@ export function OrderForm() {
     }
   }, [selectedCustomer])
 
+  /**
+   * Kéo thẻ "Sản phẩm" lên sát app bar.
+   *
+   * ⚠ Dòng mới nằm ở ĐẦU danh sách. NVBH đang cuộn tới dòng thứ 12 mà thêm
+   * hàng thì dòng vừa thêm nằm ngoài màn hình phía TRÊN — thêm xong mà màn
+   * hình không đổi gì, trông hệt như bấm hụt. Không kéo thì tính năng "nổi
+   * lên trên" coi như không tồn tại với chính người cần nó.
+   *
+   * ⚠ `scroll-mt-appbar` (globals.css) chừa đúng chiều cao app bar, nếu
+   * không thì đỉnh thẻ chui xuống dưới app bar.
+   */
+  const scrollToProductsTop = () => {
+    productsCardRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })
+  }
+
   const addLine = (productId: string) => {
     const product = products.find((p) => p.id === productId)
     if (!product) return
@@ -359,8 +375,16 @@ export function OrderForm() {
     }
     const groupId = selectedCustomer?.group_id
     const price = getUnitPrice(product, product.base_unit, groupId)
+    // ⚠ DÒNG MỚI LÊN ĐẦU, không nối vào đuôi.
+    //
+    // Thứ vừa thêm là thứ sắp phải sửa: nhập số lượng, đổi đơn vị, có khi
+    // sửa giá. Nối vào đuôi thì đơn 15 dòng đẩy nó xuống dưới mép màn, và
+    // mỗi mặt hàng tốn thêm một lượt kéo chỉ để chạm tới ô số lượng.
+    //
+    // Thứ tự dòng không mang ý nghĩa nào khác: bảng `sales_order_lines`
+    // không có cột số thứ tự, và phép kiểm vượt tồn cộng TẤT CẢ dòng cùng
+    // sản phẩm nên không phụ thuộc dòng nào đứng trước.
     setLines((prev) => [
-      ...prev,
       {
         product_id: product.id,
         product_name: product.name,
@@ -374,8 +398,10 @@ export function OrderForm() {
         vat_rate: snapVat(product.vat_rate ?? 0),
         note: "",
       },
+      ...prev,
     ])
     setProductSearch("")
+    scrollToProductsTop()
   }
 
   const getUnitPrice = (
@@ -1348,7 +1374,7 @@ export function OrderForm() {
         </Card>
 
         {/* Products card */}
-        <Card className="rounded-xl shadow-card flex-1">
+        <Card ref={productsCardRef} className="rounded-xl shadow-card flex-1 scroll-mt-appbar">
           <CardHeader className="p-4 pb-2 lg:p-6 lg:pb-6">
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base font-bold">Sản phẩm</CardTitle>
@@ -2206,9 +2232,17 @@ export function OrderForm() {
         onScan={processBarcodeResult}
       />
 
+      {/* ⚠ Tấm trượt KHOÁ cuộn trang lúc đang mở, nên `scrollToProductsTop`
+          gọi trong `addLine` không có tác dụng gì khi thêm từ đây. Phải kéo
+          lại một lần nữa sau khi tấm trượt đóng hẳn — chờ đúng thời lượng
+          đóng của Sheet (`data-[state=closed]:duration-300`), vì khoá cuộn
+          chỉ nhả khi nó rời khỏi DOM. */}
       <ProductPickerSheet
         open={pickerOpen}
-        onOpenChange={setPickerOpen}
+        onOpenChange={(o) => {
+          setPickerOpen(o)
+          if (!o) setTimeout(scrollToProductsTop, SHEET_CLOSE_MS + 50)
+        }}
         products={products}
         stockByProduct={stockByProduct}
         groupId={selectedCustomer?.group_id}

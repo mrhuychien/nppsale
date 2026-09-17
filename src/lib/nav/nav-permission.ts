@@ -47,6 +47,10 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/help": { module: "settings", always: true },
 
   // Bán hàng
+  //
+  // `/sell` là luồng BÁN HÀNG trên điện thoại (tìm hàng → giỏ → gửi đơn).
+  // Nó tạo đơn nên đòi đúng quyền TẠO, không phải quyền xem.
+  "/sell": { module: "orders", feature: "orders", action: "create" },
   "/orders": { module: "orders", feature: "orders" },
   "/orders/new": { module: "orders", feature: "orders", action: "create" },
   "/customers": { module: "customers", feature: "customers" },

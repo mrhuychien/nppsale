@@ -34,6 +34,8 @@ const base = {
   expectedDelivery: "2026-09-20",
   notes: "  giao trước 10h  ",
   createdAt: "2026-09-17T06:00:00.000Z",
+  returnReason: "damaged",
+  returnLines: [],
 }
 
 describe("Dựng gói đơn từ giỏ", () => {

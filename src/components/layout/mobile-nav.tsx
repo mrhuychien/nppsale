@@ -60,9 +60,9 @@ const ROLE_NAV: Record<Role, NavItem[]> = {
 
 /** Hành động chính của từng vai trò — nằm ở ô GIỮA thanh nav, không nổi. */
 const ROLE_ACTION: Partial<Record<Role, NavAction>> = {
-  sales: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
-  owner: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
-  manager: { label: "Tạo đơn", href: "/orders/new", icon: Plus },
+  sales: { label: "Bán hàng", href: "/sell", icon: Plus },
+  owner: { label: "Bán hàng", href: "/sell", icon: Plus },
+  manager: { label: "Bán hàng", href: "/sell", icon: Plus },
   warehouse: { label: "Nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
 }
 

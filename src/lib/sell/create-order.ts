@@ -1,5 +1,6 @@
 import type { OfflineOrderLine, OfflineOrderPayload } from "@/lib/orders/create"
 import type { CartLine, CartTotals } from "@/lib/sell/cart"
+import { toReturnLine, type ReturnCartLine } from "@/lib/sell/returns"
 
 /**
  * Dựng gói đơn hàng từ giỏ.
@@ -27,6 +28,8 @@ export interface BuildPayloadInput {
   totals: CartTotals
   /** ISO. Truyền vào chứ không gọi `new Date()` bên trong — để test được. */
   createdAt: string
+  returnReason: string
+  returnLines: ReturnCartLine[]
 }
 
 /**
@@ -72,8 +75,11 @@ export function buildOrderPayload(i: BuildPayloadInput): OfflineOrderPayload {
       notes: i.notes.trim() || null,
     },
     lines: i.cart.map(toOrderLine),
-    returns: null,
-    returnLines: [],
+    // ⚠ Không có dòng trả thì KHÔNG tạo phiếu trả rỗng. Một phiếu trả 0
+    // dòng vẫn hiện ở màn /returns chờ quản lý duyệt, và không ai biết
+    // phải duyệt cái gì.
+    returns: i.returnLines.length ? { reason: i.returnReason, notes: null } : null,
+    returnLines: i.returnLines.map(toReturnLine),
     meta: {
       customerName: i.customerName,
       total: i.totals.grandTotal,

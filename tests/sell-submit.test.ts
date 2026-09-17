@@ -43,6 +43,8 @@ const input = (cart: CartLine[], over: Record<string, unknown> = {}) => ({
     cart,
     totals: cartTotals(cart),
     createdAt: "2026-09-17T00:00:00.000Z",
+    returnReason: "damaged",
+    returnLines: [],
   }),
   asDraft: false,
   cart,

@@ -9,6 +9,13 @@ import {
   type CartLine,
   type CartTotals,
 } from "@/lib/sell/cart"
+import {
+  addReturnLine as addReturnLineTo,
+  patchReturnLine as patchReturnLineIn,
+  returnCreditOf,
+  setReturnQty as setReturnQtyIn,
+  type ReturnCartLine,
+} from "@/lib/sell/returns"
 
 /**
  * Giỏ hàng dùng chung cho cả luồng bán hàng trên điện thoại.
@@ -29,6 +36,8 @@ export interface SellCartState {
   notes: string
   paymentTerms: string
   expectedDelivery: string
+  returnReason: string
+  returnLines: ReturnCartLine[]
 }
 
 interface SellCartValue extends SellCartState {
@@ -44,8 +53,12 @@ interface SellCartValue extends SellCartState {
   setExpectedDelivery: (v: string) => void
   /** Xoá sạch giỏ — dùng sau khi tạo đơn xong hoặc khi người dùng huỷ. */
   clear: () => void
+  /** Tiền hàng trả trừ vào đơn — chỉ dòng TRẢ TIỀN, không tính dòng đổi. */
   returnCredit: number
-  setReturnCredit: (v: number) => void
+  setReturnReason: (v: string) => void
+  addReturnLine: (line: ReturnCartLine) => void
+  setReturnQty: (index: number, qty: number) => void
+  patchReturnLine: (index: number, patch: Partial<ReturnCartLine>) => void
 }
 
 const EMPTY: SellCartState = {
@@ -54,6 +67,8 @@ const EMPTY: SellCartState = {
   notes: "",
   paymentTerms: "",
   expectedDelivery: "",
+  returnReason: "damaged",
+  returnLines: [],
 }
 
 const STORAGE_KEY = "npp.sell.cart.v1"
@@ -62,7 +77,6 @@ const Ctx = createContext<SellCartValue | null>(null)
 
 export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SellCartState>(EMPTY)
-  const [returnCredit, setReturnCredit] = useState(0)
   const [ready, setReady] = useState(false)
 
   // Đọc bản lưu MỘT lần, sau khi đã gắn vào DOM. Đọc trong lúc render thì
@@ -79,6 +93,8 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
           notes: saved.notes ?? "",
           paymentTerms: saved.paymentTerms ?? "",
           expectedDelivery: saved.expectedDelivery ?? "",
+          returnReason: saved.returnReason ?? "damaged",
+          returnLines: Array.isArray(saved.returnLines) ? saved.returnLines : [],
         })
       }
     } catch {
@@ -121,11 +137,22 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
     (v: string) => setState((s) => ({ ...s, expectedDelivery: v })),
     []
   )
-  const clear = useCallback(() => {
-    setState(EMPTY)
-    setReturnCredit(0)
+  const clear = useCallback(() => setState(EMPTY), [])
+  const setReturnReason = useCallback(
+    (v: string) => setState((s) => ({ ...s, returnReason: v })),
+    []
+  )
+  const addReturnLine = useCallback((line: ReturnCartLine) => {
+    setState((s) => ({ ...s, returnLines: addReturnLineTo(s.returnLines, line) }))
+  }, [])
+  const setReturnQty = useCallback((index: number, qty: number) => {
+    setState((s) => ({ ...s, returnLines: setReturnQtyIn(s.returnLines, index, qty) }))
+  }, [])
+  const patchReturnLine = useCallback((index: number, patch: Partial<ReturnCartLine>) => {
+    setState((s) => ({ ...s, returnLines: patchReturnLineIn(s.returnLines, index, patch) }))
   }, [])
 
+  const returnCredit = useMemo(() => returnCreditOf(state.returnLines), [state.returnLines])
   const totals = useMemo(() => cartTotals(state.cart, returnCredit), [state.cart, returnCredit])
 
   const value = useMemo<SellCartValue>(
@@ -142,7 +169,10 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setExpectedDelivery,
       clear,
       returnCredit,
-      setReturnCredit,
+      setReturnReason,
+      addReturnLine,
+      setReturnQty,
+      patchReturnLine,
     }),
     [
       state,
@@ -157,6 +187,10 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setExpectedDelivery,
       clear,
       returnCredit,
+      setReturnReason,
+      addReturnLine,
+      setReturnQty,
+      patchReturnLine,
     ]
   )
 

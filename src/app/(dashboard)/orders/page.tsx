@@ -11,6 +11,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
+import { canEditOrder } from "@/lib/orders/edit-permission"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -63,6 +64,7 @@ import {
   FileText,
   Filter,
   Plus,
+  Pencil,
   Search,
   ShoppingCart,
   X,
@@ -1092,6 +1094,17 @@ export default function OrdersPage() {
               const invoice = invoiceMap[order.id]
               const showInvoiceAction = order.status === "delivered"
               const isPendingApproval = order.status === "draft" && !!order.approval_reason
+              // Sửa được thì đưa nút lên ngay thẻ. Luật ai-sửa-được-gì nằm
+              // ở `@/lib/orders/edit-permission`, không chép lại ở đây.
+              const canQuickEdit =
+                !!user &&
+                canEditOrder({
+                  role: user.role,
+                  userId: user.id,
+                  status: order.status,
+                  salesUserId: order.sales_user_id ?? null,
+                  hasUpdatePermission: hasPermission(user.role, "orders", "update"),
+                })
               return (
                 <MobileRecordCard
                   key={order.id}
@@ -1126,7 +1139,19 @@ export default function OrdersPage() {
                   footer={
                     // Chỉ hiện khi ĐÃ GIAO — nút xuất hoá đơn trên một đơn
                     // chưa giao là mời người ta bấm rồi nhận lỗi.
-                    showInvoiceAction && !selectMode ? (
+                    canQuickEdit && !selectMode ? (
+                      <Button
+                        variant="outline"
+                        className="h-11 w-full"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          router.push(`/orders/${order.id}`)
+                        }}
+                      >
+                        <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa đơn
+                      </Button>
+                    ) : showInvoiceAction && !selectMode ? (
                       invoice?.misa_status === "signed" ? (
                         <div className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-[#ecfdf3] text-xs font-medium text-[#027a48]">
                           <CheckCircle2 className="h-3.5 w-3.5" />

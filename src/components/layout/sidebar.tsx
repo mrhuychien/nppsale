@@ -11,7 +11,7 @@ import {
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
-  TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route,
+  TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -37,6 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Bán hàng",
     icon: ShoppingCart,
     items: [
+      { label: "Bán hàng", href: "/sell", icon: Store },
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
       { label: "Khách hàng", href: "/customers", icon: Users },
       { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route },

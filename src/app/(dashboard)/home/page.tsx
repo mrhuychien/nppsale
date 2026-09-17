@@ -35,6 +35,7 @@ import {
   MapPin,
   ArrowRight,
   Quote,
+  Store,
   type LucideIcon,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -96,8 +97,9 @@ interface Tile {
 }
 
 const TILES: Tile[] = [
-  // Bán hàng
-  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "blue" },
+  // Bán hàng — ô đầu tiên là việc NVBH làm nhiều nhất trong ngày.
+  { label: "Bán hàng", href: "/sell", icon: Store, color: "blue", caption: "Tạo đơn" },
+  { label: "Đơn hàng", href: "/orders", icon: ShoppingCart, color: "indigo" },
   { label: "Khách hàng", href: "/customers", icon: Users, color: "green" },
   { label: "Sản phẩm", href: "/products", icon: Package, color: "orange" },
   { label: "Khuyến mãi", href: "/promotions", icon: Tag, color: "pink" },

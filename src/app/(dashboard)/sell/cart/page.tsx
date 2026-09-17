@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
+  ScanBarcode,
   TriangleAlert,
 } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
@@ -118,6 +119,8 @@ export default function SellCartPage() {
         cart: cart.cart,
         totals: cart.totals,
         createdAt: new Date().toISOString(),
+        returnReason: cart.returnReason,
+        returnLines: cart.returnLines,
       })
 
       // Ngữ cảnh duyệt chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
@@ -228,6 +231,14 @@ export default function SellCartPage() {
           <Search className="h-[18px] w-[18px]" />
           <span className="flex-1 truncate">Tên, mã hàng, mã vạch…</span>
         </button>
+        <button
+          type="button"
+          onClick={() => router.push("/sell/scan")}
+          aria-label="Quét mã"
+          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-container text-on-surface"
+        >
+          <ScanBarcode className="h-[22px] w-[22px]" />
+        </button>
       </div>
 
       <div className="grid content-start gap-2.5 px-3">
@@ -328,6 +339,22 @@ export default function SellCartPage() {
           )}
         </div>
 
+        <button
+          type="button"
+          onClick={() => router.push("/sell/returns")}
+          className="flex min-h-14 items-center gap-2.5 rounded-2xl bg-surface-container-lowest px-3.5 text-left shadow-card"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold">Hàng trả / đổi kèm đơn</span>
+            <span className="mt-px block truncate text-xs font-semibold text-on-surface-variant">
+              {cart.returnLines.length
+                ? `${cart.returnLines.length} dòng · trừ ${formatCurrency(cart.returnCredit)}`
+                : "Chưa có"}
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
+        </button>
+
         <div className="rounded-2xl bg-surface-container-lowest px-3 py-2 shadow-card">
           <input
             value={cart.notes}
@@ -360,6 +387,9 @@ export default function SellCartPage() {
               <Row label="Chiết khấu" value={`−${formatCurrency(cart.totals.discount)}`} error />
             )}
             <Row label="VAT" value={formatCurrency(cart.totals.vat)} />
+            {cart.totals.returnCredit > 0 && (
+              <Row label="Trừ hàng trả" value={`−${formatCurrency(cart.totals.returnCredit)}`} />
+            )}
             <button
               type="button"
               onClick={() => {

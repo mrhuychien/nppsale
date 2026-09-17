@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Search, History, ChevronRight, User, Tag } from "lucide-react"
+import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
@@ -116,8 +116,14 @@ export default function SellPage() {
             {cartCount ? "Thêm hàng" : "Đặt hàng"}
           </h1>
           <div className="flex gap-1">
-            {/* Nút "Đơn tạm" và "Quét mã" sẽ bật lại khi hai màn đó có
-                thật. Nối vào ngõ cụt còn tệ hơn là chưa có nút. */}
+            <button
+              type="button"
+              onClick={() => router.push("/sell/drafts")}
+              aria-label="Đơn tạm"
+              className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
+            >
+              <FileText className="h-[22px] w-[22px]" />
+            </button>
             <button
               type="button"
               onClick={() => router.push("/orders")}
@@ -154,6 +160,14 @@ export default function SellPage() {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => router.push("/sell/scan")}
+            aria-label="Quét mã"
+            className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-container text-on-surface"
+          >
+            <ScanBarcode className="h-[22px] w-[22px]" />
+          </button>
         </div>
 
         <div className="mt-2.5 flex items-center gap-2">

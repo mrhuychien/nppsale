@@ -1,8 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { ProductCard } from "@/components/sell/product-card"
@@ -10,6 +10,7 @@ import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
 import type { SellProduct } from "@/lib/sell/ref-data"
 import { conversionFor, selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findLine } from "@/lib/sell/cart"
+import { findReturnLine } from "@/lib/sell/returns"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { viMatchAllWords } from "@/lib/search"
 import { compareByStockDesc } from "@/lib/orders/product-order"
@@ -23,7 +24,18 @@ const RENDER_CAP = 60
 
 export default function SellPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const cart = useSellCart()
+  /**
+   * Màn này làm HAI việc: chọn hàng BÁN, và chọn hàng TRẢ.
+   *
+   * ⚠ DÙNG CHUNG MỘT MÀN TÌM HÀNG, KHÔNG DỰNG BẢN THỨ HAI. Màn hàng trả
+   * trước đây có ô tìm + lưới thẻ riêng của nó — cùng một việc "tìm một
+   * mặt hàng trong 1.700 mặt hàng" mà hai bản, và bản ở màn hàng trả thiếu
+   * sạch những thứ bản này có: tab "khách hay lấy", nút quét mã, trần số
+   * thẻ vẽ một lúc.
+   */
+  const returning = searchParams.get("mode") === "return"
   // ⚠ Cảnh báo tải danh mục phải NÓI RA. Danh mục thiếu một khúc mà im
   // lặng là để nhân viên gõ đúng mã có thật rồi kết luận "tìm kiếm hỏng".
   const { products, stockByProduct, loading, warnings: loadWarnings, customerById } = useSellData()
@@ -83,13 +95,32 @@ export default function SellPage() {
   }, [q, products, tab, frequentIds, byStock])
 
   const addToCart = (p: SellProduct) => {
+    const unit = unitOf(p)
+    const price = unitPriceFor(p, unit, groupId)
+
+    if (returning) {
+      // ⚠ KHÔNG chặn theo tồn kho khi chọn hàng TRẢ. Khách đưa hàng LẠI cho
+      // mình; trả một mặt hàng đang hết tồn là chuyện hoàn toàn bình thường.
+      cart.addReturnLine({
+        productId: p.id,
+        unit,
+        qty: 1,
+        price,
+        vatRate: Number(p.vat_rate ?? 0),
+        // Mặc định là TRẢ TIỀN — nghĩa thường của "hàng trả". Đổi hàng là
+        // trường hợp riêng nên phải bấm chọn ở màn hàng trả.
+        isExchange: false,
+        note: "",
+      })
+      router.push("/sell/returns")
+      return
+    }
+
     const onHand = stockByProduct[p.id] ?? 0
     if (onHand <= 0) {
       toast({ title: `Hết hàng: ${p.name}`, variant: "destructive" })
       return
     }
-    const unit = unitOf(p)
-    const price = unitPriceFor(p, unit, groupId)
     cart.addLine({
       productId: p.id,
       unit,
@@ -113,26 +144,45 @@ export default function SellPage() {
       <div className="shrink-0 px-4 pb-2.5 pt-1.5">
         <div className="flex h-10 items-center justify-between">
           <h1 className="text-2xl font-extrabold tracking-tight text-on-surface">
-            {cart.editing ? "Thêm hàng vào đơn" : cartCount ? "Thêm hàng" : "Đặt hàng"}
+            {returning
+              ? "Chọn hàng trả"
+              : cart.editing
+                ? "Thêm hàng vào đơn"
+                : cartCount
+                  ? "Thêm hàng"
+                  : "Đặt hàng"}
           </h1>
-          <div className="flex gap-1">
+          {/* Đang chọn hàng trả thì hai nút của luồng ĐẶT hàng không có việc
+              gì ở đây — nhường chỗ cho đường quay lại phiếu trả. */}
+          {returning ? (
             <button
               type="button"
-              onClick={() => router.push("/sell/drafts")}
-              aria-label="Đơn tạm"
-              className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
+              onClick={() => router.push("/sell/returns")}
+              className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-extrabold text-primary"
             >
-              <FileText className="h-[22px] w-[22px]" />
+              <RotateCcw className="h-[18px] w-[18px]" />
+              Xong
             </button>
-            <button
-              type="button"
-              onClick={() => router.push("/orders")}
-              aria-label="Lịch sử đơn"
-              className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
-            >
-              <History className="h-[22px] w-[22px]" />
-            </button>
-          </div>
+          ) : (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => router.push("/sell/drafts")}
+                aria-label="Đơn tạm"
+                className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
+              >
+                <FileText className="h-[22px] w-[22px]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/orders")}
+                aria-label="Lịch sử đơn"
+                className="tap grid h-11 w-11 place-items-center rounded-xl text-on-surface"
+              >
+                <History className="h-[22px] w-[22px]" />
+              </button>
+            </div>
+          )}
         </div>
 
         <SellCustomerDeepLink />
@@ -251,7 +301,9 @@ export default function SellPage() {
         ) : (
           list.map((p) => {
             const unit = unitOf(p)
-            const i = findLine(cart.cart, p.id, unit)
+            const i = returning
+              ? findReturnLine(cart.returnLines, p.id, unit)
+              : findLine(cart.cart, p.id, unit)
             return (
               <ProductCard
                 key={p.id}
@@ -261,14 +313,42 @@ export default function SellPage() {
                 unit={unit}
                 onPickUnit={(u) => setUnitSel((s) => ({ ...s, [p.id]: u }))}
                 onAdd={() => addToCart(p)}
-                inCartQty={i >= 0 ? cart.cart[i].qty : 0}
+                inCartQty={
+                  i >= 0 ? (returning ? cart.returnLines[i].qty : cart.cart[i].qty) : 0
+                }
+                /* ⚠ KHÔNG hiện tồn kho khi chọn hàng TRẢ. Khách đưa hàng LẠI
+                   cho mình, nên "Hết hàng" tô đỏ ở đó là câu trả lời cho một
+                   câu hỏi không ai hỏi — tệ hơn, nó trông như đang chặn và
+                   nhân viên sẽ không dám bấm. */
+                showStock={!returning}
+                badgeLabel={returning ? "Đã trả" : "Trong giỏ"}
               />
             )
           })
         )}
       </div>
 
-      {cartCount > 0 && (
+      {/* Đang chọn hàng trả thì nút nổi đưa về phiếu trả, kèm số dòng đã
+          chọn — không phải về giỏ hàng bán. */}
+      {returning && cart.returnLines.length > 0 && (
+        <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
+          <button
+            type="button"
+            onClick={() => router.push("/sell/returns")}
+            className="flex h-14 w-full items-center gap-3 rounded-2xl bg-primary pl-4 pr-2 text-on-primary shadow-[0_12px_28px_-8px_rgba(37,99,235,.55)]"
+          >
+            <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-white/20 px-1.5 text-sm font-extrabold">
+              {cart.returnLines.length}
+            </span>
+            <span className="flex-1 text-left text-base font-extrabold">dòng hàng trả</span>
+            <span className="flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-sm font-extrabold text-primary">
+              Xong <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        </div>
+      )}
+
+      {!returning && cartCount > 0 && (
         <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"

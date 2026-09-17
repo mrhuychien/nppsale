@@ -4,71 +4,40 @@ import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, Search } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
+import { useAuth } from "@/hooks/use-auth"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { Stepper } from "@/components/sell/line-edit-sheet"
 import { ReturnLineSheet } from "@/components/sell/return-line-sheet"
-import { ProductCard } from "@/components/sell/product-card"
 import { RETURN_REASONS, returnReasonLabel, returnPriceViolation } from "@/lib/sell/returns"
-import { selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
-import { findReturnLine } from "@/lib/sell/returns"
-import { compareByStockDesc } from "@/lib/orders/product-order"
+import { unitPriceFor } from "@/lib/sell/pricing"
+import { userPriceRulesFrom } from "@/lib/pricing"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { isReturnLineOverstock } from "@/lib/orders/stock-check"
-import { viMatchAllWords } from "@/lib/search"
-import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
-
-const PICK_CAP = 20
 
 export default function SellReturnsPage() {
   const router = useRouter()
   const cart = useSellCart()
+  const { user } = useAuth()
   const { products, productById, customerById, stockByProduct } = useSellData()
 
   // Nhu cầu xuất kho gồm cả dòng bán lẫn dòng đổi — xem `@/lib/sell/stock`.
   const stockLines = useMemo(() => toStockLines(cart.cart), [cart.cart])
   const stockReturns = useMemo(() => toStockReturnLines(cart.returnLines), [cart.returnLines])
-  const [q, setQ] = useState("")
-  const [unitSel, setUnitSel] = useState<Record<string, string>>({})
   const [editIdx, setEditIdx] = useState<number | null>(null)
 
   const groupId = customerById(cart.customerId)?.group_id ?? null
 
   /**
-   * Gợi ý hàng trả.
+   * Quyền sửa giá — DÙNG CHUNG với dòng bán.
    *
-   * ⚠ Ưu tiên hàng ĐANG CÓ TRONG ĐƠN. Khách trả hàng ngay lúc giao là ca
-   * hay gặp nhất, và lúc đó món phải trả gần như chắc chắn nằm trong đơn
-   * này — bắt gõ tìm lại từ 1.700 mặt hàng là thừa.
-   *
-   * ⚠ Đơn chưa có hàng thì KHÔNG để trống: khách vẫn trả được hàng mua từ
-   * chuyến trước, nên rơi về cả danh mục.
+   * ⚠ Ai không được sửa giá bán thì cũng không được sửa giá trả. Hai đằng
+   * cùng là thẩm quyền về TIỀN: chặn ở đơn bán rồi mở ở phiếu trả thì
+   * "trả hàng" thành đường vòng để ra đúng con số mình muốn.
    */
-  const byStock = useMemo(() => compareByStockDesc(stockByProduct), [stockByProduct])
-
-  const inOrder = useMemo(() => {
-    const ids = Array.from(new Set(cart.cart.map((l) => l.productId)))
-    return ids.map((id) => productById(id)).filter(Boolean) as typeof products
-  }, [cart.cart, productById])
-
-  const pickables = useMemo(() => {
-    const term = q.trim()
-    if (term) {
-      return products
-        .filter((p) => viMatchAllWords(term, p.name, p.sku, p.barcode ?? ""))
-        .sort(byStock)
-        .slice(0, PICK_CAP)
-    }
-    if (inOrder.length) return inOrder.slice(0, PICK_CAP)
-    return [...products].sort(byStock).slice(0, PICK_CAP)
-  }, [q, products, inOrder, byStock])
-
-  const listLabel = q.trim()
-    ? `Kết quả cho “${q.trim()}”`
-    : inOrder.length
-      ? "Hàng trong đơn này"
-      : "Tất cả sản phẩm"
+  const rules = userPriceRulesFrom(user)
+  const canEditPrice = user?.role !== "sales" || !!rules.allow_price_edit
 
   /** Giá bảng của đúng đơn vị đang chọn trên dòng trả. */
   const listPriceOf = (r: { productId: string; unit: string }) => {
@@ -84,20 +53,6 @@ export default function SellReturnsPage() {
   const priceBadOf = (r: { productId: string; unit: string; price: number }) =>
     returnPriceViolation(r, listPriceOf(r)) !== null
 
-  const add = (p: (typeof products)[number]) => {
-    const unit = selectedUnitOf(unitSel, p)
-    cart.addReturnLine({
-      productId: p.id,
-      unit,
-      qty: 1,
-      price: unitPriceFor(p, unit, groupId),
-      vatRate: Number(p.vat_rate ?? 0),
-      // Mặc định là TRẢ TIỀN — đó là nghĩa thường của "hàng trả". Đổi hàng
-      // là trường hợp riêng nên phải bấm chọn.
-      isExchange: false,
-      note: "",
-    })
-  }
 
   return (
     <div className="flex min-h-screen flex-col bg-surface pb-28">
@@ -140,55 +95,27 @@ export default function SellReturnsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-surface-container-lowest p-3.5 shadow-card">
-          <p className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
-            Chọn hàng trả
-          </p>
-          <div className="relative mb-2">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-on-surface-variant" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Tên, mã hàng, mã vạch…"
-              aria-label="Tìm sản phẩm trả"
-              {...SEARCH_FIELD_PROPS}
-              className={cn(
-                "h-11 w-full rounded-xl border-0 bg-surface-container pl-[38px] pr-3 text-base font-semibold outline-none",
-                HIDE_NATIVE_CLEAR
-              )}
-            />
-          </div>
-          <p className="mb-1.5 text-[11px] font-bold text-on-surface-variant">{listLabel}</p>
-          <div className="grid gap-2">
-            {pickables.length === 0 ? (
-              <p className="py-3 text-center text-[13px] font-semibold text-on-surface-variant">
-                {q.trim() ? `Không tìm thấy sản phẩm khớp “${q.trim()}”` : "Chưa có sản phẩm nào"}
-              </p>
-            ) : (
-              pickables.map((p) => {
-                const unit = selectedUnitOf(unitSel, p)
-                const i = findReturnLine(cart.returnLines, p.id, unit)
-                return (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    baseOnHand={stockByProduct[p.id] ?? 0}
-                    groupId={groupId}
-                    unit={unit}
-                    onPickUnit={(u) => setUnitSel((m) => ({ ...m, [p.id]: u }))}
-                    onAdd={() => add(p)}
-                    inCartQty={i >= 0 ? cart.returnLines[i].qty : 0}
-                    // ⚠ Không hiện tồn kho ở đây: khách đưa hàng LẠI cho
-                    // mình, nên "Hết hàng" tô đỏ trông như đang chặn và
-                    // nhân viên sẽ không dám bấm.
-                    showStock={false}
-                    badgeLabel="Đã trả"
-                  />
-                )
-              })
-            )}
-          </div>
-        </section>
+        {/* ⚠ MỘT MÀN TÌM HÀNG DUY NHẤT CHO CẢ APP.
+            Trước đây chỗ này có ô tìm + lưới thẻ RIÊNG, kèm một danh sách
+            "Hàng trong đơn này" bày sẵn. Hai vấn đề:
+              · Danh sách bày sẵn chiếm gần hết màn hình trước khi người dùng
+                kịp gõ gì, mà hàng phải trả thường KHÔNG nằm trong đơn đang
+                soạn — khách trả hàng của chuyến trước.
+              · Bản tìm hàng ở đây thiếu sạch những thứ màn bán hàng có: tab
+                "khách hay lấy", nút quét mã, trần số thẻ vẽ một lúc. Cùng
+                một việc mà hai bản, và bản kém hơn nằm đúng chỗ ít ai soi.
+            Nay chạm vào đây là mở CHÍNH màn tìm hàng của luồng bán hàng, ở
+            chế độ chọn hàng trả. */}
+        <button
+          type="button"
+          onClick={() => router.push("/sell?mode=return")}
+          className="flex h-13 items-center gap-2.5 rounded-2xl bg-surface-container-lowest px-3.5 py-3 text-left shadow-card"
+        >
+          <Search className="h-[18px] w-[18px] shrink-0 text-on-surface-variant" />
+          <span className="flex-1 text-base font-semibold text-on-surface-variant">
+            Tìm hàng để trả — tên, mã hàng, mã vạch…
+          </span>
+        </button>
 
         {cart.returnLines.length > 0 && (
           <section className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
@@ -329,6 +256,7 @@ export default function SellReturnsPage() {
           editIdx != null ? productById(cart.returnLines[editIdx]?.productId ?? "") : undefined
         }
         groupId={groupId}
+        canEditPrice={canEditPrice}
         onPatch={(patch) => editIdx != null && cart.patchReturnLine(editIdx, patch)}
         onRemove={() => {
           if (editIdx != null) cart.setReturnQty(editIdx, 0)

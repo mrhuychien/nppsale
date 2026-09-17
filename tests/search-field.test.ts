@@ -11,7 +11,6 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const FIELDS = [
   "src/app/(dashboard)/sell/page.tsx",
   "src/app/(dashboard)/sell/customer/page.tsx",
-  "src/app/(dashboard)/sell/returns/page.tsx",
   "src/components/ui/mobile-filter-bar.tsx",
   "src/components/layout/mobile-search-overlay.tsx",
 ].map((f) => ({ file: f, src: read(f) }))

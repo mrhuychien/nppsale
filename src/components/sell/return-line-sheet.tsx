@@ -25,6 +25,7 @@ export function ReturnLineSheet({
   line,
   product,
   groupId,
+  canEditPrice,
   onPatch,
   onRemove,
   onClose,
@@ -32,6 +33,12 @@ export function ReturnLineSheet({
   line: ReturnCartLine | null
   product: PricedProduct | undefined
   groupId: string | null | undefined
+  /**
+   * ⚠ DÙNG CHUNG quyền với dòng bán. Ai không được sửa giá bán thì cũng
+   * không được sửa giá trả — hai đằng cùng là thẩm quyền về TIỀN, và chặn
+   * một bên rồi mở bên kia thì "trả hàng" thành đường vòng.
+   */
+  canEditPrice: boolean
   onPatch: (patch: Partial<ReturnCartLine>) => void
   onRemove: () => void
   onClose: () => void
@@ -53,8 +60,9 @@ export function ReturnLineSheet({
   const listPrice = unitPriceFor(product, line.unit, groupId)
   const bad = returnPriceViolation(line, listPrice)
 
-  const hint =
-    bad === "above_list"
+  const hint = !canEditPrice
+    ? `Bạn không có quyền sửa giá (giá bảng ${formatCurrency(listPrice)})`
+    : bad === "above_list"
       ? `Không trả cao hơn giá bảng ${formatCurrency(listPrice)}`
       : bad === "negative"
         ? "Đơn giá không được âm"
@@ -114,6 +122,7 @@ export function ReturnLineSheet({
               <Label>Đơn giá trả</Label>
               <input
                 value={priceText}
+                disabled={!canEditPrice}
                 inputMode="numeric"
                 aria-label="Đơn giá trả"
                 onFocus={(e) => e.currentTarget.select()}
@@ -123,8 +132,9 @@ export function ReturnLineSheet({
                   onPatch({ price: digits === "" ? 0 : parseInt(digits, 10) })
                 }}
                 className={cn(
-                  "h-12 w-full rounded-xl border-[1.5px] bg-surface-container-lowest px-3 text-right text-lg font-extrabold tabular-data outline-none",
-                  bad ? "border-error" : "border-outline-variant"
+                  "h-12 w-full rounded-xl border-[1.5px] px-3 text-right text-lg font-extrabold tabular-data outline-none",
+                  bad ? "border-error" : "border-outline-variant",
+                  canEditPrice ? "bg-surface-container-lowest" : "bg-surface-container"
                 )}
               />
             </div>

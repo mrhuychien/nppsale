@@ -13,56 +13,88 @@ const RET = code(read("src/app/(dashboard)/sell/returns/page.tsx"))
 const POS = code(read("src/app/(dashboard)/sell/page.tsx"))
 const CARD = code(read("src/components/sell/product-card.tsx"))
 
-describe("Chọn hàng trả dùng đúng thẻ của màn tìm hàng", () => {
+describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hàng", () => {
   /**
-   * ⚠ Bản trước là dãy nút gạch nối chỉ có TÊN hàng: không giá, không đơn
-   * vị, không đổi được thùng/chai. Nhân viên phải thêm rồi mới biết dòng
-   * trả đang tính theo đơn vị nào và bao nhiêu tiền — mà tiền hàng trả là
-   * tiền TRỪ vào đơn, sai là sai thẳng vào số khách phải trả.
+   * ⚠ MỘT MÀN TÌM HÀNG DUY NHẤT CHO CẢ APP.
+   *
+   * Bản trước: màn hàng trả có ô tìm + lưới thẻ RIÊNG, kèm một danh sách
+   * "Hàng trong đơn này" bày sẵn. Hai vấn đề:
+   *   · Danh sách bày sẵn chiếm gần hết màn hình trước khi người dùng kịp
+   *     gõ gì, mà hàng phải trả thường KHÔNG nằm trong đơn đang soạn —
+   *     khách trả hàng của chuyến trước.
+   *   · Bản tìm hàng ở đó thiếu sạch những thứ màn bán hàng có: tab "khách
+   *     hay lấy", nút quét mã, trần số thẻ vẽ một lúc. Cùng một việc mà hai
+   *     bản, và bản kém hơn nằm đúng chỗ ít ai soi.
    */
-  it("vẽ bằng ProductCard, không phải nút gạch nối", () => {
-    expect(RET).toContain("<ProductCard")
-    expect(RET).not.toContain("border-dashed")
+  it("màn hàng trả KHÔNG còn dựng bản tìm hàng thứ hai", () => {
+    expect(RET).not.toContain("<ProductCard")
+    expect(RET).not.toContain("viMatchAllWords")
+    // Và không còn bày sẵn hàng trong đơn.
+    expect(RET).not.toContain("Hàng trong đơn này")
   })
 
-  it("có ô tìm và tìm được cả theo mã vạch", () => {
-    expect(RET).toContain("viMatchAllWords(term, p.name, p.sku, p.barcode ?? \"\")")
-    expect(RET).toContain("SEARCH_FIELD_PROPS")
+  it("chạm vào ô tìm là mở màn tìm hàng ở chế độ chọn hàng trả", () => {
+    expect(RET).toContain('router.push("/sell?mode=return")')
+    expect(RET).toContain("Tìm hàng để trả")
+  })
+
+  it("màn tìm hàng nhận ra chế độ đó", () => {
+    expect(POS).toContain('const returning = searchParams.get("mode") === "return"')
+    expect(POS).toContain('"Chọn hàng trả"')
   })
 
   /**
    * ⚠ Đơn vị chọn trên thẻ phải là đơn vị được THÊM. Thẻ hiện giá theo
    * thùng mà dòng trả lại ghi theo chai thì số tiền trừ lệch mười mấy lần.
    */
-  it("đơn vị đang chọn trên thẻ là đơn vị được thêm", () => {
-    // ⚠ Soi TRONG hàm `add`, không soi cả file. Thử phá cho thấy đổi riêng
-    // dòng trong `add` thành `p.base_unit` mà chốt vẫn XANH — vì vòng lặp
-    // vẽ thẻ bên dưới còn một dòng y hệt. Khi đó thẻ hiện giá theo thùng
-    // còn dòng trả ghi theo chai: số tiền trừ lệch mười mấy lần.
-    const i = RET.indexOf("const add = (")
-    const body = RET.slice(i, RET.indexOf("\n  }", i))
-    expect(i, "không tìm thấy hàm add").toBeGreaterThanOrEqual(0)
-    expect(body).toContain("const unit = selectedUnitOf(unitSel, p)")
-    expect(body).toContain("price: unitPriceFor(p, unit, groupId)")
-    expect(RET).toContain("onPickUnit={(u) => setUnitSel((m) => ({ ...m, [p.id]: u }))}")
-  })
-
-  /** Hai màn dùng CHUNG một phép chọn đơn vị, không mỗi màn một kiểu. */
-  it("cả hai màn tra đơn vị từ lib dùng chung", () => {
-    expect(POS).toContain("selectedUnitOf(unitSel, p)")
-    expect(RET).toContain("selectedUnitOf(unitSel, p)")
+  it("thêm dòng trả dùng đúng đơn vị và giá đang hiện trên thẻ", () => {
+    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
+    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    expect(body).toContain("const unit = unitOf(p)")
+    expect(body).toContain("const price = unitPriceFor(p, unit, groupId)")
+    // Nhánh trả dùng chính hai biến đó, không tự tra lại.
+    const branch = body.slice(body.indexOf("if (returning) {"))
+    expect(branch).toContain("unit,")
+    expect(branch).toContain("price,")
+    expect(branch).toContain('router.push("/sell/returns")')
   })
 
   /**
-   * ⚠ KHÔNG hiện tồn kho ở màn hàng trả. Khách đưa hàng LẠI cho mình, nên
-   * "Hết hàng" tô đỏ ở đó trông như đang chặn và nhân viên sẽ không dám
-   * bấm — trong khi trả hàng hết tồn là chuyện hoàn toàn bình thường.
+   * ⚠ KHÔNG chặn và KHÔNG hiện tồn kho khi chọn hàng TRẢ. Khách đưa hàng
+   * LẠI cho mình; trả một mặt hàng đang hết tồn là chuyện bình thường, còn
+   * "Hết hàng" tô đỏ trông như đang chặn nên nhân viên sẽ không dám bấm.
    */
-  it("thẻ ở màn hàng trả tắt dòng tồn kho", () => {
-    expect(RET).toContain("showStock={false}")
-    expect(RET).toContain('badgeLabel="Đã trả"')
-    // Màn tìm hàng thì vẫn phải hiện tồn.
-    expect(POS).not.toContain("showStock={false}")
+  it("chọn hàng trả thì không chặn theo tồn và không hiện tồn", () => {
+    const i = POS.indexOf("const addToCart = (p: SellProduct) => {")
+    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    /**
+     * ⚠ Cắt nhánh theo DẤU ĐÓNG NGOẶC của chính nó, không cắt tới chỗ
+     * `const onHand` đầu tiên. Thử phá: nhét `const onHand` NGAY TRONG
+     * nhánh trả — khúc cắt kết thúc đúng tại dòng vừa nhét nên phép soi
+     * không thấy gì và chốt vẫn XANH, trong khi hàng hết tồn lại không trả
+     * lại được.
+     */
+    const at = body.indexOf("if (returning) {")
+    expect(at, "không tìm thấy nhánh chọn hàng trả").toBeGreaterThanOrEqual(0)
+    const branch = body.slice(at, body.indexOf("\n    }", at))
+    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("onHand")
+    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("Hết hàng")
+    expect(POS).toContain("showStock={!returning}")
+    expect(POS).toContain('badgeLabel={returning ? "Đã trả" : "Trong giỏ"}')
+  })
+
+  /** Huy hiệu đếm phải đếm ĐÚNG rổ — dòng trả, không phải dòng bán. */
+  it("huy hiệu đếm theo rổ đang chọn", () => {
+    expect(POS).toContain("findReturnLine(cart.returnLines, p.id, unit)")
+    expect(POS).toContain("returning ? cart.returnLines[i].qty : cart.cart[i].qty")
+  })
+
+  /** Đang chọn hàng trả thì đường quay lại phải về PHIẾU TRẢ, không về giỏ. */
+  it("có đường quay lại phiếu trả", () => {
+    expect(POS).toContain("{returning && cart.returnLines.length > 0 && (")
+    expect(POS).toContain("dòng hàng trả")
+    expect(POS).toContain("{!returning && cartCount > 0 && (")
   })
 
   it("thẻ mặc định VẪN hiện tồn — tắt phải là lựa chọn có chủ đích", () => {
@@ -70,21 +102,26 @@ describe("Chọn hàng trả dùng đúng thẻ của màn tìm hàng", () => {
     expect(CARD).toContain('badgeLabel = "Trong giỏ"')
     expect(CARD).toContain("{showStock && (")
   })
+})
+
+describe("Sửa giá dòng trả theo ĐÚNG quyền của người dùng", () => {
+  const SHEET = code(read("src/components/sell/return-line-sheet.tsx"))
 
   /**
-   * Đơn chưa có hàng thì không để trống: khách vẫn trả được hàng mua từ
-   * chuyến trước.
+   * ⚠ DÙNG CHUNG QUYỀN VỚI DÒNG BÁN. Ai không được sửa giá bán thì cũng
+   * không được sửa giá trả — hai đằng cùng là thẩm quyền về TIỀN, và chặn
+   * một bên rồi mở bên kia thì "trả hàng" thành đường vòng để ra đúng con
+   * số mình muốn.
    */
-  it("đơn rỗng thì rơi về cả danh mục, không hiện màn trống", () => {
-    expect(RET).toContain("if (inOrder.length) return inOrder.slice(0, PICK_CAP)")
-    expect(RET).toContain("return [...products].sort(byStock).slice(0, PICK_CAP)")
+  it("màn hàng trả tra quyền bằng chính phép của màn giỏ", () => {
+    expect(RET).toContain("const rules = userPriceRulesFrom(user)")
+    expect(RET).toContain('const canEditPrice = user?.role !== "sales" || !!rules.allow_price_edit')
+    expect(RET).toContain("canEditPrice={canEditPrice}")
   })
 
-  /** Đang xem danh sách nào thì nói ra — ba nguồn khác hẳn nhau. */
-  it("nói rõ đang xem danh sách nào", () => {
-    expect(RET).toContain("Hàng trong đơn này")
-    expect(RET).toContain("Tất cả sản phẩm")
-    expect(RET).toContain("Kết quả cho")
+  it("không có quyền thì ô giá khoá lại và nói vì sao", () => {
+    expect(SHEET).toContain("disabled={!canEditPrice}")
+    expect(SHEET).toContain("Bạn không có quyền sửa giá")
   })
 })
 

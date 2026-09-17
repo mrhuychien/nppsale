@@ -102,8 +102,10 @@ export function WorkflowResumeBar() {
 
   if (!user || hidden || sessions.length === 0) return null
 
+  // ⚠ `no-print`: thanh này là <div>, không phải header/nav — thiếu lớp này
+  // thì nó in kèm lên đầu mọi phiếu (người dùng đã gặp trên phiếu xuất kho).
   return (
-    <div className="sticky top-0 z-30 border-b border-[#fdb022]/40 bg-[#fff4ed]/95 backdrop-blur supports-[backdrop-filter]:bg-[#fff4ed]/80">
+    <div className="no-print sticky top-0 z-30 border-b border-[#fdb022]/40 bg-[#fff4ed]/95 backdrop-blur supports-[backdrop-filter]:bg-[#fff4ed]/80">
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
         <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#b54708] shrink-0">
           <Clock className="h-3.5 w-3.5" />

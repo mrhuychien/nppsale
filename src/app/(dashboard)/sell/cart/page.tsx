@@ -17,6 +17,7 @@ import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import { priceViolation } from "@/lib/sell/cart"
+import { returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
@@ -103,6 +104,21 @@ export default function SellCartPage() {
   )
 
   const hasPriceBad = rows.some((r) => r.priceBad)
+
+  /**
+   * ⚠ GIÁ DÒNG TRẢ CAO HƠN GIÁ BẢNG LÀ MỘT ĐƯỜNG RÚT TIỀN: mua 100k, trả
+   * lại 150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng
+   * bán — `returnCredit` trừ thẳng vào số khách phải trả. Tô đỏ ở màn hàng
+   * trả mà vẫn gửi đơn được thì vệt đỏ đó chỉ là trang trí.
+   */
+  const returnPriceBad = useMemo(
+    () =>
+      cart.returnLines.filter((r) => {
+        const p = productById(r.productId)
+        return returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0) !== null
+      }).length,
+    [cart.returnLines, productById, groupId]
+  )
   const staleCount = rows.filter((r) => r.staleList).length
 
   const projectedOver = useMemo(() => {
@@ -422,6 +438,11 @@ export default function SellCartPage() {
                 {exchangeOver} dòng đổi hàng vượt tồn kho
               </span>
             )}
+            {returnPriceBad > 0 && (
+              <span className="mt-0.5 block text-xs font-extrabold text-error">
+                {returnPriceBad} dòng trả cao hơn giá bảng
+              </span>
+            )}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
         </button>
@@ -515,7 +536,7 @@ export default function SellCartPage() {
           ) : (
             <button
               type="button"
-              disabled={submitting || !cart.customerId || hasPriceBad}
+              disabled={submitting || !cart.customerId || hasPriceBad || returnPriceBad > 0}
               onClick={() => submit(true)}
               className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
             >
@@ -524,7 +545,7 @@ export default function SellCartPage() {
           )}
           <button
             type="button"
-            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasOver || hasPriceBad}
+            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasOver || hasPriceBad || returnPriceBad > 0}
             onClick={() => submit(false)}
             className="h-13 flex-[1.3] rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary disabled:opacity-40"
           >
@@ -536,11 +557,13 @@ export default function SellCartPage() {
                 ? "Vượt tồn kho"
                 : hasPriceBad
                   ? "Giá ngoài hạn mức"
-                  : editing?.status === "confirmed"
-                    ? "Lưu thay đổi"
-                    : editing
-                      ? "Gửi duyệt"
-                      : "Đặt hàng"}
+                  : returnPriceBad > 0
+                    ? "Giá hàng trả quá cao"
+                    : editing?.status === "confirmed"
+                      ? "Lưu thay đổi"
+                      : editing
+                        ? "Gửi duyệt"
+                        : "Đặt hàng"}
           </button>
         </div>
       </SellBottomBar>

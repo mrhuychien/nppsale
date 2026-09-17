@@ -176,7 +176,7 @@ describe("Màn giỏ hàng", () => {
    * nhất — đang đứng ở quầy, ghi được tên khách thì khách bận.
    */
   it("nút Lưu tạm không khoá theo tồn kho và không đòi có hàng, vẫn khoá theo giá", () => {
-    const m = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad\}/.exec(CART_PAGE)
+    const m = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(CART_PAGE)
     expect(m, "không tìm thấy nút Lưu tạm").toBeTruthy()
     expect(m![0]).not.toContain("hasOver")
     expect(m![0]).not.toContain("cart.cart.length")
@@ -189,7 +189,7 @@ describe("Màn giỏ hàng", () => {
    * khác nhau ở tồn kho và ở số dòng hàng.
    */
   it("hai nút chặn giá và chặn thiếu khách như nhau", () => {
-    const draftBtn = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad\}/.exec(
+    const draftBtn = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(
       CART_PAGE
     )!![0]
     const sendBtn = /disabled=\{submitting \|\| cart\.cart\.length === 0[^}]*\}/.exec(CART_PAGE)
@@ -201,6 +201,15 @@ describe("Màn giỏ hàng", () => {
     // Đơn GỬI ĐI thì phải có hàng và phải đủ tồn.
     expect(sendBtn![0]).toContain("cart.cart.length === 0")
     expect(sendBtn![0]).toContain("hasOver")
+    /**
+     * ⚠ GIÁ DÒNG TRẢ cũng là thẩm quyền, không phải chuyện thời điểm — nên
+     * CẢ HAI nút đều chặn. Trả cao hơn giá bảng là một đường rút tiền:
+     * mua 100k, trả lại 150k, và không quy tắc duyệt nào chạm tới vì đây
+     * không phải dòng bán.
+     */
+    for (const b of [draftBtn, sendBtn![0]]) {
+      expect(b, `nút không chặn giá hàng trả: ${b}`).toContain("returnPriceBad > 0")
+    }
   })
 
   /**

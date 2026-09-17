@@ -105,3 +105,32 @@ export function toReturnLine(l: ReturnCartLine): OfflineReturnLine {
     ...(note ? { note } : {}),
   }
 }
+
+/**
+ * Giá của một dòng hàng trả có hợp lệ không.
+ *
+ * VÌ SAO LUẬT NGƯỢC VỚI DÒNG BÁN
+ *   Dòng BÁN bị chặn khi giá THẤP hơn bảng giá — bán rẻ là mất tiền.
+ *   Dòng TRẢ thì ngược: tiền đi RA khỏi công ty, nên chỗ nguy hiểm là giá
+ *   CAO. Trả về cao hơn giá bán là một đường rút tiền: mua 100k, trả lại
+ *   150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng bán.
+ *
+ * ⚠ HẠ GIÁ THÌ LUÔN ĐƯỢC, kể cả xuống 0. Hàng hư hỏng, hàng cận date, hàng
+ * đã bóc lẻ — mỗi ca một mức bù khác nhau, và bắt trả đúng giá bảng là ép
+ * công ty trả tiền cho thứ không bán lại được. Đây cũng là chiều AN TOÀN:
+ * hạ giá là công ty chi ít đi.
+ */
+export type ReturnPriceIssue = "above_list" | "negative"
+
+export function returnPriceViolation(
+  line: Pick<ReturnCartLine, "price">,
+  listPrice: number
+): ReturnPriceIssue | null {
+  const p = Number(line.price)
+  if (!Number.isFinite(p) || p < 0) return "negative"
+  // ⚠ Chưa tra ra giá bảng (bằng 0) thì KHÔNG lấy 0 làm trần — làm vậy là
+  // chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn đang
+  // đứng đó với hàng trên tay.
+  if (listPrice > 0 && p > listPrice) return "above_list"
+  return null
+}

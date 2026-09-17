@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { selectedUnitOf, type PricedProduct } from "../src/lib/sell/pricing"
+import { returnPriceViolation } from "../src/lib/sell/returns"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -129,5 +130,90 @@ describe("Thẻ sản phẩm không tràn khi mặt hàng có nhiều đơn vị
   it("giá không bị bóp, nút đơn vị không bị bóp", () => {
     expect(CARD).toContain("shrink-0 whitespace-nowrap text-[18px]")
     expect(CARD).toContain("h-10 min-w-[64px] shrink-0 rounded-[9px]")
+  })
+})
+
+describe("Sửa được giá của dòng hàng trả", () => {
+  const SHEET = code(read("src/components/sell/return-line-sheet.tsx"))
+  const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
+
+  /**
+   * ⚠ LỖI NGƯỜI DÙNG BÁO. Dòng trả chỉ có bộ đếm số lượng và bộ chọn
+   * Trả tiền / Đổi hàng — không có đường nào chỉnh ĐƠN GIÁ. Giá lấy theo
+   * bảng giá HÔM NAY, trong khi hàng khách đưa lại được mua hôm khác
+   * (thường có chiết khấu) và thường là hàng hư hỏng / cận date chỉ bù
+   * được một phần. Số tiền trừ vào đơn vì thế sai thẳng vào số khách phải
+   * trả, mà không có cách nào chữa ngoài việc bỏ dòng đó ra.
+   */
+  it("bấm vào dòng trả là mở được phần sửa", () => {
+    expect(RET).toContain("onClick={() => setEditIdx(i)}")
+    expect(RET).toContain("<ReturnLineSheet")
+  })
+
+  it("sheet có ô nhập đơn giá và ô ghi chú", () => {
+    expect(SHEET).toContain('aria-label="Đơn giá trả"')
+    expect(SHEET).toContain("Lý do / ghi chú dòng")
+  })
+
+  /** ⚠ Đổi đơn vị là đổi GIÁ — giữ giá chai cho một thùng là trả sai mười lần. */
+  it("đổi đơn vị thì tính lại giá", () => {
+    expect(SHEET).toContain("onPatch({ unit: u, price: unitPriceFor(product, u, groupId) })")
+  })
+
+  /** Dòng đã sửa giá phải nhìn ra được ngay trên danh sách. */
+  it("dòng sửa giá có nhãn riêng", () => {
+    expect(RET).toContain("Giá sửa")
+    expect(RET).toContain("const priceEdited =")
+  })
+})
+
+describe("Luật giá của dòng trả NGƯỢC với dòng bán", () => {
+  /**
+   * ⚠ Dòng BÁN bị chặn khi giá THẤP hơn bảng giá — bán rẻ là mất tiền.
+   * Dòng TRẢ thì ngược: tiền đi RA khỏi công ty, nên chỗ nguy hiểm là giá
+   * CAO. Trả về cao hơn giá bán là một đường rút tiền: mua 100k, trả lại
+   * 150k, và không quy tắc duyệt nào chạm tới vì đây không phải dòng bán.
+   */
+  it("trả cao hơn giá bảng là vi phạm", () => {
+    expect(returnPriceViolation({ price: 150_000 }, 100_000)).toBe("above_list")
+  })
+
+  /**
+   * ⚠ HẠ GIÁ THÌ LUÔN ĐƯỢC, kể cả xuống 0. Hàng hư hỏng, cận date, đã bóc
+   * lẻ — mỗi ca một mức bù khác nhau. Đây cũng là chiều AN TOÀN: công ty
+   * chi ít đi.
+   */
+  it.each([0, 1_000, 99_999, 100_000])("trả %s (≤ giá bảng) thì hợp lệ", (p) => {
+    expect(returnPriceViolation({ price: p }, 100_000)).toBeNull()
+  })
+
+  it("giá âm bị chặn", () => {
+    expect(returnPriceViolation({ price: -1 }, 100_000)).toBe("negative")
+  })
+
+  /**
+   * ⚠ Chưa tra ra giá bảng (bằng 0) thì KHÔNG lấy 0 làm trần — làm vậy là
+   * chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn đang
+   * đứng đó với hàng trên tay.
+   */
+  it("mặt hàng chưa có giá bảng thì không chặn", () => {
+    expect(returnPriceViolation({ price: 50_000 }, 0)).toBeNull()
+  })
+})
+
+describe("Giá trả sai thì KHÔNG gửi được đơn", () => {
+  const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
+
+  /** Tô đỏ ở màn hàng trả mà vẫn gửi được thì vệt đỏ đó chỉ là trang trí. */
+  it("màn giỏ đếm dòng trả sai giá và nói ra", () => {
+    expect(CART).toContain("const returnPriceBad = useMemo(")
+    expect(CART).toContain("returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0)")
+    expect(CART).toContain("dòng trả cao hơn giá bảng")
+    expect(CART).toContain('"Giá hàng trả quá cao"')
+  })
+
+  it("màn hàng trả tô đỏ đúng dòng", () => {
+    expect(RET).toContain("const priceBadOf =")
+    expect(RET).toContain("Giá trả cao hơn giá bảng")
   })
 })

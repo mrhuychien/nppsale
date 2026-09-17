@@ -7,8 +7,9 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { Stepper } from "@/components/sell/line-edit-sheet"
+import { ReturnLineSheet } from "@/components/sell/return-line-sheet"
 import { ProductCard } from "@/components/sell/product-card"
-import { RETURN_REASONS, returnReasonLabel } from "@/lib/sell/returns"
+import { RETURN_REASONS, returnReasonLabel, returnPriceViolation } from "@/lib/sell/returns"
 import { selectedUnitOf, unitPriceFor } from "@/lib/sell/pricing"
 import { findReturnLine } from "@/lib/sell/returns"
 import { compareByStockDesc } from "@/lib/orders/product-order"
@@ -30,6 +31,7 @@ export default function SellReturnsPage() {
   const stockReturns = useMemo(() => toStockReturnLines(cart.returnLines), [cart.returnLines])
   const [q, setQ] = useState("")
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
+  const [editIdx, setEditIdx] = useState<number | null>(null)
 
   const groupId = customerById(cart.customerId)?.group_id ?? null
 
@@ -67,6 +69,20 @@ export default function SellReturnsPage() {
     : inOrder.length
       ? "Hàng trong đơn này"
       : "Tất cả sản phẩm"
+
+  /** Giá bảng của đúng đơn vị đang chọn trên dòng trả. */
+  const listPriceOf = (r: { productId: string; unit: string }) => {
+    const p = productById(r.productId)
+    return p ? unitPriceFor(p, r.unit, groupId) : 0
+  }
+  /** Dòng này đã bị sửa giá so với bảng giá chưa — để gắn nhãn "Giá sửa". */
+  const priceEdited = (r: { productId: string; unit: string; price: number }) => {
+    const list = listPriceOf(r)
+    return list > 0 && r.price !== list
+  }
+  /** ⚠ Trả CAO hơn giá bảng là một đường rút tiền — tô đỏ ngay trên dòng. */
+  const priceBadOf = (r: { productId: string; unit: string; price: number }) =>
+    returnPriceViolation(r, listPriceOf(r)) !== null
 
   const add = (p: (typeof products)[number]) => {
     const unit = selectedUnitOf(unitSel, p)
@@ -194,19 +210,43 @@ export default function SellReturnsPage() {
                   className="flex flex-col gap-2.5 border-b border-outline-variant/30 p-3 last:border-0"
                 >
                   <div className="flex items-start gap-2.5">
-                    <span className="min-w-0 flex-1">
+                    {/* ⚠ Bấm vào dòng là mở phần sửa — trước đây dòng trả
+                        chỉ có bộ đếm số lượng, không có đường nào chỉnh
+                        ĐƠN GIÁ. Giá lấy theo bảng giá hôm nay, trong khi
+                        hàng khách đưa lại mua hôm khác và thường là hàng
+                        hư hỏng chỉ bù được một phần. */}
+                    <button
+                      type="button"
+                      onClick={() => setEditIdx(i)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <span className="block text-[15px] font-bold leading-snug">
                         {p?.name ?? "—"}
                       </span>
                       <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
                         {returnReasonLabel(cart.returnReason)} · {formatCurrency(r.price)}/{r.unit}
+                        {priceEdited(r) && (
+                          <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-px font-extrabold text-primary">
+                            Giá sửa
+                          </span>
+                        )}
                       </span>
                       {over && (
                         <span className="mt-0.5 block text-xs font-extrabold text-error">
                           Vượt tồn kho — kho không đủ hàng để đổi
                         </span>
                       )}
-                    </span>
+                      {priceBadOf(r) && (
+                        <span className="mt-0.5 block text-xs font-extrabold text-error">
+                          Giá trả cao hơn giá bảng
+                        </span>
+                      )}
+                      {r.note && (
+                        <span className="mt-0.5 block text-xs font-semibold italic text-on-surface-variant">
+                          “{r.note}”
+                        </span>
+                      )}
+                    </button>
                     <button
                       type="button"
                       onClick={() => cart.setReturnQty(i, 0)}
@@ -282,6 +322,20 @@ export default function SellReturnsPage() {
           Xong · về đơn hàng
         </button>
       </SellBottomBar>
+
+      <ReturnLineSheet
+        line={editIdx != null ? (cart.returnLines[editIdx] ?? null) : null}
+        product={
+          editIdx != null ? productById(cart.returnLines[editIdx]?.productId ?? "") : undefined
+        }
+        groupId={groupId}
+        onPatch={(patch) => editIdx != null && cart.patchReturnLine(editIdx, patch)}
+        onRemove={() => {
+          if (editIdx != null) cart.setReturnQty(editIdx, 0)
+          setEditIdx(null)
+        }}
+        onClose={() => setEditIdx(null)}
+      />
     </div>
   )
 }

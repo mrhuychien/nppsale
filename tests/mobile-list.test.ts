@@ -244,11 +244,26 @@ describe("M2.2 — /orders", () => {
     expect(fn).not.toContain("SegmentedScroller")
   })
 
-  /** Một hàng chip, không phải hai: chip trạng thái gộp vào pipeline. */
-  it("chip trạng thái đặc biệt chỉ còn ở desktop", () => {
-    expect(ORDERS_CODE).toContain('<div className="hidden lg:flex flex-wrap gap-2">')
-    expect(ORDERS_CODE).toContain("extra={{")
-    expect(ORDERS_CODE).toContain('key: "pending_approval"')
+  /**
+   * ⚠ MỘT HÀNG CHIP, KHÔNG PHẢI HAI — và hàng đó phải HIỆN TRÊN MỌI KHỔ
+   * MÀN. Bản trước có chip trạng thái chỉ ở máy tính (`hidden lg:flex`),
+   * còn trên điện thoại nó bị nhét vào thanh pipeline — mà thanh đó chỉ
+   * hiện khi người dùng tự bật bộ lọc "pipeline" trong FilterPicker. Tức
+   * là trên điện thoại, lọc theo trạng thái có thể KHÔNG có đường nào tới.
+   */
+  it("chỉ có một hàng chip trạng thái, không ẩn theo khổ màn", () => {
+    // Không còn hàng chip riêng cho desktop.
+    expect(ORDERS_CODE).not.toContain('<div className="hidden lg:flex flex-wrap gap-2">')
+    // Và pipeline không còn kiêm luôn việc lọc trạng thái.
+    expect(ORDERS_CODE).not.toContain("extra={{")
+    // Hàng chip duy nhất dựng từ danh sách trạng thái dùng chung.
+    expect(ORDERS_CODE).toContain('{(["all", ...COUNTED_STATUSES] as const).map((k) => {')
+  })
+
+  /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */
+  it("hàng chip cuộn ngang trên điện thoại", () => {
+    expect(ORDERS_CODE).toContain("overflow-x-auto")
+    expect(ORDERS_CODE).toContain("shrink-0 whitespace-nowrap rounded-full")
   })
 
   /**
@@ -258,7 +273,10 @@ describe("M2.2 — /orders", () => {
   it("hai bộ lọc không đánh nhau", () => {
     const p = strip(PIPELINE)
     expect(p).toContain("stepKeys.has(k)")
-    expect(ORDERS_CODE).toMatch(/onChange: \(k\) => \{[\s\S]{0,200}?setPipelineStep\(null\)/)
+    // Chọn chip trạng thái thì buông bước pipeline…
+    expect(ORDERS_CODE).toMatch(/setStatusFilter\(k\)[\s\S]{0,200}?setPipelineStep\(null\)/)
+    // …và chọn bước pipeline thì buông chip trạng thái.
+    expect(ORDERS_CODE).toMatch(/setPipelineStep\(next\)[\s\S]{0,200}?setStatusFilter\("all"\)/)
   })
 
   /**

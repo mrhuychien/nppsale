@@ -62,8 +62,21 @@ describe("Phân biệt bản nháp tự lưu với đơn đã gửi chờ duyệ
    * dưới nó.
    */
   it("cả phép đếm lẫn phép lọc đều trừ bản tự lưu ra", () => {
-    const uses = ORDERS.match(/\.neq\("approval_reason", DRAFT_APPROVAL_REASON\)/g) ?? []
-    expect(uses.length, "thiếu ở phép đếm hoặc ở phép lọc").toBe(2)
+    // Hai phép nay dùng CHUNG một hàm, nên chỉ còn một chỗ khai — và đó
+    // chính là điều phải giữ: một nơi khai thì không có chỗ để lệch.
+    expect(ORDERS).toContain('.neq("approval_reason", DRAFT_APPROVAL_REASON)')
+    const helper = ORDERS.slice(
+      ORDERS.indexOf("const applyStatusFilter ="),
+      ORDERS.indexOf("const applyStatusFilter =") + 700
+    )
+    expect(helper, "phép lọc trạng thái không còn trừ bản tự lưu").toContain(
+      '.neq("approval_reason", DRAFT_APPROVAL_REASON)'
+    )
+    // Danh sách VÀ phép đếm đều đi qua hàm đó — đúng hai nơi GỌI.
+    const uses = ORDERS.match(/applyStatusFilter\(/g) ?? []
+    expect(uses.length, "phải gọi ở cả danh sách lẫn phép đếm").toBe(2)
+    expect(ORDERS).toContain("return applyStatusFilter(applyCommonFilters(q), statusFilter)")
+    expect(ORDERS).toContain("COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st))")
   })
 
   it("màn chi tiết đơn nói rõ nháp chưa gửi, không gọi là chờ duyệt", () => {

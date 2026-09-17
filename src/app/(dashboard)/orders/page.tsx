@@ -80,6 +80,44 @@ import { errorMessage } from "@/lib/errors"
 /** Khoá nhớ "đã đọc" của banner phạm vi dữ liệu. */
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
 
+/** Phần nhúng khách hàng trong câu select — hai bản, chỉ khác `!inner`. */
+const CUSTOMER_EMBED = "customer:customers(store_name, phone)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone)"
+/**
+ * Câu select cho phép ĐẾM khi đang lọc theo tuyến.
+ *
+ * ⚠ Đếm bình thường dùng `head: true` nên không cần cột nào, nhưng muốn
+ * lọc trên bảng nhúng thì bảng nhúng PHẢI có mặt trong câu select —
+ * không có thì PostgREST trả lỗi "column customer.channel does not exist".
+ */
+const COUNT_SELECT_WITH_ROUTE = "id, customer:customers!inner(id)"
+
+/**
+ * Các trạng thái có chip lọc, theo đúng thứ tự đơn đi qua.
+ *
+ * `pending_approval` không phải một giá trị của cột `status` — nó là
+ * `draft` + có lý do duyệt. Xem `applyStatusFilter`.
+ */
+const COUNTED_STATUSES = [
+  "pending_approval",
+  "draft",
+  "confirmed",
+  "picking",
+  "delivering",
+  "delivered",
+  "cancelled",
+] as const
+
+const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
+  pending_approval: "Chờ duyệt",
+  draft: "Nháp",
+  confirmed: "Đã duyệt",
+  picking: "Đang lấy hàng",
+  delivering: "Đang giao",
+  delivered: "Đã giao",
+  cancelled: "Đã huỷ",
+}
+
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
   const { user: authUser } = useAuth()
@@ -114,6 +152,15 @@ export default function OrdersPage() {
   const [dateTo, setDateTo] = useState("")
   const [customerFilter, setCustomerFilter] = useState("all")
   const [salesFilter, setSalesFilter] = useState("all")
+  /**
+   * Lọc theo TUYẾN bán hàng.
+   *
+   * ⚠ Giá trị là MÃ tuyến (`sales_routes.code`), không phải id. Tuyến của
+   * một điểm bán nằm ở `customers.channel` và cột đó lưu mã — xem
+   * migration 018.
+   */
+  const [routeFilter, setRouteFilter] = useState("all")
+  const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -155,53 +202,120 @@ export default function OrdersPage() {
   // Load metadata (customers, users) + counts theo status — 1 lần khi mount.
   useEffect(() => {
     async function loadMeta() {
-      const [customersRes, usersRes] = await Promise.all([
+      const [customersRes, usersRes, routesRes] = await Promise.all([
         supabase.from("customers").select("id, store_name").order("store_name"),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
+        supabase
+          .from("sales_routes")
+          .select("code, name")
+          .eq("is_active", true)
+          .order("sort_order"),
       ])
-      const qErr2 = ([customersRes, usersRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr2 = ([customersRes, usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr2) console.error("[app/orders] truy vấn lỗi:", qErr2.message)
       setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
+      setRoutes((routesRes.data as Array<{ code: string; name: string }>) || [])
 
-      // Count theo status — chính xác tổng, không phụ thuộc pagination.
-      const statuses = ["draft", "confirmed", "picking", "delivering", "delivered", "cancelled"]
-      const [{ count: totalC }, ...statusResps] = await Promise.all([
-        supabase.from("sales_orders").select("id", { count: "exact", head: true }),
-        ...statuses.map((s) =>
-          supabase.from("sales_orders").select("id", { count: "exact", head: true }).eq("status", s)
-        ),
-      ])
-      // Đếm hỏng thì mọi tab hiện 0 — trông y hệt "chưa có đơn nào".
-      const countErr = statusResps.find((r) => r?.error)?.error
-      if (countErr) console.error("[app/orders] đếm theo trạng thái lỗi:", countErr.message)
-
-      // ⚠ TRỪ bản nháp NVBH tự lưu ra. Nó cũng mang `status = 'draft'` và
-      // cũng có `approval_reason`, nên trước đây đếm chung — quản lý mở ra
-      // thấy đơn người ta còn đang soạn dở, và sau vài lần như vậy thì con
-      // số "chờ duyệt" mất hết ý nghĩa.
-      const pendApprRes = await supabase
-        .from("sales_orders")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "draft")
-        .not("approval_reason", "is", null)
-        .neq("approval_reason", DRAFT_APPROVAL_REASON)
-      if (pendApprRes.error) {
-        console.error("[app/orders] đếm đơn chờ duyệt lỗi:", pendApprRes.error.message)
-      }
-      const counts: Record<string, number> = { all: totalC ?? 0 }
-      statuses.forEach((s, i) => { counts[s] = statusResps[i].count ?? 0 })
-      counts.pending_approval = pendApprRes.count ?? 0
-      setStatusCounts(counts)
     }
     loadMeta()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Bộ lọc DÙNG CHUNG cho danh sách và cho phép đếm.
+   *
+   * ⚠ MỘT NƠI KHAI DUY NHẤT. Hai bản chép tay là cách chắc nhất để con số
+   * trên chip nói khác danh sách bên dưới nó — và người dùng tin con số.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyCommonFilters = <T,>(q: T): T => {
+    let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (debouncedSearch) {
+      const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
+      x = x.ilike("order_code", term)
+    }
+    // ⚠ Tuyến của đơn = tuyến của ĐIỂM BÁN, và nó nằm ở `customers.channel`
+    // (cột lưu MÃ tuyến — xem migration 018). Lọc trên bảng nhúng thì phần
+    // nhúng phải là `!inner`, nếu không PostgREST vẫn trả đơn về nhưng bỏ
+    // trống phần khách — danh sách đầy dòng "—" trông như dữ liệu hỏng.
+    if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
+    if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
+    if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
+    if (dateFrom) x = x.gte("order_date", dateFrom)
+    if (dateTo) x = x.lte("order_date", dateTo + "T23:59:59")
+    if (amountMin) x = x.gte("total", parseFloat(amountMin))
+    if (amountMax) x = x.lte("total", parseFloat(amountMax))
+    return x as T
+  }
+
+  /** Lọc theo trạng thái. Tách riêng vì phép đếm phải chạy cho TỪNG trạng thái. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyStatusFilter = <T,>(q: T, status: string): T => {
+    let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (status === "pending_approval") {
+      x = x
+        .eq("status", "draft")
+        .not("approval_reason", "is", null)
+        // Bản nháp NVBH tự lưu KHÔNG phải đơn chờ duyệt.
+        .neq("approval_reason", DRAFT_APPROVAL_REASON)
+    } else if (status !== "all") {
+      x = x.eq("status", status)
+    }
+    return x as T
+  }
+
+  /**
+   * Đếm đơn theo trạng thái — cho các chip lọc.
+   *
+   * ⚠ ĐẾM PHẢI ĂN THEO ĐÚNG BỘ LỌC CỦA DANH SÁCH (trừ chính trạng thái).
+   * Trước đây phép đếm chạy MỘT lần lúc mở trang và bỏ qua mọi bộ lọc khác,
+   * nên lọc theo tuyến rồi thì chip ghi "Đã giao 120" trong khi danh sách
+   * dưới nó chỉ có 7 dòng. Con số trên chip phải trả lời đúng một câu: bấm
+   * vào đây thì thấy bao nhiêu đơn.
+   */
+  useEffect(() => {
+    let cancelled = false
+    async function loadCounts() {
+      // audit-ok: lỗi của CẢ chùm truy vấn được gộp lại ở `countErr` ngay
+      // bên dưới; không kiểm từng chỗ vì một phép đếm hỏng hay tất cả hỏng
+      // đều dẫn tới cùng một việc phải làm.
+      const base = () =>
+        applyCommonFilters(
+          // audit-ok: xem chú thích ngay trên — lỗi gộp vào `countErr`.
+          supabase
+            .from("sales_orders")
+            .select(routeFilter !== "all" ? COUNT_SELECT_WITH_ROUTE : "id", {
+              count: "exact",
+              head: true,
+            })
+        )
+      const [total, ...resps] = await Promise.all([
+        base(),
+        ...COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st)),
+      ])
+      if (cancelled) return
+      // ⚠ Đếm hỏng thì mọi chip hiện 0 — trông y hệt "chưa có đơn nào", và
+      // người dùng kết luận tuyến này chưa ai đặt hàng.
+      const countErr = [total, ...resps].find((r) => r?.error)?.error
+      if (countErr) console.error("[app/orders] đếm theo trạng thái lỗi:", countErr.message)
+      const totalC = total.count
+      const counts: Record<string, number> = { all: totalC ?? 0 }
+      COUNTED_STATUSES.forEach((st, i) => {
+        counts[st] = resps[i].count ?? 0
+      })
+      setStatusCounts(counts)
+    }
+    loadCounts()
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -211,37 +325,23 @@ export default function OrdersPage() {
       // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự thử
       // lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error để hiển thị.
       const build = (select: string) => {
-        let q = supabase
+        // audit-ok: `selectResilient` trả lỗi ra ngoài và nơi gọi đưa vào
+        // `setLoadError` để hiện lên màn hình.
+        const q = supabase
           .from("sales_orders")
           .select(select, { count: "exact" })
           .order("created_at", { ascending: false })
           .range(pg.from, pg.to)
-        if (debouncedSearch) {
-          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-          q = q.ilike("order_code", term)
-        }
-        if (statusFilter === "pending_approval") {
-          q = q
-            .eq("status", "draft")
-            .not("approval_reason", "is", null)
-            // Xem chú thích ở phép đếm: bản nháp tự lưu không phải đơn chờ duyệt.
-            .neq("approval_reason", DRAFT_APPROVAL_REASON)
-        } else if (statusFilter !== "all") {
-          q = q.eq("status", statusFilter)
-        }
-        if (customerFilter !== "all") q = q.eq("customer_id", customerFilter)
-        if (salesFilter !== "all") q = q.eq("sales_user_id", salesFilter)
-        if (dateFrom) q = q.gte("order_date", dateFrom)
-        if (dateTo) q = q.lte("order_date", dateTo + "T23:59:59")
-        if (amountMin) q = q.gte("total", parseFloat(amountMin))
-        if (amountMax) q = q.lte("total", parseFloat(amountMax))
-        return q
+        return applyStatusFilter(applyCommonFilters(q), statusFilter)
       }
+      // ⚠ `!inner` CHỈ khi đang lọc tuyến. Bật luôn thì đơn nào chưa gắn
+      // khách sẽ biến mất khỏi danh sách mà không ai biết vì sao.
+      const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
       const res = await selectResilient<SalesOrder>(
         build,
-        "id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)",
+        `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`,
         // eslint-disable-next-line no-restricted-syntax
-        "*, customer:customers(store_name, phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+        `*, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`
       )
       // Điều hướng nhanh làm request bị huỷ. Đó không phải lỗi — ghi
       // mảng rỗng đè lên danh sách đang hiện, kèm một thẻ đỏ
@@ -285,7 +385,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -738,6 +838,70 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* ⚠ HAI BỘ LỌC DÙNG NHIỀU NHẤT PHẢI NHÌN THẤY, KHÔNG NẰM TRONG SHEET.
+          Trước đây chip trạng thái chỉ có trên máy tính (`hidden lg:flex`),
+          còn trên điện thoại nó bị nhét vào thanh pipeline — mà thanh đó
+          chỉ hiện khi người dùng bật bộ lọc "pipeline" trong FilterPicker.
+          Tuyến bán hàng thì KHÔNG lọc được ở đâu cả. Đây là hai câu hỏi
+          mở danh sách đơn ra để trả lời: "tuyến này hôm nay ra sao" và
+          "đơn nào còn đang chờ". */}
+      <div className="flex flex-col gap-2">
+        {routes.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Tuyến
+            </span>
+            <Select value={routeFilter} onValueChange={setRouteFilter}>
+              <SelectTrigger className="h-10 w-full max-w-xs">
+                <SelectValue placeholder="Tất cả tuyến" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tuyến</SelectItem>
+                {routes.map((r) => (
+                  <SelectItem key={r.code} value={r.code}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Cuộn ngang trên điện thoại: bảy chip không xuống dòng thành ba
+            hàng, và không chip nào bị cắt mất. */}
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
+          {(["all", ...COUNTED_STATUSES] as const).map((k) => {
+            const active = statusFilter === k && !pipelineStep
+            const count = statusCounts[k] ?? 0
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(k)
+                  // Hai bộ lọc loại trừ nhau — chọn cái này thì buông cái kia.
+                  setPipelineStep(null)
+                }}
+                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "border-primary bg-primary text-on-primary"
+                    : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                }`}
+              >
+                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k]}
+                <span
+                  className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                    active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Pipeline 7-step status bar (Update #2 v2 §8) */}
       {filterActive("pipeline") && (
         <OrderPipeline
@@ -750,17 +914,6 @@ export default function OrdersPage() {
             // Picking a pipeline step clears the special-state chip filter
             // so the two filters don't fight each other.
             if (next) setStatusFilter("all")
-          }}
-          extra={{
-            segments: [
-              { key: "pending_approval", label: "Chờ duyệt", count: statusCounts.pending_approval || 0 },
-              { key: "cancelled", label: "Đã hủy", count: statusCounts.cancelled || 0 },
-            ],
-            value: statusFilter === "all" ? null : statusFilter,
-            onChange: (k) => {
-              setStatusFilter((k as typeof statusFilter) ?? "all")
-              if (k) setPipelineStep(null)
-            },
           }}
         />
       )}
@@ -776,46 +929,6 @@ export default function OrdersPage() {
       >
         <div className="grid gap-4">{advancedFilterFields}</div>
       </MobileFilterBar>
-
-      {/* Special-state quick filter chips (mutually exclusive with pipeline) */}
-      {/* Hàng chip này chỉ còn trên desktop — mobile đã gộp vào cùng
-          SegmentedScroller của OrderPipeline để chỉ có MỘT hàng chip. */}
-      {filterActive("specialStatus") && (
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {([
-          { value: "all", label: "Tất cả", color: "" },
-          { value: "pending_approval", label: "Chờ duyệt", color: "border-[#fdb022] text-[#b54708] bg-[#fff4ed]" },
-          { value: "cancelled", label: "Đã hủy", color: "border-error/40 text-on-error-container bg-error-container" },
-        ] as const).map((s) => {
-          const count = statusCounts[s.value] || 0
-          const active = statusFilter === s.value && !pipelineStep
-          return (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => {
-                setStatusFilter(s.value)
-                setPipelineStep(null)
-              }}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-primary text-on-primary border-primary"
-                  : s.color || "bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface-container-low"
-              }`}
-            >
-              {s.label}
-              {count > 0 && (
-                <span className={`ml-1.5 inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
-                  active ? "bg-on-primary/20 text-on-primary" : "bg-surface/70"
-                }`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-      )}
 
       {/* Hàng lọc cũ chỉ còn trên desktop. Mobile dùng MobileFilterBar:
           một hàng [ô tìm][nút Lọc], mọi thứ khác vào bottom sheet. */}

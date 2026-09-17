@@ -28,6 +28,7 @@ import {
   TEMPLATE_SAMPLE_ROWS,
   type ParsedProductRow,
 } from "@/lib/products/import-parse"
+import { errorMessage } from "@/lib/errors"
 
 interface ProductImportDialogProps {
   open: boolean
@@ -414,7 +415,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
       onImported?.()
       handleClose(false)
     } catch (e) {
-      toast({ title: "Lỗi nhập sản phẩm", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi nhập sản phẩm", description: errorMessage(e), variant: "destructive" })
     } finally {
       setImporting(false)
     }

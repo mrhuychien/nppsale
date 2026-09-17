@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Trash2, ClipboardList } from "lucide-react"
 import type { Product } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -53,7 +54,7 @@ export default function ProductDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
       setDeleting(false)

@@ -22,6 +22,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard } from "lucide-react"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { Receivable } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 /** Nhãn hình thức thu — tra từ PAYMENT_METHODS, không gõ lại chuỗi. */
 const labelMethod = (v: string) =>
@@ -212,7 +213,7 @@ export default function CollectPaymentPage() {
         at: new Date(),
       })
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

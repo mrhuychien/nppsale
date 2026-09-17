@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck, Pencil } from "lucide-react"
 import type { Payable, PayablePayment, PayableStatus } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa trả", variant: "secondary" },
@@ -133,7 +134,7 @@ export default function PayableDetailPage() {
       setPaymentForm({ amount: "", method: "transfer", notes: "" })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -155,7 +156,7 @@ export default function PayableDetailPage() {
       setVerifyTarget(null)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -178,7 +179,7 @@ export default function PayableDetailPage() {
       setEditing(false)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -197,7 +198,7 @@ export default function PayableDetailPage() {
       setStatusConfirm(null)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -212,7 +213,7 @@ export default function PayableDetailPage() {
       toast({ title: "Đã xóa công nợ NCC" })
       router.push("/payables")
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
       setActionLoading(false)
     }
   }

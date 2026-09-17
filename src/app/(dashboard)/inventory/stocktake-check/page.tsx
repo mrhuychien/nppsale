@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { useToast } from "@/hooks/use-toast"
 import { ClipboardCheck, Save, AlertTriangle } from "lucide-react"
 import type { Product, Batch } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type BatchWithProduct = Batch & { product?: Product }
 
@@ -187,7 +188,7 @@ export default function StocktakeCheckPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

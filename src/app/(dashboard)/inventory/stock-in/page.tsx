@@ -47,6 +47,7 @@ import {
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { ProductForm } from "@/components/products/product-form"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface LineItem {
   id: string
@@ -487,7 +488,7 @@ export default function StockInPage() {
       })
       router.push(`/inventory/entries/${entry.id}`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)

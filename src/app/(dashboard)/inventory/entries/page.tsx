@@ -43,6 +43,7 @@ import {
   type StockEntryColumnKey,
   type StockEntryFilterKey,
 } from "./list-config"
+import { errorMessage } from "@/lib/errors"
 
 export default function StockEntriesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
@@ -99,7 +100,7 @@ export default function StockEntriesPage() {
       setDeleteTarget(null)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setDeleting(false)
     }
@@ -130,7 +131,7 @@ export default function StockEntriesPage() {
       toast({ title: `Đã duyệt phiếu ${e.entry_code}` })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     }
   }
 
@@ -145,7 +146,7 @@ export default function StockEntriesPage() {
       toast({ title: `Đã hủy phiếu ${e.entry_code}` })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     }
   }
 
@@ -241,7 +242,7 @@ export default function StockEntriesPage() {
         if (r.posted) okCount++
         else failures.push(`${code}: đã ghi sổ từ trước`)
       } catch (err) {
-        failures.push(`${code}: ${(err as Error).message}`)
+        failures.push(`${code}: ${errorMessage(err)}`)
       }
     }
 

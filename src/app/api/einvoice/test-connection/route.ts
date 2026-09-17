@@ -8,6 +8,7 @@ import {
   getTokenWithRawResponse,
 } from "@/lib/misa/client"
 import type { MisaConfig, MisaTemplate } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -98,7 +99,7 @@ async function handle(req: Request) {
   try {
     result = await getTokenWithRawResponse(misaConfig)
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 502 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 502 })
   }
   const ids = extractTenantIds(result.raw)
 
@@ -112,7 +113,7 @@ async function handle(req: Request) {
     // TypeInvoice=0 theo example LAYMAU.
     templates = await getInvoiceTemplates(misaConfig, 0)
   } catch (e) {
-    templateError = (e as Error).message
+    templateError = errorMessage(e)
   }
   const activeTemplates = templates.filter((t) => !t.Inactive)
   const chosen = activeTemplates.find((t) => t.IsPublished !== false) || activeTemplates[0] || null

@@ -38,6 +38,7 @@ import {
   PenLine, Camera,
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryStatus, SalesOrder, SalesOrderLine } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type OrderDetail = SalesOrder & {
   customer?: SalesOrder["customer"] & { address?: string | null; ward?: string | null; district?: string | null; province?: string | null }
@@ -155,7 +156,7 @@ export default function DeliveryDetailPage() {
       setConfirmStart(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -174,7 +175,7 @@ export default function DeliveryDetailPage() {
       setConfirmCancel(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -189,7 +190,7 @@ export default function DeliveryDetailPage() {
       toast({ title: "Đã xoá phiếu giao" })
       router.push("/deliveries")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }

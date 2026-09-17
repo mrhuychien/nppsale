@@ -22,6 +22,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
 import { Pencil, Trash2, X, ExternalLink, Info } from "lucide-react"
 import type { Return, ReturnLine } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function ReturnDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,7 +75,7 @@ export default function ReturnDetailPage() {
       toast({ title: "Đã xoá phiếu trả hàng" })
       router.push("/returns")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -95,7 +96,7 @@ export default function ReturnDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

@@ -5,6 +5,7 @@ import { decryptSecret } from "@/lib/crypto"
 import { publishInvoice } from "@/lib/misa/client"
 import { invoiceToMisaPayload, type ExportMode, type MapperLine } from "@/lib/misa/mapper"
 import type { MisaConfig } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -68,7 +69,7 @@ async function handlePublish(req: Request) {
     admin = createAdminClient()
   } catch (e) {
     return NextResponse.json(
-      { error: `Server thiếu cấu hình: ${(e as Error).message}` },
+      { error: `Server thiếu cấu hình: ${errorMessage(e)}` },
       { status: 500 }
     )
   }
@@ -234,7 +235,7 @@ async function handlePublish(req: Request) {
       username = decryptSecret(cfg.username_enc)
       password = decryptSecret(cfg.password_enc)
     } catch (e) {
-      const msg = `Không giải mã được credentials MISA (kiểm tra EINVOICE_ENC_KEY có thay đổi so với lúc lưu cấu hình không): ${(e as Error).message}`
+      const msg = `Không giải mã được credentials MISA (kiểm tra EINVOICE_ENC_KEY có thay đổi so với lúc lưu cấu hình không): ${errorMessage(e)}`
       await admin.from("invoices").update({ misa_status: "error", misa_error: msg }).eq("id", invoiceId)
       return NextResponse.json({ error: msg }, { status: 500 })
     }

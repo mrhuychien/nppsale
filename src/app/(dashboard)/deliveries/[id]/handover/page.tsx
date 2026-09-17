@@ -67,6 +67,7 @@ import {
   type WarehouseZone,
 } from "@/lib/handover/confirm"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
+import { errorMessage } from "@/lib/errors"
 
 interface DeliveryRow {
   id: string
@@ -729,7 +730,7 @@ export default function DeliveryHandoverPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

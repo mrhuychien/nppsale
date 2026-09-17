@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_TERMS } from "@/lib/constants"
+import { errorMessage } from "@/lib/errors"
 
 export default function NewSupplierPage() {
   const { user } = useAuth()
@@ -83,7 +84,7 @@ export default function NewSupplierPage() {
       router.push("/suppliers")
       router.refresh()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

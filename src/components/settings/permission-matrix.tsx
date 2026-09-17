@@ -46,6 +46,7 @@ import {
 } from "@/lib/permissions-features"
 import { cn } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
+import { errorMessage } from "@/lib/errors"
 
 const ACTION_ICONS: Record<Action, typeof Eye> = {
   read: Eye,
@@ -340,7 +341,7 @@ export function PermissionMatrix({
       toast({ title: `Đã lưu ${pending.size} thay đổi` })
       await fetchData()
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -358,7 +359,7 @@ export function PermissionMatrix({
       toast({ title: "Đã reset về quyền vai trò" })
       await fetchData()
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setSaving(false)
     }

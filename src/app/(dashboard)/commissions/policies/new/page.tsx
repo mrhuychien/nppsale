@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { COMMISSION_TYPES } from "@/lib/constants"
 import { Plus, Trash2 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 interface Tier {
   min: string
@@ -115,7 +116,7 @@ export default function NewCommissionPolicyPage() {
       toast({ title: "Đã tạo chính sách hoa hồng" })
       router.push("/commissions/policies")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

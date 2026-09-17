@@ -21,6 +21,7 @@ import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
 import { misaRelationLabel, misaStatusBadge } from "@/lib/misa/labels"
 import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type NextStatus = {
   value: InvoiceStatus
@@ -119,7 +120,7 @@ export default function InvoiceDetailPage() {
       setConfirmOpen(null)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -134,7 +135,7 @@ export default function InvoiceDetailPage() {
       toast({ title: "Đã xóa hóa đơn" })
       router.push("/invoices")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -159,7 +160,7 @@ export default function InvoiceDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -185,7 +186,7 @@ export default function InvoiceDetailPage() {
       })
       fetchData()
     } catch (e) {
-      toast({ title: "Lỗi refresh", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi refresh", description: errorMessage(e), variant: "destructive" })
     } finally {
       setMisaLoading(false)
     }
@@ -211,7 +212,7 @@ export default function InvoiceDetailPage() {
       })
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setMisaLoading(false)
     }

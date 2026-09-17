@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Plus, Trash2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import type { Supplier, Product, ProductUnit, WarehouseZone } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface Line {
   id: string
@@ -206,7 +207,7 @@ export default function NewPurchaseReturnPage() {
       })
       router.push(`/purchase-returns/${returnId}`)
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setSubmitting(false)
     }

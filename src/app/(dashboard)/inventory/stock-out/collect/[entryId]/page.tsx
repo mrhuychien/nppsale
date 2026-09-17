@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
+import { errorMessage } from "@/lib/errors"
 
 type PaymentMethod = "cash" | "transfer" | "ewallet"
 
@@ -385,7 +386,7 @@ export default function CollectPaymentPage() {
       }
       router.push(`/finance/cash-receipts/${receiptId}`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)

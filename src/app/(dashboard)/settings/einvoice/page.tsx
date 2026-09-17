@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { Info, ShieldCheck } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 interface ConfigState {
   api_base: string
@@ -118,7 +119,7 @@ export default function EInvoiceSettingsPage() {
       toast({ title: "Đã lưu cấu hình hoá đơn điện tử MISA" })
       set({ username: "", password: "", has_username: cfg.has_username || !!cfg.username, has_password: cfg.has_password || !!cfg.password })
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -175,7 +176,7 @@ export default function EInvoiceSettingsPage() {
           : `Đã login (CompanyID ${t.companyId || "?"}) — chưa tìm thấy mẫu HD active`,
       })
     } catch (e) {
-      toast({ title: "Test thất bại", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Test thất bại", description: errorMessage(e), variant: "destructive" })
     } finally {
       setTesting(false)
     }

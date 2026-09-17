@@ -20,6 +20,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { COMMISSION_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Power, PowerOff, Plus } from "lucide-react"
 import type { CommissionPolicy } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface TierForm {
   min: string
@@ -103,7 +104,7 @@ export default function CommissionPolicyDetailPage() {
       setToggleOpen(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -118,7 +119,7 @@ export default function CommissionPolicyDetailPage() {
       toast({ title: "Đã xóa chính sách hoa hồng" })
       router.push("/commissions/policies")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -179,7 +180,7 @@ export default function CommissionPolicyDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

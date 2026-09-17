@@ -34,6 +34,7 @@ import {
   ArrowRight, Banknote, Navigation, MapPin, Camera, FilePlus2, Pencil,
 } from "lucide-react"
 import type { Customer, CustomerAssignment } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface OrderRow {
   id: string
@@ -289,7 +290,7 @@ export default function CustomerDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
       setDeleting(false)

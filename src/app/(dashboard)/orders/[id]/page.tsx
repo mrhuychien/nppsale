@@ -57,6 +57,7 @@ import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type NextStatus = {
   value: OrderStatus
@@ -348,7 +349,7 @@ export default function OrderDetailPage() {
       })
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -401,7 +402,7 @@ export default function OrderDetailPage() {
     } catch (error) {
       toast({
         title: "Không gửi được đơn",
-        description: (error as Error).message,
+        description: errorMessage(error),
         variant: "destructive",
       })
     } finally {
@@ -453,7 +454,7 @@ export default function OrderDetailPage() {
       })
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi xuất hóa đơn", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi xuất hóa đơn", description: errorMessage(error), variant: "destructive" })
     } finally {
       setMisaLoading(false)
     }
@@ -627,7 +628,7 @@ export default function OrderDetailPage() {
       setConfirmOpen(null)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -661,7 +662,7 @@ export default function OrderDetailPage() {
       toast({ title: "Đã xóa đơn hàng" })
       router.push("/orders")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -980,7 +981,7 @@ export default function OrderDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {
@@ -1022,7 +1023,7 @@ export default function OrderDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

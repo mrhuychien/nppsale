@@ -7,6 +7,7 @@ import {
   REMINDER_COOLDOWN_DAYS,
   type ReminderCandidate,
 } from "@/lib/customers/photos"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -37,7 +38,7 @@ async function wrap(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/customers/photo-reminders] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -147,7 +148,7 @@ async function handle(req: Request) {
         if (uErr) report.errors.push({ org_id: org.id, message: `đóng dấu đã nhắc lỗi: ${uErr.message}` })
       }
     } catch (e) {
-      report.errors.push({ org_id: org.id, message: (e as Error).message })
+      report.errors.push({ org_id: org.id, message: errorMessage(e) })
     }
   }
 

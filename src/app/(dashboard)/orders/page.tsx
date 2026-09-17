@@ -75,6 +75,7 @@ import {
   XCircle,
 } from "lucide-react"
 import type { Customer, Invoice, SalesOrder, User } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 /** Khoá nhớ "đã đọc" của banner phạm vi dữ liệu. */
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
@@ -383,7 +384,7 @@ export default function OrdersPage() {
       toast({ title: `Đã duyệt ${ids.length} đơn hàng` })
       clearSelection()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setBulkLoading(false)
@@ -434,7 +435,7 @@ export default function OrdersPage() {
       toast({ title: `Đã hủy ${ids.length} đơn` })
       clearSelection()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setBulkLoading(false)
@@ -495,7 +496,7 @@ export default function OrdersPage() {
       toast({ title: `Đã chuyển ${ids.length} đơn → ${next.label}` })
       clearSelection()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setBulkLoading(false)
@@ -588,7 +589,7 @@ export default function OrdersPage() {
         setInvoiceMap((prev) => ({ ...prev, [order.id]: updatedInv as Invoice }))
       }
     } catch (error) {
-      toast({ title: "Lỗi xuất HĐ", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi xuất HĐ", description: errorMessage(error), variant: "destructive" })
     } finally {
       setMisaLoadingId(null)
     }

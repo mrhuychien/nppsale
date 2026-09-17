@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { encryptSecret } from "@/lib/crypto"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
     if (password) row.password_enc = encryptSecret(password)
     else if (existing) row.password_enc = existing.password_enc
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 500 })
   }
 
   const q = existing

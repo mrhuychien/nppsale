@@ -39,6 +39,7 @@ import {
   type PayrollRun,
   type PayrollRunItem,
 } from "@/lib/payroll/run"
+import { errorMessage } from "@/lib/errors"
 
 interface UserRow {
   id: string
@@ -213,7 +214,7 @@ export default function PayrollRunsPage() {
           : `Mở bảng lương ${month.slice(0, 7)}`,
       })
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -228,7 +229,7 @@ export default function PayrollRunsPage() {
       await loadActive(activeRun.id)
       toast({ title: `Đã tính lại — ${count} nhân sự.` })
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -246,7 +247,7 @@ export default function PayrollRunsPage() {
       await loadActive(activeRun.id)
       toast({ title: "Đã khoá bảng lương" })
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -368,7 +369,7 @@ export default function PayrollRunsPage() {
       if (activeRun) await loadActive(activeRun.id)
       toast({ title: "Đã lưu điều chỉnh" })
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }

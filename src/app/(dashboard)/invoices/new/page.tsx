@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import type { SalesOrder } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 function generateInvoiceNumber(): string {
   const now = new Date()
@@ -100,7 +101,7 @@ export default function NewInvoicePage() {
       toast({ title: `Đã tạo hóa đơn ${invoiceNumber}` })
       router.push("/invoices")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSubmitting(false)

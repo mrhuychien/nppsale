@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatDate, getExpiryStatus } from "@/lib/utils"
 import { Pencil, Trash2, X, Save } from "lucide-react"
 import type { Batch, Product, StockEntryLine } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const EXPIRY_LABEL: Record<"ok" | "warning" | "danger", string> = {
   ok: "Còn hạn dài",
@@ -103,7 +104,7 @@ export default function BatchDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -118,7 +119,7 @@ export default function BatchDetailPage() {
       toast({ title: "Đã xóa lô hàng" })
       router.push("/inventory/batches")
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
       setActionLoading(false)
     }
   }

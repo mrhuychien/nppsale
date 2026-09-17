@@ -25,6 +25,7 @@ import {
   DEFAULT_USER_COLUMNS,
   type UserColumnKey,
 } from "./list-config"
+import { errorMessage } from "@/lib/errors"
 
 export default function UsersPage() {
   const { user: currentUser, loading: authLoading } = useRoleGuard("settings")
@@ -71,7 +72,7 @@ export default function UsersPage() {
       setDeleteTarget(null)
       fetchUsers()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setDeleting(false)
     }
@@ -94,7 +95,7 @@ export default function UsersPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

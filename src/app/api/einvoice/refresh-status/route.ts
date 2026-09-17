@@ -6,6 +6,7 @@ import { getInvoiceByRefId } from "@/lib/misa/client"
 import { applyMisaSnapshot } from "@/lib/misa/apply"
 import { markOriginalReplaced } from "@/lib/misa/mark-replaced"
 import type { MisaConfig } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic"
 export async function POST(req: Request) {
   try { return await handle(req) } catch (err) {
     console.error("[/api/einvoice/refresh-status] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -113,7 +114,7 @@ async function handle(req: Request) {
   try {
     misaInvoice = await getInvoiceByRefId(misaConfig, refId)
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 502 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 502 })
   }
   if (!misaInvoice) {
     return NextResponse.json({ error: "MISA không trả về dữ liệu HD." }, { status: 404 })

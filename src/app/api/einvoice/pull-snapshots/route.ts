@@ -10,6 +10,7 @@ import {
 import { isoDateOnly } from "@/lib/misa/apply"
 import { requireCronSecret } from "@/lib/misa/cron-auth"
 import type { MisaConfig } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -34,7 +35,7 @@ async function wrap(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/einvoice/pull-snapshots] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -96,7 +97,7 @@ async function handle(req: Request) {
         isInvoiceWithCode: !!cfg.misa_is_invoice_with_code,
       }
     } catch (e) {
-      report.errors.push({ org_id: cfg.org_id, message: `Giải mã cấu hình lỗi: ${(e as Error).message}` })
+      report.errors.push({ org_id: cfg.org_id, message: `Giải mã cấu hình lỗi: ${errorMessage(e)}` })
       continue
     }
 
@@ -121,7 +122,7 @@ async function handle(req: Request) {
         if (page === MAX_PAGES - 1) report.hit_page_cap = true
       }
     } catch (e) {
-      report.errors.push({ org_id: cfg.org_id, message: `Kéo danh sách lỗi: ${(e as Error).message}` })
+      report.errors.push({ org_id: cfg.org_id, message: `Kéo danh sách lỗi: ${errorMessage(e)}` })
       continue
     }
 
@@ -157,7 +158,7 @@ async function handle(req: Request) {
       report.misa_only += stats.misaOnly
       report.needs_review += stats.needsReview
     } catch (e) {
-      report.errors.push({ org_id: cfg.org_id, message: `Đối soát lỗi: ${(e as Error).message}` })
+      report.errors.push({ org_id: cfg.org_id, message: `Đối soát lỗi: ${errorMessage(e)}` })
     }
   }
 

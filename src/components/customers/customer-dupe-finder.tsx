@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Search, UserPlus, CheckCircle2, MapPin, Phone, User as UserIcon } from "lucide-react"
 import Link from "next/link"
+import { errorMessage } from "@/lib/errors"
 
 interface DupeRow {
   id: string
@@ -85,7 +86,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
         prev.map((r) => (r.id === row.id ? { ...r, has_my_assignment: true } : r))
       )
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setClaimingId(null)
     }

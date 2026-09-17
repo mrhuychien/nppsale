@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type Tab = "info" | "description" | "warranty"
 
@@ -353,7 +354,7 @@ export function ProductForm({
         router.refresh()
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

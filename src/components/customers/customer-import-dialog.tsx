@@ -19,6 +19,7 @@ import {
   TEMPLATE_CUSTOMER_SAMPLE_ROWS,
   type ParsedCustomerRow,
 } from "@/lib/customers/import-parse"
+import { errorMessage } from "@/lib/errors"
 
 interface CustomerImportDialogProps {
   open: boolean
@@ -234,7 +235,7 @@ export function CustomerImportDialog({
       onImported?.()
       handleClose(false)
     } catch (e) {
-      toast({ title: "Lỗi nhập KH", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi nhập KH", description: errorMessage(e), variant: "destructive" })
     } finally {
       setImporting(false)
     }

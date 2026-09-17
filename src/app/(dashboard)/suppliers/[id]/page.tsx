@@ -31,6 +31,7 @@ import {
   Phone, MapPin, Pencil,
 } from "lucide-react"
 import type { Supplier, StockEntry } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -129,7 +130,7 @@ export default function SupplierDetailPage() {
       setEditing(false)
       fetchData()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)
@@ -147,7 +148,7 @@ export default function SupplierDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
       setDeleting(false)

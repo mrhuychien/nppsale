@@ -24,6 +24,7 @@ import {
   Calculator,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 const TYPE_META: Record<
   string,
@@ -195,7 +196,7 @@ export default function NewPromotionPage() {
       toast({ title: "Đã tạo chương trình khuyến mãi" })
       router.push("/promotions")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { AlertTriangle, ExternalLink, FileWarning, Link2, Link2Off, FilePlus2 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * Đối soát hoá đơn MISA ↔ sổ.
@@ -142,7 +143,7 @@ export default function ReconcilePage() {
         setLinkTarget("")
         fetchData()
       } catch (e) {
-        toast({ title: "Không thực hiện được", description: (e as Error).message, variant: "destructive" })
+        toast({ title: "Không thực hiện được", description: errorMessage(e), variant: "destructive" })
       } finally {
         setBusy(null)
       }

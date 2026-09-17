@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import type { Product } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function NewBatchPage() {
   const { user } = useAuth()
@@ -97,7 +98,7 @@ export default function NewBatchPage() {
         router.push("/inventory/batches")
       }
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setLoading(false)
     }

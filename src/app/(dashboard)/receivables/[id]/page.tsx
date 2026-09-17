@@ -22,6 +22,7 @@ import { PAYMENT_METHODS } from "@/lib/constants"
 import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck } from "lucide-react"
 import type { Receivable, Payment, ReceivableStatus } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const RECEIVABLE_STATUS_MAP: Record<ReceivableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa thu", variant: "secondary" },
@@ -123,7 +124,7 @@ export default function ReceivableDetailPage() {
       setPaymentForm({ amount: "", method: "cash" })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -145,7 +146,7 @@ export default function ReceivableDetailPage() {
       setVerifyTarget(null)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -164,7 +165,7 @@ export default function ReceivableDetailPage() {
       setStatusConfirm(null)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -179,7 +180,7 @@ export default function ReceivableDetailPage() {
       toast({ title: "Đã xóa công nợ" })
       router.push("/receivables")
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
       setActionLoading(false)
     }
   }

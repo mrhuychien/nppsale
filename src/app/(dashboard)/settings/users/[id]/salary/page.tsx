@@ -40,6 +40,7 @@ import {
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ROLE_LABELS } from "@/lib/permissions"
+import { errorMessage } from "@/lib/errors"
 
 interface UserRow {
   id: string
@@ -190,7 +191,7 @@ export default function UserSalaryPage() {
       setNewTier({ min_revenue: "0", bonus_type: "fixed", bonus_value: "0" })
       await fetchData()
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -223,7 +224,7 @@ export default function UserSalaryPage() {
       if (error) throw error
       await fetchData()
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -261,7 +262,7 @@ export default function UserSalaryPage() {
       setNewActivity({ amount: "0", note: "" })
       await fetchData()
     } catch (e) {
-      toast({ title: "Lỗi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }

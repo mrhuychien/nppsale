@@ -19,6 +19,7 @@ import { buildPlan, type Plan, type PlanAction, type PlanRow } from "@/lib/openi
 import { buildExportRows, formatVnDate } from "@/lib/opening-balance/sheet"
 import { readWorkbook } from "@/lib/opening-balance/file"
 import { commitPlan, loadForKind, type LoadResult } from "@/lib/opening-balance/io"
+import { errorMessage } from "@/lib/errors"
 
 const KIND_LABEL: Record<Kind, string> = {
   customer: "Khách hàng",
@@ -77,7 +78,7 @@ export default function OpeningBalancesPage() {
     try {
       setData(await loadForKind(kind, orgId))
     } catch (e) {
-      toast({ title: "Không nạp được dữ liệu", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Không nạp được dữ liệu", description: errorMessage(e), variant: "destructive" })
       setData(null)
     } finally {
       setLoading(false)
@@ -112,7 +113,7 @@ export default function OpeningBalancesPage() {
       setPlan(p)
       setReviewed(null)
     } catch (e) {
-      toast({ title: "Không đọc được file", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Không đọc được file", description: errorMessage(e), variant: "destructive" })
     }
   }
 
@@ -152,7 +153,7 @@ export default function OpeningBalancesPage() {
       if (fileRef.current) fileRef.current.value = ""
       await reload()
     } catch (e) {
-      toast({ title: "Lỗi khi ghi", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi khi ghi", description: errorMessage(e), variant: "destructive" })
     } finally {
       setCommitting(false)
     }

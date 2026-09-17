@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
 import type { User, Role } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const ROLE_OPTIONS: Role[] = ["owner", "manager", "accountant", "sales", "warehouse", "driver"]
 
@@ -143,7 +144,7 @@ export default function UserDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

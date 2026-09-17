@@ -24,6 +24,7 @@ import { PrintButton } from "@/components/ui/print-button"
 import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import type { StockEntry, StockEntryLine } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function StockEntryDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -358,7 +359,7 @@ export default function StockEntryDetailPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {
@@ -379,7 +380,7 @@ export default function StockEntryDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -394,7 +395,7 @@ export default function StockEntryDetailPage() {
       toast({ title: "Đã xóa phiếu kho" })
       router.push("/inventory/entries")
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
       setActionLoading(false)
     }
   }

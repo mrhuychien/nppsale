@@ -24,6 +24,7 @@ import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200
 import {
   Wallet, CheckCircle2, AlertTriangle, Banknote, Printer, ArrowRight,
 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 type SettleLine = {
   id: string
@@ -391,7 +392,7 @@ export default function DeliverySettlePage() {
         router.push(`/finance/cash-receipts/${receiptId}`)
       }
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setSubmitting(false)
     }

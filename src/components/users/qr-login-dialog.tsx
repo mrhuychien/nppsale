@@ -21,6 +21,7 @@ import {
   QrCode as QrIcon,
   Check,
 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 interface QrLoginDialogProps {
   userId: string
@@ -67,7 +68,7 @@ export function QrLoginDialog({
         issuedAt: data.issuedAt,
       })
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -86,7 +87,7 @@ export function QrLoginDialog({
       setState({ token: data.token, loginUrl: data.loginUrl, issuedAt: data.issuedAt })
       toast({ title: "Đã phát mã QR mới", description: "Mã QR cũ (nếu có) đã hết hiệu lực." })
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -101,7 +102,7 @@ export function QrLoginDialog({
       setState({ token: null, loginUrl: null, issuedAt: null })
       toast({ title: "Đã thu hồi mã QR", description: "Nhân viên không thể quét để đăng nhập nữa." })
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setBusy(false)
     }

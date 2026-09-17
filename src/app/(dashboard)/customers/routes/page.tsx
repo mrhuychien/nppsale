@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { Plus, Pencil, Trash2, Route, Info } from "lucide-react"
 import type { SalesRoute } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function SalesRoutesPage() {
   const { loading: authLoading } = useRoleGuard("customers")
@@ -170,7 +171,7 @@ export default function SalesRoutesPage() {
       toast({ title: `Đã xóa tuyến ${r.code}` })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setDeleting(null)
     }

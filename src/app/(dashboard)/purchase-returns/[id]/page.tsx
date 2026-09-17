@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Send, Trash2, ExternalLink, Pencil } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const STATUS_LABEL: Record<string, { label: string; variant: "secondary" | "success" | "warning" }> = {
   draft: { label: "Nháp", variant: "warning" },
@@ -94,7 +95,7 @@ export default function PurchaseReturnDetailPage() {
       toast({ title: "Đã gửi phiếu — xuất kho + giảm công nợ NCC" })
       await load()
     } catch (err) {
-      toast({ title: "Lỗi", description: friendlyError((err as Error).message), variant: "destructive" })
+      toast({ title: "Lỗi", description: friendlyError(errorMessage(err)), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -110,7 +111,7 @@ export default function PurchaseReturnDetailPage() {
       toast({ title: "Đã xoá phiếu nháp" })
       router.push("/purchase-returns")
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setBusy(false)
     }

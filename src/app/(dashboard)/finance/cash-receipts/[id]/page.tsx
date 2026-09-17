@@ -25,6 +25,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { CashReceipt, CashReceiptLine } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -145,7 +146,7 @@ export default function CashReceiptDetailPage() {
       toast({ title: "Đã xác nhận đã nhận tiền" })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -164,7 +165,7 @@ export default function CashReceiptDetailPage() {
       toast({ title: "Đã hủy phiếu thu" })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

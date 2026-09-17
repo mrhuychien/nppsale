@@ -7,6 +7,7 @@ import { readSnapshot, deriveState } from "@/lib/misa/status"
 import { isoDateOnly } from "@/lib/misa/apply"
 import { sameInvNo, sameSeries } from "@/lib/misa/normalize"
 import type { MisaConfig } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/einvoice/reconcile-action] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -236,14 +237,14 @@ async function createFromSnapshot(admin: Admin, orgId: string, snap: Snap) {
       isInvoiceWithCode: !!cfg.misa_is_invoice_with_code,
     }
   } catch (e) {
-    return NextResponse.json({ error: `Giải mã cấu hình lỗi: ${(e as Error).message}` }, { status: 500 })
+    return NextResponse.json({ error: `Giải mã cấu hình lỗi: ${errorMessage(e)}` }, { status: 500 })
   }
 
   let raw: Record<string, unknown> | null = null
   try {
     raw = await getInvoiceByRefId(misaConfig, refId)
   } catch (e) {
-    return NextResponse.json({ error: `Gọi MISA lỗi: ${(e as Error).message}` }, { status: 502 })
+    return NextResponse.json({ error: `Gọi MISA lỗi: ${errorMessage(e)}` }, { status: 502 })
   }
   if (!raw) {
     return NextResponse.json(

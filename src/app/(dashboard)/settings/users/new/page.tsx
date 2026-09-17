@@ -19,6 +19,7 @@ import { printQrLoginCard, downloadQrLoginPng } from "@/lib/qr-print"
 import {
   Eye, EyeOff, ShieldAlert, Check, Copy, Printer, Download, UserPlus, ArrowRight,
 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 const ROLES = ["owner", "manager", "accountant", "sales", "warehouse", "driver"] as const
 
@@ -126,7 +127,7 @@ export default function NewUserPage() {
       })
       toast({ title: "Đã tạo nhân viên", description: `${fullName} (${ROLE_LABELS[role] || role})` })
     } catch (err) {
-      toast({ title: "Lỗi", description: (err as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setSubmitting(false)
     }

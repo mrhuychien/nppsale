@@ -6,6 +6,7 @@ import { applyMisaSnapshot, type BookInvoice } from "@/lib/misa/apply"
 import { markOriginalReplaced } from "@/lib/misa/mark-replaced"
 import { requireCronSecret } from "@/lib/misa/cron-auth"
 import type { MisaConfig } from "@/lib/misa/types"
+import { errorMessage } from "@/lib/errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/einvoice/sync] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/einvoice/sync] fatal:", err)
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
@@ -96,7 +97,7 @@ async function handle(req: Request) {
     } catch (e) {
       // Sai EINVOICE_ENC_KEY chẳng hạn. Một org hỏng không được kéo theo
       // các org còn lại.
-      report.errors.push({ org_id: cfg.org_id, message: `Giải mã cấu hình lỗi: ${(e as Error).message}` })
+      report.errors.push({ org_id: cfg.org_id, message: `Giải mã cấu hình lỗi: ${errorMessage(e)}` })
       continue
     }
 
@@ -221,7 +222,7 @@ async function handle(req: Request) {
         report.errors.push({
           org_id: cfg.org_id,
           invoice_id: inv.id,
-          message: (e as Error).message,
+          message: errorMessage(e),
         })
       }
     }

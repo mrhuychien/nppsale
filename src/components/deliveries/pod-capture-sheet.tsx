@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { prepareImage } from "@/lib/images/prepare"
+import { errorMessage } from "@/lib/errors"
 
 /** Bucket ảnh POD — tạo ở migration 101, cùng khuôn với `visit-photos`. */
 const BUCKET = "pod-photos"
@@ -175,7 +176,7 @@ export function PodCaptureSheet({
       // phải mời họ ký lại.
       toast({
         title: "Chưa lưu được",
-        description: err instanceof Error ? err.message : "Có lỗi xảy ra",
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

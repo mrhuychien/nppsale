@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { RETURN_REASONS } from "@/lib/constants"
 import type { Customer } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function NewReturnPage() {
   const { user } = useAuth()
@@ -62,7 +63,7 @@ export default function NewReturnPage() {
       toast({ title: "Đã tạo phiếu trả hàng" })
       router.push("/returns")
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setLoading(false)

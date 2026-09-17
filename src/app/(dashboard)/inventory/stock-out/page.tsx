@@ -51,6 +51,7 @@ import type {
   SalesOrder,
   SalesOrderLine,
 } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 type OrderWithRelations = SalesOrder & {
   customer?: Customer
@@ -741,7 +742,7 @@ export default function StockOutPage() {
       clearSelection()
       router.push(`/inventory/entries/${stockEntry.id}`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
+      const message = errorMessage(err)
       toast({
         title: "Lỗi",
         description: message,

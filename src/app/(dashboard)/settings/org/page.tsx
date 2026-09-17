@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { errorMessage } from "@/lib/errors"
 
 export default function OrgSettingsPage() {
   const { loading: authLoading } = useRoleGuard("settings")
@@ -45,7 +46,7 @@ export default function OrgSettingsPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: (err as Error).message,
+        description: errorMessage(err),
         variant: "destructive",
       })
     } finally {

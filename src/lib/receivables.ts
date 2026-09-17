@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { recomputeReceivableForOrder } from "@/lib/returns"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * Ensure a receivable exists for the given order. The amount is the order
@@ -27,7 +28,7 @@ export async function ensureReceivableForOrder(
     try {
       await recomputeReceivableForOrder(supabase, orderId)
     } catch (err) {
-      return { created: false, error: (err as Error).message }
+      return { created: false, error: errorMessage(err) }
     }
     return { created: false }
   }
@@ -35,7 +36,7 @@ export async function ensureReceivableForOrder(
   try {
     await recomputeReceivableForOrder(supabase, orderId)
   } catch (err) {
-    return { created: false, error: (err as Error).message }
+    return { created: false, error: errorMessage(err) }
   }
   return { created: true }
 }

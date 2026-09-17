@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/utils"
 import { PROMOTION_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Power, PowerOff } from "lucide-react"
 import type { Promotion } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function PromotionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,7 +75,7 @@ export default function PromotionDetailPage() {
       setToggleOpen(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -89,7 +90,7 @@ export default function PromotionDetailPage() {
       toast({ title: "Đã xóa chương trình khuyến mãi" })
       router.push("/promotions")
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -113,7 +114,7 @@ export default function PromotionDetailPage() {
       setEditMode(false)
       fetchData()
     } catch (error) {
-      toast({ title: "Lỗi", description: (error as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }

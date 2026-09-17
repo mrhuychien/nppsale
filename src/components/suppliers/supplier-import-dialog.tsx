@@ -17,6 +17,7 @@ import {
   TEMPLATE_SUPPLIER_SAMPLE_ROWS,
   type ParsedSupplierRow,
 } from "@/lib/suppliers/import-parse"
+import { errorMessage } from "@/lib/errors"
 
 interface SupplierImportDialogProps {
   open: boolean
@@ -191,7 +192,7 @@ export function SupplierImportDialog({ open, onOpenChange, onImported }: Supplie
       onImported?.()
       handleClose(false)
     } catch (e) {
-      toast({ title: "Lỗi nhập NCC", description: (e as Error).message, variant: "destructive" })
+      toast({ title: "Lỗi nhập NCC", description: errorMessage(e), variant: "destructive" })
     } finally {
       setImporting(false)
     }

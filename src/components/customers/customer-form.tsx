@@ -16,6 +16,7 @@ import { PAYMENT_TERMS } from "@/lib/constants"
 import { WARDS_HAI_PHONG } from "@/lib/constants/wards-hai-phong"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
 import type { Customer, CustomerGroup } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface CustomerFormProps {
   customer?: Customer
@@ -145,16 +146,38 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
     setLoading(true)
 
     try {
-      // Check duplicate phone
+      /**
+       * Kiểm trùng số điện thoại TRƯỚC khi ghi — chỉ để báo sớm cho đẹp.
+       *
+       * ⚠ PHÉP KIỂM NÀY KHÔNG ĐÁNG TIN, VÀ ĐÓ LÀ CHUYỆN BÌNH THƯỜNG. Nó
+       * chạy qua RLS: NVBH chỉ thấy khách ĐƯỢC PHÂN CÔNG, nên một khách
+       * trùng số do người khác phụ trách sẽ trả về 0 dòng và phép kiểm nói
+       * "không trùng". Thứ chặn thật là ràng buộc `UNIQUE(org_id, phone)`
+       * dưới database, và `errorMessage` dịch lỗi 23505 đó thành câu giải
+       * thích đúng hoàn cảnh ("khách này do nhân viên khác phụ trách").
+       *
+       * Vậy nên ở đây KHÔNG được coi "đọc hỏng" là "không trùng" rồi đi
+       * tiếp trong im lặng — nói ra, rồi vẫn để database phán.
+       */
       if (!customer || customer.phone !== form.phone) {
         const { data: existing, error: existingErr } = await supabase
           .from("customers")
           .select("id")
           .eq("phone", form.phone)
           .limit(1)
-        if (existingErr) console.error("[customers/customer-form] truy vấn lỗi:", existingErr.message)
+        if (existingErr) {
+          console.error("[customers/customer-form] truy vấn lỗi:", existingErr.message)
+          toast({
+            title: "Chưa kiểm được trùng số điện thoại",
+            description: `${errorMessage(existingErr)} — vẫn thử lưu, nếu trùng thì hệ thống sẽ báo.`,
+          })
+        }
         if (existing && existing.length > 0) {
-          toast({ title: "Lỗi", description: "Số điện thoại đã tồn tại", variant: "destructive" })
+          toast({
+            title: "Số điện thoại đã tồn tại",
+            description: `Đã có khách hàng dùng số ${form.phone}. Tìm lại trong danh sách khách trước khi tạo mới.`,
+            variant: "destructive",
+          })
           setLoading(false)
           return
         }
@@ -243,8 +266,13 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
       router.push("/customers")
       router.refresh()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Có lỗi xảy ra"
-      toast({ title: "Lỗi", description: message, variant: "destructive" })
+      // ⚠ Tiêu đề phải nói THAO TÁC NÀO hỏng. "Lỗi" một mình thì người
+      // dùng không biết mình vừa mất cái gì — bản nháp còn hay đã bay.
+      toast({
+        title: customer ? "Không cập nhật được khách hàng" : "Không tạo được khách hàng",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }

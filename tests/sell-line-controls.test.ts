@@ -34,7 +34,11 @@ function enclosingRowOf(src: string, pos: number): string | null {
     const start = open[k]
     const tagEnd = src.indexOf(">", start)
     const tag = src.slice(start, tagEnd + 1)
-    if (!/justify-between/.test(tag)) continue
+    // ⚠ "Hàng ngang" = thẻ flex KHÔNG phải cột. Bản đầu đòi có
+    // `justify-between`; đổi bố cục sang `flex items-end gap-2` là phép tìm
+    // trả về `null` và chốt đỏ vì lý do sai — nó tưởng không có hàng nào,
+    // chứ không phải hàng đó có vấn đề.
+    if (!/\bflex\b/.test(tag) || /flex-col/.test(tag)) continue
     // Tìm thẻ đóng khớp.
     let depth = 0
     const scan = /<div\b|<\/div>/g
@@ -147,10 +151,19 @@ describe("Màn hàng trả không tràn ngang", () => {
     expect(RET).not.toContain('"h-9 rounded-lg px-3 text-[13px] font-extrabold"')
   })
 
-  /** Bộ đếm không được co lại méo mó khi chữ bên trái dài. */
-  it("bộ đếm giữ nguyên bề ngang, phần chữ mới là phần co", () => {
+  /**
+   * Bộ đếm không được co lại méo mó khi khối bên cạnh dài ra.
+   *
+   * Khối cạnh nó nay là Ô GIÁ — nó phải là phần CO, còn bộ đếm giữ nguyên
+   * 164px. Ngược lại thì gõ một con số dài là bộ đếm bị bóp và bấm không
+   * tới nút +.
+   */
+  it("bộ đếm giữ nguyên bề ngang, ô giá mới là phần co", () => {
     expect(RET).toContain('<div className="w-[164px] shrink-0">')
     expect(RET).not.toContain('w-[152px]')
-    expect(RET).toContain('className="min-w-0 truncate')
+    const row = enclosingRowOf(RET, RET.indexOf("<Stepper"))
+    expect(row, "không tìm được hàng chứa bộ đếm").toBeTruthy()
+    expect(row).toContain('className="min-w-0 flex-1"')
+    expect(row).toContain("<ReturnPriceInput")
   })
 })

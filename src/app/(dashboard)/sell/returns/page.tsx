@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, Search } from "lucide-react"
+import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useAuth } from "@/hooks/use-auth"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { Stepper } from "@/components/sell/line-edit-sheet"
 import { ReturnLineSheet } from "@/components/sell/return-line-sheet"
+import { ReturnPriceInput } from "@/components/sell/return-price-input"
 import { RETURN_REASONS, returnReasonLabel, returnPriceViolation } from "@/lib/sell/returns"
 import { unitPriceFor } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
@@ -156,11 +157,15 @@ export default function SellReturnsPage() {
                       onClick={() => setEditIdx(i)}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <span className="block text-[15px] font-bold leading-snug">
-                        {p?.name ?? "—"}
+                      <span className="flex items-start gap-1 text-[15px] font-bold leading-snug">
+                        <span className="min-w-0 flex-1">{p?.name ?? "—"}</span>
+                        {/* ⚠ Mũi tên là thứ DUY NHẤT nói rằng dòng này bấm
+                            được. Thiếu nó thì tên hàng trông y hệt chữ
+                            thường và không ai chạm vào. */}
+                        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant" />
                       </span>
                       <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
-                        {returnReasonLabel(cart.returnReason)} · {formatCurrency(r.price)}/{r.unit}
+                        {returnReasonLabel(cart.returnReason)} · đơn vị {r.unit}
                         {priceEdited(r) && (
                           <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-px font-extrabold text-primary">
                             Giá sửa
@@ -219,17 +224,45 @@ export default function SellReturnsPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-[15px] font-extrabold tabular-data">
-                      {r.isExchange ? (
-                        <span className="text-on-surface-variant">Đổi hàng · không trừ tiền</span>
-                      ) : (
-                        <>−{formatCurrency(Math.round(r.qty * r.price * (1 + (r.vatRate || 0))))}</>
-                      )}
-                    </span>
+                  {/* ⚠ ĐƠN GIÁ NẰM THẲNG Ở ĐÂY, ngang hàng với số lượng.
+                      Giấu nó sau một cú chạm vào tên hàng thì người dùng
+                      báo "không sửa được giá" — tính năng có, đường vào thì
+                      không ai thấy. */}
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
+                        Đơn giá
+                      </span>
+                      <ReturnPriceInput
+                        price={r.price}
+                        disabled={!canEditPrice}
+                        bad={priceBadOf(r)}
+                        onChange={(price) => cart.patchReturnLine(i, { price })}
+                      />
+                    </div>
                     <div className="w-[164px] shrink-0">
+                      <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
+                        Số lượng
+                      </span>
                       <Stepper qty={r.qty} onChange={(v) => cart.setReturnQty(i, v)} />
                     </div>
+                  </div>
+
+                  {!canEditPrice && (
+                    <p className="text-xs font-semibold text-on-surface-variant">
+                      Bạn không có quyền sửa giá — báo quản lý nếu cần đổi.
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-on-surface-variant">
+                      {r.isExchange ? "Đổi hàng · không trừ tiền" : "Trừ vào đơn"}
+                    </span>
+                    <span className="text-[17px] font-extrabold tabular-data">
+                      {r.isExchange
+                        ? "—"
+                        : `−${formatCurrency(Math.round(r.qty * r.price * (1 + (r.vatRate || 0))))}`}
+                    </span>
                   </div>
                 </div>
               )

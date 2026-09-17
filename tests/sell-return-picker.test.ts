@@ -104,6 +104,56 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
   })
 })
 
+describe("Sửa giá dòng trả: ô giá phải NHÌN THẤY được", () => {
+  const PRICE_INPUT = code(read("src/components/sell/return-price-input.tsx"))
+
+  /**
+   * ⚠ NGƯỜI DÙNG BÁO HAI LẦN LIỀN "vẫn không sửa được giá". Tính năng có
+   * từ lượt trước, nhưng đường vào là một cú chạm vào TÊN HÀNG — mà tên
+   * hàng trông y hệt chữ thường: không viền, không mũi tên, không nhãn.
+   * Ô số lượng ngay cạnh thì hiện rõ, nên giá cũng phải hiện rõ như thế.
+   */
+  it("mỗi dòng trả có ô nhập giá ngay trên dòng", () => {
+    expect(RET).toContain("<ReturnPriceInput")
+    expect(RET).toContain("onChange={(price) => cart.patchReturnLine(i, { price })}")
+    // Ngang hàng với ô số lượng, không nằm ở đâu khác.
+    const i = RET.indexOf("<ReturnPriceInput")
+    const j = RET.indexOf("<Stepper qty={r.qty}")
+    expect(i, "không tìm thấy ô giá").toBeGreaterThan(0)
+    expect(j, "không tìm thấy ô số lượng").toBeGreaterThan(0)
+    expect(Math.abs(i - j), "ô giá và ô số lượng không cùng một hàng").toBeLessThan(900)
+  })
+
+  it("ô giá có nhãn, không phải một ô trống không tên", () => {
+    expect(RET).toContain("Đơn giá")
+    expect(RET).toContain("Số lượng")
+  })
+
+  /** Dòng bấm được thì phải TRÔNG như bấm được. */
+  it("dòng mở được phần sửa thì có mũi tên", () => {
+    expect(RET).toContain("<ChevronRight")
+    expect(RET).toContain("onClick={() => setEditIdx(i)}")
+  })
+
+  /**
+   * ⚠ Giữ chuỗi riêng, không ép về số sau mỗi phím. Ép thì xoá hết chữ số
+   * là ô tự nhảy về 0 và không gõ lại được — lỗi đã gặp ở ô giá dòng bán.
+   */
+  it("ô giá gõ được, xoá trắng không nhảy về 0", () => {
+    expect(PRICE_INPUT).toContain("const [text, setText] = useState(String(price))")
+    // ⚠ Trong chuỗi nháy đơn của JS, `\D` bị đọc thành `D` — phải nhân đôi
+    // dấu chéo ngược, nếu không chốt này so với một chuỗi KHÔNG tồn tại.
+    expect(PRICE_INPUT).toContain('const digits = e.target.value.replace(/\\D/g, "")')
+    // Giá đổi từ nơi khác (đổi đơn vị) thì ô phải theo.
+    expect(PRICE_INPUT).toContain("useEffect(() => setText(String(price)), [price])")
+  })
+
+  it("giá vượt trần thì ô tô đỏ ngay tại chỗ", () => {
+    expect(RET).toContain("bad={priceBadOf(r)}")
+    expect(PRICE_INPUT).toContain('bad ? "border-error text-error"')
+  })
+})
+
 describe("Sửa giá dòng trả theo ĐÚNG quyền của người dùng", () => {
   const SHEET = code(read("src/components/sell/return-line-sheet.tsx"))
 
@@ -122,6 +172,10 @@ describe("Sửa giá dòng trả theo ĐÚNG quyền của người dùng", () =
   it("không có quyền thì ô giá khoá lại và nói vì sao", () => {
     expect(SHEET).toContain("disabled={!canEditPrice}")
     expect(SHEET).toContain("Bạn không có quyền sửa giá")
+    // ⚠ Cả ô TRÊN DÒNG nữa, không chỉ ô trong tấm trượt — khoá một chỗ mà
+    // mở chỗ kia thì lời khoá chỉ là trang trí.
+    expect(RET).toContain("disabled={!canEditPrice}")
+    expect(RET).toContain("{!canEditPrice && (")
   })
 })
 

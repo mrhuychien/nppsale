@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MoneyInput } from "@/components/ui/money-input"
 import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -69,6 +69,18 @@ export function InvoiceEditor({
   const [notes, setNotes] = useState("")
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  /**
+   * Hàng đổi / trả kèm đơn — để hiện khoản trừ ngay tại màn soạn hóa đơn.
+   *
+   * ⚠ NGƯỜI BẤM "XUẤT HÀNG" PHẢI THẤY SỐ KHÁCH THẬT SỰ PHẢI TRẢ. Từ mig
+   *   133, khoản trừ hàng trả đi cùng hóa đơn và vào công nợ NGAY khi ghi
+   *   sổ. Màn này chỉ hiện "Tổng cộng" là người xuất hàng đọc cho khách
+   *   một con số cao hơn số sẽ ghi vào sổ, và khách trả dư.
+   */
+  const [retCredit, setRetCredit] = useState(0)
+  const [retLines, setRetLines] = useState<
+    Array<{ id: string; name: string; qty: number; unit: string; credit: number; isExchange: boolean }>
+  >([])
   const [catalog, setCatalog] = useState<PricedProduct[]>([])
   const [term, setTerm] = useState("")
   const [addUnit, setAddUnit] = useState<Record<string, string>>({})
@@ -92,6 +104,52 @@ export function InvoiceEditor({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, reissueOf?.invoiceId])
+
+  /**
+   * Đọc hàng đổi / trả còn hiệu lực của đơn.
+   *
+   * ⚠ CHỈ PHIẾU CÒN HIỆU LỰC (`status <> 'cancelled'`). Phiếu đã huỷ
+   *   không trừ gì; hiện nó ở đây là báo một khoản giảm không có thật.
+   *
+   * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG. Đây là phần bổ sung;
+   *   ném lỗi ở đây là chặn cả việc xuất hàng vì một khối thông tin.
+   */
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from("returns")
+      .select(
+        "id, status, credit_note_amount, lines:return_lines(id, unit_name, quantity, line_total, is_exchange, product:products(name))"
+      )
+      .eq("order_id", orderId)
+      .neq("status", "cancelled")
+      .then(({ data }) => {
+        if (cancelled) return
+        const rs = ((data as unknown) as Array<{
+          id: string
+          credit_note_amount: number | null
+          lines?: Array<{
+            id: string; unit_name: string; quantity: number; line_total: number
+            is_exchange?: boolean | null; product?: { name?: string | null } | null
+          }> | null
+        }>) ?? []
+        setRetCredit(rs.reduce((s2, r) => s2 + Math.max(0, Number(r.credit_note_amount || 0)), 0))
+        setRetLines(
+          rs.flatMap((r) =>
+            (r.lines ?? []).map((l) => ({
+              id: l.id,
+              name: l.product?.name || "Sản phẩm đã xoá",
+              qty: Number(l.quantity) || 0,
+              unit: l.unit_name,
+              credit: l.is_exchange ? 0 : Math.max(0, Number(l.line_total || 0)),
+              isExchange: l.is_exchange === true,
+            }))
+          )
+        )
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId])
 
   /**
    * ⚠ DANH MỤC NẠP NỀN, KHÔNG CHẶN MÀN. Người dùng vào đây để xuất phần
@@ -405,6 +463,48 @@ export function InvoiceEditor({
             </CardContent>
           </Card>
 
+          {/*
+            HÀNG ĐỔI / TRẢ KÈM ĐƠN — liệt kê ngay tại màn xuất hàng.
+            ⚠ NÓI RÕ DÒNG NÀO TRỪ TIỀN, DÒNG NÀO KHÔNG. Hàng đổi lấy hàng
+              mới ra khỏi kho và KHÔNG trừ tiền; trộn chung một danh sách
+              không nhãn là người xuất hàng cộng nhầm số khách phải trả.
+          */}
+          {retLines.length > 0 && (
+            <Card className="border-l-4 border-l-amber-400">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  Hàng đổi / trả kèm đơn ({retLines.length})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Khoản trừ vào công nợ ngay khi xuất hóa đơn. Hàng nhập lại kho khi phiếu
+                  trả được hoàn thành.
+                </p>
+              </CardHeader>
+              <CardContent className="grid gap-1.5">
+                {retLines.map((l) => (
+                  <div key={l.id} className="flex items-baseline gap-2 text-[13px]">
+                    <span
+                      className={
+                        l.isExchange
+                          ? "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-primary ring-1 ring-primary/30"
+                          : "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-[#b54708] ring-1 ring-[#b54708]/30"
+                      }
+                    >
+                      {l.isExchange ? "ĐỔI" : "TRẢ"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-semibold">{l.name}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {l.qty} {l.unit}
+                    </span>
+                    <span className="w-[92px] shrink-0 text-right font-semibold tabular-nums">
+                      {l.isExchange ? "không trừ" : `−${formatCurrency(l.credit)}`}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="inv-note" className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -429,6 +529,23 @@ export function InvoiceEditor({
                 <dt>Tổng cộng</dt>
                 <dd className="tabular-nums">{formatCurrency(totals.total)}</dd>
               </div>
+              {/* ⚠ KHOẢN TRỪ HÀNG TRẢ VÀO CÔNG NỢ NGAY KHI GHI SỔ (mig 133).
+                  Không hiện ở đây thì người xuất hàng đọc cho khách con số
+                  "Tổng cộng" — cao hơn số sẽ ghi vào sổ đúng bằng khoản trừ. */}
+              {retCredit > 0 && (
+                <>
+                  <div className="flex justify-between text-[#b54708]">
+                    <dt>Trừ hàng trả</dt>
+                    <dd className="tabular-nums">−{formatCurrency(retCredit)}</dd>
+                  </div>
+                  <div className="flex justify-between border-t pt-1 text-base font-extrabold">
+                    <dt>Khách phải trả</dt>
+                    <dd className="tabular-nums">
+                      {formatCurrency(Math.max(0, totals.total - retCredit))}
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </div>
 
@@ -439,7 +556,12 @@ export function InvoiceEditor({
               <div className="min-w-0 flex-1">
                 <div className="text-xs text-muted-foreground">{picked.length} dòng</div>
                 <div className="truncate text-lg font-bold tabular-nums">
-                  {formatCurrency(totals.total)}
+                  {formatCurrency(Math.max(0, totals.total - retCredit))}
+                  {retCredit > 0 && (
+                    <span className="ml-1.5 text-xs font-semibold text-[#b54708]">
+                      đã trừ {formatCurrency(retCredit)} hàng trả
+                    </span>
+                  )}
                 </div>
               </div>
               <Button variant="outline" onClick={() => router.push(backHref)} disabled={saving}>

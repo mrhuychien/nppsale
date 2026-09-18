@@ -46,6 +46,18 @@ export interface SalesInvoiceLine {
   lineTotal: number
 }
 
+/** Một dòng hàng đổi / trả trên bản in. */
+export interface SalesInvoiceReturnLine {
+  id: string
+  name: string
+  unitName: string
+  quantity: number
+  unitPrice: number
+  /** Số tiền trừ vào hóa đơn. Dòng ĐỔI luôn 0 — đổi hàng không trừ tiền. */
+  credit: number
+  isExchange: boolean
+}
+
 export interface SalesInvoiceProps {
   org: { name?: string | null; address?: string | null; phone?: string | null }
   invoiceNumber: string
@@ -72,6 +84,18 @@ export interface SalesInvoiceProps {
    * gửi cơ quan thuế.
    */
   returnCredit?: number
+  /**
+   * Dòng hàng ĐỔI / TRẢ in ngay dưới bảng hàng bán.
+   *
+   * ⚠ NẰM NGOÀI "TỔNG TIỀN HÀNG". Những dòng này KHÔNG phải hàng bán;
+   * gộp vào tổng là tờ hóa đơn chứng nhận đã bán cả thứ khách vừa trả
+   * lại. Chúng đứng riêng và giải thích đúng con số ở dòng "Trừ hàng
+   * trả" bên dưới — nhờ vậy mọi số trên giấy đều cộng ra được.
+   *
+   * ⚠ NƠI GỌI TỰ QUYẾT CÓ TRUYỀN HAY KHÔNG. Hóa đơn đã phát hành điện tử
+   * thì tờ in phải khớp từng dòng với tờ đã gửi cơ quan thuế.
+   */
+  returnLines?: SalesInvoiceReturnLine[]
   /** Dòng ghi chú nhỏ dưới bảng — ví dụ nhắc số tài khoản. */
   footerNote?: string | null
 }
@@ -140,7 +164,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines, invoiceDiscount = 0,
-    total, returnCredit = 0, footerNote,
+    total, returnCredit = 0, returnLines = [], footerNote,
   } = props
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
@@ -213,6 +237,34 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               </tr>
             ))
           )}
+
+          {/*
+            HÀNG ĐỔI / TRẢ — chủ nhà chốt: ghi rõ "(Hàng đổi)" / "(Hàng
+            trả)" ngay đầu tên hàng và cộng trừ luôn trên phiếu.
+
+            ⚠ ĐÁNH SỐ TIẾP TỪ BẢNG TRÊN. Bắt đầu lại từ 1 là tờ giấy có hai
+              dòng cùng số thứ tự, và người đối chiếu đọc thành hai tờ.
+            ⚠ DÒNG ĐỔI GHI "không trừ", KHÔNG GHI 0. Số 0 trong cột tiền
+              đọc như một lỗi nhập; chữ nói rõ đổi hàng không trừ tiền.
+          */}
+          {returnLines.map((l, i) => (
+            <tr key={l.id}>
+              <td className={`${CELL} text-center`}>{rows.length + i + 1}</td>
+              <td className={CELL}>
+                <span className="font-semibold">
+                  {l.isExchange ? "(Hàng đổi) " : "(Hàng trả) "}
+                </span>
+                {l.name}
+              </td>
+              <td className={`${CELL} text-center`}>{l.unitName}</td>
+              <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
+              <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.unitPrice)}</td>
+              <td className={CELL}></td>
+              <td className={`${CELL} text-right tabular-nums`}>
+                {l.isExchange ? "không trừ" : `−${formatCurrency(l.credit)}`}
+              </td>
+            </tr>
+          ))}
 
           {/* Ba dòng tổng nằm TRONG bảng, đúng như mẫu. */}
           <tr className="font-bold">

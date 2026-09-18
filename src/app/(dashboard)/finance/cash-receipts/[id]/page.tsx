@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { hasPermission } from "@/lib/permissions"
 import { useOrg } from "@/hooks/use-org"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
@@ -52,6 +53,7 @@ type ReceiptLineWithOrder = CashReceiptLine & {
 export default function CashReceiptDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const router = useRouter()
   const { loading: authLoading } = useRoleGuard("receivables")
   const supabase = createClient()
   const { toast } = useToast()
@@ -123,6 +125,24 @@ export default function CashReceiptDetailPage() {
 
   const canConfirm =
     !!user && ["owner", "manager", "accountant"].includes(user.role) && receipt?.status === "pending"
+
+  /**
+   * HUỶ PHIẾU LÀ MỘT QUYỀN RIÊNG, KHÔNG ĐI KÈM QUYỀN XÁC NHẬN.
+   *
+   * ⚠ ĐÂY LÀ LỖI CHỦ NHÀ BÁO ("phiếu thu không có nút huỷ"). Nút huỷ
+   *   trước đây nằm BÊN TRONG khối `canConfirm`, mà `canConfirm` đòi
+   *   `status === 'pending'` — nên phiếu vừa xác nhận xong là nút biến
+   *   mất hẳn, đúng lúc người ta phát hiện thu nhầm.
+   *
+   * ⚠ BA ĐIỀU KIỆN NÀY LÀ BẢN SAO CỦA `void_cash_receipt` (mig 120,
+   *   dòng 1466-1470): có quyền `receivables.update`, và phiếu đang
+   *   'pending' hoặc 'received'. Hiện nút rộng hơn RPC là mời người dùng
+   *   bấm vào một thứ sẽ bị từ chối.
+   */
+  const canVoid =
+    !!user &&
+    hasPermission(user.role, "receivables", "update") &&
+    ["pending", "received"].includes(receipt?.status ?? "")
 
   const handleConfirm = async () => {
     if (!receipt || !user) return
@@ -395,29 +415,57 @@ export default function CashReceiptDetailPage() {
             </CardContent>
           </Card>
 
-          {canConfirm && (
-            <Card className="border-tertiary/40 bg-[#ecfdf3]/40">
-              <CardContent className="pt-6 space-y-2">
-                <Button
-                  className="w-full h-11 bg-tertiary hover:bg-tertiary/90"
-                  onClick={handleConfirm}
-                  disabled={actionLoading}
-                >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {actionLoading ? "Đang xử lý..." : "Xác nhận đã nhận tiền"}
-                </Button>
-                <p className="text-xs text-tertiary">
-                  Sau khi xác nhận, các khoản thu sẽ được đánh dấu đã đối soát (verified).
-                </p>
-                <Button
-                  variant="ghost"
-                  className="w-full text-error hover:bg-error-container"
-                  onClick={() => setVoidOpen(true)}
-                  disabled={actionLoading}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Hủy phiếu
-                </Button>
+          {(canConfirm || canVoid) && (
+            <Card className={canConfirm ? "border-tertiary/40 bg-[#ecfdf3]/40" : undefined}>
+              <CardContent className="space-y-2 pt-6">
+                {canConfirm && (
+                  <>
+                    <Button
+                      className="h-11 w-full bg-tertiary hover:bg-tertiary/90"
+                      onClick={handleConfirm}
+                      disabled={actionLoading}
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      {actionLoading ? "Đang xử lý..." : "Xác nhận đã nhận tiền"}
+                    </Button>
+                    <p className="text-xs text-tertiary">
+                      Sau khi xác nhận, các khoản thu sẽ được đánh dấu đã đối soát (verified).
+                    </p>
+                  </>
+                )}
+                {canVoid && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="w-full text-error hover:bg-error-container"
+                      onClick={() => setVoidOpen(true)}
+                      disabled={actionLoading}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Hủy phiếu
+                    </Button>
+                    {/*
+                      ⚠ NÓI RÕ VÌ SAO KHÔNG CÓ NÚT SỬA. Phiếu thu là chứng
+                        từ ĐÃ GHI VÀO SỔ công nợ: sửa tại chỗ nghĩa là đổi
+                        một con số mà các dòng nợ đã cộng theo nó, và không
+                        có dấu vết nào cho người đối chiếu cuối tháng. Huỷ
+                        thì `void_cash_receipt` hoàn lại đúng từng khoản nợ,
+                        rồi lập phiếu mới — cùng cách hóa đơn bán đang làm.
+                    */}
+                    <p className="text-xs text-muted-foreground">
+                      Phiếu thu không sửa trực tiếp được — nó đã ghi vào sổ công nợ. Ghi sai
+                      thì huỷ phiếu này (công nợ được hoàn lại đúng từng khoản) rồi lập phiếu
+                      mới.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => router.push("/finance/cash-receipts/new")}
+                    >
+                      Lập phiếu thu mới
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}

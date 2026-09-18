@@ -72,11 +72,32 @@ import { Save, HandCoins, Undo2, TriangleAlert, PiggyBank, Search } from "lucide
 interface OpenReceivable {
   id: string
   order_id: string | null
+  invoice_id: string | null
   amount: number
   paid: number
   due_date: string | null
   status: string
   order?: { order_code?: string | null } | null
+  invoice?: { invoice_code?: string | null } | null
+}
+
+/**
+ * Nhãn của một dòng công nợ.
+ *
+ * ⚠ MÃ HÓA ĐƠN TRƯỚC, MÃ ĐƠN SAU — chủ nhà nói đúng. Từ v2b mỗi HÓA ĐƠN
+ * sinh một dòng nợ, không phải mỗi đơn: một đơn xuất hai đợt có HAI dòng
+ * nợ, và cả hai đều mang cùng một mã `DH-xxxx`. Kế toán nhìn hai dòng
+ * giống hệt nhau, số tiền khác nhau, và không có cách nào biết dòng nào
+ * là đợt nào.
+ *
+ * ⚠ CÔNG NỢ ĐẦU KỲ KHÔNG GẮN CHỨNG TỪ NÀO, và đó là hợp lệ (mig 102).
+ * Nói thẳng "đầu kỳ / không gắn chứng từ" chứ đừng để trống.
+ */
+function debtLabel(r: OpenReceivable): string {
+  const inv = r.invoice?.invoice_code
+  const ord = r.order?.order_code
+  if (inv && ord) return `${inv} · ${ord}`
+  return inv || ord || "Công nợ không gắn chứng từ"
 }
 
 /**
@@ -248,7 +269,10 @@ export default function NewCashReceiptPage() {
       const [recRes, credRes, balRes] = await Promise.all([
         supabase
           .from("receivables")
-          .select("id, order_id, amount, paid, due_date, status, order:sales_orders(order_code)")
+          .select(
+            "id, order_id, invoice_id, amount, paid, due_date, status, " +
+              "order:sales_orders(order_code), invoice:sales_invoices(invoice_code)"
+          )
           .eq("customer_id", cid)
           .in("status", ["open", "partial", "overdue"])
           .order("due_date", { ascending: true, nullsFirst: false }),
@@ -634,9 +658,7 @@ export default function NewCashReceiptPage() {
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">
-                          {r.order?.order_code || "Công nợ không gắn đơn"}
-                        </p>
+                        <p className="truncate text-sm font-bold">{debtLabel(r)}</p>
                         <p className="mt-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
                           Còn nợ {formatCurrency(remaining)}
                           {r.due_date ? ` · hạn ${formatDate(r.due_date)}` : ""}

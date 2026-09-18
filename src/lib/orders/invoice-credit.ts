@@ -33,6 +33,16 @@ export interface InvoiceReturnRow {
   credit_with_invoice?: boolean | null
   created_at?: string | null
   reason?: string | null
+  /** Dòng của phiếu — chỉ nơi nào cần in mới đọc tới. */
+  lines?: Array<{
+    id: string
+    unit_name: string
+    quantity: number
+    unit_price: number
+    line_total: number
+    is_exchange?: boolean | null
+    product?: { name?: string | null } | null
+  }> | null
 }
 
 /**
@@ -42,7 +52,13 @@ export interface InvoiceReturnRow {
  * phải nói cùng một câu; ba chỗ tự xét là ba câu trả lời cho cùng một
  * phiếu, và người đọc tin chỗ nào cũng có thể sai.
  */
-export function creditCounted(r: InvoiceReturnRow): boolean {
+export function creditCounted(
+  // ⚠ CHỈ NHẬN HAI TRƯỜNG NÓ THẬT SỰ DÙNG. Bắt cả `InvoiceReturnRow` là
+  //   mọi nơi gọi phải mang theo cả `lines`, `reason`… và chỗ nào có hình
+  //   dạng hơi khác thì phải ép kiểu — ép kiểu ở đường tính tiền là chỗ
+  //   lỗi đi qua mà không ai thấy.
+  r: Pick<InvoiceReturnRow, "status"> & { credit_with_invoice?: boolean | null }
+): boolean {
   return r.credit_with_invoice === true
     ? r.status === "submitted" || r.status === "completed"
     : r.status === "completed"

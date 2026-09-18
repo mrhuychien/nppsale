@@ -20,10 +20,12 @@ import { PageHeader } from "@/components/ui/page-header"
 import { PrintButton, printWithPaper } from "@/components/ui/print-button"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import {
-  creditOnInvoice, showCreditOnPrint, type InvoiceReturnRow,
+  creditOnInvoice, creditCounted, showCreditOnPrint, type InvoiceReturnRow,
 } from "@/lib/orders/invoice-credit"
 import { Skeleton } from "@/components/ui/skeleton"
-import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
+import {
+  SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
+} from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
 
 interface InvoiceRow {
@@ -95,7 +97,10 @@ export default function SalesInvoicePrintPage() {
         .order("sort_order", { ascending: true }),
       supabase
         .from("returns")
-        .select("id, status, credit_note_amount, credit_with_invoice")
+        .select(
+          "id, status, credit_note_amount, credit_with_invoice, " +
+            "lines:return_lines(id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name))"
+        )
         .eq("invoice_id", id),
       supabase
         .from("invoices")
@@ -176,6 +181,32 @@ export default function SalesInvoicePrintPage() {
     ? creditOnInvoice(invReturns)
     : 0
 
+  /**
+   * Dòng hàng đổi / trả in kèm.
+   *
+   * ⚠ CÙNG MỘT CÁI CỔNG VỚI KHOẢN TRỪ (`showCreditOnPrint`). Hóa đơn đã
+   *   phát hành điện tử thì tờ in phải khớp từng dòng với tờ đã gửi cơ
+   *   quan thuế — in thêm mấy dòng hàng trả là hai tờ cùng một số hóa đơn
+   *   mà nội dung khác nhau.
+   *
+   * ⚠ CHỈ PHIẾU ĐÃ TRỪ VÀO CÔNG NỢ. `creditCounted` là luật chung với sổ;
+   *   in dòng trừ của một phiếu chưa trừ là tờ giấy nói khách phải trả ít
+   *   hơn số đang ghi nợ.
+   */
+  const printReturnLines: SalesInvoiceReturnLine[] = printCredit
+    ? invReturns.filter(creditCounted).flatMap((r) =>
+        (r.lines ?? []).map((l) => ({
+          id: l.id,
+          name: l.product?.name || "Sản phẩm đã xoá",
+          unitName: l.unit_name,
+          quantity: Number(l.quantity) || 0,
+          unitPrice: Number(l.unit_price) || 0,
+          credit: l.is_exchange ? 0 : Math.max(0, Number(l.line_total || 0)),
+          isExchange: l.is_exchange === true,
+        }))
+      )
+    : []
+
   const printLines: SalesInvoiceLine[] = lines.map((l) => ({
     id: l.id,
     name: l.product?.name || "—",
@@ -221,6 +252,7 @@ export default function SalesInvoicePrintPage() {
           lines={printLines}
           total={Number(inv.total) || 0}
           returnCredit={printCredit}
+          returnLines={printReturnLines}
           footerNote={
             inv.status === "posted"
               ? inv.order?.order_code

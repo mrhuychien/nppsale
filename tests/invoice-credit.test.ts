@@ -78,8 +78,8 @@ describe("khoản trừ hàng trả", () => {
 
   /** ⚠ Thiếu cột (máy chủ chưa chạy mig 133) thì rơi về luật cũ, không nổ. */
   it("thiếu cột thì coi như phiếu độc lập", () => {
-    expect(creditCounted({ id: "x", status: "submitted", credit_note_amount: 1 })).toBe(false)
-    expect(creditCounted({ id: "x", status: "completed", credit_note_amount: 1 })).toBe(true)
+    expect(creditCounted({ status: "submitted" })).toBe(false)
+    expect(creditCounted({ status: "completed" })).toBe(true)
   })
 })
 

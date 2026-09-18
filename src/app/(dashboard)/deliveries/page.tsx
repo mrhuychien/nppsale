@@ -171,6 +171,8 @@ export default function DeliveriesPage() {
   } = useListViewPrefs(
     "deliveries",
     DEFAULT_DELIVERY_COLUMNS,
+    [],
+    DELIVERY_COLUMNS,
     []
   )
   const show = (k: DeliveryColumnKey) => visibleColumns.includes(k)

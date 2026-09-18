@@ -76,7 +76,9 @@ export default function InvoicesPage() {
   } = useListViewPrefs(
     "invoices",
     DEFAULT_INVOICE_COLUMNS,
-    DEFAULT_INVOICE_FILTERS
+    DEFAULT_INVOICE_FILTERS,
+    INVOICE_COLUMNS,
+    INVOICE_FILTERS
   )
   const show = (k: InvoiceColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)

@@ -66,11 +66,28 @@ interface UseListViewPrefsResult<C extends string, F extends string> {
 export function useListViewPrefs<C extends string, F extends string>(
   viewKey: string,
   defaultColumns: readonly C[],
-  defaultFilters: readonly F[]
+  defaultFilters: readonly F[],
+  /**
+   * TOÀN BỘ danh mục cột / bộ lọc của màn — không phải danh sách bật sẵn.
+   *
+   * ⚠ ĐÂY LÀ LỖI NGƯỜI DÙNG BÁO: "chọn cột hiển thị xong tải lại lại mất
+   *   các cột đã chọn". Bản cũ lấy `defaultColumns` làm danh mục hợp lệ,
+   *   nên cột nào người dùng BẬT THÊM mà không nằm trong bộ mặc định đều
+   *   bị gạt đi lúc nạp — đúng những cột họ vừa cất công bật. Lỗi có ở
+   *   cả 16 màn dùng hook này, không riêng hai màn báo lỗi.
+   *
+   * ⚠ BẮT BUỘC, KHÔNG CHO MẶC ĐỊNH VỀ `defaultColumns`. Để mặc định là
+   *   nơi gọi quên truyền vẫn chạy, và lỗi quay lại y như cũ ở đúng màn
+   *   đó — im lặng.
+   */
+  catalogColumns: readonly { key: C }[],
+  catalogFilters: readonly { key: F }[]
 ): UseListViewPrefsResult<C, F> {
   const storageKey = `list-view:${viewKey}`
   const defaultColsRef = useRef(defaultColumns)
   const defaultFiltersRef = useRef(defaultFilters)
+  const catalogColsRef = useRef(catalogColumns.map((c) => c.key))
+  const catalogFiltersRef = useRef(catalogFilters.map((f) => f.key))
 
   const [prefs, setPrefs] = useState<ListViewPrefs<C, F>>(() => ({
     columns: [...defaultColumns],
@@ -88,8 +105,12 @@ export function useListViewPrefs<C extends string, F extends string>(
     try {
       const stored: StoredPrefs<C, F> = {
         ...next,
-        knownColumns: [...defaultColsRef.current],
-        knownFilters: [...defaultFiltersRef.current],
+        // ⚠ ĐÓNG DẤU DANH MỤC ĐẦY ĐỦ. Đóng dấu bộ mặc định thì mọi cột
+        //   ngoài mặc định mãi mãi bị coi là "mới", và `adoptNewKeys` bật
+        //   lại chúng sau mỗi lần nạp — người dùng tắt bao nhiêu lần cũng
+        //   thấy chúng hiện ra.
+        knownColumns: [...catalogColsRef.current],
+        knownFilters: [...catalogFiltersRef.current],
       }
       window.localStorage.setItem(storageKey, JSON.stringify(stored))
     } catch {
@@ -104,20 +125,22 @@ export function useListViewPrefs<C extends string, F extends string>(
       const raw = window.localStorage.getItem(storageKey)
       if (!raw) return
       const parsed = JSON.parse(raw) as Partial<StoredPrefs<C, F>>
-      const validCols = new Set<string>(defaultColsRef.current)
-      const validFilters = new Set<string>(defaultFiltersRef.current)
+      // ⚠ LỌC THEO DANH MỤC ĐẦY ĐỦ, không theo bộ mặc định. Xem chú thích
+      //   ở `catalogColumns`.
+      const validCols = new Set<string>(catalogColsRef.current)
+      const validFilters = new Set<string>(catalogFiltersRef.current)
       const cols = Array.isArray(parsed.columns)
         ? adoptNewKeys(
             parsed.columns.filter((c): c is C => typeof c === "string" && validCols.has(c)) as C[],
             parsed.knownColumns,
-            defaultColsRef.current
+            catalogColsRef.current
           )
         : null
       const filters = Array.isArray(parsed.filters)
         ? adoptNewKeys(
             parsed.filters.filter((f): f is F => typeof f === "string" && validFilters.has(f)) as F[],
             parsed.knownFilters,
-            defaultFiltersRef.current
+            catalogFiltersRef.current
           )
         : null
       if (cols || filters) {

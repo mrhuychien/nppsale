@@ -341,10 +341,78 @@ describe("Hook lưu tuỳ chọn cột", () => {
     expect(load.match(/adoptNewKeys\(/g)?.length).toBe(2)
   })
 
-  /** Không ghi `known` thì lần nạp sau lại coi mọi cột đã tắt là cột mới. */
-  it("khi ghi có đóng dấu danh mục hiện tại", () => {
-    expect(HOOK).toContain("knownColumns: [...defaultColsRef.current]")
-    expect(HOOK).toContain("knownFilters: [...defaultFiltersRef.current]")
+  /**
+   * Không ghi `known` thì lần nạp sau lại coi mọi cột đã tắt là cột mới.
+   *
+   * ⚠ ĐÓNG DẤU DANH MỤC ĐẦY ĐỦ, KHÔNG PHẢI BỘ MẶC ĐỊNH. Bản đầu của chốt
+   * này canh đúng hành vi HỎNG: đóng dấu bộ mặc định thì mọi cột ngoài
+   * mặc định mãi mãi bị coi là "mới", và `adoptNewKeys` bật lại chúng sau
+   * mỗi lần nạp — người dùng tắt bao nhiêu lần cũng thấy chúng hiện ra.
+   */
+  it("khi ghi có đóng dấu danh mục đầy đủ", () => {
+    expect(HOOK).toContain("knownColumns: [...catalogColsRef.current]")
+    expect(HOOK).toContain("knownFilters: [...catalogFiltersRef.current]")
+  })
+
+  /**
+   * ⚠ LỖI NGƯỜI DÙNG BÁO: "chọn cột hiển thị xong tải lại lại mất các cột
+   * đã chọn."
+   *
+   * Bản cũ lấy `defaultColumns` — DANH SÁCH BẬT SẴN — làm danh mục hợp
+   * lệ. Nên cột nào người dùng BẬT THÊM mà không nằm trong bộ mặc định
+   * đều bị gạt đi lúc nạp: đúng những cột họ vừa cất công bật. Lỗi có ở
+   * CẢ 16 màn dùng hook này, không riêng hai màn được báo.
+   */
+  it("lọc theo danh mục ĐẦY ĐỦ, không theo bộ mặc định", () => {
+    const i = HOOK.indexOf("const raw = window.localStorage.getItem")
+    expect(i).toBeGreaterThan(0)
+    const load = HOOK.slice(i, HOOK.indexOf("}, [storageKey", i))
+    expect(load).toContain("new Set<string>(catalogColsRef.current)")
+    expect(load).toContain("new Set<string>(catalogFiltersRef.current)")
+    expect(load, "còn lọc theo bộ mặc định — cột bật thêm sẽ mất khi tải lại")
+      .not.toContain("new Set<string>(defaultColsRef.current)")
+  })
+
+  /**
+   * ⚠ DANH MỤC LÀ THAM SỐ BẮT BUỘC. Cho nó mặc định về `defaultColumns`
+   * là nơi gọi quên truyền vẫn chạy, và lỗi quay lại y như cũ ở đúng màn
+   * đó — im lặng.
+   */
+  it("danh mục là tham số bắt buộc, không có mặc định", () => {
+    expect(HOOK).toContain("catalogColumns: readonly { key: C }[]")
+    expect(HOOK).toContain("catalogFilters: readonly { key: F }[]")
+    expect(HOOK).not.toMatch(/catalogColumns[^,)]*=\s*defaultColumns/)
+  })
+
+  /**
+   * ⚠ MỌI MÀN PHẢI TRUYỀN DANH MỤC. Một màn quên là lỗi quay lại ở đúng
+   * màn đó, và không ai biết cho tới khi người dùng báo.
+   */
+  it("cả 16 màn đều truyền đủ năm tham số", () => {
+    const files = [
+      "commissions/policies", "customers", "deliveries", "inventory/batches",
+      "inventory/entries", "invoices", "orders", "payables", "products",
+      "promotions", "purchase-returns", "receivables", "returns",
+      "sales-invoices", "settings/users", "suppliers",
+    ]
+    for (const f of files) {
+      const src = read(`src/app/(dashboard)/${f}/page.tsx`)
+      const i = src.indexOf("useListViewPrefs(")
+      expect(i, `${f}: không còn gọi useListViewPrefs`).toBeGreaterThan(-1)
+      const call = src.slice(i, src.indexOf(")", src.indexOf("show =", i) > -1 ? i : i) + 1)
+      // Đếm dấu phẩy ở mức ngoài cùng của lời gọi: 5 tham số = 4 dấu phẩy.
+      const args = src.slice(i + "useListViewPrefs(".length)
+      let depth = 0
+      let commas = 0
+      for (const ch of args) {
+        if (ch === "(" || ch === "[" || ch === "{") depth++
+        else if (ch === ")" && depth === 0) break
+        else if (ch === ")" || ch === "]" || ch === "}") depth--
+        else if (ch === "," && depth === 0) commas++
+      }
+      expect(commas, `${f}: thiếu danh mục cột/bộ lọc`).toBe(4)
+      expect(call.length).toBeGreaterThan(0)
+    }
   })
 
   /**

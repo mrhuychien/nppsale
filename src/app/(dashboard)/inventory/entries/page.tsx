@@ -71,7 +71,9 @@ export default function StockEntriesPage() {
   } = useListViewPrefs(
     "stock-entries",
     DEFAULT_STOCK_ENTRY_COLUMNS,
-    DEFAULT_STOCK_ENTRY_FILTERS
+    DEFAULT_STOCK_ENTRY_FILTERS,
+    STOCK_ENTRY_COLUMNS,
+    STOCK_ENTRY_FILTERS
   )
   const show = (k: StockEntryColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: StockEntryFilterKey) => activeFilters.includes(k)

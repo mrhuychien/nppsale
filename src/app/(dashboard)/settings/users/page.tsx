@@ -43,7 +43,7 @@ export default function UsersPage() {
     columns: visibleColumns,
     setColumns,
     resetColumns,
-  } = useListViewPrefs("settings-users", DEFAULT_USER_COLUMNS, [])
+  } = useListViewPrefs("settings-users", DEFAULT_USER_COLUMNS, [], USER_COLUMNS, [])
   const show = (k: UserColumnKey) => visibleColumns.includes(k)
 
   const fetchUsers = useCallback(async () => {

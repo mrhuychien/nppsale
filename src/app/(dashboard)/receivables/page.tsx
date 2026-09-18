@@ -68,7 +68,7 @@ export default function ReceivablesPage() {
     columns: visibleColumns,
     setColumns,
     resetColumns,
-  } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [])
+  } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [], RECEIVABLE_COLUMNS, [])
   const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
 
   // Tổng công nợ + phân nhóm tuổi nợ: một lời gọi, Postgres cộng trên TOÀN

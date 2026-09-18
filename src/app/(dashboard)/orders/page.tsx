@@ -215,7 +215,9 @@ export default function OrdersPage() {
   } = useListViewPrefs(
     "orders",
     DEFAULT_ORDER_COLUMNS,
-    DEFAULT_ORDER_FILTERS
+    DEFAULT_ORDER_FILTERS,
+    ORDER_COLUMNS,
+    ORDER_FILTERS
   )
   const show = (k: OrderColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: OrderFilterKey) => activeFilters.includes(k)

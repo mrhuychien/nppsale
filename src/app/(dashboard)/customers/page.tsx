@@ -92,7 +92,9 @@ export default function CustomersPage() {
   } = useListViewPrefs(
     "customers",
     DEFAULT_CUSTOMER_COLUMNS,
-    DEFAULT_CUSTOMER_FILTERS
+    DEFAULT_CUSTOMER_FILTERS,
+    CUSTOMER_COLUMNS,
+    CUSTOMER_FILTERS
   )
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])

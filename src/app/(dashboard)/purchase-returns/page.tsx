@@ -55,6 +55,8 @@ export default function PurchaseReturnsPage() {
   } = useListViewPrefs(
     "purchase-returns",
     DEFAULT_PURCHASE_RETURN_COLUMNS,
+    [],
+    PURCHASE_RETURN_COLUMNS,
     []
   )
   const show = (k: PurchaseReturnColumnKey) => visibleColumns.includes(k)

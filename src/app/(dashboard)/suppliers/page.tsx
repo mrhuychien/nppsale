@@ -73,7 +73,9 @@ export default function SuppliersPage() {
   } = useListViewPrefs(
     "suppliers",
     DEFAULT_SUPPLIER_COLUMNS,
-    DEFAULT_SUPPLIER_FILTERS
+    DEFAULT_SUPPLIER_FILTERS,
+    SUPPLIER_COLUMNS,
+    SUPPLIER_FILTERS
   )
 
   // Distinct categories cho dropdown (load 1 lần).

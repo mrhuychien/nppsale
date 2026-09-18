@@ -38,6 +38,8 @@ export default function CommissionPoliciesPage() {
   } = useListViewPrefs(
     "commission-policies",
     DEFAULT_COMMISSION_POLICY_COLUMNS,
+    [],
+    COMMISSION_POLICY_COLUMNS,
     []
   )
   const show = (k: CommissionPolicyColumnKey) => visibleColumns.includes(k)

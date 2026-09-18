@@ -77,7 +77,9 @@ export default function ProductsPage() {
   } = useListViewPrefs(
     "products",
     DEFAULT_PRODUCT_COLUMNS,
-    DEFAULT_PRODUCT_FILTERS
+    DEFAULT_PRODUCT_FILTERS,
+    PRODUCT_COLUMNS,
+    PRODUCT_FILTERS
   )
 
   // Load distinct category list + danh sách NCC (full) cho 2 dropdown.

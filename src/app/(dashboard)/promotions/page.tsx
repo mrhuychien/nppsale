@@ -69,7 +69,9 @@ export default function PromotionsPage() {
   } = useListViewPrefs(
     "promotions",
     DEFAULT_PROMOTION_COLUMNS,
-    DEFAULT_PROMOTION_FILTERS
+    DEFAULT_PROMOTION_FILTERS,
+    PROMOTION_COLUMNS,
+    PROMOTION_FILTERS
   )
   const show = (k: PromotionColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: PromotionFilterKey) => activeFilters.includes(k)

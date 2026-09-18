@@ -56,6 +56,8 @@ export default function BatchesPage() {
   } = useListViewPrefs(
     "inventory-batches",
     DEFAULT_BATCH_COLUMNS,
+    [],
+    BATCH_COLUMNS,
     []
   )
   const show = (k: BatchColumnKey) => visibleColumns.includes(k)

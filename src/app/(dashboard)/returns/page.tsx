@@ -101,7 +101,9 @@ export default function ReturnsPage() {
   } = useListViewPrefs(
     "returns",
     DEFAULT_RETURN_COLUMNS,
-    DEFAULT_RETURN_FILTERS
+    DEFAULT_RETURN_FILTERS,
+    RETURN_COLUMNS,
+    RETURN_FILTERS
   )
   const show = (k: ReturnColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: ReturnFilterKey) => activeFilters.includes(k)

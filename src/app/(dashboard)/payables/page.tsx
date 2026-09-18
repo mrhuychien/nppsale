@@ -57,7 +57,7 @@ export default function PayablesPage() {
     columns: visibleColumns,
     setColumns,
     resetColumns,
-  } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [])
+  } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [], PAYABLE_COLUMNS, [])
   const show = (k: PayableColumnKey) => visibleColumns.includes(k)
 
   // Stats: load all UNPAID light fields cho aging summary.

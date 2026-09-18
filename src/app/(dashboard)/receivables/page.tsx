@@ -124,9 +124,6 @@ export default function ReceivablesPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const totalOutstanding = Number(summary?.total_outstanding ?? 0)
-  const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
-    switch (status) { case "current": return "success"; case "warning": return "warning"; case "overdue": return "danger"; case "critical": return "danger"; default: return "default" }
-  }
   // Ngưỡng chia nhóm nằm trong hàm SQL `receivables_summary` và PHẢI khớp
   // với getAgingStatus() ở src/lib/utils.ts — sửa một bên nhớ sửa bên kia.
   const buckets: Record<BucketKey, { amount: number; count: number }> = {
@@ -340,7 +337,6 @@ export default function ReceivablesPage() {
                      sự thật là nhà phân phối đang giữ tiền của khách. */
                   const remaining = remainingOf(r)
                   const credit = creditOf(r)
-                  const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
                   return (
                     <TableRow
                       key={r.id}

@@ -148,3 +148,18 @@ describe("màn Công nợ dùng đúng những thứ trên", () => {
     expect(fn).toContain("daysOverdueOf(dueDate)")
   })
 })
+
+describe("không để lại mã chết sau khi đổi huy hiệu", () => {
+  /**
+   * ⚠ CHỐT NÀY SINH RA TỪ MỘT LẦN TÔI ĐẨY HỎNG. Sau khi huy hiệu chuyển
+   * sang `receivableStateVariant`, hai biến `agingVariant` và `aging` ở
+   * bảng desktop không còn ai gọi — `tsc` im lặng, `npm test` xanh, và
+   * `npm run build` ĐỎ ở bước lint. Tôi đã đọc `tail -3` của build nên
+   * không thấy dòng "Failed to compile" và đẩy lên `main`.
+   */
+  it("bảng màu tuổi nợ chỉ còn một bản", () => {
+    const page = readFileSync("src/app/(dashboard)/receivables/page.tsx", "utf8")
+    expect(page).not.toContain("const agingVariant =")
+    expect(page).toContain("rowStateVariant")
+  })
+})

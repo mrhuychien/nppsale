@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Plus, Search, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -107,8 +107,15 @@ export default function NewReturnPage() {
   const [products, setProducts] = useState<ProductLite[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const [customerId, setCustomerId] = useState("")
-  const [invoiceId, setInvoiceId] = useState("")
+  /**
+   * Mở sẵn theo hóa đơn khi tới từ màn Hóa đơn bán.
+   *
+   * ⚠ ĐỌC MỘT LẦN LÚC DỰNG. Đọc mỗi lần render rồi ghi đè `useState` là
+   * người dùng đổi khách xong bị kéo ngược về khách cũ.
+   */
+  const params = useSearchParams()
+  const [customerId, setCustomerId] = useState(() => params.get("customerId") ?? "")
+  const [invoiceId, setInvoiceId] = useState(() => params.get("invoiceId") ?? "")
   const [invoices, setInvoices] = useState<InvoiceLite[]>([])
   const [invoiceLines, setInvoiceLines] = useState<InvoiceLineLite[]>([])
   const [reason, setReason] = useState("")
@@ -170,12 +177,28 @@ export default function NewReturnPage() {
         console.error("[returns/new] truy vấn hóa đơn lỗi:", error.message)
         return
       }
-      setInvoices((data as InvoiceLite[]) ?? [])
+      const rows = (data as InvoiceLite[]) ?? []
+      /**
+       * ⚠ HÓA ĐƠN ĐƯỢC CHỈ ĐÍCH DANH PHẢI CÓ MẶT, dù nó cũ hơn 20 tờ gần
+       *   nhất. Danh sách trên cắt ở 20; tới đây từ một hóa đơn tháng
+       *   trước thì ô chọn hiện trống trơn trong khi bên dưới đã nạp đúng
+       *   dòng hàng của nó — người dùng thấy một màn tự mâu thuẫn.
+       */
+      if (invoiceId && !rows.some((r) => r.id === invoiceId)) {
+        const { data: one } = await supabase
+          .from("sales_invoices")
+          .select("id, invoice_code, invoice_date, total, order_id")
+          .eq("id", invoiceId)
+          .maybeSingle()
+        if (cancelled) return
+        if (one) rows.unshift(one as InvoiceLite)
+      }
+      setInvoices(rows)
     })()
     return () => {
       cancelled = true
     }
-  }, [customerId, supabase])
+  }, [customerId, invoiceId, supabase])
 
   // Dòng hàng của đơn được chọn — nguồn gợi ý chuẩn nhất cho phiếu trả.
   useEffect(() => {

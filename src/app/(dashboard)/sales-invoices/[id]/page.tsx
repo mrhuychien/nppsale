@@ -284,6 +284,27 @@ export default function SalesInvoiceDetailPage() {
             <Printer className="mr-1.5 h-4 w-4" /> In hóa đơn
           </Link>
         </Button>
+        {/*
+          TRẢ HÀNG CỦA CHÍNH HÓA ĐƠN NÀY — lối vào thứ hai của phiếu trả
+          độc lập (chủ nhà chốt), dành cho ca "giao rồi khách không nhận
+          hết".
+
+          ⚠ CHỈ HÓA ĐƠN CÒN HIỆU LỰC. Hóa đơn đã huỷ đã hoàn hàng về kho
+            rồi; gắn phiếu trả vào nó là nhập kho lần thứ hai —
+            `complete_return` cũng từ chối bằng `INVOICE_NOT_POSTED`. Hiện
+            nút ở đó là mời người dùng đi vào một màn sẽ bị chặn.
+        */}
+        {posted && (
+          <Button variant="outline" asChild>
+            <Link
+              href={`/returns/new?invoiceId=${inv.id}${
+                inv.customer_id ? `&customerId=${inv.customer_id}` : ""
+              }`}
+            >
+              <Undo2 className="mr-1.5 h-4 w-4" /> Trả hàng
+            </Link>
+          </Button>
+        )}
         {canManage && posted && (
           <>
             <Button

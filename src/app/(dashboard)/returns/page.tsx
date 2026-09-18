@@ -42,7 +42,8 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { RETURN_REASONS } from "@/lib/constants"
-import { RotateCcw, PieChart, Search, Info } from "lucide-react"
+import { RotateCcw, PieChart, Search, Info, Plus } from "lucide-react"
+import Link from "next/link"
 import type { Return } from "@/types"
 
 const REASON_COLORS: Record<string, string> = {
@@ -197,7 +198,19 @@ export default function ReturnsPage() {
       <PageHeader
         title={isSales ? "Trả hàng của tôi" : "Trả hàng"}
         description={`${totalCount} phiếu trả • Tra cứu thông tin`}
-      />
+      >
+        {/*
+          ⚠ MÀN NÀY TRƯỚC ĐÂY CHỈ ĐỂ TRA CỨU — không có đường nào tạo phiếu
+            trả độc lập, dù `/returns/new` đã dựng đủ. Phiếu trả độc lập là
+            thứ VỪA trừ công nợ VỪA nhập kho (khách trả hàng ngoài chuyến
+            giao); không có nút thì việc ấy không làm được trong phần mềm.
+        */}
+        <Button asChild>
+          <Link href="/returns/new">
+            <Plus className="mr-2 h-4 w-4" /> Tạo phiếu trả
+          </Link>
+        </Button>
+      </PageHeader>
 
       {/*
         ⚠ CÂU CŨ Ở ĐÂY LÀ NGUYÊN NHÂN CỦA CẢ MỘT LỚP LỖI. Nó bảo người

@@ -1,9 +1,21 @@
 -- =====================================================================
--- Mockup Part 7: Returns (approved) + Visit logs
+-- Mockup Part 7: Returns (phiếu tạm) + Visit logs
 -- =====================================================================
--- - 2 đơn trả hàng đã duyệt — sẽ hiện trong /inventory/pending tab
---   "Đơn chờ nhập", có thể chọn để tạo phiếu Nhập lại kho.
+-- - 2 phiếu trả hàng đang chờ xử lý — hiện ở /returns, bấm "Hoàn thành"
+--   thì hàng mới vào kho và công nợ mới giảm.
 -- - Visit logs 3 ngày gần đây: hỗn hợp order_placed / no_order.
+--
+-- ⚠ TRẠNG THÁI CŨ 'approved' KHÔNG CHÈN ĐƯỢC NỮA. `chk_returns_status_v2`
+-- (mig 119) chỉ còn cho draft/submitted/completed/cancelled, và chính
+-- mig 119 đổi mọi phiếu 'approved' thật thành 'submitted' — nên bộ demo
+-- dùng đúng giá trị đó.
+--
+-- ⚠ ĐỂ Ở `submitted`, ĐỪNG ĐỂ `completed`. Ở v2, `completed` nghĩa là
+-- HÀNG ĐÃ VÀO KHO và công nợ ĐÃ GIẢM. Chèn thẳng giá trị đó mà không có
+-- phiếu nhập kho nào kèm theo là dựng sẵn hai con số nói dối: tồn thiếu
+-- đúng bằng số hàng trả, công nợ thừa đúng bằng credit_note_amount.
+-- Người xem demo sẽ đi tìm một lỗi không có thật. Để `submitted` thì
+-- phiếu nằm chờ, và bấm "Hoàn thành" trên màn là thấy đủ cả luồng.
 
 BEGIN;
 
@@ -42,16 +54,16 @@ BEGIN
   DELETE FROM returns WHERE notes LIKE 'DEMO%';
   DELETE FROM visit_logs WHERE notes LIKE 'DEMO%';
 
-  -- === Return 1 (approved) — từ đơn 011 ===
+  -- === Phiếu trả 1 (phiếu tạm, chờ hoàn thành) — từ đơn 011 ===
   INSERT INTO returns (org_id, order_id, customer_id, requested_by, reason, status, approved_by, credit_note_amount, notes)
-  VALUES (target_org_id, ord_011, cust_h, sales_user, 'damaged', 'approved', owner_user, 180000, 'DEMO: 10 lon bia bị móp')
+  VALUES (target_org_id, ord_011, cust_h, sales_user, 'damaged', 'submitted', owner_user, 180000, 'DEMO: 10 lon bia bị móp')
   RETURNING id INTO ret_1;
   INSERT INTO return_lines (return_id, product_id, unit_name, quantity, unit_price, line_total) VALUES
     (ret_1, p_drink, 'lon', 20, 9000, 180000);
 
-  -- === Return 2 (approved) — từ đơn 012 ===
+  -- === Phiếu trả 2 (phiếu tạm, chờ hoàn thành) — từ đơn 012 ===
   INSERT INTO returns (org_id, order_id, customer_id, requested_by, reason, status, approved_by, credit_note_amount, notes)
-  VALUES (target_org_id, ord_012, cust_l, sales_user, 'near_expiry', 'approved', owner_user, 90000, 'DEMO: Sữa gần hết hạn, KH từ chối')
+  VALUES (target_org_id, ord_012, cust_l, sales_user, 'near_expiry', 'submitted', owner_user, 90000, 'DEMO: Sữa gần hết hạn, KH từ chối')
   RETURNING id INTO ret_2;
   INSERT INTO return_lines (return_id, product_id, unit_name, quantity, unit_price, line_total) VALUES
     (ret_2, p_milk, 'hộp', 12, 7500, 90000);
@@ -75,7 +87,7 @@ BEGIN
     (target_org_id, sales_user, c5, CURRENT_DATE,     NOW() - INTERVAL '2 hours',        NOW() - INTERVAL '1 hour 45 min', 10.7712, 106.6665, 'order_placed', 'DEMO: Đặt 50 gói mì'),
     (target_org_id, sales_user, c6, CURRENT_DATE,     NOW() - INTERVAL '1 hour',         NULL, 10.7680, 106.6700, 'no_order',     'DEMO: Đang check hàng');
 
-  RAISE NOTICE 'Part 7 OK: 2 returns approved + 6 visit_logs';
+  RAISE NOTICE 'Part 7 OK: 2 phiếu trả (phiếu tạm) + 6 visit_logs';
 END $$;
 
 COMMIT;

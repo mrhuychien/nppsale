@@ -22,15 +22,15 @@
 | Module | Chức năng | Đối tượng dùng chính |
 | --- | --- | --- |
 | 📊 Dashboard | Tổng quan KPI, top khách hàng | Tất cả |
-| 🛒 Đơn hàng | Tạo, duyệt, theo dõi đơn | Sales, Quản lý |
+| 🛒 Đơn hàng | Tạo đơn, gửi phiếu tạm, Xuất hàng | Nhà phân phối |
 | 👥 Khách hàng | Quản lý cửa hàng, nhóm KH | Sales, Quản lý |
 | 📦 Sản phẩm | SKU, đơn vị, bảng giá | Quản lý |
 | 🏬 Kho hàng | Lô hàng, tồn kho, HSD | Kho |
-| 🚚 Giao hàng | Tuyến đường, POD | Tài xế, Kho |
+| 🚚 Giao hàng | *(Ngưng dùng — chỉ tra cứu chứng từ cũ)* | — |
 | 💰 Công nợ | Phải thu, thu tiền | Kế toán, Sales |
 | 🎁 Khuyến mãi | Chiết khấu, mua X tặng Y | Quản lý |
 | 📄 Hóa đơn | Xuất hóa đơn VAT | Kế toán |
-| ↩️ Trả hàng | Yêu cầu trả, duyệt | Sales, Quản lý |
+| ↩️ Trả hàng | Lập phiếu trả, Hoàn thành (nhập lại kho) | Nhà phân phối |
 | 💼 Hoa hồng | Chính sách & ví hoa hồng | Chủ sở hữu |
 | 📈 Báo cáo | Doanh số, tồn kho, công nợ | Tất cả |
 
@@ -59,11 +59,11 @@
 | Email | Vai trò | Có thể làm gì? |
 | --- | --- | --- |
 | `owner@demo.com` | **Chủ sở hữu** | Toàn quyền - xem mọi thứ, sửa mọi thứ |
-| `manager@demo.com` | **Quản lý** | Duyệt đơn, quản lý KH, sản phẩm, khuyến mãi |
+| `manager@demo.com` | **Quản lý** | Xuất hàng, quản lý KH, sản phẩm, khuyến mãi |
 | `accountant@demo.com` | **Kế toán** | Công nợ, hóa đơn, hoa hồng |
 | `sales@demo.com` | **Nhân viên bán hàng** | Tạo đơn cho KH được giao |
 | `warehouse@demo.com` | **Kho** | Nhập/xuất kho, lô hàng |
-| `driver@demo.com` | **Tài xế** | Giao hàng, thu tiền tại điểm |
+| `driver@demo.com` | **Tài xế** | Thu tiền tại điểm *(bước lập chuyến giao đã bỏ)* |
 
 ### Ma trận quyền (12 module × 6 vai trò)
 
@@ -72,15 +72,15 @@
 | Module | Owner | Manager | Accountant | Sales | Warehouse | Driver |
 | --- | :-: | :-: | :-: | :-: | :-: | :-: |
 | Dashboard | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Đơn hàng | ✅ | ✅ Duyệt | 👁️ | ✅ Tạo | 👁️ | 👁️ Đơn được giao |
+| Đơn hàng | ✅ | ✅ Xuất hàng | 👁️ | ✅ Tạo | 👁️ | ❌ |
 | Khách hàng | ✅ | ✅ | 👁️ | ✅ KH được giao | ❌ | ❌ |
 | Sản phẩm | ✅ | ✅ | 👁️ | 👁️ | 👁️ | ❌ |
 | Kho hàng | ✅ | 👁️ | 👁️ | 👁️ | ✅ | ❌ |
-| Giao hàng | ✅ | ✅ | 👁️ | 👁️ | ✅ | ✅ Đơn của mình |
+| Giao hàng *(ngưng dùng)* | 👁️ | 👁️ | 👁️ | 👁️ | 👁️ | 👁️ |
 | Công nợ | ✅ | 👁️ | ✅ | ✅ Tạo | ❌ | ✅ Thu tiền |
 | Khuyến mãi | ✅ | ✅ | 👁️ | 👁️ | ❌ | ❌ |
 | Hóa đơn | ✅ | 👁️ | ✅ | 👁️ | ❌ | ❌ |
-| Trả hàng | ✅ Duyệt | ✅ Duyệt | 👁️ | ✅ Tạo | 👁️ | ❌ |
+| Trả hàng | ✅ Hoàn thành | ✅ Hoàn thành | 👁️ | ✅ Tạo | 👁️ | ❌ |
 | Hoa hồng | ✅ | 👁️ | ✅ Cập nhật | 👁️ ví của mình | ❌ | ❌ |
 | Báo cáo | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Cài đặt | ✅ | 👁️ | 👁️ | ❌ | ❌ | ❌ |
@@ -96,7 +96,7 @@
 │  [Sidebar trái - 256px]    │   [Header sticky]                │
 │  • Logo & tên               │   Tiêu đề trang   🔍 🔔  👤    │
 │  • Nút "Tạo đơn mới"        ├──────────────────────────────────┤
-│  • Menu 13 module           │                                  │
+│  • Menu 12 module           │                                  │
 │  • Dashboard                │   [Nội dung trang]               │
 │  • Đơn hàng (active)        │                                  │
 │  • Khách hàng               │   - PageHeader (tiêu đề + CTA)   │
@@ -172,7 +172,10 @@ Sau khi đăng nhập bạn sẽ thấy:
 5. Xem **Tổng tiền** tự động cập nhật (Subtotal + VAT)
 6. Click **"Lưu đơn hàng"**
 
-> ✅ Đơn được tạo với trạng thái **"Nháp"**. Quản lý cần duyệt trước khi giao.
+> ✅ Đơn được tạo với trạng thái **"Nháp"** — chỉ mình bạn thấy. Bấm
+> **"Gửi đơn"** để nó thành **"Phiếu tạm"** (cả nhà phân phối thấy, vẫn
+> sửa được), rồi bấm **"Xuất hàng"** để trừ kho, ghi công nợ và in phiếu
+> giao — một nút, một lần.
 
 ---
 
@@ -181,59 +184,64 @@ Sau khi đăng nhập bạn sẽ thấy:
 ### Luồng cơ bản: Từ đặt hàng đến thu tiền
 
 ```
-       [Nhân viên Sales]                   [Quản lý]
-            │                                  │
-            │ 1. Tạo đơn hàng                 │
-            │    (nháp)                        │
-            │ ───────────────────────────────► │
-            │                                  │ 2. Duyệt đơn
-            │                                  │    (confirmed)
-            │                                  │
-                                              ▼
-                                    [Kho]
-                                    │
-                                    │ 3. Soạn hàng
-                                    │    (picking)
-                                    │
-                                    ▼
-                                 [Tài xế]
-                                    │
-                                    │ 4. Giao hàng
-                                    │    + chụp POD
-                                    │    (delivering → delivered)
-                                    │
-                                    ▼
-                                 [Kế toán]
-                                    │
-                                    │ 5. Tạo hóa đơn
-                                    │    (invoice)
-                                    │
-                                    │ 6. Theo dõi công nợ
-                                    │    (receivable)
-                                    │
-                                    ▼
-                              [Tài xế / Kế toán]
-                                    │
-                                    │ 7. Thu tiền
-                                    │    (payment)
-                                    │
-                                    ▼
-                              [Hệ thống]
-                                    │
-                                    │ 8. Tính hoa hồng
-                                    │    cho Sales
+                        [Nhà phân phối]
+                              │
+                              │ 1. Tạo đơn hàng
+                              │    (draft — "Nháp", chỉ người tạo thấy)
+                              ▼
+                              │ 2. Gửi đơn
+                              │    (submitted — "Phiếu tạm", cả nhà
+                              │     phân phối thấy, vẫn sửa được)
+                              ▼
+                              │ 3. Bấm "XUẤT HÀNG"   ◄── MỘT nút duy nhất
+                              │    • trừ kho theo FIFO
+                              │    • ghi công nợ phải thu
+                              │    • in phiếu giao hàng
+                              │    (completed — "Hoàn thành")
+                              ▼
+         [Hai chứng từ ĐỘC LẬP, cùng khép vào công nợ phải thu]
+                  │                              │
+                  │ 4a. Phiếu trả                │ 4b. Phiếu thu
+                  │     Nháp → Phiếu tạm →       │     chọn khoản nợ cần
+                  │     Hoàn thành               │     khép; cấn trừ được
+                  │     ⚠ hàng chỉ VÀO KHO khi   │     phiếu trả độc lập
+                  │       bấm "Hoàn thành"       │     và rút số dư có
+                  └───────────────┬──────────────┘
+                                  ▼
+                            [Kế toán]
+                                  │ 5. Xuất hóa đơn VAT (từ đơn Hoàn thành)
+                                  ▼
+                            [Hệ thống]
+                                  │ 6. Tính hoa hồng cho Sales
 ```
 
-### 6 trạng thái đơn hàng
+⚠ **Không còn bước duyệt đơn, soạn hàng, lập chuyến giao hay bàn giao.**
+Ba vai chuyền tay nhau ở bản cũ (Quản lý duyệt → Kho soạn → Tài xế giao)
+nay gộp vào đúng một thao tác của nhà phân phối.
+
+### 4 trạng thái đơn hàng
 
 ```
-   Nháp ──► Đã duyệt ──► Đang lấy ──► Đang giao ──► Đã giao
-   draft    confirmed   picking      delivering    delivered
+   Nháp ──► Phiếu tạm ──► Hoàn thành
+   draft    submitted     completed
+     │          │              │
+     │          └── bấm "Xuất hàng": trừ kho + ghi công nợ + in phiếu giao
      │
-     └──► Đã hủy (cancelled) - có thể từ bất kỳ trạng thái nào trước "delivered"
+     └──► Đã hủy (cancelled) - hủy được cả đơn ĐÃ hoàn thành (tồn và công
+          nợ được hoàn lại), trừ khi đơn đã thu tiền
 ```
+
+Phiếu trả hàng dùng **đúng bốn trạng thái này**.
 
 ### 4 trạng thái công nợ
+
+> Công nợ phải thu sinh ra ngay lúc bấm **"Xuất hàng"**, trong cùng một
+> giao dịch — không chờ giao xong, không chờ xuất hóa đơn. Nó được khép
+> lại bằng **Phiếu thu** và **Phiếu trả**, hai chứng từ độc lập.
+>
+> ⚠ Số đã trả CÓ THỂ lớn hơn số phải thu: khách trả hàng sau khi đã
+> thanh toán đủ thì phần chênh là **số dư có** của họ, rút ra dùng được
+> ở màn lập phiếu thu.
 
 ```
    Mở ──► Một phần ──► Đã trả
@@ -272,8 +280,17 @@ Sau khi đăng nhập bạn sẽ thấy:
 ### Q: Tại sao tôi không thấy menu "Khuyến mãi"?
 > Bạn không có quyền với module này. Chỉ Chủ sở hữu, Quản lý mới truy cập được.
 
-### Q: Một đơn đã duyệt có thể chỉnh sửa không?
-> Không. Sau khi duyệt, đơn được "đóng băng". Nếu cần thay đổi: tạo phiếu **Trả hàng** rồi tạo đơn mới.
+### Q: Một đơn đã "Xuất hàng" có thể chỉnh sửa không?
+> Được, trong một số ngày do chủ NPP đặt, và chỉ khi đơn chưa vướng bốn
+> khoá: đã thu tiền, đã phát hành hóa đơn, đã có phiếu trả hoàn thành,
+> hoặc đã quá hạn sửa. Sửa xong hệ thống tự chỉnh lại tồn và công nợ.
+> Vướng khoá thì đường đi là lập **Phiếu trả** rồi tạo đơn mới.
+> Đơn còn ở **"Phiếu tạm"** thì sửa thoải mái.
+
+### Q: Màn "Giao hàng" / "Xuất kho" đâu rồi?
+> Quy trình mới bỏ các bước soạn hàng — lập chuyến — bàn giao. Nhà phân
+> phối bấm **"Xuất hàng"** ngay trên đơn. Chứng từ cũ vẫn tra cứu được
+> bằng đường dẫn trực tiếp, chỉ không lập thêm được nữa.
 
 ### Q: Tại sao Sales chỉ thấy 1 số khách hàng?
 > Sales chỉ thấy khách hàng được **Quản lý phân công** (xem trang chi tiết KH → tab "Phân công").

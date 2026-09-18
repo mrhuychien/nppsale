@@ -10,7 +10,6 @@ import {
   ShoppingCart,
   Package,
   Boxes,
-  Truck,
   CreditCard,
   Tag,
   FileText,
@@ -25,6 +24,21 @@ import {
 } from "lucide-react"
 import type { Role } from "@/types"
 
+/**
+ * ⚠ TRANG NÀY DẠY NGƯỜI DÙNG QUY TRÌNH — nên nó sai là họ làm sai, và
+ * sai ở đây không có lỗi nào bắn ra.
+ *
+ * Bản cũ mô tả luồng SÁU TRẠNG THÁI (Nháp → Đã duyệt → Đang lấy → Đang
+ * giao → Đã giao) với ba vai chuyền tay nhau: quản lý duyệt, kho soạn,
+ * tài xế giao. Workflow v2 bỏ cả ba bước đó: nhà phân phối tự làm, đơn
+ * chỉ còn Nháp → Phiếu tạm → Hoàn thành / Huỷ, và "Xuất hàng" là MỘT nút
+ * làm cả trừ kho, ghi công nợ và in phiếu.
+ *
+ * Giữ nguyên chữ cũ ở đây là để lại một cuốn cẩm nang chỉ đường tới
+ * những màn đã khoá (P7) — người dùng đi theo, bấm vào, và không hiểu vì
+ * sao không có gì xảy ra.
+ */
+
 interface RoleGuide {
   title: string
   description: string
@@ -35,29 +49,29 @@ interface RoleGuide {
 const ROLE_GUIDES: Record<Role, RoleGuide> = {
   owner: {
     title: "Chủ sở hữu",
-    description: "Bạn có toàn quyền hệ thống. Tập trung vào duyệt, cài đặt và xem báo cáo tổng quan.",
+    description: "Bạn có toàn quyền hệ thống. Tập trung vào xuất hàng, cài đặt và xem báo cáo tổng quan.",
     workflow: [
       "Mở Dashboard mỗi sáng để xem KPI và cảnh báo quan trọng",
-      "Duyệt các đơn hàng giá trị lớn vượt ngưỡng (>50tr)",
+      "Vào Đơn hàng → lọc 'Phiếu tạm' → bấm Xuất hàng cho các đơn đã chốt",
       "Xem Báo cáo doanh số cuối tuần / cuối tháng",
       "Cập nhật chính sách hoa hồng khi có thay đổi",
       "Thêm / sửa nhân viên trong Cài đặt → Người dùng",
     ],
     tips: [
-      "Đặt ngưỡng phê duyệt phù hợp trong Cài đặt → Tổ chức",
+      "Xuất hàng là MỘT bước: trừ kho FIFO, ghi công nợ và in phiếu giao cùng lúc",
       "Kiểm tra Top khách hàng để duy trì quan hệ với KH lớn",
       "Theo dõi Cảnh báo: HSD, công nợ quá hạn, tồn kho thấp",
     ],
   },
   manager: {
     title: "Quản lý",
-    description: "Bạn duyệt đơn, quản lý khách hàng - sản phẩm và chạy chương trình khuyến mãi.",
+    description: "Bạn xuất hàng, quản lý khách hàng - sản phẩm và chạy chương trình khuyến mãi.",
     workflow: [
-      "Mỗi sáng: vào Đơn hàng → lọc trạng thái 'Nháp' để duyệt",
+      "Mỗi sáng: vào Đơn hàng → lọc trạng thái 'Phiếu tạm' để xuất hàng",
       "Phân công sales mới cho khách hàng (chi tiết KH → Phân công)",
       "Cập nhật bảng giá khi có thay đổi (Sản phẩm → chi tiết → Bảng giá)",
       "Tạo chương trình khuyến mãi mới khi cần",
-      "Duyệt yêu cầu trả hàng từ Sales",
+      "Hoàn thành phiếu trả hàng — hàng vào kho đúng lúc bấm nút đó",
     ],
     tips: [
       "Lọc đơn theo NV bán hàng để theo dõi hiệu suất",
@@ -70,14 +84,15 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
     description: "Bạn quản lý công nợ, hóa đơn và theo dõi - cập nhật ví hoa hồng cho nhân viên.",
     workflow: [
       "Đầu ngày: vào Công nợ → tab 'Quá hạn' để nhắc nợ",
-      "Xác minh các phiếu thu tiền do Sales / Tài xế nộp",
-      "Tạo hóa đơn cho các đơn đã giao xong",
+      "Lập phiếu thu ở Kế toán → Phiếu thu, chọn đúng khoản nợ cần khép",
+      "Tạo hóa đơn cho các đơn đã hoàn thành",
       "Cuối tháng: chốt ví hoa hồng cho từng nhân viên",
       "Xuất báo cáo công nợ tuổi nợ định kỳ",
     ],
     tips: [
       "Dùng báo cáo Aging để biết khoản nào sắp quá hạn",
-      "Hóa đơn có thể tạo từ đơn 'Đã giao' (status = delivered)",
+      "Hóa đơn có thể tạo từ đơn 'Hoàn thành' (status = completed)",
+      "Khách trả hàng sau khi đã thanh toán đủ thì phần dư thành SỐ DƯ CÓ — rút ra dùng ngay trên màn lập phiếu thu",
       "Khi tạo phiếu thu, chọn đúng phương thức (Tiền mặt/CK/Ví)",
     ],
   },
@@ -87,14 +102,14 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
     workflow: [
       "Sáng: nhận lịch viếng thăm / danh sách khách hàng",
       "Tại cửa hàng: mở /sell → tìm hàng, chạm để thêm vào giỏ",
-      "Chọn khách → kiểm tra giá → Đặt hàng (hoặc Lưu tạm rồi Gửi duyệt)",
+      "Chọn khách → kiểm tra giá → Đặt hàng (hoặc Lưu nháp để sửa tiếp sau)",
       "Theo dõi đơn của mình ở /orders (lọc trạng thái)",
-      "Khi giao xong: hỗ trợ thu tiền nếu cần (/receivables/collect)",
+      "Khi đơn đã xuất hàng: hỗ trợ thu tiền nếu cần (/receivables/collect)",
     ],
     tips: [
       "Dùng điện thoại thay vì laptop khi đi field",
       "Kiểm tra hạn mức của khách trước khi tạo đơn lớn",
-      "Đơn 'Nháp' có thể chỉnh sửa, đơn 'Đã duyệt' thì không",
+      "Đơn 'Nháp' chỉ mình bạn thấy; 'Phiếu tạm' thì cả nhà phân phối thấy và sửa được; 'Hoàn thành' thì không",
     ],
   },
   warehouse: {
@@ -103,9 +118,9 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
     workflow: [
       "Đầu ca: kiểm tra Tồn kho → cảnh báo HSD và lô sắp hết",
       "Khi nhập hàng: vào /inventory/stocktake → Loại 'Nhập kho'",
-      "Khi soạn đơn: cập nhật trạng thái đơn 'Đang lấy'",
+      "Khi đơn xuất hàng: phiếu kho tự dựng, không cần soạn tay bước nào",
       "Cuối ca: kiểm kê thực tế nếu có chênh lệch",
-      "Xử lý hàng trả về (status: returns)",
+      "Hàng khách trả: lập phiếu trả ở /returns, bấm Hoàn thành thì hàng mới vào kho",
     ],
     tips: [
       "Nhập đầy đủ ngày sản xuất + HSD để hệ thống cảnh báo",
@@ -115,18 +130,18 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
   },
   driver: {
     title: "Tài xế",
-    description: "Bạn nhận chuyến giao hàng, xác nhận POD và thu tiền tại điểm nếu là COD.",
+    description:
+      "Bước lập chuyến giao đã bỏ ở quy trình mới — nhà phân phối giao thẳng bằng nút Xuất hàng trên đơn.",
     workflow: [
-      "Sáng: nhận chuyến giao trong /deliveries",
-      "Đến từng điểm theo route_name",
-      "Giao hàng → cập nhật từng dòng (status: delivered)",
-      "Chụp ảnh POD (proof of delivery)",
-      "Nếu COD: vào /receivables/collect để ghi nhận thu tiền",
+      "Đơn đã xuất hàng sẽ in kèm phiếu giao — cầm phiếu đó đi giao",
+      "Đến từng điểm theo địa chỉ trên phiếu",
+      "Nếu thu tiền tại điểm: vào /receivables/collect để ghi nhận",
+      "Hàng khách trả lại: báo kho lập phiếu trả ở /returns",
     ],
     tips: [
-      "Mở chuyến giao trên điện thoại - không cần laptop",
-      "Chụp ảnh POD ngay sau khi giao để tránh quên",
-      "Chỉ nhận tiền mặt cho đơn COD đã được kế toán xác nhận",
+      "Các chuyến giao cũ vẫn xem lại được, chỉ không lập thêm chuyến mới",
+      "Màn thu tiền dùng được trên điện thoại - không cần laptop",
+      "Chỉ nhận tiền mặt cho đơn đã được kế toán xác nhận",
     ],
   },
 }
@@ -141,7 +156,7 @@ const MODULE_GUIDES = [
   {
     icon: ShoppingCart,
     title: "Đơn hàng",
-    desc: "Tạo - duyệt - theo dõi đơn. 6 trạng thái: Nháp → Đã duyệt → Đang lấy → Đang giao → Đã giao (hoặc Đã hủy).",
+    desc: "Tạo - xuất hàng - theo dõi đơn. 4 trạng thái: Nháp → Phiếu tạm → Hoàn thành (hoặc Đã huỷ).",
     href: "/orders",
   },
   {
@@ -163,15 +178,9 @@ const MODULE_GUIDES = [
     href: "/inventory",
   },
   {
-    icon: Truck,
-    title: "Giao hàng",
-    desc: "Tạo phiếu giao - gán tài xế - theo dõi POD - xác nhận từng đơn trong chuyến.",
-    href: "/deliveries",
-  },
-  {
     icon: CreditCard,
     title: "Công nợ",
-    desc: "Phải thu (receivables) tự sinh khi giao đơn. Báo cáo tuổi nợ + thu tiền + xác minh.",
+    desc: "Phải thu (receivables) tự sinh khi Xuất hàng. Báo cáo tuổi nợ + thu tiền + xác minh.",
     href: "/receivables",
   },
   {
@@ -183,13 +192,13 @@ const MODULE_GUIDES = [
   {
     icon: FileText,
     title: "Hóa đơn",
-    desc: "Xuất hóa đơn VAT từ đơn đã giao. Số HĐ tự sinh INV-YYYYMMDD-XXXX.",
+    desc: "Xuất hóa đơn VAT từ đơn đã hoàn thành. Số HĐ tự sinh INV-YYYYMMDD-XXXX.",
     href: "/invoices",
   },
   {
     icon: RotateCcw,
     title: "Trả hàng",
-    desc: "Sales tạo yêu cầu trả → Quản lý duyệt → Kho nhập lại → Kế toán xử lý credit note.",
+    desc: "Lập phiếu trả → bấm Hoàn thành (hàng vào kho + ghi khoản có cùng lúc). Phiếu trả không gắn đơn thì đem cấn trừ ở Phiếu thu.",
     href: "/returns",
   },
   {
@@ -216,8 +225,12 @@ const FAQS = [
     a: "Bạn không có quyền với module đó. Mỗi vai trò chỉ thấy menu phù hợp với công việc.",
   },
   {
-    q: "Đơn đã duyệt có sửa được không?",
-    a: "Không. Để thay đổi, hãy tạo phiếu Trả hàng và tạo đơn mới.",
+    q: "Đơn đã xuất hàng có sửa được không?",
+    a: "Không. Đơn 'Hoàn thành' đã trừ kho và ghi công nợ. Để thay đổi, hãy lập phiếu Trả hàng và tạo đơn mới. Đơn 'Phiếu tạm' thì vẫn sửa được.",
+  },
+  {
+    q: "Sao tôi không tìm thấy màn Giao hàng / Xuất kho nữa?",
+    a: "Quy trình mới bỏ các bước soạn hàng - lập chuyến - bàn giao. Nhà phân phối bấm Xuất hàng ngay trên đơn: hệ thống trừ kho, ghi công nợ và in phiếu giao trong một lần. Chứng từ cũ vẫn xem lại được qua đường dẫn trực tiếp.",
   },
   {
     q: "Sales chỉ thấy 1 số khách hàng - tại sao?",

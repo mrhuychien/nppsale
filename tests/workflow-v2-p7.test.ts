@@ -26,6 +26,17 @@ const COLLECT = read("src/app/(dashboard)/inventory/stock-out/collect/[entryId]/
 const HANDOVER = read("src/app/(dashboard)/deliveries/[id]/handover/page.tsx")
 const PENDING = read("src/app/(dashboard)/inventory/pending/page.tsx")
 const HUB = read("src/app/(dashboard)/inventory/page.tsx")
+const ENTRIES_LIST = read("src/app/(dashboard)/inventory/entries/page.tsx")
+
+/**
+ * ⚠ TRANG TRỢ GIÚP PHẢI ĐỌC BẢN ĐÃ BỎ CHÚ THÍCH. Khối chú thích đầu tệp
+ * kể lại luồng cũ để giải thích VÌ SAO phải đổi — chữ "Đã duyệt" nằm ở
+ * đó là đúng chỗ. Hỏi cả chú thích thì chốt bắt nhầm chính lời giải
+ * thích, và cách "sửa" duy nhất là xoá lời giải thích đi.
+ */
+const code = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+const HELP = code(read("src/app/(dashboard)/help/page.tsx"))
 
 /**
  * Cắt đúng THÂN của khối `if (…) { … }` bắt đầu tại `from`, bằng cách đếm
@@ -79,6 +90,100 @@ describe("Ẩn khỏi menu, nhưng vẫn mở được chứng từ cũ", () => 
   it("màn kho không còn ô bấm sang hai màn đã ẩn", () => {
     expect(HUB).toContain('LEGACY_V2_HREFS.has("/inventory/stock-out")')
     expect(HUB).toContain('LEGACY_V2_HREFS.has("/inventory/pending")')
+  })
+
+  /**
+   * ⚠ "TẠO PHIẾU" LÀ LỜI MỜI TẠO MỚI, không phải đường tra cứu. Mục
+   * "Xuất kho" trong đó dẫn tới màn soạn hàng đã khoá ghi — bấm vào chỉ
+   * nhận một dòng chữ từ chối, ở một màn không ai giải thích vì sao lại
+   * mở ra được.
+   */
+  it("danh sách phiếu kho không mời tạo phiếu xuất theo lối cũ", () => {
+    expect(ENTRIES_LIST).toContain('!LEGACY_V2_HREFS.has("/inventory/stock-out")')
+    const i = ENTRIES_LIST.indexOf('!LEGACY_V2_HREFS.has("/inventory/stock-out")')
+    expect(ENTRIES_LIST.slice(i, i + 300)).toContain('router.push("/inventory/stock-out")')
+  })
+})
+
+/**
+ * ⚠ BỘ DEMO KHÔNG CHÈN ĐƯỢC NỮA THÌ NGƯỜI CÀI MỚI ĐỨNG GIỮA ĐƯỜNG. Các
+ * tệp `supabase/mockup/*.sql` chèn thẳng `sales_orders.status` và
+ * `returns.status`. Sau mig 119, `chk_sales_orders_status_v2` và
+ * `chk_returns_status_v2` từ chối năm giá trị của luồng cũ — mỗi INSERT
+ * đó ném ràng buộc, và bộ demo dừng lại với nửa dữ liệu đã nằm trong
+ * CSDL.
+ */
+describe("Bộ dữ liệu demo chèn được sau migration 119", () => {
+  const sqlOf = (rel: string) =>
+    // Bỏ chú thích `--` để không bắt nhầm chính lời giải thích vì sao
+    // các giá trị đó đã chết.
+    read(rel).replace(/^\s*--.*$/gm, "")
+
+  const ORDERS = sqlOf("supabase/mockup/05_sales_orders.sql")
+  const RETURNS = sqlOf("supabase/mockup/07_returns_visits.sql")
+
+  it("không còn trạng thái đơn nào của luồng cũ", () => {
+    for (const dead of ["'confirmed'", "'picking'", "'delivering'", "'pending_approval'"]) {
+      expect(ORDERS, `còn chèn ${dead}`).not.toContain(dead)
+    }
+  })
+
+  it("không còn trạng thái phiếu trả nào của luồng cũ", () => {
+    for (const dead of ["'approved'", "'rejected'", "'pending'"]) {
+      expect(RETURNS, `còn chèn ${dead}`).not.toContain(dead)
+    }
+  })
+
+  /**
+   * ⚠ `completed` NGHĨA LÀ ĐÃ TRỪ TỒN VÀ ĐÃ GHI CÔNG NỢ. Đơn demo nào
+   * mang giá trị đó phải có mốc `completed_at`, nếu không màn hình hiện
+   * ô trống ở đúng cột nói "hàng đi lúc nào".
+   */
+  it("đơn hoàn thành trong bộ demo đều có mốc xuất hàng", () => {
+    const n = (ORDERS.match(/'completed'/g) || []).length
+    expect(n, "bộ demo không còn đơn hoàn thành nào").toBeGreaterThan(0)
+    expect((ORDERS.match(/completed_at/g) || []).length).toBeGreaterThanOrEqual(n)
+  })
+
+  /**
+   * ⚠ ĐỂ PHIẾU TRẢ Ở `completed` LÀ DỰNG SẴN HAI CON SỐ NÓI DỐI: tồn
+   * thiếu đúng bằng số hàng trả, công nợ thừa đúng bằng credit_note.
+   * Bộ demo không có phiếu nhập kho nào kèm theo.
+   */
+  it("phiếu trả demo nằm chờ, chưa nhập kho", () => {
+    expect(RETURNS).toContain("'submitted'")
+    expect(RETURNS).not.toContain("'completed'")
+  })
+})
+
+/**
+ * ⚠ CẨM NANG SAI KHÔNG BẮN LỖI NÀO. Người dùng đọc trang Trợ giúp rồi đi
+ * làm theo; nó còn dạy luồng sáu trạng thái thì họ đi tìm nút Duyệt, tìm
+ * màn Giao hàng, và kết luận hệ thống hỏng.
+ */
+describe("Trang Trợ giúp dạy đúng quy trình v2", () => {
+  it("không còn chữ nào của sáu trạng thái cũ", () => {
+    for (const dead of ["Đang lấy", "Đang giao", "Đã duyệt", "6 trạng thái", "delivered"]) {
+      expect(HELP, `còn dạy '${dead}'`).not.toContain(dead)
+    }
+  })
+
+  it("nói đúng bốn trạng thái mới", () => {
+    expect(HELP).toContain("Nháp → Phiếu tạm → Hoàn thành")
+    expect(HELP).toContain("status = completed")
+  })
+
+  /** Ô module dẫn thẳng sang màn đã ẩn — không lọc quyền, nên phải bỏ. */
+  it("không còn ô module dẫn sang màn giao hàng", () => {
+    expect(HELP).not.toContain('href: "/deliveries"')
+  })
+
+  /**
+   * ⚠ BỎ ĐI MÀ KHÔNG NÓI LÀ BỎ THÌ NGƯỜI DÙNG ĐI TÌM. Câu hỏi thường gặp
+   * phải trả lời thẳng "màn đó đâu rồi".
+   */
+  it("trả lời thẳng vì sao màn Giao hàng / Xuất kho biến mất", () => {
+    expect(HELP).toContain("Sao tôi không tìm thấy màn Giao hàng / Xuất kho nữa?")
   })
 })
 

@@ -344,6 +344,24 @@ nhưng đó chỉ là vá miệng. Cần chủ nhà quyết một trong hai:
   dư thành khoản có của khách) — đổi nghiệp vụ, không nhỏ;
 - **(b)** làm một đường đảo tiền cho các khoản thu không qua phiếu thu.
 
+**→ Chủ nhà chốt: (a) cho phép ghi số dư có.** Đã làm:
+- gỡ `OVERPAID_AFTER_CREDIT` khỏi `_wf2_recompute_receivable` (mig 120),
+  thay bằng khối chú thích giải thích vì sao chỗ đó cố ý để trống;
+- sửa `void_cash_receipt` xét `'paid'` **trước** `'partial'` — không thì
+  một dòng đang dư bị đánh về `partial`;
+- thêm `use_credit` vào `create_cash_receipt`, ghi **bút toán hai vế**
+  (dòng `payments` âm ở khoản đang dư, dòng dương ở khoản được thu, cùng
+  `kind='credit_applied'`) để `void_cash_receipt` đảo được bằng đúng vòng
+  lặp sẵn có, không cần biết gì thêm;
+- kẹp `GREATEST(0, …)` ở `receivables_by_rep` / `receivables_by_customer`
+  và trần 100 cho tỉ lệ thu hồi (093);
+- gom phép tính về một chỗ: `src/lib/receivables/credit.ts`;
+- màn lập phiếu thu có thẻ "Số dư có của khách" + ô rút, đọc bằng một
+  truy vấn RIÊNG không lọc trạng thái (dòng dư mang `status='paid'` nên
+  mọi bộ lọc "còn mở" gạt nó đi).
+
+⚠ Hệ quả chưa dọn hết — xem Q13.
+
 ## Q12 — MỞ: migration 118 còn nhắc trạng thái phiếu trả đã chết
 
 Lượt đo P6 tìm ra. Migration 118 (dọn phiếu trả khi xoá đơn) ở dòng 44 và
@@ -356,6 +374,53 @@ Lượt đo P6 tìm ra. Migration 118 (dọn phiếu trả khi xoá đơn) ở d
 118 cũng CHƯA chạy trên production (đã ghi trong sổ tiến độ từ trước).
 Sửa tại chỗ được, nhưng `tests/order-delete.test.ts` dòng 139-140 ghim
 nguyên văn hai chuỗi cũ nên phải sửa cùng lúc. Dừng, chờ quyết.
+
+**→ Chủ nhà chốt: OK.** Đã sửa 118 tại chỗ (ba giá trị chết biến mất
+khỏi cả mã lẫn chú thích) và cập nhật `tests/order-delete.test.ts`.
+
+---
+
+## Q13 — GHI NHẬN, hệ quả của Q11 chưa dọn hết
+
+Ba chỗ còn nói ngược với "số dư có là hợp lệ". Không chặn P7, nhưng để
+lâu là ba nguồn số lệch nhau:
+
+1. **`cash_in` / `cash_from_customers` (093, dòng 428 và 490)** cộng
+   `payments.amount` **không lọc `method`**. Từ P6, phiếu trả cấn trừ ghi
+   dòng `method='return_credit'`, và từ Q11 thêm `method='credit_applied'`
+   — cả hai đều KHÔNG phải tiền mặt vào két. Báo cáo dòng tiền vì thế
+   khai cao. (Có sẵn từ P6, không phải Q11 sinh ra.)
+   ⚠ `credit_applied` ghi **hai vế cộng lại bằng 0** nên nó tự triệt
+   tiêu trong một tổng; `return_credit` thì không — đó mới là chỗ lệch
+   thật.
+
+2. **`src/lib/opening-balance/parse.ts:333-336`** vẫn cấm
+   `amt.value < current.paid` khi nhập số dư đầu kỳ. Sau Q11 điều kiện đó
+   không còn đúng: một dòng đang dư có `paid > amount` là hợp lệ, nên
+   người dùng không nhập lại được chính con số hệ thống vừa sinh ra.
+
+3. **Nhãn phương thức thanh toán thiếu hai giá trị mới.** `PaymentMethod`
+   trong `src/types/index.ts:20` và bốn bảng `PAYMENT_METHOD_LABEL` ở các
+   màn đều chưa có `'return_credit'` và `'credit_applied'`. Chỗ nào tra
+   bảng rồi hiện thẳng sẽ in ra mã tiếng Anh, hoặc ô trống.
+
+Cần chủ nhà quyết: dọn ngay trong đợt này, hay tách một đợt riêng cho
+báo cáo dòng tiền?
+
+## Q14 — GHI NHẬN, phát sinh khi làm P7: hai chỗ luồng cũ để lại
+
+1. **`/settings/approval-rules` vẫn còn sống.** Màn "Cấu hình ngưỡng để
+   đơn hàng được duyệt tự động hoặc chuyển sang chờ duyệt" cấu hình đúng
+   bước duyệt mà v2 đã bỏ. Coder Pack mục 6 dặn **không xoá mã luồng bị
+   ẩn trong đợt này**, mà màn này không nằm trong danh sách mục 6 — nên
+   tôi **không tự quyết**, chỉ ghi lại. Người dùng vào đó đặt ngưỡng sẽ
+   thấy nó không ảnh hưởng gì tới đơn.
+
+2. **Vai `driver` mất module chính.** `/deliveries` nay ẩn với mọi vai,
+   nên tài xế đăng nhập không còn màn việc của mình; họ chỉ còn màn thu
+   tiền. Tôi đã viết lại phần hướng dẫn của vai này ở `/help` cho đúng sự
+   thật, nhưng **việc còn giữ vai `driver` hay không là quyết định nghiệp
+   vụ**, không phải việc của thợ xây.
 
 ---
 

@@ -1,10 +1,19 @@
 -- =====================================================================
 -- Mockup Part 6: Deliveries + Receivables + Payments
 -- =====================================================================
--- - Tạo 2 chuyến đang in_transit gắn 2 đơn delivering (008, 009)
--- - Tạo 1 chuyến đã completed cho 3 đơn delivered (010, 011, 012) với
+-- - Tạo 2 chuyến đang in_transit gắn 2 đơn hoàn thành gần đây (008, 009)
+-- - Tạo 1 chuyến đã completed cho 3 đơn hoàn thành (010, 011, 012) với
 --   POD photo đã có và delivered_at.
--- - Tạo receivables cho 3 đơn delivered, 1 trong số đó đã thu một phần.
+-- - Tạo receivables cho 3 đơn đó, 1 trong số đó đã thu một phần.
+--
+-- ⚠ TỆP NÀY DỰNG DỮ LIỆU CỦA LUỒNG CŨ, VÀ ĐÓ LÀ CỐ Ý. Workflow v2 bỏ
+-- bước lập chuyến giao; module `/deliveries` bị ẩn khỏi menu ở P7 nhưng
+-- KHÔNG xoá, vì chuyến giao đã chạy là chứng từ. Bộ demo giữ ba chuyến
+-- này để màn tra cứu cũ có cái mà hiện — đừng "sửa" chúng đi.
+--
+-- ⚠ `delivery_lines.status` ('pending' / 'delivered') là enum RIÊNG của
+-- bảng đó, không phải trạng thái đơn hàng. `chk_sales_orders_status_v2`
+-- không đụng tới nó, nên các giá trị ở đây vẫn hợp lệ sau mig 119.
 
 BEGIN;
 

@@ -11,7 +11,8 @@
 ## 1. Tóm tắt điều hành
 
 **Hệ thống là gì.** Ứng dụng web quản lý toàn bộ vòng đời phân phối FMCG: đơn
-hàng → duyệt → soạn hàng → giao → công nợ → hoá đơn, kèm kho theo lô/hạn dùng,
+hàng → xuất hàng (trừ kho + ghi công nợ + in phiếu giao trong một nút) → thu
+tiền → hoá đơn, kèm kho theo lô/hạn dùng,
 nhân sự/lương, và báo cáo. Next.js 14 (App Router) + Supabase (Postgres + Auth
 + RLS), deploy trên Vercel.
 
@@ -594,7 +595,7 @@ nào đã thực sự chạy trên production**.
 **Quý 1 — bền vững**
 9. Tiếp tục rút logic nghiệp vụ ra `src/lib` như đã làm với `stock-check.ts`. Còn lại: `orders/[id]/page.tsx` (2.090 dòng) và phần tính giá trong `order-form.tsx`. **Rút logic ra rồi phủ test — đừng tách component thuần tuý cho ngắn file**, vì tầng giao diện chưa có test nào đỡ lưng.
 10. ✅ ~~CI chạy `npm run verify` trên mỗi PR~~ — `.github/workflows/verify.yml`.
-11. Test đầu-cuối (Playwright) cho 3 luồng sống còn: tạo đơn → duyệt → giao; thu tiền; nhập kho.
+11. Test đầu-cuối (Playwright) cho 3 luồng sống còn: tạo đơn → gửi → Xuất hàng; lập phiếu thu; hoàn thành phiếu trả.
 12. Cân nhắc nâng Next 15.
 
 ---

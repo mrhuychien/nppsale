@@ -5,7 +5,7 @@
 ## 1. Trách nhiệm chính
 
 - Quản trị toàn hệ thống: cấu hình tổ chức, tạo/khóa tài khoản nhân viên, phân vai trò
-- Phê duyệt các quyết định lớn: đơn hàng giá trị cao, phiếu trả hàng, chính sách hoa hồng
+- Xuất hàng cho các đơn đã chốt, hoàn thành phiếu trả hàng, ban hành chính sách hoa hồng
 - Theo dõi sức khỏe kinh doanh qua Dashboard và Báo cáo (doanh thu, công nợ, tồn kho)
 - Ban hành chính sách hoa hồng, khuyến mãi, hạn mức công nợ cho từng nhóm khách hàng
 - Là người duy nhất có quyền **xóa** dữ liệu ở mọi module - cần thận trọng khi thao tác
@@ -15,15 +15,15 @@
 | Module | Quyền | Làm gì? |
 | --- | --- | --- |
 | Dashboard | Xem | Theo dõi 4 KPI, top KH, cảnh báo HSD và công nợ vượt hạn |
-| Đơn hàng | Đọc / Tạo / Sửa / Xóa / Duyệt | Toàn quyền với mọi đơn của tổ chức |
+| Đơn hàng | Đọc / Tạo / Sửa / Xóa / Xuất hàng | Toàn quyền với mọi đơn của tổ chức |
 | Khách hàng | Đọc / Tạo / Sửa / Xóa | Quản lý danh sách KH, phân nhóm, hạn mức tín dụng |
 | Sản phẩm | Đọc / Tạo / Sửa / Xóa | Cấu hình SKU, đơn vị, bảng giá nhiều cấp |
 | Kho hàng | Đọc / Tạo / Sửa / Xóa | Xem tồn, lô hàng, HSD, điều chỉnh khi cần |
-| Giao hàng | Đọc / Tạo / Sửa / Xóa | Phân tuyến, gán tài xế |
+| Giao hàng *(ngưng dùng)* | Xem | Tra cứu chuyến giao cũ. Quy trình mới in phiếu giao ngay khi Xuất hàng |
 | Công nợ | Đọc / Tạo / Sửa / Xóa | Theo dõi phải thu, ghi nhận thanh toán đặc biệt |
 | Khuyến mãi | Đọc / Tạo / Sửa / Xóa | Ban hành chương trình chiết khấu, mua X tặng Y |
 | Hóa đơn | Đọc / Tạo / Sửa / Xóa | Xuất hóa đơn VAT, hủy hóa đơn sai |
-| Trả hàng | Đọc / Tạo / Sửa / Xóa / Duyệt | Phê duyệt phiếu trả hàng từ Sales |
+| Trả hàng | Đọc / Tạo / Sửa / Xóa / Hoàn thành | Bấm Hoàn thành thì hàng mới vào kho và công nợ mới giảm |
 | Hoa hồng | Đọc / Tạo / Sửa / Xóa | Xây dựng chính sách hoa hồng, kiểm tra ví của nhân viên |
 | Báo cáo | Xem | Tất cả báo cáo doanh số, tồn kho, công nợ, hoa hồng |
 | Cài đặt | Đọc / Tạo / Sửa / Xóa | Quản lý người dùng, cấu hình tổ chức |
@@ -34,10 +34,11 @@
    Sáng (8:00 - 9:30)              Trưa (13:00 - 14:00)        Cuối ngày (17:00 - 18:00)
         │                                  │                              │
         ▼                                  ▼                              ▼
-   Mở Dashboard ─────► Duyệt đơn lớn ────► Kiểm tra ─────► Xem báo cáo ─► Xử lý
-   Xem 4 KPI           > 20 triệu          công nợ          ngày           cảnh báo
-        │              Phê duyệt trả       quá hạn          Hoa hồng        HSD/nợ
-        ▼              hàng                                 đã chốt
+   Mở Dashboard ─────► Xuất hàng ───────► Kiểm tra ─────► Xem báo cáo ─► Xử lý
+   Xem 4 KPI           các đơn            công nợ          ngày           cảnh báo
+        │              Phiếu tạm          quá hạn          Hoa hồng        HSD/nợ
+        ▼              Hoàn thành                          đã chốt
+                       phiếu trả
    Xem cảnh báo
    HSD + nợ
 ```
@@ -45,7 +46,7 @@
 **Mô tả các bước:**
 
 1. **Sáng** - Đăng nhập, vào `/dashboard`, lướt 4 thẻ KPI và khu cảnh báo
-2. **Duyệt đơn** - Vào `/orders` lọc trạng thái "Nháp" để duyệt các đơn vượt ngưỡng
+2. **Xuất hàng** - Vào `/orders` lọc trạng thái "Phiếu tạm", soát lại rồi bấm **Xuất hàng**
 3. **Trưa** - Mở `/receivables` để soát công nợ quá hạn, gọi nhắc khách hoặc giao Sales đôn đốc
 4. **Cuối ngày** - Mở `/reports` xem doanh số ngày, vào `/commissions` chốt hoa hồng tháng nếu đến kỳ
 5. **Cài đặt định kỳ** - Mỗi tuần xem `/settings/users` để rà soát quyền truy cập
@@ -68,20 +69,27 @@
 
 **Lưu ý**: Mật khẩu tạm cần được nhân viên đổi ngay sau lần đăng nhập đầu. Nếu nhân viên nghỉ việc, vào lại trang này để **Khóa tài khoản** thay vì xóa (giữ lịch sử dữ liệu).
 
-### 4.2 Phê duyệt đơn hàng giá trị lớn
+### 4.2 Xuất hàng cho một đơn
 
-**Khi nào**: Đơn từ Sales có tổng tiền > 20.000.000 đ (ngưỡng `AUTO_APPROVE`) hoặc > 50.000.000 đ (ngưỡng `MANAGER_APPROVE`).
+**Khi nào**: Đơn đã ở **Phiếu tạm** và hàng sẵn sàng rời kho.
 
 **Bước thực hiện**:
-1. Vào `/orders`, lọc **Trạng thái = Nháp**
+1. Vào `/orders`, lọc **Trạng thái = Phiếu tạm**
 2. Click vào mã đơn để mở chi tiết
-3. Kiểm tra: khách hàng, sản phẩm, giá, chiết khấu, hạn mức công nợ còn lại của khách
-4. Nếu hợp lệ, nhấn **Duyệt đơn** - trạng thái chuyển từ `draft` → `confirmed`
-5. Nếu cần điều chỉnh, nhấn **Yêu cầu sửa** và ghi chú để Sales sửa lại
+3. Kiểm tra: khách hàng, sản phẩm, giá, chiết khấu, hạn mức công nợ còn lại
+4. Nhấn **Xuất hàng**
 
-**Kết quả**: Đơn vào hàng chờ Kho soạn hàng.
+**Kết quả**: Trong MỘT giao dịch, hệ thống trừ kho theo FIFO, ghi công nợ
+phải thu, đổi đơn sang `completed` và mở hộp in phiếu giao.
 
-**Lưu ý**: Sau khi duyệt, đơn được "đóng băng". Muốn thay đổi phải hủy đơn hoặc tạo phiếu Trả hàng.
+**Lưu ý**:
+- ⚠ **Đọc kỹ thông báo sau khi bấm.** Nếu tổ chức bật `allow_oversell`,
+  đơn vẫn xuất được khi thiếu tồn và hệ thống báo riêng "xuất thiếu
+  hàng" kèm số thiếu. Bỏ qua dòng đó là kho đóng hàng theo phiếu rồi tới
+  nơi mới biết thiếu.
+- Đơn đã xuất vẫn sửa được trong số ngày đặt ở Cài đặt → Tổ chức, trừ
+  khi vướng một trong bốn khoá: đã thu tiền, đã phát hành hóa đơn, đã có
+  phiếu trả hoàn thành, hoặc quá hạn sửa.
 
 ### 4.3 Ban hành chính sách hoa hồng mới
 
@@ -95,7 +103,7 @@
 5. Đặt **Ngày hiệu lực** và **Ngày kết thúc** (để trống nếu vô hạn)
 6. Nhấn **Lưu chính sách**
 
-**Kết quả**: Hệ thống tự tính hoa hồng cho mỗi đơn `delivered` và cộng vào ví của Sales.
+**Kết quả**: Hệ thống tự tính hoa hồng cho mỗi đơn `completed` và cộng vào ví của Sales.
 
 **Lưu ý**: Không sửa chính sách đã có dữ liệu hoa hồng phát sinh - hãy tạo chính sách mới với ngày hiệu lực trong tương lai để tránh sai số.
 
@@ -137,7 +145,7 @@
 1. Vào **Cài đặt** → **Tổ chức** (`/settings/org`)
 2. Cập nhật **Tên doanh nghiệp**, **Mã số thuế**, **Địa chỉ trụ sở**
 3. Tải lên **Logo** (dùng cho hóa đơn in, header)
-4. Cấu hình **Số tiền tối thiểu auto-duyệt** và **ngưỡng cần Manager duyệt**
+4. Cấu hình **Số ngày còn sửa được đơn đã xuất hàng** (`completed_edit_days`)
 5. Nhấn **Lưu**
 
 **Kết quả**: Thông tin được áp dụng cho tất cả tài liệu in (hóa đơn, phiếu giao).
@@ -152,16 +160,16 @@
 - Đừng dùng tài khoản Owner để tạo đơn hàng - sẽ làm sai dữ liệu hoa hồng. Hãy tạo tài khoản Sales riêng nếu cần test
 - Định kỳ 6 tháng rà soát lại danh sách người dùng `/settings/users`, khóa tài khoản nhân viên đã nghỉ
 - Trước khi xóa khách hàng / sản phẩm, hãy kiểm tra lịch sử giao dịch - nên dùng "Khóa" / "Ngừng kinh doanh" thay vì xóa
-- Nắm rõ ngưỡng `APPROVAL_THRESHOLDS`: dưới 20tr tự duyệt, 20-50tr cần Manager, trên 50tr cần Owner
+- Đặt `completed_edit_days` cho vừa: để 0 là khoá cứng mọi đơn đã xuất, để quá dài là mở đường sửa lùi vào kỳ đã chốt sổ
 
 ## 6. Lỗi thường gặp
 
 | Lỗi | Nguyên nhân | Cách xử lý |
 | --- | --- | --- |
-| Không thấy đơn cần duyệt dù Sales báo đã tạo | Sales tạo nhưng chưa nhấn **Gửi duyệt** (vẫn ở Nháp riêng) | Yêu cầu Sales mở lại đơn và nhấn **Gửi duyệt** |
+| Không thấy đơn dù Sales báo đã tạo | Đơn còn ở **Nháp** — chỉ người tạo thấy | Yêu cầu Sales mở lại đơn và nhấn **Gửi đơn** để nó thành **Phiếu tạm** |
 | Hoa hồng tính sai cho 1 nhân viên | Áp 2 chính sách chồng nhau cùng kỳ hiệu lực | Vào `/commissions/policies`, tắt chính sách cũ trước khi áp chính sách mới |
 | Không xóa được sản phẩm | Sản phẩm đã có giao dịch trong đơn hàng | Đổi sang trạng thái **Ngừng kinh doanh** thay vì xóa |
-| Báo cáo doanh thu lệch so với kế toán | Có đơn `delivered` nhưng chưa xuất hóa đơn | Vào `/invoices` lọc đơn chưa có hóa đơn để Kế toán xử lý |
+| Báo cáo doanh thu lệch so với kế toán | Có đơn `completed` nhưng chưa xuất hóa đơn | Vào `/invoices` lọc đơn chưa có hóa đơn để Kế toán xử lý |
 | Tài khoản mới tạo không đăng nhập được | Chưa kích hoạt hoặc sai vai trò | Vào `/settings/users`, mở lại tài khoản, đặt lại mật khẩu, kiểm tra trường `status = active` |
 
 ## 7. KPI bạn được đánh giá
@@ -169,5 +177,5 @@
 - **Tăng trưởng doanh thu tháng** (so với tháng trước, chỉ tiêu tối thiểu +5%)
 - **Tỷ lệ công nợ quá hạn / tổng công nợ** (giữ dưới 10%)
 - **Vòng quay tồn kho** (số ngày trung bình hàng nằm kho - mục tiêu < 45 ngày)
-- **Tỷ lệ đơn giao đúng hạn** (`delivered` đúng `delivery_date` - mục tiêu > 95%)
+- **Tỷ lệ đơn xuất hàng đúng hạn** (`completed_at` trong hạn `expected_delivery` - mục tiêu > 95%)
 - **Lợi nhuận gộp** sau khi trừ chiết khấu, hoa hồng, chi phí vận chuyển

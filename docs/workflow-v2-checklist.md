@@ -39,6 +39,34 @@ Tick `[x]` khi đã chạy và đúng. Gặp sai thì DỪNG, ghi lại, đừng
 
       ⚠ Nếu tổng số đơn sau backfill ≠ tổng trước khi chạy thì DỪNG NGAY.
 
+- [ ] **Đọc RIÊNG khối cảnh báo "đơn Hoàn thành không có phiếu xuất".**
+      Migration 119 liệt kê ra mã từng đơn, MỘT LẦN DUY NHẤT, rồi thôi —
+      chạy lại migration cũng không in lại vì lúc đó dữ liệu đã đổi. Đóng
+      cửa sổ SQL Editor mà chưa chép là mất luôn danh sách.
+
+      Chép các mã đơn vào đây:
+
+      | Mã đơn | Đã kiểm tay chưa |
+      |---|---|
+      | | |
+
+      ⚠ Đây là đơn có TRƯỚC migration 107: trạng thái nói đã giao nhưng
+      tồn kho chưa bao giờ bị trừ cho chúng. Migration cố ý KHÔNG tự xử —
+      trừ kho lùi cho một đơn từ năm ngoái là làm sai tồn hôm nay. Chủ NPP
+      quyết từng đơn một.
+
+      ```sql
+      -- Chạy lại được bất cứ lúc nào nếu đã lỡ đóng cửa sổ:
+      SELECT so.order_code, so.order_date, so.total_amount
+      FROM sales_orders so
+      WHERE so.status = 'completed'
+        AND NOT EXISTS (
+          SELECT 1 FROM stock_entries se
+           WHERE se.type = 'export' AND se.status = 'posted'
+             AND se.ref_order_ids @> jsonb_build_array(so.id::text))
+      ORDER BY so.order_date DESC;
+      ```
+
 - [ ] **Không còn trạng thái cũ nào sót lại.**
 
       ```sql
@@ -125,6 +153,22 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
         `SELECT product_id, qty_on_hand FROM batches WHERE qty_on_hand < 0;`
       · **Nhớ tắt cờ lại sau khi thử.**
 
+- [ ] **2.3 Lô sắp hết hạn bị BỎ QUA — và phải nói ra.** Dựng một lô có
+      `expiry_date` trong vòng ngưỡng cảnh báo, để nó là lô CŨ NHẤT của
+      sản phẩm, rồi xuất một đơn có sản phẩm đó.
+
+      ```sql
+      UPDATE batches SET expiry_date = CURRENT_DATE + 10
+      WHERE id = '<lô cũ nhất>';
+      ```
+      · Phải thấy: FIFO **nhảy qua** lô đó (không đẩy hàng sắp hỏng cho
+        khách), và màn hình nói rõ đã bỏ qua bao nhiêu lô.
+      · Kiểm: `post_stock_export` trả `near_expiry_skipped` > 0, và lô đó
+        `qty_on_hand` KHÔNG đổi.
+      · ⚠ Bỏ qua trong im lặng là kiểu sai khó thấy nhất của mục này:
+        hàng vẫn đi đủ, sổ vẫn khớp, chỉ có một lô nằm lại kho tới lúc
+        hỏng mà không ai được báo.
+
 ---
 
 ## 3. Đi lùi và huỷ
@@ -182,6 +226,20 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
       · ⚠ Nếu màn hình MỞ nút mà RPC chặn (hoặc ngược lại) thì hai bên
         đang nói hai đằng — ghi lại, đó là lỗi.
 
+- [ ] **4.3 Sửa đơn của NGƯỜI KHÁC.** Đăng nhập bằng một NVBH, mở đơn
+      `completed` của NVBH khác, thử sửa.
+      · Phải thấy: câu tiếng Việt "chỉ sửa được đơn của mình"
+        (`FORBIDDEN_NOT_OWNER`), KHÔNG phải một màn trắng hay một câu
+        tiếng Anh.
+      · Thử cả nút **Huỷ** trên đơn đó — cùng một mã, cùng một câu.
+
+- [ ] **4.4 Tổng không khớp các dòng.** Dựng bằng cách sửa dòng ở một tab
+      rồi bấm Lưu ở tab kia đã mở từ trước (payload mang tổng cũ).
+      · Phải thấy: bị chặn với `TOTAL_MISMATCH`, nêu CẢ HAI con số.
+      · ⚠ Đây là lưới chặn cuối cùng giữa "giao diện tính sai" và "công
+        nợ ghi sai". Nếu nó im lặng cho qua thì `receivables.amount` sẽ
+        lệch khỏi tổng dòng, và không báo cáo nào phát hiện được.
+
 ---
 
 ## 5. Đơn trả
@@ -231,6 +289,14 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
       · ⚠ Nếu ra `completed` thì hàng trả sẽ không bao giờ vào kho và
         phiếu kẹt vĩnh viễn — đó đúng là lỗi vừa sửa.
 
+- [ ] **5.8 Trả hàng cho đơn CHƯA xuất.** Lập phiếu trả gắn vào một đơn
+      còn ở `submitted`, rồi bấm Hoàn thành.
+      · Phải thấy: bị chặn, câu tiếng Việt "đơn gốc chưa xuất hàng, không
+        nhập trả được" (`ORDER_NOT_COMPLETED`).
+      · ⚠ Không có phép chặn này thì kho nhận lại hàng nó CHƯA TỪNG xuất
+        — tồn tăng lên từ hư không, và công nợ bị trừ cho một khoản chưa
+        bao giờ được ghi.
+
 ---
 
 ## 6. Phiếu thu
@@ -268,6 +334,65 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
       · ⚠ Nếu `paid` không giảm thì khách hiện ra đã trả tiền trong khi
         phiếu thu đã huỷ — đó đúng là lỗi vừa sửa.
 
+- [ ] **6.6 Số dư có — Q11, phần đổi nghiệp vụ.** Dựng đúng thứ tự này:
+      một đơn đã xuất, **thu ĐỦ tiền**, rồi mới lập phiếu trả cho đơn đó
+      và hoàn thành.
+      · Phải thấy: phiếu trả hoàn thành ĐƯỢC.
+      · ⚠ Trước Q11 bước này bị chặn bằng `OVERPAID_AFTER_CREDIT` và
+        phiếu trả kẹt vĩnh viễn, không có đường đi tiếp nào ngoài huỷ
+        phiếu thu đã in. Nếu vẫn gặp câu đó thì migration 120 chưa chạy.
+      · Kiểm: `receivables.paid` > `amount` — **đó là hợp lệ**;
+        `status` = `paid`.
+
+        ```sql
+        SELECT id, amount, paid, paid - amount AS du, status
+        FROM receivables WHERE customer_id = '<id khách>' AND paid > amount;
+        ```
+
+- [ ] **6.7 Số dư có PHẢI NHÌN THẤY ĐƯỢC.** Vẫn khách đó, mở
+      `/receivables` và `/receivables/by-customer/<id>`.
+      · Phải thấy: **không có số âm màu đỏ ở đâu cả**. Dòng dư hiện là
+        "Dư có …" (xanh), và màn theo khách có dòng "Đang giữ hộ … — nợ
+        ròng …".
+      · ⚠ Số âm màu đỏ trông y hệt một khoản nợ khẩn cấp, trong khi sự
+        thật ngược lại: nhà phân phối đang nợ khách.
+      · Kiểm tổng không khai cao lố: "Tổng công nợ" luôn ≥ nợ ròng đúng
+        bằng số dư — đó là cố ý (kẹp về 0), nhưng phải NÓI RA phần bị kẹp.
+
+- [ ] **6.8 Rút số dư có ra dùng.** Vẫn khách đó, tạo thêm một đơn mới và
+      xuất hàng để họ có khoản nợ mới. Vào `/finance/cash-receipts/new`.
+      · Phải thấy: thẻ **"Số dư có của khách"** hiện đúng con số ở mục
+        6.6, kèm ô **Rút từ số dư** và nút **Rút tối đa**.
+      · Tick khoản nợ mới, bấm **Rút tối đa**, lưu.
+      · Kiểm ô **Khách đưa** = nợ đã chọn − phần rút, và
+        `cash_receipts.submitted_amount` đúng bằng con số đó.
+      · Kiểm **HAI VẾ** trong sổ:
+
+        ```sql
+        SELECT receivable_id, amount, kind FROM cash_receipt_lines
+        WHERE receipt_id = '<id phiếu vừa lập>' ORDER BY amount;
+        ```
+        Phải thấy một dòng ÂM (`kind='credit_applied'`, ở khoản đang dư)
+        và một dòng DƯƠNG (`kind='credit_applied'`, ở khoản được thu),
+        cộng lại bằng 0.
+      · ⚠ Chỉ thấy MỘT vế là sai. `void_cash_receipt` đảo phiếu bằng cách
+        duyệt chính bảng này; thiếu vế rút thì huỷ phiếu sẽ cộng lại phần
+        đắp mà không trả lại phần đã rút — tiền của khách bốc hơi, và
+        không lệnh nào báo lỗi.
+
+- [ ] **6.9 Huỷ phiếu thu CÓ rút số dư.** Huỷ đúng phiếu ở mục 6.8.
+      · Kiểm: cả hai dòng công nợ về ĐÚNG số trước khi lập phiếu — khoản
+        dư dư lại đúng bằng cũ, khoản nợ mới nợ lại đúng bằng cũ.
+      · ⚠ So bằng số cụ thể, đừng nhìn ước chừng. Đây là chỗ duy nhất
+        trong cả đợt có bút toán hai vế; sai ở đây lệch sổ mà vẫn "trông
+        hợp lý".
+
+- [ ] **6.10 Rút quá tay bị chặn.** Thử gõ số lớn hơn số dư, rồi thử gõ
+      số lớn hơn phần còn phải trả.
+      · Phải thấy: chặn ngay ở màn (chữ đỏ, nút mờ), hai câu KHÁC NHAU.
+      · Nếu lách được: RPC phải ném `CREDIT_BALANCE_TOO_LOW` hoặc
+        `CREDIT_EXCEEDS_SELECTED`, dịch sang tiếng Việt.
+
 ---
 
 ## 7. Xoá đơn — Q12
@@ -295,7 +420,55 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
 
 ---
 
-## 9. Sau khi xong
+## 9. Luồng cũ đã ẩn — P7
+
+⚠ Ba việc KHÁC NHAU, kiểm riêng từng việc: **ẩn khỏi menu**, **vẫn vào xem
+được**, **nút ghi đã khoá**. Lẫn ba việc này vào nhau là hoặc để lọt một
+đường ghi, hoặc chặn mất chứng từ cũ.
+
+- [ ] **9.1 Ẩn với MỌI vai trò, kể cả chủ.** Đăng nhập lần lượt bằng chủ,
+      quản lý, kho, tài xế, kế toán.
+      · Phải thấy: menu trái, menu dưới (điện thoại), lưới ô ở Trang chủ
+        và màn Kho đều KHÔNG còn Giao hàng / Xuất kho / Chờ xử lý.
+      · ⚠ Kiểm cả tài khoản CHỦ. Quyền của chủ mở hết mọi thứ, nên đây là
+        vai dễ sót nhất.
+      · Kiểm cả ô "Tạo phiếu" ở `/inventory/entries`: không còn mục
+        **Xuất kho**.
+
+- [ ] **9.2 Vẫn vào xem được chứng từ cũ.** Gõ thẳng `/deliveries` vào
+      thanh địa chỉ.
+      · Phải thấy: màn MỞ ra bình thường, không bị đá về trang chủ.
+      · ⚠ Dữ liệu luồng cũ là chứng từ. Chặn luôn cửa vào là lấy mất lịch
+        sử, mà ta chỉ định thôi dùng chứ không định vứt.
+
+- [ ] **9.3 Năm nút ghi đều khoá.** Với mỗi màn, bấm đúng nút ghi:
+
+      | Màn | Nút |
+      |---|---|
+      | `/inventory/stock-out` | Gộp / tạo phiếu xuất |
+      | `/inventory/entries/<id>` | Tự giao |
+      | `/inventory/stock-out/collect/<id>` | Lưu thu tiền |
+      | `/deliveries/<id>/handover` | Bàn giao |
+      | `/inventory/pending` | Nhập lại kho |
+
+      · Phải thấy: toast đỏ "Bước này đã bỏ ở quy trình mới" kèm câu nói
+        rõ **thay bằng gì** — không chỉ nói "không dùng được nữa".
+      · Kiểm: KHÔNG có dòng mới nào trong `stock_entries`, `payments`,
+        `returns` sau khi bấm.
+      · ⚠ Hai màn cuối nguy hiểm nhất: bảng `returns` không có trigger
+        chặn chuyển trạng thái, nên nếu khoá hỏng thì lệnh đẩy phiếu trả
+        vào `completed` **vẫn chạy thành công** mà hàng không vào kho.
+        Cơ sở dữ liệu không cãi một câu nào.
+
+- [ ] **9.4 Trang Trợ giúp dạy đúng quy trình mới.** Mở `/help` bằng từng
+      vai.
+      · Phải thấy: không còn "Đã duyệt / Đang lấy / Đang giao", không còn
+        ô module Giao hàng, và có câu hỏi thường gặp trả lời thẳng vì sao
+        màn Giao hàng / Xuất kho biến mất.
+
+---
+
+## 10. Sau khi xong
 
 - [ ] Ghi lại mọi mục SAI vào `docs/workflow-v2-questions.md`, kèm số liệu
       thật.

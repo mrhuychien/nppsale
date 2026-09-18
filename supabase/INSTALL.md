@@ -31,7 +31,7 @@ cho Việt Nam). Ghi lại **Database password** — Supabase chỉ hiện một
 SQL Editor → **New query** → dán **toàn bộ** `supabase/schema_full.sql` →
 **Run**.
 
-File này gộp 102 migration (đã bỏ seed demo). Chạy một lần trên database
+File này gộp 119 migration (đã bỏ seed demo). Chạy một lần trên database
 trống, trong một transaction.
 
 Đúng thì được:
@@ -83,7 +83,7 @@ Auth, chèn tay vào `auth.users` sẽ ra tài khoản không đăng nhập đư
 SQL Editor → dán `supabase/bootstrap_owner.sql` → **sửa 3 dòng đầu**
 (số điện thoại chủ NPP, tên NPP, slug) → **Run**.
 
-**Không bỏ được bước này.** Sau bước 2 database có đủ 72 bảng nhưng *không
+**Không bỏ được bước này.** Sau bước 2 database có đủ 73 bảng nhưng *không
 có org nào và không có người dùng nào*, và dự án **không có trigger nào
 trên `auth.users`** — nên tạo tài khoản ở bước 3 cũng không tự sinh dòng
 trong `public.users`. Thiếu bước 4 thì đăng nhập xong app đá về `/login`

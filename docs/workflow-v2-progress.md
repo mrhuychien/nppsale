@@ -45,8 +45,9 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       migration 120 nay đều có giao diện gọi. Kèm
       `lib/returns/complete-return.ts`, `lib/finance/cash-receipt.ts`,
       màn lập phiếu thu mới, và 15 chốt; thử phá 14 lần.
-- [ ] **P7** `feat(wf2-P7)` — Ẩn module luồng cũ khỏi nav (không xoá
-      code), cập nhật docs hướng dẫn, checklist E2E, test mới.
+- [x] **P7** `feat(wf2-P7)` — Ẩn module luồng cũ khỏi nav (không xoá
+      code), khoá năm nút ghi, cập nhật toàn bộ docs hướng dẫn + bộ
+      mockup, checklist E2E, 16 chốt mới. Kèm Q11 (số dư có).
 
 ## Baseline P0
 
@@ -278,6 +279,90 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   vào thẳng `completed` (`deliveries/[id]/handover`, `inventory/pending`)
   và một trong hai còn sửa công nợ bằng mã trình duyệt.
 
+## P7 — ẩn luồng cũ, khoá nút ghi, dọn docs
+
+**Đã làm.**
+- `LEGACY_V2_HREFS` ẩn `/deliveries`, `/inventory/stock-out`,
+  `/inventory/pending` khỏi MỌI menu, kể cả của chủ.
+- **Tách `canSeeHref` (menu) khỏi `canEnterHref` (cửa vào).** Ẩn ≠ chặn:
+  dữ liệu luồng cũ là chứng từ, vẫn phải mở xem được.
+- Khoá năm nút ghi, chặn ở ĐẦU hàm trước mọi lệnh ghi:
+  `stock-out/handleMerge`, `entries/[id]/handleSelfDeliver`,
+  `stock-out/collect/handleSubmit`, `handover/handleSubmit`,
+  `pending/handleRestock`. Bật lại bằng một hằng
+  (`LEGACY_FLOW_WRITES_LOCKED`).
+- Gỡ hai lối vào còn sót: ô "Xuất kho" trong menu *Tạo phiếu* ở
+  `/inventory/entries`, và ô module *Giao hàng* ở `/help`.
+- Viết lại cho đúng v2: `/help` (trang trợ giúp trong app), 8 tệp
+  `HUONG_DAN*.md`, `BAN_GIAO.md`, `DEPLOY.md`, `supabase/INSTALL.md`,
+  `.claude/skills/design-ux-ui/SKILL.md`, `supabase/mockup/README.md` và
+  hai tệp mockup SQL.
+- `docs/workflow-v2-checklist.md`: thêm mục 2.3 (lô cận hạn bị bỏ qua),
+  4.3/4.4 (`FORBIDDEN_NOT_OWNER`, `TOTAL_MISMATCH`), 5.8
+  (`ORDER_NOT_COMPLETED`), 6.6–6.10 (số dư có), mục 9 (P7), và khối
+  chép danh sách "đơn Hoàn thành không có phiếu xuất" ở mục 0.
+- Sinh lại `supabase/schema_full.sql` (đang lệch 107 dòng thêm / 23 dòng
+  bớt so với migrations — đúng phần Q8/Q10/Q11/Q12).
+- 16 chốt ở `tests/workflow-v2-p7.test.ts`; thử phá 10/10 bị bắt.
+
+**Bất ngờ gặp.**
+- ⚠ **Thêm `/deliveries` vào danh sách ẩn thì CHẶN LUÔN CỬA VÀO.**
+  `useRoleGuard` dùng chung `canSeeHref`, nên ẩn khỏi menu cũng thành đá
+  người dùng về trang chủ — ngược hẳn với "chứng từ cũ vẫn phải xem
+  được". Phải tách làm hai hàm.
+- ⚠ **Để nguyên nút ghi còn TỆ HƠN báo lỗi.** Ba màn luồng cũ ghi theo
+  nhiều bước rời nhau và bước đổi trạng thái đơn nằm ở CUỐI — mà mig 119
+  nay từ chối trạng thái đó. Người dùng không nhận thông báo lỗi, họ
+  nhận **ghi dở**: kho đã trừ hoặc tiền đã ghi, đơn thì không đổi, không
+  giao dịch nào cuộn lại.
+- ⚠ **Hai màn phiếu trả còn tệ hơn nữa:** bảng `returns` KHÔNG có trigger
+  chặn chuyển trạng thái, và mig 120 đã gỡ trigger nhập kho tự động. Hai
+  màn đó vẫn đẩy phiếu trả thẳng vào `completed` mà hàng không vào kho —
+  CSDL không cãi một câu. Ở đó giao diện là lớp chặn DUY NHẤT.
+- ⚠ **Bộ mockup không chèn được nữa.** `05_sales_orders.sql` và
+  `07_returns_visits.sql` chèn thẳng năm giá trị trạng thái đã chết; sau
+  mig 119 mỗi INSERT ném ràng buộc và người cài demo đứng giữa đường với
+  nửa bộ dữ liệu. Đã đổi, và cố ý KHÔNG theo backfill của mig 119 ở hai
+  đơn `picking` (mig đẩy lên `completed` vì đơn thật có phiếu xuất; đơn
+  demo chưa bao giờ trừ tồn).
+- **Hai chốt nói dối, bắt được nhờ thử phá:** một chốt hỏi "có chữ
+  `return` quanh đây không" vẫn xanh sau khi bỏ hẳn `return` khỏi guard
+  (vì có `return` khác trong cửa sổ) → nay đếm ngoặc cắt đúng thân
+  guard; một chốt tìm `balRes.error` vẫn xanh sau khi bỏ nó khỏi điều
+  kiện rẽ nhánh (vì chữ đó còn ở dòng dưới) → nay neo vào cả câu `if`.
+
+## Q11 — cho phép ghi số dư có (chủ nhà chọn phương án a)
+
+**Đã làm.**
+- Gỡ `OVERPAID_AFTER_CREDIT` khỏi `_wf2_recompute_receivable`; sửa
+  `void_cash_receipt` xét `'paid'` TRƯỚC `'partial'`.
+- Thêm `use_credit` vào `create_cash_receipt`, ghi **bút toán hai vế**
+  (`payments` âm ở khoản đang dư + dương ở khoản được thu, cùng
+  `kind='credit_applied'`) để `void_cash_receipt` đảo được bằng đúng
+  vòng lặp sẵn có.
+- Kẹp `GREATEST(0, …)` ở `receivables_by_rep` / `receivables_by_customer`
+  và trần 100 cho tỉ lệ thu hồi (093).
+- `src/lib/receivables/credit.ts` — một chỗ khai, mọi màn dùng.
+- Màn lập phiếu thu: thẻ "Số dư có của khách" + ô rút + hai phép chặn
+  bản sao của RPC.
+- 28 chốt ở `tests/workflow-v2-q11-credit.test.ts`; thử phá 25/25 bị bắt.
+
+**Bất ngờ gặp.**
+- ⚠ **Dòng trả dư mang `status = 'paid'`,** nên danh sách khoản nợ (lọc
+  `open/partial/overdue`) gạt nó đi — tiền của khách biến mất khỏi màn.
+  Phải có truy vấn RIÊNG, không lọc trạng thái.
+- ⚠ **PostgREST không so được cột với cột,** nên không hỏi thẳng
+  `paid > amount` được; phải kéo về rồi cộng — và phải kéo qua
+  `fetchAllForAggregate`, vì một khách lâu năm vượt 1000 dòng là
+  PostgREST cắt bớt trong im lặng và số dư hiện ra THIẾU.
+- ⚠ **Hai lớp che chồng lên nhau ở sổ công nợ:** vừa lọc
+  `status <> 'paid'` vừa cộng `amount - paid`. Kẹp là đúng, nhưng hệ quả
+  là "Tổng công nợ" luôn KHAI CAO đúng bằng số dư — nên phải NÓI RA phần
+  bị kẹp, không chỉ kẹp rồi im.
+
+**Cần chủ nhà quyết.** Ba hệ quả của Q11 chưa dọn (Q13) và hai chỗ luồng
+cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
+
 ## Quy ước
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -296,9 +381,18 @@ Chạy trên `44dbe7f` trước khi sửa gì:
 
 ## TODO chủ nhà (tích dần)
 
-- [ ] Chạy migration 119 + 120 trên staging, đọc `RAISE NOTICE` backfill.
-- [ ] Chạy `docs/workflow-v2-checklist.md` (tạo ở P7).
-- [ ] Bật lại module Giao hàng khi cần (D12) — chỉ là nav.
+- [ ] Chạy migration **118 + 119 + 120** trên staging, đọc `RAISE NOTICE`
+      backfill. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
+      xuất" — nó chỉ in MỘT LẦN (mục 0 của checklist có câu SQL chạy lại).
+- [ ] Chạy hết `docs/workflow-v2-checklist.md` (10 mục).
+- [ ] Quyết Q13 (ba hệ quả Q11 chưa dọn: `cash_in` cộng cả
+      `return_credit`; `opening-balance/parse.ts` còn cấm `paid > amount`;
+      nhãn phương thức thiếu hai giá trị mới).
+- [ ] Quyết Q14 (`/settings/approval-rules` còn sống nhưng cấu hình bước
+      duyệt đã bỏ; vai `driver` không còn module chính).
+- [ ] Bật lại module Giao hàng khi cần — đổi `LEGACY_FLOW_WRITES_LOCKED`
+      về `false` và bỏ href khỏi `LEGACY_V2_HREFS`. ⚠ Đọc khối chú thích
+      trong `src/lib/nav/legacy-flow.ts` trước khi bật.
 - [ ] Merge vào `main` sau 2 tuần đối tác chạy ổn.
 - [ ] Migration 118 (dọn đơn trả khi xoá đơn) vẫn chưa chạy trên
       production — việc tồn từ trước Coder Pack này.

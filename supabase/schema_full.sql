@@ -10217,7 +10217,12 @@ AS $$
       rc.customer_id,
       COALESCE(rc.amount, 0) AS amount,
       COALESCE(rc.paid, 0)   AS paid,
-      COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,
+      -- ⚠ Q11 — KẸP VỀ 0. Từ khi cho phép ghi SỐ DƯ CÓ (`paid > amount`,
+      --   xem mig 120 `_wf2_recompute_receivable`), hiệu này có thể ÂM.
+      --   Hàm này KHÔNG lọc `status <> 'paid'` như hai hàm kia, nên dòng
+      --   dư lọt vào và số dư có bị TRỪ THẲNG vào công nợ của NVBH — con
+      --   số trên màn nhỏ hơn thực tế, có khi âm, và không lỗi nào bắn ra.
+      GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0)) AS remaining,
       rc.status,
       rc.status <> 'paid' AS has_debt,
       GREATEST(0, CURRENT_DATE - COALESCE(rc.due_date, CURRENT_DATE)) AS aging_days
@@ -10234,8 +10239,10 @@ AS $$
     COALESCE(SUM(r.paid), 0),
     COALESCE(SUM(r.amount), 0),
     COALESCE(SUM(r.remaining) FILTER (WHERE r.status = 'overdue'), 0),
+    -- ⚠ Q11 — KẸP TRẦN 100%. Dòng dư có `paid > amount`, nên tỉ lệ thu
+    --   được vượt 100 và người đọc tưởng số liệu hỏng.
     CASE WHEN COALESCE(SUM(r.amount), 0) > 0
-         THEN ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer
+         THEN LEAST(100, ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer)
          ELSE 0 END,
     CASE WHEN COUNT(*) FILTER (WHERE r.has_debt) > 0
          THEN ROUND(
@@ -10281,7 +10288,11 @@ AS $$
       rc.customer_id,
       COALESCE(rc.amount, 0) AS amount,
       COALESCE(rc.paid, 0)   AS paid,
-      COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,
+      -- ⚠ Q11 — KẸP VỀ 0, xem giải thích ở `receivables_by_rep`. Hàm này
+      --   có lọc `status <> 'paid'` nên dòng dư thường đã bị loại, NHƯNG
+      --   chỉ đúng chừng nào dòng dư luôn mang status 'paid'. Kẹp ở đây
+      --   là để một lần đặt nhầm status không biến thành số âm trên màn.
+      GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0)) AS remaining,
       rc.status,
       rc.sales_user_id
     FROM receivables rc
@@ -14845,8 +14856,8 @@ END $$;
 -- ####################################################################
 
 -- ---------------------------------------------------------------------
--- 118 — Xoá đơn nháp / đã huỷ: dọn phiếu trả CHƯA DUYỆT đi kèm, chặn rõ
---       lời nếu phiếu trả ĐÃ duyệt
+-- 118 — Xoá đơn nháp / đã huỷ: dọn phiếu trả CHƯA HOÀN THÀNH đi kèm,
+--       chặn rõ lời nếu phiếu trả ĐÃ hoàn thành
 -- ---------------------------------------------------------------------
 --
 -- TRIỆU CHỨNG (chủ NPP báo kèm ảnh): bấm "Xoá đơn hàng" trên đơn ĐÃ HUỶ →
@@ -14854,13 +14865,13 @@ END $$;
 --   constraint "returns_order_id_fkey" on table "returns" (mã 23503)
 --
 -- NGUYÊN NHÂN: luồng bán hàng tạo "hàng trả kèm đơn" — một dòng `returns`
--- trỏ `order_id` vào đơn, trạng thái `pending`. Khoá ngoại đó là REFERENCES
+-- trỏ `order_id` vào đơn, chưa hoàn thành. Khoá ngoại đó là REFERENCES
 -- trần (mig 001), nên Postgres chặn xoá đơn chừng nào phiếu trả còn đó.
 -- Mig 113 cố ý KHÔNG nới khoá ngoại vì công nợ / phiếu thu / bàn giao phải
--- chặn — đúng. Nhưng phiếu trả `pending` thì KHÁC: nó chưa trừ công nợ,
+-- chặn — đúng. Nhưng phiếu trả chưa hoàn thành thì KHÁC: nó chưa trừ công nợ,
 -- chưa nhập kho, nó là một phần của chính đơn đó. Đơn đi thì nó đi theo.
 --
--- ⚠ PHIẾU TRẢ ĐÃ DUYỆT (`approved` / `completed`) LÀ CHỨNG TỪ. Nó đã trừ
+-- ⚠ PHIẾU TRẢ ĐÃ HOÀN THÀNH LÀ CHỨNG TỪ. Nó đã trừ
 -- công nợ (credited_at) và kho đã nhận hàng lại. Không xoá theo, không gỡ
 -- liên kết (gỡ là phiếu mất dấu vết "trả cho đơn nào") — CHẶN, và nói
 -- thẳng vì sao bằng tiếng người, thay vì câu "violates foreign key".
@@ -14869,7 +14880,7 @@ END $$;
 -- lần ghé vẫn có thật → gỡ liên kết, giữ nhật ký.
 --
 -- SECURITY DEFINER: người xoá đơn thường không có policy DELETE trên
--- `returns` (mig 002 chỉ có xem / tạo / duyệt). Không có nó thì lệnh xoá
+-- `returns` (mig 002 chỉ có xem / tạo / sửa). Không có nó thì lệnh xoá
 -- phiếu trả bên trong trigger khớp 0 dòng — im lặng — rồi khoá ngoại lại
 -- chặn y như cũ. Trigger chỉ chạy sau khi RLS đã CHO xoá đơn, và chỉ đụng
 -- tới phiếu trả của đúng đơn đó, nên phạm vi không rộng hơn quyền đã có.
@@ -14885,25 +14896,40 @@ DECLARE
   v_posted  int;
   v_pending int;
 BEGIN
+  -- ⚠ Q12 — BỐN TRẠNG THÁI CỦA WORKFLOW V2, không phải ba giá trị cũ.
+  --   `chk_returns_status_v2` (mig 119) chỉ còn cho
+  --   draft/submitted/completed/cancelled; ba giá trị của bước duyệt cũ
+  --   đã bị backfill đi và ràng buộc cấm.
+  --
+  --   Hỏng ra sao nếu để nguyên, và hỏng ÂM THẦM:
+  --   · nhánh chặn hỏi cả giá trị của bước duyệt cũ → phiếu 'submitted'
+  --     hết chặn việc xoá đơn;
+  --   · nhánh dọn hỏi hai giá trị cũ kia → khớp 0 dòng, nên khoá ngoại
+  --     23503 chặn xoá đơn kèm một câu tiếng Anh — ĐÚNG THỨ MIGRATION
+  --     NÀY SINH RA ĐỂ SỬA.
+  --
+  -- ⚠ Chỉ phiếu 'completed' mới đụng tồn kho và công nợ, nên chỉ nó mới
+  --   chặn. Ba trạng thái kia chưa ghi gì (hoặc đã được đảo lại ở
+  --   `cancel_return`) nên dọn đi cùng đơn được.
   SELECT count(*) INTO v_posted
   FROM returns
-  WHERE order_id = OLD.id AND status IN ('approved', 'completed');
+  WHERE order_id = OLD.id AND status = 'completed';
 
   IF v_posted > 0 THEN
     RAISE EXCEPTION
-      'Đơn % có % phiếu trả hàng ĐÃ DUYỆT (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.',
+      'Đơn % có % phiếu trả hàng ĐÃ HOÀN THÀNH (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.',
       OLD.order_code, v_posted
       USING ERRCODE = 'P0001', HINT = 'returns.order_id';
   END IF;
 
   DELETE FROM returns
-  WHERE order_id = OLD.id AND status IN ('pending', 'rejected');
+  WHERE order_id = OLD.id AND status IN ('draft', 'submitted', 'cancelled');
   GET DIAGNOSTICS v_pending = ROW_COUNT;
 
   UPDATE visit_logs SET order_id = NULL WHERE order_id = OLD.id;
 
   IF v_pending > 0 THEN
-    RAISE NOTICE 'Xoá đơn %: đã bỏ % phiếu trả chưa duyệt đi kèm', OLD.order_code, v_pending;
+    RAISE NOTICE 'Xoá đơn %: đã bỏ % phiếu trả chưa hoàn thành đi kèm', OLD.order_code, v_pending;
   END IF;
 
   RETURN OLD;
@@ -14918,8 +14944,8 @@ CREATE TRIGGER trg_sales_orders_before_delete
   FOR EACH ROW EXECUTE FUNCTION public.trg_sales_orders_before_delete();
 
 COMMENT ON FUNCTION public.trg_sales_orders_before_delete() IS
-  'Xoá đơn nháp/huỷ: bỏ phiếu trả pending/rejected đi kèm (chưa trừ công '
-  'nợ, chưa nhập kho); chặn rõ lời nếu có phiếu trả approved/completed; '
+  'Xoá đơn nháp/huỷ: bỏ phiếu trả chưa hoàn thành đi kèm (chưa trừ công '
+  'nợ, chưa nhập kho); chặn rõ lời nếu có phiếu trả đã hoàn thành; '
   'gỡ order_id khỏi visit_logs. Công nợ, hoá đơn, phiếu thu, bàn giao vẫn '
   'chặn bằng khoá ngoại — đó là chứng từ, đúng như mig 113 chốt.';
 
@@ -14928,8 +14954,9 @@ DECLARE v_n int;
 BEGIN
   SELECT count(*) INTO v_n
   FROM returns r JOIN sales_orders o ON o.id = r.order_id
-  WHERE o.status IN ('draft', 'cancelled') AND r.status IN ('pending', 'rejected');
-  RAISE NOTICE '--- Hiện có % phiếu trả chưa duyệt gắn với đơn nháp/huỷ — sẽ đi theo khi đơn bị xoá ---', v_n;
+  WHERE o.status IN ('draft', 'cancelled')
+    AND r.status IN ('draft', 'submitted', 'cancelled');
+  RAISE NOTICE '--- Hiện có % phiếu trả chưa hoàn thành gắn với đơn nháp/huỷ — sẽ đi theo khi đơn bị xoá ---', v_n;
 END $$;
 
 
@@ -15609,10 +15636,14 @@ ALTER TABLE cash_receipt_lines
 ALTER TABLE cash_receipt_lines DROP CONSTRAINT IF EXISTS chk_cash_receipt_lines_kind;
 ALTER TABLE cash_receipt_lines
   ADD CONSTRAINT chk_cash_receipt_lines_kind
-  CHECK (kind IN ('payment', 'return_credit'));
+  CHECK (kind IN ('payment', 'return_credit', 'credit_applied'));
 
 COMMENT ON COLUMN cash_receipt_lines.kind IS
-  'payment = khách trả tiền. return_credit = cấn trừ bằng đơn trả độc lập.';
+  'payment = khách trả tiền. return_credit = cấn trừ bằng đơn trả độc '
+  'lập. credit_applied = chuyển SỐ DƯ CÓ của khách sang khoản nợ khác '
+  '(Q11) — đi thành CẶP: một dòng ÂM rút ở khoản đang dư, một dòng DƯƠNG '
+  'đắp vào khoản được thu. Nhờ đi theo cặp mà void_cash_receipt đảo được '
+  'cả hai vế bằng đúng vòng lặp sẵn có, không cần biết gì thêm.';
 
 -- 9.3 Khoản trả có thể là tiền, hoặc là khoản có từ đơn trả
 DO $$
@@ -15634,7 +15665,12 @@ END $$;
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS chk_payments_method_v2;
 ALTER TABLE payments
   ADD CONSTRAINT chk_payments_method_v2
-  CHECK (method IS NULL OR method IN ('cash', 'transfer', 'ewallet', 'return_credit'));
+  CHECK (method IS NULL OR method IN ('cash', 'transfer', 'ewallet', 'return_credit', 'credit_applied'));
+
+-- ⚠ `payments.amount` KHÔNG có ràng buộc dấu, và Q11 dựa vào điều đó: vế
+--   rút của bút toán chuyển số dư có ghi một dòng ÂM. Đừng thêm
+--   `CHECK (amount > 0)` — thêm là bút toán chuyển hết đường ghi, và
+--   `void_cash_receipt` mất khả năng đảo bằng cùng một vòng lặp.
 
 
 -- =====================================================================
@@ -16203,14 +16239,27 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- ⚠ Khách đã trả nhiều hơn số nợ mới (trả hàng sau khi đã thanh toán
-  --   đủ). Hệ thống không có khái niệm số dư có, nên hạ amount xuống dưới
-  --   paid là làm biến mất tiền đang giữ của khách. Dừng và bắt huỷ phiếu
-  --   thu trước.
-  IF v_id IS NOT NULL AND v_paid > v_net THEN
-    RAISE EXCEPTION 'OVERPAID_AFTER_CREDIT: khách đã trả % nhưng nợ còn %, huỷ phiếu thu trước khi ghi có', v_paid, v_net
-      USING ERRCODE = 'P0001';
-  END IF;
+  -- ⚠ Q11 — TỪNG CHẶN Ở ĐÂY, NAY CHO QUA. Khi khách trả hàng sau khi đã
+  --   thanh toán đủ thì `paid > amount`. Bản trước RAISE
+  --   'OVERPAID_AFTER_CREDIT' và rollback CẢ `complete_return` — kể cả
+  --   phần nhập kho — kèm lời khuyên "huỷ phiếu thu trước". Nhưng nếu
+  --   tiền vào qua màn thu theo công nợ thì KHÔNG có phiếu thu nào để
+  --   huỷ, nên phiếu trả kẹt vĩnh viễn và hàng khách trả không bao giờ
+  --   vào kho được.
+  --
+  --   Chủ nhà chọn phương án (a): `paid > amount` là HỢP LỆ, phần dư là
+  --   SỐ DƯ CÓ của khách. Khối UPDATE ngay dưới đã đúng sẵn cho ca này:
+  --   nhánh `v_paid >= v_net` bắt luôn trường hợp lớn hơn và đặt status
+  --   'paid', nghĩa là "không còn gì để đòi".
+  --
+  -- ⚠ KHÔNG thêm giá trị mới vào `receivables.status`. Ràng buộc CHECK
+  --   của nó là ẩn danh từ mig 001, và mọi bộ lọc trong kho đều dùng
+  --   `status <> 'paid'` để nói "đã tất toán, đừng tính nữa" — đúng ý.
+  --
+  -- ⚠ HỆ QUẢ ĐÃ BÁO CHỦ NHÀ: `paid > 0` là điều kiện khoá ở
+  --   `_wf2_assert_order_unlocked` và `cancel_return`. Dòng dư luôn có
+  --   `paid > 0`, nên đơn gốc hết sửa/huỷ được và chính phiếu trả vừa
+  --   cứu khỏi kẹt thì không huỷ lại được. Đó là cái giá của (a).
 
   IF v_id IS NOT NULL THEN
     UPDATE receivables
@@ -16891,15 +16940,19 @@ CREATE OR REPLACE FUNCTION public.complete_return(p_return_id uuid, p_zone text)
 RETURNS TABLE (entry_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  r        record;
-  v_entry  uuid;
-  v_code   text;
-  l        record;
-  v_conv   numeric;
-  v_base   numeric;
-  v_batch  uuid;
-  v_cost   numeric;
-  v_exp    date;
+  r          record;
+  v_entry    uuid;
+  v_code     text;
+  l          record;
+  v_conv     numeric;
+  v_base     numeric;
+  v_batch    uuid;
+  v_cost     numeric;
+  v_exp      date;
+  cap        record;
+  v_sold     numeric;
+  v_returned numeric;
+  v_pname    text;
 BEGIN
   SELECT id, org_id, order_id, status, requested_by INTO r
   FROM returns WHERE id = p_return_id FOR UPDATE;
@@ -16929,6 +16982,62 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'ORDER_NOT_COMPLETED: đơn gốc chưa xuất hàng, không nhập trả được'
       USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ===================================================================
+  -- Q8 — TRẦN SỐ LƯỢNG TRẢ, KIỂM LẠI Ở ĐÂY
+  --
+  -- ⚠ VÌ SAO PHẢI KIỂM HAI LẦN. Trigger `enforce_return_line_cap` (mig
+  --   119) chạy lúc CHÈN DÒNG, và phần "đã trả rồi" của nó chỉ đếm phiếu
+  --   ở trạng thái 'completed'. Nên hai phiếu trả của cùng một đơn, cùng
+  --   nằm ở 'submitted', mỗi phiếu đều thấy "đã trả = 0" và đều LỌT:
+  --     đơn bán 10 → phiếu A 10 lọt → phiếu B 10 cũng lọt
+  --     → hoàn thành cả hai → nhập kho 20 và trừ công nợ gấp đôi.
+  --
+  -- ⚠ KIỂM Ở ĐÂY, KHÔNG SIẾT TRIGGER. Bắt trigger đếm cả phiếu
+  --   'submitted' thì một phiếu lập nhầm rồi bỏ đó sẽ chiếm chỗ và chặn
+  --   mất phiếu thật. Chặn đúng lúc hàng THẬT SỰ vào kho là chỗ duy nhất
+  --   con số có ý nghĩa.
+  --
+  -- ⚠ Dòng ĐỔI không tính — hàng đổi không trừ công nợ và không bị chặn
+  --   bởi số đã bán. Phiếu trả độc lập cũng không: không có đơn gốc để so.
+  -- ===================================================================
+  IF r.order_id IS NOT NULL THEN
+    FOR cap IN
+      SELECT rl.product_id,
+             sum(rl.quantity * COALESCE((
+               SELECT pu.conversion FROM product_units pu
+                WHERE pu.product_id = rl.product_id
+                  AND pu.unit_name = rl.unit_name), 1)) AS need
+      FROM return_lines rl
+      WHERE rl.return_id = p_return_id AND rl.is_exchange = false
+      GROUP BY rl.product_id
+    LOOP
+      SELECT COALESCE(sum(sol.quantity * COALESCE(sol.conversion_factor, 1)), 0)
+        INTO v_sold
+      FROM sales_order_lines sol
+      WHERE sol.order_id = r.order_id AND sol.product_id = cap.product_id;
+
+      SELECT COALESCE(sum(rl2.quantity * COALESCE((
+                SELECT pu.conversion FROM product_units pu
+                 WHERE pu.product_id = rl2.product_id
+                   AND pu.unit_name = rl2.unit_name), 1)), 0)
+        INTO v_returned
+      FROM return_lines rl2
+      JOIN returns r2 ON r2.id = rl2.return_id
+      WHERE r2.order_id = r.order_id
+        AND r2.status = 'completed'
+        AND rl2.is_exchange = false
+        AND rl2.product_id = cap.product_id;
+
+      IF cap.need + v_returned > v_sold THEN
+        SELECT name INTO v_pname FROM products WHERE id = cap.product_id;
+        RAISE EXCEPTION
+          'RETURN_QTY_EXCEEDS: "%" — đã bán %, đã hoàn thành trả %, phiếu này thêm % là vượt',
+          COALESCE(v_pname, cap.product_id::text), v_sold, v_returned, cap.need
+          USING ERRCODE = 'P0001';
+      END IF;
+    END LOOP;
   END IF;
 
   v_code := 'NL-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS');
@@ -17160,6 +17269,11 @@ DECLARE
   i          int;
   c          record;
   rl         record;
+  v_use      numeric := GREATEST(0, COALESCE((p->>'use_credit')::numeric, 0));
+  v_avail    numeric;
+  v_left_use numeric;
+  src        record;
+  v_take     numeric;
 BEGIN
   IF NOT public.user_has_permission(auth.uid(), 'receivables.create') THEN
     RAISE EXCEPTION 'FORBIDDEN: bạn không có quyền lập phiếu thu' USING ERRCODE = 'P0001';
@@ -17191,6 +17305,42 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  -- ===================================================================
+  -- Q11 — TIÊU SỐ DƯ CÓ CỦA KHÁCH
+  --
+  -- Từ Q11, `receivables.paid > amount` là hợp lệ: phần chênh là tiền
+  -- khách đã đưa mà nhà phân phối còn giữ. `use_credit` là số tiền kế
+  -- toán muốn rút từ đó để đắp vào những khoản nợ đang chọn.
+  --
+  -- ⚠ GHI THÀNH BÚT TOÁN HAI VẾ, KHÔNG GIẢM `paid` TRẦN TRỤI.
+  --   `void_cash_receipt` đảo phiếu thu bằng cách duyệt TỪNG dòng
+  --   `cash_receipt_lines`, xoá `payments` rồi trừ lại `paid` đúng bằng
+  --   `l.amount`. Giảm `paid` mà không sinh dòng tương ứng thì huỷ phiếu
+  --   thu xong `paid` lệch vĩnh viễn với `payments`, và không ai đối
+  --   chiếu lại được.
+  --
+  --   Vế RÚT ghi một dòng ÂM ở khoản đang dư; vế ĐẮP ghi một dòng DƯƠNG ở
+  --   khoản được thu. Khi huỷ, `paid - (-take)` cộng lại đúng chỗ đã rút
+  --   và `paid - take` trừ đúng chỗ đã đắp — vòng lặp sẵn có tự đảo cả
+  --   hai vế, không cần biết gì thêm.
+  -- ===================================================================
+  IF v_use > 0 THEN
+    SELECT COALESCE(sum(GREATEST(0, COALESCE(paid, 0) - COALESCE(amount, 0))), 0)
+      INTO v_avail
+    FROM receivables
+    WHERE org_id = v_org AND customer_id = v_cust;
+
+    IF v_use > v_avail + 0.01 THEN
+      RAISE EXCEPTION 'CREDIT_BALANCE_TOO_LOW: khách chỉ còn % số dư có, không rút được %',
+        v_avail, v_use USING ERRCODE = 'P0001';
+    END IF;
+    -- Rút nhiều hơn phần còn phải trả là sinh ra số dư mới ở chỗ khác.
+    IF v_use > v_sum_line - v_sum_cred + 0.01 THEN
+      RAISE EXCEPTION 'CREDIT_EXCEEDS_SELECTED: số dư có dùng vượt phần còn phải trả'
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+
   -- ⚠ GỘP theo khoản nợ trước khi kiểm. Payload gửi cùng một khoản nợ
   --   thành hai dòng thì kiểm riêng lẻ đều lọt, nhưng cộng dồn vào `paid`
   --   là thu vượt số nợ.
@@ -17216,11 +17366,19 @@ BEGIN
     SELECT DISTINCT (c2->>'return_id')::uuid AS id
     FROM jsonb_array_elements(COALESCE(p->'credits', '[]'::jsonb)) AS c2
   LOOP
+    -- ⚠ Q10 — PHẢI KHOÁ HÀNG. Không có FOR UPDATE thì hai kế toán cùng
+    --   lập phiếu thu cấn trừ CÙNG một phiếu trả độc lập sẽ cùng đọc
+    --   `applied_receipt_id IS NULL`, cùng qua, và khoản có bị cấn trừ
+    --   hai lần — lệnh UPDATE ở cuối chỉ ghi đè chứ không chặn.
+    --   Cách viết `NOT EXISTS (… FOR UPDATE)` này giống hệt vòng kiểm
+    --   khoản nợ bên trên: ở READ COMMITTED, Postgres khoá dòng rồi đánh
+    --   giá lại điều kiện sau khi chờ, nên người thứ hai nhận BAD_CREDIT.
     IF NOT EXISTS (
       SELECT 1 FROM returns r
       WHERE r.id = c.id AND r.org_id = v_org AND r.customer_id = v_cust
         AND r.status = 'completed' AND r.order_id IS NULL
         AND r.applied_receipt_id IS NULL
+      FOR UPDATE
     ) THEN
       RAISE EXCEPTION 'BAD_CREDIT: phiếu trả không đủ điều kiện cấn trừ'
         USING ERRCODE = 'P0001';
@@ -17239,7 +17397,7 @@ BEGIN
       ) VALUES (
         v_org, v_code, COALESCE((p->>'receipt_date')::date, current_date),
         'standalone', 'received',
-        v_sum_line - v_sum_cred, v_sum_line - v_sum_cred,
+        v_sum_line - v_sum_cred - v_use, v_sum_line - v_sum_cred - v_use,
         auth.uid(), now(), auth.uid(), auth.uid(), p->>'notes'
       )
       RETURNING id INTO v_receipt;
@@ -17292,6 +17450,64 @@ BEGIN
 
     UPDATE returns SET applied_receipt_id = v_receipt WHERE id = c.id;
   END LOOP;
+
+  -- Q11 — rút số dư có và đắp vào các khoản nợ đang chọn.
+  IF v_use > 0 THEN
+    v_left_use := v_use;
+    FOR src IN
+      SELECT id, GREATEST(0, COALESCE(paid, 0) - COALESCE(amount, 0)) AS avail
+      FROM receivables
+      WHERE org_id = v_org AND customer_id = v_cust
+        AND COALESCE(paid, 0) > COALESCE(amount, 0)
+      -- Cũ nhất trước: số dư nằm lâu nhất được dùng trước.
+      ORDER BY due_date NULLS LAST, id
+      FOR UPDATE
+    LOOP
+      EXIT WHEN v_left_use <= 0;
+      v_take := LEAST(src.avail, v_left_use);
+      CONTINUE WHEN v_take <= 0;
+
+      -- Vế RÚT: dòng payments ÂM ở khoản đang dư.
+      INSERT INTO payments (receivable_id, collected_by, amount, method, collected_at)
+      VALUES (src.id, auth.uid(), -v_take, 'credit_applied', now())
+      RETURNING id INTO v_pay;
+      INSERT INTO cash_receipt_lines (receipt_id, receivable_id, payment_id, amount, kind)
+      VALUES (v_receipt, src.id, v_pay, -v_take, 'credit_applied');
+
+      UPDATE receivables
+      SET paid = COALESCE(paid, 0) - v_take,
+          status = CASE
+                     WHEN COALESCE(paid, 0) - v_take >= COALESCE(amount, 0) THEN 'paid'
+                     WHEN COALESCE(paid, 0) - v_take > 0                    THEN 'partial'
+                     ELSE 'open'
+                   END
+      WHERE id = src.id;
+
+      -- Vế ĐẮP: rải lên các khoản nợ đã chọn, cùng bảng phân bổ với phần
+      -- cấn trừ phiếu trả nên không đắp quá số đã chọn.
+      i := 0;
+      WHILE i < jsonb_array_length(v_alloc) AND v_take > 0 LOOP
+        v_item := v_alloc->i;
+        v_left := (v_item->>'left')::numeric;
+        IF v_left > 0 THEN
+          v_apply := LEAST(v_left, v_take);
+          INSERT INTO payments (receivable_id, collected_by, amount, method, collected_at)
+          VALUES ((v_item->>'receivable_id')::uuid, auth.uid(), v_apply, 'credit_applied', now())
+          RETURNING id INTO v_pay;
+          INSERT INTO cash_receipt_lines (
+            receipt_id, order_id, receivable_id, payment_id, amount, kind
+          ) VALUES (
+            v_receipt, NULLIF(v_item->>'order_id', '')::uuid,
+            (v_item->>'receivable_id')::uuid, v_pay, v_apply, 'credit_applied'
+          );
+          v_alloc := jsonb_set(v_alloc, ARRAY[i::text, 'left'], to_jsonb(v_left - v_apply));
+          v_take := v_take - v_apply;
+          v_left_use := v_left_use - v_apply;
+        END IF;
+        i := i + 1;
+      END LOOP;
+    END LOOP;
+  END IF;
 
   -- Phần còn lại là tiền khách trả thật.
   i := 0;
@@ -17371,9 +17587,18 @@ BEGIN
       DELETE FROM payments WHERE id = l.payment_id;
     END IF;
     IF l.receivable_id IS NOT NULL THEN
+      -- ⚠ Q11 — NHÁNH 'paid' PHẢI ĐỨNG TRƯỚC. Sau khi cho phép số dư có,
+      --   một dòng vẫn có thể còn `paid >= amount` sau khi trừ đi phần
+      --   của phiếu thu này. Bản trước rơi thẳng vào `ELSE 'partial'`,
+      --   mà mọi bộ lọc trong kho dùng `status <> 'paid'` để nói "đã tất
+      --   toán" — nên dòng dư lập tức bị hút vào các phép cộng công nợ và
+      --   màn /receivables/by-customer bắt đầu ra số âm. Không lỗi nào
+      --   bắn ra.
       UPDATE receivables
       SET paid = GREATEST(0, COALESCE(paid, 0) - l.amount),
           status = CASE
+                     WHEN GREATEST(0, COALESCE(paid, 0) - l.amount) >= COALESCE(amount, 0)
+                       THEN 'paid'
                      WHEN GREATEST(0, COALESCE(paid, 0) - l.amount) = 0
                        THEN CASE WHEN due_date IS NOT NULL AND due_date < current_date
                                  THEN 'overdue' ELSE 'open' END

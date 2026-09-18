@@ -1,10 +1,24 @@
 -- =====================================================================
 -- Mockup Part 5: 12 đơn hàng trải đều status
 -- =====================================================================
--- 2 draft (có approval_reason), 3 confirmed, 2 picking, 2 delivering,
--- 3 delivered. Mỗi đơn 2-3 line. Giá lấy từ price_lists mặc định.
--- Tồn kho bị TRỪ cho picking/delivering/delivered để đúng với flow
--- bàn giao thực tế.
+-- 2 nháp (có approval_reason), 5 phiếu tạm, 5 hoàn thành. Mỗi đơn 2-3
+-- line. Giá lấy từ price_lists mặc định. Tồn kho bị TRỪ cho các đơn
+-- HOÀN THÀNH — đúng với v2: "Xuất hàng" trừ kho và ghi công nợ cùng lúc.
+--
+-- ⚠ TỆP NÀY TỪNG CHÈN ĐƯỢC, NAY THÌ KHÔNG. Nó dùng năm giá trị trạng
+-- thái của luồng cũ (confirmed / picking / delivering / delivered, và
+-- 'approved' bên `returns`). Sau migration 119, `chk_sales_orders_status_v2`
+-- và `chk_returns_status_v2` chỉ còn cho draft/submitted/completed/
+-- cancelled — nên mỗi lệnh INSERT ở đây sẽ ném ràng buộc, và người cài
+-- demo nhận một câu tiếng Anh giữa chừng, với nửa bộ dữ liệu đã nằm
+-- trong CSDL.
+--
+-- ⚠ HAI ĐƠN "ĐANG LẤY" CŨ THÀNH `submitted`, KHÔNG PHẢI `completed` —
+-- khác với backfill của mig 119. Cố ý: mig 119 đẩy `picking` thật lên
+-- `completed` vì đơn đó ĐÃ có phiếu xuất ghi sổ trong CSDL thật. Hai đơn
+-- demo này chưa bao giờ trừ tồn (xem: không có UPDATE batches nào ở
+-- dưới), nên gọi chúng là "đã xuất hàng" là dựng sẵn một bộ dữ liệu tự
+-- mâu thuẫn để người xem đi tìm lỗi không có thật.
 
 BEGIN;
 
@@ -93,28 +107,28 @@ BEGIN
     (new_order_id, p_drink, 'lon', 1000, 9000, 9000000),
     (new_order_id, p_milk, 'hộp', 500, 7500, 3500000);
 
-  -- === ĐƠN 3-5: confirmed (đã duyệt, chưa xuất) ===
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-003', cust_a, sales_user, today, 'confirmed', 'NET30',
-    2250000, 180000, 2430000, owner_user, NOW() - INTERVAL '2 hours')
+  -- === ĐƠN 3-5: phiếu tạm (đã chốt, chưa xuất hàng) ===
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at)
+  VALUES (target_org_id, 'DEMO-SO-003', cust_a, sales_user, today, 'submitted', 'NET30',
+    2250000, 180000, 2430000, owner_user, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total)
   VALUES
     (new_order_id, p_oil, 'chai', 30, 45000, 1350000),
     (new_order_id, p_bis, 'hộp', 18, 50000, 900000);
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-004', cust_b, sales_user, today, 'confirmed', 'COD',
-    1350000, 120000, 1470000, owner_user, NOW() - INTERVAL '1 hour')
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at)
+  VALUES (target_org_id, 'DEMO-SO-004', cust_b, sales_user, today, 'submitted', 'COD',
+    1350000, 120000, 1470000, owner_user, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total)
   VALUES
     (new_order_id, p_noodle, 'gói', 200, 4500, 900000),
     (new_order_id, p_sauce, 'chai', 15, 28000, 420000);
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-005', cust_j, sales_user, today, 'confirmed', 'NET15',
-    1740000, 140000, 1880000, owner_user, NOW())
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at)
+  VALUES (target_org_id, 'DEMO-SO-005', cust_j, sales_user, today, 'submitted', 'NET15',
+    1740000, 140000, 1880000, owner_user, NOW(), NOW())
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total)
   VALUES
@@ -122,29 +136,29 @@ BEGIN
     (new_order_id, p_beer, 'lon', 30, 20000, 600000),
     (new_order_id, p_bis, 'hộp', 2, 50000, 100000);
 
-  -- === ĐƠN 6-7: picking (đã xuất draft, chưa bàn giao) ===
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-006', cust_c, sales_user, today - 1, 'picking', 'COD',
-    1320000, 105000, 1425000, owner_user, NOW() - INTERVAL '1 day')
+  -- === ĐƠN 6-7: phiếu tạm, đã chọn lô sẵn (chưa trừ tồn) ===
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at)
+  VALUES (target_org_id, 'DEMO-SO-006', cust_c, sales_user, today - 1, 'submitted', 'COD',
+    1320000, 105000, 1425000, owner_user, NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
     (new_order_id, p_oil, 'chai', 20, 45000, 900000, b_oil),
     (new_order_id, p_noodle, 'gói', 80, 4500, 360000, b_noodle);
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-007', cust_d, sales_user, today - 1, 'picking', 'COD',
-    880000, 70000, 950000, owner_user, NOW() - INTERVAL '1 day')
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at)
+  VALUES (target_org_id, 'DEMO-SO-007', cust_d, sales_user, today - 1, 'submitted', 'COD',
+    880000, 70000, 950000, owner_user, NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
     (new_order_id, p_bis, 'hộp', 10, 50000, 500000, b_bis),
     (new_order_id, p_drink, 'lon', 40, 9000, 360000, b_drink);
 
-  -- === ĐƠN 8-9: delivering (đang giao — stock đã trừ) ===
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-008', cust_e, sales_user, today - 2, 'delivering', 'NET15',
-    2160000, 170000, 2330000, owner_user, NOW() - INTERVAL '2 days')
+  -- === ĐƠN 8-9: hoàn thành gần đây (đã trừ tồn) ===
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at, completed_at)
+  VALUES (target_org_id, 'DEMO-SO-008', cust_e, sales_user, today - 2, 'completed', 'NET15',
+    2160000, 170000, 2330000, owner_user, NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
@@ -154,9 +168,9 @@ BEGIN
   UPDATE batches SET qty_on_hand = qty_on_hand - 40 WHERE id = b_oil;
   UPDATE batches SET qty_on_hand = qty_on_hand - 12 WHERE id = b_sauce;
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-009', cust_k, sales_user, today - 2, 'delivering', 'NET15',
-    2660000, 230000, 2890000, owner_user, NOW() - INTERVAL '2 days')
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at, completed_at)
+  VALUES (target_org_id, 'DEMO-SO-009', cust_k, sales_user, today - 2, 'completed', 'NET15',
+    2660000, 230000, 2890000, owner_user, NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
@@ -165,10 +179,10 @@ BEGIN
   UPDATE batches SET qty_on_hand = qty_on_hand - 100 WHERE id = b_beer;
   UPDATE batches SET qty_on_hand = qty_on_hand - 60 WHERE id = b_drink;
 
-  -- === ĐƠN 10-12: delivered (đã giao — stock trừ, có receivable) ===
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-010', cust_f, sales_user, today - 5, 'delivered', 'NET15',
-    1700000, 135000, 1835000, owner_user, NOW() - INTERVAL '5 days')
+  -- === ĐƠN 10-12: hoàn thành (đã trừ tồn, có công nợ) ===
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at, completed_at)
+  VALUES (target_org_id, 'DEMO-SO-010', cust_f, sales_user, today - 5, 'completed', 'NET15',
+    1700000, 135000, 1835000, owner_user, NOW() - INTERVAL '5 days', NOW() - INTERVAL '5 days', NOW() - INTERVAL '5 days')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
@@ -179,9 +193,9 @@ BEGIN
   UPDATE batches SET qty_on_hand = qty_on_hand - 100 WHERE id = b_noodle;
   UPDATE batches SET qty_on_hand = qty_on_hand - 7 WHERE id = b_bis;
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-011', cust_h, sales_user, today - 7, 'delivered', 'NET30',
-    3800000, 300000, 4100000, owner_user, NOW() - INTERVAL '7 days')
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at, completed_at)
+  VALUES (target_org_id, 'DEMO-SO-011', cust_h, sales_user, today - 7, 'completed', 'NET30',
+    3800000, 300000, 4100000, owner_user, NOW() - INTERVAL '7 days', NOW() - INTERVAL '7 days', NOW() - INTERVAL '7 days')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES
@@ -192,9 +206,9 @@ BEGIN
   UPDATE batches SET qty_on_hand = qty_on_hand - 80 WHERE id = b_drink;
   UPDATE batches SET qty_on_hand = qty_on_hand - 10 WHERE id = b_milk;
 
-  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at)
-  VALUES (target_org_id, 'DEMO-SO-012', cust_l, sales_user, today - 10, 'delivered', 'NET30',
-    1500000, 120000, 1620000, owner_user, NOW() - INTERVAL '10 days')
+  INSERT INTO sales_orders (org_id, order_code, customer_id, sales_user_id, order_date, status, payment_terms, subtotal, vat, total, approved_by, approved_at, submitted_at, completed_at)
+  VALUES (target_org_id, 'DEMO-SO-012', cust_l, sales_user, today - 10, 'completed', 'NET30',
+    1500000, 120000, 1620000, owner_user, NOW() - INTERVAL '10 days', NOW() - INTERVAL '10 days', NOW() - INTERVAL '10 days')
   RETURNING id INTO new_order_id;
   INSERT INTO sales_order_lines (order_id, product_id, unit_name, quantity, unit_price, line_total, batch_id)
   VALUES

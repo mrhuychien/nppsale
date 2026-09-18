@@ -1,29 +1,29 @@
 # Hướng dẫn cho Quản lý: Manager
 
-> Bạn được cấp quyền **Manager**. Đây là hướng dẫn đầy đủ cho công việc duyệt đơn, quản lý khách hàng, sản phẩm và khuyến mãi hàng ngày.
+> Bạn được cấp quyền **Manager**. Đây là hướng dẫn đầy đủ cho công việc xuất hàng, quản lý khách hàng, sản phẩm và khuyến mãi hàng ngày.
 
 ## 1. Trách nhiệm chính
 
-- Duyệt / từ chối đơn hàng do Sales tạo và phiếu trả hàng
+- Xuất hàng cho đơn do Sales gửi lên, và hoàn thành phiếu trả hàng
 - Quản lý danh mục khách hàng: thêm mới, phân nhóm, gán Sales phụ trách
 - Vận hành danh mục sản phẩm và bảng giá nhiều cấp
 - Thiết kế và chạy chương trình khuyến mãi (chiết khấu, mua X tặng Y, lũy kế)
-- Phân tuyến giao hàng và gán tài xế cho các đơn `confirmed`
+- Theo dõi công nợ sinh ra từ mỗi lần xuất hàng
 
 ## 2. Các module bạn truy cập được
 
 | Module | Quyền | Làm gì? |
 | --- | --- | --- |
 | Dashboard | Xem | Theo dõi KPI tổng, top KH, cảnh báo HSD/nợ |
-| Đơn hàng | Đọc / Tạo / Sửa / Duyệt | Duyệt đơn của Sales, hỗ trợ tạo đơn khi Sales bận |
+| Đơn hàng | Đọc / Tạo / Sửa / Xuất hàng | Xuất hàng cho đơn của Sales, hỗ trợ tạo đơn khi Sales bận |
 | Khách hàng | Đọc / Tạo / Sửa | Quản lý cửa hàng, gán Sales, đặt nhóm KH |
 | Sản phẩm | Đọc / Tạo / Sửa | Mở SKU mới, sửa đơn vị quy đổi, cập nhật bảng giá |
-| Kho hàng | Xem | Xem tồn để duyệt đơn (không chỉnh được lô) |
-| Giao hàng | Đọc / Tạo / Sửa | Tạo chuyến, gán tài xế, theo dõi tiến độ |
+| Kho hàng | Xem | Xem tồn trước khi xuất hàng (không chỉnh được lô) |
+| Giao hàng *(ngưng dùng)* | Xem | Tra cứu chuyến giao cũ. Phiếu giao nay in ngay khi bấm **Xuất hàng** |
 | Công nợ | Xem | Theo dõi công nợ, không thu tiền trực tiếp |
 | Khuyến mãi | Đọc / Tạo / Sửa | Soạn chương trình khuyến mãi, kích hoạt / tạm tắt |
 | Hóa đơn | Xem | Xem hóa đơn, không xuất được (Kế toán làm) |
-| Trả hàng | Đọc / Duyệt | Duyệt phiếu trả hàng từ Sales |
+| Trả hàng | Đọc / Hoàn thành | Bấm **Hoàn thành** thì hàng mới vào kho và công nợ mới giảm |
 | Hoa hồng | Xem | Xem chính sách (không sửa được) |
 | Báo cáo | Xem | Tất cả báo cáo doanh số, tồn kho, công nợ |
 | Cài đặt | Xem | Chỉ xem cấu hình, không sửa |
@@ -34,29 +34,30 @@
    Đầu giờ                        Trong ngày                       Cuối giờ
        │                              │                                │
        ▼                              ▼                                ▼
-   Mở /orders ──► Lọc "Nháp" ──► Duyệt đơn ──► Tạo chuyến ──► Theo dõi ──► Báo cáo
+   Mở /orders ──► Lọc "Phiếu ──► Xuất hàng ──► Hoàn thành ──► Theo dõi ──► Báo cáo
    Xem đơn        Mở chi tiết     hoặc gửi      giao hàng     /deliveries    ngày
-   chờ duyệt      kiểm 5 mục      về Sales      cho tài xế    cập nhật
+   chờ xử lý      tạm
                   (KH, SP, giá,                                tiến độ
                    tồn, hạn mức)
 ```
 
 **Mô tả các bước:**
 
-1. **Đầu giờ** - Vào `/orders`, lọc trạng thái **Nháp** để xem các đơn cần duyệt
-2. **Duyệt đơn** - Mở từng đơn, kiểm tra tồn kho thực tế, hạn mức KH, giá đúng hợp đồng
-3. **Phân tuyến** - Vào `/deliveries/new` gom các đơn `confirmed` thành chuyến cho tài xế
-4. **Trong ngày** - Theo dõi `/deliveries` thấy đơn fail thì xử lý ngay (gọi tài xế hoặc đổi tuyến)
+1. **Đầu giờ** - Vào `/orders`, lọc trạng thái **Phiếu tạm** để xem các đơn chờ xuất
+2. **Xuất hàng** - Mở từng đơn, kiểm tra tồn kho thực tế, hạn mức KH, giá đúng hợp đồng, rồi bấm **Xuất hàng**
+3. **Phiếu trả** - Vào `/returns` bấm **Hoàn thành** cho các phiếu đã nhận đủ hàng
+4. **Trong ngày** - Theo dõi `/receivables` để nắm công nợ mới sinh trong ngày
 5. **Cuối giờ** - Vào `/reports` xem tổng đơn ngày, soát đơn fail / đơn trả
 
 ## 4. Các thao tác thường gặp (step-by-step)
 
-### 4.1 Duyệt đơn hàng từ Sales
+### 4.1 Xuất hàng cho đơn của Sales
 
-**Khi nào**: Sales tạo đơn ở trạng thái `draft` và gửi duyệt.
+**Khi nào**: Sales gửi đơn lên, đơn ở trạng thái **Phiếu tạm**
+(`submitted`).
 
 **Bước thực hiện**:
-1. Vào `/orders`, lọc **Trạng thái = Nháp**
+1. Vào `/orders`, lọc **Trạng thái = Phiếu tạm**
 2. Click vào dòng đơn → mở chi tiết
 3. Kiểm tra 5 mục:
    - **Khách hàng** đúng người, không bị khóa
@@ -64,12 +65,19 @@
    - **Giá** đúng bảng giá KH, **chiết khấu** không vượt định mức
    - **Tồn kho** đủ (xem cột "Khả dụng" bên cạnh từng SKU)
    - **Hạn mức công nợ** còn đủ chỗ (so công nợ hiện tại + giá trị đơn)
-4. Nếu hợp lệ → nhấn **Duyệt đơn** (đơn chuyển sang `confirmed`)
-5. Nếu cần sửa → nhấn **Trả về Sales** kèm ghi chú
+4. Cần sửa thì sửa thẳng trên đơn — **Phiếu tạm** vẫn sửa được
+5. Xong thì nhấn **Xuất hàng**
 
-**Kết quả**: Đơn `confirmed` được Kho thấy trong danh sách cần soạn.
+**Kết quả**: Trong MỘT giao dịch, hệ thống trừ kho theo FIFO, ghi công
+nợ phải thu, đổi đơn sang `completed` và mở hộp in phiếu giao.
 
-**Lưu ý**: Đơn > 50.000.000 đ phải để Owner duyệt - bạn chỉ duyệt được đơn dưới ngưỡng này.
+**Lưu ý**:
+- ⚠ **ĐỌC THÔNG BÁO SAU KHI BẤM, ĐỪNG CHỈ NHÌN "Đã xuất hàng".** Nếu tổ
+  chức bật `allow_oversell`, đơn vẫn xuất được khi thiếu tồn và hệ thống
+  báo RIÊNG một dòng đỏ "xuất thiếu hàng" kèm số thiếu. Bỏ qua dòng đó
+  là kho đóng hàng theo phiếu, tới nơi mới biết thiếu, và thẻ kho âm
+  không ai hay tới kỳ kiểm kê.
+- Không còn ngưỡng tiền nào cần ai duyệt. Đơn to hay nhỏ đều một nút.
 
 ### 4.2 Thêm khách hàng mới và gán Sales
 
@@ -109,22 +117,15 @@
 
 **Lưu ý**: Có thể đặt **giới hạn ngân sách** để tự động tắt khi đạt mức cho phép.
 
-### 4.4 Phân tuyến giao hàng
+### 4.4 Giao hàng — bước này đã bỏ
 
-**Khi nào**: Có nhóm đơn `confirmed` cần giao trong ngày / hôm sau.
+Quy trình cũ có ba bước rời nhau: Kho soạn hàng → lập chuyến, gán tài xế
+→ tài xế bàn giao. **Cả ba đã bỏ.** Bấm **Xuất hàng** trên đơn là hệ
+thống dựng phiếu kho, trừ tồn, ghi công nợ và in phiếu giao — nhà phân
+phối cầm phiếu đó đi giao.
 
-**Bước thực hiện**:
-1. Vào `/deliveries`, nhấn **Tạo chuyến** (`/deliveries/new`)
-2. Đặt **Tên tuyến** (VD: "Tuyến Quận 1 - sáng 17/04")
-3. Chọn **Tài xế** và **Phương tiện** (xe tải / xe máy)
-4. Chọn các đơn cần giao (lọc theo khu vực để gom hiệu quả)
-5. Sắp xếp **thứ tự đơn** theo lộ trình hợp lý
-6. Đặt **Ngày giao** dự kiến
-7. Nhấn **Lưu chuyến**
-
-**Kết quả**: Tài xế thấy chuyến trên app điện thoại, đơn chuyển sang `picking` rồi `delivering`.
-
-**Lưu ý**: 1 chuyến không nên quá 15 đơn để tài xế còn xử lý kịp; ưu tiên gom theo phường / quận.
+Màn `/deliveries` vẫn mở để tra cứu chuyến giao cũ, nhưng các nút ghi ở
+đó đã khoá: bấm vào chỉ nhận một dòng chỉ đường sang cách làm mới.
 
 ### 4.5 Cập nhật bảng giá sản phẩm
 
@@ -139,26 +140,34 @@
 
 **Kết quả**: Đơn tạo từ ngày hiệu lực sẽ tự áp giá mới.
 
-**Lưu ý**: Đơn đã `draft` trước đó vẫn giữ giá cũ - cần Sales tạo lại nếu muốn áp giá mới.
+**Lưu ý**: Đơn đã lập trước đó vẫn giữ giá cũ - sửa lại đơn (khi còn ở **Phiếu tạm**) hoặc tạo đơn mới nếu muốn áp giá mới.
 
-### 4.6 Duyệt phiếu trả hàng
+### 4.6 Hoàn thành phiếu trả hàng
 
-**Khi nào**: Sales tạo phiếu trả do hàng hư hỏng, sai SKU, gần hết hạn, khách từ chối.
+**Khi nào**: Sales lập phiếu trả do hàng hư hỏng, sai SKU, gần hết hạn,
+khách từ chối — và hàng đã thật sự về tới kho.
 
 **Bước thực hiện**:
-1. Vào `/returns`, lọc **Trạng thái = Chờ duyệt**
+1. Vào `/returns`, lọc **Trạng thái = Phiếu tạm**
 2. Mở từng phiếu, xem **Lý do**: `damaged` / `wrong_item` / `near_expiry` / `expired` / `refused`
 3. Đối chiếu với đơn gốc (link **Đơn liên quan**)
-4. Nếu hợp lý → nhấn **Duyệt** → Kho sẽ nhập lại hàng
-5. Nếu sai → nhấn **Từ chối** kèm ghi chú
+4. Chọn **kho nhận**: **Kho bán** hay **Kho cận date**
+5. Nhấn **Hoàn thành**
+6. Phiếu sai thì nhấn **Huỷ** kèm ghi chú
 
-**Kết quả**: Phiếu duyệt → công nợ KH được giảm tương ứng, tồn kho cập nhật.
+**Kết quả**: Hàng vào kho và công nợ giảm **cùng lúc**, trong một giao
+dịch.
 
-**Lưu ý**: Trả hàng `expired` cần xác nhận Kho hủy lô, không cho nhập lại bán tiếp.
+**Lưu ý**:
+- ⚠ **BẤM KHI HÀNG ĐÃ VỀ, KHÔNG BẤM TRƯỚC.** Đây là thời điểm tồn kho
+  tăng lên. Bấm sớm là sổ sách có hàng mà kệ thì không.
+- Trả hàng `expired` chọn **Kho cận date**, đừng cho về kho bán.
+- Không trả được quá số đã bán: hệ thống đếm các phiếu đã hoàn thành của
+  cùng đơn và chặn ngay lúc bấm.
 
 ## 5. Mẹo & Best practices
 
-- Mỗi sáng dành 30 phút duyệt sạch hàng chờ trước khi Sales bắt đầu chạy thị trường - tránh tắc dòng chảy
+- Mỗi sáng dành 30 phút xuất sạch hàng chờ trước khi Sales bắt đầu chạy thị trường - tránh tắc dòng chảy
 - Khi từ chối đơn, luôn ghi lý do cụ thể (VD: "Giá sai 5%", "Khách vượt hạn mức 2tr") để Sales sửa nhanh
 - Phân tuyến theo **địa lý** trước, **giá trị đơn** sau - tiết kiệm xăng và thời gian
 - Đặt khuyến mãi có **giới hạn ngân sách** tránh chạy mất kiểm soát
@@ -170,16 +179,16 @@
 
 | Lỗi | Nguyên nhân | Cách xử lý |
 | --- | --- | --- |
-| Duyệt đơn xong vẫn không thấy ở Kho | Đơn chưa được "Soạn hàng" - vẫn `confirmed` chưa `picking` | Báo Kho vào `/inventory/picking` để kéo đơn về |
+| Bấm Xuất hàng xong mà tồn kho không giảm | Lệnh bị từ chối nhưng màn chỉ báo chung chung | Mở lại đơn: còn ở **Phiếu tạm** là chưa xuất. Đọc kỹ toast đỏ — nếu ghi "Không đủ tồn" thì cả giao dịch đã cuộn lại |
 | Khuyến mãi không tự áp khi Sales tạo đơn | Sai điều kiện áp dụng (kênh / nhóm KH) hoặc chưa bật **Đang hoạt động** | Mở lại khuyến mãi, kiểm tra điều kiện và nút bật/tắt |
-| Không thấy đơn trong tuyến giao | Đơn chưa `confirmed` hoặc đã có chuyến khác | Lọc đơn `confirmed` chưa thuộc chuyến nào để gom mới |
+| Đơn xuất được dù kho báo thiếu hàng | Tổ chức đang bật `allow_oversell` | Đọc toast đỏ "xuất thiếu hàng" kèm số thiếu; tắt cờ ở Cài đặt → Tổ chức nếu không muốn |
 | Sales không thấy KH vừa thêm | Quên gán Sales tại tab **Phân công** | Mở chi tiết KH → tab Phân công → chọn Sales |
 | Bảng giá mới không áp được | Ngày hiệu lực ở tương lai | Sửa **Ngày hiệu lực** về hôm nay hoặc trễ hơn |
 
 ## 7. KPI bạn được đánh giá
 
-- **Thời gian duyệt đơn trung bình** (mục tiêu < 30 phút từ lúc Sales gửi)
-- **Tỷ lệ đơn bị Sales tạo lại do trả về** (giữ < 5% - phản ánh chất lượng đào tạo Sales)
+- **Thời gian từ lúc Sales gửi đơn tới lúc xuất hàng** (mục tiêu < 30 phút)
+- **Tỷ lệ đơn phải sửa lại sau khi gửi** (giữ < 5% - phản ánh chất lượng đào tạo Sales)
 - **Tỷ lệ khuyến mãi hiệu quả** (số đơn áp khuyến mãi / tổng đơn trong kỳ)
-- **Tỷ lệ chuyến giao có ≥ 80% đơn delivered đúng ngày**
+- **Tỷ lệ đơn xuất hàng đúng ngày hẹn** (mục tiêu ≥ 95%)
 - **Số khách hàng mới được kích hoạt mỗi tháng**

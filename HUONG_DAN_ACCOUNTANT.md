@@ -4,7 +4,7 @@
 
 ## 1. Trách nhiệm chính
 
-- Xuất hóa đơn VAT cho các đơn đã `delivered` và đối chiếu với phiếu giao
+- Xuất hóa đơn VAT cho các đơn đã `completed` (đã xuất hàng) và đối chiếu với phiếu giao
 - Theo dõi và đôn đốc công nợ phải thu (`receivables`), ghi nhận các khoản thu lớn từ ngân hàng
 - Cập nhật và chốt sổ hoa hồng cho Sales theo kỳ
 - Đối soát các phiếu trả hàng và điều chỉnh công nợ tương ứng
@@ -19,7 +19,7 @@
 | Khách hàng | Xem | Tra cứu thông tin để xuất hóa đơn (MST, địa chỉ) |
 | Sản phẩm | Xem | Tra cứu mã hàng, đơn vị, thuế suất |
 | Kho hàng | Xem | Tra cứu lô hàng đã giao để khớp hóa đơn |
-| Giao hàng | Xem | Tra cứu chuyến giao đối ứng với hóa đơn |
+| Giao hàng *(ngưng dùng)* | Xem | Tra cứu chuyến giao cũ; phiếu giao nay in ngay khi Xuất hàng |
 | Công nợ | Đọc / Tạo / Sửa | Tạo phiếu thu, ghi nhận thanh toán, sửa kỳ hạn |
 | Khuyến mãi | Xem | Tra cứu CTKM áp dụng cho đơn để đối soát chiết khấu |
 | Hóa đơn | Đọc / Tạo / Sửa | Xuất, chỉnh, hủy hóa đơn VAT |
@@ -35,7 +35,7 @@
        │                                  │                              │
        ▼                                  ▼                              ▼
    Mở /invoices ─► Lọc đơn ────► Xuất hóa đơn ──► Đối soát ──► Mở /commissions
-   delivered      chưa có HĐ      VAT             /receivables  Chốt hoa hồng kỳ
+   Hoàn thành     chưa có HĐ      VAT             /receivables  Chốt hoa hồng kỳ
        │                                          ghi nhận       Cập nhật trạng thái
        ▼                                          chuyển khoản   "Đã chi"
    Mở /receivables                                ngân hàng
@@ -44,7 +44,7 @@
 
 **Mô tả các bước:**
 
-1. **Sáng** - Vào `/invoices` lọc đơn `delivered` chưa có hóa đơn → xuất hàng loạt
+1. **Sáng** - Vào `/invoices` lọc đơn `completed` chưa có hóa đơn → xuất hàng loạt
 2. **Đôn đốc** - Vào `/receivables` lọc trạng thái **Quá hạn** (`overdue`), gọi điện nhắc khách
 3. **Trong ngày** - Theo dõi sao kê ngân hàng, vào `/receivables/collect` ghi nhận khoản chuyển khoản
 4. **Cuối tháng** - Vào `/commissions` đối chiếu doanh thu Sales, chốt sổ hoa hồng và cập nhật trạng thái chi trả
@@ -54,11 +54,11 @@
 
 ### 4.1 Xuất hóa đơn VAT cho đơn đã giao
 
-**Khi nào**: Sau khi tài xế xác nhận `delivered` và POD đầy đủ.
+**Khi nào**: Sau khi đơn đã **Xuất hàng** (`completed`).
 
 **Bước thực hiện**:
 1. Vào `/invoices`, nhấn **Tạo hóa đơn**
-2. Chọn **Đơn hàng** từ dropdown (chỉ hiện đơn `delivered` chưa có HĐ)
+2. Chọn **Đơn hàng** từ dropdown (chỉ hiện đơn `completed` chưa có HĐ)
 3. Hệ thống tự điền: thông tin khách (tên, MST, địa chỉ), dòng hàng, thuế suất
 4. Kiểm tra lại **Mã số thuế khách hàng**, **Hình thức thanh toán**
 5. Chọn **Số seri hóa đơn** (theo dải đã đăng ký với Tổng cục Thuế)
@@ -102,17 +102,34 @@
 
 ### 4.4 Đối soát phiếu trả hàng
 
-**Khi nào**: Manager đã duyệt phiếu trả hàng và Kho đã nhập lại.
+⚠ **BƯỚC "TẠO BÚT TOÁN GIẢM TRỪ" ĐÃ BỎ.** Trước đây kế toán phải tự tìm
+công nợ rồi ghi bút toán tay — dễ sót, dễ trừ hai lần. Nay công nợ giảm
+**tự động ngay lúc ai đó bấm "Hoàn thành"** trên phiếu trả, trong cùng
+giao dịch với việc nhập kho. Việc của kế toán chuyển từ *ghi sổ* sang
+*đối soát*.
+
+**Khi nào**: Có phiếu trả vừa chuyển sang **Hoàn thành**.
 
 **Bước thực hiện**:
-1. Vào `/returns`, lọc trạng thái **Đã duyệt** chưa được giảm trừ công nợ
+1. Vào `/returns`, lọc trạng thái **Hoàn thành**
 2. Mở phiếu, kiểm tra **Lý do**, **Đơn gốc**, **Sản phẩm và số lượng trả**
-3. Đối chiếu giá trị trả với hóa đơn gốc
-4. Vào `/receivables`, tìm công nợ tương ứng
-5. Tạo **Bút toán giảm trừ** = giá trị hàng trả - phí xử lý (nếu có)
-6. Nhấn **Lưu** → công nợ giảm tương ứng
+3. Đối chiếu `credit_note_amount` với giá trị hàng trả tính từ hóa đơn gốc
+4. Mở đơn gốc ở `/receivables` xác nhận công nợ đã giảm đúng bằng số đó
 
 **Kết quả**: Số dư công nợ chính xác, không bị tính trên hàng đã trả.
+
+**Lưu ý — hai loại phiếu trả đi hai đường khác nhau**:
+- **Phiếu trả GẮN ĐƠN**: giảm nợ của chính đơn đó ngay lúc hoàn thành.
+  ⚠ Đừng đem nó cấn trừ ở phiếu thu nữa — là trừ hai lần, và hệ thống
+  sẽ từ chối.
+- **Phiếu trả ĐỘC LẬP** (không gắn đơn nào): khoản có nằm chờ cho tới
+  khi bạn đem nó vào một **Phiếu thu**. Đó là chỗ duy nhất dùng được nó.
+
+**Lưu ý — số dư có**: khách đã thanh toán đủ rồi mới trả hàng thì phần
+chênh **không mất đi**: nó thành số dư có của khách (`paid > amount`,
+hợp lệ). Màn công nợ hiện "Dư có …", và màn lập phiếu thu có thẻ **"Số
+dư có của khách"** để rút ra đắp vào khoản nợ mới.
+
 
 **Lưu ý**: Với hàng `expired` / `damaged`, cần kết hợp với Kho để hủy lô (không cho bán lại).
 
@@ -148,7 +165,7 @@
 
 ## 5. Mẹo & Best practices
 
-- Xuất hóa đơn **trong vòng 24h** sau khi `delivered` để tránh tích lũy đơn chưa xuất
+- Xuất hóa đơn **trong vòng 24h** sau khi đơn `completed` để tránh tích lũy đơn chưa xuất
 - Đặt **lịch nhắc** mỗi sáng kiểm tra sao kê ngân hàng → ghi nhận thanh toán ngay trong buổi sáng
 - Với khách hàng VIP, cấu hình **email tự động** gửi hóa đơn ngay khi xuất
 - Mỗi tháng dành 1 buổi đối soát giữa **doanh thu hệ thống** vs **doanh thu hóa đơn** - phải khớp 100%
@@ -160,15 +177,15 @@
 
 | Lỗi | Nguyên nhân | Cách xử lý |
 | --- | --- | --- |
-| Không xuất được HĐ - báo "Đơn chưa delivered" | Tài xế chưa xác nhận POD | Liên hệ tài xế / vào `/deliveries/[id]` xác nhận |
+| Không xuất được HĐ - báo đơn chưa hoàn thành | Đơn còn ở **Phiếu tạm** | Mở đơn, bấm **Xuất hàng** (hoặc nhờ quản lý) rồi xuất hóa đơn |
 | Số tiền hóa đơn lệch với đơn hàng | Đơn có khuyến mãi / chiết khấu áp sau khi tạo | Vào đơn hàng tra **chi tiết** dòng chiết khấu |
 | Ghi nhận thanh toán xong vẫn báo "Quá hạn" | Số tiền thu < số nợ - chỉ chuyển sang `partial` | Đợi thu phần còn lại; status sẽ thành `paid` khi đủ |
-| Hoa hồng tháng này thiếu 1 Sales | Sales đó chưa có đơn `delivered` trong kỳ | Kiểm tra `/reports` lọc theo Sales để xác nhận |
+| Hoa hồng tháng này thiếu 1 Sales | Sales đó chưa có đơn `completed` trong kỳ | Kiểm tra `/reports` lọc theo Sales để xác nhận |
 | Hủy hóa đơn báo lỗi | Hóa đơn không thuộc tháng phát hành | Tạo **Biên bản điều chỉnh** thay vì hủy |
 
 ## 7. KPI bạn được đánh giá
 
-- **Tỷ lệ hóa đơn xuất trong 24h sau delivered** (mục tiêu > 95%)
+- **Tỷ lệ hóa đơn xuất trong 24h sau khi đơn hoàn thành** (mục tiêu > 95%)
 - **Tỷ lệ thu hồi công nợ trong hạn** (paid trước due_date / tổng phải thu - mục tiêu > 85%)
 - **Số ngày trung bình thu được tiền (DSO)** (Days Sales Outstanding - mục tiêu < 35 ngày)
 - **Sai sót hóa đơn (phải hủy / điều chỉnh)** (giữ < 1% / tổng HĐ)

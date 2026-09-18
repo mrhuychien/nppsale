@@ -28,6 +28,7 @@ import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
+import { LEGACY_V2_HREFS } from "@/lib/nav/nav-permission"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
@@ -328,10 +329,16 @@ export default function StockEntriesPage() {
                 <ArrowDownToLine className="mr-2 h-4 w-4 text-tertiary" />
                 Nhập kho
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/inventory/stock-out")}>
-                <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
-                Xuất kho
-              </DropdownMenuItem>
+              {/* ⚠ Ô "Tạo phiếu" LÀ LỜI MỜI TẠO MỚI, không phải đường tra
+                  cứu. Màn soạn hàng đã khoá ghi ở P7 nên để lại mục này là
+                  dẫn người dùng tới một nút bấm vào không làm gì. Ở v2,
+                  phiếu xuất do nút "Xuất hàng" trên đơn tự dựng. */}
+              {!LEGACY_V2_HREFS.has("/inventory/stock-out") && (
+                <DropdownMenuItem onClick={() => router.push("/inventory/stock-out")}>
+                  <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
+                  Xuất kho
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/inventory/stocktake-adjust")}>
                 <ClipboardCheck className="mr-2 h-4 w-4 text-primary" />

@@ -19,7 +19,7 @@
 | Khách hàng | Đọc / Tạo / Sửa | Quản lý KH được giao, thêm KH mới (chờ Manager duyệt phân công) |
 | Sản phẩm | Xem | Tra cứu giá, mô tả, hình ảnh để giới thiệu |
 | Kho hàng | Xem | Xem **tồn khả dụng** trước khi chốt đơn lớn |
-| Giao hàng | Xem | Theo dõi đơn của KH mình đã được giao chưa |
+| Giao hàng *(ngưng dùng)* | Xem | Tra cứu chuyến giao cũ. Đơn nay xong ngay khi nhà phân phối bấm **Xuất hàng** |
 | Công nợ | Đọc / Tạo | Xem nợ KH, tạo phiếu thu khi khách trả tiền tại quầy |
 | Khuyến mãi | Xem | Tra cứu CTKM hiện hành để giới thiệu |
 | Hóa đơn | Xem | Tra cứu hóa đơn của KH (không xuất được) |
@@ -47,7 +47,7 @@
 3. **Tại điểm bán** - Mỗi cửa hàng: chào hỏi → kiểm hàng tồn → giới thiệu SP/KM → chốt đơn
 4. **Tạo đơn** - Bấm nút **Tạo đơn mới** ở sidebar (gradient xanh), chọn KH, thêm SP, lưu
 5. **Thu nợ** - Nếu KH có nợ và muốn trả tiền mặt → vào `/receivables/collect`
-6. **Cuối ngày** - Vào `/dashboard` xem hoa hồng tích lũy ngày, kiểm tra đơn `confirmed`
+6. **Cuối ngày** - Vào `/dashboard` xem hoa hồng tích lũy ngày, kiểm tra đơn còn ở **Phiếu tạm**
 
 ## 4. Các thao tác thường gặp (step-by-step)
 
@@ -63,12 +63,20 @@
 5. Hệ thống tự áp giá theo **bảng giá khách hàng** + **khuyến mãi** đang chạy
 6. Xem **Subtotal** + **VAT** = **Tổng tiền** ở dưới
 7. Có thể nhập **Ghi chú** (VD: "Giao trước 10h sáng mai")
-8. Nhấn **Lưu đơn hàng** → đơn ở trạng thái **Nháp**
-9. Nhấn **Gửi duyệt** → Manager nhận để duyệt
+8. Nhấn **Lưu nháp** nếu còn muốn sửa tiếp → đơn ở trạng thái **Nháp**,
+   **chỉ mình bạn thấy**
+9. Nhấn **Gửi đơn** → đơn thành **Phiếu tạm**, cả nhà phân phối thấy
 
-**Kết quả**: Đơn `draft` → chờ Manager `confirmed`.
+**Kết quả**: Đơn `draft` → `submitted`. Nhà phân phối bấm **Xuất hàng**
+là xong — không còn bước duyệt nào ở giữa.
 
-**Lưu ý**: Nếu KH vượt **hạn mức công nợ**, hệ thống sẽ chặn tạo đơn - bạn cần thu nợ trước hoặc nhờ Manager duyệt ngoại lệ.
+**Lưu ý**:
+- Đơn còn ở **Nháp** thì không ai khác thấy. Khách gọi hỏi mà nhà phân
+  phối bảo "không có đơn nào" thì gần như chắc chắn là bạn chưa bấm
+  **Gửi đơn**.
+- **Phiếu tạm** vẫn sửa được bình thường.
+- Nếu KH vượt **hạn mức công nợ**, hệ thống sẽ chặn tạo đơn - bạn cần
+  thu nợ trước hoặc nhờ quản lý mở ngoại lệ.
 
 ### 4.2 Thêm khách hàng mới khi mở rộng tuyến
 
@@ -112,9 +120,11 @@
 3. Chọn **Sản phẩm trả**, nhập **Số lượng trả**
 4. Chọn **Lý do**: `damaged` / `wrong_item` / `near_expiry` / `expired` / `refused`
 5. Chụp ảnh hàng lỗi đính kèm (nếu có)
-6. Nhấn **Lưu** → phiếu ở trạng thái **Chờ duyệt**
+6. Nhấn **Lưu** → phiếu ở trạng thái **Phiếu tạm**
 
-**Kết quả**: Manager nhận thông báo, sau khi duyệt thì Kho nhập lại hàng và Kế toán giảm trừ công nợ.
+**Kết quả**: Phiếu nằm chờ ở `/returns`. ⚠ **Hàng CHƯA vào kho và công
+nợ CHƯA giảm** — cả hai chỉ xảy ra khi ai đó bấm **Hoàn thành** trên
+phiếu. Đó là một thao tác, một lần, không chia nhiều bước như trước.
 
 **Lưu ý**: Phải làm phiếu trong vòng **48h** kể từ khi giao - quá hạn sẽ khó xử lý.
 
@@ -140,11 +150,10 @@
 **Bước thực hiện**:
 1. Vào `/orders`, nhập **Mã đơn** vào ô tìm kiếm
 2. Hoặc lọc theo **Trạng thái** để xem nhóm đơn:
-   - **Nháp** - mình chưa gửi duyệt
-   - **Đã duyệt** - Manager đã xác nhận, chờ Kho soạn
-   - **Đang lấy hàng** - Kho đang đóng gói
-   - **Đang giao** - Tài xế trên đường
-   - **Đã giao** - Hoàn tất
+   - **Nháp** - mình chưa gửi, chưa ai khác thấy
+   - **Phiếu tạm** - đã gửi, nhà phân phối thấy, vẫn sửa được
+   - **Hoàn thành** - đã xuất hàng: kho đã trừ, công nợ đã ghi
+   - **Đã huỷ**
 3. Click vào đơn → xem **Chi tiết** + **Lịch sử trạng thái**
 
 **Kết quả**: Bạn báo lại cho KH chính xác.
@@ -166,10 +175,10 @@
 | Lỗi | Nguyên nhân | Cách xử lý |
 | --- | --- | --- |
 | Không thấy KH trong dropdown khi tạo đơn | KH chưa được Manager phân công cho bạn | Báo Manager vào KH → tab **Phân công** → gán Sales |
-| Báo "Vượt hạn mức công nợ" khi tạo đơn | Tổng công nợ + giá trị đơn > limit | Thu nợ trước, hoặc xin Manager duyệt ngoại lệ |
+| Báo "Vượt hạn mức công nợ" khi tạo đơn | Tổng công nợ + giá trị đơn > limit | Thu nợ trước, hoặc xin quản lý mở ngoại lệ |
 | Khuyến mãi không tự áp | Đơn chưa thỏa điều kiện (số lượng / SKU / kênh) | Mở `/promotions` xem điều kiện rồi điều chỉnh đơn |
-| Phiếu trả hàng bị từ chối | Quá 48h kể từ giao, hoặc thiếu ảnh chứng minh | Cần Manager phê duyệt ngoại lệ, kèm giải trình |
-| Hoa hồng ngày thấp hơn dự kiến | Có đơn bị `cancelled` hoặc `returns` đã duyệt | Vào `/commissions` xem chi tiết bút toán điều chỉnh |
+| Phiếu trả hàng bị huỷ | Quá 48h kể từ khi xuất hàng, hoặc thiếu ảnh chứng minh | Xin quản lý xử ngoại lệ, kèm giải trình |
+| Hoa hồng ngày thấp hơn dự kiến | Có đơn bị `cancelled` hoặc phiếu trả đã `completed` | Vào `/commissions` xem chi tiết bút toán điều chỉnh |
 
 ## 7. KPI bạn được đánh giá
 
@@ -177,4 +186,4 @@
 - **Số khách hàng có đơn / tổng KH được giao** (Active customer rate - mục tiêu > 70%)
 - **Số khách hàng mới mở mỗi tháng** (mục tiêu 5-10 KH tùy tuyến)
 - **Tỷ lệ thu nợ trong hạn** (paid trước due_date - mục tiêu > 80%)
-- **Số đơn bị Manager trả về sửa** (giữ < 5% / tổng đơn)
+- **Số đơn phải sửa lại sau khi gửi** (giữ < 5% / tổng đơn)

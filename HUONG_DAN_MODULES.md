@@ -43,16 +43,19 @@
 
 **URL**: `/orders` | **Tạo**: `/orders/new` | **Chi tiết**: `/orders/[id]`
 
-### 6 trạng thái
+### 4 trạng thái
 
 | Mã | Tên | Mô tả |
 | --- | --- | --- |
-| `draft` | Nháp | Vừa tạo, chờ duyệt |
-| `confirmed` | Đã duyệt | Quản lý OK, sẵn sàng giao |
-| `picking` | Đang lấy | Kho đang soạn hàng |
-| `delivering` | Đang giao | Đã rời kho |
-| `delivered` | Đã giao | Đến tay khách |
-| `cancelled` | Đã hủy | Hủy bỏ |
+| `draft` | Nháp | Vừa tạo — **chỉ người tạo thấy**, sửa thoải mái |
+| `submitted` | Phiếu tạm | Đã gửi, cả nhà phân phối thấy, vẫn sửa được |
+| `completed` | Hoàn thành | Đã **Xuất hàng**: kho đã trừ, công nợ đã ghi |
+| `cancelled` | Đã hủy | Huỷ được cả đơn đã hoàn thành (tồn và công nợ hoàn lại) |
+
+⚠ Năm giá trị của bản cũ — `pending_approval`, `confirmed`, `picking`,
+`delivering`, `delivered` — **đã chết**. `chk_sales_orders_status_v2`
+(migration 119) từ chối chúng, và backfill đã đổi hết dữ liệu cũ sang
+bốn giá trị trên. Phiếu trả hàng dùng **đúng bốn giá trị này**.
 
 ### Tạo đơn (form `/orders/new`)
 
@@ -62,19 +65,32 @@
 3. Chỉnh số lượng / chiết khấu dòng nếu cần
 4. Xem tự động: Subtotal + VAT (theo vat_rate từng SP) + Total
 5. Nhập Ghi chú (tùy chọn)
-6. Nhấn "Lưu đơn hàng" → trạng thái 'draft'
+6. Nhấn "Lưu nháp" → 'draft' (chỉ mình thấy)
+   hoặc "Gửi đơn" → 'submitted' (cả nhà phân phối thấy)
 ```
 
-### Ngưỡng phê duyệt
-- ≤ 20 triệu: tự động duyệt (Sales tạo là OK)
-- 20-50 triệu: cần Quản lý duyệt
-- > 50 triệu: cần Chủ sở hữu duyệt
+### Xuất hàng — MỘT nút, MỘT giao dịch
+
+Bấm **Xuất hàng** trên đơn `submitted` thì trong cùng một transaction:
+1. trừ kho theo **FIFO** (bỏ qua lô sắp hết hạn, và **nói ra** đã bỏ bao nhiêu);
+2. ghi **công nợ phải thu** cho khách;
+3. đổi đơn sang `completed` và mở hộp in **phiếu giao hàng**.
+
+⚠ **ĐỌC THÔNG BÁO SAU KHI BẤM.** Nếu tổ chức bật `allow_oversell`, đơn
+vẫn xuất được khi thiếu tồn, và hệ thống báo RIÊNG một dòng đỏ "xuất
+thiếu hàng" kèm số thiếu. Không có cờ đó thì cả giao dịch cuộn lại và
+đơn nằm nguyên ở `submitted`.
+
+### Sửa đơn đã xuất — bốn khoá
+Sửa được trong số ngày đặt ở `organizations.completed_edit_days`, trừ khi:
+đã thu tiền (`LOCKED_HAS_PAYMENT`), đã phát hành hóa đơn (`LOCKED_EINVOICE`),
+đã có phiếu trả hoàn thành (`LOCKED_RETURN_DONE`), hoặc quá hạn sửa
+(`LOCKED_TOO_OLD`). Sửa xong hệ thống tự chỉnh lại tồn và công nợ.
 
 ### Ai làm gì?
-- **Sales** tạo, theo dõi đơn của mình
-- **Quản lý / Owner** duyệt
-- **Kho** chuyển trạng thái `picking`
-- **Tài xế** chuyển `delivering` → `delivered`
+- **Sales** tạo đơn, gửi lên, theo dõi đơn của mình
+- **Nhà phân phối** (Owner / Quản lý) bấm **Xuất hàng**
+- Không còn bước duyệt, soạn hàng, lập chuyến hay bàn giao
 
 ---
 
@@ -152,24 +168,26 @@ Mỗi SP × đơn vị có thể có nhiều dòng giá:
 
 ---
 
-## 6. Giao hàng
+## 6. Giao hàng — NGƯNG DÙNG
 
-**URL**: `/deliveries` | **Tạo**: `/deliveries/new` | **Chi tiết**: `/deliveries/[id]`
+**URL**: `/deliveries` *(đã ẩn khỏi menu — gõ thẳng địa chỉ để tra cứu)*
 
-### Tạo phiếu giao
-1. Chọn **tài xế** (role = driver)
-2. Nhập **xe** + **tuyến đường**
-3. Tick các đơn `confirmed` để gộp vào chuyến
-4. Lưu → trạng thái `pending`
+⚠ **MODULE NÀY KHÔNG CÒN DÙNG ĐỂ GHI.** Workflow v2 bỏ cả ba bước soạn
+hàng — lập chuyến — bàn giao; **Xuất hàng** trên đơn in luôn phiếu giao.
+Ba màn `/deliveries`, `/inventory/stock-out`, `/inventory/pending` bị ẩn
+khỏi mọi menu ở phase P7 và **các nút ghi đã khoá** (bấm vào chỉ nhận
+một dòng chỉ sang cách làm mới).
 
-### Trang chi tiết (cho tài xế)
-- Hiển thị danh sách `delivery_lines`
-- Mỗi dòng có nút: ✅ Giao thành công / ❌ Giao thất bại
-- Chụp ảnh POD (`pod_photo_url`) + chữ ký (`pod_signature`)
+**Mã nguồn KHÔNG bị xoá, dữ liệu KHÔNG bị xoá** — chuyến giao đã chạy là
+chứng từ. Màn vẫn mở để tra cứu: danh sách `delivery_lines`, ảnh POD
+(`pod_photo_url`), chữ ký (`pod_signature`).
 
-### Trạng thái phiếu giao
-- `pending` → `in_transit` → `completed`
-- Hoặc `cancelled`
+Bật lại được bằng một dòng: `LEGACY_FLOW_WRITES_LOCKED` trong
+`src/lib/nav/legacy-flow.ts`. ⚠ Nhưng đừng bật nếu chưa hiểu vì sao nó
+khoá: ba màn đó ghi theo NHIỀU BƯỚC rời nhau và bước đổi trạng thái đơn
+nằm ở CUỐI — mà migration 119 nay từ chối trạng thái đó. Người dùng
+không nhận được thông báo lỗi, họ nhận được **ghi dở**: kho đã trừ hoặc
+tiền đã ghi, đơn thì không đổi, không giao dịch nào cuộn lại.
 
 ---
 
@@ -179,7 +197,7 @@ Mỗi SP × đơn vị có thể có nhiều dòng giá:
 
 ### Vòng đời 1 khoản phải thu
 ```
-Đơn 'delivered' → tự sinh receivable (status='open')
+Đơn 'completed' (bấm Xuất hàng) → tự sinh receivable (status='open')
    ↓
 Khách trả 1 phần → status='partial', paid tăng lên
    ↓
@@ -187,6 +205,17 @@ Khách trả đủ → status='paid'
    ↓
 Quá due_date mà chưa đủ → status='overdue'
 ```
+
+### Hai chứng từ khép công nợ
+- **Phiếu thu** (`/finance/cash-receipts`): chọn khoản nợ cần khép; cấn
+  trừ được phiếu trả ĐỘC LẬP; rút được **số dư có** của khách.
+- **Phiếu trả** gắn đơn: giảm nợ của chính đơn đó ngay lúc **Hoàn thành**.
+
+⚠ **`paid > amount` LÀ HỢP LỆ.** Khách trả hàng sau khi đã thanh toán đủ
+thì phần chênh là **số dư có** — tiền của họ đang nằm ở nhà phân phối,
+rút ra dùng được ở màn lập phiếu thu. Mọi tổng công nợ đều kẹp
+`GREATEST(0, amount - paid)` nên KHÔNG hiện số âm; con số "Dư có" hiện
+riêng.
 
 ### 4 buckets tuổi nợ
 - 0-30 ngày: Hiện tại
@@ -229,7 +258,7 @@ Quá due_date mà chưa đủ → status='overdue'
 **URL**: `/invoices` | **Tạo**: `/invoices/new`
 
 ### Tạo hóa đơn
-1. Chọn **đơn hàng đã giao** (status = `delivered`)
+1. Chọn **đơn hàng đã hoàn thành** (status = `completed`)
 2. Tự load: tên KH, địa chỉ, subtotal, VAT, total
 3. Chỉnh sửa nếu cần (mã số thuế, địa chỉ xuất HĐ)
 4. Số HĐ tự sinh: `INV-YYYYMMDD-XXXX` (có thể chỉnh)
@@ -250,14 +279,28 @@ Quá due_date mà chưa đủ → status='overdue'
 
 ### Quy trình
 ```
-Sales tạo yêu cầu (pending)
+Lập phiếu trả (draft — kèm đơn, hoặc độc lập)
    ↓
-Quản lý duyệt (approved) hoặc từ chối (rejected)
+Gửi lên (submitted) — phiếu nằm chờ ở /returns
    ↓
-Kho nhận hàng + Kế toán tạo credit note
-   ↓
-Hoàn tất (completed)
+Bấm "Hoàn thành" (completed)  ◄── MỘT nút
+   • hàng VÀO KHO (chọn Kho bán / Kho cận date)
+   • công nợ GIẢM
+   ...cả hai trong cùng một giao dịch
 ```
+
+⚠ **HÀNG CHỈ VÀO KHO KHI BẤM "HOÀN THÀNH".** Không còn bước nhập kho
+riêng làm sau, và không còn ai tạo credit note bằng tay.
+
+⚠ Trả không quá số đã bán: hệ thống đếm các phiếu đã `completed` của
+cùng đơn rồi chặn ngay lúc bấm.
+
+### Hai loại phiếu trả đi hai đường khác nhau
+- **Gắn đơn** (`order_id` khác null): giảm nợ của đơn đó ngay lúc hoàn
+  thành. ⚠ KHÔNG đem cấn trừ ở phiếu thu nữa — là trừ hai lần, hệ thống
+  từ chối.
+- **Độc lập** (`order_id` null): khoản có nằm chờ tới khi kế toán đem
+  vào một **Phiếu thu**.
 
 ### 5 lý do trả
 - `damaged` - Hàng hỏng
@@ -267,8 +310,8 @@ Hoàn tất (completed)
 - `refused` - Khách từ chối nhận
 
 ### Quy tắc thời gian
-- Trả trong 48h đầu sau giao: tự động duyệt
-- Sau 48h: cần Quản lý duyệt thủ công
+- Đơn gốc phải ở `completed` thì phiếu trả mới hoàn thành được
+  (`ORDER_NOT_COMPLETED`) — chưa xuất hàng thì không có gì để trả.
 
 ---
 

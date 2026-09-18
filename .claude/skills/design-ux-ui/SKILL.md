@@ -148,8 +148,8 @@ reps pinch-zoom to read price lists.
     `/orders/[id]` derives it from `STATUS_FLOW` filtered by role, takes
     the first non-`cancelled` transition, and puts everything else —
     cancel, delete — behind a ⋮ menu. When a status has no forward
-    transition but still has work (`delivered` → ghi nhận công nợ → xuất
-    hoá đơn), the bar carries that instead of standing empty.
+    transition but still has work (`completed` → xuất hoá đơn), the bar
+    carries that instead of standing empty.
 13. **Compress a repeated row to two lines; put the rest in a sheet.**
     Order lines went from ~250px to ~90px each by moving price / VAT /
     discount / note into a "Sửa dòng" sheet. Anything edited away from
@@ -421,8 +421,15 @@ passed even after that clause was deleted — the window reached into the
   giảm SL, đổi UOM…").
 - Pessimistic edit lock (T-06): banner red `🔒 [Tên] đang sửa…`,
   inputs `disabled`, save button gated on `lock.state === 'mine'`.
-- Stage badges: use the spec's lowercase enum string (`picking`,
-  `delivering`…) but display via a label map in vi-VN.
+- Status badges: use the lowercase enum string but display via a label
+  map in vi-VN. Order and return statuses are the **same four** since
+  workflow v2 (migration 119): `draft` (Nháp) → `submitted` (Phiếu tạm)
+  → `completed` (Hoàn thành) / `cancelled` (Đã huỷ).
+  ⚠ `confirmed`, `picking`, `delivering`, `delivered`, `pending_approval`
+  and — on `returns` — `approved` / `rejected` / `pending` are **dead**.
+  `chk_sales_orders_status_v2` and `chk_returns_status_v2` reject them,
+  so a label map that still lists them is teaching a value the database
+  will refuse.
 
 ## 6. Print
 
@@ -527,9 +534,21 @@ For every UI change, verify in this order:
   catalog in `/settings/users/[id]/permissions` so the override is
   toggleable in UI, not just at SQL level.
 - New print modes: use the `data-print-mode` pattern (section 6).
-- New workflow stages: add to the enum on `sales_orders.current_workflow_stage`
-  via migration + the `WorkflowStage` union in
-  `lib/orders/edit-validator.ts`. Update label maps.
+- New order statuses: add to `chk_sales_orders_status_v2` (migration 119)
+  **and** the transition trigger `check_order_status_transition`, then
+  update every label map. ⚠ The trigger is the part people forget: a
+  value the CHECK allows but the trigger has no branch for can be
+  inserted and never transitioned out of.
+- New workflow stages (`sales_orders.current_workflow_stage`, a *separate*
+  axis from `status` that drives the edit lock): add to the enum via
+  migration + the `WorkflowStage` union in `lib/orders/edit-validator.ts`.
+  Update label maps.
+- The delivery-run flow (`/deliveries`, `/inventory/stock-out`,
+  `/inventory/pending`) is **retired** as of P7 — hidden from every
+  menu, write buttons locked via `LEGACY_FLOW_WRITES_LOCKED`
+  (`src/lib/nav/legacy-flow.ts`), code deliberately NOT deleted because
+  the data is chứng từ. Don't route new work through those screens, and
+  don't "fix" the locks.
 
 ## 12. Files / locations cheat sheet
 

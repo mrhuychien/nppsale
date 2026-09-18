@@ -3,6 +3,12 @@ import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 // Cột "Mã đơn", checkbox + ô action luôn hiện — không khai báo ở đây.
 export const ORDER_COLUMNS = [
   { key: "customer", label: "Khách hàng" },
+  // ⚠ TUYẾN VẪN HIỆN DƯỚI TÊN KHÁCH khi cột này tắt — nó là thứ người
+  //   giao hàng cần nhất. Cột riêng dành cho ai muốn SẮP hoặc quét theo
+  //   tuyến; bật nó lên thì dòng phụ dưới tên khách nhường chỗ, không in
+  //   hai lần cùng một chữ.
+  { key: "route", label: "Tuyến bán" },
+  { key: "address", label: "Địa chỉ" },
   { key: "salesUser", label: "NV bán hàng" },
   { key: "date", label: "Ngày đặt" },
   { key: "total", label: "Tổng tiền" },

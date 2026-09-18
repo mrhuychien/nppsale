@@ -17,6 +17,8 @@ const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 
 const LIST = read("src/app/(dashboard)/sales-invoices/page.tsx")
+const INV_TABLE = read("src/components/sales-invoices/desktop-invoice-table.tsx")
+const INV_DRAWER = read("src/components/sales-invoices/invoice-drawer.tsx")
 const DETAIL = read("src/app/(dashboard)/sales-invoices/[id]/page.tsx")
 const PRINT = read("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx")
 const ROUTE = read("src/app/api/einvoice/publish/route.ts")
@@ -390,7 +392,8 @@ describe("Trang chi tiết hóa đơn bán", () => {
 // =====================================================================
 
 describe("Danh sách hóa đơn bán", () => {
-  const CODE = strip(LIST)
+  // Màn này gồm trang + bảng + ngăn xem nhanh; chốt về "màn" soi cả ba.
+  const CODE = strip(LIST) + "\n" + strip(INV_TABLE) + "\n" + strip(INV_DRAWER)
 
   /**
    * ⚠ NÓI RA KHI HÓA ĐƠN LÀ BẢN LẬP LẠI. Không có dấu này thì một hóa
@@ -463,9 +466,9 @@ describe("Danh sách hóa đơn bán", () => {
     expect(ORDERS, "màn đơn hàng đã đổi thanh công cụ").toContain(TOOLBAR)
     expect(TABLE, "bảng đơn hàng đã đổi hàng tiêu đề").toContain(HEADROW)
 
-    expect(CODE).toContain(SHELL)
-    expect(CODE).toContain(TOOLBAR)
-    expect(CODE).toContain(HEADROW)
+    expect(strip(LIST)).toContain(SHELL)
+    expect(strip(LIST)).toContain(TOOLBAR)
+    expect(strip(INV_TABLE)).toContain(HEADROW)
   })
 
   /**
@@ -473,14 +476,150 @@ describe("Danh sách hóa đơn bán", () => {
    * một ngày nào đó sửa một chỗ, và tiêu đề lệch khỏi dữ liệu đúng một
    * cột — lỗi khó thấy nhất trong các lỗi dựng hình.
    */
-  it("bề rộng cột khai một lần, dùng hai nơi", () => {
-    expect(CODE).toContain("const COLS =")
-    expect((CODE.match(/gridTemplateColumns: COLS/g) ?? []).length).toBe(2)
+  it("bề rộng cột dựng một lần, dùng cho tiêu đề lẫn dòng", () => {
+    const T = strip(INV_TABLE)
+    expect(T).toContain("const cols = [")
+    expect((T.match(/gridTemplateColumns: cols/g) ?? []).length).toBe(2)
   })
 
   /** ⚠ Điện thoại phải có danh sách riêng — lưới 930px không vừa màn. */
   it("điện thoại có danh sách thẻ riêng", () => {
     expect(CODE).toContain('className="space-y-3 lg:hidden"')
+  })
+
+
+  /**
+   * ⚠ CỘT TRÙNG NGHĨA PHẢI TRÙNG TÊN KHOÁ với màn đơn hàng. Đặt tên khác
+   * cho cùng một thứ là hai màn trôi xa nhau từ từ, và người sửa sau phải
+   * đọc cả hai file mới biết chúng có giống nhau không.
+   */
+  it("khoá cột trùng nghĩa dùng chung tên với màn đơn", () => {
+    const ORDER_CFG = read("src/app/(dashboard)/orders/list-config.ts")
+    const INV_CFG = read("src/app/(dashboard)/sales-invoices/list-config.ts")
+    const keys = (src: string, name: string) => {
+      const i = src.indexOf(`export const ${name} = [`)
+      expect(i, `không tìm thấy ${name}`).toBeGreaterThan(-1)
+      const body = src.slice(i, src.indexOf("] as const", i))
+      return new Set((body.match(/key: "([a-zA-Z]+)"/g) ?? []).map((m) => m.slice(6, -1)))
+    }
+    const oc = keys(ORDER_CFG, "ORDER_COLUMNS")
+    const ic = keys(INV_CFG, "INVOICE_COLUMNS")
+    for (const k of ["customer", "route", "address", "salesUser", "date", "total", "status"]) {
+      expect(oc.has(k), `màn đơn thiếu cột ${k}`).toBe(true)
+      expect(ic.has(k), `màn hóa đơn thiếu cột ${k}`).toBe(true)
+    }
+  })
+
+  /**
+   * ⚠ ĐỊA CHỈ VÀ TUYẾN LÀ THỨ CHỦ NHÀ YÊU CẦU THÊM. Cả hai màn phải có,
+   * và cả hai phải đi kèm cột `address` trong câu embed — thiếu cột thì
+   * ô địa chỉ hiện "—" cho mọi dòng mà không lỗi nào bắn.
+   */
+  it("hai màn đều hỏi địa chỉ khách trong câu embed", () => {
+    const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
+    expect(ORDERS).toContain("customer:customers(store_name, phone, channel, address)")
+    expect(strip(LIST)).toContain("customer:customers(store_name, phone, channel, address)")
+  })
+
+  /**
+   * ⚠ Lọc theo tuyến cần `!inner`, nếu không PostgREST không lọc nổi. Và
+   * CHỈ khi đang lọc: `!inner` luôn là âm thầm bỏ mất hóa đơn nào RLS
+   * không cho thấy dòng khách của nó.
+   *
+   * ⚠ ĐẾM CẢ HAI CHỖ. Bản đầu của chốt này NÓI DỐI: nó chỉ hỏi "chuỗi
+   * ba ngôi có xuất hiện không", mà nó xuất hiện ở HAI chỗ — câu danh
+   * sách và câu đếm. Sửa một chỗ thành `!inner` cứng thì chốt vẫn xanh,
+   * và số trên thẻ trạng thái lặng lẽ lệch khỏi số dòng bên dưới.
+   */
+  it("lọc tuyến bật !inner, chỉ khi đang lọc, ở CẢ HAI câu", () => {
+    const L = strip(LIST)
+    expect(L).toContain('customer:customers!inner(store_name, phone, channel, address)')
+    expect(
+      (L.match(/routeFilter !== "all" \? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED/g) ?? []).length,
+      "câu danh sách và câu đếm phải cùng một phép chọn embed"
+    ).toBe(2)
+    // Không chỗ nào dùng `!inner` vô điều kiện.
+    expect(L).not.toMatch(/const cust = CUSTOMER_EMBED_INNER/)
+  })
+
+  /**
+   * ⚠ LỌC Ở MÁY CHỦ, KHÔNG LỌC TRONG 50 DÒNG ĐANG XEM. Lọc tại chỗ thì
+   * chọn "khách A" mà hóa đơn của A nằm ở trang 3 sẽ ra rỗng, và người
+   * dùng kết luận là hóa đơn đã mất.
+   */
+  it("khách · NVBH · ngày · giá trị lọc ở máy chủ", () => {
+    const L = strip(LIST)
+    expect(L).toContain('x.eq("customer_id", customerFilter)')
+    expect(L).toContain('x.eq("sales_user_id", salesFilter)')
+    expect(L).toContain('x.gte("invoice_date", dateFrom)')
+    expect(L).toContain('x.lte("total", Number(amountMax))')
+  })
+
+  /**
+   * ⚠ MỘT HÀM LỌC, DÙNG CHO CẢ DANH SÁCH LẪN PHÉP ĐẾM. Chép ra hai chỗ
+   * là một ngày nào đó thêm điều kiện vào một chỗ, và số trên thẻ trạng
+   * thái không còn khớp với số dòng bên dưới — ngay trên cùng một màn.
+   */
+  it("phép đếm dùng chung bộ lọc với danh sách", () => {
+    const L = strip(LIST)
+    expect(L).toContain("const applyFilters = useCallback(")
+    expect((L.match(/applyFilters\(q as never\)/g) ?? []).length).toBe(2)
+  })
+
+  /** Đổi bộ lọc mà đứng lại trang 7 của một kết quả 2 dòng là màn trắng. */
+  it("đổi bộ lọc thì về trang 1", () => {
+    const L = strip(LIST)
+    const i = L.indexOf("pg.setPage(1)")
+    expect(i).toBeGreaterThan(0)
+    expect(L.slice(i, i + 260)).toContain("customerFilter")
+  })
+
+  /**
+   * ⚠ XEM NHANH LÀ PHẦN CHỦ NHÀ GỌI TÊN. Không có nó thì muốn liếc một
+   * hóa đơn phải rời danh sách, xem, rồi bấm quay lại — mà danh sách khi
+   * đó đã về trang 1 và mất hết bộ lọc.
+   */
+  it("có ngăn xem nhanh, mở bằng cách chạm một dòng", () => {
+    expect(strip(LIST)).toContain("<InvoiceDrawer")
+    expect(strip(LIST)).toContain("onOpen={(inv) => setDrawerId(inv.id)}")
+    expect(strip(INV_DRAWER)).toContain('side="right"')
+  })
+
+  /**
+   * ⚠ TẢI DÒNG HÀNG HỎNG THÌ NÓI RA, đừng hiện "0 mặt hàng". Số 0 cho
+   * một lỗi mạng đọc như một hóa đơn rỗng, và đó là một câu nói dối.
+   */
+  it("ngăn xem nhanh nói ra khi không tải được dòng hàng", () => {
+    expect(strip(INV_DRAWER)).toContain("Không tải được dòng hàng")
+  })
+
+  /**
+   * ⚠ TỔNG LẤY TỪ HÓA ĐƠN ĐÃ LƯU, không cộng lại từ dòng. Cộng lại là
+   * dựng một phép tính thứ hai cạnh phép tính của RPC; hai phép thì sẽ có
+   * ngày lệch, và con số trên màn không còn là con số trong sổ.
+   */
+  it("ngăn xem nhanh in tổng của hóa đơn, không tự cộng", () => {
+    const D = strip(INV_DRAWER)
+    expect(D).toContain("formatCurrency(invoice.total)")
+    expect(D).not.toMatch(/lines[^\n]*reduce\(/)
+  })
+
+  /**
+   * ⚠ CHỈ HÓA ĐƠN ĐÃ XUẤT MỚI SỬA ĐƯỢC. Hiện nút Sửa trên một hóa đơn đã
+   * huỷ là mời người ta đi vào một màn sẽ từ chối họ.
+   */
+  it("nút sửa trong ngăn chỉ hiện với hóa đơn đã xuất", () => {
+    expect(strip(INV_DRAWER)).toContain("{canEdit && posted && (")
+  })
+
+  /**
+   * ⚠ DÙNG LẠI `repAvatar` CỦA BẢNG ĐƠN, không chép sang. Avatar cùng một
+   * nhân viên mà ra hai màu khác nhau ở hai màn cạnh nhau thì người dùng
+   * tưởng là hai người.
+   */
+  it("avatar NVBH dùng chung hàm với bảng đơn", () => {
+    expect(strip(INV_TABLE)).toContain('from "@/components/orders/desktop-order-table"')
+    expect(strip(INV_TABLE)).toContain("repAvatar(r.sales_user?.full_name)")
   })
 
   it("không để màn hình thành ngõ cụt khi rỗng", () => {

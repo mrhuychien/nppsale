@@ -1,0 +1,224 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { createClient } from "@/lib/supabase/client"
+import { formatCurrency, formatDate } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
+import { INVOICE_STATUS_MAP } from "@/lib/constants"
+import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
+
+/**
+ * Ngăn XEM NHANH hóa đơn bán — cùng khuôn với `order-drawer`.
+ *
+ * Chạm một dòng là ngăn trượt ra: số hóa đơn · ngày · số mặt hàng, huy
+ * hiệu trạng thái, hai ô Khách hàng / NV bán hàng, danh sách dòng hàng +
+ * tổng, và ba nút Sửa / In / Chi tiết.
+ *
+ * ⚠ DÒNG HÀNG TẢI KHI MỞ — danh sách 50 hóa đơn không kéo 50 bộ dòng về
+ * sẵn. Tải hỏng thì NÓI RA trong ngăn, không hiện "0 mặt hàng": số 0 cho
+ * một lỗi mạng đọc như một hóa đơn rỗng, và đó là một câu nói dối.
+ *
+ * ⚠ TỔNG LẤY TỪ HÓA ĐƠN ĐÃ LƯU, không cộng lại từ dòng. Cộng lại ở đây
+ * là dựng một phép tính thứ hai cạnh phép tính của RPC — hai phép thì sẽ
+ * có ngày lệch, và con số trên màn không còn là con số trong sổ.
+ */
+interface DrawerLine {
+  id: string
+  quantity: number
+  unit_name: string
+  unit_price: number
+  line_total: number
+  is_exchange: boolean
+  note: string | null
+  product: { name: string } | null
+}
+
+export function InvoiceDrawer({
+  invoice,
+  routeName,
+  canEdit,
+  onClose,
+}: {
+  invoice: InvoiceRow | null
+  routeName: string | null
+  canEdit: boolean
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [lines, setLines] = useState<DrawerLine[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const invoiceId = invoice?.id ?? null
+  useEffect(() => {
+    if (!invoiceId) return
+    let cancelled = false
+    setLines(null)
+    setError(null)
+    ;(async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("sales_invoice_lines")
+        .select("id, quantity, unit_name, unit_price, line_total, is_exchange, note, product:products(name)")
+        .eq("invoice_id", invoiceId)
+        .order("sort_order", { ascending: true })
+      if (cancelled) return
+      if (error) {
+        setError(errorMessage(error))
+        return
+      }
+      setLines(((data as unknown) as DrawerLine[]) ?? [])
+    })()
+    return () => { cancelled = true }
+  }, [invoiceId])
+
+  const posted = invoice?.status === "posted"
+
+  return (
+    <Sheet open={!!invoice} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" className="flex w-[460px] flex-col gap-0 p-0 sm:max-w-[460px]">
+        {invoice && (
+          <>
+            <div className="flex items-center gap-2.5 border-b border-outline-variant/40 py-4 pl-5 pr-14">
+              <span className="min-w-0 flex-1">
+                <SheetTitle className="block truncate text-lg font-extrabold text-on-surface">
+                  {invoice.invoice_code}
+                </SheetTitle>
+                <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
+                  {formatDate(invoice.invoice_date)}
+                  {lines ? ` · ${lines.length} mặt hàng` : ""}
+                </span>
+              </span>
+              <Badge variant={INVOICE_STATUS_MAP[invoice.status]?.variant ?? "secondary"}>
+                {INVOICE_STATUS_MAP[invoice.status]?.label ?? invoice.status}
+              </Badge>
+            </div>
+
+            <div className="grid flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
+              <div className="grid grid-cols-2 gap-2.5">
+                <Cell
+                  label="Khách hàng"
+                  main={invoice.customer?.store_name || "Khách lẻ"}
+                  sub={routeName ?? invoice.customer?.phone ?? ""}
+                />
+                <Cell
+                  label="NV bán hàng"
+                  main={invoice.sales_user?.full_name || "—"}
+                  sub={invoice.order?.order_code ?? ""}
+                />
+              </div>
+
+              {invoice.customer?.address && (
+                <div className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant">
+                  Địa chỉ: <span className="text-on-surface">{invoice.customer.address}</span>
+                </div>
+              )}
+
+              <div className="overflow-hidden rounded-xl border border-outline-variant/40">
+                <div className="bg-surface-container-low px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
+                  {lines ? `${lines.length} mặt hàng` : "Mặt hàng"}
+                </div>
+                {error && (
+                  <p className="border-t border-outline-variant/30 px-3 py-3 text-sm font-semibold text-error">
+                    Không tải được dòng hàng — {error}
+                  </p>
+                )}
+                {!error && !lines && (
+                  <div className="grid gap-2 p-3">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                )}
+                {lines?.map((l) => (
+                  <div key={l.id} className="flex items-start gap-2.5 border-t border-outline-variant/30 px-3 py-2.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-bold leading-snug">
+                        {l.product?.name || (
+                          <span className="italic text-on-surface-variant">Sản phẩm đã xoá</span>
+                        )}
+                        {l.is_exchange && <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>}
+                      </span>
+                      <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
+                        {l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}
+                      </span>
+                      {l.note && (
+                        <span className="mt-0.5 block text-xs italic text-on-surface-variant">{l.note}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-[13px] font-extrabold tabular-data">
+                      {formatCurrency(l.line_total)}
+                    </span>
+                  </div>
+                ))}
+                <div className="grid gap-1.5 border-t border-outline-variant/30 px-3 py-3 text-[13px] font-semibold text-on-surface-variant">
+                  <div className="flex items-baseline justify-between border-t-0 text-sm font-extrabold text-on-surface">
+                    <span>Tổng tiền</span>
+                    <span className="text-xl tabular-data">{formatCurrency(invoice.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/*
+                ⚠ HÓA ĐƠN LẬP LẠI / ĐÃ BỊ THAY PHẢI NÓI RA Ở ĐÂY NỮA. Người
+                  mở ngăn xem nhanh không nhất thiết đã nhìn cái nhãn nhỏ
+                  trên bảng, và "vì sao tờ này bị huỷ" là câu hỏi đầu tiên
+                  họ có.
+              */}
+              {invoice.replaced_by && (
+                <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[12px] font-bold leading-snug text-[#7a4b00]">
+                  Hóa đơn này đã bị một bản lập lại thay thế. Mở Chi tiết để sang bản mới.
+                </div>
+              )}
+              {invoice.replaced_from && (
+                <div className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[12px] font-bold leading-snug text-on-surface-variant">
+                  Đây là bản lập lại của một hóa đơn đã huỷ.
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 border-t border-outline-variant/40 px-5 pb-5 pt-3">
+              {/* ⚠ CHỈ HÓA ĐƠN ĐÃ XUẤT MỚI SỬA ĐƯỢC. Hiện nút trên một hóa
+                  đơn đã huỷ là mời người ta đi vào một màn sẽ từ chối họ. */}
+              {canEdit && posted && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/sales-invoices/${invoice.id}/edit`)}
+                  className="h-11 flex-1 rounded-xl bg-primary text-sm font-extrabold text-on-primary"
+                >
+                  Sửa hóa đơn
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => router.push(`/sales-invoices/${invoice.id}/print`)}
+                className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
+              >
+                In hóa đơn
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/sales-invoices/${invoice.id}`)}
+                className="h-11 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest px-4 text-sm font-extrabold text-on-surface"
+              >
+                Chi tiết
+              </button>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function Cell({ label, main, sub }: { label: string; main: string; sub: string }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low p-3">
+      <span className="block text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">{label}</span>
+      <span className="mt-1 block truncate text-sm font-extrabold text-on-surface">{main}</span>
+      {sub && <span className="mt-0.5 block truncate text-xs font-semibold text-on-surface-variant">{sub}</span>}
+    </div>
+  )
+}

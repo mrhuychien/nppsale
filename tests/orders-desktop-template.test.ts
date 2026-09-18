@@ -99,7 +99,7 @@ describe("Bảng: cột theo mẫu, số liệu thật", () => {
   })
 
   it("tuyến của khách lấy từ customers.channel qua bảng tên tuyến", () => {
-    expect(PAGE).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel)"')
+    expect(PAGE).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, address)"')
     expect(TABLE).toContain("routeNameByCode[o.customer.channel] ?? o.customer.channel")
   })
 

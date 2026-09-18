@@ -78,8 +78,8 @@ import { errorMessage } from "@/lib/errors"
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
 
 /** Phần nhúng khách hàng trong câu select — hai bản, chỉ khác `!inner`. */
-const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel)"
-const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel)"
+const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, address)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, address)"
 /**
  * Câu select cho phép ĐẾM khi đang lọc theo tuyến.
  *

@@ -26,7 +26,8 @@ export interface OrderSort {
   dir: "asc" | "desc"
 }
 
-export type OrderColumn = "customer" | "salesUser" | "date" | "total" | "status"
+export type OrderColumn =
+  | "customer" | "route" | "address" | "salesUser" | "date" | "total" | "status"
 
 const REP_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be185d", "#0369a1"]
 
@@ -115,6 +116,8 @@ export function DesktopOrderTable({
     "44px",
     "170px",
     show("customer") ? "minmax(200px,1.5fr)" : null,
+    show("route") ? "140px" : null,
+    show("address") ? "minmax(200px,1.5fr)" : null,
     show("salesUser") ? "170px" : null,
     show("date") ? "110px" : null,
     "70px",
@@ -149,6 +152,8 @@ export function DesktopOrderTable({
               Khách hàng <SortIcon k="customer" />
             </button>
           )}
+          {show("route") && <span className={head}>Tuyến bán</span>}
+          {show("address") && <span className={head}>Địa chỉ</span>}
           {show("salesUser") && <span className={head}>NV bán hàng</span>}
           {show("date") && (
             <button type="button" onClick={() => onSort("date")} className={sortBtn}>
@@ -211,9 +216,26 @@ export function DesktopOrderTable({
                   <span className="block truncate text-sm font-bold text-on-surface">
                     {o.customer?.store_name || "Khách lẻ"}
                   </span>
-                  {route && (
+                  {/* ⚠ KHÔNG IN TUYẾN HAI LẦN. Bật cột Tuyến bán thì dòng
+                      phụ này nhường chỗ — lặp lại cùng một chữ ở hai cột
+                      cạnh nhau chỉ làm hàng dày lên mà không thêm gì. */}
+                  {route && !show("route") && (
                     <span className="mt-px block truncate text-xs font-semibold text-on-surface-variant">{route}</span>
                   )}
+                </span>
+              )}
+              {show("route") && (
+                <span className="min-w-0 px-2 text-[13px] font-semibold text-on-surface">
+                  <span className="block truncate">{route || "—"}</span>
+                </span>
+              )}
+              {show("address") && (
+                <span className="min-w-0 px-2 text-[13px] text-on-surface-variant">
+                  {/* ⚠ CHƯA CÓ ĐỊA CHỈ THÌ NÓI LÀ CHƯA CÓ, đừng để ô trống —
+                      ô trống đọc như một lỗi tải dữ liệu. */}
+                  <span className="block truncate" title={o.customer?.address || undefined}>
+                    {o.customer?.address || "—"}
+                  </span>
                 </span>
               )}
               {show("salesUser") && (

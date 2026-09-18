@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import {
   ArrowRight, FileText, Pencil, Printer, Receipt, Undo2, XCircle,
 } from "lucide-react"
@@ -30,7 +30,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { InvoiceDialog, type ReissueSeedLine } from "@/components/orders/invoice-dialog"
 import { cancelInvoice } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -86,7 +85,6 @@ export default function SalesInvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("orders")
-  const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -97,7 +95,6 @@ export default function SalesInvoiceDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   const [cancelling, setCancelling] = useState(false)
-  const [reissueOpen, setReissueOpen] = useState(false)
   const [publishing, setPublishing] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -161,21 +158,6 @@ export default function SalesInvoiceDetailPage() {
    * rồi nhận một mã lỗi, chứ không phải để thay chỗ chặn.
    */
   const eInvoiceIssued = !!eInvoice?.misa_inv_no
-  const seed: ReissueSeedLine[] = lines.map((l) => ({
-    orderLineId: l.order_line_id,
-    productId: l.product_id,
-    unitName: l.unit_name,
-    quantity: Number(l.quantity || 0),
-    unitPrice: Number(l.unit_price || 0),
-    lineDiscount: Number(l.line_discount || 0),
-    vatRate: Number(l.vat_rate || 0),
-    isExchange: l.is_exchange,
-    conversionFactor: Number(l.conversion_factor || 1),
-    productName: l.product?.name || "—",
-    sku: l.product?.sku || null,
-    note: l.note,
-  }))
-
   const publish = async () => {
     setPublishing(true)
     try {
@@ -250,7 +232,7 @@ export default function SalesInvoiceDetailPage() {
           <>
             <Button
               variant="outline"
-              onClick={() => setReissueOpen(true)}
+              asChild={!eInvoiceIssued}
               disabled={eInvoiceIssued}
               title={
                 eInvoiceIssued
@@ -258,7 +240,15 @@ export default function SalesInvoiceDetailPage() {
                   : undefined
               }
             >
-              <Pencil className="mr-1.5 h-4 w-4" /> Sửa hóa đơn
+              {eInvoiceIssued ? (
+                <>
+                  <Pencil className="mr-1.5 h-4 w-4" /> Sửa hóa đơn
+                </>
+              ) : (
+                <Link href={`/sales-invoices/${inv.id}/edit`}>
+                  <Pencil className="mr-1.5 h-4 w-4" /> Sửa hóa đơn
+                </Link>
+              )}
             </Button>
             <Button
               variant="outline"
@@ -459,23 +449,6 @@ export default function SalesInvoiceDetailPage() {
         </div>
       </ConfirmDialog>
 
-      {/*
-        ⚠ ĐIỀU HƯỚNG SANG BẢN MỚI SAU KHI LẬP LẠI. Đứng lại ở trang cũ là
-          người dùng nhìn một hóa đơn vừa bị huỷ và tưởng việc sửa thất
-          bại — rồi bấm Sửa lần nữa.
-      */}
-      <InvoiceDialog
-        orderId={reissueOpen ? inv.order_id : null}
-        orderCode={inv.order?.order_code || ""}
-        reissueOf={{ invoiceId: inv.id, invoiceCode: inv.invoice_code, lines: seed }}
-        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
-        onClose={() => setReissueOpen(false)}
-        onPosted={(r) => {
-          setReissueOpen(false)
-          if (r.invoiceId) router.push(`/sales-invoices/${r.invoiceId}`)
-          else fetchData()
-        }}
-      />
     </div>
   )
 }

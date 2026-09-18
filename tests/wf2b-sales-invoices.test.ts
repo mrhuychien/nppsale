@@ -22,7 +22,9 @@ const PRINT = read("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx")
 const ROUTE = read("src/app/api/einvoice/publish/route.ts")
 const EPRINT = read("src/app/(dashboard)/invoices/[id]/print/page.tsx")
 const PUB = read("src/lib/einvoice/publish.ts")
-const DIALOG = read("src/components/orders/invoice-dialog.tsx")
+const EDITOR = read("src/components/orders/invoice-editor.tsx")
+const EDIT_PAGE = read("src/app/(dashboard)/sales-invoices/[id]/edit/page.tsx")
+const EDITOR_LIB = read("src/lib/orders/invoice-editor.ts")
 const ORDER = read("src/app/(dashboard)/orders/[id]/page.tsx")
 
 /** Bản đã lược chú thích — cho mọi chốt khẳng định một thứ KHÔNG có mặt. */
@@ -268,7 +270,7 @@ describe("Bản in hoá đơn điện tử cũng đổi nguồn", () => {
 // =====================================================================
 
 describe("Dialog ở chế độ sửa hóa đơn", () => {
-  const CODE = strip(DIALOG)
+  const CODE = strip(EDITOR) + "\n" + strip(EDITOR_LIB)
 
   /**
    * ⚠ KHÔNG DÙNG `remainingQty` KHI SỬA. Bản cũ chưa bị huỷ nên số lượng
@@ -318,7 +320,9 @@ describe("Trang chi tiết hóa đơn bán", () => {
    */
   it("có nút huỷ và nút sửa", () => {
     expect(CODE).toContain("cancelInvoice(supabase, inv.id, cancelReason.trim())")
-    expect(CODE).toContain("reissueOf={{ invoiceId: inv.id,")
+    // Sửa giờ là MỘT TRANG riêng, không còn hộp thoại gắn ở đây.
+    expect(CODE).toContain("/sales-invoices/${inv.id}/edit")
+    expect(strip(EDIT_PAGE)).toContain("reissueOf={{ invoiceId: inv.id,")
   })
 
   /**
@@ -327,7 +331,16 @@ describe("Trang chi tiết hóa đơn bán", () => {
    * rồi bấm Sửa lần nữa.
    */
   it("sửa xong thì chuyển sang bản mới", () => {
-    expect(CODE).toContain("router.push(`/sales-invoices/${r.invoiceId}`)")
+    expect(strip(EDITOR)).toContain("/sales-invoices/${r.invoiceId}")
+  })
+
+  /**
+   * ⚠ CHỈ SỬA ĐƯỢC HÓA ĐƠN ĐÃ XUẤT. RPC cũng chặn, nhưng để người dùng
+   * soạn xong cả màn rồi mới nhận mã lỗi là phí công họ — và một hóa đơn
+   * đã huỷ mở ra ở màn sửa trông y như một hóa đơn còn hiệu lực.
+   */
+  it("màn sửa chặn hóa đơn không ở trạng thái đã xuất", () => {
+    expect(strip(EDIT_PAGE)).toContain('if (row.status !== "posted")')
   })
 
   /**
@@ -385,15 +398,43 @@ describe("Danh sách hóa đơn bán", () => {
    * biết cái nào thay cái nào.
    */
   it("đánh dấu bản lập lại và bản đã bị thay", () => {
-    expect(CODE).toContain("{r.replaced_from && (")
-    expect(CODE).toContain("{r.replaced_by && (")
+    expect(CODE).toContain("{r.replaced_from && <Badge")
+    expect(CODE).toContain("{r.replaced_by && <Badge")
   })
 
   /** Mặc định chỉ hiện hóa đơn còn hiệu lực, nhưng xem được cả đã huỷ. */
   it("lọc mặc định là hóa đơn đã xuất, và mở được cả đã huỷ", () => {
-    expect(CODE).toContain('useState("posted")')
-    expect(CODE).toContain('<SelectItem value="cancelled">')
-    expect(CODE).toContain('<SelectItem value="all">')
+    expect(CODE).toContain('useState<string>("posted")')
+    expect(CODE).toContain('{ key: "cancelled"')
+    expect(CODE).toContain('{ key: "all"')
+  })
+
+  /**
+   * ⚠ SỐ TRÊN THẺ ĐẾM CẢ SỔ, KHÔNG ĐẾM TRANG ĐANG XEM. Đếm từ `rows` thì
+   * thẻ "Đã xuất" hiện 50 dù sổ có 4.000 — và con số trên thẻ mâu thuẫn
+   * với con số dưới chân trang, ngay trên cùng một màn.
+   */
+  it("số trên thẻ trạng thái đếm từ máy chủ", () => {
+    expect(CODE).toContain('{ count: "exact", head: true }')
+    expect(CODE).not.toMatch(/count:\s*rows\.filter/)
+  })
+
+  /**
+   * ⚠ Ô TÌM CHỈ LỌC TRANG ĐANG XEM — nó không hỏi lại máy chủ. Placeholder
+   * phải nói ra, nếu không người dùng gõ mã của một hóa đơn ở trang 3,
+   * không thấy gì, và kết luận là hóa đơn đã mất.
+   */
+  it("placeholder ô tìm nói đúng phạm vi nó tìm", () => {
+    expect(CODE).toContain("Tìm trong trang này")
+  })
+
+  /**
+   * ⚠ BẤM MÃ ĐƠN GỐC PHẢI SANG ĐƠN, không sang hóa đơn. Cả hàng đã điều
+   * hướng; không chặn nổi bọt thì hai lệnh cùng chạy và người dùng đáp
+   * xuống đúng chỗ họ không chọn.
+   */
+  it("liên kết đơn gốc chặn nổi bọt khỏi hàng", () => {
+    expect(CODE).toContain("onClick={(e) => e.stopPropagation()}")
   })
 
   it("không để màn hình thành ngõ cụt khi rỗng", () => {

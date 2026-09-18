@@ -7,12 +7,17 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const code = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
-const BAR = code(read("src/components/dashboard/workflow-resume-bar.tsx"))
 const CSS = read("src/app/globals.css")
+const SHELL = code(read("src/components/layout/dashboard-shell.tsx"))
 
 /**
  * NGƯỜI DÙNG BÁO: thanh "1 việc đang dở" in kèm lên đầu phiếu xuất kho.
- * Rule in chỉ ẩn aside/header/nav/.no-print — thanh này là <div> nên lọt.
+ * Rule in chỉ ẩn aside/header/nav/.no-print — thanh đó là <div> nên lọt.
+ *
+ * ⚠ THANH ĐÓ ĐÃ GỠ HẲN (chủ nhà yêu cầu), nên chốt về nó không còn chỗ
+ * bám. Nhưng `.no-print` thì PHẢI Ở LẠI: nó là thứ duy nhất chặn mọi
+ * khối khung ứng dụng khác lọt vào bản in, và chốt dưới đây là cái giữ
+ * cho nó không bị dọn nhầm cùng thanh kia.
  */
 describe("Khung ứng dụng không được lọt vào bản in", () => {
   it("globals.css ẩn .no-print khi in", () => {
@@ -21,10 +26,7 @@ describe("Khung ứng dụng không được lọt vào bản in", () => {
     expect(CSS.slice(i, CSS.indexOf("\n}", i))).toContain(".no-print { display: none !important; }")
   })
 
-  it("thanh việc đang dở mang lớp no-print ngay tại phần tử gốc", () => {
-    const i = BAR.indexOf("return (\n    <div className=\"")
-    expect(i).toBeGreaterThan(0)
-    const root = BAR.slice(i, BAR.indexOf('"', i + 'return (\n    <div className="'.length))
-    expect(root).toContain("no-print")
+  it("khung dashboard không mount lại thanh việc đang dở", () => {
+    expect(SHELL).not.toContain("WorkflowResumeBar")
   })
 })

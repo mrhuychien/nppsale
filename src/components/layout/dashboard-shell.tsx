@@ -9,7 +9,6 @@ import { hidesMobileAppBar, showsBottomNav } from "@/lib/nav/mobile-chrome"
 import { PageTitleProvider } from "@/components/layout/page-title-context"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
-import { WorkflowResumeBar } from "@/components/dashboard/workflow-resume-bar"
 import { OrderSyncProvider } from "@/hooks/use-order-sync"
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
 import type { Role } from "@/types"
@@ -104,7 +103,6 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
           onMenuClick={() => setMobileOpen(true)}
           className={hidesMobileAppBar(pathname) ? "hidden lg:flex" : undefined}
         />
-        <WorkflowResumeBar />
         {/* key={pathname}: remount main mỗi lần đổi route để chạy hiệu ứng
             page-enter (fadeInUp 0.3s) — app cảm giác mượt hơn khi điều hướng.
             .pb-nav chừa đệm cho thanh nav cố định; chiều cao nav nằm ở

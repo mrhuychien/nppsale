@@ -32,7 +32,6 @@ import {
   postInvoice,
   invoiceWarnings,
 } from "@/lib/orders/post-invoice"
-import { InvoiceDialog } from "@/components/orders/invoice-dialog"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
@@ -190,7 +189,6 @@ export default function OrdersPage() {
    * hay giá lúc xuất — nút "Xuất hàng" của thanh chọn nhiều xuất đủ phần
    * còn lại, không hỏi gì.
    */
-  const [invoicingId, setInvoicingId] = useState<string | null>(null)
   /** "N đơn hôm nay · tổng" cho dòng mô tả đầu trang — null = chưa đọc được. */
   const [todaySummary, setTodaySummary] = useState<{ count: number; total: number } | null>(null)
   const [amountMin, setAmountMin] = useState("")
@@ -584,12 +582,12 @@ export default function OrdersPage() {
   const canApprove = user && hasPermission(user.role, "orders", "approve")
 
   /**
-   * XUẤT ĐỦ phần còn lại cho một hoặc nhiều đơn, KHÔNG mở dialog.
+   * XUẤT ĐỦ phần còn lại cho một hoặc nhiều đơn, KHÔNG rời trang.
    *
    * ⚠ HAI ĐƯỜNG XUẤT HÀNG, CÓ CHỦ Ý. Việc thường ngày là xuất đủ những
-   * gì khách đặt, và bắt mở dialog cho từng đơn trong một loạt mười đơn
-   * là biến việc thường ngày thành cực hình. Muốn sửa số lượng hay giá
-   * thì bấm nút trên ĐÚNG một dòng — đường đó mở `InvoiceDialog`.
+   * gì khách đặt, và bắt mở màn soạn cho từng đơn trong một loạt mười
+   * đơn là biến việc thường ngày thành cực hình. Muốn sửa số lượng hay
+   * giá thì bấm nút trên ĐÚNG một dòng — đường đó sang `/sales-invoices/new`.
    *
    * ⚠ ĐI QUA RPC, KHÔNG UPDATE THẲNG. Xuất hàng là trừ kho FIFO + dựng
    * hóa đơn + sinh công nợ + đổi trạng thái; trigger ở migration 124
@@ -1356,7 +1354,7 @@ export default function OrdersPage() {
             onOpen={(o) => setDrawerId(o.id)}
             canApprove={!!canApprove}
             approvingId={approvingId}
-            onApprove={(o) => setInvoicingId(o.id)}
+            onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}
             misaLoadingId={misaLoadingId}
             onInvoice={handleXuatHoaDonList}
             sort={sort}
@@ -1488,37 +1486,9 @@ export default function OrdersPage() {
           })
         }
         approving={approvingId === drawerOrder?.id}
-        onApprove={(o) => setInvoicingId(o.id)}
+        onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}
       />
 
-      {/*
-        ⚠ VÁ STATE THEO `orderStatus` MÀ RPC TRẢ VỀ, không đoán
-          "completed". Xuất một phần thì đơn về `partially_invoiced`, và
-          đoán bừa là màn hình nói đơn đã giao đủ trong khi còn hàng nằm
-          lại — rồi không ai bấm Xuất tiếp nữa.
-      */}
-      <InvoiceDialog
-        orderId={invoicingId}
-        orderCode={orders.find((o) => o.id === invoicingId)?.order_code ?? ""}
-        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
-        onClose={() => setInvoicingId(null)}
-        onPosted={(r) => {
-          const id = invoicingId
-          setInvoicingId(null)
-          if (!id) return
-          setOrders((prev) =>
-            prev.map((o) =>
-              o.id === id
-                ? {
-                    ...o,
-                    status: (r.orderStatus ?? "completed") as OrderStatus,
-                    approval_reason: null,
-                  }
-                : o
-            )
-          )
-        }}
-      />
     </div>
   )
 }

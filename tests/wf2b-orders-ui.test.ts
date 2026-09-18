@@ -22,7 +22,8 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 
 const LIST = read("src/app/(dashboard)/orders/page.tsx")
 const DETAIL = read("src/app/(dashboard)/orders/[id]/page.tsx")
-const DIALOG = read("src/components/orders/invoice-dialog.tsx")
+const EDITOR = read("src/components/orders/invoice-editor.tsx")
+const EDITOR_LIB = read("src/lib/orders/invoice-editor.ts")
 const LIB = read("src/lib/orders/post-invoice.ts")
 
 /** Bản đã lược chú thích — cho mọi chốt khẳng định một thứ KHÔNG có mặt. */
@@ -211,13 +212,13 @@ describe("invoiceWarnings: xuất thành công ≠ xuất đủ hàng", () => {
 
 // =====================================================================
 
-describe("Dialog Xuất hàng", () => {
-  const CODE = strip(DIALOG)
+describe("Màn soạn hóa đơn (toàn trang)", () => {
+  const CODE = strip(EDITOR) + "\n" + strip(EDITOR_LIB)
 
   /**
    * ⚠ KHÔNG CÓ CHỐT CHẶN GIÁ Ở ĐÂY (PATCH 1: NPP toàn quyền). Trần giá
    * của nhân viên bán hàng (`priceViolation` ở màn `/sell`) giữ nguyên và
-   * không liên quan tới dialog này — chủ nhà đã chốt Q3 = (a).
+   * không liên quan tới màn này — chủ nhà đã chốt Q3 = (a).
    */
   it("không gọi priceViolation, không chặn giá", () => {
     expect(CODE).not.toContain("priceViolation")
@@ -230,7 +231,7 @@ describe("Dialog Xuất hàng", () => {
    * thùng — so thẳng là nhuộm vàng mọi dòng bán theo thùng.
    */
   it("cảnh báo lệch giá so với giá trên đơn", () => {
-    expect(CODE).toContain("const diff = Math.abs(r.price - r.unitPrice)")
+    expect(CODE).toContain("Math.abs(r.price - r.unitPrice) > (r.unitPrice * priceWarnPct) / 100")
     expect(CODE).not.toContain("r.listPrice")
   })
 
@@ -240,7 +241,7 @@ describe("Dialog Xuất hàng", () => {
    * luật thứ hai mâu thuẫn với cấu hình của chính tổ chức đó.
    */
   it("thiếu tồn không khoá nút Xuất", () => {
-    expect(CODE).toContain("disabled={saving || loading || picked.length === 0}")
+    expect(CODE).toContain("disabled={saving || picked.length === 0}")
     expect(CODE).not.toMatch(/disabled=\{[^}]*shortRows/)
   })
 
@@ -281,7 +282,18 @@ describe("Dialog Xuất hàng", () => {
   it("có trạng thái tải, trạng thái lỗi và trạng thái rỗng", () => {
     expect(CODE).toContain("<Skeleton")
     expect(CODE).toContain("loadError")
-    expect(CODE).toContain("Đơn không có dòng hàng nào")
+    expect(CODE).toContain("Đơn không còn dòng nào để xuất")
+  })
+
+  /**
+   * ⚠ XUẤT XONG PHẢI ĐI SANG BẢN VỪA LẬP. Đứng lại ở màn soạn là người
+   * dùng nhìn đúng những con số vừa gửi đi và tưởng chưa có gì xảy ra —
+   * rồi bấm Xuất lần nữa, và lần này kho trừ thật hai lượt.
+   */
+  it("xuất xong thì sang chi tiết hóa đơn vừa lập", () => {
+    const i = CODE.indexOf("router.push(r.invoiceId")
+    expect(i).toBeGreaterThan(0)
+    expect(CODE.slice(i, i + 140)).toContain("/sales-invoices/${r.invoiceId}")
   })
 
   /** Ô số lượng theo quy ước giao diện của dự án. */
@@ -305,13 +317,13 @@ describe("Màn danh sách đơn", () => {
   })
 
   /**
-   * ⚠ NEO BẰNG KÝ TỰ THEO SAU. `toContain("<InvoiceDialog")` khớp cả
-   * `<InvoiceDialogX` — đổi tên thẻ đi thì trang không còn dialog nào mà
-   * chốt vẫn xanh. Thử phá bắt đúng lỗi này.
+   * ⚠ NÚT XUẤT HÀNG PHẢI ĐIỀU HƯỚNG, không mở lại hộp thoại. Chủ nhà đã
+   * chốt đổi sang toàn trang; để sót một đường mở dialog là hai màn soạn
+   * song song, và chỉ một trong hai thêm được mã ngoài đơn.
    */
-  it("dialog được gắn vào trang", () => {
-    expect(CODE).toMatch(/<InvoiceDialog\s/)
-    expect(CODE).toContain("orderId={invoicingId}")
+  it("nút Xuất hàng sang màn soạn, không mở hộp thoại", () => {
+    expect(CODE).toContain("/sales-invoices/new?order=${o.id}")
+    expect(CODE).not.toMatch(/<InvoiceDialog\s/)
   })
 
   /**
@@ -320,8 +332,11 @@ describe("Màn danh sách đơn", () => {
    * một chỗ về `approveOrders` là mất chỗ sửa số lượng ở đúng đường
    * người ta hay dùng nhất.
    */
-  it("hai chỗ mở dialog, không chỗ nào xuất thẳng", () => {
-    expect((CODE.match(/onApprove=\{\(o\) => setInvoicingId\(o\.id\)\}/g) ?? []).length).toBe(2)
+  it("hai chỗ sang màn soạn, không chỗ nào xuất thẳng", () => {
+    expect(
+      (CODE.match(/onApprove=\{\(o\) => router\.push\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g) ?? [])
+        .length
+    ).toBe(2)
     expect(CODE).not.toContain("onApprove={(o) => approveOrders([o.id])}")
   })
 
@@ -338,7 +353,6 @@ describe("Màn danh sách đơn", () => {
   it("không đoán trạng thái sau khi xuất", () => {
     expect(CODE).toContain('newStatus.set(id, r.orderStatus ?? "completed")')
     expect(CODE).toContain('(newStatus.get(o.id) ?? "completed") as OrderStatus')
-    expect(CODE).toContain('(r.orderStatus ?? "completed") as OrderStatus')
     expect(CODE).not.toMatch(/status: "completed" as const/)
   })
 
@@ -374,17 +388,6 @@ describe("Màn chi tiết đơn", () => {
     expect(CODE).toContain(
       '(order.status === "submitted" || order.status === "partially_invoiced")'
     )
-  })
-
-  /**
-   * ⚠ TẢI LẠI CẢ TRANG SAU KHI XUẤT. Một lần xuất hàng đụng tới trạng
-   * thái đơn, số đã xuất từng dòng, công nợ, phiếu kho, phiếu trả kèm đơn
-   * và danh sách hóa đơn — vá tay sáu chỗ là sáu chỗ để quên một chỗ.
-   */
-  it("xuất xong thì fetchData, không vá state", () => {
-    const i = CODE.indexOf("<InvoiceDialog")
-    const block = CODE.slice(i, i + 900)
-    expect(block).toContain("fetchData()")
   })
 
   /**
@@ -505,7 +508,7 @@ describe("Thư viện không còn dấu vết luồng cũ", () => {
   })
 
   it("không tệp nào còn gọi RPC complete_order", () => {
-    for (const [name, src] of [["danh sách", LIST], ["chi tiết", DETAIL], ["dialog", DIALOG]] as const) {
+    for (const [name, src] of [["danh sách", LIST], ["chi tiết", DETAIL], ["màn soạn", EDITOR]] as const) {
       expect(strip(src), `${name} còn gọi complete_order`).not.toContain('rpc("complete_order"')
     }
   })

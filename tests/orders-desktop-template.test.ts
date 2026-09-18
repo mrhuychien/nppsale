@@ -125,14 +125,14 @@ describe("Bảng: cột theo mẫu, số liệu thật", () => {
 describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", () => {
   /**
    * ⚠ V2B TÁCH LÀM HAI ĐƯỜNG. `approveOrders` nay chỉ phục vụ THANH CHỌN
-   * NHIỀU và xuất đủ phần còn lại; nút trên từng dòng và ngăn chi tiết mở
-   * dialog để sửa số lượng / giá. Một hàm cho cả ba như bản v2 thì hoặc
-   * bắt mở mười dialog cho mười đơn, hoặc mất hẳn chỗ sửa.
+   * NHIỀU và xuất đủ phần còn lại; nút trên từng dòng và ngăn chi tiết đi
+   * sang MÀN SOẠN để sửa số lượng / giá. Một hàm cho cả ba như bản v2 thì
+   * hoặc bắt mở mười màn soạn cho mười đơn, hoặc mất hẳn chỗ sửa.
    */
-  it("một hàm cho loạt nhiều đơn, một đường cho dialog", () => {
+  it("một hàm cho loạt nhiều đơn, một đường sang màn soạn", () => {
     expect(PAGE).toContain("const approveOrders = async (ids: string[]) => {")
     expect(PAGE).toContain("const handleBulkApprove = () => approveOrders(Array.from(selectedIds))")
-    expect(PAGE.match(/onApprove=\{\(o\) => setInvoicingId\(o\.id\)\}/g)?.length).toBe(2)
+    expect(PAGE.match(/onApprove=\{\(o\) => router\.push\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g)?.length).toBe(2)
   })
 
   /**
@@ -175,13 +175,14 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
   /**
    * ⚠ HAI ĐƯỜNG XUẤT HÀNG, CÓ CHỦ Ý. Loạt nhiều đơn xuất đủ phần còn lại
    * và không hỏi gì; muốn sửa số lượng hay giá thì bấm trên ĐÚNG một
-   * dòng, và đường đó mở dialog. Gộp làm một là hoặc bắt mở mười dialog
-   * cho mười đơn, hoặc mất hẳn chỗ sửa.
+   * dòng, và đường đó sang màn soạn. Gộp làm một là hoặc bắt mở mười màn
+   * soạn cho mười đơn, hoặc mất hẳn chỗ sửa.
    */
-  it("nút trên từng dòng mở dialog, không xuất thẳng", () => {
-    expect(PAGE).toContain("onApprove={(o) => setInvoicingId(o.id)}")
+  it("nút trên từng dòng sang màn soạn, không xuất thẳng", () => {
+    expect(PAGE).toContain("onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}")
     expect(PAGE).not.toContain("onApprove={(o) => approveOrders([o.id])}")
-    expect(PAGE).toContain("<InvoiceDialog")
+    // Hộp thoại cũ đã gỡ — để sót là hai màn soạn song song.
+    expect(PAGE).not.toContain("<InvoiceDialog")
   })
 
   /**

@@ -18,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { InvoiceDialog } from "@/components/orders/invoice-dialog"
 import { closeOrder } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
@@ -273,7 +272,6 @@ export default function OrderDetailPage() {
     }>
   >([])
   const [addLineDialogOpen, setAddLineDialogOpen] = useState(false)
-  const [invoicingOpen, setInvoicingOpen] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
   const [closeReason, setCloseReason] = useState("")
   const [closing, setClosing] = useState(false)
@@ -1003,7 +1001,7 @@ export default function OrderDetailPage() {
     hasPermission(user.role, "orders", "approve") &&
     (order.status === "submitted" || order.status === "partially_invoiced")
   const invoiceAction = canInvoice
-    ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => setInvoicingOpen(true), busy: false }
+    ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => router.push(`/sales-invoices/new?order=${order.id}`), busy: false }
     : null
   /**
    * ĐÓNG ĐƠN — chốt không giao nốt phần còn lại.
@@ -2558,22 +2556,6 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <InvoiceDialog
-        orderId={invoicingOpen ? order.id : null}
-        orderCode={order.order_code}
-        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
-        onClose={() => setInvoicingOpen(false)}
-        onPosted={() => {
-          setInvoicingOpen(false)
-          /**
-           * ⚠ TẢI LẠI CẢ TRANG, không vá state. Một lần xuất hàng đụng
-           *   tới trạng thái đơn, số đã xuất của từng dòng, công nợ,
-           *   phiếu kho, phiếu trả kèm đơn và danh sách hóa đơn — vá tay
-           *   sáu chỗ là sáu chỗ để quên một chỗ.
-           */
-          fetchData()
-        }}
-      />
 
       <ConfirmDialog
         open={closeOpen}

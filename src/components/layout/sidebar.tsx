@@ -40,6 +40,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Bán hàng", href: "/sell", icon: Store },
       { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
+      // Hóa đơn bán đứng NGAY DƯỚI đơn hàng: nó sinh ra từ đơn, và người
+      // dùng đi lại giữa hai màn này suốt ngày. Trước đây nó nằm ở nhóm
+      // Kế toán, cách đúng một cú cuộn khỏi chỗ nó thuộc về.
+      { label: "Hóa đơn bán", href: "/sales-invoices", icon: Receipt },
       { label: "Khách hàng", href: "/customers", icon: Users },
       { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route },
       { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera },
@@ -78,7 +82,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Công nợ đầu kỳ", href: "/finance/opening-balances", icon: FileSpreadsheet },
       { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt },
       { label: "Chi phí", href: "/finance/expenses", icon: Wallet },
-      { label: "Hóa đơn bán", href: "/sales-invoices", icon: Receipt },
       { label: "Hóa đơn điện tử", href: "/invoices", icon: FileText },
       { label: "Cấu hình HĐ điện tử", href: "/settings/einvoice", icon: Settings },
     ],

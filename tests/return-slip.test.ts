@@ -101,10 +101,49 @@ describe("Giá trả bám theo giá ĐÃ BÁN", () => {
     expect(NEW).toContain("Có dòng trả vượt trần giá")
   })
 
-  /** Gắn phiếu vào đơn để đối chiếu được, nhưng KHÔNG bắt buộc. */
-  it("gắn đơn là tuỳ chọn", () => {
-    expect(NEW).toContain('order_id: orderId || null')
-    expect(NEW).toContain("Không gắn đơn nào")
+  /**
+   * Gắn phiếu vào chứng từ gốc để đối chiếu được, nhưng KHÔNG bắt buộc —
+   * khách vẫn trả được hàng mua từ lâu không còn tra ra chứng từ.
+   *
+   * ⚠ V2B ĐỔI MỐC SANG HÓA ĐƠN. Khách chỉ trả được thứ đã THỰC XUẤT; đơn
+   * đặt 100 mà mới giao 40 thì trần trả là 40. Gắn vào đơn là cho phép
+   * nhập kho 60 món chưa từng rời kho — và cả trigger (mig 124) lẫn RPC
+   * (mig 127) đều đếm theo hóa đơn, nên phiếu gắn sai chỗ sẽ vấp lỗi ở
+   * màn Hoàn thành, một chỗ chẳng liên quan gì tới việc người ta vừa làm.
+   */
+  it("gắn hóa đơn là tuỳ chọn", () => {
+    expect(NEW).toContain("invoice_id: invoiceId || null")
+    expect(NEW).toContain("Không gắn hóa đơn nào")
+  })
+
+  /**
+   * ⚠ GHI CẢ HAI KHOÁ NGOẠI. `invoice_id` là mốc thật của v2b, còn
+   * `order_id` là thứ mọi báo cáo lịch sử đang đọc — bỏ nó là đứt một
+   * nửa sổ.
+   */
+  it("ghi cả order_id suy ra từ hóa đơn đã chọn", () => {
+    expect(NEW).toContain(
+      "order_id: invoices.find((i) => i.id === invoiceId)?.order_id ?? null,"
+    )
+  })
+
+  /**
+   * ⚠ CHỈ HÓA ĐƠN CÒN HIỆU LỰC. Hóa đơn đã huỷ đã hoàn hàng về kho rồi;
+   * gắn phiếu trả vào nó là nhập kho lần thứ hai cho cùng một lô hàng.
+   */
+  it("danh sách chọn chỉ có hóa đơn đã xuất", () => {
+    expect(NEW).toContain('.from("sales_invoices")')
+    expect(NEW).toContain('.eq("status", "posted")')
+  })
+
+  /**
+   * ⚠ GỢI Ý LẤY TỪ DÒNG HÓA ĐƠN, không từ dòng đơn: đúng số đã giao và
+   * đúng giá đã bán của chính chuyến đó. Dòng đơn có thể ghi số lớn hơn
+   * thứ đã ra khỏi kho, và giá thì có thể đã bị sửa lúc xuất.
+   */
+  it("gợi ý hàng lấy từ dòng hóa đơn", () => {
+    expect(NEW).toContain('.from("sales_invoice_lines")')
+    expect(NEW).not.toContain('.from("sales_order_lines")')
   })
 })
 

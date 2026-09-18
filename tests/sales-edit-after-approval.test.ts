@@ -5,12 +5,9 @@ import {
   canEditOrder,
   canFullEditOrder,
   whyCannotEdit,
-  canEditCompleted,
-  whyLockedCompleted,
   SALES_EDITABLE_STATUSES,
   TERMINAL_STATUSES,
   type OrderEditContext,
-  type CompletedEditContext,
 } from "../src/lib/orders/edit-permission"
 import type { OrderStatus } from "../src/types"
 
@@ -160,83 +157,56 @@ describe("Màn hình và RLS phải nói cùng một danh sách trạng thái", 
   })
 })
 
-describe("Bốn khoá của đơn đã xuất hàng", () => {
-  const lock = (over: Partial<CompletedEditContext> = {}): CompletedEditContext => ({
-    hasPayment: false,
-    orderDate: "2026-09-18",
-    editDays: 1,
-    hasIssuedInvoice: false,
-    hasCompletedReturn: false,
-    today: "2026-09-18",
-    ...over,
-  })
+/**
+ * ⚠ KHỐI "BỐN KHOÁ CỦA ĐƠN ĐÃ XUẤT HÀNG" ĐÃ ĐƯỢC GỠ CÙNG MÃ CỦA NÓ.
+ *
+ * Nó kiểm `canEditCompleted` / `whyLockedCompleted` — bốn khoá của cơ
+ * chế "sửa đơn đã hoàn thành", soi theo `_wf2_assert_order_unlocked` mà
+ * migration 124 đã DROP. Giữ lại là để một bộ chốt XANH mô tả một cơ chế
+ * không còn tồn tại; đó đúng là kiểu chốt nói dối mà cả hai pack đang
+ * chống — nó không sai một phép tính nào, nó chỉ nói về quá khứ bằng thì
+ * hiện tại.
+ *
+ * Khoá tương đương của v2b bám vào HÓA ĐƠN và nằm trong `cancel_invoice`;
+ * chốt của chúng ở `tests/wf2b-rpcs.test.ts` (mã lỗi) và
+ * `tests/wf2b-sales-invoices.test.ts` (giao diện mờ nút).
+ */
+describe("Cơ chế sửa đơn đã hoàn thành đã bị gỡ", () => {
+  const LIB = read("src/lib/orders/edit-permission.ts")
 
-  it("không vướng gì thì sửa được", () => {
-    expect(canEditCompleted(lock())).toBe(true)
-    expect(whyLockedCompleted(lock())).toBeNull()
-  })
-
-  it("đã thu tiền thì khoá, và bảo huỷ phiếu thu trước", () => {
-    expect(whyLockedCompleted(lock({ hasPayment: true }))).toContain("huỷ phiếu thu")
-  })
-
-  it("đã phát hành hoá đơn thì khoá", () => {
-    expect(canEditCompleted(lock({ hasIssuedInvoice: true }))).toBe(false)
-  })
-
-  it("đã có phiếu trả hoàn thành thì khoá", () => {
-    expect(canEditCompleted(lock({ hasCompletedReturn: true }))).toBe(false)
-  })
-
-  /** Hạn tính từ NGÀY ĐẶT, theo cấu hình của từng nhà phân phối. */
-  it("quá hạn sửa thì khoá; trong hạn thì không", () => {
-    expect(canEditCompleted(lock({ orderDate: "2026-09-17" }))).toBe(true)
-    expect(canEditCompleted(lock({ orderDate: "2026-09-16" }))).toBe(false)
-    // Nới hạn lên 3 ngày thì đơn của 16 lại sửa được.
-    expect(canEditCompleted(lock({ orderDate: "2026-09-16", editDays: 3 }))).toBe(true)
-  })
+  it.each(["canEditCompleted", "whyLockedCompleted", "CompletedEditContext"])(
+    "%s không còn được export",
+    (name) => {
+      expect(LIB).not.toContain(`export function ${name}`)
+      expect(LIB).not.toContain(`export interface ${name}`)
+    }
+  )
 
   /**
-   * ⚠ MÀN HÌNH VÀ RPC PHẢI CÙNG MỘT BỘ KHOÁ. Màn hình mở nút mà RPC chặn
-   * thì người dùng bấm xong nhận một mã lỗi khó hiểu; màn hình khoá mà RPC
-   * cho thì họ không hiểu vì sao nút mờ.
+   * ⚠ CHỐT NGƯỢC CÓ Ý NGHĨA: nếu ai đó dựng lại một hàm cùng nghĩa dưới
+   * tên khác, `completed_edit_days` sẽ xuất hiện trở lại trong mã — đó là
+   * cột duy nhất cơ chế cũ đọc.
    */
-  it("đủ bốn khoá, và migration 120 có đúng bốn mã lỗi tương ứng", () => {
-    const cases: Array<[Partial<CompletedEditContext>, string]> = [
-      [{ hasPayment: true }, "LOCKED_HAS_PAYMENT"],
-      [{ orderDate: "2026-09-01" }, "LOCKED_TOO_OLD"],
-      [{ hasIssuedInvoice: true }, "LOCKED_EINVOICE"],
-      [{ hasCompletedReturn: true }, "LOCKED_RETURN_DONE"],
-    ]
-    for (const [over, code] of cases) {
-      expect(canEditCompleted(lock(over)), `khoá ${code} không chặn ở màn hình`).toBe(false)
-      expect(MIG120_CODE, `migration thiếu mã ${code}`).toContain(code)
+  it("không mã TypeScript nào còn đọc completed_edit_days", () => {
+    // ⚠ ĐỌC BẢN ĐÃ LƯỢC CHÚ THÍCH. Chính lời giải thích "cột này ngưng
+    //   dùng" có nhắc tên cột; đọc tệp thô là chốt đỏ vì đúng câu nói nó
+    //   đã biến mất.
+    const strip = (x: string) => x.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "")
+    for (const rel of [
+      "src/lib/orders/edit-permission.ts",
+      "src/app/(dashboard)/orders/[id]/page.tsx",
+    ]) {
+      expect(strip(read(rel)), `${rel} còn đọc completed_edit_days`).not.toContain(
+        "completed_edit_days"
+      )
     }
   })
 
-  it("hạn sửa đọc từ cấu hình tổ chức, không phải số cứng trong mã", () => {
-    expect(MIG119_CODE).toContain("completed_edit_days")
-    expect(MIG120_CODE).toContain("COALESCE(completed_edit_days, 1)")
-  })
-})
-
-describe("Lưu hỏng thì phải BÁO, không được báo thành công", () => {
-  /**
-   * ⚠ Cùng cái bẫy 0-dòng-không-lỗi. Mọi lệnh ghi từ màn chi tiết phải
-   * `.select("id")` rồi đếm, nếu không thì màn hình báo đã lưu cho một
-   * lệnh chưa chạy.
-   */
-  it("mọi lệnh ghi ở màn chi tiết đều đếm số dòng trả về", () => {
-    const writes = PAGE.match(/\.update\(/g) || []
-    expect(writes.length).toBeGreaterThan(0)
-    const selects = PAGE.match(/\.select\("id"\)/g) || []
-    expect(selects.length).toBeGreaterThanOrEqual(writes.length - 1)
-    expect(PAGE).toContain("không có quyền ở bước này")
-  })
-
-  it("xuất hàng và huỷ đơn đã xuất KHÔNG ghi thẳng từ màn chi tiết", () => {
-    // Hai bước đó đi qua RPC; trigger ở 119 chặn lệnh ghi thẳng.
-    expect(PAGE).not.toMatch(/\.update\(\{\s*status: "completed"/)
-    expect(MIG119_CODE).toContain("USE_RPC")
+  /** Migration 124 đã gỡ hàm SQL mà cơ chế ấy soi theo. */
+  it("migration 124 DROP _wf2_assert_order_unlocked", () => {
+    const MIG124 = read("supabase/migrations/124_wf2b_sales_invoices.sql")
+    expect(MIG124).toContain(
+      "DROP FUNCTION IF EXISTS public._wf2_assert_order_unlocked(uuid, date, boolean);"
+    )
   })
 })

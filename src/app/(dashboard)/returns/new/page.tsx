@@ -51,14 +51,24 @@ import type { Customer } from "@/types"
  * Nay phiếu trả có DÒNG HÀNG thật, và tiền là TỔNG của các dòng.
  */
 
-interface OrderLite {
+/**
+ * Hóa đơn bán của khách — thứ phiếu trả gắn vào từ workflow v2b.
+ *
+ * ⚠ GẮN VÀO HÓA ĐƠN, KHÔNG GẮN VÀO ĐƠN. Khách chỉ trả được thứ đã THỰC
+ * XUẤT; đơn đặt 100 mà mới giao 40 thì trần trả là 40. Gắn vào đơn là
+ * cho phép nhập kho 60 món chưa từng rời kho — và cả trigger lẫn RPC đều
+ * đếm theo hóa đơn, nên phiếu gắn sai chỗ sẽ vấp lỗi ở màn Hoàn thành,
+ * một chỗ chẳng liên quan gì tới việc người ta vừa làm.
+ */
+interface InvoiceLite {
   id: string
-  order_code: string
-  order_date: string
+  invoice_code: string
+  invoice_date: string
   total: number
+  order_id: string
 }
 
-interface OrderLineLite {
+interface InvoiceLineLite {
   product_id: string
   unit_name: string
   quantity: number
@@ -98,9 +108,9 @@ export default function NewReturnPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [customerId, setCustomerId] = useState("")
-  const [orderId, setOrderId] = useState("")
-  const [orders, setOrders] = useState<OrderLite[]>([])
-  const [orderLines, setOrderLines] = useState<OrderLineLite[]>([])
+  const [invoiceId, setInvoiceId] = useState("")
+  const [invoices, setInvoices] = useState<InvoiceLite[]>([])
+  const [invoiceLines, setInvoiceLines] = useState<InvoiceLineLite[]>([])
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<ReturnCartLine[]>([])
@@ -140,24 +150,27 @@ export default function NewReturnPage() {
 
   // Đơn gần đây của khách — để gắn phiếu trả vào đúng đơn đã bán.
   useEffect(() => {
-    setOrderId("")
-    setOrders([])
-    setOrderLines([])
+    setInvoiceId("")
+    setInvoices([])
+    setInvoiceLines([])
     if (!customerId) return
     let cancelled = false
     ;(async () => {
+      // ⚠ CHỈ HÓA ĐƠN CÒN HIỆU LỰC. Hóa đơn đã huỷ đã hoàn hàng về kho
+      //   rồi; gắn phiếu trả vào nó là nhập kho lần thứ hai.
       const { data, error } = await supabase
-        .from("sales_orders")
-        .select("id, order_code, order_date, total")
+        .from("sales_invoices")
+        .select("id, invoice_code, invoice_date, total, order_id")
         .eq("customer_id", customerId)
-        .order("order_date", { ascending: false })
+        .eq("status", "posted")
+        .order("invoice_date", { ascending: false })
         .limit(20)
       if (cancelled) return
       if (error) {
-        console.error("[returns/new] truy vấn đơn lỗi:", error.message)
+        console.error("[returns/new] truy vấn hóa đơn lỗi:", error.message)
         return
       }
-      setOrders((data as OrderLite[]) ?? [])
+      setInvoices((data as InvoiceLite[]) ?? [])
     })()
     return () => {
       cancelled = true
@@ -166,25 +179,29 @@ export default function NewReturnPage() {
 
   // Dòng hàng của đơn được chọn — nguồn gợi ý chuẩn nhất cho phiếu trả.
   useEffect(() => {
-    setOrderLines([])
-    if (!orderId) return
+    setInvoiceLines([])
+    if (!invoiceId) return
     let cancelled = false
     ;(async () => {
+      // ⚠ GỢI Ý TỪ DÒNG HÓA ĐƠN: đúng số đã giao và đúng giá đã bán của
+      //   chính chuyến đó. Dòng đơn có thể ghi số lớn hơn thứ đã ra khỏi
+      //   kho, và giá thì có thể đã bị sửa lúc xuất.
       const { data, error } = await supabase
-        .from("sales_order_lines")
+        .from("sales_invoice_lines")
         .select("product_id, unit_name, quantity, unit_price")
-        .eq("order_id", orderId)
+        .eq("invoice_id", invoiceId)
+        .eq("is_exchange", false)
       if (cancelled) return
       if (error) {
-        console.error("[returns/new] truy vấn dòng đơn lỗi:", error.message)
+        console.error("[returns/new] truy vấn dòng hóa đơn lỗi:", error.message)
         return
       }
-      setOrderLines((data as OrderLineLite[]) ?? [])
+      setInvoiceLines((data as InvoiceLineLite[]) ?? [])
     })()
     return () => {
       cancelled = true
     }
-  }, [orderId, supabase])
+  }, [invoiceId, supabase])
 
   const productById = useMemo(() => {
     const m = new Map(products.map((p) => [p.id, p]))
@@ -196,7 +213,7 @@ export default function NewReturnPage() {
    * khấu thì trả lại phải tính đúng số tiền họ đã trả — lấy giá hôm nay là
    * hoàn cho khách nhiều hơn (hoặc ít hơn) số đã thu.
    */
-  const addFromOrder = (l: OrderLineLite) => {
+  const addFromOrder = (l: InvoiceLineLite) => {
     const p = productById(l.product_id)
     setLines((prev) =>
       addReturnLine(prev, {
@@ -236,7 +253,7 @@ export default function NewReturnPage() {
   const credit = returnCreditOf(lines)
   /** ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền. */
   const priceBad = lines.filter((l) => {
-    const sold = orderLines.find((o) => o.product_id === l.productId && o.unit_name === l.unit)
+    const sold = invoiceLines.find((o) => o.product_id === l.productId && o.unit_name === l.unit)
     const ceiling = sold ? Number(sold.unit_price) : Number(productById(l.productId)?.sell_price ?? 0)
     return returnPriceViolation(l, ceiling, priceRules) !== null
   }).length
@@ -264,7 +281,13 @@ export default function NewReturnPage() {
         .insert({
           org_id: user.org_id,
           customer_id: customerId,
-          order_id: orderId || null,
+          /**
+           * ⚠ GHI CẢ HAI. `invoice_id` là mốc thật của v2b (trần số
+           * lượng trả, tính lại công nợ), còn `order_id` là thứ mọi báo
+           * cáo lịch sử đang đọc — bỏ nó là đứt một nửa sổ.
+           */
+          invoice_id: invoiceId || null,
+          order_id: invoices.find((i) => i.id === invoiceId)?.order_id ?? null,
           requested_by: user.id,
           reason,
           notes: notes.trim() || null,
@@ -384,22 +407,23 @@ export default function NewReturnPage() {
               </Select>
             </div>
 
-            {/* ⚠ Gắn phiếu vào ĐƠN ĐÃ BÁN thì mới đối chiếu được: hàng này
-                bán ngày nào, giá bao nhiêu, đã thu chưa. Không bắt buộc vì
-                khách vẫn trả được hàng mua từ lâu không còn tra ra đơn. */}
+            {/* ⚠ Gắn phiếu vào HÓA ĐƠN ĐÃ XUẤT thì mới đối chiếu được:
+                hàng này giao ngày nào, giá bao nhiêu, đã thu chưa. Không
+                bắt buộc vì khách vẫn trả được hàng mua từ lâu không còn
+                tra ra chứng từ. */}
             <div className="space-y-2 sm:col-span-2">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Đơn hàng liên quan
+                Hóa đơn liên quan
               </Label>
-              <Select value={orderId || "none"} onValueChange={(v) => setOrderId(v === "none" ? "" : v)}>
+              <Select value={invoiceId || "none"} onValueChange={(v) => setInvoiceId(v === "none" ? "" : v)}>
                 <SelectTrigger disabled={!customerId}>
-                  <SelectValue placeholder={customerId ? "Không gắn đơn nào" : "Chọn khách trước"} />
+                  <SelectValue placeholder={customerId ? "Không gắn hóa đơn nào" : "Chọn khách trước"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Không gắn đơn nào</SelectItem>
-                  {orders.map((o) => (
+                  <SelectItem value="none">Không gắn hóa đơn nào</SelectItem>
+                  {invoices.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
-                      {o.order_code} · {formatDate(o.order_date)} · {formatCurrency(o.total)}
+                      {o.invoice_code} · {formatDate(o.invoice_date)} · {formatCurrency(o.total)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -414,13 +438,13 @@ export default function NewReturnPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Hàng trong đơn đã chọn — đường nhanh nhất và đúng giá nhất. */}
-            {orderLines.length > 0 && (
+            {invoiceLines.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Hàng trong đơn này
+                  Hàng trên hóa đơn này
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {orderLines.map((l) => (
+                  {invoiceLines.map((l) => (
                     <Button
                       key={`${l.product_id}|${l.unit_name}`}
                       type="button"
@@ -477,7 +501,7 @@ export default function NewReturnPage() {
               <div className="space-y-2">
                 {lines.map((l, i) => {
                   const p = productById(l.productId)
-                  const sold = orderLines.find(
+                  const sold = invoiceLines.find(
                     (o) => o.product_id === l.productId && o.unit_name === l.unit
                   )
                   const ceiling = sold ? Number(sold.unit_price) : Number(p?.sell_price ?? 0)

@@ -22,11 +22,14 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
       SQL/TS + test cũ xanh.
 - [x] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
 - [x] **P5** `feat(wf2b-P5)` — `/sales-invoices` + in + HĐĐT đổi nguồn.
-- [ ] **P6** `feat(wf2b-P6)` — Đơn trả / Phiếu thu đổi link, NVBH label,
+- [x] **P6** `feat(wf2b-P6)` — Đơn trả / Phiếu thu đổi link, gỡ mã chết,
       docs, checklist, test mới.
 
-Số migration: v2b dùng **124** (cấu trúc), **125** (RPC) và **126**
-(số liệu — doanh thu chuyển gốc sang hóa đơn). Cả ba đi cùng một lượt.
+Số migration: v2b dùng **124** (cấu trúc), **125** (RPC), **126** (số
+liệu — doanh thu chuyển gốc sang hóa đơn) và **127** (đơn trả + phiếu
+thu). Cả bốn đi cùng một lượt.
+
+Danh sách kiểm trên staging: `docs/workflow-v2b-checklist.md`.
 
 ---
 
@@ -367,6 +370,51 @@ cách nào đối chiếu.
 
 ---
 
+## P6 — Đơn trả, phiếu thu, và dọn mã chết
+
+**Đã làm.** Mig 127: `complete_return` / `cancel_return` viết lại theo
+hóa đơn, trigger tự gắn `cash_receipt_lines.invoice_id`. Màn lập phiếu
+trả đổi từ chọn ĐƠN sang chọn HÓA ĐƠN. Gỡ hẳn `canEditCompleted` /
+`whyLockedCompleted` / `CompletedEditContext`. Thêm
+`docs/workflow-v2b-checklist.md`. Chốt:
+`tests/wf2b-returns-receipts.test.ts`, 26 chốt, thử phá bắt 27/27.
+
+**Bất ngờ gặp — ba chỗ v2b làm vỡ mà 124–126 chưa chạm tới.**
+
+⚠ **`complete_return` từ chối đơn giao một phần.** Nó kiểm
+`o2.status = 'completed'`; từ v2b đơn giao một phần mang
+`partially_invoiced` và đơn chốt-không-giao-nốt mang `closed` — hàng của
+chúng ĐÃ rời kho, nhưng khách trả lại thì bị chặn với câu "đơn gốc chưa
+xuất hàng". Sai, và người dùng không cãi lại được. Nay kiểm bằng
+`is_revenue_status`.
+
+⚠ **Trần số lượng trả nói hai đằng.** Mig 124 đã đổi trigger sang đếm
+dòng HÓA ĐƠN, nhưng phép kiểm lần hai trong `complete_return` vẫn đếm
+dòng ĐƠN. Phiếu trả vì thế lọt trigger rồi vấp ở RPC — và thông báo lỗi
+nói về một con số người dùng không thấy ở đâu.
+
+⚠ **`cash_receipt_lines.invoice_id` chưa ai ghi.** Cột thêm từ mig 124
+nhưng `create_cash_receipt` chèn ở **bốn** chỗ khác nhau; vá bốn chỗ là
+bốn chỗ để quên một chỗ. Dùng **trigger** thay vì sửa hàm: quan hệ này
+suy ra được (một dòng công nợ thuộc đúng một hóa đơn), nên nó thuộc về
+cơ sở dữ liệu chứ không thuộc về từng lệnh chèn.
+
+**Lệch khỏi pack, có chủ ý.** Pack bảo P6 **gỡ** cầu tạm
+`_wf2_recompute_receivable`. Gỡ thì hỏng: phiếu trả chưa gắn hóa đơn
+(dữ liệu cũ, hoặc phiếu trả độc lập) vẫn cần nó — tiền giảm trừ của
+chúng không thuộc hóa đơn nào nên bản theo hóa đơn không thấy, và gỡ đi
+là khách trả hàng mà nợ không giảm, im lặng. Nó **đổi vai** thay vì bị
+gỡ: từ "cầu tạm chờ P6" thành "đường cho phiếu trả chưa gắn hóa đơn",
+giữ nguyên việc DỪNG khi đơn có nhiều hơn một hóa đơn.
+
+**Mã chết đã gỡ.** `canEditCompleted` / `whyLockedCompleted` soi theo
+`_wf2_assert_order_unlocked` — hàm mig 124 đã DROP. Bộ chốt của chúng
+xanh mà mô tả một cơ chế không còn tồn tại: không sai phép tính nào, chỉ
+nói về quá khứ bằng thì hiện tại. Đã thay bằng một chốt ngược canh việc
+chúng không quay lại.
+
+---
+
 ## Quy ước (kế thừa nguyên từ pack v2)
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -389,9 +437,14 @@ cách nào đối chiếu.
 
 ## TODO chủ nhà
 
-- [ ] **Trước mọi thứ:** chạy 118 → 119 → 120 → 121 → 122 → 123 trên
-      staging và chạy hết `docs/workflow-v2-checklist.md`. v2b backfill
-      từ dữ liệu mà v2 chưa hề đụng tới (V0).
+- [ ] **Trước mọi thứ:** chạy 118 → 123 trên staging và chạy hết
+      `docs/workflow-v2-checklist.md`. v2b backfill từ dữ liệu mà v2 chưa
+      hề đụng tới (V0).
+- [ ] **Rồi tới v2b:** chạy 124 → 127 cùng một lượt và làm hết
+      `docs/workflow-v2b-checklist.md`. Đọc bằng mắt mọi dòng `⚠` trong
+      `push-v2b.log` — phần lớn thứ hỏng trong hai đợt này hỏng im lặng.
+- [ ] **Quyết định:** doanh thu nay tính theo NGÀY HÓA ĐƠN. Các kỳ lương
+      đã chốt (và đã trả) sẽ tính lại khác đi — có tính lại không?
 - [x] ~~Trả lời Q3 (trần giá của NVBH) và Q4 (đơn trả khi sửa hóa đơn).~~
       Đã trả lời: Q3 = (a), Q4 = OK.
 - [x] ~~`line_discount` bị trừ hai lần.~~ Đã sửa (xem dưới). Đo lại số

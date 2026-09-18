@@ -103,46 +103,19 @@ export function whyCannotEdit(ctx: OrderEditContext): string | null {
 }
 
 /**
- * ⚠ NGƯNG DÙNG TỪ WORKFLOW V2B — KHÔNG CÒN AI GỌI.
+ * ⚠ ĐÃ GỠ Ở WORKFLOW V2B: `CompletedEditContext`, `whyLockedCompleted`,
+ *   `canEditCompleted`.
  *
- * Đây là bốn khoá của cơ chế "sửa đơn đã hoàn thành". Migration 124 đã
- * DROP `_wf2_assert_order_unlocked` mà hàm này soi theo, nên lời hứa
- * "phải khớp migration 120" bên dưới nói về một thứ không còn tồn tại.
+ * Chúng là bốn khoá của cơ chế "sửa đơn đã hoàn thành" và soi theo
+ * `_wf2_assert_order_unlocked` — hàm mà migration 124 đã DROP. Giữ lại
+ * là để một bộ kiểm tra trông còn sống nhưng đang soi vào chỗ trống, và
+ * lần sau có người đọc rồi tưởng cơ chế ấy còn.
  *
  * Khoá tương đương của v2b nằm trong `cancel_invoice` (migration 125) và
  * bám vào HÓA ĐƠN chứ không bám vào đơn: tiền thu, hóa đơn điện tử đã
- * phát hành, phiếu trả đã hoàn thành.
+ * phát hành, phiếu trả đã hoàn thành. Giao diện của chúng ở
+ * `/sales-invoices/[id]`.
  *
- * Giữ lại trong đợt này để không kéo theo bộ chốt của nó; P6 gỡ cả hàm
- * lẫn chốt. ĐỪNG nối lại vào giao diện.
+ * `organizations.completed_edit_days` cũng không còn ai đọc — cột giữ
+ * lại để không mất cấu hình tổ chức đã đặt (xem chú thích cột ở mig 124).
  */
-export interface CompletedEditContext {
-  /** Đã có đồng nào vào chưa (receivables.paid > 0, hoặc có dòng phiếu thu chưa huỷ). */
-  hasPayment: boolean
-  /** Ngày đặt đơn, dạng yyyy-mm-dd. */
-  orderDate: string | null
-  /** `organizations.completed_edit_days`, mặc định 1. */
-  editDays: number
-  /** Đã phát hành hoá đơn điện tử. */
-  hasIssuedInvoice: boolean
-  /** Đã có phiếu trả hoàn thành gắn vào đơn. */
-  hasCompletedReturn: boolean
-  /** Hôm nay, dạng yyyy-mm-dd. Truyền vào để test không phụ thuộc đồng hồ. */
-  today: string
-}
-
-/** Vì sao đơn đã xuất không sửa/huỷ được. `null` = làm được. */
-export function whyLockedCompleted(ctx: CompletedEditContext): string | null {
-  if (ctx.hasPayment) return "Đơn đã có tiền thu — huỷ phiếu thu trước đã."
-  if (ctx.hasIssuedInvoice) return "Đơn đã phát hành hoá đơn điện tử."
-  if (ctx.hasCompletedReturn) return "Đơn đã có phiếu trả hoàn thành."
-  const limit = new Date(ctx.today)
-  limit.setDate(limit.getDate() - Math.max(0, ctx.editDays))
-  const order = ctx.orderDate ? new Date(ctx.orderDate) : limit
-  if (order < limit) return `Quá ${ctx.editDays} ngày kể từ ngày đặt.`
-  return null
-}
-
-export function canEditCompleted(ctx: CompletedEditContext): boolean {
-  return whyLockedCompleted(ctx) === null
-}

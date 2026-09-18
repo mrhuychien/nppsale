@@ -18,13 +18,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { InvoiceDialog } from "@/components/orders/invoice-dialog"
+import { closeOrder } from "@/lib/orders/post-invoice"
+import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2 } from "lucide-react"
+import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Archive } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -108,9 +111,16 @@ type OrderStockEntry = {
 /**
  * Bước chuyển trạng thái làm được bằng MỘT lệnh ghi từ màn hình.
  *
- * ⚠ XUẤT HÀNG VÀ HUỶ ĐƠN ĐÃ XUẤT KHÔNG Ở ĐÂY. Hai bước đó trừ kho và
- * đụng công nợ nên phải đi qua RPC (migration 120); trigger ở 119 chặn
- * lệnh ghi thẳng. Nút của chúng dựng riêng, không đi qua bảng này.
+ * ⚠ BA TRẠNG THÁI CỦA HÓA ĐƠN KHÔNG CÓ Ô NÀO Ở ĐÂY, và ô rỗng là câu
+ * trả lời đúng chứ không phải chỗ chưa làm xong. `partially_invoiced`,
+ * `completed`, `closed` trừ kho và đụng công nợ, nên chỉ RPC của
+ * migration 125 mới đặt được; trigger ở 124 chặn mọi lệnh ghi thẳng.
+ * Nút của chúng (Xuất hàng · Đóng đơn) dựng riêng, không đi qua bảng
+ * này.
+ *
+ * ⚠ ĐƠN ĐÃ XUẤT KHÔNG HUỶ ĐƯỢC TỪ ĐÂY NỮA. Hàng đã rời kho thuộc về một
+ * hóa đơn, và chỉ `cancel_invoice` mới biết hoàn về đúng lô nào. Mở một
+ * ô "Hủy đơn" cho `completed` là dựng đường thứ hai cùng đụng tồn kho.
  */
 const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   draft: [
@@ -129,7 +139,9 @@ const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
     { value: "draft", label: "Rút về nháp", icon: Undo2, roles: ["owner", "manager", "sales"], backward: true },
     { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"], backward: true },
   ],
+  partially_invoiced: [],
   completed: [],
+  closed: [],
   cancelled: [],
 }
 
@@ -140,6 +152,29 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
   const [receivableId, setReceivableId] = useState<string | null>(null)
+  /**
+   * Hóa đơn bán của đơn này. Một đơn đẻ ra 0..n hóa đơn từ v2b.
+   *
+   * ⚠ LẤY CẢ HÓA ĐƠN ĐÃ HUỶ. Giấu chúng đi thì một đơn quay từ "Hoàn
+   * thành" về "Phiếu tạm" trông như chưa từng có chuyện gì xảy ra, và
+   * phiếu nhập hoàn kho nằm trong danh sách phiếu kho không có gì giải
+   * thích.
+   */
+  const [salesInvoices, setSalesInvoices] = useState<
+    Array<{
+      id: string
+      invoice_code: string
+      invoice_date: string
+      status: string
+      total: number
+      stock_entry_id: string | null
+      replaced_by: string | null
+      cancel_reason: string | null
+    }>
+  >([])
+  const [receivables, setReceivables] = useState<
+    Array<{ id: string; invoice_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>
+  >([])
   const [receivable, setReceivable] = useState<
     { amount: number; paid: number; status: string; due_date: string | null } | null
   >(null)
@@ -237,6 +272,10 @@ export default function OrderDetailPage() {
     }>
   >([])
   const [addLineDialogOpen, setAddLineDialogOpen] = useState(false)
+  const [invoicingOpen, setInvoicingOpen] = useState(false)
+  const [closeOpen, setCloseOpen] = useState(false)
+  const [closeReason, setCloseReason] = useState("")
+  const [closing, setClosing] = useState(false)
   const [addLineSearch, setAddLineSearch] = useState("")
   const supabase = createClient()
   const router = useRouter()
@@ -253,10 +292,20 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes] = await Promise.all([
+    const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes, salesInvoicesRes] = await Promise.all([
       supabase.from("sales_orders").select("id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("id, order_id, product_id, unit_name, quantity, unit_price, line_discount, line_total, batch_id, note, conversion_factor, product:products(*)").eq("order_id", id),
-      supabase.from("receivables").select("id, amount, paid, status, due_date").eq("order_id", id).maybeSingle(),
+      /**
+       * ⚠ KHÔNG `maybeSingle()` NỮA. Từ v2b mỗi HÓA ĐƠN một dòng công
+       *   nợ, nên đơn xuất hai đợt có hai dòng — và `maybeSingle()` trên
+       *   hai dòng là lỗi PGRST116, cả trang trắng chứ không phải một ô
+       *   hiện sai. Cộng lại để ô "Công nợ" nói về cả đơn.
+       */
+      supabase
+        .from("receivables")
+        .select("id, invoice_id, amount, paid, status, due_date")
+        .eq("order_id", id)
+        .order("due_date", { ascending: true }),
       supabase.from("order_status_history").select("id, order_id, from_status, to_status, changed_by, changed_at, notes, changer:users!order_status_history_changed_by_fkey(full_name)").eq("order_id", id).order("changed_at", { ascending: false }),
       supabase.from("invoices").select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_inv_date, misa_invoice_code, misa_relation, misa_org_ref_id, misa_note, misa_no_locked, misa_invoice_url, misa_status, misa_error, misa_sent_at, misa_signed_at, misa_lookup_code, misa_published_at").eq("order_id", id).maybeSingle(),
       supabase
@@ -287,6 +336,12 @@ export default function OrderDetailPage() {
         .eq("order_id", id)
         .order("created_at", { ascending: false })
         .limit(100),
+      supabase
+        .from("sales_invoices")
+        .select("id, invoice_code, invoice_date, status, total, stock_entry_id, replaced_by, cancel_reason")
+        .eq("order_id", id)
+        .order("invoice_date", { ascending: false })
+        .order("created_at", { ascending: false }),
     ])
     const qErr2 = ([orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
@@ -317,13 +372,33 @@ export default function OrderDetailPage() {
      */
     setPickedByLine({})
 
-    const recRow = recRes.data as
-      | { id: string; amount: number; paid: number; status: string; due_date: string | null }
-      | null
-    setReceivableId(recRow?.id || null)
+    const recRows = (recRes.data as Array<{
+      id: string
+      invoice_id: string | null
+      amount: number
+      paid: number
+      status: string
+      due_date: string | null
+    }> | null) ?? []
+    setReceivables(recRows)
+    /**
+     * ⚠ GỘP, KHÔNG LẤY DÒNG ĐẦU. Đơn xuất hai đợt có hai dòng nợ; hiện
+     * dòng đầu là nói khách nợ một nửa số thật.
+     *
+     * ⚠ TRẠNG THÁI GỘP LẤY THEO CHỖ XẤU NHẤT: còn một dòng chưa trả hết
+     * thì cả đơn chưa trả hết. Lấy `status` của dòng đầu thì một đơn có
+     * đợt 1 đã thu, đợt 2 chưa thu sẽ hiện "đã thanh toán".
+     */
+    setReceivableId(recRows[0]?.id || null)
     setReceivable(
-      recRow
-        ? { amount: recRow.amount, paid: recRow.paid, status: recRow.status, due_date: recRow.due_date }
+      recRows.length > 0
+        ? {
+            amount: recRows.reduce((a, r) => a + Number(r.amount || 0), 0),
+            paid: recRows.reduce((a, r) => a + Number(r.paid || 0), 0),
+            status: recRows.some((r) => r.status !== "paid") ? "open" : "paid",
+            due_date:
+              recRows.map((r) => r.due_date).filter(Boolean).sort()[0] ?? null,
+          }
         : null
     )
     setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
@@ -331,6 +406,7 @@ export default function OrderDetailPage() {
     setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
     setLinkedReturns(((returnsRes.data as unknown) as typeof linkedReturns) || [])
     setActivityLog(((activityRes.data as unknown) as typeof activityLog) || [])
+    setSalesInvoices(((salesInvoicesRes.data as unknown) as typeof salesInvoices) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -903,6 +979,32 @@ export default function OrderDetailPage() {
    * để nút ở đây là mời người dùng tự vá bằng tay lên một chỗ hỏng mà
    * không ai biết vì sao hỏng.
    */
+  /**
+   * XUẤT HÀNG — hành động chính của đơn chưa giao xong.
+   *
+   * ⚠ ĐƠN ĐÃ XUẤT MỘT PHẦN VẪN CÒN NÚT NÀY. Bỏ đi là đơn giao đợt một
+   * xong thì không còn đường nào giao nốt phần còn lại, và người dùng
+   * phải quay ra danh sách tìm lại chính đơn vừa mở.
+   */
+  const canInvoice =
+    !!user &&
+    hasPermission(user.role, "orders", "approve") &&
+    (order.status === "submitted" || order.status === "partially_invoiced")
+  const invoiceAction = canInvoice
+    ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => setInvoicingOpen(true), busy: false }
+    : null
+  /**
+   * ĐÓNG ĐƠN — chốt không giao nốt phần còn lại.
+   *
+   * ⚠ KHÁC HUỶ ĐƠN, và chỉ hiện khi đã xuất một phần. Đơn chưa xuất gì
+   * mà "đóng" thì đúng ra là HUỶ, và huỷ có đường riêng. Đây cũng là chỗ
+   * DUY NHẤT trong ứng dụng gọi `close_order` — bỏ nút là hàm đó thành
+   * mã chết, và đơn giao thiếu kẹt ở "Xuất một phần" vĩnh viễn.
+   */
+  const closeAction =
+    canInvoice && order.status === "partially_invoiced"
+      ? { label: "Đóng đơn", icon: Archive, onClick: () => setCloseOpen(true), busy: false }
+      : null
   const deliveredNext =
     order.status === "completed" && !invoice
       ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
@@ -921,11 +1023,13 @@ export default function OrderDetailPage() {
   const reorderAction = canReorder
     ? { label: "Đặt lại đơn này", icon: RefreshCw, onClick: () => router.push(`/sell/reorder/${order.id}`), busy: false }
     : null
+  // ⚠ XUẤT HÀNG ĐỨNG TRƯỚC MỌI THỨ. Đó là việc người ta mở đơn ra để
+  //   làm; để nó trong menu ⋮ là giấu hành động chính.
   const mobilePrimary = primaryTransition
     ? null
-    : deliveredNext ?? editAction ?? reorderAction
+    : invoiceAction ?? deliveredNext ?? editAction ?? reorderAction
   // Nút nào không làm nút chính thì vào menu ⋮.
-  const mobileExtras = [editAction, reorderAction].filter(
+  const mobileExtras = [closeAction, editAction, reorderAction].filter(
     (a): a is NonNullable<typeof a> => !!a && a !== mobilePrimary
   )
   const hasMobileActions =
@@ -1601,28 +1705,83 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
+          {/*
+            HÓA ĐƠN BÁN CỦA ĐƠN NÀY.
+
+            ⚠ HIỆN CẢ HÓA ĐƠN ĐÃ HUỶ. Giấu chúng đi thì một đơn quay từ
+              "Hoàn thành" về "Phiếu tạm" trông như chưa từng có chuyện
+              gì, và phiếu nhập hoàn kho nằm trong sổ kho không có gì
+              giải thích.
+          */}
+          {salesInvoices.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Hóa đơn bán ({salesInvoices.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {salesInvoices.map((si) => (
+                  <div
+                    key={si.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-semibold">{si.invoice_code}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(si.invoice_date)}
+                        {si.cancel_reason ? ` • ${si.cancel_reason}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-sm tabular-nums">{formatCurrency(si.total)}</span>
+                      <Badge variant={INVOICE_STATUS_MAP[si.status]?.variant ?? "secondary"}>
+                        {INVOICE_STATUS_MAP[si.status]?.label ?? si.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Receivable status */}
-          {order.status === "completed" && (
+          {(order.status === "completed" ||
+            order.status === "partially_invoiced" ||
+            order.status === "closed") && (
             <Card>
               <CardHeader><CardTitle>Công nợ</CardTitle></CardHeader>
-              <CardContent>
-                {receivableId ? (
-                  <Link
-                    href={`/receivables/${receivableId}`}
-                    className="flex items-center justify-between rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 text-primary" />
-                      <div className="text-sm">
-                        <p className="font-semibold">Đã ghi nhận công nợ</p>
-                        <p className="text-xs text-muted-foreground">Nhấn để xem chi tiết</p>
+              <CardContent className="space-y-2">
+                {/*
+                  ⚠ MỖI HÓA ĐƠN MỘT DÒNG NỢ, nên liệt kê hết thay vì dẫn
+                    vào dòng đầu. Đơn xuất hai đợt mà chỉ hiện một liên
+                    kết thì đợt kia trông như chưa ghi nợ, và người dùng
+                    đi tạo tay một dòng thứ hai đã tồn tại sẵn.
+                */}
+                {receivables.length > 0 ? (
+                  receivables.map((rc) => (
+                    <Link
+                      key={rc.id}
+                      href={`/receivables/${rc.id}`}
+                      className="flex items-center justify-between rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <CreditCard className="h-4 w-4 shrink-0 text-primary" />
+                        <div className="min-w-0 text-sm">
+                          <p className="font-semibold">
+                            {salesInvoices.find((si) => si.id === rc.invoice_id)?.invoice_code ??
+                              "Đã ghi nhận công nợ"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Còn nợ {formatCurrency(Math.max(0, Number(rc.amount || 0) - Number(rc.paid || 0)))}
+                            {rc.due_date ? ` • đến hạn ${formatDate(rc.due_date)}` : ""}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                  </Link>
+                      <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  ))
                 ) : (
                   /* ⚠ ĐÂY LÀ DẤU HIỆU DỮ LIỆU LỆCH, KHÔNG PHẢI VIỆC CÒN DỞ.
-                     `complete_order` sinh công nợ trong cùng giao dịch với
+                     `post_invoice` sinh công nợ trong cùng giao dịch với
                      lệnh trừ kho, nên đơn đã xuất thì phải có công nợ. Nói
                      ra để người ta đi tìm nguyên nhân, đừng đưa nút vá tay. */
                   <div className="space-y-1 rounded-lg bg-[#fff4ed] p-3">
@@ -2386,6 +2545,62 @@ export default function OrderDetailPage() {
           </p>
         </DialogContent>
       </Dialog>
+
+      <InvoiceDialog
+        orderId={invoicingOpen ? order.id : null}
+        orderCode={order.order_code}
+        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
+        onClose={() => setInvoicingOpen(false)}
+        onPosted={() => {
+          setInvoicingOpen(false)
+          /**
+           * ⚠ TẢI LẠI CẢ TRANG, không vá state. Một lần xuất hàng đụng
+           *   tới trạng thái đơn, số đã xuất của từng dòng, công nợ,
+           *   phiếu kho, phiếu trả kèm đơn và danh sách hóa đơn — vá tay
+           *   sáu chỗ là sáu chỗ để quên một chỗ.
+           */
+          fetchData()
+        }}
+      />
+
+      <ConfirmDialog
+        open={closeOpen}
+        onOpenChange={(o) => !closing && setCloseOpen(o)}
+        title="Đóng đơn, không giao phần còn lại?"
+        description="Phần đã xuất vẫn tính doanh thu và công nợ như cũ. Phần chưa xuất sẽ thôi, và đơn không mở lại được trừ khi huỷ một hóa đơn."
+        confirmLabel="Đóng đơn"
+        loading={closing}
+        onConfirm={async () => {
+          setClosing(true)
+          try {
+            await closeOrder(supabase, order.id, closeReason.trim())
+            toast({ title: `Đã đóng đơn ${order.order_code}` })
+            setCloseOpen(false)
+            setCloseReason("")
+            fetchData()
+          } catch (e) {
+            toast({ title: "Không đóng được đơn", description: errorMessage(e), variant: "destructive" })
+          } finally {
+            setClosing(false)
+          }
+        }}
+      >
+        <div>
+          <Label
+            htmlFor="close-reason"
+            className="text-xs uppercase tracking-wider text-muted-foreground"
+          >
+            Lý do
+          </Label>
+          <Textarea
+            id="close-reason"
+            rows={2}
+            value={closeReason}
+            onChange={(e) => setCloseReason(e.target.value)}
+            placeholder="Ví dụ: khách không lấy nốt, hàng ngừng kinh doanh"
+          />
+        </div>
+      </ConfirmDialog>
     </div>
   )
 }

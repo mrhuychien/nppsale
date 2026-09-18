@@ -15,7 +15,34 @@ export interface SalesRoute {
   updated_at: string
 }
 export type CustomerStatus = "active" | "suspended" | "locked"
-export type OrderStatus = "draft" | "submitted" | "completed" | "cancelled"
+/**
+ * Vòng đời ĐƠN ĐẶT HÀNG. Sáu giá trị từ workflow v2b.
+ *
+ * ⚠ BA GIÁ TRỊ GIỮA DO HÓA ĐƠN ĐIỀU KHIỂN, không do người dùng chọn.
+ * `partially_invoiced` / `completed` / `closed` chỉ vào ra được qua RPC
+ * (`post_invoice`, `cancel_invoice`, `close_order`); trigger ở migration
+ * 124 chặn mọi đường ghi thẳng. Đặt tay là mở đường cho một đơn hiện
+ * Hoàn thành mà chưa hóa đơn nào trừ kho.
+ *
+ * ⚠ `closed` KHÁC `completed`. `completed` = đã xuất ĐỦ mọi dòng;
+ * `closed` = nhà phân phối chốt thôi không giao nốt phần còn lại. Gộp
+ * hai thứ là mất luôn câu trả lời cho "đơn này có giao thiếu không".
+ */
+export type OrderStatus =
+  | "draft"
+  | "submitted"
+  | "partially_invoiced"
+  | "completed"
+  | "closed"
+  | "cancelled"
+
+/**
+ * Vòng đời HÓA ĐƠN BÁN.
+ *
+ * ⚠ KHÔNG CÓ NHÁP, và đó là cố ý: hóa đơn sinh ra và ghi sổ trong cùng
+ * một RPC. Một hóa đơn "nháp" là giấy đã in mà kho chưa trừ.
+ */
+export type SalesInvoiceStatus = "posted" | "cancelled"
 export type StockEntryType = "import" | "export" | "transfer" | "stocktake"
 /**
  * ⚠ ĐỌC RỘNG HƠN GHI. Hai giá trị cuối do RPC của workflow v2 tự ghi

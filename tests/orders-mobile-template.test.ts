@@ -222,11 +222,15 @@ describe("Chi tiết đơn mobile theo mẫu", () => {
   /**
    * ⚠ "Sửa đơn" và "Đặt lại đơn này" KHÔNG được đứng trước một bước
    * chuyển trạng thái. Quản lý mở đơn chờ duyệt thì nút to phải là Duyệt.
+   *
+   * ⚠ V2B CHÈN "XUẤT HÀNG" LÊN ĐẦU DÃY. Đó là việc người ta mở đơn ra để
+   * làm; để nó sau "Sửa đơn" là giấu hành động chính dưới một hành động
+   * phụ.
    */
   it("nút chính: bước chuyển trạng thái trước, rồi mới tới Sửa / Đặt lại", () => {
     expect(DETAIL).toContain("const mobilePrimary = primaryTransition")
     expect(DETAIL).toContain("? null")
-    expect(DETAIL).toContain(": deliveredNext ?? editAction ?? reorderAction")
+    expect(DETAIL).toContain(": invoiceAction ?? deliveredNext ?? editAction ?? reorderAction")
     expect(DETAIL).toContain("const sellEdit = canEdit && isSellEditable(order.status)")
     expect(DETAIL).toContain('router.push(`/sell/reorder/${order.id}`)')
     // Nút không làm nút chính thì vào menu ⋮, đứng TRƯỚC Xoá đơn.

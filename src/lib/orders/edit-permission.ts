@@ -29,12 +29,21 @@ export const SALES_EDITABLE_STATUSES: OrderStatus[] = ["draft", "submitted"]
 /**
  * Trạng thái không sửa được bằng màn hình thường.
  *
- * ⚠ `completed` nằm đây KHÔNG có nghĩa là bất biến: NPP vẫn sửa được đơn
- * đã xuất, nhưng qua `edit_completed_order` với bốn khoá riêng (xem
- * `canEditCompleted` bên dưới). Tách hai đường vì một bên chỉ đổi giấy
- * tờ, một bên đụng vào kho và công nợ.
+ * ⚠ BA TRẠNG THÁI ĐÃ XUẤT HÀNG ĐỀU NẰM ĐÂY. Trigger
+ * `guard_order_lines_locked` (migration 124) ném `ORDER_LOCKED` cho
+ * `partially_invoiced`, `completed` và `closed`. Bỏ sót một cái là màn
+ * hình mở nút Sửa rồi cơ sở dữ liệu từ chối — người dùng gõ xong mới
+ * nhận lỗi, và không hiểu vì sao nút lại mở.
+ *
+ * ⚠ KHÔNG CÒN ĐƯỜNG "SỬA ĐƠN ĐÃ HOÀN THÀNH". v2b bỏ hẳn cơ chế đó: sai
+ * thì HUỶ HÓA ĐƠN rồi lập lại, kho hoàn về đúng lô đã lấy.
  */
-export const TERMINAL_STATUSES: OrderStatus[] = ["completed", "cancelled"]
+export const TERMINAL_STATUSES: OrderStatus[] = [
+  "partially_invoiced",
+  "completed",
+  "closed",
+  "cancelled",
+]
 
 export interface OrderEditContext {
   role: Role
@@ -78,7 +87,12 @@ export function canFullEditOrder(ctx: OrderEditContext): boolean {
 export function whyCannotEdit(ctx: OrderEditContext): string | null {
   if (canEditOrder(ctx)) return null
   if (!ctx.hasUpdatePermission) return "Bạn chưa được cấp quyền sửa đơn hàng."
-  if (ctx.status === "completed") return "Đơn đã xuất hàng — dùng nút Sửa đơn đã hoàn thành."
+  // ⚠ ĐỪNG CHỈ NGƯỜI TA TỚI MỘT NÚT KHÔNG CÒN TỒN TẠI. Câu cũ bảo "dùng
+  //   nút Sửa đơn đã hoàn thành" — v2b gỡ cả cơ chế đó.
+  if (ctx.status === "completed" || ctx.status === "partially_invoiced") {
+    return "Đơn đã xuất hàng — muốn đổi thì huỷ hóa đơn rồi lập lại."
+  }
+  if (ctx.status === "closed") return "Đơn đã đóng — huỷ hóa đơn trước nếu muốn mở lại."
   if (ctx.status === "cancelled") return "Đơn đã huỷ nên không sửa được nữa."
   if (ctx.role === "sales") {
     if (!ctx.salesUserId || ctx.salesUserId !== ctx.userId) {
@@ -89,12 +103,18 @@ export function whyCannotEdit(ctx: OrderEditContext): string | null {
 }
 
 /**
- * Bốn khoá của đơn ĐÃ XUẤT HÀNG.
+ * ⚠ NGƯNG DÙNG TỪ WORKFLOW V2B — KHÔNG CÒN AI GỌI.
  *
- * ⚠ PHẢI KHỚP `_wf2_assert_order_unlocked` trong migration 120. Màn hình
- * mở nút mà RPC chặn thì người dùng bấm xong nhận một mã lỗi khó hiểu;
- * màn hình khoá mà RPC cho thì họ không hiểu vì sao nút mờ. Cùng một bộ
- * điều kiện, viết hai nơi, nên có test đối chiếu.
+ * Đây là bốn khoá của cơ chế "sửa đơn đã hoàn thành". Migration 124 đã
+ * DROP `_wf2_assert_order_unlocked` mà hàm này soi theo, nên lời hứa
+ * "phải khớp migration 120" bên dưới nói về một thứ không còn tồn tại.
+ *
+ * Khoá tương đương của v2b nằm trong `cancel_invoice` (migration 125) và
+ * bám vào HÓA ĐƠN chứ không bám vào đơn: tiền thu, hóa đơn điện tử đã
+ * phát hành, phiếu trả đã hoàn thành.
+ *
+ * Giữ lại trong đợt này để không kéo theo bộ chốt của nó; P6 gỡ cả hàm
+ * lẫn chốt. ĐỪNG nối lại vào giao diện.
  */
 export interface CompletedEditContext {
   /** Đã có đồng nào vào chưa (receivables.paid > 0, hoặc có dòng phiếu thu chưa huỷ). */

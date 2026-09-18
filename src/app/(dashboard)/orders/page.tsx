@@ -27,7 +27,12 @@ import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/componen
 import { OrderDrawer } from "@/components/orders/order-drawer"
 import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
 import { canEditOrder } from "@/lib/orders/edit-permission"
-import { completeOrder, completeWarnings } from "@/lib/orders/complete-order"
+import {
+  loadInvoiceableLines,
+  postInvoice,
+  invoiceWarnings,
+} from "@/lib/orders/post-invoice"
+import { InvoiceDialog } from "@/components/orders/invoice-dialog"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
@@ -67,7 +72,7 @@ import {
   X,
   XCircle,
 } from "lucide-react"
-import type { Customer, Invoice, SalesOrder, User } from "@/types"
+import type { Customer, Invoice, OrderStatus, SalesOrder, User } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
 /** Khoá nhớ "đã đọc" của banner phạm vi dữ liệu. */
@@ -180,6 +185,12 @@ export default function OrdersPage() {
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [sort, setSort] = useState<OrderSort | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  /**
+   * Đơn đang mở dialog Xuất hàng. Đây là đường DUY NHẤT để sửa số lượng
+   * hay giá lúc xuất — nút "Xuất hàng" của thanh chọn nhiều xuất đủ phần
+   * còn lại, không hỏi gì.
+   */
+  const [invoicingId, setInvoicingId] = useState<string | null>(null)
   /** "N đơn hôm nay · tổng" cho dòng mô tả đầu trang — null = chưa đọc được. */
   const [todaySummary, setTodaySummary] = useState<{ count: number; total: number } | null>(null)
   const [amountMin, setAmountMin] = useState("")
@@ -573,13 +584,17 @@ export default function OrdersPage() {
   const canApprove = user && hasPermission(user.role, "orders", "approve")
 
   /**
-   * XUẤT HÀNG cho một hoặc nhiều đơn — MỘT hàm cho thanh chọn nhiều, nút
-   * trên từng dòng và ngăn chi tiết. Ba chỗ ba phép ghi là ba chỗ để lệch.
+   * XUẤT ĐỦ phần còn lại cho một hoặc nhiều đơn, KHÔNG mở dialog.
    *
-   * ⚠ ĐI QUA RPC, KHÔNG UPDATE THẲNG. Xuất hàng là trừ kho FIFO + sinh
-   * công nợ + đổi trạng thái; trigger ở migration 119 chặn đường tắt.
-   * Mỗi đơn một lệnh gọi vì mỗi đơn là một giao dịch riêng — đơn thiếu
-   * tồn không được kéo cả loạt còn lại đổ theo.
+   * ⚠ HAI ĐƯỜNG XUẤT HÀNG, CÓ CHỦ Ý. Việc thường ngày là xuất đủ những
+   * gì khách đặt, và bắt mở dialog cho từng đơn trong một loạt mười đơn
+   * là biến việc thường ngày thành cực hình. Muốn sửa số lượng hay giá
+   * thì bấm nút trên ĐÚNG một dòng — đường đó mở `InvoiceDialog`.
+   *
+   * ⚠ ĐI QUA RPC, KHÔNG UPDATE THẲNG. Xuất hàng là trừ kho FIFO + dựng
+   * hóa đơn + sinh công nợ + đổi trạng thái; trigger ở migration 124
+   * chặn đường tắt. Mỗi đơn một lệnh gọi vì mỗi đơn là một giao dịch
+   * riêng — đơn thiếu tồn không được kéo cả loạt còn lại đổ theo.
    */
   const approveOrders = async (ids: string[]) => {
     if (!user || !canApprove || ids.length === 0) return
@@ -595,14 +610,45 @@ export default function OrdersPage() {
      */
     const warned: string[] = []
     const doneIds: string[] = []
+    /**
+     * ⚠ TRẠNG THÁI MỚI LẤY TỪ RPC, KHÔNG ĐOÁN "completed". Đơn xuất
+     * thiếu một dòng sẽ về `partially_invoiced`; vá state thành
+     * "completed" là màn hình nói đơn đã giao đủ trong khi còn hàng nằm
+     * lại, và không ai bấm Xuất tiếp nữa.
+     */
+    const newStatus = new Map<string, string>()
     try {
       for (const id of ids) {
         const code = orders.find((o) => o.id === id)?.order_code ?? id
         try {
-          const r = await completeOrder(supabase, id)
+          /**
+           * ⚠ HỎI RPC XEM CÒN GÌ CHƯA XUẤT, không tự dựng dòng từ state
+           *   của trang. Trang có thể đang giữ bản chụp cũ vài phút —
+           *   đơn đã xuất một phần ở máy khác thì dựng lại từ state là
+           *   xuất chồng lên phần đã giao.
+           */
+          const lines = await loadInvoiceableLines(supabase, id)
+          const r = await postInvoice(supabase, {
+            orderId: id,
+            lines: lines
+              .filter((l) => l.remainingQty > 0)
+              .map((l) => ({
+                orderLineId: l.orderLineId,
+                productId: l.productId,
+                unitName: l.unitName,
+                conversionFactor: l.conversionFactor,
+                quantity: l.remainingQty,
+                unitPrice: l.unitPrice,
+                lineDiscount: l.lineDiscount,
+                vatRate: l.vatRate,
+                isExchange: l.isExchange,
+                note: l.note,
+              })),
+          })
           ok += 1
           doneIds.push(id)
-          const w = completeWarnings(r)
+          newStatus.set(id, r.orderStatus ?? "completed")
+          const w = invoiceWarnings(r)
           if (w) warned.push(`${code}: ${w}`)
         } catch (e) {
           failed.push(`${code}: ${errorMessage(e)}`)
@@ -612,7 +658,11 @@ export default function OrdersPage() {
         setOrders((prev) =>
           prev.map((o) =>
             doneIds.includes(o.id)
-              ? { ...o, status: "completed" as const, approval_reason: null }
+              ? {
+                  ...o,
+                  status: (newStatus.get(o.id) ?? "completed") as OrderStatus,
+                  approval_reason: null,
+                }
               : o
           )
         )
@@ -981,7 +1031,11 @@ export default function OrdersPage() {
         const cancellableCount = selectedOrders.filter(
           (o) => o.status === "draft" || o.status === "submitted"
         ).length
-        const hasSubmitted = selectedOrders.some((o) => o.status === "submitted")
+        // Đơn đã xuất một phần vẫn xuất tiếp được — bỏ nó ra là bắt
+        // người dùng mở từng đơn một chỉ để bấm đúng cái nút này.
+        const hasSubmitted = selectedOrders.some(
+          (o) => o.status === "submitted" || o.status === "partially_invoiced"
+        )
 
         return (
           <div className="flex flex-wrap items-center gap-2 border-b border-[#d3e0f7] bg-[#e3edfb] px-4 py-2 text-[13px] font-bold text-[#1e3a8a] lg:rounded-none rounded-xl lg:border-b">
@@ -1302,7 +1356,7 @@ export default function OrdersPage() {
             onOpen={(o) => setDrawerId(o.id)}
             canApprove={!!canApprove}
             approvingId={approvingId}
-            onApprove={(o) => approveOrders([o.id])}
+            onApprove={(o) => setInvoicingId(o.id)}
             misaLoadingId={misaLoadingId}
             onInvoice={handleXuatHoaDonList}
             sort={sort}
@@ -1434,7 +1488,36 @@ export default function OrdersPage() {
           })
         }
         approving={approvingId === drawerOrder?.id}
-        onApprove={(o) => approveOrders([o.id])}
+        onApprove={(o) => setInvoicingId(o.id)}
+      />
+
+      {/*
+        ⚠ VÁ STATE THEO `orderStatus` MÀ RPC TRẢ VỀ, không đoán
+          "completed". Xuất một phần thì đơn về `partially_invoiced`, và
+          đoán bừa là màn hình nói đơn đã giao đủ trong khi còn hàng nằm
+          lại — rồi không ai bấm Xuất tiếp nữa.
+      */}
+      <InvoiceDialog
+        orderId={invoicingId}
+        orderCode={orders.find((o) => o.id === invoicingId)?.order_code ?? ""}
+        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
+        onClose={() => setInvoicingId(null)}
+        onPosted={(r) => {
+          const id = invoicingId
+          setInvoicingId(null)
+          if (!id) return
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === id
+                ? {
+                    ...o,
+                    status: (r.orderStatus ?? "completed") as OrderStatus,
+                    approval_reason: null,
+                  }
+                : o
+            )
+          )
+        }}
       />
     </div>
   )

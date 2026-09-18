@@ -20,7 +20,7 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
 - [x] **P2** `feat(wf2b-P2)` — Mig 125: 6 RPC + grants.
 - [x] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
       SQL/TS + test cũ xanh.
-- [ ] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
+- [x] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
 - [ ] **P5** `feat(wf2b-P5)` — `/sales-invoices` + in + HĐĐT đổi nguồn.
 - [ ] **P6** `feat(wf2b-P6)` — Đơn trả / Phiếu thu đổi link, NVBH label,
       docs, checklist, test mới.
@@ -273,6 +273,56 @@ khi migration kịp chạy rỗng.
 **ngày hóa đơn**, không theo ngày đặt. Đơn đặt cuối tháng 3 giao đầu
 tháng 4 rời khỏi doanh thu tháng 3 sang tháng 4. Lương và hoa hồng của
 các kỳ đã chốt sẽ tính lại khác đi.
+
+---
+
+## P4 — Màn Đơn hàng và dialog Xuất hàng
+
+**Đã làm.** `src/lib/orders/post-invoice.ts` thay `complete-order.ts` (đã
+gỡ — nó gọi một RPC mig 124 đã DROP). `InvoiceDialog` mới: sửa số lượng
+và giá thoải mái, cảnh báo vàng chứ không chặn. `OrderStatus` mở rộng
+sáu giá trị, màu và khoá sửa đi theo. Chốt:
+`tests/wf2b-orders-ui.test.ts`, 52 chốt, thử phá bắt 43/43.
+
+**Bất ngờ gặp — bốn chỗ.**
+
+⚠ **`maybeSingle()` trên công nợ là một quả mìn của v2b.** Màn chi tiết
+đơn đọc `receivables` bằng `.maybeSingle()`. Từ nay mỗi HÓA ĐƠN một dòng
+nợ, nên đơn xuất hai đợt có hai dòng — và `maybeSingle()` trên hai dòng
+là lỗi PGRST116, **cả trang trắng**, không phải một ô hiện sai. Nay đọc
+hết, liệt kê từng dòng, và trạng thái gộp lấy theo chỗ xấu nhất: còn một
+dòng chưa trả hết thì cả đơn chưa trả hết.
+
+⚠ **Hai đường xuất hàng, có chủ ý.** Thanh chọn nhiều xuất **đủ phần còn
+lại** không hỏi gì; nút trên từng dòng và trong ngăn chi tiết mở dialog.
+Gộp làm một thì hoặc bắt mở mười dialog cho mười đơn, hoặc mất hẳn chỗ
+sửa số lượng. Loạt nhiều đơn **hỏi lại RPC** xem còn gì chưa xuất thay vì
+dựng dòng từ state của trang — trang có thể đang giữ bản chụp cũ vài
+phút, và `post_invoice` cho phép xuất vượt số đặt nên xuất chồng lên
+phần đã giao sẽ không có lệnh nào báo.
+
+⚠ **`P3` sót kiểu `OrderStatus`.** Nó vẫn là union bốn trạng thái của v2,
+nên `STATUS_FLOW` thiếu khoá và `orderTone` rơi về màu xám của `draft` —
+đơn giao một phần trông y hệt đơn chưa ai đụng tới. Đã mở rộng cả ba
+chỗ. `TERMINAL_STATUSES` cũng thiếu `partially_invoiced` và `closed`,
+tức màn hình mở nút Sửa rồi trigger `guard_order_lines_locked` từ chối.
+
+⚠ **Nút "Đóng đơn" là chỗ DUY NHẤT gọi `close_order`.** Không có nó thì
+hàm ấy là mã chết và đơn giao thiếu kẹt ở "Xuất một phần" vĩnh viễn.
+
+**Sáu chốt nói dối, thử phá mới lòi ra.** (1) `toContain("<InvoiceDialog")`
+khớp cả `<InvoiceDialogX`. (2) Chốt chỉ canh nơi ĐỌC `newStatus`, không
+canh nơi GHI — hardcode `"completed"` ở nơi ghi vẫn xanh. (3)
+`order.status === "partially_invoiced"` có mặt ở hai điều kiện khác nhau
+nên gỡ một cái vẫn xanh. (4) Chốt `not.toContain` một chuỗi nhiều dòng đã
+không còn khớp, tức vô nghĩa — gắn `maybeSingle()` trở lại vẫn xanh. (5)
+Chốt màu chỉ so với `draft`, nên cho `closed` màu xanh của `completed`
+vẫn xanh. (6) Chốt nút-trên-dòng thiếu hẳn, chỉ có ở tệp chốt khác.
+
+**Ghi nợ cho P6:** `whyLockedCompleted` / `canEditCompleted` trong
+`lib/orders/edit-permission.ts` nay là mã chết — chúng soi theo
+`_wf2_assert_order_unlocked` mà mig 124 đã DROP. Đã dán nhãn ngưng dùng
+tại chỗ; P6 gỡ cả hàm lẫn chốt của nó.
 
 ---
 

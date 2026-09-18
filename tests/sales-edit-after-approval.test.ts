@@ -81,9 +81,22 @@ describe("NVBH sửa được đơn của mình khi hàng chưa rời kho", () =
   /**
    * ⚠ Đơn ĐÃ XUẤT không phải bất biến — nó có đường riêng. Câu từ chối
    * phải chỉ sang đường đó, không thì người dùng tưởng đơn hỏng vĩnh viễn.
+   *
+   * ⚠ ĐƯỜNG ẤY ĐỔI Ở V2B. Trước là nút "Sửa đơn đã hoàn thành"; nay cơ
+   * chế đó bị gỡ hẳn và cách chữa là huỷ hóa đơn rồi lập lại. Chốt này
+   * canh đúng một điều: câu từ chối phải chỉ tới một thứ CÒN TỒN TẠI.
    */
-  it("đơn đã xuất hàng: câu từ chối chỉ sang đường sửa riêng", () => {
-    expect(whyCannotEdit(ctx({ status: "completed", role: "owner" }))).toContain("Sửa đơn đã hoàn thành")
+  it.each(["completed", "partially_invoiced"] as const)(
+    "đơn đã xuất hàng (%s): câu từ chối chỉ sang huỷ hóa đơn",
+    (status) => {
+      const msg = whyCannotEdit(ctx({ status, role: "owner" }))
+      expect(msg).toContain("huỷ hóa đơn")
+      expect(msg, "còn chỉ tới nút đã bị gỡ").not.toContain("Sửa đơn đã hoàn thành")
+    }
+  )
+
+  it("đơn đã đóng: nói rõ phải huỷ hóa đơn mới mở lại được", () => {
+    expect(whyCannotEdit(ctx({ status: "closed", role: "owner" }))).toContain("huỷ hóa đơn")
   })
 })
 
@@ -112,8 +125,28 @@ describe("Màn hình và RLS phải nói cùng một danh sách trạng thái", 
     expect(withCheck).toContain("'cancelled'")
   })
 
+  /**
+   * ⚠ BA TRẠNG THÁI ĐÃ XUẤT HÀNG PHẢI ĐỀU CÓ MẶT. Trigger
+   * `guard_order_lines_locked` (mig 124) ném `ORDER_LOCKED` cho
+   * `partially_invoiced`, `completed` và `closed`. Sót một cái là màn
+   * hình mở nút Sửa rồi cơ sở dữ liệu từ chối — người dùng gõ xong mới
+   * nhận lỗi, và không hiểu vì sao nút lại mở.
+   */
   it("trạng thái chốt trùng khớp hai đầu", () => {
-    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "completed"])
+    expect([...TERMINAL_STATUSES].sort()).toEqual([
+      "cancelled", "closed", "completed", "partially_invoiced",
+    ])
+    const MIG124 = readFileSync(
+      resolve(__dirname, "../supabase/migrations/124_wf2b_sales_invoices.sql"),
+      "utf-8"
+    )
+    const i = MIG124.indexOf("FUNCTION public.guard_order_lines_locked(")
+    expect(i, "không tìm thấy trigger khoá dòng đơn").toBeGreaterThan(0)
+    const body = MIG124.slice(i, MIG124.indexOf("\n$$;", i))
+    for (const st of TERMINAL_STATUSES) {
+      if (st === "cancelled") continue // đơn huỷ khoá bằng RLS, không bằng trigger này
+      expect(body, `trigger thiếu trạng thái ${st}`).toContain(`'${st}'`)
+    }
   })
 
   /** Dòng hàng đi cùng đầu đơn — hai policy phải cùng danh sách. */

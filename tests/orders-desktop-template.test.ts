@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { repAvatar } from "../src/components/orders/desktop-order-table"
-import { explainCompleteError, completeWarnings } from "../src/lib/orders/complete-order"
+import { explainInvoiceError, invoiceWarnings, type PostInvoiceResult } from "../src/lib/orders/post-invoice"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -123,22 +123,65 @@ describe("Bảng: cột theo mẫu, số liệu thật", () => {
 })
 
 describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", () => {
-  it("approveOrders(ids) được ba nơi gọi", () => {
+  /**
+   * ⚠ V2B TÁCH LÀM HAI ĐƯỜNG. `approveOrders` nay chỉ phục vụ THANH CHỌN
+   * NHIỀU và xuất đủ phần còn lại; nút trên từng dòng và ngăn chi tiết mở
+   * dialog để sửa số lượng / giá. Một hàm cho cả ba như bản v2 thì hoặc
+   * bắt mở mười dialog cho mười đơn, hoặc mất hẳn chỗ sửa.
+   */
+  it("một hàm cho loạt nhiều đơn, một đường cho dialog", () => {
     expect(PAGE).toContain("const approveOrders = async (ids: string[]) => {")
     expect(PAGE).toContain("const handleBulkApprove = () => approveOrders(Array.from(selectedIds))")
-    expect(PAGE.match(/onApprove=\{\(o\) => approveOrders\(\[o\.id\]\)\}/g)?.length).toBe(2)
+    expect(PAGE.match(/onApprove=\{\(o\) => setInvoicingId\(o\.id\)\}/g)?.length).toBe(2)
   })
 
   /**
-   * ⚠ XUẤT HÀNG PHẢI ĐI QUA RPC. Trừ kho, sinh công nợ và đổi trạng thái
-   * là một việc; làm bằng lệnh ghi thẳng từ trình duyệt là quay về đúng
-   * cảnh đơn "đã xuất" mà kho chưa trừ. Trigger ở migration 119 chặn, nên
-   * lệnh ghi thẳng cũng chỉ ném lỗi USE_RPC.
+   * ⚠ XUẤT HÀNG PHẢI ĐI QUA RPC. Trừ kho, dựng hóa đơn, sinh công nợ và
+   * đổi trạng thái là một việc; làm bằng lệnh ghi thẳng từ trình duyệt là
+   * quay về đúng cảnh đơn "đã xuất" mà kho chưa trừ. Trigger ở migration
+   * 124 chặn, nên lệnh ghi thẳng cũng chỉ ném lỗi USE_RPC.
    */
-  it("gọi RPC complete_order, không UPDATE thẳng", () => {
-    expect(PAGE).toContain("completeOrder(supabase, id)")
-    expect(PAGE).toContain('from "@/lib/orders/complete-order"')
+  it("gọi RPC post_invoice, không UPDATE thẳng", () => {
+    expect(PAGE).toContain("postInvoice(supabase, {")
+    expect(PAGE).toContain('from "@/lib/orders/post-invoice"')
     expect(PAGE).not.toMatch(/\.update\(\{\s*status: "completed"/)
+    expect(PAGE).not.toMatch(/\.update\(\{\s*status: "partially_invoiced"/)
+  })
+
+  /**
+   * ⚠ HỎI RPC XEM CÒN GÌ CHƯA XUẤT, không dựng dòng từ state của trang.
+   * Trang có thể đang giữ bản chụp cũ vài phút; đơn đã xuất một phần ở
+   * máy khác thì dựng lại từ state là xuất chồng lên phần đã giao — và
+   * không lệnh nào báo, vì `post_invoice` cho phép xuất vượt số đặt.
+   */
+  it("loạt xuất hàng hỏi lại phần còn lại trước khi ghi", () => {
+    const i = PAGE.indexOf("const approveOrders = async (ids: string[]) => {")
+    const body = PAGE.slice(i, PAGE.indexOf("\n  }", i))
+    expect(body).toContain("loadInvoiceableLines(supabase, id)")
+    expect(body).toContain("l.remainingQty > 0")
+  })
+
+  /**
+   * ⚠ TRẠNG THÁI MỚI LẤY TỪ RPC, KHÔNG ĐOÁN "completed". Đơn xuất thiếu
+   * một dòng sẽ về `partially_invoiced`; vá state thành "completed" là
+   * màn hình nói đơn đã giao đủ trong khi còn hàng nằm lại, rồi không ai
+   * bấm Xuất tiếp nữa.
+   */
+  it("vá trạng thái theo order_status mà RPC trả về", () => {
+    expect(PAGE).toContain("newStatus.set(id, r.orderStatus ?? \"completed\")")
+    expect(PAGE).toContain("newStatus.get(o.id) ?? \"completed\"")
+  })
+
+  /**
+   * ⚠ HAI ĐƯỜNG XUẤT HÀNG, CÓ CHỦ Ý. Loạt nhiều đơn xuất đủ phần còn lại
+   * và không hỏi gì; muốn sửa số lượng hay giá thì bấm trên ĐÚNG một
+   * dòng, và đường đó mở dialog. Gộp làm một là hoặc bắt mở mười dialog
+   * cho mười đơn, hoặc mất hẳn chỗ sửa.
+   */
+  it("nút trên từng dòng mở dialog, không xuất thẳng", () => {
+    expect(PAGE).toContain("onApprove={(o) => setInvoicingId(o.id)}")
+    expect(PAGE).not.toContain("onApprove={(o) => approveOrders([o.id])}")
+    expect(PAGE).toContain("<InvoiceDialog")
   })
 
   /**
@@ -153,12 +196,12 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
   it("đọc short_qty và near_expiry_skipped, không chỉ kiểm error", () => {
     const i = PAGE.indexOf("const approveOrders = async (ids: string[]) => {")
     const body = PAGE.slice(i, PAGE.indexOf("\n  }", i))
-    expect(body, "vẫn chỉ kiểm error, vứt kết quả trả về").toContain("completeWarnings(")
+    expect(body, "vẫn chỉ kiểm error, vứt kết quả trả về").toContain("invoiceWarnings(")
     expect(body).toContain("warned.push(")
     // Và cảnh báo phải NỔI LÊN, không nằm lẫn trong toast thành công.
     expect(body).toContain("đơn xuất thiếu hàng")
 
-    const LIB = read("src/lib/orders/complete-order.ts")
+    const LIB = read("src/lib/orders/post-invoice.ts")
     // ⚠ `RETURNS TABLE` nên `data` là MỘT MẢNG. Đọc `data.short_qty` ra
     // undefined rồi Number(...) ra NaN — cảnh báo im lặng biến mất y như
     // cũ, nhưng lần này lại trông như đã sửa.
@@ -180,22 +223,22 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
      * thích ở đầu tệp. Chốt nói dối thì phải sửa chốt.
      */
     expect(
-      explainCompleteError('… INSUFFICIENT_STOCK: thiếu 24 đơn vị của "Sữa X"')
+      explainInvoiceError('… INSUFFICIENT_STOCK: thiếu 24 đơn vị của "Sữa X"')
     ).toBe('Không đủ tồn: thiếu 24 đơn vị của "Sữa X"')
-    expect(explainCompleteError("… ORDER_NOT_SUBMITTED: đơn DH-1 không ở Phiếu tạm")).toContain(
-      "không còn ở Phiếu tạm"
-    )
-    expect(explainCompleteError("… ORG_MISMATCH")).toContain("đơn vị của bạn")
-    expect(explainCompleteError("… FORBIDDEN: bạn không có quyền xuất hàng")).toBe(
+    expect(
+      explainInvoiceError("… ORDER_NOT_INVOICEABLE: đơn DH-1 đang ở trạng thái closed")
+    ).toContain("không còn xuất hàng được")
+    expect(explainInvoiceError("… ORG_MISMATCH")).toContain("đơn vị của bạn")
+    expect(explainInvoiceError("… FORBIDDEN: bạn không có quyền xuất hàng")).toBe(
       "bạn không có quyền xuất hàng"
     )
-    expect(explainCompleteError("… USE_RPC: dùng nút Xuất hàng")).toContain("nút Xuất hàng")
+    expect(explainInvoiceError("… USE_RPC: dùng nút Xuất hàng")).toContain("nút Xuất hàng")
     // Migration chưa chạy thì nói đúng việc phải làm, đừng để tưởng đơn hỏng.
     expect(
-      explainCompleteError('function public.complete_order(uuid) does not exist')
+      explainInvoiceError('function public.post_invoice(jsonb) does not exist')
     ).toContain("supabase db push")
     // ⚠ Lỗi lạ trả NGUYÊN VĂN — đoán sai rồi họ đi sửa nhầm chỗ còn tệ hơn.
-    expect(explainCompleteError("một lỗi chưa ai gặp")).toBe("một lỗi chưa ai gặp")
+    expect(explainInvoiceError("một lỗi chưa ai gặp")).toBe("một lỗi chưa ai gặp")
   })
 
   /**
@@ -203,18 +246,22 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
    * một trong hai thì người đọc hoặc hoảng vô cớ, hoặc yên tâm nhầm.
    */
   it("câu cảnh báo nói đúng đơn vị và đúng mức độ", () => {
-    expect(completeWarnings({ entryId: null, receivableId: null, returnId: null, shortQty: 0, nearExpirySkipped: 0 })).toBeNull()
-
-    const thieu = completeWarnings({
-      entryId: null, receivableId: null, returnId: null, shortQty: 24, nearExpirySkipped: 0,
+    const warnArg = (over: Partial<PostInvoiceResult>): PostInvoiceResult => ({
+      invoiceId: null, invoiceCode: null, entryId: null, receivableId: null,
+      shortQty: 0, nearExpirySkipped: 0, orderStatus: null, ...over,
     })
+    expect(invoiceWarnings(warnArg({}))).toBeNull()
+
+    const thieu = invoiceWarnings(warnArg({
+      shortQty: 24,
+    }))
     // short_qty là ĐƠN VỊ CƠ SỞ, không phải đơn vị bán — phải nói rõ.
     expect(thieu).toContain("24 đơn vị cơ sở")
     expect(thieu).toContain("âm")
 
-    const canHan = completeWarnings({
-      entryId: null, receivableId: null, returnId: null, shortQty: 0, nearExpirySkipped: 3,
-    })
+    const canHan = invoiceWarnings(warnArg({
+      nearExpirySkipped: 3,
+    }))
     // Đây là LƯỢT LẤY LÔ, không phải số lô hết hạn — và là chuyện bình
     // thường của FIFO, nên câu chữ phải nhẹ.
     expect(canHan).toContain("3 lượt")

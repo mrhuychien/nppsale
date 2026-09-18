@@ -79,6 +79,37 @@ nói. Hai thứ spec yêu cầu vẫn phải có trong migration 119: `RAISE NOT
 
 ---
 
+## Q2: [P1] Đổi `is_revenue_status` ở P1 làm đỏ test, mà test chỉ được
+sửa ở P3
+
+**Xung đột trong chính Coder Pack:** mục 2.8 nằm ở P1 (đổi
+`is_revenue_status` thành chỉ `completed`), nhưng mục 5 xếp việc sửa test
+cũ vào P3. Quy tắc 8 lại bắt `npm test` xanh TRƯỚC MỖI commit.
+
+**Cái sẽ đỏ ngay khi 119 chạy** (đã đọc, không phải suy đoán):
+
+- `tests/payroll-sql.test.ts:50` chốt "is_revenue_status loại đúng
+  'draft' và 'cancelled' — không loại gì khác".
+- `tests/payroll-sql.test.ts:57` chốt "picking và delivering KHÔNG bị
+  loại".
+- `tests/payroll-net-revenue.test.ts:390` so hằng số TypeScript
+  `NON_REVENUE_ORDER_STATUSES` với danh sách `NOT IN (…)` đọc từ SQL.
+  Định nghĩa mới không còn `NOT IN` nên phép so này vỡ.
+
+**Giả định thi hành (không hỏi, ghi lại để chủ nhà bác nếu sai):** P1 sẽ
+sửa đúng ba chốt trên cộng với hằng số `NON_REVENUE_ORDER_STATUSES` trong
+`src/lib/constants.ts` thành `['draft','submitted','cancelled']` — đúng
+giá trị mục 5 đã ghi sẵn. Không đụng thêm bất kỳ file TypeScript nào
+khác; phần cascade TS còn lại vẫn để nguyên cho P3.
+
+**Lý do chọn cách này:** thà để P1 lấn một hằng số và ba dòng test, còn
+hơn commit một migration với bộ test đỏ rồi không ai biết P3 làm đỏ thêm
+cái gì.
+
+**Trạng thái:** ĐÃ QUYẾT ở mức thi hành, chủ nhà bác thì tôi lùi lại.
+
+---
+
 ## Điểm cần xác minh khi vào phase sau
 
 Chưa phải câu hỏi. Đây là những chỗ Coder Pack yêu cầu ĐỌC CODE trước

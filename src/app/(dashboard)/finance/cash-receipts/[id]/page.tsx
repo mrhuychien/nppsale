@@ -26,6 +26,9 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { CashReceipt, CashReceiptLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { voidCashReceipt } from "@/lib/finance/cash-receipt"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -60,6 +63,8 @@ export default function CashReceiptDetailPage() {
   const orgName = org?.name ?? ""
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [voidOpen, setVoidOpen] = useState(false)
+  const [voidReason, setVoidReason] = useState("")
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -152,20 +157,38 @@ export default function CashReceiptDetailPage() {
     }
   }
 
+  /**
+   * HUỶ PHIẾU THU — đi qua RPC `void_cash_receipt`.
+   *
+   * ⚠ BẢN CŨ CHỈ ĐỔI MỘT CỘT. Nó `update({ status: "voided" })` rồi
+   * dừng, để nguyên `payments` đã ghi và `receivables.paid` đã cộng —
+   * nên khách hiện ra là đã trả tiền trong khi phiếu thu đã huỷ, và
+   * khoản có của phiếu trả vẫn mang dấu đã cấn trừ nên không đem dùng
+   * lại được. RPC xoá `payments`, trừ lại `paid`, gỡ
+   * `returns.applied_receipt_id`, tất cả trong một giao dịch.
+   *
+   * ⚠ RPC BẮT BUỘC CÓ LÝ DO (`REASON_REQUIRED`), nên hỏi ở đây thay vì
+   * để nó từ chối sau khi người dùng đã bấm.
+   */
   const handleVoid = async () => {
-    if (!receipt || !user) return
-    if (!confirm(`Hủy phiếu thu ${receipt.receipt_code}?`)) return
+    if (!receipt || !user || actionLoading) return
+    const reason = voidReason.trim()
+    if (!reason) {
+      toast({ title: "Phải ghi lý do huỷ phiếu thu", variant: "destructive" })
+      return
+    }
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("cash_receipts")
-        .update({ status: "voided" })
-        .eq("id", receipt.id)
-      if (error) throw error
-      toast({ title: "Đã hủy phiếu thu" })
+      await voidCashReceipt(supabase, receipt.id, reason)
+      toast({
+        title: "Đã huỷ phiếu thu",
+        description: "Công nợ đã được trả về như trước khi thu.",
+      })
+      setVoidOpen(false)
+      setVoidReason("")
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
+      toast({ title: "Không huỷ được", description: errorMessage(err), variant: "destructive" })
     } finally {
       setActionLoading(false)
     }
@@ -389,7 +412,7 @@ export default function CashReceiptDetailPage() {
                 <Button
                   variant="ghost"
                   className="w-full text-error hover:bg-error-container"
-                  onClick={handleVoid}
+                  onClick={() => setVoidOpen(true)}
                   disabled={actionLoading}
                 >
                   <XCircle className="h-4 w-4 mr-2" />
@@ -401,6 +424,47 @@ export default function CashReceiptDetailPage() {
         </div>
       </div>
       </div>{/* /.no-print wrapper */}
+
+      {/*
+        ⚠ HUỶ PHIẾU THU LÀ ĐẢO CÔNG NỢ, không phải đổi một cột trạng thái.
+        RPC xoá các khoản thu đã ghi, trừ lại số đã thu trên từng khoản
+        nợ, và gỡ dấu đã cấn trừ trên phiếu trả. Nói thẳng ra trước khi
+        người dùng bấm, và hỏi lý do vì RPC bắt buộc có.
+      */}
+      <Dialog open={voidOpen} onOpenChange={(o) => !actionLoading && setVoidOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Huỷ phiếu thu {receipt.receipt_code}?</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
+              Công nợ của khách sẽ được trả về đúng như trước khi thu. Khoản có của phiếu trả đã cấn
+              trừ trong phiếu này cũng được thả ra để dùng lại.
+            </p>
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Lý do huỷ</Label>
+              <Textarea
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                rows={3}
+                placeholder="Ví dụ: thu nhầm khách, ghi sai số tiền…"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setVoidOpen(false)} disabled={actionLoading}>
+                Quay lại
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleVoid}
+                disabled={actionLoading || !voidReason.trim()}
+              >
+                {actionLoading ? "Đang huỷ…" : "Huỷ phiếu thu"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* T-08: TT200 print-only — toggled by data-print-mode='receipt-tt200'. */}
       <div className="print-receipt-tt200-only">

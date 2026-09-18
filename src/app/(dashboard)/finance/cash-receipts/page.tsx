@@ -10,7 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { Receipt, ArrowRight } from "lucide-react"
+import { Receipt, ArrowRight, Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/hooks/use-auth"
+import { hasPermission } from "@/lib/permissions"
 import type { CashReceipt } from "@/types"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
@@ -26,6 +30,15 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function CashReceiptsListPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
+  const router = useRouter()
+  const { user } = useAuth()
+  /**
+   * ⚠ ĐÚNG TÊN QUYỀN RPC KIỂM. `create_cash_receipt` hỏi
+   * `receivables.create` (migration 120) — gài nút bằng một quyền khác là
+   * nút hiện ra rồi RPC ném FORBIDDEN sau khi người dùng nhập xong cả
+   * phiếu.
+   */
+  const canCreate = !!user && hasPermission(user.role, "receivables", "create")
   const supabase = createClient()
   const [receipts, setReceipts] = useState<CashReceipt[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,10 +65,19 @@ export default function CashReceiptsListPage() {
 
   return (
     <div className="space-y-4">
+      {/* ⚠ CÂU MÔ TẢ CŨ NÓI VỀ LUỒNG CŨ ("tài xế nộp tiền sau quyết toán
+          chuyến giao"). Workflow v2 không có bước quyết toán chuyến nào —
+          phiếu thu là chứng từ độc lập, kế toán lập thẳng. */}
       <PageHeader
         title="Phiếu thu"
-        description="Tài xế nộp tiền sau quyết toán chuyến giao. Kế toán xác nhận đã nhận đủ."
-      />
+        description="Chứng từ độc lập: thu tiền vào công nợ, cấn trừ được phiếu trả không gắn đơn."
+      >
+        {canCreate && (
+          <Button onClick={() => router.push("/finance/cash-receipts/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Lập phiếu thu
+          </Button>
+        )}
+      </PageHeader>
 
       {receipts.length === 0 ? (
         <EmptyState

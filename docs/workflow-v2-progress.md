@@ -40,8 +40,11 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       cột Tồn), mẫu in phiếu giao tách thành
       `components/printing/delivery-slip.tsx`. Kèm `complete-order.ts`,
       `order-stock-preview.ts` và 21 chốt mới; thử phá 28 lần.
-- [ ] **P6** `feat(wf2-P6)` — Đơn trả (/returns) + Phiếu thu
-      (/finance/cash-receipts) gồm cấn trừ đơn trả độc lập.
+- [x] **P6** `feat(wf2-P6)` — Đơn trả (/returns) + Phiếu thu
+      (/finance/cash-receipts) gồm cấn trừ đơn trả độc lập. Bốn RPC của
+      migration 120 nay đều có giao diện gọi. Kèm
+      `lib/returns/complete-return.ts`, `lib/finance/cash-receipt.ts`,
+      màn lập phiếu thu mới, và 15 chốt; thử phá 14 lần.
 - [ ] **P7** `feat(wf2-P7)` — Ẩn module luồng cũ khỏi nav (không xoá
       code), cập nhật docs hướng dẫn, checklist E2E, test mới.
 
@@ -216,6 +219,45 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   `INSUFFICIENT_STOCK` trong tệp, mà cái tên đó còn nằm trong khối chú
   thích đầu tệp — tắt hẳn nhánh dịch lỗi mà chốt vẫn xanh. Đã thay bằng
   test gọi thẳng hàm.
+
+## Ghi chú P6
+
+- **Bốn RPC của 120 trước P6 CHƯA CÓ MỘT LỆNH GỌI NÀO trong src/.** Viết
+  xong ở P2 rồi nằm không. P6 nối cả bốn.
+- ⚠ **Chỗ hàng trả biến mất khỏi tồn.** `/returns/new` lập phiếu vào
+  thẳng `completed` — đúng với hồi còn trigger tự nhập kho, nhưng 120 đã
+  gỡ trigger ấy. Hệ quả đọc được từ mã: tồn không đổi, công nợ không
+  giảm, nhưng `credited_at` vẫn đóng dấu nên BÁO CÁO thì đổi — sổ báo
+  cáo và sổ công nợ nói hai đằng. Và phiếu KẸT VĨNH VIỄN:
+  `complete_return` đòi `submitted`, `cancel_return` ném
+  `NO_IMPORT_TO_REVERSE`. Nay lập ra ở `submitted`.
+- **Kho nhận là quyết định của người duyệt, không đoán hộ.**
+  `complete_return` bắt buộc `p_zone`, và trước P6 không màn nào trong
+  src/ ghi cột `destination_zone`. Chọn nhầm là hoặc đem hàng cận hạn
+  bán tiếp, hoặc chôn hàng còn tốt vào kho chờ xử lý.
+- **Huỷ phiếu thu từng chỉ đổi một cột.** Bản cũ `update({ status:
+  "voided" })` rồi dừng, để nguyên `payments` đã ghi và `paid` đã cộng —
+  khách hiện ra đã trả tiền trong khi phiếu thu đã huỷ. Nay đi qua
+  `void_cash_receipt`.
+- **Cấn trừ đơn trả độc lập** là ý niệm dễ hiểu nhầm nhất của P6. Hai
+  loại phiếu trả giảm công nợ theo hai đường KHÁC NHAU: phiếu GẮN ĐƠN
+  giảm ngay lúc `complete_return` gọi `_wf2_recompute_receivable`, nên
+  đem nó vào phiếu thu nữa là trừ hai lần và RPC từ chối
+  (`BAD_CREDIT`); phiếu ĐỘC LẬP (`order_id` null) thì nằm chờ cho tới
+  khi kế toán đem vào một phiếu thu. Màn lập phiếu thu lọc đúng ba điều
+  kiện RPC kiểm.
+- Hai chốt test NÓI DỐI bị bắt trong lượt thử phá: chúng dùng
+  `toContain` với một cụm chữ CÓ SẴN trong thông điệp gốc của RPC, nên
+  xoá hẳn nhánh dịch mà vẫn xanh (nhánh cuối trả nguyên văn). Đã đổi
+  sang `toBe` với câu dịch đầy đủ.
+- ⚠ **Q8 — MỞ, chờ chủ nhà quyết:** lỗ trong trần số lượng trả. Trigger
+  chỉ đếm phiếu `completed` là "đã trả", và `complete_return` không kiểm
+  lại — nên hai phiếu cùng nằm ở `submitted` đều lọt, hoàn thành cả hai
+  là trả gấp đôi và trừ công nợ gấp đôi. Đây là lỗ trong MIGRATION nên
+  tôi dừng, không tự sửa.
+- ⚠ **Q9 — việc để lại cho P7:** còn hai màn luồng cũ tự lập phiếu trả
+  vào thẳng `completed` (`deliveries/[id]/handover`, `inventory/pending`)
+  và một trong hai còn sửa công nợ bằng mã trình duyệt.
 
 ## Quy ước
 

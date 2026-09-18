@@ -425,14 +425,14 @@ export default function HomeLauncherPage() {
                 </p>
               </Link>
               <Link
-                href="/orders?status=draft"
+                href="/sell/drafts"
                 className="rounded-2xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
               >
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Đơn nháp</p>
                 <p className={cn("mt-1 text-2xl font-black tabular-nums", (snapshot?.draftOrders ?? 0) > 0 && "text-[#b54708]")}>
                   {snapshot?.draftOrders ?? "—"}
                 </p>
-                <p className="text-[11px] text-muted-foreground">Chưa gửi duyệt</p>
+                <p className="text-[11px] text-muted-foreground">Chưa gửi đi</p>
               </Link>
               <Link
                 href="/sales/visits"

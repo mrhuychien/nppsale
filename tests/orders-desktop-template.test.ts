@@ -29,15 +29,15 @@ describe("Thẻ trạng thái (PipelineTabs) — cùng số với bảng bên d�
     expect(block).toContain("setPipelineStep(null)")
   })
 
-  it("ô 0 đơn mờ đi, ô đang chọn có vạch đáy; chỉ máy tính, trừ NVBH", () => {
+  it("ô 0 đơn mờ đi, ô đang chọn có vạch đáy; hiện ở mọi khổ màn", () => {
     /**
-     * ⚠ NGOẠI LỆ CÓ CHỦ Ý. Với mọi vai trò khác, thẻ trạng thái là thứ của
-     * màn rộng — điện thoại dùng hàng chip trong sheet. Riêng NVBH thì ba
-     * tab này LÀ điều hướng của màn "Đơn của tôi", nên chúng hiện trên cả
-     * điện thoại; giấu đi là màn mở ra ở tab Phiếu tạm và không có đường
-     * nào sang hai tab kia.
+     * ⚠ KHÔNG CÒN LÀ THỨ CHỈ CÓ Ở MÀN RỘNG. Ba tab này LÀ điều hướng của
+     * màn đơn hàng cho mọi vai trò, và hàng chip trong sheet lọc đã bỏ —
+     * nên giấu chúng trên điện thoại là màn mở ra ở tab Phiếu tạm và kẹt
+     * ở đó, không có đường nào sang hai tab kia.
      */
-    expect(PAGE).toContain('className={isSales ? "grid" : "hidden lg:grid"}')
+    expect(PAGE).toContain('className="grid"')
+    expect(PAGE).not.toContain('"hidden lg:grid"')
     expect(TABS).toContain('t.count === 0 ? "text-outline-variant" : "text-on-surface"')
     expect(TABS).toContain("background: on ? t.accent : \"transparent\"")
     expect(TABS).toContain("aria-selected={on}")

@@ -61,8 +61,13 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
     expect(i < sheet || i > end, `${_label} đang nằm trong sheet lọc`).toBe(true)
   })
 
+  /**
+   * ⚠ HÀNG CHIP TRẠNG THÁI ĐÃ BỎ HẲN. Ba tab (`PipelineTabs`) nay đứng
+   * ngoài sheet ở MỌI khổ màn và là chỗ duy nhất đổi trạng thái — giữ
+   * thêm một bản trong sheet là hai chỗ cùng ghi một giá trị, và người
+   * dùng bấm một chỗ rồi thấy chỗ kia không đổi theo.
+   */
   it.each([
-    ["chip trạng thái", "{statusChips}"],
     ["ô chọn tuyến", "<RouteFilter inline routes={routes}"],
     ["bước xử lý", "{pipelineChips}"],
   ])("điện thoại: %s nằm TRONG sheet lọc", (_label, needle) => {
@@ -73,20 +78,17 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
     expect(inside, `${_label} không có trong sheet`).toContain(needle)
   })
 
-  /** Cùng một JSX cho hai chỗ — nhân đôi là để hai bên trôi khỏi nhau. */
-  it("chip (điện thoại) và thẻ PipelineTabs (máy tính) dựng từ CÙNG danh sách trạng thái, cùng bộ số", () => {
-    expect(ORDERS).toContain("const statusChips = (")
-    expect(ORDERS.match(/\{statusChips\}/g)?.length).toBe(1)
-    /**
-     * ⚠ MỘT DANH SÁCH TAB, HAI CHỖ VẼ. Danh sách nay phụ thuộc vai trò
-     * (NVBH ba tab, còn lại "Tất cả" + bốn trạng thái) nên nó PHẢI được
-     * tính một lần rồi dùng chung: viết lại điều kiện vai trò ở chỗ thứ
-     * hai là hai khổ màn hiện hai bộ tab khác nhau cho cùng một người.
-     */
+  /**
+   * ⚠ MỘT CHỖ DUY NHẤT ĐỔI TRẠNG THÁI. Trước đây có hai: hàng chip trong
+   * sheet và thẻ `PipelineTabs`, cùng ghi vào `statusFilter`. Hàng chip
+   * đã bỏ; nếu ai đó dựng lại nó thì hai bên sẽ trôi khỏi nhau.
+   */
+  it("chỉ còn MỘT chỗ vẽ tab, dựng từ một danh sách duy nhất", () => {
+    expect(ORDERS, "hàng chip trạng thái đã quay lại").not.toContain("const statusChips = (")
     expect(ORDERS.match(/const tabKeys: readonly string\[\] =/g)?.length).toBe(1)
-    expect(ORDERS.match(/tabKeys\.map\(/g)?.length).toBe(2)
+    expect(ORDERS.match(/tabKeys\.map\(/g)?.length).toBe(1)
+    expect(ORDERS.match(/<PipelineTabs/g)?.length).toBe(1)
     expect(ORDERS.match(/count: statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
-    expect(ORDERS.match(/const count = statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
   })
 
   /**
@@ -95,17 +97,21 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
    * Màn "Đơn của tôi" mở ra ở tab Phiếu tạm; nhét tab vào sheet là NVBH
    * không còn đường nào sang Hoàn thành / Đã huỷ, tức là một ngõ cụt.
    */
-  it("NVBH: ba tab đứng NGOÀI sheet, và sheet không vẽ thêm một bản nữa", () => {
+  it("ba tab đứng NGOÀI sheet và hiện ở mọi khổ màn", () => {
     const i = ORDERS.indexOf("<PipelineTabs")
     expect(i).toBeGreaterThan(0)
     const sheet = ORDERS.indexOf("<MobileFilterBar")
     const end = ORDERS.indexOf("</MobileFilterBar>", sheet)
     expect(i < sheet || i > end, "PipelineTabs đang nằm trong sheet lọc").toBe(true)
-    // Hiện trên MỌI khổ màn khi là NVBH, chứ không chỉ máy tính.
-    expect(ORDERS).toContain('className={isSales ? "grid" : "hidden lg:grid"}')
-    // Và bản trong sheet tắt đi cho NVBH — hai chỗ cùng đổi một giá trị
-    // thì người dùng bấm một chỗ, thấy chỗ kia không đổi theo.
-    expect(ORDERS.slice(sheet, end)).toContain("{!isSales && (")
+    /**
+     * ⚠ KHÔNG `hidden lg:grid`. Giấu tab trên điện thoại là màn mở ra ở
+     * tab Phiếu tạm và KẸT ở đó — không có đường nào sang Hoàn thành hay
+     * Đã huỷ, vì hàng chip trong sheet đã bỏ.
+     */
+    expect(ORDERS).toContain('className="grid"')
+    expect(ORDERS, "tab lại bị giấu trên điện thoại").not.toContain('"hidden lg:grid"')
+    // Và sheet không được vẽ lại một bản trạng thái nào nữa.
+    expect(ORDERS.slice(sheet, end)).not.toContain("statusChips")
   })
 
   /**
@@ -122,14 +128,19 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
      * "đang lọc 1" và mọc ra nút Xoá lọc cho một thứ không ai đặt.
      */
     expect(cnt).toContain("(statusIsFiltered ? 1 : 0)")
-    expect(ORDERS).toContain(
-      'const statusIsFiltered = isSales ? effectiveStatus !== "submitted" : statusFilter !== "all"'
-    )
+    expect(ORDERS).toContain('const statusIsFiltered = effectiveStatus !== "submitted"')
     expect(cnt).toContain('(routeFilter !== "all" ? 1 : 0)')
     expect(cnt).toContain("(pipelineStep ? 1 : 0)")
     const j = ORDERS.indexOf("const clearAdvancedFilters = () => {")
     const clr = ORDERS.slice(j, ORDERS.indexOf("\n  }", j))
-    expect(clr).toContain('setStatusFilter("all"); setRouteFilter("all"); setPipelineStep(null)')
+    expect(clr).toContain('setRouteFilter("all"); setPipelineStep(null)')
+    /**
+     * ⚠ "XOÁ LỌC" KHÔNG ĐƯỢC ĐỤNG TỚI TAB. Đặt `statusFilter` về "all" ở
+     * đây thì nó bị quy ngược về "submitted" ngay sau đó — tức nút này
+     * âm thầm ném người dùng từ tab họ đang đứng về tab Phiếu tạm, trong
+     * khi họ chỉ muốn bỏ bộ lọc tuyến hay khoảng ngày.
+     */
+    expect(clr, "Xoá lọc đang đổi cả tab").not.toContain("setStatusFilter(")
   })
 
   /** Chưa khai tuyến nào thì đừng hiện một ô chọn rỗng. */

@@ -58,6 +58,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  FileText,
   Filter,
   Plus,
   Search,
@@ -104,18 +105,25 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
 }
 
 /**
- * Tab của màn "Đơn của tôi" — BA tab, không có "Tất cả" và không có "Nháp".
+ * Ba tab của màn đơn hàng — CHUNG cho mọi vai trò, không có "Tất cả" và
+ * không có "Nháp".
  *
  * ⚠ NHÁP KHÔNG NẰM Ở ĐÂY vì ở đây không làm gì được với nó. Việc của một
  * bản nháp là sửa nốt, gửi đi, hoặc xoá — cả ba nút đó nằm ở /sell/drafts.
  * Cho nháp hiện cả hai chỗ là người dùng mở đúng chỗ không có nút, rồi
- * kết luận đơn của mình bị kẹt.
+ * kết luận đơn của mình bị kẹt. Chính sách SELECT ở migration 119 cũng
+ * chỉ cho mỗi người thấy nháp CỦA CHÍNH MÌNH, kể cả chủ — nên bỏ tab này
+ * không giấu của ai cái gì.
  *
  * ⚠ KHÔNG CÓ "TẤT CẢ" là có chủ ý: gộp bốn trạng thái vào một danh sách
- * thì NVBH phải tự đọc huy hiệu từng dòng để biết đơn nào còn chờ nhà
- * phân phối. Ba tab là ba câu hỏi họ thật sự hỏi.
+ * thì người dùng phải tự đọc huy hiệu từng dòng mới biết đơn nào còn chờ
+ * xuất hàng. Ba tab là ba câu hỏi họ thật sự hỏi — và với nhà phân phối,
+ * tab đầu chính là hàng đợi việc trong ngày.
+ *
+ * ⚠ KHÔNG thu `COUNTED_STATUSES` xuống theo. Đó là danh sách ĐẾM và là
+ * nguồn nhãn; nháp vẫn phải đếm được để còn dẫn người dùng sang đúng chỗ.
  */
-const SALES_TABS = ["submitted", "completed", "cancelled"] as const
+const ORDER_TABS = ["submitted", "completed", "cancelled"] as const
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
@@ -330,9 +338,25 @@ export default function OrdersPage() {
    * trên đúng trang đang xem, nên ép thêm trạng thái vào truy vấn là nó
    * lọc trên một tập đã bị cắt và ra danh sách rỗng khó hiểu.
    */
-  const tabKeys: readonly string[] = isSales ? SALES_TABS : (["all", ...COUNTED_STATUSES] as const)
+  const tabKeys: readonly string[] = ORDER_TABS
+  /**
+   * ⚠ KHÔNG ÉP TRẠNG THÁI KHI ĐANG TÌM KIẾM. Tìm và trạng thái nối AND
+   * trong CÙNG một truy vấn (xem chỗ gọi `applyStatusFilter` bên dưới),
+   * nên đứng ở tab Phiếu tạm mà gõ mã một đơn đã huỷ thì ra RỖNG. Ô tìm
+   * trên thanh tiêu đề đẩy sang `/orders?q=…` KHÔNG kèm trạng thái — tức
+   * là mọi lần tìm toàn hệ thống đều rơi vào đúng cái bẫy đó.
+   *
+   * Tìm kiếm là tra cứu TOÀN CỤC, tab là điều hướng. Người dùng tự chọn
+   * một tab rồi mới gõ tìm thì tôn trọng lựa chọn đó — điều kiện dưới chỉ
+   * buông khi họ CHƯA chọn tab nào (giá trị còn là "all").
+   *
+   * ⚠ Cũng buông khi đang lọc theo BƯỚC XỬ LÝ: bộ lọc đó chạy phía trình
+   * duyệt trên đúng trang đang xem, ép thêm trạng thái vào truy vấn là nó
+   * lọc trên một tập đã bị cắt và ra danh sách rỗng khó hiểu.
+   */
+  const searching = debouncedSearch.trim().length > 0
   const effectiveStatus =
-    isSales && !pipelineStep && !(SALES_TABS as readonly string[]).includes(statusFilter)
+    !pipelineStep && !searching && !(ORDER_TABS as readonly string[]).includes(statusFilter)
       ? "submitted"
       : statusFilter
 
@@ -776,19 +800,36 @@ export default function OrdersPage() {
   // thì đang lọc "Đã duyệt" mà nút Lọc báo 0, người ta không hiểu vì sao
   // danh sách thiếu đơn.
   /**
-   * ⚠ VỚI NVBH, TAB TRẠNG THÁI LÀ ĐIỀU HƯỚNG, KHÔNG PHẢI BỘ LỌC NÂNG CAO.
-   * Đếm nó vào huy hiệu "đang lọc" thì tab mặc định (Phiếu tạm) cũng làm
-   * huy hiệu sáng lên, và nút "Xoá lọc" mọc ra cho một thứ không ai đặt.
+   * ⚠ TAB TRẠNG THÁI LÀ ĐIỀU HƯỚNG, KHÔNG PHẢI BỘ LỌC NÂNG CAO. Đếm nó
+   * vào huy hiệu "đang lọc" thì tab mặc định (Phiếu tạm) cũng làm huy
+   * hiệu sáng lên và nút "Xoá lọc" mọc ra cho một thứ không ai đặt.
    */
-  const statusIsFiltered = isSales ? effectiveStatus !== "submitted" : statusFilter !== "all"
+  const statusIsFiltered = effectiveStatus !== "submitted"
+  /**
+   * Danh sách đang bị thu hẹp bởi MỘT thao tác nào đó của người dùng —
+   * tab, ô tìm, bộ lọc nâng cao hay bước xử lý. Dùng để phân biệt "lọc
+   * trượt" với "chưa có đơn nào".
+   */
   const activeFilterCount =
     (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (amountMin ? 1 : 0) + (amountMax ? 1 : 0)
+  /**
+   * Danh sách đang bị thu hẹp bởi MỘT thao tác nào đó của người dùng —
+   * tab, ô tìm hay bộ lọc. Dùng để phân biệt "lọc trượt" với "chưa có
+   * đơn nào", hai thứ trông y hệt nhau vì cả hai đều lọc phía máy chủ.
+   */
+  const narrowed = searching || activeFilterCount > 0
 
+  /**
+   * ⚠ KHÔNG ĐỤNG TỚI TAB. Đặt `statusFilter` về "all" ở đây thì nó bị quy
+   * ngược về "submitted" ngay dòng sau — tức nút "Xoá lọc" âm thầm ném
+   * người dùng từ tab họ đang đứng về tab Phiếu tạm, trong khi họ chỉ
+   * muốn bỏ bộ lọc tuyến hay khoảng ngày.
+   */
   const clearAdvancedFilters = () => {
-    setStatusFilter("all"); setRouteFilter("all"); setPipelineStep(null)
+    setRouteFilter("all"); setPipelineStep(null)
     setDateFrom(""); setDateTo("")
     setCustomerFilter("all"); setSalesFilter("all")
     setAmountMin(""); setAmountMax("")
@@ -961,42 +1002,6 @@ export default function OrdersPage() {
       })()
 
 
-  /** Hàng chip trạng thái — cuộn ngang trên điện thoại, xuống dòng trên máy tính. */
-  const statusChips = (
-    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
-          {tabKeys.map((k) => {
-            const active = effectiveStatus === k && !pipelineStep
-            const count = statusCounts[k] ?? 0
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setStatusFilter(k)
-                  // Hai bộ lọc loại trừ nhau — chọn cái này thì buông cái kia.
-                  setPipelineStep(null)
-                }}
-                aria-pressed={active}
-                className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
-                  active
-                    ? "border-on-surface bg-on-surface text-surface"
-                    : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
-                }`}
-              >
-                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]]}
-                <span
-                  className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${
-                    active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-    </div>
-  )
-
   /**
    * Bước xử lý (pipeline) cho sheet lọc điện thoại — cùng phép phân loại
    * `classifyOrder` với thanh pipeline desktop, đếm trên trang đang xem.
@@ -1055,6 +1060,16 @@ export default function OrdersPage() {
           .filter(Boolean)
           .join(" · ")}
       >
+        {/* ⚠ ĐƯỜNG SANG ĐƠN NHÁP. Ba tab ở đây không có tab Nháp — chính
+            sách SELECT của migration 119 cũng chỉ cho mỗi người thấy nháp
+            của mình — nên nếu màn này không có một liên kết nào sang
+            /sell/drafts thì bản nháp thành thứ không có đường đi tới.
+            Chỉ hiện khi thật sự còn nháp: một nút mờ đếm 0 là nhiễu. */}
+        {(statusCounts.draft ?? 0) > 0 && (
+          <Button variant="outline" onClick={() => router.push("/sell/drafts")}>
+            <FileText className="mr-2 h-4 w-4" /> {statusCounts.draft} đơn nháp
+          </Button>
+        )}
         {user && hasPermission(user.role, "orders", "create") && (
           <Button onClick={() => router.push(newOrderHref())}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn
@@ -1087,23 +1102,16 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* ⚠ HAI BỘ LỌC DÙNG NHIỀU NHẤT PHẢI NHÌN THẤY, KHÔNG NẰM TRONG SHEET.
-          Trước đây chip trạng thái chỉ có trên máy tính (`hidden lg:flex`),
-          còn trên điện thoại nó bị nhét vào thanh pipeline — mà thanh đó
-          chỉ hiện khi người dùng bật bộ lọc "pipeline" trong FilterPicker.
-          Tuyến bán hàng thì KHÔNG lọc được ở đâu cả. Đây là hai câu hỏi
-          mở danh sách đơn ra để trả lời: "tuyến này hôm nay ra sao" và
-          "đơn nào còn đang chờ". */}
       {/* ⚠ TRÊN ĐIỆN THOẠI MỌI BỘ LỌC NẰM TRONG SHEET (người dùng yêu cầu):
-          hàng chip trạng thái, tuyến và bước xử lý chỉ đứng ngoài ở máy
-          tính. Cùng một JSX (`statusChips`, `pipelineChips`) vẽ ở cả hai
-          chỗ — nhân đôi là để hai bên trôi khỏi nhau. */}
-      {/* ⚠ BA TAB CỦA NVBH KHÔNG NẰM TRONG SHEET. Quy tắc "mọi bộ lọc vào
-          sheet" ở trên nói về BỘ LỌC; với NVBH ba tab này là ĐIỀU HƯỚNG —
-          màn mở ra ở tab Phiếu tạm, giấu tab đi là họ không có đường nào
-          sang Hoàn thành / Đã huỷ. Ba cột vừa khít 375px. */}
+          tuyến và bước xử lý chỉ đứng ngoài ở máy tính. Hàng chip trạng
+          thái trong sheet đã BỎ HẲN — ba tab dưới đây thay nó ở mọi khổ
+          màn, nên không còn hai chỗ cùng đổi một giá trị. */}
+      {/* ⚠ BA TAB KHÔNG NẰM TRONG SHEET. Quy tắc "mọi bộ lọc vào sheet" ở
+          trên nói về BỘ LỌC; ba tab này là ĐIỀU HƯỚNG — màn mở ra ở tab
+          Phiếu tạm, giấu tab đi là không có đường nào sang Hoàn thành /
+          Đã huỷ. Ba cột vừa khít 375px (năm thì nhãn cụt thành "Ho…"). */}
       <PipelineTabs
-        className={isSales ? "grid" : "hidden lg:grid"}
+        className="grid"
         active={pipelineStep ? "" : effectiveStatus}
         onPick={(k) => {
           setStatusFilter(k)
@@ -1145,14 +1153,6 @@ export default function OrdersPage() {
         onOpenChange={setFilterSheet}
       >
         <div className="grid gap-4">
-          {/* NVBH đã có ba tab NGAY TRÊN danh sách (xem bên dưới) — để thêm
-              một bản trong sheet là hai chỗ cùng đổi một giá trị. */}
-          {!isSales && (
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Trạng thái</p>
-              {statusChips}
-            </div>
-          )}
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
@@ -1308,25 +1308,34 @@ export default function OrdersPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
+        /**
+         * ⚠ RỖNG VÌ LỌC TRƯỢT ≠ RỖNG VÌ CHƯA CÓ ĐƠN NÀO. Trạng thái và ô
+         * tìm được lọc PHÍA MÁY CHỦ, nên tìm trượt cũng làm `orders` rỗng
+         * y hệt tổ chức chưa có đơn nào — và màn bảo người dùng "Tạo đơn
+         * hàng đầu tiên" trong khi họ chỉ đang gõ nhầm một mã đơn. Đang
+         * có tab hay bộ lọc nào bật thì phải nói ra điều đó.
+         */
         <EmptyState
           icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />}
           title={
             loadError
               ? "Không tải được dữ liệu"
-              : orders.length === 0
-                ? "Chưa có đơn hàng"
-                : "Không có đơn hàng phù hợp"
+              : narrowed
+                ? "Không có đơn hàng phù hợp"
+                : "Chưa có đơn hàng"
           }
           description={
             loadError
               ? "Xem thông báo lỗi phía trên."
-              : orders.length === 0
-                ? isDriver
+              : narrowed
+                ? searching
+                  ? `Không tìm thấy đơn nào khớp “${search.trim()}”.`
+                  : "Thử đổi tab hoặc điều chỉnh bộ lọc."
+                : isDriver
                   ? "Bạn chưa được gán chuyến giao hàng nào. Đơn hàng chỉ hiện sau khi kho lập phiếu giao và gán bạn làm tài xế."
                   : isSales
                     ? "Bạn chưa tạo đơn nào và chưa được phân công khách hàng nào. Nhờ quản lý phân công khách hàng, hoặc tạo đơn đầu tiên."
                     : "Tạo đơn hàng đầu tiên"
-                : "Thử điều chỉnh bộ lọc"
           }
         />
       ) : (

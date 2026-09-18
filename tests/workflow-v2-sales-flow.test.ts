@@ -27,10 +27,10 @@ const NOTIF_PAGE = read("src/app/(dashboard)/notifications/page.tsx")
 const MIG119 = read("supabase/migrations/119_workflow_v2.sql")
 const MIG120 = read("supabase/migrations/120_workflow_v2_rpcs.sql")
 
-describe("Đơn của tôi: ba tab, và chỉ ba", () => {
-  it("danh sách tab của NVBH đúng bằng ba trạng thái sau khi gửi", () => {
-    const i = LIST.indexOf("const SALES_TABS = ")
-    expect(i, "không tìm thấy danh sách tab của NVBH").toBeGreaterThan(0)
+describe("Màn đơn hàng: ba tab, và chỉ ba", () => {
+  it("danh sách tab đúng bằng ba trạng thái sau khi gửi, chung cho mọi vai trò", () => {
+    const i = LIST.indexOf("const ORDER_TABS = ")
+    expect(i, "không tìm thấy danh sách tab").toBeGreaterThan(0)
     const decl = LIST.slice(i, LIST.indexOf("\n", i))
     for (const s of ["submitted", "completed", "cancelled"]) {
       expect(decl, `thiếu tab ${s}`).toContain(`"${s}"`)
@@ -39,10 +39,12 @@ describe("Đơn của tôi: ba tab, và chỉ ba", () => {
     // bản nháp. Cho nó hiện là người dùng mở đúng chỗ không có nút.
     expect(decl).not.toContain('"draft"')
     expect(decl).not.toContain('"all"')
+    // ⚠ Và KHÔNG rẽ theo vai trò: nhà phân phối cũng ba tab ấy.
+    expect(LIST).toContain("const tabKeys: readonly string[] = ORDER_TABS")
   })
 
   /**
-   * ⚠ NVBH KHÔNG CÓ TAB "TẤT CẢ", nên giá trị mặc định của bộ lọc ("all")
+   * ⚠ KHÔNG CÓ TAB "TẤT CẢ", nên giá trị mặc định của bộ lọc ("all")
    * không trỏ tới tab nào. Không quy nó về một tab có thật thì màn mở ra
    * với mọi tab xám và một danh sách trộn cả nháp lẫn đơn đã huỷ.
    */
@@ -50,11 +52,43 @@ describe("Đơn của tôi: ba tab, và chỉ ba", () => {
     const i = LIST.indexOf("const effectiveStatus =")
     expect(i).toBeGreaterThan(0)
     const expr = LIST.slice(i, LIST.indexOf("\n\n", i))
-    expect(expr).toContain("isSales")
-    expect(expr).toContain("SALES_TABS")
+    expect(expr).toContain("ORDER_TABS")
     expect(expr).toContain('"submitted"')
     // Và truy vấn phải dùng giá trị đã quy, không phải giá trị thô.
     expect(LIST).toContain("applyStatusFilter(applyCommonFilters(q), effectiveStatus)")
+  })
+
+  /**
+   * ⚠ TÌM KIẾM VÀ TRẠNG THÁI NỐI `AND` TRONG CÙNG MỘT TRUY VẤN. Ép trạng
+   * thái khi người dùng đang tìm là ô tìm trên thanh tiêu đề — vốn đẩy
+   * sang `/orders?q=…` KHÔNG kèm trạng thái — đáp xuống tab Phiếu tạm và
+   * trả RỖNG cho mọi đơn đã hoàn thành hoặc đã huỷ. Người dùng gõ đúng mã
+   * đơn mà máy bảo không có.
+   */
+  it("đang tìm kiếm thì KHÔNG ép trạng thái", () => {
+    const i = LIST.indexOf("const effectiveStatus =")
+    const expr = LIST.slice(i, LIST.indexOf("\n\n", i))
+    expect(expr, "tìm kiếm vẫn bị ép về một tab").toContain("!searching")
+    expect(LIST).toContain("const searching = debouncedSearch.trim().length > 0")
+  })
+
+  /**
+   * ⚠ LỌC TRƯỢT ≠ CHƯA CÓ ĐƠN NÀO. Cả hai đều làm danh sách rỗng vì
+   * trạng thái và ô tìm đều lọc phía máy chủ — bảo người dùng "Tạo đơn
+   * hàng đầu tiên" khi họ chỉ gõ nhầm một mã đơn là nói sai sự thật.
+   */
+  it("màn rỗng phân biệt lọc trượt với chưa có đơn nào", () => {
+    expect(LIST).toContain("const narrowed = searching || activeFilterCount > 0")
+    expect(LIST).toContain("narrowed")
+    const i = LIST.indexOf("Chưa có đơn hàng")
+    expect(i).toBeGreaterThan(0)
+    expect(LIST.slice(i - 300, i + 600)).toContain("Không có đơn hàng phù hợp")
+  })
+
+  /** Ba tab không có tab Nháp, nên phải có đường sang chỗ chứa nháp. */
+  it("có đường từ màn đơn hàng sang màn đơn nháp", () => {
+    expect(LIST).toContain('router.push("/sell/drafts")')
+    expect(LIST).toContain("(statusCounts.draft ?? 0) > 0")
   })
 
   /** Nháp vẫn phải tới được — màn danh sách không phải ngõ cụt của nó. */

@@ -251,16 +251,19 @@ describe("M2.2 — /orders", () => {
    * hiện khi người dùng tự bật bộ lọc "pipeline" trong FilterPicker. Tức
    * là trên điện thoại, lọc theo trạng thái có thể KHÔNG có đường nào tới.
    */
-  it("một JSX chip trạng thái cho cả hai khổ màn", () => {
+  it("một bộ tab duy nhất cho cả hai khổ màn", () => {
     // Pipeline không còn kiêm luôn việc lọc trạng thái.
     expect(ORDERS_CODE).not.toContain("extra={{")
-    // Hàng chip dựng từ danh sách trạng thái dùng chung, khai ĐÚNG MỘT lần;
-    // máy tính vẽ ngoài, điện thoại vẽ trong sheet lọc (người dùng yêu cầu).
-    // Điện thoại: chip trong sheet lọc. Máy tính: thẻ PipelineTabs — cùng
-    // một danh sách COUNTED_STATUSES và cùng bộ số đếm từ máy chủ.
-    expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(2)
-    expect(ORDERS_CODE.match(/\{statusChips\}/g)?.length).toBe(1)
-    expect(ORDERS_CODE).toContain("<PipelineTabs")
+    /**
+     * ⚠ MỘT chỗ vẽ, cho CẢ HAI khổ màn. Bản cũ có hai: hàng chip trong
+     * sheet lọc (điện thoại) và thẻ `PipelineTabs` (máy tính). Hai chỗ
+     * cùng ghi một giá trị là hai chỗ để trôi khỏi nhau — nay chỉ còn
+     * `PipelineTabs`, và nó KHÔNG bị giấu trên điện thoại.
+     */
+    expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(1)
+    expect(ORDERS_CODE).not.toContain("statusChips")
+    expect(ORDERS_CODE.match(/<PipelineTabs/g)?.length).toBe(1)
+    expect(ORDERS_CODE).not.toContain('"hidden lg:grid"')
   })
 
   /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */

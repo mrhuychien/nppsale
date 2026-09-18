@@ -32,6 +32,7 @@
 
 import { formatCurrency } from "@/lib/utils"
 import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
+import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
 
 export interface SalesInvoiceLine {
   id: string
@@ -59,6 +60,18 @@ export interface SalesInvoiceProps {
   /** Chiết khấu trên tổng hoá đơn (khác với CK từng dòng). */
   invoiceDiscount?: number
   total: number
+  /**
+   * Khoản trừ hàng trả ĐÃ HOÀN THÀNH của hóa đơn này.
+   *
+   * ⚠ KHÔNG SỬA `total`. Dòng "Tổng cộng" vẫn là giá trị lô hàng đã
+   * giao — đó là thứ tờ hóa đơn chứng nhận. Khoản trừ và số còn phải thu
+   * là HAI DÒNG THÊM ở dưới, đúng như sổ công nợ tính.
+   *
+   * ⚠ NƠI GỌI TỰ QUYẾT CÓ TRUYỀN HAY KHÔNG (`showCreditOnPrint`): hóa
+   * đơn đã phát hành điện tử thì tờ in phải khớp từng con số với tờ đã
+   * gửi cơ quan thuế.
+   */
+  returnCredit?: number
   /** Dòng ghi chú nhỏ dưới bảng — ví dụ nhắc số tài khoản. */
   footerNote?: string | null
 }
@@ -127,12 +140,13 @@ export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines, invoiceDiscount = 0,
-    total, footerNote,
+    total, returnCredit = 0, footerNote,
   } = props
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
 
   const { rows, goodsTotal } = grossUpLines(lines, total, invoiceDiscount)
+  const netDue = netDueOnInvoice(total, returnCredit)
 
   return (
     <div className="a4-doc mx-auto max-w-3xl bg-white text-black print:max-w-none">
@@ -216,13 +230,38 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             <td className={`${CELL} text-center`} colSpan={6}>Tổng cộng</td>
             <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(total)}</td>
           </tr>
+          {/*
+            ⚠ HAI DÒNG NÀY CHỈ HIỆN KHI CÓ HÀNG TRẢ. In "Trừ hàng trả: 0"
+              là thêm một dòng không nói gì vào tờ giấy vốn đã chật.
+            ⚠ "TỔNG CỘNG" Ở TRÊN KHÔNG ĐỔI. Nó là giá trị lô hàng đã giao
+              — thứ tờ hóa đơn chứng nhận. Trừ thẳng vào đó là sửa một
+              chứng từ đã phát hành.
+          */}
+          {returnCredit > 0 && (
+            <>
+              <tr>
+                <td className={`${CELL} text-center`} colSpan={6}>Trừ hàng trả</td>
+                <td className={`${CELL} text-right tabular-nums`}>
+                  −{formatCurrency(returnCredit)}
+                </td>
+              </tr>
+              <tr className="font-bold">
+                <td className={`${CELL} text-center`} colSpan={6}>Còn phải thu</td>
+                <td className={`${CELL} text-right tabular-nums`}>
+                  {formatCurrency(netDue)}
+                </td>
+              </tr>
+            </>
+          )}
           <tr>
             <td className={`${CELL} h-6`} colSpan={7}></td>
           </tr>
           <tr>
             <td className={CELL} colSpan={7}>
               <span className="font-bold">Bằng chữ:</span>{" "}
-              <span className="italic">{numberToVietnameseWords(total)}</span>
+              {/* ⚠ BẰNG CHỮ ĐỌC SỐ PHẢI TRẢ, không đọc tổng hóa đơn. Người
+                  cầm tờ giấy đi thu tiền đọc đúng dòng này. */}
+              <span className="italic">{numberToVietnameseWords(netDue)}</span>
             </td>
           </tr>
         </tbody>

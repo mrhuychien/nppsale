@@ -38,6 +38,9 @@ import { cancelInvoice } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
+import {
+  creditOnInvoice, netDueOnInvoice, type InvoiceReturnRow,
+} from "@/lib/orders/invoice-credit"
 
 interface InvoiceRow {
   id: string
@@ -96,6 +99,8 @@ export default function SalesInvoiceDetailPage() {
   const [inv, setInv] = useState<InvoiceRow | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
   const [eInvoice, setEInvoice] = useState<{ id: string; misa_inv_no: string | null; misa_status: string | null } | null>(null)
+  /** Phiếu trả gắn hóa đơn này — nguồn của khoản trừ. */
+  const [invReturns, setInvReturns] = useState<InvoiceReturnRow[]>([])
   const [loading, setLoading] = useState(true)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
@@ -104,7 +109,7 @@ export default function SalesInvoiceDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [invRes, lineRes, eRes] = await Promise.all([
+    const [invRes, lineRes, eRes, retRes] = await Promise.all([
       supabase
         .from("sales_invoices")
         .select(
@@ -124,12 +129,23 @@ export default function SalesInvoiceDetailPage() {
         .select("id, misa_inv_no, misa_status")
         .eq("sales_invoice_id", id)
         .maybeSingle(),
+      /**
+       * ⚠ NẠP CẢ PHIẾU CHƯA HOÀN THÀNH, rồi lọc ở phép cộng. Hỏi thẳng
+       *   `status = 'completed'` thì màn không biết là có phiếu đang chờ
+       *   — mà đó đúng là thứ người xem cần thấy trước khi đi đòi tiền.
+       */
+      supabase
+        .from("returns")
+        .select("id, status, credit_note_amount, created_at, reason")
+        .eq("invoice_id", id)
+        .order("created_at", { ascending: true }),
     ])
-    const err = invRes.error || lineRes.error || eRes.error
+    const err = invRes.error || lineRes.error || eRes.error || retRes.error
     if (err) console.error("[sales-invoices/id] truy vấn lỗi:", err.message)
     setInv(((invRes.data as unknown) as InvoiceRow) || null)
     setLines(((lineRes.data as unknown) as LineRow[]) || [])
     setEInvoice(((eRes.data as unknown) as typeof eInvoice) || null)
+    setInvReturns(((retRes.data as unknown) as InvoiceReturnRow[]) || [])
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -189,6 +205,10 @@ export default function SalesInvoiceDetailPage() {
       setPublishing(false)
     }
   }
+
+  const returnCredit = creditOnInvoice(invReturns)
+  const netDue = netDueOnInvoice(Number(inv.total || 0), returnCredit)
+  const pendingReturns = invReturns.filter((r) => r.status === "draft" || r.status === "submitted").length
 
   const statusLabel = INVOICE_STATUS_MAP[inv.status]?.label ?? inv.status
   /**
@@ -448,7 +468,38 @@ export default function SalesInvoiceDetailPage() {
           <DetailCard title="Cộng tiền">
             <DetailRow label="Tiền hàng" value={formatCurrency(inv.subtotal)} />
             <DetailRow label="Thuế GTGT" value={formatCurrency(inv.vat)} />
-            <DetailRow label="Tổng cộng" value={formatCurrency(inv.total)} strong />
+            {/*
+              ⚠ TỔNG HÓA ĐƠN KHÔNG ĐỔI khi có hàng trả — nó là giá trị lô
+                hàng đã giao, thứ tờ hóa đơn chứng nhận. Khoản trừ và số
+                còn phải thu là hai dòng THÊM, đúng như sổ công nợ tính.
+                Trước đây màn chỉ hiện tổng, nên người mở tờ hóa đơn ra
+                nhìn 10.000.000 mà sổ ghi 9.200.000 và không có gì trên
+                màn giải thích chênh lệch.
+            */}
+            <DetailRow
+              label={returnCredit > 0 ? "Tổng hóa đơn" : "Tổng cộng"}
+              value={formatCurrency(inv.total)}
+              strong={returnCredit === 0}
+            />
+            {returnCredit > 0 && (
+              <>
+                <DetailRow
+                  label="Trừ hàng trả"
+                  value={`−${formatCurrency(returnCredit)}`}
+                />
+                <DetailRow label="Còn phải thu" value={formatCurrency(netDue)} strong />
+              </>
+            )}
+            {/*
+              ⚠ PHIẾU CHƯA HOÀN THÀNH CHƯA TRỪ GÌ. Nói ra để người đi đòi
+                tiền không đòi nhầm một số sắp thay đổi.
+            */}
+            {pendingReturns > 0 && (
+              <p className="mt-2 rounded-lg bg-[#fff7e6] px-2.5 py-2 text-xs font-semibold text-[#7a4b00]">
+                Còn {pendingReturns} phiếu trả chưa hoàn thành — hoàn thành xong thì số
+                phải thu sẽ giảm tiếp.
+              </p>
+            )}
           </DetailCard>
 
           <DetailCard title="Thanh toán">

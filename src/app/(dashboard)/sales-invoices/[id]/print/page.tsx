@@ -19,6 +19,9 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { PrintButton, printWithPaper } from "@/components/ui/print-button"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
+import {
+  creditOnInvoice, showCreditOnPrint, type InvoiceReturnRow,
+} from "@/lib/orders/invoice-credit"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 
@@ -59,12 +62,19 @@ export default function SalesInvoicePrintPage() {
   const supabase = createClient()
   const [inv, setInv] = useState<InvoiceRow | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
+  const [invReturns, setInvReturns] = useState<InvoiceReturnRow[]>([])
+  /**
+   * ⚠ ĐÃ PHÁT HÀNH HÓA ĐƠN ĐIỆN TỬ THÌ TỜ IN KHÔNG ĐƯỢC ĐỔI SỐ. Nó phải
+   *   khớp từng con số với tờ đã gửi cơ quan thuế; thêm dòng trừ là hai
+   *   tờ cùng một số hóa đơn mang hai con số khác nhau.
+   */
+  const [eInvoiceIssued, setEInvoiceIssued] = useState(false)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [invRes, lineRes] = await Promise.all([
+    const [invRes, lineRes, retRes, eRes] = await Promise.all([
       supabase
         .from("sales_invoices")
         .select(
@@ -77,6 +87,15 @@ export default function SalesInvoicePrintPage() {
         .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(name, sku)")
         .eq("invoice_id", id)
         .order("sort_order", { ascending: true }),
+      supabase
+        .from("returns")
+        .select("id, status, credit_note_amount")
+        .eq("invoice_id", id),
+      supabase
+        .from("invoices")
+        .select("misa_inv_no")
+        .eq("sales_invoice_id", id)
+        .maybeSingle(),
     ])
     if (invRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", invRes.error.message)
     if (lineRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", lineRes.error.message)
@@ -84,6 +103,9 @@ export default function SalesInvoicePrintPage() {
     const row = ((invRes.data as unknown) as InvoiceRow) || null
     setInv(row)
     setLines(((lineRes.data as unknown) as LineRow[]) || [])
+    if (retRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", retRes.error.message)
+    setInvReturns(((retRes.data as unknown) as InvoiceReturnRow[]) || [])
+    setEInvoiceIssued(!!(eRes.data as { misa_inv_no?: string | null } | null)?.misa_inv_no)
 
     if (row?.org_id) {
       /**
@@ -136,6 +158,18 @@ export default function SalesInvoicePrintPage() {
     return <PageHeader title="Không tìm thấy hóa đơn" backHref="/sales-invoices" />
   }
 
+  /**
+   * ⚠ CHỦ NHÀ CHỐT HIỆN TRÊN BẢN IN, nhưng chốt đó dừng ở hóa đơn ĐÃ
+   *   PHÁT HÀNH ĐIỆN TỬ: tờ in khi đó phải khớp từng con số với tờ đã
+   *   gửi cơ quan thuế.
+   */
+  const printCredit = showCreditOnPrint({
+    credit: creditOnInvoice(invReturns),
+    eInvoiceIssued,
+  })
+    ? creditOnInvoice(invReturns)
+    : 0
+
   const printLines: SalesInvoiceLine[] = lines.map((l) => ({
     id: l.id,
     name: l.product?.name || "—",
@@ -180,6 +214,7 @@ export default function SalesInvoicePrintPage() {
           salesPersonPhone={inv.sales_user?.phone}
           lines={printLines}
           total={Number(inv.total) || 0}
+          returnCredit={printCredit}
           footerNote={
             inv.status === "posted"
               ? inv.order?.order_code

@@ -235,15 +235,55 @@ describe("Chuyển màn trong luồng không chờ mạng", () => {
 
 describe("Về danh sách thì thấy lại đúng chỗ vừa đứng", () => {
   /**
-   * ⚠ Chạm thẻ → giỏ → chạm "tìm" → về danh sách TRỐNG, cuộn ở ĐỈNH.
-   * Mười lăm dòng là mười lăm lần gõ lại. Trí nhớ nằm ở provider của
-   * layout nên sống qua việc chuyển màn.
+   * ⚠ Chạm thẻ → giỏ → chạm "tìm" → về danh sách. Tab và vị trí cuộn phải
+   * còn nguyên; trí nhớ nằm ở provider của layout nên sống qua việc
+   * chuyển màn.
    */
   it("ô tìm và tab khởi tạo từ trí nhớ, và ghi lại khi đổi", () => {
     expect(POS).toContain("useState(() => listMemory.current.q)")
     expect(POS).toContain('useState<"freq" | "all">(() => listMemory.current.tab)')
     expect(POS).toContain("listMemory.current.q = q")
     expect(POS).toContain("listMemory.current.tab = tab")
+  })
+
+  /**
+   * ⚠ THÊM HÀNG XONG THÌ XOÁ Ô TÌM — ĐÂY LÀ MỘT QUYẾT ĐỊNH BỊ ĐẢO LẠI.
+   *
+   * Trí nhớ ô tìm dựng ra với lý do "gõ coca cho thùng thứ nhất khỏi gõ
+   * lại cho thùng thứ hai". Lý do đó sai: thùng thứ hai là cùng một dòng,
+   * sửa số lượng chứ không thêm lần nữa. Mỗi lần quay lại danh sách là để
+   * tìm một MẶT HÀNG KHÁC, và chữ cũ nằm trong ô khi đó là một bộ lọc
+   * không ai yêu cầu, che mất đúng thứ người ta sắp gõ.
+   */
+  it("thêm vào giỏ thì xoá ô tìm, ở cả đường bán lẫn đường trả", () => {
+    expect(POS).toContain("const clearSearchMemory = () => {")
+    // Hai đường rời màn sau khi thêm: giỏ hàng và phiếu trả. Dòng khai
+    // báo không khớp mẫu này (`= () =>`), nên đúng bằng số nơi GỌI.
+    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(2)
+  })
+
+  /**
+   * ⚠ PHẢI XOÁ CẢ TRÍ NHỚ Ở PROVIDER, không chỉ gọi `setQ("")`. Hiệu ứng
+   * đồng bộ `listMemory.current.q = q` chạy SAU khi vẽ lại, mà `router.push`
+   * gỡ màn ngay — nên rất có thể nó không kịp chạy, và lần sau vào lại vẫn
+   * thấy chữ cũ. Chốt này canh đúng chỗ đó.
+   */
+  it("xoá thẳng vào ref, không trông vào hiệu ứng đồng bộ", () => {
+    const i = POS.indexOf("const clearSearchMemory = () => {")
+    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    expect(body).toContain('listMemory.current.q = ""')
+    expect(body).toContain("listMemory.current.scrollY = 0")
+  })
+
+  /**
+   * ⚠ VỊ TRÍ CUỘN VỀ ĐỈNH CÙNG LÚC. Chỗ đang cuộn là chỗ trong danh sách
+   * ĐÃ LỌC; bỏ bộ lọc mà giữ nguyên số đó là thả người dùng xuống giữa
+   * một danh sách khác hẳn.
+   */
+  it("xoá ô tìm thì cũng đặt lại vị trí cuộn", () => {
+    const i = POS.indexOf("const clearSearchMemory = () => {")
+    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    expect(body).toContain("listMemory.current.scrollY = 0")
   })
 
   it("vị trí cuộn ghi liên tục, khôi phục một lần sau khi danh sách vẽ", () => {

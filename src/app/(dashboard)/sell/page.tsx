@@ -48,11 +48,19 @@ export default function SellPage() {
   } = useSellData()
 
   /**
-   * ⚠ Ô TÌM VÀ TAB NHỚ LẠI CHỖ NGƯỜI DÙNG VỪA ĐỨNG. Chạm thẻ là sang giỏ;
-   * từ giỏ chạm "tìm" là về đây — và bản đầu về với ô tìm TRỐNG, cuộn ở
-   * ĐỈNH. Nhân viên vừa gõ "coca" cho thùng thứ nhất phải gõ lại "coca"
-   * cho thùng thứ hai, mười lăm dòng là mười lăm lần gõ lại. Trí nhớ nằm ở
-   * provider của layout nên sống qua việc chuyển màn; xem `ListMemory`.
+   * ⚠ TAB VÀ VỊ TRÍ CUỘN NHỚ LẠI CHỖ NGƯỜI DÙNG VỪA ĐỨNG; Ô TÌM THÌ KHÔNG.
+   *
+   * Chạm thẻ là sang giỏ; từ giỏ chạm "tìm" là về đây. Bản đầu về với ô
+   * tìm TRỐNG và cuộn ở ĐỈNH, nên tôi cho nó nhớ cả ô tìm với lý do
+   * "nhân viên gõ coca cho thùng thứ nhất khỏi phải gõ lại cho thùng thứ
+   * hai". Lý do đó SAI trong thực tế: thùng thứ hai là cùng một dòng, sửa
+   * số lượng chứ không thêm lần nữa. Mỗi lần quay lại đây là để tìm một
+   * MẶT HÀNG KHÁC — và khi đó chữ cũ nằm trong ô là một bộ lọc không ai
+   * yêu cầu, che mất đúng thứ người ta sắp gõ.
+   *
+   * Nên: thêm hàng vào giỏ thì XOÁ ô tìm (xem `clearSearchMemory`). Tab
+   * và vị trí cuộn vẫn nhớ — chúng nói về chỗ đứng, không phải về thứ
+   * đang tìm.
    */
   const [q, setQ] = useState(() => listMemory.current.q)
   const [tab, setTab] = useState<"freq" | "all">(() => listMemory.current.tab)
@@ -143,6 +151,24 @@ export default function SellPage() {
     if (y > 0) window.scrollTo(0, y)
   }, [loading, list.length, listMemory])
 
+  /**
+   * Xoá ô tìm TRƯỚC KHI rời màn.
+   *
+   * ⚠ PHẢI XOÁ CẢ TRÍ NHỚ Ở PROVIDER, không chỉ gọi `setQ("")`. Hiệu ứng
+   * đồng bộ `listMemory.current.q = q` chạy SAU khi vẽ lại, mà ở đây
+   * `router.push` gỡ màn ngay — nên rất có thể nó không kịp chạy, và lần
+   * sau vào lại vẫn thấy chữ cũ. Ghi thẳng vào ref là chắc chắn.
+   *
+   * ⚠ ĐẶT VỊ TRÍ CUỘN VỀ ĐỈNH LUÔN. Chỗ đang cuộn là chỗ trong danh sách
+   * ĐÃ LỌC; bỏ bộ lọc mà giữ nguyên số đó là thả người dùng xuống giữa
+   * một danh sách khác hẳn.
+   */
+  const clearSearchMemory = () => {
+    setQ("")
+    listMemory.current.q = ""
+    listMemory.current.scrollY = 0
+  }
+
   const addToCart = (p: PricedProduct) => {
     const unit = unitOf(p)
     const price = unitPriceFor(p, unit, groupId)
@@ -161,6 +187,7 @@ export default function SellPage() {
         isExchange: false,
         note: "",
       })
+      clearSearchMemory()
       backToReturnSlip(router)
       return
     }
@@ -180,6 +207,7 @@ export default function SellPage() {
       conversion: conversionFor(p, unit),
       vatRate: Number(p.vat_rate ?? 0),
     })
+    clearSearchMemory()
     // Chạm xong đi thẳng vào giỏ: người dùng cần thấy dòng vừa thêm và số
     // lượng của nó, không phải đoán xem cú chạm có ăn không.
     router.push("/sell/cart")

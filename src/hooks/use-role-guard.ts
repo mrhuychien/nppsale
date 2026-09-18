@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "./use-auth"
 import { canAccessModule, type Module } from "@/lib/permissions"
-import { NAV_PERMISSION, canSeeHref } from "@/lib/nav/nav-permission"
+import { NAV_PERMISSION, canEnterHref } from "@/lib/nav/nav-permission"
 
 /**
  * Chặn ở CỬA VÀO trang, khớp đúng với phép lọc menu.
@@ -27,7 +27,7 @@ export function useRoleGuard(module: Module) {
   const declared = pathname ? NAV_PERMISSION[pathname] : undefined
   const hasAccess = user
     ? declared
-      ? canSeeHref(user.role, pathname as string)
+      ? canEnterHref(user.role, pathname as string)
       : canAccessModule(user.role, module)
     : false
 

@@ -1,7 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { canSeeHref, NAV_PERMISSION } from "../src/lib/nav/nav-permission"
+import {
+  canSeeHref,
+  canEnterHref,
+  NAV_PERMISSION,
+  LEGACY_V2_HREFS,
+} from "../src/lib/nav/nav-permission"
 import {
   canAccessModule,
   hasPermission,
@@ -157,8 +162,10 @@ describe("Tính năng không thừa hưởng bừa từ mô-đun cha", () => {
     expect(canSeeHref("warehouse", "/payables")).toBe(false)
   })
 
-  it("chủ vẫn thấy mọi thứ", () => {
+  /** ⚠ Trừ màn của luồng cũ — chúng ẩn với mọi vai trò, kể cả chủ. */
+  it("chủ vẫn thấy mọi thứ, trừ màn luồng cũ đã ẩn", () => {
     for (const href of Object.keys(NAV_PERMISSION)) {
+      if (LEGACY_V2_HREFS.has(href)) continue
       expect(canSeeHref("owner", href), `chủ mất ${href}`).toBe(true)
     }
   })
@@ -189,8 +196,32 @@ describe("Giấu thì phải chặn", () => {
    * gõ thẳng `/payables` vào thanh địa chỉ thì vào được.
    */
   it("cửa vào trang dùng CHÍNH phép kiểm của menu", () => {
-    expect(GUARD).toContain("canSeeHref(user.role, pathname as string)")
+    expect(GUARD).toContain("canEnterHref(user.role, pathname as string)")
     expect(GUARD).toContain("NAV_PERMISSION[pathname]")
+  })
+
+  /**
+   * ⚠ ẨN KHỎI MENU VÀ CHẶN CỬA VÀO LÀ HAI VIỆC KHÁC NHAU — và P7 làm lộ
+   * ra điều đó. Dữ liệu luồng cũ là CHỨNG TỪ: phiếu soạn hàng, chuyến
+   * giao, biên bản bàn giao. Người ta vẫn phải mở lại được để tra, qua
+   * đường dẫn cũ hoặc qua thông báo. Nếu `useRoleGuard` gọi `canSeeHref`
+   * thì mọi đường dẫn luồng cũ đá người dùng về trang chủ, kể cả chủ nhà
+   * — xoá mất lịch sử khỏi tầm với, mà ta chỉ định thôi dùng chứ không
+   * định vứt.
+   */
+  it("màn luồng cũ: ẩn khỏi menu nhưng VẪN vào xem được", () => {
+    for (const href of Array.from(LEGACY_V2_HREFS)) {
+      expect(canSeeHref("owner", href), `${href} vẫn hiện trong menu`).toBe(false)
+      /**
+       * ⚠ Chỉ đường dẫn CÓ KHAI trong bảng mới đi qua `canEnterHref`;
+       * đường dẫn chưa khai rơi về phép kiểm mô-đun trong `useRoleGuard`
+       * (xem chốt ngay dưới), nên vào được sẵn. Khẳng định cho cả hai
+       * nhóm ở đây là khẳng định một điều hàm này không hứa.
+       */
+      if (!NAV_PERMISSION[href]) continue
+      expect(canEnterHref("owner", href), `${href} bị chặn cửa vào`).toBe(true)
+    }
+    expect(GUARD, "cửa vào lại dùng phép kiểm của menu").not.toContain("canSeeHref(")
   })
 
   /** Đường dẫn động chưa khai thì giữ nguyên phép kiểm cũ, không siết thêm. */

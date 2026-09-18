@@ -47,6 +47,15 @@ export interface CashReceiptInput {
   notes?: string | null
   lines: CashReceiptLineInput[]
   credits?: CashReceiptCreditInput[]
+  /**
+   * Số tiền rút từ SỐ DƯ CÓ của khách (Q11) để đắp vào các khoản nợ đang
+   * chọn. Bỏ trống = không dùng.
+   *
+   * ⚠ RPC ghi thành BÚT TOÁN HAI VẾ — một dòng âm rút ở khoản đang dư,
+   * một dòng dương đắp vào khoản được thu — để `void_cash_receipt` đảo
+   * được bằng đúng vòng lặp sẵn có.
+   */
+  use_credit?: number
 }
 
 /**
@@ -56,8 +65,15 @@ export interface CashReceiptInput {
  * to nhất trên màn lập phiếu. Hiện tổng khoản nợ đã chọn thay cho nó là
  * bảo kế toán thu nhiều hơn số khách thật sự phải đưa.
  */
-export function cashToCollect(linesTotal: number, creditsTotal: number): number {
-  return Math.max(0, Number(linesTotal || 0) - Number(creditsTotal || 0))
+export function cashToCollect(
+  linesTotal: number,
+  creditsTotal: number,
+  useCredit = 0
+): number {
+  return Math.max(
+    0,
+    Number(linesTotal || 0) - Number(creditsTotal || 0) - Number(useCredit || 0)
+  )
 }
 
 /**
@@ -79,6 +95,9 @@ export function explainReceiptError(message: string): string {
   if (m.includes("BAD_CREDIT")) {
     // Ba lý do đều dẫn tới cùng một mã; nói cả ba để người dùng tự soi.
     return "Phiếu trả không đủ điều kiện cấn trừ: phải là phiếu ĐÃ hoàn thành, KHÔNG gắn đơn nào, và chưa cấn trừ vào phiếu thu khác."
+  }
+  if (m.includes("CREDIT_BALANCE_TOO_LOW")) {
+    return m.replace(/^.*CREDIT_BALANCE_TOO_LOW:\s*/, "Không đủ số dư có: ")
   }
   if (m.includes("RECEIPT_NOT_FOUND")) return "Không tìm thấy phiếu thu."
   if (m.includes("ORG_MISMATCH")) return "Phiếu thu không thuộc đơn vị của bạn."
@@ -109,6 +128,7 @@ export async function createCashReceipt(
       notes: input.notes ?? null,
       lines: input.lines,
       credits: input.credits ?? [],
+      use_credit: input.use_credit ?? 0,
     },
   })
   if (error) throw new Error(explainReceiptError(error.message || String(error)))

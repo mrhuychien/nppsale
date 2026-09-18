@@ -466,10 +466,21 @@ describe("M2.4 — /receivables", () => {
     expect(RECEIVABLES).toContain("totalAging > 0 ?")
   })
 
-  /** Số CÒN NỢ mới là con số quyết định có đi thu hay không. */
-  it("thẻ hiện số còn nợ, không phải số phải thu ban đầu", () => {
-    expect(RECEIVABLES).toContain("amount={formatCurrency(remaining)}")
-    expect(RECEIVABLES).toContain('amountTone="danger"')
+  /**
+   * Số CÒN NỢ mới là con số quyết định có đi thu hay không.
+   *
+   * ⚠ VÀ TỪ Q11 CÒN MỘT CHIỀU NỮA: dòng đã thu dư có `paid > amount`.
+   * Truy vấn của màn này KHÔNG lọc trạng thái nên dòng đó vẫn nằm đây;
+   * `amount - paid` trần trụi in ra số ÂM tô ĐỎ — trông y hệt một khoản
+   * nợ khẩn cấp, trong khi sự thật ngược lại: nhà phân phối đang giữ
+   * tiền của khách. Kẹp về 0 VÀ gọi tên phần dư.
+   */
+  it("thẻ hiện số còn nợ; dòng thu dư thì gọi tên và đổi màu", () => {
+    expect(RECEIVABLES).toContain("const remaining = remainingOf(r)")
+    expect(RECEIVABLES).toContain("const credit = creditOf(r)")
+    expect(RECEIVABLES, "lại tự trừ tay, không kẹp").not.toContain("r.amount - r.paid")
+    expect(RECEIVABLES).toContain('amountTone={credit > 0 ? "success" : "danger"}')
+    expect(RECEIVABLES).toContain("Dư có")
   })
 
   /** Đã kiểm: collect/page.tsx đọc `receivableId`. */

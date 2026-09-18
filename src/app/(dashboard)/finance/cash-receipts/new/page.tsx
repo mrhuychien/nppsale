@@ -15,8 +15,15 @@
  * độc lập".
  *
  * ⚠ CON SỐ TO NHẤT MÀN PHẢI LÀ SỐ TIỀN KHÁCH ĐƯA THẬT, tức tổng khoản nợ
- * đã chọn TRỪ tổng khoản có cấn trừ. Hiện tổng khoản nợ thay cho nó là
- * bảo kế toán thu nhiều hơn số khách phải trả.
+ * đã chọn TRỪ tổng khoản có cấn trừ TRỪ phần rút từ số dư có. Hiện tổng
+ * khoản nợ thay cho nó là bảo kế toán thu nhiều hơn số khách phải trả.
+ *
+ * ⚠ SỐ DƯ CÓ KHÔNG NẰM TRONG DANH SÁCH KHOẢN NỢ, VÀ ĐÓ LÀ CỐ Ý. Dòng
+ * công nợ trả dư có `status = 'paid'` (xem `_wf2_recompute_receivable`),
+ * nên bộ lọc `open/partial/overdue` của danh sách trên loại nó ra — đúng,
+ * vì nó không phải khoản để đi thu. Nhưng thế thì tiền của khách BIẾN
+ * MẤT KHỎI MÀN: kế toán không thấy nó ở đâu để đem ra dùng. Vì vậy có
+ * một truy vấn RIÊNG, KHÔNG lọc trạng thái, chỉ hỏi `paid > amount`.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -47,7 +54,8 @@ import { PAYMENT_METHODS } from "@/lib/constants"
 import { errorMessage } from "@/lib/errors"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { createCashReceipt, cashToCollect } from "@/lib/finance/cash-receipt"
-import { Save, HandCoins, Undo2, TriangleAlert } from "lucide-react"
+import { totalCredit, type ReceivableAmounts } from "@/lib/receivables/credit"
+import { Save, HandCoins, Undo2, TriangleAlert, PiggyBank } from "lucide-react"
 
 interface OpenReceivable {
   id: string
@@ -81,6 +89,9 @@ export default function NewCashReceiptPage() {
 
   const [receivables, setReceivables] = useState<OpenReceivable[] | null>(null)
   const [credits, setCredits] = useState<StandaloneCredit[] | null>(null)
+  /** Các dòng công nợ ĐANG DƯ của khách — nguồn của số dư có (Q11). */
+  const [creditRows, setCreditRows] = useState<ReceivableAmounts[] | null>(null)
+  const [useCredit, setUseCredit] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
   /** id khoản nợ → số tiền thu. `MoneyInput` trả về số đã phân tích sẵn. */
   const [amounts, setAmounts] = useState<Record<string, number>>({})
@@ -116,12 +127,14 @@ export default function NewCashReceiptPage() {
     async (cid: string) => {
       setReceivables(null)
       setCredits(null)
+      setCreditRows(null)
       setAmounts({})
       setPickedCredits(new Set())
+      setUseCredit(0)
       setLoadError(null)
       if (!cid) return
 
-      const [recRes, credRes] = await Promise.all([
+      const [recRes, credRes, balRes] = await Promise.all([
         supabase
           .from("receivables")
           .select("id, order_id, amount, paid, due_date, status, order:sales_orders(order_code)")
@@ -142,13 +155,37 @@ export default function NewCashReceiptPage() {
           .is("order_id", null)
           .is("applied_receipt_id", null)
           .order("created_at", { ascending: true }),
+        /**
+         * SỐ DƯ CÓ — phải tự cộng ở đây, và phải cộng ĐỦ.
+         *
+         * ⚠ KHÔNG LỌC TRẠNG THÁI. Dòng trả dư mang `status = 'paid'` (xem
+         * `_wf2_recompute_receivable`) nên mọi bộ lọc "còn mở" gạt nó đi —
+         * mà nó chính là tiền của khách đang nằm ở nhà phân phối. Tập
+         * phải KHỚP ĐÚNG thứ `create_cash_receipt` cộng vào `v_avail`:
+         * mọi dòng công nợ của khách, `GREATEST(0, paid - amount)`.
+         *
+         * ⚠ PostgREST KHÔNG SO ĐƯỢC CỘT VỚI CỘT, nên không có cách hỏi
+         * thẳng `paid > amount`; phải kéo về rồi cộng. Và phải kéo QUA
+         * `fetchAllForAggregate`: một khách lâu năm vượt 1000 dòng là
+         * PostgREST cắt bớt trong im lặng, số dư hiện ra THIẾU, kế toán
+         * rút ít hơn số khách thật sự có.
+         */
+        fetchAllForAggregate<ReceivableAmounts>((from, to) =>
+          supabase
+            .from("receivables")
+            .select("amount, paid", { count: "exact" })
+            .eq("customer_id", cid)
+            .order("id")
+            .range(from, to)
+        ),
       ])
-      if (recRes.error || credRes.error) {
-        setLoadError(errorMessage(recRes.error ?? credRes.error))
+      if (recRes.error || credRes.error || balRes.error) {
+        setLoadError(errorMessage(recRes.error ?? credRes.error ?? balRes.error))
         return
       }
       setReceivables(((recRes.data as unknown) as OpenReceivable[]) ?? [])
       setCredits(((credRes.data as unknown) as StandaloneCredit[]) ?? [])
+      setCreditRows(balRes.rows)
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps
   )
@@ -171,7 +208,11 @@ export default function NewCashReceiptPage() {
         .reduce((s, c) => s + Number(c.credit_note_amount || 0), 0),
     [credits, pickedCredits]
   )
-  const toCollect = cashToCollect(linesTotal, creditsTotal)
+  /** Tiền của khách đang nằm ở nhà phân phối, rút được. */
+  const creditBalance = useMemo(() => totalCredit(creditRows ?? []), [creditRows])
+  /** Rút nhiều nhất bấy nhiêu: không quá số dư, không quá phần còn phải trả. */
+  const maxUsable = Math.max(0, Math.min(creditBalance, linesTotal - creditsTotal))
+  const toCollect = cashToCollect(linesTotal, creditsTotal, useCredit)
 
   /**
    * ⚠ BA LUẬT NÀY LÀ BẢN SAO CỦA BA PHÉP KIỂM TRONG RPC. Chặn ở đây để
@@ -185,6 +226,9 @@ export default function NewCashReceiptPage() {
     [receivables, amounts]
   )
   const creditOverflow = creditsTotal > linesTotal
+  /** Bản sao của `CREDIT_BALANCE_TOO_LOW` và `CREDIT_EXCEEDS_SELECTED`. */
+  const useOverBalance = useCredit > creditBalance + 0.01
+  const useOverSelected = useCredit > linesTotal - creditsTotal + 0.01
   const nothingPicked = linesTotal <= 0 && creditsTotal <= 0
   const canSave =
     !!user &&
@@ -192,6 +236,8 @@ export default function NewCashReceiptPage() {
     !!customerId &&
     !nothingPicked &&
     !creditOverflow &&
+    !useOverBalance &&
+    !useOverSelected &&
     overAmount.length === 0 &&
     !saving
 
@@ -209,14 +255,15 @@ export default function NewCashReceiptPage() {
         notes: notes.trim() || null,
         lines,
         credits: Array.from(pickedCredits).map((return_id) => ({ return_id })),
+        use_credit: useCredit,
       })
-      toast({
-        title: "Đã lập phiếu thu",
-        description:
-          creditsTotal > 0
-            ? `Khách đưa ${formatCurrency(toCollect)}, cấn trừ ${formatCurrency(creditsTotal)} từ phiếu trả.`
-            : `Khách đưa ${formatCurrency(toCollect)}.`,
-      })
+      // ⚠ NÓI RÕ TỪNG NGUỒN. "Đã lập phiếu thu 500.000" khi khách chỉ đưa
+      //   200.000 là câu dễ bị nhớ nhầm nhất lúc đối chiếu tiền mặt cuối
+      //   ngày.
+      const parts = [`Khách đưa ${formatCurrency(toCollect)}`]
+      if (creditsTotal > 0) parts.push(`cấn trừ ${formatCurrency(creditsTotal)} từ phiếu trả`)
+      if (useCredit > 0) parts.push(`rút ${formatCurrency(useCredit)} từ số dư có`)
+      toast({ title: "Đã lập phiếu thu", description: `${parts.join(", ")}.` })
       router.push(`/finance/cash-receipts/${id}`)
     } catch (err) {
       toast({ title: "Không lập được phiếu thu", description: errorMessage(err), variant: "destructive" })
@@ -443,6 +490,65 @@ export default function NewCashReceiptPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* ⚠ CHỈ HIỆN KHI KHÁCH THẬT SỰ CÓ SỐ DƯ. Một ô "rút số dư có"
+              luôn nằm đó với số 0 dạy kế toán quen mắt bỏ qua nó, đúng
+              lúc cần thì không ai nhìn. */}
+          {creditBalance > 0 && (
+            <Card className="border-success/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PiggyBank className="h-4 w-4" /> Số dư có của khách
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                {/* Nói TIỀN NÀY TỪ ĐÂU RA, không chỉ nói có bao nhiêu. */}
+                <p className="text-xs font-semibold leading-snug text-muted-foreground">
+                  Khách đang gửi {formatCurrency(creditBalance)} ở nhà phân phối — phần trả dư
+                  sau khi trả hàng. Rút ra để đắp vào các khoản nợ đang chọn; phần rút không
+                  phải tiền khách đưa hôm nay.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="grid flex-1 gap-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Rút từ số dư
+                    </Label>
+                    <MoneyInput
+                      value={useCredit || ""}
+                      onChange={(v) => setUseCredit(Number(v) || 0)}
+                      inputClassName="tabular-nums"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-5"
+                    disabled={maxUsable <= 0}
+                    onClick={() => setUseCredit(maxUsable)}
+                    title={
+                      maxUsable <= 0
+                        ? "Chọn khoản nợ trước — số dư chỉ đắp được vào khoản đang thu."
+                        : undefined
+                    }
+                  >
+                    Rút tối đa
+                  </Button>
+                </div>
+                {useOverBalance && (
+                  <p className="text-xs font-bold text-error">
+                    Vượt số dư — nhiều nhất {formatCurrency(creditBalance)}.
+                  </p>
+                )}
+                {!useOverBalance && useOverSelected && (
+                  <p className="text-xs font-bold text-error">
+                    Rút nhiều hơn phần còn phải trả thì lại sinh số dư mới ở chỗ khác. Nhiều
+                    nhất {formatCurrency(Math.max(0, linesTotal - creditsTotal))}.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <aside className="space-y-4 self-start lg:sticky lg:top-4">
@@ -453,6 +559,9 @@ export default function NewCashReceiptPage() {
             <CardContent className="grid gap-2 text-sm">
               <Row label="Khoản nợ đã chọn" value={formatCurrency(linesTotal)} />
               <Row label="Cấn trừ phiếu trả" value={`−${formatCurrency(creditsTotal)}`} />
+              {creditBalance > 0 && (
+                <Row label="Rút số dư có" value={`−${formatCurrency(useCredit)}`} />
+              )}
               <div className="h-px bg-border" />
               {/* ⚠ ĐÂY LÀ CON SỐ KHÁCH ĐƯA THẬT, và là con số RPC ghi vào
                   phiếu. Để tổng khoản nợ ở vị trí này là bảo kế toán thu

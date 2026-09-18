@@ -670,10 +670,14 @@ ALTER TABLE cash_receipt_lines
 ALTER TABLE cash_receipt_lines DROP CONSTRAINT IF EXISTS chk_cash_receipt_lines_kind;
 ALTER TABLE cash_receipt_lines
   ADD CONSTRAINT chk_cash_receipt_lines_kind
-  CHECK (kind IN ('payment', 'return_credit'));
+  CHECK (kind IN ('payment', 'return_credit', 'credit_applied'));
 
 COMMENT ON COLUMN cash_receipt_lines.kind IS
-  'payment = khách trả tiền. return_credit = cấn trừ bằng đơn trả độc lập.';
+  'payment = khách trả tiền. return_credit = cấn trừ bằng đơn trả độc '
+  'lập. credit_applied = chuyển SỐ DƯ CÓ của khách sang khoản nợ khác '
+  '(Q11) — đi thành CẶP: một dòng ÂM rút ở khoản đang dư, một dòng DƯƠNG '
+  'đắp vào khoản được thu. Nhờ đi theo cặp mà void_cash_receipt đảo được '
+  'cả hai vế bằng đúng vòng lặp sẵn có, không cần biết gì thêm.';
 
 -- 9.3 Khoản trả có thể là tiền, hoặc là khoản có từ đơn trả
 DO $$
@@ -695,7 +699,12 @@ END $$;
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS chk_payments_method_v2;
 ALTER TABLE payments
   ADD CONSTRAINT chk_payments_method_v2
-  CHECK (method IS NULL OR method IN ('cash', 'transfer', 'ewallet', 'return_credit'));
+  CHECK (method IS NULL OR method IN ('cash', 'transfer', 'ewallet', 'return_credit', 'credit_applied'));
+
+-- ⚠ `payments.amount` KHÔNG có ràng buộc dấu, và Q11 dựa vào điều đó: vế
+--   rút của bút toán chuyển số dư có ghi một dòng ÂM. Đừng thêm
+--   `CHECK (amount > 0)` — thêm là bút toán chuyển hết đường ghi, và
+--   `void_cash_receipt` mất khả năng đảo bằng cùng một vòng lặp.
 
 
 -- =====================================================================

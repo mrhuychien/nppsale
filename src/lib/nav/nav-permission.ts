@@ -140,7 +140,59 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
  *      kiểm bắt được ngay, vì nó đối chiếu từng đường dẫn của cả ba menu
  *      với bảng này.
  */
+/**
+ * Màn của LUỒNG CŨ, ẩn khỏi mọi menu từ P7 — soạn hàng, hàng chờ, và giao
+ * hàng qua tài xế.
+ *
+ * ⚠ ẨN, KHÔNG XOÁ. Dữ liệu cũ của ba màn này là chứng từ: phiếu soạn
+ * hàng, chuyến giao, biên bản bàn giao. Gõ thẳng đường dẫn vẫn vào XEM
+ * được — chỉ không còn đường bấm tới từ menu, và các nút GHI trong đó đã
+ * bị khoá riêng.
+ *
+ * ⚠ VÌ SAO LÀ MỘT DANH SÁCH RIÊNG chứ không gài bằng quyền: `owner` được
+ * `canAccessFeature` trả true VÔ ĐIỀU KIỆN, mà chủ nhà đúng là người dùng
+ * chính của những màn này. Gài bằng quyền là không giấu được khỏi đúng
+ * người cần giấu.
+ *
+ * ⚠ HỆ QUẢ CẦN BIẾT: vai trò `driver` chỉ có hai màn, mà `/deliveries` là
+ * một trong hai. Ẩn nó đi là tài xế đăng nhập vào không còn việc gì —
+ * đúng ý workflow v2 (không còn bước giao qua tài xế), nhưng nếu cần bật
+ * lại thì bỏ đúng một dòng dưới đây (mục D12 trong sổ tiến độ).
+ */
+export const LEGACY_V2_HREFS: ReadonlySet<string> = new Set([
+  "/deliveries",
+  "/inventory/stock-out",
+  "/inventory/pending",
+])
+
 export function canSeeHref(role: Role | null | undefined, href: string): boolean {
+  /**
+   * ⚠ ĐẶT TRƯỚC CẢ `always` VÀ TRƯỚC MỌI PHÉP KIỂM QUYỀN. Module luồng cũ
+   * ẩn với MỌI vai trò, kể cả chủ.
+   *
+   * ⚠ NHƯNG CHỈ ẨN KHỎI MENU, KHÔNG CHẶN CỬA VÀO — xem `canEnterHref`.
+   */
+  if (LEGACY_V2_HREFS.has(href)) return false
+  return canEnterHref(role, href)
+}
+
+/**
+ * Có được VÀO XEM trang `href` không.
+ *
+ * ⚠ ẨN KHỎI MENU VÀ CHẶN CỬA VÀO LÀ HAI VIỆC KHÁC NHAU. Dữ liệu của luồng
+ * cũ là CHỨNG TỪ: phiếu soạn hàng, chuyến giao, biên bản bàn giao. Người
+ * ta vẫn phải mở lại được để tra — qua đường dẫn cũ, qua thông báo, qua
+ * thanh "việc đang dở". Chặn luôn cửa vào là xoá mất lịch sử khỏi tầm
+ * với, mà chúng ta chỉ định thôi dùng chứ không định vứt.
+ *
+ * `useRoleGuard` gọi hàm NÀY, không gọi `canSeeHref`. Gọi nhầm là mọi
+ * đường dẫn luồng cũ đá người dùng về trang chủ, kể cả chủ nhà.
+ *
+ * Việc chặn GHI thì nằm ở từng màn — các nút đụng kho và tiền đã bị khoá
+ * riêng, vì cơ sở dữ liệu nay từ chối trạng thái cũ và màn chỉ ghi được
+ * NỬA CHỪNG trước khi bị từ chối.
+ */
+export function canEnterHref(role: Role | null | undefined, href: string): boolean {
   if (!role) return false
   const p = NAV_PERMISSION[href]
   if (!p) return false

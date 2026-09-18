@@ -30,6 +30,7 @@ import {
   HandCoins, CreditCard, Eye, FileText } from "lucide-react"
 import Link from "next/link"
 import type { Receivable } from "@/types"
+import { remainingOf, creditOf } from "@/lib/receivables/credit"
 
 type BucketKey = "current" | "warning" | "overdue" | "critical"
 
@@ -332,7 +333,13 @@ export default function ReceivablesPage() {
               </TableHeader>
               <TableBody>
                 {receivables.map((r) => {
-                  const remaining = r.amount - r.paid
+                  /* ⚠ KẸP VỀ 0 VÀ GỌI TÊN PHẦN DƯ. Truy vấn của màn này
+                     KHÔNG lọc trạng thái, nên dòng đã thu dư (Q11) vẫn
+                     nằm đây; `amount - paid` trần trụi in ra số ÂM bằng
+                     màu đỏ — trông y hệt một khoản nợ khẩn cấp, trong khi
+                     sự thật là nhà phân phối đang giữ tiền của khách. */
+                  const remaining = remainingOf(r)
+                  const credit = creditOf(r)
                   const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
                   return (
                     <TableRow
@@ -344,7 +351,15 @@ export default function ReceivablesPage() {
                       {show("salesUser") && <TableCell>{r.sales_user?.full_name || "-"}</TableCell>}
                       {show("amount") && <TableCell className="text-right tabular-nums">{formatCurrency(r.amount)}</TableCell>}
                       {show("paid") && <TableCell className="text-right tabular-nums">{formatCurrency(r.paid)}</TableCell>}
-                      {show("remaining") && <TableCell className="text-right font-medium tabular-nums">{formatCurrency(remaining)}</TableCell>}
+                      {show("remaining") && (
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {credit > 0 ? (
+                            <span className="text-tertiary">Dư có {formatCurrency(credit)}</span>
+                          ) : (
+                            formatCurrency(remaining)
+                          )}
+                        </TableCell>
+                      )}
                       {show("dueDate") && <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>}
                       {show("status") && <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>}
                       {show("action") && (
@@ -372,7 +387,8 @@ export default function ReceivablesPage() {
           {/* Mobile card list */}
           <div className="lg:hidden space-y-3">
             {mobileReceivables.map((r) => {
-              const remaining = r.amount - r.paid
+              const remaining = remainingOf(r)
+              const credit = creditOf(r)
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
               const overdueDays = r.due_date ? daysOverdue(r.due_date) : 0
               return (
@@ -382,8 +398,9 @@ export default function ReceivablesPage() {
                   title={r.customer?.store_name || "-"}
                   // Số CÒN NỢ là con số cần thấy, không phải số phải thu
                   // ban đầu — nó quyết định có đi thu hay không.
-                  amount={formatCurrency(remaining)}
-                  amountTone="danger"
+                  amount={credit > 0 ? `+${formatCurrency(credit)}` : formatCurrency(remaining)}
+                  /* Dư có KHÔNG phải nợ — tô đỏ là báo động nhầm chiều. */
+                  amountTone={credit > 0 ? "success" : "danger"}
                   accent={aging === "critical" ? "danger" : aging === "overdue" ? "warning" : null}
                   subtitle={
                     <>

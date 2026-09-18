@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   NAV_PERMISSION,
+  LEGACY_V2_HREFS,
   canSeeHref,
   filterByPermission,
   filterNavGroups,
@@ -130,11 +131,23 @@ describe("Phép lọc dùng chung", () => {
 
   it("bỏ mục không có quyền", () => {
     const got = filterByPermission("driver", [
-      { href: "/deliveries" },
+      { href: "/receivables/collect" },
       { href: "/customers" },
       { href: "/settings/permissions" },
     ])
-    expect(got.map((g) => g.href)).toEqual(["/deliveries"])
+    expect(got.map((g) => g.href)).toEqual(["/receivables/collect"])
+  })
+
+  /**
+   * ⚠ MÀN LUỒNG CŨ ẨN VỚI MỌI VAI TRÒ, KỂ CẢ CHỦ. Gài bằng quyền là
+   * không giấu được: `canAccessFeature` trả true vô điều kiện cho owner,
+   * mà chủ nhà đúng là người dùng chính của những màn đó.
+   */
+  it("phép lọc bỏ luôn màn của luồng cũ", () => {
+    for (const role of ["owner", "manager", "warehouse", "driver"] as const) {
+      const got = filterByPermission(role, [{ href: "/deliveries" }, { href: "/orders" }])
+      expect(got.map((g) => g.href), `${role} vẫn thấy màn luồng cũ`).not.toContain("/deliveries")
+    }
   })
 
   it("chưa biết vai trò thì trả danh sách rỗng", () => {
@@ -182,10 +195,14 @@ describe("Hai cửa đóng sẵn", () => {
 })
 
 describe("Từng vai trò chỉ thấy phần của mình", () => {
-  it("chủ doanh nghiệp thấy tất cả", () => {
+  /** ⚠ Trừ màn của luồng cũ — chúng ẩn với mọi vai trò, xem `LEGACY_V2_HREFS`. */
+  it("chủ doanh nghiệp thấy tất cả, trừ màn luồng cũ đã ẩn", () => {
     for (const h of Object.keys(NAV_PERMISSION)) {
+      if (LEGACY_V2_HREFS.has(h)) continue
       expect(canSeeHref("owner", h), h).toBe(true)
     }
+    // Và danh sách ẩn không được rỗng — rỗng nghĩa là P7 đã bị gỡ.
+    expect(LEGACY_V2_HREFS.size).toBeGreaterThan(0)
   })
 
   /** Tài xế không có quyền khách hàng — mặc định `customers: []`. */
@@ -193,8 +210,12 @@ describe("Từng vai trò chỉ thấy phần của mình", () => {
     expect(canSeeHref("driver", "/customers")).toBe(false)
     expect(canSeeHref("driver", "/inventory")).toBe(false)
     expect(canSeeHref("driver", "/settings")).toBe(false)
-    // Nhưng vẫn phải vào được phần việc của mình.
-    expect(canSeeHref("driver", "/deliveries")).toBe(true)
+    /**
+     * ⚠ `/deliveries` ĐÃ ẨN Ở P7 — workflow v2 không còn bước giao qua
+     * tài xế. Hệ quả: tài xế chỉ còn màn thu tiền. Bật lại module là bỏ
+     * một dòng trong `LEGACY_V2_HREFS` (mục D12 trong sổ tiến độ).
+     */
+    expect(canSeeHref("driver", "/deliveries")).toBe(false)
     expect(canSeeHref("driver", "/receivables/collect")).toBe(true)
   })
 

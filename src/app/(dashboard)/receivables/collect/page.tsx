@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { totalRemaining } from "@/lib/receivables/credit"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -225,7 +226,9 @@ export default function CollectPaymentPage() {
     : "Thu tiền tại hiện trường"
   const backHref = customerIdParam ? `/customers/${customerIdParam}` : "/receivables"
 
-  const totalOutstanding = receivables.reduce((sum, r) => sum + (r.amount - r.paid), 0)
+  // ⚠ Kẹp từng dòng: từ Q11 một dòng có thể đã thu dư, và trừ trần trụi
+  // thì phần dư xoá bớt nợ của dòng khác — tổng phải thu nhỏ hơn thực tế.
+  const totalOutstanding = totalRemaining(receivables)
 
   /** Rời màn — đúng chỗ trước đây gọi thẳng sau khi ghi xong. */
   const finish = () => {

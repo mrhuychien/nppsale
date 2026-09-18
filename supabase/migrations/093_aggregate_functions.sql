@@ -126,7 +126,12 @@ AS $$
       rc.customer_id,
       COALESCE(rc.amount, 0) AS amount,
       COALESCE(rc.paid, 0)   AS paid,
-      COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,
+      -- ⚠ Q11 — KẸP VỀ 0. Từ khi cho phép ghi SỐ DƯ CÓ (`paid > amount`,
+      --   xem mig 120 `_wf2_recompute_receivable`), hiệu này có thể ÂM.
+      --   Hàm này KHÔNG lọc `status <> 'paid'` như hai hàm kia, nên dòng
+      --   dư lọt vào và số dư có bị TRỪ THẲNG vào công nợ của NVBH — con
+      --   số trên màn nhỏ hơn thực tế, có khi âm, và không lỗi nào bắn ra.
+      GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0)) AS remaining,
       rc.status,
       rc.status <> 'paid' AS has_debt,
       GREATEST(0, CURRENT_DATE - COALESCE(rc.due_date, CURRENT_DATE)) AS aging_days
@@ -143,8 +148,10 @@ AS $$
     COALESCE(SUM(r.paid), 0),
     COALESCE(SUM(r.amount), 0),
     COALESCE(SUM(r.remaining) FILTER (WHERE r.status = 'overdue'), 0),
+    -- ⚠ Q11 — KẸP TRẦN 100%. Dòng dư có `paid > amount`, nên tỉ lệ thu
+    --   được vượt 100 và người đọc tưởng số liệu hỏng.
     CASE WHEN COALESCE(SUM(r.amount), 0) > 0
-         THEN ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer
+         THEN LEAST(100, ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer)
          ELSE 0 END,
     CASE WHEN COUNT(*) FILTER (WHERE r.has_debt) > 0
          THEN ROUND(
@@ -190,7 +197,11 @@ AS $$
       rc.customer_id,
       COALESCE(rc.amount, 0) AS amount,
       COALESCE(rc.paid, 0)   AS paid,
-      COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,
+      -- ⚠ Q11 — KẸP VỀ 0, xem giải thích ở `receivables_by_rep`. Hàm này
+      --   có lọc `status <> 'paid'` nên dòng dư thường đã bị loại, NHƯNG
+      --   chỉ đúng chừng nào dòng dư luôn mang status 'paid'. Kẹp ở đây
+      --   là để một lần đặt nhầm status không biến thành số âm trên màn.
+      GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0)) AS remaining,
       rc.status,
       rc.sales_user_id
     FROM receivables rc

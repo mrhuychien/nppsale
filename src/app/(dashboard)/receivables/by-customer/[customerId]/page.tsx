@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { totalRemaining as totalRemainingOf, totalCredit } from "@/lib/receivables/credit"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard, FileText, Clock } from "lucide-react"
 import type { Customer, Receivable, Payment, CustomerAssignment, SalesOrder } from "@/types"
@@ -111,7 +112,14 @@ export default function CustomerDebtDetailPage() {
 
   const totalDebt = receivables.reduce((s, r) => s + r.amount, 0)
   const totalPaid = receivables.reduce((s, r) => s + r.paid, 0)
-  const totalRemaining = totalDebt - totalPaid
+  /**
+   * ⚠ CỘNG TỪNG DÒNG ĐÃ KẸP, KHÔNG TRỪ HAI TỔNG. Từ Q11 một dòng có thể
+   * `paid > amount` (khách trả hàng sau khi đã thanh toán đủ). Trừ hai
+   * tổng thì phần dư của dòng này lặng lẽ xoá bớt nợ của dòng khác —
+   * tổng nhỏ hơn thực tế, có khi âm, và không lỗi nào bắn ra.
+   */
+  const totalRemaining = totalRemainingOf(receivables)
+  const totalCreditBal = totalCredit(receivables)
   const creditRemaining = (customer?.credit_limit || 0) - totalRemaining
 
   const openReceivables = receivables.filter((r) => r.status !== "paid")
@@ -240,6 +248,15 @@ export default function CustomerDebtDetailPage() {
           <CardContent className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Còn lại</p>
             <p className="text-xl font-black mt-1 text-destructive">{formatCurrency(totalRemaining)}</p>
+            {/* ⚠ NÓI RA PHẦN ĐANG GIỮ HỘ. Mọi phép cộng công nợ đều kẹp
+                phần âm về 0, nên số dư có của khách biến mất khỏi tầm mắt
+                và "Còn lại" luôn khai CAO hơn vị thế thật đúng bằng nó. */}
+            {totalCreditBal > 0 && (
+              <p className="mt-1 text-xs font-bold text-tertiary">
+                Đang giữ hộ {formatCurrency(totalCreditBal)} — nợ ròng{" "}
+                {formatCurrency(totalRemaining - totalCreditBal)}
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

@@ -141,7 +141,10 @@ describe("Phiếu thu: lập, cấn trừ, và huỷ trả công nợ về", () 
     expect(cashToCollect(1_000_000, 300_000)).toBe(700_000)
     // Cấn trừ vượt thì không ra số ÂM — RPC chặn bằng CREDIT_EXCEEDS_SELECTED.
     expect(cashToCollect(300_000, 1_000_000)).toBe(0)
-    expect(RECEIPT_NEW).toContain("cashToCollect(linesTotal, creditsTotal)")
+    // Q11 thêm nguồn thứ ba: phần rút từ số dư có của khách. Ô "Khách
+    // đưa" phải trừ cả ba, không phải hai — chi tiết ở
+    // `workflow-v2-q11-credit.test.ts`.
+    expect(RECEIPT_NEW).toContain("cashToCollect(linesTotal, creditsTotal, useCredit)")
     expect(RECEIPT_NEW).toContain("Khách đưa")
   })
 
@@ -184,8 +187,15 @@ describe("Phiếu thu: lập, cấn trừ, và huỷ trả công nợ về", () 
     )
     expect(RECEIPT_DETAIL).toContain("voidReason.trim()")
     // RPC phải thật sự đảo: xoá payments và trừ lại paid.
-    const i = MIG120.indexOf("void_cash_receipt")
-    const fn = MIG120.slice(i, i + 3000)
+    /**
+     * ⚠ NEO VÀO ĐỊNH NGHĨA HÀM, không vào lần nhắc tên đầu tiên. Q11 thêm
+     * một khối chú thích nhắc `void_cash_receipt` ở TRÊN nó, nên
+     * `indexOf` bắt trúng chú thích và cửa sổ 3000 ký tự trượt khỏi thân
+     * hàm — chốt đỏ vì lý do chẳng liên quan gì tới điều nó canh.
+     */
+    const i = MIG120.indexOf("CREATE OR REPLACE FUNCTION public.void_cash_receipt")
+    expect(i).toBeGreaterThan(0)
+    const fn = MIG120.slice(i, MIG120.indexOf("\n$$;", i))
     expect(fn).toContain("DELETE FROM payments")
     expect(fn).toContain("applied_receipt_id = NULL")
   })

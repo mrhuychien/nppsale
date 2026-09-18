@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { LEGACY_V2_HREFS } from "@/lib/nav/nav-permission"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "next/link"
@@ -276,23 +277,33 @@ export default function InventoryPage() {
               Nhập kho
             </Link>
           </Button>
-          <Button variant="outline" asChild>
-            <Link href="/inventory/stock-out">
-              <ArrowUpFromLine className="mr-2 h-4 w-4" />
-              Xuất kho
-            </Link>
-          </Button>
-          <Button variant="outline" asChild className="relative">
-            <Link href="/inventory/pending">
-              <Clock className="mr-2 h-4 w-4" />
-              Chờ xử lý
-              {pendingCount > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-[#fdb022] text-white text-[10px] font-bold h-5 min-w-[20px] px-1">
-                  {pendingCount}
-                </span>
-              )}
-            </Link>
-          </Button>
+          {/* ⚠ HAI Ô CỦA LUỒNG CŨ ĐÃ ẨN Ở P7: "Xuất kho" (soạn hàng) và
+              "Chờ xử lý". Workflow v2 không có bước soạn hàng —
+              `complete_order` tự dựng phiếu xuất khi nhà phân phối bấm
+              Xuất hàng ở màn đơn hàng.
+              ⚠ Ẩn khỏi menu mà để lại ô ở đây thì vẫn bấm tới được, nên
+              hai chỗ phải đọc CÙNG một danh sách `LEGACY_V2_HREFS`. */}
+          {!LEGACY_V2_HREFS.has("/inventory/stock-out") && (
+            <Button variant="outline" asChild>
+              <Link href="/inventory/stock-out">
+                <ArrowUpFromLine className="mr-2 h-4 w-4" />
+                Xuất kho
+              </Link>
+            </Button>
+          )}
+          {!LEGACY_V2_HREFS.has("/inventory/pending") && (
+            <Button variant="outline" asChild className="relative">
+              <Link href="/inventory/pending">
+                <Clock className="mr-2 h-4 w-4" />
+                Chờ xử lý
+                {pendingCount > 0 && (
+                  <span className="ml-2 inline-flex items-center justify-center rounded-full bg-[#fdb022] text-white text-[10px] font-bold h-5 min-w-[20px] px-1">
+                    {pendingCount}
+                  </span>
+                )}
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" asChild>
             <Link href="/inventory/entries">
               <ClipboardList className="mr-2 h-4 w-4" />

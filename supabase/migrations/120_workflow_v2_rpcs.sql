@@ -138,14 +138,27 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- ⚠ Khách đã trả nhiều hơn số nợ mới (trả hàng sau khi đã thanh toán
-  --   đủ). Hệ thống không có khái niệm số dư có, nên hạ amount xuống dưới
-  --   paid là làm biến mất tiền đang giữ của khách. Dừng và bắt huỷ phiếu
-  --   thu trước.
-  IF v_id IS NOT NULL AND v_paid > v_net THEN
-    RAISE EXCEPTION 'OVERPAID_AFTER_CREDIT: khách đã trả % nhưng nợ còn %, huỷ phiếu thu trước khi ghi có', v_paid, v_net
-      USING ERRCODE = 'P0001';
-  END IF;
+  -- ⚠ Q11 — TỪNG CHẶN Ở ĐÂY, NAY CHO QUA. Khi khách trả hàng sau khi đã
+  --   thanh toán đủ thì `paid > amount`. Bản trước RAISE
+  --   'OVERPAID_AFTER_CREDIT' và rollback CẢ `complete_return` — kể cả
+  --   phần nhập kho — kèm lời khuyên "huỷ phiếu thu trước". Nhưng nếu
+  --   tiền vào qua màn thu theo công nợ thì KHÔNG có phiếu thu nào để
+  --   huỷ, nên phiếu trả kẹt vĩnh viễn và hàng khách trả không bao giờ
+  --   vào kho được.
+  --
+  --   Chủ nhà chọn phương án (a): `paid > amount` là HỢP LỆ, phần dư là
+  --   SỐ DƯ CÓ của khách. Khối UPDATE ngay dưới đã đúng sẵn cho ca này:
+  --   nhánh `v_paid >= v_net` bắt luôn trường hợp lớn hơn và đặt status
+  --   'paid', nghĩa là "không còn gì để đòi".
+  --
+  -- ⚠ KHÔNG thêm giá trị mới vào `receivables.status`. Ràng buộc CHECK
+  --   của nó là ẩn danh từ mig 001, và mọi bộ lọc trong kho đều dùng
+  --   `status <> 'paid'` để nói "đã tất toán, đừng tính nữa" — đúng ý.
+  --
+  -- ⚠ HỆ QUẢ ĐÃ BÁO CHỦ NHÀ: `paid > 0` là điều kiện khoá ở
+  --   `_wf2_assert_order_unlocked` và `cancel_return`. Dòng dư luôn có
+  --   `paid > 0`, nên đơn gốc hết sửa/huỷ được và chính phiếu trả vừa
+  --   cứu khỏi kẹt thì không huỷ lại được. Đó là cái giá của (a).
 
   IF v_id IS NOT NULL THEN
     UPDATE receivables
@@ -1155,6 +1168,11 @@ DECLARE
   i          int;
   c          record;
   rl         record;
+  v_use      numeric := GREATEST(0, COALESCE((p->>'use_credit')::numeric, 0));
+  v_avail    numeric;
+  v_left_use numeric;
+  src        record;
+  v_take     numeric;
 BEGIN
   IF NOT public.user_has_permission(auth.uid(), 'receivables.create') THEN
     RAISE EXCEPTION 'FORBIDDEN: bạn không có quyền lập phiếu thu' USING ERRCODE = 'P0001';
@@ -1184,6 +1202,42 @@ BEGIN
   IF v_sum_cred > v_sum_line THEN
     RAISE EXCEPTION 'CREDIT_EXCEEDS_SELECTED: cấn trừ vượt số nợ đã chọn'
       USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ===================================================================
+  -- Q11 — TIÊU SỐ DƯ CÓ CỦA KHÁCH
+  --
+  -- Từ Q11, `receivables.paid > amount` là hợp lệ: phần chênh là tiền
+  -- khách đã đưa mà nhà phân phối còn giữ. `use_credit` là số tiền kế
+  -- toán muốn rút từ đó để đắp vào những khoản nợ đang chọn.
+  --
+  -- ⚠ GHI THÀNH BÚT TOÁN HAI VẾ, KHÔNG GIẢM `paid` TRẦN TRỤI.
+  --   `void_cash_receipt` đảo phiếu thu bằng cách duyệt TỪNG dòng
+  --   `cash_receipt_lines`, xoá `payments` rồi trừ lại `paid` đúng bằng
+  --   `l.amount`. Giảm `paid` mà không sinh dòng tương ứng thì huỷ phiếu
+  --   thu xong `paid` lệch vĩnh viễn với `payments`, và không ai đối
+  --   chiếu lại được.
+  --
+  --   Vế RÚT ghi một dòng ÂM ở khoản đang dư; vế ĐẮP ghi một dòng DƯƠNG ở
+  --   khoản được thu. Khi huỷ, `paid - (-take)` cộng lại đúng chỗ đã rút
+  --   và `paid - take` trừ đúng chỗ đã đắp — vòng lặp sẵn có tự đảo cả
+  --   hai vế, không cần biết gì thêm.
+  -- ===================================================================
+  IF v_use > 0 THEN
+    SELECT COALESCE(sum(GREATEST(0, COALESCE(paid, 0) - COALESCE(amount, 0))), 0)
+      INTO v_avail
+    FROM receivables
+    WHERE org_id = v_org AND customer_id = v_cust;
+
+    IF v_use > v_avail + 0.01 THEN
+      RAISE EXCEPTION 'CREDIT_BALANCE_TOO_LOW: khách chỉ còn % số dư có, không rút được %',
+        v_avail, v_use USING ERRCODE = 'P0001';
+    END IF;
+    -- Rút nhiều hơn phần còn phải trả là sinh ra số dư mới ở chỗ khác.
+    IF v_use > v_sum_line - v_sum_cred + 0.01 THEN
+      RAISE EXCEPTION 'CREDIT_EXCEEDS_SELECTED: số dư có dùng vượt phần còn phải trả'
+        USING ERRCODE = 'P0001';
+    END IF;
   END IF;
 
   -- ⚠ GỘP theo khoản nợ trước khi kiểm. Payload gửi cùng một khoản nợ
@@ -1242,7 +1296,7 @@ BEGIN
       ) VALUES (
         v_org, v_code, COALESCE((p->>'receipt_date')::date, current_date),
         'standalone', 'received',
-        v_sum_line - v_sum_cred, v_sum_line - v_sum_cred,
+        v_sum_line - v_sum_cred - v_use, v_sum_line - v_sum_cred - v_use,
         auth.uid(), now(), auth.uid(), auth.uid(), p->>'notes'
       )
       RETURNING id INTO v_receipt;
@@ -1295,6 +1349,64 @@ BEGIN
 
     UPDATE returns SET applied_receipt_id = v_receipt WHERE id = c.id;
   END LOOP;
+
+  -- Q11 — rút số dư có và đắp vào các khoản nợ đang chọn.
+  IF v_use > 0 THEN
+    v_left_use := v_use;
+    FOR src IN
+      SELECT id, GREATEST(0, COALESCE(paid, 0) - COALESCE(amount, 0)) AS avail
+      FROM receivables
+      WHERE org_id = v_org AND customer_id = v_cust
+        AND COALESCE(paid, 0) > COALESCE(amount, 0)
+      -- Cũ nhất trước: số dư nằm lâu nhất được dùng trước.
+      ORDER BY due_date NULLS LAST, id
+      FOR UPDATE
+    LOOP
+      EXIT WHEN v_left_use <= 0;
+      v_take := LEAST(src.avail, v_left_use);
+      CONTINUE WHEN v_take <= 0;
+
+      -- Vế RÚT: dòng payments ÂM ở khoản đang dư.
+      INSERT INTO payments (receivable_id, collected_by, amount, method, collected_at)
+      VALUES (src.id, auth.uid(), -v_take, 'credit_applied', now())
+      RETURNING id INTO v_pay;
+      INSERT INTO cash_receipt_lines (receipt_id, receivable_id, payment_id, amount, kind)
+      VALUES (v_receipt, src.id, v_pay, -v_take, 'credit_applied');
+
+      UPDATE receivables
+      SET paid = COALESCE(paid, 0) - v_take,
+          status = CASE
+                     WHEN COALESCE(paid, 0) - v_take >= COALESCE(amount, 0) THEN 'paid'
+                     WHEN COALESCE(paid, 0) - v_take > 0                    THEN 'partial'
+                     ELSE 'open'
+                   END
+      WHERE id = src.id;
+
+      -- Vế ĐẮP: rải lên các khoản nợ đã chọn, cùng bảng phân bổ với phần
+      -- cấn trừ phiếu trả nên không đắp quá số đã chọn.
+      i := 0;
+      WHILE i < jsonb_array_length(v_alloc) AND v_take > 0 LOOP
+        v_item := v_alloc->i;
+        v_left := (v_item->>'left')::numeric;
+        IF v_left > 0 THEN
+          v_apply := LEAST(v_left, v_take);
+          INSERT INTO payments (receivable_id, collected_by, amount, method, collected_at)
+          VALUES ((v_item->>'receivable_id')::uuid, auth.uid(), v_apply, 'credit_applied', now())
+          RETURNING id INTO v_pay;
+          INSERT INTO cash_receipt_lines (
+            receipt_id, order_id, receivable_id, payment_id, amount, kind
+          ) VALUES (
+            v_receipt, NULLIF(v_item->>'order_id', '')::uuid,
+            (v_item->>'receivable_id')::uuid, v_pay, v_apply, 'credit_applied'
+          );
+          v_alloc := jsonb_set(v_alloc, ARRAY[i::text, 'left'], to_jsonb(v_left - v_apply));
+          v_take := v_take - v_apply;
+          v_left_use := v_left_use - v_apply;
+        END IF;
+        i := i + 1;
+      END LOOP;
+    END LOOP;
+  END IF;
 
   -- Phần còn lại là tiền khách trả thật.
   i := 0;
@@ -1374,9 +1486,18 @@ BEGIN
       DELETE FROM payments WHERE id = l.payment_id;
     END IF;
     IF l.receivable_id IS NOT NULL THEN
+      -- ⚠ Q11 — NHÁNH 'paid' PHẢI ĐỨNG TRƯỚC. Sau khi cho phép số dư có,
+      --   một dòng vẫn có thể còn `paid >= amount` sau khi trừ đi phần
+      --   của phiếu thu này. Bản trước rơi thẳng vào `ELSE 'partial'`,
+      --   mà mọi bộ lọc trong kho dùng `status <> 'paid'` để nói "đã tất
+      --   toán" — nên dòng dư lập tức bị hút vào các phép cộng công nợ và
+      --   màn /receivables/by-customer bắt đầu ra số âm. Không lỗi nào
+      --   bắn ra.
       UPDATE receivables
       SET paid = GREATEST(0, COALESCE(paid, 0) - l.amount),
           status = CASE
+                     WHEN GREATEST(0, COALESCE(paid, 0) - l.amount) >= COALESCE(amount, 0)
+                       THEN 'paid'
                      WHEN GREATEST(0, COALESCE(paid, 0) - l.amount) = 0
                        THEN CASE WHEN due_date IS NOT NULL AND due_date < current_date
                                  THEN 'overdue' ELSE 'open' END

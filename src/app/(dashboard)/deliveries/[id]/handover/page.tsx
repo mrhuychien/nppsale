@@ -27,6 +27,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -509,6 +510,22 @@ export default function DeliveryHandoverPage() {
   }
 
   const handleSubmit = async () => {
+    /**
+     * ⚠ P7 — LUỒNG CŨ ĐÃ KHOÁ GHI, VÀ Ở ĐÂY GIAO DIỆN LÀ LỚP CHẶN DUY
+     * NHẤT. Bảng `returns` KHÔNG có trigger chặn chuyển trạng thái (mig
+     * 119 chỉ dựng cho `sales_orders`), và mig 120 đã gỡ trigger nhập kho
+     * tự động. Nên lệnh đẩy phiếu trả thẳng vào 'completed' ở hàm này
+     * VẪN CHẠY THÀNH CÔNG — mà hàng không vào kho và công nợ không giảm.
+     * Cơ sở dữ liệu không cãi một câu nào.
+     */
+    if (LEGACY_FLOW_WRITES_LOCKED) {
+      toast({
+        title: "Bước này đã bỏ ở quy trình mới",
+        description: LEGACY_LOCK_HINT["handover"],
+        variant: "destructive",
+      })
+      return
+    }
     if (!user?.org_id || !delivery) return
     const selectedOrders = failedDrafts.filter((f) => f.selected)
     const hasNothing = selectedOrders.length === 0 && itemDrafts.length === 0

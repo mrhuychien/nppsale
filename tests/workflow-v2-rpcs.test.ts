@@ -488,9 +488,46 @@ describe("120 — lỗi lượt soi thứ hai bắt được", () => {
     expect(fn("complete_return")).toContain("ORDER_NOT_COMPLETED")
   })
 
-  /** ⚠ Hạ công nợ xuống dưới số đã thu là làm biến mất tiền của khách. */
-  it("không hạ công nợ xuống dưới số đã thu", () => {
-    expect(fn("_wf2_recompute_receivable")).toContain("OVERPAID_AFTER_CREDIT")
+  /**
+   * ⚠ CHỐT NÀY ĐÃ ĐẢO CHIỀU, CÓ CHỦ Ý — xem Q11 trong sổ câu hỏi.
+   *
+   * Bản cũ đòi `_wf2_recompute_receivable` RAISE `OVERPAID_AFTER_CREDIT`
+   * khi công nợ mới thấp hơn số đã thu. Lý do hồi đó đúng: hệ thống không
+   * có khái niệm số dư có, nên hạ `amount` xuống dưới `paid` là làm biến
+   * mất tiền đang giữ của khách.
+   *
+   * Nhưng phép chặn đó rollback CẢ `complete_return`, kể cả phần nhập
+   * kho, và bảo người dùng "huỷ phiếu thu trước" — việc họ thường KHÔNG
+   * làm được, vì tiền có thể vào qua màn thu theo công nợ và khi đó không
+   * có phiếu thu nào tồn tại. Phiếu trả kẹt vĩnh viễn.
+   *
+   * Chủ nhà chọn phương án (a): cho phép `paid > amount`, phần dư là số
+   * dư có của khách. Nay chốt đúng chiều ngược lại — và chốt thêm rằng
+   * status phải là 'paid', vì mọi bộ lọc trong kho dùng `status <> 'paid'`
+   * để nói "đã tất toán, đừng tính nữa".
+   */
+  it("cho phép số dư có, và gắn đúng status 'paid'", () => {
+    const b = fn("_wf2_recompute_receivable")
+    expect(b, "phép chặn cũ đã quay lại").not.toContain("OVERPAID_AFTER_CREDIT")
+    expect(b).toContain("WHEN v_paid >= v_net THEN 'paid'")
+  })
+
+  /**
+   * ⚠ HUỶ PHIẾU THU PHẢI GẮN LẠI ĐÚNG STATUS. Sau Q11, một dòng vẫn có
+   * thể còn `paid >= amount` sau khi trừ phần của phiếu thu vừa huỷ. Rơi
+   * vào `ELSE 'partial'` là dòng dư bị mọi bộ lọc `status <> 'paid'` hút
+   * vào các phép cộng công nợ, và màn công nợ theo khách ra số ÂM — không
+   * lỗi nào bắn ra.
+   */
+  it("huỷ phiếu thu xét nhánh 'paid' trước", () => {
+    const b = fn("void_cash_receipt")
+    const i = b.indexOf("status = CASE")
+    expect(i).toBeGreaterThan(0)
+    const branch = b.slice(i, i + 500)
+    expect(branch.indexOf("'paid'")).toBeGreaterThan(0)
+    expect(branch.indexOf("'paid'"), "nhánh 'paid' phải đứng trước 'partial'").toBeLessThan(
+      branch.indexOf("'partial'")
+    )
   })
 
   /** ⚠ Hai kế toán bấm cùng lúc, hoặc payload trùng khoản nợ. */

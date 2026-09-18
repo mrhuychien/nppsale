@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -554,6 +555,22 @@ export default function StockOutPage() {
   }
 
   const handleMerge = async () => {
+    /**
+     * ⚠ P7 — LUỒNG CŨ ĐÃ KHOÁ GHI. Hàm này ghi dữ liệu theo NHIỀU BƯỚC
+     * rời nhau, và bước đổi trạng thái đơn nằm ở CUỐI — mà migration 119
+     * nay từ chối trạng thái đó. Để nguyên thì người dùng không nhận
+     * được "bấm vào thì báo lỗi", họ nhận được GHI DỞ: kho đã trừ hoặc
+     * tiền đã ghi, đơn thì không đổi, và không giao dịch nào cuộn lại.
+     * Chặn ở ĐẦU hàm là chỗ duy nhất chưa ghi gì.
+     */
+    if (LEGACY_FLOW_WRITES_LOCKED) {
+      toast({
+        title: "Bước này đã bỏ ở quy trình mới",
+        description: LEGACY_LOCK_HINT["stock-out"],
+        variant: "destructive",
+      })
+      return
+    }
     if (!user || !canUpdate) {
       toast({
         title: "Không đủ quyền",

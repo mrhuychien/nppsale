@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -220,6 +221,22 @@ export default function PendingStockPage() {
   // into a single import stock_entry, then advance the source statuses so
   // the items disappear from "Đơn chờ nhập".
   const handleRestock = async () => {
+    /**
+     * ⚠ P7 — LUỒNG CŨ ĐÃ KHOÁ GHI, VÀ Ở ĐÂY GIAO DIỆN LÀ LỚP CHẶN DUY
+     * NHẤT. Bảng `returns` KHÔNG có trigger chặn chuyển trạng thái (mig
+     * 119 chỉ dựng cho `sales_orders`), và mig 120 đã gỡ trigger nhập kho
+     * tự động. Nên lệnh đẩy phiếu trả thẳng vào 'completed' ở hàm này
+     * VẪN CHẠY THÀNH CÔNG — mà hàng không vào kho và công nợ không giảm.
+     * Cơ sở dữ liệu không cãi một câu nào.
+     */
+    if (LEGACY_FLOW_WRITES_LOCKED) {
+      toast({
+        title: "Bước này đã bỏ ở quy trình mới",
+        description: LEGACY_LOCK_HINT["pending"],
+        variant: "destructive",
+      })
+      return
+    }
     if (!user?.org_id) return
     const retIds = Array.from(selectedReturns)
     const dlIds = Array.from(selectedFailedLines)

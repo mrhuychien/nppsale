@@ -63,9 +63,17 @@ export default function NewBatchPage() {
       toast({ title: "Vui lòng nhập đầy đủ thông tin bắt buộc", variant: "destructive" })
       return
     }
-    const qty = parseInt(qtyInitial)
-    if (qty <= 0) {
-      toast({ title: "Số lượng phải lớn hơn 0", variant: "destructive" })
+    /**
+     * ⚠ 0 LÀ HỢP LỆ, ĐỪNG CHẶN LẠI. Mig 123 dừng phiếu kiểm kê khi sản
+     * phẩm thừa hàng mà chưa có lô nào ("NO_BATCH: … Tạo lô cho sản phẩm
+     * này trước."). Cách đi đúng là tạo một lô RỖNG rồi để phiếu kiểm kê
+     * ghi phần thừa vào đó. Chặn 0 thì lối thoát duy nhất còn lại là gõ
+     * sẵn số thừa vào đây — và phiếu kiểm kê sẽ cộng thêm lần nữa, kho
+     * thành GẤP ĐÔI. Cơ sở dữ liệu không hề cấm 0; chỉ màn này cấm.
+     */
+    const qty = parseInt(qtyInitial, 10)
+    if (!Number.isFinite(qty) || qty < 0) {
+      toast({ title: "Số lượng không hợp lệ (0 trở lên)", variant: "destructive" })
       return
     }
     if (!user?.org_id) {
@@ -163,13 +171,19 @@ export default function NewBatchPage() {
                 <Label>Số lượng ban đầu *</Label>
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
+                  step="any"
                   value={qtyInitial}
                   onChange={(e) => setQtyInitial(e.target.value)}
                   required
                   placeholder="Tồn ban đầu (= tồn hiện tại)"
                 />
                 <p className="text-xs text-muted-foreground">Tồn hiện tại sẽ được đặt bằng số lượng ban đầu.</p>
+                <p className="text-xs text-amber-600">
+                  Đang tạo lô để duyệt phiếu kiểm kê thừa hàng? Nhập <strong>0</strong>. Phiếu
+                  kiểm kê sẽ ghi phần thừa vào lô này — gõ sẵn số thừa ở đây thì kho bị
+                  cộng hai lần.
+                </p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">

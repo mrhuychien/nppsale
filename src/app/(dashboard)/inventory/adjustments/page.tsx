@@ -21,6 +21,7 @@ import { errorMessage } from "@/lib/errors"
 import {
   postStockAdjustment,
   describeAdjustment,
+  productsMissingBatch,
 } from "@/lib/inventory/post-adjustment"
 
 type AdjustmentLine = {
@@ -58,6 +59,8 @@ export default function AdjustmentsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
+  /** Sản phẩm đã có ít nhất một lô — để soi trước lỗi NO_BATCH. */
+  const [productsWithBatch, setProductsWithBatch] = useState<Set<string>>(new Set())
 
   const fetchData = useCallback(async () => {
     if (!user?.org_id) return
@@ -89,8 +92,50 @@ export default function AdjustmentsPage() {
     const qErr = ([draftsRes, postedRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[inventory/adjustments] truy vấn lỗi:", qErr.message)
-    setDrafts(((draftsRes.data as unknown) as Adjustment[]) || [])
+    const draftRows = ((draftsRes.data as unknown) as Adjustment[]) || []
+    setDrafts(draftRows)
     setRecentPosted(((postedRes.data as unknown) as Adjustment[]) || [])
+
+    /**
+     * ⚠ HỎI SẢN PHẨM NÀO ĐÃ CÓ LÔ, ĐỪNG ĐỢI RPC BÁO. Mig 123 dừng phiếu ở
+     * dòng thừa đầu tiên mà sản phẩm chưa có lô nào, rồi rollback tất cả.
+     * Không soi trước thì mỗi lần bấm duyệt chỉ moi ra được đúng một cái
+     * tên — mười sản phẩm là mười vòng.
+     *
+     * ⚠ CHỈ HỎI SẢN PHẨM CỦA DÒNG THỪA KHÔNG RÕ LÔ. Hỏi cả bảng `batches`
+     * là kéo về hàng vạn dòng cho một câu trả lời có/không.
+     */
+    const ids = Array.from(
+      new Set(
+        draftRows
+          .flatMap((d) => d.lines || [])
+          .filter((l) => Number(l.quantity) > 0 && !l.batch_id)
+          .map((l) => l.product_id)
+      )
+    )
+    if (ids.length > 0) {
+      const { data: batchRows, error: batchErr } = await supabase
+        .from("batches")
+        .select("product_id")
+        .eq("org_id", user.org_id)
+        .in("product_id", ids)
+      if (batchErr) {
+        console.error("[inventory/adjustments] soi lô lỗi:", batchErr.message)
+        /**
+         * ⚠ HỎI KHÔNG ĐƯỢC THÌ COI NHƯ ĐỀU CÓ LÔ, ĐỪNG BÁO ĐỘNG. Để rỗng
+         * là gán nhãn "chưa có lô" cho mọi sản phẩm rồi khoá nút duyệt —
+         * một lỗi mạng hoá ra chặn hết công việc. Không chắc thì im, RPC
+         * vẫn là chốt chặn thật.
+         */
+        setProductsWithBatch(new Set(ids))
+      } else {
+        setProductsWithBatch(
+          new Set(((batchRows as Array<{ product_id: string }>) || []).map((b) => b.product_id))
+        )
+      }
+    } else {
+      setProductsWithBatch(new Set())
+    }
     setLoading(false)
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -310,6 +355,7 @@ export default function AdjustmentsPage() {
           {drafts.map((a) => {
             const s = summarize(a)
             const isExpanded = expandedId === a.id
+            const thieuLo = productsMissingBatch(a.lines || [], productsWithBatch)
             return (
               <Card key={a.id} className="border-[#fdb022]/40">
                 <CardHeader className="pb-3">
@@ -361,6 +407,26 @@ export default function AdjustmentsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-3">
+                  {thieuLo.length > 0 && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {thieuLo.length} sản phẩm thừa hàng nhưng chưa có lô nào
+                      </p>
+                      <ul className="text-xs text-amber-800 space-y-0.5 pl-5 list-disc">
+                        {thieuLo.map((p) => (
+                          <li key={p.productId}>{p.name}</li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-700">
+                        Tạo lô cho từng sản phẩm trên với <strong>số lượng ban đầu = 0</strong>,
+                        rồi quay lại duyệt. Nhập sẵn số thừa vào lô thì kho bị cộng hai lần.
+                      </p>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href="/inventory/batches/new">Tạo lô hàng →</Link>
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -373,10 +439,20 @@ export default function AdjustmentsPage() {
                     </Button>
                     {canApprove && (
                       <>
+                        {/* ⚠ KHOÁ + NÓI LÝ DO, đừng giấu nút. Giấu thì người
+                            ta đi tìm xem nút biến đâu mất; khoá kèm `title`
+                            thì đọc là biết phải làm gì. */}
                         <Button
                           size="sm"
                           onClick={() => handleApprove(a)}
-                          disabled={approvingId === a.id || rejectingId === a.id}
+                          disabled={
+                            approvingId === a.id || rejectingId === a.id || thieuLo.length > 0
+                          }
+                          title={
+                            thieuLo.length > 0
+                              ? `Còn ${thieuLo.length} sản phẩm chưa có lô — tạo lô trước rồi mới duyệt được`
+                              : undefined
+                          }
                         >
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
                           {approvingId === a.id ? "Đang duyệt..." : "Duyệt điều chỉnh"}

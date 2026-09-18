@@ -5,6 +5,7 @@ import {
   explainAdjustmentError,
   describeAdjustment,
   postStockAdjustment,
+  productsMissingBatch,
 } from "../src/lib/inventory/post-adjustment"
 
 /**
@@ -215,5 +216,118 @@ describe("Thư viện gọi RPC", () => {
       { batchesTouched: 0, shrinkQty: 0, shrinkValue: 0, surplusQty: 0, surplusValue: 0, expenseId: null },
       fmt
     )).toBe("0 lô đã cập nhật.")
+  })
+})
+
+// =====================================================================
+
+/**
+ * LỐI THOÁT CỦA `NO_BATCH` BỊ BỊT.
+ *
+ * Mig 123 dừng phiếu kiểm kê khi một sản phẩm thừa hàng mà chưa có lô
+ * nào — đúng, vì bản cũ nuốt im phần thừa. Nhưng câu nó bảo người dùng
+ * làm ("Tạo lô cho sản phẩm này trước") lại KHÔNG ĐI ĐƯỢC:
+ *
+ *   • Màn tạo lô bắt số lượng ban đầu > 0.
+ *   • Nhập đúng số thừa → phiếu kiểm kê cộng thêm lần nữa → kho GẤP ĐÔI.
+ *   • Nhập 1 cho qua → kho dư 1, sai âm thầm.
+ *
+ * Lối đúng duy nhất là lô RỖNG (0) rồi để phiếu ghi phần thừa vào.
+ */
+describe("NO_BATCH: lối thoát phải đi được", () => {
+  const FORM = read("src/app/(dashboard)/inventory/batches/new/page.tsx")
+
+  it("màn tạo lô nhận số lượng ban đầu = 0", () => {
+    // Chặn `qty <= 0` là bịt đúng lối thoát duy nhất.
+    expect(FORM).not.toContain("if (qty <= 0)")
+    expect(FORM).toContain("if (!Number.isFinite(qty) || qty < 0)")
+    expect(FORM).toContain("min={0}")
+  })
+
+  it("màn tạo lô cảnh báo cái bẫy cộng hai lần", () => {
+    expect(FORM).toContain("cộng hai lần")
+  })
+
+  /**
+   * ⚠ CHUỖI RỖNG VÀ RÁC PHẢI BỊ CHẶN. `parseInt(" ")` ra NaN, mà
+   * `NaN < 0` là false — nới `qty <= 0` thành `qty < 0` mà quên
+   * `Number.isFinite` là thả NaN xuống thẳng cột NOT NULL.
+   */
+  it("vẫn chặn số lượng không phải số", () => {
+    expect(FORM).toContain("Number.isFinite(qty)")
+  })
+})
+
+describe("soi trước những sản phẩm chưa có lô", () => {
+  const PAGE = read("src/app/(dashboard)/inventory/adjustments/page.tsx")
+  const line = (o: Partial<Parameters<typeof productsMissingBatch>[0][number]>) => ({
+    product_id: "p1",
+    batch_id: null,
+    quantity: 5,
+    product: { name: "Bánh hình kẹo 160g" },
+    ...o,
+  })
+
+  it("nêu tên sản phẩm thừa hàng mà chưa có lô", () => {
+    expect(productsMissingBatch([line({})], new Set())).toEqual([
+      { productId: "p1", name: "Bánh hình kẹo 160g" },
+    ])
+  })
+
+  it("sản phẩm đã có lô thì không nêu", () => {
+    expect(productsMissingBatch([line({})], new Set(["p1"]))).toEqual([])
+  })
+
+  /** Dòng hao hụt chết bằng NOT_ENOUGH_STOCK, không phải NO_BATCH. */
+  it("không nêu dòng hao hụt", () => {
+    expect(productsMissingBatch([line({ quantity: -5 })], new Set())).toEqual([])
+  })
+
+  /** RPC `CONTINUE WHEN quantity = 0` — ở đây cũng phải bỏ qua. */
+  it("không nêu dòng số 0", () => {
+    expect(productsMissingBatch([line({ quantity: 0 })], new Set())).toEqual([])
+  })
+
+  /** Dòng đã chọn lô đi nhánh khác, cộng thẳng vào lô đó. */
+  it("không nêu dòng đã chọn lô", () => {
+    expect(productsMissingBatch([line({ batch_id: "b1" })], new Set())).toEqual([])
+  })
+
+  it("mỗi sản phẩm chỉ nêu một lần", () => {
+    expect(productsMissingBatch([line({}), line({})], new Set())).toHaveLength(1)
+  })
+
+  it("nhiều sản phẩm thì nêu hết, không nêu mỗi cái đầu", () => {
+    const r = productsMissingBatch(
+      [line({}), line({ product_id: "p2", product: { name: "Kem Đậu Xanh" } })],
+      new Set()
+    )
+    expect(r.map((x) => x.name)).toEqual(["Bánh hình kẹo 160g", "Kem Đậu Xanh"])
+  })
+
+  it("thiếu tên thì lấy id, không ra rỗng", () => {
+    expect(productsMissingBatch([line({ product: null })], new Set())[0].name).toBe("p1")
+  })
+
+  it("màn duyệt khoá nút khi còn sản phẩm chưa có lô", () => {
+    expect(PAGE).toContain("|| thieuLo.length > 0")
+    // ⚠ KHOÁ KÈM LÝ DO. Khoá trơ là người dùng tưởng hỏng.
+    expect(PAGE).toContain("Còn ${thieuLo.length} sản phẩm chưa có lô")
+  })
+
+  /**
+   * ⚠ CHỈ HỎI SẢN PHẨM CẦN HỎI. `.in(\"product_id\", ids)` — không có nó
+   * là kéo cả bảng `batches` về trình duyệt cho một câu hỏi có/không.
+   */
+  it("chỉ hỏi lô của những sản phẩm liên quan", () => {
+    expect(PAGE).toContain('.in("product_id", ids)')
+  })
+
+  /**
+   * ⚠ HỎI HỎNG THÌ IM, ĐỪNG KHOÁ HẾT. Set rỗng = "mọi sản phẩm đều chưa
+   * có lô" = khoá sạch nút duyệt vì một lỗi mạng. RPC vẫn là chốt thật.
+   */
+  it("soi lô lỗi thì coi như đều có lô", () => {
+    expect(PAGE).toContain("setProductsWithBatch(new Set(ids))")
   })
 })

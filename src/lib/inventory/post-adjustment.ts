@@ -71,6 +71,46 @@ export function describeAdjustment(r: AdjustmentResult, fmt: (n: number) => stri
   return `${parts.join(" • ")}.`
 }
 
+/** Dòng tối thiểu cần có để soi trước lỗi NO_BATCH. */
+export interface MissingBatchLine {
+  product_id: string
+  batch_id: string | null
+  quantity: number | string
+  product?: { name?: string | null; sku?: string | null } | null
+}
+
+/**
+ * Những sản phẩm sẽ làm phiếu chết vì `NO_BATCH`, soi TRƯỚC khi bấm duyệt.
+ *
+ * ⚠ RPC DỪNG Ở DÒNG HỎNG ĐẦU TIÊN rồi rollback cả giao dịch. Ba sản phẩm
+ * chưa có lô nghĩa là ba lần bấm duyệt, ba lần đọc lỗi, ba lần đi tạo lô —
+ * mỗi lần chỉ biết thêm đúng một cái tên. Liệt kê hết ngay từ đầu để đi
+ * một lượt.
+ *
+ * ⚠ CHỈ SOI DÒNG THỪA KHÔNG RÕ LÔ. Dòng hao hụt đi nhánh FEFO và chết bằng
+ * `NOT_ENOUGH_STOCK` chứ không phải `NO_BATCH`; dòng đã chọn lô thì cộng
+ * thẳng vào lô đó. Gộp chúng vào đây là báo động giả.
+ *
+ * ⚠ DÒNG SỐ 0 BỊ RPC BỎ QUA (`CONTINUE WHEN quantity = 0`) nên ở đây cũng
+ * phải bỏ qua, nếu không thì cảnh báo về một dòng chẳng làm gì cả.
+ */
+export function productsMissingBatch(
+  lines: readonly MissingBatchLine[],
+  productIdsWithBatch: ReadonlySet<string>
+): Array<{ productId: string; name: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ productId: string; name: string }> = []
+  for (const l of lines) {
+    if (Number(l.quantity) <= 0) continue
+    if (l.batch_id) continue
+    if (productIdsWithBatch.has(l.product_id)) continue
+    if (seen.has(l.product_id)) continue
+    seen.add(l.product_id)
+    out.push({ productId: l.product_id, name: l.product?.name || l.product_id })
+  }
+  return out
+}
+
 /** Duyệt một phiếu kiểm kê. */
 export async function postStockAdjustment(
   supabase: SupabaseClient,

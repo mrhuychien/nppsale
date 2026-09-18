@@ -35,9 +35,10 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       Kèm Rút về nháp, gỡ nút ghi công nợ tay ở màn chi tiết, ba loại
       thông báo mới của v2, và `tests/workflow-v2-sales-flow.test.ts`
       (12 chốt, thử phá 10 lần đều đỏ).
-- [ ] **P5** `feat(wf2-P5)` — NPP /orders: 3 tab, Xem nhanh mở rộng
-      (badge cảnh báo + cột Tồn), nút Xuất hàng, in phiếu giao tách
-      thành component dùng chung.
+- [~] **P5** `feat(wf2-P5)` — NPP /orders. Xong 3/4: ba tab cho mọi vai
+      trò, nút Xuất hàng đọc kết quả RPC, Xem nhanh mở rộng (huy hiệu
+      cảnh báo + cột Tồn). **Còn lại:** tách mẫu in phiếu giao thành
+      component dùng chung.
 - [ ] **P6** `feat(wf2-P6)` — Đơn trả (/returns) + Phiếu thu
       (/finance/cash-receipts) gồm cấn trừ đơn trả độc lập.
 - [ ] **P7** `feat(wf2-P7)` — Ẩn module luồng cũ khỏi nav (không xoá
@@ -176,6 +177,34 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   1870 test và `npm run build` đều xanh sau khi làm lại. Lần thử phá thứ
   hai giữ nguyên văn trong bộ nhớ theo khoá và kiểm tệp khớp từng byte
   sau khi phục hồi.
+
+## Ghi chú P5 (đang làm)
+
+- Trước khi viết một dòng nào, cho bốn người ĐO bốn mảng việc của P5.
+  Bản đo bắt được hai chỗ mà đọc lướt không thấy, và cả hai đều đắt:
+  1. **Nút Xuất hàng vứt cả năm cột RPC trả về.** Khi đơn vị bật cho
+     phép bán âm, `post_stock_export` KHÔNG ném lỗi lúc thiếu hàng — nó
+     cho tồn âm, vẫn sinh công nợ đủ tiền, vẫn trả `error = null`. Màn
+     báo "Đã xuất hàng", kho đóng hàng theo phiếu, tài xế tới nơi thì
+     thiếu. Cột `short_qty` sinh ra đúng để chặn cảnh đó.
+  2. **Ba tab mở ra một cái bẫy tìm kiếm.** Tìm và trạng thái nối AND
+     trong cùng một truy vấn, mà ô tìm trên thanh tiêu đề đẩy sang
+     `/orders?q=…` không kèm trạng thái — nên nó đáp xuống tab Phiếu tạm
+     và trả rỗng cho mọi đơn đã hoàn thành hay đã huỷ. Lỗi này do chính
+     P4 gieo và đã sống được một commit.
+- Cột Tồn ở Xem nhanh bám theo ĐÚNG mã của RPC, không theo thói quen các
+  màn khác: nguồn là `batches` lọc `qty_on_hand > 0` (không lọc khu vực
+  kho, không lọc hạn dùng — RPC không lọc), đơn vị cơ sở, hệ số lấy từ
+  ảnh chụp `sales_order_lines.conversion_factor` chứ không tra danh mục,
+  và CỘNG cả hàng đổi của phiếu trả còn nháp. Lệch một trong bốn điều đó
+  là cột này còn tệ hơn không có.
+- Thiếu tồn hiện VÀNG hay ĐỎ tuỳ `organizations.allow_oversell`: đơn vị
+  cho phép bán âm thì RPC vẫn xuất, tô đỏ ở đó là làm người ta không dám
+  bấm một nút vốn bấm được.
+- Một chốt test NÓI DỐI bị bắt trong lượt thử phá: nó soi chuỗi
+  `INSUFFICIENT_STOCK` trong tệp, mà cái tên đó còn nằm trong khối chú
+  thích đầu tệp — tắt hẳn nhánh dịch lỗi mà chốt vẫn xanh. Đã thay bằng
+  test gọi thẳng hàm.
 
 ## Quy ước
 

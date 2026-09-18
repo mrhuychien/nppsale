@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import {
+  previewOrderStock,
+  totalShortBase,
+  splitWarnings,
+} from "../src/lib/orders/order-stock-preview"
 
 /**
  * Luồng NVBH của workflow v2 (Coder Pack mục 4).
@@ -355,6 +360,91 @@ describe("Nút Xuất hàng nói đúng chuyện đã xảy ra", () => {
    */
   it("cảnh báo chỉ hiện khi thật sự có nội dung", () => {
     expect(TABLE).toContain("pending && !!o.approval_reason?.trim()")
-    expect(DRAWER).toContain("pending && !!order.approval_reason?.trim()")
+    expect(DRAWER).toContain("pending && warnings.length > 0")
+    // Và phép tách phải tự loại chuỗi rỗng — kiểm bằng cách GỌI nó.
+    expect(splitWarnings("")).toEqual([])
+    expect(splitWarnings("   ")).toEqual([])
+    expect(splitWarnings(null)).toEqual([])
+    expect(splitWarnings("Đơn 60.000.000 vượt ngưỡng • Khách quá hạn 3 ngày")).toEqual([
+      "Đơn 60.000.000 vượt ngưỡng",
+      "Khách quá hạn 3 ngày",
+    ])
+    // Câu cố định không chứa dấu tách thì ra ĐÚNG MỘT mảnh, không cắt nhỏ.
+    expect(splitWarnings("Tạo offline — NPP kiểm tồn/công nợ trước khi xuất hàng")).toHaveLength(1)
+  })
+
+  /**
+   * ⚠ CỘT TỒN PHẢI NÓI ĐÚNG THỨ RPC SẮP TRỪ, nếu không nó còn tệ hơn
+   * không có: màn báo đủ rồi RPC ném lỗi, hoặc màn báo thiếu cho một đơn
+   * xuất được ngon lành — và nhà phân phối mất niềm tin sau đúng hai lần.
+   */
+  it("đối chiếu tồn quy về đơn vị cơ sở bằng ảnh chụp hệ số của dòng đơn", () => {
+    // 4 thùng × 12 = 48 cơ sở, tồn 40 → thiếu 8. So thẳng 4 ≤ 40 sẽ ra "đủ".
+    const [r] = previewOrderStock(
+      [{ productId: "p1", quantity: 4, conversionFactor: 12 }],
+      [],
+      { p1: 40 }
+    )
+    expect(r.needBase).toBe(48)
+    expect(r.shortBase).toBe(8)
+    // Thiếu hệ số thì coi như 1 — y như RPC (COALESCE … , 1).
+    expect(previewOrderStock([{ productId: "p1", quantity: 3, conversionFactor: null }], [], { p1: 10 })[0].needBase).toBe(3)
+  })
+
+  /** ⚠ Nhiều dòng cùng một mặt hàng phải CỘNG rồi mới so. */
+  it("gộp nhu cầu theo sản phẩm, không xét từng dòng", () => {
+    const rows = previewOrderStock(
+      [
+        { productId: "p1", quantity: 6, conversionFactor: 1 },
+        { productId: "p1", quantity: 6, conversionFactor: 1 },
+      ],
+      [],
+      { p1: 10 }
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].shortBase).toBe(2)
+  })
+
+  /**
+   * ⚠ HÀNG ĐỔI CỦA PHIẾU TRẢ NHÁP CŨNG RỜI KHO trong chính chuyến này —
+   * `complete_order` gộp chúng vào cùng lệnh xuất. Bỏ qua là đơn 8 bán +
+   * 2 đổi trên tồn 9 hiện màu xanh rồi RPC ném lỗi.
+   */
+  it("cộng cả hàng đổi của phiếu trả nháp", () => {
+    const rows = previewOrderStock(
+      [{ productId: "p1", quantity: 8, conversionFactor: 1 }],
+      [{ productId: "p1", quantity: 2, conversionFactor: 1 }],
+      { p1: 9 }
+    )
+    expect(totalShortBase(rows)).toBe(1)
+    // Và ngăn Xem nhanh phải lấy ĐÚNG phiếu trả còn nháp, không lấy cả
+    // phiếu đã sang phiếu tạm — chính complete_order đẩy chúng sang đó
+    // ngay sau khi xuất, nên đếm cả hai là trừ hai lần.
+    expect(DRAWER).toContain('.eq("returns.status", "draft")')
+    expect(DRAWER).toContain('.eq("is_exchange", true)')
+  })
+
+  /**
+   * ⚠ LỌC ĐÚNG NHỮNG GÌ RPC LỌC. `post_stock_export` chỉ lọc org, sản
+   * phẩm và `qty_on_hand > 0` — không lọc khu vực kho, không lọc hạn
+   * dùng. Thêm điều kiện nào cũng làm cột Tồn nói khác thứ sẽ bị trừ.
+   */
+  it("đọc lô đúng phép lọc của RPC, và có phân trang", () => {
+    expect(DRAWER).toContain('.gt("qty_on_hand", 0)')
+    expect(DRAWER).not.toContain("warehouse_zone")
+    expect(DRAWER).not.toContain("expires_at")
+    // PostgREST cắt ở db.max_rows và trả 200 KHÔNG kèm lỗi — lô nằm sau
+    // ngưỡng đó biến mất và sản phẩm của chúng hiện tồn 0.
+    expect(DRAWER).toContain("fetchAllForAggregate<")
+  })
+
+  /**
+   * ⚠ THIẾU TỒN KHÔNG PHẢI LÚC NÀO CŨNG LÀ CHẶN. Đơn vị bật cho phép bán
+   * âm thì RPC vẫn xuất và chỉ trả `short_qty` — tô đỏ ở đó là làm nhà
+   * phân phối không dám bấm một nút vốn bấm được.
+   */
+  it("phân biệt cảnh báo vàng với vạch đỏ theo cấu hình cho phép bán âm", () => {
+    expect(DRAWER).toContain("org?.allow_oversell === true")
+    expect(DRAWER).toContain("oversellAllowed ?")
   })
 })

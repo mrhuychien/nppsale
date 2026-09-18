@@ -119,14 +119,14 @@ describe("Câu lỗi khoá ngoại nói ĐÚNG CHIỀU", () => {
   it("lỗi RAISE từ trigger hiện nguyên câu", () => {
     const msg = errorMessage({
       code: "P0001",
-      message: "Đơn DH-1 có 1 phiếu trả hàng ĐÃ DUYỆT (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.",
+      message: "Đơn DH-1 có 1 phiếu trả hàng ĐÃ HOÀN THÀNH (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.",
     })
-    expect(msg).toContain("phiếu trả hàng ĐÃ DUYỆT")
+    expect(msg).toContain("phiếu trả hàng ĐÃ HOÀN THÀNH")
     expect(msg).toContain("(mã P0001)")
   })
 })
 
-describe("Migration 118: phiếu trả chưa duyệt đi theo đơn, phiếu đã duyệt chặn rõ lời", () => {
+describe("Migration 118: phiếu trả chưa hoàn thành đi theo đơn, phiếu đã hoàn thành chặn rõ lời", () => {
   it("trigger BEFORE DELETE trên sales_orders, SECURITY DEFINER", () => {
     expect(MIG118).toContain("BEFORE DELETE ON sales_orders")
     expect(MIG118).toContain("SECURITY DEFINER")
@@ -134,12 +134,29 @@ describe("Migration 118: phiếu trả chưa duyệt đi theo đơn, phiếu đ�
     expect(MIG118).toContain("REVOKE ALL ON FUNCTION public.trg_sales_orders_before_delete() FROM PUBLIC")
   })
 
-  /** ⚠ Chỉ pending / rejected đi theo. approved / completed là chứng từ. */
-  it("chỉ xoá phiếu trả pending/rejected; approved/completed thì RAISE", () => {
-    expect(MIG118).toContain("WHERE order_id = OLD.id AND status IN ('pending', 'rejected')")
-    expect(MIG118).toContain("WHERE order_id = OLD.id AND status IN ('approved', 'completed')")
+  /**
+   * ⚠ CHỈ PHIẾU 'completed' MỚI CHẶN — nó là phiếu duy nhất đã đụng tồn
+   * kho và công nợ. Ba trạng thái kia chưa ghi gì (hoặc đã được đảo lại
+   * ở `cancel_return`) nên dọn đi cùng đơn được.
+   *
+   * ⚠ BỘ LỌC PHẢI HỎI GIÁ TRỊ CÒN TỒN TẠI. Bản cũ hỏi
+   * 'pending'/'rejected'/'approved' — ba giá trị `chk_returns_status_v2`
+   * (mig 119) đã cấm và backfill đổi đi. Hỏng ÂM THẦM cả hai đầu: phiếu
+   * 'submitted' hết chặn xoá đơn, còn nhánh dọn khớp 0 dòng nên khoá
+   * ngoại 23503 chặn xoá đơn kèm một câu tiếng Anh — đúng thứ migration
+   * này sinh ra để sửa.
+   */
+  it("chỉ xoá phiếu trả chưa hoàn thành; phiếu đã hoàn thành thì RAISE", () => {
+    expect(MIG118).toContain(
+      "WHERE order_id = OLD.id AND status IN ('draft', 'submitted', 'cancelled')"
+    )
+    expect(MIG118).toContain("WHERE order_id = OLD.id AND status = 'completed'")
     expect(MIG118).toContain("RAISE EXCEPTION")
-    expect(MIG118).toContain("ĐÃ DUYỆT")
+    expect(MIG118).toContain("ĐÃ HOÀN THÀNH")
+    // Và không còn hỏi giá trị nào đã bị migration 119 cấm.
+    for (const dead of ["'approved'", "'pending'", "'rejected'"]) {
+      expect(MIG118, `còn lọc theo trạng thái đã bị bỏ ${dead}`).not.toContain(dead)
+    }
     // Không nới khoá ngoại: công nợ, hoá đơn, phiếu thu vẫn chặn.
     expect(MIG118).not.toMatch(/ON DELETE (CASCADE|SET NULL)/i)
     expect(MIG118).not.toMatch(/DROP CONSTRAINT/i)

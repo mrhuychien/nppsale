@@ -230,10 +230,20 @@ describe("120 — đơn trả", () => {
     expect(b).toContain("BAD_ZONE")
   })
 
+  /**
+   * ⚠ HÀNG ĐỔI CŨNG VÀO KHO NHƯ HÀNG TRẢ — nó chỉ khác ở chỗ không ghi
+   * có công nợ. Vòng nhập kho KHÔNG được lọc `is_exchange`.
+   *
+   * ⚠ Chốt này từng soi cả thân hàm và cấm chuỗi `rl.is_exchange = false`
+   * ở bất cứ đâu. Sai phạm vi: phép kiểm TRẦN SỐ LƯỢNG (Q8) hợp lệ khi
+   * loại dòng đổi ra, vì hàng đổi không bị chặn bởi số đã bán. Nay chỉ
+   * soi đúng VÒNG NHẬP KHO.
+   */
   it("nhập vào đúng kho được chọn, cả dòng hàng đổi", () => {
     expect(b).toContain("b.warehouse_zone = p_zone")
     expect(b).toContain("warehouse_zone")
-    expect(b).not.toContain("rl.is_exchange = false")
+    const loop = b.slice(b.indexOf("FOR l IN"), b.indexOf("UPDATE returns"))
+    expect(loop, "vòng nhập kho đang bỏ qua dòng hàng đổi").not.toContain("is_exchange = false")
   })
 
   /** ⚠ Hạn dùng của lô mới phải suy được, không bịa một ngày cố định. */

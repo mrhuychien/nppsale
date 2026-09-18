@@ -826,15 +826,19 @@ CREATE OR REPLACE FUNCTION public.complete_return(p_return_id uuid, p_zone text)
 RETURNS TABLE (entry_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  r        record;
-  v_entry  uuid;
-  v_code   text;
-  l        record;
-  v_conv   numeric;
-  v_base   numeric;
-  v_batch  uuid;
-  v_cost   numeric;
-  v_exp    date;
+  r          record;
+  v_entry    uuid;
+  v_code     text;
+  l          record;
+  v_conv     numeric;
+  v_base     numeric;
+  v_batch    uuid;
+  v_cost     numeric;
+  v_exp      date;
+  cap        record;
+  v_sold     numeric;
+  v_returned numeric;
+  v_pname    text;
 BEGIN
   SELECT id, org_id, order_id, status, requested_by INTO r
   FROM returns WHERE id = p_return_id FOR UPDATE;
@@ -864,6 +868,62 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'ORDER_NOT_COMPLETED: đơn gốc chưa xuất hàng, không nhập trả được'
       USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ===================================================================
+  -- Q8 — TRẦN SỐ LƯỢNG TRẢ, KIỂM LẠI Ở ĐÂY
+  --
+  -- ⚠ VÌ SAO PHẢI KIỂM HAI LẦN. Trigger `enforce_return_line_cap` (mig
+  --   119) chạy lúc CHÈN DÒNG, và phần "đã trả rồi" của nó chỉ đếm phiếu
+  --   ở trạng thái 'completed'. Nên hai phiếu trả của cùng một đơn, cùng
+  --   nằm ở 'submitted', mỗi phiếu đều thấy "đã trả = 0" và đều LỌT:
+  --     đơn bán 10 → phiếu A 10 lọt → phiếu B 10 cũng lọt
+  --     → hoàn thành cả hai → nhập kho 20 và trừ công nợ gấp đôi.
+  --
+  -- ⚠ KIỂM Ở ĐÂY, KHÔNG SIẾT TRIGGER. Bắt trigger đếm cả phiếu
+  --   'submitted' thì một phiếu lập nhầm rồi bỏ đó sẽ chiếm chỗ và chặn
+  --   mất phiếu thật. Chặn đúng lúc hàng THẬT SỰ vào kho là chỗ duy nhất
+  --   con số có ý nghĩa.
+  --
+  -- ⚠ Dòng ĐỔI không tính — hàng đổi không trừ công nợ và không bị chặn
+  --   bởi số đã bán. Phiếu trả độc lập cũng không: không có đơn gốc để so.
+  -- ===================================================================
+  IF r.order_id IS NOT NULL THEN
+    FOR cap IN
+      SELECT rl.product_id,
+             sum(rl.quantity * COALESCE((
+               SELECT pu.conversion FROM product_units pu
+                WHERE pu.product_id = rl.product_id
+                  AND pu.unit_name = rl.unit_name), 1)) AS need
+      FROM return_lines rl
+      WHERE rl.return_id = p_return_id AND rl.is_exchange = false
+      GROUP BY rl.product_id
+    LOOP
+      SELECT COALESCE(sum(sol.quantity * COALESCE(sol.conversion_factor, 1)), 0)
+        INTO v_sold
+      FROM sales_order_lines sol
+      WHERE sol.order_id = r.order_id AND sol.product_id = cap.product_id;
+
+      SELECT COALESCE(sum(rl2.quantity * COALESCE((
+                SELECT pu.conversion FROM product_units pu
+                 WHERE pu.product_id = rl2.product_id
+                   AND pu.unit_name = rl2.unit_name), 1)), 0)
+        INTO v_returned
+      FROM return_lines rl2
+      JOIN returns r2 ON r2.id = rl2.return_id
+      WHERE r2.order_id = r.order_id
+        AND r2.status = 'completed'
+        AND rl2.is_exchange = false
+        AND rl2.product_id = cap.product_id;
+
+      IF cap.need + v_returned > v_sold THEN
+        SELECT name INTO v_pname FROM products WHERE id = cap.product_id;
+        RAISE EXCEPTION
+          'RETURN_QTY_EXCEEDS: "%" — đã bán %, đã hoàn thành trả %, phiếu này thêm % là vượt',
+          COALESCE(v_pname, cap.product_id::text), v_sold, v_returned, cap.need
+          USING ERRCODE = 'P0001';
+      END IF;
+    END LOOP;
   END IF;
 
   v_code := 'NL-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS');
@@ -1151,11 +1211,19 @@ BEGIN
     SELECT DISTINCT (c2->>'return_id')::uuid AS id
     FROM jsonb_array_elements(COALESCE(p->'credits', '[]'::jsonb)) AS c2
   LOOP
+    -- ⚠ Q10 — PHẢI KHOÁ HÀNG. Không có FOR UPDATE thì hai kế toán cùng
+    --   lập phiếu thu cấn trừ CÙNG một phiếu trả độc lập sẽ cùng đọc
+    --   `applied_receipt_id IS NULL`, cùng qua, và khoản có bị cấn trừ
+    --   hai lần — lệnh UPDATE ở cuối chỉ ghi đè chứ không chặn.
+    --   Cách viết `NOT EXISTS (… FOR UPDATE)` này giống hệt vòng kiểm
+    --   khoản nợ bên trên: ở READ COMMITTED, Postgres khoá dòng rồi đánh
+    --   giá lại điều kiện sau khi chờ, nên người thứ hai nhận BAD_CREDIT.
     IF NOT EXISTS (
       SELECT 1 FROM returns r
       WHERE r.id = c.id AND r.org_id = v_org AND r.customer_id = v_cust
         AND r.status = 'completed' AND r.order_id IS NULL
         AND r.applied_receipt_id IS NULL
+      FOR UPDATE
     ) THEN
       RAISE EXCEPTION 'BAD_CREDIT: phiếu trả không đủ điều kiện cấn trừ'
         USING ERRCODE = 'P0001';

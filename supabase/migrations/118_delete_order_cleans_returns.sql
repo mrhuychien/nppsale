@@ -1,6 +1,6 @@
 -- ---------------------------------------------------------------------
--- 118 — Xoá đơn nháp / đã huỷ: dọn phiếu trả CHƯA DUYỆT đi kèm, chặn rõ
---       lời nếu phiếu trả ĐÃ duyệt
+-- 118 — Xoá đơn nháp / đã huỷ: dọn phiếu trả CHƯA HOÀN THÀNH đi kèm,
+--       chặn rõ lời nếu phiếu trả ĐÃ hoàn thành
 -- ---------------------------------------------------------------------
 --
 -- TRIỆU CHỨNG (chủ NPP báo kèm ảnh): bấm "Xoá đơn hàng" trên đơn ĐÃ HUỶ →
@@ -8,13 +8,13 @@
 --   constraint "returns_order_id_fkey" on table "returns" (mã 23503)
 --
 -- NGUYÊN NHÂN: luồng bán hàng tạo "hàng trả kèm đơn" — một dòng `returns`
--- trỏ `order_id` vào đơn, trạng thái `pending`. Khoá ngoại đó là REFERENCES
+-- trỏ `order_id` vào đơn, chưa hoàn thành. Khoá ngoại đó là REFERENCES
 -- trần (mig 001), nên Postgres chặn xoá đơn chừng nào phiếu trả còn đó.
 -- Mig 113 cố ý KHÔNG nới khoá ngoại vì công nợ / phiếu thu / bàn giao phải
--- chặn — đúng. Nhưng phiếu trả `pending` thì KHÁC: nó chưa trừ công nợ,
+-- chặn — đúng. Nhưng phiếu trả chưa hoàn thành thì KHÁC: nó chưa trừ công nợ,
 -- chưa nhập kho, nó là một phần của chính đơn đó. Đơn đi thì nó đi theo.
 --
--- ⚠ PHIẾU TRẢ ĐÃ DUYỆT (`approved` / `completed`) LÀ CHỨNG TỪ. Nó đã trừ
+-- ⚠ PHIẾU TRẢ ĐÃ HOÀN THÀNH LÀ CHỨNG TỪ. Nó đã trừ
 -- công nợ (credited_at) và kho đã nhận hàng lại. Không xoá theo, không gỡ
 -- liên kết (gỡ là phiếu mất dấu vết "trả cho đơn nào") — CHẶN, và nói
 -- thẳng vì sao bằng tiếng người, thay vì câu "violates foreign key".
@@ -23,7 +23,7 @@
 -- lần ghé vẫn có thật → gỡ liên kết, giữ nhật ký.
 --
 -- SECURITY DEFINER: người xoá đơn thường không có policy DELETE trên
--- `returns` (mig 002 chỉ có xem / tạo / duyệt). Không có nó thì lệnh xoá
+-- `returns` (mig 002 chỉ có xem / tạo / sửa). Không có nó thì lệnh xoá
 -- phiếu trả bên trong trigger khớp 0 dòng — im lặng — rồi khoá ngoại lại
 -- chặn y như cũ. Trigger chỉ chạy sau khi RLS đã CHO xoá đơn, và chỉ đụng
 -- tới phiếu trả của đúng đơn đó, nên phạm vi không rộng hơn quyền đã có.
@@ -39,25 +39,40 @@ DECLARE
   v_posted  int;
   v_pending int;
 BEGIN
+  -- ⚠ Q12 — BỐN TRẠNG THÁI CỦA WORKFLOW V2, không phải ba giá trị cũ.
+  --   `chk_returns_status_v2` (mig 119) chỉ còn cho
+  --   draft/submitted/completed/cancelled; ba giá trị của bước duyệt cũ
+  --   đã bị backfill đi và ràng buộc cấm.
+  --
+  --   Hỏng ra sao nếu để nguyên, và hỏng ÂM THẦM:
+  --   · nhánh chặn hỏi cả giá trị của bước duyệt cũ → phiếu 'submitted'
+  --     hết chặn việc xoá đơn;
+  --   · nhánh dọn hỏi hai giá trị cũ kia → khớp 0 dòng, nên khoá ngoại
+  --     23503 chặn xoá đơn kèm một câu tiếng Anh — ĐÚNG THỨ MIGRATION
+  --     NÀY SINH RA ĐỂ SỬA.
+  --
+  -- ⚠ Chỉ phiếu 'completed' mới đụng tồn kho và công nợ, nên chỉ nó mới
+  --   chặn. Ba trạng thái kia chưa ghi gì (hoặc đã được đảo lại ở
+  --   `cancel_return`) nên dọn đi cùng đơn được.
   SELECT count(*) INTO v_posted
   FROM returns
-  WHERE order_id = OLD.id AND status IN ('approved', 'completed');
+  WHERE order_id = OLD.id AND status = 'completed';
 
   IF v_posted > 0 THEN
     RAISE EXCEPTION
-      'Đơn % có % phiếu trả hàng ĐÃ DUYỆT (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.',
+      'Đơn % có % phiếu trả hàng ĐÃ HOÀN THÀNH (đã trừ công nợ / nhập lại kho) nên không xoá được. Huỷ phiếu trả đó trước, hoặc giữ đơn.',
       OLD.order_code, v_posted
       USING ERRCODE = 'P0001', HINT = 'returns.order_id';
   END IF;
 
   DELETE FROM returns
-  WHERE order_id = OLD.id AND status IN ('pending', 'rejected');
+  WHERE order_id = OLD.id AND status IN ('draft', 'submitted', 'cancelled');
   GET DIAGNOSTICS v_pending = ROW_COUNT;
 
   UPDATE visit_logs SET order_id = NULL WHERE order_id = OLD.id;
 
   IF v_pending > 0 THEN
-    RAISE NOTICE 'Xoá đơn %: đã bỏ % phiếu trả chưa duyệt đi kèm', OLD.order_code, v_pending;
+    RAISE NOTICE 'Xoá đơn %: đã bỏ % phiếu trả chưa hoàn thành đi kèm', OLD.order_code, v_pending;
   END IF;
 
   RETURN OLD;
@@ -72,8 +87,8 @@ CREATE TRIGGER trg_sales_orders_before_delete
   FOR EACH ROW EXECUTE FUNCTION public.trg_sales_orders_before_delete();
 
 COMMENT ON FUNCTION public.trg_sales_orders_before_delete() IS
-  'Xoá đơn nháp/huỷ: bỏ phiếu trả pending/rejected đi kèm (chưa trừ công '
-  'nợ, chưa nhập kho); chặn rõ lời nếu có phiếu trả approved/completed; '
+  'Xoá đơn nháp/huỷ: bỏ phiếu trả chưa hoàn thành đi kèm (chưa trừ công '
+  'nợ, chưa nhập kho); chặn rõ lời nếu có phiếu trả đã hoàn thành; '
   'gỡ order_id khỏi visit_logs. Công nợ, hoá đơn, phiếu thu, bàn giao vẫn '
   'chặn bằng khoá ngoại — đó là chứng từ, đúng như mig 113 chốt.';
 
@@ -82,6 +97,7 @@ DECLARE v_n int;
 BEGIN
   SELECT count(*) INTO v_n
   FROM returns r JOIN sales_orders o ON o.id = r.order_id
-  WHERE o.status IN ('draft', 'cancelled') AND r.status IN ('pending', 'rejected');
-  RAISE NOTICE '--- Hiện có % phiếu trả chưa duyệt gắn với đơn nháp/huỷ — sẽ đi theo khi đơn bị xoá ---', v_n;
+  WHERE o.status IN ('draft', 'cancelled')
+    AND r.status IN ('draft', 'submitted', 'cancelled');
+  RAISE NOTICE '--- Hiện có % phiếu trả chưa hoàn thành gắn với đơn nháp/huỷ — sẽ đi theo khi đơn bị xoá ---', v_n;
 END $$;

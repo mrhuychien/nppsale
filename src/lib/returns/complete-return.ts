@@ -44,6 +44,16 @@ export function explainReturnError(message: string): string {
     return "Phiếu trả không còn ở Phiếu tạm — có thể ai đó vừa xử lý. Tải lại trang."
   }
   if (m.includes("BAD_ZONE")) return "Phải chọn kho nhận: kho bán hoặc kho cận date."
+  if (m.includes("RETURN_QTY_EXCEEDS")) {
+    /**
+     * ⚠ Q8 — TRẦN SỐ LƯỢNG TRẢ, kiểm lại ngay đầu `complete_return`.
+     * Trigger lúc chèn dòng chỉ đếm phiếu ĐÃ hoàn thành là "đã trả", nên
+     * hai phiếu cùng nằm ở Phiếu tạm đều lọt; chỗ chặn thật là đây, lúc
+     * hàng sắp vào kho. Thông điệp của RPC đã nêu đủ ba con số (đã bán,
+     * đã trả, phiếu này thêm) nên chỉ cần đổi phần đầu.
+     */
+    return m.replace(/^.*RETURN_QTY_EXCEEDS:\s*/, "Trả quá số đã bán: ")
+  }
   if (m.includes("ORDER_NOT_COMPLETED")) {
     // Nhập lại hàng của một đơn chưa xuất là cộng khống tồn kho.
     return "Đơn gốc chưa xuất hàng nên chưa nhập trả được. Xuất hàng cho đơn đó trước."

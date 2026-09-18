@@ -157,9 +157,14 @@ describe("Phiếu thu: lập, cấn trừ, và huỷ trả công nợ về", () 
     expect(RECEIPT_NEW).toContain('.is("order_id", null)')
     expect(RECEIPT_NEW).toContain('.is("applied_receipt_id", null)')
     // Và RPC kiểm đúng ba điều đó.
-    const i = MIG120.indexOf("BAD_CREDIT")
-    expect(i).toBeGreaterThan(0)
-    const guard = MIG120.slice(i - 400, i)
+    /**
+     * ⚠ NEO VÀO CHÍNH PHÉP KIỂM, không cắt một cửa sổ ký tự quanh chỗ
+     * RAISE — chú thích dài ngắn thay đổi là cửa sổ hụt hoặc thừa, và
+     * chốt đỏ vì lý do chẳng liên quan gì tới điều nó canh.
+     */
+    const i = MIG120.indexOf("FROM returns r\n      WHERE r.id = c.id")
+    expect(i, "không tìm thấy vòng kiểm khoản có").toBeGreaterThan(0)
+    const guard = MIG120.slice(i, MIG120.indexOf("BAD_CREDIT", i))
     expect(guard).toContain("r.status = 'completed'")
     expect(guard).toContain("r.order_id IS NULL")
     expect(guard).toContain("r.applied_receipt_id IS NULL")
@@ -313,5 +318,104 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
     expect(RET_LIST).toContain('useState<string>("submitted")')
     expect(RET_LIST).toContain('q = q.eq("status", statusFilter)')
     expect(RET_LIST).toContain("RETURN_TABS.map(")
+  })
+})
+
+/**
+ * Bốn quyết định của chủ nhà sau lượt báo cáo P6 (sổ câu hỏi Q8, Q10,
+ * Q11, Q12). Ba cái sửa migration TẠI CHỖ vì 118/119/120 chưa chạy ở đâu.
+ */
+describe("Q8 — trần số lượng trả kiểm lại lúc hàng vào kho", () => {
+  const MIG118 = read("supabase/migrations/118_delete_order_cleans_returns.sql")
+
+  /**
+   * ⚠ LỖ CŨ, DỰNG LẠI ĐƯỢC BẰNG BA BƯỚC: trigger `enforce_return_line_cap`
+   * chạy lúc CHÈN DÒNG và phần "đã trả rồi" của nó chỉ đếm phiếu
+   * 'completed'. Đơn bán 10 → phiếu A 10 lọt (đã trả = 0) → phiếu B 10
+   * cũng lọt (vẫn = 0, vì A còn ở 'submitted') → hoàn thành cả hai →
+   * nhập kho 20 và trừ công nợ gấp đôi.
+   */
+  it("complete_return tự kiểm trần, không tin mỗi trigger lúc chèn dòng", () => {
+    const i = MIG120.indexOf("CREATE OR REPLACE FUNCTION public.complete_return")
+    const fn = MIG120.slice(i, MIG120.indexOf("\n$$;", i))
+    expect(fn).toContain("RETURN_QTY_EXCEEDS")
+    /**
+     * ⚠ NEO VÀO CHÍNH BIỂU THỨC SO SÁNH, không chỉ vào cái tên mã lỗi.
+     * Thử phá lần đầu: đổi `IF cap.need + v_returned > v_sold THEN` thành
+     * `IF false THEN` — phép kiểm chết hẳn mà chốt VẪN XANH, vì mọi chuỗi
+     * nó soi đều còn nguyên bên trong nhánh đã chết.
+     */
+    expect(fn, "phép kiểm trần không còn sống").toContain(
+      "IF cap.need + v_returned > v_sold THEN"
+    )
+    // Đếm phần "đã trả" từ phiếu ĐÃ hoàn thành của cùng đơn.
+    expect(fn).toContain("r2.status = 'completed'")
+    expect(fn).toContain("r2.order_id = r.order_id")
+    // Và phải kiểm TRƯỚC khi dựng phiếu nhập — chặn sau là đã cộng tồn rồi.
+    expect(fn.indexOf("RETURN_QTY_EXCEEDS")).toBeLessThan(fn.indexOf("INSERT INTO stock_entries"))
+  })
+
+  /**
+   * ⚠ DÒNG ĐỔI KHÔNG TÍNH VÀO TRẦN — hàng đổi không trừ công nợ và không
+   * bị chặn bởi số đã bán. Nhưng nó VẪN phải được nhập kho.
+   */
+  it("trần bỏ qua dòng đổi, còn vòng nhập kho thì không", () => {
+    const i = MIG120.indexOf("CREATE OR REPLACE FUNCTION public.complete_return")
+    const fn = MIG120.slice(i, MIG120.indexOf("\n$$;", i))
+    /**
+     * ⚠ NEO VÀO ĐÚNG DÒNG NGUỒN CỦA PHÉP TÍNH TRẦN. Thử phá lần đầu: bỏ
+     * `AND rl.is_exchange = false` khỏi vòng gom nhu cầu — chốt VẪN XANH,
+     * vì cửa sổ 2000 ký tự còn chứa một `is_exchange = false` KHÁC (của
+     * truy vấn đếm phần đã trả). Cùng một chuỗi, hai chỗ, hai ý nghĩa.
+     */
+    expect(fn, "phép tính trần đang tính cả dòng đổi").toContain(
+      "WHERE rl.return_id = p_return_id AND rl.is_exchange = false"
+    )
+    const loop = fn.slice(fn.indexOf("FOR l IN"), fn.indexOf("UPDATE returns"))
+    expect(loop).not.toContain("is_exchange = false")
+  })
+
+  it("dịch mã lỗi mới sang tiếng Việt", () => {
+    expect(
+      explainReturnError('… RETURN_QTY_EXCEEDS: "Sữa X" — đã bán 10, đã hoàn thành trả 10, phiếu này thêm 10 là vượt')
+    ).toBe('Trả quá số đã bán: "Sữa X" — đã bán 10, đã hoàn thành trả 10, phiếu này thêm 10 là vượt')
+  })
+})
+
+describe("Q10 — khoá hàng khi kiểm khoản có", () => {
+  /**
+   * ⚠ Không có `FOR UPDATE` thì hai kế toán cùng lập phiếu thu cấn trừ
+   * CÙNG một phiếu trả độc lập sẽ cùng đọc `applied_receipt_id IS NULL`,
+   * cùng qua, và khoản có bị cấn trừ hai lần — lệnh UPDATE ở cuối chỉ
+   * ghi đè chứ không chặn.
+   */
+  it("vòng kiểm khoản có khoá dòng như vòng kiểm khoản nợ", () => {
+    const i = MIG120.indexOf("FROM returns r\n      WHERE r.id = c.id")
+    expect(i).toBeGreaterThan(0)
+    expect(MIG120.slice(i, MIG120.indexOf("BAD_CREDIT", i))).toContain("FOR UPDATE")
+  })
+})
+
+describe("Q12 — migration 118 hỏi giá trị trạng thái còn tồn tại", () => {
+  const MIG118 = read("supabase/migrations/118_delete_order_cleans_returns.sql")
+
+  /**
+   * ⚠ Hỏng ÂM THẦM cả hai đầu nếu để nguyên: phiếu 'submitted' hết chặn
+   * xoá đơn, còn nhánh dọn khớp 0 dòng nên khoá ngoại 23503 chặn xoá đơn
+   * kèm một câu tiếng Anh — đúng thứ migration này sinh ra để sửa.
+   */
+  it("không còn một giá trị nào của bước duyệt cũ, kể cả trong chú thích", () => {
+    for (const dead of ["'approved'", "'pending'", "'rejected'"]) {
+      expect(MIG118, `còn nhắc ${dead}`).not.toContain(dead)
+    }
+    expect(MIG118).toContain("WHERE order_id = OLD.id AND status = 'completed'")
+    expect(MIG118).toContain("status IN ('draft', 'submitted', 'cancelled')")
+  })
+
+  /** Phép đếm cảnh báo ở cuối migration cũng phải hỏi đúng giá trị. */
+  it("phép đếm cuối migration đếm được số thật", () => {
+    const i = MIG118.indexOf("RAISE NOTICE '--- Hiện có")
+    expect(i).toBeGreaterThan(0)
+    expect(MIG118.slice(i - 400, i)).toContain("r.status IN ('draft', 'submitted', 'cancelled')")
   })
 })

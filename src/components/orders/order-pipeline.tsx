@@ -4,18 +4,16 @@ import { ChevronRight } from "lucide-react"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import type { SalesOrder } from "@/types"
 
-// 7-step pipeline (Update #2 v2 — §8). Each order falls in exactly one
-// step at a time; cancelled orders are excluded from counts. The last
-// two steps are payment-derived: "Đã thu đủ" = receivable.paid ≥ amount,
-// "Hoàn tất" = paid full + invoice finalized (or no invoice required).
+// Chặng đường của một đơn trong workflow v2. Mỗi đơn nằm đúng một bước;
+// đơn huỷ không đếm. Ba bước đầu là trạng thái thật của đơn, hai bước
+// cuối suy từ tiền và hoá đơn: "Đã thu đủ" = receivable.paid ≥ amount,
+// "Hoàn tất" = thu đủ + hoá đơn đã ký (hoặc đơn không cần hoá đơn).
 export type PipelineStepKey =
   | "draft"
-  | "confirmed"
-  | "picking"
-  | "delivering"
-  | "delivered"
-  | "paid_full"
+  | "submitted"
   | "completed"
+  | "paid_full"
+  | "closed"
 
 export interface OrderPipelineProps {
   orders: SalesOrder[]
@@ -42,35 +40,21 @@ export interface StepDef {
 export const STEPS: StepDef[] = [
   {
     key: "draft",
-    label: "Mới tạo",
+    label: "Nháp",
     activeBg: "bg-surface-container-low",
     activeText: "text-on-surface-variant",
     activeRing: "ring-slate-400",
   },
   {
-    key: "confirmed",
-    label: "Đã duyệt",
-    activeBg: "bg-[#eff8ff]",
-    activeText: "text-[#175cd3]",
-    activeRing: "ring-blue-400",
+    key: "submitted",
+    label: "Phiếu tạm",
+    activeBg: "bg-[#fff4e0]",
+    activeText: "text-[#8a5a00]",
+    activeRing: "ring-amber-400",
   },
   {
-    key: "picking",
-    label: "Đang xuất kho",
-    activeBg: "bg-[#f4f3ff]",
-    activeText: "text-[#6941c6]",
-    activeRing: "ring-indigo-400",
-  },
-  {
-    key: "delivering",
-    label: "Đang giao",
-    activeBg: "bg-[#f4f3ff]",
-    activeText: "text-[#6941c6]",
-    activeRing: "ring-purple-400",
-  },
-  {
-    key: "delivered",
-    label: "Đã giao",
+    key: "completed",
+    label: "Đã xuất hàng",
     activeBg: "bg-[#ecfdf3]",
     activeText: "text-tertiary",
     activeRing: "ring-emerald-400",
@@ -83,7 +67,7 @@ export const STEPS: StepDef[] = [
     activeRing: "ring-teal-500",
   },
   {
-    key: "completed",
+    key: "closed",
     label: "Hoàn tất",
     activeBg: "bg-[#ecfdf3]",
     activeText: "text-tertiary",
@@ -98,17 +82,15 @@ export function classifyOrder(
 ): PipelineStepKey | null {
   if (order.status === "cancelled") return null
   if (order.status === "draft") return "draft"
-  if (order.status === "confirmed") return "confirmed"
-  if (order.status === "picking") return "picking"
-  if (order.status === "delivering") return "delivering"
-  if (order.status !== "delivered") return null
+  if (order.status === "submitted") return "submitted"
+  if (order.status !== "completed") return null
 
   const paidFull = !!recv && recv.amount > 0 && recv.paid + 0.5 >= recv.amount
-  if (!paidFull) return "delivered"
+  if (!paidFull) return "completed"
 
   // Hoàn tất khi đã thu đủ + (không có hóa đơn HOẶC hóa đơn đã ký MISA).
   const needsInvoice = !!invoice && invoice.misa_status !== "signed"
-  return needsInvoice ? "paid_full" : "completed"
+  return needsInvoice ? "paid_full" : "closed"
 }
 
 export function OrderPipeline({
@@ -121,12 +103,10 @@ export function OrderPipeline({
 }: OrderPipelineProps) {
   const counts: Record<PipelineStepKey, number> = {
     draft: 0,
-    confirmed: 0,
-    picking: 0,
-    delivering: 0,
-    delivered: 0,
-    paid_full: 0,
+    submitted: 0,
     completed: 0,
+    paid_full: 0,
+    closed: 0,
   }
   for (const o of orders) {
     const step = classifyOrder(o, receivables[o.id], invoices[o.id])

@@ -34,7 +34,6 @@ import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-orde
 import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
 import { submitSellOrder } from "@/lib/sell/submit"
 import { applyOrderEdit, decideEditStatus, editHint } from "@/lib/sell/order-edit"
-import { notifyApprovers } from "@/lib/sell/send-approval"
 import { toast } from "@/hooks/use-toast"
 
 export default function SellCartPage() {
@@ -259,15 +258,6 @@ export default function SellCartPage() {
           reason,
           userId: user.id,
         })
-        // Đơn nằm chờ duyệt mà không ai biết thì bằng như chưa gửi.
-        if (!asDraft && status === "draft") {
-          await notifyApprovers(supabase, {
-            orgId: user.org_id,
-            orderId: editing.orderId,
-            orderCode: editing.orderCode,
-            reason,
-          })
-        }
         cart.clear()
         router.replace(
           `/sell/done?code=${encodeURIComponent(editing.orderCode)}&status=${status}&edited=1` +
@@ -284,16 +274,6 @@ export default function SellCartPage() {
 
       const status = out.kind === "queued" ? "queued" : out.status
       const reason = out.kind === "queued" ? "" : out.reason
-      // ⚠ Đơn mới rơi về chờ duyệt cũng phải BÁO cho người duyệt. Thiếu
-      // bước này thì đơn nằm im tới khi có ai tình cờ mở danh sách ra xem.
-      if (out.kind === "created" && out.status === "draft" && !asDraft) {
-        await notifyApprovers(supabase, {
-          orgId: user.org_id,
-          orderId: out.orderId,
-          orderCode: out.orderCode,
-          reason: out.reason,
-        })
-      }
       cart.clear()
       router.replace(
         `/sell/done?code=${encodeURIComponent(out.orderCode)}&status=${status}` +
@@ -575,10 +555,10 @@ export default function SellCartPage() {
           </span>
         </button>
         <div className="flex gap-2.5">
-          {/* Đơn ĐÃ DUYỆT không có "Lưu tạm": lưu mà không chạy lại quy tắc
-              là đúng cái lỗ hổng gửi đơn nhỏ cho duyệt rồi sửa lên gấp
-              mười. Chỗ đó để nút thoát khỏi phần sửa. */}
-          {editing?.status === "confirmed" ? (
+          {/* Phiếu tạm VẪN có "Lưu nháp" — đó là cách RÚT ĐƠN VỀ khi nhà
+              phân phối chưa xuất hàng. Nút phụ ở đây là thoát khỏi phần
+              sửa mà không đụng gì tới đơn. */}
+          {editing?.status === "submitted" ? (
             <button
               type="button"
               disabled={submitting}
@@ -616,11 +596,9 @@ export default function SellCartPage() {
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
                     ? "Giá hàng trả quá cao"
-                    : editing?.status === "confirmed"
+                    : editing
                       ? "Lưu thay đổi"
-                      : editing
-                        ? "Gửi duyệt"
-                        : "Đặt hàng"}
+                      : "Gửi đơn"}
           </button>
         </div>
       </SellBottomBar>

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, it, expect } from "vitest"
 import {
@@ -7,6 +7,18 @@ import {
   DEFAULT_APPROVAL_RULES,
 } from "@/lib/approval"
 import type { ApprovalRules } from "@/types"
+
+/** Mọi file .ts/.tsx dưới src — để dò nơi gọi thay vì chép tay danh sách. */
+const SRC_FILES: string[] = (function walk(dir: string): string[] {
+  return readdirSync(resolve(__dirname, "..", dir)).flatMap((name) => {
+    const rel = `${dir}/${name}`
+    return statSync(resolve(__dirname, "..", rel)).isDirectory()
+      ? walk(rel)
+      : /\.tsx?$/.test(name)
+        ? [rel]
+        : []
+  })
+})("src")
 
 /**
  * Quy tắc duyệt đơn quyết định đơn nào được tự động xác nhận. Sai ở đây
@@ -298,11 +310,13 @@ describe("NPP-12 — chiết khấu sâu phải cần duyệt", () => {
    * sửa giá về 0 làm đơn trăm triệu tụt xuống dưới ngưỡng và tự động duyệt.
    */
   it("mọi nơi gọi đều truyền gross + discount", () => {
-    for (const f of [
-      "src/lib/sell/submit.ts",
-      "src/lib/sell/order-edit.ts",
-      "src/app/(dashboard)/orders/[id]/page.tsx",
-    ]) {
+    // Danh sách này phải là MỌI file còn gọi evaluateApproval — dò lại từ
+    // mã nguồn chứ không chép tay, để thêm nơi gọi mới mà quên là đỏ.
+    const callers = SRC_FILES.filter((f) =>
+      readFileSync(resolve(__dirname, "..", f), "utf-8").includes("evaluateApproval(")
+    ).filter((f) => !f.endsWith("src/lib/approval.ts"))
+    expect(callers.length, "không tìm thấy nơi nào gọi evaluateApproval").toBeGreaterThan(0)
+    for (const f of callers) {
       const src = readFileSync(resolve(__dirname, "..", f), "utf-8")
       expect(src, `${f} chưa truyền grossBeforeDiscount`).toContain("grossBeforeDiscount:")
       expect(src, `${f} chưa truyền discountAmount`).toContain("discountAmount:")

@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { orderTone, vnTime } from "@/lib/orders/status-tone"
-import { isSentForApproval } from "@/lib/sell/send-approval"
 import type { Invoice, SalesOrder } from "@/types"
 
 /**
@@ -174,8 +173,8 @@ export function DesktopOrderTable({
 
         {rows.map((o) => {
           const checked = selectedIds.has(o.id)
-          const tone = orderTone(o.status, o.approval_reason)
-          const pending = isSentForApproval(o.status, o.approval_reason)
+          const tone = orderTone(o.status)
+          const pending = o.status === "submitted"
           const rep = repAvatar(o.sales_user?.full_name)
           const route = o.customer?.channel ? (routeNameByCode[o.customer.channel] ?? o.customer.channel) : null
           const lines = lineCountByOrder[o.id]
@@ -277,7 +276,7 @@ export function DesktopOrderTable({
                   </button>
                 ) : (
                   <>
-                    {o.status === "delivered" &&
+                    {o.status === "completed" &&
                       (invoice?.misa_status === "signed" ? (
                         <span
                           title="Đã xuất hoá đơn"

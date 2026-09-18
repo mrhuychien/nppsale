@@ -177,19 +177,19 @@ export default function ReportsPage() {
 
   // KPI calculations
   const totalRevenue = filteredOrders
-    .filter((o) => o.status === "delivered")
+    .filter((o) => o.status === "completed")
     .reduce((sum, o) => sum + o.total, 0)
   const totalOrders = filteredOrders.length
-  const deliveredOrders = filteredOrders.filter((o) => o.status === "delivered").length
-  const aov = deliveredOrders > 0 ? totalRevenue / deliveredOrders : 0
+  const completedOrders = filteredOrders.filter((o) => o.status === "completed").length
+  const aov = completedOrders > 0 ? totalRevenue / completedOrders : 0
 
   // Previous-period equivalents for MoM%
   const prevRevenue = prevPeriodOrders
-    .filter((o) => o.status === "delivered")
+    .filter((o) => o.status === "completed")
     .reduce((sum, o) => sum + o.total, 0)
   const prevTotalOrders = prevPeriodOrders.length
-  const prevDeliveredOrders = prevPeriodOrders.filter((o) => o.status === "delivered").length
-  const prevAov = prevDeliveredOrders > 0 ? prevRevenue / prevDeliveredOrders : 0
+  const prevCompletedOrders = prevPeriodOrders.filter((o) => o.status === "completed").length
+  const prevAov = prevCompletedOrders > 0 ? prevRevenue / prevCompletedOrders : 0
 
   const momRevenue = momPct(totalRevenue, prevRevenue)
   const momOrders = momPct(totalOrders, prevTotalOrders)
@@ -251,7 +251,7 @@ export default function ReportsPage() {
 
   const salesByUser = new Map<string, number>()
   filteredOrders
-    .filter((o) => o.status === "delivered")
+    .filter((o) => o.status === "completed")
     .forEach((o) => {
       salesByUser.set(o.sales_user_id, (salesByUser.get(o.sales_user_id) || 0) + o.total)
     })
@@ -352,7 +352,7 @@ export default function ReportsPage() {
               value={formatCurrency(totalRevenue)}
               icon={TrendingUp}
               accent="primary"
-              hint={`${deliveredOrders} đơn đã giao`}
+              hint={`${completedOrders} đơn đã xuất hàng`}
               momPct={momRevenue}
             />
             <KpiCard

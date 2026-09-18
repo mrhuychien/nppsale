@@ -85,7 +85,7 @@ export function MobileOrderDetail({
   callout?: React.ReactNode
   onBack: () => void
 }) {
-  const tone = orderTone(order.status, order.approval_reason)
+  const tone = orderTone(order.status)
   const customer = order.customer
   const initial = (customer?.store_name ?? "?")
     .replace(/^(Tạp hoá|Tạp hóa|Siêu thị|Đại lý|Bách Hoá|Bách hóa|Cửa hàng) /i, "")
@@ -272,12 +272,12 @@ export function MobileOrderDetail({
         </Card>
 
         {/* Xem thêm — chỉ hiện hàng nào CÓ chuyện để xem. */}
-        {(order.status === "delivered" ||
+        {(order.status === "completed" ||
           deliveryLines.length > 0 ||
           linkedReturns.length > 0 ||
           activityLog.length > 0) && (
           <Card className="grid px-3.5 py-1">
-            {order.status === "delivered" && (
+            {order.status === "completed" && (
               <LinkRow
                 label="Công nợ"
                 value={
@@ -291,7 +291,7 @@ export function MobileOrderDetail({
                 tone={debtLeft != null && debtLeft > 0 ? "warn" : undefined}
               />
             )}
-            {order.status === "delivered" && (
+            {order.status === "completed" && (
               <LinkRow
                 label="Hoá đơn"
                 value={

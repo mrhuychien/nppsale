@@ -75,7 +75,7 @@ export function MobileOrderList({
           </div>
           <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
             {g.items.map((o, i) => {
-              const tone = orderTone(o.status, o.approval_reason)
+              const tone = orderTone(o.status)
               const isToday = (o.order_date || "").slice(0, 10) === today
               const meta = [
                 o.order_code,

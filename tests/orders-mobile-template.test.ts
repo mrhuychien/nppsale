@@ -34,21 +34,21 @@ const TONE = code(read("src/lib/orders/status-tone.ts"))
 
 describe("Huy hiệu trạng thái: một màu cho mỗi TÌNH TRẠNG, không phải mỗi cột status", () => {
   /**
-   * ⚠ "Chờ duyệt" không phải một status trong database — là draft kèm
-   * approval_reason. Nháp chưa gửi và nháp đã gửi phải hai màu khác nhau,
-   * không thì NVBH lưu tạm xong tưởng đã gửi rồi ngồi đợi.
+   * ⚠ Workflow v2 bỏ trạng thái ảo "Chờ duyệt": đã gửi là `submitted`,
+   * một trạng thái thật. Nháp chưa gửi và phiếu tạm vẫn phải hai màu khác
+   * nhau, không thì NVBH lưu tạm xong tưởng đã gửi rồi ngồi đợi.
    */
-  it("nháp chưa gửi và nháp đã gửi duyệt ra hai huy hiệu khác nhau", () => {
-    const draft = orderTone("draft", null)
-    const pending = orderTone("draft", "Vượt hạn mức")
+  it("nháp chưa gửi và phiếu tạm ra hai huy hiệu khác nhau", () => {
+    const draft = orderTone("draft")
+    const submitted = orderTone("submitted")
     expect(draft.label).toBe("Nháp")
-    expect(pending.label).toBe("Chờ duyệt")
-    expect(draft.bg).not.toBe(pending.bg)
-    expect(pending.accent).toBe("#fdb022")
+    expect(submitted.label).toBe("Phiếu tạm")
+    expect(draft.bg).not.toBe(submitted.bg)
+    expect(submitted.accent).toBe("#fdb022")
   })
 
   it("nhãn lấy từ ORDER_STATUS_MAP — desktop và mobile không viết hai kiểu", () => {
-    for (const k of ["confirmed", "picking", "delivering", "delivered", "cancelled"]) {
+    for (const k of ["draft", "submitted", "completed", "cancelled"]) {
       expect(orderTone(k).label).toBe(ORDER_STATUS_MAP[k].label)
     }
     expect(TONE).toContain("ORDER_STATUS_MAP[status]?.label ?? status")
@@ -96,13 +96,13 @@ describe("Dòng thời gian dựng từ dữ liệu THẬT, không bịa giờ",
     sales_user: { full_name: "Nam" },
   }
 
-  /** Đơn tự duyệt không đi qua "Gửi duyệt" — vẽ bước đó là kể chuyện không có. */
-  it("đơn tự duyệt: Tạo đơn → Đã duyệt, không có bước Gửi duyệt", () => {
+  /** Ba bước, đúng ba trạng thái thật của workflow v2. */
+  it("đơn mới gửi: Tạo đơn → Gửi đơn, chưa tới bước xuất hàng", () => {
     const t = buildOrderTimeline(
-      { ...base, status: "confirmed", approval_reason: null, approved_at: "2026-09-17T01:05:00Z" },
+      { ...base, status: "submitted", submitted_at: "2026-09-17T01:05:00Z" },
       []
     )
-    expect(t.map((s) => s.key)).toEqual(["draft", "confirmed", "picking", "delivering", "delivered"])
+    expect(t.map((s) => s.key)).toEqual(["draft", "submitted", "completed"])
     expect(t[1].done).toBe(true)
     expect(t[1].current).toBe(true)
     expect(t[1].at).toBe("2026-09-17T01:05:00Z")
@@ -110,54 +110,44 @@ describe("Dòng thời gian dựng từ dữ liệu THẬT, không bịa giờ",
     expect(t[2].at).toBeNull()
   })
 
-  it("đơn từng gửi duyệt thì có bước Gửi duyệt; đang chờ thì bước đó là hiện tại", () => {
-    const t = buildOrderTimeline({ ...base, status: "draft", approval_reason: "Nợ quá hạn" }, [])
-    expect(t.map((s) => s.key)).toEqual(["draft", "pending", "confirmed", "picking", "delivering", "delivered"])
-    expect(t[1].current).toBe(true)
-    expect(t[2].done).toBe(false)
-  })
-
   /** ⚠ Không có mốc giờ thì để trống — mẫu thiết kế bịa giờ cho đẹp, app thì không. */
   it("mốc giờ lấy từ order_status_history, thiếu thì null", () => {
-    const t = buildOrderTimeline({ ...base, status: "delivering", approval_reason: null }, [
-      { to_status: "confirmed", changed_at: "2026-09-17T02:00:00Z", changer: { full_name: "Minh" } },
-      { to_status: "delivering", changed_at: "2026-09-17T03:00:00Z", changer: { full_name: "Kho" } },
+    const t = buildOrderTimeline({ ...base, status: "completed" }, [
+      { to_status: "submitted", changed_at: "2026-09-17T02:00:00Z", changer: { full_name: "Nam" } },
+      { to_status: "completed", changed_at: "2026-09-17T03:00:00Z", changer: { full_name: "Kho" } },
     ])
     const byKey = Object.fromEntries(t.map((s) => [s.key, s]))
-    expect(byKey.confirmed.at).toBe("2026-09-17T02:00:00Z")
-    expect(byKey.confirmed.by).toBe("Minh")
-    expect(byKey.picking.done).toBe(true)
-    expect(byKey.picking.at).toBeNull()
-    expect(byKey.delivering.current).toBe(true)
-    expect(byKey.delivered.done).toBe(false)
+    expect(byKey.submitted.at).toBe("2026-09-17T02:00:00Z")
+    expect(byKey.submitted.by).toBe("Nam")
+    expect(byKey.completed.at).toBe("2026-09-17T03:00:00Z")
+    expect(byKey.completed.current).toBe(true)
   })
 
   /**
    * ⚠ CHỐT NÀY SINH RA TỪ MỘT LẦN THỬ PHÁ. Bỏ điều kiện `done ? at : null`
    * mà bộ kiểm thử vẫn xanh — vì mọi ca đang có đều không có mốc giờ cho
-   * bước chưa tới. Ca thật thì có: đơn ĐÃ DUYỆT bị sửa nên quay về chờ
-   * duyệt lại (xem `needsReapprovalAfterEdit`); lịch sử vẫn giữ mốc "Đã
-   * duyệt 10:15", nhưng bước đó bây giờ CHƯA xong. In mốc cũ lên là kể
-   * rằng đơn đã được duyệt — đúng điều quản lý chưa làm.
+   * bước chưa tới. Ca thật thì có: đơn phiếu tạm bị RÚT VỀ NHÁP; lịch sử
+   * vẫn giữ mốc "Gửi đơn 10:15", nhưng bước đó bây giờ CHƯA xong. In mốc
+   * cũ lên là kể rằng đơn đang nằm ở nhà phân phối, đúng điều vừa bị rút.
    */
-  it("bước quay lại sau khi sửa đơn: không xong, không in mốc giờ cũ", () => {
-    const t = buildOrderTimeline({ ...base, status: "draft", approval_reason: "Sửa sau duyệt" }, [
-      { to_status: "confirmed", changed_at: "2026-09-17T02:00:00Z", changer: { full_name: "Minh" } },
+  it("bước quay lại sau khi rút đơn về nháp: không xong, không in mốc giờ cũ", () => {
+    const t = buildOrderTimeline({ ...base, status: "draft" }, [
+      { to_status: "submitted", changed_at: "2026-09-17T02:00:00Z", changer: { full_name: "Nam" } },
       { to_status: "draft", changed_at: "2026-09-17T05:00:00Z" },
     ])
     const byKey = Object.fromEntries(t.map((s) => [s.key, s]))
-    expect(byKey.pending.current).toBe(true)
-    expect(byKey.confirmed.done).toBe(false)
-    expect(byKey.confirmed.at).toBeNull()
-    expect(byKey.confirmed.by).toBeNull()
+    expect(byKey.draft.current).toBe(true)
+    expect(byKey.submitted.done).toBe(false)
+    expect(byKey.submitted.at).toBeNull()
+    expect(byKey.submitted.by).toBeNull()
   })
 
   it("đơn huỷ: giữ bước đã qua, kết bằng bước huỷ tô đỏ, không vẽ bước chưa tới", () => {
-    const t = buildOrderTimeline({ ...base, status: "cancelled", approval_reason: null }, [
-      { to_status: "confirmed", changed_at: "2026-09-17T02:00:00Z" },
+    const t = buildOrderTimeline({ ...base, status: "cancelled" }, [
+      { to_status: "submitted", changed_at: "2026-09-17T02:00:00Z" },
       { to_status: "cancelled", changed_at: "2026-09-17T04:00:00Z", changer: { full_name: "Chủ" } },
     ])
-    expect(t.map((s) => s.key)).toEqual(["draft", "confirmed", "cancelled"])
+    expect(t.map((s) => s.key)).toEqual(["draft", "submitted", "cancelled"])
     const last = t[t.length - 1]
     expect(last.error).toBe(true)
     expect(last.by).toBe("Chủ")

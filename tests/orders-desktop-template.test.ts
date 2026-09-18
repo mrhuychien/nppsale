@@ -108,19 +108,36 @@ describe("Bảng: cột theo mẫu, số liệu thật", () => {
     expect(PAGE).toContain('setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))')
   })
 
-  it("nút Duyệt trên dòng chỉ khi đơn chờ duyệt và người dùng được duyệt", () => {
+  it("nút Xuất hàng trên dòng chỉ khi đơn là phiếu tạm và người dùng có quyền", () => {
     expect(TABLE).toContain("{pending && canApprove ? (")
     expect(TABLE).toContain("onClick={() => onApprove(o)}")
   })
 })
 
-describe("Duyệt đơn: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", () => {
+describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", () => {
   it("approveOrders(ids) được ba nơi gọi", () => {
     expect(PAGE).toContain("const approveOrders = async (ids: string[]) => {")
     expect(PAGE).toContain("const handleBulkApprove = () => approveOrders(Array.from(selectedIds))")
     expect(PAGE.match(/onApprove=\{\(o\) => approveOrders\(\[o\.id\]\)\}/g)?.length).toBe(2)
-    // Không còn phép ghi duyệt thứ hai.
-    expect(PAGE.match(/\.update\(\{\s*status: "confirmed",\s*approved_by: user\.id/g)?.length).toBe(1)
+  })
+
+  /**
+   * ⚠ XUẤT HÀNG PHẢI ĐI QUA RPC. Trừ kho, sinh công nợ và đổi trạng thái
+   * là một việc; làm bằng lệnh ghi thẳng từ trình duyệt là quay về đúng
+   * cảnh đơn "đã xuất" mà kho chưa trừ. Trigger ở migration 119 chặn, nên
+   * lệnh ghi thẳng cũng chỉ ném lỗi USE_RPC.
+   */
+  it("gọi RPC complete_order, không UPDATE thẳng", () => {
+    expect(PAGE).toContain('supabase.rpc("complete_order", { p_order_id: id })')
+    expect(PAGE).not.toMatch(/\.update\(\{\s*status: "completed"/)
+  })
+
+  /** Mỗi đơn một giao dịch: đơn thiếu tồn không kéo cả loạt còn lại đổ theo. */
+  it("mỗi đơn một lệnh gọi, đơn hỏng được kể tên", () => {
+    const i = PAGE.indexOf("const approveOrders = async (ids: string[]) => {")
+    const body = PAGE.slice(i, PAGE.indexOf("\n  }", i))
+    expect(body).toContain("for (const id of ids)")
+    expect(body).toContain("failed.push(")
   })
 })
 
@@ -154,7 +171,7 @@ describe("Ngăn chi tiết bên phải", () => {
   })
 })
 
-describe("Dòng mô tả đầu trang: hôm nay · cần duyệt", () => {
+describe("Dòng mô tả đầu trang: hôm nay · phiếu tạm chờ xuất", () => {
   it("tổng hôm nay đọc theo ngày VN, bỏ đơn huỷ, đọc hỏng thì không hiện số", () => {
     const i = PAGE.indexOf("async function loadTodaySummary()")
     const fn = PAGE.slice(i, PAGE.indexOf("\n    }", i))
@@ -162,6 +179,6 @@ describe("Dòng mô tả đầu trang: hôm nay · cần duyệt", () => {
     expect(fn).toContain('.neq("status", "cancelled")')
     expect(fn).toContain("fetchAllForAggregate<")
     expect(PAGE).toContain("todaySummary ? `${todaySummary.count} đơn hôm nay · ${formatCurrency(todaySummary.total)}` : null")
-    expect(PAGE).toContain("(statusCounts.pending_approval ?? 0) > 0 ? `${statusCounts.pending_approval} đơn cần duyệt` : null")
+    expect(PAGE).toContain("(statusCounts.submitted ?? 0) > 0 ? `${statusCounts.submitted} phiếu tạm chờ xuất` : null")
   })
 })

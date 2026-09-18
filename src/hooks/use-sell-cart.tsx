@@ -54,7 +54,7 @@ export interface EditingOrder {
   orderId: string
   orderCode: string
   /** Trạng thái LÚC MỞ RA SỬA — quyết định nhãn nút và lời nhắc. */
-  status: "draft" | "confirmed"
+  status: "draft" | "submitted"
   /** NVBH phụ trách — để biết nháp này có phải "của mình" mà xoá được không. */
   salesUserId?: string | null
 }
@@ -101,7 +101,7 @@ function validEditing(v: unknown): EditingOrder | null {
   if (!v || typeof v !== "object") return null
   const e = v as Partial<EditingOrder>
   if (typeof e.orderId !== "string" || !e.orderId) return null
-  if (e.status !== "draft" && e.status !== "confirmed") return null
+  if (e.status !== "draft" && e.status !== "submitted") return null
   return {
     orderId: e.orderId,
     orderCode: e.orderCode ?? "",

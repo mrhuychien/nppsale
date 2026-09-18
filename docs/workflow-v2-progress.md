@@ -28,7 +28,7 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       `void_cash_receipt`) + grants. Kèm gỡ trigger nhập kho tự động của
       đơn trả (Q3), seed các ô quyền RPC cần (Q6), và
       `tests/workflow-v2-rpcs.test.ts` (66 chốt, thử phá 12 lần đều đỏ).
-- [ ] **P3** `feat(wf2-P3)` — Types, constants, permissions,
+- [x] **P3** `feat(wf2-P3)` — Types, constants, permissions,
       edit-permission + cascade TS (mục 5); test cũ xanh trở lại.
 - [ ] **P4** `feat(wf2-P4)` — NVBH mobile: Lưu nháp / Gửi đơn, offline
       `target_status`, /sell/drafts, tab Phiếu tạm / Hoàn thành / Đã hủy.
@@ -103,6 +103,33 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   tồn, và hàng trả nhập lại mang giá vốn 0 làm lãi gộp báo khống.
 - Quyết định có ghi lại trong sổ câu hỏi: Q5 khoá quyền cho phiếu thu,
   Q6 seed ma trận quyền, Q7 cột lý do huỷ phiếu trả.
+
+## Ghi chú P3
+
+- Đổi kiểu `OrderStatus` và `ReturnStatus` trước, rồi để trình kiểm kiểu
+  liệt kê việc: 66 lỗi, dọn hết. Cách này bắt được cả những chỗ so sánh
+  trạng thái mà grep bỏ sót.
+- Xoá `lib/orders/reapproval.ts` và `lib/sell/send-approval.ts`. Thay bằng
+  `lib/sell/send-order.ts`: gửi đơn là một lệnh đổi `draft` → `submitted`,
+  có `.eq("status","draft")` chống đua và kiểm số dòng.
+- Bộ quy tắc duyệt GIỮ LẠI nhưng đổi vai: nó không quyết trạng thái nữa,
+  chỉ ghi `approval_reason` làm cảnh báo cho NPP đọc trước khi xuất hàng.
+  Ba chốt test cũ về "tự duyệt / trả về chờ duyệt" được viết lại thành
+  "vẫn là phiếu tạm, nhưng phải kèm cảnh báo".
+- Nút duyệt hàng loạt ở danh sách đơn đổi thành **Xuất hàng**, gọi RPC
+  `complete_order` từng đơn một. Không UPDATE thẳng: trigger 119 chặn, và
+  mỗi đơn là một giao dịch nên đơn thiếu tồn không kéo cả loạt đổ theo.
+- Bỏ hẳn nút "chuyển bước tiếp theo" hàng loạt — v2 không còn bước trung
+  gian nào để chuyển.
+- `edit-permission.ts` thêm `canEditCompleted` / `whyLockedCompleted`: bốn
+  khoá của đơn đã xuất, có test đối chiếu với đúng bốn mã lỗi trong
+  migration 120 để màn hình và RPC không nói hai đằng.
+- ⚠ **Việc để lại cho P7:** ba màn của luồng cũ vẫn ghi trạng thái đã bị
+  bỏ — `/inventory/stock-out` ghi `picking`, `/inventory/entries/[id]` ghi
+  `delivering`, màn thu tiền theo phiếu xuất ghi `delivered`. Chúng sẽ
+  hỏng thành LỖI RÕ RÀNG (vi phạm ràng buộc CHECK) chứ không âm thầm sai,
+  và P7 gỡ chúng khỏi menu. Không sửa ở P3 vì spec nói giữ nguyên mã luồng
+  cũ.
 
 ## Quy ước
 

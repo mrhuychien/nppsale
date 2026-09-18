@@ -8,7 +8,6 @@ import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { orderTone, vnTime } from "@/lib/orders/status-tone"
-import { isSentForApproval } from "@/lib/sell/send-approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
 import { errorMessage } from "@/lib/errors"
 import type { SalesOrder } from "@/types"
@@ -81,8 +80,8 @@ export function OrderDrawer({
     }
   }, [orderId])
 
-  const tone = order ? orderTone(order.status, order.approval_reason) : null
-  const pending = !!order && isSentForApproval(order.status, order.approval_reason)
+  const tone = order ? orderTone(order.status) : null
+  const pending = !!order && order.status === "submitted"
   const terms = order
     ? (PAYMENT_TERMS.find((t) => t.value === order.payment_terms)?.label ?? order.payment_terms ?? "—")
     : ""

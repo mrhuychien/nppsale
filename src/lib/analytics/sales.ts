@@ -110,7 +110,7 @@ export async function fetchDeliveredOrders(
       .from("sales_orders")
       .select("id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id", { count: "exact" })
       .eq("org_id", orgId)
-      .eq("status", "delivered")
+      .eq("status", "completed")
       .gte("order_date", range.from)
       .lte("order_date", range.to)
       .order("order_date", { ascending: false })

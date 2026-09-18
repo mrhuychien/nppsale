@@ -1,15 +1,13 @@
 import { ORDER_STATUS_MAP } from "@/lib/constants"
-import { isSentForApproval } from "@/lib/sell/send-approval"
 
 /**
  * Màu và nhãn của một đơn trên ĐIỆN THOẠI — theo mẫu thiết kế màn "Đơn
  * của tôi" / "Chi tiết đơn".
  *
- * ⚠ "CHỜ DUYỆT" KHÔNG PHẢI MỘT TRẠNG THÁI trong database: nó là
- * `status = 'draft'` kèm `approval_reason`. Hai đơn cùng là `draft` — một
- * nháp chưa gửi, một đã gửi chờ quản lý — phải hiện hai màu khác nhau,
- * không thì NVBH lưu tạm xong tưởng đã gửi rồi ngồi đợi. Phép phân biệt
- * nằm ở `isSentForApproval`, không chép lại ở đây.
+ * ⚠ WORKFLOW V2 BỎ TRẠNG THÁI ẢO "CHỜ DUYỆT". Trước đây "đã gửi" là
+ * `status = 'draft'` kèm `approval_reason`, phải suy ra mới biết. Giờ
+ * `submitted` là một trạng thái thật trong database, nên nhãn và màu đọc
+ * thẳng từ nó. `approval_reason` chỉ còn là dòng cảnh báo cho NPP.
  *
  * ⚠ NHÃN lấy từ `ORDER_STATUS_MAP` để bảng desktop và thẻ mobile không
  * viết hai kiểu "Đã hủy" / "Đã huỷ" cho cùng một trạng thái.
@@ -32,18 +30,12 @@ export interface OrderTone {
 
 const TONES: Record<string, Omit<OrderTone, "key" | "label">> = {
   draft: { bg: "#eef1f5", fg: "#565a67", accent: "#b9c4d6" },
-  pending: { bg: "#fff4e0", fg: "#8a5a00", accent: "#fdb022" },
-  confirmed: { bg: "#e3edfb", fg: "#1d4ed8", accent: "#2563eb" },
-  picking: { bg: "#eef7ff", fg: "#0c4a6e", accent: "#7dd3fc" },
-  delivering: { bg: "#e6f4ff", fg: "#075985", accent: "#38bdf8" },
-  delivered: { bg: "#e3f5ec", fg: "#004e33", accent: "#22c55e" },
+  submitted: { bg: "#fff4e0", fg: "#8a5a00", accent: "#fdb022" },
+  completed: { bg: "#e3f5ec", fg: "#004e33", accent: "#22c55e" },
   cancelled: { bg: "#fdecec", fg: "#b00020", accent: "#ef5350" },
 }
 
-export function orderTone(status: string, approvalReason?: string | null): OrderTone {
-  if (isSentForApproval(status, approvalReason)) {
-    return { key: "pending", label: "Chờ duyệt", ...TONES.pending }
-  }
+export function orderTone(status: string): OrderTone {
   const t = TONES[status] ?? TONES.draft
   return { key: status, label: ORDER_STATUS_MAP[status]?.label ?? status, ...t }
 }
@@ -134,6 +126,8 @@ export interface TimelineOrder {
   created_at: string
   approved_at?: string | null
   approval_reason?: string | null
+  submitted_at?: string | null
+  completed_at?: string | null
   sales_user?: { full_name?: string | null } | null
 }
 
@@ -143,27 +137,24 @@ export interface TimelineHistoryEntry {
   changer?: { full_name?: string | null } | null
 }
 
-const STAGE_ORDER = ["draft", "pending", "confirmed", "picking", "delivering", "delivered"] as const
+const STAGE_ORDER = ["draft", "submitted", "completed"] as const
 const STAGE_LABEL: Record<(typeof STAGE_ORDER)[number], string> = {
   draft: "Tạo đơn",
-  pending: "Gửi duyệt",
-  confirmed: "Đã duyệt",
-  picking: "Đang lấy hàng",
-  delivering: "Đang giao",
-  delivered: "Đã giao",
+  submitted: "Gửi đơn",
+  completed: "Xuất hàng",
 }
 
 /**
- * Dựng dòng thời gian từ dữ liệu THẬT: `created_at`, `approved_at`, và
- * `order_status_history`. Bước nào không có mốc giờ thì để trống —
- * mẫu thiết kế bịa giờ cho đẹp, app thì không.
+ * Dựng dòng thời gian từ dữ liệu THẬT: `created_at`, `submitted_at`,
+ * `completed_at` và `order_status_history`. Bước nào không có mốc giờ thì
+ * để trống — mẫu thiết kế bịa giờ cho đẹp, app thì không.
  *
- * ⚠ "Gửi duyệt" chỉ xuất hiện khi đơn từng bị đưa đi duyệt
- * (`approval_reason` có giá trị). Đơn tự duyệt đi thẳng Tạo đơn → Đã
- * duyệt; vẽ thêm một bước "Gửi duyệt" đã xong là kể một chuyện không có.
+ * ⚠ Đơn cũ (trước workflow v2) không có `submitted_at`: backfill cố ý để
+ * trống thay vì lấy `created_at` cho đủ chỗ. Bước "Gửi đơn" của chúng vẫn
+ * hiện là đã qua, nhưng không có giờ — đúng với những gì biết được.
  *
  * Đơn HUỶ: giữ các bước đã đi qua, thêm bước "Đã huỷ" tô đỏ ở cuối; các
- * bước chưa tới bị bỏ — không vẽ "Đang giao" mờ cho một đơn đã chết.
+ * bước chưa tới bị bỏ — không vẽ bước mờ cho một đơn đã chết.
  */
 export function buildOrderTimeline(
   order: TimelineOrder,
@@ -172,21 +163,18 @@ export function buildOrderTimeline(
   const latest = (status: string): TimelineHistoryEntry | undefined =>
     history.filter((h) => h.to_status === status).sort((a, b) => b.changed_at.localeCompare(a.changed_at))[0]
 
-  const sent = !!order.approval_reason
-  const stages = STAGE_ORDER.filter((s) => s !== "pending" || sent)
-
-  const currentKey = isSentForApproval(order.status, order.approval_reason) ? "pending" : order.status
+  const stages = STAGE_ORDER
   const reached = (() => {
     if (order.status === "cancelled") {
       // Bước xa nhất từng đi qua, theo lịch sử.
       let far = 0
       for (let i = 0; i < stages.length; i++) {
         const s = stages[i]
-        if (s === "draft" || s === "pending" || latest(s)) far = i
+        if (s === "draft" || latest(s)) far = i
       }
       return far
     }
-    const i = stages.indexOf(currentKey as (typeof STAGE_ORDER)[number])
+    const i = stages.indexOf(order.status as (typeof STAGE_ORDER)[number])
     return i < 0 ? 0 : i
   })()
 
@@ -197,13 +185,12 @@ export function buildOrderTimeline(
     if (s === "draft") {
       at = order.created_at
       by = order.sales_user?.full_name ?? null
-    } else if (s === "confirmed") {
-      const h = latest("confirmed")
-      at = h?.changed_at ?? order.approved_at ?? null
-      by = h?.changer?.full_name ?? null
-    } else if (s !== "pending") {
+    } else if (s === "submitted") {
+      at = latest("submitted")?.changed_at ?? order.submitted_at ?? null
+      by = latest("submitted")?.changer?.full_name ?? order.sales_user?.full_name ?? null
+    } else {
       const h = latest(s)
-      at = h?.changed_at ?? null
+      at = h?.changed_at ?? order.completed_at ?? null
       by = h?.changer?.full_name ?? null
     }
     return {

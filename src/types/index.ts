@@ -15,7 +15,7 @@ export interface SalesRoute {
   updated_at: string
 }
 export type CustomerStatus = "active" | "suspended" | "locked"
-export type OrderStatus = "draft" | "confirmed" | "picking" | "delivering" | "delivered" | "cancelled"
+export type OrderStatus = "draft" | "submitted" | "completed" | "cancelled"
 export type StockEntryType = "import" | "export" | "transfer" | "stocktake"
 export type PaymentMethod = "cash" | "transfer" | "ewallet"
 export type ReceivableStatus = "open" | "partial" | "paid" | "overdue"
@@ -53,7 +53,7 @@ export type MisaRelation =
   | "adjusted"     // 8 — BỊ điều chỉnh → vẫn còn hiệu lực
   | "unknown"      // MISA trả giá trị lạ: không đoán
 export type ReturnReason = "damaged" | "wrong_item" | "near_expiry" | "expired" | "refused"
-export type ReturnStatus = "pending" | "approved" | "rejected" | "completed"
+export type ReturnStatus = "draft" | "submitted" | "completed" | "cancelled"
 export type CommissionType = "percentage" | "fixed" | "tiered"
 export type AssignmentRole = "primary" | "secondary"
 export type AttendanceStatus = "present" | "absent" | "half_day" | "leave" | "holiday"

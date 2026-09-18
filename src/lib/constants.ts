@@ -39,10 +39,8 @@ export const PAYMENT_METHODS = [
 
 export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   draft: { label: "Nháp", variant: "secondary" },
-  confirmed: { label: "Đã duyệt", variant: "default" },
-  picking: { label: "Đang lấy hàng", variant: "warning" },
-  delivering: { label: "Đang giao", variant: "warning" },
-  delivered: { label: "Đã giao", variant: "success" },
+  submitted: { label: "Phiếu tạm", variant: "warning" },
+  completed: { label: "Hoàn thành", variant: "success" },
   cancelled: { label: "Đã hủy", variant: "danger" },
 }
 

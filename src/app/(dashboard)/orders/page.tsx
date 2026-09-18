@@ -11,7 +11,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { newOrderHref } from "@/lib/nav/new-order"
-import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
+
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -54,7 +54,6 @@ import {
 } from "@/components/orders/order-pipeline"
 import { formatCurrency } from "@/lib/utils"
 import {
-  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -87,26 +86,20 @@ const COUNT_SELECT_WITH_ROUTE = "id, customer:customers!inner(id)"
 /**
  * Các trạng thái có chip lọc, theo đúng thứ tự đơn đi qua.
  *
- * `pending_approval` không phải một giá trị của cột `status` — nó là
- * `draft` + có lý do duyệt. Xem `applyStatusFilter`.
+ * Workflow v2 có bốn trạng thái thật, không còn trạng thái ảo nào phải
+ * suy ra từ cột lý do.
  */
 const COUNTED_STATUSES = [
-  "pending_approval",
   "draft",
-  "confirmed",
-  "picking",
-  "delivering",
-  "delivered",
+  "submitted",
+  "completed",
   "cancelled",
 ] as const
 
 const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
-  pending_approval: "Chờ duyệt",
   draft: "Nháp",
-  confirmed: "Đã duyệt",
-  picking: "Đang lấy hàng",
-  delivering: "Đang giao",
-  delivered: "Đã giao",
+  submitted: "Phiếu tạm",
+  completed: "Hoàn thành",
   cancelled: "Đã huỷ",
 }
 
@@ -219,7 +212,7 @@ export default function OrdersPage() {
           supabase
             .from("sales_orders")
             .select("id, customer:customers!inner(channel)", { count: "exact" })
-            .eq("status", "confirmed")
+            .eq("status", "submitted")
             .range(from, to)
       )
       if (res.error) {
@@ -312,13 +305,7 @@ export default function OrdersPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applyStatusFilter = <T,>(q: T, status: string): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (status === "pending_approval") {
-      x = x
-        .eq("status", "draft")
-        .not("approval_reason", "is", null)
-        // Bản nháp NVBH tự lưu KHÔNG phải đơn chờ duyệt.
-        .neq("approval_reason", DRAFT_APPROVAL_REASON)
-    } else if (status !== "all") {
+    if (status !== "all") {
       x = x.eq("status", status)
     }
     return x as T
@@ -528,56 +515,49 @@ export default function OrdersPage() {
   const canApprove = user && hasPermission(user.role, "orders", "approve")
 
   /**
-   * Duyệt một hoặc nhiều đơn — MỘT hàm cho thanh chọn nhiều, nút "Duyệt"
+   * XUẤT HÀNG cho một hoặc nhiều đơn — MỘT hàm cho thanh chọn nhiều, nút
    * trên từng dòng và ngăn chi tiết. Ba chỗ ba phép ghi là ba chỗ để lệch.
+   *
+   * ⚠ ĐI QUA RPC, KHÔNG UPDATE THẲNG. Xuất hàng là trừ kho FIFO + sinh
+   * công nợ + đổi trạng thái; trigger ở migration 119 chặn đường tắt.
+   * Mỗi đơn một lệnh gọi vì mỗi đơn là một giao dịch riêng — đơn thiếu
+   * tồn không được kéo cả loạt còn lại đổ theo.
    */
   const approveOrders = async (ids: string[]) => {
     if (!user || !canApprove || ids.length === 0) return
     setBulkLoading(true)
     if (ids.length === 1) setApprovingId(ids[0])
+    const failed: string[] = []
+    let ok = 0
     try {
-      const { error } = await supabase
-        .from("sales_orders")
-        .update({
-          status: "confirmed",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          approval_reason: null,
-        })
-        .in("id", ids)
-      if (error) throw error
-
-      // Notify each sales rep (fire-and-forget)
-      const approvedOrders = orders.filter(
-        (o) => ids.includes(o.id) && o.sales_user_id && o.sales_user_id !== user.id
-      )
-      if (approvedOrders.length > 0 && user.org_id) {
-        const { createNotification } = await import("@/lib/notifications")
-        for (const o of approvedOrders) {
-          createNotification(supabase, {
-            orgId: user.org_id,
-            userId: o.sales_user_id,
-            type: "order_approved",
-            title: `Đơn ${o.order_code} đã được duyệt`,
-            body: `Bởi ${user.full_name || "Quản lý"}`,
-            linkUrl: `/orders/${o.id}`,
-            metadata: { order_id: o.id, order_code: o.order_code },
-          })
+      for (const id of ids) {
+        const { error } = await supabase.rpc("complete_order", { p_order_id: id })
+        if (error) {
+          failed.push(`${orders.find((o) => o.id === id)?.order_code ?? id}: ${errorMessage(error)}`)
+        } else {
+          ok += 1
         }
       }
-
-      setOrders((prev) =>
-        prev.map((o) =>
-          ids.includes(o.id)
-            ? { ...o, status: "confirmed", approved_by: user.id, approval_reason: null }
-            : o
+      if (ok > 0) {
+        setOrders((prev) =>
+          prev.map((o) =>
+            ids.includes(o.id) && !failed.some((f) => f.startsWith(o.order_code))
+              ? { ...o, status: "completed" as const, approval_reason: null }
+              : o
+          )
         )
-      )
-      toast({ title: `Đã duyệt ${ids.length} đơn hàng` })
+        toast({ title: `Đã xuất hàng ${ok} đơn` })
+      }
+      if (failed.length > 0) {
+        toast({
+          title: `${failed.length} đơn không xuất được`,
+          description: failed.join(" · "),
+          variant: "destructive",
+        })
+      }
       clearSelection()
     } catch (err) {
-      const message = errorMessage(err)
-      toast({ title: "Lỗi", description: message, variant: "destructive" })
+      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
       setBulkLoading(false)
       setApprovingId(null)
@@ -589,8 +569,10 @@ export default function OrdersPage() {
   const handleBulkCancel = async () => {
     if (!user) return
     const selected = orders.filter((o) => selectedIds.has(o.id))
+    // Đơn ĐÃ XUẤT phải huỷ qua RPC (hoàn kho, xoá công nợ) — không gộp
+    // vào đây được.
     const cancellable = selected.filter(
-      (o) => o.status !== "delivered" && o.status !== "cancelled"
+      (o) => o.status === "draft" || o.status === "submitted"
     )
     if (cancellable.length === 0) {
       toast({ title: "Không có đơn nào hủy được", variant: "destructive" })
@@ -627,67 +609,6 @@ export default function OrdersPage() {
         prev.map((o) => (ids.includes(o.id) ? { ...o, status: "cancelled" as const } : o))
       )
       toast({ title: `Đã hủy ${ids.length} đơn` })
-      clearSelection()
-    } catch (err) {
-      const message = errorMessage(err)
-      toast({ title: "Lỗi", description: message, variant: "destructive" })
-    } finally {
-      setBulkLoading(false)
-    }
-  }
-
-  // Bulk transition — advance selected orders to the next status. Only enabled
-  // when all selected share the same status.
-  const NEXT_STATUS: Partial<Record<string, { to: "picking" | "delivering" | "delivered"; label: string }>> = {
-    confirmed: { to: "picking", label: "Bắt đầu lấy hàng" },
-    picking: { to: "delivering", label: "Xuất kho giao hàng" },
-    delivering: { to: "delivered", label: "Xác nhận đã giao" },
-  }
-
-  const handleBulkAdvance = async () => {
-    if (!user) return
-    const selected = orders.filter((o) => selectedIds.has(o.id))
-    if (selected.length === 0) return
-    const firstStatus = selected[0].status
-    const allSame = selected.every((o) => o.status === firstStatus)
-    if (!allSame) {
-      toast({
-        title: "Trạng thái không đồng nhất",
-        description: "Chọn các đơn cùng trạng thái để chuyển sang bước tiếp theo",
-        variant: "destructive",
-      })
-      return
-    }
-    const next = NEXT_STATUS[firstStatus]
-    if (!next) {
-      toast({ title: "Không có bước tiếp theo", variant: "destructive" })
-      return
-    }
-
-    // Confirmed → picking goes through the stock-out screen so the warehouse
-    // can review the pick list, scan barcodes, and create the export entry
-    // before the orders flip to "picking".
-    if (firstStatus === "confirmed") {
-      const ids = selected.map((o) => o.id)
-      router.push(`/inventory/stock-out?orderIds=${ids.join(",")}`)
-      return
-    }
-
-    if (!confirm(`${next.label} cho ${selected.length} đơn?`)) return
-
-    const ids = selected.map((o) => o.id)
-    setBulkLoading(true)
-    try {
-      const { error } = await supabase
-        .from("sales_orders")
-        .update({ status: next.to })
-        .in("id", ids)
-      if (error) throw error
-
-      setOrders((prev) =>
-        prev.map((o) => (ids.includes(o.id) ? { ...o, status: next.to } : o))
-      )
-      toast({ title: `Đã chuyển ${ids.length} đơn → ${next.label}` })
       clearSelection()
     } catch (err) {
       const message = errorMessage(err)
@@ -926,11 +847,10 @@ export default function OrdersPage() {
         const allSameStatus = selectedOrders.length > 0 &&
           selectedOrders.every((o) => o.status === selectedOrders[0].status)
         const sharedStatus = allSameStatus ? selectedOrders[0].status : null
-        const next = sharedStatus ? NEXT_STATUS[sharedStatus] : null
         const cancellableCount = selectedOrders.filter(
-          (o) => o.status !== "delivered" && o.status !== "cancelled"
+          (o) => o.status === "draft" || o.status === "submitted"
         ).length
-        const hasDraftNeedingApproval = selectedOrders.some((o) => o.status === "draft")
+        const hasSubmitted = selectedOrders.some((o) => o.status === "submitted")
 
         return (
           <div className="flex flex-wrap items-center gap-2 border-b border-[#d3e0f7] bg-[#e3edfb] px-4 py-2 text-[13px] font-bold text-[#1e3a8a] lg:rounded-none rounded-xl lg:border-b">
@@ -944,20 +864,10 @@ export default function OrdersPage() {
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                {canApprove && hasDraftNeedingApproval && (
+                {canApprove && hasSubmitted && (
                   <Button size="sm" onClick={handleBulkApprove} disabled={bulkLoading}>
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Duyệt đơn nháp
-                  </Button>
-                )}
-                {next && (
-                  <Button
-                    size="sm"
-                    onClick={handleBulkAdvance}
-                    disabled={bulkLoading}
-                  >
-                    <ArrowRight className="mr-2 h-4 w-4" />
-                    {next.label}
+                    Xuất hàng
                   </Button>
                 )}
                 {cancellableCount > 0 && (
@@ -1074,7 +984,7 @@ export default function OrdersPage() {
         title={isSales ? "Đơn của tôi" : "Đơn hàng"}
         description={[
           todaySummary ? `${todaySummary.count} đơn hôm nay · ${formatCurrency(todaySummary.total)}` : null,
-          (statusCounts.pending_approval ?? 0) > 0 ? `${statusCounts.pending_approval} đơn cần duyệt` : null,
+          (statusCounts.submitted ?? 0) > 0 ? `${statusCounts.submitted} phiếu tạm chờ xuất` : null,
           pg.total === orders.length ? `${pg.total} đơn` : `${pg.total} đơn · đang xem ${orders.length}`,
         ]
           .filter(Boolean)
@@ -1134,7 +1044,7 @@ export default function OrdersPage() {
           key: k,
           label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k],
           count: statusCounts[k] ?? 0,
-          accent: k === "all" ? "#181c1e" : orderTone(k === "pending_approval" ? "draft" : k, k === "pending_approval" ? "x" : null).accent,
+          accent: k === "all" ? "#181c1e" : orderTone(k).accent,
         }))}
       />
 

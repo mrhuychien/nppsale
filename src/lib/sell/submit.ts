@@ -15,7 +15,7 @@ import type { ApprovalRules, Customer, Role } from "@/types"
  */
 export type SubmitOutcome =
   | { kind: "queued"; orderCode: string }
-  | { kind: "created"; orderCode: string; orderId: string; status: "draft" | "confirmed"; reason: string }
+  | { kind: "created"; orderCode: string; orderId: string; status: "draft" | "submitted"; reason: string }
 
 export interface SubmitInput extends StatusDecisionInput {
   payload: OfflineOrderPayload
@@ -54,24 +54,29 @@ export interface StatusDecisionInput {
 }
 
 /**
- * Quyết trạng thái đơn.
+ * Quyết trạng thái đơn khi NVBH bấm Lưu nháp hoặc Gửi đơn.
  *
- * ⚠ ĐƠN NHÁP KHÔNG CHẠY BỘ QUY TẮC. Chưa gửi đi thì chưa có gì để duyệt,
- * và kết quả sẽ cũ mất trước khi ai kịp đọc vì người dùng còn sửa tiếp.
+ * ⚠ WORKFLOW V2 KHÔNG CÒN BƯỚC DUYỆT. Gửi đơn là thành Phiếu tạm, luôn
+ *   luôn. Bộ quy tắc vẫn chạy, nhưng kết quả chỉ đi vào `approval_reason`
+ *   làm CẢNH BÁO cho NPP đọc trước khi bấm Xuất hàng — nó không còn chặn
+ *   ai, và không còn quyết trạng thái.
+ *
+ * ⚠ ĐƠN NHÁP KHÔNG CHẠY BỘ QUY TẮC. Chưa gửi đi thì chưa có gì để cảnh
+ *   báo, và kết quả sẽ cũ mất trước khi ai kịp đọc vì người dùng còn sửa.
  *
  * ⚠ Truyền `grossBeforeDiscount` RIÊNG. Mọi ngưỡng đều xét tổng SAU chiết
- * khấu, nên chiết khấu 100% làm đơn tụt xuống dưới ngưỡng và tự động duyệt
- * — cho không hàng mà không ai được hỏi.
+ *   khấu, nên chiết khấu 100% làm đơn tụt xuống dưới ngưỡng và lọt hết
+ *   cảnh báo — đúng lúc cần cảnh báo nhất.
  */
 export function decideStatus(i: StatusDecisionInput): {
-  status: "draft" | "confirmed"
+  status: "draft" | "submitted"
   reason: string
 } {
   if (i.asDraft) return { status: "draft", reason: DRAFT_APPROVAL_REASON }
   if (i.contextFailed) {
     return {
-      status: "draft",
-      reason: "Không đọc được công nợ / quy tắc duyệt — đơn chờ duyệt tay.",
+      status: "submitted",
+      reason: "Không đọc được công nợ / quy tắc — NPP kiểm tay trước khi xuất hàng.",
     }
   }
   const decision = evaluateApproval(i.rules, {
@@ -84,9 +89,7 @@ export function decideStatus(i: StatusDecisionInput): {
     repPortfolioDebt: i.repPortfolioDebt,
     role: i.role,
   })
-  return decision.autoApprove
-    ? { status: "confirmed", reason: "" }
-    : { status: "draft", reason: decision.reason }
+  return { status: "submitted", reason: decision.autoApprove ? "" : decision.reason }
 }
 
 type Client = Parameters<typeof createOrderRecords>[0]
@@ -105,16 +108,8 @@ export async function submitSellOrder(
   const { status, reason } = decideStatus(i)
 
   // `createOrderRecords` luôn ghi ở trạng thái `draft` (nó vốn dùng cho
-  // hàng đợi ngoại tuyến). Đơn tự duyệt được thì nâng lên ngay tại đây.
-  const update: Record<string, unknown> =
-    status === "confirmed"
-      ? {
-          status: "confirmed",
-          approved_by: ctx.userId,
-          approved_at: new Date().toISOString(),
-          approval_reason: null,
-        }
-      : { approval_reason: reason || null }
+  // hàng đợi ngoại tuyến). Gửi đơn thì nâng lên Phiếu tạm ngay tại đây.
+  const update: Record<string, unknown> = { status, approval_reason: reason || null }
 
   const { data: rows, error } = await supabase
     .from("sales_orders")

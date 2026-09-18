@@ -118,7 +118,7 @@ export default function SellEditLoaderPage() {
       editing: {
         orderId: head.id,
         orderCode: head.order_code,
-        status: head.status === "confirmed" ? "confirmed" : "draft",
+        status: head.status === "submitted" ? "submitted" : "draft",
         salesUserId: head.sales_user_id ?? null,
       },
     })

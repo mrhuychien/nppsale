@@ -85,7 +85,7 @@ export function RouteFilter({
         )}
         {active.length > 0 && (
           <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">
-            Đang có đơn đã duyệt
+            Đang có đơn chờ xuất
           </p>
         )}
         {active.map((r) => (

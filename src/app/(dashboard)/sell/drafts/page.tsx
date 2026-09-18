@@ -14,11 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import { toast } from "@/hooks/use-toast"
 import { loadApprovalContext } from "@/lib/sell/approval-context"
-import {
-  grossFromSavedLines,
-  isSentForApproval,
-  sendDraftForApproval,
-} from "@/lib/sell/send-approval"
+import { sendOrder, grossFromSavedLines } from "@/lib/sell/send-order"
+import { evaluateApproval } from "@/lib/approval"
 
 interface DraftOrder {
   id: string
@@ -97,32 +94,29 @@ export default function SellDraftsPage() {
         customerId: o.customer_id,
         salesUserId: user.id,
       })
-      const out = await sendDraftForApproval(supabase, {
-        orderId: o.id,
-        orderCode: o.order_code,
-        orgId: user.org_id,
-        userId: user.id,
-        orderTotal: Number(o.total || 0),
-        subtotal: Number(o.subtotal || 0),
-        grossBeforeDiscount: grossFromSavedLines(Number(o.subtotal || 0), rows),
-        customer: o.customer
-          ? { id: o.customer_id, credit_limit: Number(o.customer.credit_limit || 0) }
-          : null,
-        rules: ctx.rules,
-        customerDebt: ctx.customerDebt,
-        customerOverdue: ctx.customerOverdue,
-        repPortfolioDebt: ctx.repPortfolioDebt,
-        contextFailed: ctx.failed,
-        role: user.role,
+      // Bộ quy tắc vẫn chạy, nhưng chỉ để ghi CẢNH BÁO cho NPP đọc trước
+      // khi bấm Xuất hàng — nó không chặn ai và không quyết trạng thái.
+      const subtotal = Number(o.subtotal || 0)
+      const warn = ctx.failed
+        ? "Không đọc được công nợ / quy tắc — NPP kiểm tay trước khi xuất hàng."
+        : evaluateApproval(ctx.rules, {
+            orderTotal: Number(o.total || 0),
+            grossBeforeDiscount: grossFromSavedLines(subtotal, rows),
+            discountAmount: Math.max(0, grossFromSavedLines(subtotal, rows) - subtotal),
+            customer: o.customer
+              ? { id: o.customer_id, credit_limit: Number(o.customer.credit_limit || 0) }
+              : null,
+            customerDebt: ctx.customerDebt,
+            customerOverdue: ctx.customerOverdue,
+            repPortfolioDebt: ctx.repPortfolioDebt,
+            role: user.role,
+          }).reason
+
+      await sendOrder(supabase, { orderId: o.id, reason: warn })
+      toast({
+        title: `Đã gửi đơn ${o.order_code}`,
+        description: warn || undefined,
       })
-      toast(
-        out.status === "confirmed"
-          ? { title: `Đơn ${o.order_code} đã được duyệt tự động` }
-          : {
-              title: `Đã gửi đơn ${o.order_code} cho quản lý duyệt`,
-              description: out.reason || undefined,
-            }
-      )
       void load()
     } catch (err) {
       toast({
@@ -219,10 +213,8 @@ export default function SellDraftsPage() {
           </p>
         ) : (
           drafts.map((o) => {
-            // ⚠ HAI LOẠI ĐƠN NHÁP KHÁC HẲN NHAU: bản tự lưu để soạn tiếp, và
-            // đơn đã gửi đang chờ quản lý. Gộp làm một thì nhân viên không
-            // biết đơn nào mình còn phải gửi.
-            const sent = isSentForApproval("draft", o.approval_reason)
+            // Màn này chỉ còn đơn NHÁP: gửi đi là nó thành phiếu tạm và
+            // rời khỏi đây, sang danh sách đơn của tôi.
             return (
             <div
               key={o.id}
@@ -235,14 +227,8 @@ export default function SellDraftsPage() {
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-on-surface-variant">
                     <span>{o.order_code}</span>
-                    <span
-                      className={
-                        sent
-                          ? "rounded-md bg-[#fff4ed] px-1.5 py-px font-extrabold text-[#b54708]"
-                          : "rounded-md bg-surface-container px-1.5 py-px font-extrabold"
-                      }
-                    >
-                      {sent ? "Đã gửi · chờ duyệt" : "Chưa gửi"}
+                    <span className="rounded-md bg-surface-container px-1.5 py-px font-extrabold">
+                      Chưa gửi
                     </span>
                   </span>
                 </span>
@@ -250,33 +236,22 @@ export default function SellDraftsPage() {
                   {formatCurrency(Number(o.total || 0))}
                 </span>
               </div>
-              {sent && o.approval_reason && (
-                <p className="text-xs font-semibold leading-snug text-on-surface-variant">
-                  {o.approval_reason}
-                </p>
-              )}
               <div className="flex flex-wrap gap-2">
-                {!sent && (
-                  <button
-                    type="button"
-                    disabled={sendingId === o.id}
-                    onClick={() => void doSend(o)}
-                    className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-extrabold text-on-primary disabled:opacity-40"
-                  >
-                    <Send className="h-4 w-4" />
-                    {sendingId === o.id ? "Đang gửi…" : "Gửi duyệt"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={sendingId === o.id}
+                  onClick={() => void doSend(o)}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-extrabold text-on-primary disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" />
+                  {sendingId === o.id ? "Đang gửi…" : "Gửi đơn"}
+                </button>
                 {/* ⚠ "Sửa" mở lại ĐÚNG màn bán hàng đã dùng lúc tạo, không
                     phải màn chi tiết đơn — một việc thì một cách làm. */}
                 <button
                   type="button"
                   onClick={() => router.push(`/sell/edit/${o.id}`)}
-                  className={
-                    sent
-                      ? "h-11 flex-1 rounded-xl bg-primary text-sm font-extrabold text-on-primary"
-                      : "h-11 rounded-xl border-[1.5px] border-outline-variant px-3.5 text-sm font-extrabold text-on-surface"
-                  }
+                  className="h-11 rounded-xl border-[1.5px] border-outline-variant px-3.5 text-sm font-extrabold text-on-surface"
                 >
                   Sửa đơn
                 </button>

@@ -20,21 +20,21 @@ import type { OrderStatus, Role } from "@/types"
 /**
  * Trạng thái mà NVBH được sửa đơn CỦA CHÍNH MÌNH.
  *
- * `confirmed` = đã duyệt. Trước đây chỉ có `draft`: duyệt xong là nhân
- * viên hết đường sửa, sai một con số cũng phải nhờ quản lý hoặc huỷ đơn
- * làm lại từ đầu.
- *
- * ⚠ KHÔNG có `picking`. Từ lúc thủ kho bắt đầu lấy hàng, đơn trên giấy và
- * hàng trên xe đẩy phải là một; sửa lúc đó là hai người làm hai việc khác
- * nhau trên cùng một đơn.
+ * `submitted` = phiếu tạm, đã gửi nhưng NPP chưa xuất hàng. Hàng chưa rời
+ * kho nên sửa vẫn an toàn. Xuất hàng rồi thì mọi thay đổi phải đi qua RPC
+ * sửa đơn đã hoàn thành, không phải đường này.
  */
-export const SALES_EDITABLE_STATUSES: OrderStatus[] = ["draft", "confirmed"]
+export const SALES_EDITABLE_STATUSES: OrderStatus[] = ["draft", "submitted"]
 
-/** Trạng thái đã chốt — không ai sửa được nữa, kể cả chủ. */
-export const TERMINAL_STATUSES: OrderStatus[] = ["delivered", "cancelled"]
-
-/** Vai trò được sửa đơn ở bước lấy hàng (§4.4). */
-const PICKING_EDIT_ROLES: Role[] = ["warehouse", "owner", "manager"]
+/**
+ * Trạng thái không sửa được bằng màn hình thường.
+ *
+ * ⚠ `completed` nằm đây KHÔNG có nghĩa là bất biến: NPP vẫn sửa được đơn
+ * đã xuất, nhưng qua `edit_completed_order` với bốn khoá riêng (xem
+ * `canEditCompleted` bên dưới). Tách hai đường vì một bên chỉ đổi giấy
+ * tờ, một bên đụng vào kho và công nợ.
+ */
+export const TERMINAL_STATUSES: OrderStatus[] = ["completed", "cancelled"]
 
 export interface OrderEditContext {
   role: Role
@@ -66,8 +66,7 @@ export function canEditOrder(ctx: OrderEditContext): boolean {
 /** Sửa được cả dòng hàng, điều khoản, ngày giao — không chỉ ghi chú. */
 export function canFullEditOrder(ctx: OrderEditContext): boolean {
   if (!canEditOrder(ctx)) return false
-  if (ctx.status === "draft" || ctx.status === "confirmed") return true
-  return ctx.status === "picking" && PICKING_EDIT_ROLES.includes(ctx.role)
+  return ctx.status === "draft" || ctx.status === "submitted"
 }
 
 /**
@@ -79,13 +78,51 @@ export function canFullEditOrder(ctx: OrderEditContext): boolean {
 export function whyCannotEdit(ctx: OrderEditContext): string | null {
   if (canEditOrder(ctx)) return null
   if (!ctx.hasUpdatePermission) return "Bạn chưa được cấp quyền sửa đơn hàng."
-  if (ctx.status === "delivered") return "Đơn đã giao xong nên không sửa được nữa."
+  if (ctx.status === "completed") return "Đơn đã xuất hàng — dùng nút Sửa đơn đã hoàn thành."
   if (ctx.status === "cancelled") return "Đơn đã huỷ nên không sửa được nữa."
   if (ctx.role === "sales") {
     if (!ctx.salesUserId || ctx.salesUserId !== ctx.userId) {
       return "Đơn này do nhân viên khác phụ trách."
     }
-    return "Kho đã bắt đầu lấy hàng — báo quản lý nếu cần đổi."
   }
   return "Không sửa được đơn ở trạng thái này."
+}
+
+/**
+ * Bốn khoá của đơn ĐÃ XUẤT HÀNG.
+ *
+ * ⚠ PHẢI KHỚP `_wf2_assert_order_unlocked` trong migration 120. Màn hình
+ * mở nút mà RPC chặn thì người dùng bấm xong nhận một mã lỗi khó hiểu;
+ * màn hình khoá mà RPC cho thì họ không hiểu vì sao nút mờ. Cùng một bộ
+ * điều kiện, viết hai nơi, nên có test đối chiếu.
+ */
+export interface CompletedEditContext {
+  /** Đã có đồng nào vào chưa (receivables.paid > 0, hoặc có dòng phiếu thu chưa huỷ). */
+  hasPayment: boolean
+  /** Ngày đặt đơn, dạng yyyy-mm-dd. */
+  orderDate: string | null
+  /** `organizations.completed_edit_days`, mặc định 1. */
+  editDays: number
+  /** Đã phát hành hoá đơn điện tử. */
+  hasIssuedInvoice: boolean
+  /** Đã có phiếu trả hoàn thành gắn vào đơn. */
+  hasCompletedReturn: boolean
+  /** Hôm nay, dạng yyyy-mm-dd. Truyền vào để test không phụ thuộc đồng hồ. */
+  today: string
+}
+
+/** Vì sao đơn đã xuất không sửa/huỷ được. `null` = làm được. */
+export function whyLockedCompleted(ctx: CompletedEditContext): string | null {
+  if (ctx.hasPayment) return "Đơn đã có tiền thu — huỷ phiếu thu trước đã."
+  if (ctx.hasIssuedInvoice) return "Đơn đã phát hành hoá đơn điện tử."
+  if (ctx.hasCompletedReturn) return "Đơn đã có phiếu trả hoàn thành."
+  const limit = new Date(ctx.today)
+  limit.setDate(limit.getDate() - Math.max(0, ctx.editDays))
+  const order = ctx.orderDate ? new Date(ctx.orderDate) : limit
+  if (order < limit) return `Quá ${ctx.editDays} ngày kể từ ngày đặt.`
+  return null
+}
+
+export function canEditCompleted(ctx: CompletedEditContext): boolean {
+  return whyLockedCompleted(ctx) === null
 }

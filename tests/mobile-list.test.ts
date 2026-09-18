@@ -330,13 +330,13 @@ describe("M2.2 — /orders", () => {
   /**
    * Nút xuất hoá đơn KHÔNG còn trên từng hàng của danh sách (mẫu "Đơn của
    * tôi": cả hàng là một vùng chạm). Việc đó ở màn chi tiết, và ở đó vẫn
-   * chỉ hiện khi ĐÃ GIAO — mời bấm rồi báo lỗi là tệ hơn.
+   * chỉ hiện khi ĐÃ XUẤT HÀNG — mời bấm rồi báo lỗi là tệ hơn.
    */
-  it("xuất hoá đơn nằm ở màn chi tiết, chỉ khi đã giao", () => {
+  it("xuất hoá đơn nằm ở màn chi tiết, chỉ khi đã xuất hàng", () => {
     const DETAIL = strip(read("src/app/(dashboard)/orders/[id]/page.tsx"))
     expect(ORDERS_CODE).not.toContain("showInvoiceAction")
     const i = DETAIL.indexOf("const deliveredNext")
-    expect(DETAIL.slice(i, i + 700)).toContain('order.status === "delivered"')
+    expect(DETAIL.slice(i, i + 700)).toContain('order.status === "completed"')
   })
 
   it("phân trang desktop ẩn trên mobile, thay bằng LoadMore", () => {

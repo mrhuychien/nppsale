@@ -93,7 +93,7 @@ export async function computeOrderCountBonus(
     .from("sales_orders")
     .select("id", { count: "exact", head: true })
     .eq("sales_user_id", opts.userId)
-    .eq("status", "delivered")
+    .eq("status", "completed")
     .gte("order_date", opts.periodStart)
     .lte("order_date", opts.periodEnd)
     .gte("total", config.min_order_value)

@@ -114,92 +114,70 @@ describe("Nạp đơn đã lưu ngược vào giỏ", () => {
     expect(l.note).toBe("lấy lô mới")
   })
 
-  it("chỉ mở được đơn chưa ra kho", () => {
+  it("chỉ mở được đơn chưa xuất hàng", () => {
     expect(isSellEditable("draft")).toBe(true)
-    expect(isSellEditable("confirmed")).toBe(true)
-    expect(isSellEditable("picking")).toBe(false)
-    expect(isSellEditable("delivered")).toBe(false)
+    expect(isSellEditable("submitted")).toBe(true)
+    expect(isSellEditable("completed")).toBe(false)
+    expect(isSellEditable("cancelled")).toBe(false)
   })
 })
 
 describe("Trạng thái sau khi lưu bản sửa", () => {
-  it("đơn nháp trong ngưỡng thì lưu xong là duyệt luôn", () => {
-    const r = decideEditStatus({ prevStatus: "draft", decision: decision() })
-    expect(r.status).toBe("confirmed")
-  })
-
-  it("đơn nháp vượt ngưỡng thì vẫn nằm chờ duyệt kèm lý do", () => {
-    const r = decideEditStatus({
-      prevStatus: "draft",
-      decision: decision({ orderTotal: 100_000_000, subtotal: 100_000_000, grossBeforeDiscount: 100_000_000 }),
-    })
-    expect(r.status).toBe("draft")
-    expect(r.reason.length).toBeGreaterThan(0)
-  })
-
   /**
-   * ⚠ LỖ HỔNG PHẢI BỊT. Sửa đơn ĐÃ DUYỆT mà không chạy lại quy tắc thì bước
-   * duyệt thành vô nghĩa: gửi một đơn nhỏ cho quản lý bấm duyệt, xong sửa
-   * lên gấp mười. Người duyệt đã ký vào một tờ giấy khác với tờ ra kho.
+   * ⚠ WORKFLOW V2 BỎ BƯỚC DUYỆT, nên cũng không còn "duyệt lại". Sửa xong
+   * bấm Gửi đơn thì đơn là Phiếu tạm, bấm Lưu nháp thì đơn RÚT VỀ nháp.
+   * Trạng thái trước khi sửa không đổi được kết quả đó.
    */
-  it("sửa đơn đã duyệt lên quá ngưỡng thì trả về chờ duyệt lại", () => {
-    const r = decideEditStatus({
-      prevStatus: "confirmed",
-      decision: decision({
-        orderTotal: 100_000_000,
-        subtotal: 100_000_000,
-        grossBeforeDiscount: 100_000_000,
-      }),
-    })
-    expect(r.status).toBe("draft")
-    expect(r.reason).toContain("Sửa sau khi duyệt")
-  })
-
-  it("sửa đơn đã duyệt mà vẫn trong ngưỡng thì giữ nguyên đã duyệt", () => {
-    const r = decideEditStatus({ prevStatus: "confirmed", decision: decision() })
-    expect(r.status).toBe("confirmed")
+  it("sửa đơn nháp rồi gửi: thành phiếu tạm", () => {
+    const r = decideEditStatus({ prevStatus: "draft", decision: decision() })
+    expect(r.status).toBe("submitted")
     expect(r.reason).toBe("")
   })
 
+  it("sửa phiếu tạm rồi gửi lại: vẫn là phiếu tạm", () => {
+    const r = decideEditStatus({ prevStatus: "submitted", decision: decision() })
+    expect(r.status).toBe("submitted")
+  })
+
   /**
-   * Chủ tự sửa đơn của mình thì không phải nhờ ai duyệt lại — họ vốn duyệt
-   * được mức đó. Bắt thêm một bước ở đây không thêm chốt chặn nào.
+   * ⚠ Sửa đơn lên gấp mười không còn bị CHẶN, nhưng phải để lại cảnh báo.
+   * Nhà phân phối là người bấm Xuất hàng, họ cần thấy con số đó.
    */
-  it("người sửa đủ thẩm quyền duyệt mức đó thì không phải duyệt lại", () => {
+  it("sửa lên quá ngưỡng thì kèm cảnh báo, không im lặng", () => {
     const r = decideEditStatus({
-      prevStatus: "confirmed",
+      prevStatus: "submitted",
       decision: decision({
         orderTotal: 100_000_000,
         subtotal: 100_000_000,
         grossBeforeDiscount: 100_000_000,
-        role: "owner",
       }),
     })
-    expect(r.status).toBe("confirmed")
+    expect(r.status).toBe("submitted")
+    expect(r.reason.length).toBeGreaterThan(0)
   })
 
-  /** ⚠ Cho không hàng bằng cách sửa giá về 0 vẫn phải bị chặn. */
-  it("chiết khấu sâu trên đơn đã duyệt vẫn bị trả về", () => {
+  /** ⚠ Cho không hàng bằng cách sửa giá về 0 vẫn phải hiện ra. */
+  it("chiết khấu sâu vẫn sinh cảnh báo", () => {
     const r = decideEditStatus({
-      prevStatus: "confirmed",
+      prevStatus: "submitted",
       decision: decision({ orderTotal: 0, subtotal: 0, grossBeforeDiscount: 100_000_000 }),
     })
-    expect(r.status).toBe("draft")
+    expect(r.reason.length).toBeGreaterThan(0)
   })
 
   /** ⚠ Đọc hỏng công nợ trả 0 = "khách không nợ gì" — mọi ngưỡng đều lọt. */
-  it("đọc hỏng ngữ cảnh thì không được giữ đã duyệt", () => {
+  it("đọc hỏng ngữ cảnh thì nói ra", () => {
     const r = decideEditStatus({
-      prevStatus: "confirmed",
+      prevStatus: "submitted",
       decision: decision({ contextFailed: true }),
     })
-    expect(r.status).toBe("draft")
+    expect(r.status).toBe("submitted")
     expect(r.reason).toContain("Không đọc được")
   })
 
-  it("lưu tạm thì không chạy quy tắc, dù đơn to", () => {
+  it("lưu nháp là rút đơn về, dù đơn to", () => {
     const r = decideEditStatus({
-      prevStatus: "draft",
+      prevStatus: "submitted",
       decision: decision({ asDraft: true, orderTotal: 100_000_000 }),
     })
     expect(r.status).toBe("draft")
@@ -290,7 +268,7 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
       orderId: "o1",
       payload: payload(cart),
       cart,
-      status: "confirmed",
+      status: "submitted",
       reason: "",
       userId: "u1",
     })
@@ -339,10 +317,11 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
     ).rejects.toThrow(/tổng đơn/i)
   })
 
-  it("trả đơn về chờ duyệt thì xoá luôn dấu vết đã duyệt", () => {
-    // Để đơn mang tên người duyệt cũ trên một bộ số liệu họ chưa từng thấy
-    // là ghi sai vào sổ ai đã chịu trách nhiệm.
-    expect(EDIT).toContain("{ approved_by: null, approved_at: null }")
+  it("dọn hẳn dấu vết đã duyệt của luồng cũ", () => {
+    // Workflow v2 không có bước duyệt. Để đơn mang tên một người duyệt là
+    // ghi vào sổ một việc không ai làm.
+    expect(EDIT).toContain("approved_by: null,")
+    expect(EDIT).toContain("approved_at: null,")
   })
 })
 
@@ -375,19 +354,20 @@ describe("Màn giỏ khi đang sửa đơn", () => {
     expect(CART_PAGE).toContain("if (editing && !online) {")
   })
 
-  /** Nói TRƯỚC khi bấm rằng đơn đã duyệt có thể quay lại chờ duyệt. */
+  /** Nói TRƯỚC khi bấm rằng lưu nháp sẽ rút đơn khỏi nhà phân phối. */
   it("có lời nhắc theo trạng thái đơn", () => {
     expect(CART_PAGE).toContain("{editHint(editing.status)}")
     expect(CART_PAGE).toContain("{editing && (")
   })
 
   /**
-   * ⚠ ĐƠN ĐÃ DUYỆT KHÔNG CÓ "LƯU TẠM". Lưu mà không chạy lại quy tắc là
-   * đúng cái lỗ hổng gửi đơn nhỏ cho duyệt rồi sửa lên gấp mười.
+   * ⚠ PHIẾU TẠM: nút phụ là "Bỏ sửa", không phải "Lưu tạm". Rút đơn về
+   * nháp là việc của nút chính khi người dùng chủ ý chọn, không phải thứ
+   * bấm nhầm vào nút phụ.
    */
-  it("đơn đã duyệt không còn nút Lưu tạm", () => {
-    expect(CART_PAGE).toContain('editing?.status === "confirmed" ? (')
-    const i = CART_PAGE.indexOf('editing?.status === "confirmed" ? (')
+  it("phiếu tạm: nút phụ là bỏ sửa, không phải lưu tạm", () => {
+    expect(CART_PAGE).toContain('editing?.status === "submitted" ? (')
+    const i = CART_PAGE.indexOf('editing?.status === "submitted" ? (')
     const branch = CART_PAGE.slice(i, CART_PAGE.indexOf(") : (", i))
     expect(branch).toContain("Bỏ sửa")
     expect(branch).not.toContain("submit(true)")
@@ -395,7 +375,7 @@ describe("Màn giỏ khi đang sửa đơn", () => {
 
   it("nhãn nút chính nói đúng việc sắp làm", () => {
     expect(CART_PAGE).toContain('? "Lưu thay đổi"')
-    expect(CART_PAGE).toContain('? "Gửi duyệt"')
+    expect(CART_PAGE).toContain('"Gửi đơn"')
   })
 })
 
@@ -412,7 +392,7 @@ describe("Giỏ nhớ mình đang sửa đơn nào", () => {
   /** Bản lưu cũ không có khoá này; một `editing` méo mó là ghi đè nhầm đơn. */
   it("đọc lại từ bộ nhớ máy có kiểm", () => {
     expect(CART_HOOK).toContain("editing: validEditing(saved.editing),")
-    expect(CART_HOOK).toContain('if (e.status !== "draft" && e.status !== "confirmed") return null')
+    expect(CART_HOOK).toContain('if (e.status !== "draft" && e.status !== "submitted") return null')
   })
 
   /**

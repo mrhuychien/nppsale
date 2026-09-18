@@ -26,7 +26,7 @@ import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { CheckCircle2, Package2, Truck, CircleCheck, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send } from "lucide-react"
+import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -47,13 +47,9 @@ import {
   canFullEditOrder,
   whyCannotEdit,
 } from "@/lib/orders/edit-permission"
-import { needsReapprovalAfterEdit, reapprovalReason } from "@/lib/orders/reapproval"
 import { loadApprovalContext } from "@/lib/sell/approval-context"
-import {
-  grossFromSavedLines,
-  isSentForApproval,
-  sendDraftForApproval,
-} from "@/lib/sell/send-approval"
+import { sendOrder, grossFromSavedLines } from "@/lib/sell/send-order"
+import { evaluateApproval } from "@/lib/approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
 import { returnReasonLabel } from "@/lib/sell/returns"
 import { useEntityLock } from "@/hooks/use-entity-lock"
@@ -104,46 +100,22 @@ type OrderStockEntry = {
   }>
 }
 
+/**
+ * Bước chuyển trạng thái làm được bằng MỘT lệnh ghi từ màn hình.
+ *
+ * ⚠ XUẤT HÀNG VÀ HUỶ ĐƠN ĐÃ XUẤT KHÔNG Ở ĐÂY. Hai bước đó trừ kho và
+ * đụng công nợ nên phải đi qua RPC (migration 120); trigger ở 119 chặn
+ * lệnh ghi thẳng. Nút của chúng dựng riêng, không đi qua bảng này.
+ */
 const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   draft: [
-    { value: "confirmed", label: "Duyệt đơn", icon: CheckCircle2, roles: ["owner", "manager"] },
     { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"] },
   ],
-  confirmed: [
-    { value: "picking", label: "Bắt đầu lấy hàng", icon: Package2, roles: ["owner", "manager", "warehouse"] },
-    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager"] },
+  submitted: [
+    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"] },
   ],
-  picking: [
-    { value: "delivering", label: "Xuất kho giao hàng", icon: Truck, roles: ["owner", "manager", "warehouse", "driver"] },
-    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager"] },
-  ],
-  delivering: [
-    { value: "delivered", label: "Xác nhận đã giao", icon: CircleCheck, roles: ["owner", "manager", "warehouse", "driver"] },
-  ],
-  delivered: [],
+  completed: [],
   cancelled: [],
-}
-
-/** T-03: map legacy `status` → new `current_workflow_stage`. Used as a
- *  fallback when the migration hasn't populated the column yet for this
- *  org or when consuming code receives older API payloads. */
-function mapStatusToWorkflowStage(status: OrderStatus): WorkflowStage {
-  switch (status) {
-    case "draft":
-      return "draft"
-    case "confirmed":
-      return "approved"
-    case "picking":
-      return "picking"
-    case "delivering":
-      return "delivering"
-    case "delivered":
-      return "closed"
-    case "cancelled":
-      return "failed"
-    default:
-      return "draft"
-  }
 }
 
 export default function OrderDetailPage() {
@@ -376,31 +348,29 @@ export default function OrderDetailPage() {
         customerId: order.customer_id,
         salesUserId: order.sales_user_id ?? user.id,
       })
-      const out = await sendDraftForApproval(supabase, {
-        orderId: order.id,
-        orderCode: order.order_code,
-        orgId: order.org_id,
-        userId: user.id,
-        orderTotal: Number(order.total || 0),
-        subtotal: Number(order.subtotal || 0),
-        // Số TRƯỚC chiết khấu lấy từ dòng đã lưu — xem chú thích của
-        // `grossFromSavedLines`.
-        grossBeforeDiscount: grossFromSavedLines(Number(order.subtotal || 0), lines),
-        customer: order.customer
-          ? { id: order.customer_id, credit_limit: Number(order.customer.credit_limit || 0) }
-          : null,
-        rules: ctx.rules,
-        customerDebt: ctx.customerDebt,
-        customerOverdue: ctx.customerOverdue,
-        repPortfolioDebt: ctx.repPortfolioDebt,
-        contextFailed: ctx.failed,
-        role: user.role,
-      })
-      toast(
-        out.status === "confirmed"
-          ? { title: "Đơn đã được duyệt tự động" }
-          : { title: "Đã gửi cho quản lý duyệt", description: out.reason || undefined }
-      )
+      // Bộ quy tắc chỉ còn sinh CẢNH BÁO cho nhà phân phối đọc trước khi
+      // xuất hàng — nó không chặn ai và không quyết trạng thái nữa.
+      const subtotal = Number(order.subtotal || 0)
+      // Số TRƯỚC chiết khấu lấy từ dòng đã lưu — xem chú thích của
+      // `grossFromSavedLines`.
+      const gross = grossFromSavedLines(subtotal, lines)
+      const warn = ctx.failed
+        ? "Không đọc được công nợ / quy tắc — kiểm tay trước khi xuất hàng."
+        : evaluateApproval(ctx.rules, {
+            orderTotal: Number(order.total || 0),
+            grossBeforeDiscount: gross,
+            discountAmount: Math.max(0, gross - subtotal),
+            customer: order.customer
+              ? { id: order.customer_id, credit_limit: Number(order.customer.credit_limit || 0) }
+              : null,
+            customerDebt: ctx.customerDebt,
+            customerOverdue: ctx.customerOverdue,
+            repPortfolioDebt: ctx.repPortfolioDebt,
+            role: user.role,
+          }).reason
+
+      await sendOrder(supabase, { orderId: order.id, reason: warn })
+      toast({ title: "Đã gửi đơn", description: warn || undefined })
       fetchData()
     } catch (error) {
       toast({
@@ -465,169 +435,44 @@ export default function OrderDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  /**
-   * Chạy lại bộ quy tắc duyệt trên MỘT bộ số liệu bất kỳ của đơn này.
-   *
-   * Tách ra vì nay có HAI chỗ cần: lúc bấm Duyệt, và lúc NVBH sửa xong
-   * một đơn ĐÃ duyệt. Hai chỗ mà chép hai bản thì bản nào sửa sau sẽ lệch,
-   * và chỗ lệch là chỗ đơn lọt qua.
-   */
-  const fetchApprovalDecision = async (totals: {
-    orderTotal: number
-    grossBeforeDiscount: number
-    discountAmount: number
-  }) => {
-    if (!order || !user) return null
-    // 3 query ngữ cảnh duyệt độc lập nhau — chạy song song để bước
-    // "Duyệt" không cộng dồn round-trip tuần tự.
-    const [{ evaluateApproval }, rulesRes, recRes, repDebtRes] = await Promise.all([
-      import("@/lib/approval"),
-      supabase
-        .from("approval_rules")
-        .select("id, org_id, auto_approve_max, manager_approve_max, customer_debt_max, customer_overdue_max, rep_portfolio_debt_max, enforce_credit_limit, notes, is_active, updated_by, created_at, updated_at")
-        .eq("org_id", user.org_id)
-        .maybeSingle(),
-      supabase
-        .from("receivables")
-        .select("amount, paid, due_date")
-        .eq("customer_id", order.customer_id)
-        .neq("status", "paid"),
-      supabase
-        .from("receivables")
-        .select("amount, paid")
-        .eq("sales_user_id", order.sales_user_id)
-        .neq("status", "paid"),
-    ])
-    const qErr = ([rulesRes, recRes, repDebtRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[orders/id] truy vấn lỗi:", qErr.message)
-
-    type RecRow = { amount: number; paid: number; due_date: string | null }
-    const recRows = (recRes.data as RecRow[]) || []
-    const customerDebt = recRows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-    const now = Date.now()
-    const customerOverdue = recRows
-      .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
-      .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-    const repPortfolioDebt = ((repDebtRes.data as Array<{ amount: number; paid: number }>) || [])
-      .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0)
-
-    return evaluateApproval(rulesRes.data ?? null, {
-      orderTotal: totals.orderTotal,
-      // Hai cột này đều CHƯA gồm VAT — dùng để quy tắc chiết khấu sâu chạy
-      // được cả ở đây, không chỉ ở màn tạo đơn. Nếu chỉ chặn lúc tạo thì
-      // đơn sửa lại thành chiết khấu 100% sau đó vẫn lọt như thường.
-      grossBeforeDiscount: totals.grossBeforeDiscount,
-      discountAmount: totals.discountAmount,
-      customer: order.customer
-        ? { id: order.customer.id, credit_limit: order.customer.credit_limit }
-        : null,
-      customerDebt,
-      customerOverdue,
-      repPortfolioDebt,
-      role: user.role,
-    })
-  }
-
   const handleChangeStatus = async (newStatus: OrderStatus) => {
     if (!order || !user) return
-
-    // Confirmed → picking goes through the stock-out screen so the warehouse
-    // can review the pick list and create the export entry before the order
-    // flips to "picking".
-    if (newStatus === "picking" && order.status === "confirmed") {
-      setConfirmOpen(null)
-      router.push(`/inventory/stock-out?orderIds=${order.id}`)
-      return
-    }
-
     setActionLoading(true)
     try {
-      const updates: Record<string, unknown> = { status: newStatus }
-
-      // If confirming an order, evaluate rules + check permission
-      if (newStatus === "confirmed") {
-        const { canApproveForLevel } = await import("@/lib/approval")
-        const decision = await fetchApprovalDecision({
-          orderTotal: order.total,
-          grossBeforeDiscount: Number(order.subtotal || 0),
-          discountAmount: Number(order.discount || 0),
-        })
-        if (!decision) {
-          setActionLoading(false)
-          return
-        }
-
-        if (!decision.autoApprove && !canApproveForLevel(user.role, decision.expectedApprover)) {
-          toast({
-            title: "Không có quyền duyệt đơn này",
-            description: decision.reason,
-            variant: "destructive",
-          })
-          setActionLoading(false)
-          return
-        }
-
-        updates.approved_by = user.id
-        updates.approved_at = new Date().toISOString()
-        updates.approval_reason = null
-      }
-
       const { data: statusRows, error } = await supabase
         .from("sales_orders")
-        .update(updates)
+        .update({ status: newStatus })
         .eq("id", order.id)
         .select("id")
       if (error) throw error
-      // ⚠ Cùng bẫy RLS như hai chỗ lưu kia: 0 dòng, HTTP 200, không lỗi.
-      // Báo "Đã chuyển trạng thái" cho một lệnh chưa chạy là cách nhanh
-      // nhất để hai người hiểu đơn đang ở hai bước khác nhau.
+      // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. Báo "Đã chuyển
+      // trạng thái" cho một lệnh chưa chạy là cách nhanh nhất để hai người
+      // hiểu đơn đang ở hai bước khác nhau.
       if (!statusRows || statusRows.length === 0) {
         throw new Error(
           "Không đổi được trạng thái đơn — bạn không có quyền ở bước này. Tải lại trang để xem trạng thái mới."
         )
       }
 
-      // Notifications for status change (fire-and-forget)
-      if (user.org_id && order.sales_user_id && order.sales_user_id !== user.id) {
+      if (
+        newStatus === "cancelled" &&
+        user.org_id &&
+        order.sales_user_id &&
+        order.sales_user_id !== user.id
+      ) {
         const { createNotification } = await import("@/lib/notifications")
-        if (newStatus === "confirmed") {
-          createNotification(supabase, {
-            orgId: user.org_id,
-            userId: order.sales_user_id,
-            type: "order_approved",
-            title: `Đơn ${order.order_code} đã được duyệt`,
-            body: `Bởi ${user.full_name || "Quản lý"}`,
-            linkUrl: `/orders/${order.id}`,
-            metadata: { order_id: order.id, order_code: order.order_code },
-          })
-        } else if (newStatus === "cancelled") {
-          createNotification(supabase, {
-            orgId: user.org_id,
-            userId: order.sales_user_id,
-            type: "order_cancelled",
-            title: `Đơn ${order.order_code} đã bị hủy`,
-            body: `Bởi ${user.full_name || "Quản lý"}`,
-            linkUrl: `/orders/${order.id}`,
-            metadata: { order_id: order.id, order_code: order.order_code },
-          })
-        }
+        createNotification(supabase, {
+          orgId: user.org_id,
+          userId: order.sales_user_id,
+          type: "order_cancelled",
+          title: `Đơn ${order.order_code} đã bị hủy`,
+          body: `Bởi ${user.full_name || "Quản lý"}`,
+          linkUrl: `/orders/${order.id}`,
+          metadata: { order_id: order.id, order_code: order.order_code },
+        })
       }
 
-      // Auto-create receivable when order becomes delivered
-      if (newStatus === "delivered") {
-        const { created, error: recErr } = await ensureReceivableForOrder(supabase, order.id)
-        if (recErr) {
-          toast({ title: "Cập nhật công nợ thất bại", description: recErr, variant: "destructive" })
-        } else if (created) {
-          toast({ title: `Đã chuyển trạng thái: ${newStatus} • Đã ghi nhận công nợ` })
-          setConfirmOpen(null)
-          fetchData()
-          return
-        }
-      }
-
-      toast({ title: `Đã chuyển trạng thái: ${newStatus}` })
+      toast({ title: `Đã chuyển trạng thái: ${ORDER_STATUS_MAP[newStatus]?.label ?? newStatus}` })
       setConfirmOpen(null)
       fetchData()
     } catch (error) {
@@ -636,7 +481,6 @@ export default function OrderDetailPage() {
       setActionLoading(false)
     }
   }
-
   const handleDelete = async () => {
     if (!order) return
     setActionLoading(true)
@@ -805,9 +649,9 @@ export default function OrderDetailPage() {
     setSavingLines(true)
     try {
       // T-03 — validate the edit batch against picking-stage rules (D10).
-      const stage: WorkflowStage =
-        (order.current_workflow_stage as WorkflowStage | undefined) ??
-        mapStatusToWorkflowStage(order.status)
+      // Cột giai đoạn đã bị gỡ ở migration 119; luật sửa dòng giờ đi theo
+      // chính trạng thái đơn.
+      const stage: WorkflowStage = order.status === "completed" ? "closed" : "draft"
       const editChanges: OrderLineChange[] = editedLines.map((l) => {
         const original = lines.find((x) => x.id === l.id)
         if (!original) {
@@ -903,36 +747,10 @@ export default function OrderDetailPage() {
       const subtotal = editedLinesTotal + addedLinesTotal
       const total = Math.max(0, subtotal - Number(order.discount || 0) + Number(order.vat || 0))
 
-      /**
-       * Sửa đơn ĐÃ DUYỆT thì chạy lại bộ quy tắc trên số MỚI.
-       *
-       * ⚠ Không có bước này thì bước duyệt thành vô nghĩa: gửi một đơn nhỏ
-       * cho quản lý bấm duyệt, xong sửa lên gấp mười. Người duyệt đã ký
-       * vào một tờ giấy khác với tờ cuối cùng ra kho.
-       */
+      // Workflow v2 không còn bước duyệt, nên sửa dòng chỉ cập nhật lại
+      // tổng. Đơn đã xuất hàng thì không đi đường này — nó có RPC riêng.
       const headerUpdate: Record<string, unknown> = { subtotal, total }
-      let bouncedReason: string | null = null
-      if (order.status === "confirmed" && user) {
-        const decision = await fetchApprovalDecision({
-          orderTotal: total,
-          grossBeforeDiscount: subtotal,
-          discountAmount: Number(order.discount || 0),
-        })
-        if (
-          decision &&
-          needsReapprovalAfterEdit({
-            status: order.status,
-            decision,
-            editorRole: user.role,
-          })
-        ) {
-          bouncedReason = reapprovalReason(decision)
-          headerUpdate.status = "draft"
-          headerUpdate.approval_reason = bouncedReason
-          headerUpdate.approved_by = null
-          headerUpdate.approved_at = null
-        }
-      }
+      const bouncedReason: string | null = null
 
       const { data: headerRows, error: orderErr } = await supabase
         .from("sales_orders")
@@ -989,11 +807,9 @@ export default function OrderDetailPage() {
       const updates: Record<string, unknown> = {
         notes: editForm.notes || null,
       }
-      // Only allow terms + delivery date changes when still editable.
-      // Picking-stage edits (§4.4) are limited to lines + notes; payment
-      // terms / delivery date stay locked since the customer already
-      // agreed to them at draft/confirmed.
-      if (order.status === "draft" || order.status === "confirmed") {
+      // Điều khoản và ngày giao chỉ đổi khi hàng chưa rời kho. Đơn đã
+      // xuất thì chỉ còn sửa ghi chú ở màn này.
+      if (order.status === "draft" || order.status === "submitted") {
         updates.payment_terms = editForm.payment_terms
         updates.expected_delivery = editForm.expected_delivery || null
       }
@@ -1063,7 +879,7 @@ export default function OrderDetailPage() {
   // CHƯA XONG thì vẫn còn: ghi nhận công nợ rồi xuất hoá đơn. Không đưa
   // lên thanh thì đúng trạng thái có việc lại là trạng thái thanh rỗng.
   const deliveredNext =
-    order.status === "delivered"
+    order.status === "completed"
       ? !receivableId
         ? { label: actionLoading ? "Đang tạo..." : "Ghi nhận công nợ", icon: CreditCard, onClick: handleCreateReceivable, busy: actionLoading }
         : !invoice
@@ -1103,8 +919,8 @@ export default function OrderDetailPage() {
   // Hai khung cảnh báo — dùng cho CẢ bản desktop lẫn bản mobile, một JSX.
   const callouts = (
     <>
-      {/* Approval reason callout — only for draft orders awaiting manual approval */}
-      {isSentForApproval(order.status, order.approval_reason) && (
+      {/* Cảnh báo kèm đơn — nhà phân phối đọc trước khi bấm Xuất hàng. */}
+      {order.status === "submitted" && !!order.approval_reason && (
         <div className="rounded-xl border border-[#fdb022]/40 bg-[#fff4ed] p-4 flex items-start gap-3">
           <div className="shrink-0 h-8 w-8 rounded-full bg-[#fdb022] text-on-primary flex items-center justify-center font-bold text-sm">
             !
@@ -1118,10 +934,8 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* ⚠ BẢN NHÁP CHƯA GỬI KHÁC HẲN ĐƠN ĐANG CHỜ DUYỆT. Trước đây hai loại
-          hiện cùng một dòng "Đơn đang chờ duyệt", nên NVBH lưu tạm xong tưởng
-          là đã gửi rồi — và ngồi đợi một cái duyệt không bao giờ tới. */}
-      {order.status === "draft" && !isSentForApproval(order.status, order.approval_reason) && (
+      {/* Đơn còn là nháp: nhà phân phối chưa nhìn thấy nó. */}
+      {order.status === "draft" && (
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="font-bold text-sm">Bản nháp — chưa gửi duyệt</p>
@@ -1209,7 +1023,7 @@ export default function OrderDetailPage() {
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
               <CardTitle>Chi tiết sản phẩm</CardTitle>
-              {fullEdit && order.status === "picking" && (
+              {false && (
                 <p className="text-[11px] text-[#b54708] mt-1">
                   Đơn đang ở bước <strong>Xuất kho</strong> — có thể thêm SP / tăng SL / sửa giá.
                   Dòng có icon <Lock className="inline h-3 w-3 mb-0.5" /> đã được pick một phần — không thể giảm SL, đổi đơn vị, đổi sản phẩm hay xoá.
@@ -1316,7 +1130,7 @@ export default function OrderDetailPage() {
                     // quyền sửa.
                     const pickedBase = pickedByLine[line.id] || 0
                     const lineLocked =
-                      order.status === "picking" && isLineLocked(pickedBase)
+                      false && isLineLocked(pickedBase)
                     const lineFactor = Number(
                       (line as unknown as { conversion_factor?: number }).conversion_factor ?? 1
                     )
@@ -1533,7 +1347,7 @@ export default function OrderDetailPage() {
                   // T-03: dòng đã pick → khoá giảm SL.
                   const pickedBase = pickedByLine[line.id] || 0
                   const lineLocked =
-                    order.status === "picking" && isLineLocked(pickedBase)
+                    false && isLineLocked(pickedBase)
                   const lineFactor = Number(
                     (line as unknown as { conversion_factor?: number }).conversion_factor ?? 1
                   )
@@ -1760,7 +1574,7 @@ export default function OrderDetailPage() {
           </Card>
 
           {/* Receivable status */}
-          {order.status === "delivered" && (
+          {order.status === "completed" && (
             <Card>
               <CardHeader><CardTitle>Công nợ</CardTitle></CardHeader>
               <CardContent>
@@ -1799,7 +1613,7 @@ export default function OrderDetailPage() {
           )}
 
           {/* Hóa đơn MISA */}
-          {order.status === "delivered" && (
+          {order.status === "completed" && (
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Hóa đơn</CardTitle></CardHeader>
               <CardContent>

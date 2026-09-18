@@ -181,11 +181,9 @@ export const PAYMENT_METHOD_OPTIONS: FilterOption[] = [
 ]
 
 export const ORDER_STATUS_OPTIONS: FilterOption[] = [
-  { id: "draft", label: "Mới tạo / Nháp" },
-  { id: "confirmed", label: "Đã duyệt" },
-  { id: "picking", label: "Đang xuất kho" },
-  { id: "delivering", label: "Đang giao" },
-  { id: "delivered", label: "Đã giao" },
+  { id: "draft", label: "Nháp" },
+  { id: "submitted", label: "Phiếu tạm" },
+  { id: "completed", label: "Hoàn thành" },
   { id: "cancelled", label: "Đã huỷ" },
 ]
 

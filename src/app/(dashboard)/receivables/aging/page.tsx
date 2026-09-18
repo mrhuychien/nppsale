@@ -68,7 +68,7 @@ export default function AccountantLedgerPage() {
         .from("sales_orders")
         .select("id, order_code, order_date, total")
         .eq("customer_id", selectedId)
-        .eq("status", "delivered")
+        .eq("status", "completed")
         .order("order_date")
       if (orderDataErr) console.error("[receivables/aging] truy vấn lỗi:", orderDataErr.message)
 

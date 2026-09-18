@@ -4,8 +4,6 @@ import type { SellProduct } from "@/lib/sell/ref-data"
 import type { CartLine } from "@/lib/sell/cart"
 import { toOrderLine } from "@/lib/sell/create-order"
 import { decideStatus, type StatusDecisionInput } from "@/lib/sell/submit"
-import { evaluateApproval } from "@/lib/approval"
-import { needsReapprovalAfterEdit, reapprovalReason } from "@/lib/orders/reapproval"
 
 /**
  * Sửa một đơn đã lưu, bằng CHÍNH màn bán hàng.
@@ -72,41 +70,18 @@ export function orderLinesToCart(
  */
 export function decideEditStatus(i: {
   /** Trạng thái đơn TRƯỚC khi sửa. */
-  prevStatus: "draft" | "confirmed"
+  prevStatus: "draft" | "submitted"
   decision: StatusDecisionInput
-}): { status: "draft" | "confirmed"; reason: string } {
-  if (i.decision.asDraft) return decideStatus(i.decision)
-  if (i.prevStatus !== "confirmed") return decideStatus(i.decision)
-
-  const decision = evaluateApproval(i.decision.rules, {
-    orderTotal: i.decision.orderTotal,
-    grossBeforeDiscount: i.decision.grossBeforeDiscount,
-    discountAmount: Math.max(0, i.decision.grossBeforeDiscount - i.decision.subtotal),
-    customer: i.decision.customer,
-    customerDebt: i.decision.customerDebt,
-    customerOverdue: i.decision.customerOverdue,
-    repPortfolioDebt: i.decision.repPortfolioDebt,
-    role: i.decision.role,
-  })
-  // ⚠ Đọc hỏng công nợ thì trả về chờ duyệt, y như lúc tạo đơn: 0 nghĩa là
-  // "khách không nợ gì", đúng cái làm mọi ngưỡng đều lọt.
-  if (i.decision.contextFailed) {
-    return {
-      status: "draft",
-      reason: "Không đọc được công nợ / quy tắc duyệt — đơn chờ duyệt tay.",
-    }
-  }
-  return needsReapprovalAfterEdit({
-    status: "confirmed",
-    decision,
-    editorRole: i.decision.role,
-  })
-    ? { status: "draft", reason: reapprovalReason(decision) }
-    : { status: "confirmed", reason: "" }
+}): { status: "draft" | "submitted"; reason: string } {
+  // Workflow v2 bỏ bước duyệt, nên sửa đơn không còn khái niệm "duyệt
+  // lại": bấm Lưu nháp thì rút đơn về nháp, bấm Gửi đơn thì nó là phiếu
+  // tạm. Trạng thái trước khi sửa không đổi được kết quả đó.
+  void i.prevStatus
+  return decideStatus(i.decision)
 }
 
 /** Đơn ở trạng thái này thì sửa được bằng màn bán hàng. */
-export const SELL_EDITABLE_STATUSES = ["draft", "confirmed"] as const
+export const SELL_EDITABLE_STATUSES = ["draft", "submitted"] as const
 
 export function isSellEditable(status: string): boolean {
   return (SELL_EDITABLE_STATUSES as readonly string[]).includes(status)
@@ -115,14 +90,14 @@ export function isSellEditable(status: string): boolean {
 /**
  * Câu nhắc trên đầu giỏ khi đang sửa đơn.
  *
- * ⚠ Sửa một đơn ĐÃ DUYỆT thì phải nói TRƯỚC rằng nó sẽ quay lại chờ duyệt.
- * Biết sau khi bấm Lưu là quá muộn — nhân viên đã hứa với khách là hàng ra
- * trong hôm nay.
+ * ⚠ Nói rõ đơn đang ở đâu. Phiếu tạm là đã gửi cho nhà phân phối nhưng
+ * hàng chưa rời kho; bấm Lưu nháp là RÚT ĐƠN VỀ, nhà phân phối không thấy
+ * nữa. Biết điều đó sau khi bấm thì đã muộn.
  */
 export function editHint(status: string): string {
-  return status === "confirmed"
-    ? "Đơn đã duyệt. Lưu thay đổi có thể đưa đơn về chờ duyệt lại."
-    : "Đơn chưa gửi duyệt. Sửa xong bấm Gửi duyệt để quản lý xem."
+  return status === "submitted"
+    ? "Đơn đang là phiếu tạm. Lưu nháp sẽ rút đơn về, nhà phân phối không thấy nữa."
+    : "Đơn chưa gửi. Sửa xong bấm Gửi đơn để nhà phân phối xuất hàng."
 }
 
 type Client = {
@@ -142,7 +117,7 @@ export async function applyOrderEdit(
     orderId: string
     payload: OfflineOrderPayload
     cart: CartLine[]
-    status: "draft" | "confirmed"
+    status: "draft" | "submitted"
     reason: string
     userId: string
   }
@@ -190,12 +165,10 @@ export async function applyOrderEdit(
     notes: opts.payload.order.notes,
     status: opts.status,
     approval_reason: opts.reason || null,
-    ...(opts.status === "confirmed"
-      ? { approved_by: opts.userId, approved_at: new Date().toISOString() }
-      : // Trả về chờ duyệt thì XOÁ dấu vết đã duyệt — để đơn mang tên
-        // người duyệt cũ trên một bộ số liệu họ chưa từng thấy là ghi sai
-        // vào sổ ai đã chịu trách nhiệm.
-        { approved_by: null, approved_at: null }),
+    // Workflow v2 không còn bước duyệt: hai cột này là dấu vết của luồng
+    // cũ, dọn hẳn để không ai đọc nhầm là đơn đã được ai đó thông qua.
+    approved_by: null,
+    approved_at: null,
   }
 
   const { data: rows, error: headErr } = await supabase

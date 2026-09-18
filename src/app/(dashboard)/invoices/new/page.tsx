@@ -47,7 +47,7 @@ export default function NewInvoicePage() {
       const { data, error: dataErr } = await supabase
         .from("sales_orders")
         .select("id, order_code, subtotal, vat, total, customer:customers(store_name, address, phone)")
-        .eq("status", "delivered")
+        .eq("status", "completed")
         .order("order_date", { ascending: false })
       if (dataErr) console.error("[invoices/new] truy vấn lỗi:", dataErr.message)
       setOrders((data as unknown as (SalesOrder & { customer?: { store_name: string; address: string; phone: string } })[]) || [])

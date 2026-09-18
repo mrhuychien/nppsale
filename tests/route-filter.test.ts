@@ -15,7 +15,7 @@ const SHELL = code(read("src/components/layout/dashboard-shell.tsx"))
  * NGƯỜI DÙNG YÊU CẦU (máy tính): "Khi mở lọc phải có tìm kiếm, các tuyến
  * có đơn ở trên kèm số đơn (trạng thái đã duyệt)".
  */
-describe("Bộ lọc tuyến: tìm được, tuyến có đơn đã duyệt xếp trên kèm số", () => {
+describe("Bộ lọc tuyến: tìm được, tuyến có đơn chờ xuất xếp trên kèm số", () => {
   it("có ô tìm, lọc theo tên lẫn mã tuyến, bỏ dấu", () => {
     expect(RF).toContain('placeholder="Tìm tuyến…"')
     expect(RF).toContain("viMatchAllWords(term, r.name, r.code)")
@@ -25,7 +25,7 @@ describe("Bộ lọc tuyến: tìm được, tuyến có đơn đã duyệt xế
     expect(RF).toContain(".filter((r) => (counts[r.code] ?? 0) > 0)")
     expect(RF).toContain(".sort((a, b) => (counts[b.code] ?? 0) - (counts[a.code] ?? 0)")
     expect(RF).toContain("{count} đơn")
-    expect(RF).toContain("Đang có đơn đã duyệt")
+    expect(RF).toContain("Đang có đơn chờ xuất")
   })
 
   /** Tuyến không có đơn vẫn chọn được — nó chỉ xuống dưới, không biến mất. */
@@ -35,15 +35,15 @@ describe("Bộ lọc tuyến: tìm được, tuyến có đơn đã duyệt xế
   })
 
   /**
-   * ⚠ Số là số đơn ĐÃ DUYỆT (chưa giao) — hàng đang chờ ra xe — không phải
+   * ⚠ Số là số PHIẾU TẠM chưa xuất — hàng đang chờ ra xe — không phải
    * tổng đơn mọi thời. Và phải phân trang: server cắt 1.000 dòng không báo.
    */
-  it("số đếm lấy đơn confirmed, nhúng tuyến của điểm bán, có phân trang", () => {
+  it("số đếm lấy phiếu tạm chờ xuất, nhúng tuyến của điểm bán, có phân trang", () => {
     const i = ORDERS.indexOf("async function loadRouteCounts()")
     expect(i).toBeGreaterThan(0)
     const fn = ORDERS.slice(i, ORDERS.indexOf("\n    }", i))
     expect(fn).toContain("fetchAllForAggregate<")
-    expect(fn).toContain('.eq("status", "confirmed")')
+    expect(fn).toContain('.eq("status", "submitted")')
     expect(fn).toContain('"id, customer:customers!inner(channel)"')
     // Đọc hỏng thì ghi log, không im lặng.
     expect(fn).toContain("console.warn(")

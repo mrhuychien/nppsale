@@ -32,19 +32,15 @@ const VARIANTS = [
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Nháp",
-  confirmed: "Đã xác nhận",
-  picking: "Đang soạn",
-  delivering: "Đang giao",
-  delivered: "Đã giao",
+  submitted: "Phiếu tạm",
+  completed: "Hoàn thành",
   cancelled: "Đã hủy",
 }
 
 const STATUS_OPTIONS: { key: OrderStatus; label: string }[] = [
   { key: "draft", label: STATUS_LABEL.draft },
-  { key: "confirmed", label: STATUS_LABEL.confirmed },
-  { key: "picking", label: STATUS_LABEL.picking },
-  { key: "delivering", label: STATUS_LABEL.delivering },
-  { key: "delivered", label: STATUS_LABEL.delivered },
+  { key: "submitted", label: STATUS_LABEL.submitted },
+  { key: "completed", label: STATUS_LABEL.completed },
   { key: "cancelled", label: STATUS_LABEL.cancelled },
 ]
 

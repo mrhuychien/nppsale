@@ -63,15 +63,20 @@ const input = (cart: CartLine[], over: Record<string, unknown> = {}) => ({
 })
 
 describe("Quyết trạng thái đơn khi gửi", () => {
-  it("đơn nhỏ trong ngưỡng thì tự duyệt", () => {
+  /**
+   * ⚠ WORKFLOW V2: gửi đơn LUÔN ra Phiếu tạm. Bộ quy tắc không còn chặn
+   * ai — nó chỉ sinh câu cảnh báo cho nhà phân phối đọc trước khi bấm
+   * Xuất hàng.
+   */
+  it("đơn nhỏ trong ngưỡng: phiếu tạm, không cảnh báo gì", () => {
     const r = decideStatus(input([line({ qty: 1, price: 1_000_000, listPrice: 1_000_000 })]))
-    expect(r.status).toBe("confirmed")
+    expect(r.status).toBe("submitted")
     expect(r.reason).toBe("")
   })
 
-  it("đơn vượt ngưỡng tự duyệt thì nằm ở nháp kèm lý do", () => {
+  it("đơn vượt ngưỡng: vẫn là phiếu tạm, nhưng kèm cảnh báo", () => {
     const r = decideStatus(input([line({ qty: 100, price: 1_000_000, listPrice: 1_000_000 })]))
-    expect(r.status).toBe("draft")
+    expect(r.status).toBe("submitted")
     expect(r.reason.length).toBeGreaterThan(0)
   })
 
@@ -81,8 +86,8 @@ describe("Quyết trạng thái đơn khi gửi", () => {
    */
   it("Lưu tạm KHÔNG chạy quy tắc duyệt", () => {
     const small = [line({ qty: 1, price: 1_000, listPrice: 1_000 })]
-    // Cùng bộ dữ liệu này khi gửi thật thì tự duyệt được.
-    expect(decideStatus(input(small)).status).toBe("confirmed")
+    // Cùng bộ dữ liệu này khi gửi thật thì thành phiếu tạm.
+    expect(decideStatus(input(small)).status).toBe("submitted")
     const r = decideStatus(input(small, { asDraft: true }))
     expect(r.status).toBe("draft")
     expect(r.reason).toBe(DRAFT_APPROVAL_REASON)
@@ -94,11 +99,12 @@ describe("Quyết trạng thái đơn khi gửi", () => {
    * cho không hàng mà không ai được hỏi. Quy tắc chiết khấu sâu chỉ bắt
    * được khi có `grossBeforeDiscount`.
    */
-  it("cho không hàng bằng cách sửa giá về 0 thì KHÔNG tự duyệt", () => {
+  it("cho không hàng bằng cách sửa giá về 0 thì PHẢI có cảnh báo", () => {
     const freebie = [line({ qty: 100, price: 0, listPrice: 1_000_000 })]
     expect(cartTotals(freebie).grandTotal).toBe(0)
     const r = decideStatus(input(freebie))
-    expect(r.status).toBe("draft")
+    expect(r.status).toBe("submitted")
+    // Tổng bằng 0 lọt mọi ngưỡng; chỉ quy tắc chiết khấu sâu bắt được.
     expect(r.reason.length).toBeGreaterThan(0)
   })
 
@@ -111,9 +117,16 @@ describe("Quyết trạng thái đơn khi gửi", () => {
     expect(DRAFT_APPROVAL_REASON).toContain("nháp")
   })
 
-  it("chiết khấu sâu vẫn bị chặn dù tổng nhỏ", () => {
+  /**
+   * ⚠ Chiết khấu sâu không còn CHẶN đơn (v2 bỏ bước duyệt), nhưng phải
+   * hiện thành cảnh báo. Im lặng ở đây là nhà phân phối bấm Xuất hàng mà
+   * không biết đơn này bán dưới giá sàn bao nhiêu.
+   */
+  it("chiết khấu sâu vẫn phải cảnh báo dù tổng nhỏ", () => {
     const deep = [line({ qty: 10, price: 100_000, listPrice: 1_000_000 })]
-    expect(decideStatus(input(deep)).status).toBe("draft")
+    const r = decideStatus(input(deep))
+    expect(r.status).toBe("submitted")
+    expect(r.reason.length).toBeGreaterThan(0)
   })
 })
 
@@ -213,11 +226,13 @@ describe("Màn giỏ hàng", () => {
   })
 
   /**
-   * ⚠ Chưa gửi đi mà đã kêu quản lý vào duyệt thì lần sau họ bỏ qua thông
-   * báo thật. `!asDraft` là vế giữ cho chuyện đó không xảy ra.
+   * ⚠ Workflow v2 không có người duyệt, nên màn giỏ KHÔNG được còn chỗ
+   * nào gọi báo duyệt. Còn sót là nhân viên nhận thông báo về một bước
+   * không tồn tại.
    */
-  it("bản lưu tạm không báo cho người duyệt", () => {
-    expect(CART_PAGE).toContain('out.status === "draft" && !asDraft')
+  it("không còn báo cho người duyệt", () => {
+    expect(CART_PAGE).not.toContain("notifyApprovers")
+    expect(CART_PAGE).not.toContain("send-approval")
   })
 
   /**
@@ -258,17 +273,17 @@ describe("Không nối vào ngõ cụt", () => {
   })
 })
 
-describe("Đọc hỏng ngữ cảnh duyệt thì KHÔNG được tự duyệt", () => {
+describe("Đọc hỏng ngữ cảnh thì phải NÓI RA", () => {
   /**
    * ⚠ Công nợ đọc hỏng trả về 0, mà 0 nghĩa là "khách không nợ gì" — đúng
-   * cái làm mọi ngưỡng đều lọt. Một lần đọc hỏng không được biến thành một
-   * đơn tự duyệt.
+   * cái làm mọi ngưỡng đều lọt. Một lần đọc hỏng không được biến thành
+   * một đơn trông sạch sẽ: phải ghi rõ là chưa kiểm được.
    */
-  it("cờ hỏng thì đơn rơi về chờ duyệt tay, kèm lý do", () => {
+  it("cờ hỏng thì đơn mang cảnh báo, không im lặng đi tiếp", () => {
     const small = [line({ qty: 1, price: 1_000, listPrice: 1_000 })]
-    expect(decideStatus(input(small)).status).toBe("confirmed")
+    expect(decideStatus(input(small)).reason).toBe("")
     const r = decideStatus(input(small, { contextFailed: true }))
-    expect(r.status).toBe("draft")
+    expect(r.status).toBe("submitted")
     expect(r.reason).toContain("Không đọc được")
   })
 

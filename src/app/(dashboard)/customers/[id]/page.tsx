@@ -174,7 +174,7 @@ export default function CustomerDetailPage() {
         .from("sales_orders")
         .select("total")
         .eq("customer_id", id)
-        .eq("status", "delivered")
+        .eq("status", "completed")
         .gte("order_date", monthStart),
       supabase
         .from("sales_orders")

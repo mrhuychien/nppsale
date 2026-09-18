@@ -44,6 +44,13 @@ const NAV_GROUPS: NavGroup[] = [
       // dùng đi lại giữa hai màn này suốt ngày. Trước đây nó nằm ở nhóm
       // Kế toán, cách đúng một cú cuộn khỏi chỗ nó thuộc về.
       { label: "Hóa đơn bán", href: "/sales-invoices", icon: Receipt },
+      // Trả hàng đứng NGAY DƯỚI hóa đơn bán, không ở Kho vận nữa. Từ v2b
+      // phiếu trả gắn vào HÓA ĐƠN chứ không gắn vào đơn: `complete_return`
+      // tính lại công nợ theo hóa đơn, và `reissue_invoice` chặn sửa hóa
+      // đơn nếu bỏ mất mặt hàng mà phiếu trả đang chờ đòi trả. Để nó ở
+      // Kho vận là xếp theo việc CŨ (nhập hàng về kho), trong khi việc
+      // thật bây giờ là chỉnh một chứng từ bán.
+      { label: "Trả hàng", href: "/returns", icon: RotateCcw },
       { label: "Khách hàng", href: "/customers", icon: Users },
       { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route },
       { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera },
@@ -69,7 +76,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Kho hàng", href: "/inventory", icon: Boxes },
       { label: "Sản phẩm", href: "/products", icon: Package },
       { label: "Giao hàng", href: "/deliveries", icon: Truck },
-      { label: "Trả hàng", href: "/returns", icon: RotateCcw },
     ],
   },
   {

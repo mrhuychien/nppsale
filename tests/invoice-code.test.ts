@@ -714,4 +714,94 @@ describe("màn chi tiết đơn hàng theo mẫu", () => {
   it("vẫn có đường về danh sách đơn", () => {
     expect(ORD).toContain("← Đơn hàng")
   })
+
+  /**
+   * ⚠ CHỦ NHÀ BÁO: "vào chi tiết đơn hàng cũng phải đầy đủ các nút như
+   * màn Xem nhanh". Trước đó mọi hành động nằm trong thẻ "Thao tác" ở cột
+   * phải — người mở đơn từ ngăn xem nhanh sang chi tiết thấy nút biến mất
+   * và tưởng mình hết quyền.
+   */
+  it("đầu trang có đủ bộ nút như ngăn xem nhanh", () => {
+    const i = ORD.indexOf("const heroActions = (")
+    expect(i).toBeGreaterThan(0)
+    const block = ORD.slice(i, ORD.indexOf("\n  )", i))
+    /**
+     * ⚠ KIỂM ĐÚNG CÂU GÁC, không kiểm tên có xuất hiện. Bản đầu của chốt
+     * này NÓI DỐI: nó chỉ hỏi chuỗi "invoiceAction" có nằm trong khối
+     * không, nên đổi `{invoiceAction && (` thành `{false && invoiceAction
+     * && (` vẫn xanh — nút biến mất mà chốt không biết.
+     */
+    for (const a of ["invoiceAction", "editAction", "reorderAction", "closeAction", "cancelTransition"]) {
+      expect(block, `thiếu nút ${a} ở hàng nút đầu trang`).toContain(`{${a} && (`)
+    }
+    // Không có nhánh nào bị tắt cứng.
+    expect(block, "có nút bị tắt cứng bằng false").not.toContain("{false")
+    expect(ORD).toContain("actions={heroActions}")
+  })
+
+  /**
+   * ⚠ HUỶ ĐƠN LẤY TỪ `roleTransitions`, không tự dựng điều kiện. Bảng
+   * `STATUS_FLOW` mới là nơi nói đơn ở trạng thái nào thì huỷ được, và nó
+   * đã lọc theo vai trò. Tự dựng là hai bộ luật, và một bộ sẽ sai.
+   */
+  it("nút huỷ lấy điều kiện từ bảng chuyển trạng thái", () => {
+    expect(ORD).toContain('const cancelTransition = roleTransitions.find((t) => t.value === "cancelled") ?? null')
+  })
+
+  /**
+   * ⚠ KHÔNG DỰNG LẠI HÀNH VI. Mỗi nút gọi đúng thứ thẻ "Thao tác" gọi;
+   * thẻ đó GIỮ NGUYÊN vì nó còn các bước lùi (Rút về nháp) và nút Xoá
+   * đơn. Chép logic ra hai chỗ là hai chỗ để lệch.
+   */
+  it("thẻ Thao tác ở cột phải vẫn còn", () => {
+    expect(ORD).toContain("<CardTitle>Thao tác</CardTitle>")
+    expect(ORD).toContain("{roleTransitions.map((trans) => {")
+  })
+})
+
+// =====================================================================
+
+/**
+ * TRẢ HÀNG CHUYỂN TỪ KHO VẬN SANG BÁN HÀNG (chủ nhà yêu cầu).
+ *
+ * ⚠ VÌ SAO ĐÚNG CHỖ: từ v2b phiếu trả gắn vào HÓA ĐƠN chứ không gắn vào
+ * đơn. `complete_return` tính lại công nợ theo hóa đơn, và
+ * `reissue_invoice` chặn sửa hóa đơn nếu bỏ mất mặt hàng mà phiếu trả
+ * đang chờ đòi trả. Để nó ở Kho vận là xếp theo việc CŨ (nhập hàng về
+ * kho), trong khi việc thật bây giờ là chỉnh một chứng từ bán.
+ */
+describe("Trả hàng nằm dưới Hóa đơn bán", () => {
+  const NAV = read("src/components/layout/sidebar.tsx")
+
+  const group = (label: string) => {
+    const i = NAV.indexOf(`label: "${label}",`)
+    expect(i, `không tìm thấy nhóm ${label}`).toBeGreaterThan(-1)
+    return NAV.slice(i, NAV.indexOf("\n  },", i))
+  }
+
+  it("nằm trong nhóm Bán hàng, không còn ở Kho vận", () => {
+    expect(group("Bán hàng")).toContain('href: "/returns"')
+    expect(group("Kho vận"), "vẫn còn ở Kho vận").not.toContain('href: "/returns"')
+  })
+
+  /** ⚠ Đứng NGAY DƯỚI Hóa đơn bán — nó là chứng từ chỉnh hóa đơn. */
+  it("đứng ngay dưới Hóa đơn bán", () => {
+    const g = group("Bán hàng")
+    const inv = g.indexOf('href: "/sales-invoices"')
+    const ret = g.indexOf('href: "/returns"')
+    const cus = g.indexOf('href: "/customers"')
+    expect(inv).toBeGreaterThan(-1)
+    expect(ret).toBeGreaterThan(inv)
+    expect(ret).toBeLessThan(cus)
+  })
+
+  /** ⚠ Chỉ có MỘT mục Trả hàng — chuyển nhóm mà quên xoá chỗ cũ là hai mục. */
+  it("chỉ có một mục Trả hàng trong cả thanh bên", () => {
+    expect((NAV.match(/href: "\/returns"/g) ?? []).length).toBe(1)
+  })
+
+  /** ⚠ "Trả hàng NCC" là mục KHÁC, ở nhóm Mua hàng — không được đụng tới. */
+  it("Trả hàng NCC vẫn ở Mua hàng", () => {
+    expect(group("Mua hàng")).toContain('href: "/purchase-returns"')
+  })
 })

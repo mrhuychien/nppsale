@@ -31,7 +31,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Archive } from "lucide-react"
+import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Archive, Printer } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -1098,6 +1098,68 @@ export default function OrderDetailPage() {
    *   bao nhiêu mặt hàng, tuyến nào, ai bán. Thiếu một cái là phải cuộn
    *   xuống tìm — mà đó đúng là thứ mẫu thiết kế gộp lên đầu trang.
    */
+  /**
+   * HÀNG NÚT Ở ĐẦU TRANG — cùng bộ với ngăn Xem nhanh, cộng hai nút của
+   * mẫu (In đơn · Đặt lại đơn này).
+   *
+   * ⚠ CHỦ NHÀ BÁO: "vào chi tiết đơn hàng cũng phải đầy đủ các nút như
+   *   màn Xem nhanh". Trước đó mọi hành động nằm trong thẻ "Thao tác" ở
+   *   cột phải — người mở đơn từ ngăn xem nhanh sang chi tiết thấy nút
+   *   biến mất và tưởng mình hết quyền.
+   *
+   * ⚠ KHÔNG DỰNG LẠI HÀNH VI. Mỗi nút gọi đúng thứ thẻ "Thao tác" gọi;
+   *   thẻ đó GIỮ NGUYÊN vì nó còn các bước lùi (Rút về nháp) và nút Xoá
+   *   đơn. Chép logic ra hai chỗ là hai chỗ để lệch.
+   *
+   * ⚠ HUỶ ĐƠN LẤY TỪ `roleTransitions`, không tự dựng điều kiện. Bảng
+   *   `STATUS_FLOW` mới là nơi nói đơn ở trạng thái nào thì huỷ được, và
+   *   nó đã lọc theo vai trò.
+   */
+  const cancelTransition = roleTransitions.find((t) => t.value === "cancelled") ?? null
+  const heroActions = (
+    <>
+      <Button variant="outline" onClick={() => window.print()}>
+        <Printer className="mr-1.5 h-4 w-4" /> In đơn
+      </Button>
+      {reorderAction && (
+        <Button variant="outline" onClick={reorderAction.onClick}>
+          <RefreshCw className="mr-1.5 h-4 w-4" /> {reorderAction.label}
+        </Button>
+      )}
+      {editAction && (
+        <Button variant="outline" onClick={editAction.onClick}>
+          <Pencil className="mr-1.5 h-4 w-4" /> {editAction.label}
+        </Button>
+      )}
+      {closeAction && (
+        <Button variant="outline" onClick={closeAction.onClick}>
+          <Archive className="mr-1.5 h-4 w-4" /> {closeAction.label}
+        </Button>
+      )}
+      {cancelTransition && (
+        <Button
+          variant="outline"
+          className="border-destructive/40 text-destructive"
+          onClick={() => setConfirmOpen({ status: cancelTransition.value, label: cancelTransition.label })}
+        >
+          <XCircle className="mr-1.5 h-4 w-4" /> {cancelTransition.label}
+        </Button>
+      )}
+      {/* ⚠ XUẤT HÀNG ĐỨNG CUỐI, tức ngoài cùng bên phải và là nút ĐẶC.
+          Đó là việc người ta mở đơn ra để làm. */}
+      {invoiceAction && (
+        <Button onClick={invoiceAction.onClick}>
+          <PackageCheck className="mr-1.5 h-4 w-4" /> {invoiceAction.label}
+        </Button>
+      )}
+      {!invoiceAction && deliveredNext && (
+        <Button onClick={deliveredNext.onClick} disabled={deliveredNext.busy}>
+          <FileText className="mr-1.5 h-4 w-4" /> {deliveredNext.label}
+        </Button>
+      )}
+    </>
+  )
+
   const heroSummary = [
     `Đặt ${formatDate(order.order_date)}`,
     `${lines.length} mặt hàng`,
@@ -1203,6 +1265,7 @@ export default function OrderDetailPage() {
       <DetailHero
         code={order.order_code}
         summary={heroSummary}
+        actions={heroActions}
         status={
           <>
             <StatusPill label={orderTone(order.status).label} tone={orderTone(order.status)} />

@@ -197,34 +197,58 @@ export async function createOrderRecords(
         }. Mở đơn ra nhập lại hàng trả.`
       )
     }
-    {
-      const retId = (retRow as { id: string }).id
-      const retLineRows = payload.returnLines.map((l) => ({
-        return_id: retId,
-        product_id: l.product_id,
-        unit_name: l.unit_name,
-        quantity: l.quantity,
-        unit_price: l.unit_price,
-        vat_rate: l.vat_rate,
-        line_total: l.line_total,
-        is_exchange: l.is_exchange,
-        ...(l.note ? { note: l.note } : {}),
-      }))
-      const { error: rlErr } = await supabase.from("return_lines").insert(retLineRows)
-      if (rlErr && isMissingColumn(rlErr)) {
-        const stripped = payload.returnLines.map((l) => ({
-          return_id: retId,
-          product_id: l.product_id,
-          unit_name: l.unit_name,
-          quantity: l.quantity,
-          unit_price: l.unit_price,
-          line_total: l.line_total,
-        }))
-        const { error: strippedErr } = await supabase.from("return_lines").insert(stripped)
-        if (strippedErr) throw strippedErr
-      }
-    }
+    await insertReturnLines(supabase, (retRow as { id: string }).id, payload.returnLines)
   }
 
   return { orderId, orderCode: insertedRow.order_code, alreadyExisted: false }
+}
+
+/**
+ * Chèn dòng phiếu trả, có đường lùi khi cơ sở dữ liệu chưa có cột mới.
+ *
+ * ⚠ TÁCH RA VÌ CÓ HAI CHỖ GHI. Tạo đơn ghi phiếu trả lần đầu, sửa đơn
+ * ghi lại phiếu trả ấy. Hai bản chép của cái phễu lùi này là chuyện
+ * "máy chủ thiếu cột `is_exchange`" xử lý đúng ở một màn và nổ ở màn kia.
+ *
+ * ⚠ ĐƯỜNG LÙI BỎ MẤT `is_exchange` — và đó là một mất mát THẬT. Dòng đổi
+ * hàng không trừ tiền; ghi nó thành dòng trả thường là trừ công nợ của
+ * khách một khoản không có. Nên đường lùi chỉ để cứu dữ liệu khỏi mất
+ * hẳn, và phải chạy trên máy chủ đã chạy đủ migration thì mới đúng.
+ */
+export async function insertReturnLines(
+  // ⚠ NHẬN KIỂU TỐI THIỂU, không nhận `SupabaseClient`. `applyOrderEdit`
+  //   dùng một kiểu rút gọn để test dựng được client giả; bắt nó dựng cả
+  //   `SupabaseClient` thật chỉ để gọi `.from()` là biến mọi chốt thành
+  //   một đống `as any`.
+  supabase: { from: (t: string) => any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  returnId: string,
+  lines: OfflineReturnLine[]
+): Promise<void> {
+  if (lines.length === 0) return
+  const rows = lines.map((l) => ({
+    return_id: returnId,
+    product_id: l.product_id,
+    unit_name: l.unit_name,
+    quantity: l.quantity,
+    unit_price: l.unit_price,
+    vat_rate: l.vat_rate,
+    line_total: l.line_total,
+    is_exchange: l.is_exchange,
+    ...(l.note ? { note: l.note } : {}),
+  }))
+  const { error } = await supabase.from("return_lines").insert(rows)
+  if (error && isMissingColumn(error)) {
+    const stripped = lines.map((l) => ({
+      return_id: returnId,
+      product_id: l.product_id,
+      unit_name: l.unit_name,
+      quantity: l.quantity,
+      unit_price: l.unit_price,
+      line_total: l.line_total,
+    }))
+    const { error: strippedErr } = await supabase.from("return_lines").insert(stripped)
+    if (strippedErr) throw strippedErr
+  } else if (error) {
+    throw error
+  }
 }

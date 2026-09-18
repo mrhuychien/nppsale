@@ -262,6 +262,11 @@ export default function SellCartPage() {
           status,
           reason,
           userId: user.id,
+          orgId: user.org_id,
+          // ⚠ ĐỌC THẲNG KHOÁ, ĐỪNG `?? null`. `undefined` ở đây nghĩa là
+          //   "không biết đơn này có phiếu trả nào" và `applyOrderEdit`
+          //   phải đứng yên; ép về `null` là nó tạo thêm một phiếu trả.
+          heldReturnId: editing.heldReturnId,
         })
         cart.clear()
         router.replace(

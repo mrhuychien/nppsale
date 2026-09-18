@@ -1,4 +1,6 @@
-import type { OfflineOrderPayload } from "@/lib/orders/create"
+import type { OfflineOrderPayload, OfflineReturnLine } from "@/lib/orders/create"
+import { insertReturnLines } from "@/lib/orders/create"
+import type { ReturnCartLine } from "@/lib/sell/returns"
 import { conversionFor, unitPriceFor } from "@/lib/sell/pricing"
 import type { SellProduct } from "@/lib/sell/ref-data"
 import type { CartLine } from "@/lib/sell/cart"
@@ -104,6 +106,78 @@ type Client = {
   from: (t: string) => any // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
+/* ===================================================================
+ * HÀNG TRẢ / HÀNG ĐỔI KÈM ĐƠN, KHI SỬA ĐƠN
+ * ===================================================================
+ *
+ * Chủ nhà báo: bấm "Sửa đơn" thì phần hàng trả lại và hàng đổi biến mất.
+ *
+ * Đúng vậy, và nó cố ý — màn `/sell/edit/[id]` nạp `returnLines: []` kèm
+ * chú thích "lưu lại sẽ tạo thêm một phiếu trả thứ hai cho cùng số hàng".
+ * Lý do đó thật: `createOrderRecords` luôn CHÈN phiếu trả mới, còn
+ * `applyOrderEdit` thì không hề đụng tới phiếu trả.
+ *
+ * ⚠ NHƯNG GIẢI PHÁP ẤY SAI CHỖ. Nó tránh nhân đôi dữ liệu bằng cách GIẤU
+ * dữ liệu: người sửa đơn không thấy hàng trả của chính đơn mình đang
+ * sửa, nên tưởng nó mất, và có người sẽ nhập lại — đúng cái nhân đôi mà
+ * nó định tránh. Cách đúng là NẮM lấy phiếu trả ấy: nạp lên để sửa, và
+ * lúc lưu thì ghi đè chính nó.
+ */
+
+/** Phiếu trả kèm đơn, đọc lên để màn sửa đơn nạp vào giỏ. */
+export interface PendingReturnRow {
+  id: string
+  reason: string | null
+  notes: string | null
+  status: string
+  invoice_id: string | null
+  lines: Array<{
+    product_id: string
+    unit_name: string
+    quantity: number
+    unit_price: number
+    vat_rate?: number | null
+    is_exchange?: boolean | null
+    note?: string | null
+  }>
+}
+
+/**
+ * Phiếu trả mà màn sửa đơn được phép nắm và ghi đè.
+ *
+ * ⚠ CHỈ PHIẾU CÒN NHÁP VÀ CHƯA GẮN HÓA ĐƠN. Phiếu đã 'submitted' là hàng
+ * đã theo chuyến đi rồi; phiếu đã gắn `invoice_id` thuộc về một tờ hóa
+ * đơn đã ghi sổ. Ghi đè hai loại đó từ màn bán hàng là sửa một chứng từ
+ * đang có hiệu lực mà không đi qua RPC nào.
+ *
+ * ⚠ CÓ TỪ HAI PHIẾU NHÁP TRỞ LÊN THÌ KHÔNG NẮM CÁI NÀO. Màn giỏ chỉ có
+ * MỘT ô hàng trả với MỘT lý do; nạp hai phiếu vào đó rồi lưu là gộp
+ * chúng thành một và xoá mất phiếu kia. Trả `null` để màn sửa đơn để
+ * nguyên và nói ra.
+ */
+export function editableReturnOf(
+  rows: readonly PendingReturnRow[]
+): PendingReturnRow | null {
+  const own = rows.filter((r) => r.status === "draft" && !r.invoice_id)
+  return own.length === 1 ? own[0] : null
+}
+
+/** Dòng phiếu trả đã lưu → dòng giỏ hàng trả. */
+export function returnLinesToCart(r: PendingReturnRow): ReturnCartLine[] {
+  return r.lines.map((l) => ({
+    productId: l.product_id,
+    unit: l.unit_name,
+    qty: Number(l.quantity) || 0,
+    price: Number(l.unit_price) || 0,
+    vatRate: Number(l.vat_rate ?? 0),
+    // ⚠ MẶC ĐỊNH `false` LÀ ĐÚNG HƯỚNG AN TOÀN. Cột thiếu / null thì coi
+    //   là dòng TRẢ (có trừ tiền) chứ không phải dòng ĐỔI. Đoán ngược lại
+    //   là âm thầm bỏ mất một khoản giảm công nợ của khách.
+    isExchange: l.is_exchange === true,
+    note: l.note ?? "",
+  }))
+}
+
 /**
  * Ghi thay đổi xuống đơn đã có.
  *
@@ -120,6 +194,13 @@ export async function applyOrderEdit(
     status: "draft" | "submitted"
     reason: string
     userId: string
+    orgId: string
+    /**
+     * Phiếu trả màn sửa đơn đang nắm (`editableReturnOf`), hoặc `null`.
+     * `undefined` nghĩa là chưa đọc được — khi đó KHÔNG đụng gì tới phiếu
+     * trả, xem `syncOrderReturn`.
+     */
+    heldReturnId?: string | null
   }
 ): Promise<void> {
   // ⚠ THỨ TỰ Ở ĐÂY LÀ CÓ CHỦ Ý: DÒNG HÀNG TRƯỚC, ĐẦU ĐƠN SAU.
@@ -183,4 +264,133 @@ export async function applyOrderEdit(
       "Đã sửa dòng hàng nhưng KHÔNG cập nhật được tổng đơn — bạn không còn quyền sửa đơn này. Mở lại đơn để kiểm tra."
     )
   }
+
+  await syncOrderReturn(supabase, {
+    orderId: opts.orderId,
+    customerId: opts.payload.order.customer_id,
+    orgId: opts.orgId,
+    userId: opts.userId,
+    heldReturnId: opts.heldReturnId,
+    reason: opts.payload.returns?.reason ?? null,
+    notes: opts.payload.returns?.notes ?? null,
+    lines: opts.payload.returnLines,
+  })
+}
+
+/**
+ * Ghi phần hàng trả / hàng đổi của bản sửa xuống đúng MỘT phiếu trả.
+ *
+ * ⚠ `heldReturnId === undefined` LÀ "KHÔNG BIẾT", KHÔNG PHẢI "KHÔNG CÓ".
+ * Màn sửa đơn đọc phiếu trả hỏng, hoặc đơn có nhiều phiếu nháp nên không
+ * nắm cái nào — cả hai đều về đây là `undefined`. Khi đó đứng yên: tạo
+ * phiếu mới là nhân đôi hàng trả, xoá phiếu cũ là mất hẳn nó.
+ *
+ * ⚠ CHẠY SAU CÙNG, SAU KHI ĐẦU ĐƠN ĐÃ LƯU. Phiếu trả là phần phụ; hỏng ở
+ * đây thì đơn vẫn đúng và người dùng mở lại đơn là thấy phiếu trả cũ còn
+ * nguyên. Làm trước rồi đầu đơn hỏng mới là cảnh xấu: hàng trả theo số
+ * mới, đơn theo số cũ.
+ */
+export async function syncOrderReturn(
+  supabase: Client,
+  o: {
+    orderId: string
+    customerId: string
+    orgId: string
+    userId: string
+    heldReturnId?: string | null
+    reason: string | null
+    notes: string | null
+    lines: OfflineReturnLine[]
+  }
+): Promise<void> {
+  if (o.heldReturnId === undefined) return
+
+  // Không còn dòng nào: người sửa đã bỏ hết hàng trả. Xoá hẳn phiếu —
+  // phiếu nháp rỗng không nói được gì, và nó vẫn nằm trên màn chi tiết
+  // đơn như một phiếu trả có thật.
+  if (o.lines.length === 0) {
+    if (!o.heldReturnId) return
+    // ⚠ RLS từ chối = 0 dòng, HTTP 200, `error` null. Phải `.select` rồi
+    //   đếm, nếu không thì người dùng thấy "đã lưu" mà phiếu trả vẫn còn.
+    const { data: del, error: delErr } = await supabase
+      .from("returns")
+      .delete()
+      .eq("id", o.heldReturnId)
+      .select("id")
+    if (delErr) throw delErr
+    if (!del || del.length === 0) {
+      throw new Error(
+        "Đã lưu đơn nhưng KHÔNG xoá được phiếu trả cũ — bạn không có quyền sửa phiếu trả này. Mở đơn ra xoá tay."
+      )
+    }
+    return
+  }
+
+  if (o.heldReturnId) {
+    /**
+     * ⚠ KHÔNG GHI `notes` Ở ĐÂY. `buildOrderPayload` luôn đặt
+     * `returns.notes = null` vì màn giỏ không có ô ghi chú cho phiếu trả.
+     * Ghi nó xuống là mỗi lần sửa đơn lại xoá trắng ghi chú ai đó đã viết
+     * ở màn Trả hàng — đúng kiểu "gán null vào cột đang có giá trị tốt".
+     * Khi nào màn giỏ có ô ghi chú riêng cho hàng trả thì mở lại.
+     */
+    const { data: upd, error: updErr } = await supabase
+      .from("returns")
+      .update({ reason: o.reason })
+      .eq("id", o.heldReturnId)
+      .select("id")
+    if (updErr) throw updErr
+    if (!upd || upd.length === 0) {
+      throw new Error(
+        "Đã lưu đơn nhưng KHÔNG cập nhật được phiếu trả kèm theo — bạn không có quyền sửa phiếu trả này."
+      )
+    }
+
+    // ⚠ XOÁ RỒI CHÈN LẠI, VÀ ĐỌC LẠI BẮT PHẢI RỖNG. Giống hệt lý do ở
+    //   dòng hàng bên trên: xoá bị từ chối mà vẫn chèn tiếp thì phiếu trả
+    //   có hai bộ dòng, và công nợ của khách bị trừ gấp đôi khi phiếu
+    //   được hoàn thành.
+    const { error: dlErr } = await supabase
+      .from("return_lines")
+      .delete()
+      .eq("return_id", o.heldReturnId)
+    if (dlErr) throw dlErr
+    const { data: left, error: chkErr } = await supabase
+      .from("return_lines")
+      .select("id")
+      .eq("return_id", o.heldReturnId)
+      .limit(1)
+    if (chkErr) throw chkErr
+    if (left && left.length > 0) {
+      throw new Error(
+        "Đã lưu đơn nhưng KHÔNG xoá được dòng hàng trả cũ — chưa ghi hàng trả mới để tránh ghi đôi. Mở phiếu trả ra sửa tay."
+      )
+    }
+    await insertReturnLines(supabase, o.heldReturnId, o.lines)
+    return
+  }
+
+  // Đơn chưa có phiếu trả nào mà bản sửa vừa nhập vào: tạo mới, đúng
+  // khuôn `createOrderRecords` dùng lúc tạo đơn.
+  const { data: retRow, error: retErr } = await supabase
+    .from("returns")
+    .insert({
+      org_id: o.orgId,
+      order_id: o.orderId,
+      customer_id: o.customerId,
+      requested_by: o.userId,
+      reason: o.reason,
+      notes: o.notes,
+      status: "draft",
+    })
+    .select("id")
+    .single()
+  if (retErr || !retRow) {
+    throw new Error(
+      `Đã lưu đơn nhưng KHÔNG lưu được phiếu trả kèm theo${
+        retErr ? `: ${retErr.message}` : ""
+      }. Mở đơn ra nhập lại hàng trả.`
+    )
+  }
+  await insertReturnLines(supabase, (retRow as { id: string }).id, o.lines)
 }

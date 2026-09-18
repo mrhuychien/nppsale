@@ -9,6 +9,11 @@ import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
+import {
+  ReturnSummary,
+  RETURN_SUMMARY_SELECT,
+  type ReturnSummaryRow,
+} from "@/components/orders/return-summary"
 import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
 
 /**
@@ -51,6 +56,7 @@ export function InvoiceDrawer({
   const router = useRouter()
   const [lines, setLines] = useState<DrawerLine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
 
   const invoiceId = invoice?.id ?? null
   useEffect(() => {
@@ -58,8 +64,30 @@ export function InvoiceDrawer({
     let cancelled = false
     setLines(null)
     setError(null)
+    setReturns([])
     ;(async () => {
       const supabase = createClient()
+
+      /**
+       * Hàng đổi / trả của hóa đơn này.
+       *
+       * ⚠ HỎI THEO `invoice_id`, KHÔNG THEO `order_id`. Một đơn nay có thể
+       *   có nhiều hóa đơn; hỏi theo đơn là tờ hóa đơn này hiện cả hàng
+       *   trả của tờ khác, và người đọc trừ nhầm công nợ.
+       *
+       * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN — phần phụ của màn xem nhanh.
+       */
+      supabase
+        .from("returns")
+        .select(RETURN_SUMMARY_SELECT)
+        .eq("invoice_id", invoiceId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: true })
+        .then(({ data: retData }) => {
+          if (cancelled) return
+          setReturns(((retData as unknown) as ReturnSummaryRow[]) ?? [])
+        })
+
       const { data, error } = await supabase
         .from("sales_invoice_lines")
         .select("id, quantity, unit_name, unit_price, line_total, is_exchange, note, product:products(name)")
@@ -167,6 +195,8 @@ export function InvoiceDrawer({
                   trên bảng, và "vì sao tờ này bị huỷ" là câu hỏi đầu tiên
                   họ có.
               */}
+              <ReturnSummary returns={returns} />
+
               {invoice.replaced_by && (
                 <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[12px] font-bold leading-snug text-[#7a4b00]">
                   Hóa đơn này đã bị một bản lập lại thay thế. Mở Chi tiết để sang bản mới.

@@ -24,6 +24,7 @@ import {
 } from "@/lib/orders/invoice-credit"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
+import { invoiceAddressOf } from "@/lib/customers/address"
 
 interface InvoiceRow {
   id: string
@@ -39,6 +40,11 @@ interface InvoiceRow {
     billing_name?: string | null
     billing_address?: string | null
     address?: string | null
+    // ⚠ PHƯỜNG PHẢI CÓ TRÊN TỜ IN (chủ nhà chốt). "47 Cẩm" không đủ để ai
+    //   tìm ra cửa hàng; `invoiceAddressOf` ghép bốn cột lại.
+    ward?: string | null
+    district?: string | null
+    province?: string | null
     phone?: string | null
   } | null
   sales_user?: { full_name?: string | null; phone?: string | null } | null
@@ -78,7 +84,7 @@ export default function SalesInvoicePrintPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, total, created_at, order_id, customer:customers(store_name, billing_name, billing_address, address, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code)"
+          "id, org_id, invoice_code, invoice_date, status, total, created_at, order_id, customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code)"
         )
         .eq("id", id)
         .maybeSingle(),
@@ -208,7 +214,7 @@ export default function SalesInvoicePrintPage() {
           invoiceNumber={inv.invoice_code}
           issuedAt={inv.invoice_date ? new Date(inv.invoice_date) : null}
           customerName={inv.customer?.billing_name || inv.customer?.store_name || ""}
-          customerAddress={inv.customer?.billing_address || inv.customer?.address}
+          customerAddress={invoiceAddressOf(inv.customer ?? {})}
           customerPhone={inv.customer?.phone}
           salesPersonName={inv.sales_user?.full_name}
           salesPersonPhone={inv.sales_user?.phone}

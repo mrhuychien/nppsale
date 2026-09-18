@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
 import {
-  outstandingOf, searchOrderDebts, amountFor, pickedTotal, rowsOverPaid, customerOf,
+  outstandingOf, searchOrderDebts,
   type OrderDebtRow,
 } from "../src/lib/finance/receipt-orders"
 
@@ -87,54 +88,136 @@ describe("ô tìm đơn", () => {
   })
 })
 
-describe("số tiền và tổng", () => {
-  /** ⚠ Việc thường ngày là thu đủ; bắt gõ tay từng dòng là cực hình. */
-  it("chưa gõ thì lấy số còn phải thu", () => {
-    expect(amountFor(row({ amount: 1000, paid: 200 }), {})).toBe(800)
-  })
+/**
+ * GHÉP VÀO MÀN LẬP PHIẾU THU.
+ *
+ * Những chốt dưới đọc thẳng mã nguồn màn `/finance/cash-receipts/new`.
+ * Đây là loại lỗi `tsc` không thấy được: tên cột bịa, bộ lọc lệch nhau,
+ * thứ tự `setState` sai — tất cả đều biên dịch xanh và chỉ hỏng lúc chạy
+ * thật trên máy chủ nhà.
+ */
+describe("ghép ô tìm đơn vào màn lập phiếu thu", () => {
+  const page = readFileSync(
+    "src/app/(dashboard)/finance/cash-receipts/new/page.tsx",
+    "utf8"
+  )
+  const ddl = readFileSync("supabase/schema_full.sql", "utf8")
+  const mig124 = readFileSync(
+    "supabase/migrations/124_wf2b_sales_invoices.sql",
+    "utf8"
+  )
 
-  it("gõ rồi thì lấy số đã gõ, kể cả số 0", () => {
-    expect(amountFor(row(), { r1: 500 })).toBe(500)
-    expect(amountFor(row(), { r1: 0 })).toBe(0)
+  /**
+   * ⚠ CHỐNG BỊA CỘT. `customers.price_group_id` và
+   * `organizations.address` đều biên dịch xanh rồi hỏng lúc chạy. Mọi
+   * cột trong câu `select` của ô tìm phải có thật trong DDL.
+   */
+  it("mọi cột của DEBT_SELECT đều có trong lược đồ thật", () => {
+    const recDdl = ddl.slice(ddl.indexOf("CREATE TABLE receivables"))
+    const recCols = recDdl.slice(0, recDdl.indexOf(");"))
+    for (const col of ["order_id", "customer_id", "amount", "paid", "due_date", "status"]) {
+      expect(recCols).toContain(col)
+    }
+    // Khoá ngoại của embed — tên FK sai thì PostgREST trả 400.
+    expect(recDdl).toContain("sales_user_id uuid REFERENCES users(id)")
+    // `invoice_id` do mig 124 thêm, không có trong schema_full.
+    expect(mig124).toMatch(/ALTER TABLE receivables\s+ADD COLUMN IF NOT EXISTS invoice_id/)
+    expect(page).toContain("users!receivables_sales_user_id_fkey(full_name)")
+    expect(page).toContain("order:sales_orders(order_code, order_date)")
+    expect(page).toContain("invoice:sales_invoices(invoice_code, invoice_date)")
   })
 
   /**
-   * ⚠ CHỖ DỄ SAI NHẤT. Kế toán sửa một dòng xuống 500k để thu một phần;
-   * cộng theo số còn phải thu thì tổng vẫn hiện số nợ đầy đủ, và người
-   * thu tiền đòi khách nhiều hơn số vừa gõ.
+   * ⚠ PostgREST CẮT Ở 1000 DÒNG TRONG IM LẶNG. Nhà phân phối có hơn 1000
+   * khoản nợ đang mở thì đơn cần tìm nằm ngoài lát cắt, ô tìm trả rỗng,
+   * và kế toán kết luận đơn ấy đã thu rồi.
    */
-  it("tổng cộng theo SỐ ĐÃ SỬA, không theo số còn phải thu", () => {
-    const picked = [row(), row({ receivableId: "r2", amount: 2000 })]
-    expect(pickedTotal(picked, {})).toBe(3000)
-    expect(pickedTotal(picked, { r1: 500 })).toBe(2500)
-    expect(pickedTotal(picked, { r1: 500, r2: 100 })).toBe(600)
+  it("đọc danh sách đơn qua fetchAllForAggregate, không đọc một phát", () => {
+    const load = page.slice(page.indexOf("DEBT_SELECT, { count:"))
+    expect(page.slice(0, page.indexOf("DEBT_SELECT, { count:"))).toContain(
+      "fetchAllForAggregate<RawDebt>"
+    )
+    expect(load).toContain(".range(from, to)")
   })
 
   /**
-   * ⚠ CẢNH BÁO, KHÔNG CHẶN. Khách trả dư là chuyện có thật và RPC ghi
-   * được; chặn ở giao diện là đặt ra luật thứ hai mâu thuẫn với CSDL.
+   * ⚠ HAI BỘ LỌC PHẢI GIỐNG NHAU. Ô tìm hiện một dòng mà danh sách dưới
+   * không hiện thì số tiền điền vào một ô không tồn tại — tổng phiếu cộng
+   * một con số không ai sửa được.
    */
-  it("gõ quá số nợ thì nêu ra, không chặn", () => {
-    const picked = [row({ amount: 1000 })]
-    expect(rowsOverPaid(picked, { r1: 1200 })).toHaveLength(1)
-    expect(rowsOverPaid(picked, { r1: 1000 })).toHaveLength(0)
-  })
-})
-
-describe("khách của phiếu", () => {
-  it("suy từ đơn đã chọn", () => {
-    expect(customerOf([row(), row({ receivableId: "r2" })])).toBe("c1")
-  })
-
-  it("chưa chọn gì thì chưa có khách", () => {
-    expect(customerOf([])).toBeNull()
+  it("ô tìm và danh sách khoản nợ lọc cùng một bộ trạng thái", () => {
+    const filters = page.match(/\.in\("status", \[[^\]]+\]\)/g) ?? []
+    expect(filters.length).toBe(2)
+    expect(new Set(filters).size).toBe(1)
+    expect(filters[0]).toContain('"open"')
   })
 
   /**
-   * ⚠ TRẢ `null` KHI HAI KHÁCH KHÁC NHAU. Trả bừa khách của dòng đầu là
-   * lặng lẽ gửi lên RPC một phiếu gom nợ của hai người.
+   * ⚠ ĐỔI KHÁCH THÌ `loadCustomer` XOÁ `amounts`. Điền thẳng số rồi mới
+   * `setCustomerId` là con số biến mất ngay sau đó — người dùng bấm chọn
+   * đơn mà không thấy gì xảy ra.
    */
-  it("hai khách khác nhau thì không suy ra được", () => {
-    expect(customerOf([row(), row({ receivableId: "r2", customerId: "c2" })])).toBeNull()
+  it("chọn đơn của khách khác thì gửi qua pendingPick, không điền thẳng", () => {
+    const fn = page.slice(page.indexOf("const pickDebt"), page.indexOf("const linesTotal"))
+    const guard = fn.indexOf("r.customerId !== customerId")
+    const seed = fn.indexOf("pendingPick.current = {")
+    const setCust = fn.indexOf("setCustomerId(r.customerId)")
+    expect(guard).toBeGreaterThan(-1)
+    expect(seed).toBeGreaterThan(guard)
+    expect(setCust).toBeGreaterThan(seed)
+    // và nhánh ấy phải DỪNG, không rơi xuống setAmounts.
+    expect(fn.indexOf("return", setCust)).toBeLessThan(fn.indexOf("setAmounts"))
+  })
+
+  /**
+   * ⚠ CHỈ ĐIỀN KHI DÒNG ẤY CÓ THẬT. Ô tìm đọc một lần lúc mở màn; đến
+   * lúc bấm thì khoản nợ có thể đã được người khác thu xong. Điền bừa là
+   * `amounts` mang một id không hiện ở đâu, và RPC từ chối lúc bấm Lưu.
+   */
+  it("chỉ nạp pendingPick khi khoản nợ có trong danh sách vừa đọc", () => {
+    expect(page).toMatch(
+      /if \(seed && rows\.some\(\(r\) => r\.id === seed\.receivableId\)\) \{\s*setAmounts/
+    )
+  })
+
+  /**
+   * ⚠ MỘT PHIẾU THU CHỈ CỦA MỘT KHÁCH. Không khoá là người dùng gom nợ
+   * hai người rồi mới bị RPC từ chối.
+   */
+  it("khoá ô tìm theo khách đã chọn", () => {
+    expect(page).toContain("lockedCustomerId: customerId || null")
+    expect(page).toContain("alreadyPicked: pickedIds")
+  })
+
+  /** ⚠ Cắt bớt trong im lặng đọc như "chỉ có bấy nhiêu đơn thôi". */
+  it("nói ra khi danh sách bị cắt ở 20 dòng", () => {
+    expect(page).toContain("debtResults.length >= 20")
+    expect(page).toContain("gõ thêm để thu hẹp")
+  })
+
+  /**
+   * ⚠ LỖI ĐỌC CỦA Ô TÌM PHẢI CÓ STATE RIÊNG. `loadCustomer` xoá
+   * `loadError` mỗi lần đổi khách; gộp chung là lỗi biến mất ngay khi
+   * người dùng chọn khách.
+   */
+  it("lỗi đọc danh sách đơn không dùng chung loadError", () => {
+    expect(page).toContain("setDebtError(res.error)")
+    const loadCustomer = page.slice(
+      page.indexOf("const loadCustomer"),
+      page.indexOf("useEffect(() => {\n    void loadCustomer")
+    )
+    expect(loadCustomer).toContain("setLoadError(null)")
+    expect(loadCustomer).not.toContain("setDebtError")
+  })
+
+  /** ⚠ Một nguồn sự thật cho "đã chọn": chính `amounts`. */
+  it("không có state riêng cho đơn đã chọn", () => {
+    expect(page).toContain("const pickedIds = useMemo(")
+    expect(page).not.toContain("setPickedDebts")
+  })
+
+  /** ⚠ Hai phép kẹp lệch nhau là hai con số cho cùng một dòng. */
+  it("danh sách khoản nợ kẹp bằng đúng outstandingOf", () => {
+    expect(page).toMatch(/const remainingOf = \(r: OpenReceivable\) => outstandingOf\(r\)/)
   })
 })

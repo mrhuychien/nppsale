@@ -16,6 +16,11 @@ import {
   type StockPreviewLine,
 } from "@/lib/orders/order-stock-preview"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import {
+  ReturnSummary,
+  RETURN_SUMMARY_SELECT,
+  type ReturnSummaryRow,
+} from "@/components/orders/return-summary"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { orderTone, vnTime } from "@/lib/orders/status-tone"
 import { isSellEditable } from "@/lib/sell/order-edit"
@@ -83,6 +88,7 @@ export function OrderDrawer({
   const [stockError, setStockError] = useState<string | null>(null)
   const [exchangeLines, setExchangeLines] = useState<StockPreviewLine[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
 
   const orderId = order?.id ?? null
   useEffect(() => {
@@ -92,8 +98,31 @@ export function OrderDrawer({
     setStock(null)
     setError(null)
     setStockError(null)
+    setReturns([])
     ;(async () => {
       const supabase = createClient()
+
+      /**
+       * Hàng đổi / trả kèm đơn — chủ nhà muốn thấy ngay ở màn xem nhanh.
+       *
+       * ⚠ BỎ PHIẾU ĐÃ HUỶ. Phiếu huỷ không trừ gì và không phải làm gì với
+       *   nó; để nó nằm đó là một dòng đỏ vô nghĩa ngay cạnh những dòng
+       *   đang thật sự chờ xử lý.
+       *
+       * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN. Đây là phần phụ của màn xem nhanh;
+       *   ném lỗi ở đây là đóng cả màn vì một khối bổ sung.
+       */
+      supabase
+        .from("returns")
+        .select(RETURN_SUMMARY_SELECT)
+        .eq("order_id", orderId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: true })
+        .then(({ data: retData }) => {
+          if (cancelled) return
+          setReturns(((retData as unknown) as ReturnSummaryRow[]) ?? [])
+        })
+
       const { data, error } = await supabase
         .from("sales_order_lines")
         .select(
@@ -387,6 +416,8 @@ export function OrderDrawer({
                     : `Thiếu tổng ${shortTotal} đơn vị cơ sở. Bấm Xuất hàng sẽ bị từ chối cho tới khi nhập đủ.`}
                 </div>
               )}
+              <ReturnSummary returns={returns} />
+
               {order.notes && (
                 <div className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant">
                   Ghi chú: <span className="text-on-surface">{order.notes}</span>

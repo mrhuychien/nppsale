@@ -1370,7 +1370,15 @@ export default function OrderDetailPage() {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/*
+        ⚠ `items-start` — ĐÂY LÀ CHỖ HAI MÀN CHI TIẾT LỆCH NHAU. Màn hóa
+          đơn dựng bằng `DetailColumns`, vốn có `items-start` + `self-start`;
+          màn này tự dựng lưới và thiếu cả hai, nên ô lưới kéo thẻ "Chi
+          tiết sản phẩm" cao bằng cả cột phải — đơn một mặt hàng ra một
+          mảng trắng dài hơn nửa màn. Giữ hai chỗ giống nhau đến từng
+          khoảng cách, đúng như `detail-chrome.tsx` đã nói.
+      */}
+      <div className="grid items-start gap-5 lg:grid-cols-3">
         {/* Left column - details */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -1816,7 +1824,7 @@ export default function OrderDetailPage() {
         </Card>
 
         {/* Right column - customer + actions + edit */}
-        <div className="space-y-4">
+        <div className="space-y-5 self-start lg:sticky lg:top-4">
           {/* Customer info */}
           <Card>
             <CardHeader><CardTitle>Khách hàng</CardTitle></CardHeader>

@@ -57,6 +57,16 @@ export interface EditingOrder {
   status: "draft" | "submitted"
   /** NVBH phụ trách — để biết nháp này có phải "của mình" mà xoá được không. */
   salesUserId?: string | null
+  /**
+   * Phiếu trả kèm đơn mà lần sửa này được phép ghi đè.
+   *
+   * ⚠ BA GIÁ TRỊ, KHÔNG PHẢI HAI. `string` = ghi đè đúng phiếu ấy;
+   * `null` = đơn không có phiếu trả nháp nào, nhập vào thì tạo mới;
+   * `undefined` = KHÔNG BIẾT (đọc hỏng, hoặc đơn có nhiều phiếu nháp) —
+   * lúc lưu phải đứng yên. Gộp `undefined` vào `null` là lần lưu sau đẻ
+   * thêm một phiếu trả cho cùng số hàng.
+   */
+  heldReturnId?: string | null
 }
 
 interface SellCartValue extends SellCartState {
@@ -107,6 +117,15 @@ function validEditing(v: unknown): EditingOrder | null {
     orderCode: e.orderCode ?? "",
     status: e.status,
     salesUserId: typeof e.salesUserId === "string" ? e.salesUserId : null,
+    // ⚠ GIỮ NGUYÊN BA TRẠNG THÁI qua một lần tải lại trang. JSON bỏ hẳn
+    //   khoá mang `undefined`, nên "không biết" tự nó quay về `undefined`;
+    //   chỉ cần đừng ép nó thành `null` ở đây.
+    heldReturnId:
+      typeof e.heldReturnId === "string"
+        ? e.heldReturnId
+        : e.heldReturnId === null
+          ? null
+          : undefined,
   }
 }
 

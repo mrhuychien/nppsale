@@ -18,6 +18,13 @@
  * đã chọn TRỪ tổng khoản có cấn trừ TRỪ phần rút từ số dư có. Hiện tổng
  * khoản nợ thay cho nó là bảo kế toán thu nhiều hơn số khách phải trả.
  *
+ * ⚠ Ô TÌM ĐƠN Ở TRÊN CÙNG LÀ LỐI VÀO, KHÔNG PHẢI MỘT DANH SÁCH THỨ HAI.
+ * Chủ nhà thu tiền theo đơn: cầm tờ giao hàng, gõ mã đơn, ra đúng khoản
+ * nợ của đơn ấy. Nhưng chứng từ ghi sổ vẫn là KHOẢN NỢ, nên chọn đơn chỉ
+ * làm hai việc — nạp khách của đơn, và điền sẵn số còn phải thu vào ô của
+ * dòng nợ dưới. Không có state riêng cho "đơn đã chọn": nếu có thì màn
+ * này lập tức có hai nguồn sự thật cho cùng một con số.
+ *
  * ⚠ SỐ DƯ CÓ KHÔNG NẰM TRONG DANH SÁCH KHOẢN NỢ, VÀ ĐÓ LÀ CỐ Ý. Dòng
  * công nợ trả dư có `status = 'paid'` (xem `_wf2_recompute_receivable`),
  * nên bộ lọc `open/partial/overdue` của danh sách trên loại nó ra — đúng,
@@ -26,7 +33,7 @@
  * một truy vấn RIÊNG, KHÔNG lọc trạng thái, chỉ hỏi `paid > amount`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -55,7 +62,12 @@ import { errorMessage } from "@/lib/errors"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { createCashReceipt, cashToCollect } from "@/lib/finance/cash-receipt"
 import { totalCredit, type ReceivableAmounts } from "@/lib/receivables/credit"
-import { Save, HandCoins, Undo2, TriangleAlert, PiggyBank } from "lucide-react"
+import {
+  outstandingOf,
+  searchOrderDebts,
+  type OrderDebtRow,
+} from "@/lib/finance/receipt-orders"
+import { Save, HandCoins, Undo2, TriangleAlert, PiggyBank, Search } from "lucide-react"
 
 interface OpenReceivable {
   id: string
@@ -65,6 +77,52 @@ interface OpenReceivable {
   due_date: string | null
   status: string
   order?: { order_code?: string | null } | null
+}
+
+/**
+ * Dòng công nợ đang mở của TOÀN TỔ CHỨC, để ô tìm đơn có gì mà tìm.
+ *
+ * ⚠ CỘT `invoice_id` CÓ TỪ MIG 124 và mã hóa đơn mới là thứ kế toán cầm
+ * trên tay (tờ giao hàng in mã `HD-xxxx`). Tìm được cả hai mã thì không
+ * phải dạy ai nhớ mã nào tra ở đâu.
+ */
+const DEBT_SELECT =
+  "id, order_id, customer_id, amount, paid, due_date, status, " +
+  "order:sales_orders(order_code, order_date), " +
+  "invoice:sales_invoices(invoice_code, invoice_date), " +
+  "customer:customers(store_name), " +
+  "sales_user:users!receivables_sales_user_id_fkey(full_name)"
+
+interface RawDebt {
+  id: string
+  order_id: string | null
+  customer_id: string
+  amount: number
+  paid: number
+  due_date: string | null
+  order?: { order_code?: string | null; order_date?: string | null } | null
+  invoice?: { invoice_code?: string | null; invoice_date?: string | null } | null
+  customer?: { store_name?: string | null } | null
+  sales_user?: { full_name?: string | null } | null
+}
+
+function toDebtRow(r: RawDebt): OrderDebtRow {
+  return {
+    receivableId: r.id,
+    orderId: r.order_id,
+    orderCode: r.order?.order_code ?? null,
+    invoiceCode: r.invoice?.invoice_code ?? null,
+    customerId: r.customer_id,
+    // ⚠ KHÔNG BỊA TÊN. `customer_id` là NOT NULL nên embed rỗng nghĩa là
+    //   RLS chặn hoặc dữ liệu hỏng — nói "chưa xác định" chứ đừng để
+    //   trống cho người đọc tưởng là khách vãng lai.
+    customerName: r.customer?.store_name ?? "Khách chưa xác định",
+    salesUserName: r.sales_user?.full_name ?? null,
+    orderDate: r.invoice?.invoice_date ?? r.order?.order_date ?? null,
+    dueDate: r.due_date,
+    amount: Number(r.amount || 0),
+    paid: Number(r.paid || 0),
+  }
 }
 
 interface StandaloneCredit {
@@ -98,6 +156,23 @@ export default function NewCashReceiptPage() {
   const [pickedCredits, setPickedCredits] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
 
+  /** Ô tìm đơn: mọi khoản nợ đang mở của tổ chức + từ khoá đang gõ. */
+  const [allDebts, setAllDebts] = useState<OrderDebtRow[] | null>(null)
+  const [debtSearch, setDebtSearch] = useState("")
+  /**
+   * ⚠ LỖI ĐỌC RIÊNG, KHÔNG DÙNG CHUNG `loadError`. `loadCustomer` xoá
+   * `loadError` mỗi lần đổi khách; gộp vào đó là lỗi của ô tìm biến mất
+   * ngay khi người dùng chọn khách, và họ tìm mãi không ra mà không hiểu
+   * vì sao.
+   */
+  const [debtError, setDebtError] = useState<string | null>(null)
+  /**
+   * Đơn vừa chọn khi CHƯA có khách — chờ `loadCustomer` đọc xong rồi mới
+   * điền số. Không có chỗ chờ này thì `setCustomerId` chạy trước,
+   * `loadCustomer` xoá `amounts`, và con số vừa điền mất ngay.
+   */
+  const pendingPick = useRef<{ receivableId: string; amount: number } | null>(null)
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -111,6 +186,42 @@ export default function NewCashReceiptPage() {
       if (cancelled) return
       if (res.error) setLoadError(res.error)
       setCustomers(res.rows)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Nạp MỌI khoản nợ đang mở của tổ chức cho ô tìm đơn.
+   *
+   * ⚠ PHẢI KÉO QUA `fetchAllForAggregate`. PostgREST cắt ở 1000 dòng
+   * TRONG IM LẶNG: nhà phân phối nào có hơn 1000 khoản nợ đang mở thì
+   * đơn cần tìm nằm ngoài lát cắt, ô tìm trả về rỗng, và kế toán kết
+   * luận đơn ấy đã thu rồi.
+   *
+   * ⚠ LỌC TRẠNG THÁI GIỐNG HỆT DANH SÁCH DƯỚI. Hai bộ lọc khác nhau là
+   * chọn được ở trên một dòng không hiện ở dưới — số tiền điền vào một ô
+   * không tồn tại.
+   */
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const res = await fetchAllForAggregate<RawDebt>((from, to) =>
+        supabase
+          .from("receivables")
+          .select(DEBT_SELECT, { count: "exact" })
+          .in("status", ["open", "partial", "overdue"])
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .range(from, to)
+      )
+      if (cancelled) return
+      if (res.error) {
+        setDebtError(res.error)
+        setAllDebts([])
+        return
+      }
+      setAllDebts(res.rows.map(toDebtRow))
     })()
     return () => {
       cancelled = true
@@ -183,9 +294,23 @@ export default function NewCashReceiptPage() {
         setLoadError(errorMessage(recRes.error ?? credRes.error ?? balRes.error))
         return
       }
-      setReceivables(((recRes.data as unknown) as OpenReceivable[]) ?? [])
+      const rows = ((recRes.data as unknown) as OpenReceivable[]) ?? []
+      setReceivables(rows)
       setCredits(((credRes.data as unknown) as StandaloneCredit[]) ?? [])
       setCreditRows(balRes.rows)
+
+      /**
+       * ⚠ CHỈ ĐIỀN KHI DÒNG ẤY CÓ THẬT TRONG DANH SÁCH VỪA ĐỌC. Ô tìm đơn
+       * đọc một lần lúc mở màn; đến lúc bấm thì khoản nợ ấy có thể đã
+       * được người khác thu xong. Điền bừa là `amounts` mang một id không
+       * hiện ở đâu — tổng phiếu cộng thêm một con số không ai sửa được, và
+       * RPC từ chối lúc bấm Lưu mà không ai hiểu vì sao.
+       */
+      const seed = pendingPick.current
+      pendingPick.current = null
+      if (seed && rows.some((r) => r.id === seed.receivableId)) {
+        setAmounts({ [seed.receivableId]: seed.amount })
+      }
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps
   )
@@ -194,8 +319,44 @@ export default function NewCashReceiptPage() {
     void loadCustomer(customerId)
   }, [customerId, loadCustomer])
 
-  const remainingOf = (r: OpenReceivable) =>
-    Math.max(0, Number(r.amount || 0) - Number(r.paid || 0))
+  /** Cùng một phép kẹp với ô tìm đơn — hai chỗ lệch nhau là hai con số. */
+  const remainingOf = (r: OpenReceivable) => outstandingOf(r)
+
+  /** Dòng đã chọn = dòng đang có số tiền > 0, không có tập riêng. */
+  const pickedIds = useMemo(
+    () =>
+      new Set(
+        Object.entries(amounts)
+          .filter(([, v]) => (Number(v) || 0) > 0)
+          .map(([k]) => k)
+      ),
+    [amounts]
+  )
+
+  const debtResults = useMemo(
+    () =>
+      searchOrderDebts(allDebts ?? [], debtSearch, {
+        lockedCustomerId: customerId || null,
+        alreadyPicked: pickedIds,
+      }),
+    [allDebts, debtSearch, customerId, pickedIds]
+  )
+
+  /**
+   * Chọn một đơn từ ô tìm.
+   *
+   * ⚠ ĐỔI KHÁCH THÌ PHẢI ĐI QUA `loadCustomer`. Điền thẳng số vào
+   * `amounts` rồi mới đổi khách là `loadCustomer` xoá sạch ngay sau đó.
+   */
+  const pickDebt = (r: OrderDebtRow) => {
+    const amount = outstandingOf(r)
+    if (r.customerId !== customerId) {
+      pendingPick.current = { receivableId: r.receivableId, amount }
+      setCustomerId(r.customerId)
+      return
+    }
+    setAmounts((p) => ({ ...p, [r.receivableId]: amount }))
+  }
 
   const linesTotal = useMemo(
     () => Object.values(amounts).reduce((s, v) => s + (Number(v) || 0), 0),
@@ -279,7 +440,7 @@ export default function NewCashReceiptPage() {
     <div className="space-y-4">
       <PageHeader
         title="Lập phiếu thu"
-        description="Chọn khách, tick khoản nợ cần thu, cấn trừ phiếu trả độc lập nếu có."
+        description="Tìm đơn cần thu (hoặc chọn khách), sửa số tiền từng khoản, cấn trừ phiếu trả độc lập nếu có."
         backHref="/finance/cash-receipts"
       />
 
@@ -302,6 +463,86 @@ export default function NewCashReceiptPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Search className="h-4 w-4" /> Tìm đơn để thu
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <p className="text-xs font-semibold leading-snug text-muted-foreground">
+                Gõ mã đơn, mã hoá đơn, tên khách hoặc người bán. Chọn đơn thì tự nạp khách và
+                điền sẵn số còn phải thu xuống danh sách dưới — sửa lại được.
+              </p>
+              <Input
+                value={debtSearch}
+                onChange={(e) => setDebtSearch(e.target.value)}
+                placeholder="DH-0042, HD-0042, tap hoa ba nam…"
+              />
+
+              {/* ⚠ KHOÁ THEO KHÁCH THÌ PHẢI NÓI RA. Không nói thì kế toán gõ
+                  đúng mã đơn của khách khác mà không ra gì, và kết luận là
+                  ô tìm hỏng. */}
+              {!!customerId && (
+                <p className="text-xs font-semibold leading-snug text-amber-600">
+                  Đang chỉ tìm trong đơn của{" "}
+                  {customers.find((c) => c.id === customerId)?.store_name || "khách đã chọn"} —
+                  một phiếu thu chỉ của một khách. Đổi khách ở ô dưới để tìm rộng ra.
+                </p>
+              )}
+
+              {debtError ? (
+                <p className="rounded-lg bg-error-container p-2 text-xs font-bold text-on-error-container">
+                  Không đọc được danh sách đơn còn nợ: {debtError}
+                </p>
+              ) : allDebts === null ? (
+                <Skeleton className="h-14" />
+              ) : debtResults.length === 0 ? (
+                <p className="py-3 text-center text-sm text-muted-foreground">
+                  {(allDebts ?? []).length === 0
+                    ? "Không có đơn nào còn nợ."
+                    : "Không có đơn nào khớp."}
+                </p>
+              ) : (
+                <>
+                  {debtResults.map((r) => (
+                    <button
+                      key={r.receivableId}
+                      type="button"
+                      onClick={() => pickDebt(r)}
+                      className="grid gap-1 rounded-xl border p-3 text-left hover:bg-muted/40 sm:grid-cols-[1fr_auto] sm:items-center"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold">
+                          {r.invoiceCode || r.orderCode || "Công nợ không gắn đơn"}
+                          {r.invoiceCode && r.orderCode ? (
+                            <span className="ml-1.5 font-semibold text-muted-foreground">
+                              · {r.orderCode}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                          {r.orderDate ? formatDate(r.orderDate) : "chưa rõ ngày"} ·{" "}
+                          {r.customerName} · {r.salesUserName || "chưa rõ người bán"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-extrabold tabular-nums">
+                        {formatCurrency(outstandingOf(r))}
+                      </span>
+                    </button>
+                  ))}
+                  {/* ⚠ CẮT BỚT THÌ PHẢI NÓI. Im lặng dừng ở 20 dòng đọc
+                      giống như "chỉ có bấy nhiêu đơn thôi". */}
+                  {debtResults.length >= 20 && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      Mới hiện 20 đơn đầu — gõ thêm để thu hẹp.
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Thông tin phiếu</CardTitle>

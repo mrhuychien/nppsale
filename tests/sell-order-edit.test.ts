@@ -271,6 +271,7 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
       status: "submitted",
       reason: "",
       userId: "u1",
+      orgId: "org1",
     })
     expect(calls).toEqual([
       "delete:sales_order_lines",
@@ -295,6 +296,7 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
         status: "draft",
         reason: "x",
         userId: "u1",
+        orgId: "org1",
       })
     ).rejects.toThrow(/không còn quyền/i)
     expect(inserted).toHaveLength(0)
@@ -313,6 +315,7 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
         status: "draft",
         reason: "x",
         userId: "u1",
+        orgId: "org1",
       })
     ).rejects.toThrow(/tổng đơn/i)
   })
@@ -434,11 +437,25 @@ describe("Màn nạp đơn để sửa", () => {
   })
 
   /**
-   * ⚠ Hàng trả của đơn cũ nằm ở phiếu trả riêng. Kéo vào giỏ rồi lưu lại là
-   * tạo thêm một phiếu trả thứ hai cho cùng số hàng.
+   * CHỐT NÀY TỪNG NÓI NGƯỢC LẠI, và nó bắt đúng tôi khi tôi đổi hành vi.
+   *
+   * Bản cũ chốt `returnLines: []` với lý do "kéo vào giỏ rồi lưu là tạo
+   * thêm một phiếu trả thứ hai". Lý do ấy đúng ở thời điểm ấy —
+   * `applyOrderEdit` không hề đụng tới phiếu trả nên nó chỉ biết TẠO.
+   *
+   * ⚠ NHƯNG CÁCH SỬA LÀ GIẤU DỮ LIỆU, và chính nó sinh ra lỗi chủ nhà
+   * báo: người sửa đơn không thấy hàng trả của đơn mình đang sửa, tưởng
+   * mất, rồi nhập lại — đúng cái nhân đôi nó định tránh. Nay
+   * `syncOrderReturn` GHI ĐÈ đúng phiếu đang nắm (`heldReturnId`), nên
+   * nạp lên là an toàn và là việc phải làm.
+   *
+   * Chốt chống nhân đôi vẫn còn, nhưng ở đúng chỗ: xem
+   * `tests/order-returns-edit.test.ts`, mục "đang nắm phiếu thì ghi đè
+   * chính nó, không tạo phiếu thứ hai".
    */
-  it("không kéo hàng trả của đơn cũ vào giỏ", () => {
-    expect(LOADER).toContain("returnLines: [],")
+  it("nạp hàng trả của đơn cũ vào giỏ để sửa, không giấu đi", () => {
+    expect(LOADER).toContain("heldReturn ? returnLinesToCart(heldReturn) : []")
+    expect(LOADER).not.toMatch(/returnLines: \[\],\s*\n\s*editing:/)
   })
 
   /** Chỉ nạp MỘT lần — effect chạy lượt nữa mà nạp lại là mất phần đã sửa. */

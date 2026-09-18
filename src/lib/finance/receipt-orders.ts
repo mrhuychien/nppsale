@@ -15,6 +15,10 @@
  * một `customer_id`. Nên khi đã chọn đơn đầu tiên thì ô tìm phải khoá
  * lại theo khách đó — cho chọn tự do rồi mới từ chối là để người dùng
  * gõ xong cả phiếu mới biết mình làm sai.
+ *
+ * PHẠM VI: chỗ này chỉ lo TÌM và CHỌN. Số tiền từng dòng và tổng phiếu
+ * vẫn nằm ở màn `/finance/cash-receipts/new` như cũ — chọn đơn chỉ điền
+ * sẵn số còn phải thu vào ô của dòng ấy, kế toán sửa lại được.
  */
 
 /** Một dòng công nợ đang mở, kèm thông tin đơn để nhận ra nó. */
@@ -89,58 +93,6 @@ function matches(r: OrderDebtRow, t: string): boolean {
     normalize(r.customerName).includes(t) ||
     normalize(r.salesUserName ?? "").includes(t)
   )
-}
-
-/**
- * Tổng tiền của phiếu = cộng SỐ ĐÃ SỬA, không cộng số còn phải thu.
- *
- * ⚠ ĐÂY LÀ CHỖ DỄ SAI NHẤT. Kế toán sửa một dòng xuống 500k để thu một
- * phần; cộng theo `outstandingOf` thì tổng vẫn hiện số nợ đầy đủ, và
- * người thu tiền đòi khách nhiều hơn số vừa gõ.
- *
- * ⚠ DÒNG CHƯA GÕ SỐ THÌ LẤY SỐ CÒN PHẢI THU. Việc thường ngày là thu
- * đủ; bắt gõ tay từng dòng là biến việc thường ngày thành cực hình.
- */
-export function amountFor(
-  r: OrderDebtRow,
-  amounts: Readonly<Record<string, number>>
-): number {
-  const v = amounts[r.receivableId]
-  return v === undefined ? outstandingOf(r) : Math.max(0, Number(v) || 0)
-}
-
-export function pickedTotal(
-  picked: readonly OrderDebtRow[],
-  amounts: Readonly<Record<string, number>>
-): number {
-  return picked.reduce((sum, r) => sum + amountFor(r, amounts), 0)
-}
-
-/**
- * Những dòng người dùng gõ NHIỀU HƠN số còn phải thu.
- *
- * ⚠ CẢNH BÁO, KHÔNG CHẶN. Khách trả dư là chuyện có thật và RPC ghi được
- * (phần dư thành số dư có của khách). Chặn ở giao diện là đặt ra một
- * luật thứ hai mâu thuẫn với cơ sở dữ liệu.
- */
-export function rowsOverPaid(
-  picked: readonly OrderDebtRow[],
-  amounts: Readonly<Record<string, number>>
-): OrderDebtRow[] {
-  return picked.filter((r) => amountFor(r, amounts) > outstandingOf(r) + 0.01)
-}
-
-/**
- * Khách của phiếu, suy từ các đơn đã chọn.
- *
- * ⚠ TRẢ `null` KHI CHƯA CHỌN GÌ, và trả `null` khi các dòng đã chọn
- * KHÔNG cùng một khách. Trả bừa khách của dòng đầu là lặng lẽ gửi lên
- * RPC một phiếu gom nợ của hai người.
- */
-export function customerOf(picked: readonly OrderDebtRow[]): string | null {
-  if (picked.length === 0) return null
-  const first = picked[0].customerId
-  return picked.every((r) => r.customerId === first) ? first : null
 }
 
 function normalize(s: string): string {

@@ -159,7 +159,9 @@ describe("M4.3 — thứ tự khối trên mobile", () => {
   /** Tên khách + tổng tiền phải nằm trên màn đầu, không phải cuối trang. */
   it("tóm tắt khách + tổng đơn đứng TRƯỚC lưới hai cột", () => {
     const summary = ORDER_DETAIL.indexOf(SUMMARY_LABEL)
-    const grid = ORDER_DETAIL.indexOf('<div className="grid gap-4 lg:grid-cols-3">')
+    // Lưới hai cột nay có `items-start` để khớp `DetailColumns` của màn
+    // hóa đơn — xem `tests/order-returns-edit.test.ts`.
+    const grid = ORDER_DETAIL.indexOf('<div className="grid items-start gap-5 lg:grid-cols-3">')
     expect(summary, "không thấy khối tóm tắt mobile").toBeGreaterThan(0)
     expect(grid).toBeGreaterThan(0)
     expect(summary, "khối tóm tắt phải đứng trước lưới").toBeLessThan(grid)

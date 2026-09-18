@@ -9,7 +9,10 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { canEditOrder, whyCannotEdit } from "@/lib/orders/edit-permission"
 import { hasPermission } from "@/lib/permissions"
-import { isSellEditable, orderLinesToCart, type OrderLineRow } from "@/lib/sell/order-edit"
+import {
+  isSellEditable, orderLinesToCart, editableReturnOf, returnLinesToCart,
+  type OrderLineRow, type PendingReturnRow,
+} from "@/lib/sell/order-edit"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/hooks/use-toast"
 import type { OrderStatus } from "@/types"
@@ -45,6 +48,12 @@ export default function SellEditLoaderPage() {
   const [error, setError] = useState<string | null>(null)
   const [head, setHead] = useState<OrderHead | null>(null)
   const [lines, setLines] = useState<OrderLineRow[] | null>(null)
+  /**
+   * Phiếu trả kèm đơn. `null` = đã đọc xong, không có phiếu nào nắm được;
+   * `undefined` = chưa đọc / đọc hỏng, và khi đó lúc lưu phải ĐỨNG YÊN
+   * chứ không được coi như đơn không có hàng trả.
+   */
+  const [heldReturn, setHeldReturn] = useState<PendingReturnRow | null | undefined>(undefined)
   // ⚠ Chỉ hỏi MỘT lần. Người dùng bấm "Thay giỏ" xong mà câu hỏi hiện lại
   // vì effect chạy lượt nữa thì họ kẹt trong vòng lặp.
   const [confirmed, setConfirmed] = useState(false)
@@ -54,7 +63,7 @@ export default function SellEditLoaderPage() {
     let cancelled = false
     ;(async () => {
       const supabase = createClient()
-      const [headRes, lineRes] = await Promise.all([
+      const [headRes, lineRes, retRes] = await Promise.all([
         supabase
           .from("sales_orders")
           .select(
@@ -71,10 +80,64 @@ export default function SellEditLoaderPage() {
           // đảo chỗ — nhìn như đơn vừa bị ai sửa.
           .order("product_id", { ascending: true })
           .order("unit_name", { ascending: true }),
+        /**
+         * ⚠ LẤY CẢ PHIẾU KHÔNG NẮM ĐƯỢC. Lọc sẵn `status = 'draft'` ở đây
+         *   thì `editableReturnOf` không phân biệt nổi "đơn không có phiếu
+         *   trả nào" với "đơn có phiếu trả nhưng đã gửi đi rồi" — hai
+         *   chuyện phải nói khác nhau cho người sửa đơn.
+         */
+        supabase
+          .from("returns")
+          .select(
+            "id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note)"
+          )
+          .eq("order_id", id)
+          .neq("status", "cancelled"),
       ])
       if (cancelled) return
       if (headRes.error) return setError(headRes.error.message)
       if (lineRes.error) return setError(lineRes.error.message)
+      /**
+       * ⚠ ĐỌC PHIẾU TRẢ HỎNG THÌ KHÔNG CHẶN CẢ MÀN, nhưng cũng KHÔNG im
+       *   lặng. Để `heldReturn` ở `undefined` là lúc lưu sẽ không đụng gì
+       *   tới phiếu trả — đơn vẫn sửa được, hàng trả vẫn còn nguyên.
+       */
+      if (retRes.error) {
+        toast({
+          title: "Chưa đọc được hàng trả kèm đơn",
+          description:
+            "Phần hàng trả / hàng đổi sẽ không hiện và cũng KHÔNG bị thay đổi khi bạn lưu. " +
+            retRes.error.message,
+          variant: "destructive",
+        })
+      } else {
+        const rets = (retRes.data as unknown as PendingReturnRow[]) ?? []
+        const held = editableReturnOf(rets)
+        const holdable = rets.filter((r) => r.status === "draft" && !r.invoice_id)
+        /**
+         * ⚠ "KHÔNG NẮM ĐƯỢC CÁI NÀO" KHÁC "ĐƠN KHÔNG CÓ PHIẾU TRẢ". Đơn
+         *   có hai phiếu nháp thì `editableReturnOf` trả `null`; để `null`
+         *   chạy tiếp là lúc lưu màn này tạo PHIẾU THỨ BA. Chỉ `null` khi
+         *   thật sự không có phiếu nháp nào.
+         */
+        setHeldReturn(held ?? (holdable.length === 0 ? null : undefined))
+        if (holdable.length > 1) {
+          toast({
+            title: `Đơn có ${holdable.length} phiếu trả nháp`,
+            description:
+              "Màn bán hàng chỉ sửa được một phiếu, nên không nạp phiếu nào. Lưu đơn sẽ KHÔNG làm chúng đổi — sửa ở màn Trả hàng.",
+            variant: "destructive",
+          })
+        }
+        const blockedRet = rets.filter((r) => r.status !== "draft" || r.invoice_id)
+        if (blockedRet.length > 0) {
+          toast({
+            title: `${blockedRet.length} phiếu trả không sửa được ở đây`,
+            description:
+              "Phiếu đã gửi hoặc đã gắn hóa đơn thì sửa ở màn Trả hàng. Lưu đơn không làm nó đổi.",
+          })
+        }
+      }
       // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. "Không thấy đơn" và
       // "không được xem đơn" nhìn giống hệt nhau từ đây, nên nói cả hai.
       if (!headRes.data) {
@@ -111,19 +174,23 @@ export default function SellEditLoaderPage() {
       notes: head.notes ?? "",
       paymentTerms: head.payment_terms ?? "",
       expectedDelivery: head.expected_delivery ?? "",
-      // Hàng trả của đơn cũ nằm ở phiếu trả riêng, không kéo vào giỏ:
-      // lưu lại sẽ tạo thêm một phiếu trả thứ hai cho cùng số hàng.
-      returnReason: "damaged",
-      returnLines: [],
+      // ⚠ NẠP HÀNG TRẢ LÊN, ĐỪNG GIẤU. Trước đây chỗ này để rỗng để tránh
+      //   tạo phiếu trả thứ hai lúc lưu; nhưng người sửa đơn thấy phần
+      //   hàng trả trống rỗng nên tưởng nó mất, rồi nhập lại — đúng cái
+      //   nhân đôi ấy. Nay `applyOrderEdit` ghi đè đúng phiếu này
+      //   (`heldReturnId`), nên nạp lên là an toàn.
+      returnReason: heldReturn?.reason || "damaged",
+      returnLines: heldReturn ? returnLinesToCart(heldReturn) : [],
       editing: {
         orderId: head.id,
         orderCode: head.order_code,
         status: head.status === "submitted" ? "submitted" : "draft",
         salesUserId: head.sales_user_id ?? null,
+        heldReturnId: heldReturn === undefined ? undefined : (heldReturn?.id ?? null),
       },
     })
     router.replace("/sell/cart")
-  }, [head, lines, products, customerById, cart, router])
+  }, [head, lines, heldReturn, products, customerById, cart, router])
 
   const editCtx = user && head
     ? {

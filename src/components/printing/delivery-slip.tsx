@@ -1,6 +1,7 @@
 "use client"
 
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { fullCustomerAddress } from "@/lib/customers/address"
 
 /**
  * Phiếu giao hàng cho MỘT đơn — một trang A5 dọc.
@@ -81,9 +82,10 @@ export function DeliverySlip({ o, entryCode, pageIndex, pageTotal }: DeliverySli
     (s, l) => s + Number(l.line_total || Number(l.unit_price || 0) * Number(l.quantity || 0)),
     0
   )
-  const fullAddress = [o.customer?.address, o.customer?.ward, o.customer?.district, o.customer?.province]
-    .filter(Boolean)
-    .join(", ")
+  // ⚠ QUA HÀM CHUNG. Hóa đơn bán nay cũng in phường; hai chỗ tự ghép là
+  //   hai địa chỉ khác nhau cho cùng một khách trên hai tờ giấy đi cùng
+  //   một chuyến.
+  const fullAddress = fullCustomerAddress(o.customer ?? {})
   return (
     <div className="print-page a5-doc p-4">
       <div className="flex justify-between items-start mb-1" style={{ fontSize: "7pt", color: "#666" }}>

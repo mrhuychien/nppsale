@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { repAvatar } from "../src/components/orders/desktop-order-table"
+import { explainCompleteError, completeWarnings } from "../src/lib/orders/complete-order"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -135,8 +136,89 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
    * lệnh ghi thẳng cũng chỉ ném lỗi USE_RPC.
    */
   it("gọi RPC complete_order, không UPDATE thẳng", () => {
-    expect(PAGE).toContain('supabase.rpc("complete_order", { p_order_id: id })')
+    expect(PAGE).toContain("completeOrder(supabase, id)")
+    expect(PAGE).toContain('from "@/lib/orders/complete-order"')
     expect(PAGE).not.toMatch(/\.update\(\{\s*status: "completed"/)
+  })
+
+  /**
+   * ⚠ XUẤT THÀNH CÔNG ≠ XUẤT ĐỦ HÀNG. Khi `organizations.allow_oversell`
+   * bật, `post_stock_export` KHÔNG ném lỗi lúc thiếu hàng: nó trừ hết tồn
+   * có, cho tồn ÂM, đơn vẫn sang hoàn thành, công nợ vẫn sinh ĐỦ tiền, và
+   * RPC trả `error = null`. Bản cũ viết `const { error } = await
+   * supabase.rpc(...)` nên vứt luôn `short_qty` — màn in "Đã xuất hàng 1
+   * đơn", kho đóng hàng theo phiếu, tài xế tới nơi thì thiếu, và thẻ kho
+   * âm không ai biết cho tới kỳ kiểm kê.
+   */
+  it("đọc short_qty và near_expiry_skipped, không chỉ kiểm error", () => {
+    const i = PAGE.indexOf("const approveOrders = async (ids: string[]) => {")
+    const body = PAGE.slice(i, PAGE.indexOf("\n  }", i))
+    expect(body, "vẫn chỉ kiểm error, vứt kết quả trả về").toContain("completeWarnings(")
+    expect(body).toContain("warned.push(")
+    // Và cảnh báo phải NỔI LÊN, không nằm lẫn trong toast thành công.
+    expect(body).toContain("đơn xuất thiếu hàng")
+
+    const LIB = read("src/lib/orders/complete-order.ts")
+    // ⚠ `RETURNS TABLE` nên `data` là MỘT MẢNG. Đọc `data.short_qty` ra
+    // undefined rồi Number(...) ra NaN — cảnh báo im lặng biến mất y như
+    // cũ, nhưng lần này lại trông như đã sửa.
+    expect(LIB).toContain("Array.isArray(data) ? data[0] : data")
+    expect(LIB).toContain("short_qty")
+    expect(LIB).toContain("near_expiry_skipped")
+  })
+
+  /**
+   * ⚠ RPC của v2 RAISE với ERRCODE 'P0001', mà `errorMessage` dùng chung
+   * không biết mã đó — nó in nguyên văn kỹ thuật kèm "(mã P0001)". Luồng
+   * CŨ dịch đẹp nhờ `explainPostError`; nút mới không được thua nút cũ.
+   */
+  it("dịch mã lỗi của RPC sang tiếng Việt", () => {
+    /**
+     * ⚠ GỌI THẲNG HÀM, đừng soi chuỗi trong tệp. Bản đầu của chốt này chỉ
+     * kiểm `LIB.toContain("INSUFFICIENT_STOCK")` — thử phá bằng cách tắt
+     * hẳn nhánh dịch mà nó VẪN XANH, vì cái tên mã còn nằm trong khối chú
+     * thích ở đầu tệp. Chốt nói dối thì phải sửa chốt.
+     */
+    expect(
+      explainCompleteError('… INSUFFICIENT_STOCK: thiếu 24 đơn vị của "Sữa X"')
+    ).toBe('Không đủ tồn: thiếu 24 đơn vị của "Sữa X"')
+    expect(explainCompleteError("… ORDER_NOT_SUBMITTED: đơn DH-1 không ở Phiếu tạm")).toContain(
+      "không còn ở Phiếu tạm"
+    )
+    expect(explainCompleteError("… ORG_MISMATCH")).toContain("đơn vị của bạn")
+    expect(explainCompleteError("… FORBIDDEN: bạn không có quyền xuất hàng")).toBe(
+      "bạn không có quyền xuất hàng"
+    )
+    expect(explainCompleteError("… USE_RPC: dùng nút Xuất hàng")).toContain("nút Xuất hàng")
+    // Migration chưa chạy thì nói đúng việc phải làm, đừng để tưởng đơn hỏng.
+    expect(
+      explainCompleteError('function public.complete_order(uuid) does not exist')
+    ).toContain("supabase db push")
+    // ⚠ Lỗi lạ trả NGUYÊN VĂN — đoán sai rồi họ đi sửa nhầm chỗ còn tệ hơn.
+    expect(explainCompleteError("một lỗi chưa ai gặp")).toBe("một lỗi chưa ai gặp")
+  })
+
+  /**
+   * ⚠ Hai cột cảnh báo có ý nghĩa KHÁC NHAU và đơn vị KHÁC NHAU. Nói sai
+   * một trong hai thì người đọc hoặc hoảng vô cớ, hoặc yên tâm nhầm.
+   */
+  it("câu cảnh báo nói đúng đơn vị và đúng mức độ", () => {
+    expect(completeWarnings({ entryId: null, receivableId: null, returnId: null, shortQty: 0, nearExpirySkipped: 0 })).toBeNull()
+
+    const thieu = completeWarnings({
+      entryId: null, receivableId: null, returnId: null, shortQty: 24, nearExpirySkipped: 0,
+    })
+    // short_qty là ĐƠN VỊ CƠ SỞ, không phải đơn vị bán — phải nói rõ.
+    expect(thieu).toContain("24 đơn vị cơ sở")
+    expect(thieu).toContain("âm")
+
+    const canHan = completeWarnings({
+      entryId: null, receivableId: null, returnId: null, shortQty: 0, nearExpirySkipped: 3,
+    })
+    // Đây là LƯỢT LẤY LÔ, không phải số lô hết hạn — và là chuyện bình
+    // thường của FIFO, nên câu chữ phải nhẹ.
+    expect(canHan).toContain("3 lượt")
+    expect(canHan).not.toContain("âm")
   })
 
   /** Mỗi đơn một giao dịch: đơn thiếu tồn không kéo cả loạt còn lại đổ theo. */

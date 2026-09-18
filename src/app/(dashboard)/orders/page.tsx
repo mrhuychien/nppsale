@@ -27,6 +27,7 @@ import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/componen
 import { OrderDrawer } from "@/components/orders/order-drawer"
 import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
 import { canEditOrder } from "@/lib/orders/edit-permission"
+import { completeOrder, completeWarnings } from "@/lib/orders/complete-order"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import { LoadMore } from "@/components/ui/load-more"
@@ -586,24 +587,48 @@ export default function OrdersPage() {
     if (ids.length === 1) setApprovingId(ids[0])
     const failed: string[] = []
     let ok = 0
+    /**
+     * ⚠ XUẤT THÀNH CÔNG ≠ XUẤT ĐỦ HÀNG. Khi đơn vị bật cho phép bán âm,
+     * RPC KHÔNG ném lỗi lúc thiếu hàng: nó trừ hết tồn có, cho tồn âm,
+     * vẫn sinh công nợ đủ tiền, và trả `error = null`. Phải ĐỌC kết quả
+     * trả về mới biết — xem `completeOrder`.
+     */
+    const warned: string[] = []
+    const doneIds: string[] = []
     try {
       for (const id of ids) {
-        const { error } = await supabase.rpc("complete_order", { p_order_id: id })
-        if (error) {
-          failed.push(`${orders.find((o) => o.id === id)?.order_code ?? id}: ${errorMessage(error)}`)
-        } else {
+        const code = orders.find((o) => o.id === id)?.order_code ?? id
+        try {
+          const r = await completeOrder(supabase, id)
           ok += 1
+          doneIds.push(id)
+          const w = completeWarnings(r)
+          if (w) warned.push(`${code}: ${w}`)
+        } catch (e) {
+          failed.push(`${code}: ${errorMessage(e)}`)
         }
       }
       if (ok > 0) {
         setOrders((prev) =>
           prev.map((o) =>
-            ids.includes(o.id) && !failed.some((f) => f.startsWith(o.order_code))
+            doneIds.includes(o.id)
               ? { ...o, status: "completed" as const, approval_reason: null }
               : o
           )
         )
         toast({ title: `Đã xuất hàng ${ok} đơn` })
+      }
+      /**
+       * ⚠ Cảnh báo đi TOAST RIÊNG, không nhét vào description của toast
+       * thành công. Nó phải đọc như một việc phải làm chứ không phải một
+       * lời chúc mừng có chú thích.
+       */
+      if (warned.length > 0) {
+        toast({
+          title: `${warned.length} đơn xuất thiếu hàng`,
+          description: warned.join(" · "),
+          variant: "destructive",
+        })
       }
       if (failed.length > 0) {
         toast({

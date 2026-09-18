@@ -253,12 +253,17 @@ export function DesktopOrderTable({
                     {tone.label}
                   </span>
                   <PaymentStatusBadge receivable={receivablesByOrder[o.id]} />
-                  {pending && (
+                  {/* ⚠ CHỈ HIỆN KHI THẬT SỰ CÓ CẢNH BÁO. Gác bằng mỗi
+                      `pending` thì mọi phiếu tạm đều đeo một nhãn đỏ, kể cả
+                      đơn sạch — và nhãn đỏ ở khắp nơi thì không còn là cảnh
+                      báo nữa. `decideStatus` ghi CHUỖI RỖNG khi không có gì
+                      vướng, nên phải kiểm cả rỗng lẫn null. */}
+                  {pending && !!o.approval_reason?.trim() && (
                     <span
                       className="whitespace-nowrap text-[11px] font-extrabold text-error"
-                      title={o.approval_reason ?? undefined}
+                      title={o.approval_reason}
                     >
-                      Cần duyệt
+                      Cần xem lại
                     </span>
                   )}
                 </span>
@@ -269,10 +274,10 @@ export function DesktopOrderTable({
                     type="button"
                     onClick={() => onApprove(o)}
                     disabled={approvingId === o.id}
-                    title="Duyệt đơn"
+                    title="Xuất hàng — trừ kho và ghi công nợ"
                     className="h-[30px] rounded-lg bg-primary px-2.5 text-xs font-extrabold text-on-primary disabled:opacity-50"
                   >
-                    {approvingId === o.id ? "…" : "Duyệt"}
+                    {approvingId === o.id ? "…" : "Xuất hàng"}
                   </button>
                 ) : (
                   <>

@@ -17,8 +17,8 @@ import type { SalesOrder } from "@/types"
  *
  * Chạm một dòng là ngăn trượt ra: mã · ngày giờ · số mặt hàng, huy hiệu,
  * hai ô Khách hàng / NV bán hàng, danh sách dòng hàng + tổng, lý do chờ
- * duyệt, và ba nút Duyệt / Sửa / Chi tiết. Người duyệt đơn không phải rời
- * danh sách để xem đơn có gì.
+ * cảnh báo, và ba nút Xuất hàng / Sửa / Chi tiết. Nhà phân phối không
+ * phải rời danh sách để xem đơn có gì trước khi cho hàng ra kho.
  *
  * ⚠ Dòng hàng tải khi mở — danh sách 50 đơn không kéo 50 bộ dòng về sẵn.
  * Tải hỏng thì NÓI RA trong ngăn, không hiện "0 mặt hàng".
@@ -158,7 +158,10 @@ export function OrderDrawer({
                 </div>
               </div>
 
-              {pending && (
+              {/* ⚠ Gác bằng CẢ NỘI DUNG, không chỉ trạng thái. Đơn sạch
+                  có `approval_reason` là chuỗi RỖNG (xem `decideStatus`), nên
+                  gác bằng mỗi `pending` sẽ vẽ ra một hộp hổ phách trống. */}
+              {pending && !!order.approval_reason?.trim() && (
                 <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
                   {order.approval_reason}
                 </div>
@@ -178,7 +181,7 @@ export function OrderDrawer({
                   disabled={approving}
                   className="h-11 flex-1 rounded-xl bg-primary text-sm font-extrabold text-on-primary disabled:opacity-50"
                 >
-                  {approving ? "Đang duyệt…" : "Duyệt đơn"}
+                  {approving ? "Đang xuất hàng…" : "Xuất hàng"}
                 </button>
               )}
               {canEdit && (

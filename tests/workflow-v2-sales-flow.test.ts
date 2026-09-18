@@ -324,3 +324,37 @@ describe("lỗi soi chéo bắt được sau P4, không được quay lại", ()
     expect(SELL_RETURNS, "còn hứa quản lý duyệt").not.toContain("quản lý duyệt")
   })
 })
+
+/**
+ * Nút Xuất hàng của nhà phân phối (Coder Pack mục 5). Một hành động, một
+ * chữ, một chỗ đọc kết quả.
+ */
+describe("Nút Xuất hàng nói đúng chuyện đã xảy ra", () => {
+  const TABLE = code(read("src/components/orders/desktop-order-table.tsx"))
+  const DRAWER = code(read("src/components/orders/order-drawer.tsx"))
+
+  /**
+   * ⚠ MỘT HÀNH ĐỘNG THÌ MỘT CHỮ. Ba lối vào cùng gọi `approveOrders`
+   * nhưng từng viết ba chữ khác nhau — "Xuất hàng" ở dải chọn nhiều,
+   * "Duyệt" ở dòng bảng, "Duyệt đơn" ở ngăn Xem nhanh. Người dùng đọc ra
+   * ba việc, và hai trong ba chữ nói về một bước v2 đã bỏ.
+   */
+  it("cả ba lối vào đều gọi là Xuất hàng, không còn chữ duyệt", () => {
+    for (const [name, src] of [["bảng", TABLE], ["ngăn Xem nhanh", DRAWER]] as const) {
+      expect(src, `${name} còn chữ duyệt`).not.toMatch(/duyệt/i)
+      expect(src, `${name} không có nút Xuất hàng`).toContain("Xuất hàng")
+    }
+    expect(LIST).toContain("Xuất hàng")
+  })
+
+  /**
+   * ⚠ ĐƠN SẠCH CÓ `approval_reason` LÀ CHUỖI RỖNG, không phải null (xem
+   * `decideStatus`). Gác cảnh báo bằng mỗi trạng thái thì mọi phiếu tạm
+   * đều đeo nhãn đỏ và ngăn Xem nhanh vẽ ra một hộp hổ phách TRỐNG — nhãn
+   * đỏ ở khắp nơi thì không còn là cảnh báo nữa.
+   */
+  it("cảnh báo chỉ hiện khi thật sự có nội dung", () => {
+    expect(TABLE).toContain("pending && !!o.approval_reason?.trim()")
+    expect(DRAWER).toContain("pending && !!order.approval_reason?.trim()")
+  })
+})

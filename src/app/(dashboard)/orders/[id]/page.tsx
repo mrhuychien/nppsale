@@ -740,6 +740,26 @@ export default function OrderDetailPage() {
     0
   )
 
+  /**
+   * Khoản trừ hàng trả ĐÃ NẰM TRONG `order.total`.
+   *
+   * ⚠ ĐÂY LÀ PHÉP SUY, KHÔNG PHẢI PHÉP CỘNG. `cartTotals` ghi
+   * `grandTotal = subtotal + vat − returnCredit`, nên khoảng hụt giữa
+   * (tạm tính + VAT) và tổng CHÍNH LÀ khoản trừ đã áp. Cộng lại từ bảng
+   * `returns` thì sai trong đúng ca hay gặp nhất: phiếu trả bị huỷ sau
+   * khi đơn đã lưu — `order.total` không được tính lại, nên phép cộng ra
+   * 0 và khoảng hụt vẫn nằm đó không ai giải thích.
+   *
+   * ⚠ KẸP VỀ 0. Đơn cũ lưu bằng công thức khác có thể cho hiệu âm; một
+   * dòng "Trừ hàng trả: −(−5.000)" thì thà đừng vẽ.
+   */
+  const orderReturnCredit = order
+    ? Math.max(
+        0,
+        Number(order.subtotal || 0) + Number(order.vat || 0) - Number(order.total || 0)
+      )
+    : 0
+
   const saveLineEdits = async () => {
     if (!order) return
     // T-06 — must hold the lock to mutate.
@@ -1826,11 +1846,42 @@ export default function OrderDetailPage() {
                   : formatCurrency(order.subtotal)
               }
             />
-            {/* Chiết khấu 0 thì không vẽ — một dòng "0đ" không nói gì. */}
+            {/*
+              ⚠ CHIẾT KHẤU ĐÃ NẰM TRONG TẠM TÍNH, KHÔNG TRỪ LẦN NỮA.
+                `cartTotals` tính `subtotal = Σ qty × giá ĐANG ÁP`, còn
+                `discount` chỉ là phần chênh so với giá bảng — ghi nhớ, không
+                phải một phép trừ. Vẽ nó kèm dấu trừ giữa Tạm tính và Tổng là
+                mời người đọc trừ thêm một lần và ra một con số không có
+                thật. Nên ghi rõ "đã tính trong tạm tính".
+            */}
             {Number(order.discount || 0) > 0 && (
-              <DetailRow label="Chiết khấu" value={`−${formatCurrency(order.discount)}`} />
+              <DetailRow
+                label="Chiết khấu (đã tính trong tạm tính)"
+                value={formatCurrency(order.discount)}
+              />
             )}
             <DetailRow label="VAT" value={formatCurrency(order.vat)} />
+            {/*
+              TRỪ HÀNG TRẢ — chủ nhà yêu cầu hiện ngay ở ô Cộng tiền.
+
+              ⚠ KHOẢN NÀY VỐN ĐÃ NẰM TRONG `order.total`. `cartTotals` ghi
+                `grandTotal = subtotal + vat − returnCredit`, nên đơn có hàng
+                trả hiện Tạm tính 114.000 mà Tổng 90.600, và KHÔNG có dòng
+                nào giải thích 23.400 biến đi đâu. Người đọc hoặc tưởng máy
+                tính sai, hoặc tự nghĩ ra một lý do.
+
+              ⚠ SUY TỪ BA CON SỐ ĐÃ LƯU, KHÔNG CỘNG LẠI TỪ PHIẾU TRẢ. Phiếu
+                trả bị huỷ sau khi lên đơn thì `order.total` KHÔNG được tính
+                lại — cộng từ phiếu sẽ ra 0 và để nguyên khoảng hụt. Lấy
+                đúng khoảng hụt thì dòng này luôn giải thích được con số
+                đang hiện, dù khoảng hụt ấy từ đâu ra.
+            */}
+            {orderReturnCredit > 0 && (
+              <DetailRow
+                label="Trừ hàng trả"
+                value={`−${formatCurrency(orderReturnCredit)}`}
+              />
+            )}
             <DetailRow
               strong
               label="Tổng tiền"

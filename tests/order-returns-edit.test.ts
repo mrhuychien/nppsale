@@ -625,3 +625,113 @@ describe("chi tiết đơn hàng dựng theo mẫu", () => {
     expect(page).toContain("Thanh toán &amp; giao hàng")
   })
 })
+
+describe("ô Cộng tiền của chi tiết đơn hàng", () => {
+  const page = readFileSync("src/app/(dashboard)/orders/[id]/page.tsx", "utf8")
+
+  /**
+   * ⚠ ĐÂY LÀ KHOẢNG HỤT KHÔNG AI GIẢI THÍCH. `cartTotals` ghi
+   * `grandTotal = subtotal + vat − returnCredit`, nên đơn có hàng trả hiện
+   * Tạm tính 114.000 mà Tổng 90.600 — và không dòng nào nói 23.400 đi đâu.
+   */
+  it("hiện dòng Trừ hàng trả", () => {
+    expect(page).toContain('label="Trừ hàng trả"')
+    expect(page).toContain("{orderReturnCredit > 0 && (")
+  })
+
+  /**
+   * ⚠ SUY TỪ SỐ ĐÃ LƯU, KHÔNG CỘNG LẠI TỪ BẢNG `returns`. Phiếu trả bị
+   * huỷ sau khi đơn đã lưu thì `order.total` không được tính lại; cộng từ
+   * phiếu ra 0 và khoảng hụt vẫn nằm đó.
+   */
+  it("suy từ tạm tính + VAT − tổng, không cộng từ phiếu trả", () => {
+    const calc = page.slice(
+      page.indexOf("const orderReturnCredit"),
+      page.indexOf("const orderReturnCredit") + 400
+    )
+    expect(calc).toContain("Number(order.subtotal || 0) + Number(order.vat || 0) - Number(order.total || 0)")
+    expect(calc).toContain("Math.max(")
+    expect(calc).not.toContain("linkedReturns")
+    expect(calc).not.toContain("credit_note_amount")
+  })
+
+  /**
+   * ⚠ CHIẾT KHẤU ĐÃ NẰM TRONG TẠM TÍNH. `cartTotals` tính `subtotal` theo
+   * giá ĐANG ÁP; `discount` chỉ là phần chênh so với giá bảng, để ghi nhớ.
+   * Vẽ nó kèm dấu trừ giữa Tạm tính và Tổng là mời người đọc trừ thêm một
+   * lần nữa và ra một con số không có thật.
+   */
+  it("không vẽ chiết khấu như một phép trừ", () => {
+    expect(page).toContain('label="Chiết khấu (đã tính trong tạm tính)"')
+    expect(page).not.toContain('value={`−${formatCurrency(order.discount)}`}')
+  })
+})
+
+describe("migration 134 — trần hàng trả tính theo khách", () => {
+  const mig = readFileSync("supabase/migrations/134_return_cap_per_customer.sql", "utf8")
+
+  /**
+   * ⚠ HÀNG TRẢ KÈM ĐƠN LÀ HÀNG CỦA LẦN GIAO TRƯỚC. So với dòng của chính
+   * tờ hóa đơn vừa xuất thì "đã xuất 0", và phiếu không bao giờ hoàn
+   * thành được — đúng lỗi chủ nhà gặp.
+   */
+  it("phiếu sinh ra từ đơn so theo khách, không theo một tờ hóa đơn", () => {
+    expect(mig).toContain("IF r.credit_with_invoice THEN")
+    expect(mig).toContain("WHERE si2.customer_id = r.customer_id")
+    expect(mig).toContain("WHERE r2.customer_id = r.customer_id")
+  })
+
+  /** ⚠ Phiếu lập TỪ hóa đơn giữ nguyên trần cũ — chỗ đó phép kiểm có nghĩa. */
+  it("phiếu lập từ hóa đơn vẫn so theo hóa đơn", () => {
+    expect(mig).toContain("ELSIF r.invoice_id IS NOT NULL THEN")
+  })
+
+  /**
+   * ⚠ HAI CHỖ CHẶN, PHẢI SỬA CẢ HAI. Trigger `enforce_return_line_cap`
+   * chạy lúc CHÈN DÒNG và mang đúng giả định ấy; sửa mỗi `complete_return`
+   * thì người dùng vấp đúng thông báo cũ ở một chỗ khác.
+   */
+  it("vá cả trigger chặn lúc chèn dòng", () => {
+    expect(mig).toContain("CREATE OR REPLACE FUNCTION public.enforce_return_line_cap()")
+    const trg = mig.slice(mig.indexOf("CREATE OR REPLACE FUNCTION public.enforce_return_line_cap()"))
+    expect(trg).toContain("IF v_ride THEN")
+    expect(trg).toContain("WHERE si.customer_id = v_cust")
+  })
+
+  /**
+   * ⚠ KHÔNG SIẾT THÊM CHỖ ĐANG KHÔNG SIẾT. Phiếu trả sinh ra lúc lên đơn
+   * chưa có `invoice_id` và hiện không bị chặn gì; đem trần theo khách
+   * vào đó là một phép chặn MỚI ở màn bán hàng, chặn cả hàng khách mua từ
+   * trước khi dùng phần mềm.
+   */
+  it("chưa gắn hóa đơn thì vẫn bỏ qua như trước", () => {
+    const trg = mig.slice(mig.indexOf("CREATE OR REPLACE FUNCTION public.enforce_return_line_cap()"))
+    const skip = trg.indexOf("IF v_invoice IS NULL THEN\n    RETURN NEW;")
+    expect(skip).toBeGreaterThan(-1)
+    // Phải đứng TRƯỚC nhánh trần-theo-khách, nếu không nó vẫn chặn.
+    expect(skip).toBeLessThan(trg.indexOf("IF v_ride THEN"))
+  })
+
+  /** ⚠ Trần vẫn còn thật: món khách chưa từng mua vẫn bị chặn. */
+  it("vẫn giữ phép chặn, chỉ nới phạm vi", () => {
+    expect(mig).toContain("RETURN_QTY_EXCEEDS")
+    expect(mig).toContain("IF v_qty_base + v_returned > v_sold THEN")
+  })
+
+  /** ⚠ Cần cột của mig 133 — chưa có thì DỪNG, đừng vá mò. */
+  it("dừng khi migration 133 chưa chạy", () => {
+    expect(mig).toContain("NEEDS_133")
+  })
+
+  it("chạy lại thì đứng yên", () => {
+    expect(mig).toContain("đã vá từ trước")
+  })
+
+  /** ⚠ Chỉ đếm và nêu tên — hoàn thành phiếu là đụng tồn kho, phải có người bấm. */
+  it("chỉ báo cáo phiếu đang kẹt, không tự hoàn thành", () => {
+    const rep = mig.slice(mig.indexOf("DO $report$"))
+    expect(rep).toContain("RAISE NOTICE")
+    expect(rep).not.toContain("complete_return(")
+    expect(rep).not.toContain("UPDATE returns")
+  })
+})

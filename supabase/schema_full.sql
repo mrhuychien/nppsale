@@ -18963,10 +18963,15 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_guard_order_lines_locked ON sales_order_lines;
-CREATE TRIGGER trg_guard_order_lines_locked
-  BEFORE INSERT OR UPDATE OR DELETE ON sales_order_lines
-  FOR EACH ROW EXECUTE FUNCTION public.guard_order_lines_locked();
+-- ⚠ TRIGGER DỰNG Ở CUỐI FILE, KHÔNG PHẢI Ở ĐÂY. Backfill ở mục 11 chèn
+--   dòng hóa đơn, việc đó làm `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` — và chốt này chặn đúng lệnh ấy, vì lúc đó đơn đã
+--   mang trạng thái 'completed'. Migration tự vấp chốt chặn của chính
+--   mình:
+--
+--     ERROR: ORDER_LOCKED: đơn đã xuất hàng, không sửa dòng được.
+--
+--   Dựng chốt sau khi dữ liệu đã vào chỗ. Xem mục 13.
 
 
 -- =====================================================================
@@ -19249,6 +19254,23 @@ DROP FUNCTION IF EXISTS public.complete_order(uuid);
 DROP FUNCTION IF EXISTS public.cancel_order(uuid, text);
 DROP FUNCTION IF EXISTS public._wf2_assert_order_unlocked(uuid, date, boolean);
 DROP FUNCTION IF EXISTS public._wf2_recompute_receivable(uuid);
+
+-- =====================================================================
+-- 13. Khoá dòng đơn — DỰNG SAU CÙNG
+-- =====================================================================
+--
+-- ⚠ ĐÂY LÀ NHỊP CUỐI, VÀ THỨ TỰ LÀ CẢ VẤN ĐỀ. Hàm đã định nghĩa ở mục 7;
+--   chỉ còn gắn trigger. Gắn sớm hơn thì backfill ở mục 11 không chạy
+--   nổi: nó chèn dòng hóa đơn → `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` → chốt này chặn, vì đơn lúc đó đã 'completed'.
+--
+--   Cùng một bài học với mục 4 của migration 119: chốt chặn dựng SAU khi
+--   ghi xong dữ liệu, không phải trước.
+DROP TRIGGER IF EXISTS trg_guard_order_lines_locked ON sales_order_lines;
+CREATE TRIGGER trg_guard_order_lines_locked
+  BEFORE INSERT OR UPDATE OR DELETE ON sales_order_lines
+  FOR EACH ROW EXECUTE FUNCTION public.guard_order_lines_locked();
+
 
 NOTIFY pgrst, 'reload schema';
 
@@ -20619,11 +20641,14 @@ GRANT EXECUTE ON FUNCTION public._wf2b_gross_revenue_for(uuid, uuid, date, date)
 
 DO $$
 DECLARE
-  v_src text;
-  v_old text;
-  v_new text;
-  v_n   int;
-  v_oid oid;
+  v_src  text;
+  v_stmt text;
+  v_norm text;
+  v_new  text;
+  v_n    int;
+  v_oid  oid;
+  v_shape_095 text;
+  v_shape_096 text;
 BEGIN
   -- ⚠ ĐẾM TRƯỚC KHI LẤY. Có hai bản nạp chồng thì `SELECT … INTO` vớ đại
   --   một cái, vá xong bản kia vẫn cộng tiền theo đơn — và không dòng nào
@@ -20653,22 +20678,77 @@ BEGIN
   --   Chép lại là dựng một bản sao thứ hai của 400 dòng mà không ai đối
   --   chiếu được với bản gốc; vá thì nếu câu cần vá không còn đúng như
   --   dự tính, khối này DỪNG thay vì âm thầm để nguyên.
-  v_old := 'SELECT COALESCE(SUM(total), 0) INTO v_gross
-    FROM sales_orders
-    WHERE sales_user_id = u.id
-      AND org_id = v_org
-      AND public.is_revenue_status(status)
-      AND order_date BETWEEN v_period_start AND v_period_end;';
+  --
+  -- ⚠ CẮT CÂU THẬT RA RỒI MỚI SO, KHÔNG SO BẰNG MỘT CHUỖI CHÉP TAY.
+  --   Bản đầu chép nguyên văn câu lệnh từ mig 096 kể cả thụt đầu dòng rồi
+  --   `position(... IN ...)`. Nó chết trên CSDL thật chỉ vì hàm ở đó
+  --   không cùng một hình dạng — và thông báo lỗi không nói được nó đã
+  --   thấy cái gì, nên chủ nhà chỉ biết là "hỏng", không biết hỏng ở đâu.
+  --   Giờ: cắt đúng câu gán v_gross ra khỏi thân hàm, chuẩn hoá khoảng
+  --   trắng rồi mới đối chiếu, và thay thế bằng CHÍNH đoạn vừa cắt — nên
+  --   thụt dòng hay xuống dòng kiểu gì cũng không còn ảnh hưởng.
+  v_stmt := substring(v_src from 'SELECT[^;]+INTO[[:space:]]+v_gross[^;]+;');
 
-  v_new := 'v_gross := public._wf2b_gross_revenue_for(u.id, v_org, v_period_start, v_period_end);';
-
-  IF position(v_old IN v_src) = 0 THEN
+  IF v_stmt IS NULL THEN
     RAISE EXCEPTION
-      'WF2B_PAYROLL_SHAPE: câu tính doanh số gộp trong compute_payroll_run không còn đúng hình dạng mig 096. Sửa tay migration 126 trước khi chạy tiếp.'
+      'WF2B_PAYROLL_SHAPE: không tìm thấy câu nào gán v_gross trong compute_payroll_run. Gửi lại thân hàm (SELECT prosrc FROM pg_proc WHERE proname = ''compute_payroll_run'') để sửa tay migration 126.'
       USING ERRCODE = 'P0001';
   END IF;
 
-  EXECUTE replace(v_src, v_old, v_new);
+  -- ⚠ ĐẾM. `replace()` thay MỌI chỗ khớp. Nếu một ngày có hai câu cùng
+  --   gán v_gross thì vá cả hai là sai, mà vá một cái rồi bỏ cái kia còn
+  --   tệ hơn — dừng lại để người sửa nhìn tận mắt.
+  SELECT count(*) INTO v_n
+  FROM regexp_matches(v_src, 'SELECT[^;]+INTO[[:space:]]+v_gross[^;]+;', 'g');
+
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION
+      'WF2B_PAYROLL_SHAPE: có % câu gán v_gross trong compute_payroll_run, cần đúng 1.', v_n
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  v_norm := btrim(lower(regexp_replace(v_stmt, '[[:space:]]+', ' ', 'g')));
+
+  -- Hai hình dạng HỢP LỆ, vì cả hai đều do migration trong repo này tạo ra:
+  --   • 096 — có lọc org_id (CSDL đã chạy đủ tới 096)
+  --   • 095 — chưa có lọc org_id (CSDL dừng ở 095)
+  -- Câu thay thế gọi _wf2b_gross_revenue_for, vốn đã lọc org_id, nên vá
+  -- bản 095 vừa đúng vừa sửa luôn chỗ hở đó.
+  v_shape_096 := 'select coalesce(sum(total), 0) into v_gross '
+              || 'from sales_orders '
+              || 'where sales_user_id = u.id '
+              || 'and org_id = v_org '
+              || 'and public.is_revenue_status(status) '
+              || 'and order_date between v_period_start and v_period_end;';
+
+  v_shape_095 := 'select coalesce(sum(total), 0) into v_gross '
+              || 'from sales_orders '
+              || 'where sales_user_id = u.id '
+              || 'and public.is_revenue_status(status) '
+              || 'and order_date between v_period_start and v_period_end;';
+
+  v_new := 'v_gross := public._wf2b_gross_revenue_for(u.id, v_org, v_period_start, v_period_end);';
+
+  IF v_norm = v_shape_096 THEN
+    NULL;
+  ELSIF v_norm = v_shape_095 THEN
+    -- ⚠ KÊU TO, ĐỪNG NUỐT. Vá được không có nghĩa là mọi thứ ổn: hàm ở
+    --   hình dạng 095 nghĩa là mig 096 hình như CHƯA chạy trên CSDL này,
+    --   mà 096 còn sửa một lỗi tiền thật (phiếu trả của đơn đã huỷ vẫn bị
+    --   trừ vào doanh số nhân viên). 126 không sửa chỗ đó và cũng không
+    --   nên tự sửa.
+    RAISE WARNING E'--- 126: compute_payroll_run đang ở hình dạng mig 095, không phải 096.\n'
+      '    Vá vẫn chạy được (hàm mới đã lọc org_id sẵn), NHƯNG:\n'
+      '    mig 096 có vẻ CHƯA chạy trên CSDL này. 096 còn sửa một lỗi tiền:\n'
+      '    phiếu trả gắn vào đơn đã huỷ vẫn bị trừ vào doanh số nhân viên.\n'
+      '    Kiểm tra lại mig 096 sau khi chạy xong 127.';
+  ELSE
+    RAISE EXCEPTION
+      E'WF2B_PAYROLL_SHAPE: câu tính doanh số gộp trong compute_payroll_run không khớp hình dạng 095 hay 096. Sửa tay migration 126 trước khi chạy tiếp.\nCâu đang có trong CSDL:\n%', v_stmt
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  EXECUTE replace(v_src, v_stmt, v_new);
   RAISE NOTICE '--- 126: compute_payroll_run đã chuyển doanh số gộp sang hóa đơn ---';
 END $$;
 

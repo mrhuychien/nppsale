@@ -198,7 +198,49 @@ describe("compute_payroll_run: vá một câu, không chép lại cả hàm", ()
    */
   it("RAISE nếu không tìm thấy đúng câu cần vá", () => {
     expect(M126).toContain("WF2B_PAYROLL_SHAPE")
-    expect(M126).toContain("IF position(v_old IN v_src) = 0 THEN")
+    expect(M126).toContain("IF v_stmt IS NULL THEN")
+  })
+
+  /**
+   * ⚠ CẮT CÂU THẬT RA RỒI MỚI SO — không so bằng một chuỗi chép tay kèm
+   * thụt đầu dòng. Bản đầu làm thế và chết trên CSDL thật chỉ vì hàm ở đó
+   * không cùng hình dạng. Thay thế cũng phải dùng CHÍNH đoạn vừa cắt,
+   * nếu không thì lại phụ thuộc vào khoảng trắng y như cũ.
+   */
+  it("cắt câu thật từ thân hàm, và thay đúng đoạn vừa cắt", () => {
+    expect(M126).toContain(
+      "v_stmt := substring(v_src from 'SELECT[^;]+INTO[[:space:]]+v_gross[^;]+;');"
+    )
+    expect(M126).toContain("EXECUTE replace(v_src, v_stmt, v_new);")
+    // Không còn so bằng chuỗi chép tay.
+    expect(M126).not.toContain("position(v_old IN v_src)")
+  })
+
+  it("so sánh sau khi chuẩn hoá khoảng trắng", () => {
+    expect(M126).toContain(
+      "v_norm := btrim(lower(regexp_replace(v_stmt, '[[:space:]]+', ' ', 'g')));"
+    )
+  })
+
+  /**
+   * ⚠ `replace()` THAY MỌI CHỖ KHỚP. Một ngày nào đó có hai câu cùng gán
+   * v_gross thì vá cả hai là sai — phải dừng để người sửa nhìn tận mắt.
+   */
+  it("RAISE nếu thân hàm có nhiều hơn một câu gán v_gross", () => {
+    expect(M126).toContain(
+      "FROM regexp_matches(v_src, 'SELECT[^;]+INTO[[:space:]]+v_gross[^;]+;', 'g');"
+    )
+    expect(M126).toContain("có % câu gán v_gross trong compute_payroll_run, cần đúng 1.")
+  })
+
+  /**
+   * ⚠ LỖI PHẢI NÓI NÓ ĐÃ THẤY CÁI GÌ. Bản đầu chỉ nói "không còn đúng
+   * hình dạng" — chủ nhà biết là hỏng nhưng không biết hỏng ở đâu, phải
+   * quay lại hỏi mới đi tiếp được. In luôn câu đang có trong CSDL.
+   */
+  it("thông báo lỗi in ra câu đang có trong CSDL", () => {
+    const raise = M126.slice(M126.indexOf("không khớp hình dạng 095 hay 096"))
+    expect(raise).toContain("Câu đang có trong CSDL:\\n%', v_stmt")
   })
 
   /**
@@ -211,17 +253,48 @@ describe("compute_payroll_run: vá một câu, không chép lại cả hàm", ()
     expect(M126).toContain("WF2B_NO_PAYROLL_FN")
   })
 
-  it("câu cần vá là đúng câu tính doanh số gộp của mig 096", () => {
-    const MIG096 = read("supabase/migrations/096_payroll_net_revenue_fixes.sql")
-    const needle = `SELECT COALESCE(SUM(total), 0) INTO v_gross
-    FROM sales_orders
-    WHERE sales_user_id = u.id
-      AND org_id = v_org
-      AND public.is_revenue_status(status)
-      AND order_date BETWEEN v_period_start AND v_period_end;`
-    // Nếu 096 đổi, chốt này đỏ TRƯỚC khi migration chạy và im lặng hỏng.
-    expect(MIG096, "hình dạng câu trong mig 096 đã đổi").toContain(needle)
-    expect(M126, "câu cần vá trong 126 không khớp mig 096").toContain(needle)
+  /**
+   * ⚠ HAI HÌNH DẠNG HỢP LỆ PHẢI ĐƯỢC LẤY TỪ CHÍNH MIG 095 VÀ 096, không
+   * phải từ trí nhớ. Chốt này cắt câu gán v_gross ra khỏi hai migration
+   * đó, chuẩn hoá đúng như migration 126 làm, rồi đối chiếu. 095 hay 096
+   * đổi một chữ là chốt đỏ NGAY — thay vì migration chạy rồi mới chết
+   * trên máy chủ nhà.
+   */
+  it("hai hình dạng được chấp nhận khớp đúng mig 095 và mig 096", () => {
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
+    const cut = (src: string, tenFile: string) => {
+      const m = src.match(new RegExp("SELECT[^;]+INTO\\s+v_gross[^;]+;"))
+      if (!m) throw new Error(`không tìm thấy câu gán v_gross trong ${tenFile}`)
+      return norm(m[0])
+    }
+    // Ghép lại chuỗi bị tách bằng `||` trong migration.
+    const literal = (ten: string) => {
+      const m = M126.match(new RegExp(ten + "\\s*:=([\\s\\S]*?);\\n"))
+      if (!m) throw new Error(`không tìm thấy ${ten} trong mig 126`)
+      return (m[1].match(/'[^']*'/g) ?? []).map((p) => p.slice(1, -1)).join("")
+    }
+
+    expect(literal("v_shape_096"), "hình dạng 096 trong mig 126 đã lệch").toBe(
+      cut(read("supabase/migrations/096_payroll_net_revenue_fixes.sql"), "mig 096")
+    )
+    expect(literal("v_shape_095"), "hình dạng 095 trong mig 126 đã lệch").toBe(
+      cut(read("supabase/migrations/095_payroll_net_revenue.sql"), "mig 095")
+    )
+    // Hai hình dạng phải KHÁC nhau — nếu bằng nhau thì một trong hai chốt
+    // trên đang so với chính nó và không kiểm gì cả.
+    expect(literal("v_shape_095")).not.toBe(literal("v_shape_096"))
+  })
+
+  /**
+   * ⚠ VÁ ĐƯỢC KHÔNG CÓ NGHĨA LÀ MỌI THỨ ỔN. Hàm ở hình dạng 095 nghĩa là
+   * mig 096 chưa chạy trên CSDL đó, mà 096 còn sửa một lỗi tiền thật
+   * (phiếu trả của đơn đã huỷ vẫn bị trừ vào doanh số nhân viên). 126
+   * không sửa chỗ đó nên phải kêu to, không được nuốt.
+   */
+  it("gặp hình dạng 095 thì WARNING, không im lặng", () => {
+    const nhanh = M126.slice(M126.indexOf("ELSIF v_norm = v_shape_095"))
+    expect(nhanh.slice(0, 1200)).toContain("RAISE WARNING")
+    expect(nhanh.slice(0, 1200)).toContain("mig 096 có vẻ CHƯA chạy")
   })
 
   it("thay bằng lời gọi helper, không viết lại truy vấn", () => {

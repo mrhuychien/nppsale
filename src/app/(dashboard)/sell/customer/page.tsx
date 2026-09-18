@@ -1,8 +1,8 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import { ChevronLeft } from "lucide-react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ChevronLeft, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useSellCart } from "@/hooks/use-sell-cart"
@@ -62,8 +62,9 @@ async function loadDebtByCustomer(): Promise<Record<string, number> | null> {
 
 export default function SellCustomerPage() {
   const router = useRouter()
+  const params = useSearchParams()
   const cart = useSellCart()
-  const { loading, filterCustomers } = useSellData()
+  const { loading, filterCustomers, customerById, reload } = useSellData()
   const [q, setQ] = useState("")
   const [debtByCustomer, setDebtByCustomer] = useState<Record<string, number> | null>(
     () => (debtMemo && Date.now() - debtMemo.at < DEBT_TTL_MS ? debtMemo.map : null)
@@ -78,6 +79,45 @@ export default function SellCustomerPage() {
       cancelled = true
     }
   }, [])
+
+  /**
+   * VỪA TẠO KHÁCH XONG THÌ CHỌN LUÔN KHÁCH ẤY.
+   *
+   * NVBH đứng ở cửa hàng mới: bấm +, nhập điểm bán, rồi bán ngay. Trả họ
+   * về màn này với một danh sách y như cũ là bắt gõ lại tên vừa nhập để
+   * tự tìm — và giỏ hàng đang dở thì vẫn nằm đó, chỉ là không ai nói.
+   *
+   * ⚠ DANH MỤC TRONG MÁY CHƯA CÓ KHÁCH VỪA TẠO. `useSellData` giữ một bản
+   *   nạp sẵn; không gọi `reload()` thì khách mới không nằm trong đó, và
+   *   màn /sell hiện lại chữ "Chọn khách hàng" như chưa chọn gì — trong
+   *   khi giỏ đã gắn đúng mã. Nên: gắn mã ngay (giỏ đúng từ giây đầu),
+   *   gọi `reload()`, và CHỜ tên hiện ra rồi mới đi tiếp.
+   *
+   * ⚠ CÓ ĐƯỜNG THOÁT. Đọc lại hỏng thì không kẹt ở đây mãi — sau 8 giây
+   *   vẫn đi tiếp, vì mã khách đã đúng và chỉ thiếu cái tên.
+   */
+  const picked = params.get("picked")
+  const [pickWait, setPickWait] = useState(false)
+  const pickDone = useRef(false)
+
+  useEffect(() => {
+    if (!picked || pickDone.current) return
+    pickDone.current = true
+    cart.setCustomerId(picked)
+    setPickWait(true)
+    reload()
+    const bail = setTimeout(() => router.replace("/sell"), 8000)
+    return () => clearTimeout(bail)
+  }, [picked]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pickWait || !picked) return
+    const c = customerById(picked)
+    if (!c) return
+    // Điều khoản mặc định theo khách, y như khi chọn từ danh sách.
+    if (!cart.paymentTerms && c.payment_terms) cart.setPaymentTerms(c.payment_terms)
+    router.replace("/sell")
+  }, [pickWait, picked, customerById]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Chữ gõ vào ô là việc khẩn; lọc lại danh sách theo sau — xem màn /sell.
   const deferredQ = useDeferredValue(q)
@@ -98,6 +138,22 @@ export default function SellCustomerPage() {
           <ChevronLeft className="h-6 w-6" />
         </button>
         <h1 className="flex-1 text-[22px] font-extrabold">Chọn khách hàng</h1>
+        {/*
+          ⚠ TẠO KHÁCH NGAY TỪ ĐÂY. Cửa hàng chưa có trong danh mục là
+            chuyện xảy ra giữa lúc bán; bắt NVBH thoát ra, vào Khách hàng,
+            tạo, rồi tự tìm đường về giỏ là đủ lâu để họ bỏ luôn đơn.
+          ⚠ `?next=` để tạo xong quay lại ĐÂY và chọn sẵn khách vừa tạo.
+        */}
+        <button
+          type="button"
+          onClick={() => router.push("/customers/new?next=/sell/customer")}
+          aria-label="Tạo khách hàng mới"
+          className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 font-extrabold text-primary"
+        >
+          <Plus className="h-6 w-6" />
+          {/* Điện thoại chỉ còn dấu + — hàng tiêu đề không đủ chỗ cho chữ. */}
+          <span className="hidden text-[15px] sm:inline">Tạo khách mới</span>
+        </button>
       </div>
 
       <div className="px-4 pb-2.5">
@@ -117,7 +173,11 @@ export default function SellCustomerPage() {
       </div>
 
       <div className="grid content-start gap-2 px-3 pb-6">
-        {loading ? (
+        {pickWait ? (
+          <p className="py-10 text-center text-sm font-semibold text-on-surface-variant">
+            Đang nạp khách vừa tạo…
+          </p>
+        ) : loading ? (
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)
         ) : list.length === 0 ? (
           <p className="py-10 text-center text-sm text-on-surface-variant">

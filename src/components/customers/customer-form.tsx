@@ -21,6 +21,17 @@ import { errorMessage } from "@/lib/errors"
 interface CustomerFormProps {
   customer?: Customer
   groups: Pick<CustomerGroup, "id" | "name">[]
+  /**
+   * Nơi quay về sau khi TẠO XONG, thay cho `/customers`.
+   *
+   * ⚠ CÓ ĐỂ PHỤC VỤ LUỒNG ĐẶT HÀNG. NVBH đang đứng ở cửa hàng mới, bấm +
+   * từ màn chọn khách để tạo điểm bán rồi bán luôn. Ném họ về danh sách
+   * khách là bắt tự tìm đường quay lại giỏ hàng đang dở — và giỏ thì vẫn
+   * còn nguyên ở đó, chỉ là họ không biết.
+   *
+   * Mã khách vừa tạo được gắn vào `?picked=` để nơi nhận tự chọn sẵn.
+   */
+  nextHref?: string
 }
 
 interface PjpRouteDisplay {
@@ -39,7 +50,7 @@ const DAY_LABELS: Record<number, string> = {
   6: "Thứ 7",
 }
 
-export function CustomerForm({ customer, groups }: CustomerFormProps) {
+export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
@@ -207,6 +218,10 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         payload.gps_lng = parseFloat(form.gps_lng)
       }
 
+      // ⚠ KHAI BÁO NGOÀI NHÁNH. Phần điều hướng ở cuối hàm cần biết mã
+      //   khách vừa tạo; để bên trong nhánh thì nó không thấy.
+      let newId: string | null = null
+
       if (customer) {
         const { error } = await supabase.from("customers").update(payload).eq("id", customer.id)
         if (error) throw error
@@ -222,7 +237,6 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         if (user?.id) insertPayload.created_by = user.id
         // Lấy về `id`: không có nó thì không phân công được cho người vừa
         // tạo, và điểm bán mới sẽ không thuộc về ai.
-        let newId: string | null = null
         const { data, error } = await supabase
           .from("customers")
           .insert(insertPayload)
@@ -263,7 +277,17 @@ export function CustomerForm({ customer, groups }: CustomerFormProps) {
         })
       }
 
-      router.push("/customers")
+      /**
+       * ⚠ CHỈ QUAY VỀ LUỒNG CŨ KHI THẬT SỰ CÓ MÃ KHÁCH. `newId` rỗng nghĩa
+       *   là ghi xong mà không đọc lại được mã (RLS, hoặc cột trả về
+       *   thiếu); gửi `?picked=` rỗng về màn chọn khách là nó ngồi đợi một
+       *   khách không bao giờ tới. Về danh sách khách vẫn hơn.
+       */
+      if (nextHref && newId) {
+        router.push(`${nextHref}?picked=${encodeURIComponent(newId)}`)
+      } else {
+        router.push("/customers")
+      }
       router.refresh()
     } catch (err: unknown) {
       // ⚠ Tiêu đề phải nói THAO TÁC NÀO hỏng. "Lỗi" một mình thì người

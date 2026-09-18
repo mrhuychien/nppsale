@@ -15,9 +15,13 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
 ## Phase
 
 - [x] **P0** `chore(wf2-P0)` — Branch + baseline + hai file docs.
-- [ ] **P1** `feat(wf2-P1)` — Migration 119: cột mới, CHECK status mới,
+- [x] **P1** `feat(wf2-P1)` — Migration 119: cột mới, CHECK status mới,
       backfill, bỏ workflow_stage trigger + khoá dòng đã pick, RLS viết
       lại, `is_revenue_status` = `completed`, cascade SQL (mục 2.11).
+      Kèm bảng `stock_line_consumptions` + một lệnh chèn trong
+      `post_stock_export`, trigger trần số lượng trả, và
+      `tests/workflow-v2-transitions.test.ts` (32 chốt, đã thử phá 14
+      lần; một chốt nói dối đã bị bắt và siết lại).
 - [ ] **P2** `feat(wf2-P2)` — Migration 120: 4 helper `_wf2_*` + 7 RPC
       (`complete_order`, `edit_completed_order`, `cancel_order`,
       `complete_return`, `cancel_return`, `create_cash_receipt`,
@@ -54,6 +58,27 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   quyết trước khi viết backfill ở P1 (Q1: đơn giao xong qua tài xế đang
   nằm ở `confirmed`).
 - Chưa đụng một dòng mã sản phẩm nào ở P0.
+
+## Ghi chú P1
+
+- Cascade SQL (mục 2.11) hoá ra nhỏ hơn tưởng: chỉ `finance_pnl` còn lọc
+  doanh thu bằng giá trị trạng thái viết thẳng. Mọi hàm lương và tổng
+  quan đã gọi `is_revenue_status` từ mig 094 nên tự đi theo. Các dòng
+  `status IN ('delivered','confirmed')` còn thấy trong `schema_full.sql`
+  đều thuộc các bản `compute_payroll_run` đã bị đè, không tồn tại trong
+  CSDL.
+- P1 lấn đúng phần đã ghi ở Q2: hằng số `NON_REVENUE_ORDER_STATUSES` và
+  một chốt trong `tests/payroll-net-revenue.test.ts`. Chốt cũ đọc danh
+  sách `NOT IN (…)` trong thân hàm; v2 viết theo chiều ngược lại nên nó
+  được viết lại thành bất biến "hằng số bằng phần bù của
+  `is_revenue_status`", suy từ hai nguồn SQL.
+- `supabase/INSTALL.md` đổi 72 thành 73 bảng, do bảng mới.
+- ⚠ **Việc để lại cho P3:** `src/app/(dashboard)/orders/[id]/page.tsx`
+  vẫn đọc view `v_sales_order_line_picked` vừa bị xoá. Trang chi tiết đơn
+  sẽ lỗi lúc chạy cho tới khi P3 dọn theo mục 5. Không ảnh hưởng build
+  hay test vì đây là truy vấn lúc chạy.
+- ⚠ **Chặn P2:** xem Q3 trong sổ câu hỏi — trigger nhập kho tự động của
+  đơn trả vẫn sống, sẽ nhập kho hai lần khi có `complete_return`.
 
 ## Quy ước
 

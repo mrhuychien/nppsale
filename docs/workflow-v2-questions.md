@@ -110,6 +110,56 @@ cái gì.
 
 ---
 
+## Q3: [P2 sẽ hỏng] Trigger nhập kho tự động của đơn trả vẫn còn sống
+
+**Code thật:** `trg_auto_restock_return` trên bảng `returns`
+(`supabase/schema_full.sql:1700-1704`, hàm `auto_restock_on_return()` ở
+`:1664-1697`, từ mig 008). Nó chạy AFTER UPDATE OF status và khi
+`NEW.status = 'completed'` thì TỰ tạo một phiếu nhập `RTN-…` cộng kho.
+
+**Spec:** mục 2.3 không nhắc tới trigger này. Mục 3.4 lại bảo RPC
+`complete_return` tự nhập kho (port `processApprovedReturn` sang SQL).
+
+**Mâu thuẫn:** ngay khi P2 có `complete_return`, một lần hoàn thành phiếu
+trả sẽ nhập kho HAI LẦN — một lần do RPC, một lần do trigger. Tồn kho
+tăng gấp đôi số hàng trả, không có gì báo.
+
+**Chưa tự quyết.** Hai đường ra, chủ nhà chọn:
+
+1. Bỏ trigger trong migration 119 (một dòng `DROP TRIGGER`), để RPC là
+   nơi duy nhất nhập kho hàng trả. Đây là hướng tôi nghiêng về.
+2. Giữ trigger, viết `complete_return` không nhập kho mà chỉ đổi trạng
+   thái. Rủi ro: trigger không chọn được kho nhận (`sale` hay `date`),
+   nên mất tính năng mục 3.4 đã chốt.
+
+P1 KHÔNG đụng tới nó. Việc này phải xong trước khi viết P2.
+
+**Trạng thái:** MỞ.
+
+---
+
+## Q4: [P1, mục 2.10] Spec gọi tên những policy đã bị xoá từ lâu
+
+**Spec bảo DROP:** "Admin roles can view all orders", "Sales see own
+orders", "Sales can update own draft orders". **Spec bảo GIỮ:** "Driver
+sees delivery orders".
+
+**Code thật:** cả bốn cái đã bị migration 042 và 115 gộp lại từ trước.
+Quyền đọc đơn hiện nằm trong một policy duy nhất tên `sales_order_select`
+(`supabase/schema_full.sql:4386`), và nhánh cho vai trò tài xế là một vế
+OR bên trong chính policy đó.
+
+**Đã làm ở P1 (làm theo Ý ĐỊNH, không theo tên):** viết lại
+`sales_order_select` giữ nguyên logic phân quyền theo hàng của mig 042,
+thêm điều kiện nháp chỉ chủ đơn thấy đúng như hai gạch đầu dòng của mục
+2.10, và GIỮ NGUYÊN vế OR của tài xế. Nếu xoá vế đó theo nghĩa đen của
+spec thì tài xế mất quyền đọc đơn, trong khi D12 nói module giao hàng chỉ
+ẩn khỏi menu chứ chưa bỏ.
+
+**Trạng thái:** ĐÃ LÀM, báo để chủ nhà biết chỗ lệch chữ.
+
+---
+
 ## Điểm cần xác minh khi vào phase sau
 
 Chưa phải câu hỏi. Đây là những chỗ Coder Pack yêu cầu ĐỌC CODE trước

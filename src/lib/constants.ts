@@ -49,8 +49,9 @@ export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default
 /**
  * Trạng thái đơn KHÔNG được tính vào doanh số.
  *
- * Phải khớp với hàm SQL `public.is_revenue_status()` (mig 094):
- *     status NOT IN ('draft', 'cancelled')
+ * Phải khớp với hàm SQL `public.is_revenue_status()` (mig 119):
+ *     status = 'completed'
+ * tức mọi trạng thái còn lại đều KHÔNG tính doanh thu.
  *
  * VÌ SAO CẦN HẰNG SỐ NÀY
  * Trước 094, cả SQL lẫn giao diện đều lọc `IN ('delivered','confirmed')`,
@@ -60,7 +61,7 @@ export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default
  * cùng tờ phiếu — nhân viên không cộng lại được số của chính mình.
  * Đặt một chỗ để lần sau đổi định nghĩa thì đổi đúng một nơi.
  */
-export const NON_REVENUE_ORDER_STATUSES = ["draft", "cancelled"] as const
+export const NON_REVENUE_ORDER_STATUSES = ["draft", "submitted", "cancelled"] as const
 
 export const CUSTOMER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   active: { label: "Hoạt động", variant: "success" },

@@ -387,17 +387,36 @@ describe("bảng kê đơn trên phiếu lương phải cộng ra đúng doanh s
     expect(PAGE).toContain("NON_REVENUE_ORDER_STATUSES")
   })
 
-  it("hằng số khớp đúng danh sách loại trừ trong is_revenue_status", () => {
+  /**
+   * ⚠ Bản cũ của chốt này đọc danh sách `NOT IN (…)` trong thân
+   * is_revenue_status. Workflow v2 (mig 119) viết hàm theo chiều ngược
+   * lại — `= 'completed'` — nên cách đọc đó vỡ. Điều cần khoá không phải
+   * cú pháp, mà là BẤT BIẾN: hằng số TypeScript phải đúng bằng tập trạng
+   * thái KHÔNG tính doanh thu, suy ra từ hai nguồn SQL.
+   */
+  it("hằng số khớp đúng phần bù của is_revenue_status", () => {
     const C = readFileSync(resolve(__dirname, "../src/lib/constants.ts"), "utf-8")
     const m = C.match(/NON_REVENUE_ORDER_STATUSES = \[([^\]]*)\]/)
     expect(m).toBeTruthy()
     const ts = m![1].split(",").map((x) => x.trim().replace(/["']/g, "")).filter(Boolean).sort()
-    const sqlList = SQL.match(/NOT IN \(([^)]*)\)\s*;/)
-    // Nếu SQL không còn định nghĩa is_revenue_status trong file này thì lấy
-    // từ migration đã định nghĩa nó.
-    const src = sqlList ? sqlList[1] : latestFunction("is_revenue_status").body.match(/NOT IN \(([^)]*)\)/)![1]
-    const sql = src.split(",").map((x) => x.trim().replace(/'/g, "")).sort()
-    expect(ts, "hằng số TypeScript lệch khỏi định nghĩa SQL").toEqual(sql)
+
+    // Toàn bộ trạng thái hợp lệ, lấy từ ràng buộc CHECK mới nhất.
+    let statusList: string | undefined
+    for (let i = MIGRATIONS.length - 1; i >= 0 && !statusList; i--) {
+      statusList = stripComments(MIGRATIONS[i].raw).match(
+        /CHECK\s*\(\s*status IN \(([^)]*)\)/
+      )?.[1]
+    }
+    expect(statusList, "không tìm thấy CHECK trạng thái đơn trong migrations").toBeTruthy()
+    const all = statusList!.split(",").map((x) => x.trim().replace(/'/g, "")).filter(Boolean)
+
+    // Trạng thái ĐƯỢC tính doanh thu, lấy từ thân hàm đang hiệu lực.
+    const body = stripComments(latestFunction("is_revenue_status").body)
+    const revenue = all.filter((s) => body.includes(`'${s}'`))
+    expect(revenue.length, "is_revenue_status không nhắc trạng thái nào").toBeGreaterThan(0)
+
+    const expected = all.filter((s) => !revenue.includes(s)).sort()
+    expect(ts, "hằng số TypeScript lệch khỏi định nghĩa SQL").toEqual(expected)
   })
 
   it("lấy đủ dòng, không để server cắt ở 1.000", () => {

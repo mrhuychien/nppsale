@@ -178,6 +178,29 @@
   html:not([data-paper-size="A4"]) .print-page h2,
   html:not([data-paper-size="A4"]) .a5-doc h2 { font-size: 9pt; }
   html:not([data-paper-size="A4"]) .a5-doc .signatures { font-size: 7pt; }
+
+  /*
+    Hoá đơn bán hàng — chứng từ BẢY CỘT, dựng cho A4.
+
+    ⚠ Nút in của nó mặc định A4, nhưng dropdown vẫn cho chọn A5. Không có
+    khối này thì chọn A5 là bảng tràn ra ngoài lề và cột tiền bị cắt —
+    hỏng theo kiểu chỉ lộ ra trên giấy, sau khi đã in.
+  */
+  html:not([data-paper-size="A4"]) .a4-doc {
+    font-size: 7.5pt;
+    line-height: 1.1;
+    font-family: "Times New Roman", Times, serif;
+  }
+  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 7pt; }
+  html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 11pt; }
+  /* Chỗ ký thu lại cho vừa trang; vẫn đủ để ký tay. */
+  html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }
+
+  /* Ở A4 thì dùng Times như mọi chứng từ chính thức khác của kho này. */
+  html[data-paper-size="A4"] .a4-doc {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11pt;
+  }
 }
 
 @layer utilities {

@@ -17,7 +17,11 @@ import {
   ClipboardList, CheckCircle2, XCircle, AlertCircle, TrendingDown, TrendingUp,
   Eye, ChevronRight,
 } from "lucide-react"
-import type { ExpenseCategory } from "@/types"
+import { errorMessage } from "@/lib/errors"
+import {
+  postStockAdjustment,
+  describeAdjustment,
+} from "@/lib/inventory/post-adjustment"
 
 type AdjustmentLine = {
   id: string
@@ -50,7 +54,6 @@ export default function AdjustmentsPage() {
 
   const [drafts, setDrafts] = useState<Adjustment[]>([])
   const [recentPosted, setRecentPosted] = useState<Adjustment[]>([])
-  const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -59,7 +62,7 @@ export default function AdjustmentsPage() {
   const fetchData = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const [draftsRes, postedRes, catRes] = await Promise.all([
+    const [draftsRes, postedRes] = await Promise.all([
       supabase
         .from("stock_entries")
         .select(
@@ -79,19 +82,15 @@ export default function AdjustmentsPage() {
         .eq("status", "posted")
         .order("posted_at", { ascending: false })
         .limit(10),
-      supabase
-        .from("expense_categories")
-        .select("id, code, name")
-        .eq("org_id", user.org_id)
-        .eq("bucket", "cogs")
-        .eq("is_active", true),
     ])
-    const qErr = ([draftsRes, postedRes, catRes] as Array<{ error?: { message?: string } | null }>)
+    // ⚠ Không còn nạp `expense_categories` ở đây: việc chọn nhóm chi phí
+    //   hao hụt đã chuyển vào RPC `post_stock_adjustment` (mig 123), nơi
+    //   nó nằm cùng giao dịch với phần trừ kho.
+    const qErr = ([draftsRes, postedRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[inventory/adjustments] truy vấn lỗi:", qErr.message)
     setDrafts(((draftsRes.data as unknown) as Adjustment[]) || [])
     setRecentPosted(((postedRes.data as unknown) as Adjustment[]) || [])
-    setCategories((catRes.data as ExpenseCategory[]) || [])
     setLoading(false)
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -143,100 +142,41 @@ export default function AdjustmentsPage() {
 
     setApprovingId(a.id)
     try {
-      // 1. Update batches. For each line with a batch_id, add the signed diff.
-      //    Lines with a batch_id were captured with the pre-stocktake qty, so we
-      //    just apply the diff. For lines without batch_id (rare — aggregated
-      //    adjustment), we fall back to FEFO: shrinkage deducts from first-expiry
-      //    batches; surplus goes to the latest batch (or the first if none).
-      for (const l of a.lines || []) {
-        const diff = Number(l.quantity)
-        if (diff === 0) continue
+      /**
+       * ⚠ MỘT LỆNH, MỘT GIAO DỊCH — ĐỪNG QUAY LẠI VÒNG LẶP CŨ.
+       *
+       * Bản trước duyệt bằng cách đọc từng lô rồi ghi lại từ trình duyệt,
+       * sau đó ghi chi phí, rồi đóng dấu phiếu. Với vai `manager`, hai
+       * trong ba bước đó bị RLS từ chối — mà RLS TỪ CHỐI KHÔNG PHẢI LÀ
+       * LỖI: 0 dòng, HTTP 200, `error` null, nên `.throwOnError()` im
+       * lặng và màn vẫn báo "Kho đã cập nhật". Kho không đổi gì, còn sổ
+       * chi phí thì CÓ ghi hao hụt (bảng `expenses` cho manager ghi).
+       *
+       * Xem migration 123 để biết đủ bảng nào cho vai nào.
+       */
+      const r = await postStockAdjustment(supabase, a.id)
 
-        if (l.batch_id) {
-          const { data: b, error: bErr } = await supabase
-            .from("batches")
-            .select("qty_on_hand")
-            .eq("id", l.batch_id)
-            .maybeSingle()
-          if (bErr) console.error("[inventory/adjustments] truy vấn lỗi:", bErr.message)
-          const current = Number((b as { qty_on_hand?: number } | null)?.qty_on_hand) || 0
-          const newQty = Math.max(0, current + diff)
-          await supabase.from("batches").update({ qty_on_hand: newQty }).eq("id", l.batch_id).throwOnError()
-        } else if (diff < 0) {
-          // Shrinkage, no batch → FEFO deduct
-          let remaining = -diff
-          const { data: batches, error: batchesErr } = await supabase
-            .from("batches")
-            .select("id, qty_on_hand")
-            .eq("product_id", l.product_id)
-            .gt("qty_on_hand", 0)
-            .order("expires_at", { ascending: true })
-          if (batchesErr) console.error("[inventory/adjustments] truy vấn lỗi:", batchesErr.message)
-          for (const b of (batches as Array<{ id: string; qty_on_hand: number }>) || []) {
-            if (remaining <= 0) break
-            const take = Math.min(remaining, Number(b.qty_on_hand))
-            await supabase.from("batches").update({ qty_on_hand: Number(b.qty_on_hand) - take }).eq("id", b.id).throwOnError()
-            remaining -= take
-          }
-        } else if (diff > 0) {
-          // Surplus, no batch → add to the latest batch, or create a floating batch
-          const { data: batches, error: batchesErr } = await supabase
-            .from("batches")
-            .select("id, qty_on_hand")
-            .eq("product_id", l.product_id)
-            .order("expires_at", { ascending: false })
-            .limit(1)
-          if (batchesErr) console.error("[inventory/adjustments] truy vấn lỗi:", batchesErr.message)
-          const first = (batches as Array<{ id: string; qty_on_hand: number }>)?.[0]
-          if (first) {
-            await supabase
-              .from("batches")
-              .update({ qty_on_hand: Number(first.qty_on_hand) + diff })
-              .eq("id", first.id)
-              .throwOnError()
-          }
-          // Silently skip if no batch exists for this product — manager should
-          // create a batch first.
-        }
-      }
-
-      // 2. Post an expense for the shrinkage value
-      if (s.shrinkValue > 0) {
-        const cogsCategory = categories.find((c) => c.code === "COGS_ADJ") || categories[0]
-        await supabase.from("expenses").insert({
-          org_id: user.org_id,
-          category_id: cogsCategory?.id ?? null,
-          expense_date: new Date().toISOString().slice(0, 10),
-          amount: s.shrinkValue,
-          description: `Hao hụt từ phiếu kiểm kê ${a.entry_code}`,
-          reference_code: a.entry_code,
-          source_type: "stocktake",
-          source_id: a.id,
-          created_by: user.id,
-        }).throwOnError()
-      }
-
-      // 3. Post the entry
-      await supabase
-        .from("stock_entries")
-        .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", a.id).throwOnError()
-
+      /**
+       * ⚠ BÁO THEO SỐ RPC TRẢ VỀ, KHÔNG THEO SỐ TÍNH SẴN Ở MÀN. `s` là
+       * thứ người dùng MONG đợi; `r` là thứ cơ sở dữ liệu ĐÃ LÀM. Chính
+       * chỗ lệch giữa hai cái đó là lỗi vừa sửa, nên đừng in `s` ra nữa.
+       */
       toast({
         title: `Đã duyệt ${a.entry_code}`,
-        description:
-          s.shrinkValue > 0
-            ? `Kho đã cập nhật • Chi phí hao hụt ${formatCurrency(s.shrinkValue)}`
-            : "Kho đã cập nhật",
+        description: describeAdjustment(r, formatCurrency),
       })
       await fetchData()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Lỗi"
-      toast({ title: "Lỗi", description: msg, variant: "destructive" })
+      toast({
+        title: "Không duyệt được",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
     } finally {
       setApprovingId(null)
     }
   }
+
 
   const handleReject = async (a: Adjustment) => {
     if (!canApprove) return

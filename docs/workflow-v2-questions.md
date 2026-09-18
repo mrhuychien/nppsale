@@ -613,3 +613,84 @@ trên CSDL thật). Đây là bối cảnh cho phase sau, không phải câu h�
 - Có hai định nghĩa doanh thu đang chạy song song: phía SQL tính mọi đơn
   trừ nháp và huỷ, phía TypeScript chỉ tính đơn đã giao. Mục 2.8 và mục
   5 gộp về một mối là `completed`.
+
+---
+
+## Q19 — LỖI THẬT, đã sửa: duyệt kiểm kê xong kho không đổi
+
+Chủ NPP báo: bấm "Duyệt điều chỉnh", màn hiện "Đã duyệt … Kho đã cập
+nhật", tồn kho không đổi một con số nào.
+
+**Nguyên nhân: bất đối xứng quyền, cộng cái bẫy lớn nhất của kho này —
+RLS TỪ CHỐI LÀ 0 DÒNG, HTTP 200, `error` NULL.**
+
+Nút mở cho `owner` + `manager` (`canApprove`). Policy của `batches` và
+`stock_entries` (mig 002) chỉ cho `owner` + `warehouse` ghi. Với vai
+`manager`:
+
+| Bước | Bảng | manager | Kết quả |
+|---|---|---|---|
+| 1. cộng/trừ tồn | `batches` | KHÔNG | 0 dòng, im lặng |
+| 2. ghi chi phí hao hụt | `expenses` | **CÓ** | **GHI THẬT** |
+| 3. đóng dấu đã duyệt | `stock_entries` | KHÔNG | 0 dòng, im lặng |
+
+`.throwOnError()` chỉ ném khi `error` KHÁC null. RLS từ chối không phải
+lỗi — nó là "không có dòng nào khớp". Cả ba bước trôi qua êm.
+
+⚠ **Hậu quả tệ hơn "không đổi gì":** bước 2 chạy được. Sổ chi phí có
+khoản hao hụt mà kho không giảm — sách và hàng lệch nhau đúng bằng số
+đó. Và vì bước 3 không chạy, phiếu vẫn ở "chờ duyệt": bấm lại là ghi
+thêm MỘT khoản trùng nữa. Bấm ba lần, ba khoản.
+
+⚠ **Vì sao không ai phát hiện sớm:** với vai `owner` cả ba bước đều
+chạy đúng, mà người thử nghiệm thường là chủ NPP.
+
+**Đã sửa — migration 123 + `src/lib/inventory/post-adjustment.ts`:** bỏ
+hẳn vòng lặp ghi từ trình duyệt, đưa về RPC `post_stock_adjustment`
+(`SECURITY DEFINER`, một giao dịch, idempotent bằng khoá dòng phiếu +
+chốt `ALREADY_POSTED`). Ba lỗi nữa được xoá cùng lúc:
+- không còn đọc-rồi-ghi (`select qty_on_hand` … `update`) nên hai người
+  duyệt cùng lúc không đè nhau — mọi lô đụng tới đều `FOR UPDATE`;
+- không còn `Math.max(0, …)` kẹp âm trong im lặng: tồn đã đổi từ lúc
+  kiểm đếm thì ném `STOCK_MOVED` kèm hai con số;
+- thừa mà sản phẩm chưa có lô nào thì ném `NO_BATCH`, không bỏ qua.
+
+Và màn hình nay báo theo SỐ RPC TRẢ VỀ (số lô thật sự đụng), không theo
+số tính sẵn ở trình duyệt — chính chỗ lệch giữa hai cái đó là lỗi này.
+
+**Cần chủ nhà quyết:** mig 123 in ra danh sách phiếu kiểm kê ĐÃ ghi chi
+phí hao hụt mà chưa đóng dấu duyệt — dấu vết của đúng lỗi này.
+Migration **KHÔNG tự xoá** các khoản đó (đó là tiền, và xoá nhầm còn tệ
+hơn). Xem từng phiếu rồi quyết: xoá khoản ghi khống, hay giữ và duyệt
+lại phiếu cho khớp.
+
+**Đã rà các màn khác:** chỉ `/inventory/adjustments` dính. Hai màn
+`batches/*` gác đúng `["warehouse","owner"]` khớp policy;
+`/inventory/stocktake` và `/inventory/stock-in` dùng `.insert()` — INSERT
+bị RLS chặn thì PostgREST trả lỗi 42501 THẬT, nên chúng hỏng to tiếng.
+Chỗ im lặng chỉ là UPDATE/DELETE không `.select()`. `/inventory/pending`
+cũng có một `.update()` kiểu đó nhưng nằm trong `handleRestock` — đã bị
+P7 khoá từ trước.
+
+## Q20 — Mẫu in hoá đơn dựng lại theo bản KiotViet
+
+Chủ NPP gửi bản in KiotViet làm mẫu. Đã dựng
+`src/components/printing/sales-invoice.tsx` theo đúng bố cục: tiêu đề
+công ty căn TRÁI, tiêu đề "HÓA ĐƠN BÁN HÀNG" + ngày giờ + số HĐ căn
+giữa, khối khách hàng bốn nhãn, bảng BẢY cột có kẻ đủ (thêm cột **CK**),
+ba dòng tổng nằm TRONG bảng, dòng "Bằng chữ", và BA ô ký (bản cũ chỉ
+hai).
+
+⚠ **Một chỗ cố ý KHÔNG giống mẫu: dòng thuế GTGT được giữ.** Mẫu
+KiotViet là hoá đơn bán hàng thường, không có thuế. Nhưng màn này in từ
+bảng `invoices` — chứng từ có cột `vat` và nối với hoá đơn điện tử MISA.
+Bỏ dòng thuế khỏi một chứng từ thuế là làm mất thông tin pháp lý, nên nó
+chỉ HIỆN KHI CÓ (`vat > 0`). Hoá đơn không thuế in ra trông y hệt file
+gửi. Chủ nhà muốn bỏ hẳn thì nói, đó là quyết định nghiệp vụ.
+
+⚠ **Khổ giấy:** mặc định của kho này là A5 (phiếu giao cho người đi
+giao). Hoá đơn bảy cột ở A5 thì chữ rơi xuống 8pt và hai cột tiền dính
+nhau, nên nút in của nó khai `defaultPaper="A4"`. Dropdown vẫn cho chọn
+A5, và có khối CSS `.a4-doc` co lại cho vừa — không có khối đó thì chọn
+A5 là bảng tràn lề, hỏng chỉ lộ ra sau khi đã in.
+

@@ -434,6 +434,33 @@ liệu. 14 chốt mới; thử phá 25/25 bị bắt.
   chặn mọi UPDATE chạm vào dòng đó — chặn rộng là nhốt luôn chủ NPP
   ngoài cửa, không còn đường dọn dẹp.
 
+## Hai việc ngoài pack — Q19, Q20
+
+**Đã làm.**
+- **Q19 — duyệt kiểm kê xong kho không đổi.** Lỗi thật, và là đúng cái
+  bẫy cả đợt này đang chống: nút mở cho `owner`+`manager`, policy
+  `batches`/`stock_entries` chỉ cho `owner`+`warehouse` ghi, mà RLS từ
+  chối = 0 dòng + HTTP 200 + `error` null nên `.throwOnError()` im. Tệ
+  hơn: bước ghi `expenses` CHẠY ĐƯỢC, nên sổ có chi phí hao hụt mà kho
+  không giảm, và bấm lại là ghi thêm khoản trùng. Đã đưa cả ba bước vào
+  RPC `post_stock_adjustment` (mig 123) — một giao dịch, idempotent,
+  khoá dòng, không kẹp âm im lặng.
+- **Q20 — mẫu in hoá đơn** dựng lại theo bản KiotViet chủ NPP gửi: bảy
+  cột có kẻ đủ (thêm cột CK), ba dòng tổng trong bảng, dòng "Bằng chữ",
+  ba ô ký, in khổ A4.
+- 35 chốt mới; thử phá 29/29 bị bắt.
+
+**Bất ngờ gặp.**
+- ⚠ **Vai `owner` chạy đúng cả ba bước**, nên lỗi Q19 sống sót lâu — người
+  thử nghiệm thường là chủ NPP.
+- ⚠ **INSERT hỏng to tiếng, UPDATE hỏng im lặng.** Rà các màn khác thì
+  `/inventory/stocktake` và `/inventory/stock-in` dùng `.insert()`, bị
+  RLS chặn là PostgREST trả lỗi 42501 thật. Chỗ im lặng chỉ là
+  UPDATE/DELETE không `.select()`. Chỉ `/inventory/adjustments` dính.
+- ⚠ **Mẫu gửi không có dòng thuế**, nhưng màn này in từ bảng `invoices`
+  (có `vat`, nối hoá đơn điện tử MISA). Giữ dòng thuế và chỉ hiện khi
+  `vat > 0` — bỏ hẳn là quyết định nghiệp vụ, chờ chủ nhà.
+
 ## Quy ước
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -452,8 +479,12 @@ liệu. 14 chốt mới; thử phá 25/25 bị bắt.
 
 ## TODO chủ nhà (tích dần)
 
-- [ ] Chạy migration **118 + 119 + 120 + 121 + 122** trên staging, đọc
-      `RAISE NOTICE` backfill. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
+- [ ] Chạy migration **118 + 119 + 120 + 121 + 122 + 123** trên staging,
+      đọc `RAISE NOTICE` backfill.
+- [ ] **Đọc `RAISE NOTICE` của migration 123**: nó liệt kê phiếu kiểm kê
+      đã ghi chi phí hao hụt mà chưa đóng dấu duyệt — dấu vết của lỗi
+      Q19. Migration KHÔNG tự xoá; xem từng phiếu rồi quyết xoá khoản ghi
+      khống hay duyệt lại phiếu cho khớp. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
       xuất" — nó chỉ in MỘT LẦN (mục 0 của checklist có câu SQL chạy lại).
 - [ ] Chạy hết `docs/workflow-v2-checklist.md` (10 mục).
 - [x] Q13 + Q14 — đã xử nốt (xem mục trên và sổ câu hỏi).

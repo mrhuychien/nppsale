@@ -22,12 +22,22 @@ type PaperSize = "A5" | "A4"
 
 interface PrintButtonProps extends Omit<ButtonProps, "onClick"> {
   label?: string
+  /**
+   * Khổ giấy ưu tiên của chứng từ này.
+   *
+   * ⚠ A5 HỢP VỚI PHIẾU GIAO, KHÔNG HỢP VỚI MỌI THỨ. Hoá đơn bán hàng có
+   * bảy cột; ở A5 chữ rơi xuống 8pt và hai cột tiền dính nhau. Chứng từ
+   * nào cần A4 thì khai ở đây, đừng bắt người dùng nhớ mở dropdown mỗi
+   * lần in.
+   */
+  defaultPaper?: PaperSize
 }
 
 export function PrintButton({
   label = "In phiếu",
   variant = "outline",
   size = "sm",
+  defaultPaper = "A5",
   ...rest
 }: PrintButtonProps) {
   const print = (size: PaperSize) => {
@@ -56,14 +66,17 @@ export function PrintButton({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={() => print("A5")}>
-          <Check className="h-3.5 w-3.5 mr-2 text-primary" />
-          Khổ A5 (mặc định)
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => print("A4")}>
-          <span className="w-3.5 mr-2" />
-          Khổ A4
-        </DropdownMenuItem>
+        {(["A5", "A4"] as PaperSize[]).map((sz) => (
+          <DropdownMenuItem key={sz} onClick={() => print(sz)}>
+            {sz === defaultPaper ? (
+              <Check className="h-3.5 w-3.5 mr-2 text-primary" />
+            ) : (
+              <span className="w-3.5 mr-2" />
+            )}
+            Khổ {sz}
+            {sz === defaultPaper ? " (mặc định)" : ""}
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled className="text-[11px] text-muted-foreground">
           Chọn cùng khổ trong hộp In nếu trình duyệt hỏi.

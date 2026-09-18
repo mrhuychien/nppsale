@@ -5,12 +5,17 @@ import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import { Printer } from "lucide-react"
+import { PrintButton } from "@/components/ui/print-button"
+import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 import type { Invoice, SalesOrder, SalesOrderLine } from "@/types"
+
+/** Đơn hàng kèm hai thứ mẫu in cần: SĐT khách và người bán hàng. */
+interface OrderForPrint extends Omit<SalesOrder, "customer" | "sales_user"> {
+  customer?: { phone?: string | null } | null
+  sales_user?: { full_name?: string | null; phone?: string | null } | null
+}
 
 interface Organization {
   id: string
@@ -25,7 +30,7 @@ export default function InvoicePrintPage() {
   useAuth()
   const { loading: authLoading } = useRoleGuard("invoices")
   const [invoice, setInvoice] = useState<Invoice | null>(null)
-  const [order, setOrder] = useState<SalesOrder | null>(null)
+  const [order, setOrder] = useState<OrderForPrint | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
   const [org, setOrg] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,15 +69,15 @@ export default function InvoicePrintPage() {
     if (invoiceData.order_id) {
       const { data: orderData, error: orderDataErr } = await supabase
         .from("sales_orders")
-        .select("id, order_code")
+        .select("id, order_code, customer:customers(phone), sales_user:users!sales_orders_sales_user_id_fkey(full_name, phone)")
         .eq("id", invoiceData.order_id)
         .single()
       if (orderDataErr) console.error("[id/print] truy vấn lỗi:", orderDataErr.message)
-      if (orderData) setOrder(orderData as SalesOrder)
+      if (orderData) setOrder((orderData as unknown) as OrderForPrint)
 
       const { data: linesData, error: linesDataErr } = await supabase
         .from("sales_order_lines")
-        .select("id, unit_name, quantity, unit_price, line_total, product:products(*)")
+        .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(*)")
         .eq("order_id", invoiceData.order_id)
       if (linesDataErr) console.error("[id/print] truy vấn lỗi:", linesDataErr.message)
       if (linesData) setLines(linesData as unknown as SalesOrderLine[])
@@ -90,178 +95,73 @@ export default function InvoicePrintPage() {
 
   const canPrint = invoice.status === "draft" || invoice.status === "issued"
 
+  /**
+   * Dòng hàng cho mẫu in.
+   *
+   * ⚠ HOÁ ĐƠN KHÔNG NỐI ĐƠN THÌ VẪN PHẢI IN ĐƯỢC. Khi `order_id` trống
+   * (hoá đơn nhập tay), `lines` rỗng — dựng một dòng gộp từ `subtotal`
+   * thay vì in ra một bảng trắng.
+   */
+  const printLines: SalesInvoiceLine[] =
+    lines.length > 0
+      ? lines.map((l) => ({
+          id: l.id,
+          name: l.product?.name || "—",
+          spec: l.product?.sku || null,
+          unitName: l.unit_name,
+          quantity: Number(l.quantity) || 0,
+          unitPrice: Number(l.unit_price) || 0,
+          discount: Number(l.line_discount) || 0,
+          lineTotal: Number(l.line_total) || 0,
+        }))
+      : [
+          {
+            id: "tong",
+            name: `Theo hóa đơn ${invoice.invoice_number || ""}`.trim(),
+            spec: order?.order_code ? `đơn ${order.order_code}` : null,
+            unitName: "—",
+            quantity: 1,
+            unitPrice: Number(invoice.subtotal) || 0,
+            discount: 0,
+            lineTotal: Number(invoice.subtotal) || 0,
+          },
+        ]
+
+  const issuedAt = invoice.issued_at
+    ? new Date(invoice.issued_at)
+    : invoice.created_at
+      ? new Date(invoice.created_at)
+      : null
+
   return (
     <div className="space-y-4">
       <div className="no-print">
         <PageHeader
-          title="Xuất hóa đơn VAT"
+          title="In hóa đơn bán hàng"
           description={`Hóa đơn ${invoice.invoice_number || ""}`}
           backHref={`/invoices/${id}`}
         >
-          {canPrint && (
-            <Button onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-2" /> Xuất hóa đơn VAT
-            </Button>
-          )}
+          {/* ⚠ A4, KHÔNG PHẢI A5 MẶC ĐỊNH. Bảy cột ở khổ A5 thì chữ còn
+              8pt và hai cột tiền dính vào nhau. */}
+          {canPrint && <PrintButton label="In hóa đơn" defaultPaper="A4" />}
         </PageHeader>
       </div>
 
-      {/* Print-friendly invoice layout */}
-      <div className="bg-white rounded-lg border border-border/40 p-8 max-w-4xl mx-auto print:border-none print:shadow-none print:p-0 print:max-w-none">
-        {/* Company header */}
-        <div className="text-center mb-6 border-b border-border/40 pb-4">
-          <h1 className="text-xl font-black uppercase tracking-wide">
-            {org?.name || "CÔNG TY"}
-          </h1>
-          {org?.address && (
-            <p className="text-sm text-muted-foreground mt-1">{org.address}</p>
-          )}
-          {org?.phone && (
-            <p className="text-sm text-muted-foreground">ĐT: {org.phone}</p>
-          )}
-          {org?.tax_code && (
-            <p className="text-sm text-muted-foreground">MST: {org.tax_code}</p>
-          )}
-        </div>
-
-        {/* Invoice title */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-black uppercase">Hóa đơn giá trị gia tăng</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            (VAT INVOICE)
-          </p>
-        </div>
-
-        {/* Invoice info */}
-        <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-          <div>
-            <p>
-              <span className="text-muted-foreground">Số hóa đơn:</span>{" "}
-              <span className="font-bold font-mono">{invoice.invoice_number || "-"}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Ngày:</span>{" "}
-              <span className="font-semibold">
-                {invoice.issued_at ? formatDate(invoice.issued_at) : formatDate(invoice.created_at)}
-              </span>
-            </p>
-            {order && (
-              <p>
-                <span className="text-muted-foreground">Đơn hàng:</span>{" "}
-                <span className="font-mono">{order.order_code}</span>
-              </p>
-            )}
-          </div>
-          <div>
-            <p>
-              <span className="text-muted-foreground">Trạng thái:</span>{" "}
-              <span className="font-semibold">
-                {invoice.status === "issued" ? "Đã phát hành" : invoice.status === "cancelled" ? "Đã hủy" : "Nháp"}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        {/* Customer info */}
-        <div className="mb-6 border border-border/40 rounded-lg p-4 text-sm">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground mb-2">
-            Thông tin người mua
-          </h3>
-          <p>
-            <span className="text-muted-foreground">Tên đơn vị:</span>{" "}
-            <span className="font-bold">{invoice.customer_name}</span>
-          </p>
-          {invoice.customer_address && (
-            <p>
-              <span className="text-muted-foreground">Địa chỉ:</span>{" "}
-              {invoice.customer_address}
-            </p>
-          )}
-          {invoice.customer_tax_code && (
-            <p>
-              <span className="text-muted-foreground">Mã số thuế:</span>{" "}
-              <span className="font-mono font-semibold">{invoice.customer_tax_code}</span>
-            </p>
-          )}
-        </div>
-
-        {/* Line items */}
-        <div className="mb-6">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b-2 border-foreground/20">
-                <th className="py-2 text-left font-bold w-12">STT</th>
-                <th className="py-2 text-left font-bold">Tên hàng hóa, dịch vụ</th>
-                <th className="py-2 text-center font-bold w-20">ĐVT</th>
-                <th className="py-2 text-right font-bold w-16">SL</th>
-                <th className="py-2 text-right font-bold w-28">Đơn giá</th>
-                <th className="py-2 text-right font-bold w-32">Thành tiền</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.length > 0 ? (
-                lines.map((line, index) => (
-                  <tr key={line.id} className="border-b border-border/40">
-                    <td className="py-2 text-left">{index + 1}</td>
-                    <td className="py-2 text-left font-medium">
-                      {line.product?.name || "-"}
-                      {line.product?.sku && (
-                        <span className="text-xs text-muted-foreground ml-1">
-                          ({line.product.sku})
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 text-center">{line.unit_name}</td>
-                    <td className="py-2 text-right">{line.quantity}</td>
-                    <td className="py-2 text-right">{formatCurrency(line.unit_price)}</td>
-                    <td className="py-2 text-right font-semibold">{formatCurrency(line.line_total)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr className="border-b border-border/40">
-                  <td className="py-2 text-left">1</td>
-                  <td className="py-2 text-left font-medium">
-                    Theo hóa đơn {invoice.invoice_number}
-                  </td>
-                  <td className="py-2 text-center">-</td>
-                  <td className="py-2 text-right">1</td>
-                  <td className="py-2 text-right">{formatCurrency(invoice.subtotal)}</td>
-                  <td className="py-2 text-right font-semibold">{formatCurrency(invoice.subtotal)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Totals */}
-        <div className="mb-8 flex justify-end">
-          <div className="w-72 text-sm space-y-1">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Cộng tiền hàng:</span>
-              <span className="font-semibold">{formatCurrency(invoice.subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Thuế GTGT (10%):</span>
-              <span className="font-semibold">{formatCurrency(invoice.vat)}</span>
-            </div>
-            <div className="flex justify-between border-t-2 border-foreground/20 pt-2 text-base">
-              <span className="font-bold">Tổng thanh toán:</span>
-              <span className="font-black">{formatCurrency(invoice.total)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Signature lines */}
-        <div className="grid grid-cols-2 gap-8 text-center text-sm mt-12 pt-4">
-          <div>
-            <p className="font-bold">Người mua hàng</p>
-            <p className="text-xs text-muted-foreground mb-16">(Ký, ghi rõ họ tên)</p>
-          </div>
-          <div>
-            <p className="font-bold">Người bán hàng</p>
-            <p className="text-xs text-muted-foreground mb-16">(Ký, đóng dấu, ghi rõ họ tên)</p>
-          </div>
-        </div>
+      <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
+        <SalesInvoice
+          org={{ name: org?.name, address: org?.address, phone: org?.phone }}
+          invoiceNumber={invoice.invoice_number || ""}
+          issuedAt={issuedAt}
+          customerName={invoice.customer_name}
+          customerAddress={invoice.customer_address}
+          customerPhone={order?.customer?.phone}
+          salesPersonName={order?.sales_user?.full_name}
+          salesPersonPhone={order?.sales_user?.phone}
+          lines={printLines}
+          subtotal={Number(invoice.subtotal) || 0}
+          vat={Number(invoice.vat) || 0}
+          total={Number(invoice.total) || 0}
+        />
       </div>
     </div>
   )

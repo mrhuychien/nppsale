@@ -22,7 +22,26 @@ import { ROLE_LABELS } from "@/lib/constants"
 import type { User, Role } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
-const ROLE_OPTIONS: Role[] = ["owner", "manager", "accountant", "sales", "warehouse", "driver"]
+/**
+ * Vai chọn được khi SỬA một người.
+ *
+ * ⚠ KHÔNG CÒN `driver`, nhưng màn này vẫn phải HIỆN ĐÚNG vai hiện tại
+ * của tài khoản tài xế cũ — nếu ô chọn không có giá trị đang lưu thì nó
+ * hiện rỗng, và bấm Lưu là ghi đè mất vai thật. Xem `roleOptionsFor`.
+ */
+const ROLE_OPTIONS: Role[] = ["owner", "manager", "accountant", "sales", "warehouse"]
+
+/**
+ * Danh sách vai cho ô chọn, có kèm vai HIỆN TẠI nếu nó đã ngưng dùng.
+ *
+ * ⚠ Đây là lối ra duy nhất cho các tài khoản tài xế cũ: chủ NPP mở màn
+ * này, thấy "Tài xế (ngưng dùng)" đang được chọn, và đổi sang vai khác.
+ * Bỏ giá trị đó khỏi danh sách là nhốt họ ở vai cũ vĩnh viễn.
+ */
+function roleOptionsFor(current: Role | undefined): Role[] {
+  if (current && !ROLE_OPTIONS.includes(current)) return [...ROLE_OPTIONS, current]
+  return ROLE_OPTIONS
+}
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -214,7 +233,7 @@ export default function UserDetailPage() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ROLE_OPTIONS.map((r) => (
+                    {roleOptionsFor(form.role).map((r) => (
                       <SelectItem key={r} value={r}>
                         {ROLE_LABELS[r] || r}
                       </SelectItem>

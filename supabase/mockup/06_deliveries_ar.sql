@@ -33,6 +33,10 @@ DECLARE
 BEGIN
   SELECT id INTO target_org_id FROM organizations ORDER BY created_at LIMIT 1;
   SELECT id INTO sales_user FROM users WHERE org_id = target_org_id AND role = 'sales' AND is_active = true ORDER BY created_at LIMIT 1;
+  -- ⚠ Vai `driver` đã ngưng dùng (mig 122) và các tài khoản đó đã bị
+  --   khoá, nên phép tìm này gần như luôn ra NULL — rơi về chủ NPP ở
+  --   dòng dưới. Giữ nguyên để bộ demo cũ chạy lại được trên CSDL còn
+  --   tài khoản tài xế chưa khoá.
   SELECT id INTO driver_user FROM users WHERE org_id = target_org_id AND role = 'driver' AND is_active = true ORDER BY created_at LIMIT 1;
   SELECT id INTO owner_user FROM users WHERE org_id = target_org_id AND role = 'owner' LIMIT 1;
   IF sales_user IS NULL THEN sales_user := owner_user; END IF;

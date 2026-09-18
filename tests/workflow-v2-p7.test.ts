@@ -71,7 +71,7 @@ describe("Ẩn khỏi menu, nhưng vẫn mở được chứng từ cũ", () => 
    * màn này — nên phải là một danh sách riêng, xét TRƯỚC mọi phép kiểm.
    */
   it("ẩn với MỌI vai trò, kể cả chủ", () => {
-    for (const role of ["owner", "manager", "warehouse", "driver", "accountant"] as const) {
+    for (const role of ["owner", "manager", "warehouse", "sales", "accountant"] as const) {
       expect(canSeeHref(role, "/deliveries"), `${role} vẫn thấy`).toBe(false)
     }
   })
@@ -83,7 +83,10 @@ describe("Ẩn khỏi menu, nhưng vẫn mở được chứng từ cũ", () => 
   it("vẫn vào xem được, không bị đá về trang chủ", () => {
     expect(NAV_PERMISSION["/deliveries"]).toBeTruthy()
     expect(canEnterHref("owner", "/deliveries")).toBe(true)
-    expect(canEnterHref("driver", "/deliveries")).toBe(true)
+    // ⚠ Không dùng `driver` làm ví dụ nữa: vai đó đã ngưng dùng (mig 122)
+    //   nên không còn quyền nào, và nó sẽ trả false vì lý do KHÁC HẲN —
+    //   chốt vẫn xanh nhưng hết nói về chuyện "ẩn ≠ chặn".
+    expect(canEnterHref("manager", "/deliveries")).toBe(true)
   })
 
   /** Ẩn khỏi menu mà để lại ô trên màn kho thì vẫn bấm tới được. */

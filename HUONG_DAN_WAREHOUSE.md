@@ -127,7 +127,7 @@ các nút ghi đã khoá.
 
 **Lưu ý**: Hàng `expired` phải xuất hủy ngay, không được trộn vào hàng bán - vi phạm an toàn thực phẩm.
 
-### 4.6 Nhận hàng trả về từ tài xế / khách
+### 4.6 Nhận hàng khách trả về
 
 **Khi nào**: Có phiếu trả ở **Phiếu tạm** (`submitted`) và hàng đã về tới kho.
 

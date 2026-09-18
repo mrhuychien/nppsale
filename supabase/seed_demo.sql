@@ -1,11 +1,17 @@
 -- ================================================================
 -- npp.sale — DỮ LIỆU DEMO (tự sinh từ 003_seed.sql)
--- 6 tài khoản *@demo.com với mật khẩu công khai Demo@123456.
+-- 5 tài khoản *@demo.com với mật khẩu công khai Demo@123456.
 -- CHỈ chạy trên môi trường thử nghiệm. KHÔNG chạy trên production.
 -- ================================================================
 
 -- npp.sale Seed Data
--- Demo: 1 org, 6 users, 20 customers, 50 products
+-- Demo: 1 org, 5 users, 20 customers, 50 products
+--
+-- ⚠ KHÔNG CÒN TÀI KHOẢN `driver@demo.com`. Vai Tài xế đã ngưng dùng
+--   (mig 122) và trigger `trg_block_driver_role` TỪ CHỐI mọi lệnh chèn
+--   mang vai đó. Tệp này chạy SAU `schema_full.sql` ở đường cài mới
+--   (xem supabase/INSTALL.md), nên để nguyên là bộ demo hỏng ngay giữa
+--   chừng — đúng kiểu sai mà người cài mới không đoán nổi vì sao.
 -- Safe to re-run: cleans up old demo data first
 
 -- ==========================================
@@ -15,9 +21,9 @@
 -- ==========================================
 DELETE FROM organizations WHERE id = 'a0000000-0000-0000-0000-000000000001';
 DELETE FROM auth.identities WHERE user_id IN (
-  SELECT id FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com','driver@demo.com')
+  SELECT id FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com')
 );
-DELETE FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com','driver@demo.com');
+DELETE FROM auth.users WHERE email IN ('owner@demo.com','manager@demo.com','accountant@demo.com','sales@demo.com','warehouse@demo.com');
 
 -- ==========================================
 -- SEED DATA
@@ -50,9 +56,6 @@ INSERT INTO auth.users (
    false, false, '', '', '', '', now(), now()),
   ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'warehouse@demo.com', crypt('Demo@123456', gen_salt('bf')),
    now(), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Hoang Van Em"}',
-   false, false, '', '', '', '', now(), now()),
-  ('00000000-0000-0000-0000-000000000000', 'e0000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'driver@demo.com', crypt('Demo@123456', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Vo Van Phuc"}',
    false, false, '', '', '', '', now(), now());
 
 -- Auth Identities (required for email login)
@@ -61,8 +64,7 @@ INSERT INTO auth.identities (id, user_id, provider_id, identity_data, provider, 
   (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000002', 'manager@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000002', 'email', 'manager@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now()),
   (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000003', 'accountant@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000003', 'email', 'accountant@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now()),
   (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000004', 'sales@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000004', 'email', 'sales@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now()),
-  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000005', 'warehouse@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000005', 'email', 'warehouse@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now()),
-  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000006', 'driver@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000006', 'email', 'driver@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now());
+  (gen_random_uuid(), 'e0000000-0000-0000-0000-000000000005', 'warehouse@demo.com', jsonb_build_object('sub', 'e0000000-0000-0000-0000-000000000005', 'email', 'warehouse@demo.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now(), now());
 
 -- Public Users (linked to auth users above)
 INSERT INTO users (id, org_id, full_name, role, phone) VALUES
@@ -70,8 +72,7 @@ INSERT INTO users (id, org_id, full_name, role, phone) VALUES
   ('e0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'Tran Thi Bich', 'manager', '0900000002'),
   ('e0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'Le Van Cuong', 'accountant', '0900000003'),
   ('e0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'Pham Thi Dung', 'sales', '0900000004'),
-  ('e0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'Hoang Van Em', 'warehouse', '0900000005'),
-  ('e0000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001', 'Vo Van Phuc', 'driver', '0900000006');
+  ('e0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'Hoang Van Em', 'warehouse', '0900000005');
 
 -- Customer Groups
 INSERT INTO customer_groups (id, org_id, name, description) VALUES

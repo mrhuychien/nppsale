@@ -46,7 +46,13 @@ interface RoleGuide {
   tips: string[]
 }
 
-const ROLE_GUIDES: Record<Role, RoleGuide> = {
+/**
+ * ⚠ `Partial` — KHÔNG PHẢI VAI NÀO CŨNG CÒN HƯỚNG DẪN. Vai `driver` đã
+ * ngưng dùng (mig 122) và các tài khoản đó đã bị khoá, nên không ai đọc
+ * được mục của nó nữa. `guide` vì thế có thể `undefined`; chỗ hiển thị
+ * đã có `{guide && …}` nên màn không vỡ, chỉ bớt một thẻ.
+ */
+const ROLE_GUIDES: Partial<Record<Role, RoleGuide>> = {
   owner: {
     title: "Chủ sở hữu",
     description: "Bạn có toàn quyền hệ thống. Tập trung vào xuất hàng, cài đặt và xem báo cáo tổng quan.",
@@ -126,22 +132,6 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
       "Nhập đầy đủ ngày sản xuất + HSD để hệ thống cảnh báo",
       "FIFO: lô nào nhập trước - xuất trước",
       "Mỗi SKU có thể có nhiều đơn vị (lon/lốc/thùng)",
-    ],
-  },
-  driver: {
-    title: "Tài xế",
-    description:
-      "Bước lập chuyến giao đã bỏ ở quy trình mới — nhà phân phối giao thẳng bằng nút Xuất hàng trên đơn.",
-    workflow: [
-      "Đơn đã xuất hàng sẽ in kèm phiếu giao — cầm phiếu đó đi giao",
-      "Đến từng điểm theo địa chỉ trên phiếu",
-      "Nếu thu tiền tại điểm: vào /receivables/collect để ghi nhận",
-      "Hàng khách trả lại: báo kho lập phiếu trả ở /returns",
-    ],
-    tips: [
-      "Các chuyến giao cũ vẫn xem lại được, chỉ không lập thêm chuyến mới",
-      "Màn thu tiền dùng được trên điện thoại - không cần laptop",
-      "Chỉ nhận tiền mặt cho đơn đã được kế toán xác nhận",
     ],
   },
 }

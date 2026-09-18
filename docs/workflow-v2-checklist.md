@@ -1,7 +1,7 @@
 # Workflow v2 — Checklist nghiệm thu tay trên staging
 
-Chạy sau khi đã `supabase db push` bốn migration 118 · 119 · 120 · 121 lên
-**staging** (KHÔNG chạy trên production cho tới khi checklist này xanh).
+Chạy sau khi đã `supabase db push` năm migration 118 · 119 · 120 · 121 · 122
+lên **staging** (KHÔNG chạy trên production cho tới khi checklist này xanh).
 
 Mục đích: bảy RPC của workflow v2 chỉ đúng khi chạy thật. Bộ test trong
 kho là test CẤU TRÚC — nó đọc mã nguồn, nó KHÔNG gọi cơ sở dữ liệu. Nó
@@ -512,15 +512,38 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
       · ⚠ Màn này **không bị khoá** như ba màn luồng cũ, và đó là cố ý:
         ngưỡng công nợ và hạn mức tín dụng vẫn còn nguyên giá trị.
 
-- [ ] **9.5 Tài xế đăng nhập không vào ngõ cụt.** Đăng nhập bằng tài
-      khoản `driver`.
-      · Phải thấy menu có: Trang chủ, Đơn hàng, Công nợ, Thu tiền, Phiếu
-        thu, Trợ giúp — sáu bảy mục, không phải màn trắng.
-      · ⚠ `/deliveries` đã ẩn với mọi vai. Nếu tài xế đăng nhập mà không
-        còn màn việc nào thì phải báo lại — đó là quyết định nghiệp vụ,
-        không phải lỗi kỹ thuật.
+- [ ] **9.5 Vai Tài xế đã bỏ — mig 122.**
+      · Đọc `RAISE NOTICE` của 122: nó in TÊN từng tài khoản sắp bị khoá.
+        **Chép lại trước khi đóng cửa sổ** rồi gọi cho họ.
+      · Kiểm: `SELECT full_name, role, is_active FROM users WHERE role='driver';`
+        → còn dòng, `role` VẪN là `driver`, `is_active` = false.
+        ⚠ Dòng biến mất hoặc `role` đổi là migration làm sai — chuyến
+        giao cũ trỏ `driver_id` vào đó.
+      · Vào Cài đặt → Người dùng → tạo người mới: ô **Vai trò** KHÔNG còn
+        "Tài xế".
+      · Mở một tài khoản tài xế cũ: ô Vai trò hiện **"Tài xế (ngưng
+        dùng)"** và đổi sang vai khác ĐƯỢC. ⚠ Không đổi được là họ kẹt
+        vĩnh viễn ở vai đã bỏ.
+      · Thử ép từ SQL: `UPDATE users SET role='driver' WHERE id='<ai đó>';`
+        → phải bị chặn với `ROLE_RETIRED`.
 
-- [ ] **9.6 Trang Trợ giúp dạy đúng quy trình mới.** Mở `/help` bằng từng
+- [ ] **9.6 "Khoá tài khoản" THẬT SỰ khoá — lỗ có sẵn, mig 122 vá.**
+      ⚠ Trước 122, `is_active = false` chỉ chặn ở đường đăng nhập bằng mã
+      QR. Đường email + mật khẩu không kiểm, và `user_org_id()` cũng
+      không — **nhân viên đã nghỉ việc vẫn đăng nhập được với nguyên
+      quyền**. Mục này kiểm cái vá đó, không riêng gì vai tài xế.
+      · Lấy một tài khoản thử (KHÔNG phải chủ NPP), bấm **Khoá** ở Cài
+        đặt → Người dùng.
+      · Đăng nhập bằng tài khoản đó → phải thấy **"Tài khoản đã bị khoá.
+        Liên hệ chủ nhà phân phối để mở lại."** ngay tại màn đăng nhập,
+        KHÔNG phải vào được rồi mới bị ném ra.
+      · Nếu đang mở sẵn một tab đăng nhập từ trước: tải lại trang → bị
+        đăng xuất kèm cùng câu đó.
+      · ⚠ Mở khoá lại rồi kiểm người đó vào bình thường — quan trọng
+        không kém. `COALESCE(is_active, true)` sai một dấu là khoá oan cả
+        những tài khoản có `is_active` NULL.
+
+- [ ] **9.7 Trang Trợ giúp dạy đúng quy trình mới.** Mở `/help` bằng từng
       vai.
       · Phải thấy: không còn "Đã duyệt / Đang lấy / Đang giao", không còn
         ô module Giao hàng, và có câu hỏi thường gặp trả lời thẳng vì sao

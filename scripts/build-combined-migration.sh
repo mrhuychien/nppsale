@@ -6,7 +6,7 @@
 #   supabase/schema_full.sql — schema + RLS, KHÔNG kèm dữ liệu demo.
 #     An toàn cho site thương mại: không có tài khoản demo mật khẩu
 #     công khai (Demo@123456).
-#   supabase/seed_demo.sql   — dữ liệu mẫu + 6 tài khoản demo. CHỈ dùng
+#   supabase/seed_demo.sql   — dữ liệu mẫu + 5 tài khoản demo. CHỈ dùng
 #     cho môi trường thử nghiệm, tuyệt đối không chạy trên production.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -40,7 +40,7 @@ OUT_SEED="supabase/seed_demo.sql"
 {
   echo "-- ================================================================"
   echo "-- npp.sale — DỮ LIỆU DEMO (tự sinh từ 003_seed.sql)"
-  echo "-- 6 tài khoản *@demo.com với mật khẩu công khai Demo@123456."
+  echo "-- 5 tài khoản *@demo.com với mật khẩu công khai Demo@123456."
   echo "-- CHỈ chạy trên môi trường thử nghiệm. KHÔNG chạy trên production."
   echo "-- ================================================================"
   echo

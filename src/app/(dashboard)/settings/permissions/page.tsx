@@ -15,6 +15,7 @@ import {
   DEFAULT_PERMISSION_MAP,
   type Action,
   type Role,
+  type AssignableRole,
 } from "@/lib/permissions"
 import {
   FEATURES,
@@ -81,7 +82,9 @@ function defaultActionsForFeature(role: Role, feature: FeatureDef): Action[] {
   // xem "app hỏng ở đâu".
   if (feature.defaultRoles && !feature.defaultRoles.includes(role)) return []
   // Còn lại thừa hưởng mặc định của mô-đun cha — nền trước khi áp tuỳ chỉnh.
-  return DEFAULT_PERMISSION_MAP[role][feature.module] ?? []
+  // ⚠ `?.` vì vai đã ngưng dùng không có hàng trong ma trận — tra ra
+  //   rỗng, không phải nổ.
+  return DEFAULT_PERMISSION_MAP[role]?.[feature.module] ?? []
 }
 
 function buildBaselineMatrix(): FeatureMatrix {
@@ -138,9 +141,11 @@ export default function PermissionsPage() {
         featureOverrides[role] = {}
       }
       for (const r of (data as DbRow[]) || []) {
-        if (!ROLES.includes(r.role as Role)) continue
+        // ⚠ Dòng của vai đã ngưng dùng (`driver`) bị bỏ qua ngay ở đây —
+        //   `ROLES` không còn chứa nó, nên nó không vẽ thành cột nào.
+        if (!ROLES.includes(r.role as AssignableRole)) continue
         if (!ACTIONS.includes(r.action as Action)) continue
-        const role = r.role as Role
+        const role = r.role as AssignableRole
         const action = r.action as Action
         // Is the key a known module name?
         const isModuleKey = (FEATURES.find((f) => f.module === r.module && f.key === r.module) !== undefined)

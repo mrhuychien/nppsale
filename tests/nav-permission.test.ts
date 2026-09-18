@@ -8,7 +8,13 @@ import {
   filterByPermission,
   filterNavGroups,
 } from "../src/lib/nav/nav-permission"
-import { setPermissionsCache, rowsToCache, ROLES } from "../src/lib/permissions"
+import {
+  setPermissionsCache,
+  rowsToCache,
+  ROLES,
+  RETIRED_ROLES,
+  ROLE_LABELS,
+} from "../src/lib/permissions"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -130,12 +136,12 @@ describe("Phép lọc dùng chung", () => {
   ]
 
   it("bỏ mục không có quyền", () => {
-    const got = filterByPermission("driver", [
-      { href: "/receivables/collect" },
+    const got = filterByPermission("warehouse", [
+      { href: "/inventory" },
       { href: "/customers" },
       { href: "/settings/permissions" },
     ])
-    expect(got.map((g) => g.href)).toEqual(["/receivables/collect"])
+    expect(got.map((g) => g.href)).toEqual(["/inventory"])
   })
 
   /**
@@ -205,18 +211,37 @@ describe("Từng vai trò chỉ thấy phần của mình", () => {
     expect(LEGACY_V2_HREFS.size).toBeGreaterThan(0)
   })
 
-  /** Tài xế không có quyền khách hàng — mặc định `customers: []`. */
-  it("tài xế không thấy Khách hàng, Kho, Cài đặt", () => {
-    expect(canSeeHref("driver", "/customers")).toBe(false)
-    expect(canSeeHref("driver", "/inventory")).toBe(false)
-    expect(canSeeHref("driver", "/settings")).toBe(false)
-    /**
-     * ⚠ `/deliveries` ĐÃ ẨN Ở P7 — workflow v2 không còn bước giao qua
-     * tài xế. Hệ quả: tài xế chỉ còn màn thu tiền. Bật lại module là bỏ
-     * một dòng trong `LEGACY_V2_HREFS` (mục D12 trong sổ tiến độ).
-     */
-    expect(canSeeHref("driver", "/deliveries")).toBe(false)
-    expect(canSeeHref("driver", "/receivables/collect")).toBe(true)
+  /**
+   * ⚠ CHỐT NÀY ĐÃ ĐẢO CHIỀU, CÓ CHỦ Ý — chủ nhà chốt "bỏ driver".
+   *
+   * Bản cũ chốt tài xế KHÔNG thấy Khách hàng / Kho / Cài đặt nhưng VẪN
+   * thấy màn thu tiền. Từ mig 122 vai này ngưng dùng: nó không còn hàng
+   * nào trong ma trận quyền, nên `hasPermission` trả false ở MỌI ô.
+   *
+   * ⚠ Đó là lý do mig 122 phải KHOÁ các tài khoản đó. Một vai không có
+   * quyền gì mà vẫn đăng nhập được thì người dùng thấy một ứng dụng
+   * trống trơn, không câu nào giải thích — đúng kiểu hỏng âm thầm cả
+   * đợt này đang chống.
+   */
+  it("vai đã ngưng dùng không còn thấy gì", () => {
+    for (const href of [
+      "/customers",
+      "/inventory",
+      "/settings",
+      "/deliveries",
+      "/receivables/collect",
+      "/orders",
+    ]) {
+      expect(canSeeHref("driver", href), `${href} vẫn hiện cho vai đã bỏ`).toBe(false)
+    }
+  })
+
+  /** `driver` không còn nằm trong danh sách vai gán được. */
+  it("driver biến khỏi danh sách vai gán được, nhưng nhãn còn lại", () => {
+    expect(ROLES).not.toContain("driver")
+    expect(RETIRED_ROLES).toContain("driver")
+    // ⚠ Bỏ nhãn là ô "Vai trò" của tài khoản cũ trống trơn ở màn Người dùng.
+    expect(ROLE_LABELS.driver).toContain("ngưng dùng")
   })
 
   it("thủ kho không thấy Khách hàng và Công nợ", () => {

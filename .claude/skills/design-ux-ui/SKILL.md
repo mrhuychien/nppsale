@@ -57,7 +57,7 @@ Locked / picked rows use **amber** (`text-amber-600`, `border-amber-300`)
 - **Two-column page:** `grid gap-4 lg:grid-cols-3` with main `lg:col-span-2`
   + side rail. Side rail is `<aside className="space-y-4 lg:sticky lg:top-4 self-start">`
   for action panels.
-- **Mobile:** assume mobile-first. Phone use cases for warehouse / driver
+- **Mobile:** assume mobile-first. Phone use cases for warehouse / sales
   are real users. Tap targets **≥ 44px** (WCAG 2.5.5 — 36px was the old
   number here and it is what produced 107 sub-44px targets on `/orders`
   alone). `lg:hidden` card lists for tables whose desktop view doesn't fit

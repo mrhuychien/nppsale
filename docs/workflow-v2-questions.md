@@ -479,7 +479,90 @@ thêm một lỗi của chính tôi (Q15).
    còn thấy: `/home`, `/orders`, `/receivables`, `/receivables/collect`,
    `/receivables/by-customer`, `/finance/cash-receipts`, `/help`. Đủ để
    làm việc thu tiền. **Không đổi mã nào** — còn giữ vai `driver` hay
-   không vẫn là quyết định nghiệp vụ, và nay nó không gấp.
+   không vẫn là quyết định nghiệp vụ.
+
+**→ Chủ nhà chốt (lượt sau): BỎ vai tài xế.** Xem Q16.
+
+## Q16 — CHỐT: bỏ vai Tài xế
+
+Chủ nhà chọn phương án **khoá tài khoản, KHÔNG đổi vai của ai** (trong
+bốn phương án đưa ra: chuyển sang `sales`, chuyển sang `warehouse`, khoá,
+hoặc chỉ bỏ khỏi ô chọn).
+
+**Vì sao phải hỏi thay vì tự quyết:** `hasPermission` tra `cache[role]`,
+vai không có hàng thì trả **false ở mọi ô**. Bỏ `driver` khỏi mã mà tài
+khoản thật vẫn mang vai đó là người ta đăng nhập vào một ứng dụng trống
+trơn và bị đá về trang chủ, **không câu nào giải thích**. Chọn vai thay
+thế nào là quyết định nghiệp vụ có hậu quả lên người thật.
+
+**Đã làm (migration 122 + tầng ứng dụng):**
+- khoá `is_active = false` cho tài khoản mang vai `driver`, in TÊN từng
+  người ra trước khi đổi;
+- **KHÔNG** đổi `role`, **KHÔNG** xoá dòng — `deliveries.driver_id` trỏ
+  vào đó, xoá là mọi chuyến giao cũ mất tên người giao;
+- **KHÔNG** siết `CHECK (role IN …)`: dòng cũ cố ý giữ `'driver'` nên
+  ALTER TABLE sẽ ném lỗi ngay trên dữ liệu đang có. Chặn gán MỚI bằng
+  trigger `trg_block_driver_role`, và trigger chỉ bắn khi giá trị THẬT SỰ
+  đổi thành `'driver'` — dòng cũ vẫn phải sửa được, nhất là để đổi sang
+  vai khác;
+- `ROLES` bỏ `driver`, ma trận quyền bỏ hàng của nó, hai ô chọn vai bỏ
+  nó. Nhưng **giữ nhãn** "Tài xế (ngưng dùng)" và giữ `driver` trong kiểu
+  `Role`: màn Người dùng vẫn liệt kê tài khoản cũ, bỏ nhãn là ô Vai trò
+  của họ trống trơn;
+- `roleOptionsFor()` ghép vai hiện tại vào ô chọn khi nó đã ngưng dùng —
+  **lối ra duy nhất** để chủ NPP đổi tài khoản cũ sang vai khác;
+- bỏ `driver@demo.com` khỏi `003_seed.sql` (xem Q17), xoá
+  `HUONG_DAN_DRIVER.md`, dọn vai này khỏi `/help` và 6 tệp tài liệu.
+
+## Q17 — PHÁT HIỆN khi bỏ vai: "Khoá tài khoản" TRƯỚC NAY KHÔNG KHOÁ GÌ
+
+Đây là lỗ **có sẵn**, không phải đợt này sinh ra — nhưng nó làm hỏng đúng
+thứ chủ nhà vừa chọn, nên phải vá cùng lúc.
+
+Cả kho chỉ có MỘT chỗ đọc `users.is_active` để chặn: đường đăng nhập bằng
+mã QR (`src/app/qr-login/route.ts`). Đường email + mật khẩu đọc cờ đó vào
+hồ sơ rồi không hỏi tới nó lần nào. Phía cơ sở dữ liệu cũng vậy:
+`user_org_id()` và `user_role()` chỉ tra theo `auth.uid()`, không nhìn
+`is_active`, nên **mọi policy RLS vẫn cho qua**.
+
+⚠ Nghĩa là: nhân viên đã nghỉ việc, đã bị "Khoá tài khoản" ở màn Cài đặt
+→ Người dùng, VẪN đăng nhập được bằng mật khẩu cũ và giữ nguyên quyền của
+vai mình. Nút "Khoá" từ trước tới nay chỉ là một cái nhãn.
+
+**Đã vá ở ba lớp:**
+1. `user_org_id()` / `user_role()` trả NULL cho tài khoản bị khoá → mọi
+   policy RLS không khớp dòng nào. Sửa hai hàm thay vì 167 policy.
+2. Màn đăng nhập kiểm `is_active` NGAY sau khi xác thực, trước khi chuyển
+   trang — câu giải thích nằm đúng chỗ người đang nhìn.
+3. `AuthProvider` kiểm khi nạp hồ sơ, đăng xuất kèm câu giải thích — cho
+   tab đã mở sẵn từ trước.
+
+Lớp 1 để không lách được (RLS từ chối là IM LẶNG: 0 dòng, HTTP 200, error
+null); lớp 2–3 để người dùng hiểu chuyện gì xảy ra.
+
+⚠ `COALESCE(is_active, true)` ở cả ba lớp là BẮT BUỘC: cột này NULL được
+(`is_active boolean DEFAULT true`, mig 001 — không NOT NULL). Đọc NULL
+thành "đã khoá" là khoá oan người đang đi làm.
+
+**Cần chủ nhà biết:** nếu trước giờ có ai bị "khoá" mà vẫn dùng app bình
+thường, sau khi chạy 122 họ sẽ mất truy cập ngay. Đó là sửa đúng, nhưng
+nên rà `SELECT full_name, role FROM users WHERE COALESCE(is_active,true) = false;`
+trước khi chạy.
+
+## Q18 — PHÁT HIỆN: bộ seed demo sẽ hỏng nếu không sửa cùng lúc
+
+`003_seed.sql` chèn `driver@demo.com` với `role = 'driver'`. Trigger
+`trg_block_driver_role` của mig 122 TỪ CHỐI lệnh đó.
+
+Ở đường cài mới, `seed_demo.sql` chạy **SAU** `schema_full.sql` (xem
+`supabase/INSTALL.md`) — tức là sau khi trigger đã tồn tại. Để nguyên thì
+bộ demo dừng giữa chừng với một câu tiếng Anh, sau khi đã chèn xong một
+phần dữ liệu.
+
+**Đã sửa:** bỏ hẳn tài khoản tài xế khỏi `003_seed.sql` (5 tài khoản
+demo thay vì 6), cập nhật ba tệp nói "6 tài khoản demo". `003_seed` chỉ
+dùng cho môi trường thử và tự dọn dẹp ở đầu tệp, nên sửa tại chỗ được —
+KHÁC với 093 ở Q15.
 
 ## Q15 — LỖI CỦA TÔI, đã sửa: vá thẳng vào một migration ĐÃ CHẠY
 

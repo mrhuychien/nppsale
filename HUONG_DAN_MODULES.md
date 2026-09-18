@@ -21,7 +21,7 @@
 
 ## 1. Dashboard
 
-**URL**: `/dashboard` | **Quyền**: Tất cả trừ Tài xế
+**URL**: `/dashboard` | **Quyền**: Tất cả các vai
 
 ### Cấu trúc trang
 

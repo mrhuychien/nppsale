@@ -51,11 +51,50 @@ function LoginForm() {
         }
         email = String(looked)
       }
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: signed, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
       if (authError) {
         setError("Sai tài khoản hoặc mật khẩu.")
         return
       }
+
+      /**
+       * ⚠ TÀI KHOẢN BỊ KHOÁ: CHẶN NGAY Ở ĐÂY, ĐỪNG ĐỂ VÀO RỒI ĐÁ RA.
+       *
+       * Trước migration 122, `is_active` chỉ được kiểm ở đường đăng nhập
+       * bằng mã QR — đường này đọc cờ đó rồi không hỏi tới nó lần nào,
+       * và phía cơ sở dữ liệu cũng không. Nút "Khoá tài khoản" ở Cài đặt
+       * → Người dùng chỉ là một cái nhãn: người đã nghỉ việc vẫn vào
+       * được bằng mật khẩu cũ với nguyên quyền của vai mình.
+       *
+       * `AuthProvider` cũng có lớp chặn, nhưng nó chạy SAU khi đã chuyển
+       * trang — người dùng thấy màn nháy một cái rồi bị ném về đây,
+       * không hiểu vì sao. Chặn ở đây thì câu giải thích nằm đúng chỗ họ
+       * đang nhìn.
+       *
+       * ⚠ Policy `users FOR SELECT USING (id = auth.uid())` cho tự đọc
+       * hồ sơ của chính mình, không qua `user_org_id()` — nên phép kiểm
+       * này vẫn chạy được sau khi mig 122 khoá cổng RLS.
+       *
+       * ⚠ `=== false`, KHÔNG phải `!row.is_active`: cột NULL được, và
+       * NULL nghĩa là chưa ai khoá.
+       */
+      const uid = signed?.user?.id
+      if (uid) {
+        const { data: me } = await supabase
+          .from("users")
+          .select("is_active")
+          .eq("id", uid)
+          .maybeSingle()
+        if (me?.is_active === false) {
+          await supabase.auth.signOut()
+          setError("Tài khoản đã bị khoá. Liên hệ chủ nhà phân phối để mở lại.")
+          return
+        }
+      }
+
       router.push("/orders")
       router.refresh()
     } catch {

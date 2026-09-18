@@ -73,7 +73,7 @@ describe("hasPermission — kiểm quyền theo module", () => {
 describe("cache runtime", () => {
   it("chưa nạp gì thì dùng bảng mặc định", () => {
     const cache = getPermissionsCache()
-    expect(cache.sales.orders.has("create")).toBe(true)
+    expect(cache.sales?.orders.has("create")).toBe(true)
   })
 
   it("nạp cache mới thì áp dụng ngay", () => {
@@ -154,14 +154,31 @@ describe("quyền theo tính năng — hasFeaturePermission", () => {
   })
 
   it("cấu hình riêng có thể MỞ RỘNG hơn module cha", () => {
-    // Mặc định tài xế không đụng gì tới sản phẩm.
+    // Mặc định thủ kho chỉ ĐỌC sản phẩm, không có ô tính năng riêng nào.
     setPermissionsCache(
       rowsToCache([
-        { role: "driver", module: "products.stock-lookup", action: "read", allowed: true },
+        { role: "warehouse", module: "customers.analytics", action: "read", allowed: true },
       ])
     )
-    expect(hasPermission("driver", "products", "read")).toBe(false)
-    expect(hasFeaturePermission("driver", "products.stock-lookup", "products", "read")).toBe(true)
+    expect(hasPermission("warehouse", "customers", "read")).toBe(false)
+    expect(
+      hasFeaturePermission("warehouse", "customers.analytics", "customers", "read")
+    ).toBe(true)
+  })
+
+  /**
+   * ⚠ VAI ĐÃ NGƯNG DÙNG KHÔNG ĐƯỢC CẤP LẠI QUYỀN QUA CỬA SAU. `driver`
+   * không còn hàng nào trong ma trận mặc định, nhưng `rowsToCache` đọc
+   * từ bảng `role_permissions` dưới CSDL — dòng cũ của vai đó vẫn nằm
+   * đấy. Nếu chúng dựng lại được quyền thì việc "bỏ vai" chỉ là bỏ ở ô
+   * chọn.
+   */
+  it("vai đã ngưng dùng không nhận được quyền từ bảng cấu hình", () => {
+    setPermissionsCache(
+      rowsToCache([{ role: "driver", module: "orders", action: "read", allowed: true }])
+    )
+    expect(hasPermission("driver", "orders", "read")).toBe(false)
+    expect(hasPermission("driver", "receivables", "create")).toBe(false)
   })
 
   it("owner bỏ qua mọi cấu hình tính năng", () => {
@@ -240,7 +257,9 @@ describe("defaultPermissionRows — dữ liệu mồi cho màn hình phân quy�
   it("cờ allowed khớp với bảng mặc định", () => {
     const rows = defaultPermissionRows()
     for (const r of rows) {
-      expect(r.allowed).toBe(DEFAULT_PERMISSION_MAP[r.role][r.module].includes(r.action))
+      expect(r.allowed).toBe(
+        DEFAULT_PERMISSION_MAP[r.role]?.[r.module]?.includes(r.action) ?? false
+      )
     }
   })
 
@@ -253,7 +272,11 @@ describe("defaultPermissionRows — dữ liệu mồi cho màn hình phân quy�
           expect(
             hasPermission(role, m, a),
             `${role}/${m}/${a} đổi sau khi lưu lại y nguyên`
-          ).toBe(role === "owner" ? true : DEFAULT_PERMISSION_MAP[role][m].includes(a))
+          ).toBe(
+            role === "owner"
+              ? true
+              : (DEFAULT_PERMISSION_MAP[role]?.[m]?.includes(a) ?? false)
+          )
         }
       }
     }

@@ -16,7 +16,20 @@ export type Module =
   | "settings"
 export type Action = "read" | "create" | "update" | "delete" | "approve" | "export"
 
-export const ROLES: Role[] = ["owner", "manager", "accountant", "sales", "warehouse", "driver"]
+/**
+ * Các vai GÁN ĐƯỢC. Dùng để dựng ma trận quyền và ô chọn vai.
+ *
+ * ⚠ HẸP HƠN KIỂU `Role`, VÀ ĐÓ LÀ CỐ Ý. `driver` đã ngưng dùng (mig 122)
+ * nhưng vẫn còn trên các dòng `users` cũ — đó là hồ sơ nhân sự, và
+ * `deliveries.driver_id` trỏ vào chúng. Kiểu vẫn phải hiểu giá trị đó để
+ * màn Người dùng đọc lên không phải ép `as`; chỉ danh sách này hẹp lại
+ * để không ai gán thêm được nữa.
+ */
+export type AssignableRole = Exclude<Role, "driver">
+export const ROLES: AssignableRole[] = ["owner", "manager", "accountant", "sales", "warehouse"]
+
+/** Vai đã ngưng dùng — còn đọc được, không gán mới được. */
+export const RETIRED_ROLES: Role[] = ["driver"]
 export const MODULES: Module[] = [
   "orders",
   "customers",
@@ -39,7 +52,10 @@ export const ROLE_LABELS: Record<Role, string> = {
   accountant: "Kế toán",
   sales: "NV Bán hàng",
   warehouse: "Thủ kho",
-  driver: "Tài xế",
+  // ⚠ GIỮ NHÃN DÙ VAI ĐÃ BỎ. Màn Cài đặt → Người dùng vẫn liệt kê tài
+  //   khoản tài xế cũ (đã khoá); bỏ dòng này là ô "Vai trò" của họ trống
+  //   trơn, và người xem không biết đang nhìn cái gì.
+  driver: "Tài xế (ngưng dùng)",
 }
 
 export const MODULE_LABELS: Record<Module, string> = {
@@ -70,8 +86,14 @@ export const ACTION_LABELS: Record<Action, string> = {
  * Built-in default matrix. Used as fallback when an org hasn't customised
  * a particular (role, module, action) cell, and as the seed value when
  * resetting via the UI.
+ *
+ * ⚠ `Partial` — KHÔNG PHẢI MỌI VAI ĐỀU CÓ HÀNG. Vai `driver` đã ngưng
+ * dùng nên không còn hàng nào ở đây, nhưng kiểu `Role` vẫn phải hiểu giá
+ * trị đó (các dòng `users` cũ còn mang nó). Tra một vai đã bỏ sẽ ra
+ * `undefined` → `hasPermission` trả false ở mọi ô, đúng ý: tài khoản đó
+ * đã bị khoá ở mig 122 và không đăng nhập được nữa.
  */
-export const DEFAULT_PERMISSION_MAP: Record<Role, Record<Module, Action[]>> = {
+export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[]>>> = {
   owner: {
     orders: ["read", "create", "update", "delete", "approve", "export"],
     customers: ["read", "create", "update", "delete", "export"],
@@ -146,20 +168,6 @@ export const DEFAULT_PERMISSION_MAP: Record<Role, Record<Module, Action[]>> = {
     reports: ["read"],
     settings: [],
   },
-  driver: {
-    orders: ["read"],
-    customers: [],
-    inventory: [],
-    products: [],
-    commissions: [],
-    receivables: ["read", "create"],
-    deliveries: ["read", "update"],
-    promotions: [],
-    invoices: [],
-    returns: [],
-    reports: [],
-    settings: [],
-  },
 }
 
 /**
@@ -169,9 +177,16 @@ export const DEFAULT_PERMISSION_MAP: Record<Role, Record<Module, Action[]>> = {
  * entries override the parent module when present; otherwise the
  * runtime falls back to the module-level entry.
  */
-export type PermissionsCache = Record<Role, Record<string, Set<Action>>>
+/**
+ * ⚠ `Partial` VÌ VAI ĐÃ NGƯNG DÙNG KHÔNG CÓ HÀNG Ở ĐÂY. Tra `driver` ra
+ * `undefined`, và `hasPermission` biến nó thành false ở mọi ô — đúng ý:
+ * tài khoản đó đã bị khoá ở mig 122.
+ */
+export type PermissionsCache = Partial<Record<Role, Record<string, Set<Action>>>>
 
-function buildCacheFromMap(map: Record<Role, Record<Module, Action[]>>): PermissionsCache {
+function buildCacheFromMap(
+  map: Partial<Record<Role, Record<Module, Action[]>>>
+): PermissionsCache {
   const out = {} as PermissionsCache
   for (const role of ROLES) {
     const m: Record<string, Set<Action>> = {}
@@ -310,12 +325,12 @@ export function canAccessModule(role: Role, module: Module): boolean {
 
 /** Build a flat list of permission rows from the default map (for seeding the UI). */
 export function defaultPermissionRows(): {
-  role: Role
+  role: AssignableRole
   module: Module
   action: Action
   allowed: boolean
 }[] {
-  const out: { role: Role; module: Module; action: Action; allowed: boolean }[] = []
+  const out: { role: AssignableRole; module: Module; action: Action; allowed: boolean }[] = []
   for (const role of ROLES) {
     for (const mod of MODULES) {
       for (const action of ACTIONS) {
@@ -323,7 +338,7 @@ export function defaultPermissionRows(): {
           role,
           module: mod,
           action,
-          allowed: DEFAULT_PERMISSION_MAP[role][mod].includes(action),
+          allowed: DEFAULT_PERMISSION_MAP[role]?.[mod]?.includes(action) ?? false,
         })
       }
     }

@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [authUser, setAuthUser] = useState<{ id: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [authError] = useState<string | null>(null)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
     debug("mounted")
@@ -82,10 +82,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthUser({ id: au.id, email: au.email || "" })
         // Fetch profile in background
         fetchProfile(au.id).then((profile) => {
-          if (profile && mounted) {
-            debug("profile loaded")
-            setUser(profile)
+          if (!profile || !mounted) return
+          /**
+           * ⚠ TÀI KHOẢN BỊ KHOÁ PHẢI BỊ ĐẨY RA, VÀ PHẢI ĐƯỢC NÓI VÌ SAO.
+           *
+           * Trước migration 122, `is_active` chỉ được kiểm ở đường đăng
+           * nhập bằng mã QR. Đường email + mật khẩu đọc cờ này vào hồ sơ
+           * rồi không hỏi tới nó lần nào, và phía cơ sở dữ liệu cũng
+           * không — `user_org_id()` chỉ tra theo `auth.uid()`. Nghĩa là
+           * nút "Khoá tài khoản" ở Cài đặt → Người dùng từ trước tới nay
+           * chỉ là một cái nhãn: người đã nghỉ việc vẫn đăng nhập được
+           * bằng mật khẩu cũ với nguyên quyền của vai mình.
+           *
+           * Mig 122 chặn ở `user_org_id()` nên RLS không trả dòng nào
+           * nữa — nhưng RLS TỪ CHỐI LÀ IM LẶNG (0 dòng, HTTP 200, error
+           * null). Không có đoạn này thì người bị khoá thấy một ứng dụng
+           * trống trơn và nghĩ hệ thống hỏng. Lớp dưới để không lách
+           * được, lớp này để hiểu chuyện gì xảy ra.
+           *
+           * ⚠ `=== false` CHỨ KHÔNG PHẢI `!profile.is_active`. Cột này
+           * NULL được (mig 001 không NOT NULL) và NULL nghĩa là CHƯA AI
+           * KHOÁ — đá người đang đi làm ra ngoài là hỏng nặng hơn hẳn.
+           */
+          if (profile.is_active === false) {
+            debug("profile inactive — signing out")
+            setAuthError(
+              "Tài khoản của bạn đã bị khoá. Liên hệ chủ nhà phân phối để mở lại."
+            )
+            setUser(null)
+            void supabase.auth.signOut()
+            return
           }
+          debug("profile loaded")
+          setUser(profile)
         })
       } else {
         setUser(null)

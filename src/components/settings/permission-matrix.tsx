@@ -151,7 +151,8 @@ function effectiveValue(
   if (override !== undefined) return override
   const rpByFeature = rolePerms.get(`${feature.key}::${action}`)
   if (rpByFeature !== undefined) return rpByFeature
-  const moduleDefaults = DEFAULT_PERMISSION_MAP[role][feature.module] ?? []
+  // ⚠ `?.` vì vai đã ngưng dùng không có hàng trong ma trận.
+  const moduleDefaults = DEFAULT_PERMISSION_MAP[role]?.[feature.module] ?? []
   return moduleDefaults.includes(action)
 }
 

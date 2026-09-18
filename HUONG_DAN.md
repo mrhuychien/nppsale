@@ -38,7 +38,7 @@
 
 - **Đa người dùng theo vai trò**: Mỗi nhân viên chỉ thấy những gì cần thiết cho công việc của mình
 - **Multi-tenant**: Mỗi tổ chức (nhà phân phối) có dữ liệu hoàn toàn tách biệt
-- **Mobile-first cho field**: Sales và Tài xế dùng điện thoại; Quản lý dùng laptop
+- **Mobile-first cho field**: Sales dùng điện thoại khi đi tuyến; Quản lý dùng laptop
 - **Bảo mật cấp dòng (RLS)**: Database tự động chặn truy cập trái phép
 
 ---
@@ -63,27 +63,26 @@
 | `accountant@demo.com` | **Kế toán** | Công nợ, hóa đơn, hoa hồng |
 | `sales@demo.com` | **Nhân viên bán hàng** | Tạo đơn cho KH được giao |
 | `warehouse@demo.com` | **Kho** | Nhập/xuất kho, lô hàng |
-| `driver@demo.com` | **Tài xế** | Thu tiền tại điểm *(bước lập chuyến giao đã bỏ)* |
 
-### Ma trận quyền (12 module × 6 vai trò)
+### Ma trận quyền (12 module × 5 vai trò)
 
 ✅ = Có quyền | ❌ = Không có quyền | 👁️ = Chỉ xem
 
-| Module | Owner | Manager | Accountant | Sales | Warehouse | Driver |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: |
-| Dashboard | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Đơn hàng | ✅ | ✅ Xuất hàng | 👁️ | ✅ Tạo | 👁️ | ❌ |
-| Khách hàng | ✅ | ✅ | 👁️ | ✅ KH được giao | ❌ | ❌ |
-| Sản phẩm | ✅ | ✅ | 👁️ | 👁️ | 👁️ | ❌ |
-| Kho hàng | ✅ | 👁️ | 👁️ | 👁️ | ✅ | ❌ |
-| Giao hàng *(ngưng dùng)* | 👁️ | 👁️ | 👁️ | 👁️ | 👁️ | 👁️ |
-| Công nợ | ✅ | 👁️ | ✅ | ✅ Tạo | ❌ | ✅ Thu tiền |
-| Khuyến mãi | ✅ | ✅ | 👁️ | 👁️ | ❌ | ❌ |
-| Hóa đơn | ✅ | 👁️ | ✅ | 👁️ | ❌ | ❌ |
-| Trả hàng | ✅ Hoàn thành | ✅ Hoàn thành | 👁️ | ✅ Tạo | 👁️ | ❌ |
-| Hoa hồng | ✅ | 👁️ | ✅ Cập nhật | 👁️ ví của mình | ❌ | ❌ |
-| Báo cáo | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Cài đặt | ✅ | 👁️ | 👁️ | ❌ | ❌ | ❌ |
+| Module | Owner | Manager | Accountant | Sales | Warehouse |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| Dashboard | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Đơn hàng | ✅ | ✅ Xuất hàng | 👁️ | ✅ Tạo | 👁️ |
+| Khách hàng | ✅ | ✅ | 👁️ | ✅ KH được giao | ❌ |
+| Sản phẩm | ✅ | ✅ | 👁️ | 👁️ | 👁️ |
+| Kho hàng | ✅ | 👁️ | 👁️ | 👁️ | ✅ |
+| Giao hàng *(ngưng dùng)* | 👁️ | 👁️ | 👁️ | 👁️ | 👁️ |
+| Công nợ | ✅ | 👁️ | ✅ | ✅ Tạo | ❌ |
+| Khuyến mãi | ✅ | ✅ | 👁️ | 👁️ | ❌ |
+| Hóa đơn | ✅ | 👁️ | ✅ | 👁️ | ❌ |
+| Trả hàng | ✅ Hoàn thành | ✅ Hoàn thành | 👁️ | ✅ Tạo | 👁️ |
+| Hoa hồng | ✅ | 👁️ | ✅ Cập nhật | 👁️ ví của mình | ❌ |
+| Báo cáo | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cài đặt | ✅ | 👁️ | 👁️ | ❌ | ❌ |
 
 ---
 
@@ -264,7 +263,6 @@ Phiếu trả hàng dùng **đúng bốn trạng thái này**.
 | [`HUONG_DAN_ACCOUNTANT.md`](HUONG_DAN_ACCOUNTANT.md) | Hướng dẫn cho Kế toán | ✅ |
 | [`HUONG_DAN_SALES.md`](HUONG_DAN_SALES.md) | Hướng dẫn cho Sales | ✅ |
 | [`HUONG_DAN_WAREHOUSE.md`](HUONG_DAN_WAREHOUSE.md) | Hướng dẫn cho Kho | ✅ |
-| [`HUONG_DAN_DRIVER.md`](HUONG_DAN_DRIVER.md) | Hướng dẫn cho Tài xế | ✅ |
 | [`HUONG_DAN_MODULES.md`](HUONG_DAN_MODULES.md) | Chi tiết 12 module | ✅ |
 | `/help` (in-app) | Trang trợ giúp trong ứng dụng | ✅ |
 | [`DEPLOY.md`](DEPLOY.md) | Hướng dẫn cài đặt & deploy | ✅ |
@@ -299,7 +297,7 @@ Phiếu trả hàng dùng **đúng bốn trạng thái này**.
 > Có. Trang Dashboard và Kho đều hiển thị lô hàng sắp hết hạn (mặc định 30 ngày).
 
 ### Q: Có chạy được trên điện thoại không?
-> Có. Toàn bộ giao diện responsive. Sales và Tài xế thường dùng điện thoại tại hiện trường.
+> Có. Toàn bộ giao diện responsive. Sales thường dùng điện thoại tại hiện trường.
 
 ---
 

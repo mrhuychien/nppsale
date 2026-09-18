@@ -38,7 +38,7 @@ Cai moi tren mot database TRONG chi can **1 file gop** thay vi chay 87 file:
    File nay gop tat ca migration theo dung thu tu (schema + RLS),
    **KHONG kem du lieu demo** — an toan cho site thuong mai.
 3. (Tuy chon, CHI cho moi truong thu nghiem) chay them
-   `supabase/seed_demo.sql` de co du lieu mau + 6 tai khoan demo.
+   `supabase/seed_demo.sql` de co du lieu mau + 5 tai khoan demo.
    **KHONG chay file nay tren production** — mat khau demo la cong khai.
 
 > File `schema_full.sql` duoc sinh tu thu muc `supabase/migrations`. Sau
@@ -59,7 +59,7 @@ dung thu tu vi cac file sau phu thuoc file truoc. Tren production, BO QUA
 
 ### 1.4 Tai khoan demo (chi khi da chay seed_demo.sql)
 
-File `supabase/seed_demo.sql` tao 6 tai khoan demo voi mat khau `Demo@123456`.
+File `supabase/seed_demo.sql` tao 5 tai khoan demo voi mat khau `Demo@123456`.
 **Canh bao**: day la mat khau cong khai — chi dung cho thu nghiem. Tren
 production hay tao tai khoan owner that (Authentication > Add user trong
 Supabase Dashboard, roi INSERT profile vao bang users) va KHONG chay seed.
@@ -71,7 +71,6 @@ Supabase Dashboard, roi INSERT profile vao bang users) va KHONG chay seed.
 | accountant@demo.com | accountant | Le Van Cuong   |
 | sales@demo.com      | sales      | Pham Thi Dung  |
 | warehouse@demo.com  | warehouse  | Hoang Van Em   |
-| driver@demo.com     | driver     | Vo Van Phuc    |
 
 ### 1.5 Cau hinh Authentication
 

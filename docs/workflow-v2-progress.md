@@ -406,6 +406,34 @@ cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
   nên `toContain("1000000")` khớp nhầm vào chính số mới và vẫn xanh sau
   khi xoá hẳn phần nêu số dư. Đổi sang 2.000.000 − 1.200.000 = 800.000.
 
+## Bỏ vai Tài xế — Q16, Q17, Q18
+
+**Đã làm.** Mig 122: khoá `is_active` cho tài khoản mang vai `driver`
+(in tên từng người ra trước), KHÔNG đổi vai, KHÔNG xoá dòng; chặn gán
+mới bằng trigger chứ không siết `CHECK`. Tầng ứng dụng: `ROLES` và hai ô
+chọn bỏ `driver`, ma trận quyền bỏ hàng của nó, nhưng GIỮ nhãn "Tài xế
+(ngưng dùng)" và giữ giá trị trong kiểu `Role`. Bỏ `driver@demo.com`
+khỏi seed, xoá `HUONG_DAN_DRIVER.md`, dọn khỏi `/help` và 6 tệp tài
+liệu. 14 chốt mới; thử phá 25/25 bị bắt.
+
+**Bất ngờ gặp.**
+- ⚠ **"Khoá tài khoản" TRƯỚC NAY KHÔNG KHOÁ GÌ CẢ** (Q17). Chỉ đường
+  đăng nhập bằng mã QR kiểm `is_active`; đường email + mật khẩu và cả
+  `user_org_id()` đều không. Nhân viên đã nghỉ việc vẫn vào được với
+  nguyên quyền. Đây là lỗ có sẵn, nhưng nó làm hỏng đúng phương án chủ
+  nhà chọn nên phải vá cùng lúc — ba lớp: hai hàm cổng RLS, màn đăng
+  nhập, và `AuthProvider`.
+- ⚠ **Bộ seed demo sẽ hỏng giữa chừng** (Q18): `003_seed.sql` chèn
+  `driver@demo.com`, mà `seed_demo.sql` chạy SAU `schema_full.sql` nên
+  trigger của 122 đã tồn tại và từ chối lệnh đó.
+- ⚠ **Phải chừa một lối ra.** Ô chọn vai bỏ hẳn giá trị đang lưu thì nó
+  hiện rỗng, bấm Lưu là ghi đè mất vai thật — và không còn cách nào đổi
+  tài khoản tài xế cũ sang vai khác. `roleOptionsFor()` ghép vai hiện
+  tại vào danh sách khi nó đã ngưng dùng.
+- ⚠ **Trigger phải chặn ĐÚNG lúc giá trị đổi thành `driver`**, không
+  chặn mọi UPDATE chạm vào dòng đó — chặn rộng là nhốt luôn chủ NPP
+  ngoài cửa, không còn đường dọn dẹp.
+
 ## Quy ước
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -424,7 +452,7 @@ cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
 
 ## TODO chủ nhà (tích dần)
 
-- [ ] Chạy migration **118 + 119 + 120 + 121** trên staging, đọc
+- [ ] Chạy migration **118 + 119 + 120 + 121 + 122** trên staging, đọc
       `RAISE NOTICE` backfill. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
       xuất" — nó chỉ in MỘT LẦN (mục 0 của checklist có câu SQL chạy lại).
 - [ ] Chạy hết `docs/workflow-v2-checklist.md` (10 mục).
@@ -432,8 +460,13 @@ cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
 - [ ] **Đọc `RAISE NOTICE` của migration 121** — nó nói tiền mặt trên
       bảng cân đối sẽ GIẢM bao nhiêu sau khi chạy. Đó là sửa đúng, không
       phải mất tiền; nhưng phải biết trước con số để khỏi hoảng.
-- [ ] Quyết còn giữ vai `driver` hay không — không gấp, tài xế vẫn có 7
-      màn để làm việc.
+- [x] Quyết vai `driver` — chủ nhà chốt BỎ, khoá tài khoản, không đổi vai.
+- [ ] **Trước khi chạy 122 trên production:** rà
+      `SELECT full_name, role FROM users WHERE COALESCE(is_active,true) = false;`
+      ⚠ Mig 122 làm "Khoá tài khoản" thật sự có hiệu lực (Q17). Ai đang
+      bị khoá trên giấy mà vẫn dùng app sẽ mất truy cập NGAY.
+- [ ] Sau 122: đổi vai cho các tài khoản tài xế cũ ở Cài đặt → Người
+      dùng (ô chọn có sẵn "Tài xế (ngưng dùng)" để đổi đi), rồi mở khoá.
 - [ ] Bật lại module Giao hàng khi cần — đổi `LEGACY_FLOW_WRITES_LOCKED`
       về `false` và bỏ href khỏi `LEGACY_V2_HREFS`. ⚠ Đọc khối chú thích
       trong `src/lib/nav/legacy-flow.ts` trước khi bật.

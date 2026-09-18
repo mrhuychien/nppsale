@@ -13,7 +13,7 @@ lượng.
 Cần: một tài khoản Supabase, một tài khoản Vercel (hoặc chỗ chạy Next.js
 khác), và `openssl` để sinh khoá bí mật.
 
-> ⚠ **KHÔNG chạy `supabase/seed_demo.sql`.** File đó tạo 6 tài khoản
+> ⚠ **KHÔNG chạy `supabase/seed_demo.sql`.** File đó tạo 5 tài khoản
 > `*@demo.com` với mật khẩu công khai `Demo@123456`. Nó chỉ dành cho môi
 > trường thử nghiệm.
 

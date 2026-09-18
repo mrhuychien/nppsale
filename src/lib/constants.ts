@@ -1,10 +1,15 @@
+/**
+ * ⚠ KHÔNG CÒN `DRIVER`. Vai Tài xế đã ngưng dùng (mig 122): quy trình mới
+ * không có bước lập chuyến giao, và cơ sở dữ liệu chặn gán mới bằng
+ * trigger. Các dòng `users` cũ vẫn mang giá trị `'driver'` — xem
+ * `ROLE_LABELS` ngay dưới.
+ */
 export const ROLES = {
   OWNER: "owner",
   MANAGER: "manager",
   ACCOUNTANT: "accountant",
   SALES: "sales",
   WAREHOUSE: "warehouse",
-  DRIVER: "driver",
 } as const
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -13,7 +18,9 @@ export const ROLE_LABELS: Record<string, string> = {
   accountant: "Kế toán",
   sales: "NV Bán hàng",
   warehouse: "NV Kho",
-  driver: "Tài xế",
+  // ⚠ GIỮ NHÃN DÙ VAI ĐÃ BỎ — màn Người dùng vẫn liệt kê tài khoản tài
+  //   xế cũ (đã khoá). Bỏ dòng này là ô "Vai trò" của họ trống trơn.
+  driver: "Tài xế (ngưng dùng)",
 }
 
 export const CHANNELS = [

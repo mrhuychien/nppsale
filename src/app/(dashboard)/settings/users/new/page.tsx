@@ -21,7 +21,10 @@ import {
 } from "lucide-react"
 import { errorMessage } from "@/lib/errors"
 
-const ROLES = ["owner", "manager", "accountant", "sales", "warehouse", "driver"] as const
+// ⚠ KHÔNG CÒN `driver`. Vai Tài xế đã ngưng dùng (mig 122) — quy trình
+//   mới không có bước lập chuyến giao. Cơ sở dữ liệu cũng chặn bằng
+//   trigger `trg_block_driver_role`, nên gán lén từ chỗ khác cũng hỏng.
+const ROLES = ["owner", "manager", "accountant", "sales", "warehouse"] as const
 
 export default function NewUserPage() {
   const { user } = useAuth()

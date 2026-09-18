@@ -7,7 +7,7 @@
 - Đi thị trường, ghé thăm các khách hàng được Manager phân công
 - Tạo đơn hàng tại điểm bán (mobile), giới thiệu sản phẩm và khuyến mãi
 - Thêm khách hàng mới khi mở rộng tuyến và cập nhật thông tin liên hệ
-- Đôn đốc thu nợ tại điểm (cùng tài xế nếu có lịch giao)
+- Đôn đốc thu nợ tại điểm khi ghé cửa hàng
 - Tạo phiếu trả hàng khi khách phản hồi hàng lỗi / hết hạn
 
 ## 2. Các module bạn truy cập được

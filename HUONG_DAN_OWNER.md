@@ -55,13 +55,15 @@
 
 ### 4.1 Tạo tài khoản nhân viên mới
 
-**Khi nào**: Có nhân viên Sales, Kho, Tài xế, Kế toán mới gia nhập.
+**Khi nào**: Có nhân viên Sales, Kho, Kế toán mới gia nhập.
 
 **Bước thực hiện**:
 1. Vào sidebar nhấn **Cài đặt** → chọn **Người dùng** (`/settings/users`)
 2. Nhấn nút **Thêm người dùng**
 3. Nhập **Họ tên**, **Email**, **Số điện thoại**
-4. Chọn **Vai trò** (Owner / Manager / Accountant / Sales / Warehouse / Driver)
+4. Chọn **Vai trò** (Owner / Manager / Accountant / Sales / Warehouse)
+   ⚠ Vai **Tài xế** đã ngưng dùng — quy trình mới không có bước lập chuyến
+   giao, và hệ thống từ chối gán vai đó.
 5. Đặt **Mật khẩu tạm** rồi gửi cho nhân viên qua kênh bảo mật
 6. Nhấn **Lưu**
 

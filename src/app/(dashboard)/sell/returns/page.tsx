@@ -303,9 +303,13 @@ export default function SellReturnsPage() {
           </section>
         )}
 
+        {/* ⚠ Câu này từng hứa "sau khi quản lý duyệt" — v2 không có bước
+            duyệt, và người hoàn thành phiếu trả là nhà phân phối chứ không
+            phải quản lý. Hứa sai ở đây là nhân viên nói lại với khách rằng
+            tiền sẽ trừ hôm nay. */}
         <p className="px-1 text-xs font-semibold leading-relaxed text-on-surface-variant">
-          Phiếu trả ở trạng thái <b>chờ duyệt</b>; kho nhập lại hàng và kế toán giảm công nợ sau khi
-          quản lý duyệt. Dòng “Đổi hàng” không trừ tiền.
+          Phiếu trả đi kèm đơn và nằm chờ. Kho chỉ nhập lại hàng và công nợ chỉ giảm khi nhà phân
+          phối <b>hoàn thành phiếu trả</b>. Dòng “Đổi hàng” không trừ tiền.
         </p>
       </div>
 

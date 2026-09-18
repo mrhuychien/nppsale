@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
-import { ApprovalBadge } from "@/components/orders/approval-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -294,22 +293,18 @@ export default function OrderDetailPage() {
     const fetchedLines = (linesRes.data as unknown as SalesOrderLine[]) || []
     setLines(fetchedLines)
 
-    // T-03: load per-line picked qty (base UOM) from the helper view.
-    if (fetchedLines.length > 0) {
-      const { data: pickedRows, error: pickedRowsErr } = await supabase
-        .from("v_sales_order_line_picked")
-        .select("order_line_id, picked_qty_in_base_uom")
-        .eq("order_id", id)
-      if (pickedRowsErr) console.error("[orders/id] truy vấn lỗi:", pickedRowsErr.message)
-      const map: Record<string, number> = {}
-      ;((pickedRows as Array<{ order_line_id: string; picked_qty_in_base_uom: number }>) || [])
-        .forEach((r) => {
-          map[r.order_line_id] = Number(r.picked_qty_in_base_uom || 0)
-        })
-      setPickedByLine(map)
-    } else {
-      setPickedByLine({})
-    }
+    /**
+     * ⚠ KHÔNG CÒN TRUY VẤN `v_sales_order_line_picked` — migration 119 đã
+     * `DROP VIEW` nó cùng với bước soạn hàng. Truy vấn một quan hệ không
+     * tồn tại chỉ ghi một dòng đỏ ra console rồi trả về rỗng, nhưng nó
+     * nằm giữa `setLoading(true)` và `setLoading(false)` nên mỗi lần mở
+     * đơn là một vòng gọi mạng thừa TRƯỚC khi màn hiện ra.
+     *
+     * Workflow v2 không có bước pick, nên "đã soạn bao nhiêu" luôn là 0 —
+     * đúng thứ `isLineLocked` cần để không khoá dòng nào. Giữ `state` lại
+     * vì bộ kiểm tra sửa đơn còn đọc nó.
+     */
+    setPickedByLine({})
 
     const recRow = recRes.data as
       | { id: string; amount: number; paid: number; status: string; due_date: string | null }
@@ -971,12 +966,20 @@ export default function OrderDetailPage() {
       <div className={mobileTemplate ? "hidden lg:block space-y-4" : "space-y-4"}>
       <PageHeader
         title={order.order_code}
-        description={`Ngày đặt: ${formatDate(order.order_date)}${order.approved_at ? ` • Duyệt: ${formatDate(order.approved_at)}` : ""}`}
+        description={`Ngày đặt: ${formatDate(order.order_date)}${
+          order.completed_at ? ` • Xuất hàng: ${formatDate(order.completed_at)}` : ""
+        }`}
         backHref="/orders"
       >
+        {/* ⚠ ĐÃ BỎ `ApprovalBadge`. Nó gắn nhãn "Cần Owner duyệt" /
+            "Cần Manager duyệt" theo NGƯỠNG TIỀN, mà workflow v2 không có
+            người duyệt — và mọi đơn đều đi qua `draft` nên nhãn đó hiện
+            trên gần như đơn nào cũng có. Nhân viên đọc xong ngồi đợi một
+            bước không tồn tại. Cảnh báo thật nằm ở khung `callouts` ngay
+            dưới, lấy từ `approval_reason`. Component giữ nguyên trong
+            kho, chỉ không gọi ở đây nữa. */}
         <StatusBadge status={order.status} type="order" />
         <PaymentStatusBadge receivable={receivable} />
-        <ApprovalBadge total={order.total} status={order.status} approvedBy={order.approved_by} />
       </PageHeader>
 
       {callouts}
@@ -1675,18 +1678,28 @@ export default function OrderDetailPage() {
 
           {/* Status transitions — desktop giữ nguyên thẻ dọc; mobile dùng
               StickyActionBar ở cuối trang (M4.2), không hiện hai lần. */}
-          {(availableTransitions.length > 0 || canDelete) && (
+          {(roleTransitions.length > 0 || canDelete) && (
             <Card className="hidden lg:block">
               <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {availableTransitions.map((trans) => {
-                  if (!user || !trans.roles.includes(user.role)) return null
+                {/* ⚠ DÙNG `roleTransitions`, KHÔNG PHẢI `availableTransitions`.
+                    Bản mobile lọc theo vai trò rồi mới vẽ; thẻ này thì vẽ cả
+                    bảng rồi lọc bên trong bằng `return null`, nên điều kiện
+                    hiện thẻ ở trên đếm cả những bước người dùng không có
+                    quyền — thẻ "Thao tác" rỗng hiện ra cho vai trò không làm
+                    được gì.
+                    ⚠ Và mọi bước ở đây đều là bước LÙI (v2 không còn bước
+                    tiến nào làm được bằng một lệnh ghi thẳng), nên KHÔNG
+                    dùng variant "default" — nút xanh đậm to nhất thẻ là chỗ
+                    mắt rơi vào đầu tiên, đặt "Rút về nháp" ở đó là mời bấm
+                    nhầm. */}
+                {roleTransitions.map((trans) => {
                   const Icon = trans.icon
                   const isDestructive = trans.value === "cancelled"
                   return (
                     <Button
                       key={trans.value}
-                      variant={isDestructive ? "destructive" : "default"}
+                      variant={isDestructive ? "destructive" : "outline"}
                       className="w-full justify-start"
                       onClick={() => setConfirmOpen({ status: trans.value, label: trans.label })}
                     >

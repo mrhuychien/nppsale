@@ -6,17 +6,24 @@ import Link from "next/link"
 import { Check, CloudOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+/**
+ * ⚠ KHOÁ PHẢI KHỚP TRẠNG THÁI THẬT `submitSellOrder` TRẢ VỀ. Bảng này
+ * từng chỉ có `confirmed` và `draft` của luồng cũ, nên đơn v2 gửi đi
+ * (`submitted`) rơi xuống nhánh mặc định và màn báo "chờ duyệt" — nhân
+ * viên ngồi đợi một bước không còn tồn tại, trong khi đơn đã nằm trên
+ * bàn nhà phân phối.
+ */
 const LABEL: Record<string, { title: string; sub: string; badge: string; tone: "ok" | "wait" }> = {
-  confirmed: {
-    title: "Đã tạo và duyệt đơn",
-    sub: "Đơn đã sang kho để soạn hàng.",
-    badge: "Đã duyệt",
+  submitted: {
+    title: "Đã gửi đơn",
+    sub: "Nhà phân phối đã thấy đơn. Hàng ra kho khi họ bấm Xuất hàng.",
+    badge: "Phiếu tạm",
     tone: "ok",
   },
   draft: {
-    title: "Đã tạo đơn — chờ duyệt",
-    sub: "Quản lý sẽ duyệt trước khi kho soạn hàng.",
-    badge: "Chờ duyệt",
+    title: "Đã lưu nháp",
+    sub: "Nhà phân phối CHƯA thấy đơn này. Mở Đơn nháp để gửi đi khi xong.",
+    badge: "Nháp",
     tone: "wait",
   },
   queued: {
@@ -40,12 +47,11 @@ function DoneBody() {
   const info = edited
     ? {
         ...base,
-        title:
-          status === "confirmed" ? "Đã lưu thay đổi — đơn đã duyệt" : "Đã lưu thay đổi — chờ duyệt",
+        title: status === "draft" ? "Đã lưu thay đổi — vẫn là nháp" : "Đã lưu thay đổi",
         sub:
-          status === "confirmed"
-            ? "Đơn giữ nguyên mã cũ và đã sang kho."
-            : "Đơn giữ nguyên mã cũ. Quản lý sẽ duyệt lại trước khi kho soạn hàng.",
+          status === "draft"
+            ? "Đơn giữ nguyên mã cũ và vẫn chưa gửi đi."
+            : "Đơn giữ nguyên mã cũ. Nhà phân phối thấy bản vừa sửa.",
       }
     : base
   const queued = status === "queued"
@@ -68,8 +74,8 @@ function DoneBody() {
       <div className="mt-6 flex w-full flex-col gap-2.5 rounded-2xl bg-surface-container-lowest p-4 text-left shadow-card">
         <Row label="Mã đơn" value={code || "—"} />
         <Row label="Trạng thái" value={info.badge} />
-        {/* ⚠ Lý do phải hiện Ở ĐÂY. Biết đơn "chờ duyệt" mà không biết vì
-            sao thì nhân viên không sửa được gì, chỉ ngồi đợi. */}
+        {/* ⚠ Cảnh báo phải hiện Ở ĐÂY. Nhà phân phối sẽ đọc nó trước khi
+            xuất hàng, nên nhân viên cần biết mình vừa gửi đi kèm cái gì. */}
         {reason && (
           <p className="border-t border-outline-variant/40 pt-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant">
             {reason}

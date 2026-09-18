@@ -320,11 +320,16 @@ export function MobileOrderDetail({
               <LinkRow
                 key={r.id}
                 label="Hàng trả kèm"
+                /* ⚠ SO VỚI TRẠNG THÁI CỦA V2. Hai nhánh này từng so với
+                   'pending' — một giá trị `chk_returns_status_v2` (mig 119)
+                   không còn cho tồn tại và backfill đã đổi hết đi. Nghĩa là
+                   phiếu trả nào cũng rơi vào nhánh sai: không nhãn, không
+                   tô màu, và người đọc tưởng phiếu đã xong. */
                 value={`${returnReasonLabel(r.reason)} · −${formatCurrency(Number(r.credit_note_amount || 0))}${
-                  r.status === "pending" ? " · chờ duyệt" : ""
+                  r.status === "submitted" ? " · chờ xử lý" : r.status === "draft" ? " · nháp" : ""
                 }`}
                 href={`/returns/${r.id}`}
-                tone={r.status === "pending" ? "warn" : undefined}
+                tone={r.status === "submitted" ? "warn" : undefined}
               />
             ))}
             {activityLog.length > 0 && (

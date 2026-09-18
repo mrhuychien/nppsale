@@ -174,3 +174,119 @@ describe("Bốn loại thông báo của workflow v2", () => {
     }
   })
 })
+
+/**
+ * Những lỗi lượt soi chéo sau P4 bắt được. Mỗi cái một chốt, để không
+ * quay lại. Chúng đều có chung một hình dạng: nửa việc làm ở bản máy
+ * tính mà quên bản điện thoại, hoặc ngược lại.
+ */
+describe("lỗi soi chéo bắt được sau P4, không được quay lại", () => {
+  const DONE = code(read("src/app/(dashboard)/sell/done/page.tsx"))
+  const MOBILE_DETAIL = code(read("src/components/orders/mobile-order-detail.tsx"))
+  const SELL_RETURNS = code(read("src/app/(dashboard)/sell/returns/page.tsx"))
+
+  /**
+   * ⚠ HUỶ HÀNG LOẠT LÀ CHỖ CÁI BẪY 0-DÒNG ĐAU NHẤT: một lệnh trên nhiều
+   * đơn, RLS cho qua vài đơn và chặn phần còn lại, mà PostgREST vẫn trả
+   * HTTP 200 với `error` null. Không đếm dòng thì màn báo "Đã hủy 12 đơn"
+   * rồi tự vá state cho cả 12 — chín đơn hiện "Đã huỷ" cho tới khi tải
+   * lại trang.
+   */
+  it("huỷ hàng loạt đếm đúng số dòng ghi được, không tin vào danh sách id", () => {
+    const i = LIST.indexOf('.update({ status: "cancelled" })')
+    expect(i, "không tìm thấy lệnh huỷ hàng loạt").toBeGreaterThan(0)
+    const block = LIST.slice(i, i + 700)
+    expect(block, "huỷ hàng loạt không lấy lại dòng đã ghi").toContain('.select("id")')
+    expect(block).toContain("const done = new Set(")
+    expect(block).toContain("done.size === 0")
+    // Vá state và đếm trong toast đều phải theo `done`, không theo `ids`.
+    const after = LIST.slice(i, i + 2200)
+    expect(after).toContain("done.has(o.id) ? { ...o, status: \"cancelled\" as const }")
+    expect(after, "toast vẫn đếm theo danh sách id").not.toContain("Đã hủy ${ids.length} đơn")
+  })
+
+  /**
+   * ⚠ MÀN BÁO THÀNH CÔNG PHẢI BIẾT TRẠNG THÁI THẬT. `submitSellOrder` trả
+   * về `submitted`; bảng nhãn thiếu khoá đó thì rơi xuống nhánh mặc định
+   * và nhân viên vừa gửi đơn xong đọc được chữ "chờ duyệt" — một bước
+   * v2 đã bỏ.
+   */
+  it("màn báo gửi đơn xong có nhãn cho submitted, không còn chữ chờ duyệt", () => {
+    expect(DONE).toContain("submitted: {")
+    expect(DONE).toContain("draft: {")
+    expect(DONE).toContain("queued: {")
+    expect(DONE, "màn báo thành công còn hứa có người duyệt").not.toContain("duyệt")
+    // Và màn giỏ hàng phải truyền đúng giá trị ấy sang.
+    expect(CART).toContain("/sell/done?code=")
+    expect(CART).toContain("&status=${status}")
+  })
+
+  /**
+   * ⚠ Huy hiệu "Cần Owner duyệt" chấm theo NGƯỠNG TIỀN và chỉ hiện với
+   * đơn `draft` — mà v2 thì đơn nào cũng đi qua draft. Để lại là gần như
+   * đơn nào cũng đeo một cái nhãn bảo người dùng đi chờ.
+   */
+  it("màn chi tiết đơn không còn đeo huy hiệu duyệt", () => {
+    expect(DETAIL).not.toContain("<ApprovalBadge")
+    expect(DETAIL).not.toContain("approval-badge")
+  })
+
+  /**
+   * ⚠ GHI PHIẾU TRẢ HỎNG PHẢI NÉM LỖI. Khối ghi từng bọc trong
+   * `if (!retErr && retRow)` không có nhánh else: hỏng thì hàm im lặng
+   * trả về thành công, nhân viên thấy "Đã gửi đơn", còn hàng trả của
+   * khách không tồn tại ở đâu cả.
+   */
+  it("tạo đơn: phiếu trả ghi hỏng thì ném lỗi, không nuốt", () => {
+    const i = CREATE.indexOf('.from("returns")')
+    const block = CREATE.slice(i, i + 1400)
+    expect(block).toContain("if (retErr || !retRow) {")
+    expect(block).toContain("throw new Error(")
+    expect(block, "lại bọc im lặng như cũ").not.toContain("if (!retErr && retRow) {")
+  })
+
+  /**
+   * ⚠ HAI BẢN CỦA CÙNG MỘT MÀN PHẢI THEO CÙNG MỘT LUẬT. Bản mobile lọc
+   * bước theo vai trò rồi mới vẽ; thẻ "Thao tác" của bản máy tính thì vẽ
+   * cả bảng rồi lọc bên trong — nên nó không biết cờ `backward`, và
+   * "Rút về nháp" ngồi vào nút xanh đậm to nhất thẻ.
+   */
+  it("thẻ Thao tác máy tính dùng cùng danh sách đã lọc vai trò, và không tô nút bước lùi", () => {
+    const i = DETAIL.indexOf('<CardTitle>Thao tác</CardTitle>')
+    expect(i).toBeGreaterThan(0)
+    const card = DETAIL.slice(i - 400, i + 1200)
+    expect(card, "thẻ Thao tác vẫn vẽ từ danh sách chưa lọc vai trò").not.toContain(
+      "availableTransitions.map"
+    )
+    expect(card).toContain("roleTransitions.map")
+    expect(card, "bước lùi vẫn được tô như hành động chính").not.toContain('"default"')
+  })
+
+  /**
+   * ⚠ Nhãn trạng thái phiếu trả: bản máy tính đã đổi sang bốn giá trị v2
+   * ở P4, bản điện thoại thì chưa — nên trên điện thoại phiếu trả nào
+   * cũng không nhãn, không màu, và người đọc tưởng đã xong.
+   */
+  it("bản điện thoại của màn chi tiết đọc trạng thái phiếu trả theo v2", () => {
+    expect(MOBILE_DETAIL, "còn so với trạng thái phiếu trả đã bị bỏ").not.toContain(
+      'r.status === "pending"'
+    )
+    expect(MOBILE_DETAIL).toContain('r.status === "submitted"')
+  })
+
+  /**
+   * ⚠ Migration 119 đã `DROP VIEW v_sales_order_line_picked`. Truy vấn nó
+   * chỉ trả về rỗng kèm một dòng đỏ ra console, nhưng nó nằm trước
+   * `setLoading(false)` nên mỗi lần mở đơn là một vòng gọi mạng thừa.
+   */
+  it("màn chi tiết không còn hỏi view đã bị xoá", () => {
+    expect(DETAIL).not.toContain("v_sales_order_line_picked")
+    expect(MIG119).toMatch(/DROP VIEW\s+IF EXISTS v_sales_order_line_picked;/)
+  })
+
+  /** Màn hàng trả của NVBH không được hứa có người duyệt. */
+  it("màn hàng trả nói đúng ai làm gì", () => {
+    expect(SELL_RETURNS).toContain("hoàn thành phiếu trả")
+    expect(SELL_RETURNS, "còn hứa quản lý duyệt").not.toContain("quản lý duyệt")
+  })
+})

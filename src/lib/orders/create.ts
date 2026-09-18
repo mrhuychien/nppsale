@@ -168,7 +168,25 @@ export async function createOrderRecords(
       })
       .select("id")
       .single()
-    if (!retErr && retRow) {
+    /**
+     * ⚠ GHI HỎNG THÌ PHẢI NÓI RA. Trước đây cả khối dưới bọc trong
+     * `if (!retErr && retRow)` mà KHÔNG có nhánh else: phiếu trả ghi
+     * hỏng thì hàm này im lặng chạy tiếp và trả về thành công. Nhân viên
+     * thấy màn "Đã gửi đơn", còn hàng trả của khách thì không tồn tại ở
+     * đâu cả — và không ai biết cho tới lúc đối chiếu công nợ.
+     *
+     * ⚠ RLS từ chối cũng vào đây: `.single()` trên 0 dòng trả về lỗi
+     * PGRST116 chứ không phải `retRow = null` lặng lẽ, nhưng kiểm cả hai
+     * cho chắc — đây là chỗ đã từng nuốt lỗi một lần rồi.
+     */
+    if (retErr || !retRow) {
+      throw new Error(
+        `Đã lưu đơn ${payload.order.order_code} nhưng KHÔNG lưu được phiếu trả kèm theo${
+          retErr ? `: ${retErr.message}` : ""
+        }. Mở đơn ra nhập lại hàng trả.`
+      )
+    }
+    {
       const retId = (retRow as { id: string }).id
       const retLineRows = payload.returnLines.map((l) => ({
         return_id: retId,

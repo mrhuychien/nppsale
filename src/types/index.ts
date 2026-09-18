@@ -276,9 +276,24 @@ export interface SalesOrder {
   total: number
   merged_into: string | null
   notes: string | null
+  /**
+   * ⚠ HAI CỘT NÀY LÀ DI SẢN. Workflow v2 bỏ bước duyệt nên không chỗ nào
+   * ghi thêm; đơn cũ vẫn còn giá trị nên đừng gỡ khỏi kiểu.
+   */
   approved_by: string | null
   approved_at: string | null
+  /**
+   * Cảnh báo kèm đơn, nhà phân phối đọc trước khi bấm Xuất hàng. Trong
+   * v2 nó KHÔNG còn quyết trạng thái — xem `lib/approval.ts`.
+   */
   approval_reason: string | null
+  /** Mốc của workflow v2 (migration 119). Trigger tự đóng, client không tự đoán giờ. */
+  submitted_at?: string | null
+  completed_at?: string | null
+  completed_by?: string | null
+  cancelled_at?: string | null
+  cancelled_by?: string | null
+  cancel_reason?: string | null
   created_at: string
   // Joined
   customer?: Customer

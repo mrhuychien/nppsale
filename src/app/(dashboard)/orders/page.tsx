@@ -615,16 +615,35 @@ export default function OrdersPage() {
     const ids = cancellable.map((o) => o.id)
     setBulkLoading(true)
     try {
-      const { error } = await supabase
+      /**
+       * ⚠ RLS TỪ CHỐI LÀ 0 DÒNG, HTTP 200, `error` NULL. Lệnh này chạy
+       * trên nhiều đơn cùng lúc, nên không đếm dòng thì màn hình báo
+       * "Đã hủy 12 đơn" trong khi chính sách chỉ cho qua 3 — và vì ngay
+       * dưới đây state được tự vá theo `ids`, chín đơn kia hiện "Đã huỷ"
+       * cho tới khi người dùng tải lại trang.
+       *
+       * ⚠ Trả về ĐÚNG những id ghi được, rồi chỉ vá state theo chúng.
+       * Lấy `ids` làm chuẩn là tin vào thứ mình muốn xảy ra.
+       */
+      const { data: rows, error } = await supabase
         .from("sales_orders")
         .update({ status: "cancelled" })
         .in("id", ids)
+        .select("id")
       if (error) throw error
+      const done = new Set(((rows as Array<{ id: string }>) ?? []).map((r) => r.id))
+      if (done.size === 0) {
+        throw new Error(
+          "Không hủy được đơn nào — bạn không có quyền với những đơn này, hoặc chúng đã đi tiếp. Tải lại trang để xem trạng thái mới."
+        )
+      }
 
       if (user.org_id) {
         const { createNotification } = await import("@/lib/notifications")
         for (const o of cancellable) {
-          if (o.sales_user_id && o.sales_user_id !== user.id) {
+          // Chỉ báo cho đơn THẬT SỰ huỷ được — báo cho đơn RLS chặn là
+          // gửi cho nhân viên một tin về việc chưa xảy ra.
+          if (done.has(o.id) && o.sales_user_id && o.sales_user_id !== user.id) {
             createNotification(supabase, {
               orgId: user.org_id,
               userId: o.sales_user_id,
@@ -639,9 +658,16 @@ export default function OrdersPage() {
       }
 
       setOrders((prev) =>
-        prev.map((o) => (ids.includes(o.id) ? { ...o, status: "cancelled" as const } : o))
+        prev.map((o) => (done.has(o.id) ? { ...o, status: "cancelled" as const } : o))
       )
-      toast({ title: `Đã hủy ${ids.length} đơn` })
+      toast({ title: `Đã hủy ${done.size} đơn` })
+      if (done.size < ids.length) {
+        toast({
+          title: `${ids.length - done.size} đơn không hủy được`,
+          description: "Bạn không có quyền với những đơn đó, hoặc chúng đã đi tiếp.",
+          variant: "destructive",
+        })
+      }
       clearSelection()
     } catch (err) {
       const message = errorMessage(err)

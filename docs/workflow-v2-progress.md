@@ -255,6 +255,25 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   lại — nên hai phiếu cùng nằm ở `submitted` đều lọt, hoàn thành cả hai
   là trả gấp đôi và trừ công nợ gấp đôi. Đây là lỗ trong MIGRATION nên
   tôi dừng, không tự sửa.
+- Lượt đo P6 về đích SAU khi commit vòng đầu, và bắt thêm bốn lỗi — một
+  trong số đó nằm ngay trong màn tôi vừa sửa: hai lệnh ghi ở
+  `/returns/[id]` không đếm số dòng, mà bảng `returns` KHÔNG có policy
+  DELETE nào và policy UPDATE chỉ mở cho owner/manager. Chủ bấm Xoá thấy
+  "Đã xoá" rồi bị đẩy về danh sách nơi phiếu vẫn nằm đó; thủ kho bấm Sửa
+  thấy "Đã cập nhật" rồi số cũ hiện về. Ba lỗi kia: ô Credit Note mở cho
+  cả phiếu đã hoàn thành (làm `receivables` và `returns` lệch vĩnh viễn),
+  thiếu dịch `OVERPAID_AFTER_CREDIT` (mã bắn GIÁN TIẾP từ
+  `_wf2_recompute_receivable` nên dễ quên), và câu hướng dẫn trên màn
+  danh sách bảo người dùng "chỉ để tra cứu, không cần thao tác duyệt" —
+  chính câu đó là lý do hàng trả nằm ngoài sổ.
+- Màn danh sách phiếu trả nay là HÀNG ĐỢI VIỆC: mở ra ở tab Chờ xử lý,
+  "Tất cả" đứng cuối vì đó là chỗ tra cứu chứ không phải chỗ làm việc.
+- ⚠ **Q10, Q11, Q12 — MỞ, chờ chủ nhà quyết** (đều là sửa migration nên
+  tôi dừng): thiếu `FOR UPDATE` ở vòng kiểm khoản có của
+  `create_cash_receipt` (hai kế toán cấn trừ cùng một phiếu trả là trừ
+  hai lần); `OVERPAID_AFTER_CREDIT` có thể chặn `complete_return` vĩnh
+  viễn khi tiền vào không qua phiếu thu; migration 118 còn lọc theo
+  trạng thái phiếu trả đã chết nên khoá ngoại chặn xoá đơn.
 - ⚠ **Q9 — việc để lại cho P7:** còn hai màn luồng cũ tự lập phiếu trả
   vào thẳng `completed` (`deliveries/[id]/handover`, `inventory/pending`)
   và một trong hai còn sửa công nợ bằng mã trình duyệt.

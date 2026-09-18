@@ -230,3 +230,88 @@ describe("Công nợ chỉ trừ phiếu trả ĐÃ hoàn thành", () => {
     expect(new Set(v2).size).toBe(4)
   })
 })
+
+/**
+ * Những gì lượt đo P6 bắt được sau khi tôi đã commit vòng đầu. Chúng có
+ * chung một hình dạng: lệnh ghi im lặng, và câu hướng dẫn nói về luồng
+ * đã chết.
+ */
+describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
+  const RET_LIST = code(read("src/app/(dashboard)/returns/page.tsx"))
+
+  /**
+   * ⚠ BẢNG `returns` KHÔNG CÓ MỘT POLICY DELETE NÀO, và policy UPDATE chỉ
+   * mở cho owner/manager trong khi nút Sửa bật theo `returns.update` —
+   * quyền mà bảng phân quyền cấp cho cả thủ kho. Cả hai lệnh vì thế trả
+   * 0 dòng + HTTP 200 + error null, và màn báo thành công: chủ bấm Xoá
+   * thấy "Đã xoá" rồi bị đẩy về danh sách nơi phiếu vẫn nằm đó.
+   */
+  it("hai lệnh ghi ở màn chi tiết đều đếm số dòng trả về", () => {
+    const del = RET_DETAIL.slice(RET_DETAIL.indexOf("const handleDelete"), RET_DETAIL.indexOf("const handleComplete"))
+    expect(del).toContain('.select("id")')
+    expect(del).toContain("data.length === 0")
+
+    const edit = RET_DETAIL.slice(RET_DETAIL.indexOf("const handleSaveEdit"), RET_DETAIL.indexOf("if (authLoading"))
+    expect(edit).toContain('.select("id")')
+    expect(edit).toContain("data.length === 0")
+  })
+
+  /**
+   * ⚠ CÔNG NỢ CHỈ ĐƯỢC TÍNH LẠI BÊN TRONG RPC. Sửa tay số tiền của một
+   * phiếu ĐÃ hoàn thành là `receivables` và `returns` lệch nhau vĩnh
+   * viễn — không lệnh nào kéo về được. Khoá ở CẢ ô nhập lẫn hàm lưu:
+   * khoá một chỗ là còn đường vòng.
+   */
+  it("phiếu đã hoàn thành thì khoá số tiền, khoá ở cả hai chỗ", () => {
+    const edit = RET_DETAIL.slice(RET_DETAIL.indexOf("const handleSaveEdit"), RET_DETAIL.indexOf("if (authLoading"))
+    expect(edit).toContain('if (ret.status !== "completed") {')
+    expect(RET_DETAIL).toContain('ret.status === "completed" ? (')
+  })
+
+  /**
+   * ⚠ `OVERPAID_AFTER_CREDIT` BẮN GIÁN TIẾP từ `_wf2_recompute_receivable`
+   * chứ không nằm trong thân `complete_return`, nên rất dễ quên dịch. Nó
+   * rollback CẢ lần hoàn thành, kể cả phần nhập kho.
+   * ⚠ Và thông điệp gốc bảo "huỷ phiếu thu trước" — việc người dùng
+   * thường KHÔNG làm được, vì tiền có thể vào qua màn thu theo công nợ
+   * và khi đó không có phiếu thu nào để huỷ.
+   */
+  it("dịch được mã lỗi bắn gián tiếp, và không lặp lại lời khuyên bế tắc", () => {
+    const out = explainReturnError(
+      "… OVERPAID_AFTER_CREDIT: khách đã trả 10000000 nhưng nợ còn 7000000, huỷ phiếu thu trước khi ghi có"
+    )
+    expect(out).toContain("đảo bớt tiền đã thu")
+    expect(out).toContain("không qua phiếu thu")
+    expect(out).not.toBe(
+      "… OVERPAID_AFTER_CREDIT: khách đã trả 10000000 nhưng nợ còn 7000000, huỷ phiếu thu trước khi ghi có"
+    )
+  })
+
+  /**
+   * ⚠ `cancel_return` chặn khi đơn gốc đã thu tiền — DÙ CHỈ MỘT ĐỒNG, và
+   * chặn cho mọi khoản thu chứ không riêng khoản liên quan phiếu trả.
+   * Nói trước, đừng để người dùng gõ xong lý do rồi mới nhận lỗi.
+   */
+  it("nói trước hai khoá của việc huỷ phiếu đã hoàn thành", () => {
+    expect(RET_DETAIL).toContain("đơn gốc đã thu")
+    expect(RET_DETAIL).toContain("dù chỉ một phần")
+  })
+
+  /**
+   * ⚠ CÂU HƯỚNG DẪN CŨ LÀ NGUYÊN NHÂN CỦA CẢ MỘT LỚP LỖI: nó bảo người
+   * dùng "chỉ để tra cứu, không cần thao tác duyệt". Ai đọc rồi bỏ đi là
+   * hàng trả nằm ngoài sổ.
+   */
+  it("màn danh sách không còn bảo người dùng bỏ qua phiếu trả", () => {
+    expect(RET_LIST).not.toContain("không cần thao tác duyệt")
+    expect(RET_LIST).not.toContain("Bàn giao lại")
+    expect(RET_LIST).toContain("cần có người bấm Hoàn thành")
+  })
+
+  /** Hàng đợi việc thì mở ra ở việc phải làm, không phải ở sổ tra cứu. */
+  it("danh sách mở ra ở tab Chờ xử lý và lọc theo trạng thái ở máy chủ", () => {
+    expect(RET_LIST).toContain('useState<string>("submitted")')
+    expect(RET_LIST).toContain('q = q.eq("status", statusFilter)')
+    expect(RET_LIST).toContain("RETURN_TABS.map(")
+  })
+})

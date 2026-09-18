@@ -308,6 +308,57 @@ luật "không đụng luồng cũ", nhưng P7 phải chắc chắn chúng khôn
 
 ---
 
+## Q10 — MỞ: thiếu khoá dòng ở vòng kiểm khoản có của `create_cash_receipt`
+
+Lượt đo P6 tìm ra. Trong `create_cash_receipt` (migration 120), vòng kiểm
+KHOẢN NỢ dùng `IF NOT EXISTS (SELECT 1 FROM receivables … FOR UPDATE)`
+(dòng 1136-1147) — cách viết trông lạ nhưng chạy đúng ở READ COMMITTED:
+Postgres khoá dòng rồi đánh giá lại điều kiện, nên hai kế toán thu cùng
+một khoản nợ thì một người nhận `BAD_RECEIVABLE_LINE`. **Đừng sửa đoạn
+đó.**
+
+Nhưng vòng kiểm KHOẢN CÓ ngay bên dưới (dòng 1150-1162) **không có
+`FOR UPDATE`**. Hai kế toán cùng lập phiếu thu cấn trừ CÙNG một phiếu trả
+độc lập, cùng lúc: cả hai đọc `applied_receipt_id IS NULL`, cả hai qua,
+và khoản có bị cấn trừ hai lần. `UPDATE returns SET applied_receipt_id`
+ở cuối chỉ ghi đè, không chặn.
+
+Đề xuất: thêm `FOR UPDATE` vào đúng vòng đó. Một dòng. Nhưng là sửa
+migration nên tôi dừng, chờ quyết.
+
+## Q11 — MỞ: `OVERPAID_AFTER_CREDIT` có thể chặn vĩnh viễn
+
+`_wf2_recompute_receivable` RAISE `OVERPAID_AFTER_CREDIT` khi khách đã
+trả nhiều hơn số nợ SAU khi trừ khoản có, và nó **rollback cả**
+`complete_return` — kể cả phần nhập kho, nên hàng khách trả không vào
+tồn.
+
+Thông điệp bảo "huỷ phiếu thu trước khi ghi có". Vấn đề: nếu tiền vào
+qua màn thu tiền theo công nợ (`/receivables/collect`, `/receivables/[id]`)
+thì **không có `cash_receipts` nào để huỷ**, và không màn nào xoá được
+dòng `payments`. Khi đó phiếu trả không bao giờ hoàn thành được.
+
+Tôi đã sửa CÂU CHỮ ở giao diện để không lặp lại một lời khuyên bế tắc,
+nhưng đó chỉ là vá miệng. Cần chủ nhà quyết một trong hai:
+- **(a)** cho phép ghi số dư có (`receivables.paid > amount` hợp lệ, phần
+  dư thành khoản có của khách) — đổi nghiệp vụ, không nhỏ;
+- **(b)** làm một đường đảo tiền cho các khoản thu không qua phiếu thu.
+
+## Q12 — MỞ: migration 118 còn nhắc trạng thái phiếu trả đã chết
+
+Lượt đo P6 tìm ra. Migration 118 (dọn phiếu trả khi xoá đơn) ở dòng 44 và
+54 vẫn lọc theo giá trị trạng thái cũ. Sau 119:
+- phiếu `submitted` **hết chặn** việc xoá đơn (nhánh chặn hỏi giá trị
+  không còn tồn tại);
+- nhánh dọn khớp 0 dòng, nên khoá ngoại 23503 chặn xoá đơn kèm một câu
+  tiếng Anh — **đúng thứ mig 118 sinh ra để sửa**.
+
+118 cũng CHƯA chạy trên production (đã ghi trong sổ tiến độ từ trước).
+Sửa tại chỗ được, nhưng `tests/order-delete.test.ts` dòng 139-140 ghim
+nguyên văn hai chuỗi cũ nên phải sửa cùng lúc. Dừng, chờ quyết.
+
+---
+
 ## Những gì đã biết trước khi bắt đầu
 
 Rút từ lượt lập bản đồ luồng đơn hàng hiện tại (đọc mã, chưa chạy thử

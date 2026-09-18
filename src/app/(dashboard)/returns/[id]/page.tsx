@@ -79,16 +79,32 @@ export default function ReturnDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  /**
+   * ⚠ BẢNG `returns` KHÔNG CÓ MỘT POLICY DELETE NÀO (002_rls_policies chỉ
+   * tạo SELECT / INSERT / UPDATE). Nghĩa là lệnh xoá dưới đây LUÔN xoá 0
+   * dòng, PostgREST trả HTTP 200 và `error` là null — bản trước báo "Đã
+   * xoá phiếu trả hàng" rồi đẩy người dùng về danh sách, nơi phiếu vẫn
+   * nằm nguyên đó. Kiểm số dòng là cách duy nhất biết được.
+   */
   const handleDelete = async () => {
     if (!ret) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("returns").delete().eq("id", ret.id)
+      const { data, error } = await supabase
+        .from("returns")
+        .delete()
+        .eq("id", ret.id)
+        .select("id")
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error(
+          "Không xoá được phiếu trả — bạn không có quyền xoá phiếu trả. Nếu phiếu lập nhầm, dùng nút Huỷ phiếu."
+        )
+      }
       toast({ title: "Đã xoá phiếu trả hàng" })
       router.push("/returns")
     } catch (error) {
-      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
+      toast({ title: "Không xoá được", description: errorMessage(error), variant: "destructive" })
       setActionLoading(false)
     }
   }
@@ -148,14 +164,34 @@ export default function ReturnDetailPage() {
     if (!ret) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
+      /**
+       * ⚠ POLICY UPDATE CỦA `returns` CHỈ MỞ CHO OWNER / MANAGER, trong
+       * khi nút Sửa bật theo `returns.update` — mà bảng phân quyền cấp ô
+       * đó cho cả thủ kho. Thủ kho bấm Lưu thì RLS từ chối bằng 0 dòng,
+       * HTTP 200, `error` null: màn báo "Đã cập nhật" rồi tải lại và số
+       * cũ hiện về.
+       *
+       * ⚠ VÀ KHÔNG SỬA SỐ TIỀN CỦA PHIẾU ĐÃ HOÀN THÀNH. Công nợ chỉ được
+       * tính lại bên trong RPC; sửa tay ở đây là `receivables` và
+       * `returns` lệch nhau vĩnh viễn, không lệnh nào kéo về được.
+       */
+      const patch: Record<string, unknown> = { notes: editForm.notes || null }
+      if (ret.status !== "completed") {
+        patch.credit_note_amount = editForm.credit_note_amount
+          ? parseFloat(editForm.credit_note_amount)
+          : null
+      }
+      const { data, error } = await supabase
         .from("returns")
-        .update({
-          notes: editForm.notes || null,
-          credit_note_amount: editForm.credit_note_amount ? parseFloat(editForm.credit_note_amount) : null,
-        })
+        .update(patch)
         .eq("id", ret.id)
+        .select("id")
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error(
+          "Không lưu được — bạn không có quyền sửa phiếu trả. Tải lại trang để xem bản mới nhất."
+        )
+      }
       toast({ title: "Đã cập nhật phiếu trả hàng" })
       setEditMode(false)
       fetchData()
@@ -425,15 +461,35 @@ export default function ReturnDetailPage() {
                 </>
               ) : (
                 <>
-                  <div className="space-y-1">
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Credit Note (VND)</Label>
-                    <Input
-                      type="number"
-                      value={editForm.credit_note_amount}
-                      onChange={(e) => setEditForm({ ...editForm, credit_note_amount: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
+                  {/* ⚠ PHIẾU ĐÃ HOÀN THÀNH THÌ KHOÁ SỐ TIỀN. Công nợ chỉ được
+                      tính lại bên trong RPC; sửa tay ở đây là `receivables` và
+                      `returns` lệch nhau vĩnh viễn, không lệnh nào kéo về được.
+                      Khoá ở đây VÀ ở hàm lưu — chỉ khoá một chỗ là còn đường
+                      vòng. */}
+                  {ret.status === "completed" ? (
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Credit Note (VND)
+                      </Label>
+                      <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm font-semibold tabular-nums">
+                        {formatCurrency(ret.credit_note_amount ?? 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Phiếu đã nhập kho và đã trừ công nợ — số này khoá lại. Cần đổi thì huỷ phiếu
+                        rồi lập lại.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">Credit Note (VND)</Label>
+                      <Input
+                        type="number"
+                        value={editForm.credit_note_amount}
+                        onChange={(e) => setEditForm({ ...editForm, credit_note_amount: e.target.value })}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú</Label>
                     <Textarea
@@ -538,6 +594,16 @@ export default function ReturnDetailPage() {
                 ? "Phiếu này đã nhập kho. Huỷ sẽ trừ lại số hàng đã nhập và tính lại công nợ của đơn gốc."
                 : "Phiếu chưa nhập kho, huỷ chỉ đổi trạng thái."}
             </p>
+            {/* ⚠ NÓI TRƯỚC HAI KHOÁ CỦA `cancel_return`, đừng để người dùng
+                gõ xong lý do rồi mới nhận lỗi. Đơn gốc chỉ cần đã thu MỘT
+                ĐỒNG là phiếu trả gắn đơn đó không huỷ được nữa — một
+                chiều, không quay lại. */}
+            {ret.status === "completed" && (
+              <p className="rounded-lg bg-[#fff7e6] px-3 py-2 text-xs font-semibold leading-snug text-[#7a4b00]">
+                Không huỷ được nếu khoản có đã cấn trừ vào một phiếu thu, hoặc nếu đơn gốc đã thu
+                tiền — dù chỉ một phần. Khi đó phải huỷ phiếu thu trước.
+              </p>
+            )}
             <div className="grid gap-1.5">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">Lý do huỷ</Label>
               <Textarea

@@ -53,6 +53,18 @@ const REASON_COLORS: Record<string, string> = {
   refused: "bg-on-surface-variant",
 }
 
+/**
+ * Tab của màn phiếu trả. "Chờ xử lý" đứng ĐẦU vì đó là việc phải làm;
+ * "Tất cả" đứng CUỐI vì đó là chỗ tra cứu.
+ */
+const RETURN_TABS = [
+  { value: "submitted", label: "Chờ xử lý" },
+  { value: "completed", label: "Đã nhập kho" },
+  { value: "draft", label: "Nháp" },
+  { value: "cancelled", label: "Đã huỷ" },
+  { value: "all", label: "Tất cả" },
+] as const
+
 export default function ReturnsPage() {
   const { loading: authLoading } = useRoleGuard("returns")
   const { user: authUser } = useAuth()
@@ -60,6 +72,13 @@ export default function ReturnsPage() {
   const [returns, setReturns] = useState<Return[]>([])
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
+  /**
+   * ⚠ MỞ RA Ở "CHỜ XỬ LÝ", không phải "Tất cả". Màn này là HÀNG ĐỢI VIỆC
+   * chứ không phải sổ tra cứu: thứ duy nhất cần hành động là phiếu chưa
+   * hoàn thành. Trộn cả phiếu đã xong vào danh sách mặc định là việc cần
+   * làm chìm trong hàng trăm dòng đã xong.
+   */
+  const [statusFilter, setStatusFilter] = useState<string>("submitted")
   const [search, setSearch] = useState("")
   const [totalCount, setTotalCount] = useState(0)
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
@@ -116,7 +135,7 @@ export default function ReturnsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false
@@ -132,6 +151,9 @@ export default function ReturnsPage() {
         .range(pg.from, pg.to)
       if (filterActive("reason") && reasonFilter !== "all") {
         q = q.eq("reason", reasonFilter)
+      }
+      if (statusFilter !== "all") {
+        q = q.eq("status", statusFilter)
       }
       const { data, count , error: qErr } = await q
       if (qErr) console.error("[returns] truy vấn lỗi:", qErr.message)
@@ -153,7 +175,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, reasonFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -175,15 +197,22 @@ export default function ReturnsPage() {
         description={`${totalCount} phiếu trả • Tra cứu thông tin`}
       />
 
-      <Card className="border-primary-fixed-dim bg-primary-fixed">
+      {/*
+        ⚠ CÂU CŨ Ở ĐÂY LÀ NGUYÊN NHÂN CỦA CẢ MỘT LỚP LỖI. Nó bảo người
+        dùng "trang này chỉ để tra cứu, không cần thao tác duyệt" — đúng
+        với luồng cũ, khi phiếu trả sinh ra từ bước Bàn giao lại và có
+        trigger tự nhập kho. Trong v2 không có bước bàn giao nào và
+        trigger đã bị gỡ: phiếu nằm ở Chờ xử lý cho tới khi CÓ NGƯỜI bấm
+        Hoàn thành. Ai đọc câu cũ rồi bỏ đi là hàng trả nằm ngoài sổ.
+      */}
+      <Card className="border-[#fdb022]/40 bg-[#fff7e6]">
         <CardContent className="flex items-start gap-3 p-3 text-sm">
-          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <div className="space-y-0.5 text-on-primary-fixed-variant">
-            <p className="font-semibold">Danh sách tra cứu</p>
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#b54708]" />
+          <div className="space-y-0.5 text-[#b54708]">
+            <p className="font-semibold">Phiếu Chờ xử lý cần có người bấm Hoàn thành</p>
             <p className="text-xs opacity-90">
-              Phiếu trả được tự động tạo từ bước Bàn giao lại sau khi lái xe
-              quay về (giao thất bại / khách nhận một phần). Trang này chỉ
-              dùng để tra cứu thông tin, không cần thao tác duyệt.
+              Hàng chỉ vào kho và công nợ chỉ giảm khi phiếu được hoàn thành — mở từng phiếu, chọn
+              kho nhận rồi bấm. Phiếu để quên ở Chờ xử lý là hàng trả nằm ngoài sổ.
             </p>
           </div>
         </CardContent>
@@ -191,6 +220,30 @@ export default function ReturnsPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-3">
+          {/* ⚠ TAB TRẠNG THÁI, KHÔNG PHẢI BỘ LỌC NÂNG CAO — đây là điều
+              hướng của một hàng đợi việc, nên nó đứng ngoài và luôn nhìn
+              thấy. "Tất cả" đứng CUỐI: nó là chỗ tra cứu, không phải chỗ
+              làm việc. */}
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0">
+            {RETURN_TABS.map((t) => {
+              const on = statusFilter === t.value
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setStatusFilter(t.value)}
+                  className={`h-[34px] shrink-0 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
+                    on
+                      ? "border-on-surface bg-on-surface text-surface"
+                      : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {filterActive("search") && (
               <div className="relative sm:max-w-xs">
@@ -218,13 +271,14 @@ export default function ReturnsPage() {
                 </SelectContent>
               </Select>
             )}
-            {(reasonFilter !== "all" || search.trim() !== "") && (
+            {(reasonFilter !== "all" || search.trim() !== "" || statusFilter !== "submitted") && (
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => {
                   setReasonFilter("all")
                   setSearch("")
+                  setStatusFilter("submitted")
                 }}
               >
                 Xoá lọc

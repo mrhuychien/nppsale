@@ -51,6 +51,22 @@ export function explainReturnError(message: string): string {
   if (m.includes("RETURN_NOT_CANCELLABLE")) {
     return m.replace(/^.*RETURN_NOT_CANCELLABLE:\s*/, "")
   }
+  if (m.includes("OVERPAID_AFTER_CREDIT")) {
+    /**
+     * ⚠ MÃ NÀY BẮN GIÁN TIẾP, TỪ `_wf2_recompute_receivable` — không nằm
+     * trong thân `complete_return` nên rất dễ quên. Nó xảy ra khi khách
+     * đã trả nhiều hơn số nợ SAU khi trừ khoản có: hệ thống không có
+     * khái niệm số dư có, nên hạ nợ xuống dưới số đã trả là làm biến mất
+     * tiền đang giữ của khách. Và nó ROLLBACK CẢ `complete_return`, kể
+     * cả phần nhập kho — hàng khách trả không vào tồn.
+     *
+     * ⚠ THÔNG ĐIỆP GỐC BẢO "huỷ phiếu thu trước", mà đó là việc người
+     * dùng THƯỜNG KHÔNG LÀM ĐƯỢC: nếu tiền vào qua màn thu tiền theo
+     * công nợ thì không có phiếu thu nào để huỷ. Nói đúng cả hai đường
+     * thay vì lặp lại một lời khuyên có thể bế tắc.
+     */
+    return `${m.replace(/^.*OVERPAID_AFTER_CREDIT:\s*/, "")}. Phải đảo bớt tiền đã thu trước: huỷ phiếu thu tương ứng, hoặc nhờ kế toán chỉnh khoản đã thu nếu tiền vào không qua phiếu thu.`
+  }
   if (m.includes("LOCKED_CREDIT_APPLIED")) {
     // Tiền đã đi rồi thì không đảo kho lặng lẽ được.
     return `${m.replace(/^.*LOCKED_CREDIT_APPLIED:\s*/, "")} — huỷ phiếu thu trước rồi mới huỷ phiếu trả.`

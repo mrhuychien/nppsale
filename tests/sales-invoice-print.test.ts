@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import {
+  grossUpLines,
+  type SalesInvoiceLine,
+} from "../src/components/printing/sales-invoice"
 
 /**
  * MẪU IN HOÁ ĐƠN BÁN HÀNG — dựng theo bản KiotViet chủ NPP gửi.
@@ -106,13 +110,101 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
 
 describe("Những chỗ KHÔNG được làm mất", () => {
   /**
-   * ⚠ MẪU GỬI KHÔNG CÓ DÒNG THUẾ, NHƯNG MÀN NÀY IN TỪ BẢNG `invoices` —
-   * chứng từ có `vat` và nối với hoá đơn điện tử MISA. Bỏ dòng thuế khỏi
-   * một chứng từ thuế là làm mất thông tin pháp lý. Nó hiện KHI CÓ.
+   * ⚠ CHỐT NÀY ĐÃ ĐẢO CHIỀU, CÓ CHỦ Ý — chủ NPP chốt "bỏ dòng thuế đi,
+   * in giống mẫu". Bản trước in dòng "Thuế GTGT" khi `vat > 0`.
    */
-  it("thuế GTGT vẫn in khi hoá đơn có thuế", () => {
-    expect(TPL).toContain("{vat > 0 && (")
-    expect(TPL).toContain("Thuế GTGT")
+  it("không còn dòng thuế nào trên tờ giấy", () => {
+    expect(TPL_CODE).not.toContain("Thuế GTGT")
+    // Ba dòng tổng, đúng như mẫu — không hơn.
+    const body = TPL.slice(TPL.indexOf("<tbody>"), TPL.indexOf("</tbody>"))
+    expect(body).not.toContain("vat")
+  })
+
+  /**
+   * ⚠ ĐÂY LÀ CHỐT GIỮ CHO TỜ GIẤY CỘNG ĐÚNG, và nó quan trọng hơn cả
+   * việc bỏ dòng thuế.
+   *
+   * `invoices.total = subtotal + vat`. Bỏ dòng thuế mà giữ nguyên các
+   * con số là in ra: hàng 600.000, chiết khấu 0, tổng cộng 660.000 —
+   * khách cộng tay thấy lệch 60.000 và không dòng nào giải thích. Nên
+   * mẫu quy mọi dòng về GIÁ ĐÃ GỒM THUẾ theo tỉ lệ `total / tổng dòng`.
+   */
+  it("cột tiền cộng KHỚP TUYỆT ĐỐI với tổng cộng", () => {
+    const line = (id: string, qty: number, net: number): SalesInvoiceLine => ({
+      id, name: id, unitName: "hộp", quantity: qty,
+      unitPrice: net / qty, discount: 0, lineTotal: net,
+    })
+
+    /**
+     * ⚠ PHẢI CÓ ÍT NHẤT HAI DÒNG. Hoá đơn một dòng thì dòng đó CHÍNH LÀ
+     * dòng cuối, nên nó nhận trọn phần chênh và cột tiền khớp kể cả khi
+     * phép quy đổi bị bỏ hẳn. Chốt một dòng là chốt không hỏi gì cả —
+     * đã thử phá và nó vẫn xanh.
+     */
+    const a = grossUpLines([line("a", 20, 600_000), line("b", 10, 400_000)], 1_100_000)
+    expect(a.goodsTotal).toBe(1_100_000)
+    expect(a.rows.reduce((s, r) => s + r.amount, 0)).toBe(1_100_000)
+    // Dòng KHÔNG PHẢI cuối cũng phải nở lên: 600.000 × 1,1.
+    expect(a.rows[0].amount).toBe(660_000)
+    expect(a.rows[0].price).toBe(33_000)
+    expect(a.rows[1].amount).toBe(440_000)
+
+    // Nhiều dòng + số lẻ: tổng vẫn phải khớp TUYỆT ĐỐI, không lệch 1 đồng.
+    const b = grossUpLines(
+      [line("x", 3, 100_000), line("y", 7, 33_333), line("z", 1, 1)],
+      146_668
+    )
+    expect(b.rows.reduce((s, r) => s + r.amount, 0)).toBe(146_668)
+
+    // Có chiết khấu hoá đơn: Tổng tiền hàng − CK = Tổng cộng.
+    const c = grossUpLines([line("a", 10, 500_000)], 450_000, 50_000)
+    expect(c.goodsTotal).toBe(500_000)
+    expect(c.goodsTotal - 50_000).toBe(450_000)
+  })
+
+  /**
+   * ⚠ HÀM TÍNH ĐÚNG MÀ JSX IN SỐ KHÁC THÌ VẪN LÀ TỜ GIẤY SAI. Chốt trên
+   * chỉ kiểm hàm thuần; chốt này kiểm đúng ô "Tổng tiền hàng" trên bảng
+   * thật sự in con số đã quy đổi.
+   */
+  it("ô Tổng tiền hàng in số đã quy đổi, không in tổng dòng thô", () => {
+    const i = TPL.indexOf("Tổng tiền hàng")
+    const row = TPL.slice(i, i + 400)
+    expect(row).toContain("{formatCurrency(goodsTotal)}")
+    expect(row).not.toContain("lineTotal")
+    expect(TPL).toContain("const { rows, goodsTotal } = grossUpLines(lines, total, invoiceDiscount)")
+  })
+
+  /**
+   * ⚠ MÀN IN PHẢI TRUYỀN `total`, KHÔNG PHẢI `subtotal`. Truyền nhầm là
+   * cả tờ giấy thiếu đúng phần thuế — mọi phép cộng vẫn khớp nhau nên
+   * không chốt nào khác bắt được, chỉ có khách phát hiện.
+   */
+  it("màn in truyền TỔNG CỘNG đã gồm thuế xuống mẫu", () => {
+    expect(PAGE).toContain("total={Number(invoice.total) || 0}")
+    expect(PAGE).not.toContain("total={Number(invoice.subtotal)")
+  })
+
+  /** Hoá đơn không thuế: không dòng nào được đổi một đồng. */
+  it("hoá đơn không thuế in ra y hệt số đã lưu", () => {
+    const rows = grossUpLines(
+      [
+        { id: "a", name: "A", unitName: "hộp", quantity: 20, unitPrice: 30_000, discount: 0, lineTotal: 600_000 },
+        { id: "b", name: "B", unitName: "lon", quantity: 5, unitPrice: 8_000, discount: 0, lineTotal: 40_000 },
+      ],
+      640_000
+    )
+    expect(rows.rows[0].amount).toBe(600_000)
+    expect(rows.rows[0].price).toBe(30_000)
+    expect(rows.rows[1].amount).toBe(40_000)
+    expect(rows.rows[1].price).toBe(8_000)
+  })
+
+  /** Không dòng nào thì không nổ, và không bịa ra tiền. */
+  it("bảng rỗng không làm hàm nổ", () => {
+    const r = grossUpLines([], 0)
+    expect(r.rows).toEqual([])
+    expect(r.goodsTotal).toBe(0)
   })
 
   /**

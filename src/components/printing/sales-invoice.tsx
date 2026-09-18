@@ -9,12 +9,21 @@
  *   · ba dòng tổng nằm TRONG bảng, không phải một khối riêng bên phải;
  *   · ba ô ký: Người nhận hàng / Kế toán / Người bán (mẫu cũ chỉ hai).
  *
- * ⚠ DÒNG THUẾ GTGT ĐƯỢC GIỮ LẠI, dù mẫu gửi không có nó.
- *   Mẫu KiotViet là hoá đơn bán hàng thường; còn màn này in từ bảng
- *   `invoices` — chứng từ có `vat` và nối với hoá đơn điện tử MISA. Bỏ
- *   dòng thuế khỏi một chứng từ thuế là làm mất thông tin pháp lý, nên
- *   nó chỉ HIỆN KHI CÓ (`vat > 0`) và nằm đúng grammar dòng của mẫu.
- *   Hoá đơn không thuế thì bảng trông y hệt file gửi.
+ * ⚠ KHÔNG CÓ DÒNG THUẾ — chủ NPP chốt: in giống mẫu.
+ *
+ *   Nhưng `invoices.total = subtotal + vat`. Bỏ dòng thuế mà giữ nguyên
+ *   các con số là in ra một tờ giấy KHÔNG CỘNG RA TỔNG: hàng 600.000,
+ *   chiết khấu 0, tổng cộng 660.000. Khách cộng tay sẽ thấy lệch 60.000
+ *   và không có dòng nào giải thích.
+ *
+ *   Nên khi hoá đơn CÓ thuế, tờ giấy in theo GIÁ ĐÃ GỒM THUẾ — đúng
+ *   cách hoá đơn bán hàng KiotViet vẫn làm: mỗi dòng nhân lên theo tỉ lệ
+ *   `total / subtotal`, dòng CUỐI nhận phần lẻ để cột tiền cộng KHỚP
+ *   TUYỆT ĐỐI với "Tổng cộng". Không có con số nào bịa ra: chỉ dùng
+ *   `subtotal`, `vat`, `total` và `line_total` đã lưu.
+ *
+ *   Hoá đơn không thuế (`vat = 0`) thì tỉ lệ bằng 1 — không dòng nào đổi
+ *   một đồng, và bảng in ra y hệt file mẫu.
  *
  * ⚠ IN Ở KHỔ A4. Mặc định của kho này là A5 (phiếu giao cho người đi
  *   giao), nhưng hoá đơn bảy cột ở A5 thì chữ còn 8pt và cột tiền dính
@@ -47,8 +56,6 @@ export interface SalesInvoiceProps {
   salesPersonName?: string | null
   salesPersonPhone?: string | null
   lines: SalesInvoiceLine[]
-  subtotal: number
-  vat: number
   /** Chiết khấu trên tổng hoá đơn (khác với CK từng dòng). */
   invoiceDiscount?: number
   total: number
@@ -70,16 +77,62 @@ function longDate(d: Date | null): string {
   return `Ngày ${p(x.getDate())} tháng ${p(x.getMonth() + 1)} năm ${x.getFullYear()}`
 }
 
+/** Một dòng đã quy về giá gồm thuế, kèm đơn giá tính ngược lại. */
+export interface GrossedLine extends SalesInvoiceLine {
+  /** Thành tiền in ra cột cuối. */
+  amount: number
+  /** Đơn giá in ra — `amount / quantity`, để khách nhân tay ra đúng. */
+  price: number
+}
+
+/**
+ * Quy mọi dòng về GIÁ ĐÃ GỒM THUẾ để ba dòng tổng cộng khớp nhau.
+ *
+ * ⚠ DÒNG CUỐI NHẬN PHẦN LẺ. Nhân từng dòng rồi làm tròn thì tổng các
+ * dòng lệch "Tổng cộng" vài đồng — trên giấy đó là LỖI CỘNG SAI, không
+ * ai đọc là lỗi làm tròn. Dồn chênh vào dòng cuối để cột tiền khớp
+ * tuyệt đối.
+ *
+ * ⚠ Không bịa con số nào: chỉ dùng `total`, `invoiceDiscount` và
+ * `lineTotal` đã lưu. Hoá đơn không thuế thì tỉ lệ bằng 1 — không dòng
+ * nào đổi một đồng.
+ */
+export function grossUpLines(
+  lines: SalesInvoiceLine[],
+  total: number,
+  invoiceDiscount = 0
+): { rows: GrossedLine[]; goodsTotal: number } {
+  const goodsTotal = Math.max(0, Number(total || 0) + Number(invoiceDiscount || 0))
+  const netSum = lines.reduce((s, l) => s + Number(l.lineTotal || 0), 0)
+  const ratio = netSum > 0 ? goodsTotal / netSum : 1
+
+  const amounts = lines.map((l, i) =>
+    i === lines.length - 1 ? 0 : Math.round(Number(l.lineTotal || 0) * ratio)
+  )
+  if (amounts.length > 0) {
+    amounts[amounts.length - 1] = goodsTotal - amounts.reduce((s, a) => s + a, 0)
+  }
+
+  const rows = lines.map((l, i) => {
+    const amount = amounts[i]
+    const qty = Number(l.quantity) || 0
+    return { ...l, amount, price: qty > 0 ? amount / qty : Number(l.unitPrice || 0) }
+  })
+  return { rows, goodsTotal }
+}
+
 const CELL = "border border-black px-1.5 py-1 align-top"
 
 export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
-    salesPersonName, salesPersonPhone, lines, subtotal, vat, invoiceDiscount = 0,
+    salesPersonName, salesPersonPhone, lines, invoiceDiscount = 0,
     total, footerNote,
   } = props
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
+
+  const { rows, goodsTotal } = grossUpLines(lines, total, invoiceDiscount)
 
   return (
     <div className="a4-doc mx-auto max-w-3xl bg-white text-black print:max-w-none">
@@ -131,7 +184,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               </td>
             </tr>
           ) : (
-            lines.map((l, i) => (
+            rows.map((l, i) => (
               <tr key={l.id}>
                 <td className={`${CELL} text-center`}>{i + 1}</td>
                 <td className={CELL}>
@@ -140,9 +193,9 @@ export function SalesInvoice(props: SalesInvoiceProps) {
                 </td>
                 <td className={`${CELL} text-center`}>{l.unitName}</td>
                 <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
-                <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.unitPrice)}</td>
+                <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.price)}</td>
                 <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.discount)}</td>
-                <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.lineTotal)}</td>
+                <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.amount)}</td>
               </tr>
             ))
           )}
@@ -153,19 +206,12 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             <td className={`${CELL} text-center tabular-nums`}>{qtyTotal}</td>
             <td className={CELL}></td>
             <td className={CELL}></td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(subtotal)}</td>
+            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(goodsTotal)}</td>
           </tr>
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={6}>Chiết khấu hóa đơn ( )</td>
             <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(invoiceDiscount)}</td>
           </tr>
-          {/* ⚠ Chỉ hiện khi CÓ thuế — xem khối chú thích đầu tệp. */}
-          {vat > 0 && (
-            <tr className="font-bold">
-              <td className={`${CELL} text-center`} colSpan={6}>Thuế GTGT</td>
-              <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(vat)}</td>
-            </tr>
-          )}
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={6}>Tổng cộng</td>
             <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(total)}</td>

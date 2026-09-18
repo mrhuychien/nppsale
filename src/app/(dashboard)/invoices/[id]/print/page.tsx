@@ -158,8 +158,9 @@ export default function InvoicePrintPage() {
           salesPersonName={order?.sales_user?.full_name}
           salesPersonPhone={order?.sales_user?.phone}
           lines={printLines}
-          subtotal={Number(invoice.subtotal) || 0}
-          vat={Number(invoice.vat) || 0}
+          /* ⚠ Chỉ truyền `total`. Mẫu không có dòng thuế (chủ NPP chốt),
+             và `total` đã gồm thuế — mẫu in tự quy các dòng về giá đã
+             gồm thuế để cột tiền cộng khớp. Xem `sales-invoice.tsx`. */
           total={Number(invoice.total) || 0}
         />
       </div>

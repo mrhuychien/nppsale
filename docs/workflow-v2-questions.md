@@ -681,12 +681,30 @@ giữa, khối khách hàng bốn nhãn, bảng BẢY cột có kẻ đủ (thê
 ba dòng tổng nằm TRONG bảng, dòng "Bằng chữ", và BA ô ký (bản cũ chỉ
 hai).
 
-⚠ **Một chỗ cố ý KHÔNG giống mẫu: dòng thuế GTGT được giữ.** Mẫu
-KiotViet là hoá đơn bán hàng thường, không có thuế. Nhưng màn này in từ
-bảng `invoices` — chứng từ có cột `vat` và nối với hoá đơn điện tử MISA.
-Bỏ dòng thuế khỏi một chứng từ thuế là làm mất thông tin pháp lý, nên nó
-chỉ HIỆN KHI CÓ (`vat > 0`). Hoá đơn không thuế in ra trông y hệt file
-gửi. Chủ nhà muốn bỏ hẳn thì nói, đó là quyết định nghiệp vụ.
+⚠ Tôi có nêu một chỗ cố ý khác mẫu: giữ dòng thuế GTGT.
+**→ Chủ nhà chốt: bỏ dòng thuế, in giống mẫu.** Đã bỏ.
+
+⚠ **NHƯNG BỎ DÒNG THUẾ LÀM TỜ GIẤY HẾT CỘNG ĐÚNG**, nên phải xử lý thêm
+một bước — đây là phần không nằm trong yêu cầu nhưng bắt buộc phải có.
+`invoices.total = subtotal + vat`. Giữ nguyên các con số mà bỏ dòng thuế
+là in ra: hàng 600.000, chiết khấu 0, **tổng cộng 660.000**. Khách cộng
+tay thấy lệch 60.000 và không dòng nào giải thích.
+
+Cách xử lý: khi hoá đơn CÓ thuế, tờ giấy in theo **giá đã gồm thuế** —
+đúng cách hoá đơn bán hàng KiotViet vẫn làm. Mỗi dòng nhân theo tỉ lệ
+`total / tổng dòng`, dòng CUỐI nhận phần lẻ để cột tiền khớp TUYỆT ĐỐI
+với "Tổng cộng". Đơn giá in ra = thành tiền ÷ SL nên khách nhân tay bằng
+máy tính vẫn ra đúng con số trên giấy. Không bịa con số nào — chỉ dùng
+`total`, `invoiceDiscount` và `line_total` đã lưu.
+
+⚠ Hoá đơn **không thuế** (`vat = 0`) thì tỉ lệ bằng 1: không dòng nào
+đổi một đồng, và bảng in ra y hệt file mẫu. Với phần lớn đơn của NPP thì
+đây là trường hợp thường gặp, nên thực tế không có gì đổi.
+
+⚠ **Hệ quả cần biết:** đơn giá in trên hoá đơn có thuế sẽ CAO HƠN đơn
+giá ghi trên đơn hàng (30.000 → 33.000), vì một bên chưa thuế, một bên
+đã gồm thuế. Đó là hệ quả trực tiếp của việc bỏ dòng thuế, không phải
+lỗi tính giá.
 
 ⚠ **Khổ giấy:** mặc định của kho này là A5 (phiếu giao cho người đi
 giao). Hoá đơn bảy cột ở A5 thì chữ rơi xuống 8pt và hai cột tiền dính

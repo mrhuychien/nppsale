@@ -1,6 +1,6 @@
 # Workflow v2 — Checklist nghiệm thu tay trên staging
 
-Chạy sau khi đã `supabase db push` ba migration 118 · 119 · 120 lên
+Chạy sau khi đã `supabase db push` bốn migration 118 · 119 · 120 · 121 lên
 **staging** (KHÔNG chạy trên production cho tới khi checklist này xanh).
 
 Mục đích: bảy RPC của workflow v2 chỉ đúng khi chạy thật. Bộ test trong
@@ -387,6 +387,49 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
         trong cả đợt có bút toán hai vế; sai ở đây lệch sổ mà vẫn "trông
         hợp lý".
 
+- [ ] **6.11 Tiền mặt trên báo cáo KHÔNG đếm phần cấn trừ — mig 121.**
+      Sau khi đã có ít nhất một phiếu thu cấn trừ phiếu trả (mục 6.3) và
+      một phiếu rút số dư có (mục 6.8):
+      · Mở `/reports/finance` xem **Dòng tiền** và **Bảng cân đối**.
+      · Kiểm bằng tay, hai số phải BẰNG NHAU:
+
+        ```sql
+        -- Số hệ thống ĐANG hiện (sau mig 121)
+        SELECT * FROM finance_cash_flow('<từ ngày>', '<đến ngày>');
+
+        -- Tiền thật khách đưa trong kỳ
+        SELECT COALESCE(sum(p.amount), 0)
+        FROM payments p JOIN receivables r ON r.id = p.receivable_id
+        WHERE r.org_id = '<org>'
+          AND p.collected_at >= '<từ ngày>' AND p.collected_at < '<đến ngày>'::date + 1
+          AND COALESCE(p.method,'') NOT IN ('return_credit','credit_applied');
+        ```
+      · ⚠ **CHƯA CHẠY 121 THÌ SỐ ĐẦU SẼ CAO HƠN**, đúng bằng tổng các
+        dòng `return_credit`. Mỗi đồng hàng trả được cấn trừ hiện ra như
+        một đồng tiền mặt thu được — không lỗi nào bắn ra, chỉ có tiền
+        mặt trên sổ cao hơn két thật.
+      · Kiểm luôn cột **Hình thức** ở `/receivables/[id]`: dòng cấn trừ
+        phải hiện **"Cấn trừ phiếu trả"** / **"Rút số dư có"**, không
+        phải chữ tiếng Anh.
+
+- [ ] **6.12 Ô chọn hình thức thu vẫn HẸP.** Mở `/finance/cash-receipts/new`
+      và `/receivables/collect`, bung ô **Hình thức**.
+      · Phải thấy ĐÚNG ba lựa chọn: Tiền mặt / Chuyển khoản / Ví điện tử.
+      · ⚠ Nếu thấy "Cấn trừ phiếu trả" trong ô chọn thì kế toán lập được
+        một phiếu thu cấn trừ RỖNG — không gắn phiếu trả nào, không có vế
+        đối ứng, công nợ giảm mà không có gì đỡ lưng.
+
+- [ ] **6.13 Nhập công nợ đầu kỳ cho khách đang DƯ — Q13.**
+      `/finance/opening-balances`, tải file có một dòng hạ số nợ xuống
+      THẤP HƠN số đã thu của khách đó.
+      · Phải thấy: dòng đó **KHÔNG phải lỗi** — nó ghi được, và bảng xem
+        trước hiện cảnh báo cam nêu rõ **số dư sẽ sinh ra là bao nhiêu**,
+        kèm một dòng đếm "N dòng sẽ tạo SỐ DƯ CÓ cho khách" phía trên.
+      · ⚠ Trước Q13 đây là lỗi cứng: người dùng không nhập lại được chính
+        con số hệ thống vừa sinh ra.
+      · ⚠ Nhưng XOÁ một khoản đã thu một phần thì VẪN phải là lỗi — xoá
+        dòng đi là mất dấu số tiền đã nhận.
+
 - [ ] **6.10 Rút quá tay bị chặn.** Thử gõ số lớn hơn số dư, rồi thử gõ
       số lớn hơn phần còn phải trả.
       · Phải thấy: chặn ngay ở màn (chữ đỏ, nút mờ), hai câu KHÁC NHAU.
@@ -460,7 +503,24 @@ khi thiếu: nó rẽ theo `organizations.allow_oversell`.
         vào `completed` **vẫn chạy thành công** mà hàng không vào kho.
         Cơ sở dữ liệu không cãi một câu nào.
 
-- [ ] **9.4 Trang Trợ giúp dạy đúng quy trình mới.** Mở `/help` bằng từng
+- [ ] **9.4 Màn Ngưỡng cảnh báo nói đúng việc nó làm.**
+      `/settings/approval-rules` (menu: Cài đặt → **Ngưỡng cảnh báo đơn**).
+      · Phải thấy: không còn chữ "duyệt" ở tiêu đề, nhãn ô, hay câu mô tả.
+      · Đặt ngưỡng thấp rồi tạo một đơn vượt ngưỡng: đơn vẫn về
+        **Phiếu tạm** bình thường, và mang câu nhắc **"soát kỹ trước khi
+        Xuất hàng"** — KHÔNG phải "cần Manager duyệt".
+      · ⚠ Màn này **không bị khoá** như ba màn luồng cũ, và đó là cố ý:
+        ngưỡng công nợ và hạn mức tín dụng vẫn còn nguyên giá trị.
+
+- [ ] **9.5 Tài xế đăng nhập không vào ngõ cụt.** Đăng nhập bằng tài
+      khoản `driver`.
+      · Phải thấy menu có: Trang chủ, Đơn hàng, Công nợ, Thu tiền, Phiếu
+        thu, Trợ giúp — sáu bảy mục, không phải màn trắng.
+      · ⚠ `/deliveries` đã ẩn với mọi vai. Nếu tài xế đăng nhập mà không
+        còn màn việc nào thì phải báo lại — đó là quyết định nghiệp vụ,
+        không phải lỗi kỹ thuật.
+
+- [ ] **9.6 Trang Trợ giúp dạy đúng quy trình mới.** Mở `/help` bằng từng
       vai.
       · Phải thấy: không còn "Đã duyệt / Đang lấy / Đang giao", không còn
         ô module Giao hàng, và có câu hỏi thường gặp trả lời thẳng vì sao

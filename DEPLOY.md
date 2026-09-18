@@ -46,13 +46,14 @@ Cai moi tren mot database TRONG chi can **1 file gop** thay vi chay 87 file:
 > de cap nhat.
 
 **Cach thu cong (neu muon chay tung buoc):** chay lan luot cac file trong
-`supabase/migrations/` theo dung thu tu so (001 → 002 → ... → 120). Phai
+`supabase/migrations/` theo dung thu tu so (001 → 002 → ... → 121). Phai
 dung thu tu vi cac file sau phu thuoc file truoc. Tren production, BO QUA
 `003_seed.sql` (du lieu demo).
 
 > **Luu y**: Chi chay `schema_full.sql` tren database TRONG (cai moi). Voi
 > database da co san, chi chay rieng migration MOI (vd `118_delete_order_
-> cleans_returns.sql` roi `119_workflow_v2.sql` roi `120_workflow_v2_rpcs.sql`)
+> cleans_returns.sql` roi `119_workflow_v2.sql` roi `120_workflow_v2_rpcs.sql` roi
+> `121_credit_balance_aggregates.sql`)
 > — dung chay lai ca file gop vi cac
 > lenh CREATE TABLE dau tien se bao loi "already exists".
 

@@ -165,6 +165,15 @@ export type PlanRow = {
   before?: { amount: number; dueDate: string | null }
   /** Lý do lỗi hoặc lý do bỏ qua. */
   message?: string
+  /**
+   * Dòng này GHI ĐƯỢC nhưng hệ quả bất thường — người xem phải biết
+   * trước khi bấm.
+   *
+   * ⚠ KHÁC HẲN `message` TRÊN DÒNG `error`. Lỗi là "không ghi"; cảnh báo
+   * là "ghi, và đây là thứ bạn sắp tạo ra". Nhập chung một kênh thì hoặc
+   * là chặn oan một việc hợp lệ, hoặc là để nó trôi qua không ai đọc.
+   */
+  warning?: string
 }
 
 export type Plan = {
@@ -329,11 +338,28 @@ export function buildPlan(
     }
 
     // --- Cập nhật / không đổi --------------------------------------------
-    // Không cho hạ số nợ xuống dưới số ĐÃ THU: sổ sẽ thành "trả thừa".
-    if (amt.value < current.paid) {
-      out.push(err(`số mới ${amt.value} nhỏ hơn số đã thu ${current.paid}`, label))
-      continue
-    }
+    /**
+     * Hạ số nợ xuống DƯỚI số đã thu: trước Q11 đây là LỖI, nay là CẢNH
+     * BÁO.
+     *
+     * Lý do đổi: `receivables.paid > amount` nay hợp lệ — phần chênh là
+     * SỐ DƯ CÓ của khách (xem `src/lib/receivables/credit.ts`). Chặn
+     * cứng ở đây nghĩa là người dùng không nhập lại được chính con số hệ
+     * thống vừa sinh ra: đối chiếu đầu kỳ, gặp một khách đang dư, và bị
+     * từ chối với một câu nói rằng trạng thái đó không tồn tại.
+     *
+     * ⚠ NHƯNG KHÔNG ĐỂ NÓ TRÔI QUA IM LẶNG. Đây là nhập HÀNG LOẠT từ
+     * file: một ô gõ nhầm biến khoản nợ của khách thành khoản NPP nợ
+     * khách, và không có gì trên màn nói điều đó vừa xảy ra. Nên nó
+     * xuống kênh `warning` — ghi được, hiện rõ ở bảng xem trước, đếm
+     * riêng trên thẻ tổng kết.
+     */
+    const overpayWarning =
+      amt.value < current.paid
+        ? `số mới ${amt.value} nhỏ hơn số đã thu ${current.paid} — sẽ thành số dư có ${
+            current.paid - amt.value
+          } của khách`
+        : undefined
     const same =
       current.amount === amt.value &&
       (current.dueDate ?? null) === (due.value ?? null) &&
@@ -348,6 +374,7 @@ export function buildPlan(
       dueDate: due.value,
       note,
       before: { amount: current.amount, dueDate: current.dueDate },
+      warning: overpayWarning,
     })
   }
 

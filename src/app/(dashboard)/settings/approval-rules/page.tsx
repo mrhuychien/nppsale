@@ -19,6 +19,23 @@ import { DEFAULT_APPROVAL_RULES } from "@/lib/approval"
 import { Save, RotateCcw, Info } from "lucide-react"
 import type { ApprovalRules } from "@/types"
 
+/**
+ * ⚠ MÀN NÀY KHÔNG CÒN CẤU HÌNH VIỆC DUYỆT — vì workflow v2 không còn
+ * bước duyệt. Đơn đi thẳng Nháp → Phiếu tạm → Hoàn thành, và
+ * `decideStatus` (lib/sell/submit.ts) đưa mọi đơn về `submitted` bất kể
+ * bộ ngưỡng này nói gì.
+ *
+ * Thứ nó còn điều khiển là CÂU CẢNH BÁO ghi vào `approval_reason`, hiện
+ * trên màn đơn để nhà phân phối đọc trước khi bấm Xuất hàng. Các ngưỡng
+ * công nợ và hạn mức tín dụng vì thế vẫn còn nguyên giá trị — đó là lý
+ * do màn này KHÔNG bị khoá như ba màn luồng cũ ở P7.
+ *
+ * ⚠ GIỮ NGUYÊN TÊN CỘT (`auto_approve_max`, `manager_approve_max`).
+ * Đổi tên cột là một migration đụng cả `lib/approval.ts`,
+ * `lib/sell/approval-context.ts` và dữ liệu đang có, để đổi lấy đúng một
+ * thứ: tên đẹp hơn. Nhãn trên màn đã nói đúng việc; đó là chỗ người dùng
+ * đọc.
+ */
 export default function ApprovalRulesPage() {
   const { loading: authLoading } = useRoleGuard("settings")
   const { user: authUser } = useAuth()
@@ -128,8 +145,8 @@ export default function ApprovalRulesPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Duyệt đơn tự động"
-        description="Cấu hình ngưỡng để đơn hàng được duyệt tự động hoặc chuyển sang chờ duyệt"
+        title="Ngưỡng cảnh báo đơn hàng"
+        description="Đơn vượt ngưỡng sẽ mang câu cảnh báo, hiện trên màn đơn để soát trước khi Xuất hàng"
         backHref="/settings"
       >
         {canEdit && (
@@ -147,7 +164,7 @@ export default function ApprovalRulesPage() {
       {!canEdit && (
         <div className="rounded-xl bg-[#fff4ed] border border-[#fdb022]/40 p-3 text-sm text-[#b54708] flex items-start gap-2">
           <Info className="h-4 w-4 shrink-0 mt-0.5" />
-          Chỉ Owner/Manager mới có thể chỉnh quy tắc duyệt. Bạn có thể xem cấu hình hiện tại.
+          Chỉ Owner/Manager mới chỉnh được ngưỡng cảnh báo. Bạn có thể xem cấu hình hiện tại.
         </div>
       )}
 
@@ -159,9 +176,9 @@ export default function ApprovalRulesPage() {
         <CardContent>
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-semibold">Bật quy tắc duyệt tự động</p>
+              <p className="font-semibold">Bật bộ ngưỡng cảnh báo</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Khi tắt, mọi đơn đều phải duyệt thủ công
+                Khi tắt, mọi đơn đều mang câu nhắc NPP tự soát
               </p>
             </div>
             <Switch
@@ -180,7 +197,7 @@ export default function ApprovalRulesPage() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label>Duyệt tự động khi đơn &lt;</Label>
+            <Label>Không cảnh báo khi đơn &lt;</Label>
             <Input
               type="number"
               value={rules.auto_approve_max || ""}
@@ -192,7 +209,7 @@ export default function ApprovalRulesPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Manager được duyệt tới</Label>
+            <Label>Ngưỡng cảnh báo cao</Label>
             <Input
               type="number"
               value={rules.manager_approve_max || ""}
@@ -200,7 +217,7 @@ export default function ApprovalRulesPage() {
               disabled={!canEdit}
             />
             <p className="text-xs text-muted-foreground">
-              Đơn &gt; {formatCurrency(rules.manager_approve_max)} cần Owner duyệt
+              Đơn &gt; {formatCurrency(rules.manager_approve_max)} được nhắc riêng cho chủ NPP
             </p>
           </div>
         </CardContent>

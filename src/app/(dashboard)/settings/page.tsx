@@ -29,8 +29,8 @@ export default function SettingsPage() {
         </Link>
         <Link href="/settings/approval-rules">
           <Card className="hover:border-primary transition-colors cursor-pointer h-full">
-            <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Duyệt đơn tự động</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Ngưỡng giá trị đơn, công nợ KH, công nợ NV, hạn mức</p></CardContent>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Ngưỡng cảnh báo đơn</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Ngưỡng giá trị đơn, công nợ KH, công nợ NV, hạn mức — sinh câu nhắc để soát trước khi Xuất hàng</p></CardContent>
           </Card>
         </Link>
         <Link href="/settings/org">

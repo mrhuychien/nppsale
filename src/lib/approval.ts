@@ -61,8 +61,23 @@ export const DEFAULT_APPROVAL_RULES: Omit<ApprovalRules, "id" | "org_id" | "crea
 }
 
 /**
- * Decide whether a sales order can be auto-approved given the org's
- * configured rules and contextual state.
+ * Soi một đơn qua bộ ngưỡng của NPP và trả về những điểm đáng chú ý.
+ *
+ * ⚠ TÊN HÀM CÒN CHỮ "APPROVAL", NHƯNG NÓ KHÔNG CÒN DUYỆT GÌ CẢ.
+ * Workflow v2 bỏ bước duyệt: đơn đi thẳng Nháp → Phiếu tạm → Hoàn thành
+ * và `decideStatus` (lib/sell/submit.ts) đưa mọi đơn về `submitted` bất
+ * kể kết quả ở đây. Thứ hàm này sinh ra nay là CÂU CẢNH BÁO ghi vào
+ * `approval_reason`, hiện trên màn đơn để nhà phân phối đọc TRƯỚC khi
+ * bấm Xuất hàng.
+ *
+ * Vì vậy mọi câu trả về phải nói "soát kỹ", KHÔNG được nói "cần Manager
+ * duyệt" — chỉ người đi tìm một cái nút không tồn tại mới làm theo câu
+ * đó. `expectedApprover` giữ lại cho tương thích kiểu, hiện không màn
+ * nào đọc.
+ *
+ * Các ngưỡng công nợ / hạn mức tín dụng thì VẪN CÒN NGUYÊN GIÁ TRỊ: đó
+ * là lý do màn `/settings/approval-rules` không bị khoá như ba màn luồng
+ * cũ ở P7.
  */
 export function evaluateApproval(
   rules: ApprovalRules | null,
@@ -73,8 +88,8 @@ export function evaluateApproval(
   if (!r.is_active) {
     return {
       autoApprove: false,
-      reason: "Quy tắc duyệt đang tắt — cần duyệt thủ công",
-      reasons: ["Quy tắc duyệt đang tắt — cần duyệt thủ công"],
+      reason: "Quy tắc cảnh báo đang tắt — NPP tự soát trước khi Xuất hàng",
+      reasons: ["Quy tắc cảnh báo đang tắt — NPP tự soát trước khi Xuất hàng"],
       expectedApprover: "manager",
     }
   }
@@ -86,12 +101,12 @@ export function evaluateApproval(
   if (ctx.orderTotal >= r.auto_approve_max) {
     if (ctx.orderTotal < r.manager_approve_max) {
       reasons.push(
-        `Đơn ${formatCurrency(ctx.orderTotal)} vượt ngưỡng tự động duyệt (${formatCurrency(r.auto_approve_max)}) — cần Manager duyệt`
+        `Đơn ${formatCurrency(ctx.orderTotal)} vượt ngưỡng cảnh báo (${formatCurrency(r.auto_approve_max)}) — soát kỹ trước khi Xuất hàng`
       )
       expectedApprover = "manager"
     } else {
       reasons.push(
-        `Đơn ${formatCurrency(ctx.orderTotal)} vượt ngưỡng Manager duyệt (${formatCurrency(r.manager_approve_max)}) — cần Owner duyệt`
+        `Đơn ${formatCurrency(ctx.orderTotal)} vượt ngưỡng cảnh báo cao (${formatCurrency(r.manager_approve_max)}) — chủ NPP nên xem trước khi Xuất hàng`
       )
       expectedApprover = "owner"
     }
@@ -145,12 +160,12 @@ export function evaluateApproval(
     if (discountPct >= DEEP_DISCOUNT_OWNER_PCT) {
       reasons.push(
         `Chiết khấu ${discountPct.toFixed(0)}% (${formatCurrency(discountAmount)}) ` +
-        `trên hàng trị giá ${formatCurrency(gross)} — cần Owner duyệt`
+        `trên hàng trị giá ${formatCurrency(gross)} — chủ NPP nên xem trước khi Xuất hàng`
       )
       expectedApprover = "owner"
     } else if (discountPct >= DEEP_DISCOUNT_MANAGER_PCT) {
       reasons.push(
-        `Chiết khấu ${discountPct.toFixed(0)}% trên hàng trị giá ${formatCurrency(gross)} — cần Manager duyệt`
+        `Chiết khấu ${discountPct.toFixed(0)}% trên hàng trị giá ${formatCurrency(gross)} — soát kỹ trước khi Xuất hàng`
       )
       if (!expectedApprover) expectedApprover = "manager"
     }

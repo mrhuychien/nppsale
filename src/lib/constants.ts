@@ -31,11 +31,53 @@ export const PAYMENT_TERMS = [
   { value: "NET60", label: "Công nợ 60 ngày" },
 ] as const
 
+/**
+ * Hình thức thu tiền NGƯỜI DÙNG CHỌN ĐƯỢC.
+ *
+ * ⚠ ĐỪNG THÊM `return_credit` / `credit_applied` VÀO ĐÂY. Hai giá trị đó
+ * do RPC tự ghi khi cấn trừ phiếu trả hoặc rút số dư có; cho chúng lên ô
+ * chọn là mời kế toán lập một phiếu thu "cấn trừ" rỗng, không gắn phiếu
+ * trả nào và không có vế đối ứng — công nợ giảm mà không có gì đỡ lưng.
+ * Danh sách NHÃN nằm ở `PAYMENT_METHOD_LABEL` bên dưới, rộng hơn danh
+ * sách này, và đó là cố ý.
+ */
 export const PAYMENT_METHODS = [
   { value: "cash", label: "Tiền mặt" },
   { value: "transfer", label: "Chuyển khoản" },
   { value: "ewallet", label: "Ví điện tử" },
 ] as const
+
+/**
+ * Nhãn của MỌI giá trị `payments.method` có thể đọc lên từ CSDL.
+ *
+ * ⚠ ĐỌC RỘNG HƠN GHI. Bốn màn từng tự khai bảng nhãn ba dòng
+ * (cash/transfer/ewallet) rồi `|| p.method` khi tra trượt. Từ workflow
+ * v2, `chk_payments_method_v2` cho thêm hai giá trị mà RPC ghi ra, nên
+ * người dùng thấy đúng chữ `return_credit` in giữa bảng công nợ — nhìn
+ * như dữ liệu hỏng, trong khi dòng đó hoàn toàn bình thường.
+ *
+ * ⚠ MỘT CHỖ KHAI, MỌI MÀN DÙNG. Bốn bản sao là bốn chỗ phải nhớ sửa,
+ * và lần này đã quên cả bốn.
+ */
+export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: "Tiền mặt",
+  transfer: "Chuyển khoản",
+  ewallet: "Ví điện tử",
+  // Hai dòng dưới KHÔNG phải tiền vào két — xem migration 121.
+  return_credit: "Cấn trừ phiếu trả",
+  credit_applied: "Rút số dư có",
+}
+
+/**
+ * Nhãn của một giá trị `method`, giữ nguyên chuỗi gốc nếu chưa biết.
+ *
+ * ⚠ KHÔNG ĐOÁN, KHÔNG ĐỂ TRỐNG. Giá trị lạ trả về nguyên văn để người
+ * xem còn tra được; để trống là xoá thông tin khỏi màn.
+ */
+export function labelPaymentMethod(method: string | null | undefined): string {
+  const m = method || ""
+  return PAYMENT_METHOD_LABEL[m] || m || "—"
+}
 
 export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   draft: { label: "Nháp", variant: "secondary" },

@@ -16,18 +16,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard, FileText, Users } from "lucide-react"
 import type { User, Receivable, Payment, Customer } from "@/types"
+import { PAYMENT_METHOD_LABEL } from "@/lib/constants"
 
 type PaymentWithJoin = Payment & {
   receivable?: Receivable & {
     order?: { id: string; order_code: string }
     customer?: { store_name: string }
   }
-}
-
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cash: "Tiền mặt",
-  transfer: "Chuyển khoản",
-  ewallet: "Ví điện tử",
 }
 
 const ROLE_LABELS: Record<string, string> = {

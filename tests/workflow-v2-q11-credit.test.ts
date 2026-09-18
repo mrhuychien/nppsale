@@ -14,6 +14,7 @@ import {
   explainReceiptError,
   createCashReceipt,
 } from "../src/lib/finance/cash-receipt"
+import { labelPaymentMethod } from "../src/lib/constants"
 
 /**
  * Q11 — `receivables.paid > amount` LÀ HỢP LỆ.
@@ -40,6 +41,7 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const MIG120 = read("supabase/migrations/120_workflow_v2_rpcs.sql")
 const MIG119 = read("supabase/migrations/119_workflow_v2.sql")
 const AGG = read("supabase/migrations/093_aggregate_functions.sql")
+const MIG121 = read("supabase/migrations/121_credit_balance_aggregates.sql")
 const NEW_RECEIPT = read("src/app/(dashboard)/finance/cash-receipts/new/page.tsx")
 
 describe("Số dư có: một chỗ khai, mọi màn dùng", () => {
@@ -211,35 +213,113 @@ describe("RPC: rút số dư ghi thành bút toán HAI VẾ", () => {
   })
 })
 
-describe("Tổng công nợ không khai cao vì phần bị kẹp", () => {
-  /**
-   * ⚠ HAI LỚP CHE CHỒNG LÊN NHAU. `receivables_by_rep` vừa lọc
-   * `status <> 'paid'` (loại dòng dư khỏi tập) vừa cộng `amount - paid`
-   * (âm nếu lọt). Không kẹp thì một dòng dư lọt lưới kéo tổng xuống âm
-   * tuỳ tiện; kẹp rồi thì tổng luôn KHAI CAO đúng bằng số dư.
-   */
+describe("Bản vá hàm tổng hợp phải nằm ở migration MỚI", () => {
   /** ⚠ NEO VÀO ĐỊNH NGHĨA HÀM, không vào lần nhắc tên đầu tiên (tên còn
    *  xuất hiện ở GRANT, COMMENT và cả khối chú thích đầu tệp). */
-  const body = (fn: string) => {
-    const i = AGG.indexOf(`CREATE FUNCTION public.${fn}(`)
+  const bodyIn = (src: string, fn: string) => {
+    const i = src.indexOf(`CREATE FUNCTION public.${fn}(`)
     expect(i, `không tìm thấy định nghĩa ${fn}`).toBeGreaterThan(0)
-    const j = AGG.indexOf("CREATE FUNCTION public.", i + 10)
-    return AGG.slice(i, j > 0 ? j : undefined)
+    const j = src.indexOf("CREATE FUNCTION public.", i + 10)
+    return src.slice(i, j > 0 ? j : undefined)
   }
 
-  it("hai hàm tổng hợp đều kẹp về 0", () => {
+  /**
+   * ⚠ ĐÂY LÀ CHỐT QUAN TRỌNG NHẤT CỦA CẢ TỆP, VÀ NÓ NHÌN NGƯỢC.
+   *
+   * Migration 093 ĐÃ CHẠY trên production. `supabase db push` chỉ chạy
+   * migration MỚI, và 093 dùng `CREATE FUNCTION` trần nên chạy lại còn
+   * ném "already exists". Vá thẳng vào 093 là bản vá KHÔNG BAO GIỜ tới
+   * cơ sở dữ liệu thật — mà `schema_full.sql` (chỉ dùng để cài mới) lại
+   * chứa bản đã vá, nên nhìn vào kho mã tưởng đã xong.
+   *
+   * Tôi đã phạm đúng lỗi này ở lượt trước. Chốt này tồn tại để không ai
+   * (kể cả tôi) "dọn dẹp" bằng cách chép phép sửa ngược về 093.
+   */
+  it("093 KHÔNG được mang phép sửa — nó đã chạy rồi, sửa ở đó là vô hình", () => {
+    expect(
+      bodyIn(AGG, "receivables_by_rep"),
+      "093 đã chạy trên production; phép sửa ở đây không bao giờ chạy"
+    ).not.toContain("GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0))")
+    expect(bodyIn(AGG, "finance_cash_flow")).not.toContain("return_credit")
+  })
+
+  /**
+   * ⚠ HAI LỚP CHE CHỒNG LÊN NHAU. `receivables_by_rep` KHÔNG lọc
+   * `status <> 'paid'` nên dòng dư lọt thẳng vào và kéo tổng công nợ của
+   * nhân viên XUỐNG. Kẹp là đúng; phần bị kẹp được nói ra ở giao diện.
+   */
+  it("121 kẹp phần dư ở cả hai hàm công nợ", () => {
     for (const fn of ["receivables_by_rep", "receivables_by_customer"]) {
-      expect(body(fn), `${fn} chưa kẹp`).toContain(
+      expect(bodyIn(MIG121, fn), `${fn} chưa kẹp`).toContain(
         "GREATEST(0, COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0))"
       )
     }
   })
 
   /** Tỉ lệ thu hồi vượt 100% là con số vô nghĩa in ra bảng điều khiển. */
-  it("tỉ lệ thu hồi bị chặn trần 100", () => {
-    expect(body("receivables_by_rep")).toContain(
+  it("121 chặn trần 100 cho tỉ lệ thu hồi", () => {
+    expect(bodyIn(MIG121, "receivables_by_rep")).toContain(
       "THEN LEAST(100, ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer)"
     )
+  })
+
+  /**
+   * ⚠ CẤN TRỪ KHÔNG PHẢI TIỀN VÀO KÉT. `return_credit` là dòng DƯƠNG
+   * MỘT VẾ — mỗi đồng hàng trả được cấn trừ hiện ra như một đồng tiền
+   * mặt thu được. Không lỗi nào bắn ra; chỉ có tiền mặt trên bảng cân
+   * đối cao hơn két thật.
+   */
+  it("121 loại hai phương thức không phải tiền khỏi dòng tiền", () => {
+    for (const fn of ["finance_balance_sheet", "finance_cash_flow"]) {
+      expect(bodyIn(MIG121, fn), `${fn} còn đếm cấn trừ là tiền`).toContain(
+        "AND COALESCE(p.method, '') NOT IN ('return_credit', 'credit_applied')"
+      )
+    }
+  })
+
+  /**
+   * ⚠ DANH SÁCH LOẠI TRỪ, KHÔNG PHẢI DANH SÁCH CHO PHÉP. Liệt kê
+   * 'cash'/'transfer'/'wallet' thì người thêm phương thức tiền thật mới
+   * vào tháng sau sẽ thấy doanh thu tiền mặt hụt đi mà không hiểu vì
+   * sao — và sẽ đi tìm ở chỗ khác.
+   */
+  it("lọc bằng NOT IN, không phải IN", () => {
+    for (const fn of ["finance_balance_sheet", "finance_cash_flow"]) {
+      expect(bodyIn(MIG121, fn)).not.toContain("p.method IN (")
+    }
+  })
+
+  /**
+   * ⚠ `DROP FUNCTION` XOÁ LUÔN GRANT. Quên cấp lại là bốn màn báo cáo
+   * trắng xoá với "permission denied for function", trong khi migration
+   * chạy xong không báo gì.
+   */
+  it("121 cấp lại quyền cho cả bốn hàm vừa DROP", () => {
+    for (const fn of [
+      "public.receivables_by_rep()",
+      "public.receivables_by_customer()",
+      "public.finance_balance_sheet(date)",
+      "public.finance_cash_flow(date, date)",
+    ]) {
+      expect(MIG121, `thiếu GRANT cho ${fn}`).toContain(
+        `GRANT EXECUTE ON FUNCTION ${fn}`
+      )
+    }
+  })
+
+  /** Migration phải idempotent và nạp lại schema cho PostgREST. */
+  it("121 theo đúng khuôn migration của kho", () => {
+    expect(MIG121).toContain("NOTIFY pgrst, 'reload schema'")
+    for (const fn of [
+      "public.receivables_by_rep()",
+      "public.receivables_by_customer()",
+      "public.finance_balance_sheet(date)",
+      "public.finance_cash_flow(date, date)",
+    ]) {
+      expect(MIG121, `${fn} chưa DROP trước khi CREATE`).toContain(
+        `DROP FUNCTION IF EXISTS ${fn}`
+      )
+    }
   })
 })
 
@@ -314,5 +394,68 @@ describe("Màn lập phiếu thu: tiền của khách phải NHÌN THẤY ĐƯ�
 
   it("ô Khách đưa đã trừ phần rút", () => {
     expect(NEW_RECEIPT).toContain("cashToCollect(linesTotal, creditsTotal, useCredit)")
+  })
+})
+
+/**
+ * Q13 — ba hệ quả của Q11 mà bản đầu bỏ sót. Cả ba đều KHÔNG bắn lỗi:
+ * chúng chỉ làm con số sai đi, hoặc chặn một việc hợp lệ.
+ */
+describe("Q13 — nhãn phương thức: đọc rộng hơn ghi", () => {
+  const CONSTANTS = read("src/lib/constants.ts")
+  const TYPES = read("src/types/index.ts")
+
+  /**
+   * ⚠ BẢNG NHÃN PHẢI RỘNG HƠN Ô CHỌN. RPC ghi ra hai giá trị mà người
+   * dùng không chọn được; thiếu nhãn là chữ `return_credit` in giữa bảng
+   * công nợ, nhìn như dữ liệu hỏng.
+   */
+  it("bảng nhãn có cả hai giá trị do RPC ghi", () => {
+    expect(labelPaymentMethod("return_credit")).toBe("Cấn trừ phiếu trả")
+    expect(labelPaymentMethod("credit_applied")).toBe("Rút số dư có")
+    expect(labelPaymentMethod("cash")).toBe("Tiền mặt")
+  })
+
+  /** ⚠ Giá trị lạ trả NGUYÊN VĂN — để trống là xoá thông tin khỏi màn. */
+  it("giá trị lạ giữ nguyên, rỗng thì gạch ngang", () => {
+    expect(labelPaymentMethod("momo")).toBe("momo")
+    expect(labelPaymentMethod(null)).toBe("—")
+    expect(labelPaymentMethod("")).toBe("—")
+  })
+
+  /**
+   * ⚠ Ô CHỌN PHẢI HẸP. Cho `return_credit` lên danh sách chọn là mời kế
+   * toán lập một phiếu thu "cấn trừ" rỗng: không gắn phiếu trả nào,
+   * không có vế đối ứng, công nợ giảm mà không có gì đỡ lưng.
+   */
+  it("danh sách CHỌN vẫn chỉ ba giá trị tiền thật", () => {
+    const i = CONSTANTS.indexOf("export const PAYMENT_METHODS = [")
+    const block = CONSTANTS.slice(i, CONSTANTS.indexOf("] as const", i))
+    expect(block).not.toContain("return_credit")
+    expect(block).not.toContain("credit_applied")
+    expect(block).toContain('"cash"')
+  })
+
+  /** Một chỗ khai, mọi màn dùng — bốn bản sao là bốn chỗ phải nhớ sửa. */
+  it("không màn nào còn tự khai bảng nhãn riêng", () => {
+    for (const f of [
+      "src/app/(dashboard)/receivables/[id]/page.tsx",
+      "src/app/(dashboard)/receivables/by-rep/[userId]/page.tsx",
+      "src/app/(dashboard)/receivables/by-customer/[customerId]/page.tsx",
+    ]) {
+      expect(read(f), `${f} còn bản sao`).not.toContain(
+        "const PAYMENT_METHOD_LABEL: Record<string, string> = {"
+      )
+      expect(read(f)).toContain('PAYMENT_METHOD_LABEL } from "@/lib/constants"')
+    }
+  })
+
+  /** Thiếu ở kiểu là ép `as` ở mọi chỗ đọc lên. */
+  it("kiểu PaymentMethod có đủ năm giá trị", () => {
+    const i = TYPES.indexOf("export type PaymentMethod")
+    const block = TYPES.slice(i, i + 200)
+    for (const v of ["cash", "transfer", "ewallet", "return_credit", "credit_applied"]) {
+      expect(block, `kiểu thiếu '${v}'`).toContain(`"${v}"`)
+    }
   })
 })

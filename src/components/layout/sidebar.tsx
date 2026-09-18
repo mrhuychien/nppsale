@@ -129,7 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Tổng quan", href: "/settings", icon: Settings },
       { label: "Trình hướng dẫn cài đặt", href: "/setup", icon: Plus },
       { label: "Tổ chức / NPP", href: "/settings/org", icon: Settings },
-      { label: "Duyệt đơn tự động", href: "/settings/approval-rules", icon: ShieldCheck },
+      { label: "Ngưỡng cảnh báo đơn", href: "/settings/approval-rules", icon: ShieldCheck },
     ],
   },
 ]

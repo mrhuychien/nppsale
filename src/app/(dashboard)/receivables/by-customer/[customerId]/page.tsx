@@ -17,12 +17,7 @@ import { totalRemaining as totalRemainingOf, totalCredit } from "@/lib/receivabl
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard, FileText, Clock } from "lucide-react"
 import type { Customer, Receivable, Payment, CustomerAssignment, SalesOrder } from "@/types"
-
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cash: "Tiền mặt",
-  transfer: "Chuyển khoản",
-  ewallet: "Ví điện tử",
-}
+import { PAYMENT_METHOD_LABEL } from "@/lib/constants"
 
 const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warning" | "danger" | "secondary" }> = {
   open: { label: "Chưa thu", variant: "secondary" },

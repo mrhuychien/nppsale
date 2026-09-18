@@ -122,6 +122,13 @@ export default function OpeningBalancesPage() {
     [plan]
   )
 
+  /** Số dòng GHI ĐƯỢC nhưng có hệ quả bất thường — đếm riêng, xem chú
+   *  thích ở chỗ hiển thị. */
+  const warnCount = useMemo(
+    () => writingRows.filter((r) => !!r.warning).length,
+    [writingRows]
+  )
+
   const blockReason = !plan
     ? "Chọn file đã điền"
     : writingRows.length === 0
@@ -260,6 +267,20 @@ export default function OpeningBalancesPage() {
                     )}
                   </div>
 
+                  {/* ⚠ DÒNG CẢNH BÁO GHI ĐƯỢC, NÊN PHẢI ĐẾM RIÊNG. Nó
+                      không nằm trong ô "lỗi", và nếu chỉ hiện ở cột ghi
+                      chú của bảng thì người xem 200 dòng sẽ lướt qua.
+                      Đây là nhập hàng loạt vào sổ tiền: một ô gõ nhầm
+                      biến khoản khách nợ thành khoản mình nợ khách. */}
+                  {warnCount > 0 && (
+                    <p className="flex items-start gap-1.5 rounded-lg bg-warning-container p-2.5 text-xs font-semibold text-on-warning-container">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {warnCount} dòng sẽ tạo SỐ DƯ CÓ cho khách (số nợ mới
+                      thấp hơn số đã thu). Ghi được — nhưng hãy soát lại
+                      từng dòng ở bảng dưới trước khi bấm.
+                    </p>
+                  )}
+
                   {/* Vân tay kế hoạch: người ta xem con số nào thì ghi đúng
                       con số đó. Đổi file giữa chừng là vân tay đổi và nút
                       ghi khoá lại. */}
@@ -369,6 +390,11 @@ function PlanTable({ rows }: { rows: PlanRow[] }) {
                   )}
                 </td>
                 <td className="px-2 py-1.5 text-xs text-on-surface-variant">
+                  {/* Cảnh báo đứng TRƯỚC và có màu riêng — nó nói về hệ
+                      quả của việc sắp ghi, không phải chú thích của dòng. */}
+                  {r.warning && (
+                    <span className="block font-bold text-[#b54708]">⚠ {r.warning}</span>
+                  )}
                   {r.message ||
                     [r.dueDate ? `hạn ${formatVnDate(r.dueDate)}` : "", r.note || ""]
                       .filter(Boolean)

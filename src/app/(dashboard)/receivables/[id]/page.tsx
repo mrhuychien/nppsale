@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { PAYMENT_METHODS } from "@/lib/constants"
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABEL } from "@/lib/constants"
 import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck } from "lucide-react"
 import type { Receivable, Payment, ReceivableStatus } from "@/types"
@@ -29,12 +29,6 @@ const RECEIVABLE_STATUS_MAP: Record<ReceivableStatus, { label: string; variant: 
   partial: { label: "Thu một phần", variant: "warning" },
   paid: { label: "Đã thu đủ", variant: "success" },
   overdue: { label: "Quá hạn", variant: "danger" },
-}
-
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cash: "Tiền mặt",
-  transfer: "Chuyển khoản",
-  ewallet: "Ví điện tử",
 }
 
 type StatusOverride = "open" | "overdue"

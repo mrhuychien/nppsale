@@ -363,6 +363,49 @@ Chạy trên `44dbe7f` trước khi sửa gì:
 **Cần chủ nhà quyết.** Ba hệ quả của Q11 chưa dọn (Q13) và hai chỗ luồng
 cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
 
+## Q13 + Q14 + Q15 — xử nốt
+
+**Đã làm.**
+- ⚠ **Q15 — sửa một lỗi của chính tôi trước đã.** Lượt trước tôi vá
+  thẳng vào `093_aggregate_functions.sql`, một migration ĐÃ CHẠY trên
+  production. `supabase db push` chỉ chạy migration mới, và 093 dùng
+  `CREATE FUNCTION` trần nên chạy lại còn ném "already exists" — bản vá
+  không bao giờ tới cơ sở dữ liệu thật, trong khi `schema_full.sql` (chỉ
+  dùng để cài mới) lại chứa nó nên nhìn vào tưởng đã xong. Đã hoàn 093
+  về nguyên trạng và chuyển toàn bộ sang **migration 121**.
+- **Migration 121** (`CREATE OR REPLACE`, idempotent, có `GRANT` lại,
+  `NOTIFY pgrst`, `RAISE NOTICE` đếm dòng bị ảnh hưởng): kẹp số dư có ở
+  `receivables_by_rep` / `receivables_by_customer`, trần 100 cho tỉ lệ
+  thu hồi, và lọc `return_credit` / `credit_applied` khỏi `cash_in` +
+  `cash_from_customers`.
+- **Q13.2** — nhập công nợ đầu kỳ: hạ số nợ xuống dưới số đã thu không
+  còn là LỖI mà là **CẢNH BÁO** (trường `PlanRow.warning` mới, tách hẳn
+  khỏi `message`), hiện trên từng dòng và đếm riêng trên thẻ tổng kết.
+  Xoá một khoản đã thu một phần thì VẪN là lỗi.
+- **Q13.3** — gom bốn bản sao `PAYMENT_METHOD_LABEL` về một chỗ ở
+  `lib/constants.ts` + `labelPaymentMethod()`, thêm hai giá trị mới, nới
+  `PaymentMethod`. Danh sách CHỌN vẫn hẹp — đó là hai thứ khác nhau.
+- **Q14.1** — `/settings/approval-rules` **không khoá**, viết lại cho
+  đúng việc: "Duyệt đơn tự động" → "Ngưỡng cảnh báo đơn", mọi câu "cần
+  Manager duyệt" → "soát kỹ trước khi Xuất hàng".
+- **Q14.2** — đo thật: tài xế còn 7 màn, không vào ngõ cụt. Không đổi mã.
+- Checklist thêm 6.11–6.13 và 9.4–9.5. 12 chốt mới; thử phá 20/20 bị bắt.
+
+**Bất ngờ gặp.**
+- ⚠ **Màn ngưỡng duyệt chỉ CHẾT MỘT NỬA.** Định khoá nó như ba màn luồng
+  cũ, nhưng đo ra: ngưỡng tiền thì chết, còn hạn mức công nợ / tín dụng
+  vẫn chạy — `evaluateApproval` vẫn sinh câu cảnh báo ghi vào
+  `approval_reason` và hiện trên màn đơn. Khoá màn là mất luôn cảnh báo
+  hạn mức.
+- ⚠ **`credit_applied` vô hại, `return_credit` thì không.** Vế kép của
+  Q11 tự triệt tiêu trong mọi tổng; chỗ sai thật là `return_credit` —
+  một vế dương không đối ứng, khiến tiền mặt trên bảng cân đối cao hơn
+  két thật đúng bằng tổng hàng trả đã cấn trừ.
+- **Một chốt nói dối nữa, bắt được nhờ thử phá:** chốt đòi câu cảnh báo
+  phải nêu số dư sinh ra dùng dữ liệu 2.000.000 − 1.000.000 = 1.000.000,
+  nên `toContain("1000000")` khớp nhầm vào chính số mới và vẫn xanh sau
+  khi xoá hẳn phần nêu số dư. Đổi sang 2.000.000 − 1.200.000 = 800.000.
+
 ## Quy ước
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -381,15 +424,16 @@ cũ để lại (Q14) — xem `docs/workflow-v2-questions.md`.
 
 ## TODO chủ nhà (tích dần)
 
-- [ ] Chạy migration **118 + 119 + 120** trên staging, đọc `RAISE NOTICE`
-      backfill. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
+- [ ] Chạy migration **118 + 119 + 120 + 121** trên staging, đọc
+      `RAISE NOTICE` backfill. ⚠ Chép ngay danh sách "đơn Hoàn thành không có phiếu
       xuất" — nó chỉ in MỘT LẦN (mục 0 của checklist có câu SQL chạy lại).
 - [ ] Chạy hết `docs/workflow-v2-checklist.md` (10 mục).
-- [ ] Quyết Q13 (ba hệ quả Q11 chưa dọn: `cash_in` cộng cả
-      `return_credit`; `opening-balance/parse.ts` còn cấm `paid > amount`;
-      nhãn phương thức thiếu hai giá trị mới).
-- [ ] Quyết Q14 (`/settings/approval-rules` còn sống nhưng cấu hình bước
-      duyệt đã bỏ; vai `driver` không còn module chính).
+- [x] Q13 + Q14 — đã xử nốt (xem mục trên và sổ câu hỏi).
+- [ ] **Đọc `RAISE NOTICE` của migration 121** — nó nói tiền mặt trên
+      bảng cân đối sẽ GIẢM bao nhiêu sau khi chạy. Đó là sửa đúng, không
+      phải mất tiền; nhưng phải biết trước con số để khỏi hoảng.
+- [ ] Quyết còn giữ vai `driver` hay không — không gấp, tài xế vẫn có 7
+      màn để làm việc.
 - [ ] Bật lại module Giao hàng khi cần — đổi `LEGACY_FLOW_WRITES_LOCKED`
       về `false` và bỏ href khỏi `LEGACY_V2_HREFS`. ⚠ Đọc khối chú thích
       trong `src/lib/nav/legacy-flow.ts` trước khi bật.

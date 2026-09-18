@@ -18,16 +18,23 @@ import { AlertTriangle, CheckCircle2, Printer } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { useToast } from "@/hooks/use-toast"
-import { PAYMENT_METHODS } from "@/lib/constants"
+import { PAYMENT_METHODS, labelPaymentMethod } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CreditCard } from "lucide-react"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { Receivable } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
-/** Nhãn hình thức thu — tra từ PAYMENT_METHODS, không gõ lại chuỗi. */
+/**
+ * Nhãn hình thức thu.
+ *
+ * ⚠ TRA Ở BẢNG RỘNG, KHÔNG TRA Ở DANH SÁCH CHỌN. `PAYMENT_METHODS` chỉ
+ * có ba giá trị người dùng chọn được; màn này còn ĐỌC LÊN các dòng do
+ * RPC ghi (`return_credit`, `credit_applied`), và tra ở danh sách hẹp là
+ * in ra chữ tiếng Anh giữa bảng.
+ */
 const labelMethod = (v: string) =>
-  PAYMENT_METHODS.find((m) => m.value === v)?.label || v
+  labelPaymentMethod(v)
 
 export default function CollectPaymentPage() {
   const { user } = useAuth()

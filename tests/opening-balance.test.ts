@@ -262,23 +262,54 @@ describe("Lập kế hoạch — tạo / sửa / xoá", () => {
   })
 
   /**
-   * ⚠ Xoá / hạ số một khoản ĐÃ THU một phần là làm sổ thành "trả thừa"
-   * và mất dấu tiền đã nhận.
+   * ⚠ XOÁ một khoản ĐÃ THU một phần vẫn là LỖI — xoá dòng đi là mất dấu
+   * số tiền đã nhận, không còn chỗ nào ghi nó.
    */
-  it("không xoá và không hạ dưới số đã thu", () => {
+  it("không xoá khoản đã thu một phần", () => {
     const paid: ExistingOpening[] = [
       { id: "r1", entityId: "c1", amount: 5000000, paid: 2000000, dueDate: null, note: null },
     ]
     const del = buildPlan([row({ rowNo: 2, id: "c1", amount: 0 })], ENTITIES, paid)
     expect(del.rows[0].action).toBe("error")
     expect(del.rows[0].message).toContain("đã thu")
+  })
 
-    const down = buildPlan([row({ rowNo: 2, id: "c1", amount: 1000000 })], ENTITIES, paid)
-    expect(down.rows[0].action).toBe("error")
-    expect(down.rows[0].message).toContain("nhỏ hơn số đã thu")
+  /**
+   * ⚠ CHỐT NÀY ĐÃ ĐẢO CHIỀU, CÓ CHỦ Ý — xem Q13 trong sổ câu hỏi.
+   *
+   * Bản cũ đòi HẠ số nợ xuống dưới số đã thu phải là `error`, vì khi đó
+   * `paid > amount` là trạng thái không tồn tại. Sau Q11 nó tồn tại và
+   * hợp lệ: phần chênh là SỐ DƯ CÓ của khách. Giữ chốt cũ nghĩa là người
+   * dùng không nhập lại được chính con số hệ thống vừa sinh ra.
+   *
+   * Nhưng KHÔNG hạ xuống thành im lặng: đây là nhập hàng loạt vào sổ
+   * tiền, một ô gõ nhầm biến khoản khách nợ thành khoản mình nợ khách.
+   * Nên nó GHI ĐƯỢC và có `warning` nói rõ sẽ tạo ra bao nhiêu dư.
+   */
+  it("hạ dưới số đã thu thì GHI ĐƯỢC, kèm cảnh báo — không còn là lỗi", () => {
+    const paid: ExistingOpening[] = [
+      { id: "r1", entityId: "c1", amount: 5000000, paid: 2000000, dueDate: null, note: null },
+    ]
+    // ⚠ BA CON SỐ PHẢI KHÁC NHAU HẾT. Lần đầu tôi chọn 1.000.000 trên
+    //   nền đã thu 2.000.000 — số dư sinh ra cũng đúng 1.000.000, nên
+    //   phép kiểm "có nêu số dư không" khớp nhầm vào chính số mới và vẫn
+    //   xanh sau khi xoá hẳn phần nêu số dư. Ở đây: 2.000.000 − 1.200.000
+    //   = 800.000, không trùng con số nào khác trong câu.
+    const down = buildPlan([row({ rowNo: 2, id: "c1", amount: 1200000 })], ENTITIES, paid)
+    expect(down.rows[0].action).toBe("update")
+    expect(down.rows[0].warning, "ghi mà không nói gì là tệ nhất").toBeTruthy()
+    // Phải nêu SỐ DƯ SẼ SINH RA, không chỉ nói "bất thường".
+    expect(down.rows[0].warning).toContain("800000")
+    expect(down.rows[0].message, "cảnh báo không được giả làm lỗi").toBeUndefined()
+
+    // Bằng đúng số đã thu thì không có gì bất thường.
+    const eq = buildPlan([row({ rowNo: 2, id: "c1", amount: 2000000 })], ENTITIES, paid)
+    expect(eq.rows[0].action).toBe("update")
+    expect(eq.rows[0].warning).toBeUndefined()
 
     const up = buildPlan([row({ rowNo: 2, id: "c1", amount: 6000000 })], ENTITIES, paid)
     expect(up.rows[0].action).toBe("update")
+    expect(up.rows[0].warning).toBeUndefined()
   })
 
   it("ngày hỏng làm hỏng ĐÚNG dòng đó, không kéo cả file", () => {

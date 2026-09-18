@@ -404,8 +404,39 @@ lâu là ba nguồn số lệch nhau:
    màn đều chưa có `'return_credit'` và `'credit_applied'`. Chỗ nào tra
    bảng rồi hiện thẳng sẽ in ra mã tiếng Anh, hoặc ô trống.
 
-Cần chủ nhà quyết: dọn ngay trong đợt này, hay tách một đợt riêng cho
-báo cáo dòng tiền?
+**→ Chủ nhà chốt: xử nốt.** Đã làm cả ba, và trên đường làm phát hiện
+thêm một lỗi của chính tôi (Q15).
+
+1. **Dòng tiền** → migration **121**. `finance_balance_sheet.cash_in` và
+   `finance_cash_flow.cash_from_customers` nay lọc
+   `COALESCE(method,'') NOT IN ('return_credit','credit_applied')`.
+   ⚠ Lọc theo danh sách LOẠI TRỪ, không phải danh sách cho phép: viết
+   `IN ('cash','transfer','ewallet')` thì người thêm `'momo'` tháng sau
+   sẽ thấy doanh thu tiền mặt hụt đi mà không hiểu vì sao.
+   `credit_applied` vốn tự triệt tiêu (hai vế cùng `collected_at`) nên
+   hôm nay vô hại — lọc ra để con số không phụ thuộc vào một bất biến mà
+   không ai nhớ. `return_credit` mới là chỗ sai thật: một vế dương,
+   không đối ứng.
+
+2. **Số dư đầu kỳ** → `amt.value < current.paid` không còn là LỖI, nó
+   thành **CẢNH BÁO**: dòng ghi được, bảng xem trước nêu rõ số dư sẽ
+   sinh ra, và thẻ tổng kết đếm riêng "N dòng sẽ tạo SỐ DƯ CÓ".
+   ⚠ XOÁ một khoản đã thu một phần thì VẪN là lỗi — xoá dòng đi là mất
+   dấu số tiền đã nhận, không còn chỗ nào ghi nó.
+   Thêm trường `PlanRow.warning`, tách hẳn khỏi `message` của dòng lỗi:
+   lỗi là "không ghi", cảnh báo là "ghi, và đây là thứ bạn sắp tạo ra".
+
+3. **Nhãn phương thức** → gom bốn bản sao về một
+   `PAYMENT_METHOD_LABEL` + `labelPaymentMethod()` trong
+   `lib/constants.ts`, thêm hai giá trị mới, nới `PaymentMethod` trong
+   `types/index.ts`.
+   ⚠ **Bảng NHÃN rộng hơn danh sách CHỌN, và đó là cố ý.**
+   `PAYMENT_METHODS` vẫn chỉ ba giá trị tiền thật: cho `return_credit`
+   lên ô chọn là mời kế toán lập một phiếu thu cấn trừ RỖNG — không gắn
+   phiếu trả nào, không có vế đối ứng, công nợ giảm mà không có gì đỡ
+   lưng.
+   `payables/[id]` giữ bảng riêng: `payable_payments.method` là enum
+   khác (`offset` thay cho `ewallet`), không gộp được.
 
 ## Q14 — GHI NHẬN, phát sinh khi làm P7: hai chỗ luồng cũ để lại
 
@@ -421,6 +452,59 @@ báo cáo dòng tiền?
    tiền. Tôi đã viết lại phần hướng dẫn của vai này ở `/help` cho đúng sự
    thật, nhưng **việc còn giữ vai `driver` hay không là quyết định nghiệp
    vụ**, không phải việc của thợ xây.
+
+**→ Chủ nhà chốt: xử nốt.**
+
+1. **`/settings/approval-rules` KHÔNG bị khoá — nó được viết lại cho
+   đúng việc nó làm.** Đo kỹ trước khi quyết: màn này có hai nửa, và chỉ
+   MỘT nửa chết.
+   · `auto_approve_max` / `manager_approve_max` — ngưỡng duyệt, đã chết;
+   · `customer_debt_max`, `customer_overdue_max`,
+     `rep_portfolio_debt_max`, `enforce_credit_limit` — hạn mức công nợ,
+     **vẫn còn nguyên giá trị**.
+   Và `evaluateApproval` vẫn chạy: `decideStatus` (lib/sell/submit.ts)
+   đưa mọi đơn về `submitted` bất kể nó nói gì, nhưng thứ nó trả về được
+   ghi vào `approval_reason` — câu nhắc hiện trên màn đơn TRƯỚC khi bấm
+   Xuất hàng. Khoá màn này là mất luôn cả cảnh báo hạn mức.
+   Nên: giữ nguyên chức năng, đổi TÊN và CÂU CHỮ cho khỏi nói dối —
+   "Duyệt đơn tự động" → "Ngưỡng cảnh báo đơn", và mọi câu
+   "cần Manager duyệt" → "soát kỹ trước khi Xuất hàng". Người đi tìm một
+   cái nút không tồn tại là người đọc câu cũ.
+   ⚠ **Giữ nguyên TÊN CỘT.** Đổi tên cột là một migration đụng
+   `lib/approval.ts`, `lib/sell/approval-context.ts` và dữ liệu đang có,
+   đổi lấy đúng một thứ: tên đẹp hơn. Nhãn trên màn đã nói đúng việc; đó
+   là chỗ người dùng đọc.
+
+2. **Vai `driver` không vào ngõ cụt** — đã đo, không phải đoán. Tài xế
+   còn thấy: `/home`, `/orders`, `/receivables`, `/receivables/collect`,
+   `/receivables/by-customer`, `/finance/cash-receipts`, `/help`. Đủ để
+   làm việc thu tiền. **Không đổi mã nào** — còn giữ vai `driver` hay
+   không vẫn là quyết định nghiệp vụ, và nay nó không gấp.
+
+## Q15 — LỖI CỦA TÔI, đã sửa: vá thẳng vào một migration ĐÃ CHẠY
+
+Lượt trước tôi sửa `093_aggregate_functions.sql` tại chỗ để kẹp số dư có.
+Sai, và sai theo đúng kiểu đắt nhất của cả đợt này: **không ai thấy**.
+
+- 093 đã chạy trên production từ lâu. `supabase db push` chỉ chạy
+  migration MỚI → bản vá không bao giờ tới nơi.
+- 093 dùng `CREATE FUNCTION` trần (không `OR REPLACE`) → chạy lại nó
+  trên CSDL có sẵn còn ném "function already exists".
+- `schema_full.sql` chỉ dùng để CÀI MỚI, và nó được sinh lại từ
+  migrations → bản gộp chứa phép vá, nhìn vào tưởng đã xong.
+
+Kết quả: kho mã nói đã sửa, cơ sở dữ liệu thật vẫn tính sai, và bộ test
+cấu trúc vẫn xanh vì nó chỉ đọc tệp.
+
+**Đã sửa:** hoàn `093` về nguyên trạng; toàn bộ phép sửa chuyển sang
+migration **121** mới. Thêm một chốt nhìn NGƯỢC
+(`tests/workflow-v2-q11-credit.test.ts` → "093 KHÔNG được mang phép sửa")
+để không ai — kể cả tôi — "dọn dẹp" bằng cách chép ngược về 093.
+
+⚠ **Luật rút ra, áp cho mọi đợt sau:** migration đã chạy ở bất cứ đâu thì
+BẤT BIẾN. Chỉ 118/119/120 sửa tại chỗ được, vì chúng chưa chạy ở đâu cả —
+điều đó đã ghi trong sổ tiến độ từ trước, và tôi đã suy rộng nó ra một
+tệp không thuộc nhóm đó.
 
 ---
 

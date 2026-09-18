@@ -17,7 +17,19 @@ export interface SalesRoute {
 export type CustomerStatus = "active" | "suspended" | "locked"
 export type OrderStatus = "draft" | "submitted" | "completed" | "cancelled"
 export type StockEntryType = "import" | "export" | "transfer" | "stocktake"
-export type PaymentMethod = "cash" | "transfer" | "ewallet"
+/**
+ * ⚠ ĐỌC RỘNG HƠN GHI. Hai giá trị cuối do RPC của workflow v2 tự ghi
+ * (`create_cash_receipt` cấn trừ phiếu trả và rút số dư có) — người dùng
+ * KHÔNG chọn được chúng, nhưng mọi màn đọc `payments.method` lên đều gặp.
+ * Thiếu chúng ở đây là ép `as` hoặc in ra chữ tiếng Anh giữa bảng công
+ * nợ. Danh sách chọn được nằm ở `PAYMENT_METHODS` trong `lib/constants`.
+ */
+export type PaymentMethod =
+  | "cash"
+  | "transfer"
+  | "ewallet"
+  | "return_credit"
+  | "credit_applied"
 export type ReceivableStatus = "open" | "partial" | "paid" | "overdue"
 export type DeliveryStatus = "pending" | "in_transit" | "completed" | "cancelled"
 export type DeliveryLineStatus = "pending" | "delivered" | "partial" | "failed"

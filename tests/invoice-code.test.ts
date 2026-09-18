@@ -655,3 +655,63 @@ describe("màn chi tiết: bộ khối dựng chung", () => {
     expect(INV).toContain("← Hóa đơn bán")
   })
 })
+
+/**
+ * MÀN CHI TIẾT ĐƠN HÀNG cũng theo mẫu đó.
+ *
+ * ⚠ CHỈ ĐỔI BẢN MÁY TÍNH. Màn này có một bản riêng cho điện thoại
+ * (`MobileOrderDetail`) vốn đã theo một mẫu khác chủ nhà chốt trước đó —
+ * ghép hai mẫu vào một là hỏng cả hai.
+ */
+describe("màn chi tiết đơn hàng theo mẫu", () => {
+  const ORD = read("src/app/(dashboard)/orders/[id]/page.tsx")
+
+  it("dùng bộ khối chung, bỏ PageHeader cũ", () => {
+    expect(ORD).toContain("<DetailHero")
+    expect(ORD).toContain("<DetailTimeline steps={heroTimeline} />")
+    expect(ORD).not.toContain("<PageHeader")
+  })
+
+  /** ⚠ Huy hiệu trạng thái lấy tông từ `orderTone` — một bảng màu, không chép tay. */
+  it("tông trạng thái lấy từ orderTone", () => {
+    expect(ORD).toContain("<StatusPill label={orderTone(order.status).label} tone={orderTone(order.status)} />")
+  })
+
+  /**
+   * ⚠ TIẾN TRÌNH NẰM NGOÀI điều kiện hiện thẻ Thao tác. Đơn đã xong không
+   * còn bước nào để bấm, nhưng tiến trình của nó vẫn là thứ người ta mở
+   * đơn ra để tra.
+   */
+  it("khối tiến trình không bị gói trong điều kiện hiện nút", () => {
+    const i = ORD.indexOf('<DetailCard title="Tiến trình"')
+    const j = ORD.indexOf("{(roleTransitions.length > 0 || canDelete) && (")
+    expect(i).toBeGreaterThan(0)
+    expect(j).toBeGreaterThan(0)
+    expect(i).toBeLessThan(j)
+  })
+
+  /**
+   * ⚠ ĐƠN HUỶ KHÔNG ĐI HẾT ĐƯỜNG. Vẽ nó như đang chờ bước sau là hứa một
+   * việc sẽ không xảy ra.
+   */
+  it("đơn huỷ có đường tiến trình riêng, ngắn hơn", () => {
+    const i = ORD.indexOf('if (st === "cancelled")')
+    expect(i).toBeGreaterThan(0)
+    expect(ORD.slice(i, i + 400)).toContain('label: "Đã huỷ"')
+  })
+
+  /**
+   * ⚠ WORKFLOW V2 KHÔNG CÓ NGƯỜI DUYỆT. Chữ "duyệt" trên màn là chỉ NVBH
+   * đi ngồi đợi một bước không tồn tại. Chốt ở
+   * `orders-mobile-template.test.ts` canh chỗ này và đã bắt được một
+   * nhãn "Gửi duyệt" tôi viết nhầm trong khối tiến trình.
+   */
+  it("mốc gửi đơn không dùng chữ duyệt", () => {
+    expect(ORD).toContain('label: "Gửi đơn"')
+    expect(ORD).not.toContain("Gửi duyệt")
+  })
+
+  it("vẫn có đường về danh sách đơn", () => {
+    expect(ORD).toContain("← Đơn hàng")
+  })
+})

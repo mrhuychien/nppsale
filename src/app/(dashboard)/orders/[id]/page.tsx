@@ -15,8 +15,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { PageHeader } from "@/components/ui/page-header"
-import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
+import { orderTone } from "@/lib/orders/status-tone"
+import {
+  DetailHero, StatusPill, DetailCard, DetailTimeline,
+  type TimelineStep,
+} from "@/components/detail/detail-chrome"
+import { PaymentStatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { closeOrder } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
@@ -1089,6 +1093,81 @@ export default function OrderDetailPage() {
     </>
   )
 
+  /**
+   * ⚠ DÒNG TÓM TẮT NÓI ĐỦ BỐN THỨ người ta mở đơn ra để xem: khi nào,
+   *   bao nhiêu mặt hàng, tuyến nào, ai bán. Thiếu một cái là phải cuộn
+   *   xuống tìm — mà đó đúng là thứ mẫu thiết kế gộp lên đầu trang.
+   */
+  const heroSummary = [
+    `Đặt ${formatDate(order.order_date)}`,
+    `${lines.length} mặt hàng`,
+    order.customer?.store_name || null,
+    order.sales_user?.full_name ? `NVBH ${order.sales_user.full_name}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  /**
+   * ⚠ TIẾN TRÌNH ĐỌC TỪ TRẠNG THÁI THẬT, không vẽ sẵn bốn mốc rồi tô
+   *   xanh theo cảm tính. Đơn huỷ và đơn đóng sớm KHÔNG đi hết đường —
+   *   vẽ chúng như đang chờ bước sau là hứa một việc sẽ không xảy ra.
+   */
+  const heroTimeline: TimelineStep[] = (() => {
+    const st = order.status
+    const done = (k: string) => `Xong · ${formatDate(k)}`
+    if (st === "cancelled") {
+      return [
+        { label: "Tạo đơn", detail: formatDate(order.order_date), state: "done" as const },
+        { label: "Đã huỷ", detail: order.approval_reason || "—", state: "done" as const },
+      ]
+    }
+    return [
+      {
+        label: "Tạo đơn",
+        detail: `${formatDate(order.order_date)}${order.sales_user?.full_name ? ` · ${order.sales_user.full_name}` : ""}`,
+        state: "done" as const,
+      },
+      {
+        /**
+         * ⚠ "GỬI ĐƠN", KHÔNG PHẢI "GỬI DUYỆT". Workflow v2 không có người
+         *   duyệt; chữ "duyệt" còn sót trên màn là chỉ NVBH đi ngồi đợi
+         *   một bước không tồn tại, trong khi việc thật là nhà phân phối
+         *   bấm Xuất hàng. Chốt ở `orders-mobile-template.test.ts` canh
+         *   đúng chỗ này và đã bắt được tôi.
+         */
+        label: "Gửi đơn",
+        detail: st === "draft" ? "Còn là bản nháp, NPP chưa thấy" : "Đã gửi cho NPP",
+        state: st === "draft" ? "current" : "done",
+      },
+      {
+        label: "Xuất hàng",
+        detail:
+          st === "completed"
+            ? order.completed_at
+              ? done(order.completed_at)
+              : "Đã xuất đủ"
+            : st === "partially_invoiced"
+              ? "Mới xuất một phần — còn hàng nằm lại trên đơn"
+              : st === "closed"
+                ? "Đã đóng đơn, không giao nốt phần còn lại"
+                : "Chưa xuất",
+        state:
+          st === "completed" || st === "closed"
+            ? "done"
+            : st === "partially_invoiced"
+              ? "current"
+              : st === "submitted"
+                ? "current"
+                : "todo",
+      },
+      {
+        label: "Hoá đơn điện tử",
+        detail: invoice ? "Đã tạo" : "Chưa phát hành",
+        state: invoice ? "done" : "todo",
+      },
+    ]
+  })()
+
   return (
     <div className={`space-y-4 ${hasMobileActions ? "pb-nav-action" : ""}`}>
       {mobileTemplate && (
@@ -1111,12 +1190,25 @@ export default function OrderDetailPage() {
       )}
 
       <div className={mobileTemplate ? "hidden lg:block space-y-4" : "space-y-4"}>
-      <PageHeader
-        title={order.order_code}
-        description={`Ngày đặt: ${formatDate(order.order_date)}${
-          order.completed_at ? ` • Xuất hàng: ${formatDate(order.completed_at)}` : ""
-        }`}
-        backHref="/orders"
+      {/* ⚠ ĐƯỜNG VỀ PHẢI CÒN. Mẫu vẽ nó ở thanh trên cùng — thanh đó là
+          khung ứng dụng chung, nên ở trang giữ một liên kết nhỏ, nếu
+          không mở đơn từ đâu cũng thành ngõ cụt. */}
+      <Link
+        href="/orders"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface"
+      >
+        ← Đơn hàng
+      </Link>
+
+      <DetailHero
+        code={order.order_code}
+        summary={heroSummary}
+        status={
+          <>
+            <StatusPill label={orderTone(order.status).label} tone={orderTone(order.status)} />
+            <PaymentStatusBadge receivable={receivable} />
+          </>
+        }
       >
         {/* ⚠ ĐÃ BỎ `ApprovalBadge`. Nó gắn nhãn "Cần Owner duyệt" /
             "Cần Manager duyệt" theo NGƯỠNG TIỀN, mà workflow v2 không có
@@ -1125,9 +1217,7 @@ export default function OrderDetailPage() {
             bước không tồn tại. Cảnh báo thật nằm ở khung `callouts` ngay
             dưới, lấy từ `approval_reason`. Component giữ nguyên trong
             kho, chỉ không gọi ở đây nữa. */}
-        <StatusBadge status={order.status} type="order" />
-        <PaymentStatusBadge receivable={receivable} />
-      </PageHeader>
+      </DetailHero>
 
       {callouts}
 
@@ -1878,6 +1968,16 @@ export default function OrderDetailPage() {
 
           {/* Status transitions — desktop giữ nguyên thẻ dọc; mobile dùng
               StickyActionBar ở cuối trang (M4.2), không hiện hai lần. */}
+          {/* ⚠ TIẾN TRÌNH ĐẶT NGAY TRÊN THAO TÁC, theo mẫu. Người mở đơn ra
+              nhìn "đang ở đâu" trước rồi mới quyết định bấm gì; đảo hai
+              khối là bắt họ quyết trước khi biết.
+              ⚠ NẰM NGOÀI điều kiện hiện thẻ Thao tác: đơn đã xong không còn
+              bước nào để bấm, nhưng tiến trình của nó vẫn là thứ người ta
+              mở đơn ra để tra. */}
+          <DetailCard title="Tiến trình" className="hidden lg:block">
+            <DetailTimeline steps={heroTimeline} />
+          </DetailCard>
+
           {(roleTransitions.length > 0 || canDelete) && (
             <Card className="hidden lg:block">
               <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>

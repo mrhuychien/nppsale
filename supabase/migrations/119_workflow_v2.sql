@@ -116,6 +116,41 @@ END $$;
 -- =====================================================================
 -- 4. Backfill sales_orders
 -- =====================================================================
+--
+-- ⚠ GỠ RÀNG BUỘC CŨ TRƯỚC KHI BACKFILL, KHÔNG PHẢI SAU.
+--
+--   Ràng buộc gốc (mig 001) chỉ cho sáu giá trị của luồng cũ:
+--   draft/confirmed/picking/delivering/delivered/cancelled. `submitted`
+--   và `completed` KHÔNG nằm trong đó. Đặt phần gỡ xuống sau backfill —
+--   như bản đầu của file này — thì lệnh UPDATE đầu tiên đã chết với
+--   `23514 sales_orders_status_check`, và cả migration rollback.
+--
+--   Không gộp luôn cả việc THÊM ràng buộc mới lên đây được: lúc này bảng
+--   còn đầy `confirmed`/`picking`, mà ràng buộc mới không nhận chúng nên
+--   `ADD CONSTRAINT` sẽ vỡ. Phải đúng ba nhịp: GỠ → BACKFILL → THÊM.
+--   Nhịp thêm nằm ở mục 5.
+--
+-- ⚠ Ràng buộc cũ không có tên trong kho mã (khai inline ở mig 001), nên
+--   phải tra `pg_constraint` rồi DROP theo tên thật. Lọc theo 'confirmed'
+--   vì đó là chuỗi CHỈ có trong ràng buộc status — ràng buộc giai đoạn
+--   workflow đã bị gỡ ở mục 2 và nó không chứa chuỗi này.
+DO $$
+DECLARE
+  v_name text;
+BEGIN
+  FOR v_name IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    WHERE rel.relname = 'sales_orders'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) ILIKE '%confirmed%'
+  LOOP
+    EXECUTE format('ALTER TABLE sales_orders DROP CONSTRAINT %I', v_name);
+    RAISE NOTICE '119: đã gỡ ràng buộc status cũ %', v_name;
+  END LOOP;
+END $$;
+
 -- Bảng map (Coder Pack mục 1), chạy đúng thứ tự này:
 --   draft + lý do 'Lưu nháp — chưa gửi duyệt'  → draft   (giữ nguyên)
 --   draft khác (kể cả lý do rỗng)              → submitted
@@ -192,27 +227,6 @@ END $$;
 -- =====================================================================
 -- 5. Ràng buộc CHECK mới cho sales_orders.status
 -- =====================================================================
--- Ràng buộc cũ không tên: tra pg_constraint rồi DROP theo tên thật.
--- Lọc theo 'confirmed' vì đó là chuỗi CHỈ có trong ràng buộc status
--- (ràng buộc giai đoạn workflow đã bị DROP ở mục 2, và nó không chứa
--- chuỗi này).
-DO $$
-DECLARE
-  v_name text;
-BEGIN
-  FOR v_name IN
-    SELECT con.conname
-    FROM pg_constraint con
-    JOIN pg_class rel ON rel.oid = con.conrelid
-    WHERE rel.relname = 'sales_orders'
-      AND con.contype = 'c'
-      AND pg_get_constraintdef(con.oid) ILIKE '%confirmed%'
-  LOOP
-    EXECUTE format('ALTER TABLE sales_orders DROP CONSTRAINT %I', v_name);
-    RAISE NOTICE '119: đã gỡ ràng buộc status cũ %', v_name;
-  END LOOP;
-END $$;
-
 ALTER TABLE sales_orders
   DROP CONSTRAINT IF EXISTS chk_sales_orders_status_v2;
 ALTER TABLE sales_orders
@@ -283,6 +297,28 @@ COMMENT ON COLUMN returns.applied_receipt_id IS
   'Phiếu thu đã cấn trừ khoản có này. Chỉ dùng cho phiếu trả KHÔNG gắn đơn.';
 
 -- 7.3 Backfill (Coder Pack mục 1, bảng returns)
+--
+-- ⚠ CÙNG MỘT CÁI BẪY NHƯ MỤC 4, GỠ RÀNG BUỘC TRƯỚC. Ràng buộc gốc của
+--   `returns` (mig 001) chỉ nhận pending/approved/rejected/completed;
+--   `draft` và `submitted` không có trong đó. Ba nhịp: GỠ → BACKFILL →
+--   THÊM, và nhịp thêm nằm ngay sau khối backfill bên dưới.
+DO $$
+DECLARE
+  v_name text;
+BEGIN
+  FOR v_name IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    WHERE rel.relname = 'returns'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) ILIKE '%rejected%'
+  LOOP
+    EXECUTE format('ALTER TABLE returns DROP CONSTRAINT %I', v_name);
+    RAISE NOTICE '119: đã gỡ ràng buộc status cũ của returns: %', v_name;
+  END LOOP;
+END $$;
+
 DO $$
 DECLARE
   v_draft int; v_sub int; v_appr int; v_rej int;
@@ -309,23 +345,6 @@ BEGIN
 
   RAISE NOTICE '119 backfill returns: % →nháp, % chờ→phiếu tạm, % đã duyệt→phiếu tạm, % bị từ chối→huỷ',
     v_draft, v_sub, v_appr, v_rej;
-END $$;
-
-DO $$
-DECLARE
-  v_name text;
-BEGIN
-  FOR v_name IN
-    SELECT con.conname
-    FROM pg_constraint con
-    JOIN pg_class rel ON rel.oid = con.conrelid
-    WHERE rel.relname = 'returns'
-      AND con.contype = 'c'
-      AND pg_get_constraintdef(con.oid) ILIKE '%rejected%'
-  LOOP
-    EXECUTE format('ALTER TABLE returns DROP CONSTRAINT %I', v_name);
-    RAISE NOTICE '119: đã gỡ ràng buộc status cũ của returns: %', v_name;
-  END LOOP;
 END $$;
 
 ALTER TABLE returns DROP CONSTRAINT IF EXISTS chk_returns_status_v2;

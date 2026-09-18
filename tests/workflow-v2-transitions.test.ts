@@ -18,15 +18,44 @@ const at = (needle: string) => SQL.indexOf(needle)
  */
 describe("119 — thứ tự chạy (sai thứ tự là migration chết giữa chừng)", () => {
   /**
-   * ⚠ Ràng buộc CHECK mới chỉ nhận 4 giá trị. Thêm nó TRƯỚC khi backfill
-   * thì mọi dòng đang mang 'confirmed'/'picking'/'delivering'/'delivered'
-   * đều vi phạm, ALTER TABLE thất bại, không ai đổi được gì.
+   * ⚠ BA NHỊP: GỠ → BACKFILL → THÊM. Bản đầu của migration này chỉ có
+   *   hai nhịp cuối, và nó CHẾT NGAY LỆNH UPDATE ĐẦU TIÊN trên cơ sở dữ
+   *   liệu thật:
+   *
+   *     ERROR: 23514 new row for relation "sales_orders" violates
+   *            check constraint "sales_orders_status_check"
+   *
+   *   Ràng buộc gốc (mig 001) chỉ nhận sáu giá trị của luồng cũ —
+   *   `submitted` không nằm trong đó. Chốt cũ ở đây chỉ hỏi "THÊM có sau
+   *   BACKFILL không", nên nó xanh suốt trong khi nhịp GỠ nằm sai chỗ.
+   *   Thiếu một vế của bất biến cũng là một chốt nói dối.
+   *
+   * ⚠ Và KHÔNG gộp được hai nhịp đầu: lúc chưa backfill thì bảng còn đầy
+   *   `confirmed`/`picking`, mà ràng buộc mới không nhận chúng nên
+   *   `ADD CONSTRAINT` sẽ vỡ theo chiều ngược lại.
    */
-  it("backfill xong mới siết ràng buộc trạng thái", () => {
+  it("gỡ ràng buộc cũ TRƯỚC backfill, siết ràng buộc mới SAU", () => {
+    const drop = at("AND pg_get_constraintdef(con.oid) ILIKE '%confirmed%'")
     const backfill = at("UPDATE sales_orders\n  SET status = 'submitted'")
-    const check = at("ADD CONSTRAINT chk_sales_orders_status_v2")
-    expect(backfill).toBeGreaterThan(0)
-    expect(check).toBeGreaterThan(backfill)
+    const add = at("ADD CONSTRAINT chk_sales_orders_status_v2")
+    expect(drop, "không tìm thấy khối gỡ ràng buộc cũ").toBeGreaterThan(0)
+    expect(backfill).toBeGreaterThan(drop)
+    expect(add).toBeGreaterThan(backfill)
+  })
+
+  /**
+   * ⚠ `returns` DÍNH ĐÚNG CÁI BẪY ẤY, và nó ở tận mục 7.3 nên dễ sót khi
+   *   chỉ sửa chỗ đầu tiên gặp. Ràng buộc gốc của bảng này nhận
+   *   pending/approved/rejected/completed; backfill ghi `draft` và
+   *   `submitted` vào, không giá trị nào có trong danh sách cũ.
+   */
+  it("returns cũng đủ ba nhịp, không chỉ sales_orders", () => {
+    const drop = at("AND pg_get_constraintdef(con.oid) ILIKE '%rejected%'")
+    const backfill = at("UPDATE returns SET status = 'submitted' WHERE status = 'pending';")
+    const add = at("ADD CONSTRAINT chk_returns_status_v2")
+    expect(drop, "không tìm thấy khối gỡ ràng buộc cũ của returns").toBeGreaterThan(0)
+    expect(backfill).toBeGreaterThan(drop)
+    expect(add).toBeGreaterThan(backfill)
   })
 
   /**

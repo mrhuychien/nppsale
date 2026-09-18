@@ -8,10 +8,16 @@
  * kho: trừ tồn, sinh công nợ, in phiếu giao. Một hóa đơn bán có thể chưa
  * phát hành hoá đơn điện tử nào, và ngược lại thì không.
  *
- * ⚠ CÙNG NGỮ PHÁP VỚI DANH SÁCH ĐƠN HÀNG (chủ nhà chốt): thẻ trạng thái
- * có số đếm ở trên, thẻ bảng cho máy tính, danh sách thẻ cho điện thoại.
- * Hai màn này người dùng đi lại suốt ngày; bắt họ học hai bố cục cho cùng
- * một việc là thuế đánh lên từng lần chuyển màn.
+ * ⚠ CÙNG NGỮ PHÁP VỚI DANH SÁCH ĐƠN HÀNG (chủ nhà chốt), tới từng chi
+ * tiết dựng hình — KHÔNG phải "cũng là một cái bảng":
+ *   • Thẻ trạng thái có số đếm ở trên cùng.
+ *   • MỘT thẻ bo 2xl chứa thanh công cụ, lưới, rồi phân trang — tất cả
+ *     nằm trong thẻ, không rơi ra ngoài.
+ *   • Hàng dựng bằng CSS GRID với `gridTemplateColumns` dùng chung cho
+ *     tiêu đề và từng dòng, giống `desktop-order-table.tsx`. Dùng
+ *     `<table>` thì cột co giãn theo nội dung và hai màn lệch nhau ngay
+ *     từ cái nhìn đầu tiên — đó chính là chỗ bản trước làm chưa giống.
+ *   • Điện thoại có danh sách thẻ riêng.
  */
 
 import { useCallback, useEffect, useState } from "react"
@@ -26,9 +32,10 @@ import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PipelineTabs } from "@/components/orders/pipeline-tabs"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 
 interface Row {
@@ -51,8 +58,20 @@ const SELECT =
 const TABS = [
   { key: "posted", label: "Đã xuất", accent: "#12b76a" },
   { key: "cancelled", label: "Đã hủy", accent: "#f04438" },
-  { key: "all", label: "Tất cả", accent: "#667085" },
+  { key: "all", label: "Tất cả", accent: "#181c1e" },
 ] as const
+
+/**
+ * Bề rộng cột, dùng CHUNG cho hàng tiêu đề và mọi dòng.
+ *
+ * ⚠ MỘT HẰNG SỐ, KHÔNG CHÉP HAI LẦN. Chép ra hai chỗ là một ngày nào đó
+ * sửa một chỗ, và tiêu đề lệch khỏi dữ liệu đúng một cột — lỗi khó thấy
+ * nhất trong các lỗi dựng hình.
+ */
+const COLS = "170px minmax(200px,1.5fr) 130px 120px 150px 160px"
+
+const HEAD =
+  "flex items-center px-2 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant"
 
 export default function SalesInvoicesPage() {
   const { loading: authLoading } = useRoleGuard("orders")
@@ -85,7 +104,7 @@ export default function SalesInvoicesPage() {
   /**
    * ⚠ ĐẾM RIÊNG, KHÔNG ĐẾM TỪ `rows`. `rows` chỉ là một trang 50 dòng —
    * đếm từ đó thì thẻ "Đã xuất" hiện 50 dù sổ có 4.000, và con số trên
-   * thẻ mâu thuẫn với con số dưới chân trang.
+   * thẻ mâu thuẫn với con số dưới chân trang, ngay trên cùng một màn.
    */
   const fetchCounts = useCallback(async () => {
     const [posted, cancelled, all] = await Promise.all([
@@ -139,7 +158,7 @@ export default function SalesInvoicesPage() {
 
   const codeCell = (r: Row) => (
     <>
-      <span className="font-mono font-semibold text-primary">{r.invoice_code}</span>
+      <span className="font-mono text-[13px] font-bold text-primary">{r.invoice_code}</span>
       {/*
         ⚠ NÓI RA KHI HÓA ĐƠN LÀ BẢN LẬP LẠI. Không có dấu này thì một hóa
           đơn đã huỷ nằm cạnh một hóa đơn gần như y hệt, và người tra sổ
@@ -154,6 +173,18 @@ export default function SalesInvoicesPage() {
     <Badge variant={INVOICE_STATUS_MAP[r.status]?.variant ?? "secondary"}>
       {INVOICE_STATUS_MAP[r.status]?.label ?? r.status}
     </Badge>
+  )
+
+  const toolbar = (
+    <div className="relative min-w-[220px] max-w-sm flex-1">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Tìm trong trang này: số hóa đơn, khách, mã đơn…"
+        className="pl-10"
+      />
+    </div>
   )
 
   return (
@@ -175,51 +206,65 @@ export default function SalesInvoicesPage() {
         }))}
       />
 
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tìm trong trang này: số hóa đơn, khách hàng, mã đơn…"
-          className="pl-8"
-        />
-      </div>
+      {/* ⚠ MÁY TÍNH — một thẻ gồm thanh công cụ, lưới, phân trang. Cùng
+          khuôn với màn "Đơn hàng"; đổi ở đây thì đổi cả bên kia. */}
+      <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
+        <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
+          {toolbar}
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="font-extrabold text-primary"
+              onClick={() => setSearch("")}
+            >
+              Xoá lọc
+            </Button>
+          )}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filtered.length} / {pg.total} hóa đơn
+          </span>
+        </div>
 
-      {/* ---------------- Máy tính: thẻ bảng ---------------- */}
-      <div className="hidden overflow-x-auto rounded-xl border bg-card lg:block">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 text-left">Số hóa đơn</th>
-              <th className="px-3 py-2 text-left">Ngày xuất</th>
-              <th className="px-3 py-2 text-left">Khách hàng</th>
-              <th className="px-3 py-2 text-left">Đơn gốc</th>
-              <th className="px-3 py-2 text-right">Tổng tiền</th>
-              <th className="px-3 py-2 text-left">Trạng thái</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div className="overflow-x-auto">
+          <div className="min-w-[930px]">
+            <div
+              className="grid h-[42px] items-center border-b border-outline-variant/40 bg-surface-container-low px-2"
+              style={{ gridTemplateColumns: COLS }}
+            >
+              <span className={HEAD}>Số hóa đơn</span>
+              <span className={HEAD}>Khách hàng</span>
+              <span className={HEAD}>Ngày xuất</span>
+              <span className={HEAD}>Đơn gốc</span>
+              <span className={cn(HEAD, "justify-end")}>Tổng tiền</span>
+              <span className={HEAD}>Trạng thái</span>
+            </div>
+
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i} className="border-t">
-                  <td colSpan={6} className="px-3 py-2"><Skeleton className="h-6" /></td>
-                </tr>
+                <div key={i} className="border-b border-outline-variant/30 px-2 py-3">
+                  <Skeleton className="h-6" />
+                </div>
               ))
             ) : filtered.length === 0 ? (
-              <tr className="border-t">
-                <td colSpan={6} className="px-3 py-8">{empty}</td>
-              </tr>
+              <div className="px-4 py-10">{empty}</div>
             ) : (
               filtered.map((r) => (
-                <tr
+                <div
                   key={r.id}
-                  className="cursor-pointer border-t hover:bg-muted/40"
+                  role="row"
                   onClick={() => router.push(`/sales-invoices/${r.id}`)}
+                  className="grid min-h-[52px] cursor-pointer items-center border-b border-outline-variant/30 px-2 transition-colors hover:bg-surface-container-low"
+                  style={{ gridTemplateColumns: COLS }}
                 >
-                  <td className="px-3 py-2">{codeCell(r)}</td>
-                  <td className="px-3 py-2">{formatDate(r.invoice_date)}</td>
-                  <td className="px-3 py-2">{r.customer?.store_name || "—"}</td>
-                  <td className="px-3 py-2">
+                  <span className="truncate px-2">{codeCell(r)}</span>
+                  <span className="truncate px-2 text-[13px]">
+                    {r.customer?.store_name || "—"}
+                  </span>
+                  <span className="px-2 text-[13px] text-on-surface-variant">
+                    {formatDate(r.invoice_date)}
+                  </span>
+                  <span className="px-2" onClick={(e) => e.stopPropagation()}>
                     {/*
                       ⚠ CHẶN NỔI BỌT. Cả hàng đã điều hướng sang hóa đơn;
                         không chặn thì bấm mã đơn là chạy cả hai lệnh và
@@ -227,54 +272,61 @@ export default function SalesInvoicesPage() {
                     */}
                     <Link
                       href={`/orders/${r.order_id}`}
-                      onClick={(e) => e.stopPropagation()}
                       className="font-mono text-xs text-primary hover:underline"
                     >
                       {r.order?.order_code || "—"}
                     </Link>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.total)}</td>
-                  <td className="px-3 py-2">{statusBadge(r)}</td>
-                </tr>
+                  </span>
+                  <span className="px-2 text-right text-[13px] font-bold tabular-nums">
+                    {formatCurrency(r.total)}
+                  </span>
+                  <span className="px-2">{statusBadge(r)}</span>
+                </div>
               ))
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+
+        <div className="px-4 pb-3 pt-1">
+          <DataPagination pg={pg} />
+        </div>
       </div>
 
       {/* ---------------- Điện thoại: danh sách thẻ ---------------- */}
       <div className="space-y-3 lg:hidden">
+        {toolbar}
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border bg-card p-6">{empty}</div>
         ) : (
-          filtered.map((r) => (
-            <Link
-              key={r.id}
-              href={`/sales-invoices/${r.id}`}
-              className="block rounded-xl border bg-card p-3 active:bg-muted/40"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate">{codeCell(r)}</div>
-                  <div className="mt-0.5 truncate text-sm">{r.customer?.store_name || "—"}</div>
+          <>
+            {filtered.map((r) => (
+              <Link
+                key={r.id}
+                href={`/sales-invoices/${r.id}`}
+                className="block rounded-xl border bg-card p-3 active:bg-muted/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate">{codeCell(r)}</div>
+                    <div className="mt-0.5 truncate text-sm">{r.customer?.store_name || "—"}</div>
+                  </div>
+                  {statusBadge(r)}
                 </div>
-                {statusBadge(r)}
-              </div>
-              <div className="mt-2 flex items-end justify-between gap-2">
-                <div className="text-xs text-muted-foreground">
-                  {formatDate(r.invoice_date)}
-                  {r.order?.order_code ? ` · ${r.order.order_code}` : ""}
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(r.invoice_date)}
+                    {r.order?.order_code ? ` · ${r.order.order_code}` : ""}
+                  </div>
+                  <div className="text-base font-bold tabular-nums">{formatCurrency(r.total)}</div>
                 </div>
-                <div className="text-base font-bold tabular-nums">{formatCurrency(r.total)}</div>
-              </div>
-            </Link>
-          ))
+              </Link>
+            ))}
+            <DataPagination pg={pg} />
+          </>
         )}
       </div>
-
-      <DataPagination pg={pg} />
     </div>
   )
 }

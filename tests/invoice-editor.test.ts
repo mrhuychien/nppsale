@@ -241,3 +241,64 @@ describe("màn soạn: ràng buộc giao diện", () => {
     expect(NEW_PAGE).toContain("else if (!data) setErr(")
   })
 })
+
+// =====================================================================
+
+/**
+ * CỘT TRONG CÂU EMBED PHẢI CÓ THẬT.
+ *
+ * ⚠ CHUYỆN ĐÃ XẢY RA: màn sửa hóa đơn hỏi `customers(price_group_id)` —
+ * một cột KHÔNG TỒN TẠI. Tên nghe hợp lý, tsc không biết gì về schema,
+ * và mọi chốt cấu trúc đều xanh; nó chỉ nổ khi người dùng bấm vào, và
+ * nổ thành nguyên một màn đỏ. Cột thật tên `group_id`.
+ *
+ * ⚠ ĐỐI CHIẾU VỚI `schema_full.sql`, KHÔNG VỚI TRÍ NHỚ. Đây là chỗ duy
+ * nhất trong kho này biết cột nào có thật.
+ */
+describe("câu embed customers dùng cột có thật", () => {
+  const SCHEMA = read("supabase/schema_full.sql")
+  const EDIT_PAGE = read("src/app/(dashboard)/sales-invoices/[id]/edit/page.tsx")
+
+  /** Các cột của bảng `customers` theo DDL. */
+  const customerCols = (() => {
+    const i = SCHEMA.indexOf("CREATE TABLE customers (")
+    if (i < 0) throw new Error("không tìm thấy DDL bảng customers trong schema_full.sql")
+    const body = SCHEMA.slice(i, SCHEMA.indexOf("\n);", i))
+    return new Set(
+      body
+        .split("\n")
+        .slice(1)
+        .map((l) => l.trim().split(/[\s(]/)[0])
+        .filter((w) => /^[a-z_][a-z0-9_]*$/.test(w))
+    )
+  })()
+
+  it("schema đọc ra được, và có cột nhóm khách", () => {
+    // Nếu phép cắt DDL hỏng thì tập cột rỗng và mọi chốt dưới thành vô
+    // nghĩa — kiểm chính phép cắt trước.
+    expect(customerCols.size).toBeGreaterThan(10)
+    expect(customerCols.has("group_id")).toBe(true)
+    expect(customerCols.has("price_group_id")).toBe(false)
+  })
+
+  for (const [ten, src] of [
+    ["màn lập hóa đơn", NEW_PAGE],
+    ["màn sửa hóa đơn", EDIT_PAGE],
+  ] as const) {
+    it(`${ten}: mọi cột trong customers(...) đều có trong schema`, () => {
+      const m = src.match(/customer:customers\(([^)]*)\)/)
+      expect(m, `${ten} không còn câu embed customers`).toBeTruthy()
+      const cols = m![1].split(",").map((c) => c.trim()).filter(Boolean)
+      expect(cols.length).toBeGreaterThan(0)
+      for (const c of cols) {
+        expect(customerCols.has(c), `${ten} hỏi cột "${c}" không có trong bảng customers`).toBe(true)
+      }
+    })
+  }
+
+  /** Giá của mã thêm tay phải nhận đúng nhóm khách, không nhận undefined. */
+  it("nhóm giá truyền vào màn soạn lấy từ đúng cột đó", () => {
+    expect(strip(NEW_PAGE)).toContain("priceGroupId={order.customer?.group_id ?? null}")
+    expect(strip(EDIT_PAGE)).toContain("priceGroupId={inv.customer?.group_id ?? null}")
+  })
+})

@@ -23,7 +23,7 @@ import { InvoiceEditor } from "@/components/orders/invoice-editor"
 interface OrderHead {
   id: string
   order_code: string
-  customer?: { price_group_id?: string | null } | null
+  customer?: { group_id?: string | null } | null
 }
 
 export default function NewSalesInvoicePage() {
@@ -46,7 +46,7 @@ export default function NewSalesInvoicePage() {
     let cancelled = false
     supabase
       .from("sales_orders")
-      .select("id, order_code, customer:customers(price_group_id)")
+      .select("id, order_code, customer:customers(group_id)")
       .eq("id", orderId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -85,7 +85,7 @@ export default function NewSalesInvoicePage() {
     <InvoiceEditor
       orderId={order.id}
       orderCode={order.order_code}
-      priceGroupId={order.customer?.price_group_id ?? null}
+      priceGroupId={order.customer?.group_id ?? null}
       backHref={`/orders/${order.id}`}
     />
   )

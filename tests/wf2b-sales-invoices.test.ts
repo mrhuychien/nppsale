@@ -437,6 +437,52 @@ describe("Danh sách hóa đơn bán", () => {
     expect(CODE).toContain("onClick={(e) => e.stopPropagation()}")
   })
 
+
+  /**
+   * ⚠ CÙNG KHUÔN DỰNG HÌNH VỚI MÀN ĐƠN HÀNG, không chỉ "cũng là bảng".
+   * Chủ nhà nhìn ra ngay khi hai màn lệch nhau: bản trước dùng `<table>`
+   * nên cột co giãn theo nội dung, còn màn đơn hàng dựng bằng CSS grid
+   * với bề rộng cột cố định. Chốt này neo ba thứ dễ trôi nhất — vỏ thẻ,
+   * hàng tiêu đề, và kiểu dòng — vào đúng chuỗi lớp màn đơn hàng đang
+   * dùng, lấy TỪ CHÍNH FILE ĐÓ chứ không chép tay.
+   */
+  it("dùng chung khuôn thẻ và lưới với màn đơn hàng", () => {
+    const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
+    const TABLE = read("src/components/orders/desktop-order-table.tsx")
+
+    const SHELL =
+      "hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest"
+    const TOOLBAR =
+      "flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3"
+    const HEADROW =
+      "grid h-[42px] items-center border-b border-outline-variant/40 bg-surface-container-low px-2"
+
+    // Nếu màn đơn hàng đổi khuôn thì chốt đỏ ở đây TRƯỚC, thay vì hai màn
+    // lặng lẽ trôi xa nhau cho tới khi có người nhìn thấy.
+    expect(ORDERS, "màn đơn hàng đã đổi vỏ thẻ").toContain(SHELL)
+    expect(ORDERS, "màn đơn hàng đã đổi thanh công cụ").toContain(TOOLBAR)
+    expect(TABLE, "bảng đơn hàng đã đổi hàng tiêu đề").toContain(HEADROW)
+
+    expect(CODE).toContain(SHELL)
+    expect(CODE).toContain(TOOLBAR)
+    expect(CODE).toContain(HEADROW)
+  })
+
+  /**
+   * ⚠ MỘT HẰNG SỐ CỘT, DÙNG CHO CẢ TIÊU ĐỀ LẪN DÒNG. Chép ra hai chỗ là
+   * một ngày nào đó sửa một chỗ, và tiêu đề lệch khỏi dữ liệu đúng một
+   * cột — lỗi khó thấy nhất trong các lỗi dựng hình.
+   */
+  it("bề rộng cột khai một lần, dùng hai nơi", () => {
+    expect(CODE).toContain("const COLS =")
+    expect((CODE.match(/gridTemplateColumns: COLS/g) ?? []).length).toBe(2)
+  })
+
+  /** ⚠ Điện thoại phải có danh sách riêng — lưới 930px không vừa màn. */
+  it("điện thoại có danh sách thẻ riêng", () => {
+    expect(CODE).toContain('className="space-y-3 lg:hidden"')
+  })
+
   it("không để màn hình thành ngõ cụt khi rỗng", () => {
     expect(CODE).toContain("Tới danh sách đơn")
   })

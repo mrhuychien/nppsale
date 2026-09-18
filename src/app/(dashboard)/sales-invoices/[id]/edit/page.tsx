@@ -41,7 +41,7 @@ interface InvRow {
   status: string
   order_id: string
   order?: { order_code?: string | null } | null
-  customer?: { price_group_id?: string | null } | null
+  customer?: { group_id?: string | null } | null
 }
 
 export default function EditSalesInvoicePage() {
@@ -63,7 +63,7 @@ export default function EditSalesInvoicePage() {
         supabase
           .from("sales_invoices")
           .select(
-            "id, invoice_code, status, order_id, order:sales_orders(order_code), customer:customers(price_group_id)"
+            "id, invoice_code, status, order_id, order:sales_orders(order_code), customer:customers(group_id)"
           )
           .eq("id", id)
           .maybeSingle(),
@@ -135,7 +135,7 @@ export default function EditSalesInvoicePage() {
     <InvoiceEditor
       orderId={inv.order_id}
       orderCode={inv.order?.order_code || ""}
-      priceGroupId={inv.customer?.price_group_id ?? null}
+      priceGroupId={inv.customer?.group_id ?? null}
       reissueOf={{ invoiceId: inv.id, invoiceCode: inv.invoice_code, lines: seed }}
       priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
       backHref={`/sales-invoices/${inv.id}`}

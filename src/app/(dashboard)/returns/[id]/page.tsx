@@ -17,10 +17,17 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
-import { Pencil, Trash2, X, ExternalLink, Info } from "lucide-react"
+import { Pencil, Trash2, X, ExternalLink, Info, PackageCheck, Ban } from "lucide-react"
+import {
+  completeReturn,
+  cancelReturn,
+  RETURN_ZONES,
+  type ReturnZone,
+} from "@/lib/returns/complete-return"
 import type { Return, ReturnLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -35,6 +42,10 @@ export default function ReturnDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", credit_note_amount: "" })
   const [actionLoading, setActionLoading] = useState(false)
+  /** Kho nhận hàng trả — người duyệt phải chọn, không đoán hộ. */
+  const [zone, setZone] = useState<ReturnZone>("sale")
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -44,7 +55,9 @@ export default function ReturnDetailPage() {
     const [retRes, linesRes] = await Promise.all([
       supabase
         .from("returns")
-        .select("id, order_id, reason, status, credit_note_amount, photo_url, notes, created_at, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)")
+        .select(
+          "id, order_id, reason, status, credit_note_amount, photo_url, notes, created_at, destination_zone, completed_at, cancel_reason, applied_receipt_id, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)"
+        )
         .eq("id", id)
         .single(),
       supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(*)").eq("return_id", id),
@@ -80,6 +93,57 @@ export default function ReturnDetailPage() {
     }
   }
 
+  /**
+   * HOÀN THÀNH PHIẾU TRẢ — nhập kho + giảm công nợ, một giao dịch.
+   *
+   * ⚠ ĐI QUA RPC, KHÔNG GHI THẲNG. Migration 120 đã gỡ trigger tự nhập
+   * kho, nên đặt `status = 'completed'` bằng một lệnh UPDATE chỉ làm
+   * phiếu TRÔNG như đã xong: hàng không vào tồn, công nợ không giảm, và
+   * không ai quay lại xử lý nó nữa.
+   */
+  const handleComplete = async () => {
+    if (!ret || actionLoading) return
+    setActionLoading(true)
+    try {
+      await completeReturn(supabase, ret.id, zone)
+      toast({
+        title: "Đã hoàn thành phiếu trả",
+        description: `Hàng đã nhập ${zone === "sale" ? "kho bán" : "kho cận date"}; công nợ đã trừ.`,
+      })
+      fetchData()
+    } catch (err) {
+      toast({ title: "Không hoàn thành được", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  /**
+   * HUỶ PHIẾU TRẢ. Phiếu còn ở Phiếu tạm thì chỉ đổi trạng thái; phiếu ĐÃ
+   * hoàn thành thì RPC đảo kho và tính lại công nợ — và từ chối nếu khoản
+   * có đã cấn trừ vào một phiếu thu.
+   */
+  const handleCancel = async () => {
+    if (!ret || actionLoading) return
+    const reason = cancelReason.trim()
+    if (!reason) {
+      toast({ title: "Phải ghi lý do huỷ", variant: "destructive" })
+      return
+    }
+    setActionLoading(true)
+    try {
+      await cancelReturn(supabase, ret.id, reason)
+      toast({ title: "Đã huỷ phiếu trả" })
+      setCancelOpen(false)
+      setCancelReason("")
+      fetchData()
+    } catch (err) {
+      toast({ title: "Không huỷ được", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const handleSaveEdit = async () => {
     if (!ret) return
     setActionLoading(true)
@@ -110,6 +174,12 @@ export default function ReturnDetailPage() {
   // Phiếu trả giờ chỉ là bản ghi tra cứu — không còn workflow duyệt.
   // Cho phép sửa ghi chú / credit note + (owner) xoá.
   const canEdit = !!user && hasPermission(user.role, "returns", "update")
+  /**
+   * ⚠ TÊN QUYỀN PHẢI KHỚP THỨ RPC KIỂM. `complete_return` và
+   * `cancel_return` đều hỏi `returns.approve` (migration 120) — gài màn
+   * hình bằng một quyền khác là nút hiện ra rồi RPC ném FORBIDDEN.
+   */
+  const canApprove = !!user && hasPermission(user.role, "returns", "approve")
   const canDelete = !!user && user.role === "owner"
 
   return (
@@ -122,16 +192,92 @@ export default function ReturnDetailPage() {
         <StatusBadge status={ret.status} type="return" />
       </PageHeader>
 
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="flex items-start gap-3 p-3 text-sm">
-          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <p className="text-xs text-primary">
-            Phiếu trả là bản ghi tra cứu. Việc nhập lại kho + trừ công nợ đã
-            được xử lý ngay ở bước Bàn giao lại từ lái xe — không cần duyệt
-            ở đây.
-          </p>
-        </CardContent>
-      </Card>
+      {/* ⚠ KHỐI NÀY TỪNG NÓI "nhập kho đã xử lý ở bước Bàn giao lại từ lái
+          xe" — đúng với luồng cũ, sai hẳn với v2. Trong v2 không có bước
+          bàn giao nào, và `complete_return` là đường DUY NHẤT nhập kho. */}
+      {ret.status === "submitted" && (
+        <Card className="border-[#fdb022]/40 bg-[#fff7e6]">
+          <CardContent className="grid gap-3 p-4">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#b54708]" />
+              <p className="text-xs font-semibold text-[#b54708]">
+                Hàng CHƯA vào kho và công nợ CHƯA giảm. Cả hai chỉ xảy ra khi bấm Hoàn thành.
+              </p>
+            </div>
+            {canApprove && (
+              <>
+                {/* ⚠ KHO NHẬN LÀ QUYẾT ĐỊNH CỦA NGƯỜI DUYỆT, không đoán hộ:
+                    hàng còn bán được thì về kho bán, cận hạn hoặc cần xử lý
+                    riêng thì về kho cận date. Chọn nhầm là hoặc đem hàng
+                    cận hạn bán tiếp, hoặc chôn hàng còn tốt. */}
+                <div className="grid gap-1.5">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Nhập về kho nào
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {RETURN_ZONES.map((z) => (
+                      <button
+                        key={z.value}
+                        type="button"
+                        onClick={() => setZone(z.value)}
+                        aria-pressed={zone === z.value}
+                        className={`rounded-xl border-[1.5px] px-3 py-2 text-left text-xs font-bold transition-colors ${
+                          zone === z.value
+                            ? "border-[#b54708] bg-white text-[#b54708]"
+                            : "border-outline-variant bg-white/60 text-muted-foreground hover:bg-white"
+                        }`}
+                      >
+                        <span className="block">{z.label}</span>
+                        <span className="block font-semibold opacity-70">{z.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleComplete} disabled={actionLoading}>
+                    <PackageCheck className="mr-2 h-4 w-4" />
+                    {actionLoading ? "Đang xử lý…" : "Hoàn thành — nhập kho & trừ công nợ"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setCancelOpen(true)} disabled={actionLoading}>
+                    <Ban className="mr-2 h-4 w-4" /> Huỷ phiếu
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {ret.status === "completed" && (
+        <Card className="border-tertiary/30 bg-[#ecfdf3]">
+          <CardContent className="flex flex-wrap items-center gap-3 p-4">
+            <Info className="h-4 w-4 shrink-0 text-tertiary" />
+            <p className="min-w-0 flex-1 text-xs font-semibold text-tertiary">
+              Đã nhập kho{ret.destination_zone ? ` (${ret.destination_zone === "sale" ? "kho bán" : "kho cận date"})` : ""} và
+              đã trừ công nợ.
+              {!ret.order_id &&
+                " Phiếu không gắn đơn nào — khoản có này đem cấn trừ ở màn Phiếu thu."}
+            </p>
+            {canApprove && (
+              <Button variant="outline" size="sm" onClick={() => setCancelOpen(true)} disabled={actionLoading}>
+                <Ban className="mr-2 h-4 w-4" /> Huỷ phiếu
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {ret.status === "cancelled" && (
+        <Card className="border-outline-variant bg-surface-container-low">
+          <CardContent className="flex items-start gap-3 p-4 text-xs font-semibold text-muted-foreground">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Phiếu đã huỷ. Kho và công nợ đã được trả về như trước.
+              {ret.cancel_reason ? ` Lý do: ${ret.cancel_reason}` : ""}
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column - details + lines */}
@@ -373,6 +519,49 @@ export default function ReturnDetailPage() {
         onConfirm={handleDelete}
         loading={actionLoading}
       />
+
+      {/*
+        ⚠ HUỶ PHIẾU TRẢ BẮT BUỘC CÓ LÝ DO — `cancel_return` RAISE
+        `REASON_REQUIRED` khi để trống, nên hỏi ở đây thay vì để RPC từ
+        chối sau khi người dùng đã bấm.
+        ⚠ Và huỷ một phiếu ĐÃ hoàn thành là ĐẢO KHO: RPC trừ lại tồn đã
+        nhập và tính lại công nợ. Nói thẳng ra trong câu mô tả.
+      */}
+      <Dialog open={cancelOpen} onOpenChange={(o) => !actionLoading && setCancelOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Huỷ phiếu trả?</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
+              {ret.status === "completed"
+                ? "Phiếu này đã nhập kho. Huỷ sẽ trừ lại số hàng đã nhập và tính lại công nợ của đơn gốc."
+                : "Phiếu chưa nhập kho, huỷ chỉ đổi trạng thái."}
+            </p>
+            <div className="grid gap-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Lý do huỷ</Label>
+              <Textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+                placeholder="Ví dụ: khách đổi ý, nhập nhầm số lượng…"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={actionLoading}>
+                Quay lại
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleCancel}
+                disabled={actionLoading || !cancelReason.trim()}
+              >
+                {actionLoading ? "Đang huỷ…" : "Huỷ phiếu trả"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

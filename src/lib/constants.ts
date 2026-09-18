@@ -103,14 +103,28 @@ export const PAYMENT_STATUS_MAP: Record<string, { label: string; variant: "defau
   overdue: { label: "Quá hạn", variant: "destructive" },
 }
 
+/**
+ * Bốn trạng thái phiếu trả của workflow v2 (`chk_returns_status_v2`,
+ * migration 119).
+ *
+ * ⚠ NHÃN PHẢI NÓI ĐÚNG HÀNG ĐÃ VÀO KHO CHƯA. Bảng cũ gắn "Đã ghi nhận"
+ * cho cả ba trạng thái, nên người đọc không phân biệt được phiếu đang
+ * chờ xử lý với phiếu đã nhập kho — mà đó đúng là câu hỏi duy nhất người
+ * ta mở danh sách phiếu trả ra để trả lời.
+ *
+ * ⚠ Ba khoá cuối là DI SẢN: giá trị không còn hợp lệ sau migration 119
+ * (backfill đã đổi hết đi), nhưng giữ lại để phiếu cũ trong bản sao lưu
+ * hay bản xuất CSV không hiện ra chữ tiếng Anh trần.
+ */
 export const RETURN_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
-  // Workflow duyệt đã bỏ — phiếu trả là bản ghi tra cứu (xử lý nhập
-  // kho + trừ công nợ đã làm ngay ở bước Bàn giao lại). Các trạng
-  // thái legacy map về nhãn trung tính.
-  pending: { label: "Đã ghi nhận", variant: "secondary" },
-  approved: { label: "Đã ghi nhận", variant: "success" },
-  rejected: { label: "Đã huỷ", variant: "danger" },
-  completed: { label: "Đã ghi nhận", variant: "success" },
+  draft: { label: "Nháp", variant: "secondary" },
+  submitted: { label: "Chờ xử lý", variant: "warning" },
+  completed: { label: "Đã nhập kho", variant: "success" },
+  cancelled: { label: "Đã huỷ", variant: "danger" },
+  // Di sản — không còn giá trị nào thuộc nhóm này sau migration 119.
+  pending: { label: "Chờ xử lý (cũ)", variant: "secondary" },
+  approved: { label: "Đã duyệt (cũ)", variant: "secondary" },
+  rejected: { label: "Đã huỷ (cũ)", variant: "danger" },
 }
 
 export const RETURN_REASONS = [

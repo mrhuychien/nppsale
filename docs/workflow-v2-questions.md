@@ -252,6 +252,62 @@ khi quyết, ghi ra để không quên:
 
 ---
 
+## Q8 — MỞ, cần chủ nhà quyết: lỗ trong trần số lượng trả
+
+**Phát hiện ở P6, khi đo trước lúc viết mã. Đây là lỗ trong chính
+migration 119/120, không phải trong giao diện — nên tôi DỪNG, báo cáo,
+không tự sửa.**
+
+`enforce_return_line_cap` (migration 119, dòng 343-405) chặn không cho
+trả quá số đã bán của đơn gốc. Nhưng phần "đã trả bao nhiêu rồi" của nó
+chỉ đếm phiếu ở trạng thái `completed` (dòng 380-387). Và
+`complete_return` (migration 120, dòng 827-963) KHÔNG kiểm lại trần đó
+lần nữa.
+
+Hệ quả, dựng lại được bằng ba bước:
+
+1. Đơn bán 10 thùng, đã xuất hàng.
+2. Lập phiếu trả A: 10 thùng. Lúc chèn dòng, trigger đếm "đã trả" = 0
+   (chưa phiếu nào `completed`) → LỌT. Phiếu A nằm ở `submitted`.
+3. Lập phiếu trả B: 10 thùng nữa. Trigger vẫn đếm "đã trả" = 0 vì A còn
+   ở `submitted` → LỌT.
+4. Hoàn thành cả A và B. `complete_return` không kiểm trần → nhập kho 20
+   thùng cho một đơn chỉ bán 10, và công nợ bị trừ gấp đôi.
+
+Ba cách xử, cần chủ nhà chọn:
+
+- **(a)** Cho `enforce_return_line_cap` đếm cả phiếu `submitted` vào
+  phần "đã trả". Chặt nhất, nhưng phiếu trả nháp/tạm cũng chiếm chỗ —
+  lập nhầm một phiếu rồi bỏ đó là chặn mất phiếu thật.
+- **(b)** Thêm một phép kiểm trần ngay đầu `complete_return`, đếm các
+  phiếu đã `completed` của cùng đơn. Chặn đúng lúc hàng thật sự vào kho,
+  không ảnh hưởng phiếu đang soạn. Tôi nghiêng về cách này.
+- **(c)** Để nguyên, coi là việc của người duyệt.
+
+**Chưa làm gì cả cho tới khi có câu trả lời.** Nếu chọn (a) hoặc (b) thì
+phải sửa migration — mà 119/120 chưa chạy ở đâu nên sửa tại chỗ được;
+nếu chúng đã chạy rồi thì phải thêm migration 121.
+
+## Q9 — GHI NHẬN, việc để lại cho P7: hai màn luồng cũ còn ghi hỏng đơn trả
+
+Ngoài `/returns/new` (đã sửa ở P6), còn HAI màn nữa tự lập phiếu trả vào
+thẳng `completed`, tức không nhập kho và không giảm công nợ sau khi 120
+gỡ trigger:
+
+- `src/app/(dashboard)/deliveries/[id]/handover/page.tsx:678` — lập phiếu
+  trả cho phần hàng khách nhận thiếu, và còn sửa công nợ bằng mã trình
+  duyệt ở dòng 707.
+- `src/app/(dashboard)/inventory/pending/page.tsx:373` — ghi thẳng
+  `status: 'completed'`; nguồn dữ liệu của nó lọc `.eq("status",
+  "approved")` ở dòng 107, mà giá trị đó đã chết sau 119 nên màn này coi
+  như đã tê liệt sẵn.
+
+Cả hai thuộc module luồng cũ mà P7 ẩn khỏi menu. Không sửa ở P6 theo
+luật "không đụng luồng cũ", nhưng P7 phải chắc chắn chúng không còn
+đường bấm tới.
+
+---
+
 ## Những gì đã biết trước khi bắt đầu
 
 Rút từ lượt lập bản đồ luồng đơn hàng hiện tại (đọc mã, chưa chạy thử

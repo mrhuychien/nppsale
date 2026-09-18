@@ -26,6 +26,15 @@ interface ProcessResult {
 }
 
 /**
+ * ⚠ MÃ CỦA LUỒNG CŨ — KHÔNG CÒN NƠI NÀO GỌI, VÀ ĐỪNG GỌI LẠI.
+ *
+ * Workflow v2 nhập kho hàng trả bằng RPC `complete_return` (migration
+ * 120): một giao dịch, khoá phiếu, chọn kho nhận, đóng giá vốn theo hàng
+ * thật. Hàm dưới đây làm cùng việc ấy bằng một chuỗi lệnh rời từ trình
+ * duyệt — bấm hai lần là nhập kho hai lần, và nó không biết khái niệm
+ * kho bán / kho cận date. Giữ lại theo luật "không xoá mã luồng cũ trong
+ * đợt này"; P7 sẽ dọn.
+ *
  * Restock a single approved return:
  *  1. Create a stock_entries row (type='import', status='posted')
  *  2. For each return line: pick the latest existing batch (same product) and
@@ -186,7 +195,7 @@ export async function processApprovedReturn(
 
 /**
  * Receivable = order.total minus the sum of credit_note_amount across all
- * approved+completed returns linked to that order. Creates the receivable
+ * COMPLETED returns linked to that order. Creates the receivable
  * row if missing, updates the existing one otherwise, and adjusts paid/
  * status conservatively so partial collections aren't overwritten.
  */
@@ -211,13 +220,22 @@ export async function recomputeReceivableForOrder(
     order_date: string | null
   }
 
-  // Sum approved/completed return credits — pending/rejected returns don't
-  // affect AR yet (they're proposed, not finalized).
+  /**
+   * ⚠ CHỈ PHIẾU TRẢ ĐÃ HOÀN THÀNH MỚI TRỪ CÔNG NỢ, và chỉ 'completed' còn
+   * tồn tại: `chk_returns_status_v2` (migration 119) đã bỏ 'approved' và
+   * 'pending', backfill đổi hết đi. Bộ lọc cũ hỏi hai giá trị không còn,
+   * nên nó trả về ÍT hơn thực tế — công nợ tính ra CAO hơn số khách thật
+   * sự nợ, và không có lỗi nào bắn ra.
+   *
+   * ⚠ Hàm này là bản TypeScript của `_wf2_recompute_receivable` (migration
+   * 120). Hai bên phải cùng một công thức; lệch nhau là hai màn nói hai
+   * con số cho cùng một khách.
+   */
   const { data: returns, error: returnsErr } = await supabase
     .from("returns")
     .select("credit_note_amount, status")
     .eq("order_id", orderId)
-    .in("status", ["approved", "completed"])
+    .eq("status", "completed")
   if (returnsErr) console.error("[lib/returns] truy vấn lỗi:", returnsErr.message)
   const credits = ((returns as Array<{ credit_note_amount: number | null; status: string }>) || [])
     .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)

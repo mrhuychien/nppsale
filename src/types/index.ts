@@ -606,10 +606,24 @@ export interface Return {
   requested_by: string
   reason: ReturnReason | null
   status: ReturnStatus
+  /** ⚠ DI SẢN: v2 bỏ bước duyệt, không chỗ nào ghi thêm. Phiếu cũ còn giá trị. */
   approved_by: string | null
   credit_note_amount: number | null
   photo_url: string | null
   notes: string | null
+  /** Kho nhận hàng trả, do người duyệt chọn lúc Hoàn thành (migration 119). */
+  destination_zone?: "sale" | "date" | null
+  completed_at?: string | null
+  completed_by?: string | null
+  cancel_reason?: string | null
+  /**
+   * Phiếu thu đã cấn trừ khoản có này (migration 119).
+   *
+   * ⚠ Khác null nghĩa là tiền đã đi rồi: `cancel_return` từ chối huỷ
+   * phiếu (`LOCKED_CREDIT_APPLIED`), và `create_cash_receipt` không cho
+   * đem nó cấn trừ lần nữa.
+   */
+  applied_receipt_id?: string | null
   created_at: string
   // Joined
   customer?: Customer

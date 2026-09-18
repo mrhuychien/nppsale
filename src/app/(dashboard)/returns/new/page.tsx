@@ -268,8 +268,21 @@ export default function NewReturnPage() {
           requested_by: user.id,
           reason,
           notes: notes.trim() || null,
-          // Workflow duyệt đã bỏ — phiếu trả tạo tay vào thẳng 'completed'.
-          status: "completed",
+          /**
+           * ⚠ LẬP PHIẾU RA Ở "PHIẾU TẠM", KHÔNG PHẢI "HOÀN THÀNH".
+           *
+           * Bản trước ghi thẳng 'completed' vì hồi đó có trigger tự nhập
+           * kho khi phiếu trả chuyển trạng thái. Migration 120 đã GỠ
+           * trigger ấy — `complete_return` là đường duy nhất còn nhập kho
+           * và giảm công nợ. Một phiếu 'completed' không đi qua RPC nghĩa
+           * là: hàng khách trả KHÔNG vào tồn, công nợ KHÔNG giảm, và phiếu
+           * thì trông như đã xong nên không ai quay lại xử lý nó.
+           *
+           * Người lập phiếu ghi nhận yêu cầu trả; người có quyền
+           * `returns.approve` bấm Hoàn thành và CHỌN kho nhận — hàng còn
+           * bán được hay phải để riêng là quyết định của họ, không đoán hộ.
+           */
+          status: "submitted",
           // Trigger `trg_return_lines_sync_credit` sẽ tính lại từ các dòng;
           // ghi sẵn ở đây để phiếu không có một khoảnh khắc nào mang số 0.
           credit_note_amount: credit,
@@ -298,7 +311,13 @@ export default function NewReturnPage() {
         )
       }
 
-      toast({ title: "Đã tạo phiếu trả hàng", description: `Trừ công nợ ${formatCurrency(credit)}` })
+      // ⚠ ĐỪNG HỨA ĐÃ TRỪ CÔNG NỢ. Lúc này chưa trừ gì cả — công nợ và
+      // tồn kho chỉ đổi khi ai đó bấm Hoàn thành. Hứa sai ở đây là kế
+      // toán đóng sổ với một con số chưa xảy ra.
+      toast({
+        title: "Đã lập phiếu trả hàng",
+        description: `Khoản có ${formatCurrency(credit)} — chờ bấm Hoàn thành để nhập kho và trừ công nợ.`,
+      })
       router.push(`/returns/${head.id}`)
     } catch (err: unknown) {
       toast({

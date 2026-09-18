@@ -43,6 +43,64 @@ export type OrderStatus =
  * một RPC. Một hóa đơn "nháp" là giấy đã in mà kho chưa trừ.
  */
 export type SalesInvoiceStatus = "posted" | "cancelled"
+
+/**
+ * HÓA ĐƠN BÁN — chứng từ THỰC XUẤT: trừ kho FIFO, sinh công nợ, in phiếu
+ * giao, là nguồn của hoá đơn điện tử và của doanh thu. Một đơn đặt hàng
+ * đẻ ra 0..n hóa đơn.
+ *
+ * ⚠ KHÔNG SỬA TẠI CHỖ. Sai thì huỷ rồi lập lại (`reissue_invoice`);
+ * `replaced_from` / `replaced_by` nối hai bản.
+ */
+export interface SalesInvoice {
+  id: string
+  org_id: string
+  invoice_code: string
+  order_id: string
+  customer_id: string
+  sales_user_id: string | null
+  invoice_date: string
+  status: SalesInvoiceStatus
+  subtotal: number
+  vat: number
+  total: number
+  payment_terms: string | null
+  due_date: string | null
+  stock_entry_id: string | null
+  notes: string | null
+  replaced_from: string | null
+  replaced_by: string | null
+  posted_at: string | null
+  posted_by: string | null
+  cancelled_at: string | null
+  cancelled_by: string | null
+  cancel_reason: string | null
+  created_at: string
+}
+
+export interface SalesInvoiceLine {
+  id: string
+  invoice_id: string
+  /** Rỗng với hàng đem đổi và với dòng nhà phân phối thêm ngoài đơn. */
+  order_line_id: string | null
+  product_id: string
+  unit_name: string
+  conversion_factor: number
+  quantity: number
+  unit_price: number
+  line_discount: number
+  line_total: number
+  /**
+   * ⚠ SNAPSHOT TẠI THỜI ĐIỂM XUẤT, không tra lại `products.vat_rate`.
+   * Đổi thuế suất sản phẩm rồi xuất đợt hai của cùng một đơn thì hai hóa
+   * đơn mang thuế suất KHÁC NHAU — đúng về kế toán (thuế theo ngày
+   * xuất), nhưng dễ bị tưởng là lỗi.
+   */
+  vat_rate: number
+  is_exchange: boolean
+  sort_order: number
+  note: string | null
+}
 export type StockEntryType = "import" | "export" | "transfer" | "stocktake"
 /**
  * ⚠ ĐỌC RỘNG HƠN GHI. Hai giá trị cuối do RPC của workflow v2 tự ghi
@@ -571,10 +629,22 @@ export interface Promotion {
   created_at: string
 }
 
+/**
+ * HOÁ ĐƠN ĐIỆN TỬ MISA. Tên bảng `invoices` là tên cũ từ trước workflow
+ * v2b — đừng nhầm với `SalesInvoice` (hóa đơn bán nội bộ).
+ */
 export interface Invoice {
   id: string
   org_id: string
   order_id: string | null
+  /**
+   * Hóa đơn bán mà tờ này phát hành cho.
+   *
+   * ⚠ ĐÂY MỚI LÀ MỐC ĐÚNG từ v2b. Một đơn xuất hai đợt có hai hóa đơn
+   * bán và hai hoá đơn điện tử; đọc dòng hàng theo `order_id` thì cả hai
+   * tờ đều khai toàn bộ đơn. Rỗng với hoá đơn lập trước v2b.
+   */
+  sales_invoice_id?: string | null
   invoice_number: string | null
   customer_name: string
   customer_address: string | null

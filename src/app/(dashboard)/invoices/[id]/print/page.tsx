@@ -41,7 +41,7 @@ export default function InvoicePrintPage() {
 
     const { data: inv, error: invErr } = await supabase
       .from("invoices")
-      .select("id, org_id, order_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at")
+      .select("id, org_id, order_id, sales_invoice_id, invoice_number, customer_name, customer_address, customer_tax_code, subtotal, vat, total, status, issued_at, created_at")
       .eq("id", id)
       .single()
     if (invErr) console.error("[id/print] truy vấn lỗi:", invErr.message)
@@ -75,12 +75,32 @@ export default function InvoicePrintPage() {
       if (orderDataErr) console.error("[id/print] truy vấn lỗi:", orderDataErr.message)
       if (orderData) setOrder((orderData as unknown) as OrderForPrint)
 
-      const { data: linesData, error: linesDataErr } = await supabase
-        .from("sales_order_lines")
-        .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(*)")
-        .eq("order_id", invoiceData.order_id)
-      if (linesDataErr) console.error("[id/print] truy vấn lỗi:", linesDataErr.message)
-      if (linesData) setLines(linesData as unknown as SalesOrderLine[])
+      /**
+       * ⚠ DÒNG HÀNG ĐỌC TỪ HÓA ĐƠN BÁN KHI CÓ (workflow v2b). Một đơn có
+       *   thể xuất làm hai đợt, mỗi đợt một hoá đơn điện tử. Đọc theo ĐƠN
+       *   thì cả hai tờ in ra đều liệt kê toàn bộ hàng của đơn, và tờ
+       *   khách cầm ghi nhiều hơn thứ thực sự có trên xe.
+       *
+       * ⚠ NHÁNH ĐỌC THEO ĐƠN GIỮ LẠI cho hoá đơn điện tử lập trước v2b —
+       *   chúng chỉ có `order_id`. Bỏ đi là mọi hoá đơn cũ in ra bảng
+       *   trắng.
+       */
+      if (invoiceData.sales_invoice_id) {
+        const { data: siLines, error: siErr } = await supabase
+          .from("sales_invoice_lines")
+          .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(*)")
+          .eq("invoice_id", invoiceData.sales_invoice_id)
+          .order("sort_order", { ascending: true })
+        if (siErr) console.error("[id/print] truy vấn lỗi:", siErr.message)
+        if (siLines) setLines(siLines as unknown as SalesOrderLine[])
+      } else {
+        const { data: linesData, error: linesDataErr } = await supabase
+          .from("sales_order_lines")
+          .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(*)")
+          .eq("order_id", invoiceData.order_id)
+        if (linesDataErr) console.error("[id/print] truy vấn lỗi:", linesDataErr.message)
+        if (linesData) setLines(linesData as unknown as SalesOrderLine[])
+      }
     }
 
     setLoading(false)

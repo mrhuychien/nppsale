@@ -85,6 +85,10 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/finance/cash-receipts": { module: "receivables", feature: "finance.cash_receipts" },
   "/finance/expenses": { module: "settings", feature: "finance.expenses" },
   "/invoices": { module: "invoices", feature: "invoices" },
+  // Hóa đơn BÁN đi cùng quyền của đơn hàng, không đi cùng quyền hoá đơn
+  // điện tử: người xuất hàng phải xem được thứ mình vừa xuất, còn kế toán
+  // HĐĐT thì chưa chắc.
+  "/sales-invoices": { module: "orders", feature: "orders" },
   "/settings/einvoice": { module: "settings", feature: "einvoice.config" },
 
   // Nhân sự

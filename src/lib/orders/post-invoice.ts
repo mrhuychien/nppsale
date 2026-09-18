@@ -361,6 +361,96 @@ export async function postInvoice(
   }
 }
 
+export interface CancelInvoiceResult {
+  importEntryId: string | null
+  orderStatus: string | null
+}
+
+/**
+ * Huỷ hóa đơn — hoàn hàng về ĐÚNG các lô đã lấy, xoá công nợ của nó.
+ *
+ * ⚠ KHÔNG CÓ "SỬA HÓA ĐƠN" TRỰC TIẾP. Hàng đã rời kho theo lô nào thì
+ * phải về đúng lô ấy; phép tính chênh lệch tổng số không làm được điều
+ * đó. `reissue_invoice` bên dưới chính là huỷ + lập lại trong một giao
+ * dịch.
+ */
+export async function cancelInvoice(
+  supabase: SupabaseClient,
+  invoiceId: string,
+  reason: string
+): Promise<CancelInvoiceResult> {
+  const { data, error } = await supabase.rpc("cancel_invoice", {
+    p_invoice_id: invoiceId,
+    p_reason: reason,
+  })
+  if (error) throw new Error(explainInvoiceError(error.message || String(error)))
+  const row = firstRow<{ import_entry_id?: string | null; order_status?: string | null }>(data)
+  return {
+    importEntryId: row?.import_entry_id ?? null,
+    orderStatus: row?.order_status ?? null,
+  }
+}
+
+/**
+ * Sửa hóa đơn — về nghiệp vụ là sửa, về kỹ thuật là huỷ rồi lập lại
+ * trong MỘT giao dịch.
+ *
+ * ⚠ TRẢ VỀ HÓA ĐƠN MỚI, MÃ MỚI. Màn hình gọi hàm này phải điều hướng
+ * sang bản mới; đứng lại ở trang cũ là người dùng nhìn một hóa đơn vừa
+ * bị huỷ và tưởng việc sửa thất bại.
+ */
+export async function reissueInvoice(
+  supabase: SupabaseClient,
+  invoiceId: string,
+  payload: Omit<PostInvoicePayload, "orderId">
+): Promise<PostInvoiceResult> {
+  const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
+  if (lines.length === 0) {
+    throw new Error("Hóa đơn phải còn ít nhất một dòng — muốn bỏ hết thì huỷ hóa đơn.")
+  }
+
+  const { data, error } = await supabase.rpc("reissue_invoice", {
+    p_invoice_id: invoiceId,
+    p: {
+      invoice_date: payload.invoiceDate || null,
+      payment_terms: payload.paymentTerms || null,
+      notes: payload.notes || null,
+      lines: lines.map((l) => ({
+        order_line_id: l.orderLineId,
+        product_id: l.productId,
+        unit_name: l.unitName,
+        conversion_factor: l.conversionFactor,
+        quantity: l.quantity,
+        unit_price: l.unitPrice,
+        line_discount: l.lineDiscount,
+        is_exchange: l.isExchange,
+        note: l.note,
+      })),
+    },
+  })
+  if (error) throw new Error(explainInvoiceError(error.message || String(error)))
+
+  const row = firstRow<{
+    invoice_id?: string | null
+    invoice_code?: string | null
+    entry_id?: string | null
+    receivable_id?: string | null
+    short_qty?: number | null
+    near_expiry_skipped?: number | null
+    order_status?: string | null
+  }>(data)
+
+  return {
+    invoiceId: row?.invoice_id ?? null,
+    invoiceCode: row?.invoice_code ?? null,
+    entryId: row?.entry_id ?? null,
+    receivableId: row?.receivable_id ?? null,
+    shortQty: Number(row?.short_qty ?? 0),
+    nearExpirySkipped: Number(row?.near_expiry_skipped ?? 0),
+    orderStatus: row?.order_status ?? null,
+  }
+}
+
 /**
  * Đóng đơn — thôi không giao phần còn lại.
  *

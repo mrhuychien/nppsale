@@ -20,6 +20,7 @@ import { PaymentStatusBadge, StatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { InvoiceDialog } from "@/components/orders/invoice-dialog"
 import { closeOrder } from "@/lib/orders/post-invoice"
+import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -463,47 +464,58 @@ export default function OrderDetailPage() {
     }
   }
 
+  /**
+   * PHÁT HÀNH HOÁ ĐƠN ĐIỆN TỬ cho đơn này.
+   *
+   * ⚠ MỐC LÀ HÓA ĐƠN BÁN, KHÔNG PHẢI ĐƠN. Bản cũ lập hoá đơn điện tử
+   *   thẳng từ `sales_orders` với tổng tiền của cả đơn. Từ v2b một đơn có
+   *   thể xuất làm hai đợt — làm thế thì cả hai lần đều khai toàn bộ đơn,
+   *   khách bị xuất thuế hai lần cho cùng một lô hàng, và hoá đơn đã phát
+   *   hành thì không sửa được.
+   *
+   * ⚠ NHIỀU HƠN MỘT HÓA ĐƠN THÌ DỪNG, KHÔNG ĐOÁN. Chọn bừa một cái là
+   *   phát hành nhầm chứng từ thuế. Chỉ đường sang trang hóa đơn bán để
+   *   người dùng tự chọn.
+   */
   const handleXuatHoaDon = async () => {
     if (!order || !user) return
     setMisaLoading(true)
     try {
-      // Auto-create invoice if none exists
-      let currentInvoiceId = invoice?.id
-      if (!currentInvoiceId) {
-        const customer = order.customer
-        const { data: newInvoice, error: invErr } = await supabase
-          .from("invoices")
-          .insert({
-            org_id: order.org_id,
-            order_id: order.id,
-            invoice_number: null,
-            customer_name: customer?.billing_name || customer?.store_name || "",
-            customer_address: customer?.billing_address || customer?.address || null,
-            customer_tax_code: customer?.tax_code || null,
-            subtotal: order.subtotal,
-            vat: order.vat,
-            total: order.total,
-            status: "draft",
-          })
-          .select("id")
-          .single()
-        if (invErr || !newInvoice) throw new Error(invErr?.message || "Không thể tạo hóa đơn")
-        currentInvoiceId = newInvoice.id
+      const posted = salesInvoices.filter((si) => si.status === "posted")
+      if (posted.length === 0) {
+        throw new Error(
+          "Đơn chưa có hóa đơn bán nào — xuất hàng trước rồi mới phát hành hoá đơn điện tử."
+        )
+      }
+      if (posted.length > 1) {
+        throw new Error(
+          `Đơn có ${posted.length} hóa đơn bán. Mở từng hóa đơn ở mục Hóa đơn bán rồi phát hành riêng — phát hành gộp là khai sai chứng từ thuế.`
+        )
       }
 
-      const res = await fetch("/api/einvoice/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceId: currentInvoiceId, mode: "as_sold" }),
+      const { data: si, error: siErr } = await supabase
+        .from("sales_invoices")
+        .select(
+          "id, org_id, order_id, invoice_code, status, subtotal, vat, total, customer:customers(store_name, billing_name, billing_address, address, tax_code)"
+        )
+        .eq("id", posted[0].id)
+        .single()
+      if (siErr || !si) throw new Error(siErr?.message || "Không đọc được hóa đơn bán")
+
+      const raw = (si as { customer: unknown }).customer
+      const currentInvoiceId = await ensureEInvoiceRow(supabase, {
+        ...(si as unknown as {
+          id: string; org_id: string; order_id: string; invoice_code: string
+          status: string; subtotal: number; vat: number; total: number
+        }),
+        customer: (Array.isArray(raw) ? raw[0] : raw) as never,
       })
-      const text = await res.text()
-      let data: { error?: string; cached?: boolean; inv_no?: string; lookup_code?: string; sandbox?: boolean } = {}
-      try { data = text ? JSON.parse(text) : {} } catch { /* non-JSON */ }
-      if (!res.ok) throw new Error(data.error || `Phát hành MISA thất bại (HTTP ${res.status})${text && !data.error ? `: ${text.slice(0, 200)}` : ""}`)
+
+      const data = await publishEInvoice(currentInvoiceId)
 
       toast({
         title: data.cached ? "Hoá đơn đã phát hành trước đó" : "Đã phát hành hoá đơn điện tử",
-        description: `${data.inv_no ? `Số HĐ: ${data.inv_no} · ` : ""}Mã tra cứu: ${data.lookup_code || "—"}${data.sandbox ? " (sandbox)" : ""}`,
+        description: `${data.invNo ? `Số HĐ: ${data.invNo} · ` : ""}Mã tra cứu: ${data.lookupCode || "—"}${data.sandbox ? " (sandbox)" : ""}`,
       })
       fetchData()
     } catch (error) {

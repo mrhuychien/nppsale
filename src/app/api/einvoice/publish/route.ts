@@ -78,7 +78,7 @@ async function handlePublish(req: Request) {
   // --- Load invoice (scope theo org) ---
   const { data: invoice, error: invErr } = await admin
     .from("invoices")
-    .select("id, order_id, status, issued_at, subtotal, vat, total, customer_name, customer_address, customer_tax_code, misa_ref_id, misa_inv_no, misa_lookup_code, misa_invoice_url")
+    .select("id, order_id, sales_invoice_id, status, issued_at, subtotal, vat, total, customer_name, customer_address, customer_tax_code, misa_ref_id, misa_inv_no, misa_lookup_code, misa_invoice_url")
     .eq("id", invoiceId)
     .eq("org_id", orgId)
     .maybeSingle()
@@ -160,7 +160,77 @@ async function handlePublish(req: Request) {
       payment_method_label: "Chuyển khoản" as string | null,
     }
 
-    if (invoice.order_id) {
+    /**
+     * ⚠ NGUỒN DÒNG HÀNG LÀ HÓA ĐƠN BÁN, KHÔNG PHẢI ĐƠN ĐẶT (workflow
+     *   v2b). Một đơn nay có thể xuất làm nhiều đợt, mỗi đợt một hóa đơn
+     *   bán và một hóa đơn điện tử. Đọc theo ĐƠN thì cả hai hóa đơn điện
+     *   tử đều mang TOÀN BỘ dòng của đơn — khách bị xuất thuế hai lần cho
+     *   cùng một lô hàng, và hoá đơn đã phát hành thì không sửa được.
+     *
+     * ⚠ THUẾ SUẤT LẤY SNAPSHOT TRÊN DÒNG HÓA ĐƠN, không tra lại
+     *   `products.vat_rate`. Thuế theo ngày xuất; đổi thuế suất sản phẩm
+     *   rồi phát hành lại hoá đơn của đợt cũ mà tra lại bảng sản phẩm là
+     *   khai sai kỳ.
+     *
+     * ⚠ NHÁNH ĐỌC THEO ĐƠN GIỮ LẠI cho dữ liệu cũ: hoá đơn điện tử lập
+     *   trước v2b chỉ có `order_id`. Bỏ nó đi là mọi hoá đơn cũ chưa phát
+     *   hành rơi xuống dòng tổng hợp "Hàng hoá, dịch vụ".
+     */
+    if (invoice.sales_invoice_id) {
+      const { data: si, error: siErr } = await admin
+        .from("sales_invoices")
+        .select(
+          "id, customer:customers(store_name, billing_name, tax_code, billing_address, address, billing_email, channel, payment_method_label), lines:sales_invoice_lines(unit_name, quantity, unit_price, line_discount, conversion_factor, vat_rate, product:products(name, sku, base_unit))"
+        )
+        .eq("id", invoice.sales_invoice_id)
+        .maybeSingle()
+      if (siErr) {
+        return NextResponse.json(
+          {
+            error:
+              "Không đọc được hóa đơn bán để lập hoá đơn điện tử. CHƯA phát hành, vui lòng thử lại: " +
+              siErr.message,
+          },
+          { status: 500 }
+        )
+      }
+      if (si) {
+        const rawCustomer = (si as { customer: unknown }).customer
+        const c = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer || {}) as Record<string, unknown>
+        buyer = {
+          name: (c.billing_name as string) || (c.store_name as string) || invoice.customer_name || "",
+          tax_code: (c.tax_code as string) || invoice.customer_tax_code || "",
+          address: (c.billing_address as string) || (c.address as string) || invoice.customer_address || "",
+          email: (c.billing_email as string) || null,
+          channel: (c.channel as string) || null,
+          payment_method_label: (c.payment_method_label as string) || "Chuyển khoản",
+        }
+        const rawLines = (si as { lines: unknown }).lines
+        lines = ((Array.isArray(rawLines) ? rawLines : []) as Array<Record<string, unknown>>).map((l) => {
+          const rawP = (l as { product: unknown }).product
+          const p = (Array.isArray(rawP) ? rawP[0] : rawP || {}) as Record<string, unknown>
+          const qty = Number(l.quantity || 0)
+          const netPrice = Number(l.unit_price || 0)
+          const discount = Number(l.line_discount || 0)
+          // Cộng ngược chiết khấu — xem lời giải thích ở nhánh dưới.
+          const grossPrice = qty > 0 ? netPrice + discount / qty : netPrice
+          const rate = Number(l.vat_rate ?? 0)
+          return {
+            product_name: (p.name as string) || "",
+            sku: (p.sku as string) || null,
+            unit_name: (l.unit_name as string) || (p.base_unit as string) || "",
+            base_unit: (p.base_unit as string) || null,
+            quantity: qty,
+            unit_price: grossPrice,
+            conversion_factor: Number(l.conversion_factor || 1),
+            // ⚠ `sales_invoice_lines.vat_rate` là TỈ LỆ (0,1), MISA đòi
+            //   PHẦN TRĂM (10). Quên nhân 100 là khai thuế 0% cho mọi dòng.
+            vat_rate: Math.round(rate * (rate <= 1 ? 100 : 1)),
+            line_discount: discount,
+          }
+        })
+      }
+    } else if (invoice.order_id) {
       const { data: order, error: orderErr } = await admin
         .from("sales_orders")
         .select(

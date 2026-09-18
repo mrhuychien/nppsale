@@ -34,6 +34,7 @@ import {
   invoiceTotals,
   loadInvoiceableLines,
   postInvoice,
+  reissueInvoice,
   invoiceWarnings,
   shortageOf,
   type InvoiceableLine,
@@ -41,9 +42,40 @@ import {
   type PostInvoiceResult,
 } from "@/lib/orders/post-invoice"
 
+/**
+ * Dòng của hóa đơn ĐANG SỬA, do trang gọi truyền vào.
+ *
+ * ⚠ Dialog KHÔNG tự đọc hóa đơn cũ. Trang chi tiết hóa đơn đã có sẵn
+ * những dòng này; đọc lại là hai truy vấn cho cùng một thứ, và hai chỗ
+ * để lệch khi ai đó đổi cột.
+ */
+export interface ReissueSeedLine {
+  orderLineId: string | null
+  productId: string
+  unitName: string
+  quantity: number
+  unitPrice: number
+  lineDiscount: number
+  vatRate: number
+  isExchange: boolean
+  conversionFactor: number
+  productName: string
+  sku: string | null
+  note: string | null
+}
+
 interface Props {
   orderId: string | null
   orderCode: string
+  /**
+   * Khi sửa một hóa đơn đã ghi sổ: id và các dòng của bản cũ.
+   *
+   * ⚠ VỀ KỸ THUẬT KHÔNG CÓ SỬA — `reissue_invoice` huỷ bản cũ rồi lập
+   * bản mới trong một giao dịch. Dialog vì thế mở ra với đúng các dòng
+   * của bản cũ chứ không phải với "phần còn lại của đơn": phần còn lại
+   * chưa tính tới việc bản cũ sắp được hoàn về.
+   */
+  reissueOf?: { invoiceId: string; invoiceCode: string; lines: ReissueSeedLine[] } | null
   /** Bao nhiêu phần trăm lệch giá thì nhuộm vàng. 0 = không cảnh báo. */
   priceWarnPct?: number
   onClose: () => void
@@ -54,10 +86,82 @@ interface Row extends InvoiceableLine {
   key: string
   qty: number
   price: number
+  /**
+   * Số lượng mà `lineDiscount` đang tương ứng với.
+   *
+   * ⚠ KHÔNG PHẢI LÚC NÀO CŨNG LÀ `remainingQty`. Khi lập MỚI, chiết khấu
+   * đến từ dòng đơn và ứng với phần còn lại. Khi SỬA, nó đến từ dòng hóa
+   * đơn cũ và ứng với đúng số lượng của bản cũ — chia theo `remainingQty`
+   * ở ca đó là chia cho một mẫu số lớn hơn, và khoản giảm teo lại sau mỗi
+   * lần sửa mà không ai để ý.
+   */
+  discountBase: number
+}
+
+/**
+ * Lần xuất MỚI: mặc định xuất hết phần còn lại.
+ *
+ * ⚠ Việc thường ngày là xuất đủ; bắt gõ tay từng dòng là biến việc
+ * thường ngày thành cực hình.
+ */
+function seedForNew(lines: InvoiceableLine[]): Row[] {
+  return lines.map((l, i) => ({
+    ...l,
+    key: l.orderLineId ?? l.returnLineId ?? `x${i}`,
+    qty: l.remainingQty,
+    price: l.unitPrice,
+    discountBase: l.remainingQty,
+  }))
+}
+
+/**
+ * SỬA một hóa đơn: mở ra với đúng các dòng của bản cũ.
+ *
+ * ⚠ KHÔNG DÙNG `remainingQty`. Bản cũ chưa bị huỷ nên số lượng của nó
+ * vẫn đang nằm trong `invoiced_qty`, tức `remainingQty` đã trừ đi rồi —
+ * lấy thẳng là mở ra một hóa đơn trống trơn và người dùng tưởng mất
+ * hàng.
+ *
+ * ⚠ DÒNG CỦA BẢN CŨ KHÔNG CÓ TRONG ĐƠN VẪN PHẢI GIỮ (hàng đem đổi, hoặc
+ * dòng nhà phân phối thêm tay). Bỏ chúng là lặng lẽ xoá hàng khỏi hóa
+ * đơn khi người ta chỉ định sửa một con số.
+ */
+function seedForReissue(lines: InvoiceableLine[], seed: ReissueSeedLine[]): Row[] {
+  const byOrderLine = new Map<string, InvoiceableLine>()
+  for (const l of lines) if (l.orderLineId) byOrderLine.set(l.orderLineId, l)
+
+  return seed.map((sd, i) => {
+    const info = sd.orderLineId ? byOrderLine.get(sd.orderLineId) : undefined
+    return {
+      orderLineId: sd.orderLineId,
+      returnLineId: null,
+      productId: sd.productId,
+      productName: info?.productName ?? sd.productName,
+      sku: info?.sku ?? sd.sku,
+      unitName: sd.unitName,
+      conversionFactor: sd.conversionFactor,
+      orderedQty: info?.orderedQty ?? sd.quantity,
+      invoicedQty: info?.invoicedQty ?? 0,
+      // Mốc để so "xuất vượt": phần chưa xuất CỘNG phần bản cũ đang giữ,
+      // vì bản cũ sắp được hoàn về.
+      remainingQty: (info?.remainingQty ?? 0) + sd.quantity,
+      unitPrice: sd.unitPrice,
+      listPrice: info?.listPrice ?? 0,
+      lineDiscount: sd.lineDiscount,
+      vatRate: sd.vatRate,
+      availableBase: info?.availableBase ?? 0,
+      isExchange: sd.isExchange,
+      note: sd.note,
+      key: sd.orderLineId ?? `seed${i}`,
+      qty: sd.quantity,
+      price: sd.unitPrice,
+      discountBase: sd.quantity,
+    }
+  })
 }
 
 export function InvoiceDialog({
-  orderId, orderCode, priceWarnPct = 10, onClose, onPosted,
+  orderId, orderCode, reissueOf = null, priceWarnPct = 10, onClose, onPosted,
 }: Props) {
   const supabase = createClient()
   const { toast } = useToast()
@@ -75,16 +179,7 @@ export function InvoiceDialog({
     loadInvoiceableLines(supabase, orderId)
       .then((lines) => {
         if (cancelled) return
-        setRows(
-          lines.map((l, i) => ({
-            ...l,
-            key: l.orderLineId ?? l.returnLineId ?? `x${i}`,
-            // Mặc định xuất hết phần còn lại — việc thường ngày là xuất
-            // đủ, xuất thiếu mới là ngoại lệ phải gõ tay.
-            qty: l.remainingQty,
-            price: l.unitPrice,
-          }))
-        )
+        setRows(reissueOf ? seedForReissue(lines, reissueOf.lines) : seedForNew(lines))
       })
       .catch((e) => {
         if (!cancelled) setLoadError(errorMessage(e))
@@ -96,7 +191,7 @@ export function InvoiceDialog({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId])
+  }, [orderId, reissueOf?.invoiceId])
 
   const draft: InvoiceDraftLine[] = useMemo(
     () =>
@@ -111,8 +206,8 @@ export function InvoiceDialog({
         //   giữ nguyên số của đơn thì dòng xuất một nửa mang khoản giảm
         //   của cả đơn. Tính lại theo tỉ lệ phần đang xuất.
         lineDiscount:
-          r.remainingQty > 0 && r.lineDiscount > 0
-            ? Math.round((r.lineDiscount * r.qty) / r.remainingQty)
+          r.discountBase > 0 && r.lineDiscount > 0
+            ? Math.round((r.lineDiscount * r.qty) / r.discountBase)
             : 0,
         vatRate: r.vatRate,
         isExchange: r.isExchange,
@@ -149,13 +244,22 @@ export function InvoiceDialog({
     if (!orderId || picked.length === 0) return
     setSaving(true)
     try {
-      const r = await postInvoice(supabase, {
-        orderId,
-        lines: draft,
-        notes: notes.trim() || null,
-      })
+      const r = reissueOf
+        ? await reissueInvoice(supabase, reissueOf.invoiceId, {
+            lines: draft,
+            notes: notes.trim() || null,
+          })
+        : await postInvoice(supabase, {
+            orderId,
+            lines: draft,
+            notes: notes.trim() || null,
+          })
       const w = invoiceWarnings(r)
-      toast({ title: `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`.trim() })
+      toast({
+        title: reissueOf
+          ? `Đã lập lại: ${reissueOf.invoiceCode} → ${r.invoiceCode ?? ""}`.trim()
+          : `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`.trim(),
+      })
       if (w) {
         // ⚠ Cảnh báo đi TOAST RIÊNG. Nhét vào description của toast thành
         //   công là để nó đọc như một lời chúc mừng có chú thích.
@@ -173,10 +277,15 @@ export function InvoiceDialog({
     <Dialog open={!!orderId} onOpenChange={(o) => !o && !saving && onClose()}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Xuất hàng — đơn {orderCode}</DialogTitle>
+          <DialogTitle>
+            {reissueOf
+              ? `Sửa hóa đơn ${reissueOf.invoiceCode} — đơn ${orderCode}`
+              : `Xuất hàng — đơn ${orderCode}`}
+          </DialogTitle>
           <DialogDescription>
-            Sửa số lượng và giá thoải mái. Phần chưa xuất vẫn nằm lại trên đơn để
-            xuất đợt sau.
+            {reissueOf
+              ? "Hóa đơn cũ sẽ bị huỷ và một hóa đơn mới được lập, trong cùng một giao dịch. Kho hoàn về đúng lô đã lấy rồi mới trừ lại theo số mới."
+              : "Sửa số lượng và giá thoải mái. Phần chưa xuất vẫn nằm lại trên đơn để xuất đợt sau."}
           </DialogDescription>
         </DialogHeader>
 
@@ -337,7 +446,8 @@ export function InvoiceDialog({
             ) : (
               <PackageCheck className="mr-1.5 h-4 w-4" />
             )}
-            Xuất {picked.length} dòng · {formatCurrency(totals.total)}
+            {reissueOf ? "Lập lại" : "Xuất"} {picked.length} dòng ·{" "}
+            {formatCurrency(totals.total)}
           </Button>
         </DialogFooter>
       </DialogContent>

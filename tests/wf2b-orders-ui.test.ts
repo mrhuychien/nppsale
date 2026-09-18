@@ -258,7 +258,19 @@ describe("Dialog Xuất hàng", () => {
    * điện tử.
    */
   it("chiết khấu chia theo tỉ lệ phần đang xuất", () => {
-    expect(CODE).toContain("Math.round((r.lineDiscount * r.qty) / r.remainingQty)")
+    expect(CODE).toContain("Math.round((r.lineDiscount * r.qty) / r.discountBase)")
+  })
+
+  /**
+   * ⚠ MẪU SỐ KHÔNG PHẢI LÚC NÀO CŨNG LÀ `remainingQty`. Khi lập MỚI,
+   * chiết khấu đến từ dòng đơn và ứng với phần còn lại. Khi SỬA hóa đơn,
+   * nó đến từ dòng của bản cũ và ứng với đúng số lượng bản cũ — chia
+   * theo `remainingQty` ở ca đó là chia cho một mẫu số lớn hơn, và khoản
+   * giảm teo lại sau mỗi lần sửa mà không ai để ý.
+   */
+  it("mẫu số của chiết khấu khác nhau giữa lập mới và sửa lại", () => {
+    expect(CODE).toContain("discountBase: l.remainingQty,")
+    expect(CODE).toContain("discountBase: sd.quantity,")
   })
 
   /** ⚠ Cảnh báo đi TOAST RIÊNG, không nhét vào toast thành công. */

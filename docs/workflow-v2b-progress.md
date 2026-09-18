@@ -21,7 +21,7 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
 - [x] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
       SQL/TS + test cũ xanh.
 - [x] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
-- [ ] **P5** `feat(wf2b-P5)` — `/sales-invoices` + in + HĐĐT đổi nguồn.
+- [x] **P5** `feat(wf2b-P5)` — `/sales-invoices` + in + HĐĐT đổi nguồn.
 - [ ] **P6** `feat(wf2b-P6)` — Đơn trả / Phiếu thu đổi link, NVBH label,
       docs, checklist, test mới.
 
@@ -323,6 +323,47 @@ vẫn xanh. (6) Chốt nút-trên-dòng thiếu hẳn, chỉ có ở tệp chố
 `lib/orders/edit-permission.ts` nay là mã chết — chúng soi theo
 `_wf2_assert_order_unlocked` mà mig 124 đã DROP. Đã dán nhãn ngưng dùng
 tại chỗ; P6 gỡ cả hàm lẫn chốt của nó.
+
+---
+
+## P5 — Module Hóa đơn bán, in, và hoá đơn điện tử đổi nguồn
+
+**Đã làm.** `/sales-invoices` (danh sách · chi tiết · in), `cancelInvoice`
+và `reissueInvoice` trong thư viện, dialog Xuất hàng có thêm chế độ
+**sửa hóa đơn**, và hoá đơn điện tử MISA đổi nguồn sang
+`sales_invoice_lines`. Chốt: `tests/wf2b-sales-invoices.test.ts`, 39
+chốt, thử phá bắt 41/41.
+
+**Bất ngờ gặp — bốn chỗ, ba trong số đó đụng tới chứng từ thuế.**
+
+⚠ **Hoá đơn điện tử đang lập theo ĐƠN, và đó là một lỗi tiền thật.** Một
+đơn xuất hai đợt thì cả hai tờ hoá đơn điện tử đều khai TOÀN BỘ đơn —
+khách bị xuất thuế hai lần cho cùng một lô hàng, và hoá đơn đã phát hành
+thì không sửa được, chỉ huỷ và lập lại với cơ quan thuế. Nay đọc theo
+`sales_invoice_id`, và **nhánh mới phải đứng trước**: `order_id` luôn có
+giá trị nên viết ngược thứ tự là nhánh mới không bao giờ chạy.
+
+⚠ **`sales_invoice_lines.vat_rate` là TỈ LỆ, MISA đòi PHẦN TRĂM.** Bảng
+lưu `0.1`, mapper chia cho 100, nên truyền thẳng là khai thuế thấp hơn
+**đúng 100 lần** — và 200đ thay vì 20.000đ vẫn là một con số trông hợp
+lý. Có chốt chạy đúng hai con số ấy.
+
+⚠ **`ensureEInvoiceRow` phải tìm theo `sales_invoice_id`, không theo
+`order_id`.** Tìm theo đơn thì đợt xuất thứ hai vớ phải hoá đơn điện tử
+của đợt một, API trả "đã phát hành trước đó", và đợt hai **không bao giờ**
+có hoá đơn.
+
+⚠ **Dialog ở chế độ sửa KHÔNG được gieo từ `remainingQty`.** Bản cũ chưa
+bị huỷ nên số lượng của nó vẫn nằm trong `invoiced_qty`, tức phần còn lại
+đã trừ đi rồi — gieo bằng nó là mở ra một hóa đơn trống trơn và người
+dùng tưởng mất hàng. Mốc "xuất vượt" thì ngược lại, phải **cộng** phần
+bản cũ đang giữ, vì bản cũ sắp được hoàn về.
+
+**Việc nhỏ kèm theo.** Nút phát hành hoá đơn điện tử trên màn đơn **dừng
+lại** khi đơn có nhiều hơn một hóa đơn bán thay vì đoán — chọn bừa là
+phát hành nhầm chứng từ thuế. Hóa đơn đã huỷ vẫn **in được**, kèm dòng
+"không có giá trị thanh toán": chặn in thì người đang cầm tờ cũ không có
+cách nào đối chiếu.
 
 ---
 

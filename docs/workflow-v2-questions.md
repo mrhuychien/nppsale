@@ -66,11 +66,14 @@ nhìn công nợ đã thu. Không viết nhánh ngoại lệ nào.
 2. Doanh thu, lương và hoa hồng các kỳ đã chốt sẽ tính lại thấp hơn với
    phần đơn này, cho tới khi chúng được xuất hàng.
 
-**Diagnostics ở P1 (không đổi dữ liệu, chỉ in ra):** sau backfill sẽ
-`RAISE NOTICE` danh sách `order_code` rơi vào `submitted` mà đã có
-chuyến giao hoàn tất hoặc `receivables.paid > 0`, để chủ NPP biết phải
-xử tay những đơn nào. Đây là báo cáo, không phải nhánh nghiệp vụ; chủ
-nhà bảo bỏ thì bỏ.
+**Diagnostics: ĐÃ BỎ.** Tôi định thêm một `RAISE NOTICE` liệt kê những
+đơn `submitted` đã có chuyến giao hoàn tất hoặc đã thu tiền. Chủ nhà trả
+lời 18/09/2026: "Bỏ, ko cần làm." P1 không in danh sách này.
+
+**Lưu ý cho người làm P1:** việc bỏ trên CHỈ áp cho dòng thông báo vừa
+nói. Hai thứ spec yêu cầu vẫn phải có trong migration 119: `RAISE NOTICE`
+đếm số dòng backfill (quy tắc 5 của Coder Pack) và `RAISE NOTICE` liệt kê
+đơn `completed` mà không có phiếu xuất posted (mục 1, đoạn cuối).
 
 **Trạng thái:** CHỐT.
 

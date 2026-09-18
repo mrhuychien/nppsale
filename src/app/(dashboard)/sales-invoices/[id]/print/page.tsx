@@ -60,6 +60,7 @@ interface LineRow {
   unit_price: number
   line_discount: number
   line_total: number
+  is_exchange?: boolean | null
   product?: { name?: string | null; sku?: string | null } | null
 }
 
@@ -92,7 +93,7 @@ export default function SalesInvoicePrintPage() {
         .maybeSingle(),
       supabase
         .from("sales_invoice_lines")
-        .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(name, sku)")
+        .select("id, unit_name, quantity, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
         .eq("invoice_id", id)
         .order("sort_order", { ascending: true }),
       supabase
@@ -207,7 +208,17 @@ export default function SalesInvoicePrintPage() {
       )
     : []
 
-  const printLines: SalesInvoiceLine[] = lines.map((l) => ({
+  /**
+   * ⚠ BỎ DÒNG HÀNG ĐỔI XUẤT ĐI (chủ nhà chốt). `get_invoiceable_lines`
+   *   đưa hàng đổi lên hóa đơn thành một dòng đơn giá 0 để kho biết mà
+   *   lấy hàng ra. Trên tờ giấy đưa khách thì cùng một món hiện HAI lần —
+   *   một dòng 0đ không tên và một dòng "(Hàng đổi)" ngay dưới — và
+   *   khách hỏi vì sao có món mình không mua.
+   *
+   * ⚠ CHỈ BỎ TRÊN BẢN IN. Dòng ấy vẫn là dòng hóa đơn thật, vẫn trừ kho,
+   *   vẫn nằm trong `total`. Xóa nó khỏi sổ là chuyện hoàn toàn khác.
+   */
+  const printLines: SalesInvoiceLine[] = lines.filter((l) => !l.is_exchange).map((l) => ({
     id: l.id,
     name: l.product?.name || "—",
     spec: l.product?.sku || null,

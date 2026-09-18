@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
-import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
+import { formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { Factory, Plus, Search } from "lucide-react"
 import Link from "next/link"
@@ -140,13 +140,6 @@ export default function PayablesPage() {
     .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
   const suppliersWithDebt = new Set(allOpen.map((p) => p.supplier_id)).size
 
-  const getDaysOverdue = (dueDate: string | null): number => {
-    if (!dueDate) return 0
-    const now = new Date()
-    const due = new Date(dueDate)
-    return Math.ceil((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
   const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
     switch (status) {
       case "current": return "success"
@@ -155,11 +148,6 @@ export default function PayablesPage() {
       case "critical": return "danger"
       default: return "default"
     }
-  }
-
-  const agingLabel = (days: number): string => {
-    if (days <= 0) return "Trong hạn"
-    return `${days} ngày`
   }
 
   return (
@@ -299,7 +287,7 @@ export default function PayablesPage() {
                     {filtered.map((p) => {
                       const remaining = p.amount - p.paid
                       const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-                      const daysOverdue = getDaysOverdue(p.due_date)
+                      const daysOverdue = daysOverdueOf(p.due_date)
                       const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
                       return (
                         <TableRow
@@ -341,7 +329,7 @@ export default function PayablesPage() {
             {filtered.map((p) => {
               const remaining = p.amount - p.paid
               const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-              const daysOverdue = getDaysOverdue(p.due_date)
+              const daysOverdue = daysOverdueOf(p.due_date)
               const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
               return (
                 <div

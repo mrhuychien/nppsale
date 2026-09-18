@@ -41,11 +41,21 @@ const SQL_THRESHOLDS: Array<[number, string]> = [
 ]
 
 /** Dựng một ngày đến hạn cách hôm nay đúng `daysOverdue` ngày. */
+/**
+ * Ngày đến hạn sao cho HÔM NAY quá hạn đúng `daysOverdue` ngày.
+ *
+ * ⚠ PHẢI DỰNG THEO GIỜ VIỆT NAM, vì `getAgingStatus` so theo giờ Việt
+ * Nam. Bản cũ dùng `new Date()` rồi `toISOString()` — tức giờ máy chạy
+ * test. Máy chạy test là UTC, nên từ 17:00 UTC trở đi (nửa đêm giờ VN)
+ * hai bên lệch nhau đúng một ngày và chốt biên đỏ lên vì lý do không
+ * liên quan gì tới ngưỡng. Đây là một chốt phụ thuộc vào GIỜ CHẠY, và nó
+ * đã đỏ đúng lúc 20:01 UTC.
+ */
 function dueDateOverdueBy(daysOverdue: number): string {
-  const d = new Date()
-  d.setHours(12, 0, 0, 0)
-  d.setDate(d.getDate() - daysOverdue)
-  return d.toISOString().slice(0, 10)
+  const todayVN = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" })
+  const [y, m, d] = todayVN.split("-").map(Number)
+  const due = new Date(Date.UTC(y, m - 1, d - daysOverdue))
+  return due.toISOString().slice(0, 10)
 }
 
 describe("ngưỡng tuổi nợ — SQL và TypeScript phải khớp nhau", () => {

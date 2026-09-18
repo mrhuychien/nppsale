@@ -227,3 +227,66 @@ describe("tab Lịch sử giao dịch của khách hàng", () => {
     expect(CUS).toContain("recentPayRes, invoicesRes, paymentsRes]")
   })
 })
+
+describe("dọn mẫu in theo chốt của chủ nhà", () => {
+  const TOAST = readFileSync("src/components/ui/toast.tsx", "utf8")
+  const CSS = readFileSync("src/app/globals.css", "utf8")
+
+  /**
+   * ⚠ HÀNG ĐỔI HIỆN HAI LẦN. `get_invoiceable_lines` đưa hàng đổi lên hóa
+   * đơn thành một dòng đơn giá 0 để kho biết mà lấy hàng ra; trên tờ giấy
+   * đưa khách thì cùng một món hiện cả dòng 0đ lẫn dòng "(Hàng đổi)".
+   */
+  it("bản in bỏ dòng hàng đổi xuất đi", () => {
+    expect(PRINT_PAGE).toContain("lines.filter((l) => !l.is_exchange).map")
+    expect(PRINT_PAGE).toContain("is_exchange, product:products(name, sku)")
+  })
+
+  /** ⚠ Chỉ bỏ TRÊN BẢN IN — dòng ấy vẫn trừ kho và vẫn nằm trong `total`. */
+  it("không đụng tới dòng hóa đơn trong sổ", () => {
+    expect(PRINT_PAGE).toContain("CHỈ BỎ TRÊN BẢN IN")
+    expect(PRINT_PAGE).not.toContain("delete(")
+  })
+
+  it("bỏ cột CK và dòng chiết khấu hóa đơn", () => {
+    expect(PRINT).not.toContain(">CK</th>")
+    // Soi Ô ĐƯỢC VẼ, không soi cả tệp — chú thích giải thích việc bỏ nó
+    // cũng chứa đúng cụm chữ ấy.
+    expect(PRINT).not.toContain(">Chiết khấu hóa đơn ( )</td>")
+    expect(PRINT).not.toContain("{formatCurrency(l.discount)}")
+  })
+
+  /** ⚠ "Tổng cộng" lặp đúng con số của "Tổng tiền hàng". */
+  it("bỏ dòng Tổng cộng, giữ Tổng tiền hàng", () => {
+    expect(PRINT).not.toContain(">Tổng cộng</td>")
+    expect(PRINT).toContain(">Tổng tiền hàng</td>")
+  })
+
+  /**
+   * ⚠ VẪN LẤY `total`, KHÔNG LẤY `goodsTotal`. Hai số bằng nhau do dựng,
+   * nhưng "Còn phải thu" trừ từ `total`; lấy số khác là một ngày nào đó
+   * lệch vài đồng mà không ai lần ra.
+   */
+  it("dòng tổng lấy đúng total của hóa đơn", () => {
+    const row = PRINT.slice(PRINT.indexOf(">Tổng tiền hàng</td>"))
+    expect(row.slice(0, 300)).toContain("{formatCurrency(total)}")
+    expect(row.slice(0, 300)).not.toContain("goodsTotal")
+  })
+
+  /** ⚠ Số ô mỗi hàng phải khớp số cột, nếu không bảng lệch hẳn. */
+  it("colSpan theo đúng 6 cột còn lại", () => {
+    expect(PRINT).not.toContain("colSpan={7}")
+    expect(PRINT).toContain("colSpan={5}>Trừ hàng trả")
+    expect(PRINT).toContain("colSpan={5}>Còn phải thu")
+  })
+
+  /**
+   * ⚠ THÔNG BÁO KHÔNG ĐƯỢC LỌT VÀO TỜ GIẤY. Màn in bật cửa sổ in ngay sau
+   * khi lưu, nên toast "Đã xuất hóa đơn HD-0029" còn trên màn và được in
+   * kèm xuống cuối tờ hóa đơn đưa khách.
+   */
+  it("thông báo bị ẩn khi in", () => {
+    expect(TOAST).toContain('cn("no-print fixed top-0')
+    expect(CSS).toMatch(/@media print \{[\s\S]*\.no-print \{ display: none !important; \}/)
+  })
+})

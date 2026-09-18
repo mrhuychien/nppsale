@@ -14,7 +14,13 @@ const ToastViewport = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Viewport
     ref={ref}
-    className={cn("fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]", className)}
+    /*
+      ⚠ `no-print` — THÔNG BÁO KHÔNG ĐƯỢC LỌT VÀO TỜ GIẤY. Màn in hóa đơn
+        bật cửa sổ in ngay sau khi lưu, nên cái toast "Đã xuất hóa đơn
+        HD-0029" vẫn còn trên màn và được in kèm xuống cuối tờ hóa đơn đưa
+        khách. Nó là thông báo của phần mềm, không phải một phần chứng từ.
+    */
+    className={cn("no-print fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]", className)}
     {...props}
   />
 ))

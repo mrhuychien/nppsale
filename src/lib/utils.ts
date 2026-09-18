@@ -113,18 +113,64 @@ export function getExpiryStatus(
  * migration 093 (nơi tính các ô tổng đầu trang Công nợ). Có test khoá hai
  * bên lại với nhau: tests/aging-thresholds.test.ts.
  */
-export function getAgingStatus(
-  dueDate: string
-): "current" | "warning" | "overdue" | "critical" {
-  // Cắt phần giờ ở cả hai vế rồi mới trừ.
-  const now = new Date()
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
-  const [y, m, d] = dueDate.slice(0, 10).split("-").map(Number)
-  const due = Date.UTC(y, (m || 1) - 1, d || 1)
+export type AgingStatus = "current" | "warning" | "overdue" | "critical"
 
-  const daysOverdue = Math.round((today - due) / (1000 * 60 * 60 * 24))
-  if (daysOverdue <= 0) return "current"
-  if (daysOverdue <= 30) return "warning"
-  if (daysOverdue <= 60) return "overdue"
+/**
+ * Số ngày QUÁ HẠN. Chưa tới hạn (kể cả đến hạn hôm nay) trả 0.
+ *
+ * ⚠ MỘT BẢN DUY NHẤT. Trước đây có BA bản của phép trừ ngày này — trong
+ * `getAgingStatus`, trong màn Công nợ, và trong màn Công nợ nhà cung cấp
+ * — và chúng KHÔNG giống nhau: một bản `Math.round` theo giờ máy, một
+ * bản `Math.ceil` theo giờ máy, một bản theo giờ Việt Nam. Cùng một
+ * phiếu cho ra ba con số tuỳ màn đang mở.
+ *
+ * ⚠ SO THEO NGÀY GIỜ VIỆT NAM cho cả hai vế. `new Date("2026-08-21")`
+ * là nửa đêm UTC = 07:00 giờ Việt Nam, nên so bằng giờ máy chủ thì suốt
+ * bảy tiếng đầu mỗi ngày kết quả lệch đúng một ngày.
+ */
+export function daysOverdueOf(dueDate: string | null | undefined): number {
+  if (!dueDate) return 0
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: VN_TZ })
+  const [ty, tm, td] = today.split("-").map(Number)
+  const [y, m, d] = dueDate.slice(0, 10).split("-").map(Number)
+  if (!y || !ty) return 0
+  const diff =
+    (Date.UTC(ty, tm - 1, td) - Date.UTC(y, (m || 1) - 1, d || 1)) / 86_400_000
+  return Math.max(0, Math.round(diff))
+}
+
+export function getAgingStatus(dueDate: string): AgingStatus {
+  const overdue = daysOverdueOf(dueDate)
+  if (overdue <= 0) return "current"
+  if (overdue <= 30) return "warning"
+  if (overdue <= 60) return "overdue"
   return "critical"
+}
+
+/**
+ * KHOẢNG NGÀY THẬT của từng nhóm.
+ *
+ * ⚠ ĐÂY LÀ CHỖ MÀN CÔNG NỢ ĐANG NÓI SAI. Thẻ biểu đồ ghi "Hiện tại
+ * 0-30 NGÀY / Cảnh báo 31-60 / Quá hạn 61-90 / Khẩn cấp >90" — lệch hẳn
+ * một bậc so với ngưỡng thật ở trên. Hệ quả: một khoản quá hạn 2 ngày rơi
+ * vào nhóm `warning` và hiện dưới cái nhãn "31-60 NGÀY", nên người đọc
+ * kết luận khách đang nợ quá hạn cả tháng.
+ */
+export const AGING_RANGE: Record<AgingStatus, string> = {
+  current: "chưa tới hạn",
+  warning: "quá hạn 1-30 ngày",
+  overdue: "quá hạn 31-60 ngày",
+  critical: "quá hạn trên 60 ngày",
+}
+
+/**
+ * Nhãn tuổi nợ hiện trên huy hiệu.
+ *
+ * ⚠ KHÔNG LẤY `receivables.status`. Cột đó là trạng thái THANH TOÁN
+ * (open/partial/paid/overdue) do RPC ghi, và KHÔNG có ai tính lại mỗi
+ * ngày — nên hai dòng cùng một hạn có thể mang hai giá trị khác nhau, và
+ * cả hai đều là chữ tiếng Anh giữa màn tiếng Việt.
+ */
+export function agingLabel(daysOverdue: number): string {
+  return daysOverdue <= 0 ? "Trong hạn" : `Quá hạn ${daysOverdue} ngày`
 }

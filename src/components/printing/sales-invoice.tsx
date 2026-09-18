@@ -69,8 +69,6 @@ export interface SalesInvoiceProps {
   salesPersonName?: string | null
   salesPersonPhone?: string | null
   lines: SalesInvoiceLine[]
-  /** Chiết khấu trên tổng hoá đơn (khác với CK từng dòng). */
-  invoiceDiscount?: number
   total: number
   /**
    * Khoản trừ hàng trả ĐÃ HOÀN THÀNH của hóa đơn này.
@@ -130,16 +128,20 @@ export interface GrossedLine extends SalesInvoiceLine {
  * ai đọc là lỗi làm tròn. Dồn chênh vào dòng cuối để cột tiền khớp
  * tuyệt đối.
  *
- * ⚠ Không bịa con số nào: chỉ dùng `total`, `invoiceDiscount` và
- * `lineTotal` đã lưu. Hoá đơn không thuế thì tỉ lệ bằng 1 — không dòng
- * nào đổi một đồng.
+ * ⚠ Không bịa con số nào: chỉ dùng `total` và `lineTotal` đã lưu. Hoá
+ * đơn không thuế thì tỉ lệ bằng 1 — không dòng nào đổi một đồng.
+ *
+ * ⚠ ĐÃ BỎ THAM SỐ `invoiceDiscount`. Chủ nhà chốt bỏ dòng "Chiết khấu
+ * hóa đơn" khỏi mẫu in. Giữ nó trong phép tính thì các dòng vẫn quy đổi
+ * lên `total + chiết khấu`, trong khi ô tổng hiện `total` — cột tiền
+ * không còn cộng ra được, và không còn dòng nào trên giấy giải thích
+ * phần chênh. Không nơi gọi nào từng truyền tham số này.
  */
 export function grossUpLines(
   lines: SalesInvoiceLine[],
-  total: number,
-  invoiceDiscount = 0
+  total: number
 ): { rows: GrossedLine[]; goodsTotal: number } {
-  const goodsTotal = Math.max(0, Number(total || 0) + Number(invoiceDiscount || 0))
+  const goodsTotal = Math.max(0, Number(total || 0))
   const netSum = lines.reduce((s, l) => s + Number(l.lineTotal || 0), 0)
   const ratio = netSum > 0 ? goodsTotal / netSum : 1
 
@@ -163,13 +165,13 @@ const CELL = "border border-black px-1.5 py-1 align-top"
 export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
-    salesPersonName, salesPersonPhone, lines, invoiceDiscount = 0,
+    salesPersonName, salesPersonPhone, lines,
     total, returnCredit = 0, returnLines = [], footerNote,
   } = props
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
 
-  const { rows, goodsTotal } = grossUpLines(lines, total, invoiceDiscount)
+  const { rows } = grossUpLines(lines, total)
   const netDue = netDueOnInvoice(total, returnCredit)
 
   return (
@@ -210,14 +212,16 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             <th className={`${CELL} w-16`}>ĐVT</th>
             <th className={`${CELL} w-12`}>SL</th>
             <th className={`${CELL} w-20`}>Đ.giá</th>
-            <th className={`${CELL} w-16`}>CK</th>
+            {/* ⚠ ĐÃ BỎ CỘT CK (chủ nhà chốt). Chiết khấu đã nằm trong đơn
+                giá đang áp; một cột luôn bằng 0 chỉ lấy chỗ của tên hàng,
+                vốn là thứ dài nhất trên tờ A5. */}
             <th className={`${CELL} w-24`}>Thành tiền</th>
           </tr>
         </thead>
         <tbody>
           {lines.length === 0 ? (
             <tr>
-              <td className={`${CELL} text-center text-muted-foreground`} colSpan={7}>
+              <td className={`${CELL} text-center text-muted-foreground`} colSpan={6}>
                 Hoá đơn chưa có dòng hàng nào.
               </td>
             </tr>
@@ -232,7 +236,6 @@ export function SalesInvoice(props: SalesInvoiceProps) {
                 <td className={`${CELL} text-center`}>{l.unitName}</td>
                 <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
                 <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.price)}</td>
-                <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.discount)}</td>
                 <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.amount)}</td>
               </tr>
             ))
@@ -259,7 +262,6 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               <td className={`${CELL} text-center`}>{l.unitName}</td>
               <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
               <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(l.unitPrice)}</td>
-              <td className={CELL}></td>
               <td className={`${CELL} text-right tabular-nums`}>
                 {l.isExchange ? "không trừ" : `−${formatCurrency(l.credit)}`}
               </td>
@@ -267,19 +269,21 @@ export function SalesInvoice(props: SalesInvoiceProps) {
           ))}
 
           {/* Ba dòng tổng nằm TRONG bảng, đúng như mẫu. */}
+          {/*
+            ⚠ ĐÃ BỎ "Chiết khấu hóa đơn" VÀ "Tổng cộng" (chủ nhà chốt).
+              Chiết khấu luôn bằng 0 vì nó đã nằm trong đơn giá; "Tổng
+              cộng" lặp đúng con số của "Tổng tiền hàng" — `grossUpLines`
+              chia `total` xuống từng dòng nên cột tiền vốn đã cộng ra
+              `total`. Hai dòng lặp nhau trên một tờ A5 chỉ làm người đọc
+              đi tìm xem chúng khác nhau chỗ nào.
+            ⚠ VẪN LẤY `total`, KHÔNG LẤY `goodsTotal`. Hai số bằng nhau do
+              dựng, nhưng `Còn phải thu` trừ từ `total`; lấy số khác là
+              một ngày nào đó lệch vài đồng mà không ai lần ra.
+          */}
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={3}>Tổng tiền hàng</td>
             <td className={`${CELL} text-center tabular-nums`}>{qtyTotal}</td>
             <td className={CELL}></td>
-            <td className={CELL}></td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(goodsTotal)}</td>
-          </tr>
-          <tr className="font-bold">
-            <td className={`${CELL} text-center`} colSpan={6}>Chiết khấu hóa đơn ( )</td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(invoiceDiscount)}</td>
-          </tr>
-          <tr className="font-bold">
-            <td className={`${CELL} text-center`} colSpan={6}>Tổng cộng</td>
             <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(total)}</td>
           </tr>
           {/*
@@ -292,13 +296,13 @@ export function SalesInvoice(props: SalesInvoiceProps) {
           {returnCredit > 0 && (
             <>
               <tr>
-                <td className={`${CELL} text-center`} colSpan={6}>Trừ hàng trả</td>
+                <td className={`${CELL} text-center`} colSpan={5}>Trừ hàng trả</td>
                 <td className={`${CELL} text-right tabular-nums`}>
                   −{formatCurrency(returnCredit)}
                 </td>
               </tr>
               <tr className="font-bold">
-                <td className={`${CELL} text-center`} colSpan={6}>Còn phải thu</td>
+                <td className={`${CELL} text-center`} colSpan={5}>Còn phải thu</td>
                 <td className={`${CELL} text-right tabular-nums`}>
                   {formatCurrency(netDue)}
                 </td>
@@ -306,10 +310,10 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             </>
           )}
           <tr>
-            <td className={`${CELL} h-6`} colSpan={7}></td>
+            <td className={`${CELL} h-6`} colSpan={6}></td>
           </tr>
           <tr>
-            <td className={CELL} colSpan={7}>
+            <td className={CELL} colSpan={6}>
               <span className="font-bold">Bằng chữ:</span>{" "}
               {/* ⚠ BẰNG CHỮ ĐỌC SỐ PHẢI TRẢ, không đọc tổng hóa đơn. Người
                   cầm tờ giấy đi thu tiền đọc đúng dòng này. */}

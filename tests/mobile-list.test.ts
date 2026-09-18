@@ -494,10 +494,22 @@ describe("M2.4 — /receivables", () => {
    * ⚠ So ngày quá hạn phải dùng VN_TZ cho cả hai vế: so bằng giờ máy chủ
    * (UTC) thì suốt 7 tiếng đầu mỗi ngày kết quả lệch một ngày.
    */
-  it("đếm ngày quá hạn theo giờ Việt Nam", () => {
-    const i = RECEIVABLES.indexOf("const daysOverdue")
-    expect(i).toBeGreaterThan(0)
-    expect(RECEIVABLES.slice(i, i + 320)).toContain("VN_TZ")
+  /**
+   * ⚠ PHÉP ĐẾM NGÀY NAY NẰM MỘT CHỖ. Màn này từng giữ bản chép riêng, và
+   * có tới BA bản khác nhau trong kho (ở đây, trong `getAgingStatus`, và
+   * ở màn Công nợ nhà cung cấp) — cùng một phiếu cho ra ba con số. Chốt
+   * giữ đúng hai điều: màn này gọi hàm chung, và hàm chung so theo giờ
+   * Việt Nam.
+   */
+  it("đếm ngày quá hạn theo giờ Việt Nam, qua một hàm dùng chung", () => {
+    expect(RECEIVABLES).toContain("daysOverdueOf(r.due_date)")
+    expect(RECEIVABLES).not.toContain("const daysOverdue = (due: string)")
+    const utils = read("src/lib/utils.ts")
+    const fn = utils.slice(
+      utils.indexOf("export function daysOverdueOf"),
+      utils.indexOf("export function getAgingStatus")
+    )
+    expect(fn).toContain("VN_TZ")
   })
 
   /** Chip tuổi nợ chỉ lọc danh sách mobile — desktop có bộ lọc riêng. */

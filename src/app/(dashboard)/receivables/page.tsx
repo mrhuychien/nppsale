@@ -25,12 +25,18 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
-import { formatCurrency, formatDate, getAgingStatus, VN_TZ } from "@/lib/utils"
+import {
+  formatCurrency, formatDate, getAgingStatus, daysOverdueOf, AGING_RANGE,
+} from "@/lib/utils"
 import {
   HandCoins, CreditCard, Eye, FileText } from "lucide-react"
 import Link from "next/link"
 import type { Receivable } from "@/types"
-import { remainingOf, creditOf } from "@/lib/receivables/credit"
+import {
+  remainingOf, creditOf,
+  receivableStateLabel as rowStateLabel,
+  receivableStateVariant as rowStateVariant,
+} from "@/lib/receivables/credit"
 
 type BucketKey = "current" | "warning" | "overdue" | "critical"
 
@@ -131,10 +137,14 @@ export default function ReceivablesPage() {
   }
 
   const bucketConfig: Record<BucketKey, { label: string; sub: string; barClass: string; textClass: string }> = {
-    current: { label: "Hiện tại", sub: "0-30 ngày", barClass: "bg-primary", textClass: "text-primary" },
-    warning: { label: "Cảnh báo", sub: "31-60 ngày", barClass: "bg-[#fdb022]", textClass: "text-[#b54708]" },
-    overdue: { label: "Quá hạn", sub: "61-90 ngày", barClass: "bg-[#f97316]", textClass: "text-[#c2410c]" },
-    critical: { label: "Khẩn cấp", sub: ">90 ngày", barClass: "bg-error", textClass: "text-error" },
+    /* ⚠ PHỤ ĐỀ LẤY TỪ `AGING_RANGE`, ĐỪNG GÕ TAY. Bản cũ ghi
+       "0-30 / 31-60 / 61-90 / >90" — lệch hẳn một bậc so với ngưỡng thật
+       (`getAgingStatus`), nên một khoản quá hạn 2 ngày hiện dưới nhãn
+       "31-60 NGÀY" và người đọc tưởng khách nợ quá hạn cả tháng. */
+    current: { label: "Trong hạn", sub: AGING_RANGE.current, barClass: "bg-primary", textClass: "text-primary" },
+    warning: { label: "Cảnh báo", sub: AGING_RANGE.warning, barClass: "bg-[#fdb022]", textClass: "text-[#b54708]" },
+    overdue: { label: "Quá hạn", sub: AGING_RANGE.overdue, barClass: "bg-[#f97316]", textClass: "text-[#c2410c]" },
+    critical: { label: "Khẩn cấp", sub: AGING_RANGE.critical, barClass: "bg-error", textClass: "text-error" },
   }
 
   // Tổng bốn khoảng — mẫu số của thanh xếp chồng. 0 thì không chia.
@@ -143,16 +153,6 @@ export default function ReceivablesPage() {
   const mobileReceivables = agingFilter
     ? receivables.filter((r) => (r.due_date ? getAgingStatus(r.due_date) : "current") === agingFilter)
     : receivables
-
-  /**
-   * Số ngày quá hạn. Dùng VN_TZ cho cả hai vế — so ngày bằng giờ máy
-   * chủ (UTC) thì suốt 7 tiếng đầu mỗi ngày kết quả lệch một ngày.
-   */
-  const daysOverdue = (due: string) => {
-    const today = new Date(new Date().toLocaleDateString("en-CA", { timeZone: VN_TZ }))
-    const d = new Date(due.slice(0, 10))
-    return Math.max(0, Math.round((today.getTime() - d.getTime()) / 86400000))
-  }
 
   const totalAging =
     buckets.current.amount + buckets.warning.amount + buckets.overdue.amount + buckets.critical.amount
@@ -361,7 +361,16 @@ export default function ReceivablesPage() {
                         </TableCell>
                       )}
                       {show("dueDate") && <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>}
-                      {show("status") && <TableCell><Badge variant={agingVariant(aging)}>{r.status}</Badge></TableCell>}
+                      {show("status") && (
+                        <TableCell>
+                          {/* ⚠ HUY HIỆU NÀY TỪNG LẤY MÀU THEO TUỔI NỢ NHƯNG
+                              LẤY CHỮ TỪ `r.status` — một cột trạng thái
+                              THANH TOÁN do RPC ghi và không ai tính lại mỗi
+                              ngày. Hai dòng cùng hạn hiện hai chữ khác nhau,
+                              và cả hai đều là tiếng Anh. */}
+                          <Badge variant={rowStateVariant(r)}>{rowStateLabel(r)}</Badge>
+                        </TableCell>
+                      )}
                       {show("action") && (
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <Button
@@ -390,7 +399,7 @@ export default function ReceivablesPage() {
               const remaining = remainingOf(r)
               const credit = creditOf(r)
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"
-              const overdueDays = r.due_date ? daysOverdue(r.due_date) : 0
+              const overdueDays = daysOverdueOf(r.due_date)
               return (
                 <MobileRecordCard
                   key={r.id}
@@ -413,7 +422,7 @@ export default function ReceivablesPage() {
                       {r.sales_user?.full_name && <span>· {r.sales_user.full_name}</span>}
                     </>
                   }
-                  badges={<Badge variant={agingVariant(aging)}>{r.status}</Badge>}
+                  badges={<Badge variant={rowStateVariant(r)}>{rowStateLabel(r)}</Badge>}
                   footer={
                     // "Xuất bản kê" chuyển vào màn chi tiết — trong thẻ
                     // danh sách nó chiếm chỗ của việc NVBH thật sự tới đây

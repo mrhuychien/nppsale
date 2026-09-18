@@ -44,20 +44,33 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
   })
 
   /**
-   * ⚠ CỘT **CK** LÀ THỨ MẪU CŨ KHÔNG CÓ. Thiếu nó thì hoá đơn có chiết
-   * khấu dòng in ra đúng tổng nhưng không giải thích được vì sao — khách
-   * cộng tay theo đơn giá × SL sẽ ra số khác.
+   * CỘT **CK** ĐÃ BỊ BỎ — chủ nhà chốt.
+   *
+   * Chốt cũ đòi in nó, với lý do: "khách cộng tay theo đơn giá × SL sẽ ra
+   * số khác". Lý do ấy KHÔNG còn đúng, và chính vì thế mới bỏ được cột:
+   * `grossUpLines` in `Đ.giá = thành tiền / SL`, tức đơn giá trên giấy
+   * được suy NGƯỢC từ số tiền đã in. Cộng tay theo đơn giá × SL luôn ra
+   * đúng cột Thành tiền, dù dòng ấy có chiết khấu hay không.
+   *
+   * ⚠ VÀ ĐÓ LÀ ĐIỀU PHẢI GIỮ. Nếu có ai đổi sang in `unitPrice` thô thì
+   * cột tiền hết cộng ra được, và lúc đó cột CK mới lại cần.
    */
-  it("chiết khấu từng dòng thật sự được in", () => {
-    expect(TPL).toContain("formatCurrency(l.discount)")
-    expect(PAGE).toContain("discount: Number(l.line_discount) || 0")
-    expect(PAGE).toContain("line_discount")
+  it("đơn giá in ra suy ngược từ thành tiền, nên bỏ được cột CK", () => {
+    expect(TPL).not.toContain(">CK</th>")
+    expect(TPL).not.toContain("formatCurrency(l.discount)")
+    expect(TPL).toContain("price: qty > 0 ? amount / qty : Number(l.unitPrice || 0)")
+    expect(TPL).toContain("{formatCurrency(l.price)}")
   })
 
-  it("ba dòng tổng nằm TRONG bảng như mẫu", () => {
-    for (const row of ["Tổng tiền hàng", "Chiết khấu hóa đơn ( )", "Tổng cộng"]) {
-      expect(TPL, `thiếu dòng "${row}"`).toContain(row)
-    }
+  /**
+   * HAI DÒNG TỔNG, KHÔNG CÒN BA — chủ nhà chốt bỏ "Chiết khấu hóa đơn"
+   * (luôn bằng 0 vì chiết khấu đã nằm trong đơn giá) và "Tổng cộng" (lặp
+   * đúng con số của "Tổng tiền hàng").
+   */
+  it("dòng tổng nằm TRONG bảng như mẫu", () => {
+    expect(TPL).toContain(">Tổng tiền hàng</td>")
+    expect(TPL).not.toContain(">Chiết khấu hóa đơn ( )</td>")
+    expect(TPL).not.toContain(">Tổng cộng</td>")
     // "Tổng tiền hàng" của mẫu có cả TỔNG SỐ LƯỢNG ở cột SL.
     expect(TPL).toContain("const qtyTotal = lines.reduce")
     expect(TPL).toContain("{qtyTotal}")
@@ -163,10 +176,18 @@ describe("Những chỗ KHÔNG được làm mất", () => {
     )
     expect(b.rows.reduce((s, r) => s + r.amount, 0)).toBe(146_668)
 
-    // Có chiết khấu hoá đơn: Tổng tiền hàng − CK = Tổng cộng.
-    const c = grossUpLines([line("a", 10, 500_000)], 450_000, 50_000)
-    expect(c.goodsTotal).toBe(500_000)
-    expect(c.goodsTotal - 50_000).toBe(450_000)
+    /**
+     * ⚠ CỘT TIỀN LUÔN CỘNG RA ĐÚNG `total`, KHÔNG CỘNG RA GÌ KHÁC.
+     *
+     * Bản cũ nhận thêm `invoiceDiscount` và quy các dòng lên
+     * `total + chiết khấu`, vì mẫu in khi ấy có một dòng "Chiết khấu hóa
+     * đơn" để trừ lại. Chủ nhà đã chốt bỏ dòng đó; giữ tham số lại thì
+     * cột tiền cộng ra một số lớn hơn ô tổng và không còn dòng nào trên
+     * giấy giải thích phần chênh.
+     */
+    const c = grossUpLines([line("a", 10, 500_000)], 450_000)
+    expect(c.goodsTotal).toBe(450_000)
+    expect(c.rows.reduce((s, r) => s + r.amount, 0)).toBe(450_000)
   })
 
   /**
@@ -175,11 +196,13 @@ describe("Những chỗ KHÔNG được làm mất", () => {
    * thật sự in con số đã quy đổi.
    */
   it("ô Tổng tiền hàng in số đã quy đổi, không in tổng dòng thô", () => {
-    const i = TPL.indexOf("Tổng tiền hàng")
+    const i = TPL.indexOf(">Tổng tiền hàng</td>")
     const row = TPL.slice(i, i + 400)
-    expect(row).toContain("{formatCurrency(goodsTotal)}")
+    // ⚠ `total` và `goodsTotal` nay bằng nhau do dựng; ô tổng lấy `total`
+    //   vì "Còn phải thu" trừ từ chính nó.
+    expect(row).toContain("{formatCurrency(total)}")
     expect(row).not.toContain("lineTotal")
-    expect(TPL).toContain("const { rows, goodsTotal } = grossUpLines(lines, total, invoiceDiscount)")
+    expect(TPL).toContain("const { rows } = grossUpLines(lines, total)")
   })
 
   /**

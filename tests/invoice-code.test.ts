@@ -569,3 +569,89 @@ describe("ứng dụng đọc lại mã thật sau khi ghi", () => {
     expect(SUBMIT).toContain('return { kind: "queued", orderCode: payload.order.order_code }')
   })
 })
+
+// =====================================================================
+
+/**
+ * MÀN CHI TIẾT THEO MẪU CHỦ NHÀ CHỐT.
+ *
+ * Bộ khối dựng chung nằm ở `components/detail/detail-chrome.tsx`. Hai màn
+ * chi tiết phải giống nhau tới từng khoảng cách; dựng riêng mỗi bên là
+ * chúng trôi xa nhau ngay từ lần sửa thứ hai, và người dùng đi lại giữa
+ * hai màn suốt ngày sẽ thấy rõ.
+ */
+describe("màn chi tiết: bộ khối dựng chung", () => {
+  const CHROME = read("src/components/detail/detail-chrome.tsx")
+  const INV = read("src/app/(dashboard)/sales-invoices/[id]/page.tsx")
+
+  it("mã chứng từ dùng phông đều nét", () => {
+    expect(CHROME).toContain('className="font-mono text-2xl font-bold tracking-tight sm:text-3xl"')
+  })
+
+  /**
+   * ⚠ CHẤM MÀU KHÔNG PHẢI TRANG TRÍ. Nó phân biệt được khi liếc nhanh,
+   * còn nhãn chữ vẫn nói đủ khi in đen trắng.
+   */
+  it("huy hiệu trạng thái có cả chấm màu lẫn nhãn chữ", () => {
+    expect(CHROME).toContain('<span className="h-1.5 w-1.5 rounded-full"')
+    expect(CHROME).toContain("{label}")
+  })
+
+  /**
+   * ⚠ CỘT PHẢI BÁM KHI CUỘN NHƯNG KHÔNG KÉO DÀI THEO CỘT TRÁI. Thẻ tóm
+   * tắt cao 2000px là vô nghĩa.
+   */
+  it("cột phải sticky và self-start", () => {
+    expect(CHROME).toContain('className="space-y-5 self-start lg:sticky lg:top-4"')
+  })
+
+  /**
+   * ⚠ MỐC CHƯA XẢY RA PHẢI NHÌN RA LÀ CHƯA XẢY RA. Vẽ giống mốc đã xong
+   * là người đọc tưởng chứng từ đã đi tới đó.
+   */
+  it("tiến trình phân biệt mốc đã xong / đang chờ / chưa tới", () => {
+    expect(CHROME).toContain('s.state === "done" && "bg-primary"')
+    expect(CHROME).toContain('s.state === "current" && "bg-primary ring-4 ring-primary/20"')
+    expect(CHROME).toContain('s.state === "todo" && "bg-outline-variant"')
+  })
+
+  /**
+   * ⚠ DÙNG BIẾN MÀU CỦA DỰ ÁN, không chép mã màu từ mẫu. Mẫu vẽ bằng màu
+   * tuyệt đối; dự án có bộ biến ngữ nghĩa và có chế độ in. Ngoại lệ duy
+   * nhất là tông huy hiệu trạng thái, vốn truyền vào từ nơi gọi.
+   */
+  it("khối dựng chung không chôn mã màu nền", () => {
+    const body = CHROME.replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(body).not.toMatch(/background:\s*"#/)
+    expect(body).toContain("bg-surface-container-lowest")
+  })
+
+  it("màn hóa đơn dùng bộ khối này, không tự dựng lưới", () => {
+    expect(INV).toContain("<DetailHero")
+    expect(INV).toContain("<DetailColumns")
+    expect(INV).toContain("<DetailTimeline steps={timeline} />")
+    expect(INV).not.toContain('className="grid gap-4 lg:grid-cols-3"')
+  })
+
+  /**
+   * ⚠ HÓA ĐƠN ĐÃ HUỶ VÀ CÒN HIỆU LỰC PHẢI KHÁC MÀU. Hai tờ nằm cạnh nhau
+   * mà nhìn giống nhau là người tra sổ đọc nhầm tờ.
+   */
+  it("hai trạng thái hóa đơn mang hai tông khác nhau", () => {
+    const i = INV.indexOf("const statusTone = posted")
+    expect(i).toBeGreaterThan(0)
+    const block = INV.slice(i, i + 220)
+    expect(block).toContain("#12b76a")
+    expect(block).toContain("#f04438")
+  })
+
+  /**
+   * ⚠ ĐƯỜNG VỀ PHẢI CÒN. Mẫu vẽ nó ở thanh trên cùng — thanh đó là khung
+   * ứng dụng chung, nên ở trang phải giữ một liên kết, nếu không mở hóa
+   * đơn từ đâu cũng thành ngõ cụt.
+   */
+  it("màn hóa đơn vẫn có đường về danh sách", () => {
+    expect(INV).toContain('href="/sales-invoices"')
+    expect(INV).toContain("← Hóa đơn bán")
+  })
+})

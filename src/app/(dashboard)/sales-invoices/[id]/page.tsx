@@ -23,7 +23,10 @@ import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
 import { errorMessage } from "@/lib/errors"
 import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DetailHero, StatusPill, DetailColumns, DetailCard, DetailRow, DetailTimeline,
+  type TimelineStep,
+} from "@/components/detail/detail-chrome"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -54,6 +57,7 @@ interface InvoiceRow {
   replaced_by: string | null
   order_id: string
   customer_id: string
+  sales_user?: { full_name?: string | null } | null
   customer?: {
     store_name?: string | null
     billing_name?: string | null
@@ -103,7 +107,7 @@ export default function SalesInvoiceDetailPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), order:sales_orders(order_code)"
+          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name), order:sales_orders(order_code)"
         )
         .eq("id", id)
         .maybeSingle(),
@@ -185,44 +189,65 @@ export default function SalesInvoiceDetailPage() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        title={`Hóa đơn ${inv.invoice_code}`}
-        description={`${formatDate(inv.invoice_date)} · ${inv.customer?.store_name || "—"}`}
-        backHref="/sales-invoices"
-      >
-        <Badge variant={INVOICE_STATUS_MAP[inv.status]?.variant ?? "secondary"}>
-          {INVOICE_STATUS_MAP[inv.status]?.label ?? inv.status}
-        </Badge>
-        {inv.replaced_from && <Badge variant="secondary">Bản lập lại</Badge>}
-      </PageHeader>
+  const statusLabel = INVOICE_STATUS_MAP[inv.status]?.label ?? inv.status
+  /**
+   * ⚠ HAI TRẠNG THÁI, HAI MÀU — không dùng chung một tông xám. Hóa đơn
+   * đã huỷ nằm cạnh một hóa đơn còn hiệu lực trong danh sách; nhìn giống
+   * nhau là người tra sổ đọc nhầm tờ.
+   */
+  const statusTone = posted
+    ? { bg: "#e7f6ec", fg: "#036b45", accent: "#12b76a" }
+    : { bg: "#fdeceb", fg: "#8f231c", accent: "#f04438" }
 
-      {/*
-        ⚠ HÓA ĐƠN ĐÃ HUỶ PHẢI NÓI RA VÌ SAO VÀ THAY BẰNG CÁI GÌ. Để trống
-          thì người tra sổ sáu tháng sau thấy một chứng từ bị huỷ không
-          rõ lý do, cạnh một phiếu nhập hoàn kho không ai giải thích.
-      */}
-      {!posted && (
-        <div className="space-y-1 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
-          <p className="text-sm font-bold text-destructive">
-            Hóa đơn đã huỷ{inv.cancelled_at ? ` ngày ${formatDate(inv.cancelled_at)}` : ""}
-          </p>
-          {inv.cancel_reason && (
-            <p className="text-xs text-destructive/90">{inv.cancel_reason}</p>
-          )}
-          {inv.replaced_by && (
-            <Link
-              href={`/sales-invoices/${inv.replaced_by}`}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-            >
-              Xem bản thay thế <ArrowRight className="h-3 w-3" />
-            </Link>
-          )}
-        </div>
-      )}
+  const summaryLine = [
+    `Xuất ${formatDate(inv.invoice_date)}`,
+    `${lines.length} mặt hàng`,
+    inv.customer?.store_name || null,
+    inv.sales_user?.full_name ? `NVBH ${inv.sales_user.full_name}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
-      <div className="flex flex-wrap gap-2">
+  /**
+   * ⚠ TIẾN TRÌNH NÓI THẬT, kể cả khi bước sau chưa xảy ra. Vẽ mốc chưa
+   * tới giống mốc đã xong là người đọc tưởng hóa đơn đã phát hành thuế —
+   * và đó là loại hiểu nhầm kéo theo một cuộc gọi cho kế toán.
+   */
+  const timeline: TimelineStep[] = [
+    {
+      label: "Lập hóa đơn",
+      detail: `${formatDate(inv.invoice_date)}${inv.order?.order_code ? ` · theo đơn ${inv.order.order_code}` : ""}`,
+      state: "done",
+    },
+    {
+      label: "Xuất kho",
+      detail: inv.stock_entry_id
+        ? "Đã trừ tồn theo phiếu xuất"
+        : "Không có phiếu xuất — dữ liệu chuyển đổi, tồn chưa từng bị trừ",
+      state: inv.stock_entry_id ? "done" : "todo",
+    },
+    {
+      label: "Hoá đơn điện tử",
+      detail: eInvoice?.misa_inv_no
+        ? `Đã phát hành · ${eInvoice.misa_inv_no}`
+        : eInvoice
+          ? "Đã tạo bản nháp, chưa phát hành"
+          : "Chưa phát hành",
+      state: eInvoice?.misa_inv_no ? "done" : posted ? "current" : "todo",
+    },
+    ...(posted
+      ? []
+      : [
+          {
+            label: "Đã huỷ",
+            detail: inv.cancelled_at ? formatDate(inv.cancelled_at) : "—",
+            state: "done" as const,
+          },
+        ]),
+  ]
+
+  const actionButtons = (
+    <>
         <Button variant="outline" asChild>
           <Link href={`/sales-invoices/${inv.id}/print`}>
             <Printer className="mr-1.5 h-4 w-4" /> In hóa đơn
@@ -271,10 +296,61 @@ export default function SalesInvoiceDetailPage() {
             {publishing ? "Đang phát hành…" : "Phát hành HĐ điện tử"}
           </Button>
         )}
-      </div>
+    </>
+  )
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+  return (
+    <div className="space-y-5">
+      {/* ⚠ ĐƯỜNG VỀ PHẢI CÒN. Mẫu vẽ nó ở thanh trên cùng, mà thanh đó là
+          khung ứng dụng chung — ở đây giữ một liên kết nhỏ, nếu không thì
+          mở hóa đơn từ đâu cũng thành ngõ cụt. */}
+      <Link
+        href="/sales-invoices"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface"
+      >
+        ← Hóa đơn bán
+      </Link>
+
+      <DetailHero
+        code={inv.invoice_code}
+        status={
+          <>
+            <StatusPill label={statusLabel} tone={statusTone} />
+            {inv.replaced_from && <Badge variant="secondary">Bản lập lại</Badge>}
+            {inv.replaced_by && <Badge variant="outline">Đã bị thay</Badge>}
+          </>
+        }
+        summary={summaryLine}
+        actions={actionButtons}
+      />
+
+      {/*
+        ⚠ HÓA ĐƠN ĐÃ HUỶ PHẢI NÓI RA VÌ SAO VÀ THAY BẰNG CÁI GÌ. Để trống
+          thì người tra sổ sáu tháng sau thấy một chứng từ bị huỷ không
+          rõ lý do, cạnh một phiếu nhập hoàn kho không ai giải thích.
+      */}
+      {!posted && (
+        <div className="space-y-1 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+          <p className="text-sm font-bold text-destructive">
+            Hóa đơn đã huỷ{inv.cancelled_at ? ` ngày ${formatDate(inv.cancelled_at)}` : ""}
+          </p>
+          {inv.cancel_reason && (
+            <p className="text-xs text-destructive/90">{inv.cancel_reason}</p>
+          )}
+          {inv.replaced_by && (
+            <Link
+              href={`/sales-invoices/${inv.replaced_by}`}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              Xem bản thay thế <ArrowRight className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
+      )}
+
+      <DetailColumns
+        main={
+          <>
           <div className="overflow-x-auto rounded-xl border bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
@@ -329,37 +405,30 @@ export default function SalesInvoiceDetailPage() {
           </div>
 
           {inv.notes && (
-            <Card>
-              <CardHeader><CardTitle>Ghi chú</CardTitle></CardHeader>
-              <CardContent className="whitespace-pre-wrap text-sm">{inv.notes}</CardContent>
-            </Card>
+            <DetailCard title="Ghi chú" bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm">
+              {inv.notes}
+            </DetailCard>
           )}
-        </div>
+          </>
+        }
+        rail={
+          <>
+          <DetailCard title="Cộng tiền">
+            <DetailRow label="Tiền hàng" value={formatCurrency(inv.subtotal)} />
+            <DetailRow label="Thuế GTGT" value={formatCurrency(inv.vat)} />
+            <DetailRow label="Tổng cộng" value={formatCurrency(inv.total)} strong />
+          </DetailCard>
 
-        <aside className="space-y-4 self-start lg:sticky lg:top-4">
-          <Card>
-            <CardHeader><CardTitle>Cộng tiền</CardTitle></CardHeader>
-            <CardContent>
-              <dl className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Tiền hàng</dt>
-                  <dd className="tabular-nums">{formatCurrency(inv.subtotal)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Thuế GTGT</dt>
-                  <dd className="tabular-nums">{formatCurrency(inv.vat)}</dd>
-                </div>
-                <div className="flex justify-between border-t pt-1 font-semibold">
-                  <dt>Tổng cộng</dt>
-                  <dd className="tabular-nums">{formatCurrency(inv.total)}</dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
+          <DetailCard title="Thanh toán">
+            <DetailRow label="Hình thức" value={inv.payment_terms || "—"} />
+            <DetailRow label="Hạn trả" value={inv.due_date ? formatDate(inv.due_date) : "—"} />
+          </DetailCard>
 
-          <Card>
-            <CardHeader><CardTitle>Chứng từ liên quan</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
+          <DetailCard title="Tiến trình">
+            <DetailTimeline steps={timeline} />
+          </DetailCard>
+
+          <DetailCard title="Chứng từ liên quan" bodyClassName="space-y-2 px-4 py-3.5 text-sm">
               <Link
                 href={`/orders/${inv.order_id}`}
                 className="flex items-center justify-between rounded-lg bg-muted/30 p-2.5 hover:bg-muted/50"
@@ -405,10 +474,10 @@ export default function SalesInvoiceDetailPage() {
                   <Undo2 className="h-4 w-4 text-muted-foreground" />
                 </Link>
               )}
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
+          </DetailCard>
+          </>
+        }
+      />
 
       <ConfirmDialog
         open={cancelOpen}

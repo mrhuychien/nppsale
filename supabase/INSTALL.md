@@ -31,7 +31,7 @@ cho Việt Nam). Ghi lại **Database password** — Supabase chỉ hiện một
 SQL Editor → **New query** → dán **toàn bộ** `supabase/schema_full.sql` →
 **Run**.
 
-File này gộp 122 migration (đã bỏ seed demo). Chạy một lần trên database
+File này gộp 123 migration (đã bỏ seed demo). Chạy một lần trên database
 trống, trong một transaction.
 
 Đúng thì được:

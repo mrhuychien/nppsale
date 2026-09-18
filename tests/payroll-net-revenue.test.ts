@@ -383,8 +383,30 @@ describe("bảng kê đơn trên phiếu lương phải cộng ra đúng doanh s
     expect(PAGE).not.toContain('["delivered", "confirmed"]')
   })
 
-  it("dùng chung hằng số với định nghĩa SQL", () => {
-    expect(PAGE).toContain("NON_REVENUE_ORDER_STATUSES")
+  /**
+   * ⚠ BẢNG KÊ PHẢI HỎI ĐÚNG NGUỒN MÀ HÀM SQL CỘNG.
+   *
+   * Trước v2b cả hai cùng đọc `sales_orders`, nên chốt này chỉ cần kiểm
+   * trang dùng chung hằng số `NON_REVENUE_ORDER_STATUSES`. Từ mig 126,
+   * `compute_payroll_run` cộng doanh số gộp từ `sales_invoices` theo
+   * NGÀY XUẤT. Trang còn hỏi `sales_orders` theo `order_date` thì tổng
+   * của bảng kê lệch khỏi con số in ngay bên trên nó, và người xem không
+   * có cách nào biết bên nào đúng.
+   */
+  it("bảng kê đọc hóa đơn đã xuất, cùng nguồn với hàm SQL", () => {
+    expect((PAGE.match(/\.from\("sales_invoices"\)/g) || []).length).toBe(2)
+    expect((PAGE.match(/\.eq\("status", "posted"\)/g) || []).length).toBe(2)
+    expect((PAGE.match(/\.gte\("invoice_date", ps\)/g) || []).length).toBe(2)
+  })
+
+  /**
+   * ⚠ CHỐT NGƯỢC. Không có nó thì thêm lại một truy vấn `sales_orders`
+   * bên cạnh hai truy vấn hóa đơn vẫn xanh — và hai bảng kê chồng nhau
+   * là chuyện còn khó lần ra hơn một bảng sai.
+   */
+  it("không còn truy vấn sales_orders nào cho bảng kê", () => {
+    expect(PAGE).not.toContain('.from("sales_orders")')
+    expect(PAGE).not.toContain("NON_REVENUE_ORDER_STATUSES")
   })
 
   /**
@@ -431,7 +453,7 @@ describe("bảng kê đơn trên phiếu lương phải cộng ra đúng doanh s
   it("lấy đủ dòng, không để server cắt ở 1.000", () => {
     // Bảng này được cộng lại thành "Tổng doanh số" trên phiếu lương nên
     // thiếu dòng là sai tiền hiển thị.
-    const n = (PAGE.match(/fetchAllForAggregate<PayslipOrder>/g) || []).length
+    const n = (PAGE.match(/fetchAllForAggregate<PayslipInvoice>/g) || []).length
     expect(n, "cả truy vấn dialog lẫn truy vấn bản in đều phải lấy đủ dòng").toBe(2)
   })
 

@@ -387,12 +387,28 @@ describe("Nhãn trạng thái không được để trống ô nào", () => {
   })
 
   /**
-   * ⚠ `partially_invoiced` và `closed` KHÔNG phải doanh thu của ĐƠN —
-   * phần đã xuất đã được hóa đơn con tính rồi. Để sót là cộng hai lần.
+   * ⚠ CHỐT NÀY TỪNG KHẲNG ĐỊNH ĐIỀU NGƯỢC LẠI, VÀ NÓ ĐÃ SAI.
+   *
+   * Bản P1 bắt `partially_invoiced` và `closed` phải NẰM NGOÀI doanh
+   * thu, với lý do "phần đã xuất đã được hóa đơn con tính rồi". Lý do đó
+   * không đúng ở thời điểm ấy: P1 chưa có hàm nào cộng tiền từ hóa đơn,
+   * nên doanh thu của một đơn xuất một phần không được tính Ở ĐÂU CẢ —
+   * hàng ra khỏi kho, công nợ đã ghi, mà sổ doanh thu im lặng. Chốt xanh
+   * chỉ vì nó khớp với `is_revenue_status` của v2 (`= 'completed'`) chứ
+   * không vì nó đúng.
+   *
+   * Mig 126 tách hai câu hỏi ra: `is_revenue_status` nay trả lời "đơn
+   * này đã xuất hàng chưa" (ĐẾM ĐƠN), còn SỐ TIỀN cộng từ
+   * `sales_invoices`. Cộng hai lần không xảy ra vì không ai cộng
+   * `sales_orders.total` nữa.
    */
-  it("hai trạng thái mới nằm ngoài doanh thu của đơn", () => {
-    expect(NON_REVENUE_ORDER_STATUSES).toContain("partially_invoiced")
-    expect(NON_REVENUE_ORDER_STATUSES).toContain("closed")
+  it("đơn xuất một phần và đơn đã đóng ĐỀU đã sinh doanh thu", () => {
+    expect(NON_REVENUE_ORDER_STATUSES).not.toContain("partially_invoiced")
+    expect(NON_REVENUE_ORDER_STATUSES).not.toContain("closed")
     expect(NON_REVENUE_ORDER_STATUSES).not.toContain("completed")
+    // Ba trạng thái chưa từng đụng kho thì vẫn ngoài doanh thu.
+    expect([...NON_REVENUE_ORDER_STATUSES].sort()).toEqual(
+      ["cancelled", "draft", "submitted"]
+    )
   })
 })

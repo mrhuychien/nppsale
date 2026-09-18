@@ -18,15 +18,15 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
 - [x] **P1** `feat(wf2b-P1)` — Mig 124: schema + trigger + RLS + backfill
       + DROP RPC cũ.
 - [x] **P2** `feat(wf2b-P2)` — Mig 125: 6 RPC + grants.
-- [ ] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
+- [x] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
       SQL/TS + test cũ xanh.
 - [ ] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
 - [ ] **P5** `feat(wf2b-P5)` — `/sales-invoices` + in + HĐĐT đổi nguồn.
 - [ ] **P6** `feat(wf2b-P6)` — Đơn trả / Phiếu thu đổi link, NVBH label,
       docs, checklist, test mới.
 
-Số migration: v2b dùng **124** (schema) và **125** (RPC). Migration mới
-nhất đang có là 123.
+Số migration: v2b dùng **124** (cấu trúc), **125** (RPC) và **126**
+(số liệu — doanh thu chuyển gốc sang hóa đơn). Cả ba đi cùng một lượt.
 
 ---
 
@@ -224,6 +224,55 @@ từng cho. Giá bảng suy ngược từ chính dòng đang có
 của khách, nên `sell_price` trần trụi sai với dòng bán theo thùng.
 
 Chốt: `tests/line-discount-once.test.ts`, 17 chốt, thử phá bắt 16/16.
+
+---
+
+## P3 — Mig 126: doanh thu chuyển gốc sang hóa đơn
+
+**Đã làm.** Tách một câu hỏi cũ thành hai. `is_revenue_status` nay trả
+lời **"đơn này đã xuất hàng chưa"** (`partially_invoiced` ·
+`completed` · `closed`) và chỉ dùng cho các phép **đếm đơn**; còn **số
+tiền** cộng từ `sales_invoices`. Năm hàm đổi nguồn tiền
+(`dashboard_summary`, `dashboard_channel_revenue`,
+`dashboard_top_customers`, `finance_pnl`, và doanh số gộp của
+`compute_payroll_run`), bảng kê trên phiếu lương đổi theo. Chốt:
+`tests/wf2b-revenue.test.ts`, 50 chốt, thử phá bắt 26/26.
+
+**Bất ngờ gặp — bốn chỗ.**
+
+⚠ **Một chốt của P1 ghi lại suy luận SAI của chính tôi.** Nó bắt
+`partially_invoiced` phải nằm ngoài doanh thu, lý do ghi là "phần đã
+xuất đã được hóa đơn con tính rồi". Lý do đó không đúng ở thời điểm ấy:
+P1 chưa có hàm nào cộng tiền từ hóa đơn, nên doanh thu của một đơn xuất
+một phần không được tính **ở đâu cả** — hàng ra khỏi kho, công nợ đã
+ghi, mà sổ doanh thu im lặng. Chốt xanh chỉ vì nó khớp với
+`is_revenue_status` của v2, không vì nó đúng. Đã viết lại kèm lời giải
+thích, để lần sau đọc còn biết vì sao nó từng ngược.
+
+⚠ **Chỉ nới `is_revenue_status` thôi thì SAI TO HƠN.** Nếu để nguyên các
+hàm cộng `sales_orders.total` mà nới bộ lọc, đơn mới giao một nửa được
+tính doanh thu **toàn bộ**. Vì thế bộ chốt có một mục riêng: không hàm
+nào được vừa lọc bằng `is_revenue_status` vừa cộng `sales_orders.total`,
+và migration tự dò lại điều đó ở cuối bằng `pg_get_functiondef`.
+
+⚠ **Sửa kèm một lỗi cũ của `finance_pnl`.** Giá vốn vốn lấy theo
+`stock_entries.posted_at` (ngày hàng rời kho), còn doanh thu lấy theo
+`order_date`. Lãi gộp một kỳ vì thế đang so doanh thu ngày **đặt** với
+giá vốn ngày **giao**: đơn đặt cuối tháng 3 giao đầu tháng 4 làm tháng 3
+lãi khống và tháng 4 lỗ khống. Nay cả hai cùng bám ngày giao.
+
+⚠ **`compute_payroll_run` dài 400 dòng, chỉ một câu cần đổi.** Chép lại
+cả hàm là dựng bản sao thứ hai mà không ai đối chiếu nổi. Thay vào đó
+migration **vá đúng một câu** trong thân hàm đang chạy
+(`pg_get_functiondef` + `replace`), và `RAISE` nếu câu ấy không còn đúng
+hình dạng mig 096 — hỏng thì dừng, không im lặng bỏ qua. Bộ chốt đối
+chiếu chuỗi cần vá với chính mig 096, nên 096 đổi là chốt đỏ **trước**
+khi migration kịp chạy rỗng.
+
+**⚠ Đổi ý nghĩa số liệu, chủ nhà cần biết.** Doanh thu nay tính theo
+**ngày hóa đơn**, không theo ngày đặt. Đơn đặt cuối tháng 3 giao đầu
+tháng 4 rời khỏi doanh thu tháng 3 sang tháng 4. Lương và hoa hồng của
+các kỳ đã chốt sẽ tính lại khác đi.
 
 ---
 

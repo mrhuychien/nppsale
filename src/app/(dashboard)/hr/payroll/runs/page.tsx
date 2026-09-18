@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Calculator, Lock, RefreshCw, Plus, FileSpreadsheet, Printer, FileText } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { NON_REVENUE_ORDER_STATUSES } from "@/lib/constants"
+import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { Payslip, type PayslipKpiTier } from "@/components/printing/payslip"
@@ -47,10 +47,20 @@ interface UserRow {
   role: string
 }
 
-interface PayslipOrder {
+/**
+ * Một dòng của bảng "doanh số tính lương".
+ *
+ * ⚠ ĐÂY LÀ HOÁ ĐƠN, KHÔNG PHẢI ĐƠN. Từ v2b, `compute_payroll_run` cộng
+ * doanh số gộp từ `sales_invoices` theo NGÀY XUẤT. Bảng này phải hỏi
+ * đúng nguồn ấy — cộng `sales_orders.total` theo `order_date` thì tổng
+ * ở đây lệch khỏi con số in trên chính phiếu lương, và người xem không
+ * có cách nào biết bên nào đúng.
+ */
+interface PayslipInvoice {
   id: string
-  order_code: string
-  order_date: string
+  order_id: string | null
+  invoice_code: string
+  invoice_date: string
   total: number
   status: string
 }
@@ -79,12 +89,12 @@ export default function PayrollRunsPage() {
   // Per-user payslip print mode — caller picks one row → we render the
   // <Payslip> for it inside the .print-payslip-only block.
   const [payslipFor, setPayslipFor] = useState<string | null>(null)
-  const [payslipOrders, setPayslipOrders] = useState<PayslipOrder[]>([])
+  const [payslipOrders, setPayslipOrders] = useState<PayslipInvoice[]>([])
   const { org } = useOrg()
   const orgName = org?.name ?? ""
   // Detail dialog state.
   const [detailItem, setDetailItem] = useState<PayrollRunItem | null>(null)
-  const [detailOrders, setDetailOrders] = useState<PayslipOrder[]>([])
+  const [detailOrders, setDetailOrders] = useState<PayslipInvoice[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadRuns = useCallback(async () => {
@@ -162,18 +172,20 @@ export default function PayrollRunsPage() {
         const ps = (bd.period_start as string) || ""
         const pe = (bd.period_end as string) || ""
         if (ps && pe) {
-          // Cùng bộ lọc với hàm SQL tính lương (is_revenue_status), và lấy
-          // đủ dòng thay vì để server cắt ở 1.000 — bảng này được cộng lại
-          // thành "Tổng doanh số" nên thiếu dòng là sai tiền hiển thị.
-          const res = await fetchAllForAggregate<PayslipOrder>((from, to) =>
+          // ⚠ CÙNG NGUỒN VỚI HÀM SQL TÍNH LƯƠNG: hoá đơn đã ghi sổ, lọc
+          //   theo NGÀY XUẤT. Hỏi `sales_orders` theo `order_date` thì tổng
+          //   ở đây lệch khỏi con số in trên chính phiếu lương.
+          // Lấy đủ dòng thay vì để server cắt ở 1.000 — bảng này được cộng
+          // lại thành "Tổng doanh số" nên thiếu dòng là sai tiền hiển thị.
+          const res = await fetchAllForAggregate<PayslipInvoice>((from, to) =>
             supabase
-              .from("sales_orders")
-              .select("id, order_code, order_date, total, status", { count: "exact" })
+              .from("sales_invoices")
+              .select("id, order_id, invoice_code, invoice_date, total, status", { count: "exact" })
               .eq("sales_user_id", item.user_id)
-              .not("status", "in", `(${NON_REVENUE_ORDER_STATUSES.join(",")})`)
-              .gte("order_date", ps)
-              .lte("order_date", pe)
-              .order("order_date", { ascending: false })
+              .eq("status", "posted")
+              .gte("invoice_date", ps)
+              .lte("invoice_date", pe)
+              .order("invoice_date", { ascending: false })
               .range(from, to)
           )
           if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)
@@ -318,21 +330,21 @@ export default function PayrollRunsPage() {
   const printPayslipFor = async (item: PayrollRunItem) => {
     // Load the orders that count toward this period so the printed
     // payslip is a self-contained handout for the employee.
-    let ords: PayslipOrder[] = []
+    let ords: PayslipInvoice[] = []
     try {
       const bd = item.computed_breakdown || {}
       const ps = (bd.period_start as string) || ""
       const pe = (bd.period_end as string) || ""
       if (ps && pe) {
-        const res = await fetchAllForAggregate<PayslipOrder>((from, to) =>
+        const res = await fetchAllForAggregate<PayslipInvoice>((from, to) =>
           supabase
-            .from("sales_orders")
-            .select("id, order_code, order_date, total, status", { count: "exact" })
+            .from("sales_invoices")
+            .select("id, order_id, invoice_code, invoice_date, total, status", { count: "exact" })
             .eq("sales_user_id", item.user_id)
-            .not("status", "in", `(${NON_REVENUE_ORDER_STATUSES.join(",")})`)
-            .gte("order_date", ps)
-            .lte("order_date", pe)
-            .order("order_date", { ascending: false })
+            .eq("status", "posted")
+            .gte("invoice_date", ps)
+            .lte("invoice_date", pe)
+            .order("invoice_date", { ascending: false })
             .range(from, to)
         )
         if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)
@@ -885,20 +897,20 @@ export default function PayrollRunsPage() {
                   {/* Đơn hàng tham chiếu */}
                   <div className="rounded-lg border">
                     <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground flex items-center justify-between">
-                      <span>Đơn hàng tính lương ({detailOrders.length})</span>
+                      <span>Hoá đơn tính lương ({detailOrders.length})</span>
                       {revenue > 0 && <span className="font-normal normal-case">Tổng {formatCurrency(detailOrders.reduce((s, o) => s + Number(o.total || 0), 0))}</span>}
                     </div>
                     {detailLoading ? (
                       <div className="p-3"><Skeleton className="h-20" /></div>
                     ) : detailOrders.length === 0 ? (
-                      <p className="px-3 py-3 text-xs text-muted-foreground">Không có đơn nào trong kỳ (đã chốt và chưa huỷ).</p>
+                      <p className="px-3 py-3 text-xs text-muted-foreground">Không có hoá đơn nào đã xuất trong kỳ.</p>
                     ) : (
                       <div className="max-h-48 overflow-y-auto">
                         <table className="w-full text-xs">
                           <thead className="bg-muted/20 sticky top-0">
                             <tr>
-                              <th className="px-2 py-1 text-left">Mã đơn</th>
-                              <th className="px-2 py-1 text-left">Ngày</th>
+                              <th className="px-2 py-1 text-left">Số hoá đơn</th>
+                              <th className="px-2 py-1 text-left">Ngày xuất</th>
                               <th className="px-2 py-1 text-left">Trạng thái</th>
                               <th className="px-2 py-1 text-right">Giá trị</th>
                             </tr>
@@ -907,12 +919,18 @@ export default function PayrollRunsPage() {
                             {detailOrders.map((o) => (
                               <tr key={o.id} className="border-t">
                                 <td className="px-2 py-1">
-                                  <Link href={`/orders/${o.id}`} className="font-mono text-primary hover:underline">
-                                    {o.order_code}
-                                  </Link>
+                                  {/* P5 sẽ trỏ sang /sales-invoices/[id]; giờ chưa có trang đó
+                                      nên dẫn về đơn gốc thay vì để một liên kết gãy. */}
+                                  {o.order_id ? (
+                                    <Link href={`/orders/${o.order_id}`} className="font-mono text-primary hover:underline">
+                                      {o.invoice_code}
+                                    </Link>
+                                  ) : (
+                                    <span className="font-mono">{o.invoice_code}</span>
+                                  )}
                                 </td>
-                                <td className="px-2 py-1">{formatDate(o.order_date)}</td>
-                                <td className="px-2 py-1">{o.status}</td>
+                                <td className="px-2 py-1">{formatDate(o.invoice_date)}</td>
+                                <td className="px-2 py-1">{INVOICE_STATUS_MAP[o.status]?.label ?? o.status}</td>
                                 <td className="px-2 py-1 text-right tabular-nums">{formatCurrency(Number(o.total || 0))}</td>
                               </tr>
                             ))}
@@ -984,7 +1002,7 @@ export default function PayrollRunsPage() {
               ocBonusPerOrder={bd.oc_bonus_per_order != null ? Number(bd.oc_bonus_per_order) : null}
               periodStart={bd.period_start != null ? String(bd.period_start) : null}
               periodEnd={bd.period_end != null ? String(bd.period_end) : null}
-              orders={payslipOrders}
+              invoices={payslipOrders}
             />
           )
         })()}

@@ -119,25 +119,26 @@ export const INVOICE_STATUS_MAP: Record<string, { label: string; variant: "defau
 }
 
 /**
- * Trạng thái đơn KHÔNG tính vào doanh thu — phần bù của
- * `is_revenue_status()` bên SQL (hiện chỉ `completed`).
+ * Trạng thái đơn CHƯA sinh ra doanh thu nào — phần bù của
+ * `is_revenue_status()` bên SQL.
  *
- * ⚠ v2b thêm `partially_invoiced` và `closed`. Cả hai KHÔNG phải doanh
- * thu của ĐƠN: doanh thu v2b đếm HOÁ ĐƠN đã xuất
- * (`is_revenue_invoice_status`), và một đơn xuất một phần thì phần đã
- * xuất đã được hoá đơn con của nó tính rồi. Để sót hai giá trị này là
- * cộng doanh thu hai lần.
+ * ⚠ HAI CÂU HỎI KHÁC NHAU, ĐỪNG GỘP. Hằng này trả lời "đơn này đã xuất
+ * hàng chưa"; nó KHÔNG nói doanh thu là bao nhiêu. Số tiền cộng từ
+ * `sales_invoices` (`is_revenue_invoice_status`), vì một đơn xuất một
+ * phần đã sinh doanh thu nhưng không phải toàn bộ `total` của nó.
+ *
+ * ⚠ `partially_invoiced` và `closed` ĐỀU TÍNH. Hàng đã rời kho và công
+ * nợ đã ghi; loại chúng ra là bảo một đơn giao thiếu thì coi như chưa
+ * bán gì.
  *
  * ⚠ HẰNG NÀY PHẢI KHỚP TUYỆT ĐỐI với `is_revenue_status` — có chốt so
  * hai bên (`payroll-net-revenue.test.ts`). Hai nguồn sự thật cho cùng
  * một định nghĩa doanh thu là chỗ lệch không ai phát hiện bằng mắt.
  */
 export const NON_REVENUE_ORDER_STATUSES = [
+  "cancelled",
   "draft",
   "submitted",
-  "partially_invoiced",
-  "closed",
-  "cancelled",
 ] as const
 
 export const CUSTOMER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {

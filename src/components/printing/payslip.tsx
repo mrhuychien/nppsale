@@ -14,10 +14,19 @@
 import type { CSSProperties } from "react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
+import { INVOICE_STATUS_MAP } from "@/lib/constants"
 
-export interface PayslipOrderLine {
-  order_code: string
-  order_date: string
+/**
+ * Một dòng của bảng E trên phiếu lương.
+ *
+ * ⚠ ĐÂY LÀ HOÁ ĐƠN, KHÔNG PHẢI ĐƠN ĐẶT HÀNG. Từ workflow v2b, doanh số
+ * tính lương cộng từ `sales_invoices` — phần đã thực xuất — chứ không
+ * cộng `sales_orders.total`. Đơn giao làm hai đợt thì chỉ phần đã giao
+ * mới vào lương của kỳ này.
+ */
+export interface PayslipInvoiceLine {
+  invoice_code: string
+  invoice_date: string
   total: number
   status: string
 }
@@ -80,8 +89,8 @@ export interface PayslipProps {
   revenueClamped?: boolean
   periodStart?: string | null
   periodEnd?: string | null
-  /** Đơn hàng tính lương trong kỳ. */
-  orders?: PayslipOrderLine[]
+  /** Hoá đơn đã xuất trong kỳ — nguồn của doanh số tính lương. */
+  invoices?: PayslipInvoiceLine[]
 }
 
 const BORDER = "0.4mm solid #333"
@@ -139,7 +148,7 @@ export function Payslip(p: PayslipProps) {
   const ocMinValue = p.ocMinValue ?? 0
   const ocPerOrder = p.ocBonusPerOrder ?? 0
   const showOc = ocMinCount > 0 || ocCount > 0 || p.orderCountBonus > 0
-  const orders = p.orders ?? []
+  const invoices = p.invoices ?? []
   const numRight: CSSProperties = { textAlign: "right", whiteSpace: "nowrap" }
 
   const incomeRows: Array<{ label: string; value: number; hint?: string }> = [
@@ -390,34 +399,34 @@ export function Payslip(p: PayslipProps) {
         <div style={{ fontSize: "8pt", fontStyle: "italic", marginBottom: "1mm" }}>Ghi chú: {p.notes}</div>
       )}
 
-      {/* ── E. Đơn hàng tính lương ───────────────────────────── */}
-      {sectionTitle(`E · Đơn hàng tính lương (${orders.length} đơn)`)}
-      {orders.length === 0 ? (
-        <p style={{ fontSize: "8pt", color: "#666", margin: 0 }}>Không có đơn nào trong kỳ (trạng thái đã giao / đã xác nhận).</p>
+      {/* ── E. Hoá đơn tính lương ───────────────────────────── */}
+      {sectionTitle(`E · Hoá đơn tính lương (${invoices.length} hoá đơn)`)}
+      {invoices.length === 0 ? (
+        <p style={{ fontSize: "8pt", color: "#666", margin: 0 }}>Không có hoá đơn nào đã xuất trong kỳ.</p>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "8pt", border: BORDER }}>
           <thead>
             <tr>
               <th style={th({ textAlign: "left", width: "8mm" })}>STT</th>
-              <th style={th({ textAlign: "left" })}>Mã đơn</th>
-              <th style={th({ textAlign: "left" })}>Ngày</th>
+              <th style={th({ textAlign: "left" })}>Số hoá đơn</th>
+              <th style={th({ textAlign: "left" })}>Ngày xuất</th>
               <th style={th({ textAlign: "left" })}>Trạng thái</th>
               <th style={th(numRight)}>Giá trị</th>
             </tr>
           </thead>
           <tbody>
-            {orders.map((o, i) => (
-              <tr key={`ord-${i}`}>
+            {invoices.map((o, i) => (
+              <tr key={`inv-${i}`}>
                 <td style={td()}>{i + 1}</td>
-                <td style={td({ fontFamily: "monospace" })}>{o.order_code}</td>
-                <td style={td()}>{formatDate(o.order_date)}</td>
-                <td style={td()}>{o.status}</td>
+                <td style={td({ fontFamily: "monospace" })}>{o.invoice_code}</td>
+                <td style={td()}>{formatDate(o.invoice_date)}</td>
+                <td style={td()}>{INVOICE_STATUS_MAP[o.status]?.label ?? o.status}</td>
                 <td style={td(numRight)}>{formatCurrency(Number(o.total || 0))}</td>
               </tr>
             ))}
             <tr style={{ fontWeight: 700, background: "#f2f2f2" }}>
               <td style={td()} colSpan={4}>Tổng doanh số</td>
-              <td style={td(numRight)}>{formatCurrency(orders.reduce((s, o) => s + Number(o.total || 0), 0))}</td>
+              <td style={td(numRight)}>{formatCurrency(invoices.reduce((s, o) => s + Number(o.total || 0), 0))}</td>
             </tr>
           </tbody>
         </table>

@@ -200,3 +200,68 @@ export function DetailTimeline({ steps }: { steps: TimelineStep[] }) {
     </ol>
   )
 }
+
+/**
+ * Khối KHÁCH HÀNG ở đầu cột nội dung — theo đúng mẫu: ô chữ cái đầu, tên
+ * cửa hàng, dòng "điện thoại · địa chỉ", rồi ba ô số liệu bên phải.
+ *
+ * ⚠ Ô NÀO KHÔNG CÓ SỐ THÌ KHÔNG VẼ, đừng vẽ ô trống có nhãn. Nhãn "CÔNG
+ * NỢ / HẠN MỨC" trên một ô rỗng đọc như dữ liệu chưa tải xong.
+ */
+export function DetailCustomerCard({
+  name,
+  contact,
+  stats,
+}: {
+  name: string
+  /** "0903 812 447 · 128 Dương Bá Trạc, Q.8" */
+  contact?: string | null
+  stats?: Array<{ label: string; value: ReactNode; bar?: { pct: number; tone: string } | null }>
+}) {
+  const initial = (name || "?").trim().charAt(0).toUpperCase() || "?"
+  return (
+    <section className="flex flex-wrap items-center gap-6 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest px-5 py-4">
+      <div className="flex min-w-[240px] items-center gap-3.5">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-lg font-bold text-primary">
+          {initial}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[17px] font-bold text-on-surface">{name}</span>
+          {contact && (
+            <span className="mt-0.5 block truncate text-[13px] text-on-surface-variant">{contact}</span>
+          )}
+        </span>
+      </div>
+      <div className="min-w-[12px] flex-1" />
+      {stats && stats.length > 0 && (
+        <div className="flex flex-wrap gap-7">
+          {stats.map((s, i) => (
+            <div key={i} className="flex min-w-[150px] flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-variant">
+                {s.label}
+              </span>
+              <span className="text-[15px] font-semibold tabular-nums text-on-surface">{s.value}</span>
+              {s.bar && (
+                <span className="block h-[5px] overflow-hidden rounded-full bg-outline-variant/40">
+                  {/*
+                    ⚠ KẸP VỀ [0,100]. Khách vượt hạn mức cho ra hơn 100% và
+                      thanh màu tràn khỏi ô; khách trả dư cho ra số âm và
+                      thanh biến mất — cả hai đều là con số thật, chỉ có
+                      cách VẼ là phải kẹp.
+                  */}
+                  <span
+                    className="block h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, s.bar.pct))}%`,
+                      background: s.bar.tone,
+                    }}
+                  />
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}

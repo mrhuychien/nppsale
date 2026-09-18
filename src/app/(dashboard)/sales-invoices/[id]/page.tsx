@@ -25,6 +25,7 @@ import { errorMessage } from "@/lib/errors"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   DetailHero, StatusPill, DetailColumns, DetailCard, DetailRow, DetailTimeline,
+  DetailCustomerCard,
   type TimelineStep,
 } from "@/components/detail/detail-chrome"
 import { Button } from "@/components/ui/button"
@@ -351,15 +352,39 @@ export default function SalesInvoiceDetailPage() {
       <DetailColumns
         main={
           <>
-          <div className="overflow-x-auto rounded-xl border bg-card">
+            {/* Khối khách hàng theo mẫu — chữ cái đầu, tên, liên hệ, rồi
+                các ô số liệu. Hóa đơn không có hạn mức nên ô đó nhường
+                chỗ cho mã số thuế; vẽ một ô rỗng có nhãn là tệ hơn. */}
+            <DetailCustomerCard
+              name={inv.customer?.billing_name || inv.customer?.store_name || "Khách lẻ"}
+              contact={[inv.customer?.phone, inv.customer?.billing_address || inv.customer?.address]
+                .filter(Boolean)
+                .join(" · ")}
+              stats={[
+                { label: "Hình thức", value: inv.payment_terms || "—" },
+                { label: "Hạn trả", value: inv.due_date ? formatDate(inv.due_date) : "—" },
+                ...(inv.customer?.tax_code
+                  ? [{ label: "Mã số thuế", value: inv.customer.tax_code }]
+                  : []),
+              ]}
+            />
+
+          {/* Bảng dòng hàng theo mẫu: tiêu đề thẻ có kèm "N dòng", và
+              dưới tên hàng là dòng phụ "SKU · SL × đơn giá". */}
+          <DetailCard
+            title="Mặt hàng"
+            aside={`${lines.length} dòng`}
+            bodyClassName="p-0"
+          >
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
+              <thead className="bg-surface-container-low text-[11px] uppercase tracking-[0.07em] text-on-surface-variant">
                 <tr>
-                  <th className="px-3 py-2 text-left">Mặt hàng</th>
-                  <th className="px-3 py-2 text-right">SL</th>
-                  <th className="px-3 py-2 text-right">Đơn giá</th>
-                  <th className="px-3 py-2 text-right">Thuế</th>
-                  <th className="px-3 py-2 text-right">Thành tiền</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Mặt hàng</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Số lượng</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Đơn giá</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Thuế</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Thành tiền</th>
                 </tr>
               </thead>
               <tbody>
@@ -371,18 +396,24 @@ export default function SalesInvoiceDetailPage() {
                   </tr>
                 ) : (
                   lines.map((l) => (
-                    <tr key={l.id} className="border-t">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{l.product?.name || "—"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {l.product?.sku ? `${l.product.sku} · ` : ""}{l.unit_name}
+                    <tr key={l.id} className="border-t border-outline-variant/30">
+                      <td className="px-4 py-2.5">
+                        <div className="font-semibold text-on-surface">{l.product?.name || "—"}</div>
+                        {/* ⚠ DÒNG PHỤ NÓI ĐỦ PHÉP TÍNH, đúng như mẫu: mã ·
+                            số lượng × đơn giá. Người đối chiếu không phải
+                            nhìn sang ba cột khác để cộng nhẩm. */}
+                        <div className="text-xs text-on-surface-variant">
+                          {l.product?.sku ? `${l.product.sku} · ` : ""}
+                          {l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}
                           {l.is_exchange && (
                             <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{l.quantity}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {l.quantity} {l.unit_name}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
                         {formatCurrency(l.unit_price)}
                       </td>
                       {/*
@@ -391,10 +422,10 @@ export default function SalesInvoiceDetailPage() {
                           thể mang thuế suất khác nhau — đúng về kế toán,
                           nhưng phải hiện ra thì mới không bị tưởng là lỗi.
                       */}
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
+                      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-on-surface-variant">
                         {Math.round(Number(l.vat_rate || 0) * 100)}%
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums">
                         {formatCurrency(l.line_total)}
                       </td>
                     </tr>
@@ -403,6 +434,7 @@ export default function SalesInvoiceDetailPage() {
               </tbody>
             </table>
           </div>
+          </DetailCard>
 
           {inv.notes && (
             <DetailCard title="Ghi chú" bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm">

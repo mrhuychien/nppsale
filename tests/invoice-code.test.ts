@@ -805,3 +805,69 @@ describe("Trả hàng nằm dưới Hóa đơn bán", () => {
     expect(group("Mua hàng")).toContain('href: "/purchase-returns"')
   })
 })
+
+// =====================================================================
+
+/**
+ * HAI MÀN CHI TIẾT DỰNG ĐÚNG THEO MẪU — khối khách hàng và bảng dòng
+ * hàng, không chỉ mượn khung ngoài.
+ */
+describe("khối khách hàng theo mẫu", () => {
+  const CHROME = read("src/components/detail/detail-chrome.tsx")
+  const ORD = read("src/app/(dashboard)/orders/[id]/page.tsx")
+  const INV = read("src/app/(dashboard)/sales-invoices/[id]/page.tsx")
+
+  it("có ô chữ cái đầu, tên, liên hệ và các ô số liệu", () => {
+    expect(CHROME).toContain("export function DetailCustomerCard(")
+    expect(CHROME).toContain('const initial = (name || "?").trim().charAt(0).toUpperCase() || "?"')
+  })
+
+  /**
+   * ⚠ KẸP THANH VỀ [0,100]. Khách vượt hạn mức cho ra hơn 100% và thanh
+   * màu tràn khỏi ô; khách trả dư cho ra số âm và thanh biến mất. Cả hai
+   * đều là con số thật — chỉ cách VẼ là phải kẹp.
+   */
+  it("thanh hạn mức kẹp về 0–100%", () => {
+    expect(CHROME).toContain("Math.min(100, Math.max(0, s.bar.pct))")
+  })
+
+  /** ⚠ Ô không có số thì không vẽ — nhãn trên ô rỗng đọc như chưa tải xong. */
+  it("không vẽ ô khi không có số liệu", () => {
+    expect(CHROME).toContain("{stats && stats.length > 0 && (")
+  })
+
+  it("cả hai màn đều dùng khối này", () => {
+    expect(ORD).toContain("<DetailCustomerCard")
+    expect(INV).toContain("<DetailCustomerCard")
+  })
+
+  /**
+   * ⚠ CHƯA CÓ HẠN MỨC THÌ KHÔNG VẼ THANH. Thanh chạy trên hạn mức bằng 0
+   * thì hoặc luôn đầy hoặc chia cho 0 — cả hai đều nói dối.
+   */
+  it("màn đơn chỉ vẽ ô công nợ khi có hạn mức", () => {
+    expect(ORD).toContain("...(creditLimit > 0")
+  })
+
+  /**
+   * ⚠ CÔNG NỢ LẤY TỪ DÒNG NỢ CỦA ĐƠN, không cộng lại từ tổng đơn. Đơn đã
+   * thu một phần thì hai số đó khác nhau, và số đúng là số trong sổ.
+   */
+  it("công nợ lấy từ dòng nợ, không lấy tổng đơn", () => {
+    const i = ORD.indexOf("const customerDebt =")
+    expect(i).toBeGreaterThan(0)
+    const block = ORD.slice(i, i + 200)
+    expect(block).toContain("receivable?.amount")
+    expect(block).toContain("receivable?.paid")
+    expect(block).not.toContain("order.total")
+  })
+
+  /**
+   * ⚠ DÒNG PHỤ NÓI ĐỦ PHÉP TÍNH, đúng như mẫu: mã · số lượng × đơn giá.
+   * Người đối chiếu không phải nhìn sang ba cột khác để cộng nhẩm.
+   */
+  it("bảng dòng hàng của hóa đơn có dòng phụ SL × đơn giá", () => {
+    expect(INV).toContain("{l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}")
+    expect(INV).toContain('aside={`${lines.length} dòng`}')
+  })
+})

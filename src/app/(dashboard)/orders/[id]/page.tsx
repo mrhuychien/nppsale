@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { orderTone } from "@/lib/orders/status-tone"
 import {
-  DetailHero, StatusPill, DetailCard, DetailTimeline,
+  DetailHero, StatusPill, DetailCard, DetailTimeline, DetailCustomerCard,
   type TimelineStep,
 } from "@/components/detail/detail-chrome"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"
@@ -1160,6 +1160,22 @@ export default function OrderDetailPage() {
     </>
   )
 
+  const creditLimit = Number(order.customer?.credit_limit || 0)
+  /**
+   * ⚠ CÔNG NỢ CỦA ĐƠN NÀY, không phải tổng nợ của khách. Mẫu vẽ "công nợ
+   *   / hạn mức" của khách, nhưng màn này chỉ nạp dòng nợ của đơn đang
+   *   mở — lấy nó rồi gắn nhãn "công nợ khách" là nói sai. Nhãn dưới đây
+   *   vì thế nói đúng thứ đang đo.
+   */
+  const customerDebt = Math.max(
+    0,
+    Number(receivable?.amount || 0) - Number(receivable?.paid || 0)
+  )
+  const paymentTermLabel =
+    PAYMENT_TERMS.find((t) => t.value === order.payment_terms)?.label ??
+    order.payment_terms ??
+    "—"
+
   const heroSummary = [
     `Đặt ${formatDate(order.order_date)}`,
     `${lines.length} mặt hàng`,
@@ -1311,6 +1327,47 @@ export default function OrderDetailPage() {
           <span className="text-xs uppercase tracking-wider text-on-surface-variant">Tổng đơn</span>
           <span className="text-2xl font-bold tabular-data">{formatCurrency(order.total)}</span>
         </div>
+      </div>
+
+      {/*
+        KHỐI KHÁCH HÀNG theo mẫu — chỉ bản máy tính, vì bản điện thoại đã
+        có khối tóm tắt riêng ngay trên.
+
+        ⚠ CÔNG NỢ LẤY TỪ DÒNG NỢ CỦA ĐƠN, không cộng lại từ tổng đơn. Đơn
+          đã thu một phần thì hai số đó khác nhau, và số đúng là số trong
+          sổ công nợ.
+
+        ⚠ CHƯA CÓ HẠN MỨC THÌ KHÔNG VẼ THANH. Thanh chạy trên một hạn mức
+          bằng 0 thì hoặc luôn đầy hoặc chia cho 0 — cả hai đều nói dối.
+      */}
+      <div className="hidden lg:block">
+        <DetailCustomerCard
+          name={order.customer?.store_name || "Khách lẻ"}
+          contact={[order.customer?.phone, order.customer?.address].filter(Boolean).join(" · ")}
+          stats={[
+            ...(creditLimit > 0
+              ? [
+                  {
+                    label: "Công nợ / hạn mức",
+                    value: (
+                      <>
+                        {formatCurrency(customerDebt)}{" "}
+                        <span className="font-medium text-on-surface-variant">
+                          / {formatCurrency(creditLimit)}
+                        </span>
+                      </>
+                    ),
+                    bar: {
+                      pct: (customerDebt / creditLimit) * 100,
+                      tone: customerDebt > creditLimit ? "#f04438" : "#d99b0d",
+                    },
+                  },
+                ]
+              : []),
+            { label: "Hình thức", value: paymentTermLabel },
+            { label: "NV bán hàng", value: order.sales_user?.full_name || "—" },
+          ]}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

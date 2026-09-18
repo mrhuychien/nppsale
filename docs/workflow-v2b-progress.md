@@ -15,7 +15,7 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
 
 - [x] **P0** — Đọc code v2 thật, lập sổ tiến độ + sổ câu hỏi kèm bảng
       map tên.
-- [ ] **P1** `feat(wf2b-P1)` — Mig 124: schema + trigger + RLS + backfill
+- [x] **P1** `feat(wf2b-P1)` — Mig 124: schema + trigger + RLS + backfill
       + DROP RPC cũ.
 - [ ] **P2** `feat(wf2b-P2)` — Mig 125: 6 RPC + grants.
 - [ ] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
@@ -86,6 +86,56 @@ bảo xoá **không tồn tại** — phép tính delta nằm trong SQL (C).
 
 ---
 
+## P1 — Mig 124: khung xương của hóa đơn
+
+**Đã làm.** `supabase/migrations/124_wf2b_sales_invoices.sql`: hai bảng
+mới (`sales_invoices`, `sales_invoice_lines`), cột `invoiced_qty` trên
+dòng đơn, sáu trạng thái đơn, bốn cột `invoice_id` nối sang công nợ /
+phiếu thu / đơn trả / HĐĐT, RLS chỉ-đọc cho hai bảng mới, backfill một
+INV cho mỗi đơn đã hoàn thành, và gỡ bốn RPC của luồng cũ
+(`complete_order`, `edit_completed_order`, `cancel_order`,
+`_wf2_assert_order_unlocked`). Chốt: `tests/wf2b-schema.test.ts`, 38
+chốt, thử phá bắt 33/33.
+
+**Bất ngờ gặp — bốn chỗ.**
+
+⚠ **Phải thêm chốt chặn `WF2B_NEEDS_V2` ngay đầu migration.** Hệ quả
+trực tiếp của V0: backfill đọc `status = 'completed'`, mà cơ sở dữ liệu
+chưa chạy 119 thì không có dòng nào ở trạng thái đó. Migration sẽ chạy
+êm và tạo 0 hóa đơn — đúng kiểu hỏng im lặng. Nay nó `RAISE` nếu còn
+trạng thái luồng cũ hoặc thiếu `stock_line_consumptions`.
+
+⚠ **`invoiced_qty` cần HAI trigger, không phải một.** Huỷ hóa đơn không
+xoá dòng nào — `sales_invoice_lines` vẫn nguyên, chỉ `status` của
+`sales_invoices` đổi. Trigger trên dòng không bao giờ nổ, số đã-xuất
+đứng im, và đơn hàng vĩnh viễn tưởng mình đã xuất đủ. Thêm
+`sync_invoiced_qty_on_status()` trên `AFTER UPDATE OF status`. Cả hai
+đều **tính lại** chứ không cộng dồn, nên chạy thừa cũng không sai.
+
+⚠ **Trần số lượng đơn trả chuyển gốc từ SO sang INV.** Trước đây
+`enforce_return_line_cap()` đếm `sales_order_lines`; từ nay khách chỉ
+trả được thứ đã thực xuất, nên nó đếm `sales_invoice_lines` của
+`returns.invoice_id`. Đơn trả cũ chưa có `invoice_id` vẫn đi nhánh cũ.
+
+⚠ **Ba chốt nói dối, thử phá mới lòi ra.** (1) `WF2B_NEEDS_V2` xuất hiện
+3 lần trong tệp nên chốt `toContain` xanh cả khi đã xoá lệnh `RAISE` —
+phải neo vào nguyên văn. (2) `sales_user_id = auth.uid()` là chuỗi con
+của `so.sales_user_id = auth.uid()`, nên nới policy vẫn xanh — neo bằng
+xuống dòng + thụt lề, thêm chốt ngược `not.toMatch(/\bOR true\b/)`.
+(3) Chốt "có `COMMENT ON COLUMN` giải thích" đọc tệp thô nên chú thích
+hoá lệnh đó vẫn xanh — đổi sang đọc bản đã lược chú thích.
+
+**Việc nhỏ kèm theo.** `tests/workflow-v2-rpcs.test.ts` được dán nhãn
+đầu tệp: nó mô tả mig 120 — một thời điểm đã qua — nên chốt xanh ở đó
+KHÔNG có nghĩa hàm còn sống. Khẳng định "bốn hàm đã bị gỡ" nằm ở
+`tests/wf2b-schema.test.ts`.
+
+**Q3/Q4 đã có chỉ đạo:** Q3 = (a) — chỉ nới trần giá ở màn Xuất hàng của
+NPP, NVBH giữ nguyên `priceViolation()`. Q4 = chặn ngay lúc sửa hóa đơn,
+nêu tên hàng.
+
+---
+
 ## Quy ước (kế thừa nguyên từ pack v2)
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -111,5 +161,6 @@ bảo xoá **không tồn tại** — phép tính delta nằm trong SQL (C).
 - [ ] **Trước mọi thứ:** chạy 118 → 119 → 120 → 121 → 122 → 123 trên
       staging và chạy hết `docs/workflow-v2-checklist.md`. v2b backfill
       từ dữ liệu mà v2 chưa hề đụng tới (V0).
-- [ ] Trả lời Q3 (trần giá của NVBH) và Q4 (đơn trả khi sửa hóa đơn).
+- [x] ~~Trả lời Q3 (trần giá của NVBH) và Q4 (đơn trả khi sửa hóa đơn).~~
+      Đã trả lời: Q3 = (a), Q4 = OK.
 - [ ] Các việc còn treo của v2: xem `docs/workflow-v2-progress.md`.

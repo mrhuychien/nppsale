@@ -1,3 +1,19 @@
+/**
+ * ⚠ TỆP NÀY MÔ TẢ MIGRATION 120 — MỘT THỜI ĐIỂM ĐÃ QUA.
+ *
+ * Migration 124 (workflow v2b) GỠ BỎ `complete_order`,
+ * `edit_completed_order`, `cancel_order` và `_wf2_assert_order_unlocked`.
+ * Các chốt dưới đây vẫn XANH vì chúng đọc THÂN HÀM trong tệp 120, mà tệp
+ * đó không đổi — chỉ có cơ sở dữ liệu là không còn hàm.
+ *
+ * Nghĩa là: chốt xanh ở đây KHÔNG có nghĩa là hàm đó đang chạy. Giữ
+ * chúng lại vì chúng là trí nhớ vì sao 120 viết như vậy, và vì 120 vẫn
+ * phải chạy trước 124. Việc khẳng định "bốn hàm đã bị gỡ" nằm ở
+ * `tests/wf2b-schema.test.ts`.
+ *
+ * ⚠ Đừng sửa chốt ở đây cho "khớp v2b" — hai tệp nói về hai thời điểm
+ * khác nhau, và trộn chúng lại là mất cả hai.
+ */
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"

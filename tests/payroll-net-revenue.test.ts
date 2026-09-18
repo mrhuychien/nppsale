@@ -400,11 +400,20 @@ describe("bảng kê đơn trên phiếu lương phải cộng ra đúng doanh s
     expect(m).toBeTruthy()
     const ts = m![1].split(",").map((x) => x.trim().replace(/["']/g, "")).filter(Boolean).sort()
 
-    // Toàn bộ trạng thái hợp lệ, lấy từ ràng buộc CHECK mới nhất.
+    /**
+     * Toàn bộ trạng thái ĐƠN hợp lệ, lấy từ ràng buộc CHECK mới nhất.
+     *
+     * ⚠ NEO VÀO TÊN RÀNG BUỘC, KHÔNG DÒ "CHECK status IN" BẤT KỲ. Từ
+     * v2b có thêm `sales_invoices.status CHECK (...)` — cũng khớp mẫu
+     * đó, và nó đứng TRƯỚC trong tệp nên `.match()` vớ phải nó. Hệ quả:
+     * danh sách "trạng thái đơn" hoá ra là `posted/cancelled` của hoá
+     * đơn, phép so bên dưới ra rỗng và chốt đỏ vì một lý do không liên
+     * quan gì tới thứ nó đang canh.
+     */
     let statusList: string | undefined
     for (let i = MIGRATIONS.length - 1; i >= 0 && !statusList; i--) {
       statusList = stripComments(MIGRATIONS[i].raw).match(
-        /CHECK\s*\(\s*status IN \(([^)]*)\)/
+        /chk_sales_orders_status_v2\s*\n?\s*CHECK\s*\(\s*status IN \(([^)]*)\)/
       )?.[1]
     }
     expect(statusList, "không tìm thấy CHECK trạng thái đơn trong migrations").toBeTruthy()

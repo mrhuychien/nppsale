@@ -86,29 +86,59 @@ export function labelPaymentMethod(method: string | null | undefined): string {
   return PAYMENT_METHOD_LABEL[m] || m || "—"
 }
 
+/**
+ * Sáu trạng thái ĐƠN ĐẶT HÀNG của workflow v2b
+ * (`chk_sales_orders_status_v2`, migration 124).
+ *
+ * ⚠ THIẾU MỘT NHÃN LÀ MỘT Ô TRỐNG TRÊN MÀN. Migration 124 cho phép
+ * `partially_invoiced` và `closed` tồn tại; bảng này không có hai khoá
+ * đó thì đơn xuất một phần hiện ra không tên, và người dùng không biết
+ * mình đang nhìn cái gì.
+ *
+ * ⚠ ĐỪNG LẪN VỚI HÓA ĐƠN BÁN. Hoá đơn chỉ có `posted`/`cancelled` —
+ * xem `INVOICE_STATUS_MAP`.
+ */
 export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   draft: { label: "Nháp", variant: "secondary" },
   submitted: { label: "Phiếu tạm", variant: "warning" },
+  partially_invoiced: { label: "Xuất một phần", variant: "default" },
   completed: { label: "Hoàn thành", variant: "success" },
+  closed: { label: "Đã đóng", variant: "secondary" },
   cancelled: { label: "Đã hủy", variant: "danger" },
 }
 
 /**
- * Trạng thái đơn KHÔNG được tính vào doanh số.
+ * Hai trạng thái HÓA ĐƠN BÁN (`sales_invoices.status`, migration 124).
  *
- * Phải khớp với hàm SQL `public.is_revenue_status()` (mig 119):
- *     status = 'completed'
- * tức mọi trạng thái còn lại đều KHÔNG tính doanh thu.
- *
- * VÌ SAO CẦN HẰNG SỐ NÀY
- * Trước 094, cả SQL lẫn giao diện đều lọc `IN ('delivered','confirmed')`,
- * bỏ sót 'picking' và 'delivering' — hai trạng thái mọi đơn đều phải đi
- * qua. 094 sửa phía SQL nhưng phía giao diện vẫn giữ bộ lọc cũ, nên bảng
- * kê đơn in kèm phiếu lương cộng ra ít hơn dòng "Doanh số kỳ" ngay trên
- * cùng tờ phiếu — nhân viên không cộng lại được số của chính mình.
- * Đặt một chỗ để lần sau đổi định nghĩa thì đổi đúng một nơi.
+ * ⚠ KHÔNG CÓ NHÁP, và đó là cố ý: hoá đơn sinh ra và ghi sổ trong cùng
+ * một RPC. Một hoá đơn "nháp" là giấy đã in mà kho chưa trừ.
  */
-export const NON_REVENUE_ORDER_STATUSES = ["draft", "submitted", "cancelled"] as const
+export const INVOICE_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
+  posted: { label: "Đã xuất", variant: "success" },
+  cancelled: { label: "Đã hủy", variant: "danger" },
+}
+
+/**
+ * Trạng thái đơn KHÔNG tính vào doanh thu — phần bù của
+ * `is_revenue_status()` bên SQL (hiện chỉ `completed`).
+ *
+ * ⚠ v2b thêm `partially_invoiced` và `closed`. Cả hai KHÔNG phải doanh
+ * thu của ĐƠN: doanh thu v2b đếm HOÁ ĐƠN đã xuất
+ * (`is_revenue_invoice_status`), và một đơn xuất một phần thì phần đã
+ * xuất đã được hoá đơn con của nó tính rồi. Để sót hai giá trị này là
+ * cộng doanh thu hai lần.
+ *
+ * ⚠ HẰNG NÀY PHẢI KHỚP TUYỆT ĐỐI với `is_revenue_status` — có chốt so
+ * hai bên (`payroll-net-revenue.test.ts`). Hai nguồn sự thật cho cùng
+ * một định nghĩa doanh thu là chỗ lệch không ai phát hiện bằng mắt.
+ */
+export const NON_REVENUE_ORDER_STATUSES = [
+  "draft",
+  "submitted",
+  "partially_invoiced",
+  "closed",
+  "cancelled",
+] as const
 
 export const CUSTOMER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   active: { label: "Hoạt động", variant: "success" },

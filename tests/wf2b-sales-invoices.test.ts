@@ -239,9 +239,14 @@ describe("Bản in hóa đơn bán", () => {
     expect(CODE).not.toMatch(/canPrint|disabled=\{[^}]*status/)
   })
 
-  /** ⚠ A4: bảy cột ở khổ A5 thì chữ còn 8pt và hai cột tiền dính nhau. */
-  it("mặc định khổ A4", () => {
-    expect(CODE).toContain('defaultPaper="A4"')
+  /**
+   * ⚠ A5 (chủ nhà chốt). Trước để A4 vì bảy cột ở khổ A5 thì chữ rơi
+   * xuống 8pt; nhưng giấy A5 mới là thứ nằm trong máy in của kho, và
+   * nhà phân phối in tờ này mỗi ngày vài chục lần. A4 vẫn chọn được ở
+   * dropdown.
+   */
+  it("mặc định khổ A5", () => {
+    expect(CODE).toContain('defaultPaper="A5"')
   })
 
   /** Mẫu không có dòng thuế — chỉ truyền `total` đã gồm thuế. */
@@ -517,8 +522,8 @@ describe("Danh sách hóa đơn bán", () => {
    */
   it("hai màn đều hỏi địa chỉ khách trong câu embed", () => {
     const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
-    expect(ORDERS).toContain("customer:customers(store_name, phone, channel, address)")
-    expect(strip(LIST)).toContain("customer:customers(store_name, phone, channel, address)")
+    expect(ORDERS).toContain("customer:customers(store_name, phone, channel, ward, address)")
+    expect(strip(LIST)).toContain("customer:customers(store_name, phone, channel, ward, address)")
   })
 
   /**
@@ -533,7 +538,7 @@ describe("Danh sách hóa đơn bán", () => {
    */
   it("lọc tuyến bật !inner, chỉ khi đang lọc, ở CẢ HAI câu", () => {
     const L = strip(LIST)
-    expect(L).toContain('customer:customers!inner(store_name, phone, channel, address)')
+    expect(L).toContain('customer:customers!inner(store_name, phone, channel, ward, address)')
     expect(
       (L.match(/routeFilter !== "all" \? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED/g) ?? []).length,
       "câu danh sách và câu đếm phải cùng một phép chọn embed"

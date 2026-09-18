@@ -290,10 +290,10 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    * dùng nhìn đúng những con số vừa gửi đi và tưởng chưa có gì xảy ra —
    * rồi bấm Xuất lần nữa, và lần này kho trừ thật hai lượt.
    */
-  it("xuất xong thì sang chi tiết hóa đơn vừa lập", () => {
+  it("xuất xong thì sang màn in và tự bật cửa sổ in", () => {
     const i = CODE.indexOf("router.push(r.invoiceId")
     expect(i).toBeGreaterThan(0)
-    expect(CODE.slice(i, i + 140)).toContain("/sales-invoices/${r.invoiceId}")
+    expect(CODE.slice(i, i + 160)).toContain("/sales-invoices/${r.invoiceId}/print?auto=1")
   })
 
   /** Ô số lượng theo quy ước giao diện của dự án. */

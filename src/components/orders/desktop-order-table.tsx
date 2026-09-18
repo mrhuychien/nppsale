@@ -27,7 +27,7 @@ export interface OrderSort {
 }
 
 export type OrderColumn =
-  | "customer" | "route" | "address" | "salesUser" | "date" | "total" | "status"
+  | "customer" | "route" | "ward" | "address" | "salesUser" | "date" | "total" | "status"
 
 const REP_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be185d", "#0369a1"]
 
@@ -117,6 +117,7 @@ export function DesktopOrderTable({
     "170px",
     show("customer") ? "minmax(200px,1.5fr)" : null,
     show("route") ? "140px" : null,
+    show("ward") ? "150px" : null,
     show("address") ? "minmax(200px,1.5fr)" : null,
     show("salesUser") ? "170px" : null,
     show("date") ? "110px" : null,
@@ -153,6 +154,7 @@ export function DesktopOrderTable({
             </button>
           )}
           {show("route") && <span className={head}>Tuyến bán</span>}
+          {show("ward") && <span className={head}>Phường</span>}
           {show("address") && <span className={head}>Địa chỉ</span>}
           {show("salesUser") && <span className={head}>NV bán hàng</span>}
           {show("date") && (
@@ -227,6 +229,11 @@ export function DesktopOrderTable({
               {show("route") && (
                 <span className="min-w-0 px-2 text-[13px] font-semibold text-on-surface">
                   <span className="block truncate">{route || "—"}</span>
+                </span>
+              )}
+              {show("ward") && (
+                <span className="min-w-0 px-2 text-[13px] text-on-surface-variant">
+                  <span className="block truncate">{o.customer?.ward || "—"}</span>
                 </span>
               )}
               {show("address") && (

@@ -78,8 +78,8 @@ import { errorMessage } from "@/lib/errors"
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
 
 /** Phần nhúng khách hàng trong câu select — hai bản, chỉ khác `!inner`. */
-const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, address)"
-const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, address)"
+const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address)"
 /**
  * Câu select cho phép ĐẾM khi đang lọc theo tuyến.
  *
@@ -696,9 +696,17 @@ export default function OrdersPage() {
   const handleBulkApprove = () => approveOrders(Array.from(selectedIds))
 
   // Bulk cancel — only applies to orders not yet delivered/cancelled
-  const handleBulkCancel = async () => {
+  /**
+   * HUỶ MỘT HOẶC NHIỀU ĐƠN.
+   *
+   * ⚠ MỘT HÀM CHO CẢ THANH CHỌN NHIỀU LẪN NGĂN XEM NHANH. Ngăn xem nhanh
+   * có nút Huỷ đơn riêng (chủ nhà yêu cầu); viết lại phép huỷ ở đó là
+   * hai đường, và chỉ một trong hai đếm số dòng ghi được — tức chỉ một
+   * trong hai nhìn thấy khi RLS từ chối.
+   */
+  const cancelOrders = async (ids: string[]) => {
     if (!user) return
-    const selected = orders.filter((o) => selectedIds.has(o.id))
+    const selected = orders.filter((o) => ids.includes(o.id))
     // Đơn ĐÃ XUẤT phải huỷ qua RPC (hoàn kho, xoá công nợ) — không gộp
     // vào đây được.
     const cancellable = selected.filter(
@@ -708,8 +716,15 @@ export default function OrdersPage() {
       toast({ title: "Không có đơn nào hủy được", variant: "destructive" })
       return
     }
-    if (!confirm(`Hủy ${cancellable.length} đơn hàng? Không thể hoàn tác.`)) return
-    const ids = cancellable.map((o) => o.id)
+    if (
+      !confirm(
+        cancellable.length === 1
+          ? `Hủy đơn ${cancellable[0].order_code}? Không thể hoàn tác.`
+          : `Hủy ${cancellable.length} đơn hàng? Không thể hoàn tác.`
+      )
+    )
+      return
+    const cancelIds = cancellable.map((o) => o.id)
     setBulkLoading(true)
     try {
       /**
@@ -725,7 +740,7 @@ export default function OrdersPage() {
       const { data: rows, error } = await supabase
         .from("sales_orders")
         .update({ status: "cancelled" })
-        .in("id", ids)
+        .in("id", cancelIds)
         .select("id")
       if (error) throw error
       const done = new Set(((rows as Array<{ id: string }>) ?? []).map((r) => r.id))
@@ -1057,7 +1072,7 @@ export default function OrdersPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleBulkCancel}
+                    onClick={() => cancelOrders(Array.from(selectedIds))}
                     disabled={bulkLoading}
                     className="border-error/40 text-on-error-container hover:bg-error-container"
                   >
@@ -1487,6 +1502,9 @@ export default function OrdersPage() {
         }
         approving={approvingId === drawerOrder?.id}
         onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}
+        canCancel={!!canApprove}
+        cancelling={bulkLoading}
+        onCancel={(o) => cancelOrders([o.id])}
       />
 
     </div>

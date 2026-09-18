@@ -66,8 +66,8 @@ import type { Customer, User } from "@/types"
  * dùng `!inner` thì PostgREST mới lọc được trên bảng nhúng; dùng `!inner`
  * cho mọi trường hợp là âm thầm bỏ mất hóa đơn của khách đã bị xoá.
  */
-const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, address)"
-const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, address)"
+const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address)"
 const BASE_COLS =
   "id, invoice_code, invoice_date, status, total, order_id, customer_id, sales_user_id, replaced_from, replaced_by"
 const SALES_EMBED = "sales_user:users!sales_invoices_sales_user_id_fkey(full_name)"

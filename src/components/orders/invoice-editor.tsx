@@ -195,7 +195,17 @@ export function InvoiceEditor({
       // ⚠ Cảnh báo đi TOAST RIÊNG. Nhét vào description của toast thành
       //   công là để nó đọc như một lời chúc mừng có chú thích.
       if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
-      router.push(r.invoiceId ? `/sales-invoices/${r.invoiceId}` : backHref)
+      /**
+       * ⚠ SANG THẲNG MÀN IN, và màn đó tự bật cửa sổ in (chủ nhà chốt).
+       *   Việc tiếp theo sau khi xuất hàng LUÔN là in tờ giao cho tài
+       *   xế; bắt bấm thêm hai nút nữa cho một việc chắc chắn xảy ra là
+       *   thuế đánh lên mỗi đơn.
+       *
+       * ⚠ KHÔNG TỰ IN NẾU RPC KHÔNG TRẢ VỀ MÃ HÓA ĐƠN. Không có id thì
+       *   không có gì để in; quay về chỗ cũ còn hơn mở một màn trống rồi
+       *   bật hộp thoại in lên trên nó.
+       */
+      router.push(r.invoiceId ? `/sales-invoices/${r.invoiceId}/print?auto=1` : backHref)
     } catch (e) {
       toast({ title: "Không xuất được", description: errorMessage(e), variant: "destructive" })
     } finally {
@@ -269,19 +279,31 @@ export function InvoiceEditor({
                               0 đọc như "hết hàng" và đó là một câu nói dối. */}
                           {r.stockKnown ? r.availableBase : "…"}
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          <Input
-                            type="number" step="any" min={0} value={r.qty}
-                            onChange={(e) => setQty(r.key, Number(e.target.value))}
-                            className={`h-9 w-24 text-right tabular-nums ${over ? "border-amber-300" : ""}`}
-                          />
+                        {/*
+                          ⚠ ĐẨY Ô NHẬP VỀ SÁT PHẢI. `text-right` trên ô bảng
+                            chỉ căn CHỮ, không căn phần tử con — mà ô nhập
+                            có bề rộng cố định (w-24 / w-32) nên nó nằm im
+                            bên trái trong khi tiêu đề cột căn phải. Nhìn ra
+                            là hai cột lệch hẳn khỏi nhãn của chúng. Bọc
+                            flex justify-end mới kéo được ô nhập về đúng chỗ.
+                        */}
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end">
+                            <Input
+                              type="number" step="any" min={0} value={r.qty}
+                              onChange={(e) => setQty(r.key, Number(e.target.value))}
+                              className={`h-9 w-24 text-right tabular-nums ${over ? "border-amber-300" : ""}`}
+                            />
+                          </div>
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          <MoneyInput
-                            value={r.price} onChange={(v) => setPrice(r.key, v)}
-                            showSuffix={false} className="w-32"
-                            inputClassName={`h-9 text-right tabular-nums ${priceOff(r) ? "border-amber-300" : ""}`}
-                          />
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end">
+                            <MoneyInput
+                              value={r.price} onChange={(v) => setPrice(r.key, v)}
+                              showSuffix={false} className="w-32"
+                              inputClassName={`h-9 text-right tabular-nums ${priceOff(r) ? "border-amber-300" : ""}`}
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatCurrency(r.qty * r.price)}

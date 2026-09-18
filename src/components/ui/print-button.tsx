@@ -18,7 +18,33 @@ import {
 // dropdown we toggle that attribute, call window.print(), and reset
 // it back so the next print job defaults to A5 again.
 
-type PaperSize = "A5" | "A4"
+export type PaperSize = "A5" | "A4"
+
+/**
+ * Mở cửa sổ in ở một khổ giấy.
+ *
+ * ⚠ TÁCH RA ĐỂ DÙNG CHUNG, không phải để gọn. Màn soạn hóa đơn bật cửa
+ * sổ in ngay sau khi xuất hàng; nếu nó tự viết lại phép này thì một ngày
+ * nào đó nút In dùng một đường, in tự động dùng một đường, và chỉ một
+ * trong hai đặt đúng khổ giấy.
+ *
+ * ⚠ TRẢ THUỘC TÍNH VỀ NHƯ CŨ SAU KHI IN. Đặt `data-paper-size="A4"` rồi
+ * để nguyên thì mọi lần in sau trên cùng một tab đều ra A4 — kể cả phiếu
+ * giao vốn phải là A5.
+ */
+export function printWithPaper(size: PaperSize): void {
+  const html = document.documentElement
+  const previous = html.getAttribute("data-paper-size")
+  if (size === "A4") html.setAttribute("data-paper-size", "A4")
+  else html.removeAttribute("data-paper-size")
+  requestAnimationFrame(() => {
+    window.print()
+    setTimeout(() => {
+      if (previous == null) html.removeAttribute("data-paper-size")
+      else html.setAttribute("data-paper-size", previous)
+    }, 200)
+  })
+}
 
 interface PrintButtonProps extends Omit<ButtonProps, "onClick"> {
   label?: string
@@ -40,21 +66,7 @@ export function PrintButton({
   defaultPaper = "A5",
   ...rest
 }: PrintButtonProps) {
-  const print = (size: PaperSize) => {
-    const html = document.documentElement
-    const previous = html.getAttribute("data-paper-size")
-    if (size === "A4") html.setAttribute("data-paper-size", "A4")
-    else html.removeAttribute("data-paper-size")
-    // Defer print so the attribute change settles before the dialog
-    requestAnimationFrame(() => {
-      window.print()
-      // Reset after the print dialog closes
-      setTimeout(() => {
-        if (previous == null) html.removeAttribute("data-paper-size")
-        else html.setAttribute("data-paper-size", previous)
-      }, 200)
-    })
-  }
+  const print = printWithPaper
 
   return (
     <DropdownMenu>

@@ -19,6 +19,7 @@ import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 export const INVOICE_COLUMNS = [
   { key: "customer", label: "Khách hàng" },
   { key: "route", label: "Tuyến bán" },
+  { key: "ward", label: "Phường" },
   { key: "address", label: "Địa chỉ" },
   { key: "salesUser", label: "NV bán hàng" },
   { key: "date", label: "Ngày xuất" },

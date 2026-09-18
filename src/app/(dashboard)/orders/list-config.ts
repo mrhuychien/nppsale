@@ -8,6 +8,7 @@ export const ORDER_COLUMNS = [
   //   tuyến; bật nó lên thì dòng phụ dưới tên khách nhường chỗ, không in
   //   hai lần cùng một chữ.
   { key: "route", label: "Tuyến bán" },
+  { key: "ward", label: "Phường" },
   { key: "address", label: "Địa chỉ" },
   { key: "salesUser", label: "NV bán hàng" },
   { key: "date", label: "Ngày đặt" },

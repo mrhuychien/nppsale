@@ -12,12 +12,13 @@
  * khớp — xem `grossUpLines` trong `components/printing/sales-invoice.tsx`.
  */
 
-import { useCallback, useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
-import { PrintButton } from "@/components/ui/print-button"
+import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 
@@ -53,11 +54,12 @@ interface LineRow {
 
 export default function SalesInvoicePrintPage() {
   const { id } = useParams<{ id: string }>()
+  const params = useSearchParams()
   const { loading: authLoading } = useRoleGuard("orders")
   const supabase = createClient()
   const [inv, setInv] = useState<InvoiceRow | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
-  const [org, setOrg] = useState<{ name?: string | null; address?: string | null; phone?: string | null } | null>(null)
+  const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
@@ -84,13 +86,16 @@ export default function SalesInvoicePrintPage() {
     setLines(((lineRes.data as unknown) as LineRow[]) || [])
 
     if (row?.org_id) {
-      const { data: o, error: oErr } = await supabase
-        .from("organizations")
-        .select("name, address, phone")
-        .eq("id", row.org_id)
-        .maybeSingle()
-      if (oErr) console.error("[sales-invoices/print] truy vấn lỗi:", oErr.message)
-      setOrg((o as typeof org) || null)
+      /**
+       * ⚠ QUA `loadOrgHeader`, KHÔNG HỎI THẲNG `address`/`phone`. Hai cột
+       *   đó KHÔNG TỒN TẠI trên bảng `organizations` — chúng nằm trong
+       *   `settings` jsonb. Bản cũ hỏi thẳng nên câu truy vấn lỗi, mã
+       *   nguồn nuốt lỗi vào `console.error`, và tờ hóa đơn in ra thiếu
+       *   hẳn phần đầu: không tên công ty, không địa chỉ, không điện
+       *   thoại. Không toast, không màn đỏ — chỉ một tờ giấy thiếu đi
+       *   tới tay khách.
+       */
+      setOrg(await loadOrgHeader(supabase, row.org_id))
     }
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,6 +104,24 @@ export default function SalesInvoicePrintPage() {
   useEffect(() => {
     if (!authLoading) fetchData()
   }, [authLoading, fetchData])
+
+  /**
+   * IN NGAY khi tới từ màn soạn (`?auto=1`).
+   *
+   * ⚠ CHỜ DỮ LIỆU XONG MỚI IN. Gọi lúc còn `loading` là in ra một trang
+   *   toàn khung xương — trình duyệt không đợi React vẽ xong.
+   *
+   * ⚠ CHỈ MỘT LẦN. `window.print()` khoá luồng cho tới khi người dùng
+   *   đóng hộp thoại; render lại sau đó mà không gác thì cửa sổ in bật
+   *   lên lần nữa, và người dùng không thoát ra được.
+   */
+  const printedRef = useRef(false)
+  useEffect(() => {
+    if (loading || !inv || printedRef.current) return
+    if (params.get("auto") !== "1") return
+    printedRef.current = true
+    printWithPaper("A5")
+  }, [loading, inv, params])
 
   if (authLoading || loading) {
     return (
@@ -136,16 +159,18 @@ export default function SalesInvoicePrintPage() {
             ⚠ HÓA ĐƠN ĐÃ HUỶ VẪN IN ĐƯỢC, và có dòng chữ nói rõ. Chặn in
               thì người đang cầm tờ cũ trong tay không có cách nào đối
               chiếu; in ra một tờ trông y như tờ còn hiệu lực thì tệ hơn.
-            ⚠ A4, KHÔNG PHẢI A5 MẶC ĐỊNH. Bảy cột ở khổ A5 thì chữ còn 8pt
-              và hai cột tiền dính vào nhau.
+            ⚠ A5 MẶC ĐỊNH (chủ nhà chốt). Trước đây để A4 vì bảy cột ở
+              khổ A5 thì chữ rơi xuống 8pt; nhưng giấy A5 mới là thứ nằm
+              trong máy in của kho, và nhà phân phối in tờ này mỗi ngày
+              vài chục lần. Ai cần A4 thì vẫn chọn được ở dropdown.
           */}
-          <PrintButton label="In hóa đơn" defaultPaper="A4" />
+          <PrintButton label="In hóa đơn" defaultPaper="A5" />
         </PageHeader>
       </div>
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          org={{ name: org?.name, address: org?.address, phone: org?.phone }}
+          org={{ name: org.name, address: org.address, phone: org.phone }}
           invoiceNumber={inv.invoice_code}
           issuedAt={inv.invoice_date ? new Date(inv.invoice_date) : null}
           customerName={inv.customer?.billing_name || inv.customer?.store_name || ""}

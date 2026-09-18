@@ -34,7 +34,13 @@ export interface InvoiceRow {
   order_id: string
   replaced_from: string | null
   replaced_by: string | null
-  customer?: { store_name?: string | null; phone?: string | null; channel?: string | null; address?: string | null } | null
+  customer?: {
+    store_name?: string | null
+    phone?: string | null
+    channel?: string | null
+    ward?: string | null
+    address?: string | null
+  } | null
   sales_user?: { full_name?: string | null } | null
   order?: { order_code?: string | null } | null
 }
@@ -83,6 +89,7 @@ export function DesktopInvoiceTable({
     "170px",
     show("customer") ? "minmax(200px,1.5fr)" : null,
     show("route") ? "140px" : null,
+    show("ward") ? "150px" : null,
     show("address") ? "minmax(200px,1.5fr)" : null,
     show("salesUser") ? "170px" : null,
     show("date") ? "110px" : null,
@@ -112,6 +119,7 @@ export function DesktopInvoiceTable({
             </button>
           )}
           {show("route") && <span className={head}>Tuyến bán</span>}
+          {show("ward") && <span className={head}>Phường</span>}
           {show("address") && <span className={head}>Địa chỉ</span>}
           {show("salesUser") && <span className={head}>NV bán hàng</span>}
           {show("date") && (
@@ -175,6 +183,11 @@ export function DesktopInvoiceTable({
               {show("route") && (
                 <span className="min-w-0 px-2 text-[13px] font-semibold text-on-surface">
                   <span className="block truncate">{route || "—"}</span>
+                </span>
+              )}
+              {show("ward") && (
+                <span className="min-w-0 px-2 text-[13px] text-on-surface-variant">
+                  <span className="block truncate">{r.customer?.ward || "—"}</span>
                 </span>
               )}
               {show("address") && (

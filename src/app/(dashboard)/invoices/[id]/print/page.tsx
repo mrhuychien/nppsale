@@ -1,5 +1,6 @@
 "use client"
 
+import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -17,14 +18,6 @@ interface OrderForPrint extends Omit<SalesOrder, "customer" | "sales_user"> {
   sales_user?: { full_name?: string | null; phone?: string | null } | null
 }
 
-interface Organization {
-  id: string
-  name: string
-  address?: string | null
-  phone?: string | null
-  tax_code?: string | null
-}
-
 export default function InvoicePrintPage() {
   const { id } = useParams<{ id: string }>()
   useAuth()
@@ -32,7 +25,7 @@ export default function InvoicePrintPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [order, setOrder] = useState<OrderForPrint | null>(null)
   const [lines, setLines] = useState<SalesOrderLine[]>([])
-  const [org, setOrg] = useState<Organization | null>(null)
+  const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -56,13 +49,13 @@ export default function InvoicePrintPage() {
 
     // Fetch organization
     if (invoiceData.org_id) {
-      const { data: orgData, error: orgDataErr } = await supabase
-        .from("organizations")
-        .select("id, name, address, phone, tax_code")
-        .eq("id", invoiceData.org_id)
-        .single()
-      if (orgDataErr) console.error("[id/print] truy vấn lỗi:", orgDataErr.message)
-      if (orgData) setOrg(orgData as Organization)
+      /**
+       * ⚠ QUA `loadOrgHeader`. `address`/`phone`/`tax_code` KHÔNG phải
+       *   cột của `organizations` — chúng nằm trong `settings` jsonb.
+       *   Hỏi thẳng thì câu truy vấn lỗi, lỗi bị nuốt vào console, và tờ
+       *   in ra thiếu hẳn phần đầu mà không có dấu hiệu nào trên màn.
+       */
+      setOrg(await loadOrgHeader(supabase, invoiceData.org_id))
     }
 
     // Fetch order lines if linked to an order
@@ -169,7 +162,7 @@ export default function InvoicePrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          org={{ name: org?.name, address: org?.address, phone: org?.phone }}
+          org={{ name: org.name, address: org.address, phone: org.phone }}
           invoiceNumber={invoice.invoice_number || ""}
           issuedAt={issuedAt}
           customerName={invoice.customer_name}

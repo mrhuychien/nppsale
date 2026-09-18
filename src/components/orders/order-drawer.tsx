@@ -60,6 +60,9 @@ export function OrderDrawer({
   canEdit,
   approving,
   onApprove,
+  canCancel,
+  cancelling,
+  onCancel,
 }: {
   order: SalesOrder | null
   routeName: string | null
@@ -68,6 +71,10 @@ export function OrderDrawer({
   canEdit: boolean
   approving: boolean
   onApprove: (order: SalesOrder) => void
+  /** Vai có quyền huỷ đơn. Đơn ĐÃ XUẤT vẫn không huỷ ở đây — xem dưới. */
+  canCancel: boolean
+  cancelling: boolean
+  onCancel: (order: SalesOrder) => void
 }) {
   const router = useRouter()
   const { org } = useOrg()
@@ -407,6 +414,23 @@ export function OrderDrawer({
                   className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
                 >
                   Sửa đơn
+                </button>
+              )}
+              {/*
+                ⚠ CHỈ ĐƠN CHƯA XUẤT MỚI HUỶ Ở ĐÂY. Đơn đã xuất phải đi qua
+                  RPC huỷ hóa đơn (hoàn kho theo đúng lô đã lấy, xoá công
+                  nợ) — một lệnh UPDATE trạng thái từ trình duyệt sẽ để kho
+                  thiếu hàng mà sổ nói đã huỷ. Hiện nút ở đó là mời người
+                  dùng làm hỏng sổ.
+              */}
+              {canCancel && (order.status === "draft" || order.status === "submitted") && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(order)}
+                  disabled={cancelling}
+                  className="h-11 rounded-xl border-[1.5px] border-error/40 bg-surface-container-lowest px-4 text-sm font-extrabold text-on-error-container disabled:opacity-50"
+                >
+                  {cancelling ? "Đang huỷ…" : "Huỷ đơn"}
                 </button>
               )}
               <button

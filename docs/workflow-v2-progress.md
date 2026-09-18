@@ -35,10 +35,11 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       Kèm Rút về nháp, gỡ nút ghi công nợ tay ở màn chi tiết, ba loại
       thông báo mới của v2, và `tests/workflow-v2-sales-flow.test.ts`
       (12 chốt, thử phá 10 lần đều đỏ).
-- [~] **P5** `feat(wf2-P5)` — NPP /orders. Xong 3/4: ba tab cho mọi vai
-      trò, nút Xuất hàng đọc kết quả RPC, Xem nhanh mở rộng (huy hiệu
-      cảnh báo + cột Tồn). **Còn lại:** tách mẫu in phiếu giao thành
-      component dùng chung.
+- [x] **P5** `feat(wf2-P5)` — NPP /orders: ba tab cho mọi vai trò, nút
+      Xuất hàng đọc kết quả RPC, Xem nhanh mở rộng (huy hiệu cảnh báo +
+      cột Tồn), mẫu in phiếu giao tách thành
+      `components/printing/delivery-slip.tsx`. Kèm `complete-order.ts`,
+      `order-stock-preview.ts` và 21 chốt mới; thử phá 28 lần.
 - [ ] **P6** `feat(wf2-P6)` — Đơn trả (/returns) + Phiếu thu
       (/finance/cash-receipts) gồm cấn trừ đơn trả độc lập.
 - [ ] **P7** `feat(wf2-P7)` — Ẩn module luồng cũ khỏi nav (không xoá
@@ -178,7 +179,7 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   hai giữ nguyên văn trong bộ nhớ theo khoá và kiểm tệp khớp từng byte
   sau khi phục hồi.
 
-## Ghi chú P5 (đang làm)
+## Ghi chú P5
 
 - Trước khi viết một dòng nào, cho bốn người ĐO bốn mảng việc của P5.
   Bản đo bắt được hai chỗ mà đọc lướt không thấy, và cả hai đều đắt:
@@ -201,6 +202,16 @@ Chạy trên `44dbe7f` trước khi sửa gì:
 - Thiếu tồn hiện VÀNG hay ĐỎ tuỳ `organizations.allow_oversell`: đơn vị
   cho phép bán âm thì RPC vẫn xuất, tô đỏ ở đó là làm người ta không dám
   bấm một nút vốn bấm được.
+- Mẫu in phiếu giao tách sang `components/printing/delivery-slip.tsx`
+  theo đúng khuôn ba component in có sẵn: kiểu riêng đã làm phẳng, gốc
+  trang mang `print-page a5-doc`, lớp `.print-*-only` để nơi gọi đặt.
+  Màn cũ vẫn in y hệt — ba thứ ngoài phạm vi một đơn (`entryCode`,
+  `pageIndex`, `pageTotal`) truyền vào qua props chứ không bỏ đi.
+- ⚠ **Một lỗi của 119 nằm im trong phiếu giao:** truy vấn phiếu trả lọc
+  `pending / approved / completed`, mà hai giá trị đầu đã bị backfill đi
+  và `chk_returns_status_v2` cấm. Sau khi 119 chạy, phần hàng trả LẶNG
+  LẼ biến mất khỏi phiếu giao — lái xe không biết phải thu lại gì, và
+  không có lỗi nào bắn ra. Đã sửa cả bộ lọc lẫn bảng nhãn.
 - Một chốt test NÓI DỐI bị bắt trong lượt thử phá: nó soi chuỗi
   `INSUFFICIENT_STOCK` trong tệp, mà cái tên đó còn nằm trong khối chú
   thích đầu tệp — tắt hẳn nhánh dịch lỗi mà chốt vẫn xanh. Đã thay bằng

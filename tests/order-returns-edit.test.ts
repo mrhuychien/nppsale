@@ -735,3 +735,49 @@ describe("migration 134 — trần hàng trả tính theo khách", () => {
     expect(rep).not.toContain("UPDATE returns")
   })
 })
+
+describe("chi tiết đơn hàng — ba chỗ còn lệch mẫu", () => {
+  const page = readFileSync("src/app/(dashboard)/orders/[id]/page.tsx", "utf8")
+
+  /**
+   * ⚠ DÒNG PHỤ TRẢ LỜI CÂU "THÀNH TIỀN NÀY Ở ĐÂU RA". Mẫu để phép nhân
+   * ngay dưới tên hàng nên không phải liếc qua ba cột rồi nhân nhẩm.
+   */
+  it("dòng hàng có dòng phụ mã SP · SL × đơn giá", () => {
+    expect(page).toContain("{line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}")
+    expect(page).toContain('line.product?.sku ? `${line.product.sku} · ` : ""')
+  })
+
+  /**
+   * ⚠ ẨN KHI ĐANG SỬA. Lúc ấy SL và đơn giá nằm trong ô nhập, còn dòng
+   * phụ in số ĐÃ LƯU — hai con số khác nhau cạnh nhau, không ai biết cái
+   * nào là thật.
+   */
+  it("dòng phụ ẩn khi đang sửa dòng đơn", () => {
+    const i = page.indexOf("{line.quantity} {line.unit_name} ×")
+    expect(page.slice(Math.max(0, i - 400), i)).toContain("{!inEdit && (")
+  })
+
+  /** ⚠ Không có nhóm giá thì không vẽ ô trống có nhãn. */
+  it("ô Bảng giá chỉ vẽ khi khách có nhóm giá", () => {
+    expect(page).toContain("...(priceGroupName ? [{ label: \"Bảng giá\", value: priceGroupName }] : [])")
+    expect(page).toContain("group:customer_groups(name)")
+  })
+
+  /** ⚠ Thẻ "Ghi chú: Không có" chiếm chỗ của thứ người đọc đang tìm. */
+  it("ghi chú là thẻ riêng và chỉ vẽ khi có chữ", () => {
+    expect(page).toContain("{order.notes && (")
+    expect(page).toContain('title="Ghi chú"')
+    expect(page).toContain("whitespace-pre-wrap")
+  })
+
+  /**
+   * ⚠ CỘT TRÁI PHẢI CÓ BỌC. Hai thẻ rộng 2 cột làm con trực tiếp của lưới
+   * thì thẻ thứ hai rơi xuống hàng dưới và KÉO CẢ CỘT PHẢI xuống theo.
+   */
+  it("cột trái bọc trong một div span 2", () => {
+    expect(page).toContain('<div className="space-y-5 lg:col-span-2">')
+    // Thẻ Mặt hàng không còn tự span nữa.
+    expect(page).not.toContain('<Card className="lg:col-span-2">')
+  })
+})

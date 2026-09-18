@@ -296,7 +296,7 @@ export default function OrderDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes, salesInvoicesRes] = await Promise.all([
-      supabase.from("sales_orders").select("id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(*), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
+      supabase.from("sales_orders").select("id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(*, group:customer_groups(name)), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("id, order_id, product_id, unit_name, quantity, unit_price, line_discount, line_total, batch_id, note, conversion_factor, product:products(*)").eq("order_id", id),
       /**
        * ⚠ KHÔNG `maybeSingle()` NỮA. Từ v2b mỗi HÓA ĐƠN một dòng công
@@ -753,6 +753,11 @@ export default function OrderDetailPage() {
    * ⚠ KẸP VỀ 0. Đơn cũ lưu bằng công thức khác có thể cho hiệu âm; một
    * dòng "Trừ hàng trả: −(−5.000)" thì thà đừng vẽ.
    */
+  /** Tên bảng giá của khách — ô "BẢNG GIÁ" trong mẫu. */
+  const priceGroupName =
+    (order?.customer as unknown as { group?: { name?: string | null } | null } | undefined)
+      ?.group?.name ?? null
+
   const orderReturnCredit = order
     ? Math.max(
         0,
@@ -1385,6 +1390,10 @@ export default function OrderDetailPage() {
                   },
                 ]
               : []),
+            /* ⚠ Ô "BẢNG GIÁ" CỦA MẪU. Không có nhóm giá thì KHÔNG vẽ ô
+               trống có nhãn — nhãn trên một ô rỗng đọc như dữ liệu chưa
+               tải xong (xem `DetailCustomerCard`). */
+            ...(priceGroupName ? [{ label: "Bảng giá", value: priceGroupName }] : []),
             { label: "Hình thức", value: paymentTermLabel },
             { label: "NV bán hàng", value: order.sales_user?.full_name || "—" },
           ]}
@@ -1400,8 +1409,16 @@ export default function OrderDetailPage() {
           khoảng cách, đúng như `detail-chrome.tsx` đã nói.
       */}
       <div className="grid items-start gap-5 lg:grid-cols-3">
+        {/*
+          ⚠ CỘT TRÁI PHẢI CÓ BỌC. Thẻ "Mặt hàng" và thẻ "Ghi chú" đều rộng
+            2 cột; để chúng làm con TRỰC TIẾP của lưới thì thẻ thứ hai
+            không lọt vào hàng đầu (chỉ còn 1 cột trống) nên rơi xuống
+            hàng dưới, kéo cả cột phải xuống theo. Bọc lại thì cột phải
+            vẫn nằm cạnh bảng hàng.
+        */}
+        <div className="space-y-5 lg:col-span-2">
         {/* Left column - details */}
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
               {/* ⚠ TÊN THEO MẪU: "Mặt hàng", kèm dòng phụ đếm dòng — người
@@ -1543,6 +1560,25 @@ export default function OrderDetailPage() {
                                 )}
                                 {line.product?.name || "-"}
                               </div>
+                              {/*
+                                DÒNG PHỤ THEO MẪU: mã SP · SL × đơn giá, phông
+                                đều nét.
+
+                                ⚠ NÓ TRẢ LỜI ĐÚNG CÂU NGƯỜI ĐỌC HAY HỎI —
+                                  "thành tiền này ở đâu ra". Mẫu để phép nhân
+                                  ngay dưới tên hàng nên không phải liếc qua
+                                  ba cột rồi nhân nhẩm.
+                                ⚠ ẨN KHI ĐANG SỬA: lúc ấy SL và đơn giá nằm
+                                  trong ô nhập, còn dòng này in số ĐÃ LƯU —
+                                  hai con số khác nhau cạnh nhau, không ai
+                                  biết cái nào là thật.
+                              */}
+                              {!inEdit && (
+                                <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                                  {line.product?.sku ? `${line.product.sku} · ` : ""}
+                                  {line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}
+                                </div>
+                              )}
                               {edited?.swap_product_id && (
                                 <div className="text-tertiary font-semibold text-sm">
                                   → {edited.swap_product_name}{" "}
@@ -1827,6 +1863,26 @@ export default function OrderDetailPage() {
 
           </CardContent>
         </Card>
+
+        {/*
+          GHI CHÚ — mẫu để nó thành THẺ RIÊNG dưới bảng hàng, không nhét
+          vào ô thông tin đơn bên phải.
+
+          ⚠ CHỈ VẼ KHI CÓ CHỮ. Một thẻ "Ghi chú: Không có" chiếm đúng chỗ
+            của thứ người đọc đang tìm, và lần nào cũng phải đọc để biết
+            nó rỗng.
+          ⚠ `whitespace-pre-wrap`: ghi chú giao hàng hay xuống dòng ("gọi
+            trước 15 phút"), gộp thành một đoạn là mất ý.
+        */}
+        {order.notes && (
+          <DetailCard
+            title="Ghi chú"
+            bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm"
+          >
+            {order.notes}
+          </DetailCard>
+        )}
+        </div>
 
         {/* Right column - customer + actions + edit */}
         <div className="space-y-5 self-start lg:sticky lg:top-4">

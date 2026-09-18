@@ -63,9 +63,16 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
     expect(TPL).toContain("{qtyTotal}")
   })
 
-  it("có dòng Bằng chữ, đọc từ tổng cộng", () => {
+  /**
+   * ⚠ ĐỌC SỐ PHẢI TRẢ, KHÔNG ĐỌC TỔNG HÓA ĐƠN. Người cầm tờ giấy đi thu
+   * tiền đọc đúng dòng này. Không có hàng trả thì `netDue === total` nên
+   * không đổi gì; có hàng trả thì đọc tổng hóa đơn là đòi khách nhiều
+   * hơn số họ phải đưa.
+   */
+  it("có dòng Bằng chữ, đọc từ số còn phải thu", () => {
     expect(TPL).toContain("Bằng chữ:")
-    expect(TPL).toContain("numberToVietnameseWords(total)")
+    expect(TPL).toContain("numberToVietnameseWords(netDue)")
+    expect(TPL).toContain("const netDue = netDueOnInvoice(total, returnCredit)")
   })
 
   /** Mẫu có BA ô ký; bản cũ chỉ hai. */

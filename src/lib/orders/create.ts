@@ -81,7 +81,7 @@ export async function createOrderRecords(
   supabase: Client,
   payload: OfflineOrderPayload,
   ctx: { userId: string; orgId: string }
-): Promise<{ orderId: string; alreadyExisted: boolean }> {
+): Promise<{ orderId: string; orderCode: string; alreadyExisted: boolean }> {
   // 1) Đơn — idempotent trên client_request_id.
   const { data: inserted, error: orderErr } = await supabase
     .from("sales_orders")
@@ -104,7 +104,7 @@ export async function createOrderRecords(
           ? "Tạo offline — NPP kiểm tồn/công nợ trước khi xuất hàng"
           : DRAFT_APPROVAL_REASON),
     })
-    .select("id")
+    .select("id, order_code")
     .single()
 
   if (orderErr) {
@@ -112,16 +112,27 @@ export async function createOrderRecords(
     if ((orderErr as { code?: string }).code === "23505") {
       const { data: existing, error: existingErr } = await supabase
         .from("sales_orders")
-        .select("id")
+        .select("id, order_code")
         .eq("client_request_id", payload.clientRequestId)
         .maybeSingle()
       if (existingErr) console.error("[orders] truy vấn lỗi:", existingErr.message)
-      if (existing?.id) return { orderId: existing.id as string, alreadyExisted: true }
+      if (existing?.id) {
+        const row = existing as { id: string; order_code: string }
+        return { orderId: row.id, orderCode: row.order_code, alreadyExisted: true }
+      }
     }
     throw orderErr
   }
 
-  const orderId = (inserted as { id: string }).id
+  /**
+   * ⚠ ĐỌC LẠI MÃ TỪ DÒNG VỪA GHI, đừng dùng mã trình duyệt gửi lên.
+   *   Trigger `trg_sales_orders_assign_code` (mig 130) cấp số thật và
+   *   GHI ĐÈ mã tạm — mã tạm chỉ để xếp hàng ngoại tuyến. Trả mã tạm về
+   *   cho màn "Đặt hàng xong" là in ra một số không tồn tại trong sổ, và
+   *   nhân viên đọc số đó cho khách qua điện thoại.
+   */
+  const insertedRow = inserted as { id: string; order_code: string }
+  const orderId = insertedRow.id
 
   // 2) Dòng hàng — có fallback nếu DB thiếu cột note/conversion_factor.
   const lineRows = payload.lines.map((l) => ({
@@ -215,5 +226,5 @@ export async function createOrderRecords(
     }
   }
 
-  return { orderId, alreadyExisted: false }
+  return { orderId, orderCode: insertedRow.order_code, alreadyExisted: false }
 }

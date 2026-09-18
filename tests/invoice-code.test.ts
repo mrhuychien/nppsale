@@ -437,3 +437,135 @@ describe("ngăn xem nhanh đơn: nút Huỷ đơn", () => {
     expect(LIST).toContain("`Hủy đơn ${cancellable[0].order_code}? Không thể hoàn tác.`")
   })
 })
+
+// =====================================================================
+
+/**
+ * SỐ ĐƠN HÀNG: DH-0001, sửa lần n thì thêm -n (mig 130).
+ *
+ * Chạy thật trên Postgres 16:
+ *   DH-0001…DH-0006 (đánh lại) · đơn mới gửi lên "SO-20260918-8595"
+ *   → DH-0007 · sửa tiền → DH-0007-1 · sửa ghi chú → DH-0007-2
+ *   · gửi duyệt / huỷ / ghi đè mã tay → GIỮ NGUYÊN · đơn kế → DH-0008
+ */
+describe("mã đơn hàng: cơ sở dữ liệu cấp, không phải trình duyệt", () => {
+  const M130 = read("supabase/migrations/130_order_code_no_date.sql")
+  const C = strip(M130)
+
+  it("một chỗ dựng mã, đúng mẫu DH-xxxx[-n]", () => {
+    expect(C).toContain("CREATE OR REPLACE FUNCTION public._order_code(p_seq int, p_edit int)")
+    expect(C).toContain("'DH-' || lpad(COALESCE(p_seq, 0)::text, 4, '0')")
+  })
+
+  /**
+   * ⚠ `row_number()` TRẢ BIGINT, và Postgres KHÔNG tự ép sang int khi
+   * chọn hàm — thiếu `::int` là migration chết ngay câu đầu tiên với
+   * `_order_code(bigint, integer) does not exist`.
+   */
+  it("ép row_number về int trước khi dựng mã", () => {
+    expect(C).toContain(")::int AS n")
+  })
+
+  /** ⚠ max+1 và khoá trước khi đếm — cùng lý do như mã hóa đơn. */
+  it("cấp số bằng max+1, có khoá", () => {
+    expect(C).toContain("PERFORM pg_advisory_xact_lock(hashtext('order_seq:' || p_org::text))")
+    expect(C).toContain("SELECT COALESCE(max(order_seq), 0) + 1 INTO v_n")
+  })
+
+  /**
+   * ⚠ TRIGGER GHI ĐÈ MÃ TRÌNH DUYỆT GỬI LÊN. Mã cũ do trình duyệt sinh
+   * với bốn chữ số NGẪU NHIÊN, mà `order_code` là UNIQUE toàn bảng — đụng
+   * nhau là người bán nhận lỗi unique giữa lúc đứng ở cửa hàng.
+   */
+  it("đơn mới do trigger cấp số, ghi đè mã gửi lên", () => {
+    expect(C).toContain("BEFORE INSERT ON sales_orders")
+    expect(C).toContain("NEW.order_code := public._order_code(NEW.order_seq, 0)")
+    // Lấy org từ chính dòng đang chèn, không gọi user_org_id().
+    expect(C).toContain("public._next_order_seq(NEW.org_id)")
+    expect(C).not.toContain("_next_order_seq(public.user_org_id())")
+  })
+
+  /**
+   * ⚠ ĐẾM Ở LẦN GHI ĐẦU ĐƠN, KHÔNG Ở TỪNG DÒNG HÀNG. Một lần sửa thường
+   * xoá hết dòng cũ rồi chèn dòng mới — bám vào `sales_order_lines` thì
+   * một lần sửa đếm thành nhiều lần và DH-0042 nhảy lên DH-0042-7.
+   */
+  it("tăng đuôi ở bảng đơn, không ở bảng dòng hàng", () => {
+    expect(C).toContain("BEFORE UPDATE ON sales_orders")
+    expect(C).not.toContain("ON sales_order_lines")
+  })
+
+  /**
+   * ⚠ CHỈ ĐẾM KHI NỘI DUNG THẬT SỰ ĐỔI. Duyệt / huỷ / xuất hàng đều ghi
+   * vào `sales_orders` nhưng chỉ đụng `status` — kể chúng là mỗi lần bấm
+   * Xuất hàng lại đổi số đơn, và tài xế cầm phiếu in ra không tra được
+   * đơn nào cả.
+   */
+  it("đổi trạng thái KHÔNG làm tăng đuôi", () => {
+    const i = C.indexOf("IF NEW.customer_id")
+    expect(i).toBeGreaterThan(0)
+    const cond = C.slice(i, C.indexOf("THEN", i))
+    expect(cond).toContain("NEW.total")
+    expect(cond).toContain("NEW.notes")
+    expect(cond, "status không được nằm trong điều kiện tăng đuôi").not.toContain("NEW.status")
+    expect(cond).not.toContain("approval_reason")
+  })
+
+  /** ⚠ `IS DISTINCT FROM` — `NULL <> 'x'` ra NULL nên không khớp. */
+  it("so sánh chịu được NULL", () => {
+    const i = C.indexOf("IF NEW.customer_id")
+    const cond = C.slice(i, C.indexOf("THEN", i))
+    expect(cond).not.toMatch(/NEW\.\w+\s*<>/)
+    expect((cond.match(/IS DISTINCT FROM/g) ?? []).length).toBeGreaterThanOrEqual(8)
+  })
+
+  /** ⚠ Không cho ghi đè mã bằng tay qua PostgREST. */
+  it("nhánh không-đổi giữ nguyên mã cũ", () => {
+    expect(C).toContain("NEW.order_code := OLD.order_code")
+    expect(C).toContain("NEW.order_seq := OLD.order_seq")
+  })
+})
+
+describe("ứng dụng đọc lại mã thật sau khi ghi", () => {
+  const CREATE = read("src/lib/orders/create.ts")
+  const SUBMIT = read("src/lib/sell/submit.ts")
+
+  /**
+   * ⚠ MÃ TRONG TẢI TRỌNG CHỈ LÀ MÃ TẠM để xếp hàng ngoại tuyến. Trả nó
+   * về cho màn "Đặt hàng xong" là in ra một số không có trong sổ, và
+   * nhân viên đọc số đó cho khách qua điện thoại.
+   */
+  it("lệnh ghi lấy về cả order_code", () => {
+    /**
+     * ⚠ ĐẾM CẢ HAI CHỖ. Bản đầu của chốt này NÓI DỐI: `.select("id,
+     * order_code")` có ở hai đường — lệnh chèn và đường chống ghi trùng
+     * — nên bỏ cột khỏi lệnh chèn thì `toContain` vẫn tìm thấy ở đường
+     * kia và chốt vẫn xanh, trong khi màn "Đặt hàng xong" in ra mã tạm.
+     */
+    expect((CREATE.match(/\.select\("id, order_code"\)/g) ?? []).length).toBe(2)
+    expect(CREATE).toContain("orderCode: insertedRow.order_code")
+    // Neo đúng lệnh CHÈN, không chỉ "có ở đâu đó trong file".
+    const i = CREATE.indexOf(".insert({")
+    expect(i).toBeGreaterThan(0)
+    expect(CREATE.slice(i, CREATE.indexOf(".single()", i))).toContain('.select("id, order_code")')
+  })
+
+  it("đường chống ghi trùng cũng trả mã thật", () => {
+    const i = CREATE.indexOf('.eq("client_request_id"')
+    expect(i).toBeGreaterThan(0)
+    expect(CREATE.slice(i - 200, i + 400)).toContain("orderCode: row.order_code")
+  })
+
+  it("submit trả mã từ dòng đã ghi, không từ tải trọng", () => {
+    expect(SUBMIT).toContain("const { orderId, orderCode } = await createOrderRecords(supabase, payload, ctx)")
+    expect(SUBMIT).toContain('return { kind: "created", orderCode, orderId, status, reason }')
+  })
+
+  /**
+   * ⚠ ĐƠN XẾP HÀNG NGOẠI TUYẾN THÌ CHƯA CÓ SỐ THẬT. Nhánh `queued` vẫn
+   * trả mã tạm — đúng, vì lúc đó chưa ai cấp số cho nó.
+   */
+  it("nhánh ngoại tuyến vẫn dùng mã tạm", () => {
+    expect(SUBMIT).toContain('return { kind: "queued", orderCode: payload.order.order_code }')
+  })
+})

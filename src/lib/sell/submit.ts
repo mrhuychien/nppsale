@@ -116,7 +116,16 @@ export async function submitSellOrder(
     return { kind: "queued", orderCode: payload.order.order_code }
   }
 
-  const { orderId } = await createOrderRecords(supabase, payload, ctx)
-  return { kind: "created", orderCode: payload.order.order_code, orderId, status, reason }
+  /**
+   * ⚠ LẤY MÃ TỪ DÒNG ĐÃ GHI, không lấy từ tải trọng. Mã trong tải trọng
+   *   chỉ là mã TẠM để xếp hàng ngoại tuyến; số thật do trigger mig 130
+   *   cấp lúc ghi. Trả mã tạm về là màn "Đặt hàng xong" in ra một số
+   *   không có trong sổ.
+   *
+   * ⚠ ĐƠN XẾP HÀNG NGOẠI TUYẾN THÌ CHƯA CÓ SỐ THẬT — nhánh `queued` ở
+   *   trên vẫn trả mã tạm, đúng như vậy: lúc đó chưa ai cấp số cho nó.
+   */
+  const { orderId, orderCode } = await createOrderRecords(supabase, payload, ctx)
+  return { kind: "created", orderCode, orderId, status, reason }
 }
 

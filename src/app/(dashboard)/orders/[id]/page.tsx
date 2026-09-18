@@ -49,6 +49,7 @@ import { loadApprovalContext } from "@/lib/sell/approval-context"
 import { sendOrder, grossFromSavedLines } from "@/lib/sell/send-order"
 import { evaluateApproval } from "@/lib/approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
+import { lineDiscountOf, lineTotalOf } from "@/lib/sell/create-order"
 import { returnReasonLabel } from "@/lib/sell/returns"
 import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
@@ -189,6 +190,16 @@ export default function OrderDetailPage() {
       quantity: number
       unit_price: number
       line_discount: number
+      /**
+       * Giá bảng của dòng, suy ngược từ chính dòng đang có:
+       * `unit_price + line_discount / quantity`.
+       *
+       * ⚠ KHÔNG LẤY TỪ `products.sell_price`. Giá bảng là giá theo ĐƠN VỊ
+       * BÁN và theo NHÓM GIÁ của khách (`unitPriceFor`), nên `sell_price`
+       * trần trụi sai ngay với dòng bán theo thùng hoặc khách có bảng giá
+       * riêng — và sai theo kiểu vẫn ra một con số trông hợp lý.
+       */
+      list_price: number
       // §4.5 — product swap on a line. Optional: when set, save replaces
       // sales_order_lines.product_id (and the displayed name follows)
       swap_product_id?: string
@@ -498,12 +509,20 @@ export default function OrderDetailPage() {
 
   const startLinesEdit = async () => {
     setEditedLines(
-      lines.map((l) => ({
-        id: l.id,
-        quantity: Number(l.quantity || 0),
-        unit_price: Number(l.unit_price || 0),
-        line_discount: Number(l.line_discount || 0),
-      }))
+      lines.map((l) => {
+        const qty = Number(l.quantity || 0)
+        const price = Number(l.unit_price || 0)
+        const disc = Number(l.line_discount || 0)
+        return {
+          id: l.id,
+          quantity: qty,
+          unit_price: price,
+          line_discount: disc,
+          // qty = 0 thì không có phép chia nào, mà cũng không có chiết
+          // khấu nào để suy ra: giá bảng = giá đang áp.
+          list_price: qty > 0 ? price + disc / qty : price,
+        }
+      })
     )
     setLinesEditMode(true)
     // Lazy-load product catalog the first time the user opens edit mode
@@ -574,22 +593,28 @@ export default function OrderDetailPage() {
     product: { id: string; name: string; sku: string; sell_price: number }
   ) => {
     setEditedLines((prev) =>
-      prev.map((l) =>
-        l.id === lineId
-          ? {
-              ...l,
-              swap_product_id: product.id,
-              swap_product_name: product.name,
-              swap_sku: product.sku,
-              // Pick up the new product's default sell price unless the
-              // user has already manually edited the price in this session.
-              unit_price:
-                l.unit_price === Number(lines.find((x) => x.id === lineId)?.unit_price || 0)
-                  ? Number(product.sell_price || 0)
-                  : l.unit_price,
-            }
-          : l
-      )
+      prev.map((l) => {
+        if (l.id !== lineId) return l
+        // Pick up the new product's default sell price unless the user has
+        // already manually edited the price in this session.
+        const price =
+          l.unit_price === Number(lines.find((x) => x.id === lineId)?.unit_price || 0)
+            ? Number(product.sell_price || 0)
+            : l.unit_price
+        return {
+          ...l,
+          swap_product_id: product.id,
+          swap_product_name: product.name,
+          swap_sku: product.sku,
+          unit_price: price,
+          // ⚠ Giá bảng của dòng cũ nói về một MẶT HÀNG KHÁC — giữ lại là
+          // ghi một khoản chiết khấu so với giá của thứ không còn ở đây.
+          // Không biết giá bảng của hàng mới theo đơn vị này và theo nhóm
+          // giá của khách, nên để bằng giá đang áp: "không ghi nhận chiết
+          // khấu", thay vì một con số bịa.
+          list_price: price,
+        }
+      })
     )
     setSwapDialogFor(null)
     setSwapSearch("")
@@ -616,8 +641,7 @@ export default function OrderDetailPage() {
   }
 
   const editedLinesTotal = editedLines.reduce(
-    (s, l) =>
-      s + Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0)),
+    (s, l) => s + lineTotalOf({ qty: l.quantity, price: l.unit_price }),
     0
   )
   // Q5: live total includes new draft lines.
@@ -695,13 +719,22 @@ export default function OrderDetailPage() {
         return
       }
 
-      // Cập nhật từng line. Tính line_total = qty*price - discount.
+      // Cập nhật từng line.
+      //
+      // ⚠ `line_total` = qty × giá, KHÔNG trừ `line_discount`. Chiết khấu
+      //   đã nằm trong giá; trừ lần nữa là trừ hai lần — và dòng này GHI
+      //   xuống cơ sở dữ liệu, nên con số sai nằm lại đó.
+      //
+      // ⚠ `line_discount` phải tính lại theo số lượng và giá MỚI. Nó là
+      //   số tiền, không phải tỉ lệ: sửa 10 thùng xuống 5 mà giữ nguyên
+      //   khoản giảm là ghi nhớ một khoản chiết khấu chưa từng cho.
       for (const l of editedLines) {
-        const lineTotal = Math.max(0, l.quantity * l.unit_price - (l.line_discount || 0))
+        const money = { qty: l.quantity, price: l.unit_price, listPrice: l.list_price }
         const update: Record<string, unknown> = {
           quantity: l.quantity,
           unit_price: l.unit_price,
-          line_total: lineTotal,
+          line_total: lineTotalOf(money),
+          line_discount: lineDiscountOf(money),
         }
         if (l.swap_product_id) {
           // §4.5 — swap product. Reset batch_id since the lot link no
@@ -1117,9 +1150,8 @@ export default function OrderDetailPage() {
                     const inEdit = linesEditMode && !!edited
                     const liveQty = edited?.quantity ?? line.quantity
                     const livePrice = edited?.unit_price ?? line.unit_price
-                    const liveDiscount = edited?.line_discount ?? Number(line.line_discount || 0)
                     const liveTotal = inEdit
-                      ? Math.max(0, liveQty * livePrice - liveDiscount)
+                      ? lineTotalOf({ qty: liveQty, price: livePrice })
                       : line.line_total
                     // T-03: dòng đã pick → khoá giảm SL + đổi SP. Chỉ tính lock
                     // khi đơn đang ở stage 'picking'; trước đó user có toàn
@@ -1336,9 +1368,8 @@ export default function OrderDetailPage() {
                   const inEdit = linesEditMode && !!edited
                   const liveQty = edited?.quantity ?? line.quantity
                   const livePrice = edited?.unit_price ?? line.unit_price
-                  const liveDiscount = edited?.line_discount ?? Number(line.line_discount || 0)
                   const liveTotal = inEdit
-                    ? Math.max(0, liveQty * livePrice - liveDiscount)
+                    ? lineTotalOf({ qty: liveQty, price: livePrice })
                     : line.line_total
                   // T-03: dòng đã pick → khoá giảm SL.
                   const pickedBase = pickedByLine[line.id] || 0

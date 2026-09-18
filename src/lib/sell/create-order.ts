@@ -38,8 +38,27 @@ export interface BuildPayloadInput {
  * ⚠ Chỉ nhận phần GIẢM. Nhân viên được nâng giá trong hạn mức, và một
  * dòng "chiết khấu âm" ghi xuống sổ kế toán thì không ai đối chiếu nổi.
  */
-export function lineDiscountOf(line: CartLine): number {
+export function lineDiscountOf(
+  line: Pick<CartLine, "qty" | "listPrice" | "price">
+): number {
   return Math.max(0, Math.round(line.qty * (line.listPrice - line.price)))
+}
+
+/**
+ * Thành tiền của MỘT dòng.
+ *
+ * ⚠ KHÔNG TRỪ `line_discount`. Chiết khấu đã nằm sẵn trong `price` —
+ * `line_discount` chỉ GHI NHỚ mình đã giảm bao nhiêu so với giá bảng.
+ * Trừ nó lần nữa là trừ hai lần, và lệch đúng bằng phần giảm.
+ *
+ * ⚠ Từng có thật: màn chi tiết đơn tính `qty × unit_price − line_discount`
+ * rồi GHI ngược số đó vào `sales_order_lines.line_total`. Dòng bán đúng
+ * giá bảng có `line_discount = 0` nên hai cách bằng nhau — đó là lý do
+ * nó sống lâu đến thế. Mọi chỗ tính thành tiền của một dòng đơn đều phải
+ * gọi hàm này.
+ */
+export function lineTotalOf(line: Pick<CartLine, "qty" | "price">): number {
+  return Math.max(0, Math.round(line.qty * line.price))
 }
 
 export function toOrderLine(line: CartLine): OfflineOrderLine {
@@ -50,7 +69,7 @@ export function toOrderLine(line: CartLine): OfflineOrderLine {
     quantity: line.qty,
     unit_price: line.price,
     line_discount: lineDiscountOf(line),
-    line_total: Math.round(line.qty * line.price),
+    line_total: lineTotalOf(line),
     // ⚠ Chốt hệ số quy đổi NGAY LÚC NÀY. Đơn nằm trong hàng đợi vài giờ
     // rồi mới đẩy lên; nếu lúc đó mới tra lại hệ số mà ai đó vừa sửa quy
     // cách đóng gói thì số lượng xuất kho lệch, không ai biết vì sao.

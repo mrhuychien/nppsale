@@ -197,17 +197,28 @@ async function handlePublish(req: Request) {
         lines = ((Array.isArray(rawLines) ? rawLines : []) as Array<Record<string, unknown>>).map((l) => {
           const rawP = (l as { product: unknown }).product
           const p = (Array.isArray(rawP) ? rawP[0] : rawP || {}) as Record<string, unknown>
+          const qty = Number(l.quantity || 0)
+          const netPrice = Number(l.unit_price || 0)
+          const discount = Number(l.line_discount || 0)
+          // ⚠ CỘNG NGƯỢC CHIẾT KHẤU VÀO ĐƠN GIÁ. `MapperLine.unit_price`
+          //   theo hợp đồng là giá BẢNG: mapper lấy `qty × unit_price` làm
+          //   thành tiền gộp rồi mới trừ `line_discount` ra để tính thuế.
+          //   Còn `sales_order_lines.unit_price` là giá ĐÃ giảm. Đưa thẳng
+          //   vào là chiết khấu bị trừ hai lần, và hoá đơn điện tử gửi cơ
+          //   quan thuế thấp hơn thực tế đúng bằng khoản giảm — kê thiếu
+          //   doanh thu lẫn thuế, mỗi dòng có giảm giá một ít.
+          const grossPrice = qty > 0 ? netPrice + discount / qty : netPrice
           return {
             product_name: (p.name as string) || "",
             sku: (p.sku as string) || null,
             unit_name: (l.unit_name as string) || (p.base_unit as string) || "",
             base_unit: (p.base_unit as string) || null,
-            quantity: Number(l.quantity || 0),
-            unit_price: Number(l.unit_price || 0),
+            quantity: qty,
+            unit_price: grossPrice,
             conversion_factor: Number(l.conversion_factor || 1),
             vat_rate:
               p.vat_rate != null ? Math.round(Number(p.vat_rate) * (Number(p.vat_rate) <= 1 ? 100 : 1)) : 10,
-            line_discount: Number(l.line_discount || 0),
+            line_discount: discount,
           }
         })
       }

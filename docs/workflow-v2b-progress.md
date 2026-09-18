@@ -188,6 +188,45 @@ nhiên nhất là nới lỏng nó.
 
 ---
 
+## Chiết khấu bị trừ hai lần — đã sửa
+
+Phát hiện khi làm P2, sửa ngay sau đó theo chỉ đạo "sửa".
+
+`sales_order_lines.unit_price` là giá **đã giảm**; `line_discount` chỉ
+**ghi nhớ** đã giảm bao nhiêu so với giá bảng. Ba chỗ trừ nó thêm lần
+nữa:
+
+1. `orders/[id]/page.tsx` — thành tiền hiển thị khi đang sửa dòng;
+2. cùng tệp — và **ghi** con số ấy xuống `sales_order_lines.line_total`;
+3. `api/einvoice/publish/route.ts` — nạp giá đã giảm vào mapper MISA,
+   nơi hợp đồng đòi giá **bảng**.
+
+⚠ **Chỗ thứ ba mới là chỗ đau.** Mapper tính
+`AmountOC = qty × unit_price` làm thành tiền **gộp**, rồi trừ
+`line_discount` ra để lấy doanh thu và gốc tính thuế — đúng, nếu
+`unit_price` là giá bảng. Nhưng nơi gọi đưa vào giá đã giảm, nên hoá đơn
+gửi cơ quan thuế **thấp hơn thực tế đúng bằng khoản giảm**: kê thiếu cả
+doanh thu lẫn thuế. Sửa ở ranh giới (cộng ngược `line_discount/quantity`
+vào đơn giá) chứ không sửa mapper — mapper đúng theo hợp đồng của chính
+nó, và bộ chốt `misa-mapper.test.ts` ghim đúng hợp đồng đó.
+
+⚠ **Vì sao nó sống lâu đến thế:** dòng bán đúng giá bảng có
+`line_discount = 0`, và khi đó hai cách tính bằng nhau. Chỉ dòng có giảm
+giá mới lệch. Mọi chốt trong `tests/line-discount-once.test.ts` vì thế
+đều chạy với dòng **có** giảm giá.
+
+Kèm theo: khi sửa dòng, `line_discount` nay được **tính lại** theo số
+lượng và giá mới — nó là số tiền, không phải tỉ lệ, nên sửa 10 thùng
+xuống 5 mà giữ nguyên khoản giảm là ghi nhớ một khoản chiết khấu chưa
+từng cho. Giá bảng suy ngược từ chính dòng đang có
+(`unit_price + line_discount / quantity`), **không** lấy
+`products.sell_price` — giá bảng là giá theo đơn vị bán và theo nhóm giá
+của khách, nên `sell_price` trần trụi sai với dòng bán theo thùng.
+
+Chốt: `tests/line-discount-once.test.ts`, 17 chốt, thử phá bắt 16/16.
+
+---
+
 ## Quy ước (kế thừa nguyên từ pack v2)
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -215,8 +254,12 @@ nhiên nhất là nới lỏng nó.
       từ dữ liệu mà v2 chưa hề đụng tới (V0).
 - [x] ~~Trả lời Q3 (trần giá của NVBH) và Q4 (đơn trả khi sửa hóa đơn).~~
       Đã trả lời: Q3 = (a), Q4 = OK.
-- [ ] **P2 mở ra một câu:** `line_discount` bị trừ hai lần ở
-      `src/app/(dashboard)/orders/[id]/page.tsx:620,700` so với nơi ghi
-      dữ liệu (`src/lib/sell/create-order.ts:52-53`). Chỉ sai với dòng
-      có giảm giá. Sửa trang đọc hay để nguyên? Ngoài phạm vi v2b.
+- [x] ~~`line_discount` bị trừ hai lần.~~ Đã sửa (xem dưới). Đo lại số
+      liệu đã gửi cơ quan thuế là việc của chủ nhà — xem mục kế tiếp.
+- [ ] ⚠ **Hoá đơn điện tử đã phát hành trước bản sửa này bị kê THIẾU.**
+      Mọi hoá đơn có dòng giảm giá đã gửi MISA với doanh thu và thuế
+      thấp hơn thực tế đúng bằng khoản giảm. Cần rà lại và làm việc với
+      kế toán về các hoá đơn đã ký. Câu truy vấn tìm đơn có dòng giảm
+      giá đã phát hành:
+      `SELECT DISTINCT i.misa_inv_no, o.order_code FROM invoices i JOIN sales_orders o ON o.id = i.order_id JOIN sales_order_lines l ON l.order_id = o.id WHERE COALESCE(l.line_discount,0) > 0 AND (i.misa_inv_no IS NOT NULL OR i.misa_status IN ('signed','replaced'));`
 - [ ] Các việc còn treo của v2: xem `docs/workflow-v2-progress.md`.

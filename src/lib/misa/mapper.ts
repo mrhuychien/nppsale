@@ -17,9 +17,23 @@ export interface MapperLine {
   unit_name: string
   base_unit?: string | null
   quantity: number
+  /**
+   * ⚠ GIÁ BẢNG — giá TRƯỚC chiết khấu.
+   *
+   * `AmountOC = quantity × unit_price` là thành tiền GỘP, rồi
+   * `line_discount` mới được trừ ra để ra doanh thu và gốc tính thuế.
+   * Truyền vào đây giá ĐÃ giảm mà vẫn kèm `line_discount` thì chiết khấu
+   * bị trừ hai lần, và hoá đơn gửi cơ quan thuế thấp hơn thực tế đúng
+   * bằng khoản giảm.
+   *
+   * ⚠ `sales_order_lines.unit_price` là giá ĐÃ giảm. Nơi gọi phải cộng
+   * ngược `line_discount / quantity` trước khi truyền vào — xem
+   * `src/app/api/einvoice/publish/route.ts`.
+   */
   unit_price: number
   conversion_factor?: number | null
   vat_rate?: number | null
+  /** Khoản giảm của cả dòng, tính bằng tiền (không phải tỉ lệ). */
   line_discount?: number | null
 }
 

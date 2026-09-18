@@ -124,17 +124,19 @@ cái gì.
 trả sẽ nhập kho HAI LẦN — một lần do RPC, một lần do trigger. Tồn kho
 tăng gấp đôi số hàng trả, không có gì báo.
 
-**Chưa tự quyết.** Hai đường ra, chủ nhà chọn:
+**CHỦ NHÀ TRẢ LỜI 18/09/2026:** "Hoàn thành đơn trả mới nhập kho."
 
-1. Bỏ trigger trong migration 119 (một dòng `DROP TRIGGER`), để RPC là
-   nơi duy nhất nhập kho hàng trả. Đây là hướng tôi nghiêng về.
-2. Giữ trigger, viết `complete_return` không nhập kho mà chỉ đổi trạng
-   thái. Rủi ro: trigger không chọn được kho nhận (`sale` hay `date`),
-   nên mất tính năng mục 3.4 đã chốt.
+**Chốt thi hành ở P2:** gỡ hẳn `trg_auto_restock_return` và hàm
+`auto_restock_on_return()` trong migration 120, ngay trước khi định nghĩa
+`complete_return`. Từ đó RPC là nơi DUY NHẤT nhập kho hàng trả, và nó
+nhập vào đúng kho người dùng chọn (`sale` hoặc `date`) — điều trigger cũ
+không làm được vì không biết kho nào.
 
-P1 KHÔNG đụng tới nó. Việc này phải xong trước khi viết P2.
+**Hệ quả cần biết:** phiếu trả cũ ở trạng thái `completed` đã được trigger
+nhập kho từ trước, migration không đụng lại. Không có nguy cơ nhập lần
+hai cho dữ liệu cũ vì chúng không bị UPDATE status nữa.
 
-**Trạng thái:** MỞ.
+**Trạng thái:** CHỐT.
 
 ---
 
@@ -157,6 +159,75 @@ spec thì tài xế mất quyền đọc đơn, trong khi D12 nói module giao h
 ẩn khỏi menu chứ chưa bỏ.
 
 **Trạng thái:** ĐÃ LÀM, báo để chủ nhà biết chỗ lệch chữ.
+
+---
+
+## Q5: [P2, mục 3] Khoá quyền gác phiếu thu không dùng được ở tầng CSDL
+
+**Spec:** create_cash_receipt và void_cash_receipt dùng "key đang gate
+/finance/cash-receipts".
+
+**Code thật:** khoá đó là `finance.cash_receipts` (khai trong
+`lib/nav/nav-permission.ts` và `lib/permissions-features.ts`). Nhưng
+`user_has_permission` tách khoá tại dấu chấm cuối rồi tra bảng
+`role_permissions`, mà bảng đó có ràng buộc CHECK giới hạn `module` trong
+12 giá trị và `action` trong 6 giá trị — `finance` và `cash_receipts`
+đều không nằm trong danh sách. Dùng khoá đó ở RPC thì mọi vai trò trừ
+chủ sở hữu đều bị từ chối vĩnh viễn.
+
+Chính trang đó lại gác bằng `useRoleGuard("receivables")`.
+
+**Đã làm:** dùng `receivables.create` cho lập phiếu thu và
+`receivables.update` cho huỷ phiếu thu — đúng module mà trang đang gác,
+và là cặp có thật trong ma trận.
+
+**Trạng thái:** ĐÃ LÀM, báo để chủ nhà bác nếu muốn khoá khác.
+
+---
+
+## Q6: [P2] Ma trận quyền chưa có dòng thì RPC từ chối tất cả
+
+**Code thật:** `user_has_permission` trả FALSE khi `role_permissions`
+chưa có dòng tương ứng. Bản mặc định chỉ nằm trong TypeScript
+(`DEFAULT_PERMISSION_MAP`), phía CSDL không có. Toàn repo mới seed đúng
+một ô ở migration 116.
+
+**Hệ quả nếu không làm gì:** sau khi chạy 120, quản lý bấm Xuất hàng ra
+"FORBIDDEN", kế toán không lập được phiếu thu — trong khi giao diện vẫn
+hiện nút vì client đọc bảng mặc định của TypeScript. Chỉ chủ sở hữu dùng
+được workflow v2.
+
+**Đã làm:** migration 120 chèn đúng các ô mà bảy RPC cần, lấy y nguyên
+theo `DEFAULT_PERMISSION_MAP`, kèm `ON CONFLICT DO NOTHING` để không đè
+lên tổ chức đã tự cấu hình:
+
+| Vai trò | Ô mở |
+|---|---|
+| Quản lý | orders.approve, orders.update, returns.approve |
+| Kế toán | receivables.create, receivables.update |
+| NVBH | orders.update, receivables.create |
+
+Thủ kho KHÔNG được mở `orders.approve` vì bảng mặc định không cho. Nếu
+nhà phân phối muốn thủ kho bấm Xuất hàng thì bật ô đó trong màn phân
+quyền.
+
+**Trạng thái:** ĐÃ LÀM, cần chủ nhà xác nhận bảng trên đúng ý.
+
+---
+
+## Q7: [P2, mục 3.5] Phiếu trả không có chỗ chứa lý do huỷ
+
+**Spec:** `cancel_return(p_return_id, p_reason)`.
+
+**Code thật:** bảng `returns` không có cột nào để lưu lý do, và mục 2.3
+của spec cũng không thêm. Tham số sẽ rơi vào hư không: người dùng gõ lý
+do, hệ thống báo thành công, mở lại không thấy gì.
+
+**Đã làm:** migration 120 thêm `returns.cancel_reason text` và ghi
+`p_reason` vào đó ở cả hai nhánh huỷ. Đây là hoàn thiện ý định của chính
+spec chứ không phải thêm tính năng.
+
+**Trạng thái:** ĐÃ LÀM.
 
 ---
 

@@ -22,10 +22,12 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       `post_stock_export`, trigger trần số lượng trả, và
       `tests/workflow-v2-transitions.test.ts` (32 chốt, đã thử phá 14
       lần; một chốt nói dối đã bị bắt và siết lại).
-- [ ] **P2** `feat(wf2-P2)` — Migration 120: 4 helper `_wf2_*` + 7 RPC
+- [x] **P2** `feat(wf2-P2)` — Migration 120: 5 helper `_wf2_*` + 7 RPC
       (`complete_order`, `edit_completed_order`, `cancel_order`,
       `complete_return`, `cancel_return`, `create_cash_receipt`,
-      `void_cash_receipt`) + grants.
+      `void_cash_receipt`) + grants. Kèm gỡ trigger nhập kho tự động của
+      đơn trả (Q3), seed các ô quyền RPC cần (Q6), và
+      `tests/workflow-v2-rpcs.test.ts` (66 chốt, thử phá 12 lần đều đỏ).
 - [ ] **P3** `feat(wf2-P3)` — Types, constants, permissions,
       edit-permission + cascade TS (mục 5); test cũ xanh trở lại.
 - [ ] **P4** `feat(wf2-P4)` — NVBH mobile: Lưu nháp / Gửi đơn, offline
@@ -79,6 +81,28 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   hay test vì đây là truy vấn lúc chạy.
 - ⚠ **Chặn P2:** xem Q3 trong sổ câu hỏi — trigger nhập kho tự động của
   đơn trả vẫn sống, sẽ nhập kho hai lần khi có `complete_return`.
+
+## Ghi chú P2
+
+- Trước khi commit đã cho bốn người soi chéo migration theo bốn góc
+  (cú pháp PL/pgSQL, đối chiếu schema, đối chiếu nghiệp vụ, an toàn dữ
+  liệu). Họ tìm ra 5 lỗi CHẶN và một loạt lỗi nặng; tất cả đã sửa và mỗi
+  cái có một chốt test riêng để không quay lại:
+  1. Huỷ phiếu thu xoá `payments` trong khi dòng phiếu thu còn trỏ tới →
+     lỗi khoá ngoại, không huỷ được phiếu thu nào.
+  2. Huỷ đơn đã xuất xoá công nợ trong khi dòng của phiếu thu ĐÃ HUỶ còn
+     trỏ tới → lỗi khoá ngoại, hoàn kho cũng mất theo.
+  3. `UPDATE … RETURNING … INTO` trên đơn có từ hai phiếu trả nháp → lỗi
+     nhiều dòng, cả lần xuất hàng rollback.
+  4. Huỷ đơn hoàn kho theo NGUYÊN phiếu xuất, mà phiếu xuất cũ gộp nhiều
+     đơn → trả về kho cả hàng của đơn khác.
+  5. Hoàn kho không trừ dấu vết đã hoàn → sửa đơn giảm rồi huỷ đơn là
+     hoàn hai lần.
+- Ba lỗi nặng khác cũng đã sửa: sửa đơn thiếu kiểm chủ đơn (hàm
+  SECURITY DEFINER bỏ qua RLS), nhập trả cho đơn chưa xuất cộng khống
+  tồn, và hàng trả nhập lại mang giá vốn 0 làm lãi gộp báo khống.
+- Quyết định có ghi lại trong sổ câu hỏi: Q5 khoá quyền cho phiếu thu,
+  Q6 seed ma trận quyền, Q7 cột lý do huỷ phiếu trả.
 
 ## Quy ước
 

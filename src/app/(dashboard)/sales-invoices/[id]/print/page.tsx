@@ -95,7 +95,7 @@ export default function SalesInvoicePrintPage() {
         .order("sort_order", { ascending: true }),
       supabase
         .from("returns")
-        .select("id, status, credit_note_amount")
+        .select("id, status, credit_note_amount, credit_with_invoice")
         .eq("invoice_id", id),
       supabase
         .from("invoices")

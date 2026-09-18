@@ -11,23 +11,47 @@
  * một cột trong sổ. Ghi đè nó vào `total` là sửa một chứng từ đã phát
  * hành, và lệch với hóa đơn điện tử đã gửi cơ quan thuế.
  *
- * ⚠ CHỈ PHIẾU ĐÃ HOÀN THÀNH MỚI TRỪ. Phiếu còn nháp / đã gửi thì hàng
- * chưa về kho và công nợ chưa đổi — hiện nó như một khoản đã trừ là báo
- * cho kế toán một con số chưa có thật.
+ * ⚠ HAI LUẬT TRỪ, KHÔNG PHẢI MỘT — và chúng là BẢN SAO CỦA SQL trong
+ * `_wf2b_recompute_receivable` (mig 133). Lệch một chữ là màn hình nói
+ * khác sổ:
+ *
+ *   · Phiếu ĐI CÙNG HÓA ĐƠN (`credit_with_invoice`, sinh ra từ đơn và
+ *     được `post_invoice` gắn vào): trừ NGAY từ lúc phiếu ở 'submitted'.
+ *     Hàng đã đổi tay lúc NVBH giao, khách đã trả tiền phần chênh — sổ
+ *     phải đúng ngay lúc đó, không đợi thủ kho.
+ *   · Phiếu ĐỘC LẬP: trừ khi 'completed', tức khi hàng thật sự về kho.
+ *
+ * ⚠ SỬA MỘT BÊN THÌ SỬA CẢ HAI. Xem `tests/invoice-credit.test.ts` —
+ * có chốt đọc thẳng câu SQL của mig 133 để bắt lúc chúng trôi xa nhau.
  */
 
 export interface InvoiceReturnRow {
   id: string
   status: string
   credit_note_amount: number | null
+  /** Khoản trừ đi cùng hóa đơn (mig 133). Thiếu cột thì coi như false. */
+  credit_with_invoice?: boolean | null
   created_at?: string | null
   reason?: string | null
 }
 
-/** Tổng khoản trừ của các phiếu trả ĐÃ HOÀN THÀNH. */
+/**
+ * Phiếu này đã trừ vào công nợ chưa.
+ *
+ * ⚠ MỘT CHỖ TRẢ LỜI DUY NHẤT. Màn chi tiết, ngăn xem nhanh và bản in đều
+ * phải nói cùng một câu; ba chỗ tự xét là ba câu trả lời cho cùng một
+ * phiếu, và người đọc tin chỗ nào cũng có thể sai.
+ */
+export function creditCounted(r: InvoiceReturnRow): boolean {
+  return r.credit_with_invoice === true
+    ? r.status === "submitted" || r.status === "completed"
+    : r.status === "completed"
+}
+
+/** Tổng khoản trừ ĐÃ vào công nợ của hóa đơn này. */
 export function creditOnInvoice(returns: readonly InvoiceReturnRow[]): number {
   return returns
-    .filter((r) => r.status === "completed")
+    .filter(creditCounted)
     .reduce((s, r) => s + Math.max(0, Number(r.credit_note_amount || 0)), 0)
 }
 

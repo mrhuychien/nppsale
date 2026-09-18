@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { orderTone } from "@/lib/orders/status-tone"
 import {
-  DetailHero, StatusPill, DetailCard, DetailTimeline, DetailCustomerCard,
+  DetailHero, StatusPill, DetailCard, DetailRow, DetailTimeline, DetailCustomerCard,
   type TimelineStep,
 } from "@/components/detail/detail-chrome"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"
@@ -1383,7 +1383,14 @@ export default function OrderDetailPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
-              <CardTitle>Chi tiết sản phẩm</CardTitle>
+              {/* ⚠ TÊN THEO MẪU: "Mặt hàng", kèm dòng phụ đếm dòng — người
+                  đọc biết bảng này dài bao nhiêu trước khi cuộn. */}
+              <CardTitle className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
+                Mặt hàng{" "}
+                <span className="ml-1 font-semibold normal-case tracking-normal">
+                  {lines.length} dòng
+                </span>
+              </CardTitle>
               {false && (
                 <p className="text-[11px] text-[#b54708] mt-1">
                   Đơn đang ở bước <strong>Xuất kho</strong> — có thể thêm SP / tăng SL / sửa giá.
@@ -1797,55 +1804,64 @@ export default function OrderDetailPage() {
               )}
             </div>
 
-            <div className="mt-4 space-y-1 text-right border-t border-border/40 pt-4">
-              <p className="text-sm">
-                Tạm tính:{" "}
-                {linesEditMode
-                  ? formatCurrency(editedLinesTotal + addedLinesTotal)
-                  : formatCurrency(order.subtotal)}
-              </p>
-              <p className="text-sm">Chiết khấu: {formatCurrency(order.discount)}</p>
-              <p className="text-sm">VAT: {formatCurrency(order.vat)}</p>
-              <p className="text-lg font-bold">
-                Tổng:{" "}
-                {linesEditMode
-                  ? formatCurrency(
-                      Math.max(0, editedLinesTotal + addedLinesTotal - Number(order.discount || 0) + Number(order.vat || 0))
-                    )
-                  : formatCurrency(order.total)}
-              </p>
-              {linesEditMode ? (
-                <p className="text-xs text-muted-foreground">
-                  Đang ở chế độ chỉnh sửa — tổng sẽ cập nhật khi bấm <span className="font-semibold">Lưu dòng đơn</span>.
-                </p>
-              ) : null}
-            </div>
           </CardContent>
         </Card>
 
         {/* Right column - customer + actions + edit */}
         <div className="space-y-5 self-start lg:sticky lg:top-4">
-          {/* Customer info */}
-          <Card>
-            <CardHeader><CardTitle>Khách hàng</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p className="font-bold">{order.customer?.store_name}</p>
-              <p className="text-muted-foreground">{order.customer?.owner_name}</p>
-              <p>{order.customer?.phone}</p>
-              <p className="text-muted-foreground">{order.customer?.address}</p>
-              {order.sales_user && (
-                <p className="pt-2 border-t border-border/40 mt-2">
-                  <span className="text-muted-foreground">NV bán: </span>
-                  <span className="font-semibold">{order.sales_user.full_name}</span>
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          {/*
+            CỘNG TIỀN — theo mẫu, khối này nằm ở ĐẦU cột phải.
+
+            ⚠ ĐÃ BỎ THẺ "KHÁCH HÀNG" TRÙNG Ở ĐÂY. Tên, điện thoại, địa chỉ
+              và NV bán đã nằm trong `DetailCustomerCard` ngay dưới tiêu
+              đề trang. Hiện hai lần trên cùng một màn là người đọc phải tự
+              kiểm xem hai chỗ có khớp nhau không.
+          */}
+          <DetailCard title="Cộng tiền">
+            <DetailRow
+              label="Tạm tính"
+              value={
+                linesEditMode
+                  ? formatCurrency(editedLinesTotal + addedLinesTotal)
+                  : formatCurrency(order.subtotal)
+              }
+            />
+            {/* Chiết khấu 0 thì không vẽ — một dòng "0đ" không nói gì. */}
+            {Number(order.discount || 0) > 0 && (
+              <DetailRow label="Chiết khấu" value={`−${formatCurrency(order.discount)}`} />
+            )}
+            <DetailRow label="VAT" value={formatCurrency(order.vat)} />
+            <DetailRow
+              strong
+              label="Tổng tiền"
+              value={
+                linesEditMode
+                  ? formatCurrency(
+                      Math.max(
+                        0,
+                        editedLinesTotal +
+                          addedLinesTotal -
+                          Number(order.discount || 0) +
+                          Number(order.vat || 0)
+                      )
+                    )
+                  : formatCurrency(order.total)
+              }
+            />
+            {/* ⚠ ĐANG SỬA THÌ NÓI RÕ SỐ NÀY CHƯA VÀO SỔ. Không nói thì
+                người đọc tưởng đơn đã đổi tổng. */}
+            {linesEditMode && (
+              <p className="mt-2 text-xs text-on-surface-variant">
+                Đang sửa — tổng chỉ vào sổ khi bấm{" "}
+                <span className="font-semibold">Lưu dòng đơn</span>.
+              </p>
+            )}
+          </DetailCard>
 
           {/* Edit panel */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Thông tin đơn</CardTitle>
+              <CardTitle>Thanh toán &amp; giao hàng</CardTitle>
               {canEdit && !editMode && (
                 <Button size="sm" variant="ghost" onClick={() => setEditMode(true)}>
                   <Pencil className="h-4 w-4 mr-1" /> Sửa

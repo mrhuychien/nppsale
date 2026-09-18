@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
-  creditOnInvoice, netDueOnInvoice, showCreditOnPrint, type InvoiceReturnRow,
+  creditOnInvoice, creditCounted, netDueOnInvoice, showCreditOnPrint,
+  type InvoiceReturnRow,
 } from "../src/lib/orders/invoice-credit"
 
 const ROOT = resolve(__dirname, "..")
@@ -27,11 +28,13 @@ const ret = (o: Partial<InvoiceReturnRow> = {}): InvoiceReturnRow => ({
 
 describe("khoản trừ hàng trả", () => {
   /**
-   * ⚠ CHỈ PHIẾU ĐÃ HOÀN THÀNH MỚI TRỪ. Phiếu còn nháp / đã gửi thì hàng
-   * chưa về kho và công nợ chưa đổi — hiện nó như đã trừ là báo cho kế
-   * toán một con số chưa có thật.
+   * PHIẾU TRẢ ĐỘC LẬP — luật cũ, vẫn đúng.
+   *
+   * ⚠ CHỈ TRỪ KHI HOÀN THÀNH. Phiếu còn nháp / đã gửi thì hàng chưa về
+   * kho và công nợ chưa đổi — hiện nó như đã trừ là báo cho kế toán một
+   * con số chưa có thật.
    */
-  it("chỉ cộng phiếu đã hoàn thành", () => {
+  it("phiếu độc lập: chỉ cộng khi đã hoàn thành", () => {
     expect(creditOnInvoice([ret()])).toBe(800_000)
     expect(creditOnInvoice([ret({ status: "draft" })])).toBe(0)
     expect(creditOnInvoice([ret({ status: "submitted" })])).toBe(0)
@@ -46,6 +49,55 @@ describe("khoản trừ hàng trả", () => {
   it("số rỗng hoặc âm coi như 0", () => {
     expect(creditOnInvoice([ret({ credit_note_amount: null })])).toBe(0)
     expect(creditOnInvoice([ret({ credit_note_amount: -500 })])).toBe(0)
+  })
+
+  /**
+   * PHIẾU ĐI CÙNG HÓA ĐƠN — luật chủ nhà chốt (mig 133).
+   *
+   * ⚠ TRỪ NGAY TỪ 'submitted'. Hàng đã đổi tay lúc NVBH giao và khách đã
+   * trả tiền phần chênh; đợi thủ kho nhập kho mới trừ là sổ ghi khách nợ
+   * đủ cả lô trong suốt quãng giữa, và kế toán đi đối chiếu thấy hai con
+   * số khác nhau.
+   */
+  it("phiếu đi cùng hóa đơn: trừ ngay từ khi đã gửi", () => {
+    const wi = { credit_with_invoice: true }
+    expect(creditOnInvoice([ret({ ...wi, status: "submitted" })])).toBe(800_000)
+    expect(creditOnInvoice([ret({ ...wi, status: "completed" })])).toBe(800_000)
+  })
+
+  /** ⚠ Nháp thì chưa xuất hóa đơn — chưa có gì để trừ vào. */
+  it("phiếu đi cùng hóa đơn còn nháp thì chưa trừ", () => {
+    expect(creditOnInvoice([ret({ credit_with_invoice: true, status: "draft" })])).toBe(0)
+  })
+
+  /** ⚠ Huỷ là huỷ, dù đi cùng hóa đơn hay không. */
+  it("phiếu đã huỷ không trừ, kiểu nào cũng vậy", () => {
+    expect(creditOnInvoice([ret({ credit_with_invoice: true, status: "cancelled" })])).toBe(0)
+    expect(creditOnInvoice([ret({ credit_with_invoice: false, status: "cancelled" })])).toBe(0)
+  })
+
+  /** ⚠ Thiếu cột (máy chủ chưa chạy mig 133) thì rơi về luật cũ, không nổ. */
+  it("thiếu cột thì coi như phiếu độc lập", () => {
+    expect(creditCounted({ id: "x", status: "submitted", credit_note_amount: 1 })).toBe(false)
+    expect(creditCounted({ id: "x", status: "completed", credit_note_amount: 1 })).toBe(true)
+  })
+})
+
+describe("luật trừ của màn hình phải khớp luật của sổ", () => {
+  /**
+   * ⚠ ĐÂY LÀ CHỐT CHỐNG TRÔI. `creditCounted` là BẢN SAO bằng TypeScript
+   * của câu WHERE trong `_wf2b_recompute_receivable` (mig 133). Hai bên
+   * lệch nhau thì màn hình nói một số, sổ ghi một số — và không test nào
+   * khác bắt được, vì mỗi bên tự nó đều đúng.
+   */
+  it("câu SQL của mig 133 vẫn mang đúng hai nhánh ấy", () => {
+    const mig = read("supabase/migrations/133_return_credit_rides_invoice.sql")
+    expect(mig).toContain("(r.credit_with_invoice AND r.status IN ('submitted', 'completed'))")
+    expect(mig).toContain("(NOT r.credit_with_invoice AND r.status = 'completed')")
+
+    const ts = read("src/lib/orders/invoice-credit.ts")
+    expect(ts).toContain('r.status === "submitted" || r.status === "completed"')
+    expect(ts).toContain('r.status === "completed"')
   })
 })
 
@@ -114,12 +166,19 @@ describe("mẫu in và màn chi tiết", () => {
   })
 
   /**
-   * ⚠ PHIẾU CHƯA HOÀN THÀNH CHƯA TRỪ GÌ — nói ra để người đi đòi tiền
-   * không đòi nhầm một số sắp thay đổi.
+   * ⚠ ĐẾM PHIẾU CHƯA TRỪ, KHÔNG ĐẾM PHIẾU CHƯA HOÀN THÀNH.
+   *
+   * Từ mig 133, phiếu trả sinh ra từ đơn đã trừ vào công nợ ngay lúc xuất
+   * hóa đơn, dù nó còn ở "Chờ xử lý". Đếm nó vào lời nhắc "số phải thu sẽ
+   * giảm tiếp" là báo người đi đòi tiền rằng còn giảm nữa — và họ đòi
+   * THIẾU đúng bằng khoản ấy.
    */
-  it("màn chi tiết nói ra khi còn phiếu trả chưa hoàn thành", () => {
-    expect(DETAIL).toContain("{pendingReturns > 0 && (")
-    expect(DETAIL).toContain("chưa hoàn thành")
+  it("màn chi tiết chỉ nhắc những phiếu trả CHƯA trừ vào công nợ", () => {
+    expect(DETAIL).toContain("{uncountedReturns > 0 && (")
+    expect(DETAIL).toContain("!creditCounted(r)")
+    expect(DETAIL).toContain("chưa trừ vào công nợ")
+    // ⚠ Không được quay lại đếm theo trạng thái.
+    expect(DETAIL).not.toContain('r.status === "draft" || r.status === "submitted"')
   })
 
   it("màn in đi qua showCreditOnPrint, không tự quyết", () => {

@@ -39,7 +39,7 @@ import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import {
-  creditOnInvoice, netDueOnInvoice, type InvoiceReturnRow,
+  creditOnInvoice, creditCounted, netDueOnInvoice, type InvoiceReturnRow,
 } from "@/lib/orders/invoice-credit"
 
 interface InvoiceRow {
@@ -136,7 +136,7 @@ export default function SalesInvoiceDetailPage() {
        */
       supabase
         .from("returns")
-        .select("id, status, credit_note_amount, created_at, reason")
+        .select("id, status, credit_note_amount, credit_with_invoice, created_at, reason")
         .eq("invoice_id", id)
         .order("created_at", { ascending: true }),
     ])
@@ -208,7 +208,17 @@ export default function SalesInvoiceDetailPage() {
 
   const returnCredit = creditOnInvoice(invReturns)
   const netDue = netDueOnInvoice(Number(inv.total || 0), returnCredit)
-  const pendingReturns = invReturns.filter((r) => r.status === "draft" || r.status === "submitted").length
+  /**
+   * Phiếu trả CHƯA trừ vào công nợ — số phải thu sẽ còn giảm tiếp.
+   *
+   * ⚠ KHÔNG PHẢI "CHƯA HOÀN THÀNH". Từ mig 133, phiếu trả sinh ra từ đơn
+   *   đã trừ ngay lúc xuất hóa đơn dù còn ở 'Chờ xử lý'; đếm nó vào đây
+   *   là báo người đi đòi tiền rằng số sẽ giảm tiếp, trong khi nó đã giảm
+   *   rồi — và họ đòi thiếu đúng bằng khoản ấy.
+   */
+  const uncountedReturns = invReturns.filter(
+    (r) => r.status !== "cancelled" && !creditCounted(r)
+  ).length
 
   const statusLabel = INVOICE_STATUS_MAP[inv.status]?.label ?? inv.status
   /**
@@ -491,13 +501,14 @@ export default function SalesInvoiceDetailPage() {
               </>
             )}
             {/*
-              ⚠ PHIẾU CHƯA HOÀN THÀNH CHƯA TRỪ GÌ. Nói ra để người đi đòi
-                tiền không đòi nhầm một số sắp thay đổi.
+              ⚠ CHỈ ĐẾM PHIẾU CHƯA TRỪ. Nói ra để người đi đòi tiền không
+                đòi nhầm một số sắp thay đổi — nhưng phiếu ĐÃ trừ rồi thì
+                đừng nhắc, nhắc là họ tưởng còn giảm nữa và đòi thiếu.
             */}
-            {pendingReturns > 0 && (
+            {uncountedReturns > 0 && (
               <p className="mt-2 rounded-lg bg-[#fff7e6] px-2.5 py-2 text-xs font-semibold text-[#7a4b00]">
-                Còn {pendingReturns} phiếu trả chưa hoàn thành — hoàn thành xong thì số
-                phải thu sẽ giảm tiếp.
+                Còn {uncountedReturns} phiếu trả chưa trừ vào công nợ — hoàn thành (nhập hàng
+                về kho) xong thì số phải thu sẽ giảm tiếp.
               </p>
             )}
           </DetailCard>

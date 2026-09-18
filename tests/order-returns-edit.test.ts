@@ -444,9 +444,14 @@ describe("xem nhanh có hàng đổi / trả", () => {
     expect(order).toContain('.eq("order_id", orderId)\n        .neq("status", "cancelled")')
   })
 
-  /** ⚠ Chỉ phiếu ĐÃ HOÀN THÀNH mới thật sự trừ công nợ — phải nói rõ. */
-  it("nói rõ khoản trừ đã vào công nợ hay chưa", () => {
-    expect(comp).toContain('const counted = r.status === "completed"')
+  /**
+   * ⚠ "ĐÃ TRỪ HAY CHƯA" PHẢI HỎI `creditCounted`, KHÔNG TỰ XÉT. Từ mig 133
+   * có hai luật: phiếu sinh ra từ đơn trừ ngay lúc xuất hóa đơn, phiếu độc
+   * lập trừ lúc nhập kho. Tự xét ở đây là màn hình nói một đằng, sổ một nẻo.
+   */
+  it("nói rõ khoản trừ đã vào công nợ hay chưa, theo đúng luật của sổ", () => {
+    expect(comp).toContain("const counted = creditCounted(r)")
+    expect(comp).not.toContain('r.status === "completed"')
     expect(comp).toContain('counted ? "đã trừ công nợ" : "chưa trừ"')
   })
 
@@ -474,5 +479,149 @@ describe("hai màn chi tiết dựng cùng một lưới", () => {
   it("khối dựng chung vẫn giữ items-start", () => {
     const chrome = readFileSync("src/components/detail/detail-chrome.tsx", "utf8")
     expect(chrome).toContain('className="grid items-start gap-5 lg:grid-cols-3"')
+  })
+})
+
+describe("migration 132 — hóa đơn có mà công nợ trắng", () => {
+  const mig = readFileSync("supabase/migrations/132_backfill_missing_receivables.sql", "utf8")
+
+  /**
+   * ⚠ ĐÂY LÀ TIỀN, NÊN KHÔNG ĐOÁN. Đơn còn một dòng công nợ cũ chưa gắn
+   * nghĩa là khoản nợ ĐÃ TỒN TẠI (có thể đã thu một phần); dựng thêm dòng
+   * nữa là đòi khách hai lần cùng một lô hàng.
+   */
+  it("bỏ qua hóa đơn mà đơn của nó còn dòng nợ cũ chưa gắn", () => {
+    // ⚠ PHẢI SOI TRONG KHỐI DỰNG, KHÔNG SOI CẢ TỆP. Bản đầu của chốt này
+    //   chỉ hỏi "chuỗi có trong tệp không" — mà nó có ở CẢ khối xem trước,
+    //   nên tôi gỡ hẳn phép chặn khỏi khối dựng mà test vẫn xanh. Chốt nào
+    //   phá mà vẫn xanh thì chốt đó đang nói dối.
+    const fix = mig.slice(mig.indexOf("DO $fix$"), mig.indexOf("DO $check$"))
+    expect(fix).toContain("WHERE rc.order_id = si.order_id AND rc.invoice_id IS NULL")
+    expect(mig).toContain("BỎ QUA")
+  })
+
+  /**
+   * ⚠ Chỉ hóa đơn ĐÃ GHI SỔ mới sinh nợ — hóa đơn huỷ thì không.
+   *
+   * Soi trong khối DỰNG. Chuỗi này có ở cả khối xem trước, nên hỏi cả tệp
+   * là gỡ hẳn điều kiện khỏi khối dựng mà chốt vẫn xanh (đã thử phá).
+   */
+  it("chỉ dựng cho hóa đơn đã ghi sổ", () => {
+    const fix = mig.slice(mig.indexOf("DO $fix$"), mig.indexOf("DO $check$"))
+    expect(fix).toContain("si.status = 'posted'")
+  })
+
+  /** ⚠ Dùng lại phép tính đã có, đừng chép INSERT ra bản thứ hai. */
+  it("tính qua _wf2b_recompute_receivable, không tự viết INSERT", () => {
+    expect(mig).toContain("public._wf2b_recompute_receivable(r.id)")
+    expect(mig).not.toContain("INSERT INTO receivables")
+  })
+
+  /** ⚠ Thao tác hàng loạt phải xem trước — in ra thứ sắp làm. */
+  it("có bước xem trước, in từng dòng và tổng tiền", () => {
+    expect(mig.indexOf("$preview$")).toBeGreaterThan(-1)
+    expect(mig.indexOf("$preview$")).toBeLessThan(mig.indexOf("$fix$"))
+    expect(mig).toContain("132 xem trước")
+  })
+
+  /** ⚠ Hàm trả NULL = nó từ chối dựng. Đếm im lặng là để lại đúng cái lỗ. */
+  it("không dựng được thì nói ra, không đếm im lặng", () => {
+    expect(mig).toContain("IF v_id IS NULL THEN")
+    expect(mig).toContain("KHÔNG dựng được nợ cho")
+  })
+})
+
+describe("migration 133 — hóa đơn gánh khoản trừ hàng trả kèm đơn", () => {
+  const mig = readFileSync("supabase/migrations/133_return_credit_rides_invoice.sql", "utf8")
+
+  /** ⚠ Tờ hóa đơn chứng nhận giá trị lô hàng đã giao — không sửa `total`. */
+  it("không đụng vào sales_invoices.total", () => {
+    expect(mig).not.toMatch(/UPDATE sales_invoices[^;]*SET[^;]*total/)
+  })
+
+  /**
+   * ⚠ THỨ TỰ LÀ CẢ VẤN ĐỀ. Gắn phiếu trả TRƯỚC, tính công nợ NGAY SAU.
+   * Ngược lại là công nợ ghi đủ cả lô trong khi khách đã trừ.
+   */
+  it("post_invoice gắn phiếu rồi mới tính lại công nợ", () => {
+    /**
+     * ⚠ SOI ĐÚNG CÂU ĐƯỢC DỰNG (`v_new := …`), không soi cả khối.
+     * `credit_with_invoice = true` còn nằm trong phép kiểm chạy-lại
+     * (`position(... in v_src)`) ở đầu khối, nên so chỉ số trên cả khối
+     * vẫn đúng kể cả khi câu dựng đã mất hẳn dấu ấy — đã thử phá và chốt
+     * cũ im lặng.
+     */
+    const patch = mig.slice(mig.indexOf("$patch$"), mig.indexOf("$patch2$"))
+    const built = patch.slice(patch.indexOf("v_new :="), patch.indexOf("EXECUTE replace"))
+    expect(built).toContain("credit_with_invoice = true")
+    expect(built.indexOf("credit_with_invoice = true")).toBeLessThan(
+      built.indexOf("v_rec := public._wf2b_recompute_receivable(v_inv);")
+    )
+  })
+
+  /** ⚠ Đảo ngược phải đảo đủ — gỡ liên kết thì gỡ cả dấu. */
+  it("cancel_invoice gỡ dấu cùng lúc gỡ liên kết", () => {
+    expect(mig).toContain("SET invoice_id = NULL, credit_with_invoice = false")
+  })
+
+  /** ⚠ 133 vá tiếp lên câu 131 vừa viết. Chưa có 131 thì DỪNG, đừng vá mò. */
+  it("dừng khi migration 131 chưa chạy", () => {
+    expect(mig).toContain("NEEDS_131")
+    expect((mig.match(/NEEDS_131/g) ?? []).length).toBe(2)
+  })
+
+  /** ⚠ Chạy lại không đổi gì. */
+  it("chạy lại thì đứng yên", () => {
+    expect((mig.match(/đã vá từ trước/g) ?? []).length).toBe(2)
+  })
+
+  /**
+   * ⚠ CHỈ PHIẾU SINH RA TỪ ĐƠN mới được đánh dấu. Phiếu lập TỪ một hóa
+   * đơn (giao rồi khách không nhận hết) ra đời SAU, và theo luật chủ nhà
+   * nó vẫn trừ lúc nhập kho.
+   */
+  it("backfill chỉ đánh dấu phiếu ra đời trước hóa đơn", () => {
+    expect(mig).toContain("ret.created_at < COALESCE(si.posted_at, si.created_at)")
+    expect(mig).toContain("ret.order_id IS NOT NULL")
+  })
+
+  /** ⚠ Đụng vào sổ đang chạy thì in ra từng dòng kèm số tiền. */
+  it("in ra từng hóa đơn bị đổi công nợ", () => {
+    expect(mig).toContain("133 CÔNG NỢ ĐỔI")
+  })
+
+  it("kết thúc bằng reload schema", () => {
+    expect(mig).toContain("NOTIFY pgrst, 'reload schema'")
+  })
+})
+
+describe("chi tiết đơn hàng dựng theo mẫu", () => {
+  const page = readFileSync("src/app/(dashboard)/orders/[id]/page.tsx", "utf8")
+
+  /** ⚠ Mẫu đặt khối cộng tiền ở CỘT PHẢI, không nhét dưới bảng hàng. */
+  it("cộng tiền nằm ở cột phải, không nằm trong thẻ mặt hàng", () => {
+    expect(page).toContain('<DetailCard title="Cộng tiền">')
+    expect(page).toContain('strong\n              label="Tổng tiền"')
+    expect(page).not.toContain('Tạm tính:{" "}')
+  })
+
+  /** ⚠ Tên thẻ theo mẫu. */
+  it("thẻ trái tên Mặt hàng, kèm số dòng", () => {
+    expect(page).toContain("Mặt hàng{\" \"}")
+    expect(page).not.toContain("<CardTitle>Chi tiết sản phẩm</CardTitle>")
+  })
+
+  /**
+   * ⚠ KHÁCH HÀNG CHỈ HIỆN MỘT LẦN. `DetailCustomerCard` ngay dưới tiêu đề
+   * đã có tên, điện thoại, địa chỉ, NV bán. Một thẻ "Khách hàng" nữa ở cột
+   * phải là người đọc phải tự kiểm xem hai chỗ có khớp nhau không.
+   */
+  it("không còn thẻ Khách hàng trùng ở cột phải", () => {
+    expect(page).toContain("<DetailCustomerCard")
+    expect(page).not.toContain("<CardTitle>Khách hàng</CardTitle>")
+  })
+
+  it("thẻ thông tin đơn mang đúng tên trong mẫu", () => {
+    expect(page).toContain("Thanh toán &amp; giao hàng")
   })
 })

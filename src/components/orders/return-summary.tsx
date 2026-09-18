@@ -14,16 +14,18 @@
  * KHÔNG trừ tiền; dòng TRẢ nhận hàng về và CÓ trừ tiền. Hiện chung một
  * danh sách không nhãn là người đọc cộng nhầm công nợ của khách.
  *
- * ⚠ CHỈ PHIẾU ĐÃ HOÀN THÀNH MỚI THẬT SỰ TRỪ. Phiếu nháp / đã gửi thì
- * hàng chưa về kho và công nợ chưa đổi (`_wf2b_recompute_receivable` chỉ
- * cộng phiếu `completed`). Nên số tiền của phiếu chưa hoàn thành phải ghi
- * rõ là "chưa trừ", nếu không kế toán trừ trước một khoản chưa có.
+ * ⚠ "ĐÃ TRỪ HAY CHƯA" KHÔNG TỰ XÉT Ở ĐÂY. Từ mig 133 có HAI luật: phiếu
+ * sinh ra từ đơn trừ ngay lúc xuất hóa đơn, phiếu độc lập trừ lúc nhập
+ * kho. `creditCounted` là chỗ duy nhất trả lời, và nó là bản sao của câu
+ * SQL trong `_wf2b_recompute_receivable`. Tự xét ở đây là màn hình nói
+ * một đằng, sổ ghi một nẻo.
  */
 
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { returnReasonLabel } from "@/lib/sell/returns"
+import { creditCounted } from "@/lib/orders/invoice-credit"
 
 export interface ReturnSummaryLine {
   id: string
@@ -39,13 +41,15 @@ export interface ReturnSummaryRow {
   status: string
   reason: string | null
   credit_note_amount: number | null
+  /** Khoản trừ đi cùng hóa đơn (mig 133) — quyết định "đã trừ hay chưa". */
+  credit_with_invoice?: boolean | null
   created_at?: string | null
   lines?: ReturnSummaryLine[] | null
 }
 
 /** Cột `select` dùng chung — hai màn hỏi y hệt nhau thì mới vẽ giống nhau. */
 export const RETURN_SUMMARY_SELECT =
-  "id, status, reason, credit_note_amount, created_at, " +
+  "id, status, reason, credit_note_amount, credit_with_invoice, created_at, " +
   "lines:return_lines(id, unit_name, quantity, line_total, is_exchange, product:products(name, sku))"
 
 /**
@@ -71,7 +75,7 @@ export function ReturnSummary({ returns }: { returns: ReturnSummaryRow[] }) {
         const st = STATUS[r.status] ?? { label: r.status, variant: "secondary" as const }
         const lines = r.lines ?? []
         const credit = Math.max(0, Number(r.credit_note_amount || 0))
-        const counted = r.status === "completed"
+        const counted = creditCounted(r)
         return (
           <div key={r.id} className="rounded-xl border border-outline-variant/60 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">

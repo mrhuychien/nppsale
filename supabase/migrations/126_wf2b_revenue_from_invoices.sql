@@ -314,13 +314,15 @@ DECLARE
   v_old text;
   v_new text;
   v_n   int;
+  v_oid oid;
 BEGIN
   -- ⚠ ĐẾM TRƯỚC KHI LẤY. Có hai bản nạp chồng thì `SELECT … INTO` vớ đại
   --   một cái, vá xong bản kia vẫn cộng tiền theo đơn — và không dòng nào
   --   báo.
   SELECT count(*) INTO v_n
   FROM pg_proc pr JOIN pg_namespace n ON n.oid = pr.pronamespace
-  WHERE n.nspname = 'public' AND pr.proname = 'compute_payroll_run';
+  WHERE n.nspname = 'public' AND pr.proname = 'compute_payroll_run'
+    AND pr.prokind = 'f';
 
   IF v_n <> 1 THEN
     RAISE EXCEPTION
@@ -328,9 +330,15 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT pg_get_functiondef(pr.oid) INTO v_src
+  -- ⚠ LẤY OID TRƯỚC, GỌI SAU — hai câu, không gộp. Cùng lý do như khối
+  --   dò ở cuối file: trình tối ưu có thể gọi `pg_get_functiondef` trên
+  --   những dòng chưa bị lọc, và nó ném lỗi khi gặp aggregate.
+  SELECT pr.oid INTO v_oid
   FROM pg_proc pr JOIN pg_namespace n ON n.oid = pr.pronamespace
-  WHERE n.nspname = 'public' AND pr.proname = 'compute_payroll_run';
+  WHERE n.nspname = 'public' AND pr.proname = 'compute_payroll_run'
+    AND pr.prokind = 'f';
+
+  v_src := pg_get_functiondef(v_oid);
 
   -- ⚠ VÁ ĐÚNG MỘT CÂU TRONG THÂN HÀM ĐANG CHẠY, không chép lại cả hàm.
   --   Chép lại là dựng một bản sao thứ hai của 400 dòng mà không ai đối
@@ -361,19 +369,49 @@ NOTIFY pgrst, 'reload schema';
 DO $$
 DECLARE
   v_left  int;
+  v_names text;
   v_ord   numeric;
   v_inv   numeric;
 BEGIN
   -- Còn hàm nào cộng TIỀN từ sales_orders theo is_revenue_status không.
-  SELECT count(*) INTO v_left
-  FROM pg_proc pr JOIN pg_namespace n ON n.oid = pr.pronamespace
-  WHERE n.nspname = 'public'
-    AND pg_get_functiondef(pr.oid) LIKE '%is_revenue_status%'
-    AND pg_get_functiondef(pr.oid) LIKE '%SUM(%total%'
-    AND pg_get_functiondef(pr.oid) LIKE '%sales_orders%';
+  --
+  -- ⚠ `WITH … AS MATERIALIZED` KHÔNG PHẢI TRANG TRÍ. `pg_get_functiondef`
+  --   NÉM LỖI khi gặp một aggregate ("array_agg" is an aggregate
+  --   function), và trình tối ưu được phép đánh giá nó TRƯỚC khi lọc
+  --   `nspname` — nên viết cả hai điều kiện trong cùng một WHERE thì câu
+  --   này vẫn chết vì một hàm ở `pg_catalog` mà ta không hề hỏi tới.
+  --   Đã gặp thật: migration chết ở đúng khối này.
+  --
+  -- ⚠ `prokind = 'f'` là vế thứ hai của cùng một lớp bảo vệ: loại
+  --   aggregate và window function ra trước khi gọi. Thiếu nó thì chỉ cần
+  --   một extension cài aggregate vào `public` là hỏng lại.
+  WITH fns AS MATERIALIZED (
+    SELECT pr.oid, pr.proname
+    FROM pg_proc pr JOIN pg_namespace n ON n.oid = pr.pronamespace
+    WHERE n.nspname = 'public' AND pr.prokind = 'f'
+  )
+  SELECT count(*), string_agg(proname, ', ' ORDER BY proname)
+    INTO v_left, v_names
+  FROM fns
+  WHERE pg_get_functiondef(fns.oid) LIKE '%is_revenue_status%'
+    AND pg_get_functiondef(fns.oid) LIKE '%sales_orders%';
 
+  -- ⚠ ĐÂY LÀ GỢI Ý ĐỂ SOI MẮT, KHÔNG PHẢI MỘT KẾT LUẬN — và câu chữ phải
+  --   nói đúng như vậy.
+  --
+  --   Bản đầu đếm bằng `LIKE '%SUM(%total%'` rồi kêu "⚠ còn N hàm cộng
+  --   tiền từ sales_orders. Xem lại." Chạy thật thì nó réo tên
+  --   `compute_payroll_run` — một hàm ĐÚNG: hai chỗ còn `is_revenue_status`
+  --   trong đó là hai phép ĐẾM ĐƠN thưởng, cố ý giữ. Mẫu LIKE quét cả
+  --   thân hàm nên bất cứ `SUM(` nào đứng trước bất cứ chữ `total` nào
+  --   cũng khớp.
+  --
+  --   Một cảnh báo kêu oan còn tệ hơn không có cảnh báo: nó dạy người đọc
+  --   bỏ qua NOTICE, đúng thứ cả hai pack đang chống. Nên nó liệt kê TÊN
+  --   và nói thẳng rằng hàm chỉ ĐẾM đơn là bình thường.
   IF v_left > 0 THEN
-    RAISE NOTICE '--- 126 ⚠ còn % hàm cộng tiền từ sales_orders theo is_revenue_status. Xem lại. ---', v_left;
+    RAISE NOTICE '--- 126: % hàm còn nhắc cả is_revenue_status lẫn sales_orders: %. Soi bằng mắt: hàm chỉ ĐẾM đơn là đúng, hàm còn CỘNG TIỀN từ sales_orders mới phải sửa. ---',
+      v_left, v_names;
   END IF;
 
   SELECT COALESCE(sum(total), 0) INTO v_ord

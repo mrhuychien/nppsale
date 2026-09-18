@@ -309,9 +309,52 @@ describe("Nền nếp chung của migration", () => {
     expect(M126).toContain("IF v_ord <> v_inv THEN")
   })
 
-  it("dò xem còn hàm nào cộng tiền từ đơn theo is_revenue_status", () => {
+  /**
+   * ⚠ BỘ DÒ NÀY TỪNG BÁO ĐỘNG GIẢ, và chạy thật mới lòi ra. Bản đầu lọc
+   * thêm `LIKE '%SUM(%total%'` rồi kết luận "còn N hàm cộng tiền từ
+   * sales_orders" — nó réo tên `compute_payroll_run`, một hàm ĐÚNG: hai
+   * chỗ còn `is_revenue_status` trong đó là hai phép ĐẾM ĐƠN thưởng, cố
+   * ý giữ. Mẫu LIKE quét cả thân hàm nên bất cứ `SUM(` nào đứng trước
+   * bất cứ chữ `total` nào cũng khớp.
+   *
+   * Một cảnh báo kêu oan tệ hơn không có cảnh báo: nó dạy người đọc bỏ
+   * qua NOTICE. Nay nó liệt kê TÊN và tự nhận là gợi ý để soi mắt.
+   */
+  it("dò xem còn hàm nào nhắc cả hai, và nêu TÊN chứ không kết luận", () => {
     expect(M126).toContain("LIKE '%is_revenue_status%'")
     expect(M126).toContain("LIKE '%sales_orders%'")
+    expect(M126).toContain("string_agg(proname, ', ' ORDER BY proname)")
+    expect(M126, "mẫu lọc quá lỏng, khớp cả hàm chỉ đếm đơn").not.toContain(
+      "LIKE '%SUM(%total%'"
+    )
+    expect(M126).toContain("hàm chỉ ĐẾM đơn là đúng")
+  })
+
+  /**
+   * ⚠ `pg_get_functiondef` NÉM LỖI KHI GẶP MỘT AGGREGATE, và trình tối ưu
+   * được phép gọi nó TRƯỚC khi lọc `nspname`. Viết cả hai điều kiện trong
+   * cùng một WHERE thì câu này chết vì một hàm ở `pg_catalog` mà ta không
+   * hề hỏi tới — đã gặp thật, migration dừng ở đúng khối này:
+   *
+   *     ERROR: "array_agg" is an aggregate function
+   *
+   * `AS MATERIALIZED` ép lọc xong mới gọi; `prokind = 'f'` là vế thứ hai
+   * của cùng một lớp bảo vệ.
+   */
+  it("ép thứ tự trước khi gọi pg_get_functiondef", () => {
+    expect(M126).toContain("WITH fns AS MATERIALIZED (")
+    expect((M126.match(/prokind = 'f'/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(M126, "còn gọi pg_get_functiondef trong cùng WHERE với nspname").not.toMatch(
+      new RegExp("nspname = 'public'\\s*\\n\\s*AND pg_get_functiondef")
+    )
+  })
+
+  /**
+   * ⚠ LẤY OID TRƯỚC, GỌI SAU — hai câu, không gộp. Cùng lý do.
+   */
+  it("thân compute_payroll_run lấy qua oid, không gộp một câu", () => {
+    expect(M126).toContain("SELECT pr.oid INTO v_oid")
+    expect(M126).toContain("v_src := pg_get_functiondef(v_oid);")
   })
 
   it("đổi ý nghĩa số liệu được báo ngay đầu tệp", () => {

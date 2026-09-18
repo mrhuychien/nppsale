@@ -430,10 +430,15 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_guard_order_lines_locked ON sales_order_lines;
-CREATE TRIGGER trg_guard_order_lines_locked
-  BEFORE INSERT OR UPDATE OR DELETE ON sales_order_lines
-  FOR EACH ROW EXECUTE FUNCTION public.guard_order_lines_locked();
+-- ⚠ TRIGGER DỰNG Ở CUỐI FILE, KHÔNG PHẢI Ở ĐÂY. Backfill ở mục 11 chèn
+--   dòng hóa đơn, việc đó làm `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` — và chốt này chặn đúng lệnh ấy, vì lúc đó đơn đã
+--   mang trạng thái 'completed'. Migration tự vấp chốt chặn của chính
+--   mình:
+--
+--     ERROR: ORDER_LOCKED: đơn đã xuất hàng, không sửa dòng được.
+--
+--   Dựng chốt sau khi dữ liệu đã vào chỗ. Xem mục 13.
 
 
 -- =====================================================================
@@ -596,10 +601,27 @@ BEGIN
        OR (so.status = 'cancelled' AND so.completed_at IS NOT NULL)
     ORDER BY so.org_id, so.order_date, so.id
   LOOP
-    SELECT count(*), min(se.id) INTO v_n_entry, v_entry
+    -- ⚠ HAI CÂU, KHÔNG GỘP BẰNG `min(se.id)`. Postgres KHÔNG có `min`
+    --   cho kiểu uuid — gộp là lỗi 42883 ngay câu lệnh đầu tiên của vòng
+    --   lặp, và cả migration rollback. Kể cả nếu có thì nó cũng sai
+    --   nghĩa: thứ tự uuid không phải thứ tự thời gian, nên "phiếu đầu
+    --   tiên" hoá ra là phiếu có uuid nhỏ nhất — một phiếu bất kỳ.
+    --
+    -- ⚠ "ĐẦU TIÊN" = SỚM NHẤT THEO `posted_at`. Đơn được sửa ở v2 có thể
+    --   có vài phiếu xuất; phiếu gắn vào hóa đơn phải là phiếu mở đầu,
+    --   không phải phiếu vá về sau. `se.id` chỉ để phá thế hoà khi hai
+    --   phiếu cùng một mốc.
+    SELECT count(*) INTO v_n_entry
     FROM stock_entries se
     WHERE se.type = 'export' AND se.status = 'posted'
       AND se.ref_order_ids @> jsonb_build_array(o.id::text);
+
+    SELECT se.id INTO v_entry
+    FROM stock_entries se
+    WHERE se.type = 'export' AND se.status = 'posted'
+      AND se.ref_order_ids @> jsonb_build_array(o.id::text)
+    ORDER BY se.posted_at NULLS LAST, se.id
+    LIMIT 1;
 
     v_seq := v_seq + 1;
     v_code := 'HD-' || to_char(COALESCE(o.order_date, CURRENT_DATE), 'YYMMDD')
@@ -699,6 +721,23 @@ DROP FUNCTION IF EXISTS public.complete_order(uuid);
 DROP FUNCTION IF EXISTS public.cancel_order(uuid, text);
 DROP FUNCTION IF EXISTS public._wf2_assert_order_unlocked(uuid, date, boolean);
 DROP FUNCTION IF EXISTS public._wf2_recompute_receivable(uuid);
+
+-- =====================================================================
+-- 13. Khoá dòng đơn — DỰNG SAU CÙNG
+-- =====================================================================
+--
+-- ⚠ ĐÂY LÀ NHỊP CUỐI, VÀ THỨ TỰ LÀ CẢ VẤN ĐỀ. Hàm đã định nghĩa ở mục 7;
+--   chỉ còn gắn trigger. Gắn sớm hơn thì backfill ở mục 11 không chạy
+--   nổi: nó chèn dòng hóa đơn → `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` → chốt này chặn, vì đơn lúc đó đã 'completed'.
+--
+--   Cùng một bài học với mục 4 của migration 119: chốt chặn dựng SAU khi
+--   ghi xong dữ liệu, không phải trước.
+DROP TRIGGER IF EXISTS trg_guard_order_lines_locked ON sales_order_lines;
+CREATE TRIGGER trg_guard_order_lines_locked
+  BEFORE INSERT OR UPDATE OR DELETE ON sales_order_lines
+  FOR EACH ROW EXECUTE FUNCTION public.guard_order_lines_locked();
+
 
 NOTIFY pgrst, 'reload schema';
 

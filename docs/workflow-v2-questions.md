@@ -47,14 +47,32 @@ trả tiền, sẽ quay về "Phiếu tạm". Hai chuyện đi kèm:
    `completed_at` sẽ là hôm nay chứ không phải ngày giao thật, và phiếu
    giao in lại lần hai.
 
-**Đề xuất (chưa làm, chờ chủ nhà):** trong backfill, tách `confirmed`
-làm hai nhánh. Đơn `confirmed` mà có chuyến giao đã hoàn tất hoặc đã
-quyết toán, hoặc có `receivables.paid > 0` → `completed` với
-`completed_at` lấy từ `deliveries.settled_at` hoặc ngày thu tiền. Đơn
-`confirmed` còn lại → `submitted` như spec. Kèm `RAISE NOTICE` liệt kê
-danh sách rơi vào nhánh một để chủ NPP kiểm tay.
+**Đề xuất lúc đó (ĐÃ BÁC):** tách `confirmed` làm hai nhánh khi backfill,
+đơn đã giao đã thu thì cho thẳng sang `completed`.
 
-**Trạng thái:** MỞ — cần chủ nhà quyết trước khi viết backfill ở P1.
+**CHỦ NHÀ TRẢ LỜI 18/09/2026:** "Bảng map trong mục 1 cho confirmed
+thành submitted không có ngoại lệ."
+
+**Chốt thi hành ở P1:** backfill đúng bảng mục 1, một luật duy nhất,
+`confirmed` → `submitted` cho mọi đơn, không nhìn chuyến giao, không
+nhìn công nợ đã thu. Không viết nhánh ngoại lệ nào.
+
+**Hai hệ quả trên được chấp nhận, ghi lại để không ai ngạc nhiên về sau:**
+
+1. Đơn đã giao qua tài xế và đã thu tiền sẽ nằm ở tab Phiếu tạm. NPP
+   phải tự bấm "Xuất hàng" cho từng đơn nếu muốn đưa chúng về Hoàn
+   thành, và khi đó `completed_at` là ngày bấm chứ không phải ngày giao
+   thật.
+2. Doanh thu, lương và hoa hồng các kỳ đã chốt sẽ tính lại thấp hơn với
+   phần đơn này, cho tới khi chúng được xuất hàng.
+
+**Diagnostics ở P1 (không đổi dữ liệu, chỉ in ra):** sau backfill sẽ
+`RAISE NOTICE` danh sách `order_code` rơi vào `submitted` mà đã có
+chuyến giao hoàn tất hoặc `receivables.paid > 0`, để chủ NPP biết phải
+xử tay những đơn nào. Đây là báo cáo, không phải nhánh nghiệp vụ; chủ
+nhà bảo bỏ thì bỏ.
+
+**Trạng thái:** CHỐT.
 
 ---
 

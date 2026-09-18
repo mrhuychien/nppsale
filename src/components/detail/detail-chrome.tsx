@@ -18,6 +18,7 @@
  */
 
 import type { ReactNode } from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 
 /**
@@ -212,11 +213,21 @@ export function DetailCustomerCard({
   name,
   contact,
   stats,
+  href,
 }: {
   name: string
   /** "0903 812 447 · 128 Dương Bá Trạc, Q.8" */
   contact?: string | null
   stats?: Array<{ label: string; value: ReactNode; bar?: { pct: number; tone: string } | null }>
+  /**
+   * Đường vào hồ sơ khách.
+   *
+   * ⚠ TÊN KHÁCH LÀ THỨ NGƯỜI TA BẤM VÀO ĐẦU TIÊN. Đang xem một đơn mà
+   * muốn biết khách này còn nợ bao nhiêu, mua gì lần trước — hiện phải
+   * quay ra danh sách khách rồi gõ lại tên. Không có `href` thì vẫn vẽ
+   * chữ thường, không vẽ một cái link chết.
+   */
+  href?: string | null
 }) {
   const initial = (name || "?").trim().charAt(0).toUpperCase() || "?"
   return (
@@ -226,7 +237,16 @@ export function DetailCustomerCard({
           {initial}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-[17px] font-bold text-on-surface">{name}</span>
+          {href ? (
+            <Link
+              href={href}
+              className="block truncate text-[17px] font-bold text-on-surface hover:text-primary hover:underline"
+            >
+              {name}
+            </Link>
+          ) : (
+            <span className="block truncate text-[17px] font-bold text-on-surface">{name}</span>
+          )}
           {contact && (
             <span className="mt-0.5 block truncate text-[13px] text-on-surface-variant">{contact}</span>
           )}

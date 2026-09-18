@@ -386,6 +386,7 @@ export default function SalesInvoiceDetailPage() {
                 các ô số liệu. Hóa đơn không có hạn mức nên ô đó nhường
                 chỗ cho mã số thuế; vẽ một ô rỗng có nhãn là tệ hơn. */}
             <DetailCustomerCard
+              href={inv.customer_id ? `/customers/${inv.customer_id}` : null}
               name={inv.customer?.billing_name || inv.customer?.store_name || "Khách lẻ"}
               contact={[inv.customer?.phone, inv.customer?.billing_address || inv.customer?.address]
                 .filter(Boolean)

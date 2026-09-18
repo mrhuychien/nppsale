@@ -1362,6 +1362,7 @@ export default function OrderDetailPage() {
       */}
       <div className="hidden lg:block">
         <DetailCustomerCard
+          href={order.customer_id ? `/customers/${order.customer_id}` : null}
           name={order.customer?.store_name || "Khách lẻ"}
           contact={[order.customer?.phone, order.customer?.address].filter(Boolean).join(" · ")}
           stats={[

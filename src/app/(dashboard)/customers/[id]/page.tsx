@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { ORDER_STATUS_MAP } from "@/lib/constants"
+import { ORDER_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_METHOD_LABEL } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
 import {
@@ -83,6 +83,19 @@ export default function CustomerDetailPage() {
   const [recentOrders, setRecentOrders] = useState<OrderRow[]>([])
   const [recentPayments, setRecentPayments] = useState<Array<{ id: string; amount: number; method: string; collected_at: string }>>([])
   const [allOrders, setAllOrders] = useState<OrderRow[]>([])
+  /**
+   * Hóa đơn bán + các khoản thanh toán của khách — tab "Lịch sử giao dịch".
+   *
+   * ⚠ ĐƠN HÀNG KHÔNG PHẢI GIAO DỊCH. Đơn là lời đặt; giao dịch là tờ hóa
+   *   đơn đã ghi sổ và số tiền đã thu. Kế toán ngồi đối chiếu với khách
+   *   cần đúng hai thứ sau, còn đơn chỉ để truy nguồn.
+   */
+  const [allInvoices, setAllInvoices] = useState<Array<{
+    id: string; invoice_code: string; invoice_date: string; total: number; status: string
+  }>>([])
+  const [allPayments, setAllPayments] = useState<Array<{
+    id: string; amount: number; method: string; collected_at: string
+  }>>([])
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [visits, setVisits] = useState<Array<{
     id: string
@@ -169,6 +182,8 @@ export default function CustomerDetailPage() {
       receivablesRes,
       last90Res,
       recentPayRes,
+      invoicesRes,
+      paymentsRes,
     ] = await Promise.all([
       supabase
         .from("sales_orders")
@@ -197,8 +212,29 @@ export default function CustomerDetailPage() {
         .eq("receivable.customer_id", id)
         .order("collected_at", { ascending: false })
         .limit(5),
+      // ⚠ HÓA ĐƠN ĐÃ HUỶ VẪN LIỆT KÊ, có nhãn trạng thái. Giấu đi thì
+      //   người đối chiếu thấy một khoảng trống giữa hai số hóa đơn và
+      //   không biết chuyện gì đã xảy ra ở đó.
+      supabase
+        .from("sales_invoices")
+        .select("id, invoice_code, invoice_date, total, status")
+        .eq("customer_id", id)
+        .order("invoice_date", { ascending: false })
+        .limit(200),
+      /**
+       * ⚠ ĐI QUA `receivables` VÌ `cash_receipts` KHÔNG CÓ `customer_id`.
+       *   Bảng phiếu thu chỉ nối tới khách qua dòng phiếu → công nợ. Đây
+       *   là đúng câu mà khối `recentPayRes` bên trên đang dùng, chỉ bỏ
+       *   giới hạn 5 dòng.
+       */
+      supabase
+        .from("payments")
+        .select("id, amount, method, collected_at, receivable:receivables!inner(customer_id)")
+        .eq("receivable.customer_id", id)
+        .order("collected_at", { ascending: false })
+        .limit(200),
     ])
-    const qErr = ([monthOrdersRes, allOrdersRes, receivablesRes, last90Res, recentPayRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr = ([monthOrdersRes, allOrdersRes, receivablesRes, last90Res, recentPayRes, invoicesRes, paymentsRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[customers/id] truy vấn lỗi:", qErr.message)
 
@@ -209,6 +245,9 @@ export default function CustomerDetailPage() {
     setMonthRevenue(rev)
 
     // All orders
+    setAllInvoices(((invoicesRes.data as unknown) as typeof allInvoices) || [])
+    setAllPayments(((paymentsRes.data as unknown) as typeof allPayments) || [])
+
     const orders = (allOrdersRes.data || []) as OrderRow[]
     setAllOrders(orders)
     setTotalOrders(orders.length)
@@ -435,7 +474,7 @@ export default function CustomerDetailPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
-              <TabsTrigger value="orders">Lịch sử đơn hàng</TabsTrigger>
+              <TabsTrigger value="orders">Lịch sử giao dịch</TabsTrigger>
               <TabsTrigger value="visits">Ghé thăm ({visits.length})</TabsTrigger>
               <TabsTrigger value="prices">Bảng giá áp dụng</TabsTrigger>
               <TabsTrigger value="info">Sửa thông tin</TabsTrigger>
@@ -637,8 +676,109 @@ export default function CustomerDetailPage() {
               </Card>
             </TabsContent>
 
-            {/* Tab: Lịch sử đơn hàng */}
-            <TabsContent value="orders" className="mt-4">
+            {/* Tab: Lịch sử giao dịch — hóa đơn, tiền đã thu, rồi tới đơn */}
+            <TabsContent value="orders" className="mt-4 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Hóa đơn bán ({allInvoices.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {allInvoices.length === 0 ? (
+                    <EmptyState
+                      title="Chưa có hóa đơn"
+                      description="Khách hàng này chưa được xuất hóa đơn nào"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {allInvoices.map((v) => {
+                        const st = INVOICE_STATUS_MAP[v.status]
+                        return (
+                          <Link
+                            key={v.id}
+                            href={`/sales-invoices/${v.id}`}
+                            className="flex items-center gap-3 rounded-xl border bg-muted/20 p-3 hover:bg-muted/40"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-mono text-xs font-bold text-primary">
+                                {v.invoice_code}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {formatDate(v.invoice_date)}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-right">
+                              <span className="block text-sm font-bold">
+                                {formatCurrency(v.total)}
+                              </span>
+                              {st && (
+                                <Badge variant={st.variant} className="mt-1">
+                                  {st.label}
+                                </Badge>
+                              )}
+                            </span>
+                          </Link>
+                        )
+                      })}
+                      {/* ⚠ CẮT BỚT THÌ NÓI. Im lặng dừng ở 200 đọc như "chỉ
+                          có bấy nhiêu hóa đơn thôi". */}
+                      {allInvoices.length >= 200 && (
+                        <p className="text-center text-xs text-muted-foreground">
+                          Mới hiện 200 hóa đơn gần nhất.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Các khoản thanh toán ({allPayments.length})
+                  </CardTitle>
+                  {/* Nói rõ đây là TIỀN ĐÃ THU, không phải số còn nợ. */}
+                  <p className="text-xs text-muted-foreground">
+                    Tiền khách đã trả, ghi theo từng lần thu.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {allPayments.length === 0 ? (
+                    <EmptyState
+                      title="Chưa có khoản thu"
+                      description="Khách hàng này chưa thanh toán khoản nào"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {allPayments.map((pm) => (
+                        <div
+                          key={pm.id}
+                          className="flex items-center gap-3 rounded-xl border bg-muted/20 p-3"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold">
+                              {formatDate(pm.collected_at)}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {PAYMENT_METHOD_LABEL[pm.method] || pm.method}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-sm font-bold tabular-nums text-tertiary">
+                            {formatCurrency(pm.amount)}
+                          </span>
+                        </div>
+                      ))}
+                      {allPayments.length >= 200 && (
+                        <p className="text-center text-xs text-muted-foreground">
+                          Mới hiện 200 khoản thu gần nhất.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Tất cả đơn hàng ({allOrders.length})</CardTitle>

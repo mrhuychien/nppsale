@@ -160,3 +160,70 @@ describe("khoản nợ gọi theo mã hóa đơn", () => {
     expect(NEWRECEIPT).toContain('"Công nợ không gắn chứng từ"')
   })
 })
+
+describe("bấm vào tên khách từ màn chi tiết", () => {
+  const ORDER = readFileSync("src/app/(dashboard)/orders/[id]/page.tsx", "utf8")
+  const INV = readFileSync("src/app/(dashboard)/sales-invoices/[id]/page.tsx", "utf8")
+  const CHROME = readFileSync("src/components/detail/detail-chrome.tsx", "utf8")
+
+  /**
+   * ⚠ TÊN KHÁCH LÀ THỨ NGƯỜI TA BẤM VÀO ĐẦU TIÊN. Đang xem một đơn mà
+   * muốn biết khách còn nợ bao nhiêu thì phải quay ra danh sách khách rồi
+   * gõ lại tên.
+   */
+  it("cả hai màn chi tiết truyền đường vào hồ sơ khách", () => {
+    expect(ORDER).toContain("href={order.customer_id ? `/customers/${order.customer_id}` : null}")
+    expect(INV).toContain("href={inv.customer_id ? `/customers/${inv.customer_id}` : null}")
+  })
+
+  /** ⚠ Không có mã khách thì vẽ chữ thường, đừng vẽ một cái link chết. */
+  it("không có href thì không vẽ link", () => {
+    expect(CHROME).toContain("{href ? (")
+    expect(CHROME).toContain("<Link")
+  })
+})
+
+describe("tab Lịch sử giao dịch của khách hàng", () => {
+  const CUS = readFileSync("src/app/(dashboard)/customers/[id]/page.tsx", "utf8")
+
+  it("đổi tên tab", () => {
+    expect(CUS).toContain('<TabsTrigger value="orders">Lịch sử giao dịch</TabsTrigger>')
+    expect(CUS).not.toContain("Lịch sử đơn hàng</TabsTrigger>")
+  })
+
+  it("có danh sách hóa đơn bán và các khoản thanh toán", () => {
+    expect(CUS).toContain("Hóa đơn bán ({allInvoices.length})")
+    expect(CUS).toContain("Các khoản thanh toán ({allPayments.length})")
+  })
+
+  /**
+   * ⚠ `cash_receipts` KHÔNG CÓ `customer_id`. Bảng phiếu thu chỉ nối tới
+   * khách qua dòng phiếu → công nợ, nên phải đi qua `receivables`.
+   */
+  it("khoản thanh toán đi qua receivables, không hỏi thẳng cash_receipts", () => {
+    const q = CUS.slice(CUS.indexOf("Bảng phiếu thu chỉ nối tới"))
+    expect(q).toContain('.eq("receivable.customer_id", id)')
+    expect(q).not.toContain('.from("cash_receipts")')
+  })
+
+  /**
+   * ⚠ HÓA ĐƠN ĐÃ HUỶ VẪN LIỆT KÊ. Giấu đi thì người đối chiếu thấy một
+   * khoảng trống giữa hai số hóa đơn và không biết chuyện gì xảy ra ở đó.
+   */
+  it("không lọc bỏ hóa đơn đã huỷ", () => {
+    const q = CUS.slice(CUS.indexOf('.from("sales_invoices")'), CUS.indexOf('.limit(200)'))
+    expect(q).not.toContain('.eq("status"')
+    expect(q).not.toContain('.neq("status"')
+  })
+
+  /** ⚠ Cắt bớt trong im lặng đọc như "chỉ có bấy nhiêu thôi". */
+  it("nói ra khi danh sách bị cắt ở 200", () => {
+    expect(CUS).toContain("Mới hiện 200 hóa đơn gần nhất")
+    expect(CUS).toContain("Mới hiện 200 khoản thu gần nhất")
+  })
+
+  /** ⚠ Lỗi đọc phải được đếm, không nuốt im lặng. */
+  it("hai truy vấn mới nằm trong phép kiểm lỗi chung", () => {
+    expect(CUS).toContain("recentPayRes, invoicesRes, paymentsRes]")
+  })
+})

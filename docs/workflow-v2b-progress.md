@@ -17,7 +17,7 @@ Bảng map tên spec → code thật, và các câu hỏi: xem
       map tên.
 - [x] **P1** `feat(wf2b-P1)` — Mig 124: schema + trigger + RLS + backfill
       + DROP RPC cũ.
-- [ ] **P2** `feat(wf2b-P2)` — Mig 125: 6 RPC + grants.
+- [x] **P2** `feat(wf2b-P2)` — Mig 125: 6 RPC + grants.
 - [ ] **P3** `feat(wf2b-P3)` — Types/constants/permission + cascade
       SQL/TS + test cũ xanh.
 - [ ] **P4** `feat(wf2b-P4)` — `/orders` SO UI + dialog Xuất hàng.
@@ -136,6 +136,58 @@ nêu tên hàng.
 
 ---
 
+## P2 — Mig 125: bảy RPC của hóa đơn
+
+**Đã làm.** `supabase/migrations/125_wf2b_invoice_rpcs.sql`:
+`get_invoiceable_lines` · `post_invoice` · `cancel_invoice` ·
+`reissue_invoice` · `close_order` · `cancel_order` (viết lại) ·
+`_wf2b_recompute_receivable`, cùng bốn helper nội bộ bị REVOKE khỏi
+PUBLIC. Chốt: `tests/wf2b-rpcs.test.ts`, 102 chốt, thử phá bắt 72/72.
+
+**Bất ngờ gặp — bốn chỗ.**
+
+⚠ **HAI QUY ƯỚC `line_discount` ĐANG ĐÁ NHAU TRONG KHO MÃ.** Nơi GHI
+(`src/lib/sell/create-order.ts:52-53`) đặt `unit_price` = giá đang áp,
+`line_discount` = qty × (giá bảng − giá đang áp) chỉ để ghi nhớ, và
+`line_total = round(qty × giá)`. Nơi ĐỌC
+(`src/app/(dashboard)/orders/[id]/page.tsx:620,700`) tính
+`max(0, qty × unit_price − line_discount)` — trừ chiết khấu thêm một lần
+nữa. Dòng bán đúng giá bảng thì `line_discount = 0` và hai bên bằng
+nhau, nên không ai phát hiện; dòng có giảm giá thì lệch đúng bằng phần
+giảm. `post_invoice` theo bản GHI (và theo `cartTotals`). **Cần chủ nhà
+quyết** trang đọc kia có phải sửa không — nó không thuộc phạm vi v2b.
+
+⚠ **Phải dựng lại `_wf2_recompute_receivable` dưới dạng CẦU TẠM.** 124
+gỡ nó, mà `complete_return` / `cancel_return` (mig 120) còn gọi. Dựng
+lại nguyên bản cũ thì công nợ lại bám đơn — phá đúng thứ v2b vừa tách.
+Bản mới nhận `order_id` rồi ủy quyền cho `_wf2b_recompute_receivable`
+theo từng hóa đơn. P6 nối thẳng hai RPC đơn trả rồi mới gỡ cầu.
+
+⚠ **Phiếu trả chưa gắn hóa đơn là một khoản giảm trừ không thuộc về ai.**
+`_wf2b_recompute_receivable` cộng theo `invoice_id`, nên phiếu
+`invoice_id` rỗng biến mất khỏi phép cộng: khách trả hàng mà nợ không
+giảm, không dòng nào báo. Cầu tạm nhận nuôi khi đơn có ĐÚNG MỘT hóa đơn,
+và `RAISE RETURN_NEEDS_INVOICE` khi có nhiều hơn — không đoán.
+
+⚠ **Khoá tiền thu của `cancel_invoice` phải bắt cả phiếu thu cũ.**
+`create_cash_receipt` còn ghi `order_id`, chưa ghi `invoice_id` (P6 mới
+đổi). Chỉ so theo `invoice_id` thì hóa đơn đã thu tiền bằng phiếu cũ vẫn
+huỷ được. Chặn rộng hơn: dòng phiếu thu chưa gắn hóa đơn mà trỏ đúng đơn
+này thì coi như đã thu.
+
+**Hai chốt nói dối, thử phá mới lòi ra.** (1) Chốt tồn kho hỏi "tệp có
+chứa `warehouse_zone = 'sale'` không" — hàm có HAI truy vấn con đếm tồn,
+gỡ điều kiện ở một cái vẫn xanh; đổi sang ĐẾM SỐ LẦN phải bằng 2. (2)
+Hàm cắt thân hàm kèm chú thích cắt từ chữ `FUNCTION` trở xuống nên bỏ
+mất đúng khối chú thích đang được kiểm — chốt đỏ oan, và cách "sửa" tự
+nhiên nhất là nới lỏng nó.
+
+**Việc nhỏ kèm theo.** `paymentTermsToDays` được export khỏi
+`src/lib/returns.ts` (M3) để chốt so được với bản SQL
+`_wf2b_payment_terms_days`.
+
+---
+
 ## Quy ước (kế thừa nguyên từ pack v2)
 
 - Mọi thao tác đụng tồn kho / công nợ / trạng thái đơn đi qua RPC
@@ -163,4 +215,8 @@ nêu tên hàng.
       từ dữ liệu mà v2 chưa hề đụng tới (V0).
 - [x] ~~Trả lời Q3 (trần giá của NVBH) và Q4 (đơn trả khi sửa hóa đơn).~~
       Đã trả lời: Q3 = (a), Q4 = OK.
+- [ ] **P2 mở ra một câu:** `line_discount` bị trừ hai lần ở
+      `src/app/(dashboard)/orders/[id]/page.tsx:620,700` so với nơi ghi
+      dữ liệu (`src/lib/sell/create-order.ts:52-53`). Chỉ sai với dòng
+      có giảm giá. Sửa trang đọc hay để nguyên? Ngoài phạm vi v2b.
 - [ ] Các việc còn treo của v2: xem `docs/workflow-v2-progress.md`.

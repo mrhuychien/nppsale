@@ -288,7 +288,15 @@ export async function recomputeReceivableForOrder(
   }
 }
 
-function paymentTermsToDays(terms: string | null | undefined): number {
+/**
+ * `NET30` → 30 ngày. Mọi thứ khác (COD, rỗng, null) → 0 ngày.
+ *
+ * ⚠ CÓ MỘT BẢN SAO TRONG SQL: `_wf2b_payment_terms_days` (migration 125),
+ * vì `post_invoice` cũng phải tính hạn nợ. Hai nguồn sự thật cho cùng một
+ * phép tính là chỗ lệch kinh điển, nên `tests/wf2b-rpcs.test.ts` so hai
+ * bản trên cùng một bộ số. Sửa một bên thì sửa cả hai.
+ */
+export function paymentTermsToDays(terms: string | null | undefined): number {
   if (!terms) return 0
   const m = terms.match(/NET(\d+)/i)
   return m ? parseInt(m[1], 10) : 0

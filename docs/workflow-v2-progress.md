@@ -30,8 +30,11 @@ làm → `npx tsc --noEmit` + `npm test` + `npm run build` xanh → commit
       `tests/workflow-v2-rpcs.test.ts` (66 chốt, thử phá 12 lần đều đỏ).
 - [x] **P3** `feat(wf2-P3)` — Types, constants, permissions,
       edit-permission + cascade TS (mục 5); test cũ xanh trở lại.
-- [ ] **P4** `feat(wf2-P4)` — NVBH mobile: Lưu nháp / Gửi đơn, offline
+- [x] **P4** `feat(wf2-P4)` — NVBH mobile: Lưu nháp / Gửi đơn, offline
       `target_status`, /sell/drafts, tab Phiếu tạm / Hoàn thành / Đã hủy.
+      Kèm Rút về nháp, gỡ nút ghi công nợ tay ở màn chi tiết, ba loại
+      thông báo mới của v2, và `tests/workflow-v2-sales-flow.test.ts`
+      (12 chốt, thử phá 10 lần đều đỏ).
 - [ ] **P5** `feat(wf2-P5)` — NPP /orders: 3 tab, Xem nhanh mở rộng
       (badge cảnh báo + cột Tồn), nút Xuất hàng, in phiếu giao tách
       thành component dùng chung.
@@ -130,6 +133,49 @@ Chạy trên `44dbe7f` trước khi sửa gì:
   hỏng thành LỖI RÕ RÀNG (vi phạm ràng buộc CHECK) chứ không âm thầm sai,
   và P7 gỡ chúng khỏi menu. Không sửa ở P3 vì spec nói giữ nguyên mã luồng
   cũ.
+
+## Ghi chú P4
+
+- Trạng thái nay ĐI CÙNG ĐƠN: `OfflineOrderPayload` mang `targetStatus`,
+  `createOrderRecords` ghi thẳng giá trị đó. Bản cũ insert `draft` rồi
+  UPDATE lên trạng thái thật — đơn soạn lúc mất mạng không ai chạy bước
+  UPDATE nên nằm mãi ở nháp và nhà phân phối không bao giờ thấy.
+- **Vượt tồn không còn chặn NVBH gửi đơn** (mục 4.1): nhân viên đọc con
+  số tồn có thể đã cũ vài giờ; chặn họ là mất đơn thật vì một số liệu
+  không chắc. Băng vàng cảnh báo thay cho nút mờ; chốt chặn thật nằm ở
+  `complete_order` — kho khoá và trừ trong cùng một giao dịch.
+- Màn "Đơn của tôi" của NVBH nay có BA tab và **không có "Tất cả"**. Giá
+  trị lọc nào rơi ngoài ba tab (kể cả mặc định "all" và đường dẫn sâu
+  `?status=draft`) được quy về Phiếu tạm.
+- ⚠ **Một chỗ lệch spec, đã tự quyết vì không phải chuyện nghiệp vụ:**
+  quy ước cũ của repo là "trên điện thoại MỌI bộ lọc nằm trong sheet"
+  (người dùng yêu cầu). Ba tab này là ĐIỀU HƯỚNG chứ không phải bộ lọc —
+  giấu vào sheet thì màn mở ra ở tab Phiếu tạm và không có đường nào
+  sang hai tab kia. Nên chúng đứng ngoài sheet, và bản trong sheet tắt
+  đi cho NVBH để hai chỗ không cùng đổi một giá trị.
+- Gỡ nút **"Ghi nhận công nợ"** khỏi màn chi tiết đơn. v2 sinh công nợ
+  bên trong `complete_order`; đơn đã xuất mà thiếu công nợ là dữ liệu
+  lệch, không phải việc còn dở — nay nói ra bằng một khung cảnh báo thay
+  vì mời người dùng vá tay. `ensureReceivableForOrder` giữ nguyên trong
+  lib vì ba màn của luồng cũ còn gọi (P7 ẩn chúng).
+- Thêm **"Rút về nháp"** cho phiếu tạm: gửi nhầm thì không phải huỷ rồi
+  soạn lại. `NextStatus` có thêm cờ `backward` — trước đây nút chính lọc
+  bằng `t.value !== "cancelled"`, thêm một bước lùi nữa là nó leo lên
+  làm nút to.
+- Nhãn trạng thái phiếu trả trên màn chi tiết đơn còn là bốn giá trị cũ
+  (`pending/approved/rejected`), đã đổi theo `chk_returns_status_v2`.
+  Trước khi đổi, mọi phiếu trả rơi xuống `|| r.status` và hiện chữ
+  "submitted" trần giữa màn tiếng Việt; phần cấn trừ công nợ cũng đang
+  cộng cả phiếu chưa hoàn thành.
+- Ba loại thông báo mới (`order_completed`, `order_edited`,
+  `return_completed`) thêm vào union + CẢ HAI bảng biểu tượng. Hai loại
+  của bước duyệt cũ GIỮ LẠI: thông báo cũ còn nằm trong bảng.
+- ⚠ **Sự cố trong lúc làm, đã khắc phục:** kịch bản thử phá sao lưu tệp
+  theo tên trần nên ba tệp cùng tên `page.tsx` đè lên nhau, làm hỏng hai
+  màn. Lấy lại từ commit P3 rồi làm lại toàn bộ sửa đổi của P4; `tsc`,
+  1870 test và `npm run build` đều xanh sau khi làm lại. Lần thử phá thứ
+  hai giữ nguyên văn trong bộ nhớ theo khoá và kiểm tệp khớp từng byte
+  sau khi phục hồi.
 
 ## Quy ước
 

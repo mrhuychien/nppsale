@@ -103,6 +103,20 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
   cancelled: "Đã huỷ",
 }
 
+/**
+ * Tab của màn "Đơn của tôi" — BA tab, không có "Tất cả" và không có "Nháp".
+ *
+ * ⚠ NHÁP KHÔNG NẰM Ở ĐÂY vì ở đây không làm gì được với nó. Việc của một
+ * bản nháp là sửa nốt, gửi đi, hoặc xoá — cả ba nút đó nằm ở /sell/drafts.
+ * Cho nháp hiện cả hai chỗ là người dùng mở đúng chỗ không có nút, rồi
+ * kết luận đơn của mình bị kẹt.
+ *
+ * ⚠ KHÔNG CÓ "TẤT CẢ" là có chủ ý: gộp bốn trạng thái vào một danh sách
+ * thì NVBH phải tự đọc huy hiệu từng dòng để biết đơn nào còn chờ nhà
+ * phân phối. Ba tab là ba câu hỏi họ thật sự hỏi.
+ */
+const SALES_TABS = ["submitted", "completed", "cancelled"] as const
+
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
   // Đơn tạo ngoại tuyến còn nằm trong hộp chờ — mẫu thiết kế đặt băng báo
@@ -303,6 +317,25 @@ export default function OrdersPage() {
 
   /** Lọc theo trạng thái. Tách riêng vì phép đếm phải chạy cho TỪNG trạng thái. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /**
+   * Danh sách tab đang vẽ, và trạng thái THẬT SỰ được lọc.
+   *
+   * ⚠ NVBH KHÔNG CÓ TAB "TẤT CẢ" nên giá trị mặc định "all" — và cả một
+   * đường dẫn sâu kiểu `/orders?status=draft` — phải quy về một tab có
+   * thật. Không quy thì màn mở ra với mọi chip xám và một danh sách gồm
+   * cả nháp lẫn đơn đã huỷ, tức là đúng cái mà ba tab kia sinh ra để
+   * tránh.
+   *
+   * ⚠ Trừ khi đang lọc theo BƯỚC XỬ LÝ: bộ lọc đó chạy phía trình duyệt
+   * trên đúng trang đang xem, nên ép thêm trạng thái vào truy vấn là nó
+   * lọc trên một tập đã bị cắt và ra danh sách rỗng khó hiểu.
+   */
+  const tabKeys: readonly string[] = isSales ? SALES_TABS : (["all", ...COUNTED_STATUSES] as const)
+  const effectiveStatus =
+    isSales && !pipelineStep && !(SALES_TABS as readonly string[]).includes(statusFilter)
+      ? "submitted"
+      : statusFilter
+
   const applyStatusFilter = <T,>(q: T, status: string): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
     if (status !== "all") {
@@ -361,7 +394,7 @@ export default function OrdersPage() {
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -378,7 +411,7 @@ export default function OrdersPage() {
           .select(select, { count: "exact" })
           .order("created_at", { ascending: false })
           .range(pg.from, pg.to)
-        return applyStatusFilter(applyCommonFilters(q), statusFilter)
+        return applyStatusFilter(applyCommonFilters(q), effectiveStatus)
       }
       // ⚠ `!inner` CHỈ khi đang lọc tuyến. Bật luôn thì đơn nào chưa gắn
       // khách sẽ biến mất khỏi danh sách mà không ai biết vì sao.
@@ -431,7 +464,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -716,8 +749,14 @@ export default function OrdersPage() {
   // con số trên nút Lọc phải đếm cả trạng thái, tuyến và bước xử lý — không
   // thì đang lọc "Đã duyệt" mà nút Lọc báo 0, người ta không hiểu vì sao
   // danh sách thiếu đơn.
+  /**
+   * ⚠ VỚI NVBH, TAB TRẠNG THÁI LÀ ĐIỀU HƯỚNG, KHÔNG PHẢI BỘ LỌC NÂNG CAO.
+   * Đếm nó vào huy hiệu "đang lọc" thì tab mặc định (Phiếu tạm) cũng làm
+   * huy hiệu sáng lên, và nút "Xoá lọc" mọc ra cho một thứ không ai đặt.
+   */
+  const statusIsFiltered = isSales ? effectiveStatus !== "submitted" : statusFilter !== "all"
   const activeFilterCount =
-    (statusFilter !== "all" ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
+    (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (amountMin ? 1 : 0) + (amountMax ? 1 : 0)
@@ -899,8 +938,8 @@ export default function OrdersPage() {
   /** Hàng chip trạng thái — cuộn ngang trên điện thoại, xuống dòng trên máy tính. */
   const statusChips = (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
-          {(["all", ...COUNTED_STATUSES] as const).map((k) => {
-            const active = statusFilter === k && !pipelineStep
+          {tabKeys.map((k) => {
+            const active = effectiveStatus === k && !pipelineStep
             const count = statusCounts[k] ?? 0
             return (
               <button
@@ -918,7 +957,7 @@ export default function OrdersPage() {
                     : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
                 }`}
               >
-                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k]}
+                {k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]]}
                 <span
                   className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${
                     active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"
@@ -1033,16 +1072,20 @@ export default function OrdersPage() {
           hàng chip trạng thái, tuyến và bước xử lý chỉ đứng ngoài ở máy
           tính. Cùng một JSX (`statusChips`, `pipelineChips`) vẽ ở cả hai
           chỗ — nhân đôi là để hai bên trôi khỏi nhau. */}
+      {/* ⚠ BA TAB CỦA NVBH KHÔNG NẰM TRONG SHEET. Quy tắc "mọi bộ lọc vào
+          sheet" ở trên nói về BỘ LỌC; với NVBH ba tab này là ĐIỀU HƯỚNG —
+          màn mở ra ở tab Phiếu tạm, giấu tab đi là họ không có đường nào
+          sang Hoàn thành / Đã huỷ. Ba cột vừa khít 375px. */}
       <PipelineTabs
-        className="hidden lg:grid"
-        active={pipelineStep ? "" : statusFilter}
+        className={isSales ? "grid" : "hidden lg:grid"}
+        active={pipelineStep ? "" : effectiveStatus}
         onPick={(k) => {
           setStatusFilter(k)
           setPipelineStep(null)
         }}
-        tabs={(["all", ...COUNTED_STATUSES] as const).map((k) => ({
+        tabs={tabKeys.map((k) => ({
           key: k,
-          label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k],
+          label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]],
           count: statusCounts[k] ?? 0,
           accent: k === "all" ? "#181c1e" : orderTone(k).accent,
         }))}
@@ -1076,10 +1119,14 @@ export default function OrdersPage() {
         onOpenChange={setFilterSheet}
       >
         <div className="grid gap-4">
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Trạng thái</p>
-            {statusChips}
-          </div>
+          {/* NVBH đã có ba tab NGAY TRÊN danh sách (xem bên dưới) — để thêm
+              một bản trong sheet là hai chỗ cùng đổi một giá trị. */}
+          {!isSales && (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Trạng thái</p>
+              {statusChips}
+            </div>
+          )}
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>

@@ -76,14 +76,39 @@ describe("M4.2 — một thanh hành động theo STATUS_FLOW", () => {
   })
 
   /**
-   * ⚠ "Hủy đơn" có mặt ở draft/confirmed/picking. Nếu chọn phần tử đầu
-   * của STATUS_FLOW làm nút to thì ở picking nút to vẫn là bước tiến,
-   * nhưng chỉ cần đảo thứ tự map một lần là nút to thành "Hủy đơn".
+   * ⚠ BƯỚC LÙI KHÔNG BAO GIỜ LÀ NÚT CHÍNH. Nút chính là nút to nhất trên
+   * thanh dính đáy; chỉ cần đảo thứ tự map một lần là "Hủy đơn" hay "Rút
+   * về nháp" ngồi vào đó, và người dùng bấm nhầm là đơn biến khỏi mắt nhà
+   * phân phối.
+   *
+   * ⚠ Lọc theo `t.value !== "cancelled"` là KHÔNG ĐỦ từ v2: phiếu tạm còn
+   * một bước lùi nữa tên là "Rút về nháp". Phải lọc theo cờ `backward`,
+   * và mọi bước lùi phải mang cờ đó.
    */
-  it("Hủy đơn KHÔNG bao giờ là nút chính", () => {
+  it("bước LÙI không bao giờ là nút chính", () => {
     expect(ORDER_DETAIL).toContain(
-      'const primaryTransition = roleTransitions.find((t) => t.value !== "cancelled") || null'
+      "const primaryTransition = roleTransitions.find((t) => !t.backward) || null"
     )
+    const i = ORDER_DETAIL.indexOf("const STATUS_FLOW")
+    const flow = ORDER_DETAIL.slice(i, ORDER_DETAIL.indexOf("\n}", i))
+    // Mỗi bước trong bảng đều là bước lùi — v2 không còn bước tiến nào
+    // làm được bằng một lệnh ghi thẳng (xuất hàng đi qua RPC).
+    const steps = flow.match(/\{ value: "/g) ?? []
+    expect(steps.length).toBeGreaterThan(0)
+    expect(flow.match(/backward: true/g)?.length, "có bước lùi thiếu cờ backward").toBe(steps.length)
+  })
+
+  /**
+   * ⚠ RÚT VỀ NHÁP CHỈ CÓ Ở PHIẾU TẠM. Đơn đã xuất kéo ngược về nháp là
+   * kho đã trừ mà đơn thì như chưa từng gửi — migration 119 chặn ở
+   * trigger, nên một nút như thế chỉ sinh ra lỗi P0001 khó hiểu.
+   */
+  it("Rút về nháp chỉ mở ở phiếu tạm", () => {
+    const i = ORDER_DETAIL.indexOf("const STATUS_FLOW")
+    const flow = ORDER_DETAIL.slice(i, ORDER_DETAIL.indexOf("\n}", i))
+    const sub = flow.slice(flow.indexOf("submitted: ["), flow.indexOf("completed: ["))
+    expect(sub, "phiếu tạm không có đường rút về nháp").toContain('value: "draft"')
+    expect(flow.match(/value: "draft"/g)?.length, "trạng thái khác cũng rút về nháp").toBe(1)
   })
 
   it("phần còn lại + Xoá đơn nằm trong menu ⋮", () => {
@@ -96,16 +121,24 @@ describe("M4.2 — một thanh hành động theo STATUS_FLOW", () => {
   })
 
   /**
-   * ⚠ delivered không còn bước nào trong STATUS_FLOW, nhưng việc thì
-   * còn: ghi nhận công nợ rồi xuất hoá đơn. Thanh rỗng ở đúng trạng thái
-   * có việc là tệ hơn không có thanh.
+   * ⚠ ĐƠN ĐÃ XUẤT KHÔNG CÒN BƯỚC NÀO TRONG STATUS_FLOW, nhưng việc thì
+   * còn: xuất hoá đơn. Thanh rỗng ở đúng trạng thái có việc là tệ hơn
+   * không có thanh.
+   *
+   * ⚠ VÀ KHÔNG CÒN NÚT "GHI NHẬN CÔNG NỢ". Workflow v2 sinh công nợ bên
+   * trong `complete_order`, cùng giao dịch với lệnh trừ kho. Đơn đã xuất
+   * mà thiếu công nợ là DỮ LIỆU LỆCH, không phải việc còn dở — một nút vá
+   * tay ở đây che mất chỗ hỏng và đẻ ra công nợ thứ hai nếu chỗ hỏng thực
+   * ra chỉ là đọc chậm.
    */
-  it("đơn đã giao vẫn có hành động chính", () => {
+  it("đơn đã xuất còn việc xuất hoá đơn, KHÔNG còn nút ghi nhận công nợ", () => {
     expect(ORDER_DETAIL).toContain("const deliveredNext")
     const i = ORDER_DETAIL.indexOf("const deliveredNext")
     const block = ORDER_DETAIL.slice(i, i + 700)
-    expect(block).toContain("Ghi nhận công nợ")
     expect(block).toContain("Xuất hóa đơn")
+    expect(block).not.toContain("Ghi nhận công nợ")
+    // Và cả trang không còn đường nào ghi công nợ từ trình duyệt.
+    expect(ORDER_DETAIL).not.toContain("ensureReceivableForOrder")
   })
 
   /** Thanh dính đáy che cuối trang nếu vùng nội dung không chừa đệm. */

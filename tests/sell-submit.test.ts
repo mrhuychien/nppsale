@@ -138,21 +138,25 @@ describe("Một đường ghi duy nhất, có mạng hay không", () => {
    */
   it("mất mạng thì xếp hàng, không ghi thẳng", () => {
     expect(SUBMIT).toContain("if (!i.online) {")
-    expect(SUBMIT).toContain("await enqueueOrder(i.payload)")
+    expect(SUBMIT).toContain("await enqueueOrder(payload)")
   })
 
   it("có mạng thì đi qua createOrderRecords, không tự viết insert", () => {
-    expect(SUBMIT).toContain("await createOrderRecords(supabase, i.payload, ctx)")
+    expect(SUBMIT).toContain("await createOrderRecords(supabase, payload, ctx)")
     expect(SUBMIT).not.toContain('.insert(')
   })
 
   /**
-   * ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. Đơn đã tạo nhưng đứng
-   * sai trạng thái mà màn hình báo thành công là kiểu hỏng khó tìm nhất.
+   * ⚠ TRẠNG THÁI ĐI CÙNG ĐƠN, kể cả khi đơn nằm trong hàng đợi ngoại
+   * tuyến. Bản cũ insert `draft` rồi UPDATE lên trạng thái thật; đơn tạo
+   * lúc mất mạng không ai chạy bước UPDATE đó nên nằm mãi ở nháp và nhà
+   * phân phối không bao giờ thấy nó.
    */
-  it("đặt trạng thái xong phải đếm số dòng trả về", () => {
-    expect(SUBMIT).toContain('.select("id")')
-    expect(SUBMIT).toMatch(/if \(!rows \|\| rows\.length === 0\)/)
+  it("chỉ MỘT lệnh ghi, trạng thái nằm trong payload", () => {
+    expect(SUBMIT).toContain("targetStatus: status")
+    expect(SUBMIT).not.toContain('.update(')
+    const CREATE = readFileSync(resolve(__dirname, "../src/lib/orders/create.ts"), "utf-8")
+    expect(CREATE).toContain('status: payload.targetStatus ?? "draft"')
   })
 })
 
@@ -172,12 +176,29 @@ describe("Màn giỏ hàng", () => {
     expect(CART_PAGE).toContain("disabled={submitting ||")
   })
 
-  /** Chặn đúng thứ phải chặn, và nói rõ chặn vì gì. */
-  it("chặn vượt tồn và giá ngoài hạn mức", () => {
-    expect(CART_PAGE).toContain("hasOver")
+  /**
+   * ⚠ HAI LOẠI VI PHẠM, HAI CÁCH ĐỐI XỬ KHÁC HẲN NHAU — đừng gộp.
+   *
+   * Giá ngoài hạn mức là THẨM QUYỀN: nhân viên không được bán dưới sàn,
+   * hôm nay cũng như tuần sau. Chặn, và nói trên mặt nút vì sao.
+   *
+   * Vượt tồn là SỐ LIỆU CÓ THỂ ĐÃ CŨ: máy của nhân viên đọc con số tồn từ
+   * lần đồng bộ trước, hàng về kho lúc nào họ không biết. Chặn gửi đơn vì
+   * con số đó là mất đơn thật vì một thông tin không chắc. Ở đây chỉ CẢNH
+   * BÁO; chốt chặn thật là `complete_order` — kho khoá và trừ trong cùng
+   * một giao dịch, không ai chen vào giữa được.
+   */
+  it("giá ngoài hạn mức thì chặn và nói trên nút; vượt tồn thì chỉ cảnh báo", () => {
     expect(CART_PAGE).toContain("hasPriceBad")
-    expect(CART_PAGE).toContain('"Vượt tồn kho"')
     expect(CART_PAGE).toContain('"Giá ngoài hạn mức"')
+
+    // Vượt tồn vẫn phải TÍNH và vẫn phải HIỆN — chỉ là không chặn.
+    expect(CART_PAGE).toContain("hasOver")
+    expect(CART_PAGE, "mất băng cảnh báo vượt tồn").toContain("{hasOver && (")
+    expect(CART_PAGE).toContain("vượt tồn kho")
+
+    // Và không được quay lại thành một nhãn chặn trên mặt nút.
+    expect(CART_PAGE, "nút lại báo chặn vì vượt tồn").not.toContain('"Vượt tồn kho"')
   })
 
   /**
@@ -188,7 +209,7 @@ describe("Màn giỏ hàng", () => {
    * ⚠ Lưu tạm cũng KHÔNG đòi phải có hàng. Đó chính là lúc cần lưu tạm
    * nhất — đang đứng ở quầy, ghi được tên khách thì khách bận.
    */
-  it("nút Lưu tạm không khoá theo tồn kho và không đòi có hàng, vẫn khoá theo giá", () => {
+  it("nút Lưu nháp không khoá theo tồn kho và không đòi có hàng, vẫn khoá theo giá", () => {
     const m = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(CART_PAGE)
     expect(m, "không tìm thấy nút Lưu tạm").toBeTruthy()
     expect(m![0]).not.toContain("hasOver")
@@ -196,24 +217,29 @@ describe("Màn giỏ hàng", () => {
   })
 
   /**
-   * ⚠ LƯU TẠM KHÔNG ĐƯỢC THÀNH ĐƯỜNG VÒNG. Cái gì nút "Đặt hàng" chặn mà
-   * nút "Lưu tạm" cho qua thì đó là cách lách: lưu tạm giá dưới sàn rồi
-   * nhờ duyệt — mà bước duyệt KHÔNG kiểm lại giá sàn. Hai nút chỉ được
-   * khác nhau ở tồn kho và ở số dòng hàng.
+   * ⚠ LƯU NHÁP KHÔNG ĐƯỢC THÀNH ĐƯỜNG VÒNG. Cái gì nút "Gửi đơn" chặn mà
+   * nút "Lưu nháp" cho qua thì đó là cách lách: lưu nháp giá dưới sàn rồi
+   * gửi đi — và workflow v2 KHÔNG còn bước duyệt nào kiểm lại giá sàn.
+   * Hai nút chỉ được khác nhau ở số dòng hàng.
    */
   it("hai nút chặn giá và chặn thiếu khách như nhau", () => {
     const draftBtn = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(
       CART_PAGE
     )!![0]
     const sendBtn = /disabled=\{submitting \|\| cart\.cart\.length === 0[^}]*\}/.exec(CART_PAGE)
-    expect(sendBtn, "không tìm thấy nút Đặt hàng").toBeTruthy()
+    expect(sendBtn, "không tìm thấy nút Gửi đơn").toBeTruthy()
     for (const b of [draftBtn, sendBtn![0]]) {
       expect(b, `nút không chặn giá sàn: ${b}`).toContain("hasPriceBad")
       expect(b, `nút không đòi có khách: ${b}`).toContain("!cart.customerId")
     }
-    // Đơn GỬI ĐI thì phải có hàng và phải đủ tồn.
+    // Đơn GỬI ĐI thì phải có hàng.
     expect(sendBtn![0]).toContain("cart.cart.length === 0")
-    expect(sendBtn![0]).toContain("hasOver")
+    /**
+     * ⚠ VÀ KHÔNG ĐƯỢC ĐÒI ĐỦ TỒN. Đây là chỗ dễ bị "sửa lại cho chắc" nhất
+     * — thêm `hasOver` vào là nhân viên đứng ở quầy mất đơn vì một con số
+     * tồn cũ. Chốt chặn thuộc về `complete_order`, không phải cái nút này.
+     */
+    expect(sendBtn![0], `nút Gửi đơn chặn theo tồn kho: ${sendBtn![0]}`).not.toContain("hasOver")
     /**
      * ⚠ GIÁ DÒNG TRẢ cũng là thẩm quyền, không phải chuyện thời điểm — nên
      * CẢ HAI nút đều chặn. Trả cao hơn giá bảng là một đường rút tiền:

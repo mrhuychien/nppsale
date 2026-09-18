@@ -201,11 +201,22 @@ describe("Chi tiết đơn mobile theo mẫu", () => {
     expect(DETAIL).toContain("<MobileOrderDetail")
   })
 
-  it("khung cảnh báo duyệt / nháp là MỘT JSX cho cả hai bản", () => {
+  it("khung cảnh báo / nháp là MỘT JSX cho cả hai bản", () => {
     expect(DETAIL).toContain("const callouts = (")
     expect(DETAIL).toContain("callout={callouts}")
     expect(DETAIL).toContain("{callouts}")
-    expect(DETAIL.match(/Bản nháp — chưa gửi duyệt/g)?.length).toBe(1)
+    expect(DETAIL.match(/Bản nháp — chưa gửi/g)?.length).toBe(1)
+  })
+
+  /**
+   * ⚠ WORKFLOW V2 KHÔNG CÓ NGƯỜI DUYỆT. Chữ "duyệt" còn sót lại trên màn
+   * là chỉ người dùng đi chờ một bước không tồn tại: NVBH ngồi đợi ai đó
+   * duyệt, trong khi việc thật là nhà phân phối bấm Xuất hàng.
+   */
+  it("không còn chữ gửi duyệt / chờ duyệt trên màn chi tiết", () => {
+    expect(DETAIL).not.toContain("Gửi duyệt")
+    expect(DETAIL).not.toContain("chờ duyệt")
+    expect(DETAIL).not.toContain("handleSendForApproval")
   })
 
   /**

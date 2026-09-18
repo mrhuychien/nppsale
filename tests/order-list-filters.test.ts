@@ -77,9 +77,35 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
   it("chip (điện thoại) và thẻ PipelineTabs (máy tính) dựng từ CÙNG danh sách trạng thái, cùng bộ số", () => {
     expect(ORDERS).toContain("const statusChips = (")
     expect(ORDERS.match(/\{statusChips\}/g)?.length).toBe(1)
-    expect(ORDERS.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(2)
+    /**
+     * ⚠ MỘT DANH SÁCH TAB, HAI CHỖ VẼ. Danh sách nay phụ thuộc vai trò
+     * (NVBH ba tab, còn lại "Tất cả" + bốn trạng thái) nên nó PHẢI được
+     * tính một lần rồi dùng chung: viết lại điều kiện vai trò ở chỗ thứ
+     * hai là hai khổ màn hiện hai bộ tab khác nhau cho cùng một người.
+     */
+    expect(ORDERS.match(/const tabKeys: readonly string\[\] =/g)?.length).toBe(1)
+    expect(ORDERS.match(/tabKeys\.map\(/g)?.length).toBe(2)
     expect(ORDERS.match(/count: statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
     expect(ORDERS.match(/const count = statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
+  })
+
+  /**
+   * ⚠ BA TAB CỦA NVBH LÀ ĐIỀU HƯỚNG, KHÔNG PHẢI BỘ LỌC — nên chúng là
+   * ngoại lệ DUY NHẤT của quy tắc "điện thoại thì mọi bộ lọc vào sheet".
+   * Màn "Đơn của tôi" mở ra ở tab Phiếu tạm; nhét tab vào sheet là NVBH
+   * không còn đường nào sang Hoàn thành / Đã huỷ, tức là một ngõ cụt.
+   */
+  it("NVBH: ba tab đứng NGOÀI sheet, và sheet không vẽ thêm một bản nữa", () => {
+    const i = ORDERS.indexOf("<PipelineTabs")
+    expect(i).toBeGreaterThan(0)
+    const sheet = ORDERS.indexOf("<MobileFilterBar")
+    const end = ORDERS.indexOf("</MobileFilterBar>", sheet)
+    expect(i < sheet || i > end, "PipelineTabs đang nằm trong sheet lọc").toBe(true)
+    // Hiện trên MỌI khổ màn khi là NVBH, chứ không chỉ máy tính.
+    expect(ORDERS).toContain('className={isSales ? "grid" : "hidden lg:grid"}')
+    // Và bản trong sheet tắt đi cho NVBH — hai chỗ cùng đổi một giá trị
+    // thì người dùng bấm một chỗ, thấy chỗ kia không đổi theo.
+    expect(ORDERS.slice(sheet, end)).toContain("{!isSales && (")
   })
 
   /**
@@ -90,7 +116,15 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
   it("nút Lọc đếm cả trạng thái / tuyến / bước xử lý, Xoá lọc xoá cả ba", () => {
     const i = ORDERS.indexOf("const activeFilterCount =")
     const cnt = ORDERS.slice(i, ORDERS.indexOf("const clearAdvancedFilters", i))
-    expect(cnt).toContain('(statusFilter !== "all" ? 1 : 0)')
+    /**
+     * ⚠ NVBH đo "đang lọc" theo một mốc khác: tab mặc định của họ là Phiếu
+     * tạm, không phải "Tất cả". Đếm theo mốc cũ thì màn vừa mở đã báo
+     * "đang lọc 1" và mọc ra nút Xoá lọc cho một thứ không ai đặt.
+     */
+    expect(cnt).toContain("(statusIsFiltered ? 1 : 0)")
+    expect(ORDERS).toContain(
+      'const statusIsFiltered = isSales ? effectiveStatus !== "submitted" : statusFilter !== "all"'
+    )
     expect(cnt).toContain('(routeFilter !== "all" ? 1 : 0)')
     expect(cnt).toContain("(pipelineStep ? 1 : 0)")
     const j = ORDERS.indexOf("const clearAdvancedFilters = () => {")
@@ -153,7 +187,7 @@ describe("Lọc theo tuyến bán hàng", () => {
 
   /** Đổi bộ lọc mà không tải lại là bộ lọc không có tác dụng. */
   it("đổi tuyến thì tải lại danh sách và về trang 1", () => {
-    const deps = ORDERS.match(/\}, \[pg\.from, pg\.to, debouncedSearch, statusFilter, routeFilter/)
+    const deps = ORDERS.match(/\}, \[pg\.from, pg\.to, debouncedSearch, effectiveStatus, routeFilter/)
     expect(deps, "truy vấn danh sách không theo dõi routeFilter").toBeTruthy()
     expect(ORDERS).toMatch(/pg\.reset\(\)[\s\S]{0,200}?routeFilter/)
   })
@@ -177,7 +211,13 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
 
   /** Một nơi khai duy nhất thì không có chỗ để hai bên lệch nhau. */
   it("danh sách và phép đếm dùng chung một hàm lọc", () => {
-    expect(ORDERS).toContain("return applyStatusFilter(applyCommonFilters(q), statusFilter)")
+    /**
+     * ⚠ TRUY VẤN PHẢI DÙNG `effectiveStatus`, KHÔNG PHẢI `statusFilter`.
+     * NVBH không có tab "Tất cả", nên giá trị thô còn nằm ở "all" cho tới
+     * khi họ chạm một tab — lấy giá trị thô đi lọc là màn vừa mở đã liệt
+     * kê cả nháp lẫn đơn huỷ, đúng cái ba tab sinh ra để tránh.
+     */
+    expect(ORDERS).toContain("return applyStatusFilter(applyCommonFilters(q), effectiveStatus)")
     const uses = ORDERS.match(/applyCommonFilters\(/g) ?? []
     expect(uses.length, "phải gọi ở cả danh sách lẫn phép đếm").toBe(2)
   })

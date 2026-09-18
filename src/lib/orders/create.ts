@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
 
 /** Payload đơn hàng dạng tuần tự hoá — lưu được vào IndexedDB (outbox)
  *  và phát lại khi đồng bộ. Mọi giá trị đã tính sẵn tại thời điểm tạo
@@ -38,6 +39,17 @@ export interface OfflineOrderPayload {
     notes: string | null
   }
   lines: OfflineOrderLine[]
+  /**
+   * Trạng thái đơn sẽ mang khi được ghi xuống.
+   *
+   * ⚠ ĐI CÙNG ĐƠN VÀO HÀNG ĐỢI NGOẠI TUYẾN. Trước đây mọi đơn đều insert
+   * `draft` rồi mới UPDATE lên trạng thái thật; đơn tạo lúc mất mạng thì
+   * không có ai chạy bước UPDATE đó, nên nó nằm mãi ở nháp và nhà phân
+   * phối không bao giờ nhìn thấy. Ghi thẳng trạng thái người dùng chọn.
+   */
+  targetStatus?: "draft" | "submitted"
+  /** Cảnh báo kèm đơn cho NPP đọc trước khi xuất hàng. */
+  approvalReason?: string | null
   returns: { reason: string; notes: string | null } | null
   returnLines: OfflineReturnLine[]
   /** Thông tin hiển thị trong danh sách đơn chờ đồng bộ. */
@@ -85,8 +97,12 @@ export async function createOrderRecords(
       vat: payload.order.vat,
       total: payload.order.total,
       notes: payload.order.notes,
-      status: "draft",
-      approval_reason: "Tạo offline — chờ kiểm tra tồn/công nợ khi lên mạng",
+      status: payload.targetStatus ?? "draft",
+      approval_reason:
+        payload.approvalReason ??
+        (payload.targetStatus === "submitted"
+          ? "Tạo offline — NPP kiểm tồn/công nợ trước khi xuất hàng"
+          : DRAFT_APPROVAL_REASON),
     })
     .select("id")
     .single()
@@ -146,7 +162,9 @@ export async function createOrderRecords(
         requested_by: ctx.userId,
         reason: payload.returns.reason,
         notes: payload.returns.notes,
-        status: "pending",
+        // Phiếu trả kèm đơn nằm chờ: nó chỉ thành phiếu tạm khi đơn được
+        // xuất hàng (RPC complete_order làm việc đó).
+        status: "draft",
       })
       .select("id")
       .single()

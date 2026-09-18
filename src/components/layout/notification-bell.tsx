@@ -8,15 +8,25 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button"
 import {
   Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check, Camera,
+  Clock, Navigation, Info, Check, Camera, PackageCheck, Pencil, Undo2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 
+/**
+ * ⚠ THIẾU MỘT KHOÁ Ở ĐÂY LÀ THÔNG BÁO CÂM. Dòng `ICON_MAP[n.type] ||
+ * ICON_MAP.info` ở dưới nuốt mọi loại lạ thành biểu tượng chữ "i" — người
+ * dùng thấy thông báo nhưng không phân biệt được "đã xuất hàng" với
+ * "đã sửa đơn". `Record<NotificationType, …>` là thứ bắt lỗi đó lúc biên
+ * dịch, nên đừng đổi sang `Partial<…>`.
+ */
 const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = {
   order_pending_approval: { icon: ShoppingCart, color: "text-[#b54708] bg-[#fff4ed]" },
   order_approved: { icon: CircleCheck, color: "text-tertiary bg-[#ecfdf3]" },
+  order_completed: { icon: PackageCheck, color: "text-tertiary bg-[#ecfdf3]" },
+  order_edited: { icon: Pencil, color: "text-[#b54708] bg-[#fff4ed]" },
   order_cancelled: { icon: CircleX, color: "text-error bg-error-container" },
+  return_completed: { icon: Undo2, color: "text-[#175cd3] bg-[#eff8ff]" },
   payment_received: { icon: CreditCard, color: "text-[#175cd3] bg-[#eff8ff]" },
   receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10" },

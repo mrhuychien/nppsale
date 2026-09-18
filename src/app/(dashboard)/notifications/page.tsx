@@ -16,15 +16,24 @@ import {
 } from "@/components/ui/select"
 import {
   Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check, Trash2, Camera,
+  Clock, Navigation, Info, Check, Trash2, Camera, PackageCheck, Pencil, Undo2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 
+/**
+ * ⚠ Ô LỌC "LOẠI" DỰNG TỪ CHÍNH BẢNG NÀY (xem `Object.keys(ICON_MAP)` bên
+ * dưới): thiếu một khoá là loại đó không lọc được, dù thông báo vẫn về.
+ * Hai loại "duyệt" ở đầu là DI SẢN — v2 không sinh thêm, nhưng thông báo
+ * cũ còn nằm trong bảng và người dùng vẫn cần lọc ra xem.
+ */
 const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string; label: string }> = {
-  order_pending_approval: { icon: ShoppingCart, color: "text-[#b54708] bg-[#fff4ed]", label: "Chờ duyệt" },
-  order_approved: { icon: CircleCheck, color: "text-tertiary bg-[#ecfdf3]", label: "Đã duyệt" },
+  order_pending_approval: { icon: ShoppingCart, color: "text-[#b54708] bg-[#fff4ed]", label: "Chờ duyệt (cũ)" },
+  order_approved: { icon: CircleCheck, color: "text-tertiary bg-[#ecfdf3]", label: "Đã duyệt (cũ)" },
+  order_completed: { icon: PackageCheck, color: "text-tertiary bg-[#ecfdf3]", label: "Đã xuất hàng" },
+  order_edited: { icon: Pencil, color: "text-[#b54708] bg-[#fff4ed]", label: "Sửa đơn đã xuất" },
   order_cancelled: { icon: CircleX, color: "text-error bg-error-container", label: "Hủy đơn" },
+  return_completed: { icon: Undo2, color: "text-[#175cd3] bg-[#eff8ff]", label: "Đơn trả hoàn thành" },
   payment_received: { icon: CreditCard, color: "text-[#175cd3] bg-[#eff8ff]", label: "Thanh toán" },
   receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]", label: "Quá hạn" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10", label: "Ghé thăm" },

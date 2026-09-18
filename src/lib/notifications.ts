@@ -71,8 +71,11 @@ export async function createNotificationForUsers(
 }
 
 /**
- * Look up the user ids of all owners/managers in an org. Used to broadcast
- * "order_pending_approval" notifications.
+ * Look up the user ids of all owners/managers in an org.
+ *
+ * ⚠ KHÔNG CÒN AI GỌI. Workflow v2 bỏ bước duyệt nên không còn thông báo
+ * "order_pending_approval" để phát đi. Giữ lại vì đây là một phép tra cứu
+ * chung — ai cần gửi thông báo cho ban quản lý thì dùng, đừng viết lại.
  */
 export async function fetchApproversForOrg(
   supabase: SupabaseClient,

@@ -22,15 +22,22 @@ describe("Thẻ trạng thái (PipelineTabs) — cùng số với bảng bên d�
   it("dựng từ COUNTED_STATUSES với số đếm từ máy chủ, vạch màu theo orderTone", () => {
     const i = PAGE.indexOf("<PipelineTabs")
     const block = PAGE.slice(i, PAGE.indexOf("/>", i))
-    expect(block).toContain('(["all", ...COUNTED_STATUSES] as const).map')
+    expect(block).toContain("tabKeys.map(")
     expect(block).toContain("count: statusCounts[k] ?? 0")
     expect(block).toContain("orderTone(")
     // Chọn thẻ thì buông bước pipeline — hai bộ lọc loại trừ nhau.
     expect(block).toContain("setPipelineStep(null)")
   })
 
-  it("chỉ máy tính; ô 0 đơn mờ đi, ô đang chọn có vạch đáy", () => {
-    expect(PAGE).toContain('className="hidden lg:grid"')
+  it("ô 0 đơn mờ đi, ô đang chọn có vạch đáy; chỉ máy tính, trừ NVBH", () => {
+    /**
+     * ⚠ NGOẠI LỆ CÓ CHỦ Ý. Với mọi vai trò khác, thẻ trạng thái là thứ của
+     * màn rộng — điện thoại dùng hàng chip trong sheet. Riêng NVBH thì ba
+     * tab này LÀ điều hướng của màn "Đơn của tôi", nên chúng hiện trên cả
+     * điện thoại; giấu đi là màn mở ra ở tab Phiếu tạm và không có đường
+     * nào sang hai tab kia.
+     */
+    expect(PAGE).toContain('className={isSales ? "grid" : "hidden lg:grid"}')
     expect(TABS).toContain('t.count === 0 ? "text-outline-variant" : "text-on-surface"')
     expect(TABS).toContain("background: on ? t.accent : \"transparent\"")
     expect(TABS).toContain("aria-selected={on}")

@@ -336,10 +336,20 @@ export interface Expense {
   category?: ExpenseCategory
 }
 
+/**
+ * ⚠ HAI LOẠI ĐẦU LÀ DI SẢN. Workflow v2 bỏ bước duyệt nên không chỗ nào
+ * sinh thêm `order_pending_approval` / `order_approved` nữa — nhưng thông
+ * báo CŨ trong bảng vẫn mang hai giá trị đó (migration 119 giữ chúng
+ * trong CHECK). Bỏ khỏi union là chuông đọc phải một hàng cũ rồi rơi vào
+ * nhánh không có biểu tượng.
+ */
 export type NotificationType =
   | "order_pending_approval"
   | "order_approved"
+  | "order_completed"
+  | "order_edited"
   | "order_cancelled"
+  | "return_completed"
   | "payment_received"
   | "receivable_overdue"
   | "visit_logged"

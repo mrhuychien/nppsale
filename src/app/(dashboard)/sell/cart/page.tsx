@@ -123,15 +123,20 @@ export default function SellCartPage() {
   )
 
   /**
-   * ⚠ ĐIỀU KIỆN CHẶN LƯU XÉT TỔNG, không phải "có dòng nào bị tô đỏ".
-   * Tồn 10, bán 9, đổi 2 → từng dòng đều "gần đủ" mà tổng 11 > 10. Tô đỏ
-   * từng dòng chỉ để người dùng biết nhìn vào đâu.
+   * ⚠ VƯỢT TỒN KHÔNG CÒN CHẶN NVBH GỬI ĐƠN. Nhân viên đứng ở quầy đọc
+   * một con số tồn có thể đã cũ vài giờ; chặn họ ghi đơn vì con số đó là
+   * mất đơn thật vì một số liệu không chắc. Chốt chặn thật nằm ở
+   * `complete_order`: lúc nhà phân phối bấm Xuất hàng, kho được khoá và
+   * trừ trong cùng một giao dịch. Ở đây chỉ CẢNH BÁO.
+   *
+   * ⚠ Cảnh báo xét TỔNG, không phải "có dòng nào bị tô đỏ". Tồn 10, bán
+   * 9, đổi 2 → từng dòng đều "gần đủ" mà tổng 11 > 10.
    */
   const hasOver = hasOverstock(stockLines, stockReturns, products, stockByProduct)
   /**
-   * ⚠ Dòng ĐỔI vượt tồn phải hiện được Ở ĐÂY. Nút bấm báo "Vượt tồn kho"
-   * mà không dòng bán nào tô đỏ thì người dùng soi mãi danh sách hàng bán
-   * không hiểu sai ở đâu — hàng đổi nằm trong một màn khác.
+   * ⚠ Dòng ĐỔI vượt tồn phải hiện được Ở ĐÂY. Băng vàng chỉ nói "có mặt
+   * hàng vượt tồn" mà không dòng bán nào tô đỏ thì người dùng soi mãi danh
+   * sách hàng bán không hiểu sai ở đâu — hàng đổi nằm trong một màn khác.
    */
   const exchangeOver = useMemo(
     () =>
@@ -220,7 +225,7 @@ export default function SellCartPage() {
         returnLines: cart.returnLines,
       })
 
-      // Ngữ cảnh duyệt chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
+      // Ngữ cảnh quy tắc chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
       const ctx =
         online && !asDraft
           ? await loadApprovalContext(supabase, {
@@ -353,9 +358,9 @@ export default function SellCartPage() {
           <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
         </button>
 
-        {/* ⚠ Nói TRƯỚC rằng đơn đã duyệt có thể quay lại chờ duyệt. Biết
-            sau khi bấm Lưu là quá muộn — nhân viên đã hứa với khách là
-            hàng ra trong hôm nay. */}
+        {/* ⚠ Nói TRƯỚC đơn đang ở đâu và sửa được tới đâu. Biết sau khi
+            bấm Lưu là quá muộn — nhân viên đã hứa với khách là hàng ra
+            trong hôm nay. */}
         {editing && (
           <div className="flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
             <span className="min-w-0 flex-1">{editHint(editing.status)}</span>
@@ -375,8 +380,8 @@ export default function SellCartPage() {
           <div className="flex items-start gap-2.5 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
             <TriangleAlert className="mt-px h-[18px] w-[18px] shrink-0" />
             <span>
-              Đơn này đẩy khách <b>vượt hạn mức {formatCurrency(projectedOver)}</b>. Vẫn lưu được
-              nhưng sẽ cần duyệt.
+              Đơn này đẩy khách <b>vượt hạn mức {formatCurrency(projectedOver)}</b>. Vẫn gửi được
+              — cảnh báo sẽ đi kèm đơn cho nhà phân phối đọc.
             </span>
           </div>
         )}
@@ -385,6 +390,16 @@ export default function SellCartPage() {
           <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
             {staleCount} dòng đang giữ giá của bảng giá cũ. Mở từng dòng để lấy giá mới của khách
             này.
+          </div>
+        )}
+
+        {/* ⚠ CẢNH BÁO, KHÔNG CHẶN. Số tồn trên máy có thể đã cũ; chốt chặn
+            thật nằm ở lúc nhà phân phối bấm Xuất hàng, khi kho được khoá
+            và trừ trong cùng một giao dịch. */}
+        {hasOver && (
+          <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
+            Có mặt hàng vượt tồn kho đang ghi nhận. Vẫn gửi đơn được — nhà phân phối sẽ kiểm lại
+            lúc xuất hàng.
           </div>
         )}
 
@@ -577,12 +592,12 @@ export default function SellCartPage() {
               onClick={() => submit(true)}
               className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
             >
-              Lưu tạm
+              Lưu nháp
             </button>
           )}
           <button
             type="button"
-            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasOver || hasPriceBad || returnPriceBad > 0}
+            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasPriceBad || returnPriceBad > 0}
             onClick={() => submit(false)}
             className="h-13 flex-[1.3] rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary disabled:opacity-40"
           >
@@ -590,9 +605,7 @@ export default function SellCartPage() {
               ? "Đang gửi…"
               : !cart.customerId
               ? "Chọn khách"
-              : hasOver
-                ? "Vượt tồn kho"
-                : hasPriceBad
+              : hasPriceBad
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
                     ? "Giá hàng trả quá cao"
@@ -607,7 +620,7 @@ export default function SellCartPage() {
         open={deleteOpen}
         onOpenChange={(o) => !deleting && setDeleteOpen(o)}
         title={`Xoá đơn nháp ${editing?.orderCode ?? ""}?`}
-        description="Đơn nháp này sẽ bị xoá hẳn khỏi hệ thống, kể cả hàng trả kèm theo chưa duyệt. Không hoàn tác được."
+        description="Đơn nháp này sẽ bị xoá hẳn khỏi hệ thống, kể cả hàng trả kèm theo chưa hoàn thành. Không hoàn tác được."
         confirmLabel="Xoá đơn nháp"
         variant="destructive"
         loading={deleting}

@@ -258,7 +258,7 @@ describe("M2.2 — /orders", () => {
     // máy tính vẽ ngoài, điện thoại vẽ trong sheet lọc (người dùng yêu cầu).
     // Điện thoại: chip trong sheet lọc. Máy tính: thẻ PipelineTabs — cùng
     // một danh sách COUNTED_STATUSES và cùng bộ số đếm từ máy chủ.
-    expect(ORDERS_CODE.match(/\(\["all", \.\.\.COUNTED_STATUSES\] as const\)\.map/g)?.length).toBe(2)
+    expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(2)
     expect(ORDERS_CODE.match(/\{statusChips\}/g)?.length).toBe(1)
     expect(ORDERS_CODE).toContain("<PipelineTabs")
   })

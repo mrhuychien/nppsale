@@ -65,12 +65,12 @@ export default function SellDraftsPage() {
   }, [load])
 
   /**
-   * Gửi một đơn nháp đi duyệt.
+   * Gửi một đơn nháp đi: `draft` → `submitted`.
    *
    * ⚠ PHẢI ĐỌC LẠI DÒNG HÀNG, không dùng mỗi cột `total`. Quy tắc chiết
    * khấu sâu cần giá TRƯỚC chiết khấu, mà con số đó không nằm trên đầu đơn
-   * — thiếu nó thì đơn cho không hàng (sửa giá về 0) đi thẳng qua mọi
-   * ngưỡng và TỰ ĐỘNG DUYỆT.
+   * — thiếu nó thì đơn cho không hàng (sửa giá về 0) đi qua mọi ngưỡng mà
+   * không kèm một dòng cảnh báo nào cho nhà phân phối đọc.
    */
   const doSend = async (o: DraftOrder) => {
     if (sendingId || !user?.id || !user.org_id) return
@@ -156,17 +156,15 @@ export default function SellDraftsPage() {
           <ChevronLeft className="h-6 w-6" />
         </button>
         <h1 className="flex-1 text-[22px] font-extrabold">
-          Đơn tạm{" "}
-          <span className="text-[15px] font-bold text-on-surface-variant">
-            · chưa gửi &amp; chờ duyệt
-          </span>
+          Đơn nháp{" "}
+          <span className="text-[15px] font-bold text-on-surface-variant">· chưa gửi đi</span>
         </h1>
       </div>
 
       <div className="grid content-start gap-2 px-3 pt-1">
         {loadError && (
           <div className="rounded-xl bg-error/10 px-3 py-2.5 text-[13px] font-semibold text-error">
-            Không đọc được danh sách đơn tạm: {loadError}
+            Không đọc được danh sách đơn nháp: {loadError}
           </div>
         )}
 
@@ -209,7 +207,7 @@ export default function SellDraftsPage() {
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)
         ) : isEmpty ? (
           <p className="py-10 text-center text-sm font-semibold text-on-surface-variant">
-            Chưa có đơn tạm nào.
+            Chưa có đơn nháp nào.
           </p>
         ) : (
           drafts.map((o) => {
@@ -272,7 +270,7 @@ export default function SellDraftsPage() {
       <ConfirmDialog
         open={!!confirmDelete}
         onOpenChange={(o) => !o && setConfirmDelete(null)}
-        title="Xoá đơn tạm?"
+        title="Xoá đơn nháp?"
         description={`Đơn ${confirmDelete?.order_code ?? ""} sẽ bị xoá hẳn, không khôi phục được.`}
         confirmLabel="Xoá đơn"
         variant="destructive"

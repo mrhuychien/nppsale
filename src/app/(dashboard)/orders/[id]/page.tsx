@@ -24,9 +24,8 @@ import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { ensureReceivableForOrder } from "@/lib/receivables"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send } from "lucide-react"
+import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2 } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -63,6 +62,12 @@ type NextStatus = {
   label: string
   icon: React.ComponentType<{ className?: string }>
   roles: string[]
+  /**
+   * Bước LÙI: rút đơn về, huỷ đơn. Không bao giờ được làm nút chính —
+   * nút chính là cái to nhất trên thanh dính đáy, và đặt một bước lùi ở
+   * đó là mời người ta bấm nhầm để rồi đơn biến khỏi mắt nhà phân phối.
+   */
+  backward?: boolean
 }
 
 type DeliveryLineWithDetails = {
@@ -109,10 +114,20 @@ type OrderStockEntry = {
  */
 const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   draft: [
-    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"] },
+    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"], backward: true },
   ],
   submitted: [
-    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"] },
+    /**
+     * RÚT VỀ NHÁP — đường lùi duy nhất của phiếu tạm. Gửi nhầm đơn thì
+     * cách chữa cũ là huỷ nó rồi soạn lại từ đầu; rút về nháp giữ nguyên
+     * dòng hàng để sửa. Hàng chưa rời kho nên không đụng gì tới tồn.
+     *
+     * ⚠ Chỉ còn mở khi đơn CHƯA xuất. Migration 119 chặn completed →
+     * draft ở trigger, nên bấm nhầm ở đơn đã xuất là một lỗi P0001 chứ
+     * không phải một đơn bị kéo ngược.
+     */
+    { value: "draft", label: "Rút về nháp", icon: Undo2, roles: ["owner", "manager", "sales"], backward: true },
+    { value: "cancelled", label: "Hủy đơn", icon: XCircle, roles: ["owner", "manager", "sales"], backward: true },
   ],
   completed: [],
   cancelled: [],
@@ -313,33 +328,16 @@ export default function OrderDetailPage() {
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCreateReceivable = async () => {
-    if (!order) return
-    setActionLoading(true)
-    try {
-      const { created, error: recErr } = await ensureReceivableForOrder(supabase, order.id)
-      if (recErr) throw new Error(recErr)
-      toast({
-        title: created ? "Đã ghi nhận công nợ" : "Công nợ đã tồn tại",
-      })
-      fetchData()
-    } catch (error) {
-      toast({ title: "Lỗi", description: errorMessage(error), variant: "destructive" })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   /**
-   * NVBH gửi đơn nháp của mình đi duyệt.
+   * NVBH gửi đơn nháp của mình đi: `draft` → `submitted`.
    *
    * ⚠ TRƯỚC ĐÂY KHÔNG CÓ ĐƯỜNG NÀY. Bảng `STATUS_FLOW` chỉ cho owner/manager
    * bấm "Duyệt đơn", còn NVBH chỉ có "Huỷ đơn" — lưu nháp xong là đơn nằm
-   * im, quản lý không thấy, và người duy nhất biết nó tồn tại là người soạn
-   * nó. Nút này KHÔNG phải tự duyệt: nó chạy bộ quy tắc rồi hoặc tự duyệt
-   * (nếu quy tắc cho phép) hoặc đánh dấu chờ duyệt và báo cho quản lý.
+   * im, nhà phân phối không thấy, và người duy nhất biết nó tồn tại là
+   * người soạn nó. Workflow v2 không còn bước duyệt: bộ quy tắc vẫn chạy
+   * nhưng chỉ để ghi CẢNH BÁO cho nhà phân phối đọc trước khi xuất hàng.
    */
-  const handleSendForApproval = async () => {
+  const handleSendOrder = async () => {
     if (!order || !user?.org_id) return
     setActionLoading(true)
     try {
@@ -750,7 +748,6 @@ export default function OrderDetailPage() {
       // Workflow v2 không còn bước duyệt, nên sửa dòng chỉ cập nhật lại
       // tổng. Đơn đã xuất hàng thì không đi đường này — nó có RPC riêng.
       const headerUpdate: Record<string, unknown> = { subtotal, total }
-      const bouncedReason: string | null = null
 
       const { data: headerRows, error: orderErr } = await supabase
         .from("sales_orders")
@@ -771,17 +768,10 @@ export default function OrderDetailPage() {
         )
       }
 
-      toast(
-        bouncedReason
-          ? {
-              title: "Đã sửa — đơn quay lại chờ duyệt",
-              description: `Tổng đơn mới ${formatCurrency(total)} vượt ngưỡng tự duyệt. ${bouncedReason}`,
-            }
-          : {
-              title: "Đã cập nhật dòng đơn hàng",
-              description: `Tổng đơn mới: ${formatCurrency(total)}`,
-            }
-      )
+      toast({
+        title: "Đã cập nhật dòng đơn hàng",
+        description: `Tổng đơn mới: ${formatCurrency(total)}`,
+      })
       setLinesEditMode(false)
       setEditedLines([])
       setAddedLines([])
@@ -871,26 +861,29 @@ export default function OrderDetailPage() {
   const roleTransitions = availableTransitions.filter(
     (t) => !!user && t.roles.includes(user.role)
   )
-  // Hành động chính = bước TIẾN của luồng. "Hủy đơn" không bao giờ là
-  // hành động chính — để nó ở nút to là mời người ta bấm nhầm.
-  const primaryTransition = roleTransitions.find((t) => t.value !== "cancelled") || null
+  // Hành động chính = bước TIẾN của luồng. Bước LÙI (rút về nháp, huỷ
+  // đơn) không bao giờ là hành động chính — để nó ở nút to là mời người
+  // ta bấm nhầm.
+  const primaryTransition = roleTransitions.find((t) => !t.backward) || null
   const menuTransitions = roleTransitions.filter((t) => t !== primaryTransition)
-  // Đơn đã giao không còn bước chuyển nào trong STATUS_FLOW, nhưng việc
-  // CHƯA XONG thì vẫn còn: ghi nhận công nợ rồi xuất hoá đơn. Không đưa
-  // lên thanh thì đúng trạng thái có việc lại là trạng thái thanh rỗng.
+  /**
+   * Việc còn lại của đơn ĐÃ XUẤT.
+   *
+   * ⚠ KHÔNG CÒN NÚT "GHI NHẬN CÔNG NỢ". Workflow v2 sinh công nợ TRONG
+   * `complete_order`, cùng một giao dịch với lệnh trừ kho. Đơn đã xuất mà
+   * chưa có công nợ nghĩa là dữ liệu lệch, không phải một việc còn dở —
+   * để nút ở đây là mời người dùng tự vá bằng tay lên một chỗ hỏng mà
+   * không ai biết vì sao hỏng.
+   */
   const deliveredNext =
-    order.status === "completed"
-      ? !receivableId
-        ? { label: actionLoading ? "Đang tạo..." : "Ghi nhận công nợ", icon: CreditCard, onClick: handleCreateReceivable, busy: actionLoading }
-        : !invoice
-          ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
-          : null
+    order.status === "completed" && !invoice
+      ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
       : null
   /**
    * Hai việc của mẫu thiết kế "Chi tiết đơn": SỬA ĐƠN (mở lại đúng màn
    * bán hàng) và ĐẶT LẠI ĐƠN NÀY (chép dòng vào đơn mới, giá hôm nay).
-   * Chúng chỉ là nút CHÍNH khi không còn bước chuyển trạng thái nào —
-   * quản lý mở đơn chờ duyệt thì "Duyệt" vẫn đứng trước.
+   * Chúng chỉ là nút CHÍNH khi không còn bước chuyển trạng thái nào và
+   * đơn không còn việc dở nào (xem `deliveredNext`).
    */
   const sellEdit = canEdit && isSellEditable(order.status)
   const canReorder = !!user && hasPermission(user.role, "orders", "create")
@@ -926,7 +919,7 @@ export default function OrderDetailPage() {
             !
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-[#b54708] text-sm">Đơn đang chờ duyệt</p>
+            <p className="font-bold text-[#b54708] text-sm">Cần xem lại trước khi xuất hàng</p>
             <p className="text-xs text-[#b54708]/90 mt-0.5 whitespace-pre-wrap">
               {order.approval_reason}
             </p>
@@ -938,15 +931,15 @@ export default function OrderDetailPage() {
       {order.status === "draft" && (
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm">Bản nháp — chưa gửi duyệt</p>
+            <p className="font-bold text-sm">Bản nháp — chưa gửi</p>
             <p className="text-xs text-on-surface-variant mt-0.5">
-              Quản lý chưa nhìn thấy đơn này. Bấm Gửi duyệt khi đã nhập xong.
+              Nhà phân phối chưa nhìn thấy đơn này. Bấm Gửi đơn khi đã nhập xong.
             </p>
           </div>
           {canEdit && (
-            <Button onClick={handleSendForApproval} disabled={actionLoading || lines.length === 0}>
+            <Button onClick={handleSendOrder} disabled={actionLoading || lines.length === 0}>
               <Send className="h-4 w-4 mr-1.5" />
-              {actionLoading ? "Đang gửi..." : "Gửi duyệt"}
+              {actionLoading ? "Đang gửi..." : "Gửi đơn"}
             </Button>
           )}
         </div>
@@ -1554,7 +1547,8 @@ export default function OrderDetailPage() {
                   )}
                   {!fullEdit && (
                     <div className="rounded-lg bg-[#fff4ed] p-3 text-xs text-[#b54708]">
-                      Đơn đã được duyệt - chỉ cho phép sửa ghi chú. Các trường khác chỉ sửa được khi ở trạng thái nháp hoặc đã duyệt.
+                      Đơn đã rời khỏi tay bạn — chỉ sửa được ghi chú. Các trường khác chỉ mở khi
+                      đơn còn là nháp hoặc phiếu tạm.
                     </div>
                   )}
                   <div className="space-y-1">
@@ -1593,19 +1587,18 @@ export default function OrderDetailPage() {
                     <ExternalLink className="h-4 w-4 text-muted-foreground" />
                   </Link>
                 ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Đơn đã giao nhưng chưa ghi nhận công nợ.
+                  /* ⚠ ĐÂY LÀ DẤU HIỆU DỮ LIỆU LỆCH, KHÔNG PHẢI VIỆC CÒN DỞ.
+                     `complete_order` sinh công nợ trong cùng giao dịch với
+                     lệnh trừ kho, nên đơn đã xuất thì phải có công nợ. Nói
+                     ra để người ta đi tìm nguyên nhân, đừng đưa nút vá tay. */
+                  <div className="space-y-1 rounded-lg bg-[#fff4ed] p-3">
+                    <p className="text-sm font-bold text-[#b54708]">
+                      Đơn đã xuất hàng nhưng không tìm thấy công nợ
                     </p>
-                    <Button
-                      variant="default"
-                      className="w-full"
-                      onClick={handleCreateReceivable}
-                      disabled={actionLoading}
-                    >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      {actionLoading ? "Đang tạo..." : "Ghi nhận công nợ"}
-                    </Button>
+                    <p className="text-xs text-[#b54708]/90">
+                      Công nợ được sinh cùng lúc xuất hàng. Thiếu ở đây là dữ liệu lệch — báo quản
+                      trị kiểm lại, đừng tạo tay.
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -1853,7 +1846,7 @@ export default function OrderDetailPage() {
               Hàng trả kèm đơn này ({linkedReturns.length})
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Sau khi quản lý duyệt, hàng sẽ tự nhập lại kho và số tiền trả sẽ trừ vào công nợ của đơn này.
+              Hàng chỉ nhập lại kho và trừ vào công nợ khi phiếu trả được HOÀN THÀNH.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1862,20 +1855,27 @@ export default function OrderDetailPage() {
               // gộp về `@/lib/constants`; để bản này lại là chỗ duy nhất
               // còn nói khác đi khi ai đó thêm một lý do mới.
               const reasonLabel = returnReasonLabel(r.reason)
+              /**
+               * ⚠ BỐN TRẠNG THÁI CỦA WORKFLOW V2, không phải bốn cái cũ.
+               * `chk_returns_status_v2` (mig 119) chỉ còn cho
+               * draft/submitted/completed/cancelled — bảng nhãn cũ để lại
+               * thì phiếu trả nào cũng rơi xuống `|| r.status` và hiện chữ
+               * "submitted" trần ra giữa màn tiếng Việt.
+               */
               const statusVariant: "warning" | "success" | "danger" | "secondary" =
-                r.status === "approved" || r.status === "completed"
+                r.status === "completed"
                   ? "success"
-                  : r.status === "rejected"
+                  : r.status === "cancelled"
                     ? "danger"
-                    : r.status === "pending"
+                    : r.status === "submitted"
                       ? "warning"
                       : "secondary"
               const statusLabel =
                 {
-                  pending: "Chờ duyệt",
-                  approved: "Đã duyệt",
+                  draft: "Nháp",
+                  submitted: "Chờ xử lý",
                   completed: "Đã hoàn tất",
-                  rejected: "Từ chối",
+                  cancelled: "Đã huỷ",
                 }[r.status] || r.status
               // Bugfix: phân tách rõ refund (trừ công nợ) vs exchange (đổi).
               const refundLines = (r.lines || []).filter((l) => !l.is_exchange)
@@ -1978,11 +1978,17 @@ export default function OrderDetailPage() {
             {/* Net amount summary */}
             {order && (
               (() => {
+                /**
+                 * ⚠ CHỈ PHIẾU TRẢ ĐÃ HOÀN THÀNH MỚI TRỪ CÔNG NỢ. Trong v2,
+                 * `complete_return` là nơi duy nhất nhập kho và cấn trừ —
+                 * đếm cả phiếu chưa hoàn thành vào đây là màn hình báo
+                 * khách còn nợ ít hơn thực tế.
+                 */
                 const credits = linkedReturns
-                  .filter((r) => r.status === "approved" || r.status === "completed")
+                  .filter((r) => r.status === "completed")
                   .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
                 const pending = linkedReturns
-                  .filter((r) => r.status === "pending")
+                  .filter((r) => r.status === "submitted")
                   .reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
                 if (credits === 0 && pending === 0) return null
                 const net = Math.max(0, Number(order.total || 0) - credits)
@@ -1994,13 +2000,13 @@ export default function OrderDetailPage() {
                     </div>
                     {credits > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Trừ đơn trả đã duyệt</span>
+                        <span className="text-muted-foreground">Trừ đơn trả đã hoàn thành</span>
                         <span className="font-semibold text-[#b54708]">−{formatCurrency(credits)}</span>
                       </div>
                     )}
                     {pending > 0 && (
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Đơn trả chờ duyệt</span>
+                        <span className="text-muted-foreground">Đơn trả chờ xử lý</span>
                         <span className="font-medium">−{formatCurrency(pending)}</span>
                       </div>
                     )}
@@ -2104,16 +2110,13 @@ export default function OrderDetailPage() {
                 Chưa có thay đổi trạng thái nào được ghi nhận
               </p>
               {/*
-                "Chờ duyệt" KHÔNG phải một trạng thái — nó là status='draft'
-                kèm approval_reason. Trigger trg_log_order_status (mig
-                008:152) chỉ ghi khi cột `status` thật sự đổi, nên đơn vừa
-                chuyển sang chờ duyệt thì đúng là chưa có gì để ghi. Nói rõ
-                ra, không thì người dùng thấy đơn đã "đi qua nháp → chờ
-                duyệt" mà lịch sử trống và tưởng mất dữ liệu.
+                Trigger trg_log_order_status (mig 008:152) chỉ ghi khi cột
+                `status` thật sự đổi. Đơn còn là nháp thì đúng là chưa có gì
+                để ghi — nói rõ ra, không thì người dùng thấy lịch sử trống
+                và tưởng mất dữ liệu.
               */}
               <p className="text-xs text-muted-foreground">
-                Đơn chờ duyệt vẫn ở trạng thái Nháp nên chưa tính là thay đổi
-                trạng thái. Lịch sử bắt đầu ghi từ lúc đơn được duyệt.
+                Lịch sử bắt đầu ghi từ lúc đơn được gửi đi.
               </p>
             </div>
           ) : (

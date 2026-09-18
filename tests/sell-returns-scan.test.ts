@@ -236,6 +236,6 @@ describe("Xoá đơn tạm", () => {
   /** Đọc hỏng mà hiện "chưa có đơn tạm" là nói dối. */
   it("đọc hỏng thì nói ra, không hiện danh sách rỗng", () => {
     expect(DRAFTS).toContain("setLoadError(res.error ?? null)")
-    expect(DRAFTS).toContain("Không đọc được danh sách đơn tạm")
+    expect(DRAFTS).toContain("Không đọc được danh sách đơn nháp")
   })
 })

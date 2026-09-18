@@ -99,31 +99,24 @@ export async function submitSellOrder(
   i: SubmitInput,
   ctx: { userId: string; orgId: string }
 ): Promise<SubmitOutcome> {
-  if (!i.online) {
-    await enqueueOrder(i.payload)
-    return { kind: "queued", orderCode: i.payload.order.order_code }
-  }
-
-  const { orderId } = await createOrderRecords(supabase, i.payload, ctx)
   const { status, reason } = decideStatus(i)
 
-  // `createOrderRecords` luôn ghi ở trạng thái `draft` (nó vốn dùng cho
-  // hàng đợi ngoại tuyến). Gửi đơn thì nâng lên Phiếu tạm ngay tại đây.
-  const update: Record<string, unknown> = { status, approval_reason: reason || null }
-
-  const { data: rows, error } = await supabase
-    .from("sales_orders")
-    .update(update)
-    .eq("id", orderId)
-    .select("id")
-  if (error) throw error
-  // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. Đơn đã tạo nhưng đứng
-  // sai trạng thái mà màn hình báo thành công là kiểu hỏng khó tìm nhất.
-  if (!rows || rows.length === 0) {
-    throw new Error(
-      `Đã tạo đơn ${i.payload.order.order_code} nhưng không đặt được trạng thái. Mở lại đơn để kiểm tra.`
-    )
+  // ⚠ TRẠNG THÁI ĐI CÙNG ĐƠN, kể cả vào hàng đợi ngoại tuyến. Bản cũ
+  // insert `draft` rồi UPDATE lên trạng thái thật; đơn tạo lúc mất mạng
+  // không ai chạy bước UPDATE đó nên nằm mãi ở nháp, nhà phân phối không
+  // bao giờ thấy. Giờ chỉ còn MỘT lệnh ghi cho cả hai đường.
+  const payload: OfflineOrderPayload = {
+    ...i.payload,
+    targetStatus: status,
+    approvalReason: reason || null,
   }
 
-  return { kind: "created", orderCode: i.payload.order.order_code, orderId, status, reason }
+  if (!i.online) {
+    await enqueueOrder(payload)
+    return { kind: "queued", orderCode: payload.order.order_code }
+  }
+
+  const { orderId } = await createOrderRecords(supabase, payload, ctx)
+  return { kind: "created", orderCode: payload.order.order_code, orderId, status, reason }
 }
+

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -104,6 +105,23 @@ export default function StockInPage() {
 
   const [supplierId, setSupplierId] = useState("")
   const [supplier, setSupplier] = useState("")
+  /**
+   * Danh mục NCC đổ vào ô tìm.
+   *
+   * ⚠ MÃ NCC VỪA HIỆN VỪA TÌM ĐƯỢC. Kho quen gọi NCC theo mã in trên
+   * thùng hàng; chỉ cho tìm theo tên là họ phải nhớ tên đầy đủ trong khi
+   * thứ đang cầm trên tay là cái mã.
+   */
+  const supplierOptions: SearchSelectOption[] = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        id: s.id,
+        label: s.name,
+        hint: s.code || null,
+        keywords: s.code || null,
+      })),
+    [suppliers]
+  )
   const [invoiceNo, setInvoiceNo] = useState("")
   // Lịch Việt Nam, không phải lịch UTC: từ 0h đến 7h sáng giờ Việt thì
   // `toISOString()` trả về ngày HÔM QUA — sai đúng vào ca nhập hàng sớm.
@@ -546,73 +564,58 @@ export default function StockInPage() {
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Nhà cung cấp
                 </Label>
-                {suppliers.length > 0 ? (
-                  <>
-                    <Select
-                      value={supplierId || "_manual"}
-                      onValueChange={(v) => {
-                        if (v === "_manual") {
-                          setSupplierId("")
-                          setSupplier("")
-                          return
-                        }
-                        setSupplierId(v)
-                        const s = suppliers.find((x) => x.id === v)
-                        setSupplier(s?.name || "")
-                      }}
+                {/*
+                  Ô TÌM + DANH SÁCH XỔ XUỐNG (chủ nhà chốt "làm như thông
+                  lệ"). Bản cũ là một `<Select>` liệt kê hết rồi bắt cuộn —
+                  nhà phân phối có vài chục NCC thì đó là cuộn tay mỗi lần
+                  nhập một phiếu.
+
+                  ⚠ HAI ĐƯỜNG KHÁC HẲN NHAU VỀ TIỀN, và ô này giữ nguyên
+                    ranh giới đó: chọn một NCC CÓ trong danh mục thì lúc
+                    lưu sinh CÔNG NỢ NCC; gõ tay một cái tên thì chỉ ghi
+                    vào ghi chú. `onPick` trả `null` cho trường hợp gõ tay,
+                    nên không có đường nào lẫn hai thứ với nhau.
+                */}
+                <SearchSelect
+                  id="stockin-supplier"
+                  options={supplierOptions}
+                  valueId={supplierId}
+                  freeText={supplier}
+                  allowFreeText
+                  placeholder={
+                    suppliers.length > 0
+                      ? "Gõ tên hoặc mã NCC…"
+                      : "Chưa có NCC nào — gõ tên tự do"
+                  }
+                  onPick={(opt, text) => {
+                    setSupplierId(opt?.id ?? "")
+                    setSupplier(text)
+                  }}
+                  footer={
+                    <Link
+                      href="/suppliers/new"
+                      target="_blank"
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:bg-surface-low"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn nhà cung cấp..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_manual">— Nhập tay —</SelectItem>
-                        {suppliers.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.code ? `${s.code} - ` : ""}{s.name}
-                          </SelectItem>
-                        ))}
-                        <div className="border-t border-border/50 mt-1 pt-1 px-2 pb-1">
-                          <Link
-                            href="/suppliers/new"
-                            target="_blank"
-                            className="flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
-                          >
-                            <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
-                            <ExternalLink className="h-3 w-3 ml-auto" />
-                          </Link>
-                        </div>
-                      </SelectContent>
-                    </Select>
-                    {!supplierId && (
-                      <Input
-                        value={supplier}
-                        onChange={(e) => setSupplier(e.target.value)}
-                        placeholder="Nhập tên nhà cung cấp tự do"
-                        className="mt-2"
-                      />
-                    )}
-                    {supplierId && (
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        Khi lưu, hệ thống sẽ ghi <strong>công nợ NCC</strong> bằng tổng tiền nhập
-                        ({formatCurrency(summary.total)}) — xem ở mục Hoá đơn mua hàng / Công nợ NCC.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      value={supplier}
-                      onChange={(e) => setSupplier(e.target.value)}
-                      placeholder="Tên nhà cung cấp"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Chưa có NCC nào.{" "}
-                      <Link href="/suppliers/new" target="_blank" className="text-primary font-semibold underline">
-                        Tạo NCC mới
-                      </Link>
-                    </p>
-                  </>
-                )}
+                      <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
+                      <ExternalLink className="ml-auto h-3 w-3" />
+                    </Link>
+                  }
+                />
+                {/* ⚠ NÓI RÕ ĐANG ĐI ĐƯỜNG NÀO. Đây là chỗ quyết định có
+                    sinh công nợ NCC hay không; im lặng thì người nhập kho
+                    chỉ biết khi đi đối chiếu công nợ cuối tháng. */}
+                {supplierId ? (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Khi lưu, hệ thống sẽ ghi <strong>công nợ NCC</strong> bằng tổng tiền nhập
+                    ({formatCurrency(summary.total)}) — xem ở mục Hoá đơn mua hàng / Công nợ NCC.
+                  </p>
+                ) : supplier.trim() ? (
+                  <p className="mt-1.5 text-[11px] text-[#b54708]">
+                    “{supplier.trim()}” không có trong danh mục — chỉ ghi vào ghi chú phiếu,{" "}
+                    <strong>không sinh công nợ NCC</strong>.
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">

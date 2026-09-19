@@ -61,6 +61,8 @@ const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
 const ORDERS_CODE = strip(ORDERS)
 const RESILIENT = read("src/lib/supabase/resilient.ts")
 const CUSTOMERS = strip(read("src/app/(dashboard)/customers/page.tsx"))
+const CUSTOMER_DETAIL = strip(read("src/app/(dashboard)/customers/[id]/page.tsx"))
+const CUSTOMER_ROW = strip(read("src/components/customers/customer-list-row.tsx"))
 const RECEIVABLES = strip(read("src/app/(dashboard)/receivables/page.tsx"))
 const DELIVERIES = strip(read("src/app/(dashboard)/deliveries/page.tsx"))
 
@@ -397,12 +399,18 @@ describe("primitive mới không phá quy ước sẵn có", () => {
 
 describe("M2.3 — /customers", () => {
   /**
-   * Hai việc NVBH làm nhiều nhất khi mở danh sách khách. Gọi điện trước
-   * đây phải vào màn chi tiết mới làm được.
+   * Mẫu chủ nhà gửi chuyển danh sách từ THẺ nhiều nút sang DÒNG gọn, và
+   * nói thẳng trong chú thích của mẫu: "hành động (Gọi, Chỉ đường, Tạo
+   * đơn) nằm trong màn chi tiết".
+   *
+   * ⚠ CHỐT NAY ĐI THEO KHẢ NĂNG, KHÔNG ĐI THEO CHỖ ĐẶT NÚT. Hai việc
+   * NVBH làm nhiều nhất vẫn phải làm được trong MỘT lần chạm kể từ dòng
+   * khách — chỉ là lần chạm đó nay mở màn chi tiết trước. Nếu ai đó bỏ
+   * luôn nút ở màn chi tiết thì chốt này phải đỏ.
    */
-  it("thẻ khách có nút Gọi (tel:) và Tạo đơn", () => {
-    expect(CUSTOMERS).toMatch(/href=\{`tel:\$\{c\.phone\}`\}/)
-    expect(CUSTOMERS).toContain("href={newOrderHref(c.id)}")
+  it("gọi điện và tạo đơn nằm ở màn chi tiết khách", () => {
+    expect(CUSTOMER_DETAIL).toMatch(/href=\{`tel:\$\{customer\.phone\}`\}/)
+    expect(CUSTOMER_DETAIL).toContain("href={newOrderHref(customer.id)}")
   })
 
   /**
@@ -426,24 +434,73 @@ describe("M2.3 — /customers", () => {
   /** Không có SĐT thì không render link tel: rỗng. */
   it("khách chưa có SĐT thì không có link gọi hỏng", () => {
     // Khối <a> khá dài — cửa sổ hẹp làm test đỏ dù mã đúng.
-    expect(CUSTOMERS).toMatch(/c\.phone \? \([\s\S]{0,1200}?Chưa có SĐT/)
+    expect(CUSTOMER_DETAIL).toMatch(/customer\.phone \? \([\s\S]{0,1200}?Chưa có SĐT/)
   })
 
-  /** Công nợ lên dòng đầu, chỉ hiện khi > 0. */
-  it("công nợ là amount của thẻ, tô đỏ", () => {
-    expect(CUSTOMERS).toContain("amount={debt > 0 ? formatCurrency(debt) : undefined}")
-    expect(CUSTOMERS).toContain('amountTone={debt > 0 ? "danger" : "default"}')
+  /**
+   * Công nợ nằm ở CỘT PHẢI của dòng, cùng chỗ với lần đặt gần nhất —
+   * đúng hai câu người bán quét mắt tìm.
+   *
+   * ⚠ ĐỎ KHI QUÁ HẠN, KHÔNG PHẢI KHI CÒN NỢ. Tô đỏ mọi khách còn nợ thì
+   * cả danh sách đỏ rực và màu đỏ hết nghĩa; mẫu chỉ đỏ ở khách QUÁ HẠN.
+   */
+  it("công nợ ở cột phải của dòng, chỉ đỏ khi quá hạn", () => {
+    expect(CUSTOMERS).toContain("rightTop={debt === null ? \"—\" : debtText(debt)}")
+    const at = CUSTOMERS.indexOf("rightTopTone={")
+    expect(at, "dòng khách phải truyền rightTopTone").toBeGreaterThan(0)
+    const tone = CUSTOMERS.slice(at, CUSTOMERS.indexOf("}", CUSTOMERS.indexOf("\"muted\"", at)))
+    expect(tone).toContain('overdue ? "danger"')
+    expect(tone).toContain('debt > 0 ? "default"')
   })
 
-  it("thẻ lộ trình thu về một dòng trên mobile", () => {
-    expect(CUSTOMERS).toContain("p-3 lg:p-4")
-    expect(CUSTOMERS).toMatch(/h-2 flex-1 overflow-hidden rounded-full/)
+  /**
+   * ⚠ CÔNG NỢ ĐỌC HỎNG THÌ KHÔNG ĐƯỢC HIỆN "Không nợ". `debts === null`
+   * nghĩa là chưa đọc được, và "khách này không nợ gì" là câu trả lời
+   * sai cho một câu hỏi chưa có đáp án.
+   */
+  it("không đọc được công nợ thì nói chưa đọc được, không nói không nợ", () => {
+    expect(CUSTOMERS).toContain("chưa đọc được nợ")
+    expect(CUSTOMERS).toContain("setDebts(null)")
+    // ⚠ Kể cả lúc CHƯA đọc xong: khởi tạo bằng `{}` là cả màn hiện
+    //   "Không nợ" trong vài trăm mili-giây đầu.
+    expect(CUSTOMERS).toContain(
+      "useState<Record<string, number> | null>(null)"
+    )
+    // Bảng máy tính cũng không được in "0đ" thay cho "chưa đọc được".
+    expect(CUSTOMERS).toContain("debtsUnknown={debts === null}")
+    expect(strip(read("src/components/customers/customer-table.tsx"))).toContain(
+      "debtsUnknown ? ("
+    )
   })
 
-  it("có MobileFilterBar và LoadMore", () => {
-    expect(CUSTOMERS).toContain("<MobileFilterBar")
+  /** Tuyến hôm nay: tiến độ đếm trên SỐ ĐIỂM TRONG TUYẾN, không phải tổng khách. */
+  it("thanh tuyến hôm nay chia cho số điểm của tuyến", () => {
+    expect(CUSTOMERS).toContain("const routeTotal = todayStops.size")
+    expect(CUSTOMERS).toMatch(/Đã ghé \$\{visitedOnRoute\}\/\$\{routeTotal\} điểm/)
+    // Mẫu số cũ là tổng khách hàng — đúng cái lỗi vừa sửa.
+    expect(CUSTOMERS).not.toMatch(/visitedOnRoute \/ totalCustomers/)
+  })
+
+  /**
+   * ⚠ CẢ DÒNG LÀ MỘT VÙNG CHẠM. Bản thẻ cũ rải năm nút trên mỗi thẻ và
+   * người dùng bấm trượt sang nút bên cạnh; dòng mới không được có nút
+   * con nào bên trong vùng chạm.
+   */
+  it("dòng khách không có nút con nào bên trong vùng chạm", () => {
+    expect(CUSTOMER_ROW).not.toContain("<button")
+    expect(CUSTOMER_ROW).not.toContain("<a href")
+  })
+
+  it("có ô tìm, thẻ lọc nhanh và LoadMore", () => {
+    expect(CUSTOMERS).toContain("QUICK_FILTER_LABEL[k]")
     expect(CUSTOMERS).toContain("<LoadMore")
     expect(CUSTOMERS).toContain("if (cancelled || res.aborted) return")
+    // Phân trang dạng nút số chỉ dành cho máy tính; điện thoại dùng LoadMore.
+    const deskOnly = CUSTOMERS.slice(
+      CUSTOMERS.indexOf('<div className="hidden lg:block">'),
+      CUSTOMERS.indexOf("{/* Điện thoại: dòng gọn")
+    )
+    expect(deskOnly).toContain("<DataPagination")
   })
 })
 

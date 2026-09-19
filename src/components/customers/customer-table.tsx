@@ -28,6 +28,13 @@ interface LastVisitInfo {
 interface CustomerTableProps {
   customers: Customer[]
   debts?: Record<string, number>
+  /**
+   * ⚠ `true` = ĐỌC HỎNG / ĐỌC THIẾU công nợ, không phải "ai cũng hết nợ".
+   * Không có cờ này thì `debts` rỗng và bảng in "0đ" cho mọi khách — một
+   * câu trả lời sai cho câu hỏi chưa có đáp án, đúng lúc người ta mở
+   * danh sách ra để xem ai còn nợ.
+   */
+  debtsUnknown?: boolean
   lastOrders?: Record<string, LastOrderInfo>
   lastVisits?: Record<string, LastVisitInfo>
   /** Người phụ trách theo customer_id — xem lib/customers/managers. */
@@ -45,6 +52,7 @@ interface CustomerTableProps {
 export function CustomerTable({
   customers,
   debts = {},
+  debtsUnknown = false,
   lastOrders = {},
   lastVisits = {},
   managers = {},
@@ -60,6 +68,7 @@ export function CustomerTable({
   const router = useRouter()
   const show = (key: CustomerColumnKey) => visibleColumns.includes(key)
   const showEnrichment =
+    debtsUnknown ||
     Object.keys(debts).length > 0 ||
     Object.keys(lastOrders).length > 0 ||
     Object.keys(lastVisits).length > 0
@@ -158,7 +167,9 @@ export function CustomerTable({
                   )}
                   {show("debt") && showEnrichment && (
                     <TableCell className="text-right tabular-nums">
-                      {debt > 0 ? (
+                      {debtsUnknown ? (
+                        <span className="italic text-muted-foreground">chưa đọc được</span>
+                      ) : debt > 0 ? (
                         <div className="flex items-center justify-end gap-2">
                           <span className={`font-bold ${isBadDebt ? "text-danger" : ""}`}>
                             {formatCurrency(debt)}
@@ -269,7 +280,9 @@ export function CustomerTable({
                     </div>
                     <div>
                       <p className="text-muted-foreground mb-0.5">Công nợ</p>
-                      {debt > 0 ? (
+                      {debtsUnknown ? (
+                        <p className="italic text-muted-foreground">chưa đọc được</p>
+                      ) : debt > 0 ? (
                         <p className={`font-bold ${isBadDebt ? "text-danger" : ""}`}>
                           {formatCurrency(debt)}
                         </p>

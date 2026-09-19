@@ -1,37 +1,49 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
-import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
-import { newOrderHref } from "@/lib/nav/new-order"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CustomerTable } from "@/components/customers/customer-table"
-import { VisitCheckinDialog } from "@/components/customers/visit-checkin-dialog"
+import { CustomerListRow, type CustomerRowTag } from "@/components/customers/customer-list-row"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { CustomerImportDialog } from "@/components/customers/customer-import-dialog"
+import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import {
-  Phone, Plus, Search, Users, HandCoins, ClipboardList, Navigation, Route, FilePlus2, Power, PowerOff, Upload } from "lucide-react"
-import { formatCurrency, formatDate } from "@/lib/utils"
+  Plus, Search, Users, Route, Power, PowerOff, Upload, X, Map as MapIcon,
+} from "lucide-react"
+import { daysOverdueOf } from "@/lib/utils"
+import {
+  customerInitial,
+  daysSinceVN,
+  debtText,
+  lastOrderText,
+  groupByInitial,
+  rowAccent,
+  todayVN,
+  COLD_DAYS,
+  QUICK_FILTER_LABEL,
+  QUICK_FILTER_GROUP,
+  type QuickFilter,
+} from "@/lib/customers/list-view"
 import type { Customer, Receivable, SalesOrder } from "@/types"
 import {
   CUSTOMER_COLUMNS,
@@ -54,25 +66,48 @@ interface LastVisitInfo {
   sales_user_name: string | null
 }
 
+/**
+ * ⚠ BA THẺ LỌC NHANH, KHÔNG PHẢI BỐN. Mẫu có thêm "Chưa đặt 30 ngày";
+ * thẻ đó cần biết ĐƠN GẦN NHẤT CỦA MỌI KHÁCH, mà PostgREST không tính
+ * được `max(order_date) GROUP BY customer_id`. Làm ở trình duyệt nghĩa
+ * là tải toàn bộ lịch sử đơn của cả nghìn khách về điện thoại. Dấu hiệu
+ * "ngủ đông" vẫn hiện trên từng dòng (nhãn vàng + vạch vàng) vì dữ liệu
+ * đó có sẵn theo trang; chỉ riêng BỘ LỌC là đang chờ một khung nhìn tổng
+ * hợp phía database. Xem báo cáo gửi chủ nhà.
+ */
+const QUICK_FILTERS: QuickFilter[] = ["today", "overdue", "all"]
+
 export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [debts, setDebts] = useState<Record<string, number>>({})
+  /**
+   * `null` = CHƯA/KHÔNG đọc được công nợ. KHÔNG được hiện thành 0.
+   *
+   * ⚠ KHỞI TẠO BẰNG `null`, KHÔNG PHẢI `{}`. Truy vấn danh sách thường
+   * xong trước phép cộng công nợ, nên với `{}` cả màn hiện "Không nợ"
+   * trong vài trăm mili-giây — đủ để người đang quét tìm khách nợ đọc
+   * nhầm rồi bỏ qua.
+   */
+  const [debts, setDebts] = useState<Record<string, number> | null>(null)
+  const [debtWarning, setDebtWarning] = useState<string | null>(null)
+  const [overdueIds, setOverdueIds] = useState<string[]>([])
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
+  /** Mã khách → số thứ tự điểm dừng trong tuyến hôm nay. */
+  const [todayStops, setTodayStops] = useState<Map<string, number>>(new Map())
   const [lastOrders, setLastOrders] = useState<Record<string, LastOrderInfo>>({})
   const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [filterSheet, setFilterSheet] = useState(false)
+  const [quick, setQuick] = useState<QuickFilter>("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [channelFilter, setChannelFilter] = useState("all")
   const [salesUserFilter, setSalesUserFilter] = useState("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
-  const [stats, setStats] = useState({ total: 0, visited: 0 })
+  const [totalCustomers, setTotalCustomers] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination(50)
@@ -100,65 +135,146 @@ export default function CustomersPage() {
   const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])
   const [primaryRepMap, setPrimaryRepMap] = useState<Record<string, string>>({})
   const [managersMap, setManagersMap] = useState<Record<string, Manager[]>>({})
-  const [visitTarget, setVisitTarget] = useState<Customer | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
-  // Stats: tổng KH + KH đã ghé hôm nay — count query, không phụ thuộc pagination.
+  /**
+   * Nền chung của ba thẻ lọc: tổng số khách, tuyến hôm nay, đã ghé hôm
+   * nay, và công nợ còn mở của TOÀN BỘ khách.
+   *
+   * ⚠ CÔNG NỢ PHẢI KÉO ĐỦ QUA `fetchAllForAggregate`. Đọc thẳng một lần
+   * là PostgREST cắt ở 1.000 dòng, HTTP 200, không lỗi — và thẻ "Nợ quá
+   * hạn" đếm thiếu đúng những khách cần đòi nhất. Chạm trần thì để
+   * `debts = null` và BÁO, chứ không hiện một con số thiếu.
+   */
   useEffect(() => {
+    let cancelled = false
     async function loadStats() {
-      // "Đã ghé hôm nay" phải đếm LƯỢT GHÉ, không phải đơn hàng.
-      //
-      // Trước đây chỗ này đếm distinct customer_id trong sales_orders tạo
-      // hôm nay. Ghé thăm và bán được hàng là hai việc khác nhau: nhân viên
-      // ghé 10 cửa hàng, lấy được 3 đơn thì màn Khách hàng hiện "3" còn màn
-      // Trang chủ (đếm visit_logs) hiện "10" — hai con số cùng tên "hôm nay"
-      // trên hai màn hình. Và huy hiệu "Đã ghé hôm nay" trên từng dòng khách
-      // cũng sai theo: ghé mà không bán được thì không có huy hiệu.
-      //
-      // Ngày lấy theo lịch máy của người dùng (điện thoại ở Việt Nam) chứ
-      // không phải UTC — visit_date là cột `date` nên so bằng chuỗi YYYY-MM-DD.
-      const today = new Date()
-      const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
-      const [totalRes, visitsTodayRes] = await Promise.all([
+      const todayDate = todayVN()
+      // `getDay()` của máy người dùng (điện thoại ở Việt Nam) khớp với
+      // quy ước 0=Chủ nhật của `pjp_routes.day_of_week`.
+      const dow = new Date(`${todayDate}T12:00:00`).getDay()
+      const [totalRes, visitsRes, pjpRes, recvRes] = await Promise.all([
         supabase.from("customers").select("id", { count: "exact", head: true }),
+        supabase.from("visit_logs").select("customer_id").eq("visit_date", todayDate),
         supabase
-          .from("visit_logs")
-          .select("customer_id")
-          .eq("visit_date", todayDate),
+          .from("pjp_routes")
+          .select("customer_id, visit_order")
+          .eq("day_of_week", dow)
+          .eq("is_active", true)
+          .order("visit_order"),
+        fetchAllForAggregate<Pick<Receivable, "customer_id" | "amount" | "paid" | "due_date">>(
+          (from, to) =>
+            supabase
+              .from("receivables")
+              .select("customer_id, amount, paid, due_date", { count: "exact" })
+              .neq("status", "paid")
+              .order("id")
+              .range(from, to)
+        ),
       ])
-      const qErr2 = ([totalRes, visitsTodayRes] as Array<{ error?: { message?: string } | null }>)
+      if (cancelled) return
+      const qErr = ([totalRes, visitsRes, pjpRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
-      if (qErr2) console.error("[app/customers] truy vấn lỗi:", qErr2.message)
+      if (qErr) console.error("[app/customers] truy vấn lỗi:", qErr.message)
+
+      setTotalCustomers(totalRes.count ?? 0)
+
       const visitsToday = new Set<string>()
-      for (const v of (visitsTodayRes.data as Array<{ customer_id: string | null }>) || []) {
+      for (const v of (visitsRes.data as Array<{ customer_id: string | null }>) || []) {
         if (v.customer_id) visitsToday.add(v.customer_id)
       }
-      setStats({ total: totalRes.count ?? 0, visited: visitsToday.size })
       setVisitedToday(visitsToday)
+
+      const stops = new Map<string, number>()
+      const pjpRows =
+        (pjpRes.data as Array<{ customer_id: string; visit_order: number | null }>) || []
+      pjpRows.forEach((r, i) => {
+        // Nhiều nhân viên có thể cùng xếp một điểm vào hôm nay — giữ lần
+        // đầu gặp để số điểm dừng không nhảy giữa hai lần vẽ.
+        if (!stops.has(r.customer_id)) stops.set(r.customer_id, r.visit_order ?? i + 1)
+      })
+      setTodayStops(stops)
+
+      if (recvRes.error || recvRes.truncated) {
+        setDebts(null)
+        setOverdueIds([])
+        setDebtWarning(
+          recvRes.error
+            ? `Không đọc được công nợ: ${recvRes.error}`
+            : "Công nợ vượt trần tải về nên cột nợ và thẻ “Nợ quá hạn” đang KHÔNG đủ — hãy dùng trang Công nợ để có số đúng."
+        )
+      } else {
+        const debtMap: Record<string, number> = {}
+        const overdueMap: Record<string, number> = {}
+        for (const r of recvRes.rows) {
+          const remaining = Number(r.amount || 0) - Number(r.paid || 0)
+          if (remaining <= 0) continue
+          debtMap[r.customer_id] = (debtMap[r.customer_id] || 0) + remaining
+          if (daysOverdueOf(r.due_date) > 0) {
+            overdueMap[r.customer_id] = (overdueMap[r.customer_id] || 0) + remaining
+          }
+        }
+        setDebts(debtMap)
+        setDebtWarning(null)
+        // Sắp theo số nợ quá hạn giảm dần: người nợ nhiều nhất lên đầu.
+        setOverdueIds(
+          Object.keys(overdueMap).sort((a, b) => overdueMap[b] - overdueMap[a])
+        )
+      }
     }
     loadStats()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true }
+  }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, channelFilter, salesUserFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, channelFilter, salesUserFilter, quick, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Danh sách mã khách mà thẻ lọc nhanh giới hạn vào. `null` = không giới hạn. */
+  const quickIds = useMemo<string[] | null>(() => {
+    if (quick === "today") return Array.from(todayStops.keys())
+    if (quick === "overdue") return overdueIds
+    return null
+  }, [quick, todayStops, overdueIds])
 
   // List query — paginate + filter server-side.
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
       setLoading(true)
-      // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự
-      // thử lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error
-      // để hiển thị nguyên nhân cho người dùng.
+      /**
+       * ⚠ THẺ LỌC RỖNG THÌ DỪNG, ĐỪNG GỬI `in.()`. Một `.in("id", [])`
+       * hoá thành `id=in.()` — PostgREST coi là lỗi cú pháp và trả về
+       * lỗi 400, nên màn hiện "không tải được" thay vì "không có khách
+       * nào trong tuyến hôm nay". Hai câu đó dẫn tới hai hành động khác
+       * hẳn nhau.
+       */
+      if (quickIds !== null && quickIds.length === 0) {
+        setCustomers([])
+        setLoadError(null)
+        pg.setTotal(0)
+        setDebts((d) => d)
+        setLastOrders({}); setLastVisits({}); setPrimaryRepMap({}); setManagersMap({})
+        setLoading(false)
+        return
+      }
+
+      /**
+       * Thẻ lọc nhanh phân trang trên DANH SÁCH MÃ đã có sẵn, không phân
+       * trang ở server: gửi một `in.()` dài hàng nghìn mã là URL vượt
+       * trần của proxy và request chết với 414 mà không ai đoán ra vì sao.
+       */
+      const idSlice = quickIds ? quickIds.slice(pg.from, pg.to + 1) : null
+
       const build = (select: string) => {
         let q = supabase
           .from("customers")
           .select(select, { count: "exact" })
           .order("store_name")
-          .range(pg.from, pg.to)
+        if (idSlice) q = q.in("id", idSlice)
+        else q = q.range(pg.from, pg.to)
         if (debouncedSearch) {
           const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
           q = q.or(`store_name.ilike.${term},owner_name.ilike.${term},phone.ilike.${term}`)
@@ -179,21 +295,18 @@ export default function CustomersPage() {
       const list = res.data
       setCustomers(list)
       setLoadError(res.error)
-      pg.setTotal(res.count ?? 0)
+      // Với thẻ lọc nhanh, tổng là độ dài danh sách mã — `count` trả về
+      // chỉ đếm trong lát cắt vừa gửi đi.
+      pg.setTotal(quickIds ? quickIds.length : res.count ?? 0)
 
       // Load aggregates CHỈ cho khách trên page hiện tại.
       const ids = list.map((c) => c.id)
       if (ids.length === 0) {
-        setDebts({}); setLastOrders({}); setLastVisits({}); setPrimaryRepMap({})
+        setLastOrders({}); setLastVisits({}); setPrimaryRepMap({}); setManagersMap({})
         setLoading(false)
         return
       }
-      const [recvRes, lastOrdersRes, lastVisitsRes, assignsRes] = await Promise.all([
-        supabase
-          .from("receivables")
-          .select("customer_id, amount, paid, status")
-          .in("customer_id", ids)
-          .neq("status", "paid"),
+      const [lastOrdersRes, lastVisitsRes, assignsRes] = await Promise.all([
         supabase
           .from("sales_orders")
           .select("customer_id, order_code, order_date, total")
@@ -214,16 +327,10 @@ export default function CustomersPage() {
           .in("customer_id", ids)
           .eq("status", "active"),
       ])
-      const qErr = ([recvRes, lastOrdersRes, lastVisitsRes, assignsRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr = ([lastOrdersRes, lastVisitsRes, assignsRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/customers] truy vấn lỗi:", qErr.message)
       if (cancelled) return
-      const debtMap: Record<string, number> = {}
-      for (const r of (recvRes.data as Pick<Receivable, "customer_id" | "amount" | "paid">[]) || []) {
-        const outstanding = Number(r.amount || 0) - Number(r.paid || 0)
-        if (outstanding > 0) debtMap[r.customer_id] = (debtMap[r.customer_id] || 0) + outstanding
-      }
-      setDebts(debtMap)
       const orderMap: Record<string, LastOrderInfo> = {}
       for (const o of (lastOrdersRes.data as Array<Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">>) || []) {
         if (o.customer_id && !orderMap[o.customer_id]) {
@@ -294,7 +401,7 @@ export default function CustomersPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -338,40 +445,43 @@ export default function CustomersPage() {
     return true
   })
 
-  const totalRoute = stats.total
-  const visitedCount = stats.visited
-  const progressPct = totalRoute > 0 ? Math.round((visitedCount / totalRoute) * 100) : 0
+  /** Đang xem tuyến hôm nay và không gõ tìm → xếp theo điểm dừng. */
+  const routeMode = quick === "today" && !debouncedSearch
 
-  const handleCheckIn = (c: Customer) => {
-    setVisitTarget(c)
-  }
+  const ordered = useMemo(() => {
+    if (!routeMode) return filtered
+    return filtered
+      .slice()
+      .sort((a, b) => (todayStops.get(a.id) ?? 0) - (todayStops.get(b.id) ?? 0))
+  }, [filtered, routeMode, todayStops])
 
-  const handleVisitSuccess = async () => {
-    // Refresh last visits after check-in
-    const { data: latestVisits, error: latestVisitsErr } = await supabase
-      .from("visit_logs")
-      .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
-      .order("visit_date", { ascending: false })
-      .order("check_in_at", { ascending: false })
-      .limit(500)
-    if (latestVisitsErr) console.error("[app/customers] truy vấn lỗi:", latestVisitsErr.message)
-    const visitMap: Record<string, LastVisitInfo> = {}
-    for (const v of (latestVisits as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
-      if (v.customer_id && !visitMap[v.customer_id]) {
-        visitMap[v.customer_id] = {
-          visit_date: v.visit_date,
-          check_in_at: v.check_in_at,
-          result: v.result,
-          sales_user_name: v.sales_user?.full_name || null,
-        }
-      }
+  /** Nhóm hiển thị trên điện thoại. */
+  const groups = useMemo(() => {
+    if (routeMode) {
+      const un = ordered.filter((c) => !visitedToday.has(c.id))
+      const vi = ordered.filter((c) => visitedToday.has(c.id))
+      return [
+        ...(un.length ? [{ label: "Chưa ghé", items: un }] : []),
+        ...(vi.length ? [{ label: "Đã ghé", items: vi }] : []),
+      ]
     }
-    setLastVisits(visitMap)
-  }
+    if (quick === "all" && !debouncedSearch) return groupByInitial(ordered)
+    if (!ordered.length) return []
+    return [
+      {
+        label: debouncedSearch
+          ? `Kết quả · “${debouncedSearch}”`
+          : QUICK_FILTER_GROUP[quick],
+        items: ordered,
+      },
+    ]
+  }, [ordered, routeMode, quick, debouncedSearch, visitedToday])
 
-  const handleInventoryCheck = () => {
-    alert("Tính năng đang phát triển")
-  }
+  const visitedOnRoute = Array.from(todayStops.keys()).filter((id) => visitedToday.has(id)).length
+  const routeTotal = todayStops.size
+
+  const quickCount = (k: QuickFilter): number =>
+    k === "today" ? todayStops.size : k === "overdue" ? overdueIds.length : totalCustomers
 
   const toggleOne = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -435,27 +545,94 @@ export default function CustomersPage() {
 
   if (authLoading) return <Skeleton className="h-96" />
 
-  // Bộ lọc đang bật (ngoài ô tìm) — hiện lên badge nút Lọc.
-  const activeFilterCount =
-    (statusFilter !== "all" ? 1 : 0) +
-    (channelFilter !== "all" ? 1 : 0) +
-    (salesUserFilter !== "all" ? 1 : 0)
-
   const clearFilters = () => {
     setStatusFilter("all")
     setChannelFilter("all")
     setSalesUserFilter("all")
   }
+  const hasDeskFilter =
+    statusFilter !== "all" || channelFilter !== "all" || salesUserFilter !== "all"
+
+  /** Dựng một dòng khách cho danh sách điện thoại. */
+  const renderRow = (c: Customer, index: number) => {
+    const debt = debts ? debts[c.id] || 0 : null
+    const overdue = overdueIds.includes(c.id)
+    const stop = todayStops.get(c.id)
+    const visited = visitedToday.has(c.id)
+    const lastOrder = lastOrders[c.id]
+    const coldDays = lastOrder ? daysSinceVN(lastOrder.order_date) : null
+    const accent = rowAccent({
+      visitedToday: visited,
+      routeMode,
+      overdue,
+      onTodayRoute: stop !== undefined,
+      coldDays,
+    })
+    const tags: CustomerRowTag[] = []
+    if (overdue) tags.push({ label: "Quá hạn", tone: "danger" })
+    if (coldDays !== null && coldDays >= COLD_DAYS) tags.push({ label: "Ngủ đông", tone: "warning" })
+    /**
+     * ⚠ NGOÀI CHẾ ĐỘ ĐI TUYẾN VẪN PHẢI THẤY "ĐÃ GHÉ HÔM NAY". Trong chế
+     *   độ đi tuyến dấu ✓ ở ô tròn đã nói điều đó; ở các thẻ lọc khác
+     *   không có ô tròn dạng ✓, nên không còn dấu hiệu nào — và nhân
+     *   viên ghé lại một cửa hàng vừa ghé sáng nay.
+     */
+    if (!routeMode && visited) tags.push({ label: "Đã ghé hôm nay", tone: "success" })
+    /**
+     * ⚠ "AI PHỤ TRÁCH" PHẢI CÒN TRÊN ĐIỆN THOẠI. Bảng máy tính có cột
+     *   riêng cho nó; dòng điện thoại chỉ có một dòng phụ, nên nó phải
+     *   chen vào đây. Bỏ đi là quản lý mở danh sách trên điện thoại và
+     *   không còn cách nào biết điểm bán lạ này của ai.
+     */
+    const meta = [c.ward, c.owner_name, managersSummary(managersMap[c.id] || [])]
+      .filter(Boolean)
+      .join(" · ")
+    return (
+      <CustomerListRow
+        key={c.id}
+        href={`/customers/${c.id}`}
+        accent={accent}
+        avatar={
+          routeMode && visited
+            ? "✓"
+            : routeMode && stop !== undefined
+              ? String(stop)
+              : customerInitial(c.store_name)
+        }
+        name={c.store_name}
+        meta={meta || "—"}
+        tags={tags}
+        rightTop={debt === null ? "—" : debtText(debt)}
+        rightTopTone={
+          debt === null ? "muted" : overdue ? "danger" : debt > 0 ? "default" : "muted"
+        }
+        rightBottom={
+          debt === null ? "chưa đọc được nợ" : lastOrderText(lastOrder?.order_date ?? null)
+        }
+        divider={index > 0}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">
-      <PageHeader title={isSales ? "Khách hàng của tôi" : "Khách hàng"} description={`${customers.length} khách hàng`}>
+      <PageHeader
+        title={isSales ? "Khách hàng của tôi" : "Khách hàng"}
+        description={`${totalCustomers} khách hàng`}
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/sales/pjp">
+            <MapIcon className="mr-1.5 h-4 w-4" /> Tuyến hôm nay
+          </Link>
+        </Button>
         {user && hasPermission(user.role, "customers", "create") && (
           <>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Button variant="outline" size="sm" className="hidden lg:inline-flex" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" /> Nhập Excel
             </Button>
-            <Button onClick={() => router.push("/customers/new")}><Plus className="mr-2 h-4 w-4" /> Thêm KH</Button>
+            <Button size="sm" onClick={() => router.push("/customers/new")}>
+              <Plus className="mr-2 h-4 w-4" /> Thêm KH
+            </Button>
           </>
         )}
       </PageHeader>
@@ -467,94 +644,83 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Lộ trình hôm nay — mobile thu về MỘT dòng có thanh tiến độ
-          (56px thay vì 96px). Cùng số liệu, chỉ bớt chỗ trống. */}
-      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card p-3 lg:p-4">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="truncate text-label-md uppercase text-on-surface-variant">Lộ trình hôm nay</p>
-              <span className="shrink-0 text-sm font-bold text-primary tabular-data">{progressPct}%</span>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <p className="shrink-0 text-base font-bold tracking-tight text-on-surface tabular-data lg:text-xl">
-                {visitedCount}
-                <span className="text-xs font-medium text-on-surface-variant lg:text-sm">
-                  {" "}/ {totalRoute} điểm
-                </span>
-              </p>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-container">
-                <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Ô tìm — một ô duy nhất cho cả điện thoại lẫn máy tính. */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Tên cửa hàng, chủ quán, SĐT…"
+          {...SEARCH_FIELD_PROPS}
+          className={`pl-10 pr-10 ${HIDE_NATIVE_CLEAR}`}
+        />
+        {search && (
+          <button
+            type="button"
+            aria-label="Xoá ô tìm"
+            onClick={() => setSearch("")}
+            className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-surface-container"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm tên cửa hàng, SĐT…"
-        activeCount={activeFilterCount}
-        onClear={clearFilters}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Trạng thái</label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger><SelectValue placeholder="Tất cả" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="active">Đang hoạt động</SelectItem>
-                <SelectItem value="suspended">Tạm ngưng</SelectItem>
-                <SelectItem value="locked">Đã khoá</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Thẻ lọc nhanh — cuộn ngang, luôn hiện số đếm để biết có đáng bấm. */}
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {QUICK_FILTERS.map((k) => {
+          const on = quick === k
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setQuick(k)}
+              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition-colors ${
+                on
+                  ? "border-on-surface bg-on-surface text-white"
+                  : "border-outline-variant bg-surface-container-lowest text-on-surface-variant"
+              }`}
+            >
+              {QUICK_FILTER_LABEL[k]}
+              <span
+                className={`rounded-full px-1.5 text-[11px] tabular-data ${
+                  on ? "bg-white/20" : "bg-surface-container-low"
+                }`}
+              >
+                {quickCount(k)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Thanh tuyến hôm nay — chỉ hiện khi đang xem tuyến. */}
+      {routeMode && (
+        <div className="flex items-center gap-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-on-surface">Tuyến hôm nay</p>
+            <p className="mt-0.5 truncate text-xs font-medium text-on-surface-variant">
+              {routeTotal === 0
+                ? "Chưa xếp điểm nào cho hôm nay"
+                : `Đã ghé ${visitedOnRoute}/${routeTotal} điểm · còn ${routeTotal - visitedOnRoute} điểm`}
+            </p>
+            {routeTotal > 0 && (
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-container">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${Math.round((visitedOnRoute / routeTotal) * 100)}%` }}
+                />
+              </div>
+            )}
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Tuyến</label>
-            <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger><SelectValue placeholder="Tất cả tuyến" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả tuyến</SelectItem>
-                {routes.map((r) => (
-                  <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {!isSales && (
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-on-surface-variant">Nhân viên</label>
-              <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
-                <SelectTrigger><SelectValue placeholder="Tất cả nhân viên" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả nhân viên</SelectItem>
-                  <SelectItem value="_none">Chưa phân công</SelectItem>
-                  {salesUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <Button variant="outline" className="h-11 w-full" asChild>
-            <Link href="/customers/routes">
-              <Route className="mr-1.5 h-4 w-4" /> Quản lý tuyến
-            </Link>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/sales/pjp">{routeTotal === 0 ? "Xếp tuyến" : "Đi tuyến"}</Link>
           </Button>
         </div>
-      </MobileFilterBar>
+      )}
 
+      {/* Bộ lọc chi tiết — máy tính. */}
       <div className="hidden lg:flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Tìm tên, SĐT..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-        )}
         {filterActive("status") && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-36"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
@@ -589,6 +755,9 @@ export default function CustomersPage() {
             </SelectContent>
           </Select>
         )}
+        {hasDeskFilter && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>Bỏ lọc</Button>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <FilterPicker
             available={CUSTOMER_FILTERS}
@@ -602,13 +771,43 @@ export default function CustomersPage() {
             onChange={setColumns}
             onReset={resetColumns}
           />
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/customers/routes">
+              <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
+            </Link>
+          </Button>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/customers/routes">
-            <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
-          </Link>
-        </Button>
       </div>
+
+      {/* Bộ lọc chi tiết — điện thoại, gấp vào một hàng chọn. */}
+      <div className="grid grid-cols-2 gap-2 lg:hidden">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-10"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Mọi trạng thái</SelectItem>
+            <SelectItem value="active">Đang hoạt động</SelectItem>
+            <SelectItem value="suspended">Tạm ngưng</SelectItem>
+            <SelectItem value="locked">Đã khoá</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={channelFilter} onValueChange={setChannelFilter}>
+          <SelectTrigger className="h-10"><SelectValue placeholder="Tuyến" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Mọi tuyến</SelectItem>
+            {routes.map((r) => (
+              <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* ⚠ CÔNG NỢ ĐỌC THIẾU THÌ NÓI TRƯỚC KHI NGƯỜI TA ĐỌC CON SỐ. */}
+      {debtWarning && (
+        <div className="rounded-xl border border-warning/40 bg-[#fff4ed] px-4 py-3 text-sm text-[#b54708]">
+          <p className="font-semibold">Công nợ trong danh sách chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{debtWarning}</p>
+        </div>
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (
@@ -620,35 +819,44 @@ export default function CustomersPage() {
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-      ) : filtered.length === 0 ? (
+      ) : ordered.length === 0 ? (
         <EmptyState
           icon={<Users className="h-8 w-8 text-muted-foreground" />}
           title={
             loadError
               ? "Không tải được dữ liệu"
-              : customers.length === 0
-                ? "Chưa có khách hàng"
-                : "Không có khách hàng phù hợp"
+              : quick === "today"
+                ? "Hôm nay chưa có điểm nào trong tuyến"
+                : quick === "overdue"
+                  ? "Không có khách nợ quá hạn"
+                  : totalCustomers === 0
+                    ? "Chưa có khách hàng"
+                    : "Không có khách hàng phù hợp"
           }
           description={
             loadError
               ? "Xem thông báo lỗi phía trên."
-              : customers.length === 0
-                ? user?.role === "sales"
-                  ? "Bạn chưa được phân công khách hàng nào. Vào Thêm KH để tìm và nhận khách có sẵn về danh sách của mình, hoặc nhờ quản lý phân công."
-                  : user?.role === "warehouse" || user?.role === "driver"
-                    ? "Vai trò của bạn chỉ xem được khách hàng gắn với công việc được giao. Liên hệ quản lý hoặc kế toán nếu cần tra cứu khách hàng."
-                    : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
-                : "Thử điều chỉnh bộ lọc"
+              : quick === "today"
+                ? "Vào Tuyến hôm nay để xếp điểm cần ghé, hoặc bấm Tất cả để xem toàn bộ khách."
+                : quick === "overdue"
+                  ? "Chưa có khoản nợ nào quá hạn thanh toán."
+                  : totalCustomers === 0
+                    ? user?.role === "sales"
+                      ? "Bạn chưa được phân công khách hàng nào. Vào Thêm KH để tìm và nhận khách có sẵn về danh sách của mình, hoặc nhờ quản lý phân công."
+                      : user?.role === "warehouse" || user?.role === "driver"
+                        ? "Vai trò của bạn chỉ xem được khách hàng gắn với công việc được giao. Liên hệ quản lý hoặc kế toán nếu cần tra cứu khách hàng."
+                        : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
+                    : "Thử điều chỉnh bộ lọc"
           }
         />
       ) : (
         <>
-          {/* Desktop: existing table */}
+          {/* Máy tính: bảng đầy đủ, có chọn nhiều và đổi cột. */}
           <div className="hidden lg:block">
             <CustomerTable
-              customers={filtered}
-              debts={debts}
+              customers={ordered}
+              debts={debts || {}}
+              debtsUnknown={debts === null}
               lastOrders={lastOrders}
               lastVisits={lastVisits}
               managers={managersMap}
@@ -661,126 +869,27 @@ export default function CustomersPage() {
               allSelected={allSelected}
               someSelected={someSelected && !allSelected}
             />
+            <DataPagination pg={pg} shownCount={ordered.length} />
           </div>
 
-          {/* Mobile: card list */}
-          <div className="lg:hidden space-y-3">
-            {filtered.map((c) => {
-              const debt = debts[c.id] || 0
-              const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
-              const hasVisited = visitedToday.has(c.id)
-              const lastOrder = lastOrders[c.id]
-              const lastVisit = lastVisits[c.id]
-              return (
-                <MobileRecordCard
-                  key={c.id}
-                  href={`/customers/${c.id}`}
-                  title={c.store_name}
-                  // Công nợ là con số NVBH quét mắt tìm khi mở danh sách
-                  // khách — đưa lên dòng đầu thay vì chôn ở ô thứ ba của
-                  // lưới tóm tắt.
-                  amount={debt > 0 ? formatCurrency(debt) : undefined}
-                  amountTone={debt > 0 ? "danger" : "default"}
-                  accent={isBadDebt ? "danger" : hasVisited ? "warning" : null}
-                  subtitle={
-                    <>
-                      {c.owner_name && <span className="font-medium text-primary/80">{c.owner_name}</span>}
-                      {c.phone && <span>· {c.phone}</span>}
-                      {lastVisit && <span>· Ghé {formatDate(lastVisit.visit_date)}</span>}
-                      {lastOrder && <span>· Đơn {formatDate(lastOrder.order_date)}</span>}
-                      {/* Trên điện thoại không có cột riêng — nhét vào
-                          dòng phụ dạng gọn, vì "ai phụ trách" là thứ NVBH
-                          hỏi ngay khi thấy một điểm bán lạ. */}
-                      <span>· {managersSummary(managersMap[c.id] || [])}</span>
-                    </>
-                  }
-                  badges={
-                    <>
-                      {hasVisited && <Badge variant="success">Đã ghé hôm nay</Badge>}
-                      {c.channel && <Badge variant="outline">{c.channel}</Badge>}
-                      {isBadDebt && (
-                        <span className="rounded-full bg-error-container px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-on-error-container">
-                          Nợ xấu
-                        </span>
-                      )}
-                    </>
-                  }
-                  footer={
-                    <>
-                      {/* Hai việc NVBH làm nhiều nhất khi mở danh sách
-                          khách — trước đây phải vào chi tiết mới làm được
-                          (gọi điện) hoặc nằm trong nút 40px (tạo đơn). */}
-                      <div className="flex gap-2">
-                        {c.phone ? (
-                          <a
-                            href={`tel:${c.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-outline-variant text-[13px] font-semibold text-on-surface active:bg-surface-container"
-                          >
-                            <Phone className="h-4 w-4" /> Gọi
-                          </a>
-                        ) : (
-                          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-outline-variant text-[13px] text-on-surface-variant">
-                            Chưa có SĐT
-                          </span>
-                        )}
-                        <Button variant="outline" className="h-11 flex-1" asChild>
-                          {/* Tham số là `customerId` — màn bán hàng đọc
-                              đúng tên này rồi tự chọn khách. */}
-                          <Link href={newOrderHref(c.id)}>
-                            <FilePlus2 className="mr-1.5 h-4 w-4" /> Tạo đơn
-                          </Link>
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Button
-                          variant="ghost"
-                          className="h-11 text-[12px]"
-                          onClick={() => handleCheckIn(c)}
-                        >
-                          <Navigation className="mr-1 h-3.5 w-3.5" /> Ghé thăm
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-11 text-[12px] text-error disabled:opacity-40"
-                          disabled={debt <= 0}
-                          asChild={debt > 0}
-                        >
-                          {debt > 0 ? (
-                            <Link href={`/receivables/collect?customerId=${c.id}`}>
-                              <HandCoins className="mr-1 h-3.5 w-3.5" /> Thu tiền
-                            </Link>
-                          ) : (
-                            <span>
-                              <HandCoins className="mr-1 h-3.5 w-3.5" /> Thu tiền
-                            </span>
-                          )}
-                        </Button>
-                        <Button variant="ghost" className="h-11 text-[12px]" onClick={handleInventoryCheck}>
-                          <ClipboardList className="mr-1 h-3.5 w-3.5" /> Kiểm tồn
-                        </Button>
-                      </div>
-                    </>
-                  }
-                />
-              )
-            })}
-            <LoadMore pg={pg} shown={filtered.length} />
-          </div>
-          <div className="hidden lg:block">
-            <DataPagination pg={pg} shownCount={filtered.length} />
+          {/* Điện thoại: dòng gọn, gộp theo nhóm. */}
+          <div className="space-y-4 lg:hidden">
+            {groups.map((g) => (
+              <div key={g.label} className="overflow-hidden rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card">
+                <div className="flex items-baseline justify-between gap-2 border-b border-outline-variant/40 bg-surface-container-low px-4 py-2">
+                  <span className="truncate text-[12px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    {g.label}
+                  </span>
+                  <span className="shrink-0 text-[11px] font-semibold text-on-surface-variant tabular-data">
+                    {g.items.length} khách
+                  </span>
+                </div>
+                {g.items.map((c, i) => renderRow(c, i))}
+              </div>
+            ))}
+            <LoadMore pg={pg} shown={ordered.length} />
           </div>
         </>
-      )}
-
-      {visitTarget && (
-        <VisitCheckinDialog
-          open={!!visitTarget}
-          onOpenChange={(open) => !open && setVisitTarget(null)}
-          customerId={visitTarget.id}
-          customerName={visitTarget.store_name}
-          onSuccess={handleVisitSuccess}
-        />
       )}
 
       <BulkActionsBar

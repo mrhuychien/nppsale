@@ -237,9 +237,19 @@ describe("tab Lịch sử giao dịch của khách hàng", () => {
     expect(CUS).toContain("Mới hiện 200 khoản thu gần nhất")
   })
 
-  /** ⚠ Lỗi đọc phải được đếm, không nuốt im lặng. */
+  /**
+   * ⚠ Lỗi đọc phải được đếm, không nuốt im lặng.
+   *
+   * Chốt theo TỪNG TÊN chứ không theo nguyên chuỗi danh sách: danh sách
+   * truy vấn còn dài thêm theo thời gian, và một chốt vỡ mỗi lần thêm
+   * một truy vấn là chốt sẽ bị gỡ.
+   */
   it("hai truy vấn mới nằm trong phép kiểm lỗi chung", () => {
-    expect(CUS).toContain("recentPayRes, invoicesRes, paymentsRes]")
+    const at = CUS.indexOf("const qErr = (")
+    expect(at, "không tìm thấy phép kiểm lỗi chung").toBeGreaterThan(0)
+    const block = CUS.slice(at, CUS.indexOf("]", CUS.indexOf("[", at)))
+    expect(block).toContain("invoicesRes")
+    expect(block).toContain("paymentsRes")
   })
 })
 

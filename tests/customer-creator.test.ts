@@ -136,9 +136,11 @@ describe("Mở điểm bán ra là thấy đủ", () => {
    * bằng các ô nhập.
    */
   it("tab Sửa thông tin chỉ còn biểu mẫu sửa", () => {
+    // Cắt tới hết khối Tabs: tab "info" nay đứng CUỐI, nên cắt tới một
+    // tab cụ thể nào đó là ra lát rỗng và chốt xanh oan.
     const tab = DETAIL.slice(
       DETAIL.indexOf('<TabsContent value="info"'),
-      DETAIL.indexOf('<TabsContent value="assignments"')
+      DETAIL.indexOf("</Tabs>")
     )
     expect(tab).toContain("<CustomerForm")
     expect(tab).not.toContain("<CustomerProfileCard")
@@ -148,9 +150,14 @@ describe("Mở điểm bán ra là thấy đủ", () => {
   it("thẻ hồ sơ có lối sang sửa thông tin", () => {
     const i = DETAIL.indexOf("<CustomerProfileCard")
     const block = DETAIL.slice(i, DETAIL.indexOf("/>", i))
-    expect(block).toContain('setActiveTab("info")')
+    expect(block).toContain("onClick={goEdit}")
     // ⚠ Chỉ hiện cho người được sửa — nút bấm vào rồi mới bị chặn là nút tồi.
-    expect(block).toContain('hasPermission(user.role, "customers", "update")')
+    expect(block).toContain("canUpdate ?")
+    // Và hai cái tên đó phải đúng là hai thứ chúng hứa hẹn.
+    expect(DETAIL).toContain('setActiveTab("info")')
+    expect(DETAIL).toContain(
+      'const canUpdate = !!user && hasPermission(user.role, "customers", "update")'
+    )
   })
 
   it("thẻ hồ sơ hiện người tạo, ngày tạo và người phụ trách", () => {

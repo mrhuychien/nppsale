@@ -124,7 +124,10 @@ describe("Không còn nút nào trỏ về màn tạo đơn cũ", () => {
       "src/app/(dashboard)/customers/[id]/page.tsx",
       "router.push(newOrderHref(customer.id))",
     ],
-    ["danh sách khách", "src/app/(dashboard)/customers/page.tsx", "href={newOrderHref(c.id)}"],
+    // Danh sách khách nay là dòng gọn, không có nút con nào — nút "Tạo
+    // đơn" chuyển vào thanh dính đáy của MÀN CHI TIẾT (một chạm từ dòng
+    // khách). Hai chốt dưới đây phủ cả nút trên đầu lẫn nút dính đáy.
+    ["hồ sơ khách — thanh đáy", "src/app/(dashboard)/customers/[id]/page.tsx", "href={newOrderHref(customer.id)}"],
     ["tuyến thăm", "src/app/(dashboard)/sales/pjp/page.tsx", "href={newOrderHref(route.customer_id)}"],
   ])("%s dùng hằng số dùng chung", (_label, rel, expected) => {
     expect(code(read(rel))).toContain(expected)

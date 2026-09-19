@@ -122,25 +122,42 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
 }
 
 /**
- * Ba tab của màn đơn hàng — CHUNG cho mọi vai trò, không có "Tất cả" và
- * không có "Nháp".
+ * Bốn tab của màn đơn hàng — CHUNG cho mọi vai trò, không có "Nháp".
  *
- * ⚠ NHÁP KHÔNG NẰM Ở ĐÂY vì ở đây không làm gì được với nó. Việc của một
- * bản nháp là sửa nốt, gửi đi, hoặc xoá — cả ba nút đó nằm ở /sell/drafts.
- * Cho nháp hiện cả hai chỗ là người dùng mở đúng chỗ không có nút, rồi
- * kết luận đơn của mình bị kẹt. Chính sách SELECT ở migration 119 cũng
- * chỉ cho mỗi người thấy nháp CỦA CHÍNH MÌNH, kể cả chủ — nên bỏ tab này
- * không giấu của ai cái gì.
+ * ⚠ NHÁP KHÔNG CÓ TAB RIÊNG vì ở đây không làm gì được với nó. Việc của
+ * một bản nháp là sửa nốt, gửi đi, hoặc xoá — cả ba nút đó nằm ở
+ * /sell/drafts. Cho nháp một tab riêng là người dùng mở đúng chỗ không có
+ * nút, rồi kết luận đơn của mình bị kẹt. Chính sách SELECT ở migration
+ * 119 cũng chỉ cho mỗi người thấy nháp CỦA CHÍNH MÌNH, kể cả chủ — nên
+ * không có tab riêng cũng không giấu của ai cái gì. (Nháp vẫn nằm trong
+ * "Tất cả", và nút "N đơn nháp" ở đầu trang vẫn dẫn sang /sell/drafts.)
  *
- * ⚠ KHÔNG CÓ "TẤT CẢ" là có chủ ý: gộp bốn trạng thái vào một danh sách
- * thì người dùng phải tự đọc huy hiệu từng dòng mới biết đơn nào còn chờ
- * xuất hàng. Ba tab là ba câu hỏi họ thật sự hỏi — và với nhà phân phối,
- * tab đầu chính là hàng đợi việc trong ngày.
+ * ⚠ "TẤT CẢ" ĐÃ TỪNG CỐ Ý KHÔNG CÓ — GHI LẠI CẢ HAI PHÍA ĐỂ KHÔNG AI LẬT
+ * MÙ. Lý do cũ: gộp mọi trạng thái vào một danh sách thì người dùng phải
+ * tự đọc huy hiệu từng dòng mới biết đơn nào còn chờ xuất hàng. Chủ nhà
+ * chốt ngược ngày 19/09/2026: "Thêm phần hiển thị tất cả đơn hàng nữa
+ * (3 ô thống kê thành 4 ô)" — trên sổ thật, câu hỏi "tổng cộng có bao
+ * nhiêu đơn" là câu hỏi hằng ngày và trước đó không có đường nào hỏi.
+ *
+ * Lý do cũ vẫn được giữ bằng chỗ ĐỨNG, không bằng việc vắng mặt: "Tất
+ * cả" nằm CUỐI (giống màn hóa đơn), và màn vẫn mở ra ở "Phiếu tạm" —
+ * hàng đợi việc trong ngày — chứ không mở ra ở "Tất cả".
  *
  * ⚠ KHÔNG thu `COUNTED_STATUSES` xuống theo. Đó là danh sách ĐẾM và là
  * nguồn nhãn; nháp vẫn phải đếm được để còn dẫn người dùng sang đúng chỗ.
  */
-const ORDER_TABS = ["submitted", "completed", "cancelled"] as const
+const ORDER_TABS = ["submitted", "completed", "cancelled", "all"] as const
+
+/**
+ * Tab mở màn: hàng đợi việc, không phải "Tất cả".
+ *
+ * ⚠ ĐỪNG ĐẶT THẲNG GIÁ TRỊ NÀY LÀM TRỊ KHỞI TẠO CỦA `statusFilter`. Xem
+ * `effectiveStatus`: ô trống "" mang nghĩa "người dùng CHƯA chạm tab
+ * nào", và chính nghĩa đó cho phép ô tìm toàn hệ thống buông trạng thái.
+ * Khởi tạo thẳng bằng "submitted" là mọi lần tìm từ thanh tiêu đề đều bị
+ * ép về Phiếu tạm và trả RỖNG cho đơn đã hoàn thành hoặc đã huỷ.
+ */
+const DEFAULT_ORDER_TAB = "submitted"
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
@@ -162,7 +179,8 @@ export default function OrdersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  /** "" = chưa chạm tab nào — xem `effectiveStatus`, KHÔNG đổi thành "all". */
+  const [statusFilter, setStatusFilter] = useState("")
   const [pipelineStep, setPipelineStep] = useState<PipelineStepKey | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -371,21 +389,17 @@ export default function OrdersPage() {
 
   /** Lọc theo trạng thái. Tách riêng vì phép đếm phải chạy cho TỪNG trạng thái. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  /**
-   * Danh sách tab đang vẽ, và trạng thái THẬT SỰ được lọc.
-   *
-   * ⚠ NVBH KHÔNG CÓ TAB "TẤT CẢ" nên giá trị mặc định "all" — và cả một
-   * đường dẫn sâu kiểu `/orders?status=draft` — phải quy về một tab có
-   * thật. Không quy thì màn mở ra với mọi chip xám và một danh sách gồm
-   * cả nháp lẫn đơn đã huỷ, tức là đúng cái mà ba tab kia sinh ra để
-   * tránh.
-   *
-   * ⚠ Trừ khi đang lọc theo BƯỚC XỬ LÝ: bộ lọc đó chạy phía trình duyệt
-   * trên đúng trang đang xem, nên ép thêm trạng thái vào truy vấn là nó
-   * lọc trên một tập đã bị cắt và ra danh sách rỗng khó hiểu.
-   */
+  /** Danh sách tab đang vẽ. */
   const tabKeys: readonly string[] = ORDER_TABS
   /**
+   * Trạng thái THẬT SỰ được lọc.
+   *
+   * ⚠ "" NGHĨA LÀ NGƯỜI DÙNG CHƯA CHẠM TAB NÀO — KHÔNG PHẢI "all". Từ khi
+   * "Tất cả" trở thành một tab thật (chủ nhà chốt 19/09/2026), "all" là
+   * một LỰA CHỌN của người dùng; trộn hai nghĩa vào cùng một giá trị là
+   * không còn phân biệt được "chưa chọn gì" với "đã chọn Tất cả", và cả
+   * hai nhánh dưới đây đều sai theo.
+   *
    * ⚠ KHÔNG ÉP TRẠNG THÁI KHI ĐANG TÌM KIẾM. Tìm và trạng thái nối AND
    * trong CÙNG một truy vấn (xem chỗ gọi `applyStatusFilter` bên dưới),
    * nên đứng ở tab Phiếu tạm mà gõ mã một đơn đã huỷ thì ra RỖNG. Ô tìm
@@ -393,17 +407,23 @@ export default function OrdersPage() {
    * là mọi lần tìm toàn hệ thống đều rơi vào đúng cái bẫy đó.
    *
    * Tìm kiếm là tra cứu TOÀN CỤC, tab là điều hướng. Người dùng tự chọn
-   * một tab rồi mới gõ tìm thì tôn trọng lựa chọn đó — điều kiện dưới chỉ
-   * buông khi họ CHƯA chọn tab nào (giá trị còn là "all").
+   * một tab rồi mới gõ tìm thì tôn trọng lựa chọn đó — nhánh buông trạng
+   * thái dưới đây chỉ chạy khi họ CHƯA chạm tab nào.
    *
    * ⚠ Cũng buông khi đang lọc theo BƯỚC XỬ LÝ: bộ lọc đó chạy phía trình
    * duyệt trên đúng trang đang xem, ép thêm trạng thái vào truy vấn là nó
    * lọc trên một tập đã bị cắt và ra danh sách rỗng khó hiểu.
+   *
+   * ⚠ Một đường dẫn sâu kiểu `/orders?status=draft` vẫn được tôn trọng
+   * nguyên trạng — nó là lựa chọn tường minh của nơi gọi, dù "draft"
+   * không có tab nào sáng lên.
    */
   const searching = debouncedSearch.trim().length > 0
   const effectiveStatus =
-    !pipelineStep && !searching && !(ORDER_TABS as readonly string[]).includes(statusFilter)
-      ? "submitted"
+    statusFilter === ""
+      ? pipelineStep || searching
+        ? "all"
+        : DEFAULT_ORDER_TAB
       : statusFilter
 
   const applyStatusFilter = <T,>(q: T, status: string): T => {
@@ -1211,7 +1231,11 @@ export default function OrdersPage() {
               onClick={() => {
                 const next = active ? null : st.key
                 setPipelineStep(next)
-                if (next) setStatusFilter("all")
+                // ⚠ Trả tab về "chưa chọn", KHÔNG đặt "all". Từ khi "Tất
+                // cả" là một tab thật, đặt "all" ở đây là bỏ bước xử lý
+                // xong thì người dùng bị bỏ lại ở tab Tất cả — một tab
+                // họ chưa từng chạm.
+                if (next) setStatusFilter("")
               }}
               className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold ${
                 active
@@ -1237,8 +1261,17 @@ export default function OrdersPage() {
         phụ đề trước đây in ra số đó nên có 125 đơn mà ghi "50 đơn hàng".
         `pg.total` là số server trả về kèm count: "exact".
       */}
+      {/*
+        ⚠ DÒNG MÔ TẢ CHỈ CÒN Ở MÁY TÍNH (chủ nhà chốt 19/09/2026: "Bỏ
+        phần khoanh đỏ"). Trên điện thoại mọi vế của nó đã có chỗ nói
+        đúng hơn: "N đơn hôm nay · tiền" nằm ở đầu nhóm HÔM NAY, "N phiếu
+        tạm chờ xuất" là con số trên thẻ Phiếu tạm, "N đơn · đang xem 50"
+        nằm ở chân trang. Giữ nguyên ở máy tính vì bảng máy tính không gom
+        theo ngày — ở đó dòng này là nơi DUY NHẤT nói ra tiền hàng hôm nay.
+      */}
       <PageHeader
         title={isSales ? "Đơn của tôi" : "Đơn hàng"}
+        descriptionDesktopOnly
         description={[
           todaySummary ? `${todaySummary.count} đơn hôm nay · ${formatCurrency(todaySummary.total)}` : null,
           (statusCounts.submitted ?? 0) > 0 ? `${statusCounts.submitted} phiếu tạm chờ xuất` : null,
@@ -1257,8 +1290,13 @@ export default function OrdersPage() {
             <FileText className="mr-2 h-4 w-4" /> {statusCounts.draft} đơn nháp
           </Button>
         )}
+        {/* ⚠ NÚT NÀY CHỈ CÒN Ở MÁY TÍNH. Trên điện thoại thanh dưới đã có
+            nút "Bán hàng" tròn xanh đi tới ĐÚNG cùng một chỗ
+            (`NEW_ORDER_HREF`), lúc nào cũng thấy — hai nút cùng việc nằm
+            cách nhau một gang tay chỉ tốn chỗ của danh sách. Máy tính
+            không có thanh dưới nên ở đó phải giữ. */}
         {user && hasPermission(user.role, "orders", "create") && (
-          <Button onClick={() => router.push(newOrderHref())}>
+          <Button className="hidden lg:inline-flex" onClick={() => router.push(newOrderHref())}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn
           </Button>
         )}
@@ -1322,9 +1360,10 @@ export default function OrdersPage() {
             active={pipelineStep}
             onChange={(next) => {
               setPipelineStep(next)
-              // Picking a pipeline step clears the special-state chip filter
-              // so the two filters don't fight each other.
-              if (next) setStatusFilter("all")
+              // Chọn một bước xử lý thì buông tab trạng thái để hai bộ lọc
+              // không đánh nhau. ⚠ "" = chưa chọn tab, không phải "all" —
+              // xem chú thích cùng việc ở hàng chip trên điện thoại.
+              if (next) setStatusFilter("")
             }}
           />
         </div>

@@ -32,35 +32,69 @@ const NOTIF_PAGE = read("src/app/(dashboard)/notifications/page.tsx")
 const MIG119 = read("supabase/migrations/119_workflow_v2.sql")
 const MIG120 = read("supabase/migrations/120_workflow_v2_rpcs.sql")
 
-describe("Màn đơn hàng: ba tab, và chỉ ba", () => {
-  it("danh sách tab đúng bằng ba trạng thái sau khi gửi, chung cho mọi vai trò", () => {
+describe("Màn đơn hàng: bốn tab, và chỉ bốn", () => {
+  /**
+   * ⚠ GHI LẠI CẢ HAI PHÍA — ĐỪNG LẬT MÙ THÊM LẦN NỮA.
+   *
+   * Bản đầu CỐ Ý không có "Tất cả": gộp mọi trạng thái vào một danh sách
+   * thì người dùng phải tự đọc huy hiệu từng dòng mới biết đơn nào còn
+   * chờ xuất hàng. Chốt cũ ở đây khoá bằng `expect(decl).not.toContain('"all"')`.
+   *
+   * Chủ nhà chốt NGƯỢC ngày 19/09/2026: "Thêm phần hiển thị tất cả đơn
+   * hàng nữa (3 ô thống kê thành 4 ô)". Trên sổ thật, "tổng cộng có bao
+   * nhiêu đơn" là câu hỏi hằng ngày và trước đó không có đường nào hỏi.
+   *
+   * Lo ngại cũ được giữ bằng CHỖ ĐỨNG chứ không bằng việc vắng mặt, và
+   * hai điều dưới đây là phần còn lại của nó, đừng bỏ:
+   *   · "Tất cả" đứng CUỐI (giống màn hóa đơn), không đứng đầu;
+   *   · màn vẫn MỞ RA ở "Phiếu tạm" — xem chốt `DEFAULT_ORDER_TAB` dưới.
+   */
+  it("danh sách tab đúng bằng ba trạng thái sau khi gửi, cộng Tất cả ở cuối", () => {
     const i = LIST.indexOf("const ORDER_TABS = ")
     expect(i, "không tìm thấy danh sách tab").toBeGreaterThan(0)
     const decl = LIST.slice(i, LIST.indexOf("\n", i))
-    for (const s of ["submitted", "completed", "cancelled"]) {
+    for (const s of ["submitted", "completed", "cancelled", "all"]) {
       expect(decl, `thiếu tab ${s}`).toContain(`"${s}"`)
     }
-    // ⚠ "Nháp" KHÔNG ở đây: màn này không có nút nào làm được gì với một
-    // bản nháp. Cho nó hiện là người dùng mở đúng chỗ không có nút.
+    // ⚠ "Nháp" KHÔNG có tab riêng: màn này không có nút nào làm được gì
+    // với một bản nháp. Cho nó một tab là người dùng mở đúng chỗ không có
+    // nút. (Nháp vẫn nằm trong "Tất cả" — đó là chuyện khác.)
     expect(decl).not.toContain('"draft"')
-    expect(decl).not.toContain('"all"')
-    // ⚠ Và KHÔNG rẽ theo vai trò: nhà phân phối cũng ba tab ấy.
+    // ⚠ "Tất cả" ĐỨNG CUỐI. Đưa lên đầu là ô đầu tiên mắt chạm tới không
+    // còn là hàng đợi việc trong ngày.
+    expect(decl.indexOf('"all"')).toBeGreaterThan(decl.indexOf('"cancelled"'))
+    // ⚠ Và KHÔNG rẽ theo vai trò: nhà phân phối cũng bốn tab ấy.
     expect(LIST).toContain("const tabKeys: readonly string[] = ORDER_TABS")
   })
 
   /**
-   * ⚠ KHÔNG CÓ TAB "TẤT CẢ", nên giá trị mặc định của bộ lọc ("all")
-   * không trỏ tới tab nào. Không quy nó về một tab có thật thì màn mở ra
-   * với mọi tab xám và một danh sách trộn cả nháp lẫn đơn đã huỷ.
+   * ⚠ CÓ TAB "TẤT CẢ" RỒI THÌ "all" LÀ MỘT LỰA CHỌN, KHÔNG CÒN LÀ "chưa
+   * chọn gì". Trộn hai nghĩa vào một giá trị là không phân biệt được hai
+   * tình huống khác hẳn nhau, và màn mở ra ở tab Tất cả thay vì hàng đợi
+   * việc. Ô trống "" mới là "chưa chạm tab nào".
    */
-  it("giá trị lọc ngoài ba tab được quy về Phiếu tạm", () => {
+  it("chưa chạm tab nào thì mở ra ở Phiếu tạm, không phải Tất cả", () => {
+    expect(LIST, 'trị "chưa chọn" phải là ô trống').toContain(
+      'const [statusFilter, setStatusFilter] = useState("")'
+    )
+    expect(LIST).toContain('const DEFAULT_ORDER_TAB = "submitted"')
     const i = LIST.indexOf("const effectiveStatus =")
     expect(i).toBeGreaterThan(0)
     const expr = LIST.slice(i, LIST.indexOf("\n\n", i))
-    expect(expr).toContain("ORDER_TABS")
-    expect(expr).toContain('"submitted"')
+    expect(expr).toContain('statusFilter === ""')
+    expect(expr).toContain("DEFAULT_ORDER_TAB")
     // Và truy vấn phải dùng giá trị đã quy, không phải giá trị thô.
     expect(LIST).toContain("applyStatusFilter(applyCommonFilters(q), effectiveStatus)")
+  })
+
+  /**
+   * ⚠ CHỌN MỘT BƯỚC XỬ LÝ THÌ BUÔNG TAB VỀ "", KHÔNG VỀ "all". Đặt "all"
+   * ở đây là bỏ bước xử lý xong người dùng bị bỏ lại ở tab Tất cả — một
+   * tab họ chưa từng chạm.
+   */
+  it("bỏ bước xử lý thì trả về tab mặc định, không kẹt ở Tất cả", () => {
+    expect(LIST).not.toContain('setStatusFilter("all")')
+    expect(LIST.match(/setStatusFilter\(""\)/g)?.length, "hai chỗ chọn bước xử lý").toBe(2)
   })
 
   /**
@@ -73,7 +107,8 @@ describe("Màn đơn hàng: ba tab, và chỉ ba", () => {
   it("đang tìm kiếm thì KHÔNG ép trạng thái", () => {
     const i = LIST.indexOf("const effectiveStatus =")
     const expr = LIST.slice(i, LIST.indexOf("\n\n", i))
-    expect(expr, "tìm kiếm vẫn bị ép về một tab").toContain("!searching")
+    expect(expr, "tìm kiếm vẫn bị ép về một tab").toContain("searching")
+    expect(expr, "tìm kiếm phải buông về all").toContain('"all"')
     expect(LIST).toContain("const searching = debouncedSearch.trim().length > 0")
   })
 
@@ -90,7 +125,7 @@ describe("Màn đơn hàng: ba tab, và chỉ ba", () => {
     expect(LIST.slice(i - 300, i + 600)).toContain("Không có đơn hàng phù hợp")
   })
 
-  /** Ba tab không có tab Nháp, nên phải có đường sang chỗ chứa nháp. */
+  /** Không tab nào là tab Nháp, nên phải có đường sang chỗ chứa nháp. */
   it("có đường từ màn đơn hàng sang màn đơn nháp", () => {
     expect(LIST).toContain('router.push("/sell/drafts")')
     expect(LIST).toContain("(statusCounts.draft ?? 0) > 0")

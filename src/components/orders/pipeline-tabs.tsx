@@ -10,6 +10,10 @@ import { cn } from "@/lib/utils"
  *
  * ⚠ Con số đến từ CÙNG phép đếm với danh sách bên dưới (server, cùng bộ
  * lọc) — chip và bảng lệch nhau là lỗi đã sửa một lần, không lặp lại.
+ *
+ * ⚠ BỐN Ô LÀ KHỔ CHẬT NHẤT PHẢI CHỊU ĐƯỢC. Cả hai màn dùng khuôn này
+ * (đơn hàng, hóa đơn) nay đều có ô "Tất cả"; đệm và cỡ chữ vì thế co lại
+ * ở điện thoại. Thêm ô thứ NĂM thì phải đo lại ở 375px, không thêm bừa.
  */
 export interface PipelineTab {
   key: string
@@ -49,14 +53,17 @@ export function PipelineTabs({
             aria-selected={on}
             onClick={() => onPick(t.key)}
             className={cn(
-              "relative grid gap-1 px-4 py-3.5 text-left transition-colors hover:bg-surface-container-low",
+              // ⚠ ĐỆM NGANG PHẢI CO Ở ĐIỆN THOẠI. Từ khi có thêm ô "Tất
+              // cả" là bốn cột chia một màn 375px — để nguyên px-4 thì
+              // mỗi ô còn ~54px cho chữ và "Hoàn thành" cụt thành "Hoàn…".
+              "relative grid gap-1 px-2 py-3 text-left transition-colors hover:bg-surface-container-low sm:px-4 sm:py-3.5",
               i > 0 && "border-l border-outline-variant/40",
               on ? "bg-surface-container-low" : "bg-transparent"
             )}
           >
             <span
               className={cn(
-                "truncate text-xs font-bold",
+                "truncate text-[11px] font-bold sm:text-xs",
                 on ? "text-on-surface" : "text-on-surface-variant"
               )}
             >
@@ -64,7 +71,7 @@ export function PipelineTabs({
             </span>
             <span
               className={cn(
-                "text-[22px] font-extrabold leading-none tabular-data",
+                "text-[19px] font-extrabold leading-none tabular-data sm:text-[22px]",
                 t.count === 0 ? "text-outline-variant" : "text-on-surface"
               )}
             >

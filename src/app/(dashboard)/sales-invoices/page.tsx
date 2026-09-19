@@ -455,8 +455,16 @@ export default function SalesInvoicesPage() {
 
   return (
     <div className="space-y-4">
+      {/*
+        ⚠ DÒNG MÔ TẢ CHỈ CÒN Ở MÁY TÍNH — cùng lý do với màn đơn hàng
+        (chủ nhà chốt 19/09/2026, "áp dụng cả sang bên ds hoá đơn"). Đây
+        là một câu giải thích đọc MỘT lần, không phải con số phải theo
+        dõi; để nó chiếm một dải ngang trên mọi lần mở danh sách bằng
+        điện thoại là lấy mất chỗ của chính những hóa đơn nó đang nói tới.
+      */}
       <PageHeader
         title="Hóa đơn bán"
+        descriptionDesktopOnly
         description="Chứng từ thực xuất: trừ kho, sinh công nợ, là nguồn của hoá đơn điện tử."
       />
 

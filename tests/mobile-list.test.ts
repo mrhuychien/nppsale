@@ -285,7 +285,10 @@ describe("M2.2 — /orders", () => {
     // Chọn chip trạng thái thì buông bước pipeline…
     expect(ORDERS_CODE).toMatch(/setStatusFilter\(k\)[\s\S]{0,200}?setPipelineStep\(null\)/)
     // …và chọn bước pipeline thì buông chip trạng thái.
-    expect(ORDERS_CODE).toMatch(/setPipelineStep\(next\)[\s\S]{0,200}?setStatusFilter\("all"\)/)
+    // ⚠ BUÔNG VỀ "", KHÔNG VỀ "all". Từ 19/09/2026 "Tất cả" là một tab
+    // thật, nên đặt "all" ở đây là bỏ bước xử lý xong người dùng bị bỏ
+    // lại ở tab Tất cả — một tab họ chưa từng chạm.
+    expect(ORDERS_CODE).toMatch(/setPipelineStep\(next\)[\s\S]{0,400}?setStatusFilter\(""\)/)
   })
 
   /**

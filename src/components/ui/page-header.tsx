@@ -10,6 +10,20 @@ import { usePageTitleOptional } from "@/components/layout/page-title-context"
 interface PageHeaderProps {
   title: string
   description?: string
+  /**
+   * Giấu dòng mô tả trên điện thoại, vẫn giữ ở máy tính.
+   *
+   * ⚠ DÙNG CHO NHỮNG MÀN ĐÃ NÓI LẠI ĐÚNG NHỮNG CON SỐ ẤY Ở CHỖ KHÁC.
+   * Danh sách đơn / hóa đơn trên điện thoại nay có thẻ đếm theo trạng
+   * thái, dải "Tổng tiền hàng" và đầu nhóm ngày — dòng mô tả lặp lại cả
+   * ba, chiếm một dải ngang ngay trên thứ người ta mở màn để xem. Trên
+   * máy tính không có mấy thứ đó nên dòng mô tả vẫn là nơi duy nhất nói
+   * ra, phải giữ.
+   *
+   * KHÔNG dùng nó để giấu một câu chỉ có ở đây — như vậy là điện thoại
+   * mất thông tin mà máy tính có.
+   */
+  descriptionDesktopOnly?: boolean
   children?: React.ReactNode
   className?: string
   backHref?: string
@@ -19,6 +33,7 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
+  descriptionDesktopOnly,
   children,
   className,
   backHref,
@@ -72,8 +87,9 @@ export function PageHeader({
       </div>
 
       {/* Mô tả vẫn có ích trên mobile (vd "108 đơn hàng") — thu thành 1 dòng
-          nhỏ, không phải cả khối tiêu đề. */}
-      {description && (
+          nhỏ, không phải cả khối tiêu đề. Trừ khi màn đã nói lại đúng
+          những con số ấy ở chỗ khác: xem `descriptionDesktopOnly`. */}
+      {description && !descriptionDesktopOnly && (
         <p className="lg:hidden text-xs text-on-surface-variant">{description}</p>
       )}
 

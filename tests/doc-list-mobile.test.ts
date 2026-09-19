@@ -24,6 +24,9 @@ const MOBILE_INV = read("src/components/sales-invoices/mobile-invoice-list.tsx")
 const MOBILE_ORD = read("src/components/orders/mobile-order-list.tsx")
 const INV_TABLE = read("src/components/sales-invoices/desktop-invoice-table.tsx")
 const ORD_TABLE = read("src/components/orders/desktop-order-table.tsx")
+const HEADER = read("src/components/ui/page-header.tsx")
+const TABS = read("src/components/orders/pipeline-tabs.tsx")
+const MOBILE_NAV = read("src/components/layout/mobile-nav.tsx")
 
 describe("khuôn hàng dùng chung", () => {
   /** Bốn dòng, đúng thứ tự người bán đọc. */
@@ -198,5 +201,94 @@ describe("màu hóa đơn", () => {
     expect(MOBILE_INV).toContain('if (r.replaced_by) return')
     expect(MOBILE_INV).toContain('if (r.replaced_from) return')
     expect(MOBILE_INV).toContain("return null")
+  })
+})
+
+describe("dọn dải trên đầu danh sách (điện thoại)", () => {
+  /**
+   * ⚠ GIẤU TRÊN ĐIỆN THOẠI, GIỮ Ở MÁY TÍNH — không xoá hẳn. Dòng mô tả
+   * của màn đơn hàng in "N đơn hôm nay · tiền", và trên máy tính đó là
+   * nơi DUY NHẤT nói ra con số ấy (bảng máy tính không gom theo ngày).
+   * Xoá hẳn là lấy mất một con số khỏi màn hình rộng để dọn màn hình hẹp.
+   */
+  it("cờ chỉ tắt đoạn mô tả của điện thoại, khối tiêu đề máy tính không đụng tới", () => {
+    expect(HEADER).toContain("descriptionDesktopOnly?: boolean")
+    expect(HEADER).toContain("{description && !descriptionDesktopOnly && (")
+    const flat = HEADER.replace(/\s+/g, " ")
+    // Khối `hidden lg:block` (máy tính) KHÔNG được gắn thêm điều kiện nào.
+    expect(flat).toContain("{description && <p className=\"text-sm text-on-surface-variant\">{description}</p>}")
+  })
+
+  it.each([
+    ["đơn hàng", "src/app/(dashboard)/orders/page.tsx"],
+    ["hóa đơn", "src/app/(dashboard)/sales-invoices/page.tsx"],
+  ])("%s: đầu trang không còn dải mô tả trên điện thoại", (_l, rel) => {
+    const src = read(rel)
+    const i = src.indexOf("<PageHeader")
+    expect(i, "không tìm thấy đầu trang").toBeGreaterThan(0)
+    const tag = src.slice(i, src.indexOf(">", i))
+    expect(tag, "thiếu cờ giấu mô tả trên điện thoại").toContain("descriptionDesktopOnly")
+  })
+
+  /**
+   * ⚠ NÚT "TẠO ĐƠN" CHỈ CÒN Ở MÁY TÍNH, và chỉ giấu được vì thanh dưới
+   * của điện thoại đã có nút đi tới ĐÚNG cùng một chỗ. Nếu ngày nào đó
+   * thanh dưới đổi đích, chốt này đỏ trước khi điện thoại mất hẳn đường
+   * tạo đơn.
+   */
+  it("giấu Tạo đơn trên điện thoại vì thanh dưới đã có nút cùng đích", () => {
+    const i = ORDERS.indexOf("Tạo đơn\n")
+    expect(i).toBeGreaterThan(0)
+    expect(ORDERS.slice(i - 300, i)).toContain('className="hidden lg:inline-flex"')
+    expect(ORDERS.slice(i - 300, i)).toContain("newOrderHref()")
+    // Thanh dưới đi tới cùng hằng số đó, không phải một đường dẫn viết tay.
+    expect(MOBILE_NAV).toContain("href: NEW_ORDER_HREF")
+  })
+
+  /** Nháp thì ngược lại: không có tab riêng, nên nút này phải ở lại. */
+  it("nút đơn nháp KHÔNG bị giấu — đó là đường duy nhất sang /sell/drafts", () => {
+    const i = ORDERS.indexOf('router.push("/sell/drafts")')
+    expect(i).toBeGreaterThan(0)
+    expect(ORDERS.slice(i - 200, i + 200)).not.toContain("hidden lg:")
+  })
+})
+
+describe("thẻ đếm trạng thái: bốn ô", () => {
+  /**
+   * ⚠ CẢ HAI MÀN ĐỀU CÓ Ô "TẤT CẢ", VÀ NÓ ĐỨNG CUỐI. Chủ nhà chốt
+   * 19/09/2026 ("3 ô thống kê thành 4 ô — áp dụng cả sang bên ds hoá
+   * đơn"). Đứng cuối chứ không đứng đầu: ô đầu tiên mắt chạm tới phải là
+   * hàng đợi việc trong ngày.
+   *
+   * Màn hóa đơn chỉ có BA ô vì sổ chỉ có hai trạng thái hóa đơn — `posted`
+   * và `cancelled`, sinh ra cùng một RPC, không có nháp. Bịa ra ô thứ tư
+   * là in một con số không có nghĩa.
+   */
+  it("đơn hàng: bốn ô, Tất cả đứng cuối", () => {
+    const i = ORDERS.indexOf("const ORDER_TABS = ")
+    const decl = ORDERS.slice(i, ORDERS.indexOf("\n", i))
+    expect(decl.match(/"/g)?.length, "phải đúng bốn ô").toBe(8)
+    expect(decl.indexOf('"all"')).toBeGreaterThan(decl.indexOf('"cancelled"'))
+  })
+
+  it("hóa đơn: Tất cả cũng đứng cuối", () => {
+    const i = INVOICES.indexOf("const TABS = [")
+    const decl = INVOICES.slice(i, INVOICES.indexOf("] as const", i))
+    expect(decl).toContain('label: "Tất cả"')
+    expect(decl.indexOf('key: "all"')).toBeGreaterThan(decl.indexOf('key: "cancelled"'))
+  })
+
+  /**
+   * ⚠ BỐN Ô PHẢI VỪA MÀN 375px. Giữ nguyên đệm của ba ô thì mỗi ô còn
+   * ~54px cho chữ và "Hoàn thành" cụt thành "Hoàn…" — người dùng đọc
+   * nhãn cụt rồi đoán, đúng thứ bốn ô sinh ra để khỏi phải đoán.
+   */
+  it("đệm và cỡ chữ co lại ở khổ hẹp", () => {
+    const flat = TABS.replace(/\s+/g, " ")
+    expect(flat).toContain("px-2 py-3 text-left transition-colors hover:bg-surface-container-low sm:px-4 sm:py-3.5")
+    expect(flat).toContain('"truncate text-[11px] font-bold sm:text-xs"')
+    expect(flat).toContain("text-[19px] font-extrabold leading-none tabular-data sm:text-[22px]")
+    // Và nhãn vẫn phải cắt được chứ không đẩy ngang cả thẻ.
+    expect(flat).toContain("truncate")
   })
 })

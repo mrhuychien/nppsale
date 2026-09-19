@@ -34,7 +34,6 @@ import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -51,9 +50,15 @@ import {
   type InvoiceSortKey,
 } from "@/components/sales-invoices/desktop-invoice-table"
 import { InvoiceDrawer } from "@/components/sales-invoices/invoice-drawer"
+import { MobileInvoiceList } from "@/components/sales-invoices/mobile-invoice-list"
+import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import {
+  periodFrom, nextPeriod, summariseDocLines,
+  type ListPeriod, type DocLineSummary,
+} from "@/lib/orders/list-summary"
 import { vnDateKey } from "@/lib/orders/status-tone"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import { INVOICE_STATUS_MAP } from "@/lib/constants"
+import { formatCurrency } from "@/lib/utils"
 import {
   INVOICE_COLUMNS, INVOICE_FILTERS,
   DEFAULT_INVOICE_COLUMNS, DEFAULT_INVOICE_FILTERS,
@@ -68,8 +73,14 @@ import type { Customer, User } from "@/types"
  */
 const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"
 const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address)"
+/**
+ * ⚠ `created_at` VÀ `payment_terms` LÀ BẮT BUỘC, không phải cho đẹp.
+ * `invoice_date` là cột kiểu `date` — không mang giờ, nên cột "Ngày xuất"
+ * trên máy tính và dòng phụ trên điện thoại đều phải lấy giờ từ
+ * `created_at`. `payment_terms` là góc phải dòng hai của thẻ điện thoại.
+ */
 const BASE_COLS =
-  "id, invoice_code, invoice_date, status, total, order_id, customer_id, sales_user_id, replaced_from, replaced_by"
+  "id, invoice_code, invoice_date, created_at, payment_terms, status, total, order_id, customer_id, sales_user_id, replaced_from, replaced_by"
 const SALES_EMBED = "sales_user:users!sales_invoices_sales_user_id_fkey(full_name)"
 
 const TABS = [
@@ -102,6 +113,15 @@ export default function SalesInvoicesPage() {
   const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)
 
   const [rows, setRows] = useState<InvoiceRow[]>([])
+  /**
+   * Khoảng thời gian của dải tóm tắt trên điện thoại (mẫu chủ nhà gửi).
+   * Mặc định "Tháng này" — xem cùng khối ở màn đơn hàng.
+   */
+  const [period, setPeriod] = useState<ListPeriod>("month")
+  /** Mặt hàng đại diện của từng hóa đơn đang hiện. */
+  const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
+  /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được. */
+  const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<string>("posted")
@@ -163,9 +183,16 @@ export default function SalesInvoicesPage() {
       if (dateTo) x = x.lte("invoice_date", dateTo)
       if (amountMin) x = x.gte("total", Number(amountMin))
       if (amountMax) x = x.lte("total", Number(amountMax))
+      /**
+       * ⚠ VIÊN THUỐC KHOẢNG THỜI GIAN ĐI CHUNG MỘT ĐƯỜNG VỚI BỘ LỌC
+       * NGÀY. Lọc riêng ở trình duyệt là dải "Tổng tiền hàng" cộng trên
+       * một tập còn danh sách hiện một tập khác.
+       */
+      const pFrom = periodFrom(period)
+      if (pFrom) x = x.gte("invoice_date", pFrom)
       return x
     },
-    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax]
+    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, period]
   )
 
   const fetchData = useCallback(async () => {
@@ -181,11 +208,71 @@ export default function SalesInvoicesPage() {
 
     const { data, error, count } = await q.range(pg.from, pg.to)
     if (error) console.error("[sales-invoices] truy vấn lỗi:", error.message)
-    setRows(((data as unknown) as InvoiceRow[]) || [])
+    const list = ((data as unknown) as InvoiceRow[]) || []
+    setRows(list)
     pg.setTotal(count ?? 0)
     setLoading(false)
+
+    /**
+     * Mặt hàng đại diện của từng hóa đơn đang hiện — dòng thứ ba của thẻ
+     * điện thoại.
+     *
+     * ⚠ CHỈ CHO TRANG ĐANG HIỆN, và phân trang: 50 hóa đơn × vài chục
+     *   dòng có thể vượt trần 1.000 của PostgREST.
+     * ⚠ ĐỌC HỎNG THÌ ĐỂ NGUYÊN `undefined`, đừng ghi `{}` — `{}` làm mọi
+     *   thẻ in "0 mặt hàng", câu trả lời sai cho một câu chưa đọc được.
+     */
+    const ids = list.map((r) => r.id)
+    if (ids.length > 0) {
+      const lineRes = await fetchAllForAggregate<{
+        invoice_id: string
+        unit_name: string | null
+        quantity: number | string | null
+        line_total: number | string | null
+        product?: { name?: string | null } | null
+      }>((from, to) =>
+        supabase
+          .from("sales_invoice_lines")
+          .select("invoice_id, unit_name, quantity, line_total, product:products(name)", { count: "exact" })
+          .in("invoice_id", ids)
+          .range(from, to)
+      )
+      if (lineRes.error) console.warn("[sales-invoices] không đọc được dòng hàng:", lineRes.error)
+      else {
+        setLineSummary((prev) => ({
+          ...prev,
+          ...summariseDocLines(lineRes.rows.map((r) => ({ ...r, doc_id: r.invoice_id }))),
+        }))
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, applyFilters, pg.from, pg.to])
+
+  /**
+   * Tổng tiền của CẢ bộ lọc, cho dải tóm tắt trên điện thoại.
+   *
+   * ⚠ KHÔNG CỘNG `rows`. Đó là một trang 50 dòng; cộng nó rồi gọi là
+   *   "Tổng tiền hàng" là in ra con số nhỏ hơn sự thật mà không báo gì.
+   * ⚠ CHẠM TRẦN CŨNG LÀ THIẾU → để `null`, dải hiện "—".
+   */
+  const fetchTotal = useCallback(async () => {
+    setFilteredTotal(null)
+    const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
+    const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
+      let q = supabase
+        .from("sales_invoices")
+        .select(routeFilter !== "all" ? `total, ${cust}` : "total", { count: "exact" })
+      if (status !== "all") q = q.eq("status", status)
+      return (applyFilters(q as never) as typeof q).range(from, to)
+    })
+    if (res.error || res.truncated) {
+      console.warn("[sales-invoices] không cộng được tổng tiền:", res.error ?? "vượt trần")
+      setFilteredTotal(null)
+      return
+    }
+    setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, applyFilters, routeFilter])
 
   /**
    * ⚠ ĐẾM Ở MÁY CHỦ, KHÔNG ĐẾM TỪ `rows`. `rows` chỉ là một trang 50
@@ -211,6 +298,10 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     if (!authLoading) fetchData()
   }, [authLoading, fetchData])
+
+  useEffect(() => {
+    if (!authLoading) fetchTotal()
+  }, [authLoading, fetchTotal])
 
   useEffect(() => {
     if (!authLoading) fetchCounts()
@@ -491,54 +582,35 @@ export default function SalesInvoicesPage() {
         </div>
       </div>
 
-      {/* ---------------- Điện thoại: danh sách thẻ ---------------- */}
+      {/* ---------------- Điện thoại: danh sách theo mẫu ---------------- */}
       <div className="space-y-3 lg:hidden">
+        {/* Dải tóm tắt: viên thuốc khoảng thời gian · bộ lọc · tổng tiền
+            của CẢ bộ lọc (không phải của trang đang hiện). */}
+        <DocListSummary
+          period={period}
+          onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
+          onOpenFilter={() => setFilterSheet(true)}
+          filtersActive={activeFilterCount > 0 || period !== "month"}
+          onClearFilters={() => {
+            clearAdvanced()
+            setPeriod("month")
+          }}
+          countText={`${pg.total} hóa đơn`}
+          total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
+        />
+
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border bg-card p-6">{empty}</div>
         ) : (
           <>
-            {filtered.map((r) => {
-              const route = r.customer?.channel
-                ? (routeNameByCode[r.customer.channel] ?? r.customer.channel)
-                : null
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setDrawerId(r.id)}
-                  className="block w-full rounded-xl border bg-card p-3 text-left active:bg-muted/40"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate">
-                        <span className="font-mono text-[13px] font-bold text-primary">{r.invoice_code}</span>
-                        {r.replaced_from && <Badge variant="secondary" className="ml-1.5">Lập lại</Badge>}
-                        {r.replaced_by && <Badge variant="outline" className="ml-1.5">Đã bị thay</Badge>}
-                      </div>
-                      <div className="mt-0.5 truncate text-sm font-semibold">
-                        {r.customer?.store_name || "Khách lẻ"}
-                      </div>
-                      {route && <div className="truncate text-xs text-muted-foreground">{route}</div>}
-                    </div>
-                    <Badge variant={INVOICE_STATUS_MAP[r.status]?.variant ?? "secondary"}>
-                      {INVOICE_STATUS_MAP[r.status]?.label ?? r.status}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 flex items-end justify-between gap-2">
-                    <div className="min-w-0 text-xs text-muted-foreground">
-                      <div className="truncate">
-                        {formatDate(r.invoice_date)}
-                        {r.order?.order_code ? ` · ${r.order.order_code}` : ""}
-                      </div>
-                      {r.customer?.address && <div className="truncate">{r.customer.address}</div>}
-                    </div>
-                    <div className="shrink-0 text-base font-bold tabular-nums">{formatCurrency(r.total)}</div>
-                  </div>
-                </button>
-              )
-            })}
+            <MobileInvoiceList
+              invoices={filtered}
+              lineSummary={lineSummary}
+              showSalesName={!isSales}
+              onOpen={setDrawerId}
+            />
             <DataPagination pg={pg} />
           </>
         )}

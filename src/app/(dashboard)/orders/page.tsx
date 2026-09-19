@@ -21,6 +21,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
+import { DocListSummary } from "@/components/ui/doc-list-summary"
+import {
+  periodFrom, nextPeriod, summariseDocLines,
+  type ListPeriod, type DocLineSummary,
+} from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
 import { PipelineTabs } from "@/components/orders/pipeline-tabs"
 import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
@@ -88,6 +93,13 @@ const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channe
  * không có thì PostgREST trả lỗi "column customer.channel does not exist".
  */
 const COUNT_SELECT_WITH_ROUTE = "id, customer:customers!inner(id)"
+/**
+ * ⚠ PHÉP CỘNG TIỀN PHẢI CÓ CỘT `total` TRONG CHÍNH CÂU SELECT.
+ * `COUNT_SELECT_WITH_ROUTE` chỉ lấy `id` — nó sinh ra để ĐẾM. Mượn nó
+ * cho phép cộng thì mọi dòng về không có `total`, và dải tóm tắt hiện
+ * đúng 0đ mỗi khi có bộ lọc tuyến. Không lỗi nào bắn ra.
+ */
+const TOTAL_SELECT_WITH_ROUTE = "total, customer:customers!inner(id)"
 
 /**
  * Các trạng thái có chip lọc, theo đúng thứ tự đơn đi qua.
@@ -154,6 +166,20 @@ export default function OrdersPage() {
   const [pipelineStep, setPipelineStep] = useState<PipelineStepKey | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
+  /**
+   * Khoảng thời gian của dải tóm tắt trên điện thoại (mẫu chủ nhà gửi).
+   *
+   * ⚠ MẶC ĐỊNH "THÁNG NÀY", KHÔNG PHẢI "TẤT CẢ". Nhà phân phối mở màn
+   * này mỗi ngày; "tất cả" là kéo về cả lịch sử nhiều năm để trả lời một
+   * câu hỏi về hôm nay, và dải tổng tiền phía trên thành một con số vô
+   * nghĩa.
+   */
+  const [period, setPeriod] = useState<ListPeriod>("month")
+  /** Mặt hàng đại diện + số dòng của từng đơn đang hiện. */
+  const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
+  /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được — xem `DocListSummary`. */
+  const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
+
   // Sheet lọc trên mobile (thay ô tìm + "Bộ lọc nâng cao" + FilterPicker).
   const [filterSheet, setFilterSheet] = useState(false)
   // Chế độ chọn nhiều: bật rồi thì CHẠM CẢ THẺ là chọn, không cần checkbox
@@ -330,6 +356,14 @@ export default function OrdersPage() {
     if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
     if (dateFrom) x = x.gte("order_date", dateFrom)
     if (dateTo) x = x.lte("order_date", dateTo + "T23:59:59")
+    /**
+     * ⚠ VIÊN THUỐC KHOẢNG THỜI GIAN ĐI CHUNG MỘT ĐƯỜNG VỚI BỘ LỌC NGÀY.
+     * Để nó lọc riêng ở trình duyệt là dải "Tổng tiền hàng" cộng trên một
+     * tập, còn danh sách hiện một tập khác — hai con số cạnh nhau, không
+     * khớp, không ai giải thích được.
+     */
+    const pFrom = periodFrom(period)
+    if (pFrom) x = x.gte("order_date", pFrom)
     if (amountMin) x = x.gte("total", parseFloat(amountMin))
     if (amountMax) x = x.lte("total", parseFloat(amountMax))
     return x as T
@@ -430,7 +464,7 @@ export default function OrdersPage() {
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -521,30 +555,89 @@ export default function OrdersPage() {
     try { localStorage.setItem(SCOPE_HINT_KEY, "1") } catch { /* không sao */ }
   }
 
-  // Cột "SL MH": đếm dòng hàng của đúng các đơn đang hiện. Một truy vấn
-  // cho cả trang, phân trang vì 50 đơn × vài chục dòng có thể vượt 1.000.
+  /**
+   * Dòng hàng của đúng các đơn đang hiện — nuôi CẢ cột "SL MH" của bảng
+   * máy tính LẪN dòng "mặt hàng chính" của thẻ điện thoại (mẫu mới).
+   *
+   * Một truy vấn cho cả trang, phân trang vì 50 đơn × vài chục dòng có
+   * thể vượt 1.000.
+   *
+   * ⚠ ĐỌC HỎNG THÌ ĐỂ `undefined`, KHÔNG ĐỂ `{}`. `{}` làm thẻ in "0 mặt
+   *   hàng" cho mọi đơn — câu trả lời sai cho một câu chưa đọc được.
+   */
   useEffect(() => {
     if (orders.length === 0) return
     let cancelled = false
     const ids = orders.map((o) => o.id)
     ;(async () => {
-      const res = await fetchAllForAggregate<{ order_id: string }>((from, to) =>
-        supabase.from("sales_order_lines").select("order_id", { count: "exact" }).in("order_id", ids).range(from, to)
+      const res = await fetchAllForAggregate<{
+        order_id: string
+        unit_name: string | null
+        quantity: number | string | null
+        line_total: number | string | null
+        product?: { name?: string | null } | null
+      }>((from, to) =>
+        supabase
+          .from("sales_order_lines")
+          .select("order_id, unit_name, quantity, line_total, product:products(name)", { count: "exact" })
+          .in("order_id", ids)
+          .range(from, to)
       )
       if (cancelled) return
       if (res.error) {
-        console.warn("[orders] không đếm được số mặt hàng:", res.error)
+        console.warn("[orders] không đọc được dòng hàng:", res.error)
         return
       }
       const m: Record<string, number> = {}
       for (const id of ids) m[id] = 0
       for (const r of res.rows) m[r.order_id] = (m[r.order_id] || 0) + 1
       setLineCountByOrder((prev) => ({ ...prev, ...m }))
+      setLineSummary((prev) => ({
+        ...prev,
+        ...summariseDocLines(res.rows.map((r) => ({ ...r, doc_id: r.order_id }))),
+      }))
     })()
     return () => {
       cancelled = true
     }
   }, [orders]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Tổng tiền của CẢ bộ lọc, cho dải tóm tắt trên điện thoại.
+   *
+   * ⚠ KHÔNG CỘNG CÁC DÒNG ĐANG HIỆN. Danh sách phân trang 50 dòng; cộng
+   *   trang hiện tại rồi gọi nó là "Tổng tiền hàng" là in ra một con số
+   *   nhỏ hơn sự thật mà không có gì báo.
+   *
+   * ⚠ CẮT BỚT Ở TRẦN CŨNG LÀ THIẾU. Chạm trần thì để `null` → dải hiện
+   *   "—", chứ không hiện một con số hụt.
+   */
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setFilteredTotal(null)
+      const res = await fetchAllForAggregate<{ total: number | string }>((from, to) =>
+        applyStatusFilter(
+          applyCommonFilters(
+            // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
+            supabase
+              .from("sales_orders")
+              .select(routeFilter !== "all" ? TOTAL_SELECT_WITH_ROUTE : "total", { count: "exact" })
+              .range(from, to)
+          ),
+          effectiveStatus
+        )
+      )
+      if (cancelled) return
+      if (res.error || res.truncated) {
+        console.warn("[orders] không cộng được tổng tiền:", res.error ?? "vượt trần")
+        setFilteredTotal(null)
+        return
+      }
+      setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
+    })()
+    return () => { cancelled = true }
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
@@ -1394,6 +1487,20 @@ export default function OrdersPage() {
       {/* Điện thoại: khung xương / trạng thái rỗng / danh sách nhóm theo
           ngày. Máy tính có thẻ bảng riêng ở trên với thanh công cụ của nó. */}
       <div className="lg:hidden">
+      {/* Dải tóm tắt theo mẫu: viên thuốc khoảng thời gian · bộ lọc ·
+          "Tổng tiền hàng" với tổng của CẢ bộ lọc. */}
+      <DocListSummary
+        period={period}
+        onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
+        onOpenFilter={() => setFilterSheet(true)}
+        filtersActive={activeFilterCount > 0 || period !== "month"}
+        onClearFilters={() => {
+          clearAdvancedFilters()
+          setPeriod("month")
+        }}
+        countText={`${pg.total} đơn hàng`}
+        total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
+      />
       {bulkBar}
       {loading ? (
         <div className="space-y-2">
@@ -1471,6 +1578,7 @@ export default function OrdersPage() {
                 đó nằm ở màn chi tiết, nơi có đủ ngữ cảnh để làm. */}
             <MobileOrderList
               orders={filtered}
+              lineSummary={lineSummary}
               showSalesName={!isSales}
               selectMode={selectMode}
               selectedIds={selectedIds}

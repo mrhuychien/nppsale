@@ -1,4 +1,4 @@
-import { ORDER_STATUS_MAP } from "@/lib/constants"
+import { ORDER_STATUS_MAP, INVOICE_STATUS_MAP } from "@/lib/constants"
 
 /**
  * Màu và nhãn của một đơn trên ĐIỆN THOẠI — theo mẫu thiết kế màn "Đơn
@@ -55,6 +55,56 @@ export function orderTone(status: string): OrderTone {
   return { key: status, label: ORDER_STATUS_MAP[status]?.label ?? status, ...t }
 }
 
+/**
+ * Màu và nhãn của một HÓA ĐƠN BÁN — cùng bảng màu với đơn hàng để hai
+ * danh sách đọc được bằng một cách nhìn (chủ nhà chốt: hai màn theo cùng
+ * một mẫu).
+ *
+ * ⚠ CHỈ HAI TRẠNG THÁI, và đó là cố ý: hóa đơn sinh ra và ghi sổ trong
+ * cùng một RPC (mig 124), không có nháp. Xem `INVOICE_STATUS_MAP`.
+ *
+ * ⚠ `posted` DÙNG XANH — cùng sắc với `completed` của đơn, vì cả hai
+ * đều nghĩa là "xong, không còn việc". Huỷ dùng đỏ như đơn huỷ.
+ */
+const INVOICE_TONES: Record<string, Omit<OrderTone, "key" | "label">> = {
+  posted: { bg: "#e3f5ec", fg: "#004e33", accent: "#22c55e" },
+  cancelled: { bg: "#fdecec", fg: "#b00020", accent: "#ef5350" },
+}
+
+export function invoiceTone(status: string): OrderTone {
+  const t = INVOICE_TONES[status] ?? TONES.draft
+  return { key: status, label: INVOICE_STATUS_MAP[status]?.label ?? status, ...t }
+}
+
+/**
+ * Gom theo ngày cho một loại chứng từ BẤT KỲ.
+ *
+ * ⚠ `groupOrdersByDay` ở trên GIỮ NGUYÊN và gọi vào đây. Đổi chữ ký của
+ * nó là bắt mọi nơi gọi sửa theo, mà nó đang là chỗ duy nhất chốt thứ tự
+ * nhóm của danh sách đơn.
+ */
+export function groupDocsByDay<T>(
+  items: T[],
+  getDate: (item: T) => string,
+  getTotal: (item: T) => number,
+  now: Date = new Date()
+): DayGroup<T>[] {
+  const out: DayGroup<T>[] = []
+  const byKey = new Map<string, DayGroup<T>>()
+  for (const it of items) {
+    const key = (getDate(it) || "").slice(0, 10)
+    let g = byKey.get(key)
+    if (!g) {
+      g = { label: dayLabel(getDate(it), now), key, items: [], total: 0 }
+      byKey.set(key, g)
+      out.push(g)
+    }
+    g.items.push(it)
+    g.total += Number(getTotal(it)) || 0
+  }
+  return out
+}
+
 /** Ngày theo giờ Việt Nam, dạng YYYY-MM-DD — để so với cột `order_date` (DATE). */
 export function vnDateKey(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(d)
@@ -101,20 +151,7 @@ export function groupOrdersByDay<T extends { order_date: string; total: number }
   orders: T[],
   now: Date = new Date()
 ): DayGroup<T>[] {
-  const out: DayGroup<T>[] = []
-  const byKey = new Map<string, DayGroup<T>>()
-  for (const o of orders) {
-    const key = (o.order_date || "").slice(0, 10)
-    let g = byKey.get(key)
-    if (!g) {
-      g = { label: dayLabel(o.order_date, now), key, items: [], total: 0 }
-      byKey.set(key, g)
-      out.push(g)
-    }
-    g.items.push(o)
-    g.total += Number(o.total) || 0
-  }
-  return out
+  return groupDocsByDay(orders, (o) => o.order_date, (o) => o.total, now)
 }
 
 /* ------------------------------------------------------------------ */

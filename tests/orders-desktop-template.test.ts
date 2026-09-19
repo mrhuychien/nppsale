@@ -91,11 +91,24 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
 })
 
 describe("Bảng: cột theo mẫu, số liệu thật", () => {
+  /**
+   * ⚠ MỘT TRUY VẤN NUÔI HAI MÀN. Cùng câu đọc dòng hàng này vừa đếm cho
+   * cột "SL MH" của bảng máy tính, vừa dựng "mặt hàng chính" cho thẻ
+   * điện thoại (mẫu mới). Tách ra hai câu là hai lần kéo cùng một dữ
+   * liệu về trên 3G ở quầy khách.
+   */
   it("SL MH đếm từ sales_order_lines cho đúng trang, có phân trang, chưa đếm thì '…'", () => {
-    const i = PAGE.indexOf('supabase.from("sales_order_lines").select("order_id", { count: "exact" }).in("order_id", ids)')
+    const i = PAGE.indexOf('.from("sales_order_lines")')
     expect(i).toBeGreaterThan(0)
-    expect(PAGE.slice(i - 400, i)).toContain("fetchAllForAggregate<")
+    const q = PAGE.slice(i, i + 320)
+    expect(q).toContain('.in("order_id", ids)')
+    expect(q).toContain('count: "exact"')
+    expect(q).toContain(".range(from, to)")
+    expect(PAGE.slice(i - 700, i)).toContain("fetchAllForAggregate<")
     expect(TABLE).toContain('{lines == null ? "…" : lines}')
+    // Và câu ấy phải kéo đủ thứ thẻ điện thoại cần.
+    expect(q).toContain("line_total")
+    expect(q).toContain("product:products(name)")
   })
 
   it("tuyến của khách lấy từ customers.channel qua bảng tên tuyến", () => {

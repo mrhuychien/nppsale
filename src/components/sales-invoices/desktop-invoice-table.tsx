@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ArrowDown, ArrowUp, Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import { vnTime } from "@/lib/orders/status-tone"
 import { repAvatar } from "@/components/orders/desktop-order-table"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import type { InvoiceColumnKey } from "@/app/(dashboard)/sales-invoices/list-config"
@@ -29,6 +30,13 @@ export interface InvoiceRow {
   id: string
   invoice_code: string
   invoice_date: string
+  /**
+   * ⚠ GIỜ GHI SỔ. `invoice_date` là cột kiểu `date` — không mang giờ, nên
+   * cột "Ngày xuất" chỉ hiện được giờ khi đọc từ đây. Chủ nhà chốt: cột
+   * Ngày phải hiện thêm giờ.
+   */
+  created_at?: string | null
+  payment_terms?: string | null
   status: string
   total: number
   order_id: string
@@ -212,7 +220,12 @@ export function DesktopInvoiceTable({
               )}
               {show("date") && (
                 <span className="px-2 text-[13px] font-semibold tabular-data text-on-surface">
-                  {formatDate(r.invoice_date)}
+                  {/* Cùng cách trình bày với bảng đơn hàng: ngày ở trên,
+                      giờ nhỏ ở dưới — hai màn không được đọc khác nhau. */}
+                  <span className="block">{formatDate(r.invoice_date)}</span>
+                  {r.created_at && (
+                    <span className="block text-xs text-on-surface-variant">{vnTime(r.created_at)}</span>
+                  )}
                 </span>
               )}
               {show("order") && (

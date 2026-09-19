@@ -19,6 +19,7 @@ const code = (s: string) =>
 const LIST = code(read("src/app/(dashboard)/orders/page.tsx"))
 const DETAIL = code(read("src/app/(dashboard)/orders/[id]/page.tsx"))
 const MLIST = code(read("src/components/orders/mobile-order-list.tsx"))
+const ROW = code(read("src/components/ui/doc-list-row.tsx"))
 const MDETAIL = code(read("src/components/orders/mobile-order-detail.tsx"))
 const REORDER = code(read("src/app/(dashboard)/sell/reorder/[id]/page.tsx"))
 const SHELL = code(read("src/components/layout/dashboard-shell.tsx"))
@@ -176,20 +177,49 @@ describe("Danh sách đơn mobile theo mẫu", () => {
     expect(LIST).toContain("aria-pressed={active}")
   })
 
-  it("hàng đơn: vạch màu, tên khách, dòng phụ, tổng, huy hiệu; cả hàng là một vùng chạm", () => {
-    expect(MLIST).toContain("style={{ background: accent }}")
+  /**
+   * ⚠ KHUÔN HÀNG NAY DÙNG CHUNG với danh sách hóa đơn bán
+   * (`DocListRow`) — chủ nhà chốt hai danh sách theo cùng một mẫu. Vạch
+   * màu và bốn dòng nằm trong khuôn ấy; file này giữ phần GOM NHÓM và
+   * NHẤN GIỮ.
+   */
+  it("hàng đơn dùng khuôn chung, gom nhóm theo ngày, cả hàng là một vùng chạm", () => {
+    expect(MLIST).toContain("<DocListRow")
+    expect(MLIST).toContain("<DocListGroupHeader")
     expect(MLIST).toContain("groupOrdersByDay(orders, now)")
-    expect(MLIST).toContain("{g.items.length} đơn · {formatCurrency(g.total)}")
+    expect(MLIST).toContain("total={formatCurrency(g.total)}")
     expect(MLIST).not.toContain("<Checkbox")
     // Nhấn giữ: bộ đếm trong ref, huỷ khi trượt, chặn click sau khi nổ.
     expect(MLIST).toContain("const timer = useRef<number | null>(null)")
     expect(MLIST).toContain("> 10) clear()")
     expect(MLIST).toContain("if (fired.current) {")
+    // Vạch màu trạng thái vẫn phải có, chỉ là nằm trong khuôn chung.
+    expect(ROW).toContain("style={{ background: accent }}")
+  })
+
+  /**
+   * ⚠ DÒNG ĐẦU LÀ TÊN KHÁCH + TỔNG TIỀN (mẫu mới), không phải mã đơn.
+   * Mã đơn lùi xuống dòng hai, đứng sau GIỜ — người bán nhớ khách và nhớ
+   * buổi, không nhớ mã.
+   */
+  it("dòng đầu là tên khách và tổng tiền, mã đơn xuống dòng hai kèm giờ", () => {
+    expect(MLIST).toContain('title={o.customer?.store_name || "Khách lẻ"}')
+    expect(MLIST).toContain("total={formatCurrency(o.total)}")
+    expect(MLIST).toContain("const meta = [o.created_at ? vnTime(o.created_at) : null, o.order_code]")
+  })
+
+  /**
+   * ⚠ HUY HIỆU CHỈ CHO TRẠNG THÁI CÒN VIỆC. Dòng nào cũng đeo huy hiệu
+   * thì huy hiệu hết nghĩa — mắt không bắt được dòng nào đang chờ mình.
+   */
+  it("đơn đã xong không đeo huy hiệu", () => {
+    expect(MLIST).toContain('const QUIET_STATUS = new Set(["completed", "closed"])')
+    expect(MLIST).toContain("badge={QUIET_STATUS.has(o.status) ? null : tone}")
   })
 
   /** NVBH xem đơn của mình thì tên NVBH trên dòng phụ là thừa. */
   it("tên NVBH chỉ in khi xem đơn của nhiều người", () => {
-    expect(MLIST).toContain("showSalesName ? o.sales_user?.full_name : null")
+    expect(MLIST).toContain("showSalesName && o.sales_user?.full_name")
   })
 })
 

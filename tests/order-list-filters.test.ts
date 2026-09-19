@@ -229,8 +229,15 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
      * kê cả nháp lẫn đơn huỷ, đúng cái ba tab sinh ra để tránh.
      */
     expect(ORDERS).toContain("return applyStatusFilter(applyCommonFilters(q), effectiveStatus)")
+    /**
+     * ⚠ BA NƠI, KHÔNG PHẢI HAI: danh sách · phép đếm của chip · phép
+     * CỘNG TIỀN của dải tóm tắt trên điện thoại (mẫu mới). Cả ba phải
+     * đi qua cùng một hàm lọc, nếu không dải tổng cộng trên một tập còn
+     * danh sách hiện một tập khác — hai con số cạnh nhau, không khớp,
+     * không ai giải thích được.
+     */
     const uses = ORDERS.match(/applyCommonFilters\(/g) ?? []
-    expect(uses.length, "phải gọi ở cả danh sách lẫn phép đếm").toBe(2)
+    expect(uses.length, "phải gọi ở danh sách, phép đếm và phép cộng tiền").toBe(3)
   })
 
   /**

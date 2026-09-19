@@ -539,10 +539,17 @@ describe("Danh sách hóa đơn bán", () => {
   it("lọc tuyến bật !inner, chỉ khi đang lọc, ở CẢ HAI câu", () => {
     const L = strip(LIST)
     expect(L).toContain('customer:customers!inner(store_name, phone, channel, ward, address)')
+    /**
+     * ⚠ BA CÂU, KHÔNG PHẢI HAI: danh sách · phép đếm của chip · phép
+     * CỘNG TIỀN của dải tóm tắt trên điện thoại (mẫu mới). Câu nào quên
+     * `!inner` khi đang lọc tuyến thì PostgREST trả lỗi "column
+     * customer.channel does not exist" và con số của câu ấy về 0 — cạnh
+     * hai con số kia vẫn đúng.
+     */
     expect(
       (L.match(/routeFilter !== "all" \? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED/g) ?? []).length,
-      "câu danh sách và câu đếm phải cùng một phép chọn embed"
-    ).toBe(2)
+      "danh sách, phép đếm và phép cộng tiền phải cùng một phép chọn embed"
+    ).toBe(3)
     // Không chỗ nào dùng `!inner` vô điều kiện.
     expect(L).not.toMatch(/const cust = CUSTOMER_EMBED_INNER/)
   })
@@ -568,7 +575,8 @@ describe("Danh sách hóa đơn bán", () => {
   it("phép đếm dùng chung bộ lọc với danh sách", () => {
     const L = strip(LIST)
     expect(L).toContain("const applyFilters = useCallback(")
-    expect((L.match(/applyFilters\(q as never\)/g) ?? []).length).toBe(2)
+    // Danh sách · phép đếm · phép cộng tiền — xem chốt embed ở trên.
+    expect((L.match(/applyFilters\(q as never\)/g) ?? []).length).toBe(3)
   })
 
   /** Đổi bộ lọc mà đứng lại trang 7 của một kết quả 2 dòng là màn trắng. */

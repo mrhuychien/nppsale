@@ -4,15 +4,23 @@ import { useRef } from "react"
 import Link from "next/link"
 import { Check } from "lucide-react"
 import { cn, formatCurrency } from "@/lib/utils"
-import { groupOrdersByDay, orderTone, vnDateKey, vnTime } from "@/lib/orders/status-tone"
+import { groupOrdersByDay, orderTone, vnTime } from "@/lib/orders/status-tone"
+import { DocListRow, DocListGroupHeader } from "@/components/ui/doc-list-row"
+import {
+  docQtyText, docSummaryText, isCreditTerm, shortTermLabel,
+  type DocLineSummary,
+} from "@/lib/orders/list-summary"
 
 /**
  * Danh sách đơn trên ĐIỆN THOẠI — theo mẫu thiết kế "Đơn của tôi".
  *
- * BỐ CỤC
- *   Nhóm theo ngày đặt ("Hôm nay" · N đơn · tổng tiền), mỗi nhóm là một
- *   thẻ trắng; mỗi đơn là một hàng: vạch màu trạng thái bên trái, tên
- *   khách + dòng phụ (mã đơn · giờ · NVBH), bên phải tổng tiền + huy hiệu.
+ * BỐ CỤC (mẫu mới chủ nhà gửi)
+ *   Nhóm theo ngày đặt ("Hôm nay" · N đơn · tổng tiền); mỗi đơn là một
+ *   hàng BỐN DÒNG — xem `DocListRow`. Khuôn hàng dùng chung với danh
+ *   sách hóa đơn bán để hai màn không tách nhau ra theo thời gian.
+ *
+ * ⚠ KHÁC BẢN CŨ Ở CHỖ QUAN TRỌNG NHẤT: dòng đầu là TÊN KHÁCH + TỔNG
+ *   TIỀN, không phải mã đơn. Người bán nhớ khách, không nhớ mã.
  *
  * ⚠ CẢ HÀNG LÀ MỘT VÙNG CHẠM. Không checkbox, không nút con. Chọn nhiều
  * bằng NHẤN GIỮ (hoặc nút "Chọn" phía trên) — đây là chỗ từng xoá được
@@ -25,10 +33,18 @@ export interface MobileOrderRow {
   created_at?: string | null
   status: string
   approval_reason?: string | null
+  payment_terms?: string | null
   total: number
   customer?: { store_name?: string | null } | null
   sales_user?: { full_name?: string | null } | null
 }
+
+/**
+ * ⚠ TRẠNG THÁI KHÔNG CÒN VIỆC PHẢI LÀM THÌ KHÔNG CẦN HUY HIỆU (mẫu chốt
+ * `hasBadge`). Một danh sách mà dòng nào cũng đeo huy hiệu thì huy hiệu
+ * hết nghĩa — mắt không còn bắt được dòng nào đang chờ mình.
+ */
+const QUIET_STATUS = new Set(["completed", "closed"])
 
 export function MobileOrderList({
   orders,
@@ -37,6 +53,7 @@ export function MobileOrderList({
   selectedIds,
   onToggle,
   onEnterSelect,
+  lineSummary,
   now,
 }: {
   orders: MobileOrderRow[]
@@ -47,10 +64,16 @@ export function MobileOrderList({
   onToggle: (id: string) => void
   /** Nhấn giữ một hàng: bật chế độ chọn và chọn hàng đó. */
   onEnterSelect: (id: string) => void
+  /**
+   * Mặt hàng đại diện của từng đơn, theo mã đơn.
+   *
+   * ⚠ CHƯA ĐỌC XONG THÌ ĐỂ `undefined`, đừng truyền `{}` rồi để dòng in
+   * "0 mặt hàng" — xem `docSummaryText`.
+   */
+  lineSummary?: Record<string, DocLineSummary>
   /** Để kiểm thử — mặc định là bây giờ. */
   now?: Date
 }) {
-  const today = vnDateKey(now ?? new Date())
   const groups = groupOrdersByDay(orders, now)
 
   if (orders.length === 0) {
@@ -62,46 +85,52 @@ export function MobileOrderList({
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
       {groups.map((g) => (
-        <section key={g.key} className="grid gap-2">
-          <div className="flex items-baseline justify-between px-1 pt-2">
-            <span className="text-xs font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
-              {g.label}
-            </span>
-            <span className="text-xs font-bold tabular-data text-on-surface-variant">
-              {g.items.length} đơn · {formatCurrency(g.total)}
-            </span>
-          </div>
-          <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
-            {g.items.map((o, i) => {
-              const tone = orderTone(o.status)
-              const isToday = (o.order_date || "").slice(0, 10) === today
-              const meta = [
-                o.order_code,
-                isToday && o.created_at ? vnTime(o.created_at) : null,
-                showSalesName ? o.sales_user?.full_name : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-              return (
-                <OrderRow
-                  key={o.id}
-                  href={`/orders/${o.id}`}
-                  first={i === 0}
-                  accent={tone.accent}
-                  title={o.customer?.store_name || "Khách lẻ"}
-                  meta={meta}
-                  total={formatCurrency(o.total)}
-                  badge={tone}
-                  selectMode={selectMode}
-                  selected={selectedIds.has(o.id)}
-                  onToggle={() => onToggle(o.id)}
-                  onLongPress={() => onEnterSelect(o.id)}
-                />
-              )
-            })}
-          </div>
+        <section key={g.key}>
+          <DocListGroupHeader
+            label={g.label}
+            count={g.items.length}
+            total={formatCurrency(g.total)}
+          />
+          {g.items.map((o, i) => {
+            const tone = orderTone(o.status)
+            const sum = lineSummary?.[o.id]
+            /**
+             * ⚠ GIỜ LẤY TỪ `created_at`, không lấy từ `order_date`. Cột
+             * ngày là kiểu `date`, không mang giờ; dựng giờ từ nó là in
+             * "07:00" cho mọi đơn.
+             */
+            const meta = [o.created_at ? vnTime(o.created_at) : null, o.order_code]
+              .filter(Boolean)
+              .join(" · ")
+            return (
+              <OrderRow
+                key={o.id}
+                href={`/orders/${o.id}`}
+                first={i === 0}
+                accent={tone.accent}
+                title={o.customer?.store_name || "Khách lẻ"}
+                meta={meta}
+                payment={shortTermLabel(o.payment_terms)}
+                paymentCredit={isCreditTerm(o.payment_terms)}
+                summary={
+                  // NVBH chỉ xem đơn của mình nên tên NVBH là thừa; quản
+                  // lý xem nhiều người thì phải biết đơn của ai.
+                  showSalesName && o.sales_user?.full_name
+                    ? [docSummaryText(sum), o.sales_user.full_name].filter(Boolean).join(" · ")
+                    : docSummaryText(sum)
+                }
+                qtyText={docQtyText(sum)}
+                total={formatCurrency(o.total)}
+                badge={QUIET_STATUS.has(o.status) ? null : tone}
+                selectMode={selectMode}
+                selected={selectedIds.has(o.id)}
+                onToggle={() => onToggle(o.id)}
+                onLongPress={() => onEnterSelect(o.id)}
+              />
+            )
+          })}
         </section>
       ))}
     </div>
@@ -117,6 +146,10 @@ function OrderRow({
   accent,
   title,
   meta,
+  payment,
+  paymentCredit,
+  summary,
+  qtyText,
   total,
   badge,
   selectMode,
@@ -129,8 +162,12 @@ function OrderRow({
   accent: string
   title: string
   meta: string
+  payment: string
+  paymentCredit: boolean
+  summary: string
+  qtyText: string
   total: string
-  badge: { label: string; bg: string; fg: string }
+  badge: { label: string; bg: string; fg: string } | null
   selectMode: boolean
   selected: boolean
   onToggle: () => void
@@ -169,42 +206,36 @@ function OrderRow({
   }
 
   const body = (
-    <>
-      <span
-        aria-hidden
-        className="h-full min-h-10 w-1 self-stretch rounded-full"
-        style={{ background: accent }}
-      />
-      <span className="grid min-w-0 gap-1">
-        <span className="truncate text-base font-extrabold text-on-surface">{title}</span>
-        <span className="truncate text-xs font-semibold tabular-data text-on-surface-variant">{meta}</span>
-      </span>
-      <span className="grid justify-items-end gap-1">
-        <span className="whitespace-nowrap text-base font-extrabold tabular-data text-on-surface">{total}</span>
-        <span
-          className="whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-extrabold"
-          style={{ background: badge.bg, color: badge.fg }}
-        >
-          {badge.label}
-        </span>
-      </span>
-      {selectMode && (
-        <span
-          className={cn(
-            "grid h-6 w-6 place-items-center rounded-full border-2",
-            selected ? "border-primary bg-primary text-on-primary" : "border-outline-variant"
-          )}
-        >
-          {selected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
-        </span>
-      )}
-    </>
+    <DocListRow
+      first={first}
+      accent={accent}
+      title={title}
+      meta={meta}
+      payment={payment}
+      paymentCredit={paymentCredit}
+      summary={summary}
+      qtyText={qtyText}
+      total={total}
+      badge={badge}
+      trailing={
+        selectMode ? (
+          <span
+            className={cn(
+              "col-span-2 justify-self-end grid h-6 w-6 place-items-center rounded-full border-2",
+              selected ? "border-primary bg-primary text-on-primary" : "border-outline-variant"
+            )}
+          >
+            {selected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+          </span>
+        ) : null
+      }
+    />
   )
 
+  // ⚠ `relative` là để vạch màu `absolute` trong `DocListRow` bám vào
+  //   đúng hàng này; thiếu nó thì vạch nhảy lên khối cha gần nhất.
   const rowClass = cn(
-    "grid w-full items-center gap-x-3 px-3 py-3 text-left transition-colors active:bg-surface-container",
-    selectMode ? "grid-cols-[4px_minmax(0,1fr)_auto_24px]" : "grid-cols-[4px_minmax(0,1fr)_auto]",
-    !first && "border-t border-outline-variant/30",
+    "relative block w-full min-w-0 text-left transition-colors active:bg-surface-container",
     selected && "bg-primary/5"
   )
   const press = { onPointerDown, onPointerMove, onPointerUp: clear, onPointerCancel: clear, onClickCapture }

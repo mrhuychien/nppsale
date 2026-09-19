@@ -1,5 +1,6 @@
 import { SellCartProvider } from "@/hooks/use-sell-cart"
 import { SellDataProvider } from "@/hooks/use-sell-data"
+import { CommittedStockProvider } from "@/hooks/use-committed-stock"
 import { SellPrefetch } from "@/components/sell/prefetch"
 
 /**
@@ -12,13 +13,18 @@ import { SellPrefetch } from "@/components/sell/prefetch"
  *
  * `SellPrefetch` nạp sẵn khung của mọi màn trong luồng để chuyển màn không
  * chờ mạng — xem chú thích trong file đó.
+ *
+ * ⚠ `CommittedStockProvider` PHẢI NẰM TRONG `SellCartProvider`. Số hàng
+ * đã đặt phải loại ĐƠN ĐANG SỬA ra, mà chỉ giỏ mới biết đơn nào đang mở.
  */
 export default function SellLayout({ children }: { children: React.ReactNode }) {
   return (
     <SellDataProvider>
       <SellCartProvider>
-        <SellPrefetch />
-        {children}
+        <CommittedStockProvider>
+          <SellPrefetch />
+          {children}
+        </CommittedStockProvider>
       </SellCartProvider>
     </SellDataProvider>
   )

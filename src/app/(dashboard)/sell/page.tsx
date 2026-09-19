@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
+import { useCommittedStock } from "@/hooks/use-committed-stock"
+import { availableMapFrom } from "@/lib/sell/committed"
 import { ProductCard } from "@/components/sell/product-card"
 import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
 import { conversionFor, selectedUnitOf, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
@@ -14,7 +16,7 @@ import { backToReturnSlip } from "@/lib/nav/sell-nav"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { toast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -46,6 +48,16 @@ export default function SellPage() {
     filterProducts,
     listMemory,
   } = useSellData()
+  /**
+   * ⚠ TỒN KHÔNG PHẢI SỐ ĐƯỢC PHÉP BÁN. Kho chỉ bị trừ lúc Xuất hàng, nên
+   * phần đã hứa trong các Phiếu tạm khác vẫn nằm trong `stockByProduct`.
+   * Số đem ra so là `availableByProduct` — xem `@/lib/sell/committed`.
+   */
+  const { committedByProduct, warning: committedWarning } = useCommittedStock()
+  const availableByProduct = useMemo(
+    () => availableMapFrom(stockByProduct, committedByProduct),
+    [stockByProduct, committedByProduct]
+  )
 
   /**
    * ⚠ TAB VÀ VỊ TRÍ CUỘN NHỚ LẠI CHỖ NGƯỜI DÙNG VỪA ĐỨNG; Ô TÌM THÌ KHÔNG.
@@ -192,9 +204,29 @@ export default function SellPage() {
       return
     }
 
+    /**
+     * ⚠ SO VỚI KHẢ DỤNG, KHÔNG SO VỚI TỒN. Chủ nhà chốt: "số lượng đặt
+     * hoặc đổi không được lớn hơn tồn kho − hàng đã đặt". Kho còn 2.838
+     * gói mà hai Phiếu tạm khác đã hứa hết thì thêm dòng này là hứa lần
+     * thứ ba trên cùng số hàng.
+     *
+     * ⚠ BÁO ĐÚNG LOẠI HẾT. "Hết hàng" và "đã có người đặt hết" dẫn tới
+     * hai việc khác nhau: gọi nhập hàng, hay đi hỏi đơn nào đang giữ.
+     */
     const onHand = stockByProduct[p.id] ?? 0
-    if (onHand <= 0) {
-      toast({ title: `Hết hàng: ${p.name}`, variant: "destructive" })
+    const available = availableByProduct[p.id] ?? 0
+    if (available <= 0) {
+      toast({
+        title:
+          onHand > 0
+            ? `Đã có đơn khác đặt hết: ${p.name}`
+            : `Hết hàng: ${p.name}`,
+        description:
+          onHand > 0
+            ? `Kho còn ${formatInt(onHand)} ${p.base_unit} nhưng đã nằm trong Phiếu tạm khác.`
+            : undefined,
+        variant: "destructive",
+      })
       return
     }
     cart.addLine({
@@ -373,6 +405,16 @@ export default function SellPage() {
         )}
       </div>
 
+      {/* ⚠ CHƯA ĐỌC ĐƯỢC HÀNG ĐÃ ĐẶT THÌ NÓI NGAY ĐẦU MÀN. Im lặng ở đây
+          là để người bán tin con số tồn đã trừ phần các Phiếu tạm khác
+          đang giữ — và quy tắc chủ nhà vừa chốt thành ra không chạy mà
+          không ai biết. */}
+      {committedWarning && (
+        <p className="mx-3 mb-2 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
+          {committedWarning}
+        </p>
+      )}
+
       {loadWarnings.length > 0 && (
         <div className="mx-3 mb-2 grid gap-2 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
           {loadWarnings.map((w) => (
@@ -418,6 +460,7 @@ export default function SellPage() {
                 key={p.id}
                 product={p}
                 baseOnHand={stockByProduct[p.id] ?? 0}
+                baseCommitted={committedByProduct ? committedByProduct[p.id] || 0 : null}
                 groupId={groupId}
                 unit={unit}
                 onPickUnit={onPickUnit}

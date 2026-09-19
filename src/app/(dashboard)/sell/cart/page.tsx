@@ -20,6 +20,9 @@ import { priceViolation } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
+import { useCommittedStock } from "@/hooks/use-committed-stock"
+import { availableMapFrom } from "@/lib/sell/committed"
+import { useOrg } from "@/hooks/use-org"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
@@ -41,6 +44,28 @@ export default function SellCartPage() {
   const { user } = useAuth()
   const cart = useSellCart()
   const { products, productById, customerById, stockByProduct, loading } = useSellData()
+  /**
+   * ⚠ MỌI PHÉP KIỂM Ở MÀN NÀY SO VỚI KHẢ DỤNG, KHÔNG SO VỚI TỒN.
+   *
+   * Chủ nhà chốt: "số lượng đặt hoặc đổi không được lớn hơn tồn kho −
+   * hàng đã đặt (hàng này chưa trừ kho nhưng đã đặt trong các đơn
+   * khác)". Kho chỉ bị trừ lúc Xuất hàng, nên `stockByProduct` vẫn đếm
+   * cả phần ba Phiếu tạm khác đã hứa với ba khách khác.
+   */
+  const { committedByProduct, warning: committedWarning } = useCommittedStock()
+  const availableByProduct = useMemo(
+    () => availableMapFrom(stockByProduct, committedByProduct),
+    [stockByProduct, committedByProduct]
+  )
+  const { org } = useOrg()
+  /**
+   * ⚠ TÔN TRỌNG CÔNG TẮC ĐÃ CÓ, ĐỪNG DỰNG LUẬT THỨ HAI.
+   * `organizations.allow_oversell` (mig 086) đã là nơi chủ nhà nói
+   * "được phép bán vượt tồn hay không", và `post_stock_export` đọc đúng
+   * cột đó. Chỗ này chỉ đổi NGƯỠNG so sánh từ "tồn" thành "tồn − đã
+   * đặt"; ai bật công tắc kia thì ở đây vẫn chỉ là cảnh báo.
+   */
+  const oversellAllowed = org?.allow_oversell === true
 
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
@@ -101,9 +126,10 @@ export default function SellCartPage() {
       cart.cart.map((l, i) => {
         const p = productById(l.productId)
         const onHand = stockByProduct[l.productId] ?? 0
+        const avail = availableByProduct[l.productId] ?? 0
         // ⚠ Vượt tồn xét trên TỔNG mọi dòng cùng sản phẩm. Hai dòng mỗi
         // dòng 6 thùng trên tồn 10 thì từng dòng đều "hợp lệ".
-        const over = isSaleLineOverstock(i, stockLines, products, stockByProduct)
+        const over = isSaleLineOverstock(i, stockLines, products, availableByProduct)
         const listNow = p ? unitPriceFor(p, l.unit, groupId) : l.listPrice
         return {
           i,
@@ -111,7 +137,18 @@ export default function SellCartPage() {
           product: p,
           over,
           onHand,
-          stockText: p ? `tồn ${stockInUnit(p, l.unit, onHand)} ${l.unit}` : "",
+          /**
+           * ⚠ NÓI CON SỐ VỪA DÙNG ĐỂ CHẶN, KHÔNG NÓI CON SỐ KHÁC. Tô đỏ
+           * một dòng rồi ghi "tồn 2.838" bên cạnh là người bán ngồi đếm
+           * mãi không hiểu sai ở đâu — thứ chặn họ là phần CÒN ĐẶT ĐƯỢC.
+           * Khi chưa đọc được hàng đã đặt thì hai số bằng nhau và câu này
+           * quay về đúng nghĩa cũ.
+           */
+          stockText: p
+            ? committedByProduct && avail !== onHand
+              ? `còn đặt được ${stockInUnit(p, l.unit, Math.max(0, avail))} ${l.unit} · tồn ${stockInUnit(p, l.unit, onHand)}`
+              : `tồn ${stockInUnit(p, l.unit, onHand)} ${l.unit}`
+            : "",
           // ⚠ Đổi khách là đổi bảng giá. Dòng đã có trong giỏ giữ giá cũ,
           // nên phải NÓI RA chỗ nào lệch chứ đừng lặng lẽ tính giá cũ.
           staleList: listNow !== l.listPrice,
@@ -119,7 +156,7 @@ export default function SellCartPage() {
           priceBad: priceViolation(l, { canEditPrice, maxIncreasePct }) !== null,
         }
       }),
-    [cart.cart, stockLines, products, productById, stockByProduct, groupId, canEditPrice, maxIncreasePct]
+    [cart.cart, stockLines, products, productById, stockByProduct, availableByProduct, committedByProduct, groupId, canEditPrice, maxIncreasePct]
   )
 
   /**
@@ -132,7 +169,7 @@ export default function SellCartPage() {
    * ⚠ Cảnh báo xét TỔNG, không phải "có dòng nào bị tô đỏ". Tồn 10, bán
    * 9, đổi 2 → từng dòng đều "gần đủ" mà tổng 11 > 10.
    */
-  const hasOver = hasOverstock(stockLines, stockReturns, products, stockByProduct)
+  const hasOver = hasOverstock(stockLines, stockReturns, products, availableByProduct)
   /**
    * ⚠ Dòng ĐỔI vượt tồn phải hiện được Ở ĐÂY. Băng vàng chỉ nói "có mặt
    * hàng vượt tồn" mà không dòng bán nào tô đỏ thì người dùng soi mãi danh
@@ -141,9 +178,9 @@ export default function SellCartPage() {
   const exchangeOver = useMemo(
     () =>
       stockReturns.filter((_, i) =>
-        isReturnLineOverstock(i, stockReturns, stockLines, products, stockByProduct)
+        isReturnLineOverstock(i, stockReturns, stockLines, products, availableByProduct)
       ).length,
-    [stockReturns, stockLines, products, stockByProduct]
+    [stockReturns, stockLines, products, availableByProduct]
   )
 
   const hasPriceBad = rows.some((r) => r.priceBad)
@@ -398,13 +435,42 @@ export default function SellCartPage() {
           </div>
         )}
 
-        {/* ⚠ CẢNH BÁO, KHÔNG CHẶN. Số tồn trên máy có thể đã cũ; chốt chặn
-            thật nằm ở lúc nhà phân phối bấm Xuất hàng, khi kho được khoá
-            và trừ trong cùng một giao dịch. */}
-        {hasOver && (
+        {/* ⚠ CHƯA ĐỌC ĐƯỢC HÀNG ĐÃ ĐẶT THÌ NÓI RA TRƯỚC KHI NGƯỜI TA GỬI.
+            Không có câu này thì phép chặn bên dưới đang so với một con số
+            tồn CHƯA trừ phần các Phiếu tạm khác giữ, mà màn hình trông
+            như mọi thứ đã được kiểm. */}
+        {committedWarning && (
           <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
-            Có mặt hàng vượt tồn kho đang ghi nhận. Vẫn gửi đơn được — nhà phân phối sẽ kiểm lại
-            lúc xuất hàng.
+            {committedWarning}
+          </div>
+        )}
+
+        {/*
+          ⚠ TỪ NAY LÀ CHẶN, KHÔNG CÒN CHỈ CẢNH BÁO — VÀ ĐÂY LÀ MỘT THAY
+          ĐỔI CÓ CHỦ Ý, NGƯỢC VỚI CHÚ THÍCH CŨ Ở ĐÂY.
+
+          Bản cũ chỉ cảnh báo, với lý do: số tồn trên máy có thể đã cũ
+          vài giờ, chặn là mất đơn thật vì một số liệu không chắc. Lý do
+          đó đúng khi mẫu số là TỒN KHO — một con số thay đổi sau lưng
+          người bán. Nó không còn đúng khi mẫu số là TỒN − ĐÃ ĐẶT: phần
+          "đã đặt" là những lời hứa do chính công ty ghi ra, đọc lại
+          được, và chính chủ nhà chốt không được vượt.
+
+          ⚠ VẪN ĐI QUA CÔNG TẮC `allow_oversell`. Đơn vị nào bật cho phép
+          bán vượt tồn thì ở đây vẫn chỉ là cảnh báo — nếu không thì màn
+          này và `post_stock_export` nói hai luật khác nhau.
+        */}
+        {hasOver && (
+          <div
+            className={
+              oversellAllowed
+                ? "rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]"
+                : "rounded-xl bg-error-container px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-error-container"
+            }
+          >
+            {oversellAllowed
+              ? "Có mặt hàng vượt phần còn đặt được (tồn kho trừ hàng đã đặt ở Phiếu tạm khác). Đơn vị đang cho phép bán vượt tồn nên vẫn gửi được."
+              : "Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở các Phiếu tạm khác. Giảm số lượng ở dòng tô đỏ rồi gửi lại."}
           </div>
         )}
 
@@ -437,7 +503,7 @@ export default function SellCartPage() {
                         {formatCurrency(r.line.price)} × {r.line.qty}
                       </span>
                       {r.over && (
-                        <span className="font-extrabold text-error">Vượt tồn ({r.stockText})</span>
+                        <span className="font-extrabold text-error">Vượt phần còn đặt được ({r.stockText})</span>
                       )}
                       {r.priceBad && <span className="font-extrabold text-error">Giá ngoài hạn mức</span>}
                       {r.line.price !== r.line.listPrice && !r.priceBad && (
@@ -602,7 +668,14 @@ export default function SellCartPage() {
           )}
           <button
             type="button"
-            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasPriceBad || returnPriceBad > 0}
+            disabled={
+              submitting ||
+              cart.cart.length === 0 ||
+              !cart.customerId ||
+              hasPriceBad ||
+              returnPriceBad > 0 ||
+              (hasOver && !oversellAllowed)
+            }
             onClick={() => submit(false)}
             className="h-13 flex-[1.3] rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary disabled:opacity-40"
           >
@@ -614,9 +687,11 @@ export default function SellCartPage() {
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
                     ? "Giá hàng trả quá cao"
-                    : editing
-                      ? "Lưu thay đổi"
-                      : "Gửi đơn"}
+                    : hasOver && !oversellAllowed
+                      ? "Vượt phần còn đặt được"
+                      : editing
+                        ? "Lưu thay đổi"
+                        : "Gửi đơn"}
           </button>
         </div>
       </SellBottomBar>

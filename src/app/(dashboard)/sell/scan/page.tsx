@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
+import { useCommittedStock } from "@/hooks/use-committed-stock"
+import { availableMapFrom } from "@/lib/sell/committed"
 import { findByCode, shouldAcceptScan } from "@/lib/sell/scan"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { toast } from "@/hooks/use-toast"
@@ -19,6 +21,9 @@ export default function SellScanPage() {
   const router = useRouter()
   const cart = useSellCart()
   const { products, stockByProduct, customerById } = useSellData()
+  /** ⚠ Quét mã cũng phải so với phần CÒN ĐẶT ĐƯỢC — xem màn giỏ hàng. */
+  const { committedByProduct } = useCommittedStock()
+  const availableByProduct = availableMapFrom(stockByProduct, committedByProduct)
   const lastRef = useRef<{ code: string; at: number } | null>(null)
   const [added, setAdded] = useState(0)
 
@@ -35,8 +40,14 @@ export default function SellScanPage() {
       toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${raw}`, variant: "destructive" })
       return
     }
-    if ((stockByProduct[p.id] ?? 0) <= 0) {
-      toast({ title: `Hết hàng: ${p.name}`, variant: "destructive" })
+    if ((availableByProduct[p.id] ?? 0) <= 0) {
+      toast({
+        title:
+          (stockByProduct[p.id] ?? 0) > 0
+            ? `Đã có đơn khác đặt hết: ${p.name}`
+            : `Hết hàng: ${p.name}`,
+        variant: "destructive",
+      })
       return
     }
     // Quét thì thêm theo ĐƠN VỊ CƠ SỞ: mã vạch in trên vỏ hộp là mã của

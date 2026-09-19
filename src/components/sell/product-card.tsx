@@ -3,6 +3,7 @@
 import { memo } from "react"
 import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { sellableUnits, stockInUnit, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
+import { stockDisplayFor } from "@/lib/sell/committed"
 
 /**
  * Thẻ sản phẩm trên màn bán hàng.
@@ -25,6 +26,14 @@ export interface ProductCardProps {
   product: PricedProduct
   /** Tồn kho theo đơn vị CƠ SỞ. */
   baseOnHand: number
+  /**
+   * Hàng đã hứa trong các Phiếu tạm khác, theo đơn vị CƠ SỞ.
+   *
+   * ⚠ `null` = CHƯA ĐỌC ĐƯỢC, không phải "không ai đặt". Hai thứ này
+   * dẫn tới hai câu khác nhau trên thẻ, và gộp lại là nói với người bán
+   * rằng kho còn nguyên trong khi ta không biết.
+   */
+  baseCommitted?: number | null
   groupId: string | null | undefined
   unit: string
   onPickUnit: (productId: string, unit: string) => void
@@ -46,6 +55,7 @@ export interface ProductCardProps {
 export const ProductCard = memo(function ProductCard({
   product,
   baseOnHand,
+  baseCommitted = null,
   groupId,
   unit,
   onPickUnit,
@@ -57,7 +67,14 @@ export const ProductCard = memo(function ProductCard({
   const units = sellableUnits(product)
   const price = unitPriceFor(product, unit, groupId)
   const stock = stockInUnit(product, unit, baseOnHand)
-  const outOfStock = baseOnHand <= 0
+  /**
+   * ⚠ QUY ĐỔI SỐ ĐÃ ĐẶT BẰNG ĐÚNG PHÉP QUY ĐỔI CỦA TỒN. Lấy tồn theo
+   * "thùng" rồi trừ số đã đặt theo "gói" là trừ nhầm mười hai lần.
+   */
+  const committedUnit =
+    baseCommitted === null ? null : stockInUnit(product, unit, baseCommitted)
+  const sd = stockDisplayFor(stock, committedUnit)
+  const outOfStock = sd.out
   const image = product.images?.[0]
 
   return (
@@ -112,13 +129,38 @@ export const ProductCard = memo(function ProductCard({
             {/* ⚠ Hết hàng tô ĐỎ, sắp hết tô hổ phách. Biết trước khi thêm
                 rẻ hơn nhiều so với biết lúc bấm lưu đơn. */}
             {showStock && (
-              <span
-                className={cn(
-                  outOfStock ? "font-extrabold text-error" : stock < 20 ? "font-extrabold text-[#8a5a00]" : ""
+              <>
+                {/* ⚠ "ĐÃ CÓ NGƯỜI ĐẶT HẾT" KHÁC "HẾT HÀNG". Hết hàng thì
+                    người bán đi gọi nhập; đã có người đặt hết thì họ đi
+                    hỏi đơn nào đang giữ. Gộp hai câu là để họ làm sai
+                    việc — kho vẫn đầy mà bảo nhau đi nhập thêm. */}
+                <span
+                  className={cn(
+                    outOfStock
+                      ? "font-extrabold text-error"
+                      : sd.available < 20
+                        ? "font-extrabold text-[#8a5a00]"
+                        : ""
+                  )}
+                >
+                  {sd.reservedOut
+                    ? `Đã đặt hết (tồn ${formatInt(stock)} ${unit})`
+                    : outOfStock
+                      ? "Hết hàng"
+                      : `Tồn ${formatInt(stock)} ${unit}`}
+                </span>
+                {/* Phần đã hứa trong Phiếu tạm khác — chỉ hiện khi có. */}
+                {!sd.reservedOut && sd.committed !== null && sd.committed > 0 && (
+                  <span className="font-extrabold text-[#8a5a00]">
+                    đã đặt {formatInt(sd.committed)} · còn {formatInt(sd.available)}
+                  </span>
                 )}
-              >
-                {outOfStock ? "Hết hàng" : `Tồn ${formatInt(stock)} ${unit}`}
-              </span>
+                {/* ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI RA. Im lặng ở đây là để người
+                    bán tin con số tồn đã trừ phần người khác đặt. */}
+                {sd.committed === null && (
+                  <span className="text-on-surface-variant">chưa rõ hàng đã đặt</span>
+                )}
+              </>
             )}
             {inCartQty > 0 && (
               <span className="rounded-md bg-primary/10 px-1.5 py-px font-extrabold text-primary">

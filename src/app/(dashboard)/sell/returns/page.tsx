@@ -7,6 +7,8 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { useAuth } from "@/hooks/use-auth"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
+import { useCommittedStock } from "@/hooks/use-committed-stock"
+import { availableMapFrom } from "@/lib/sell/committed"
 import { Stepper } from "@/components/sell/line-edit-sheet"
 import { ReturnLineSheet } from "@/components/sell/return-line-sheet"
 import { ReturnPriceInput } from "@/components/sell/return-price-input"
@@ -29,6 +31,13 @@ export default function SellReturnsPage() {
   const cart = useSellCart()
   const { user } = useAuth()
   const { products, productById, customerById, stockByProduct } = useSellData()
+  /**
+   * ⚠ DÒNG ĐỔI ĂN TỒN NHƯ MỘT DÒNG BÁN, nên nó cũng phải so với phần
+   * CÒN ĐẶT ĐƯỢC. Dòng trả tiền thì ngược lại (nhập lại kho) nên phép
+   * kiểm không đụng tới.
+   */
+  const { committedByProduct } = useCommittedStock()
+  const availableByProduct = availableMapFrom(stockByProduct, committedByProduct)
 
   // Nhu cầu xuất kho gồm cả dòng bán lẫn dòng đổi — xem `@/lib/sell/stock`.
   const stockLines = useMemo(() => toStockLines(cart.cart), [cart.cart])
@@ -166,7 +175,7 @@ export default function SellReturnsPage() {
                 stockReturns,
                 stockLines,
                 products,
-                stockByProduct
+                availableByProduct
               )
               return (
                 <div
@@ -201,7 +210,7 @@ export default function SellReturnsPage() {
                       </span>
                       {over && (
                         <span className="mt-0.5 block text-xs font-extrabold text-error">
-                          Vượt tồn kho — kho không đủ hàng để đổi
+                          Vượt phần còn đặt được — kho không đủ hàng để đổi
                         </span>
                       )}
                       {priceBadOf(r) && (

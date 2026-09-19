@@ -478,8 +478,31 @@ describe("Hàng ĐỔI cũng ăn tồn kho", () => {
    */
   it("điều kiện chặn lưu xét CẢ dòng bán lẫn dòng đổi", () => {
     expect(CART).toContain(
-      "const hasOver = hasOverstock(stockLines, stockReturns, products, stockByProduct)"
+      "const hasOver = hasOverstock(stockLines, stockReturns, products, availableByProduct)"
     )
+  })
+
+  /**
+   * ⚠ MẪU SỐ LÀ TỒN − ĐÃ ĐẶT, KHÔNG PHẢI TỒN.
+   *
+   * Chủ nhà chốt: "số lượng đặt hoặc đổi không được lớn hơn tồn kho −
+   * hàng đã đặt". Kho chỉ bị trừ lúc Xuất hàng, nên `stockByProduct`
+   * vẫn đếm cả phần các Phiếu tạm khác đã hứa với khách khác. Lùi về
+   * `stockByProduct` ở bất kỳ phép kiểm nào là mở lại đúng cái lỗ hổng
+   * ba người cùng bán một lô hàng — và màn hình vẫn trông như đã kiểm.
+   */
+  it("mọi phép kiểm tồn ở màn giỏ so với phần CÒN ĐẶT ĐƯỢC", () => {
+    for (const call of [
+      "isSaleLineOverstock(i, stockLines, products, ",
+      "hasOverstock(stockLines, stockReturns, products, ",
+      "isReturnLineOverstock(i, stockReturns, stockLines, products, ",
+    ]) {
+      const at = CART.indexOf(call)
+      expect(at, `không tìm thấy lời gọi: ${call}`).toBeGreaterThan(0)
+      const arg = CART.slice(at + call.length, CART.indexOf(")", at + call.length))
+      expect(arg.trim(), `${call} vẫn so với tồn kho thô`).toBe("availableByProduct")
+    }
+    expect(CART).toContain("availableMapFrom(stockByProduct, committedByProduct)")
   })
 
   /**
@@ -504,5 +527,9 @@ describe("Hàng ĐỔI cũng ăn tồn kho", () => {
     expect(RET).toContain("const over = isReturnLineOverstock(")
     expect(RET).toContain("{over && (")
     expect(RET).toContain("kho không đủ hàng để đổi")
+    // Màn hàng trả cũng phải trừ phần đã đặt, không chỉ màn giỏ.
+    expect(RET).toContain("availableMapFrom(stockByProduct, committedByProduct)")
+    const at = RET.indexOf("isReturnLineOverstock(")
+    expect(RET.slice(at, RET.indexOf(")", at))).toContain("availableByProduct")
   })
 })

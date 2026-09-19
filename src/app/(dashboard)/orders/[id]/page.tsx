@@ -20,6 +20,7 @@ import {
   DetailHero, StatusPill, DetailCard, DetailRow, DetailTimeline, DetailCustomerCard,
   type TimelineStep,
 } from "@/components/detail/detail-chrome"
+import { CustomerQuickView } from "@/components/customers/customer-quick-view"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { closeOrder } from "@/lib/orders/post-invoice"
@@ -221,6 +222,8 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  /** Mã khách đang mở trong modal xem nhanh — `null` là đóng. */
+  const [quickCustomer, setQuickCustomer] = useState<string | null>(null)
   // Edit-line state for draft/confirmed orders.
   const [linesEditMode, setLinesEditMode] = useState(false)
   const [editedLines, setEditedLines] = useState<
@@ -1367,7 +1370,7 @@ export default function OrderDetailPage() {
       */}
       <div className="hidden lg:block">
         <DetailCustomerCard
-          href={order.customer_id ? `/customers/${order.customer_id}` : null}
+          onNameClick={order.customer_id ? () => setQuickCustomer(order.customer_id) : null}
           name={order.customer?.store_name || "Khách lẻ"}
           contact={[order.customer?.phone, order.customer?.address].filter(Boolean).join(" · ")}
           stats={[
@@ -2947,6 +2950,12 @@ export default function OrderDetailPage() {
           />
         </div>
       </ConfirmDialog>
+
+      {/* Modal thông tin khách — mở từ tên khách ở đầu trang. */}
+      <CustomerQuickView
+        customerId={quickCustomer}
+        onClose={() => setQuickCustomer(null)}
+      />
     </div>
   )
 }

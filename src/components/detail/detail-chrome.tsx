@@ -18,7 +18,6 @@
  */
 
 import type { ReactNode } from "react"
-import Link from "next/link"
 import { cn } from "@/lib/utils"
 
 /**
@@ -213,21 +212,25 @@ export function DetailCustomerCard({
   name,
   contact,
   stats,
-  href,
+  onNameClick,
 }: {
   name: string
   /** "0903 812 447 · 128 Dương Bá Trạc, Q.8" */
   contact?: string | null
   stats?: Array<{ label: string; value: ReactNode; bar?: { pct: number; tone: string } | null }>
   /**
-   * Đường vào hồ sơ khách.
+   * Bấm vào tên khách.
    *
    * ⚠ TÊN KHÁCH LÀ THỨ NGƯỜI TA BẤM VÀO ĐẦU TIÊN. Đang xem một đơn mà
-   * muốn biết khách này còn nợ bao nhiêu, mua gì lần trước — hiện phải
-   * quay ra danh sách khách rồi gõ lại tên. Không có `href` thì vẫn vẽ
-   * chữ thường, không vẽ một cái link chết.
+   * muốn biết khách còn nợ bao nhiêu thì hiện phải quay ra danh sách
+   * khách rồi gõ lại tên.
+   *
+   * ⚠ MỞ MODAL, KHÔNG CHUYỂN TRANG (chủ nhà chốt). Chuyển trang là mất
+   * chỗ đang đứng, và đường về là nút Back — thứ hay đưa họ ra khỏi hẳn
+   * màn đơn. Không truyền gì thì vẫn vẽ chữ thường, không vẽ một cái nút
+   * bấm vào không có chuyện gì xảy ra.
    */
-  href?: string | null
+  onNameClick?: (() => void) | null
 }) {
   const initial = (name || "?").trim().charAt(0).toUpperCase() || "?"
   return (
@@ -237,13 +240,14 @@ export function DetailCustomerCard({
           {initial}
         </span>
         <span className="min-w-0">
-          {href ? (
-            <Link
-              href={href}
-              className="block truncate text-[17px] font-bold text-on-surface hover:text-primary hover:underline"
+          {onNameClick ? (
+            <button
+              type="button"
+              onClick={onNameClick}
+              className="block max-w-full truncate text-left text-[17px] font-bold text-on-surface hover:text-primary hover:underline"
             >
               {name}
-            </Link>
+            </button>
           ) : (
             <span className="block truncate text-[17px] font-bold text-on-surface">{name}</span>
           )}

@@ -25,9 +25,9 @@ import { errorMessage } from "@/lib/errors"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   DetailHero, StatusPill, DetailColumns, DetailCard, DetailRow, DetailTimeline,
-  DetailCustomerCard,
-  type TimelineStep,
+  DetailCustomerCard, type TimelineStep,
 } from "@/components/detail/detail-chrome"
+import { CustomerQuickView } from "@/components/customers/customer-quick-view"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -97,6 +97,8 @@ export default function SalesInvoiceDetailPage() {
   const { toast } = useToast()
 
   const [inv, setInv] = useState<InvoiceRow | null>(null)
+  /** Mã khách đang mở trong modal xem nhanh — `null` là đóng. */
+  const [quickCustomer, setQuickCustomer] = useState<string | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
   const [eInvoice, setEInvoice] = useState<{ id: string; misa_inv_no: string | null; misa_status: string | null } | null>(null)
   /** Phiếu trả gắn hóa đơn này — nguồn của khoản trừ. */
@@ -407,7 +409,7 @@ export default function SalesInvoiceDetailPage() {
                 các ô số liệu. Hóa đơn không có hạn mức nên ô đó nhường
                 chỗ cho mã số thuế; vẽ một ô rỗng có nhãn là tệ hơn. */}
             <DetailCustomerCard
-              href={inv.customer_id ? `/customers/${inv.customer_id}` : null}
+              onNameClick={inv.customer_id ? () => setQuickCustomer(inv.customer_id) : null}
               name={inv.customer?.billing_name || inv.customer?.store_name || "Khách lẻ"}
               contact={[inv.customer?.phone, inv.customer?.billing_address || inv.customer?.address]
                 .filter(Boolean)
@@ -634,6 +636,11 @@ export default function SalesInvoiceDetailPage() {
         </div>
       </ConfirmDialog>
 
+      {/* Modal thông tin khách — mở từ tên khách ở đầu trang. */}
+      <CustomerQuickView
+        customerId={quickCustomer}
+        onClose={() => setQuickCustomer(null)}
+      />
     </div>
   )
 }

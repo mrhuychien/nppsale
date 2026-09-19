@@ -171,15 +171,30 @@ describe("bấm vào tên khách từ màn chi tiết", () => {
    * muốn biết khách còn nợ bao nhiêu thì phải quay ra danh sách khách rồi
    * gõ lại tên.
    */
-  it("cả hai màn chi tiết truyền đường vào hồ sơ khách", () => {
-    expect(ORDER).toContain("href={order.customer_id ? `/customers/${order.customer_id}` : null}")
-    expect(INV).toContain("href={inv.customer_id ? `/customers/${inv.customer_id}` : null}")
+  /**
+   * ⚠ MỞ MODAL, KHÔNG CHUYỂN TRANG (chủ nhà chốt). Chuyển trang là mất
+   * chỗ đang đứng, và đường về là nút Back — thứ hay đưa họ ra khỏi hẳn
+   * màn đơn.
+   */
+  it("cả hai màn chi tiết mở modal khi bấm tên khách", () => {
+    expect(ORDER).toContain("onNameClick={order.customer_id ? () => setQuickCustomer(order.customer_id) : null}")
+    expect(INV).toContain("onNameClick={inv.customer_id ? () => setQuickCustomer(inv.customer_id) : null}")
+    expect(ORDER).toContain("<CustomerQuickView")
+    expect(INV).toContain("<CustomerQuickView")
   })
 
-  /** ⚠ Không có mã khách thì vẽ chữ thường, đừng vẽ một cái link chết. */
-  it("không có href thì không vẽ link", () => {
-    expect(CHROME).toContain("{href ? (")
-    expect(CHROME).toContain("<Link")
+  /** ⚠ Không có mã khách thì vẽ chữ thường, đừng vẽ một cái nút vô dụng. */
+  it("không có gì để mở thì không vẽ nút", () => {
+    expect(CHROME).toContain("{onNameClick ? (")
+    expect(CHROME).toContain("<button")
+    expect(CHROME).not.toContain("<Link")
+  })
+
+  /** ⚠ Đóng modal phải trả state về null, nếu không mở lại không được. */
+  it("đóng modal thì xoá mã khách đang giữ", () => {
+    for (const src of [ORDER, INV]) {
+      expect(src).toContain("onClose={() => setQuickCustomer(null)}")
+    }
   })
 })
 
@@ -288,5 +303,57 @@ describe("dọn mẫu in theo chốt của chủ nhà", () => {
   it("thông báo bị ẩn khi in", () => {
     expect(TOAST).toContain('cn("no-print fixed top-0')
     expect(CSS).toMatch(/@media print \{[\s\S]*\.no-print \{ display: none !important; \}/)
+  })
+})
+
+describe("modal thông tin khách", () => {
+  const QV = readFileSync("src/components/customers/customer-quick-view.tsx", "utf8")
+
+  /**
+   * ⚠ ĐỌC KHI MỞ, KHÔNG ĐỌC SẴN. Modal này gắn vào MỌI màn chi tiết đơn
+   * và hóa đơn; đọc sẵn là mỗi lần mở một cái đơn lại thêm hai truy vấn
+   * cho một khung người dùng có thể không bấm tới.
+   */
+  it("chỉ đọc khi có mã khách", () => {
+    expect(QV).toContain("if (!customerId) return")
+  })
+
+  /**
+   * ⚠ CÔNG NỢ QUA `fetchAllForAggregate`. Khách lâu năm vượt 1000 dòng là
+   * PostgREST cắt bớt trong im lặng, và con số nợ hiện ra THIẾU — đúng con
+   * số người ta mở modal này ra để xem.
+   */
+  it("cộng công nợ không bị cắt ở 1000 dòng", () => {
+    expect(QV).toContain("fetchAllForAggregate<ReceivableAmounts>")
+    expect(QV).toContain(".range(from, to)")
+  })
+
+  /** ⚠ Đọc hỏng thì hiện "chưa đọc được", KHÔNG hiện 0. */
+  it("đọc hỏng thì không hiện số 0", () => {
+    expect(QV).toContain("setDebt(debtRes.error || debtRes.truncated ? null : totalRemaining(debtRes.rows))")
+    expect(QV).toContain("chưa đọc được")
+  })
+
+  /** ⚠ RLS từ chối = 0 dòng, HTTP 200, không lỗi — phải nói cả hai khả năng. */
+  it("không mở được thì nói cả hai lý do", () => {
+    expect(QV).toContain("khách không tồn tại hoặc bạn không có quyền xem")
+  })
+
+  /** ⚠ Bắt trừ nhẩm lúc khách đang đứng đợi là chỗ hay trừ sai nhất. */
+  it("hiện công nợ, hạn mức và phần còn được nợ", () => {
+    expect(QV).toContain('label="Công nợ hiện tại"')
+    expect(QV).toContain('label="Hạn mức"')
+    expect(QV).toContain('label="Còn được nợ"')
+  })
+
+  /** Vẫn có đường sang hồ sơ đầy đủ — modal không phải ngõ cụt. */
+  it("có đường mở hồ sơ khách đầy đủ", () => {
+    expect(QV).toContain("href={`/customers/${row.id}`}")
+    expect(QV).toContain("Mở hồ sơ khách hàng")
+  })
+
+  /** ⚠ Địa chỉ ghép qua hàm chung, không tự nối bốn cột lần nữa. */
+  it("địa chỉ dùng hàm ghép chung", () => {
+    expect(QV).toContain("fullCustomerAddress(row)")
   })
 })

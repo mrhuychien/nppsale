@@ -67,7 +67,10 @@ const STATUS: Record<string, { label: string; variant: "warning" | "success" | "
 export function ReturnSummary({ returns }: { returns: ReturnSummaryRow[] }) {
   if (returns.length === 0) return null
   return (
-    <div className="grid gap-2">
+    /* ⚠ `min-w-0`: khối này là ô lưới trong ngăn kéo Xem nhanh, và ô lưới
+       mặc định không co dưới min-content — một tên hàng dài sẽ đẩy ngang
+       cả ngăn kéo thay vì bị cắt. */
+    <div className="grid min-w-0 gap-2">
       <p className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
         Hàng đổi / trả ({returns.length})
       </p>
@@ -77,10 +80,10 @@ export function ReturnSummary({ returns }: { returns: ReturnSummaryRow[] }) {
         const credit = Math.max(0, Number(r.credit_note_amount || 0))
         const counted = creditCounted(r)
         return (
-          <div key={r.id} className="rounded-xl border border-outline-variant/60 px-3 py-2.5">
+          <div key={r.id} className="min-w-0 overflow-hidden rounded-xl border border-outline-variant/60 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={st.variant}>{st.label}</Badge>
-              <span className="text-[12px] font-bold text-on-surface">
+              <span className="min-w-0 truncate text-[12px] font-bold text-on-surface">
                 {returnReasonLabel(r.reason ?? "")}
               </span>
               {r.created_at && (
@@ -90,7 +93,7 @@ export function ReturnSummary({ returns }: { returns: ReturnSummaryRow[] }) {
               )}
               <span className="min-w-[8px] flex-1" />
               {credit > 0 && (
-                <span className="text-right text-[13px] font-extrabold tabular-nums text-[#b54708]">
+                <span className="shrink-0 text-right text-[13px] font-extrabold tabular-nums text-[#b54708]">
                   −{formatCurrency(credit)}
                   {/* ⚠ NÓI RÕ ĐÃ TRỪ HAY CHƯA. Con số đỏ đứng một mình đọc
                       như đã trừ vào công nợ rồi. */}

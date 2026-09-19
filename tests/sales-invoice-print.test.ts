@@ -25,9 +25,32 @@ const CSS = read("src/app/globals.css")
 const BTN = read("src/components/ui/print-button.tsx")
 
 describe("Tờ hoá đơn có đủ ô như mẫu", () => {
-  it("tiêu đề đúng chữ của mẫu", () => {
-    expect(TPL).toContain("HÓA ĐƠN BÁN HÀNG")
-    expect(TPL).toContain("Số HĐ:")
+  it("tiêu đề đúng chữ của mẫu, và là MẶC ĐỊNH chứ không phải chuỗi cứng", () => {
+    /**
+     * ⚠ KHUÔN NAY DÙNG CHO CẢ ĐƠN ĐẶT HÀNG (chủ nhà chốt: "mẫu in Đơn
+     * đặt hàng giống Hoá đơn bán"), nên tiêu đề nhận từ ngoài. Nhưng
+     * MẶC ĐỊNH phải vẫn là hóa đơn: nơi gọi quên truyền thì tờ giấy
+     * không được mang tiêu đề trống.
+     */
+    expect(TPL).toContain('title = "HÓA ĐƠN BÁN HÀNG"')
+    expect(TPL).toContain('numberLabel = "Số HĐ"')
+    expect(TPL).toContain("{numberLabel}: {invoiceNumber")
+  })
+
+  /** Phần đầu là tên · địa chỉ · điện thoại NPP (chủ nhà chốt). */
+  it("phần đầu in địa chỉ và điện thoại NPP", () => {
+    expect(TPL).toContain("Địa chỉ: {org.address}")
+    expect(TPL).toContain("Điện thoại: {org.phone}")
+    /**
+     * ⚠ VÀ PHẢI CÓ CHỖ NHẬP CHÚNG. Trước đây ba ô này chỉ có ở trình
+     * hướng dẫn `/setup` — chạy MỘT LẦN — nên ai bỏ qua bước đó thì mọi
+     * tờ hóa đơn in ra thiếu hẳn phần đầu mà không có gì báo.
+     */
+    const ORG_SETTINGS = read("src/app/(dashboard)/settings/org/page.tsx")
+    expect(ORG_SETTINGS).toContain("<Label>Địa chỉ</Label>")
+    expect(ORG_SETTINGS).toContain("<Label>Điện thoại</Label>")
+    // ⚠ Gộp vào `settings` cũ, không ghi đè sạch các khoá khác.
+    expect(ORG_SETTINGS).toContain("...existing,")
   })
 
   /** Bảy cột, đúng thứ tự trái → phải của mẫu. */
@@ -44,33 +67,45 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
   })
 
   /**
-   * CỘT **CK** ĐÃ BỊ BỎ — chủ nhà chốt.
+   * CỘT **CK** ĐÃ KHÔI PHỤC — chủ nhà chốt "in giống mẫu".
    *
-   * Chốt cũ đòi in nó, với lý do: "khách cộng tay theo đơn giá × SL sẽ ra
-   * số khác". Lý do ấy KHÔNG còn đúng, và chính vì thế mới bỏ được cột:
-   * `grossUpLines` in `Đ.giá = thành tiền / SL`, tức đơn giá trên giấy
-   * được suy NGƯỢC từ số tiền đã in. Cộng tay theo đơn giá × SL luôn ra
-   * đúng cột Thành tiền, dù dòng ấy có chiết khấu hay không.
+   * Chốt này đã đảo chiều HAI lần, nên ghi lại cả hai để lần sau không
+   * đảo mù: bản đầu đòi in cột CK; bản thứ hai bỏ nó vì `grossUpLines`
+   * in `Đ.giá = Thành tiền / SL` (suy ngược), nên cộng tay luôn khớp mà
+   * không cần cột CK; bản này in lại vì tờ giấy đưa khách phải giống tờ
+   * họ vẫn quen nhận.
    *
-   * ⚠ VÀ ĐÓ LÀ ĐIỀU PHẢI GIỮ. Nếu có ai đổi sang in `unitPrice` thô thì
-   * cột tiền hết cộng ra được, và lúc đó cột CK mới lại cần.
+   * ⚠ VÀ VÌ THẾ CỘT CK PHẢI THAM GIA PHÉP TÍNH. In thẳng `discount` thô
+   * bên cạnh một đơn giá đã quy đổi là dòng đó hết cộng ra được. Đẳng
+   * thức phải giữ: Đ.giá × SL − CK = Thành tiền — xem chốt `grossUpLines`
+   * bên dưới.
    */
-  it("đơn giá in ra suy ngược từ thành tiền, nên bỏ được cột CK", () => {
-    expect(TPL).not.toContain(">CK</th>")
+  it("có cột CK, và CK quy cùng thang với thành tiền", () => {
+    expect(TPL).toContain(">CK</th>")
+    expect(TPL).toContain("{formatCurrency(l.ck)}")
+    // ⚠ KHÔNG in `l.discount` thô — đó là số chưa quy đổi.
     expect(TPL).not.toContain("formatCurrency(l.discount)")
-    expect(TPL).toContain("price: qty > 0 ? amount / qty : Number(l.unitPrice || 0)")
+    expect(TPL).toContain("price: qty > 0 ? (amount + ck) / qty : Number(l.unitPrice || 0)")
     expect(TPL).toContain("{formatCurrency(l.price)}")
   })
 
   /**
-   * HAI DÒNG TỔNG, KHÔNG CÒN BA — chủ nhà chốt bỏ "Chiết khấu hóa đơn"
-   * (luôn bằng 0 vì chiết khấu đã nằm trong đơn giá) và "Tổng cộng" (lặp
-   * đúng con số của "Tổng tiền hàng").
+   * BA DÒNG TỔNG — chủ nhà chốt "khôi phục phiếu in giống mẫu".
+   *
+   * Bản trước bỏ "Chiết khấu hóa đơn" và "Tổng cộng" vì chúng không thêm
+   * thông tin: chiết khấu ở mức hóa đơn luôn là 0, và "Tổng cộng" lặp
+   * đúng con số của "Tổng tiền hàng". Đúng về số học, nhưng tờ giấy đi
+   * tới tay khách phải giống tờ họ vẫn quen nhận.
    */
-  it("dòng tổng nằm TRONG bảng như mẫu", () => {
-    expect(TPL).toContain(">Tổng tiền hàng</td>")
-    expect(TPL).not.toContain(">Chiết khấu hóa đơn ( )</td>")
-    expect(TPL).not.toContain(">Tổng cộng</td>")
+  it("đủ ba dòng tổng nằm TRONG bảng như mẫu", () => {
+    const body = TPL.slice(TPL.indexOf("<tbody>"), TPL.indexOf("</tbody>"))
+    let at = -1
+    for (const row of [">Tổng tiền hàng</td>", ">Chiết khấu hóa đơn ( )</td>", ">Tổng cộng</td>"]) {
+      const i = body.indexOf(row)
+      expect(i, `thiếu dòng ${row}`).toBeGreaterThan(-1)
+      expect(i, `dòng ${row} sai thứ tự`).toBeGreaterThan(at)
+      at = i
+    }
     // "Tổng tiền hàng" của mẫu có cả TỔNG SỐ LƯỢNG ở cột SL.
     expect(TPL).toContain("const qtyTotal = lines.reduce")
     expect(TPL).toContain("{qtyTotal}")
@@ -97,15 +132,29 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
     expect(TPL).toContain("grid-cols-3")
   })
 
-  it("có dòng ngày dài trên ô ký", () => {
-    expect(TPL).toContain("function longDate")
-    expect(TPL).toContain("`Ngày ${p(x.getDate())} tháng ${p(x.getMonth() + 1)} năm ${x.getFullYear()}`")
+  /**
+   * ⚠ HAI MỐC NÀY ĐÃ RA `lib/printing/doc-stamp` VÀ GHIM GIỜ VIỆT NAM.
+   * Bản cũ nằm ngay trong component và dùng `d.getHours()` — tức giờ MÁY
+   * ĐANG CHẠY. Trang in là Client Component nhưng Next vẫn dựng trước ở
+   * máy chủ (UTC), nên tờ giấy mang giờ nào là tuỳ lúc bấm. Phép so ngày
+   * giờ đúng đã được chốt riêng ở `tests/doc-stamp.test.ts`.
+   */
+  it("mốc thời gian lấy từ lib đã ghim giờ Việt Nam, không tự tính", () => {
+    expect(TPL).toContain('from "@/lib/printing/doc-stamp"')
+    expect(TPL).toContain("{stampVN(issuedAt)}")
+    expect(TPL).toContain("{longDateVN(issuedAt)}")
+    // Tự đọc giờ máy là quay lại đúng lỗi vừa sửa.
+    expect(TPL_CODE).not.toContain("getHours()")
+    expect(TPL_CODE).not.toContain("getFullYear()")
   })
 
   /** Mẫu in cả GIỜ ở dòng dưới tiêu đề, `formatDate` chỉ có ngày. */
-  it("mốc dưới tiêu đề có cả giờ", () => {
-    expect(TPL).toContain("function stamp")
-    expect(TPL).toContain("${p(d.getHours())}:${p(d.getMinutes())}")
+  it("mốc dưới tiêu đề có cả giờ, và giờ đến từ created_at", () => {
+    expect(TPL).toContain("Ngày {stampVN(issuedAt)}")
+    const SALES_PAGE = read("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx")
+    // ⚠ `invoice_date` là cột kiểu `date` — in kèm giờ từ nó là in
+    //   "07:00" cho mọi hóa đơn.
+    expect(SALES_PAGE).toContain("docStampAt(inv.created_at, inv.invoice_date).at")
   })
 
   /**

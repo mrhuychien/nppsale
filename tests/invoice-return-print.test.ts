@@ -273,17 +273,28 @@ describe("dọn mẫu in theo chốt của chủ nhà", () => {
     expect(PRINT_PAGE).not.toContain("delete(")
   })
 
-  it("bỏ cột CK và dòng chiết khấu hóa đơn", () => {
-    expect(PRINT).not.toContain(">CK</th>")
-    // Soi Ô ĐƯỢC VẼ, không soi cả tệp — chú thích giải thích việc bỏ nó
-    // cũng chứa đúng cụm chữ ấy.
-    expect(PRINT).not.toContain(">Chiết khấu hóa đơn ( )</td>")
+  /**
+   * ⚠ CỘT CK VÀ HAI DÒNG TỔNG ĐÃ KHÔI PHỤC — chủ nhà chốt "khôi phục
+   * phiếu in giống mẫu". Chốt này từng đòi điều NGƯỢC LẠI; giữ lại cả
+   * hai vế để lần sau không đảo mù.
+   *
+   * ⚠ PHẦN HÀNG ĐỔI / TRẢ THÌ GIỮ NGUYÊN (chủ nhà chốt rõ trong cùng
+   * một lần). Dòng hàng đổi xuất đi vẫn bị bỏ khỏi bản in, hai dòng
+   * "Trừ hàng trả" / "Còn phải thu" vẫn đứng dưới "Tổng cộng" — phần
+   * dưới của file này chốt nguyên vẹn.
+   */
+  it("có cột CK và dòng chiết khấu hóa đơn như mẫu", () => {
+    expect(PRINT).toContain(">CK</th>")
+    // Soi Ô ĐƯỢC VẼ, không soi cả tệp — chú thích cũng chứa cụm chữ ấy.
+    expect(PRINT).toContain(">Chiết khấu hóa đơn ( )</td>")
+    // ⚠ Vẫn KHÔNG in `discount` thô: nó chưa quy cùng thang với thành
+    //   tiền, in ra là dòng đó hết cộng được.
     expect(PRINT).not.toContain("{formatCurrency(l.discount)}")
+    expect(PRINT).toContain("{formatCurrency(l.ck)}")
   })
 
-  /** ⚠ "Tổng cộng" lặp đúng con số của "Tổng tiền hàng". */
-  it("bỏ dòng Tổng cộng, giữ Tổng tiền hàng", () => {
-    expect(PRINT).not.toContain(">Tổng cộng</td>")
+  it("có dòng Tổng cộng và Tổng tiền hàng", () => {
+    expect(PRINT).toContain(">Tổng cộng</td>")
     expect(PRINT).toContain(">Tổng tiền hàng</td>")
   })
 
@@ -299,10 +310,19 @@ describe("dọn mẫu in theo chốt của chủ nhà", () => {
   })
 
   /** ⚠ Số ô mỗi hàng phải khớp số cột, nếu không bảng lệch hẳn. */
-  it("colSpan theo đúng 6 cột còn lại", () => {
-    expect(PRINT).not.toContain("colSpan={7}")
-    expect(PRINT).toContain("colSpan={5}>Trừ hàng trả")
-    expect(PRINT).toContain("colSpan={5}>Còn phải thu")
+  /**
+   * ⚠ BẢNG BẢY CỘT THÌ MỌI `colSpan` PHẢI THEO. Sót một ô là bảng vỡ ở
+   * đúng dòng tổng — thứ người đọc nhìn đầu tiên, và không lỗi nào bắn
+   * ra để ai biết.
+   */
+  it("colSpan theo đúng bảy cột của mẫu", () => {
+    expect(PRINT).toContain("colSpan={6}>Trừ hàng trả")
+    expect(PRINT).toContain("colSpan={6}>Còn phải thu")
+    // Dòng trống và dòng "Bằng chữ" trải hết bảng.
+    expect(PRINT).toContain("colSpan={7}></td>")
+    expect(PRINT).toContain("colSpan={7}>")
+    // Không còn ô nào tính theo bảng sáu cột cũ.
+    expect(PRINT).not.toContain("colSpan={5}>")
   })
 
   /**

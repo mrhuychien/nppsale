@@ -270,7 +270,13 @@ export function OrderDrawer({
 
   return (
     <Sheet open={!!order} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="flex w-[460px] flex-col gap-0 p-0 sm:max-w-[460px]">
+      {/*
+        ⚠ `w-full max-w-[460px]`, KHÔNG PHẢI `w-[460px]`. Bề ngang cứng
+          460px rộng hơn màn hình 375px của điện thoại, nên ngăn kéo tự nó
+          tràn ra ngoài mép phải — và chỉ lộ ra khi bên trong có nội dung
+          rộng (hàng đổi/trả) đẩy cho thấy.
+      */}
+      <SheetContent side="right" className="flex w-full max-w-[460px] flex-col gap-0 p-0 sm:max-w-[460px]">
         {order && tone && (
           <>
             <div className="flex items-center gap-2.5 border-b border-outline-variant/40 py-4 pl-5 pr-14">
@@ -293,7 +299,21 @@ export function OrderDrawer({
               </span>
             </div>
 
-            <div className="grid flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
+            {/*
+              ⚠ `min-h-0` LÀ BẮT BUỘC, KHÔNG PHẢI TRANG TRÍ. Đây là con của
+                một flex cột; flex item mặc định `min-height: auto`, tức là
+                KHÔNG co xuống dưới chiều cao nội dung. Thiếu nó thì
+                `overflow-y-auto` không bao giờ chạy: khối này phình theo nội
+                dung và đẩy hàng nút dưới đáy ra ngoài ngăn kéo.
+
+                Vì thế lỗi chỉ lộ ra KHI NỘI DUNG ĐỦ DÀI — ví dụ đơn có thêm
+                khối hàng đổi/trả — nên nhìn như lỗi của khối hàng trả.
+
+              ⚠ `min-w-0` cùng lý do cho chiều ngang: ô lưới mặc định không
+                co dưới min-content, nên một dòng dài bên trong đẩy ngang cả
+                ngăn kéo thay vì bị cắt.
+            */}
+            <div className="grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
               <div className="grid grid-cols-2 gap-2.5">
                 <Cell label="Khách hàng" main={order.customer?.store_name || "Khách lẻ"} sub={routeName ?? order.customer?.phone ?? ""} />
                 <Cell label="NV bán hàng" main={order.sales_user?.full_name || "—"} sub={terms} />

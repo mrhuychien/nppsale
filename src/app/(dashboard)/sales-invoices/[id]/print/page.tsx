@@ -27,6 +27,7 @@ import {
   SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
 } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
+import { docStampAt } from "@/lib/printing/doc-stamp"
 
 interface InvoiceRow {
   id: string
@@ -254,7 +255,12 @@ export default function SalesInvoicePrintPage() {
         <SalesInvoice
           org={{ name: org.name, address: org.address, phone: org.phone }}
           invoiceNumber={inv.invoice_code}
-          issuedAt={inv.invoice_date ? new Date(inv.invoice_date) : null}
+          /* ⚠ GIỜ LẤY TỪ `created_at` (chủ nhà chốt in kèm giờ).
+             `invoice_date` là cột kiểu `date` — dựng Date từ nó ra nửa
+             đêm UTC = 07:00 giờ Việt Nam, nên in kèm giờ là in ra "07:00"
+             cho MỌI hóa đơn: một con số trông như dữ liệu thật mà không
+             phải. Xem `docStampAt`. */
+          issuedAt={docStampAt(inv.created_at, inv.invoice_date).at}
           customerName={inv.customer?.billing_name || inv.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(inv.customer ?? {})}
           customerPhone={inv.customer?.phone}

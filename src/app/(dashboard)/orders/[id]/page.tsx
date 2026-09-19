@@ -1158,8 +1158,17 @@ export default function OrderDetailPage() {
   const backTransitions = roleTransitions.filter((t) => t.value !== "cancelled")
   const heroActions = (
     <>
-      <Button variant="outline" onClick={() => window.print()}>
-        <Printer className="mr-1.5 h-4 w-4" /> In đơn
+      {/*
+        ⚠ MỞ MÀN IN, KHÔNG `window.print()` TRANG NÀY. Bấm in ở đây trước
+          đây in ra nguyên trang chi tiết — thẻ, nút, cột phải — chứ không
+          phải một tờ chứng từ. Nay đi qua `/orders/[id]/print`, dùng
+          chung khuôn với hóa đơn bán (chủ nhà chốt: "mẫu in Đơn đặt hàng
+          giống Hoá đơn bán").
+      */}
+      <Button variant="outline" asChild>
+        <Link href={`/orders/${order.id}/print`}>
+          <Printer className="mr-1.5 h-4 w-4" /> In đơn
+        </Link>
       </Button>
       {reorderAction && (
         <Button variant="outline" onClick={reorderAction.onClick}>

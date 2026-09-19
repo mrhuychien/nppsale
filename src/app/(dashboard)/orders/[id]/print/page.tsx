@@ -1,0 +1,253 @@
+"use client"
+
+/**
+ * IN ĐƠN ĐẶT HÀNG.
+ *
+ * Chủ nhà chốt: "Làm thêm mẫu in Đơn đặt hàng giống Hoá đơn bán."
+ *
+ * ⚠ DÙNG CHUNG KHUÔN `SalesInvoice`, chỉ đổi tiêu đề và nhãn số chứng
+ * từ. Chép ra một khuôn thứ hai là ít lâu sau sửa mẫu ở một bên rồi hai
+ * tờ giấy của cùng một nhà phân phối không còn giống nhau — mà thứ hay
+ * phải sửa nhất (địa chỉ NPP, số cột, ô ký) lại là phần dùng chung.
+ *
+ * ⚠ ĐÂY LÀ LỜI ĐẶT, CHƯA PHẢI HÀNG ĐÃ GIAO. Bản in này liệt kê TOÀN BỘ
+ * dòng của đơn, kể cả phần chưa xuất — khác hẳn hóa đơn bán, vốn chỉ in
+ * đúng những gì đã lên xe. Vì thế dòng chân trang nói rõ nó không có giá
+ * trị thanh toán; người cầm tờ này đi thu tiền là thu theo một con số
+ * chưa chắc đã giao đủ.
+ *
+ * ⚠ KHÔNG CÓ PHÉP QUY ĐỔI THUẾ NÀO KHÁC HÓA ĐƠN. `sales_orders.total`
+ * cũng đã gồm VAT (`subtotal + vat`), nên `grossUpLines` xử lý y như
+ * hóa đơn — xem chú thích trong `printing/sales-invoice.tsx`.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { useRoleGuard } from "@/hooks/use-role-guard"
+import { PageHeader } from "@/components/ui/page-header"
+import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
+} from "@/components/printing/sales-invoice"
+import { invoiceAddressOf } from "@/lib/customers/address"
+import { docStampAt } from "@/lib/printing/doc-stamp"
+import { ORDER_STATUS_MAP } from "@/lib/constants"
+
+interface OrderRow {
+  id: string
+  org_id: string
+  order_code: string
+  order_date: string
+  status: string
+  total: number
+  created_at: string | null
+  notes: string | null
+  customer?: {
+    store_name?: string | null
+    billing_name?: string | null
+    billing_address?: string | null
+    address?: string | null
+    ward?: string | null
+    district?: string | null
+    province?: string | null
+    phone?: string | null
+  } | null
+  sales_user?: { full_name?: string | null; phone?: string | null } | null
+}
+
+interface LineRow {
+  id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  line_discount: number
+  line_total: number
+  product?: { name?: string | null; sku?: string | null } | null
+}
+
+interface ReturnLineRow {
+  id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  line_total: number
+  is_exchange: boolean | null
+  product?: { name?: string | null } | null
+}
+
+interface ReturnRow {
+  id: string
+  status: string
+  lines?: ReturnLineRow[] | null
+}
+
+export default function OrderPrintPage() {
+  const { id } = useParams<{ id: string }>()
+  const params = useSearchParams()
+  const { loading: authLoading } = useRoleGuard("orders")
+  const supabase = createClient()
+  const [order, setOrder] = useState<OrderRow | null>(null)
+  const [lines, setLines] = useState<LineRow[]>([])
+  const [returns, setReturns] = useState<ReturnRow[]>([])
+  const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
+  const [loading, setLoading] = useState(true)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    const [ordRes, lineRes, retRes] = await Promise.all([
+      supabase
+        .from("sales_orders")
+        .select(
+          "id, org_id, order_code, order_date, status, total, created_at, notes, " +
+            "customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), " +
+            "sales_user:users!sales_orders_sales_user_id_fkey(full_name, phone)"
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      supabase
+        .from("sales_order_lines")
+        .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(name, sku)")
+        .eq("order_id", id),
+      /**
+       * Phiếu đổi / trả kèm đơn.
+       *
+       * ⚠ BỎ PHIẾU ĐÃ HUỶ. Phiếu huỷ không còn ràng buộc gì với lô hàng
+       *   này; in nó ra là tờ giấy hứa trừ một khoản đã bị bỏ.
+       */
+      supabase
+        .from("returns")
+        .select(
+          "id, status, lines:return_lines(id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name))"
+        )
+        .eq("order_id", id)
+        .neq("status", "cancelled"),
+    ])
+    const qErr = ([ordRes, lineRes, retRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) console.error("[orders/print] truy vấn lỗi:", qErr.message)
+
+    const row = ((ordRes.data as unknown) as OrderRow) || null
+    setOrder(row)
+    setLines(((lineRes.data as unknown) as LineRow[]) || [])
+    setReturns(((retRes.data as unknown) as ReturnRow[]) || [])
+    if (row?.org_id) {
+      // ⚠ QUA `loadOrgHeader` — địa chỉ và điện thoại NẰM TRONG
+      //   `settings` jsonb, không phải cột trên `organizations`.
+      setOrg(await loadOrgHeader(supabase, row.org_id))
+    }
+    setLoading(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  useEffect(() => {
+    if (!authLoading) fetchData()
+  }, [authLoading, fetchData])
+
+  /**
+   * IN NGAY khi tới từ nút "In đơn" (`?auto=1`).
+   *
+   * ⚠ CHỜ DỮ LIỆU XONG MỚI IN, và CHỈ MỘT LẦN — xem cùng khối ở màn in
+   *   hóa đơn: in sớm ra một trang khung xương, in lại là hộp thoại bật
+   *   lên lần nữa mà người dùng không thoát ra được.
+   */
+  const printedRef = useRef(false)
+  useEffect(() => {
+    if (loading || !order || printedRef.current) return
+    if (params.get("auto") !== "1") return
+    printedRef.current = true
+    printWithPaper("A5")
+  }, [loading, order, params])
+
+  if (authLoading || loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-16" />
+        <Skeleton className="h-96" />
+      </div>
+    )
+  }
+
+  if (!order) {
+    return <PageHeader title="Không tìm thấy đơn hàng" backHref="/orders" />
+  }
+
+  const printLines: SalesInvoiceLine[] = lines.map((l) => ({
+    id: l.id,
+    name: l.product?.name || "—",
+    spec: l.product?.sku || null,
+    unitName: l.unit_name,
+    quantity: Number(l.quantity) || 0,
+    unitPrice: Number(l.unit_price) || 0,
+    discount: Number(l.line_discount) || 0,
+    lineTotal: Number(l.line_total) || 0,
+  }))
+
+  /**
+   * Dòng hàng đổi / trả kèm đơn — giữ nguyên cách hóa đơn đang hiện
+   * (chủ nhà chốt): ghi rõ "(Hàng đổi)" / "(Hàng trả)" đầu tên hàng,
+   * dòng đổi ghi "không trừ".
+   *
+   * ⚠ KHÔNG TRỪ VÀO "TỔNG CỘNG" CỦA ĐƠN. Đơn đặt hàng chưa xuất thì
+   *   khoản trừ chưa vào sổ; ghi một dòng "còn phải thu" ở đây là hứa
+   *   một con số trước khi nó tồn tại. Chúng chỉ đứng liệt kê.
+   */
+  const printReturnLines: SalesInvoiceReturnLine[] = returns.flatMap((r) =>
+    (r.lines ?? []).map((l) => ({
+      id: l.id,
+      name: l.product?.name || "Sản phẩm đã xoá",
+      unitName: l.unit_name,
+      quantity: Number(l.quantity) || 0,
+      unitPrice: Number(l.unit_price) || 0,
+      credit: l.is_exchange ? 0 : Math.max(0, Number(l.line_total || 0)),
+      isExchange: l.is_exchange === true,
+    }))
+  )
+
+  const st = ORDER_STATUS_MAP[order.status]
+
+  return (
+    <div className="space-y-4">
+      <div className="no-print">
+        <PageHeader
+          title="In đơn đặt hàng"
+          description={`Đơn ${order.order_code}`}
+          backHref={`/orders/${id}`}
+        >
+          <PrintButton label="In đơn hàng" defaultPaper="A5" />
+        </PageHeader>
+      </div>
+
+      <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
+        <SalesInvoice
+          org={{ name: org.name, address: org.address, phone: org.phone }}
+          title="ĐƠN ĐẶT HÀNG"
+          numberLabel="Số ĐH"
+          invoiceNumber={order.order_code}
+          issuedAt={docStampAt(order.created_at, order.order_date).at}
+          customerName={order.customer?.billing_name || order.customer?.store_name || ""}
+          customerAddress={invoiceAddressOf(order.customer ?? {})}
+          customerPhone={order.customer?.phone}
+          salesPersonName={order.sales_user?.full_name}
+          salesPersonPhone={order.sales_user?.phone}
+          lines={printLines}
+          total={Number(order.total) || 0}
+          returnLines={printReturnLines}
+          /**
+           * ⚠ NÓI RÕ ĐÂY LÀ LỜI ĐẶT, KHÔNG PHẢI CHỨNG TỪ THANH TOÁN.
+           *   Tờ này trông y hệt hóa đơn bán; thiếu câu dưới đây thì ai
+           *   cầm nó cũng có thể đi thu tiền theo một con số hàng chưa
+           *   chắc đã giao đủ.
+           */
+          footerNote={
+            order.status === "cancelled"
+              ? "⚠ ĐƠN ĐÃ HUỶ — không có giá trị."
+              : `Đơn đặt hàng — chưa phải chứng từ thanh toán.${st ? ` Trạng thái: ${st.label}.` : ""}${order.notes ? ` Ghi chú: ${order.notes}` : ""}`
+          }
+        />
+      </div>
+    </div>
+  )
+}

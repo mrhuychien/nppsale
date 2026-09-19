@@ -1144,6 +1144,18 @@ export default function OrderDetailPage() {
    *   nó đã lọc theo vai trò.
    */
   const cancelTransition = roleTransitions.find((t) => t.value === "cancelled") ?? null
+  /**
+   * Các bước LÙI khác ngoài huỷ đơn — thực tế là "Rút về nháp".
+   *
+   * ⚠ CHỦ NHÀ CHỐT BỎ THẺ "THAO TÁC" Ở CỘT PHẢI và đưa chúng lên hàng nút
+   *   đầu trang, cạnh Huỷ đơn. Thẻ cũ nằm CUỐI cột phải — sau khách hàng,
+   *   thông tin đơn, hoá đơn, tiến trình — nên phải cuộn hết trang mới
+   *   thấy, trong khi hàng nút đầu trang thì luôn ở ngay đó.
+   *
+   * ⚠ LỌC BỎ `cancelled` để không vẽ Huỷ đơn HAI LẦN: thẻ cũ vẽ cả bảng
+   *   `roleTransitions` trong khi hàng nút đầu trang đã có nút huỷ riêng.
+   */
+  const backTransitions = roleTransitions.filter((t) => t.value !== "cancelled")
   const heroActions = (
     <>
       <Button variant="outline" onClick={() => window.print()}>
@@ -1164,6 +1176,20 @@ export default function OrderDetailPage() {
           <Archive className="mr-1.5 h-4 w-4" /> {closeAction.label}
         </Button>
       )}
+      {/* ⚠ BƯỚC LÙI KHÔNG BAO GIỜ LÀ NÚT ĐẶC. Nút xanh đậm là chỗ mắt rơi
+          vào đầu tiên; đặt "Rút về nháp" ở đó là mời bấm nhầm. */}
+      {backTransitions.map((trans) => {
+        const Icon = trans.icon
+        return (
+          <Button
+            key={trans.value}
+            variant="outline"
+            onClick={() => setConfirmOpen({ status: trans.value, label: trans.label })}
+          >
+            <Icon className="mr-1.5 h-4 w-4" /> {trans.label}
+          </Button>
+        )
+      })}
       {cancelTransition && (
         <Button
           variant="outline"
@@ -1171,6 +1197,17 @@ export default function OrderDetailPage() {
           onClick={() => setConfirmOpen({ status: cancelTransition.value, label: cancelTransition.label })}
         >
           <XCircle className="mr-1.5 h-4 w-4" /> {cancelTransition.label}
+        </Button>
+      )}
+      {/* ⚠ XOÁ ĐƠN ĐI THEO KHI BỎ THẺ "THAO TÁC" — nó vốn chỉ nằm ở đó.
+          Bỏ thẻ mà quên nút này là mất hẳn đường xoá một đơn nhập nhầm. */}
+      {canDelete && (
+        <Button
+          variant="outline"
+          className="border-destructive/40 text-destructive"
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Trash2 className="mr-1.5 h-4 w-4" /> Xóa đơn hàng
         </Button>
       )}
       {/* ⚠ XUẤT HÀNG ĐỨNG CUỐI, tức ngoài cùng bên phải và là nút ĐẶC.
@@ -1291,6 +1328,9 @@ export default function OrderDetailPage() {
             showSalesName={user?.role !== "sales"}
             callout={callouts}
             onBack={() => router.push("/orders")}
+            onCustomerClick={
+              order.customer_id ? () => setQuickCustomer(order.customer_id) : null
+            }
           />
         </div>
       )}
@@ -2233,47 +2273,6 @@ export default function OrderDetailPage() {
             <DetailTimeline steps={heroTimeline} />
           </DetailCard>
 
-          {(roleTransitions.length > 0 || canDelete) && (
-            <Card className="hidden lg:block">
-              <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {/* ⚠ DÙNG `roleTransitions`, KHÔNG PHẢI `availableTransitions`.
-                    Bản mobile lọc theo vai trò rồi mới vẽ; thẻ này thì vẽ cả
-                    bảng rồi lọc bên trong bằng `return null`, nên điều kiện
-                    hiện thẻ ở trên đếm cả những bước người dùng không có
-                    quyền — thẻ "Thao tác" rỗng hiện ra cho vai trò không làm
-                    được gì.
-                    ⚠ Và mọi bước ở đây đều là bước LÙI (v2 không còn bước
-                    tiến nào làm được bằng một lệnh ghi thẳng), nên KHÔNG
-                    dùng variant "default" — nút xanh đậm to nhất thẻ là chỗ
-                    mắt rơi vào đầu tiên, đặt "Rút về nháp" ở đó là mời bấm
-                    nhầm. */}
-                {roleTransitions.map((trans) => {
-                  const Icon = trans.icon
-                  const isDestructive = trans.value === "cancelled"
-                  return (
-                    <Button
-                      key={trans.value}
-                      variant={isDestructive ? "destructive" : "outline"}
-                      className="w-full justify-start"
-                      onClick={() => setConfirmOpen({ status: trans.value, label: trans.label })}
-                    >
-                      <Icon className="h-4 w-4 mr-2" /> {trans.label}
-                    </Button>
-                  )
-                })}
-                {canDelete && (
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-destructive hover:bg-destructive/10"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" /> Xóa đơn hàng
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
 

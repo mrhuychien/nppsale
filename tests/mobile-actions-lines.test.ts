@@ -60,14 +60,15 @@ const CSS = read("src/app/globals.css")
 
 describe("M4.2 — một thanh hành động theo STATUS_FLOW", () => {
   /**
-   * ⚠ Thẻ "Thao tác" nằm CUỐI cột phụ. Trên điện thoại cột phụ xếp sau
-   * toàn bộ bảng hàng → nút "Duyệt đơn" nằm dưới ~3.400px cuộn.
+   * Thẻ "Thao tác" ĐÃ BỊ BỎ HẲN (chủ nhà chốt), không còn ở desktop nữa.
+   *
+   * Lý do của chốt cũ — "thẻ nằm cuối cột phụ nên nút nằm dưới ~3.400px
+   * cuộn" — chính là lý do chủ nhà bảo bỏ. Trên điện thoại đã có
+   * `StickyActionBar`; trên máy tính các nút nay nằm ở hàng đầu trang.
    */
-  it("thẻ Thao tác cũ chỉ còn ở desktop", () => {
-    const i = ORDER_DETAIL.indexOf("<CardTitle>Thao tác</CardTitle>")
-    expect(i, "không thấy thẻ Thao tác").toBeGreaterThan(0)
-    // Card mở ra ngay trước CardHeader chứa title.
-    expect(ORDER_DETAIL.slice(i - 200, i)).toContain('<Card className="hidden lg:block">')
+  it("không còn thẻ Thao tác ở đâu cả", () => {
+    expect(ORDER_DETAIL).not.toContain("<CardTitle>Thao tác</CardTitle>")
+    expect(ORDER_DETAIL).not.toContain('<Card className="hidden lg:block">')
   })
 
   it("hành động chính lấy từ STATUS_FLOW, lọc theo vai trò", () => {

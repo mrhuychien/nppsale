@@ -678,16 +678,19 @@ describe("màn chi tiết đơn hàng theo mẫu", () => {
   })
 
   /**
-   * ⚠ TIẾN TRÌNH NẰM NGOÀI điều kiện hiện thẻ Thao tác. Đơn đã xong không
-   * còn bước nào để bấm, nhưng tiến trình của nó vẫn là thứ người ta mở
-   * đơn ra để tra.
+   * ⚠ TIẾN TRÌNH KHÔNG BAO GIỜ BỊ GÓI TRONG ĐIỀU KIỆN HIỆN NÚT. Đơn đã
+   * xong không còn bước nào để bấm, nhưng tiến trình của nó vẫn là thứ
+   * người ta mở đơn ra để tra.
+   *
+   * Bản cũ kiểm bằng cách so vị trí với thẻ "Thao tác"; thẻ ấy đã bị bỏ
+   * (chủ nhà chốt đưa nút lên hàng đầu trang), nên nay kiểm thẳng: khối
+   * Tiến trình không nằm trong bất kỳ điều kiện `roleTransitions` nào.
    */
   it("khối tiến trình không bị gói trong điều kiện hiện nút", () => {
     const i = ORD.indexOf('<DetailCard title="Tiến trình"')
-    const j = ORD.indexOf("{(roleTransitions.length > 0 || canDelete) && (")
     expect(i).toBeGreaterThan(0)
-    expect(j).toBeGreaterThan(0)
-    expect(i).toBeLessThan(j)
+    expect(ORD.slice(Math.max(0, i - 300), i)).not.toContain("roleTransitions")
+    expect(ORD.slice(Math.max(0, i - 300), i)).not.toContain("canDelete")
   })
 
   /**
@@ -749,13 +752,23 @@ describe("màn chi tiết đơn hàng theo mẫu", () => {
   })
 
   /**
-   * ⚠ KHÔNG DỰNG LẠI HÀNH VI. Mỗi nút gọi đúng thứ thẻ "Thao tác" gọi;
-   * thẻ đó GIỮ NGUYÊN vì nó còn các bước lùi (Rút về nháp) và nút Xoá
-   * đơn. Chép logic ra hai chỗ là hai chỗ để lệch.
+   * THẺ "THAO TÁC" ĐÃ BỊ BỎ — chủ nhà chốt.
+   *
+   * Chốt cũ giữ nó lại với lý do "nó còn các bước lùi (Rút về nháp) và
+   * nút Xoá đơn". Lý do ấy vẫn đúng về NỘI DUNG, chỉ sai về CHỖ ĐỂ: thẻ
+   * nằm cuối cột phải, sau khách hàng / thông tin đơn / hoá đơn / tiến
+   * trình, nên phải cuộn hết trang mới thấy "Rút về nháp".
+   *
+   * ⚠ NÊN CHỐT NAY GIỮ ĐÚNG ĐIỀU CŨ MUỐN GIỮ: cả hai nút ấy vẫn còn
+   *   đường bấm, chỉ chuyển lên hàng nút đầu trang. Bỏ thẻ mà quên chúng
+   *   là mất hẳn đường rút đơn về nháp và đường xoá một đơn nhập nhầm.
    */
-  it("thẻ Thao tác ở cột phải vẫn còn", () => {
-    expect(ORD).toContain("<CardTitle>Thao tác</CardTitle>")
-    expect(ORD).toContain("{roleTransitions.map((trans) => {")
+  it("bỏ thẻ Thao tác nhưng giữ đủ nút của nó", () => {
+    expect(ORD).not.toContain("<CardTitle>Thao tác</CardTitle>")
+    const hero = ORD.slice(ORD.indexOf("const heroActions = ("), ORD.indexOf("const creditLimit ="))
+    expect(hero).toContain("{backTransitions.map((trans) => {")
+    expect(hero).toContain("Xóa đơn hàng")
+    expect(hero).toContain("{cancelTransition && (")
   })
 })
 

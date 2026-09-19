@@ -357,3 +357,86 @@ describe("modal thông tin khách", () => {
     expect(QV).toContain("fullCustomerAddress(row)")
   })
 })
+
+describe("bấm khách trên ĐIỆN THOẠI, và hàng nút đầu trang", () => {
+  const MOBILE = readFileSync("src/components/orders/mobile-order-detail.tsx", "utf8")
+  const ORDER_PAGE = readFileSync("src/app/(dashboard)/orders/[id]/page.tsx", "utf8")
+
+  /**
+   * ⚠ CHỦ NHÀ BÁO "trên điện thoại chưa xem được". Màn chi tiết đơn trên
+   * điện thoại là MỘT CÂY JSX RIÊNG (`MobileOrderDetail`), không dùng
+   * `DetailCustomerCard` — nên chỗ bấm thêm ở bản desktop không tự có ở
+   * đó.
+   */
+  it("màn mobile có chỗ bấm vào tên khách", () => {
+    expect(MOBILE).toContain("<ClickableCustomer onClick={onCustomerClick}>")
+    expect(ORDER_PAGE).toContain(
+      "onCustomerClick={\n              order.customer_id ? () => setQuickCustomer(order.customer_id) : null\n            }"
+    )
+  })
+
+  /**
+   * ⚠ CHỖ BẤM KHÔNG ĐƯỢC BAO CẢ THẺ. Nút gọi nằm bên phải; bọc cả thẻ thì
+   * nó nằm TRONG một nút khác — bấm gọi lại ra modal, mà gọi là thao tác
+   * hay dùng nhất ở đây trên điện thoại.
+   */
+  it("nút gọi vẫn nằm ngoài chỗ bấm", () => {
+    const card = MOBILE.slice(MOBILE.indexOf("{/* Khách */}"), MOBILE.indexOf("{/* Dòng hàng + tổng */}"))
+    const close = card.indexOf("</ClickableCustomer>")
+    expect(close).toBeGreaterThan(-1)
+    expect(card.indexOf('href={`tel:${customer.phone}`}')).toBeGreaterThan(close)
+  })
+
+  /** ⚠ Không có gì để mở thì vẽ chữ thường, đừng vẽ nút câm. */
+  it("không truyền gì thì không vẽ nút", () => {
+    expect(MOBILE).toContain("if (!onClick) return <span")
+  })
+
+  /**
+   * ⚠ CHỦ NHÀ CHỐT BỎ THẺ "THAO TÁC". Nó nằm cuối cột phải — sau khách
+   * hàng, thông tin đơn, hoá đơn, tiến trình — nên phải cuộn hết trang mới
+   * thấy "Rút về nháp".
+   */
+  it("bỏ hẳn thẻ Thao tác ở cột phải", () => {
+    expect(ORDER_PAGE).not.toContain("<CardTitle>Thao tác</CardTitle>")
+  })
+
+  /** Bước lùi lên hàng nút đầu trang, cạnh Huỷ đơn. */
+  it("Rút về nháp nằm ở hàng nút đầu trang, trước Huỷ đơn", () => {
+    const hero = ORDER_PAGE.slice(
+      ORDER_PAGE.indexOf("const heroActions = ("),
+      ORDER_PAGE.indexOf("const creditLimit =")
+    )
+    expect(hero).toContain("{backTransitions.map((trans) => {")
+    expect(hero.indexOf("backTransitions.map")).toBeLessThan(hero.indexOf("{cancelTransition && ("))
+  })
+
+  /** ⚠ Lọc bỏ `cancelled`, nếu không Huỷ đơn vẽ HAI lần cạnh nhau. */
+  it("không vẽ Huỷ đơn hai lần", () => {
+    expect(ORDER_PAGE).toContain(
+      'const backTransitions = roleTransitions.filter((t) => t.value !== "cancelled")'
+    )
+  })
+
+  /**
+   * ⚠ XOÁ ĐƠN VỐN CHỈ NẰM TRONG THẺ "THAO TÁC". Bỏ thẻ mà quên nút này là
+   * mất hẳn đường xoá một đơn nhập nhầm.
+   */
+  it("nút Xóa đơn hàng đi theo lên hàng nút", () => {
+    const hero = ORDER_PAGE.slice(
+      ORDER_PAGE.indexOf("const heroActions = ("),
+      ORDER_PAGE.indexOf("const creditLimit =")
+    )
+    expect(hero).toContain("{canDelete && (")
+    expect(hero).toContain("Xóa đơn hàng")
+  })
+
+  /** ⚠ Bước lùi không bao giờ là nút đặc — nút xanh đậm là chỗ mắt rơi vào. */
+  it("bước lùi vẽ bằng nút viền, không phải nút đặc", () => {
+    const hero = ORDER_PAGE.slice(
+      ORDER_PAGE.indexOf("{backTransitions.map((trans) => {"),
+      ORDER_PAGE.indexOf("{cancelTransition && (")
+    )
+    expect(hero).toContain('variant="outline"')
+  })
+})

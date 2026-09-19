@@ -70,6 +70,7 @@ export function MobileOrderDetail({
   showSalesName,
   callout,
   onBack,
+  onCustomerClick,
 }: {
   order: SalesOrder
   lines: SalesOrderLine[]
@@ -84,6 +85,8 @@ export function MobileOrderDetail({
   /** Khung "chờ duyệt" / "nháp chưa gửi" — trang truyền vào vì nút Gửi duyệt cần handler của trang. */
   callout?: React.ReactNode
   onBack: () => void
+  /** Bấm vào tên khách → modal thông tin khách. Không truyền thì vẽ chữ thường. */
+  onCustomerClick?: (() => void) | null
 }) {
   const tone = orderTone(order.status)
   const customer = order.customer
@@ -138,7 +141,16 @@ export function MobileOrderDetail({
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e3edfb] text-[15px] font-extrabold text-[#1d4ed8]">
             {initial}
           </span>
-          <span className="min-w-0 flex-1">
+          {/*
+            ⚠ CHỖ BẤM CHỈ BAO TÊN VÀ HAI DÒNG PHỤ, KHÔNG BAO CẢ THẺ. Bọc cả
+              thẻ thì nút gọi bên phải nằm TRONG một nút khác — bấm gọi lại
+              ra modal, và trên điện thoại đó là thao tác hay dùng nhất ở
+              đây.
+            ⚠ CHỦ NHÀ BÁO: "trên điện thoại chưa xem được". Đúng — màn này
+              là một cây JSX RIÊNG, không dùng `DetailCustomerCard`, nên
+              chỗ bấm thêm ở bản desktop không tự có ở đây.
+          */}
+          <ClickableCustomer onClick={onCustomerClick}>
             <span className="block truncate text-[15px] font-extrabold text-on-surface">
               {customer?.store_name || "Khách lẻ"}
             </span>
@@ -150,7 +162,7 @@ export function MobileOrderDetail({
                 {creditLine}
               </span>
             )}
-          </span>
+          </ClickableCustomer>
           {/* ⚠ Nút gọi: khách đứng ở đầu kia điện thoại là chuyện thường
               khi mở đơn ra xem. */}
           {customer?.phone ? (
@@ -425,5 +437,32 @@ function LinkRow({
     </Link>
   ) : (
     <div className={cls}>{inner}</div>
+  )
+}
+
+/**
+ * Khối tên khách — bấm được khi có chỗ để mở.
+ *
+ * ⚠ KHÔNG TRUYỀN GÌ THÌ VẼ CHỮ THƯỜNG, không vẽ một nút bấm vào không có
+ * chuyện gì xảy ra. Trên điện thoại một vùng trông như bấm được mà không
+ * phản hồi là thứ người dùng thử đi thử lại rồi kết luận app treo.
+ */
+function ClickableCustomer({
+  onClick,
+  children,
+}: {
+  onClick?: (() => void) | null
+  children: React.ReactNode
+}) {
+  if (!onClick) return <span className="min-w-0 flex-1">{children}</span>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="tap min-w-0 flex-1 text-left"
+      aria-label="Xem thông tin khách hàng"
+    >
+      {children}
+    </button>
   )
 }

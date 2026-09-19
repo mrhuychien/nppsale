@@ -286,19 +286,28 @@ describe("lỗi soi chéo bắt được sau P4, không được quay lại", ()
 
   /**
    * ⚠ HAI BẢN CỦA CÙNG MỘT MÀN PHẢI THEO CÙNG MỘT LUẬT. Bản mobile lọc
-   * bước theo vai trò rồi mới vẽ; thẻ "Thao tác" của bản máy tính thì vẽ
-   * cả bảng rồi lọc bên trong — nên nó không biết cờ `backward`, và
-   * "Rút về nháp" ngồi vào nút xanh đậm to nhất thẻ.
+   * bước theo vai trò rồi mới vẽ; bản máy tính từng vẽ cả bảng rồi lọc
+   * bên trong thẻ "Thao tác" — nên nó không biết cờ `backward`, và "Rút
+   * về nháp" ngồi vào nút xanh đậm to nhất thẻ.
+   *
+   * Thẻ ấy nay đã bỏ (chủ nhà chốt đưa nút lên hàng đầu trang), nhưng
+   * ĐÚNG HAI ĐIỀU TRÊN VẪN PHẢI GIỮ ở chỗ mới.
    */
-  it("thẻ Thao tác máy tính dùng cùng danh sách đã lọc vai trò, và không tô nút bước lùi", () => {
-    const i = DETAIL.indexOf('<CardTitle>Thao tác</CardTitle>')
-    expect(i).toBeGreaterThan(0)
-    const card = DETAIL.slice(i - 400, i + 1200)
-    expect(card, "thẻ Thao tác vẫn vẽ từ danh sách chưa lọc vai trò").not.toContain(
-      "availableTransitions.map"
+  it("hàng nút máy tính dùng danh sách đã lọc vai trò, và không tô nút bước lùi", () => {
+    expect(DETAIL).not.toContain("<CardTitle>Thao tác</CardTitle>")
+    const hero = DETAIL.slice(
+      DETAIL.indexOf("const heroActions = ("),
+      DETAIL.indexOf("const creditLimit =")
     )
-    expect(card).toContain("roleTransitions.map")
-    expect(card, "bước lùi vẫn được tô như hành động chính").not.toContain('"default"')
+    expect(hero, "vẽ từ danh sách chưa lọc vai trò").not.toContain("availableTransitions")
+    expect(hero).toContain("backTransitions.map")
+    // `backTransitions` phải suy ra từ `roleTransitions` (đã lọc vai trò).
+    expect(DETAIL).toContain("const backTransitions = roleTransitions.filter(")
+    const back = hero.slice(
+      hero.indexOf("{backTransitions.map((trans) => {"),
+      hero.indexOf("{cancelTransition && (")
+    )
+    expect(back, "bước lùi vẫn được tô như hành động chính").not.toContain('"default"')
   })
 
   /**

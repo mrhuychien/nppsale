@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
-  lineNetOf, lineVatOf, lineTotalOf, receiptTotals, unitCostOf,
+  lineNetOf, lineVatOf, lineTotalOf, receiptTotals, unitCostOf, lineDiscountAmountOf,
   validReceiptLines, friendlyReceiptError,
   type ReceiptLine,
 } from "../src/lib/purchasing/receipt-form"
@@ -37,6 +37,7 @@ const line = (o: Partial<ReceiptLine> = {}): ReceiptLine => ({
   quantity: "10",
   unit_price: "240000",
   line_discount: "40000",
+  discount_mode: "amount",
   vat_percent: "10",
   conversion_factor: "12",
   available_units: [],
@@ -121,7 +122,9 @@ describe("tiền của phiếu nhập hàng", () => {
   })
 
   it("phiếu rỗng ra 0", () => {
-    expect(receiptTotals([], "")).toEqual({ subtotal: 0, vat: 0, discount: 0, total: 0 })
+    expect(receiptTotals([], "")).toEqual({
+      subtotal: 0, vat: 0, vatComputed: 0, vatOverridden: false, discount: 0, total: 0,
+    })
   })
 
   /**
@@ -377,5 +380,172 @@ describe("142 — bất biến chung", () => {
   it("không backfill từ stock_entries sang purchase_invoices", () => {
     expect(MIG).not.toMatch(/INSERT INTO purchase_invoices/i)
     expect(MIG).toContain("RAISE NOTICE")
+  })
+})
+
+// =====================================================================
+
+/**
+ * GIẢM GIÁ THEO TIỀN HAY THEO PHẦN TRĂM (chủ nhà chốt 20/09/2026).
+ *
+ * ⚠ CỘT `purchase_invoice_lines.line_discount` LUÔN LÀ TIỀN. Chế độ chỉ
+ * sống trong biểu mẫu; lưu phần trăm xuống là cột ấy mang hai nghĩa tuỳ
+ * dòng — đúng cái bẫy đã làm thuế phiếu trả NCC hụt 100 lần (mig 141).
+ */
+describe("giảm giá theo tiền hoặc theo phần trăm", () => {
+  it("chế độ tiền: gõ bao nhiêu trừ bấy nhiêu", () => {
+    const l = line({ quantity: "10", unit_price: "1000", line_discount: "2000", discount_mode: "amount" })
+    expect(lineDiscountAmountOf(l)).toBe(2000)
+    expect(lineNetOf(l)).toBe(8000)
+  })
+
+  it("chế độ phần trăm: tính trên tiền hàng của CHÍNH dòng đó", () => {
+    const l = line({ quantity: "10", unit_price: "1000", line_discount: "5", discount_mode: "percent" })
+    expect(lineDiscountAmountOf(l)).toBe(500)
+    expect(lineNetOf(l)).toBe(9500)
+  })
+
+  /**
+   * ⚠ CÙNG MỘT CON SỐ, HAI CHẾ ĐỘ, HAI KẾT QUẢ KHÁC HẲN. Đọc "5" như
+   * tiền trong khi người dùng đang ở chế độ phần trăm là giảm 5 đồng
+   * thay vì 500 — và ngược lại.
+   */
+  it("cùng con số ở hai chế độ ra hai kết quả khác nhau", () => {
+    const base = { quantity: "10", unit_price: "1000", line_discount: "5" }
+    expect(lineDiscountAmountOf(line({ ...base, discount_mode: "amount" }))).toBe(5)
+    expect(lineDiscountAmountOf(line({ ...base, discount_mode: "percent" }))).toBe(500)
+  })
+
+  /** ⚠ Kẹp trần 100% — gõ 500% là số tiền giảm lớn hơn tiền hàng. */
+  it("phần trăm kẹp trần 100", () => {
+    const l = line({ quantity: "10", unit_price: "1000", line_discount: "500", discount_mode: "percent" })
+    expect(lineDiscountAmountOf(l)).toBe(10000)
+    expect(lineNetOf(l)).toBe(0)
+  })
+
+  /** ⚠ Số âm ở chế độ tiền là CỘNG thêm qua đường giảm giá. */
+  it("số âm về 0 ở cả hai chế độ", () => {
+    expect(lineDiscountAmountOf(line({ line_discount: "-500", discount_mode: "amount" }))).toBe(0)
+    expect(lineDiscountAmountOf(line({ line_discount: "-5", discount_mode: "percent" }))).toBe(0)
+  })
+
+  it("ô trống hoặc rác ra 0, không ra NaN", () => {
+    for (const bad of ["", "abc", undefined as unknown as string]) {
+      for (const m of ["amount", "percent"] as const) {
+        expect(Number.isNaN(lineDiscountAmountOf(line({ line_discount: bad, discount_mode: m })))).toBe(false)
+      }
+    }
+  })
+
+  /** Giá vốn cũng phải theo số tiền đã quy đổi, không theo số gõ. */
+  it("giá vốn dùng số tiền giảm đã quy đổi", () => {
+    const l = line({
+      quantity: "10", unit_price: "1000", line_discount: "10",
+      discount_mode: "percent", conversion_factor: "2",
+    })
+    // tiền hàng 10.000, giảm 10% = 1.000 → còn 9.000, chia 20 đv cơ sở.
+    expect(unitCostOf(l)).toBeCloseTo(450, 9)
+  })
+})
+
+/**
+ * TIỀN THUẾ GTGT GÕ TAY (chủ nhà báo: "Tiền thuế GTGT chưa nhập được?").
+ *
+ * ⚠ Ô TRỐNG KHÁC SỐ 0. Trống = "để máy tự cộng từ thuế suất từng dòng";
+ * 0 = "hoá đơn này KHÔNG có thuế". Gộp hai thứ làm một là người dùng
+ * không có cách nào khai một hoá đơn thuế 0.
+ */
+describe("tiền thuế GTGT gõ tay", () => {
+  const l = () => line({ quantity: "10", unit_price: "1000", line_discount: "0", vat_percent: "10" })
+
+  it("không gõ gì thì tự cộng từ dòng", () => {
+    const t = receiptTotals([l()], "")
+    expect(t.vatComputed).toBeCloseTo(1000, 6)
+    expect(t.vat).toBeCloseTo(1000, 6)
+    expect(t.vatOverridden).toBe(false)
+    expect(t.total).toBeCloseTo(11000, 6)
+  })
+
+  it("gõ tay thì số gõ tay thắng", () => {
+    const t = receiptTotals([l()], "", "1234")
+    expect(t.vatComputed).toBeCloseTo(1000, 6)
+    expect(t.vat).toBe(1234)
+    expect(t.vatOverridden).toBe(true)
+    expect(t.total).toBeCloseTo(10000 + 1234, 6)
+  })
+
+  it("gõ số 0 nghĩa là hoá đơn KHÔNG có thuế, không phải để trống", () => {
+    const t = receiptTotals([l()], "", "0")
+    expect(t.vatOverridden, 'gõ "0" đang bị hiểu thành để trống').toBe(true)
+    expect(t.vat).toBe(0)
+    expect(t.total).toBeCloseTo(10000, 6)
+  })
+
+  it("ô trống, null, undefined đều là để máy tự cộng", () => {
+    for (const v of ["", "   ", null, undefined]) {
+      expect(receiptTotals([l()], "", v).vatOverridden, `giá trị ${String(v)}`).toBe(false)
+      expect(receiptTotals([l()], "", v).vat).toBeCloseTo(1000, 6)
+    }
+  })
+
+  /** ⚠ Gõ nhầm số âm là công nợ NCC nhỏ hơn tiền hàng. */
+  it("số âm kẹp về 0", () => {
+    expect(receiptTotals([l()], "", "-500").vat).toBe(0)
+  })
+
+  /** Giảm giá đầu phiếu vẫn trừ SAU thuế, kể cả khi thuế là số gõ tay. */
+  it("giảm giá đầu phiếu vẫn trừ sau thuế gõ tay", () => {
+    const t = receiptTotals([l()], "2000", "1234")
+    expect(t.total).toBeCloseTo(10000 + 1234 - 2000, 6)
+  })
+})
+
+/**
+ * SQL PHẢI TÔN TRỌNG SỐ GÕ TAY.
+ *
+ * ⚠ SQL LÀ BẢN QUYẾT ĐỊNH — nó ghi vào `payables.amount`. Màn hình hiện
+ * số gõ tay mà máy chủ vẫn tự cộng là công nợ lệch đúng bằng phần chênh,
+ * và không có chỗ nào kêu.
+ */
+describe("migration 145 — SQL dùng tiền thuế gõ tay", () => {
+  const M145 = stripSql(read("supabase/migrations/145_purchase_receipt_vat_override.sql"))
+  const C145 = M145.slice(
+    M145.indexOf("CREATE OR REPLACE FUNCTION public.complete_purchase_invoice("),
+    M145.indexOf("$$;", M145.indexOf("CREATE OR REPLACE FUNCTION public.complete_purchase_invoice("))
+  )
+
+  it("thêm cột vat_override và đọc nó ra", () => {
+    expect(M145).toContain("ADD COLUMN IF NOT EXISTS vat_override numeric")
+    expect(C145).toContain("vat_override")
+  })
+
+  /** ⚠ `IS NOT NULL` chứ không `> 0` — gõ 0 phải đè được về 0. */
+  it("NULL thì tự cộng, có giá trị thì đè — kể cả giá trị 0", () => {
+    expect(C145).toContain("IF v_vat_ovr IS NOT NULL THEN")
+    expect(C145).toContain("v_vat := GREATEST(0, v_vat_ovr)")
+    expect(C145, 'đang dùng `> 0` nên gõ 0 không đè được').not.toContain("v_vat_ovr > 0")
+  })
+
+  /**
+   * ⚠ CHỈ ĐÈ TIỀN THUẾ, KHÔNG ĐÈ TIỀN HÀNG. Cho gõ tay cả `subtotal` là
+   * mở đường cho một phiếu mà tổng không bằng tổng các dòng của chính
+   * nó — không ai đối chiếu nổi.
+   */
+  it("tiền hàng vẫn tính từ dòng, không có đường gõ tay", () => {
+    expect(C145).toContain("v_sub := v_sub +")
+    expect(C145).not.toContain("subtotal_override")
+  })
+
+  /** Phép đè phải đứng TRƯỚC khi cộng tổng, nếu không nó vô nghĩa. */
+  it("đè thuế xong mới cộng tổng", () => {
+    const ovr = C145.indexOf("v_vat := GREATEST(0, v_vat_ovr)")
+    const tot = C145.indexOf("v_total := GREATEST(0, v_sub + v_vat - v_discount)")
+    expect(ovr).toBeGreaterThan(0)
+    expect(tot, "cộng tổng TRƯỚC khi đè thuế — số gõ tay không có tác dụng").toBeGreaterThan(ovr)
+  })
+
+  /** ⚠ Thuế suất từng dòng vẫn phải ghi xuống — báo cáo thuế cần nó. */
+  it("vẫn ghi thuế suất từng dòng, không xoá đi cho gọn", () => {
+    expect(C145).toContain("COALESCE(l.vat_rate, 0)")
   })
 })

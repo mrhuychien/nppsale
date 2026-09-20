@@ -35,13 +35,26 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatInt } from "@/lib/utils"
 import { ratioToPercent, searchReturnProducts } from "@/lib/purchasing/return-form"
 import {
-  lineTotalOf, receiptTotals, unitCostOf, RECEIPT_ZONES,
+  lineTotalOf, receiptTotals, unitCostOf, lineDiscountAmountOf, RECEIPT_ZONES,
   type ReceiptLine, type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import type { Supplier } from "@/types"
+
+/**
+ * Mặt hàng trong ô tìm, kèm hai thứ người nhập hàng cần biết TRƯỚC khi
+ * chạm (chủ nhà chốt 20/09/2026: "thêm thông tin ncc, lượng tồn").
+ *
+ * ⚠ `onHand === null` NGHĨA LÀ CHƯA ĐỌC ĐƯỢC, không phải "hết hàng".
+ * In 0 khi chưa biết là một câu nói dối, và người nhập sẽ nhập bù một
+ * mặt hàng đang đầy kho.
+ */
+export interface PickerExtra {
+  supplierName: string | null
+  onHand: number | null
+}
 
 export interface PurchaseReceiptFormValue {
   supplierId: string
@@ -50,6 +63,14 @@ export interface PurchaseReceiptFormValue {
   zone: string
   /** Giảm giá đầu phiếu — trừ SAU thuế (chủ nhà chốt). */
   discount: string
+  /**
+   * Tiền thuế GTGT gõ tay theo hoá đơn giấy của NCC.
+   *
+   * ⚠ Ô TRỐNG KHÁC SỐ 0. Trống nghĩa là "để máy tự cộng từ thuế suất
+   * từng dòng"; số 0 nghĩa là "hoá đơn này KHÔNG có thuế". Gộp hai thứ
+   * làm một là người dùng không có cách nào khai một hoá đơn thuế 0.
+   */
+  vatOverride: string
   notes: string
   lines: ReceiptLine[]
 }
@@ -71,11 +92,26 @@ function lineFromProduct(p: ReceiptProduct, seq: number): ReceiptLine {
     quantity: "",
     unit_price: p.cost_price ? String(p.cost_price) : "",
     line_discount: "",
+    discount_mode: "amount",
     /* ⚠ `products.vat_rate` là TỈ LỆ, ô này là PHẦN TRĂM — quy đổi bằng
        đúng hàm của cả module (xem migration 141). */
     vat_percent: p.vat_rate != null ? ratioToPercent(p.vat_rate) : "0",
   }
 }
+
+/**
+ * Bấm vào ô số là CHỌN HẾT nội dung, để gõ là thay luôn.
+ *
+ * ⚠ CHỦ NHÀ BÁO: "ô số lượng bấm vào để gõ thì tự xoá trắng (hiện tại
+ * cứ phải xoá số 0 đi)". Ô số điền sẵn một giá trị — giá vốn, hay số 0
+ * mà trình duyệt tự đặt lại — thì mỗi lần sửa là một lần phải bôi đen
+ * hoặc bấm Backspace vài cái. Với người nhập cả phiếu ba mươi dòng đó
+ * là ba mươi lần thừa.
+ *
+ * ⚠ DÙNG `onFocus` CHỨ KHÔNG `onClick`. Bàn phím Tab qua ô cũng phải
+ * chọn hết — người nhập liệu hàng loạt không rời tay khỏi bàn phím.
+ */
+const selectOnFocus = (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select()
 
 export function PurchaseReceiptForm({
   suppliers,
@@ -84,6 +120,7 @@ export function PurchaseReceiptForm({
   onChange,
   submitting,
   actions,
+  extras = {},
 }: {
   suppliers: Supplier[]
   products: ReceiptProduct[]
@@ -91,6 +128,8 @@ export function PurchaseReceiptForm({
   onChange: (patch: Partial<PurchaseReceiptFormValue>) => void
   submitting: boolean
   actions: React.ReactNode
+  /** NCC và tồn kho của từng mặt hàng, tra theo `product_id`. */
+  extras?: Record<string, PickerExtra>
 }) {
   const [term, setTerm] = useState("")
   /** Dòng đang mở modal chi tiết. */
@@ -98,8 +137,8 @@ export function PurchaseReceiptForm({
   const seqRef = useRef(0)
 
   const totals = useMemo(
-    () => receiptTotals(value.lines, value.discount),
-    [value.lines, value.discount]
+    () => receiptTotals(value.lines, value.discount, value.vatOverride),
+    [value.lines, value.discount, value.vatOverride]
   )
 
   const supplierOptions: SearchSelectOption[] = useMemo(
@@ -127,6 +166,20 @@ export function PurchaseReceiptForm({
     // đúng thứ người ta sắp gõ cho dòng tiếp theo.
     setTerm("")
   }
+
+  /**
+   * Đổi chế độ giảm giá tiền ↔ phần trăm.
+   *
+   * ⚠ XOÁ TRẮNG Ô KHI ĐỔI. Số 50 ở chế độ tiền là "giảm 50 đồng"; giữ
+   *   nguyên nó khi sang phần trăm là lặng lẽ biến thành "giảm 50%".
+   *   Thà bắt gõ lại một con số còn hơn đổi nghĩa con số đang có mà
+   *   không ai thấy.
+   */
+  const toggleDiscountMode = (l: ReceiptLine) =>
+    patchLine(l.id, {
+      discount_mode: l.discount_mode === "percent" ? "amount" : "percent",
+      line_discount: "",
+    })
 
   /** Đổi đơn vị kéo theo hệ số quy đổi. */
   const pickUnit = (l: ReceiptLine, unitName: string) => {
@@ -234,18 +287,48 @@ export function PurchaseReceiptForm({
             </p>
           )}
           {hits.length > 0 && (
-            <ul className="divide-y rounded-xl border">
-              {hits.map((p) => (
-                <li key={p.id} className="flex flex-wrap items-center gap-2 p-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.sku || "—"} · {p.base_unit}</div>
-                  </div>
-                  <Button size="sm" onClick={() => addProduct(p)} disabled={submitting}>
-                    <Plus className="mr-1 h-4 w-4" /> Thêm
-                  </Button>
-                </li>
-              ))}
+            <ul className="divide-y overflow-hidden rounded-xl border">
+              {hits.map((p) => {
+                const x = extras[p.id]
+                return (
+                  <li key={p.id}>
+                    {/*
+                      ⚠ CẢ DÒNG LÀ NÚT (chủ nhà chốt 20/09/2026: "bấm vào
+                        dòng là thêm được hàng luôn"). Bản cũ bắt trúng
+                        đúng cái nút "Thêm" rộng 70px ở mép phải — trên
+                        điện thoại đó là một mục tiêu nhỏ giữa một dòng
+                        rộng cả màn hình, và mọi cú chạm trượt đều không
+                        làm gì cả.
+                    */}
+                    <button
+                      type="button"
+                      onClick={() => addProduct(p)}
+                      disabled={submitting}
+                      className="flex w-full items-center gap-2 p-2 text-left hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{p.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {p.sku || "—"} · {p.base_unit}
+                          {/* ⚠ NCC HIỆN Ở ĐÂY để người nhập biết mình có
+                              đang chọn nhầm hàng của NCC khác không —
+                              một phiếu nhập trộn hai NCC là công nợ ghi
+                              sai chỗ. */}
+                          {x?.supplierName ? ` · ${x.supplierName}` : ""}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right text-xs">
+                        <span className="block text-muted-foreground">Tồn</span>
+                        {/* ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI LÀ CHƯA BIẾT. */}
+                        <span className="block font-semibold tabular-nums">
+                          {x && x.onHand !== null ? formatInt(x.onHand) : "…"}
+                        </span>
+                      </span>
+                      <Plus className="h-4 w-4 shrink-0 text-primary" />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </CardContent>
@@ -332,6 +415,7 @@ export function PurchaseReceiptForm({
                         <td className="px-2 py-2">
                           <Input
                             type="number" step="any" min={0} value={l.quantity}
+                            onFocus={selectOnFocus}
                             onChange={(e) => patchLine(l.id, { quantity: e.target.value })}
                             className="h-9 text-right tabular-nums"
                           />
@@ -340,17 +424,44 @@ export function PurchaseReceiptForm({
                           <MoneyInput
                             value={l.unit_price}
                             onChange={(v) => patchLine(l.id, { unit_price: String(v) })}
+                            onFocus={selectOnFocus}
                             showSuffix={false}
                             inputClassName="h-9 text-right tabular-nums"
                           />
                         </td>
                         <td className="px-2 py-2">
-                          <MoneyInput
-                            value={l.line_discount}
-                            onChange={(v) => patchLine(l.id, { line_discount: String(v) })}
-                            showSuffix={false}
-                            inputClassName="h-9 text-right tabular-nums"
-                          />
+                          {/* ⚠ NÚT ĐỔI ĐƠN VỊ NẰM NGAY TRONG Ô (chủ nhà
+                              chốt: "bấm vào sẽ ra lựa chọn giảm giá theo
+                              giá trị và giảm giá theo phần trăm"). Để nó
+                              thành một ô chọn riêng là thêm một cột nữa
+                              vào bảng chín cột đã chật. */}
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number" step="any" min={0}
+                              max={l.discount_mode === "percent" ? 100 : undefined}
+                              value={l.line_discount}
+                              onFocus={selectOnFocus}
+                              onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
+                              className="h-9 text-right tabular-nums"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleDiscountMode(l)}
+                              title={l.discount_mode === "percent" ? "Đang giảm theo %. Bấm để đổi sang số tiền." : "Đang giảm theo số tiền. Bấm để đổi sang %."}
+                              className="h-9 w-8 shrink-0 rounded-md border text-sm font-bold text-muted-foreground hover:bg-muted"
+                            >
+                              {l.discount_mode === "percent" ? "%" : "đ"}
+                            </button>
+                          </div>
+                          {/* ⚠ Ở CHẾ ĐỘ %, HIỆN LUÔN SỐ TIỀN QUY RA. Con
+                              số ghi xuống sổ là tiền, không phải phần
+                              trăm — không hiện ra thì người dùng không
+                              đối chiếu được với hoá đơn giấy. */}
+                          {l.discount_mode === "percent" && Number(l.line_discount) > 0 && (
+                            <div className="mt-0.5 text-right text-[11px] tabular-nums text-muted-foreground">
+                              = {formatCurrency(lineDiscountAmountOf(l))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2 text-right font-semibold tabular-nums">
                           {formatCurrency(lineTotalOf(l))}
@@ -425,6 +536,7 @@ export function PurchaseReceiptForm({
                         <Label className="text-xs">Số lượng</Label>
                         <Input
                           type="number" step="any" min={0} value={l.quantity}
+                          onFocus={selectOnFocus}
                           onChange={(e) => patchLine(l.id, { quantity: e.target.value })}
                           className="h-9 text-right tabular-nums"
                         />
@@ -434,18 +546,38 @@ export function PurchaseReceiptForm({
                         <MoneyInput
                           value={l.unit_price}
                           onChange={(v) => patchLine(l.id, { unit_price: String(v) })}
+                          onFocus={selectOnFocus}
                           showSuffix={false}
                           inputClassName="h-9 text-right tabular-nums"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Giảm giá</Label>
-                        <MoneyInput
-                          value={l.line_discount}
-                          onChange={(v) => patchLine(l.id, { line_discount: String(v) })}
-                          showSuffix={false}
-                          inputClassName="h-9 text-right tabular-nums"
-                        />
+                        <Label className="text-xs">
+                          Giảm giá
+                          {l.discount_mode === "percent" && Number(l.line_discount) > 0 && (
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              = {formatCurrency(lineDiscountAmountOf(l))}
+                            </span>
+                          )}
+                        </Label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number" step="any" min={0}
+                            max={l.discount_mode === "percent" ? 100 : undefined}
+                            value={l.line_discount}
+                            onFocus={selectOnFocus}
+                            onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
+                            className="h-9 text-right tabular-nums"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleDiscountMode(l)}
+                            title={l.discount_mode === "percent" ? "Đang giảm theo %. Bấm để đổi sang số tiền." : "Đang giảm theo số tiền. Bấm để đổi sang %."}
+                            className="h-9 w-9 shrink-0 rounded-md border text-sm font-bold text-muted-foreground"
+                          >
+                            {l.discount_mode === "percent" ? "%" : "đ"}
+                          </button>
+                        </div>
                       </div>
                       <div className="col-span-2 text-right text-sm">
                         Thành tiền:{" "}
@@ -469,6 +601,7 @@ export function PurchaseReceiptForm({
           <MoneyInput
             value={value.discount}
             onChange={(v) => onChange({ discount: String(v) })}
+            onFocus={selectOnFocus}
             showSuffix={false}
             className="w-40"
             inputClassName="h-9 text-right tabular-nums"
@@ -480,10 +613,38 @@ export function PurchaseReceiptForm({
             <dt className="text-muted-foreground">Tiền hàng</dt>
             <dd className="tabular-nums">{formatCurrency(totals.subtotal)}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Thuế GTGT</dt>
-            <dd className="tabular-nums">{formatCurrency(totals.vat)}</dd>
+          {/*
+            ⚠ TIỀN THUẾ GÕ TAY ĐƯỢC (chủ nhà báo 20/09/2026: "Tiền thuế
+              GTGT chưa nhập được?"). Hoá đơn giấy của NCC ghi một dòng
+              "Tiền thuế GTGT" và người nhập phải gõ lại ĐÚNG con số đó
+              — nếu không, công nợ trên máy lệch với tờ giấy hai bên
+              cùng ký, và mỗi lần đối chiếu là một lần cãi nhau về vài
+              nghìn đồng làm tròn.
+
+            ⚠ ĐỂ TRỐNG THÌ MÁY TỰ CỘNG. Không bắt gõ cho phiếu bình
+              thường; chỉ ai cần khớp tờ giấy mới phải đụng vào.
+          */}
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="pr-vat-total" className="text-muted-foreground">Thuế GTGT</Label>
+            <MoneyInput
+              id="pr-vat-total"
+              value={value.vatOverride}
+              onChange={(v) => onChange({ vatOverride: String(v) })}
+              onFocus={selectOnFocus}
+              showSuffix={false}
+              className="w-40"
+              inputClassName="h-9 text-right tabular-nums"
+              placeholder={String(Math.round(totals.vatComputed))}
+            />
           </div>
+          {/* ⚠ LỆCH VỚI SỐ TỰ CỘNG THÌ NÓI RA. Gõ đè một con số cách xa
+              tổng thuế suất của các dòng thường là gõ nhầm ô — im lặng
+              ở đây là để một phiếu sai đi thẳng vào công nợ. */}
+          {totals.vatOverridden && Math.abs(totals.vat - totals.vatComputed) > 1 && (
+            <p className="text-right text-[11px] text-[#7a4b00]">
+              Tự cộng từ dòng hàng là {formatCurrency(totals.vatComputed)} — đang dùng số gõ tay.
+            </p>
+          )}
           {/* ⚠ GIẢM GIÁ TRỪ SAU THUẾ (chủ nhà chốt 20/09/2026). Hiện nó
               thành một dòng riêng, dưới dòng thuế, để thứ tự trên màn
               đúng bằng thứ tự trong phép tính. */}
@@ -564,6 +725,7 @@ export function PurchaseReceiptForm({
                 <Input
                   id="pr-vat" type="number" step="any" min={0} max={100}
                   value={detail.vat_percent}
+                  onFocus={selectOnFocus}
                   onChange={(e) => patchLine(detail.id, { vat_percent: e.target.value })}
                   className="h-9 text-right tabular-nums"
                 />

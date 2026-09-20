@@ -166,9 +166,30 @@ describe("ghi phiếu: màn hình không tự đụng kho hay công nợ", () =>
     ["màn chi tiết", DETAIL],
     ["lib ghi dòng", SAVE],
   ] as const) {
-    it(`${ten} không ghi thẳng vào batches / payables / stock_entries`, () => {
+    it(`${ten} không GHI thẳng vào batches / payables / stock_entries`, () => {
+      /**
+       * ⚠ CẤM GHI, KHÔNG CẤM ĐỌC — và đây là một lần nới chốt CÓ LÝ DO,
+       *   không phải nới cho qua.
+       *
+       *   Bản đầu cấm luôn chuỗi `.from("batches")`. Nó đỏ ngay khi ô
+       *   tìm hàng cần ĐỌC tồn kho để hiện ra (chủ nhà chốt 20/09/2026:
+       *   "thêm thông tin ncc, lượng tồn") — một phép đọc hoàn toàn
+       *   lành. Thứ nguy hiểm là màn hình tự CỘNG/TRỪ kho hay tự ghi
+       *   công nợ ngoài RPC; đọc để hiện thì không.
+       *
+       * ⚠ BẮT ĐỘNG TỪ GHI ĐI LIỀN SAU `.from(...)`. Gộp khoảng trắng
+       *   rồi soi cả cụm, vì `.insert(` đứng riêng thì ở đâu cũng có —
+       *   `purchase_invoices` và `purchase_invoice_lines` đều được phép
+       *   ghi bình thường.
+       */
+      const flat = src.replace(/\s+/g, " ")
       for (const t of ["batches", "payables", "stock_entries", "stock_entry_lines"]) {
-        expect(src, `${ten} đang ghi thẳng bảng ${t}`).not.toContain(`.from("${t}")`)
+        for (const verb of ["insert", "update", "delete", "upsert"]) {
+          expect(
+            flat,
+            `${ten} đang tự ${verb} bảng ${t} — kho và công nợ phải đi qua RPC`
+          ).not.toContain(`.from("${t}") .${verb}(`)
+        }
       }
     })
   }
@@ -342,5 +363,179 @@ describe("menu: phiếu nhập kho chuyển sang Kho vận", () => {
       mua.indexOf('href: "/purchasing/receipts"'),
       "Phiếu nhập hàng không đứng đầu nhóm"
     ).toBeLessThan(mua.indexOf('href: "/purchase-returns"'))
+  })
+})
+
+// =====================================================================
+
+/**
+ * BỐN VIỆC CHỦ NHÀ BÁO 20/09/2026 SAU KHI DÙNG THỬ PHIẾU NHẬP.
+ */
+describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
+  /**
+   * ⚠ CẢ DÒNG LÀ NÚT ("bấm vào dòng là thêm được hàng luôn"). Bản cũ
+   * bắt trúng đúng cái nút "Thêm" rộng 70px ở mép phải — trên điện
+   * thoại đó là một mục tiêu nhỏ giữa một dòng rộng cả màn, và mọi cú
+   * chạm trượt đều không làm gì cả.
+   */
+  it("cả dòng gợi ý là một nút, không phải riêng nút Thêm", () => {
+    /**
+     * ⚠ BÁM VÀO BỀ RỘNG CỦA NÚT, KHÔNG BÁM VÀO THỨ TỰ THẺ. Bản đầu đòi
+     * `<li key={p.id}> <button` đi liền nhau — nhưng giữa hai thẻ còn
+     * một chú thích JSX, mà `strip` bỏ phần `/* *​/` và để lại cặp `{}`.
+     * Chốt đỏ vì một dấu ngoặc, không vì hành vi. Thứ thật sự quan
+     * trọng: phần bấm được phải RỘNG CẢ DÒNG (`w-full`), chứ không phải
+     * một nút nhỏ ở mép phải.
+     */
+    const flat = FORM.replace(/\s+/g, " ")
+    expect(flat, "gợi ý không còn là nút bấm cả dòng").toMatch(
+      /<button type="button" onClick=\{\(\) => addProduct\(p\)\}[^>]*className="flex w-full/
+    )
+    expect(flat, "vẫn còn nút Thêm nhỏ ở mép phải").not.toMatch(
+      /<Button size="sm" onClick=\{\(\) => addProduct\(p\)\}/
+    )
+  })
+
+  /**
+   * ⚠ NCC ĐỂ BIẾT CÓ ĐANG CHỌN NHẦM HÀNG CỦA NCC KHÁC KHÔNG — một phiếu
+   * nhập trộn hai NCC là công nợ ghi sai chỗ.
+   */
+  it("gợi ý hiện NCC và tồn kho", () => {
+    const list = FORM.slice(FORM.indexOf("{hits.map("), FORM.indexOf("Chi tiết hàng nhập"))
+    expect(list, "gợi ý không hiện NCC").toContain("x?.supplierName")
+    expect(list, "gợi ý không hiện tồn kho").toContain("x.onHand")
+  })
+
+  /** ⚠ Chưa đọc được tồn thì nói là chưa biết — 0 đọc như "hết hàng". */
+  it("chưa đọc được tồn thì hiện dấu ba chấm, không hiện 0", () => {
+    const list = FORM.slice(FORM.indexOf("{hits.map("), FORM.indexOf("Chi tiết hàng nhập"))
+    expect(list).toContain('x && x.onHand !== null ? formatInt(x.onHand) : "…"')
+  })
+})
+
+describe("ô giảm giá đổi được tiền / phần trăm", () => {
+  it("có nút đổi chế độ, nhãn đúng theo chế độ đang chọn", () => {
+    const flat = FORM.replace(/\s+/g, " ")
+    expect(flat).toContain("onClick={() => toggleDiscountMode(l)}")
+    expect(flat).toContain('{l.discount_mode === "percent" ? "%" : "đ"}')
+    /* Có ở CẢ bảng lẫn thẻ điện thoại — gỡ một bên thì bên đó kẹt. */
+    expect(
+      (flat.match(/onClick=\{\(\) => toggleDiscountMode\(l\)\}/g) ?? []).length,
+      "thiếu nút đổi chế độ ở bảng hoặc ở thẻ điện thoại"
+    ).toBe(2)
+  })
+
+  /**
+   * ⚠ XOÁ TRẮNG Ô KHI ĐỔI CHẾ ĐỘ. Số 50 ở chế độ tiền là "giảm 50
+   * đồng"; giữ nguyên khi sang phần trăm là lặng lẽ biến thành "giảm
+   * 50%" — đổi nghĩa một con số đang có mà không ai thấy.
+   */
+  it("đổi chế độ thì xoá trắng ô", () => {
+    const fn = FORM.slice(FORM.indexOf("const toggleDiscountMode"), FORM.indexOf("const pickUnit"))
+    expect(fn).toContain('line_discount: ""')
+  })
+
+  /**
+   * ⚠ Ở CHẾ ĐỘ %, PHẢI HIỆN LUÔN SỐ TIỀN QUY RA. Con số ghi xuống sổ là
+   * tiền, không phải phần trăm — không hiện ra thì không đối chiếu được
+   * với hoá đơn giấy.
+   */
+  it("chế độ phần trăm hiện số tiền quy ra", () => {
+    expect(FORM).toContain("lineDiscountAmountOf(l)")
+  })
+
+  /**
+   * ⚠ Trần 100 chỉ áp ở chế độ phần trăm — chặn cả chế độ tiền là chặn
+   * oan: giảm 200.000 đồng là chuyện bình thường.
+   *
+   * ⚠ ĐẾM ĐỦ HAI CHỖ. Bản đầu chỉ đòi chuỗi có mặt ĐÂU ĐÓ; nó có mặt
+   * hai lần (bảng cho máy tính, thẻ cho điện thoại), nên đổi một bên
+   * thành `max={100}` vẫn xanh — và người dùng điện thoại không gõ nổi
+   * một khoản giảm quá 100 đồng. Đã thử phá đúng như vậy.
+   */
+  it("trần 100 chỉ áp cho chế độ phần trăm, ở CẢ hai bản", () => {
+    const n = (FORM.match(/max=\{l\.discount_mode === "percent" \? 100 : undefined\}/g) ?? []).length
+    expect(n, `mới ${n}/2 ô — bản còn lại đang chặn oan chế độ tiền`).toBe(2)
+  })
+})
+
+describe("bấm vào ô số là chọn hết nội dung", () => {
+  /**
+   * ⚠ CHỦ NHÀ BÁO: "ô số lượng bấm vào để gõ thì tự xoá trắng (hiện tại
+   * cứ phải xoá số 0 đi)". Với người nhập cả phiếu ba mươi dòng, mỗi ô
+   * phải bôi đen trước khi gõ là ba mươi lần thừa.
+   *
+   * ⚠ `onFocus` CHỨ KHÔNG `onClick` — Tab qua ô cũng phải chọn hết.
+   */
+  it("có hàm chọn hết, gắn bằng onFocus", () => {
+    expect(FORM).toContain("const selectOnFocus")
+    expect(FORM).toContain("e.currentTarget.select()")
+    expect(FORM, "đang dùng onClick — bàn phím Tab sẽ không chọn hết")
+      .not.toContain("onClick={selectOnFocus}")
+  })
+
+  /**
+   * ⚠ ĐẾM ĐỦ MỌI Ô SỐ. Gắn cho một ô rồi quên ô kia là người dùng gặp
+   * đúng cái phiền cũ ở nửa số ô — và không hiểu vì sao lúc được lúc
+   * không. Sáu ô: số lượng ×2 (bảng + thẻ), đơn giá ×2, giảm giá ×2,
+   * thuế suất trong modal, giảm giá đầu phiếu, tiền thuế đầu phiếu.
+   */
+  it("gắn cho MỌI ô số, không sót ô nào", () => {
+    const n = (FORM.match(/onFocus=\{selectOnFocus\}/g) ?? []).length
+    expect(n, `mới gắn ${n} ô — còn ô số chưa có`).toBe(9)
+  })
+})
+
+describe("tiền thuế GTGT gõ tay được ở đầu phiếu", () => {
+  /**
+   * ⚠ CHỦ NHÀ BÁO: "Tiền thuế GTGT chưa nhập được?". Bản đầu chỉ cho gõ
+   * THUẾ SUẤT của từng dòng, giấu trong modal — không có chỗ nào gõ SỐ
+   * TIỀN thuế như tờ hoá đơn giấy của NCC ghi.
+   */
+  it("khối tổng có ô nhập tiền thuế, không phải chữ chết", () => {
+    const totals = FORM.slice(FORM.indexOf("Tiền hàng"), FORM.indexOf("fixed inset-x-0 bottom-0"))
+    expect(totals).toContain('id="pr-vat-total"')
+    expect(totals).toContain("onChange={(v) => onChange({ vatOverride: String(v) })}")
+    expect(totals, "tiền thuế vẫn chỉ là chữ đọc, không gõ được")
+      .not.toContain("<dd className=\"tabular-nums\">{formatCurrency(totals.vat)}</dd>")
+  })
+
+  /** ⚠ Để trống thì máy tự cộng — gợi ý bằng placeholder, không ép gõ. */
+  it("ô trống thì gợi ý số tự cộng qua placeholder", () => {
+    expect(FORM).toContain("placeholder={String(Math.round(totals.vatComputed))}")
+  })
+
+  /**
+   * ⚠ LỆCH VỚI SỐ TỰ CỘNG THÌ NÓI RA. Gõ đè một con số cách xa tổng
+   * thuế suất các dòng thường là gõ nhầm ô — im lặng là để một phiếu
+   * sai đi thẳng vào công nợ.
+   */
+  it("gõ lệch số tự cộng thì cảnh báo", () => {
+    expect(FORM).toContain("totals.vatOverridden && Math.abs(totals.vat - totals.vatComputed) > 1")
+    expect(FORM).toContain("Tự cộng từ dòng hàng là")
+  })
+
+  /**
+   * ⚠ Ô TRỐNG → `null`, KHÔNG → 0. Gửi 0 lên là khai "hoá đơn này không
+   * có thuế"; để trống là "máy tự cộng". Dùng `||` thay vì so chuỗi
+   * rỗng là biến số 0 người dùng cố ý gõ thành ô trống.
+   */
+  it("hai màn gửi null khi để trống, và giữ số 0 khi gõ 0", () => {
+    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
+      expect(src, `${ten} không gửi vat_override`).toContain(
+        'vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride)'
+      )
+    }
+    expect(EDIT_PAGE, "nạp lại đang biến số 0 thành ô trống").toContain(
+      'vatOverride: h.vat_override == null ? "" : String(h.vat_override)'
+    )
+  })
+
+  /**
+   * ⚠ CỘT LƯU LÀ TIỀN, nên dòng nạp lại LUÔN ở chế độ tiền. Đoán ngược
+   * ra phần trăm là bịa — cùng một số tiền ra vô số phần trăm tuỳ giá.
+   */
+  it("màn sửa nạp dòng về chế độ tiền", () => {
+    expect(EDIT_PAGE).toContain('discount_mode: "amount"')
   })
 })

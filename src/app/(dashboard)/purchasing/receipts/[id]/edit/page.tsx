@@ -34,7 +34,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import {
-  PurchaseReceiptForm, type PurchaseReceiptFormValue,
+  PurchaseReceiptForm,
+  type PurchaseReceiptFormValue, type PickerExtra,
 } from "@/components/purchasing/purchase-receipt-form"
 import {
   receiptTotals, validReceiptLines, friendlyReceiptError,
@@ -43,6 +44,7 @@ import {
 import { percentToRatio, ratioToPercent } from "@/lib/purchasing/return-form"
 import { saveReceiptLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 
 export default function EditPurchaseReceiptPage() {
@@ -58,13 +60,64 @@ export default function EditPurchaseReceiptPage() {
   const [status, setStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReceiptFormValue>({
     supplierId: "", invoiceNumber: "",
     invoiceDate: new Date().toISOString().slice(0, 10),
-    zone: "sale", discount: "", notes: "", lines: [],
+    zone: "sale", discount: "", vatOverride: "", notes: "", lines: [],
   })
 
   const patch = (p: Partial<PurchaseReceiptFormValue>) => setForm((f) => ({ ...f, ...p }))
+
+  /**
+   * NCC và TỒN KHO cho ô tìm hàng (chủ nhà chốt 20/09/2026).
+   *
+   * ⚠ HAI CÂU ĐỌC GỘP, KHÔNG ĐỌC TỪNG MẶT HÀNG. Danh mục có 1.700 mã;
+   *   hỏi tồn từng mã lúc gõ là 1.700 lượt gọi. Kéo một lần lúc mở màn
+   *   rồi tra trong bộ nhớ.
+   *
+   * ⚠ `fetchAllForAggregate` CHO TỒN. PostgREST cắt ở 1.000 dòng, mà số
+   *   lô thì nhiều hơn số mặt hàng — cắt ở đây là báo tồn THIẾU, và
+   *   người nhập sẽ nhập bù một mặt hàng đang đầy kho.
+   *
+   * ⚠ ĐỌC HỎNG THÌ ĐỂ TRỐNG, KHÔNG ĐỂ 0. `onHand: null` hiện "…" trên
+   *   ô tìm; số 0 đọc như "hết hàng" và đó là một câu nói dối.
+   */
+  const loadPickerExtras = useCallback(async (prods: ReceiptProduct[]) => {
+    const next: Record<string, PickerExtra> = {}
+    for (const p of prods) {
+      next[p.id] = { supplierName: null, onHand: null }
+    }
+
+    const supIds = Array.from(
+      new Set(prods.map((p) => (p as { primary_supplier_id?: string | null }).primary_supplier_id).filter(Boolean))
+    ) as string[]
+    if (supIds.length > 0) {
+      const { data } = await supabase.from("suppliers").select("id, name").in("id", supIds)
+      const byId = new Map(((data as Array<{ id: string; name: string }>) || []).map((s) => [s.id, s.name]))
+      for (const p of prods) {
+        const sid = (p as { primary_supplier_id?: string | null }).primary_supplier_id
+        if (sid && next[p.id]) next[p.id].supplierName = byId.get(sid) ?? null
+      }
+    }
+
+    const res = await fetchAllForAggregate((from, to) =>
+      supabase
+        .from("batches")
+        .select("product_id, qty_on_hand", { count: "exact" })
+        .eq("status", "available")
+        .order("id")
+        .range(from, to)
+    )
+    if (!res.truncated) {
+      const sum: Record<string, number> = {}
+      for (const b of (res.rows as Array<{ product_id: string; qty_on_hand: number | null }>)) {
+        sum[b.product_id] = (sum[b.product_id] ?? 0) + Number(b.qty_on_hand ?? 0)
+      }
+      for (const id of Object.keys(next)) next[id].onHand = sum[id] ?? 0
+    }
+    setExtras(next)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -73,10 +126,10 @@ export default function EditPurchaseReceiptPage() {
       supabase.from("suppliers").select("id, name, code")
         .eq("org_id", user.org_id).eq("is_active", true).order("name"),
       supabase.from("products")
-        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, units:product_units(*)")
+        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)")
         .eq("org_id", user.org_id).order("name"),
       supabase.from("purchase_invoices")
-        .select("id, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, notes, status")
+        .select("id, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, vat_override, notes, status")
         .eq("id", id).maybeSingle(),
       supabase.from("purchase_invoice_lines")
         .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, note, sort_order")
@@ -85,10 +138,13 @@ export default function EditPurchaseReceiptPage() {
     const prods = (prodRes.data as ReceiptProduct[]) || []
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
+    /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
+    void loadPickerExtras(prods)
 
     const h = hRes.data as {
       supplier_id: string; invoice_number: string | null; invoice_date: string | null
-      warehouse_zone: string | null; discount: number | null; notes: string | null; status: string
+      warehouse_zone: string | null; discount: number | null; vat_override: number | null
+      notes: string | null; status: string
     } | null
     if (!h) { setLoading(false); return }
     setStatus(h.status)
@@ -105,6 +161,10 @@ export default function EditPurchaseReceiptPage() {
       invoiceDate: h.invoice_date || new Date().toISOString().slice(0, 10),
       zone: h.warehouse_zone || "sale",
       discount: h.discount ? String(h.discount) : "",
+      /* ⚠ `null` → ô TRỐNG (máy tự cộng); 0 → ô ghi "0" (hoá đơn không
+         thuế). Dùng `?? ""` chứ không `|| ""` — `|| ""` biến số 0 thành
+         ô trống và mất hẳn nghĩa "không thuế". */
+      vatOverride: h.vat_override == null ? "" : String(h.vat_override),
       notes: h.notes || "",
       lines: ((lRes.data as Array<{
         id: string; product_id: string; unit_name: string; quantity: number
@@ -124,6 +184,10 @@ export default function EditPurchaseReceiptPage() {
           quantity: String(l.quantity),
           unit_price: String(l.unit_price),
           line_discount: l.line_discount ? String(l.line_discount) : "",
+          /* ⚠ CỘT LƯU LÀ TIỀN, nên dòng nạp lại LUÔN ở chế độ tiền.
+             Đoán ngược ra phần trăm là bịa — cùng một số tiền ra vô số
+             phần trăm tuỳ giá. */
+          discount_mode: "amount",
           vat_percent: ratioToPercent(l.vat_rate),
           conversion_factor: String(l.conversion_factor || 1),
           available_units: p?.units || [],
@@ -136,6 +200,7 @@ export default function EditPurchaseReceiptPage() {
 
   useEffect(() => { load() }, [load])
 
+
   const submit = async (complete: boolean) => {
     if (!form.supplierId) {
       toast({ title: "Chưa chọn nhà cung cấp", variant: "destructive" })
@@ -146,7 +211,7 @@ export default function EditPurchaseReceiptPage() {
       toast({ title: "Chưa có dòng hàng hợp lệ", variant: "destructive" })
       return
     }
-    const totals = receiptTotals(lines, form.discount)
+    const totals = receiptTotals(lines, form.discount, form.vatOverride)
     const wasCompleted = status === "completed"
 
     setSubmitting(true)
@@ -172,6 +237,9 @@ export default function EditPurchaseReceiptPage() {
           warehouse_zone: form.zone,
           discount: totals.discount,
           notes: form.notes.trim() || null,
+          /* ⚠ Ô TRỐNG → `null`, nghĩa là "để máy chủ tự cộng". Gửi 0
+             lên là khai "hoá đơn này không có thuế". */
+          vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride),
           subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
           /* Phiếu vừa huỷ phải quay về phiếu tạm thì mới hoàn thành lại
              được — `complete_purchase_invoice` chỉ nhận `draft`. */
@@ -233,6 +301,7 @@ export default function EditPurchaseReceiptPage() {
         value={form}
         onChange={patch}
         submitting={submitting}
+        extras={extras}
         actions={
           <>
             <Button variant="outline" onClick={() => submit(false)} disabled={submitting}>

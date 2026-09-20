@@ -50,8 +50,23 @@ export interface ReceiptLine {
   unit_name: string
   quantity: string
   unit_price: string
-  /** Giảm giá của dòng, TRỪ THẬT — xem đầu tệp. */
+  /**
+   * Giảm giá của dòng — SỐ NGƯỜI DÙNG GÕ, chưa phải số tiền.
+   *
+   * ⚠ NGHĨA CỦA NÓ PHỤ THUỘC `discount_mode`. Ở chế độ `amount` nó là
+   * tiền; ở chế độ `percent` nó là phần trăm. Đọc thẳng nó như tiền là
+   * biến một dòng "giảm 10%" thành "giảm 10 đồng".
+   */
   line_discount: string
+  /**
+   * Giảm giá theo TIỀN hay theo PHẦN TRĂM (chủ nhà chốt 20/09/2026).
+   *
+   * ⚠ LƯU XUỐNG LUÔN LÀ TIỀN. Cột `purchase_invoice_lines.line_discount`
+   * là số tiền; chế độ chỉ sống trong biểu mẫu. Lưu phần trăm xuống là
+   * cột ấy mang hai nghĩa tuỳ dòng, đúng cái bẫy đã làm thuế phiếu trả
+   * NCC hụt 100 lần (xem migration 141).
+   */
+  discount_mode: "amount" | "percent"
   /** PHẦN TRĂM (10 = 10%) trong biểu mẫu; lưu xuống là tỉ lệ. */
   vat_percent: string
   conversion_factor: string
@@ -64,6 +79,32 @@ const num = (s: string | number | null | undefined): number => {
   return Number.isFinite(n) ? n : 0
 }
 
+/** Tiền hàng của một dòng TRƯỚC khi trừ giảm giá. */
+export function lineGrossOf(l: ReceiptLine): number {
+  return num(l.quantity) * num(l.unit_price)
+}
+
+/**
+ * SỐ TIỀN giảm giá thật của dòng — quy từ ô nhập theo chế độ đang chọn.
+ *
+ * ⚠ PHẦN TRĂM TÍNH TRÊN TIỀN HÀNG CỦA CHÍNH DÒNG ĐÓ, không phải trên
+ * cả phiếu. "Giảm 5%" trên một dòng nghĩa là 5% của dòng ấy.
+ *
+ * ⚠ KẸP TRẦN 100%. Gõ 500% là số tiền giảm lớn hơn tiền hàng, và dòng
+ * ra âm — `lineNetOf` có kẹp về 0, nhưng kẹp ở đây thì con số hiện trên
+ * màn cũng đúng chứ không chỉ con số cuối.
+ *
+ * ⚠ KHÔNG ĐỂ ÂM. Gõ -10 ở chế độ tiền là CỘNG thêm vào tiền hàng qua
+ * đường giảm giá.
+ */
+export function lineDiscountAmountOf(l: ReceiptLine): number {
+  const raw = Math.max(0, num(l.line_discount))
+  if (l.discount_mode === "percent") {
+    return (lineGrossOf(l) * Math.min(100, raw)) / 100
+  }
+  return raw
+}
+
 /**
  * Tiền hàng của MỘT dòng, đã trừ giảm giá dòng, CHƯA có thuế.
  *
@@ -71,7 +112,7 @@ const num = (s: string | number | null | undefined): number => {
  * phiếu ra số âm và công nợ NCC thành một khoản NCC nợ lại mình.
  */
 export function lineNetOf(l: ReceiptLine): number {
-  return Math.max(0, num(l.quantity) * num(l.unit_price) - num(l.line_discount))
+  return Math.max(0, lineGrossOf(l) - lineDiscountAmountOf(l))
 }
 
 /** Thuế của MỘT dòng, tính trên tiền đã trừ giảm giá dòng. */
@@ -87,7 +128,12 @@ export function lineTotalOf(l: ReceiptLine): number {
 export interface ReceiptTotals {
   /** Σ tiền dòng, chưa thuế, đã trừ giảm giá dòng. */
   subtotal: number
+  /** Tiền thuế thật sự dùng — là số gõ tay nếu có, không thì số tự cộng. */
   vat: number
+  /** Tiền thuế TỰ CỘNG từ thuế suất từng dòng. Để đối chiếu với số gõ tay. */
+  vatComputed: number
+  /** Người dùng có đang đè tiền thuế không. */
+  vatOverridden: boolean
   /** Giảm giá đầu phiếu. */
   discount: number
   /** Cần trả NCC. */
@@ -104,15 +150,32 @@ export interface ReceiptTotals {
  * ⚠ KẸP VỀ 0. Giảm giá lớn hơn tiền hàng không sinh ra một khoản NCC
  * phải trả ngược cho mình — SQL cũng kẹp đúng như vậy (`GREATEST(0,…)`).
  */
-export function receiptTotals(lines: ReceiptLine[], headerDiscount: string | number): ReceiptTotals {
+export function receiptTotals(
+  lines: ReceiptLine[],
+  headerDiscount: string | number,
+  /**
+   * Tiền thuế GTGT gõ tay theo hoá đơn giấy của NCC.
+   *
+   * ⚠ Ô TRỐNG KHÁC SỐ 0. Trống (`""` / `null`) nghĩa là "để máy tự
+   * cộng"; số 0 nghĩa là "hoá đơn này KHÔNG có thuế". Gộp hai thứ làm
+   * một là người dùng không có cách nào khai một hoá đơn thuế 0.
+   */
+  vatOverride?: string | number | null
+): ReceiptTotals {
   let subtotal = 0
-  let vat = 0
+  let vatComputed = 0
   for (const l of lines) {
     subtotal += lineNetOf(l)
-    vat += lineVatOf(l)
+    vatComputed += lineVatOf(l)
   }
+  const vatOverridden =
+    vatOverride !== undefined && vatOverride !== null && String(vatOverride).trim() !== ""
+  const vat = vatOverridden ? Math.max(0, num(vatOverride)) : vatComputed
   const discount = Math.max(0, num(headerDiscount))
-  return { subtotal, vat, discount, total: Math.max(0, subtotal + vat - discount) }
+  return {
+    subtotal, vat, vatComputed, vatOverridden, discount,
+    total: Math.max(0, subtotal + vat - discount),
+  }
 }
 
 /**

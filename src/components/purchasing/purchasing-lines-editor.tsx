@@ -37,7 +37,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency, formatInt } from "@/lib/utils"
-import { searchReturnProducts } from "@/lib/purchasing/return-form"
+import { inSupplierScope, scopeToSupplier, searchReturnProducts } from "@/lib/purchasing/return-form"
 import type { PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
   lineFromProduct, lineTotalOf, receiptTotals, unitCostOf, unitPatch,
@@ -86,6 +86,7 @@ export function PurchasingLinesEditor({
   submitting,
   actions,
   extras = {},
+  supplierId,
   header,
   linesTitle,
   totalLabel,
@@ -96,6 +97,12 @@ export function PurchasingLinesEditor({
   submitting: boolean
   actions: React.ReactNode
   extras?: Record<string, PickerExtra>
+  /**
+   * NCC đang chọn ở đầu phiếu — ô tìm chỉ gợi ý hàng của NCC này.
+   *
+   * ⚠ CHƯA CHỌN THÌ KHÔNG LỌC. Xem `inSupplierScope`.
+   */
+  supplierId: string | null
   /** Khối "Thông tin chung" do từng màn tự vẽ. */
   header: React.ReactNode
   /** "Chi tiết hàng nhập" hay "Chi tiết hàng trả". */
@@ -104,6 +111,16 @@ export function PurchasingLinesEditor({
   totalLabel: string
 }) {
   const [term, setTerm] = useState("")
+  /**
+   * Tạm bỏ lọc theo NCC — đường thoát cho lúc mã bị gán nhầm NCC.
+   *
+   * ⚠ NHỚ THEO NCC NÀO, KHÔNG NHỚ BẰNG MỘT CỜ BẬT/TẮT. Bỏ lọc cho NCC A
+   *   rồi đổi sang NCC B mà cờ còn bật là lọc đã tắt lúc nào không hay —
+   *   đúng lúc người dùng tin rằng nó đang bật.
+   */
+  const [showAllFor, setShowAllFor] = useState<string | null>(null)
+  const showAll = showAllFor !== null && showAllFor === supplierId
+  const setShowAll = (on: boolean) => setShowAllFor(on ? supplierId : null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const seqRef = useRef(0)
 
@@ -116,10 +133,29 @@ export function PurchasingLinesEditor({
     () => new Set(value.lines.map((l) => l.product_id).filter(Boolean)),
     [value.lines]
   )
-  const hits = useMemo(
-    () => searchReturnProducts(products, term, onSlip),
-    [products, term, onSlip]
+  /**
+   * ⚠ THU VỀ NCC TRƯỚC, TÌM SAU. Tìm trước rồi mới lọc là ô tìm cắt ở
+   *   12 kết quả đầu — nếu cả 12 đều của NCC khác thì người dùng nhận
+   *   một danh sách RỖNG trong khi mặt hàng họ cần đứng thứ 13.
+   */
+  const scoped = useMemo(
+    () => (showAll ? products : scopeToSupplier(products, supplierId)),
+    [products, supplierId, showAll]
   )
+  const hits = useMemo(
+    () => searchReturnProducts(scoped, term, onSlip),
+    [scoped, term, onSlip]
+  )
+  /**
+   * ⚠ ẨN BAO NHIÊU THÌ NÓI BẤY NHIÊU. Lọc im lặng là người nhập gõ đúng
+   *   tên hàng, ô tìm trả về rỗng, và họ không có cách nào đoán ra vì
+   *   sao — tưởng danh mục thiếu mã, rồi đi tạo mã trùng.
+   */
+  const hiddenCount = useMemo(() => {
+    if (showAll || !supplierId) return 0
+    const other = products.filter((p) => !inSupplierScope(p, supplierId))
+    return searchReturnProducts(other, term, onSlip, 200).length
+  }, [products, supplierId, term, onSlip, showAll])
 
   const setLines = (fn: (a: ReceiptLine[]) => ReceiptLine[]) => onChange({ lines: fn(value.lines) })
   const patchLine = (id: string, patch: Partial<ReceiptLine>) =>
@@ -160,9 +196,41 @@ export function PurchasingLinesEditor({
               className="pl-8"
             />
           </div>
-          {term.trim() !== "" && hits.length === 0 && (
+          {term.trim() !== "" && hits.length === 0 && hiddenCount === 0 && (
             <p className="text-xs text-muted-foreground">
               Không tìm thấy mã nào khớp, hoặc mã đó đã có trên phiếu.
+            </p>
+          )}
+          {/*
+            ⚠ NÓI RÕ ĐANG LỌC, VÀ CHO ĐƯỜNG THOÁT. Cột
+              `products.primary_supplier_id` được backfill từ phiếu nhập
+              gần nhất (migration 030), nên một mã nhập từ NCC mới sẽ
+              còn mang tên NCC cũ cho tới lần nhập kế. Không có nút này
+              thì người nhập kẹt cứng: mã có thật, gõ đúng tên, mà ô tìm
+              một mực nói không có.
+          */}
+          {term.trim() !== "" && hiddenCount > 0 && !showAll && (
+            <p className="text-xs text-muted-foreground">
+              Đang chỉ hiện hàng của NCC đã chọn — còn {hiddenCount} mã khớp thuộc NCC khác.{" "}
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="font-medium text-primary underline"
+              >
+                Hiện tất cả
+              </button>
+            </p>
+          )}
+          {showAll && supplierId && (
+            <p className="text-xs text-[#7a4b00]">
+              Đang hiện hàng của MỌI NCC. Thêm nhầm hàng của NCC khác là công nợ ghi sai chỗ.{" "}
+              <button
+                type="button"
+                onClick={() => setShowAll(false)}
+                className="font-medium text-primary underline"
+              >
+                Lọc lại theo NCC
+              </button>
             </p>
           )}
           {hits.length > 0 && (
@@ -193,7 +261,16 @@ export function PurchasingLinesEditor({
                               đang chọn nhầm hàng của NCC khác không —
                               một phiếu nhập trộn hai NCC là công nợ ghi
                               sai chỗ. */}
-                          {x?.supplierName ? ` · ${x.supplierName}` : ""}
+                          {/* ⚠ TRỐNG KHÁC CHƯA ĐỌC XONG. `primary_supplier_id`
+                              NULL là CHƯA GÁN — nói ra để người nhập biết
+                              vì sao mã này vẫn hiện dù đang lọc theo NCC.
+                              Còn `supplierName` rỗng khi cột có giá trị
+                              chỉ là danh sách NCC chưa nạp xong. */}
+                          {p.primary_supplier_id == null
+                            ? " · chưa gán NCC"
+                            : x?.supplierName
+                              ? ` · ${x.supplierName}`
+                              : ""}
                         </span>
                       </span>
                       <span className="shrink-0 text-right text-xs">

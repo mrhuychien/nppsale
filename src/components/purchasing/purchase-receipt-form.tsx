@@ -80,6 +80,7 @@ export function PurchaseReceiptForm({
       submitting={submitting}
       actions={actions}
       extras={extras}
+      supplierId={value.supplierId || null}
       linesTitle="Chi tiết hàng nhập"
       totalLabel="Cần trả NCC"
       header={

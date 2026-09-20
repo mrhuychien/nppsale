@@ -107,6 +107,53 @@ export function searchReturnProducts(
   return out
 }
 
+/**
+ * MẶT HÀNG NÀY CÓ THUỘC NCC ĐANG CHỌN KHÔNG.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "khi chọn ncc nào thì chỉ hiện ra hàng của
+ * ncc đó thôi". Lý do có thật: một phiếu nhập trộn hai NCC là công nợ
+ * ghi sai chỗ — và trên ô tìm 1.700 mã thì chạm nhầm là chuyện thường.
+ *
+ * ⚠ CHƯA CHỌN NCC THÌ KHÔNG LỌC GÌ. Lọc theo một ô còn trống là giấu
+ * sạch danh mục ngay lúc mở màn.
+ *
+ * ⚠ HÀNG CHƯA GÁN NCC (`primary_supplier_id` NULL) VẪN HIỆN. Đây KHÔNG
+ * phải nới lỏng cho qua — nó là quy ước đã có sẵn của kho mã này:
+ * migration 081 viết thẳng "SP có primary_supplier_id NULL → ai cũng
+ * thấy (legacy)", và chính sách RLS của `products` cũng làm đúng như
+ * vậy. Cột ấy được BACKFILL từ phiếu nhập gần nhất (migration 030), nên
+ * mã nào chưa từng nhập về thì nó trống — trống nghĩa là CHƯA BIẾT, chứ
+ * không phải "của NCC khác". Giấu nhóm chưa biết đi là người nhập gõ
+ * đúng tên hàng mà ô tìm im lặng trả về rỗng, và họ không có cách nào
+ * đoán ra vì sao.
+ *
+ * Thứ thật sự phải chặn là hàng của NCC KHÁC — và chốt này chặn đúng nó.
+ */
+export function inSupplierScope(
+  p: { primary_supplier_id?: string | null },
+  supplierId: string | null | undefined
+): boolean {
+  if (!supplierId) return true
+  if (p.primary_supplier_id == null) return true
+  return p.primary_supplier_id === supplierId
+}
+
+/**
+ * Danh mục đã thu về đúng NCC đang chọn.
+ *
+ * ⚠ KHÔNG TỰ QUYẾT LẠI LUẬT Ở ĐÂY. Hàm này chỉ lọc qua
+ * `inSupplierScope` — một chỗ duy nhất biết "thế nào là thuộc NCC
+ * này". Bản đầu chép lại phép `if (!supplierId) return products` vào
+ * đây cho nhanh, và đúng vì thế mà chốt của `inSupplierScope` phá
+ * được mà `scopeToSupplier` vẫn xanh: hai bản luật, chốt chỉ canh một.
+ */
+export function scopeToSupplier<T extends { primary_supplier_id?: string | null }>(
+  products: T[],
+  supplierId: string | null | undefined
+): T[] {
+  return products.filter((p) => inSupplierScope(p, supplierId))
+}
+
 /** Nhãn lý do trả — định nghĩa cạnh tập giá trị, không rải ra JSX. */
 export const RETURN_REASONS = [
   { value: "near_expiry", label: "Hàng gần hạn" },

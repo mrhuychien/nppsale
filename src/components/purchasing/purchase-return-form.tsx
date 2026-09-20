@@ -89,6 +89,7 @@ export function PurchaseReturnForm({
       submitting={submitting}
       actions={actions}
       extras={extras}
+      supplierId={value.supplierId || null}
       linesTitle="Chi tiết hàng trả"
       totalLabel="NCC hoàn lại"
       header={

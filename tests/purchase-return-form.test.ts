@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   searchReturnProducts, friendlyReturnError, ratioToPercent, percentToRatio,
+  inSupplierScope, scopeToSupplier,
   type ReturnProduct,
 } from "../src/lib/purchasing/return-form"
 import {
@@ -24,6 +25,7 @@ const strip = (s: string) =>
  * xanh vì đọc phải chuỗi rỗng, chứ không vì hành vi còn đúng.
  */
 const FORM = strip(read("src/components/purchasing/purchase-return-form.tsx"))
+const RECEIPT_FORM = strip(read("src/components/purchasing/purchase-receipt-form.tsx"))
 const EDITOR = strip(read("src/components/purchasing/purchasing-lines-editor.tsx"))
 const NEW_PAGE = strip(read("src/app/(dashboard)/purchase-returns/new/page.tsx"))
 const EDIT_PAGE = strip(read("src/app/(dashboard)/purchase-returns/[id]/edit/page.tsx"))
@@ -800,5 +802,128 @@ describe("migration 141 — đơn vị thuế suất của phiếu trả NCC", (
     expect(EDITOR).toContain("l.vat_percent")
     expect(EDITOR).not.toContain("l.vat_rate")
     expect(EDIT_PAGE).toContain("ratioToPercent(l.vat_rate)")
+  })
+})
+
+// =====================================================================
+
+/**
+ * CHỌN NCC NÀO THÌ Ô TÌM CHỈ HIỆN HÀNG CỦA NCC ĐÓ.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "trong phiếu nhập hàng và phiếu trả ncc,
+ * khi chọn ncc nào thì chỉ hiện ra hàng của ncc đó thôi". Lý do có
+ * thật: một phiếu trộn hai NCC là công nợ ghi sai chỗ — và trên ô tìm
+ * 1.700 mã thì chạm nhầm là chuyện thường.
+ */
+describe("ô tìm hàng thu về đúng NCC đang chọn", () => {
+  const p = (id: string, sup: string | null) =>
+    ({ id, primary_supplier_id: sup }) as { id: string; primary_supplier_id: string | null }
+
+  const catalog = [p("a", "ncc1"), p("b", "ncc2"), p("c", null)]
+
+  it("chưa chọn NCC thì không lọc gì", () => {
+    expect(scopeToSupplier(catalog, null).map((x) => x.id)).toEqual(["a", "b", "c"])
+    expect(scopeToSupplier(catalog, "").map((x) => x.id)).toEqual(["a", "b", "c"])
+    expect(scopeToSupplier(catalog, undefined).map((x) => x.id)).toEqual(["a", "b", "c"])
+    /**
+     * ⚠ HỎI THẲNG `inSupplierScope`, KHÔNG CHỈ HỎI QUA `scopeToSupplier`.
+     *   Bản đầu của chốt này chỉ gọi `scopeToSupplier`, mà hàm đó từng
+     *   có bản sao của luật "chưa chọn NCC thì thôi" — nên đổi luật
+     *   trong `inSupplierScope` mà chốt vẫn XANH. Đã thử phá đúng như
+     *   vậy. `hiddenCount` ở biểu mẫu gọi thẳng hàm này, nên nó phải
+     *   được canh thẳng.
+     */
+    for (const empty of [null, "", undefined] as const) {
+      expect(inSupplierScope(p("b", "ncc2"), empty)).toBe(true)
+    }
+  })
+
+  /** ⚠ Đây là thứ chủ nhà thật sự muốn chặn: hàng của NCC KHÁC. */
+  it("chọn NCC thì bỏ hàng của NCC khác", () => {
+    expect(scopeToSupplier(catalog, "ncc1").map((x) => x.id)).not.toContain("b")
+    expect(inSupplierScope(p("b", "ncc2"), "ncc1")).toBe(false)
+  })
+
+  /**
+   * ⚠ HÀNG CHƯA GÁN NCC VẪN HIỆN — và đây KHÔNG phải nới lỏng cho qua.
+   * Migration 081 đã đặt sẵn quy ước cho cả kho mã: "SP có
+   * primary_supplier_id NULL → ai cũng thấy (legacy)". Cột ấy được
+   * backfill từ phiếu nhập gần nhất (migration 030) nên mã chưa từng
+   * nhập về thì nó trống — trống là CHƯA BIẾT, không phải "của NCC
+   * khác". Giấu nhóm chưa biết đi là người nhập gõ đúng tên hàng mà ô
+   * tìm im lặng trả rỗng.
+   */
+  it("hàng chưa gán NCC vẫn hiện, vì trống là CHƯA BIẾT", () => {
+    expect(scopeToSupplier(catalog, "ncc1").map((x) => x.id)).toEqual(["a", "c"])
+    expect(inSupplierScope(p("c", null), "ncc1")).toBe(true)
+    expect(inSupplierScope({} as { primary_supplier_id?: string | null }, "ncc1")).toBe(true)
+  })
+
+  /**
+   * ⚠ THU VỀ NCC TRƯỚC, TÌM SAU. `searchReturnProducts` cắt ở 12 kết
+   * quả đầu; tìm trước rồi mới lọc là khi 12 mã đầu đều của NCC khác
+   * thì người dùng nhận danh sách RỖNG trong khi mặt hàng họ cần đứng
+   * thứ 13. Chốt này neo đúng thứ tự ấy trong mã nguồn.
+   */
+  it("biểu mẫu thu về NCC TRƯỚC khi tìm, không ngược lại", () => {
+    expect(EDITOR).toContain("scopeToSupplier(products, supplierId)")
+    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip)")
+    expect(EDITOR, "đang tìm trên cả danh mục rồi mới lọc — mất mã ở cuối danh sách")
+      .not.toContain("searchReturnProducts(products, term, onSlip)")
+  })
+
+  /**
+   * ⚠ ẨN BAO NHIÊU THÌ NÓI BẤY NHIÊU, VÀ PHẢI CÓ ĐƯỜNG THOÁT. Cột
+   * `primary_supplier_id` mang NCC nhập GẦN NHẤT, nên một mã vừa đổi
+   * sang NCC mới còn treo tên NCC cũ cho tới lần nhập kế. Lọc im lặng
+   * là người nhập kẹt cứng: mã có thật, gõ đúng tên, ô tìm một mực nói
+   * không có — rồi họ đi tạo một mã trùng.
+   */
+  it("ẩn mã nào thì đếm ra, và cho đường bỏ lọc", () => {
+    expect(EDITOR).toContain("hiddenCount")
+    expect(EDITOR).toContain("còn {hiddenCount} mã khớp thuộc NCC khác")
+    expect(EDITOR).toContain("Hiện tất cả")
+    expect(EDITOR).toContain("Lọc lại theo NCC")
+  })
+
+  /**
+   * ⚠ ĐƯỜNG THOÁT PHẢI NHỚ THEO NCC NÀO. Bỏ lọc cho NCC A rồi đổi sang
+   * NCC B mà một cờ bật/tắt còn bật là lọc đã tắt lúc nào không hay,
+   * đúng lúc người dùng tin rằng nó đang bật.
+   */
+  it("bỏ lọc chỉ có hiệu lực với đúng NCC vừa bỏ", () => {
+    expect(EDITOR).toContain("showAllFor")
+    expect(EDITOR).toContain("showAllFor !== null && showAllFor === supplierId")
+    expect(EDITOR, "đang dùng cờ bật/tắt — đổi NCC thì lọc tắt lúc nào không hay")
+      .not.toContain("useState(false)")
+  })
+
+  /** ⚠ Hai biểu mẫu đều phải truyền NCC xuống, nếu không lọc không chạy. */
+  it("cả hai biểu mẫu đều truyền NCC xuống ô tìm", () => {
+    for (const [ten, src] of [["phiếu trả", FORM], ["phiếu nhập", RECEIPT_FORM]] as const) {
+      expect(src, `${ten} không truyền NCC xuống ô tìm — lọc không chạy`)
+        .toContain("supplierId={value.supplierId || null}")
+    }
+  })
+
+  /**
+   * ⚠ BỐN MÀN PHẢI ĐỌC CỘT `primary_supplier_id` VỀ. Thiếu nó thì mọi
+   * mặt hàng đọc ra `undefined` → `inSupplierScope` trả `true` cho tất
+   * cả → lọc IM LẶNG không làm gì, và màn hình trông y hệt như lúc
+   * chạy đúng. Đây đúng loại hỏng mà kho mã này sợ nhất: không lỗi,
+   * không cảnh báo, chỉ là tính năng không tồn tại.
+   */
+  it("bốn màn đều đọc cột primary_supplier_id về", () => {
+    const RECEIPT_NEW = strip(read("src/app/(dashboard)/purchasing/receipts/new/page.tsx"))
+    const RECEIPT_EDIT = strip(read("src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx"))
+    for (const [ten, src] of [
+      ["phiếu trả · màn tạo", NEW_PAGE],
+      ["phiếu trả · màn sửa", EDIT_PAGE],
+      ["phiếu nhập · màn tạo", RECEIPT_NEW],
+      ["phiếu nhập · màn sửa", RECEIPT_EDIT],
+    ] as const) {
+      expect(src, `${ten} không đọc primary_supplier_id — lọc theo NCC sẽ im lặng không làm gì`)
+        .toContain("primary_supplier_id")
+    }
   })
 })

@@ -110,7 +110,10 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
   })
 
   it("thêm hàng bằng ô tìm rồi chạm, và xoá ô tìm sau khi thêm", () => {
-    expect(EDITOR).toContain("searchReturnProducts(products, term, onSlip)")
+    /* ⚠ TÌM TRÊN DANH MỤC ĐÃ THU VỀ NCC (`scoped`), không trên cả
+       danh mục — ô tìm cắt ở 12 kết quả đầu, lọc sau là mất mã đứng
+       thứ 13. Xem chốt ở `tests/purchase-return-form.test.ts`. */
+    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip)")
     const add = EDITOR.slice(EDITOR.indexOf("const addProduct"), EDITOR.indexOf("const toggleDiscountMode"))
     expect(add).toContain("lineFromProduct(p, seqRef.current)")
     expect(add, "thêm xong phải xoá ô tìm").toContain('setTerm("")')

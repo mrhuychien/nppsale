@@ -42,9 +42,14 @@
  *   tờ mẫu chủ nhà gửi.
  *
  *   CỠ CHỮ KHI IN nằm ở khối `.a4-doc` trong `globals.css`, KHÔNG phải ở
- *   các lớp `text-[12px]` dưới đây (chúng chỉ còn tác dụng ở bản xem
- *   trước trên màn hình). Con số hiện tại là 10,5pt, đo từ chính tờ mẫu
- *   KiotViet — xem chú thích tại chỗ và `tests/print-font-sample`.
+ *   lớp `text-[12px]` dưới đây (nó chỉ còn tác dụng ở bản xem trước trên
+ *   màn hình). Con số hiện tại là 10,5pt, đo từ chính tờ mẫu KiotViet.
+ *
+ * ⚠ CẢ TỜ CHỈ MỘT CỠ CHỮ, TRỪ ĐÚNG TIÊU ĐỀ (chủ nhà chốt 20/09/2026:
+ *   "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ cho bằng size font
+ *   chữ trong bảng"). Cỡ đặt MỘT chỗ — ở gốc tờ giấy cho màn hình, ở
+ *   `.a4-doc` cho giấy. Đừng thêm một `text-[Npx]` nào nữa: lần trước
+ *   rải ra tám nơi, và khi đổi cỡ thì quên mất hai chỗ.
  *
  * ⚠ CỘT TÊN HÀNG LÀ CỘT DUY NHẤT KHÔNG ĐẶT BỀ RỘNG, nên nó nhận toàn bộ
  *   chỗ còn lại của bảng. Mọi pixel bớt được ở đệm ô và ở sáu cột kia
@@ -268,25 +273,35 @@ export function SalesInvoice(props: SalesInvoiceProps) {
   const { rows } = grossUpLines(lines, total)
   const netDue = netDueOnInvoice(total, returnCredit)
 
+  /**
+   * ⚠ CỠ CHỮ ĐẶT MỘT CHỖ DUY NHẤT — ở gốc tờ giấy, không rải trên từng
+   * phần. Chủ nhà chốt 20/09/2026: "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại
+   * size font chữ cho bằng size font chữ trong bảng". Rải ra từng chỗ là
+   * mỗi lần đổi phải nhớ tám nơi, và chỗ nào quên thì lệch — đúng cái
+   * vừa phải đi sửa.
+   *
+   * Đây là cỡ của BẢN XEM TRƯỚC trên màn hình. Cỡ khi IN nằm ở khối
+   * `.a4-doc` trong `globals.css`.
+   */
   return (
-    <div className="a4-doc mx-auto max-w-3xl bg-white text-black print:max-w-none">
+    <div className="a4-doc mx-auto max-w-3xl bg-white text-[12px] text-black print:max-w-none">
       {/* Tiêu đề công ty — căn TRÁI như mẫu. */}
       <div className="mb-1.5">
-        <p className="doc-org-name text-lg font-bold uppercase leading-tight">{org.name || "—"}</p>
-        {org.address && <p className="text-[12px] leading-tight">Địa chỉ: {org.address}</p>}
-        {org.phone && <p className="text-[12px] leading-tight">Điện thoại: {org.phone}</p>}
+        <p className="font-bold uppercase leading-tight">{org.name || "—"}</p>
+        {org.address && <p className="leading-tight">Địa chỉ: {org.address}</p>}
+        {org.phone && <p className="leading-tight">Điện thoại: {org.phone}</p>}
       </div>
 
       <div className="mb-1.5 text-center">
         <h1 className="text-xl font-bold leading-tight">{title}</h1>
         {/* ⚠ NGÀY KÈM GIỜ (chủ nhà chốt) — xem `docStampAt`: giờ thật nằm
             ở `created_at`, không nằm ở cột ngày kiểu `date`. */}
-        <p className="text-[12px] font-bold leading-tight">Ngày {stampVN(issuedAt)}</p>
-        <p className="text-[12px] leading-tight">{numberLabel}: {invoiceNumber || "—"}</p>
+        <p className="font-bold leading-tight">Ngày {stampVN(issuedAt)}</p>
+        <p className="leading-tight">{numberLabel}: {invoiceNumber || "—"}</p>
       </div>
 
       {/* Khối khách hàng — mỗi dòng một nhãn, căn trái. */}
-      <div className="mb-1 text-[12px] leading-tight">
+      <div className="mb-1 leading-tight">
         <p>
           Khách hàng: <span className="font-bold">{customerName || "—"}</span>
         </p>
@@ -300,7 +315,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         </p>
       </div>
 
-      <table className="w-full border-collapse text-[12px]">
+      <table className="w-full border-collapse">
         <thead>
           <tr className="text-center font-bold">
             {/*
@@ -340,19 +355,20 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             rows.map((l, i) => (
               <tr key={l.id}>
                 <td className={`${CELL} text-center`}>{i + 1}</td>
-                {/* ⚠ Ở 13pt trên khổ A5, cột tên hàng chỉ còn ~18 ký tự
-                    một dòng. Tên hàng ở kho này có cụm dài không dấu
-                    cách như "300g(30gói/th)"; thiếu `overflow-wrap` là
-                    cụm ấy tự nong cột ra, đẩy cột tiền qua lề và bị cắt
-                    — hỏng theo kiểu chỉ lộ ra sau khi đã in. */}
+                {/* ⚠ Cột tên hàng trên khổ A5 chỉ rộng bằng vài chục ký
+                    tự. Tên hàng ở kho này có cụm dài không dấu cách như
+                    "300g(30gói/th)"; thiếu `overflow-wrap` là cụm ấy tự
+                    nong cột ra, đẩy cột tiền qua lề và bị cắt — hỏng
+                    theo kiểu chỉ lộ ra sau khi đã in. */}
                 <td className={`${CELL} [overflow-wrap:anywhere]`}>
                   {l.name}
                   {l.spec ? ` (${l.spec})` : ""}
-                  {/* ⚠ CỠ CHỮ THEO `em`, KHÔNG THEO px. Bảng này đổi cỡ
-                      theo khổ giấy trong globals.css; đặt px là ghi chú
-                      to bằng tên hàng ở A5 và bé như hạt bụi ở A4. */}
+                  {/* ⚠ GHI CHÚ BẰNG ĐÚNG CỠ CHỮ CỦA BẢNG (chủ nhà chốt
+                      20/09/2026). Phân biệt bằng chữ nghiêng và tiền tố
+                      "Ghi chú:", không bằng cỡ chữ — đặt một cỡ riêng ở
+                      đây là thêm một chỗ phải nhớ khi cả tờ đổi cỡ. */}
                   {l.note ? (
-                    <div className="text-[0.9em] italic leading-tight">Ghi chú: {l.note}</div>
+                    <div className="italic leading-tight">Ghi chú: {l.note}</div>
                   ) : null}
                 </td>
                 <td className={`${CELL} text-center`}>{l.unitName}</td>
@@ -469,12 +485,12 @@ export function SalesInvoice(props: SalesInvoiceProps) {
       </table>
 
       <div className="mt-1.5 grid grid-cols-2 items-start gap-4">
-        <p className="doc-footer-note text-[10px] leading-tight">{footerNote || ""}</p>
-        <p className="text-right text-[12px] leading-tight">{longDateVN(issuedAt)}</p>
+        <p className="leading-tight">{footerNote || ""}</p>
+        <p className="text-right leading-tight">{longDateVN(issuedAt)}</p>
       </div>
 
       {/* Ba ô ký — mẫu cũ chỉ có hai. */}
-      <div className="mt-1.5 grid grid-cols-3 gap-4 text-center text-[12px]">
+      <div className="mt-1.5 grid grid-cols-3 gap-4 text-center">
         {[
           "Người nhận hàng",
           "Kế toán",

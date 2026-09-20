@@ -34,46 +34,68 @@ function pt(paper: "A5" | "A4", selector: string): number | null {
   return m ? Number(m[1]) : null
 }
 
-describe("cỡ chữ chép từ tờ mẫu KiotViet", () => {
-  it.each([["A5"], ["A4"]] as const)("%s: thân và bảng đều 10,5pt", (paper) => {
+describe("một cỡ chữ cho cả tờ, trừ đúng tiêu đề", () => {
+  /**
+   * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại size
+   * font chữ cho bằng size font chữ trong bảng". Hai cỡ riêng của tờ
+   * mẫu — tên nhà phân phối 13,5pt và ghi chú chân trang 7,5pt — ĐÃ BỎ.
+   * Đây là chỗ CỐ Ý lệch với tờ mẫu, không phải quên chép.
+   */
+  it.each([["A5"], ["A4"]] as const)("%s: thân và bảng cùng 10,5pt", (paper) => {
     expect(pt(paper, ""), "thân tờ").toBe(10.5)
     expect(pt(paper, " table"), "bảng — chính là tờ hóa đơn").toBe(10.5)
   })
 
-  it.each([["A5"], ["A4"]] as const)("%s: tiêu đề 15pt, tên NPP 13,5pt, ghi chú nhỏ 7,5pt", (paper) => {
-    expect(pt(paper, " h1"), "HÓA ĐƠN BÁN HÀNG").toBe(15)
-    expect(pt(paper, " \\.doc-org-name"), "tên nhà phân phối").toBe(13.5)
-    expect(pt(paper, " \\.doc-footer-note"), "ghi chú nhỏ chân trang").toBe(7.5)
+  it.each([["A5"], ["A4"]] as const)("%s: chỉ tiêu đề khác cỡ, và nó phải TO hơn", (paper) => {
+    const h1 = pt(paper, " h1")
+    expect(h1, "mất cỡ riêng của tiêu đề").toBe(15)
+    expect(h1!).toBeGreaterThan(pt(paper, "")!)
   })
 
   /**
-   * ⚠ THỨ BẬC PHẢI ĐÚNG: tiêu đề > tên NPP > thân > ghi chú nhỏ. Đây là
-   * chốt bắt được cả những sai lệch mà bốn con số rời không bắt được —
-   * ví dụ đổi thân lên 16pt thì tiêu đề thành chữ nhỏ hơn thân.
+   * ⚠ CHỐT CHÍNH: KHÔNG CÒN CỠ THỨ BA NÀO. Mỗi `font-size` thêm vào khối
+   * `.a4-doc` là một chỗ phải nhớ khi chủ nhà đổi cỡ chữ lần sau — và
+   * lần trước đúng là đã quên mất hai chỗ, nên tên nhà phân phối vẫn to
+   * còn ghi chú chân trang vẫn bé sau khi cả tờ đã đổi cỡ.
    */
-  it.each([["A5"], ["A4"]] as const)("%s: giữ đúng thứ bậc cỡ chữ", (paper) => {
-    const h1 = pt(paper, " h1")!
-    const org = pt(paper, " \\.doc-org-name")!
-    const body = pt(paper, "")!
-    const foot = pt(paper, " \\.doc-footer-note")!
-    expect(h1).toBeGreaterThan(org)
-    expect(org).toBeGreaterThan(body)
-    expect(body).toBeGreaterThan(foot)
-  })
-
-  /** Không còn dấu vết của con số đoán hôm trước. */
-  it("không còn 13pt ở khối tờ in", () => {
-    const i = CSS.indexOf('html:not([data-paper-size="A4"]) .a4-doc {')
-    expect(CSS.slice(i, i + 2000)).not.toContain("font-size: 13pt")
+  it.each([["A5"], ["A4"]] as const)("%s: chỉ có đúng ba khai báo cỡ chữ", (paper) => {
+    const scope =
+      paper === "A4" ? 'html\\[data-paper-size="A4"\\]' : 'html:not\\(\\[data-paper-size="A4"\\]\\)'
+    const re = new RegExp(`${scope} \\.a4-doc([^{]*)\\{[^}]*?font-size:\\s*([\\d.]+)pt`, "g")
+    const found: Array<[string, string]> = []
+    for (let m = re.exec(CSS); m; m = re.exec(CSS)) found.push([m[1].trim(), m[2]])
+    // thân · bảng · tiêu đề — không hơn.
+    expect(found.map((f) => f[0]).sort()).toEqual(["", "h1", "table"])
+    expect(found.find((f) => f[0] === "")?.[1]).toBe(found.find((f) => f[0] === "table")?.[1])
   })
 
   /**
-   * Hai lớp này là CẦU NỐI giữa CSS in và component; thiếu một bên thì
-   * quy tắc ở trên không bám vào đâu và chữ rơi về cỡ thân.
+   * Và component cũng chỉ đặt cỡ MỘT chỗ — ở gốc tờ giấy. Rải ra từng
+   * phần là mỗi lần đổi phải nhớ tám nơi.
    */
-  it("component gắn đúng hai lớp mà CSS đang bám vào", () => {
-    expect(DOC).toContain('className="doc-org-name text-lg font-bold uppercase leading-tight"')
-    expect(DOC).toContain('className="doc-footer-note text-[10px] leading-tight"')
+  it("bản xem trước đặt cỡ một chỗ, ở gốc tờ giấy", () => {
+    expect(DOC).toContain('className="a4-doc mx-auto max-w-3xl bg-white text-[12px] text-black print:max-w-none"')
+    const body = DOC.slice(DOC.indexOf("export function SalesInvoice("))
+    /**
+     * ⚠ BẮT CẢ HAI KIỂU CỠ CHỮ CỦA TAILWIND. Bản trước chỉ dò
+     * `text-[Npx]`, nên trả `text-lg` về cho tên nhà phân phối vẫn XANH —
+     * đúng thứ chốt này sinh ra để chặn. Thang chữ (`text-lg`, `text-sm`…)
+     * cũng là cỡ chữ; còn `text-right` / `text-black` thì không.
+     */
+    const SIZE = /\btext-(?:xs|sm|base|lg|[2-9]?xl)\b|\btext-\[[\d.]+(?:px|pt|em|rem)\]/g
+    const sizes = body.match(SIZE) ?? []
+    // Đúng hai: một ở gốc tờ giấy, một ở tiêu đề.
+    expect(sizes.sort(), `cỡ chữ rải rác: ${sizes.join(" ")}`).toEqual(["text-[12px]", "text-xl"])
+    // Tiêu đề vẫn là ngoại lệ duy nhất, và nó dùng thang của Tailwind.
+    expect(body).toContain('<h1 className="text-xl font-bold leading-tight">')
+  })
+
+  /** Hai lớp móc cũ đã hết việc — để lại là mời người sau tưởng chúng còn tác dụng. */
+  it("không còn lớp móc cỡ chữ nào lủng lẳng", () => {
+    for (const hook of ["doc-org-name", "doc-footer-note"]) {
+      expect(DOC, `component còn lớp ${hook}`).not.toContain(hook)
+      expect(CSS, `globals.css còn luật cho ${hook}`).not.toContain(hook)
+    }
   })
 
   /**

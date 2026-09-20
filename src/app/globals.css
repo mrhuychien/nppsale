@@ -195,12 +195,13 @@
     lượng: KiotViet - Đơn hàng - Hóa đơn.pdf, khổ A5 (420 × 594,96pt),
     Times New Roman. Giải nén luồng nội dung rồi đọc toán tử `Tf` — cỡ ở
     đó tính bằng px CSS, nhân 0,75 ra pt:
-      · tên nhà phân phối          18px → 13,5pt
       · "HÓA ĐƠN BÁN HÀNG"         20px → 15pt
       · TOÀN BỘ phần còn lại       14px → 10,5pt
-        (địa chỉ, điện thoại, ngày, số HĐ, khối khách hàng, tiêu đề cột,
-         dòng hàng, ba dòng tổng, "Bằng chữ", ba ô ký)
-      · ghi chú nhỏ chân trang     10px → 7,5pt
+
+    Tờ mẫu còn có hai cỡ nữa — tên nhà phân phối 18px (13,5pt) và ghi
+    chú chân trang 10px (7,5pt) — nhưng chủ nhà chốt 20/09/2026 bỏ cả
+    hai: "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ cho bằng size
+    font chữ trong bảng". Đây là chỗ CỐ Ý lệch với tờ mẫu.
 
     ⚠ 13pt HÔM QUA LÀ TÔI ĐOÁN SAI. Chủ nhà chốt "cho lên 13" khi đang
     nhìn một tờ 8,5pt; đo tờ mẫu mới ra con số thật là 10,5pt, và chính
@@ -220,12 +221,17 @@
     font-family: "Times New Roman", Times, serif;
   }
   html:not([data-paper-size="A4"]) .a4-doc table { font-size: 10.5pt; }
-  /* Tên nhà phân phối ở đầu tờ — 18px CSS trên tờ mẫu. */
-  html:not([data-paper-size="A4"]) .a4-doc .doc-org-name { font-size: 13.5pt; }
-  /* Tiêu đề "HÓA ĐƠN BÁN HÀNG" — 20px CSS trên tờ mẫu. */
+  /*
+    ⚠ CHỈ TIÊU ĐỀ MỚI ĐƯỢC KHÁC CỠ (chủ nhà chốt 20/09/2026: "trừ chữ
+    HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ cho bằng size font chữ trong
+    bảng"). Tên nhà phân phối trước đây 13,5pt và ghi chú chân trang
+    7,5pt — hai cỡ ấy ĐÃ BỎ, cả hai nay bằng phần còn lại.
+
+    Đừng thêm một `.a4-doc .cái-gì-đó { font-size: … }` nữa: mỗi cỡ thêm
+    vào là một chỗ phải nhớ khi chủ nhà đổi cỡ chữ lần sau, và lần trước
+    đúng là đã quên mất hai chỗ.
+  */
   html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 15pt; }
-  /* Ghi chú nhỏ chân trang — 10px CSS trên tờ mẫu. */
-  html:not([data-paper-size="A4"]) .a4-doc .doc-footer-note { font-size: 7.5pt; }
   /* Chỗ ký thu lại cho vừa trang; vẫn đủ để ký tay. */
   html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }
 
@@ -245,9 +251,8 @@
     line-height: 1.15;
   }
   html[data-paper-size="A4"] .a4-doc table { font-size: 10.5pt; }
-  html[data-paper-size="A4"] .a4-doc .doc-org-name { font-size: 13.5pt; }
+  /* ⚠ Chỉ tiêu đề khác cỡ — xem chú thích ở khối A5 ngay trên. */
   html[data-paper-size="A4"] .a4-doc h1 { font-size: 15pt; }
-  html[data-paper-size="A4"] .a4-doc .doc-footer-note { font-size: 7.5pt; }
 }
 
 @layer utilities {

@@ -78,18 +78,21 @@ describe("ghi chú từng mặt hàng", () => {
   it("khuôn in có ô ghi chú dưới tên hàng", () => {
     expect(DOC).toContain("note?: string | null")
     const flat = DOC.replace(/\s+/g, " ")
-    expect(flat).toContain("{l.note ? ( <div className=\"text-[0.9em] italic leading-tight\">Ghi chú: {l.note}</div> ) : null}")
+    expect(flat).toContain("{l.note ? ( <div className=\"italic leading-tight\">Ghi chú: {l.note}</div> ) : null}")
   })
 
   /**
-   * ⚠ CỠ CHỮ THEO `em`, KHÔNG THEO px. Bảng này đổi cỡ theo khổ giấy
-   * trong globals.css; đặt px là ghi chú to bằng tên hàng ở A5 và bé
-   * như hạt bụi ở A4.
+   * ⚠ GHI CHÚ BẰNG ĐÚNG CỠ CHỮ CỦA BẢNG (chủ nhà chốt 20/09/2026: "còn
+   * lại size font chữ cho bằng size font chữ trong bảng"). Bản trước để
+   * nó `text-[0.9em]` — nhỏ hơn một chút; nay phân biệt bằng chữ nghiêng
+   * và tiền tố "Ghi chú:", không bằng cỡ chữ.
    */
-  it("cỡ ghi chú dòng co theo bảng, không phải số px cố định", () => {
+  it("ghi chú dòng KHÔNG đặt cỡ chữ riêng", () => {
     const i = DOC.indexOf("Ghi chú: {l.note}")
     expect(i).toBeGreaterThan(0)
-    expect(DOC.slice(i - 120, i)).toContain("text-[0.9em]")
+    const tag = DOC.slice(i - 120, i)
+    expect(tag).toContain("italic")
+    expect(tag, "ghi chú dòng lại có cỡ chữ riêng").not.toMatch(/text-\[[\d.]+(px|em|rem)\]/)
   })
 
   it("hai bản in đều truyền note của dòng vào khuôn", () => {
@@ -211,9 +214,12 @@ describe("tờ in gọn lại", () => {
     )
   })
 
-  /** Bản xem trước trên màn hình cũng phải to theo, không lệch với giấy. */
-  it("bảng xem trước không còn 11px", () => {
-    expect(DOC).toContain('<table className="w-full border-collapse text-[12px]">')
+  /**
+   * ⚠ BẢNG KHÔNG ĐẶT CỠ RIÊNG NỮA — nó thừa hưởng cỡ của gốc tờ giấy.
+   * Cỡ đặt một chỗ thì đổi một chỗ; xem `tests/print-font-sample`.
+   */
+  it("bảng xem trước thừa hưởng cỡ của gốc tờ giấy", () => {
+    expect(DOC).toContain('<table className="w-full border-collapse">')
     expect(DOC).not.toContain("text-[11px]")
   })
 

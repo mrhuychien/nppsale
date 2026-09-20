@@ -1,11 +1,22 @@
 /**
- * PHÉP TÍNH CỦA PHIẾU TRẢ HÀNG NCC — tách khỏi giao diện để chốt được.
+ * NHỮNG THỨ RIÊNG CỦA PHIẾU TRẢ HÀNG NCC, cộng với phép quy đổi thuế
+ * suất dùng chung cho cả module mua hàng.
  *
- * ⚠ VÌ SAO TÁCH RA. Màn tạo phiếu và màn sửa phiếu trước đây là hai bản
- * SAO CHÉP của nhau: cùng kiểu `Line`, cùng `newLine`, cùng `totals`,
- * cùng `pickProduct`, cùng `pickUnit`, cùng cả khối JSX. Sửa một phép
- * tính ở một bên mà quên bên kia là phiếu tạo ra một số, phiếu sửa lại
- * ra số khác cho đúng cùng mấy dòng hàng — và không màn nào nói gì.
+ * ⚠ TIỀN VÀ HÌNH DẠNG DÒNG NẰM Ở `receipt-form.ts`, không còn ở đây
+ * (chủ nhà chốt 20/09/2026: "hãy làm phiếu trả NCC tương tự"). Tệp này
+ * trước đây có bản RIÊNG của `ReturnLine`, `lineFromProduct`,
+ * `returnTotals`, `lineTotalOf`, `validReturnLines`, `linePayload` — và
+ * đúng vì có hai bản mà phiếu trả không có ghi chú dòng, không có giảm
+ * giá và không có tiền thuế gõ tay trong khi phiếu nhập đã có cả ba.
+ * Một bản cho cả hai chứng từ; phần riêng của phiếu trả chỉ còn lý do
+ * trả, ô tìm hàng và câu dịch lỗi.
+ *
+ * ⚠ VÌ SAO TÁCH KHỎI GIAO DIỆN. Màn tạo phiếu và màn sửa phiếu trước
+ * đây là hai bản SAO CHÉP của nhau: cùng kiểu `Line`, cùng `newLine`,
+ * cùng `totals`, cùng `pickProduct`, cùng `pickUnit`, cùng cả khối JSX.
+ * Sửa một phép tính ở một bên mà quên bên kia là phiếu tạo ra một số,
+ * phiếu sửa lại ra số khác cho đúng cùng mấy dòng hàng — và không màn
+ * nào nói gì.
  *
  * ⚠ HAI ĐƠN VỊ, GỌI TÊN KHÁC NHAU. Trong BIỂU MẪU thuế suất là PHẦN
  * TRĂM và trường tên `vat_percent` — vì ô nhập ghi nhãn "VAT %" và
@@ -25,6 +36,12 @@ import { viMatchAllWords } from "@/lib/search"
 
 /** Sản phẩm kèm danh sách đơn vị quy đổi, đúng hình dạng hai màn đang đọc. */
 export type ReturnProduct = Product & { units?: ProductUnit[] }
+
+/**
+ * ⚠ KHÔNG ĐỊNH NGHĨA `ReturnLine` Ở ĐÂY NỮA. Dòng của phiếu trả và dòng
+ * của phiếu nhập là CÙNG một hình dạng — dùng `ReceiptLine` của
+ * `receipt-form.ts`. Xem chú thích đầu tệp.
+ */
 
 /**
  * TỈ LỆ (cột `vat_rate`) → PHẦN TRĂM (ô nhập). 0.1 → "10".
@@ -58,131 +75,6 @@ export function percentToRatio(percent: number | string | null | undefined): num
   const n = Number(percent)
   if (!Number.isFinite(n)) return 0
   return Math.round((n / 100) * 1_000_000) / 1_000_000
-}
-
-/**
- * Một dòng hàng trả.
- *
- * ⚠ CÁC Ô SỐ GIỮ DẠNG CHUỖI. Đây là giá trị của ô `<input>`: người dùng
- * gõ dở "1." hay xoá trắng ô là những trạng thái hợp lệ mà `number`
- * không diễn đạt được (xoá trắng thành `NaN`, và `NaN` vẽ ra ô là một ô
- * không xoá được nữa).
- */
-export interface ReturnLine {
-  id: string
-  product_id: string
-  product_name: string
-  sku: string
-  unit_name: string
-  quantity: string
-  unit_price: string
-  /** PHẦN TRĂM (10 = 10%) — giá trị của ô nhập, xem đầu tệp. */
-  vat_percent: string
-  conversion_factor: string
-  available_units: ProductUnit[]
-  base_unit: string
-}
-
-/**
- * Dựng một dòng từ sản phẩm vừa chọn, điền sẵn những gì đã biết.
- *
- * ⚠ SỐ LƯỢNG ĐỂ TRỐNG, KHÔNG ĐIỀN 1. Người dùng chọn mặt hàng xong là
- * gõ ngay số lượng thật; điền sẵn 1 là để một con số KHÔNG AI GÕ có cơ
- * hội đi thẳng vào phiếu khi họ bấm nhầm hoặc bỏ qua ô đó.
- *
- * ⚠ ĐƠN VỊ MẶC ĐỊNH LÀ ĐƠN VỊ CƠ SỞ (hệ số 1). Kho trừ theo đơn vị cơ
- * sở; mặc định vào một đơn vị quy đổi là trả 20 hộp khi người ta định
- * trả 1 thùng, hoặc ngược lại.
- *
- * ⚠ `products.vat_rate` LÀ TỈ LỆ (0,1) CÒN Ô NÀY LÀ PHẦN TRĂM. Chép
- * thẳng sang là ghi 0,1% thay cho 10% — thuế hụt 100 lần, và không có
- * chỗ nào kêu. Đó là lỗi có thật của bản cũ.
- */
-export function lineFromProduct(p: ReturnProduct, seq: number): ReturnLine {
-  return {
-    id: `${p.id}-${seq}`,
-    product_id: p.id,
-    product_name: p.name,
-    sku: p.sku ?? "",
-    base_unit: p.base_unit,
-    available_units: p.units ?? [],
-    unit_name: p.base_unit,
-    conversion_factor: "1",
-    quantity: "",
-    unit_price: p.cost_price ? String(p.cost_price) : "",
-    vat_percent: p.vat_rate != null ? ratioToPercent(p.vat_rate) : "0",
-  }
-}
-
-/**
- * Đổi đơn vị của một dòng, kéo theo hệ số quy đổi.
- *
- * ⚠ ĐƠN VỊ CƠ SỞ LUÔN CÓ HỆ SỐ 1, kể cả khi nó cũng nằm trong bảng
- * `product_units` với một hệ số khác. Tra bảng trước rồi mới xét là mở
- * đường cho một dòng "hộp × 20" trong khi hộp chính là đơn vị cơ sở.
- */
-export function unitPatch(line: ReturnLine, unitName: string): Partial<ReturnLine> {
-  if (unitName === line.base_unit) return { unit_name: unitName, conversion_factor: "1" }
-  const u = line.available_units.find((x) => x.unit_name === unitName)
-  return { unit_name: unitName, conversion_factor: u ? String(u.conversion) : "1" }
-}
-
-export interface ReturnTotals {
-  sub: number
-  vat: number
-  total: number
-}
-
-/**
- * Cộng phiếu.
- *
- * ⚠ Ô TRỐNG LÀ 0, KHÔNG PHẢI `NaN`. Một dòng vừa thêm chưa gõ số lượng
- * mà làm cả phiếu thành "NaN đ" là màn hình nói dối về một phiếu hoàn
- * toàn bình thường đang soạn dở.
- */
-export function returnTotals(lines: ReturnLine[]): ReturnTotals {
-  let sub = 0
-  let vat = 0
-  for (const l of lines) {
-    const lineSub = (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0)
-    sub += lineSub
-    vat += (lineSub * (parseFloat(l.vat_percent) || 0)) / 100
-  }
-  return { sub, vat, total: sub + vat }
-}
-
-/** Thành tiền của MỘT dòng — đã gồm thuế, đúng như cột `line_total`. */
-export function lineTotalOf(l: ReturnLine): number {
-  const q = parseFloat(l.quantity) || 0
-  const p = parseFloat(l.unit_price) || 0
-  const v = parseFloat(l.vat_percent) || 0
-  return q * p * (1 + v / 100)
-}
-
-/**
- * Những dòng thật sự được ghi xuống.
- *
- * ⚠ SỐ LƯỢNG PHẢI DƯƠNG. Dòng số lượng 0 ghi xuống là một dòng phiếu
- * không trả gì, và RPC vẫn đi tìm lô để trừ cho nó.
- */
-export function validReturnLines(lines: ReturnLine[]): ReturnLine[] {
-  return lines.filter(
-    (l) => l.product_id && parseFloat(l.quantity) > 0 && parseFloat(l.unit_price) >= 0
-  )
-}
-
-/** Tải trọng một dòng, đúng hình dạng bảng `supplier_return_lines`. */
-export function linePayload(returnId: string, l: ReturnLine) {
-  return {
-    return_id: returnId,
-    product_id: l.product_id,
-    unit_name: l.unit_name || l.base_unit,
-    quantity: parseFloat(l.quantity),
-    unit_price: parseFloat(l.unit_price),
-    vat_rate: percentToRatio(l.vat_percent),
-    conversion_factor: parseFloat(l.conversion_factor) || 1,
-    line_total: lineTotalOf(l),
-  }
 }
 
 /**

@@ -5,9 +5,14 @@
  *
  * ⚠ BIỂU MẪU NẰM Ở `PurchaseReturnForm`, dùng chung với màn sửa. Trang
  * này chỉ còn ba việc: nạp danh mục, dựng phiếu, và ghi xuống.
+ *
+ * ⚠ MÀN NÀY KHÔNG TỰ TRỪ KHO VÀ KHÔNG TỰ GHI CÔNG NỢ — đó là việc của
+ * `complete_supplier_return`, một giao dịch. Số tiền gửi lên chỉ để xem
+ * trên danh sách khi phiếu còn là nháp; lúc gửi, RPC tính lại từ dòng
+ * hàng và ghi số của NÓ vào công nợ NCC (migration 146).
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -20,10 +25,12 @@ import { useToast } from "@/hooks/use-toast"
 import {
   PurchaseReturnForm, type PurchaseReturnFormValue,
 } from "@/components/purchasing/purchase-return-form"
+import { friendlyReturnError, percentToRatio } from "@/lib/purchasing/return-form"
 import {
-  friendlyReturnError, linePayload, returnTotals, validReturnLines,
-  type ReturnProduct,
-} from "@/lib/purchasing/return-form"
+  receiptTotals, validReceiptLines, type ReceiptProduct,
+} from "@/lib/purchasing/receipt-form"
+import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
+import { saveReturnLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -35,19 +42,26 @@ export default function NewPurchaseReturnPage() {
   const { toast } = useToast()
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [products, setProducts] = useState<ReturnProduct[]>([])
+  const [products, setProducts] = useState<ReceiptProduct[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReturnFormValue>(() => ({
     supplierId: "",
     returnDate: new Date().toISOString().slice(0, 10),
     zone: "date",
     reason: "near_expiry",
+    discount: "",
+    vatOverride: "",
     notes: "",
     /* ⚠ MỞ RA LÀ PHIẾU RỖNG, không phải một dòng trống dựng sẵn. */
     lines: [],
   }))
 
   const patch = (p: Partial<PurchaseReturnFormValue>) => setForm((f) => ({ ...f, ...p }))
+
+  const fillExtras = useCallback(async (prods: ReceiptProduct[]) => {
+    setExtras(await loadPickerExtras(supabase, prods))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!user?.org_id) return
@@ -62,7 +76,7 @@ export default function NewPurchaseReturnPage() {
           .order("name"),
         supabase
           .from("products")
-          .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, units:product_units(*)")
+          .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)")
           .eq("org_id", user.org_id)
           .order("name"),
       ])
@@ -70,8 +84,11 @@ export default function NewPurchaseReturnPage() {
       const qErr = ([supRes, prodRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[purchase-returns/new] truy vấn lỗi:", qErr.message)
+      const prods = (prodRes.data as ReceiptProduct[]) || []
       setSuppliers((supRes.data as Supplier[]) || [])
-      setProducts((prodRes.data as ReturnProduct[]) || [])
+      setProducts(prods)
+      /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
+      void fillExtras(prods)
     })()
     return () => { cancelled = true }
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,12 +99,12 @@ export default function NewPurchaseReturnPage() {
       toast({ title: "Chưa chọn nhà cung cấp", variant: "destructive" })
       return
     }
-    const lines = validReturnLines(form.lines)
+    const lines = validReceiptLines(form.lines)
     if (lines.length === 0) {
       toast({ title: "Chưa có dòng hàng hợp lệ", variant: "destructive" })
       return
     }
-    const totals = returnTotals(lines)
+    const totals = receiptTotals(lines, form.discount, form.vatOverride)
 
     setSubmitting(true)
     try {
@@ -99,22 +116,26 @@ export default function NewPurchaseReturnPage() {
           return_date: form.returnDate,
           warehouse_zone: form.zone,
           reason: form.reason || null,
-          notes: form.notes || null,
-          subtotal: totals.sub,
+          notes: form.notes.trim() || null,
+          discount: totals.discount,
+          /* ⚠ Ô TRỐNG → `null`, nghĩa là "để máy chủ tự cộng". Gửi 0 lên
+             là khai "chứng từ này không có thuế". */
+          vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride),
+          /* ⚠ BA SỐ NÀY CHỈ ĐỂ XEM TRÊN DANH SÁCH KHI CÒN LÀ NHÁP. Lúc
+             gửi, RPC tính lại từ dòng hàng và ghi đè — nó mới là số đi
+             vào công nợ NCC. */
+          subtotal: totals.subtotal,
           vat: totals.vat,
           total: totals.total,
           status: "draft",
           created_by: user.id,
         })
-        .select()
+        .select("id")
         .single()
       if (hdrErr || !header) throw new Error(hdrErr?.message || "Tạo phiếu thất bại")
       const returnId = (header as { id: string }).id
 
-      const { error: linesErr } = await supabase
-        .from("supplier_return_lines")
-        .insert(lines.map((l) => linePayload(returnId, l)))
-      if (linesErr) throw new Error(linesErr.message)
+      await saveReturnLines(supabase, returnId, lines, percentToRatio)
 
       if (!asDraft) {
         const { error: rpcErr } = await supabase.rpc("complete_supplier_return", {
@@ -150,6 +171,7 @@ export default function NewPurchaseReturnPage() {
         value={form}
         onChange={patch}
         submitting={submitting}
+        extras={extras}
         actions={
           <>
             <Button variant="outline" onClick={() => handleSubmit(true)} disabled={submitting}>

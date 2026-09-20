@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
-  lineFromProduct, lineTotalOf, linePayload, returnTotals, searchReturnProducts,
-  unitPatch, validReturnLines, friendlyReturnError, ratioToPercent, percentToRatio,
-  type ReturnLine, type ReturnProduct,
+  searchReturnProducts, friendlyReturnError, ratioToPercent, percentToRatio,
+  type ReturnProduct,
 } from "../src/lib/purchasing/return-form"
+import {
+  lineFromProduct, lineTotalOf, receiptTotals, unitPatch, validReceiptLines,
+  type ReceiptLine,
+} from "../src/lib/purchasing/receipt-form"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -13,9 +16,19 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const strip = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
+/**
+ * ⚠ BIỂU MẪU NẰM Ở HAI TỆP. `FORM` chỉ còn khối "Thông tin chung" riêng
+ * của phiếu trả (NCC, ngày trả, kho nguồn, lý do, ghi chú); ô tìm hàng,
+ * bảng chín cột, khối tổng và modal nằm ở `EDITOR` — dùng chung với
+ * phiếu nhập hàng. Chốt nào nói về phần dùng chung mà vẫn soi `FORM` thì
+ * xanh vì đọc phải chuỗi rỗng, chứ không vì hành vi còn đúng.
+ */
 const FORM = strip(read("src/components/purchasing/purchase-return-form.tsx"))
+const EDITOR = strip(read("src/components/purchasing/purchasing-lines-editor.tsx"))
 const NEW_PAGE = strip(read("src/app/(dashboard)/purchase-returns/new/page.tsx"))
 const EDIT_PAGE = strip(read("src/app/(dashboard)/purchase-returns/[id]/edit/page.tsx"))
+const DETAIL = strip(read("src/app/(dashboard)/purchase-returns/[id]/page.tsx"))
+const SAVE = strip(read("src/lib/purchasing/save-receipt.ts"))
 
 const prod = (o: Partial<ReturnProduct> = {}): ReturnProduct =>
   ({
@@ -30,14 +43,17 @@ const prod = (o: Partial<ReturnProduct> = {}): ReturnProduct =>
     ...o,
   }) as unknown as ReturnProduct
 
-const line = (o: Partial<ReturnLine> = {}): ReturnLine => ({
+const line = (o: Partial<ReceiptLine> = {}): ReceiptLine => ({
   id: "l1",
   product_id: "p1",
   product_name: "Bánh hình kẹo 160g",
   sku: "SKU1",
+  note: "",
   unit_name: "hộp",
   quantity: "2",
   unit_price: "8000",
+  line_discount: "",
+  discount_mode: "amount",
   vat_percent: "10",
   conversion_factor: "1",
   available_units: [],
@@ -58,51 +74,39 @@ describe("quy đổi thuế suất giữa tỉ lệ và phần trăm", () => {
   it("tỉ lệ sang phần trăm", () => {
     expect(ratioToPercent(0.1)).toBe("10")
     expect(ratioToPercent(0)).toBe("0")
+    expect(ratioToPercent(0.05)).toBe("5")
+  })
+
+  /** ⚠ `0.08 * 100` ra `8.000000000000002` — chuỗi đó rơi vào ô nhập. */
+  it("không để đuôi rác của dấu phẩy động lọt vào ô nhập", () => {
+    expect(ratioToPercent(0.08)).toBe("8")
     expect(ratioToPercent(0.015)).toBe("1.5")
   })
 
-  /**
-   * ⚠ `0.08 * 100` TRONG DẤU PHẨY ĐỘNG RA `8.000000000000002`. Không
-   * làm tròn thì chuỗi rác đó rơi thẳng vào ô nhập cho người dùng nhìn.
-   */
-  it("không để đuôi rác của dấu phẩy động lọt vào ô nhập", () => {
-    expect(ratioToPercent(0.08)).toBe("8")
-    expect(ratioToPercent(0.07)).toBe("7")
-  })
-
-  /**
-   * ⚠ KHÔNG PHẢI SỐ THÌ RA "0", ĐỪNG RA "NaN". Chuỗi "NaN" trong một ô
-   * `type="number"` là một ô không xoá được — gõ gì cũng không sửa nổi.
-   */
+  /** ⚠ "NaN" trong ô `type="number"` là một ô không xoá được nữa. */
   it("giá trị rỗng hoặc hỏng ra 0, không ra NaN", () => {
     expect(ratioToPercent(null)).toBe("0")
     expect(ratioToPercent(undefined)).toBe("0")
-    expect(ratioToPercent("")).toBe("0")
     expect(ratioToPercent("abc")).toBe("0")
   })
 
   it("phần trăm sang tỉ lệ", () => {
     expect(percentToRatio("10")).toBe(0.1)
     expect(percentToRatio("8")).toBe(0.08)
-    expect(percentToRatio("0")).toBe(0)
-    expect(percentToRatio("1.5")).toBe(0.015)
+    expect(percentToRatio(0)).toBe(0)
   })
 
-  /** ⚠ Ô thuế để trắng trên phiếu soạn dở là chuyện thường — không NaN. */
+  /** ⚠ Ô trống là 0 — gửi `NaN` lên cột `numeric` là ghi rác. */
   it("ô trống ra 0, không gửi NaN lên máy chủ", () => {
     expect(percentToRatio("")).toBe(0)
     expect(percentToRatio(null)).toBe(0)
-    expect(Number.isNaN(percentToRatio("abc"))).toBe(false)
+    expect(percentToRatio("--")).toBe(0)
   })
 
-  /**
-   * ⚠ ĐI MỘT VÒNG PHẢI VỀ ĐÚNG CHỖ CŨ. Màn sửa phiếu đọc tỉ lệ từ cơ sở
-   * dữ liệu, đổi sang phần trăm cho ô nhập, rồi lưu lại thành tỉ lệ.
-   * Lệch một nhịp ở đây là mỗi lần mở phiếu ra bấm Lưu là thuế đổi số.
-   */
+  /** ⚠ Đọc lên rồi lưu lại nhiều lần không được làm thuế trôi đi. */
   it("đọc ra rồi lưu lại không làm thuế trôi đi", () => {
     for (const r of [0, 0.05, 0.08, 0.1, 0.015]) {
-      expect(percentToRatio(ratioToPercent(r)), `tỉ lệ ${r} trôi sau một vòng`).toBe(r)
+      expect(percentToRatio(ratioToPercent(r))).toBe(r)
     }
   })
 })
@@ -144,6 +148,19 @@ describe("dựng dòng từ mặt hàng vừa chọn", () => {
   })
 
   /**
+   * ⚠ BA Ô CỦA PHIẾU NHẬP PHẢI CÓ LUÔN Ở PHIẾU TRẢ (chủ nhà chốt
+   * 20/09/2026: "hãy làm phiếu trả NCC tương tự"). Trước đây phiếu trả
+   * có bản `lineFromProduct` RIÊNG, và đúng vì thế mà nó thiếu cả ba.
+   * Chốt này là thứ duy nhất giữ hai chứng từ không tách nhau lần nữa.
+   */
+  it("dòng mới có đủ ghi chú, giảm giá và chế độ giảm giá", () => {
+    const l = lineFromProduct(prod(), 1)
+    expect(l.note).toBe("")
+    expect(l.line_discount).toBe("")
+    expect(l.discount_mode, "chế độ mặc định phải là TIỀN, không phải %").toBe("amount")
+  })
+
+  /**
    * ⚠ CHƯA CÓ GIÁ VỐN THÌ ĐỂ TRỐNG, đừng điền 0. Số 0 đọc như "hàng này
    * cho không" và đi thẳng vào khoản giảm công nợ NCC.
    */
@@ -182,12 +199,49 @@ describe("đổi đơn vị của dòng", () => {
   })
 })
 
+/**
+ * PHIẾU TRẢ CỘNG TIỀN ĐÚNG BẰNG PHÉP CỦA PHIẾU NHẬP.
+ *
+ * ⚠ MỘT PHÉP TÍNH CHO CẢ HAI CHỨNG TỪ. Bản cũ của phiếu trả có
+ * `returnTotals` riêng: KHÔNG có giảm giá dòng, KHÔNG có giảm giá phiếu,
+ * KHÔNG có tiền thuế gõ tay. Hai phép tính cho hai chiều của cùng một
+ * việc với cùng một NCC là chỗ để con số hai bên không bao giờ khớp.
+ */
 describe("cộng phiếu", () => {
   it("cộng tiền hàng và thuế theo phần trăm", () => {
-    const t = returnTotals([line({ quantity: "2", unit_price: "8000", vat_percent: "10" })])
-    expect(t.sub).toBe(16000)
+    const t = receiptTotals([line({ quantity: "2", unit_price: "8000", vat_percent: "10" })], "")
+    expect(t.subtotal).toBe(16000)
     expect(t.vat).toBe(1600)
     expect(t.total).toBe(17600)
+  })
+
+  /**
+   * ⚠ GIẢM GIÁ CẢ PHIẾU TRỪ SAU THUẾ (chủ nhà chốt 20/09/2026). Trừ
+   * trước thuế là đổi luôn căn cứ tính thuế — con số khai lên tờ hoá đơn
+   * sẽ khác con số NCC ghi.
+   */
+  it("giảm giá cả phiếu trừ SAU thuế", () => {
+    const t = receiptTotals([line({ quantity: "2", unit_price: "8000", vat_percent: "10" })], "1000")
+    expect(t.vat, "thuế bị đổi vì giảm giá — đang trừ TRƯỚC thuế").toBe(1600)
+    expect(t.total).toBe(16600)
+  })
+
+  /** ⚠ Giảm giá dòng ở chế độ % tính trên tiền hàng của CHÍNH dòng đó. */
+  it("giảm giá dòng theo phần trăm quy ra tiền rồi mới tính thuế", () => {
+    const t = receiptTotals(
+      [line({ quantity: "2", unit_price: "8000", line_discount: "10", discount_mode: "percent" })],
+      ""
+    )
+    expect(t.subtotal).toBe(14400)
+    expect(t.vat).toBe(1440)
+  })
+
+  /** ⚠ Tiền thuế gõ tay THẮNG số tự cộng; ô trống thì máy tự cộng. */
+  it("tiền thuế gõ tay đè lên số tự cộng, ô trống thì không", () => {
+    const l = [line({ quantity: "2", unit_price: "8000", vat_percent: "10" })]
+    expect(receiptTotals(l, "", "999").vat).toBe(999)
+    expect(receiptTotals(l, "", "").vat, "ô trống mà vẫn đè").toBe(1600)
+    expect(receiptTotals(l, "", "0").vat, "số 0 phải giữ — đó là hoá đơn không thuế").toBe(0)
   })
 
   /**
@@ -196,16 +250,19 @@ describe("cộng phiếu", () => {
    * toàn bình thường đang soạn dở.
    */
   it("dòng còn trống không làm hỏng tổng", () => {
-    const t = returnTotals([
+    const t = receiptTotals([
       line({ quantity: "2", unit_price: "8000", vat_percent: "10" }),
       line({ id: "l2", quantity: "", unit_price: "", vat_percent: "" }),
-    ])
+    ], "")
     expect(Number.isNaN(t.total)).toBe(false)
     expect(t.total).toBe(17600)
   })
 
   it("phiếu rỗng ra 0", () => {
-    expect(returnTotals([])).toEqual({ sub: 0, vat: 0, total: 0 })
+    const t = receiptTotals([], "")
+    expect(t.subtotal).toBe(0)
+    expect(t.vat).toBe(0)
+    expect(t.total).toBe(0)
   })
 
   it("thành tiền một dòng đã gồm thuế", () => {
@@ -220,7 +277,7 @@ describe("dòng nào được ghi xuống", () => {
    * không trả gì, mà RPC vẫn đi tìm lô để trừ cho nó.
    */
   it("bỏ dòng chưa chọn hàng và dòng số lượng 0", () => {
-    const out = validReturnLines([
+    const out = validReceiptLines([
       line({ id: "ok" }),
       line({ id: "chưa chọn", product_id: "" }),
       line({ id: "không số", quantity: "0" }),
@@ -230,69 +287,96 @@ describe("dòng nào được ghi xuống", () => {
   })
 
   it("giá 0 vẫn được ghi — hàng trả không tính tiền là chuyện có thật", () => {
-    expect(validReturnLines([line({ unit_price: "0" })])).toHaveLength(1)
+    expect(validReceiptLines([line({ unit_price: "0" })])).toHaveLength(1)
   })
 })
 
-describe("tải trọng gửi lên máy chủ", () => {
-  it("đúng hình dạng bảng supplier_return_lines", () => {
-    expect(linePayload("r1", line({ quantity: "2", unit_price: "8000", vat_percent: "10" }))).toEqual({
-      return_id: "r1",
-      product_id: "p1",
-      unit_name: "hộp",
-      quantity: 2,
-      unit_price: 8000,
-      vat_rate: 0.1,
-      conversion_factor: 1,
-      line_total: 17600,
-    })
+/**
+ * GHI DÒNG XUỐNG `supplier_return_lines`.
+ *
+ * ⚠ MỘT PHÉP GHI CHO CẢ HAI CHỨNG TỪ. Bản cũ có `linePayload` riêng cho
+ * phiếu trả — và nó KHÔNG ghi `notes`, KHÔNG ghi `line_discount`, KHÔNG
+ * ghi `sort_order`, nên ba ô người dùng vừa gõ biến mất lúc lưu mà không
+ * có gì kêu.
+ */
+describe("ghi dòng hàng phiếu trả", () => {
+  it("ghi qua hàm chung, không có phép ghi riêng của phiếu trả", () => {
+    expect(SAVE).toContain("export async function saveReturnLines")
+    expect(SAVE).toContain('.from("supplier_return_lines")')
+    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
+      expect(src, `${ten} không dùng phép ghi chung`).toContain("saveReturnLines(supabase")
+      expect(src, `${ten} còn tự dựng tải trọng dòng`).not.toContain("linePayload(")
+    }
   })
 
-  /** ⚠ Đơn vị trống thì lấy đơn vị cơ sở — cột `unit_name` là NOT NULL. */
-  it("đơn vị trống thì rơi về đơn vị cơ sở", () => {
-    expect(linePayload("r1", line({ unit_name: "" })).unit_name).toBe("hộp")
+  /**
+   * ⚠ RLS TỪ CHỐI = 0 DÒNG, HTTP 200, `error` null. Chèn mà không
+   * `.select()` rồi đếm là một phiếu KHÔNG CÓ DÒNG NÀO được báo "đã lưu".
+   */
+  it("có select rồi đếm, không tin mỗi error", () => {
+    const ins = SAVE.slice(SAVE.indexOf('.from("supplier_return_lines")\n    .insert'))
+    expect(ins).toContain('.select("id")')
+    expect(SAVE).toContain("data.length === 0")
+    expect(SAVE).toContain("không có quyền")
   })
 
-  it("hệ số quy đổi hỏng thì về 1, không gửi NaN", () => {
-    expect(linePayload("r1", line({ conversion_factor: "" })).conversion_factor).toBe(1)
+  /**
+   * ⚠ CỘT `line_discount` LÀ TIỀN, ô nhập có thể là PHẦN TRĂM. Ghi thẳng
+   * số người dùng gõ xuống là cột ấy mang hai nghĩa tuỳ dòng, và máy chủ
+   * trừ "10 đồng" cho một dòng người ta bảo giảm 10%.
+   */
+  it("giảm giá quy ra TIỀN trước khi ghi xuống", () => {
+    expect(SAVE).toContain("line_discount: lineDiscountAmountOf(l)")
+    expect(SAVE, "đang ghi thẳng ô nhập xuống cột tiền")
+      .not.toContain("line_discount: Number(l.line_discount)")
+  })
+
+  /** ⚠ Cột là TỈ LỆ, ô nhập là PHẦN TRĂM — quên quy đổi là thuế hụt 100 lần. */
+  it("thuế suất quy đổi phần trăm → tỉ lệ khi ghi xuống", () => {
+    expect(SAVE).toContain("vat_rate: percentToRatio(l.vat_percent)")
+    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
+      expect(src, `${ten} không truyền hàm quy đổi`).toContain("percentToRatio")
+    }
+  })
+
+  /** STT phải được ghi xuống, nếu không tờ in mỗi lần một thứ tự. */
+  it("ghi sort_order 1-based, và màn đọc lên theo đúng cột đó", () => {
+    expect(SAVE).toContain("sort_order: i + 1")
+    expect(EDIT_PAGE).toContain('.order("sort_order")')
+    expect(DETAIL).toContain('.order("sort_order")')
   })
 })
 
 describe("ô tìm hàng của phiếu", () => {
-  const cat = [prod(), prod({ id: "p2", sku: "SKU2", name: "Kem Đậu Xanh", barcode: "111" } as Partial<ReturnProduct>)]
+  const catalog = [
+    prod(),
+    prod({ id: "p2", sku: "SKU2", name: "Sữa tươi 180ml", barcode: "1112223334445" } as Partial<ReturnProduct>),
+  ]
 
-  /** ⚠ Bỏ dấu trước khi so — người nhập kho gõ "banh" để tìm "Bánh". */
   it("tìm được khi gõ không dấu", () => {
-    expect(searchReturnProducts(cat, "banh", new Set()).map((p) => p.id)).toEqual(["p1"])
-    expect(searchReturnProducts(cat, "dau xanh", new Set()).map((p) => p.id)).toEqual(["p2"])
+    expect(searchReturnProducts(catalog, "banh", new Set()).map((p) => p.id)).toEqual(["p1"])
+    expect(searchReturnProducts(catalog, "sua tuoi", new Set()).map((p) => p.id)).toEqual(["p2"])
   })
 
   it("tìm được theo mã SKU và mã vạch", () => {
-    expect(searchReturnProducts(cat, "sku2", new Set()).map((p) => p.id)).toEqual(["p2"])
-    expect(searchReturnProducts(cat, "8934567890123", new Set()).map((p) => p.id)).toEqual(["p1"])
+    expect(searchReturnProducts(catalog, "SKU2", new Set()).map((p) => p.id)).toEqual(["p2"])
+    expect(searchReturnProducts(catalog, "8934567890123", new Set()).map((p) => p.id)).toEqual(["p1"])
   })
 
-  /**
-   * ⚠ LOẠI MÃ ĐÃ CÓ TRÊN PHIẾU. Thêm lần hai thành hai dòng cùng một mã,
-   * và người đối chiếu với NCC không hiểu vì sao một mặt hàng xuất hiện
-   * hai lần trong cùng một phiếu.
-   */
+  /** ⚠ Thêm lần hai là hai dòng cùng một mã — người đối chiếu không hiểu. */
   it("không gợi ý mã đã có trên phiếu", () => {
-    expect(searchReturnProducts(cat, "banh", new Set(["p1"]))).toEqual([])
+    expect(searchReturnProducts(catalog, "banh", new Set(["p1"]))).toHaveLength(0)
   })
 
-  /**
-   * ⚠ CHƯA GÕ GÌ THÌ KHÔNG GỢI Ý GÌ. Đổ cả danh mục xuống là dựng lại
-   * đúng cái danh sách phải cuộn mà ô tìm sinh ra để thay thế.
-   */
+  /** ⚠ Chưa gõ gì mà đổ cả danh mục xuống là dựng lại đúng danh sách phải cuộn. */
   it("chưa gõ gì thì không gợi ý gì", () => {
-    expect(searchReturnProducts(cat, "", new Set())).toEqual([])
-    expect(searchReturnProducts(cat, "   ", new Set())).toEqual([])
+    expect(searchReturnProducts(catalog, "", new Set())).toHaveLength(0)
+    expect(searchReturnProducts(catalog, "   ", new Set())).toHaveLength(0)
   })
 
   it("cắt bớt khi quá nhiều kết quả", () => {
-    const many = Array.from({ length: 50 }, (_, i) =>
-      prod({ id: `x${i}`, name: `Bánh ${i}` } as Partial<ReturnProduct>)
+    const many = Array.from({ length: 30 }, (_, i) =>
+      prod({ id: `x${i}`, sku: `S${i}`, name: `Bánh số ${i}` } as Partial<ReturnProduct>)
     )
     expect(searchReturnProducts(many, "banh", new Set())).toHaveLength(12)
   })
@@ -314,15 +398,14 @@ describe("dịch lỗi của complete_supplier_return", () => {
 // =====================================================================
 
 /**
- * BIỂU MẪU PHIẾU TRẢ NCC THEO KHUÔN MÀN ĐẶT HÀNG.
+ * PHIẾU TRẢ NCC DÙNG ĐÚNG KHUÔN PHIẾU NHẬP HÀNG.
  *
- * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "phiếu trả hàng NCC làm theo form mẫu như
- * tạo đơn hàng đi". Bản cũ bắt chọn hàng trong một `<Select>` liệt kê cả
- * 1.700 mặt hàng — Ở TỪNG DÒNG — sau khi bấm "Thêm dòng" để lấy một thẻ
- * trống. Chính chủ nhà đã bác cách đó một lần rồi cho ô chọn NCC ở phiếu
- * nhập kho; phiếu trả NCC là chỗ cuối còn sót.
+ * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "hãy làm phiếu trả NCC tương tự". Trước đó
+ * là "phiếu trả hàng NCC làm theo form mẫu như tạo đơn hàng đi" — bản cũ
+ * bắt chọn hàng trong một `<Select>` liệt kê cả 1.700 mặt hàng, Ở TỪNG
+ * DÒNG, sau khi bấm "Thêm dòng" để lấy một thẻ trống.
  */
-describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
+describe("biểu mẫu phiếu trả NCC theo khuôn phiếu nhập", () => {
   it("chọn NCC bằng ô gõ được, không bằng danh sách xổ", () => {
     expect(FORM).toContain("<SearchSelect")
     expect(FORM).toContain("options={supplierOptions}")
@@ -346,11 +429,31 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
     expect(FORM).not.toContain("Chọn sản phẩm")
   })
 
-  it("thêm hàng bằng ô tìm rồi chạm, và xoá ô tìm sau khi thêm", () => {
-    expect(FORM).toContain("searchReturnProducts(products, term, onSlip)")
-    const add = FORM.slice(FORM.indexOf("const addProduct"), FORM.indexOf("return (", FORM.indexOf("const addProduct")))
-    expect(add).toContain("lineFromProduct(p, seqRef.current)")
-    expect(add, "thêm xong phải xoá ô tìm").toContain('setTerm("")')
+  /**
+   * ⚠ PHẦN DÙNG CHUNG PHẢI THẬT SỰ DÙNG CHUNG. Đây là chốt giữ lời hứa
+   * "tương tự": phiếu trả không được có bản sao của bảng hàng, ô tìm hay
+   * khối tổng — có bản sao là ngày mai sửa một bên quên bên kia.
+   */
+  it("dùng chung đúng một bảng hàng với phiếu nhập", () => {
+    expect(FORM).toContain("<PurchasingLinesEditor")
+    expect(FORM, "phiếu trả tự vẽ lại bảng hàng").not.toContain("<thead")
+    expect(FORM, "phiếu trả tự vẽ lại ô tìm").not.toContain("searchReturnProducts")
+    expect(FORM, "phiếu trả tự cộng tiền lấy một lần nữa").not.toContain("receiptTotals")
+  })
+
+  /** ⚠ Nhãn riêng của phiếu trả — "Cần trả NCC" là chiều ngược lại. */
+  it("nhãn tổng và tiêu đề bảng nói đúng chiều tiền", () => {
+    expect(FORM).toContain('totalLabel="NCC hoàn lại"')
+    expect(FORM).toContain('linesTitle="Chi tiết hàng trả"')
+    expect(FORM, "đang mượn nhãn của phiếu nhập").not.toContain("Cần trả NCC")
+  })
+
+  /** ⚠ Bốn ô riêng của phiếu trả phải còn nguyên ở đầu phiếu. */
+  it("đầu phiếu có ngày trả, kho nguồn, lý do và ghi chú", () => {
+    expect(FORM).toContain("Ngày trả *")
+    expect(FORM).toContain("Xuất từ kho *")
+    expect(FORM).toContain("RETURN_REASONS.map(")
+    expect(FORM).toContain('id="pr-notes"')
   })
 
   /**
@@ -359,7 +462,7 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
    * phép đếm dòng và vào cả vòng lặp lưu.
    */
   it("phiếu rỗng nói rõ việc tiếp theo, và không dựng sẵn dòng trống", () => {
-    const flat = FORM.replace(/\s+/g, " ")
+    const flat = EDITOR.replace(/\s+/g, " ")
     expect(flat).toContain("{value.lines.length === 0 ? (")
     expect(flat).toContain("Tìm ở ô trên rồi bấm Thêm")
     for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
@@ -370,8 +473,8 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
 
   /** ⚠ Tổng tiền và nút đi tiếp phải luôn trong tầm mắt trên biểu mẫu dài. */
   it("có thanh dính đáy mang tổng tiền và nút hành động", () => {
-    expect(FORM).toContain("fixed inset-x-0 bottom-0")
-    const bar = FORM.slice(FORM.indexOf("fixed inset-x-0 bottom-0"))
+    expect(EDITOR).toContain("fixed inset-x-0 bottom-0")
+    const bar = EDITOR.slice(EDITOR.indexOf("fixed inset-x-0 bottom-0"))
     expect(bar).toContain("formatCurrency(totals.total)")
     expect(bar).toContain("{actions}")
     /* Thanh dính đáy che mất cuối trang nếu trang không chừa chỗ. */
@@ -404,8 +507,17 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
     expect(EDIT_PAGE).toContain("quantity: String(l.quantity)")
     expect(EDIT_PAGE).toContain("unit_price: String(l.unit_price)")
     expect(EDIT_PAGE).toContain("vat_percent: ratioToPercent(l.vat_rate)")
+    expect(EDIT_PAGE, "ghi chú dòng đã lưu bị bỏ rơi khi nạp lại").toContain('note: l.notes || ""')
     /* Mã đã xoá khỏi danh mục vẫn phải hiện ra, không vẽ dòng không tên. */
     expect(EDIT_PAGE).toContain('prod?.name || "Sản phẩm đã xoá"')
+  })
+
+  /**
+   * ⚠ CỘT LƯU LÀ TIỀN, nên dòng nạp lại LUÔN ở chế độ tiền. Đoán ngược
+   * ra phần trăm là bịa — cùng một số tiền ra vô số phần trăm tuỳ giá.
+   */
+  it("màn sửa nạp dòng về chế độ tiền", () => {
+    expect(EDIT_PAGE).toContain('discount_mode: "amount"')
   })
 
   /** Ô tìm cần mã vạch thì câu đọc danh mục phải lấy cột đó về. */
@@ -413,6 +525,191 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
     for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
       expect(src, `${ten} không đọc cột barcode`).toContain("id, name, sku, barcode, base_unit")
     }
+  })
+
+  /** ⚠ NCC và tồn kho ở ô tìm — hai màn nạp bằng đúng hàm chung. */
+  it("ô tìm của phiếu trả cũng có NCC và tồn kho", () => {
+    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
+      expect(src, `${ten} không nạp NCC / tồn cho ô tìm`).toContain("loadPickerExtras(supabase, prods)")
+      expect(src, `${ten} không truyền xuống biểu mẫu`).toContain("extras={extras}")
+    }
+  })
+})
+
+// =====================================================================
+
+/**
+ * TIỀN VÀ KHO CỦA PHIẾU TRẢ ĐI QUA RPC, KHÔNG QUA TRÌNH DUYỆT.
+ */
+describe("ghi phiếu trả: màn hình không tự đụng kho hay công nợ", () => {
+  for (const [ten, src] of [
+    ["màn tạo", NEW_PAGE],
+    ["màn sửa", EDIT_PAGE],
+    ["màn chi tiết", DETAIL],
+  ] as const) {
+    it(`${ten} không GHI thẳng vào batches / payables / stock_entries`, () => {
+      /* ⚠ CẤM GHI, KHÔNG CẤM ĐỌC — ô tìm cần ĐỌC tồn kho để hiện ra. */
+      const flat = src.replace(/\s+/g, " ")
+      for (const t of ["batches", "payables", "stock_entries", "stock_entry_lines"]) {
+        for (const verb of ["insert", "update", "delete", "upsert"]) {
+          expect(
+            flat,
+            `${ten} đang tự ${verb} bảng ${t} — kho và công nợ phải đi qua RPC`
+          ).not.toContain(`.from("${t}") .${verb}(`)
+        }
+      }
+    })
+  }
+
+  it("kho và công nợ chỉ đi qua hai RPC", () => {
+    expect(NEW_PAGE).toContain('supabase.rpc("complete_supplier_return"')
+    expect(EDIT_PAGE).toContain('rpc("cancel_supplier_return"')
+    expect(DETAIL).toContain("complete_supplier_return")
+    expect(DETAIL).toContain("cancel_supplier_return")
+  })
+
+  /**
+   * ⚠ HUỶ TRƯỚC RỒI LẬP LẠI, không sửa đè. Sửa đè lên một chứng từ đã
+   * ra khỏi kho và vào sổ nợ là chứng từ nói một đằng, kho nói một nẻo.
+   */
+  it("phiếu đã gửi thì huỷ trước rồi mới ghi đè", () => {
+    const submit = EDIT_PAGE.slice(
+      EDIT_PAGE.indexOf("const handleSubmit = async"),
+      EDIT_PAGE.indexOf("if (authLoading || loading)")
+    )
+    const cancelAt = submit.indexOf('rpc("cancel_supplier_return"')
+    const updateAt = submit.indexOf('.from("supplier_returns")')
+    const completeAt = submit.indexOf('rpc("complete_supplier_return"')
+    expect(cancelAt, "không huỷ bản cũ trước khi sửa").toBeGreaterThan(0)
+    expect(updateAt, "ghi đè TRƯỚC khi huỷ — kho vẫn giữ số đã trừ").toBeGreaterThan(cancelAt)
+    expect(completeAt).toBeGreaterThan(updateAt)
+    expect(EDIT_PAGE).toContain("wasCompleted")
+  })
+
+  /**
+   * ⚠ BA BƯỚC KHÔNG NẰM TRONG MỘT GIAO DỊCH. Hỏng ở bước cuối thì kho
+   * đã hoàn về đúng nhưng phiếu chưa gửi lại — phải NÓI RA, nếu không
+   * người dùng tưởng mất hàng.
+   */
+  it("gửi lại hỏng thì nói rõ kho đã hoàn về đúng", () => {
+    expect(EDIT_PAGE).toContain("NHÁP")
+    expect(EDIT_PAGE).toContain("kho đã hoàn về đúng")
+  })
+
+  /**
+   * ⚠ Ô TRỐNG → `null`, KHÔNG → 0. Gửi 0 lên là khai "chứng từ này không
+   * có thuế"; để trống là "máy tự cộng".
+   */
+  it("hai màn gửi vat_override null khi để trống, và giữ số 0 khi gõ 0", () => {
+    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
+      expect(src, `${ten} không gửi vat_override`).toContain(
+        'vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride)'
+      )
+      expect(src, `${ten} không gửi giảm giá cả phiếu`).toContain("discount: totals.discount")
+    }
+    expect(EDIT_PAGE, "nạp lại đang biến số 0 thành ô trống").toContain(
+      'vatOverride: hdr.vat_override == null ? "" : String(hdr.vat_override)'
+    )
+  })
+
+  /** ⚠ Màn chi tiết phải hiện ba thứ mới, nếu không người dùng lưu xong không thấy đâu. */
+  it("màn chi tiết hiện ghi chú dòng, giảm giá dòng và giảm giá cả phiếu", () => {
+    expect(DETAIL).toContain(">Ghi chú<")
+    expect(DETAIL).toContain(">Giảm giá<")
+    expect(DETAIL).toContain("Giảm giá cả phiếu")
+    const totals = DETAIL.slice(DETAIL.indexOf("Tổng hàng (chưa VAT)"))
+    const vat = totals.indexOf('label="VAT"')
+    const disc = totals.indexOf("Giảm giá cả phiếu")
+    expect(disc, "giảm giá đứng TRÊN thuế — sai thứ tự phép tính").toBeGreaterThan(vat)
+  })
+})
+
+// =====================================================================
+
+/**
+ * MIGRATION 146 — MÁY CHỦ TÍNH LẠI TIỀN, KHÔNG NHẬN SỐ CỦA TRÌNH DUYỆT.
+ *
+ * ⚠ LỖ HỔNG CÓ THẬT TRƯỚC 146. `complete_supplier_return` đọc
+ * `supplier_returns.total` — con số do MÀN HÌNH ghi xuống — rồi ghi
+ * thẳng vào `payables.amount`. Một tab mở lâu, một ô để trống, hay một
+ * người sửa bảng bằng tay là công nợ NCC lệch mà không có chỗ đối chiếu.
+ */
+describe("migration 146 — phiếu trả dùng đúng khuôn phiếu nhập", () => {
+  const MIG = read("supabase/migrations/146_supplier_return_same_shape.sql")
+  const SQL = MIG.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n")
+
+  it("thêm đủ bốn cột, và thêm được nhiều lần", () => {
+    for (const c of ["discount numeric", "vat_override numeric"]) {
+      expect(SQL, `supplier_returns thiếu ${c}`).toContain(c)
+    }
+    for (const c of ["line_discount numeric", "sort_order integer"]) {
+      expect(SQL, `supplier_return_lines thiếu ${c}`).toContain(c)
+    }
+    expect(
+      (SQL.match(/ADD COLUMN IF NOT EXISTS/g) ?? []).length,
+      "có ADD COLUMN không IF NOT EXISTS — migration chạy lại sẽ nổ"
+    ).toBe(4)
+  })
+
+  /**
+   * ⚠ TIỀN PHẢI CỘNG TỪ DÒNG HÀNG. Nếu hàm còn đọc `total` của bảng đầu
+   * phiếu thì cả migration này vô nghĩa — công nợ vẫn nhận số của trình
+   * duyệt.
+   */
+  it("tính lại tiền từ dòng hàng, không đọc total của trình duyệt", () => {
+    const fn = SQL.slice(SQL.indexOf("CREATE OR REPLACE FUNCTION complete_supplier_return"))
+    expect(fn).toContain("v_sub := v_sub +")
+    expect(fn).toContain("v_vat := v_vat +")
+    expect(fn).toContain("v_total := GREATEST(0, v_sub + v_vat - v_discount)")
+    expect(
+      /INTO[^;]*\bv_total\b/.test(fn.slice(0, fn.indexOf("FOR r IN"))),
+      "vẫn đang đọc total từ bảng đầu phiếu"
+    ).toBe(false)
+  })
+
+  /** ⚠ Giảm giá trừ SAU thuế, đúng bằng phép của màn hình. */
+  it("giảm giá cả phiếu trừ sau thuế, và tiền thuế gõ tay thắng số tự cộng", () => {
+    const fn = SQL.slice(SQL.indexOf("CREATE OR REPLACE FUNCTION complete_supplier_return"))
+    const vatOvr = fn.indexOf("IF v_vat_ovr IS NOT NULL THEN")
+    const total = fn.indexOf("v_total := GREATEST(0, v_sub + v_vat - v_discount)")
+    expect(vatOvr, "không có đường gõ tay tiền thuế").toBeGreaterThan(0)
+    expect(total, "tính tổng TRƯỚC khi áp tiền thuế gõ tay").toBeGreaterThan(vatOvr)
+    expect(fn).toContain("v_vat := GREATEST(0, v_vat_ovr)")
+  })
+
+  /**
+   * ⚠ `line_discount` CHỈ ĐỤNG TỚI TIỀN. Số lượng hàng trả về NCC vẫn là
+   * `quantity × conversion_factor`; lẫn hai thứ là "giảm giá 10%" biến
+   * thành "trả thiếu 10% số hàng".
+   */
+  it("giảm giá dòng không đụng tới số lượng trừ kho", () => {
+    const fn = SQL.slice(SQL.indexOf("CREATE OR REPLACE FUNCTION complete_supplier_return"))
+    expect(fn).toContain("v_base_qty := COALESCE(r.quantity, 0) * r.cf")
+    const qtyLine = fn.slice(fn.indexOf("v_base_qty :="), fn.indexOf("v_need := v_base_qty"))
+    expect(qtyLine, "giảm giá đang bị trừ vào số lượng hàng").not.toContain("line_discount")
+  })
+
+  /** ⚠ Dòng nợ mang số ÂM — đây là khoản NCC trả lại mình. */
+  it("ghi công nợ bằng số âm, từ tổng máy chủ vừa tính", () => {
+    expect(SQL).toContain("-v_total, 0, 'open'")
+  })
+
+  /**
+   * ⚠ CÂU LỖI GIỮ NGUYÊN VĂN CỦA 071. Màn hình nhận dạng lỗi thiếu tồn
+   * bằng đúng chuỗi `INSUFFICIENT_STOCK` rồi cắt theo dấu `|`; đổi chữ ở
+   * SQL là người dùng nhận nguyên câu lỗi thô của Postgres.
+   */
+  it("câu lỗi thiếu tồn khớp với hàm dịch của màn hình", () => {
+    expect(SQL).toContain("INSUFFICIENT_STOCK | ")
+    expect(friendlyReturnError("INSUFFICIENT_STOCK | Bánh (hộp): cần 10, kho hàng date còn 3, kho hàng bán còn 0"))
+      .toContain("Bánh (hộp): cần 10")
+  })
+
+  it("dọn quyền, ghi chú hàm và nạp lại lược đồ", () => {
+    expect(SQL).toContain("REVOKE EXECUTE ON FUNCTION complete_supplier_return(uuid) FROM PUBLIC")
+    expect(SQL).toContain("GRANT EXECUTE ON FUNCTION complete_supplier_return(uuid) TO authenticated")
+    expect(SQL).toContain("RAISE NOTICE")
+    expect(SQL).toContain("NOTIFY pgrst, 'reload schema'")
   })
 })
 
@@ -440,7 +737,6 @@ describe("migration 141 — đơn vị thuế suất của phiếu trả NCC", (
     .split("\n")
     .filter((l) => !l.trimStart().startsWith("--"))
     .join("\n")
-  const DETAIL = strip(read("src/app/(dashboard)/purchase-returns/[id]/page.tsx"))
 
   it("đổi đơn vị bằng phép chia 100, không đoán lại ý người nhập", () => {
     expect(MIG).toContain("SET vat_rate = vat_rate / 100")
@@ -498,8 +794,11 @@ describe("migration 141 — đơn vị thuế suất của phiếu trả NCC", (
 
   /** Biểu mẫu chỉ được chạm cột qua hai hàm quy đổi, không parse thẳng. */
   it("biểu mẫu không đọc thẳng cột vat_rate", () => {
-    expect(FORM).toContain("l.vat_percent")
-    expect(FORM).not.toContain("l.vat_rate")
+    /* ⚠ Ô THUẾ SUẤT NẰM TRONG MODAL CỦA PHẦN DÙNG CHUNG, không ở khối
+       đầu phiếu — nên soi `EDITOR`. Để nguyên `FORM` là chốt xanh vì
+       đọc phải một tệp không còn ô nào, chứ không vì hành vi còn đúng. */
+    expect(EDITOR).toContain("l.vat_percent")
+    expect(EDITOR).not.toContain("l.vat_rate")
     expect(EDIT_PAGE).toContain("ratioToPercent(l.vat_rate)")
   })
 })

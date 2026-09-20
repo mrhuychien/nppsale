@@ -9,11 +9,20 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const strip = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
+/**
+ * ⚠ HAI TỆP, VÌ BIỂU MẪU ĐÃ TÁCH LÀM HAI. `FORM` chỉ còn khối "Thông
+ * tin chung" riêng của phiếu nhập; ô tìm hàng, bảng chín cột, khối tổng
+ * và modal nằm ở `EDITOR`, dùng chung với phiếu trả NCC. Chốt nào nói
+ * về phần dùng chung thì phải soi `EDITOR` — để nguyên ở `FORM` là chốt
+ * xanh vì đọc phải chuỗi rỗng, chứ không vì hành vi còn đúng.
+ */
 const FORM = strip(read("src/components/purchasing/purchase-receipt-form.tsx"))
+const EDITOR = strip(read("src/components/purchasing/purchasing-lines-editor.tsx"))
 const NEW_PAGE = strip(read("src/app/(dashboard)/purchasing/receipts/new/page.tsx"))
 const EDIT_PAGE = strip(read("src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx"))
 const DETAIL = strip(read("src/app/(dashboard)/purchasing/receipts/[id]/page.tsx"))
 const SAVE = strip(read("src/lib/purchasing/save-receipt.ts"))
+const LIB = strip(read("src/lib/purchasing/receipt-form.ts"))
 const SIDEBAR = strip(read("src/components/layout/sidebar.tsx"))
 const MIG = read("supabase/migrations/065_purchase_invoice_simplified.sql")
 
@@ -65,7 +74,7 @@ describe("ba trạng thái của phiếu nhập", () => {
  */
 describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
   it("bảng hàng có đủ chín cột chủ nhà chốt", () => {
-    const head = FORM.slice(FORM.indexOf("<thead"), FORM.indexOf("</thead>"))
+    const head = EDITOR.slice(EDITOR.indexOf("<thead"), EDITOR.indexOf("</thead>"))
     for (const col of ["STT", "Mã hàng", "Tên hàng", "Ghi chú", "ĐVT", "Số lượng", "Đơn giá", "Giảm giá", "Thành tiền"]) {
       expect(head, `bảng hàng thiếu cột "${col}"`).toContain(`>${col}<`)
     }
@@ -85,11 +94,11 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
      * dùng máy tính không mở nổi modal. Đã thử phá đúng như vậy.
      */
     expect(
-      FORM.match(/onClick=\{\(\) => setDetailId\(l\.id\)\}/g)?.length,
+      EDITOR.match(/onClick=\{\(\) => setDetailId\(l\.id\)\}/g)?.length,
       "thiếu cú bấm mở modal ở bảng hoặc ở thẻ điện thoại"
     ).toBe(2)
-    expect(FORM).toContain("<Dialog open={!!detail}")
-    const modal = FORM.slice(FORM.indexOf("<Dialog open={!!detail}"))
+    expect(EDITOR).toContain("<Dialog open={!!detail}")
+    const modal = EDITOR.slice(EDITOR.indexOf("<Dialog open={!!detail}"))
     expect(modal, "modal thiếu ô thuế suất").toContain("Thuế GTGT (%)")
     expect(modal, "modal thiếu giá vốn quy đổi").toContain("unitCostOf(detail)")
   })
@@ -101,8 +110,8 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
   })
 
   it("thêm hàng bằng ô tìm rồi chạm, và xoá ô tìm sau khi thêm", () => {
-    expect(FORM).toContain("searchReturnProducts(products, term, onSlip)")
-    const add = FORM.slice(FORM.indexOf("const addProduct"), FORM.indexOf("const pickUnit"))
+    expect(EDITOR).toContain("searchReturnProducts(products, term, onSlip)")
+    const add = EDITOR.slice(EDITOR.indexOf("const addProduct"), EDITOR.indexOf("const toggleDiscountMode"))
     expect(add).toContain("lineFromProduct(p, seqRef.current)")
     expect(add, "thêm xong phải xoá ô tìm").toContain('setTerm("")')
   })
@@ -111,8 +120,10 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
   it("đầu phiếu có số hoá đơn đầu vào, kho đích, giảm giá và Cần trả NCC", () => {
     expect(FORM).toContain("Số hoá đơn đầu vào")
     expect(FORM).toContain("Kho đích *")
-    expect(FORM).toContain("Giảm giá cả phiếu")
-    expect(FORM).toContain("Cần trả NCC")
+    /* ⚠ Ô GIẢM GIÁ DÙNG CHUNG; "Cần trả NCC" là NHÃN phiếu nhập truyền
+       vào phần dùng chung — nên mỗi thứ soi ở đúng tệp của nó. */
+    expect(EDITOR).toContain("Giảm giá cả phiếu")
+    expect(FORM).toContain('totalLabel="Cần trả NCC"')
   })
 
   /**
@@ -123,13 +134,13 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
   it("dòng giảm giá đứng dưới dòng thuế trong khối tổng", () => {
     /* ⚠ Neo vào CODE, không neo vào chú thích — `strip` đã bỏ chú
        thích nên mốc cũ ("Thanh hành động") trả về -1 và lát cắt rỗng. */
-    const totals = FORM.slice(FORM.indexOf("Tiền hàng"), FORM.indexOf("fixed inset-x-0 bottom-0"))
+    const totals = EDITOR.slice(EDITOR.indexOf("Tiền hàng"), EDITOR.indexOf("fixed inset-x-0 bottom-0"))
     const vat = totals.indexOf("Thuế GTGT")
     const disc = totals.indexOf("Giảm giá cả phiếu")
-    const total = totals.indexOf("Cần trả NCC")
+    const total = totals.indexOf("{totalLabel}")
     expect(vat).toBeGreaterThan(-1)
     expect(disc, "giảm giá đứng TRÊN thuế — sai thứ tự phép tính").toBeGreaterThan(vat)
-    expect(total, "Cần trả NCC không đứng cuối").toBeGreaterThan(disc)
+    expect(total, "dòng tổng không đứng cuối").toBeGreaterThan(disc)
   })
 
   /**
@@ -137,13 +148,13 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
    * dùng cuộn ngang để gõ một ô số lượng.
    */
   it("bảng chỉ hiện từ lg, điện thoại có bản thẻ riêng", () => {
-    expect(FORM).toContain("hidden overflow-x-auto rounded-xl border bg-card lg:block")
-    expect(FORM).toContain("lg:hidden")
+    expect(EDITOR).toContain("hidden overflow-x-auto rounded-xl border bg-card lg:block")
+    expect(EDITOR).toContain("lg:hidden")
   })
 
   /** ⚠ Số lượng để trống — điền sẵn 1 là để một con số không ai gõ vào phiếu. */
   it("dòng mới để trống số lượng", () => {
-    const fn = FORM.slice(FORM.indexOf("function lineFromProduct"), FORM.indexOf("export function PurchaseReceiptForm"))
+    const fn = LIB.slice(LIB.indexOf("export function lineFromProduct"), LIB.indexOf("export function unitPatch"))
     expect(fn).toContain('quantity: ""')
     expect(fn, "thuế suất phải quy đổi từ tỉ lệ sang phần trăm").toContain("ratioToPercent(p.vat_rate)")
   })
@@ -387,7 +398,7 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
      * trọng: phần bấm được phải RỘNG CẢ DÒNG (`w-full`), chứ không phải
      * một nút nhỏ ở mép phải.
      */
-    const flat = FORM.replace(/\s+/g, " ")
+    const flat = EDITOR.replace(/\s+/g, " ")
     expect(flat, "gợi ý không còn là nút bấm cả dòng").toMatch(
       /<button type="button" onClick=\{\(\) => addProduct\(p\)\}[^>]*className="flex w-full/
     )
@@ -401,21 +412,21 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
    * nhập trộn hai NCC là công nợ ghi sai chỗ.
    */
   it("gợi ý hiện NCC và tồn kho", () => {
-    const list = FORM.slice(FORM.indexOf("{hits.map("), FORM.indexOf("Chi tiết hàng nhập"))
+    const list = EDITOR.slice(EDITOR.indexOf("{hits.map("), EDITOR.indexOf("{linesTitle}"))
     expect(list, "gợi ý không hiện NCC").toContain("x?.supplierName")
     expect(list, "gợi ý không hiện tồn kho").toContain("x.onHand")
   })
 
   /** ⚠ Chưa đọc được tồn thì nói là chưa biết — 0 đọc như "hết hàng". */
   it("chưa đọc được tồn thì hiện dấu ba chấm, không hiện 0", () => {
-    const list = FORM.slice(FORM.indexOf("{hits.map("), FORM.indexOf("Chi tiết hàng nhập"))
+    const list = EDITOR.slice(EDITOR.indexOf("{hits.map("), EDITOR.indexOf("{linesTitle}"))
     expect(list).toContain('x && x.onHand !== null ? formatInt(x.onHand) : "…"')
   })
 })
 
 describe("ô giảm giá đổi được tiền / phần trăm", () => {
   it("có nút đổi chế độ, nhãn đúng theo chế độ đang chọn", () => {
-    const flat = FORM.replace(/\s+/g, " ")
+    const flat = EDITOR.replace(/\s+/g, " ")
     expect(flat).toContain("onClick={() => toggleDiscountMode(l)}")
     expect(flat).toContain('{l.discount_mode === "percent" ? "%" : "đ"}')
     /* Có ở CẢ bảng lẫn thẻ điện thoại — gỡ một bên thì bên đó kẹt. */
@@ -431,7 +442,7 @@ describe("ô giảm giá đổi được tiền / phần trăm", () => {
    * 50%" — đổi nghĩa một con số đang có mà không ai thấy.
    */
   it("đổi chế độ thì xoá trắng ô", () => {
-    const fn = FORM.slice(FORM.indexOf("const toggleDiscountMode"), FORM.indexOf("const pickUnit"))
+    const fn = EDITOR.slice(EDITOR.indexOf("const toggleDiscountMode"), EDITOR.indexOf("const pickUnit"))
     expect(fn).toContain('line_discount: ""')
   })
 
@@ -441,7 +452,7 @@ describe("ô giảm giá đổi được tiền / phần trăm", () => {
    * với hoá đơn giấy.
    */
   it("chế độ phần trăm hiện số tiền quy ra", () => {
-    expect(FORM).toContain("lineDiscountAmountOf(l)")
+    expect(EDITOR).toContain("lineDiscountAmountOf(l)")
   })
 
   /**
@@ -454,7 +465,7 @@ describe("ô giảm giá đổi được tiền / phần trăm", () => {
    * một khoản giảm quá 100 đồng. Đã thử phá đúng như vậy.
    */
   it("trần 100 chỉ áp cho chế độ phần trăm, ở CẢ hai bản", () => {
-    const n = (FORM.match(/max=\{l\.discount_mode === "percent" \? 100 : undefined\}/g) ?? []).length
+    const n = (EDITOR.match(/max=\{l\.discount_mode === "percent" \? 100 : undefined\}/g) ?? []).length
     expect(n, `mới ${n}/2 ô — bản còn lại đang chặn oan chế độ tiền`).toBe(2)
   })
 })
@@ -468,9 +479,9 @@ describe("bấm vào ô số là chọn hết nội dung", () => {
    * ⚠ `onFocus` CHỨ KHÔNG `onClick` — Tab qua ô cũng phải chọn hết.
    */
   it("có hàm chọn hết, gắn bằng onFocus", () => {
-    expect(FORM).toContain("const selectOnFocus")
-    expect(FORM).toContain("e.currentTarget.select()")
-    expect(FORM, "đang dùng onClick — bàn phím Tab sẽ không chọn hết")
+    expect(EDITOR).toContain("const selectOnFocus")
+    expect(EDITOR).toContain("e.currentTarget.select()")
+    expect(EDITOR, "đang dùng onClick — bàn phím Tab sẽ không chọn hết")
       .not.toContain("onClick={selectOnFocus}")
   })
 
@@ -481,7 +492,7 @@ describe("bấm vào ô số là chọn hết nội dung", () => {
    * thuế suất trong modal, giảm giá đầu phiếu, tiền thuế đầu phiếu.
    */
   it("gắn cho MỌI ô số, không sót ô nào", () => {
-    const n = (FORM.match(/onFocus=\{selectOnFocus\}/g) ?? []).length
+    const n = (EDITOR.match(/onFocus=\{selectOnFocus\}/g) ?? []).length
     expect(n, `mới gắn ${n} ô — còn ô số chưa có`).toBe(9)
   })
 })
@@ -493,7 +504,7 @@ describe("tiền thuế GTGT gõ tay được ở đầu phiếu", () => {
    * TIỀN thuế như tờ hoá đơn giấy của NCC ghi.
    */
   it("khối tổng có ô nhập tiền thuế, không phải chữ chết", () => {
-    const totals = FORM.slice(FORM.indexOf("Tiền hàng"), FORM.indexOf("fixed inset-x-0 bottom-0"))
+    const totals = EDITOR.slice(EDITOR.indexOf("Tiền hàng"), EDITOR.indexOf("fixed inset-x-0 bottom-0"))
     expect(totals).toContain('id="pr-vat-total"')
     expect(totals).toContain("onChange={(v) => onChange({ vatOverride: String(v) })}")
     expect(totals, "tiền thuế vẫn chỉ là chữ đọc, không gõ được")
@@ -502,7 +513,7 @@ describe("tiền thuế GTGT gõ tay được ở đầu phiếu", () => {
 
   /** ⚠ Để trống thì máy tự cộng — gợi ý bằng placeholder, không ép gõ. */
   it("ô trống thì gợi ý số tự cộng qua placeholder", () => {
-    expect(FORM).toContain("placeholder={String(Math.round(totals.vatComputed))}")
+    expect(EDITOR).toContain("placeholder={String(Math.round(totals.vatComputed))}")
   })
 
   /**
@@ -511,8 +522,8 @@ describe("tiền thuế GTGT gõ tay được ở đầu phiếu", () => {
    * sai đi thẳng vào công nợ.
    */
   it("gõ lệch số tự cộng thì cảnh báo", () => {
-    expect(FORM).toContain("totals.vatOverridden && Math.abs(totals.vat - totals.vatComputed) > 1")
-    expect(FORM).toContain("Tự cộng từ dòng hàng là")
+    expect(EDITOR).toContain("totals.vatOverridden && Math.abs(totals.vat - totals.vatComputed) > 1")
+    expect(EDITOR).toContain("Tự cộng từ dòng hàng là")
   })
 
   /**

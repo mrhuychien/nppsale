@@ -21,9 +21,9 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import {
-  PurchaseReceiptForm,
-  type PurchaseReceiptFormValue, type PickerExtra,
+  PurchaseReceiptForm, type PurchaseReceiptFormValue,
 } from "@/components/purchasing/purchase-receipt-form"
+import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
   receiptTotals, validReceiptLines, friendlyReceiptError,
   type ReceiptProduct,
@@ -31,7 +31,6 @@ import {
 import { percentToRatio } from "@/lib/purchasing/return-form"
 import { saveReceiptLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 
 export default function NewPurchaseReceiptPage() {
@@ -77,59 +76,13 @@ export default function NewPurchaseReceiptPage() {
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
-      void loadPickerExtras(prods)
+      void fillExtras(prods)
     })()
     return () => { cancelled = true }
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /**
-   * NCC và TỒN KHO cho ô tìm hàng (chủ nhà chốt 20/09/2026).
-   *
-   * ⚠ HAI CÂU ĐỌC GỘP, KHÔNG ĐỌC TỪNG MẶT HÀNG. Danh mục có 1.700 mã;
-   *   hỏi tồn từng mã lúc gõ là 1.700 lượt gọi. Kéo một lần lúc mở màn
-   *   rồi tra trong bộ nhớ.
-   *
-   * ⚠ `fetchAllForAggregate` CHO TỒN. PostgREST cắt ở 1.000 dòng, mà số
-   *   lô thì nhiều hơn số mặt hàng — cắt ở đây là báo tồn THIẾU, và
-   *   người nhập sẽ nhập bù một mặt hàng đang đầy kho.
-   *
-   * ⚠ ĐỌC HỎNG THÌ ĐỂ TRỐNG, KHÔNG ĐỂ 0. `onHand: null` hiện "…" trên
-   *   ô tìm; số 0 đọc như "hết hàng" và đó là một câu nói dối.
-   */
-  const loadPickerExtras = useCallback(async (prods: ReceiptProduct[]) => {
-    const next: Record<string, PickerExtra> = {}
-    for (const p of prods) {
-      next[p.id] = { supplierName: null, onHand: null }
-    }
-
-    const supIds = Array.from(
-      new Set(prods.map((p) => (p as { primary_supplier_id?: string | null }).primary_supplier_id).filter(Boolean))
-    ) as string[]
-    if (supIds.length > 0) {
-      const { data } = await supabase.from("suppliers").select("id, name").in("id", supIds)
-      const byId = new Map(((data as Array<{ id: string; name: string }>) || []).map((s) => [s.id, s.name]))
-      for (const p of prods) {
-        const sid = (p as { primary_supplier_id?: string | null }).primary_supplier_id
-        if (sid && next[p.id]) next[p.id].supplierName = byId.get(sid) ?? null
-      }
-    }
-
-    const res = await fetchAllForAggregate((from, to) =>
-      supabase
-        .from("batches")
-        .select("product_id, qty_on_hand", { count: "exact" })
-        .eq("status", "available")
-        .order("id")
-        .range(from, to)
-    )
-    if (!res.truncated) {
-      const sum: Record<string, number> = {}
-      for (const b of (res.rows as Array<{ product_id: string; qty_on_hand: number | null }>)) {
-        sum[b.product_id] = (sum[b.product_id] ?? 0) + Number(b.qty_on_hand ?? 0)
-      }
-      for (const id of Object.keys(next)) next[id].onHand = sum[id] ?? 0
-    }
-    setExtras(next)
+  const fillExtras = useCallback(async (prods: ReceiptProduct[]) => {
+    setExtras(await loadPickerExtras(supabase, prods))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async (complete: boolean) => {

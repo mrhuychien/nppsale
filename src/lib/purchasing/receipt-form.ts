@@ -28,6 +28,7 @@
  */
 
 import type { Product, ProductUnit } from "@/types"
+import { ratioToPercent } from "./return-form"
 
 /** Sản phẩm kèm bảng quy đổi đơn vị. */
 export type ReceiptProduct = Product & { units?: ProductUnit[] }
@@ -72,6 +73,58 @@ export interface ReceiptLine {
   conversion_factor: string
   available_units: ProductUnit[]
   base_unit: string
+}
+
+/**
+ * Dựng một dòng từ mặt hàng vừa chọn, điền sẵn những gì đã biết.
+ *
+ * ⚠ MỘT BẢN CHO CẢ PHIẾU NHẬP LẪN PHIẾU TRẢ (chủ nhà chốt 20/09/2026:
+ * "hãy làm phiếu trả NCC tương tự"). Trước đây phiếu trả có bản riêng ở
+ * `return-form.ts` — và đúng vì thế mà nó không có `note`,
+ * `line_discount` lẫn `discount_mode` khi phiếu nhập đã có cả ba.
+ *
+ * ⚠ SỐ LƯỢNG ĐỂ TRỐNG, KHÔNG ĐIỀN 1. Người dùng chọn mặt hàng xong là
+ * gõ ngay số lượng thật; điền sẵn 1 là để một con số KHÔNG AI GÕ có cơ
+ * hội đi thẳng vào phiếu khi họ bấm nhầm hoặc bỏ qua ô đó.
+ *
+ * ⚠ ĐƠN VỊ MẶC ĐỊNH LÀ ĐƠN VỊ CƠ SỞ (hệ số 1). Kho cộng/trừ theo đơn vị
+ * cơ sở; mặc định vào một đơn vị quy đổi là nhập 20 hộp khi người ta
+ * định nhập 1 thùng, hoặc ngược lại.
+ *
+ * ⚠ `products.vat_rate` LÀ TỈ LỆ (0,1) CÒN Ô NÀY LÀ PHẦN TRĂM. Chép
+ * thẳng sang là ghi 0,1% thay cho 10% — thuế hụt 100 lần, và không có
+ * chỗ nào kêu. Đó là lỗi có thật của bản cũ (xem migration 141).
+ */
+export function lineFromProduct(p: ReceiptProduct, seq: number): ReceiptLine {
+  return {
+    id: `${p.id}-${seq}`,
+    product_id: p.id,
+    product_name: p.name,
+    sku: p.sku ?? "",
+    note: "",
+    base_unit: p.base_unit,
+    available_units: p.units ?? [],
+    unit_name: p.base_unit,
+    conversion_factor: "1",
+    quantity: "",
+    unit_price: p.cost_price ? String(p.cost_price) : "",
+    line_discount: "",
+    discount_mode: "amount",
+    vat_percent: p.vat_rate != null ? ratioToPercent(p.vat_rate) : "0",
+  }
+}
+
+/**
+ * Đổi đơn vị của một dòng, kéo theo hệ số quy đổi.
+ *
+ * ⚠ ĐƠN VỊ CƠ SỞ LUÔN CÓ HỆ SỐ 1, kể cả khi nó cũng nằm trong bảng
+ * `product_units` với một hệ số khác. Tra bảng trước rồi mới xét là mở
+ * đường cho một dòng "hộp × 20" trong khi hộp chính là đơn vị cơ sở.
+ */
+export function unitPatch(line: ReceiptLine, unitName: string): Partial<ReceiptLine> {
+  if (unitName === line.base_unit) return { unit_name: unitName, conversion_factor: "1" }
+  const u = line.available_units.find((x) => x.unit_name === unitName)
+  return { unit_name: unitName, conversion_factor: u ? String(u.conversion) : "1" }
 }
 
 const num = (s: string | number | null | undefined): number => {

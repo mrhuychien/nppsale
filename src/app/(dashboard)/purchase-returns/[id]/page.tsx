@@ -60,14 +60,17 @@ export default function PurchaseReturnDetailPage() {
     const [hdrRes, lineRes] = await Promise.all([
       supabase
         .from("supplier_returns")
-        .select("id, return_code, return_date, reason, notes, subtotal, vat, total, status, warehouse_zone, stock_entry_id, payable_credit_id, completed_at, cancel_reason, created_at, supplier:suppliers(id, name, code)")
+        .select("id, return_code, return_date, reason, notes, discount, vat_override, subtotal, vat, total, status, warehouse_zone, stock_entry_id, payable_credit_id, completed_at, cancel_reason, created_at, supplier:suppliers(id, name, code)")
         .eq("id", id)
         .maybeSingle(),
       supabase
         .from("supplier_return_lines")
-        .select("id, unit_name, quantity, unit_price, vat_rate, conversion_factor, line_total, product:products(id, name, sku, base_unit)")
+        .select("id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, line_total, notes, sort_order, product:products(id, name, sku, base_unit)")
         .eq("return_id", id)
-        .order("created_at"),
+        /* ⚠ THEO `sort_order`, KHÔNG THEO `created_at`. Sửa phiếu là xoá
+           hết dòng rồi ghi lại trong một lượt — mọi dòng cùng một mốc
+           thời gian, và tờ in mỗi lần một thứ tự. */
+        .order("sort_order"),
     ])
     const qErr = ([hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
@@ -236,8 +239,13 @@ export default function PurchaseReturnDetailPage() {
           <CardContent className="space-y-1 text-sm">
             <Row label="Tổng hàng (chưa VAT)" value={formatCurrency(data.subtotal)} />
             <Row label="VAT" value={formatCurrency(data.vat)} />
+            {/* ⚠ GIẢM GIÁ TRỪ SAU THUẾ (mig 146) — hiện nó DƯỚI dòng thuế
+                để thứ tự đọc đúng bằng thứ tự trong phép tính. */}
+            {Number(data.discount) > 0 && (
+              <Row label="Giảm giá cả phiếu" value={`−${formatCurrency(data.discount)}`} />
+            )}
             <div className="flex justify-between pt-2 border-t font-bold">
-              <span>Tổng cộng</span>
+              <span>NCC hoàn lại</span>
               <span className="text-primary tabular-nums">{formatCurrency(data.total)}</span>
             </div>
             {data.status === "completed" && (
@@ -260,9 +268,11 @@ export default function PurchaseReturnDetailPage() {
                 <tr className="text-xs uppercase text-muted-foreground">
                   <th className="px-3 py-2 text-left">STT</th>
                   <th className="px-3 py-2 text-left">Sản phẩm</th>
+                  <th className="px-3 py-2 text-left">Ghi chú</th>
                   <th className="px-3 py-2 text-left">ĐVT</th>
                   <th className="px-3 py-2 text-right">SL</th>
                   <th className="px-3 py-2 text-right">Đơn giá</th>
+                  <th className="px-3 py-2 text-right">Giảm giá</th>
                   <th className="px-3 py-2 text-right">VAT %</th>
                   <th className="px-3 py-2 text-right">Thành tiền</th>
                 </tr>
@@ -277,6 +287,7 @@ export default function PurchaseReturnDetailPage() {
                         <div className="text-[11px] text-muted-foreground">{l.product.sku}</div>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-muted-foreground">{l.notes || "—"}</td>
                     <td className="px-3 py-2">
                       {l.unit_name}
                       {Number(l.conversion_factor) > 1 ? (
@@ -285,6 +296,11 @@ export default function PurchaseReturnDetailPage() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{l.quantity}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(l.unit_price)}</td>
+                    {/* ⚠ CỘT NÀY LÀ SỐ TIỀN, không phải phần trăm — biểu
+                        mẫu quy ra tiền trước khi ghi xuống. */}
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {Number(l.line_discount) > 0 ? formatCurrency(l.line_discount) : "—"}
+                    </td>
                     {/* ⚠ CỘT `vat_rate` LÀ TỈ LỆ (mig 141) — in thẳng nó
                         rồi dán dấu % vào là hiện "0.1%" cho một dòng
                         thuế 10%. Quy đổi bằng đúng hàm mà biểu mẫu dùng. */}

@@ -1056,6 +1056,18 @@ export interface SupplierReturn {
   completed_by: string | null
   /** Lý do huỷ — cột thêm ở migration 143, cùng lúc với nút Huỷ. */
   cancel_reason: string | null
+  /**
+   * Giảm giá cả phiếu — TRỪ SAU THUẾ (migration 146), cùng quy ước với
+   * `purchase_invoices.discount`.
+   */
+  discount: number
+  /**
+   * Tiền thuế GTGT gõ tay theo giấy của NCC (migration 146).
+   *
+   * ⚠ `null` KHÁC 0. `null` = "để máy chủ tự cộng từ thuế suất từng
+   * dòng"; 0 = "chứng từ này KHÔNG có thuế".
+   */
+  vat_override: number | null
   created_by: string | null
   created_at: string
   // Joined
@@ -1070,10 +1082,14 @@ export interface SupplierReturnLine {
   unit_name: string
   quantity: number
   unit_price: number
+  /** Giảm giá của dòng — SỐ TIỀN, không phải phần trăm (migration 146). */
+  line_discount: number
   vat_rate: number
   conversion_factor: number
   line_total: number
   notes: string | null
+  /** STT người dùng nhìn thấy, 1-based (migration 146). */
+  sort_order: number
   created_at: string
   // Joined
   product?: Pick<Product, "id" | "name" | "sku" | "base_unit">

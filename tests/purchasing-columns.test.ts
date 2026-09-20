@@ -160,8 +160,16 @@ function selectColumns(sel: string): string[] {
     .filter((c) => /^[a-z_][a-z0-9_]*$/.test(c))
 }
 
-/** Khoá ở MỨC NGOÀI CÙNG của một object literal bắt đầu tại `open`. */
-function topLevelKeys(src: string, open: number): string[] {
+/**
+ * Khoá ở MỨC NGOÀI CÙNG của một object literal bắt đầu tại `open`.
+ *
+ * ⚠ PHẢI ĐI THEO CẢ `...helper(...)`. Tải trọng của `save-receipt.ts`
+ * gọi `...linePayloadOf(l, i, …)` — tám cột, trong đó có đúng cái `notes`
+ * đã làm hỏng phiếu nhập, nằm sau dấu ba chấm ấy. Không đi theo thì chốt
+ * này chỉ còn nhìn thấy `invoice_id` / `return_id` và tuyên bố mọi thứ
+ * đều ổn. Một chốt bắt chỗ dễ, bỏ sót chỗ khó là chốt tệ hơn không có.
+ */
+function topLevelKeys(src: string, open: number, depthGuard = 0): string[] {
   const keys: string[] = []
   let depth = 0
   let i = open
@@ -180,6 +188,12 @@ function topLevelKeys(src: string, open: number): string[] {
     }
     if (depth === 1) {
       if (ch === ",") { atKeyPos = true; continue }
+      if (atKeyPos && ch === ".") {
+        const sp = /^\.\.\.\s*([A-Za-z_$][\w$]*)\s*\(/.exec(src.slice(i))
+        if (sp && depthGuard < 3) keys.push(...returnedKeysOf(src, sp[1], depthGuard + 1))
+        atKeyPos = false
+        continue
+      }
       if (atKeyPos && /[a-z_]/i.test(ch)) {
         const m = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*:/.exec(src.slice(i))
         if (m) keys.push(m[1])
@@ -189,6 +203,15 @@ function topLevelKeys(src: string, open: number): string[] {
     }
   }
   return keys
+}
+
+/** Khoá của object mà hàm `name` trong cùng tệp `return {…}`. */
+function returnedKeysOf(src: string, name: string, depthGuard: number): string[] {
+  const fn = new RegExp(`function\\s+${name}\\s*\\(`).exec(src)
+  if (!fn) return []
+  const ret = src.indexOf("return {", fn.index)
+  if (ret === -1) return []
+  return topLevelKeys(src, ret + "return ".length, depthGuard)
 }
 
 interface Use {
@@ -237,7 +260,22 @@ const USES: Use[] = (() => {
            */
           const byVar = new RegExp(`^\\s*\\.${verb}\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)`).exec(after)
           if (byVar) {
-            const decl = new RegExp(`\\b(?:const|let|var)\\s+${byVar[1]}\\b`).exec(src)
+            /**
+             * ⚠ LẤY KHAI BÁO GẦN NHẤT Ở TRÊN, không lấy cái ĐẦU TIÊN
+             *   trong tệp. `save-receipt.ts` từng có hai biến cùng tên
+             *   `payload` — một cho `purchase_invoice_lines`, một cho
+             *   `supplier_return_lines` — và phép tìm từ đầu tệp gán cột
+             *   của bảng này sang bảng kia. Nó báo sai `invoice_id` ở
+             *   bảng phiếu trả; lần sau nó sẽ im lặng cho qua một cột
+             *   gõ sai thật.
+             */
+            const declRe = new RegExp(`\\b(?:const|let|var)\\s+${byVar[1]}\\b`, "g")
+            let decl: RegExpExecArray | null = null
+            let d: RegExpExecArray | null
+            while ((d = declRe.exec(src)) !== null) {
+              if (d.index > at) break
+              decl = d
+            }
             if (decl) {
               const brace = src.indexOf("({", decl.index)
               if (brace !== -1 && brace - decl.index < 400) {

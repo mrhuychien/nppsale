@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * SỬA PHIẾU TRẢ HÀNG NCC — chỉ khi còn là nháp.
+ * SỬA PHIẾU TRẢ HÀNG NCC.
  *
  * ⚠ BIỂU MẪU NẰM Ở `PurchaseReturnForm`, dùng chung với màn tạo. Trang
  * này chỉ còn ba việc: nạp phiếu cũ, dựng lại dòng hàng, và ghi đè.
@@ -22,11 +22,30 @@ import {
   PurchaseReturnForm, type PurchaseReturnFormValue,
 } from "@/components/purchasing/purchase-return-form"
 import {
-  friendlyReturnError, linePayload, ratioToPercent, returnTotals, validReturnLines,
-  type ReturnLine, type ReturnProduct,
+  friendlyReturnError, percentToRatio, ratioToPercent,
 } from "@/lib/purchasing/return-form"
-import type { Supplier, SupplierReturn, SupplierReturnLine } from "@/types"
+import {
+  receiptTotals, validReceiptLines,
+  type ReceiptLine, type ReceiptProduct,
+} from "@/lib/purchasing/receipt-form"
+import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
+import { saveReturnLines } from "@/lib/purchasing/save-receipt"
+import type { Supplier, SupplierReturn } from "@/types"
 import { errorMessage } from "@/lib/errors"
+
+/** Dòng đọc lên từ `supplier_return_lines` — đúng các cột đang chọn. */
+interface SavedLine {
+  id: string
+  product_id: string
+  unit_name: string
+  quantity: number
+  unit_price: number
+  line_discount: number | null
+  vat_rate: number | null
+  conversion_factor: number | null
+  notes: string | null
+  sort_order: number | null
+}
 
 export default function EditPurchaseReturnPage() {
   const { id } = useParams<{ id: string }>()
@@ -37,7 +56,8 @@ export default function EditPurchaseReturnPage() {
   const { toast } = useToast()
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [products, setProducts] = useState<ReturnProduct[]>([])
+  const [products, setProducts] = useState<ReceiptProduct[]>([])
+  const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [notDraft, setNotDraft] = useState(false)
@@ -47,11 +67,17 @@ export default function EditPurchaseReturnPage() {
     returnDate: new Date().toISOString().slice(0, 10),
     zone: "date",
     reason: "near_expiry",
+    discount: "",
+    vatOverride: "",
     notes: "",
     lines: [],
   })
 
   const patch = (p: Partial<PurchaseReturnFormValue>) => setForm((f) => ({ ...f, ...p }))
+
+  const fillExtras = useCallback(async (prods: ReceiptProduct[]) => {
+    setExtras(await loadPickerExtras(supabase, prods))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -65,28 +91,31 @@ export default function EditPurchaseReturnPage() {
         .order("name"),
       supabase
         .from("products")
-        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, units:product_units(*)")
+        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)")
         .eq("org_id", user.org_id)
         .order("name"),
       supabase
         .from("supplier_returns")
-        .select("id, supplier_id, return_date, warehouse_zone, reason, notes, status")
+        .select("id, supplier_id, return_date, warehouse_zone, reason, discount, vat_override, notes, status")
         .eq("id", id)
         .maybeSingle(),
       supabase
         .from("supplier_return_lines")
-        .select("id, product_id, unit_name, quantity, unit_price, vat_rate, conversion_factor")
+        .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, notes, sort_order")
         .eq("return_id", id)
-        .order("created_at"),
+        .order("sort_order"),
     ])
     const qErr = ([supRes, prodRes, hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[purchase-returns/edit] truy vấn lỗi:", qErr.message)
-    const prods = (prodRes.data as ReturnProduct[]) || []
+    const prods = (prodRes.data as ReceiptProduct[]) || []
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
+    void fillExtras(prods)
 
-    const hdr = hdrRes.data as SupplierReturn | null
+    const hdr = hdrRes.data as (SupplierReturn & {
+      discount: number | null; vat_override: number | null
+    }) | null
     if (!hdr) {
       setLoading(false)
       return
@@ -109,17 +138,21 @@ export default function EditPurchaseReturnPage() {
     setStatus(hdr.status)
     /**
      * ⚠ DỰNG LẠI DÒNG TỪ PHIẾU ĐÃ LƯU, KHÔNG TỪ DANH MỤC. Số lượng, đơn
-     *   giá và thuế suất đã ghi xuống là thứ người dùng gõ; lấy lại từ
-     *   `products` là lặng lẽ đè lên chúng bằng giá vốn hôm nay. Chỉ tên
-     *   hàng, đơn vị cơ sở và bảng quy đổi mới tra từ danh mục.
+     *   giá, giảm giá và thuế suất đã ghi xuống là thứ người dùng gõ;
+     *   lấy lại từ `products` là lặng lẽ đè lên chúng bằng giá vốn hôm
+     *   nay. Chỉ tên hàng, đơn vị cơ sở và bảng quy đổi mới tra danh mục.
      */
     setForm({
       supplierId: hdr.supplier_id,
       returnDate: hdr.return_date,
       zone: hdr.warehouse_zone,
       reason: hdr.reason || "near_expiry",
+      discount: hdr.discount ? String(hdr.discount) : "",
+      /* ⚠ SỐ 0 KHÁC Ô TRỐNG — so với `null` chứ không dùng `||`, nếu
+         không một chứng từ khai thuế 0 nạp lại thành "để máy tự cộng". */
+      vatOverride: hdr.vat_override == null ? "" : String(hdr.vat_override),
       notes: hdr.notes || "",
-      lines: ((lineRes.data as SupplierReturnLine[]) || []).map((l): ReturnLine => {
+      lines: ((lineRes.data as SavedLine[]) || []).map((l): ReceiptLine => {
         const prod = prods.find((p) => p.id === l.product_id)
         return {
           id: l.id,
@@ -128,9 +161,15 @@ export default function EditPurchaseReturnPage() {
              không tên là giấu mất chính thứ cần sửa. */
           product_name: prod?.name || "Sản phẩm đã xoá",
           sku: prod?.sku || "",
+          note: l.notes || "",
           unit_name: l.unit_name,
           quantity: String(l.quantity),
           unit_price: String(l.unit_price),
+          line_discount: l.line_discount ? String(l.line_discount) : "",
+          /* ⚠ CỘT LƯU LÀ TIỀN, nên dòng nạp lại LUÔN ở chế độ tiền. Đoán
+             ngược ra phần trăm là bịa — cùng một số tiền ra vô số phần
+             trăm tuỳ giá. */
+          discount_mode: "amount",
           vat_percent: ratioToPercent(l.vat_rate),
           conversion_factor: String(l.conversion_factor || 1),
           available_units: prod?.units || [],
@@ -149,12 +188,12 @@ export default function EditPurchaseReturnPage() {
       toast({ title: "Chưa chọn nhà cung cấp", variant: "destructive" })
       return
     }
-    const lines = validReturnLines(form.lines)
+    const lines = validReceiptLines(form.lines)
     if (lines.length === 0) {
       toast({ title: "Chưa có dòng hàng hợp lệ", variant: "destructive" })
       return
     }
-    const totals = returnTotals(lines)
+    const totals = receiptTotals(lines, form.discount, form.vatOverride)
 
     const wasCompleted = status === "completed"
 
@@ -179,8 +218,10 @@ export default function EditPurchaseReturnPage() {
           return_date: form.returnDate,
           warehouse_zone: form.zone,
           reason: form.reason || null,
-          notes: form.notes || null,
-          subtotal: totals.sub,
+          notes: form.notes.trim() || null,
+          discount: totals.discount,
+          vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride),
+          subtotal: totals.subtotal,
           vat: totals.vat,
           total: totals.total,
           /* Phiếu vừa huỷ phải quay về nháp thì `complete_supplier_return`
@@ -192,17 +233,7 @@ export default function EditPurchaseReturnPage() {
         .select("id")
       if (hdrErr) throw new Error(hdrErr.message)
 
-      // Thay dòng: xoá hết rồi ghi lại — đơn giản và an toàn cho nháp.
-      const { error: delErr } = await supabase
-        .from("supplier_return_lines")
-        .delete()
-        .eq("return_id", id)
-      if (delErr) throw new Error(delErr.message)
-
-      const { error: insErr } = await supabase
-        .from("supplier_return_lines")
-        .insert(lines.map((l) => linePayload(id, l)))
-      if (insErr) throw new Error(insErr.message)
+      await saveReturnLines(supabase, id, lines, percentToRatio)
 
       if (sendNow) {
         const { error: rpcErr } = await supabase.rpc("complete_supplier_return", {
@@ -265,6 +296,7 @@ export default function EditPurchaseReturnPage() {
         value={form}
         onChange={patch}
         submitting={submitting}
+        extras={extras}
         actions={
           <>
             <Button variant="outline" onClick={() => handleSubmit(false)} disabled={submitting}>

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Send, Trash2, ExternalLink, Pencil } from "lucide-react"
+import { Send, Trash2, ExternalLink, Pencil, XCircle } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ratioToPercent } from "@/lib/purchasing/return-form"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
@@ -60,7 +60,7 @@ export default function PurchaseReturnDetailPage() {
     const [hdrRes, lineRes] = await Promise.all([
       supabase
         .from("supplier_returns")
-        .select("id, return_code, return_date, reason, notes, subtotal, vat, total, status, warehouse_zone, stock_entry_id, payable_credit_id, completed_at, created_at, supplier:suppliers(id, name, code)")
+        .select("id, return_code, return_date, reason, notes, subtotal, vat, total, status, warehouse_zone, stock_entry_id, payable_credit_id, completed_at, cancel_reason, created_at, supplier:suppliers(id, name, code)")
         .eq("id", id)
         .maybeSingle(),
       supabase
@@ -97,6 +97,38 @@ export default function PurchaseReturnDetailPage() {
       await load()
     } catch (err) {
       toast({ title: "Lỗi", description: friendlyError(errorMessage(err)), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * HUỶ PHIẾU ĐÃ GỬI — đảo ngược qua RPC (migration 143).
+   *
+   * ⚠ KHÔNG TỰ CỘNG HÀNG VỀ KHO Ở ĐÂY. `cancel_supplier_return` cộng
+   *   trả về ĐÚNG lô đã lấy — kể cả hạn dùng và giá vốn của từng lô —
+   *   rồi xoá khoản giảm công nợ, trong một giao dịch. Cộng ở trình
+   *   duyệt là đi tìm lô theo FIFO lần nữa, và hàng về một lô KHÁC với
+   *   hạn khác: tồn thì đúng mà hạn thì sai.
+   */
+  const handleCancel = async () => {
+    if (!data) return
+    const done = data.status === "completed"
+    if (!window.confirm(
+      done
+        ? "Huỷ phiếu trả NCC?\n\nHàng sẽ cộng trả về đúng lô đã lấy và khoản giảm công nợ NCC bị xoá. Không huỷ được nếu NCC đã cấn trừ tiền hoặc lô đã đóng."
+        : "Huỷ phiếu nháp này?\n\nPhiếu nháp chưa đụng tới kho hay công nợ."
+    )) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc("cancel_supplier_return", {
+        p_return_id: data.id, p_reason: "Người dùng huỷ từ màn chi tiết",
+      })
+      if (error) throw new Error(error.message)
+      toast({ title: done ? "Đã huỷ phiếu — kho và công nợ đã hoàn về" : "Đã huỷ phiếu nháp" })
+      await load()
+    } catch (err) {
+      toast({ title: "Không huỷ được", description: friendlyError(errorMessage(err)), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -149,7 +181,33 @@ export default function PurchaseReturnDetailPage() {
             </Button>
           </>
         )}
+        {/* ⚠ PHIẾU ĐÃ GỬI VẪN SỬA VÀ HUỶ ĐƯỢC (chủ nhà chốt 20/09/2026:
+            "Tương tự phiếu trả hàng cũng vậy"). Trước đây gửi xong là
+            phiếu đóng cứng — gửi nhầm một phiếu là hàng đã ra khỏi kho,
+            công nợ đã giảm, và không có đường nào quay lại ngoài sửa
+            tay trong cơ sở dữ liệu. */}
+        {data.status === "completed" && (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/purchase-returns/${data.id}/edit`}>
+              <Pencil className="h-4 w-4 mr-1.5" /> Sửa phiếu
+            </Link>
+          </Button>
+        )}
+        {data.status !== "cancelled" && (
+          <Button variant="outline" size="sm" onClick={handleCancel} disabled={busy}>
+            <XCircle className="h-4 w-4 mr-1.5" /> Huỷ phiếu
+          </Button>
+        )}
       </PageHeader>
+
+      {data.status === "cancelled" && (
+        <div className="rounded-xl border border-outline-variant bg-muted/40 px-3.5 py-3 text-sm">
+          <span className="font-semibold">Phiếu đã huỷ.</span>{" "}
+          {/* ⚠ LÝ DO HUỶ PHẢI HIỆN RA — không hiện thì người mở lại chỉ
+              thấy một chứng từ chết mà không biết vì sao. */}
+          {data.cancel_reason || "Không ghi lý do."}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

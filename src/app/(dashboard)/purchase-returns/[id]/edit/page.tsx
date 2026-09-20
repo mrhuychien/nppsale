@@ -41,6 +41,7 @@ export default function EditPurchaseReturnPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [notDraft, setNotDraft] = useState(false)
+  const [status, setStatus] = useState<string>("draft")
   const [form, setForm] = useState<PurchaseReturnFormValue>({
     supplierId: "",
     returnDate: new Date().toISOString().slice(0, 10),
@@ -90,11 +91,22 @@ export default function EditPurchaseReturnPage() {
       setLoading(false)
       return
     }
-    if (hdr.status !== "draft") {
+    /**
+     * ⚠ PHIẾU ĐÃ GỬI VẪN SỬA ĐƯỢC (chủ nhà chốt 20/09/2026: "Tương tự
+     *   phiếu trả hàng cũng vậy"). Cách làm giống phiếu nhập hàng: huỷ
+     *   bản cũ → ghi lại dòng mới → gửi lại, gọi đúng hai RPC đã có.
+     *   Nghĩa là phép sửa THỪA HƯỞNG mọi chốt chặn của phép huỷ — NCC
+     *   đã cấn trừ tiền hoặc lô đã đóng thì không sửa được.
+     *
+     * ⚠ PHIẾU ĐÃ HUỶ THÌ KHÔNG. Đó là chứng từ đã đóng; sửa lại nó là
+     *   làm sống lại một thứ đã kết thúc. Lập phiếu mới.
+     */
+    if (hdr.status === "cancelled") {
       setNotDraft(true)
       setLoading(false)
       return
     }
+    setStatus(hdr.status)
     /**
      * ⚠ DỰNG LẠI DÒNG TỪ PHIẾU ĐÃ LƯU, KHÔNG TỪ DANH MỤC. Số lượng, đơn
      *   giá và thuế suất đã ghi xuống là thứ người dùng gõ; lấy lại từ
@@ -144,12 +156,22 @@ export default function EditPurchaseReturnPage() {
     }
     const totals = returnTotals(lines)
 
+    const wasCompleted = status === "completed"
+
     setSubmitting(true)
     try {
       /**
-       * ⚠ `.eq("status", "draft")` LÀ CHỐT CHẶN THẬT, không phải thừa.
-       *   Phiếu có thể đã được gửi ở một tab khác trong lúc màn này mở.
+       * ⚠ HUỶ BẢN CŨ TRƯỚC, và hỏng thì DỪNG HẲN. Đi tiếp khi kho chưa
+       *   hoàn về là ghi đè dòng hàng của một phiếu vẫn đang giữ số đã
+       *   trừ trong kho — chứng từ nói một đằng, kho nói một nẻo.
        */
+      if (wasCompleted) {
+        const { error } = await supabase.rpc("cancel_supplier_return", {
+          p_return_id: id, p_reason: "Sửa phiếu — lập lại",
+        })
+        if (error) throw new Error(friendlyReturnError(error.message))
+      }
+
       const { error: hdrErr } = await supabase
         .from("supplier_returns")
         .update({
@@ -161,9 +183,13 @@ export default function EditPurchaseReturnPage() {
           subtotal: totals.sub,
           vat: totals.vat,
           total: totals.total,
+          /* Phiếu vừa huỷ phải quay về nháp thì `complete_supplier_return`
+             mới nhận — nó chỉ chạy trên `draft`. */
+          status: "draft",
+          cancel_reason: null,
         })
         .eq("id", id)
-        .eq("status", "draft")
+        .select("id")
       if (hdrErr) throw new Error(hdrErr.message)
 
       // Thay dòng: xoá hết rồi ghi lại — đơn giản và an toàn cho nháp.
@@ -182,7 +208,17 @@ export default function EditPurchaseReturnPage() {
         const { error: rpcErr } = await supabase.rpc("complete_supplier_return", {
           p_return_id: id,
         })
-        if (rpcErr) throw new Error(friendlyReturnError(rpcErr.message))
+        /**
+         * ⚠ BA BƯỚC KHÔNG NẰM TRONG MỘT GIAO DỊCH. Hỏng ở đây thì kho
+         *   ĐÃ hoàn về đúng và phiếu nằm lại ở nháp — không lệch gì,
+         *   chỉ là chưa gửi lại. Phải NÓI RA, nếu không người dùng
+         *   tưởng mất hàng.
+         */
+        if (rpcErr) {
+          throw new Error(
+            `${friendlyReturnError(rpcErr.message)} — Phiếu đã lưu lại thành NHÁP và kho đã hoàn về đúng. Vào lại phiếu rồi bấm Gửi phiếu.`
+          )
+        }
       }
 
       toast({
@@ -204,7 +240,7 @@ export default function EditPurchaseReturnPage() {
         <PageHeader title="Không thể sửa" backHref={`/purchase-returns/${id}`} />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Chỉ phiếu nháp mới sửa được. Phiếu này đã gửi / huỷ.
+            Phiếu này đã huỷ. Lập phiếu trả mới thay vì sửa lại một chứng từ đã đóng.
           </CardContent>
         </Card>
       </div>
@@ -215,7 +251,11 @@ export default function EditPurchaseReturnPage() {
     <div className="space-y-4 pb-28">
       <PageHeader
         title="Sửa phiếu trả NCC"
-        description="Chỉ sửa được khi phiếu đang ở trạng thái nháp"
+        description={
+          status === "completed"
+            ? "Phiếu đã gửi: lưu lại sẽ hoàn kho và công nợ của bản cũ rồi lập lại theo số mới."
+            : "Phiếu nháp — sửa thoải mái, chưa đụng tới kho hay công nợ."
+        }
         backHref={`/purchase-returns/${id}`}
       />
 
@@ -228,11 +268,11 @@ export default function EditPurchaseReturnPage() {
         actions={
           <>
             <Button variant="outline" onClick={() => handleSubmit(false)} disabled={submitting}>
-              Lưu thay đổi
+              Lưu nháp
             </Button>
             <Button onClick={() => handleSubmit(true)} disabled={submitting || form.lines.length === 0}>
               {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Lưu &amp; gửi
+              {status === "completed" ? "Lập lại" : "Lưu & gửi"}
             </Button>
           </>
         }

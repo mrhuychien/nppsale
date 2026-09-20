@@ -1054,6 +1054,8 @@ export interface SupplierReturn {
   payable_credit_id: string | null
   completed_at: string | null
   completed_by: string | null
+  /** Lý do huỷ — cột thêm ở migration 143, cùng lúc với nút Huỷ. */
+  cancel_reason: string | null
   created_by: string | null
   created_at: string
   // Joined

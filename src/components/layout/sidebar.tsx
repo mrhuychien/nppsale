@@ -13,6 +13,7 @@ import {
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
+  PackagePlus,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -62,9 +63,11 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Mua hàng",
     icon: ClipboardList,
     items: [
-      { label: "Tạo phiếu nhập kho", href: "/inventory/stock-in", icon: ShoppingCart },
-      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText },
+      // ⚠ PHIẾU NHẬP HÀNG ĐỨNG ĐẦU NHÓM. Đây là việc thường ngày của
+      //   nhóm này; mọi thứ còn lại là tra cứu hoặc danh mục.
+      { label: "Phiếu nhập hàng", href: "/purchasing/receipts", icon: ShoppingCart },
       { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw },
+      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText },
       { label: "Nhà cung cấp", href: "/suppliers", icon: Factory },
       { label: "Công nợ NCC", href: "/payables", icon: CreditCard },
     ],
@@ -74,6 +77,12 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Boxes,
     items: [
       { label: "Kho hàng", href: "/inventory", icon: Boxes },
+      // ⚠ PHIẾU NHẬP KHO CHUYỂN HẲN SANG ĐÂY (chủ nhà chốt 20/09/2026).
+      //   Nó không còn là đường nhập hàng từ NCC — đường đó nay là
+      //   "Phiếu nhập hàng" ở nhóm Mua hàng, và đi qua RPC một giao
+      //   dịch. Ở lại đây nó làm đúng một việc: nhập kho thông thường,
+      //   không NCC, không công nợ.
+      { label: "Phiếu nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
       { label: "Sản phẩm", href: "/products", icon: Package },
       { label: "Giao hàng", href: "/deliveries", icon: Truck },
     ],

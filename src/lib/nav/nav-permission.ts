@@ -61,10 +61,11 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/promotions": { module: "promotions", feature: "promotions" },
 
   // Mua hàng
-  // ⚠ LẬP PHIẾU NHẬP KHO đòi quyền TẠO, không phải quyền xem. NVBH được
-  // đọc tồn kho để biết còn hàng không — chừng đó không phải là lý do để
-  // họ thấy nút lập phiếu nhập hàng của nhà cung cấp.
-  "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
+  // ⚠ LẬP PHIẾU ĐÒI QUYỀN TẠO, không phải quyền xem. NVBH được đọc tồn
+  // kho để biết còn hàng không — chừng đó không phải là lý do để họ
+  // thấy nút lập phiếu nhập hàng của nhà cung cấp. Với phiếu nhập hàng
+  // thì còn nặng hơn: hoàn thành một phiếu là cộng kho VÀ ghi công nợ.
+  "/purchasing/receipts": { module: "inventory", feature: "purchasing.invoices", action: "create" },
   "/purchasing/invoices": { module: "inventory", feature: "purchasing.invoices" },
   "/purchase-returns": { module: "inventory", feature: "purchasing.returns" },
   "/suppliers": { module: "inventory", feature: "suppliers" },
@@ -72,6 +73,10 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
 
   // Kho vận
   "/inventory": { module: "inventory", feature: "inventory" },
+  // ⚠ PHIẾU NHẬP KHO NẰM Ở NHÓM KHO VẬN TỪ 20/09/2026 (chủ nhà chốt).
+  //   Nó không còn là đường nhập hàng từ NCC — đường đó là
+  //   `/purchasing/receipts`. Quyền giữ nguyên: nó vẫn cộng kho thật.
+  "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
   "/products": { module: "products", feature: "products" },
   "/deliveries": { module: "deliveries", feature: "deliveries" },
   "/returns": { module: "returns", feature: "returns" },

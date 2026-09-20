@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   baseQtyOf, validIssueLines, overIssueProducts, issueReasonLabel, friendlyIssueError,
-  ISSUE_REASONS, ISSUE_ZONES,
+  ISSUE_REASONS, ISSUE_ZONES, destZonesFor, isTransfer,
   type IssueLine,
 } from "../src/lib/inventory/stock-issue"
 
@@ -277,7 +277,7 @@ describe("màn Phiếu xuất kho", () => {
    * vết lấy lô.
    */
   it("không tự trừ kho, chỉ ghi phiếu rồi gọi RPC", () => {
-    expect(PAGE).toContain('supabase.rpc("post_stock_issue"')
+    expect(PAGE).toContain('post_stock_transfer" : "post_stock_issue"')
     expect(PAGE, "đang tự trừ kho từ trình duyệt").not.toMatch(
       /\.from\("batches"\)[\s\S]{0,120}\.update\(/
     )
@@ -353,5 +353,143 @@ describe("menu: Phiếu xuất kho ở nhóm Kho vận", () => {
 
   it("không lạc sang nhóm Mua hàng", () => {
     expect(group("Mua hàng")).not.toContain('href: "/inventory/stock-issue"')
+  })
+})
+
+// =====================================================================
+
+/**
+ * CHUYỂN KHO — PHIẾU XUẤT KHO LÀM LUÔN VIỆC ĐỔI CHỖ GIỮA HAI KHO.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "Tích hợp thêm chuyển kho vào phiếu xuất
+ * kho (VD chuyển từ kho hàng bán sang hàng date)".
+ */
+describe("chuyển kho", () => {
+  const MIG148 = readFileSync(
+    resolve(__dirname, "..", "supabase/migrations/148_stock_transfer.sql"),
+    "utf-8"
+  )
+  const SQL148 = MIG148.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n")
+  /**
+   * ⚠ BỎ CẢ CHÚ THÍCH KHỐI khi cần soi CODE. Bản đầu của chốt
+   * "received_at" bắt trúng chính câu chú thích giải thích vì sao KHÔNG
+   * đặt `now()` — chốt đọc văn xuôi rồi kết tội đoạn mã đang làm đúng.
+   */
+  const CODE148 = SQL148.replace(/\/\*[\s\S]*?\*\//g, "")
+
+  /**
+   * ⚠ CHUYỂN KHO KHÔNG PHẢI PHIẾU XUẤT. Xuất lẻ làm tổng tồn GIẢM;
+   * chuyển kho chỉ ĐỔI CHỖ. Ghi chuyển kho bằng `type = 'export'` là
+   * khai mất hàng, và báo cáo hao hụt phình lên bằng đúng lượng hàng
+   * vẫn còn nguyên trong kho.
+   */
+  it("ghi xuống là loại transfer, không phải export", () => {
+    expect(PAGE).toContain('type: transfer ? "transfer" : "export"')
+    expect(PAGE).toContain("dest_warehouse_zone: transfer ? destZone : null")
+  })
+
+  /** ⚠ Hai RPC khác nhau — `post_stock_issue` chỉ TRỪ, không cộng đâu cả. */
+  it("gọi đúng RPC theo loại phiếu", () => {
+    expect(PAGE).toContain('transfer ? "post_stock_transfer" : "post_stock_issue"')
+  })
+
+  /**
+   * ⚠ KHÔNG CHO CHỌN KHO ĐÍCH TRÙNG KHO NGUỒN, và luật ấy nằm ở MỘT
+   * chỗ (`destZonesFor`). Để người dùng chọn được rồi mới báo lỗi là
+   * bắt họ đi một vòng cho một thứ màn hình biết trước.
+   */
+  it("kho đích không bao giờ trùng kho nguồn", () => {
+    expect(destZonesFor("sale").map((z) => z.value)).toEqual(["date"])
+    expect(destZonesFor("date").map((z) => z.value)).toEqual(["sale"])
+    expect(PAGE).toContain("destZonesFor(zone).map(")
+    /* Đổi kho nguồn thì kéo kho đích theo. */
+    expect(PAGE).toContain("if (destZone === z) setDestZone(destZonesFor(z)")
+  })
+
+  /** ⚠ Ô kho đích chỉ hiện khi chọn Chuyển kho — không thì nó vô nghĩa. */
+  it("ô kho đích chỉ hiện với phiếu chuyển kho", () => {
+    expect(PAGE).toContain("{transfer && (")
+    expect(PAGE).toContain("Chuyển SANG kho *")
+  })
+
+  it("nhận ra lý do chuyển kho bằng một hàm, không so chuỗi rải rác", () => {
+    expect(isTransfer("transfer")).toBe(true)
+    expect(isTransfer("damaged")).toBe(false)
+    expect(isTransfer(null)).toBe(false)
+    expect(isTransfer(undefined)).toBe(false)
+    expect(PAGE, "đang so chuỗi tay thay vì dùng isTransfer")
+      .not.toContain('reason === "transfer"')
+  })
+
+  // ---- migration 148 -------------------------------------------------
+
+  /**
+   * ⚠ LÔ PHẢI GIỮ NGUYÊN HẠN DÙNG VÀ GIÁ VỐN khi sang kho mới.
+   * Xuất-rồi-nhập là khai một lô MỚI với hạn do người gõ đặt — FIFO sau
+   * đó lấy sai thứ tự, và giá vốn mọi báo cáo lãi lỗ lệch đi.
+   */
+  it("lô sang kho mới giữ nguyên hạn dùng, giá vốn và ngày nhận", () => {
+    expect(SQL148).toContain("v_batch.expires_at")
+    expect(SQL148).toContain("v_batch.unit_cost")
+    expect(SQL148, "đặt lại received_at là nói dối FIFO")
+      .toContain("v_batch.received_at")
+    expect(CODE148, "đang đặt received_at = now() cho lô chuyển sang")
+      .not.toMatch(/received_at[^,)]*now\(\)/)
+  })
+
+  /**
+   * ⚠ GỘP LÔ PHẢI KHOÁ CẢ `unit_cost`. Thiếu nó là trộn hai lô mua ở
+   * hai giá thành một, và giá vốn của cả cụm sai từ đó trở đi.
+   */
+  it("gộp vào lô cùng danh tính, khoá gộp có cả giá vốn", () => {
+    for (const col of ["batch_code", "expires_at", "unit_cost"]) {
+      expect(SQL148, `khoá gộp lô thiếu ${col}`).toContain(`${col} IS NOT DISTINCT FROM`)
+    }
+  })
+
+  /**
+   * ⚠ CÁI BẪY NẶNG NHẤT. Trigger `trg_batches_auto_zone_ins` (mig 028)
+   * chạy BEFORE INSERT trên `batches` và tự đẩy mọi lô cận hạn về kho
+   * `date`. Một phiếu "chuyển sang kho bán" sẽ lặng lẽ đáp xuống đúng
+   * kho date — không lỗi, không cảnh báo. Hàm phải TỪ CHỐI, không lách.
+   */
+  it("từ chối đưa hàng gần hạn vào kho bán, thay vì lặng lẽ đáp nhầm kho", () => {
+    expect(SQL148).toContain("HANG_GAN_HAN")
+    expect(SQL148).toContain("date_warehouse_threshold_days")
+    /* ⚠ KHÔNG ĐƯỢC LÁCH TRIGGER. Một câu UPDATE warehouse_zone ngay sau
+       INSERT là gỡ đúng chốt an toàn mà mig 028 và 138 dựng lên. */
+    expect(
+      SQL148,
+      "đang lách trigger phân kho bằng một câu UPDATE warehouse_zone sau INSERT"
+    ).not.toMatch(/UPDATE batches\s+SET warehouse_zone/)
+  })
+
+  /** ⚠ Ghi sổ hai lần không được chuyển hàng hai lần. */
+  it("idempotent và từ chối phiếu không phải chuyển kho", () => {
+    expect(SQL148).toContain("IF v_status = 'posted' THEN")
+    expect(SQL148).toContain("SAI_LOAI_PHIEU")
+    expect(SQL148).toContain("TRUNG_KHO")
+    expect(SQL148).toContain("THIEU_KHO_DICH")
+  })
+
+  /** ⚠ Kiểm đủ tồn TRƯỚC khi chuyển một đơn vị nào, và gom theo mặt hàng. */
+  it("kiểm đủ tồn trước, gom theo mặt hàng", () => {
+    const check = SQL148.slice(
+      SQL148.indexOf("GROUP BY sel.product_id"),
+      SQL148.indexOf("LƯỢT HAI")
+    )
+    expect(check).toContain("KHONG_DU_TON")
+    expect(check.length, "không tìm thấy lượt kiểm tồn").toBeGreaterThan(50)
+  })
+
+  /** ⚠ Vết lấy lô — thứ trả lời được "hàng này đi từ lô nào". */
+  it("ghi vết lấy lô", () => {
+    expect(SQL148).toContain("INSERT INTO stock_line_consumptions")
+  })
+
+  it("dọn quyền và nạp lại lược đồ", () => {
+    expect(SQL148).toContain("REVOKE EXECUTE ON FUNCTION public.post_stock_transfer(uuid) FROM PUBLIC")
+    expect(SQL148).toContain("GRANT EXECUTE ON FUNCTION public.post_stock_transfer(uuid) TO authenticated")
+    expect(SQL148).toContain("NOTIFY pgrst, 'reload schema'")
   })
 })

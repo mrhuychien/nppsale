@@ -109,6 +109,37 @@ export function issueReasonLabel(v: string | null | undefined): string {
   return ISSUE_REASONS.find((r) => r.value === v)?.label ?? v
 }
 
+/**
+ * "Chuyển kho" KHÔNG phải một lý do xuất — nó là một LOẠI PHIẾU KHÁC.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "Tích hợp thêm chuyển kho vào phiếu xuất
+ * kho (VD chuyển từ kho hàng bán sang hàng date)". Trên màn thì nó nằm
+ * chung một chỗ với xuất lẻ cho tiện; dưới sổ thì nó là
+ * `stock_entries.type = 'transfer'` và đi qua `post_stock_transfer`,
+ * KHÔNG qua `post_stock_issue`.
+ *
+ * ⚠ VÌ SAO KHÔNG GỘP LÀM MỘT. Xuất lẻ là hàng RỜI KHỎI kho (vỡ, biếu,
+ * mẫu) — tổng tồn giảm. Chuyển kho là hàng ĐỔI CHỖ — tổng tồn không
+ * đổi. Ghi chuyển kho bằng một phiếu xuất là khai mất hàng, và báo cáo
+ * hao hụt phình lên bằng đúng lượng hàng vẫn còn nguyên trong kho.
+ */
+export const TRANSFER_REASON = "transfer"
+
+export function isTransfer(reason: string | null | undefined): boolean {
+  return reason === TRANSFER_REASON
+}
+
+/**
+ * Kho đích hợp lệ cho một kho nguồn.
+ *
+ * ⚠ KHÔNG CHO CHỌN CHÍNH NÓ. `post_stock_transfer` từ chối kho nguồn
+ * trùng kho đích; để người dùng chọn được rồi mới báo lỗi là bắt họ đi
+ * một vòng cho một thứ màn hình biết trước.
+ */
+export function destZonesFor(src: string): ReadonlyArray<{ value: string; label: string }> {
+  return ISSUE_ZONES.filter((z) => z.value !== src)
+}
+
 export const ISSUE_ZONES = [
   { value: "sale", label: "Kho hàng bán" },
   { value: "date", label: "Kho hàng date (gần hạn)" },

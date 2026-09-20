@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Loader2, PackageMinus, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowLeftRight, Loader2, PackageMinus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -37,7 +37,7 @@ import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import {
   baseQtyOf, overIssueProducts, validIssueLines, friendlyIssueError,
-  ISSUE_REASONS, ISSUE_ZONES,
+  ISSUE_REASONS, ISSUE_ZONES, destZonesFor, isTransfer,
   type IssueLine, type IssueProduct,
 } from "@/lib/inventory/stock-issue"
 import { errorMessage } from "@/lib/errors"
@@ -52,6 +52,14 @@ export default function StockIssuePage() {
   const [products, setProducts] = useState<IssueProduct[]>([])
   const [zone, setZone] = useState("sale")
   const [reason, setReason] = useState("damaged")
+  /**
+   * Kho ĐÍCH — chỉ dùng khi lý do là "Chuyển kho".
+   *
+   * ⚠ MẶC ĐỊNH LÀ KHO CÒN LẠI, không để trống. Chỉ có hai kho, nên để
+   *   trống là bắt người dùng chọn một thứ không có lựa chọn thứ hai.
+   */
+  const [destZone, setDestZone] = useState(() => destZonesFor("sale")[0]?.value ?? "date")
+  const transfer = isTransfer(reason)
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<IssueLine[]>([])
   const [term, setTerm] = useState("")
@@ -142,6 +150,13 @@ export default function StockIssuePage() {
    */
   const changeZone = async (z: string) => {
     setZone(z)
+    /**
+     * ⚠ ĐỔI KHO NGUỒN THÌ KÉO KHO ĐÍCH THEO. Để nguồn trùng đích rồi
+     *   mới nhận lỗi từ máy chủ là bắt người dùng đi một vòng cho một
+     *   thứ màn hình biết trước. Luật "không chọn chính nó" nằm ở
+     *   `destZonesFor`, một chỗ duy nhất.
+     */
+    if (destZone === z) setDestZone(destZonesFor(z)[0]?.value ?? z)
     setLines((a) => a.map((l) => ({ ...l, on_hand: null })))
     const fresh = await Promise.all(
       lines.map(async (l) => ({ id: l.id, n: await fetchOnHand(l.product_id, z) }))
@@ -172,10 +187,17 @@ export default function StockIssuePage() {
         .from("stock_entries")
         .insert({
           org_id: user.org_id,
-          entry_code: `XKL-${Date.now().toString(36).toUpperCase()}`,
-          type: "export",
+          /* ⚠ MÃ PHIẾU NÓI RÕ LOẠI: chuyển kho và xuất lẻ là hai việc
+             khác hẳn nhau trên sổ, nên đừng để chúng lẫn mã. */
+          entry_code: `${transfer ? "CKL" : "XKL"}-${Date.now().toString(36).toUpperCase()}`,
+          /* ⚠ CHUYỂN KHO LÀ `transfer`, KHÔNG PHẢI `export`. Xuất lẻ
+             làm tổng tồn GIẢM; chuyển kho chỉ ĐỔI CHỖ. Ghi chuyển kho
+             bằng phiếu xuất là khai mất hàng, và báo cáo hao hụt phình
+             lên bằng đúng lượng hàng vẫn còn nguyên trong kho. */
+          type: transfer ? "transfer" : "export",
           status: "draft",
           warehouse_zone: zone,
+          dest_warehouse_zone: transfer ? destZone : null,
           issue_reason: reason,
           notes: notes.trim() || null,
           created_by: user.id,
@@ -210,13 +232,28 @@ export default function StockIssuePage() {
         throw new Error("Không ghi được dòng hàng nào — nhiều khả năng bạn không có quyền lập phiếu xuất kho.")
       }
 
-      const { error: rErr } = await supabase.rpc("post_stock_issue", { p_entry_id: entryId })
+      /* ⚠ HAI RPC KHÁC NHAU. `post_stock_issue` chỉ TRỪ kho;
+         `post_stock_transfer` trừ kho nguồn VÀ cộng kho đích trong cùng
+         một giao dịch, giữ nguyên hạn dùng và giá vốn của từng lô. */
+      const { error: rErr } = await supabase.rpc(
+        transfer ? "post_stock_transfer" : "post_stock_issue",
+        { p_entry_id: entryId }
+      )
       if (rErr) throw new Error(friendlyIssueError(rErr.message))
 
-      toast({ title: "Đã xuất kho", description: `${valid.length} dòng hàng đã trừ khỏi kho.` })
+      toast({
+        title: transfer ? "Đã chuyển kho" : "Đã xuất kho",
+        description: transfer
+          ? `${valid.length} dòng hàng đã sang ${destZonesFor("")
+              .find((z) => z.value === destZone)?.label ?? destZone}. Tổng tồn không đổi.`
+          : `${valid.length} dòng hàng đã trừ khỏi kho.`,
+      })
       router.push(`/inventory/stock-card`)
     } catch (e) {
-      toast({ title: "Không xuất được", description: errorMessage(e), variant: "destructive" })
+      toast({
+        title: transfer ? "Không chuyển kho được" : "Không xuất được",
+        description: errorMessage(e), variant: "destructive",
+      })
     } finally {
       setSubmitting(false)
     }
@@ -227,8 +264,12 @@ export default function StockIssuePage() {
   return (
     <div className="space-y-4 pb-28">
       <PageHeader
-        title="Phiếu xuất kho"
-        description="Xuất lẻ không qua đơn hàng — hàng hỏng, hàng biếu, chuyển kho."
+        title={transfer ? "Phiếu chuyển kho" : "Phiếu xuất kho"}
+        description={
+          transfer
+            ? "Đổi chỗ hàng giữa hai kho — tổng tồn không đổi, lô giữ nguyên hạn dùng và giá vốn."
+            : "Xuất lẻ không qua đơn hàng — hàng hỏng, hàng biếu, hàng mẫu."
+        }
         backHref="/inventory"
       />
 
@@ -236,7 +277,9 @@ export default function StockIssuePage() {
         <CardHeader><CardTitle className="text-base">Thông tin chung</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Xuất từ kho *</Label>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              {transfer ? "Chuyển TỪ kho *" : "Xuất từ kho *"}
+            </Label>
             <Select value={zone} onValueChange={changeZone}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -246,7 +289,9 @@ export default function StockIssuePage() {
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground">
-              Trừ theo FIFO (hạn cũ trước) trong đúng kho đã chọn.
+              {transfer
+                ? "Lấy theo FIFO (hạn cũ trước); lô sang kho mới GIỮ NGUYÊN hạn dùng và giá vốn."
+                : "Trừ theo FIFO (hạn cũ trước) trong đúng kho đã chọn."}
             </p>
           </div>
           <div className="space-y-2">
@@ -260,6 +305,38 @@ export default function StockIssuePage() {
               </SelectContent>
             </Select>
           </div>
+          {/*
+            ⚠ Ô KHO ĐÍCH CHỈ HIỆN KHI CHỌN "Chuyển kho". Hiện thường
+              trực là một ô vô nghĩa ở chín phần mười số phiếu, và người
+              dùng sẽ gõ vào đó.
+          */}
+          {transfer && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Chuyển SANG kho *
+              </Label>
+              <Select value={destZone} onValueChange={setDestZone}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {destZonesFor(zone).map((z) => (
+                    <SelectItem key={z.value} value={z.value}>{z.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/*
+                ⚠ NÓI TRƯỚC HAI ĐIỀU NGƯỜI DÙNG SẼ VẤP. Một: hàng gần
+                  hạn KHÔNG chuyển vào kho bán được — máy chủ từ chối,
+                  và nói trước thì họ không mất công lập phiếu. Hai:
+                  phiếu chuyển kho không bấm Huỷ được, đường đảo là lập
+                  một phiếu chuyển ngược lại.
+              */}
+              <p className="text-[11px] text-muted-foreground">
+                Tổng tồn không đổi — hàng chỉ đổi chỗ, giữ nguyên hạn dùng và giá vốn.
+                Hàng gần hạn không chuyển sang kho hàng bán được.
+                Chuyển nhầm thì lập một phiếu chuyển ngược lại (không có nút huỷ).
+              </p>
+            </div>
+          )}
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="si-notes" className="text-xs uppercase tracking-wider text-muted-foreground">
               Ghi chú
@@ -403,8 +480,10 @@ export default function StockIssuePage() {
           <Button onClick={submit} disabled={submitting || lines.length === 0}>
             {submitting
               ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              : <PackageMinus className="mr-1.5 h-4 w-4" />}
-            Xuất kho
+              : transfer
+                ? <ArrowLeftRight className="mr-1.5 h-4 w-4" />
+                : <PackageMinus className="mr-1.5 h-4 w-4" />}
+            {transfer ? "Chuyển kho" : "Xuất kho"}
           </Button>
         </div>
       </div>

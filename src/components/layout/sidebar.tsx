@@ -13,7 +13,7 @@ import {
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
-  PackagePlus,
+  PackagePlus, PackageMinus,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -81,8 +81,10 @@ const NAV_GROUPS: NavGroup[] = [
       //   Nó không còn là đường nhập hàng từ NCC — đường đó nay là
       //   "Phiếu nhập hàng" ở nhóm Mua hàng, và đi qua RPC một giao
       //   dịch. Ở lại đây nó làm đúng một việc: nhập kho thông thường,
-      //   không NCC, không công nợ.
+      //   không NCC, không công nợ. Phiếu xuất kho là bản đối xứng
+      //   cho việc xuất lẻ: hàng vỡ, hàng biếu, chuyển chi nhánh.
       { label: "Phiếu nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
+      { label: "Phiếu xuất kho", href: "/inventory/stock-issue", icon: PackageMinus },
       { label: "Sản phẩm", href: "/products", icon: Package },
       { label: "Giao hàng", href: "/deliveries", icon: Truck },
     ],

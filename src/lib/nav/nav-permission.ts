@@ -77,6 +77,8 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   //   Nó không còn là đường nhập hàng từ NCC — đường đó là
   //   `/purchasing/receipts`. Quyền giữ nguyên: nó vẫn cộng kho thật.
   "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
+  // Phiếu xuất kho TRỪ kho thật — cùng một mức quyền với phiếu nhập.
+  "/inventory/stock-issue": { module: "inventory", feature: "inventory", action: "create" },
   "/products": { module: "products", feature: "products" },
   "/deliveries": { module: "deliveries", feature: "deliveries" },
   "/returns": { module: "returns", feature: "returns" },

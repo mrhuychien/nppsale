@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { addOverstockWarning } from "../src/lib/sell/committed"
 
 /**
  * Chốt cho "hàng đã đặt nhưng chưa rời kho" (mig 136 + màn bán hàng).
@@ -129,6 +130,7 @@ describe("màn bán hàng đọc và dùng số đã đặt", () => {
   const LIST = read("src/app/(dashboard)/sell/page.tsx")
   const CARD = read("src/components/sell/product-card.tsx")
   const SCAN = read("src/app/(dashboard)/sell/scan/page.tsx")
+  const COMMITTED = read("src/lib/sell/committed.ts")
 
   /**
    * ⚠ PROVIDER PHẢI NẰM TRONG GIỎ. Chỉ giỏ mới biết đơn nào đang được
@@ -167,14 +169,81 @@ describe("màn bán hàng đọc và dùng số đã đặt", () => {
     expect(LIST).toContain("{committedWarning && (")
   })
 
-  /** Thêm hàng phải so với phần CÒN ĐẶT ĐƯỢC, không so với tồn. */
-  it("chạm thẻ để thêm hàng so với khả dụng", () => {
+  /**
+   * Cảnh báo phải so với phần CÒN ĐẶT ĐƯỢC, không so với tồn.
+   *
+   * ⚠ SO ĐỂ CẢNH BÁO, KHÔNG ĐỂ CHẶN (chủ nhà chốt 20/09/2026: "mở khoá
+   * cả cho đặt với sản phẩm hết hàng"). Bản cũ của chốt này đòi
+   * `if (available <= 0)` ngay sau phép tính — tức là khoá chặt đúng cái
+   * cửa chủ nhà vừa bảo mở.
+   */
+  it("chạm thẻ để thêm hàng vẫn so với khả dụng, nhưng để cảnh báo", () => {
     expect(LIST).toContain("availableMapFrom(stockByProduct, committedByProduct)")
     const at = LIST.indexOf("const available = availableByProduct[p.id] ?? 0")
     expect(at, "màn danh sách không tính khả dụng").toBeGreaterThan(0)
-    expect(LIST.slice(at, at + 200)).toContain("if (available <= 0)")
+    expect(LIST.slice(at, at + 300)).toContain(
+      "addOverstockWarning(p.name, onHand, available, p.base_unit)"
+    )
     // Quét mã cũng là một đường thêm hàng — không được bỏ sót.
     expect(SCAN).toContain("availableByProduct[p.id] ?? 0")
+    expect(SCAN).toContain("addOverstockWarning(")
+  })
+
+  /**
+   * ⚠ HẾT HÀNG KHÔNG CÒN CHẶN ĐƯỢC ĐẶT HÀNG.
+   *
+   * Giỏ hàng đã cho vượt tồn từ lâu và nói thẳng "vẫn gửi đơn được để
+   * nhà phân phối biết nhu cầu thật". Hai màn THÊM hàng thì vẫn ném
+   * toast đỏ rồi `return` — gõ số lượng lên 50 khi kho còn 2 thì được,
+   * mà thêm một mặt hàng kho còn 0 thì không.
+   *
+   * Cái giá của việc chặn không phải là sự bất tiện mà là SỐ LIỆU: đơn
+   * không đặt được thì nhu cầu đó không tồn tại ở đâu cả.
+   *
+   * ⚠ CHỐT VÀO CHỖ RỜI SỚM, KHÔNG CHỐT VÀO LỜI CẢNH BÁO. Còn chuỗi
+   * "Hết hàng" trong file không nói lên điều gì — nó vẫn phải còn, vì
+   * vẫn phải cảnh báo. Thứ phải chết là cú `return` giữa phép kiểm và
+   * lệnh thêm vào giỏ.
+   */
+  it("không màn nào rời sớm giữa phép kiểm tồn và lệnh thêm vào giỏ", () => {
+    const span = (src: string, from: string, to: string) => {
+      const a = src.indexOf(from)
+      expect(a, `không tìm thấy "${from}"`).toBeGreaterThan(0)
+      const b = src.indexOf(to, a)
+      expect(b, `không tìm thấy "${to}" sau đó`).toBeGreaterThan(a)
+      return src.slice(a, b)
+    }
+    expect(
+      span(LIST, "const onHand = stockByProduct[p.id] ?? 0", "cart.addLine({"),
+      "màn danh sách vẫn chặn đặt hàng khi hết hàng"
+    ).not.toMatch(/\breturn\b/)
+    expect(
+      span(SCAN, "const warn = addOverstockWarning(", "cart.addLine({"),
+      "màn quét mã vẫn chặn đặt hàng khi hết hàng"
+    ).not.toMatch(/\breturn\b/)
+  })
+
+  /**
+   * ⚠ ĐỎ LÀ DÀNH CHO LỖI. Đặt hàng khi hết hàng nay là việc ĐƯỢC PHÉP,
+   * chỉ cần biết trước hệ quả — tô đỏ nó là dạy người dùng rằng màu đỏ
+   * không có nghĩa gì, và lần nó kêu thật thì không ai nhìn.
+   */
+  it("cảnh báo hết hàng không còn tô đỏ như một lỗi", () => {
+    const warn = COMMITTED.slice(COMMITTED.indexOf("export function addOverstockWarning"))
+    expect(warn).not.toContain("destructive")
+    /* Hai câu khác nhau dẫn tới hai việc khác nhau — phải giữ riêng. */
+    expect(warn).toContain("Đã có đơn khác đặt hết:")
+    expect(warn).toContain("Hết hàng:")
+    /* Và cả hai đều phải nói rõ là VẪN ĐẶT ĐƯỢC. */
+    expect(warn.match(/Vẫn đặt được/g) ?? []).toHaveLength(2)
+  })
+
+  /** Còn đặt được thì im — toast ở mỗi cú chạm là dạy người ta bỏ qua toast. */
+  it("còn hàng thì không cảnh báo gì", () => {
+    expect(addOverstockWarning("Bánh", 100, 40, "hộp")).toBeNull()
+    expect(addOverstockWarning("Bánh", 0, 0, "hộp")).not.toBeNull()
+    expect(addOverstockWarning("Bánh", 100, 0, "hộp")?.title).toContain("Đã có đơn khác đặt hết")
+    expect(addOverstockWarning("Bánh", 0, 0, "hộp")?.title).toContain("Hết hàng")
   })
 
   /**

@@ -6,7 +6,7 @@ import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
-import { availableMapFrom } from "@/lib/sell/committed"
+import { addOverstockWarning, availableMapFrom } from "@/lib/sell/committed"
 import { findByCode, shouldAcceptScan } from "@/lib/sell/scan"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { toast } from "@/hooks/use-toast"
@@ -40,16 +40,18 @@ export default function SellScanPage() {
       toast({ title: "Không tìm thấy sản phẩm", description: `Mã: ${raw}`, variant: "destructive" })
       return
     }
-    if ((availableByProduct[p.id] ?? 0) <= 0) {
-      toast({
-        title:
-          (stockByProduct[p.id] ?? 0) > 0
-            ? `Đã có đơn khác đặt hết: ${p.name}`
-            : `Hết hàng: ${p.name}`,
-        variant: "destructive",
-      })
-      return
-    }
+    /**
+     * ⚠ CẢNH BÁO RỒI VẪN THÊM — cùng luật với màn danh sách (chủ nhà
+     * chốt 20/09/2026). Quét mã mà bị chặn còn tệ hơn: người ta đang
+     * cầm chính món hàng đó trên tay.
+     */
+    const warn = addOverstockWarning(
+      p.name,
+      stockByProduct[p.id] ?? 0,
+      availableByProduct[p.id] ?? 0,
+      p.base_unit
+    )
+    if (warn) toast(warn)
     // Quét thì thêm theo ĐƠN VỊ CƠ SỞ: mã vạch in trên vỏ hộp là mã của
     // hộp, không phải của thùng.
     const unit = sellableUnits(p)[0]

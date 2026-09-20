@@ -13,6 +13,9 @@
  */
 
 /** Trạng thái đọc số đã đặt. `null` = CHƯA/KHÔNG đọc được. */
+
+import { formatInt } from "@/lib/utils"
+
 export type CommittedMap = Record<string, number> | null
 
 /**
@@ -98,5 +101,51 @@ export function stockDisplayFor(stock: number, committed: number | null): StockD
     available,
     out: available <= 0,
     reservedOut: available <= 0 && s > 0,
+  }
+}
+
+/**
+ * Lời cảnh báo khi thêm một mặt hàng KHÔNG CÒN ĐẶT ĐƯỢC.
+ *
+ * ⚠ CẢNH BÁO, KHÔNG PHẢI CHẶN (chủ nhà chốt 20/09/2026: "mở khoá cả cho
+ * đặt với sản phẩm hết hàng"). Trước đây hai màn thêm hàng — danh sách
+ * và quét mã — ném một toast đỏ rồi `return`, tức là KHÔNG thêm. Nhưng
+ * giỏ hàng thì đã cho phép vượt tồn từ lâu và nói thẳng "vẫn gửi đơn
+ * được để nhà phân phối biết nhu cầu thật". Hai cách cư xử cho cùng một
+ * việc: gõ số lượng lên 50 khi kho còn 2 thì được, mà thêm một mặt hàng
+ * kho còn 0 thì không.
+ *
+ * Cái giá của việc chặn không phải là sự bất tiện — mà là SỐ LIỆU. Đơn
+ * không đặt được thì nhu cầu đó không tồn tại ở đâu cả, và nhà phân phối
+ * nhập hàng theo một bức tranh thiếu đúng phần đang thiếu hàng nhất.
+ *
+ * ⚠ HAI CÂU KHÁC NHAU, GIỮ NGUYÊN. "Hết hàng" thì người bán đi gọi nhập;
+ * "đã có đơn khác đặt hết" thì họ đi hỏi xem đơn nào đang giữ và có
+ * nhường được không (xem `StockDisplay.reservedOut`). Gộp lại là để họ
+ * làm sai việc.
+ *
+ * ⚠ `null` NGHĨA LÀ KHÔNG CÓ GÌ ĐỂ NÓI. Còn đặt được thì im — một toast
+ * ở mỗi cú chạm là cách nhanh nhất dạy người dùng bỏ qua mọi toast.
+ */
+export function addOverstockWarning(
+  productName: string,
+  onHand: number,
+  available: number,
+  baseUnit: string
+): { title: string; description: string } | null {
+  if (available > 0) return null
+  if (onHand > 0) {
+    return {
+      title: `Đã có đơn khác đặt hết: ${productName}`,
+      description:
+        `Kho còn ${formatInt(onHand)} ${baseUnit} nhưng đã nằm trong Phiếu tạm khác. ` +
+        "Vẫn đặt được — khi xuất hàng sẽ chỉ giao được phần có trong kho.",
+    }
+  }
+  return {
+    title: `Hết hàng: ${productName}`,
+    description:
+      "Vẫn đặt được để nhà phân phối biết nhu cầu thật; khi xuất hàng sẽ chỉ " +
+      "giao được phần có trong kho.",
   }
 }

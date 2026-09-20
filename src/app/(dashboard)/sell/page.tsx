@@ -6,7 +6,7 @@ import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, Rotate
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
-import { availableMapFrom } from "@/lib/sell/committed"
+import { addOverstockWarning, availableMapFrom } from "@/lib/sell/committed"
 import { ProductCard } from "@/components/sell/product-card"
 import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
 import { conversionFor, selectedUnitOf, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
@@ -16,7 +16,7 @@ import { backToReturnSlip } from "@/lib/nav/sell-nav"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
 import { compareByStockDesc } from "@/lib/orders/product-order"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
-import { cn, formatCurrency, formatInt } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 import { toast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -205,30 +205,28 @@ export default function SellPage() {
     }
 
     /**
-     * ⚠ SO VỚI KHẢ DỤNG, KHÔNG SO VỚI TỒN. Chủ nhà chốt: "số lượng đặt
-     * hoặc đổi không được lớn hơn tồn kho − hàng đã đặt". Kho còn 2.838
-     * gói mà hai Phiếu tạm khác đã hứa hết thì thêm dòng này là hứa lần
-     * thứ ba trên cùng số hàng.
+     * ⚠ CẢNH BÁO RỒI VẪN THÊM (chủ nhà chốt 20/09/2026: "mở khoá cả cho
+     * đặt với sản phẩm hết hàng").
      *
-     * ⚠ BÁO ĐÚNG LOẠI HẾT. "Hết hàng" và "đã có người đặt hết" dẫn tới
-     * hai việc khác nhau: gọi nhập hàng, hay đi hỏi đơn nào đang giữ.
+     * Bản cũ ném toast đỏ rồi `return` — KHÔNG thêm. Nhưng giỏ hàng thì
+     * đã cho vượt tồn từ lâu và nói thẳng "vẫn gửi đơn được để nhà phân
+     * phối biết nhu cầu thật". Hai cách cư xử cho cùng một việc: gõ số
+     * lượng lên 50 khi kho còn 2 thì được, mà thêm một mặt hàng kho còn
+     * 0 thì không.
+     *
+     * Cái giá của việc chặn không phải là sự bất tiện — mà là SỐ LIỆU.
+     * Đơn không đặt được thì nhu cầu đó không tồn tại ở đâu cả, và nhà
+     * phân phối nhập hàng theo một bức tranh thiếu đúng phần đang thiếu
+     * hàng nhất.
+     *
+     * ⚠ KHÔNG CÒN LÀ `destructive`. Đỏ dành cho lỗi; đây là việc được
+     * phép làm, chỉ cần biết trước hệ quả. Chốt chặn thật vẫn nguyên ở
+     * `post_stock_export`, và cảnh báo đi tiếp tới tận màn Xuất hàng.
      */
     const onHand = stockByProduct[p.id] ?? 0
     const available = availableByProduct[p.id] ?? 0
-    if (available <= 0) {
-      toast({
-        title:
-          onHand > 0
-            ? `Đã có đơn khác đặt hết: ${p.name}`
-            : `Hết hàng: ${p.name}`,
-        description:
-          onHand > 0
-            ? `Kho còn ${formatInt(onHand)} ${p.base_unit} nhưng đã nằm trong Phiếu tạm khác.`
-            : undefined,
-        variant: "destructive",
-      })
-      return
-    }
+    const warn = addOverstockWarning(p.name, onHand, available, p.base_unit)
+    if (warn) toast(warn)
     cart.addLine({
       productId: p.id,
       unit,

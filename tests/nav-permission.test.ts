@@ -125,6 +125,7 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
     "/sell": "nút CTA \"Tạo đơn mới\"",
     "/inventory/stock-in": "nút \"Tạo phiếu → Nhập kho\" ở màn Phiếu kho",
     "/inventory/stock-issue": "nút \"Tạo phiếu → Xuất kho\" ở màn Phiếu kho",
+    "/purchasing/invoices": "ô tra cứu trên trang Mua hàng (rời khỏi menu 20/09/2026)",
   }
 
   /**
@@ -143,6 +144,20 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
         `khai ${href} là đích của nút, nhưng màn Phiếu kho không có nút nào trỏ tới`
       ).toBe(true)
     }
+    /**
+     * ⚠ "Hoá đơn mua (tra cứu)" RỜI KHỎI MENU chứ không bị xoá (chủ nhà
+     * chốt 20/09/2026: "bỏ Hoá đơn mua"). Ô trên trang Mua hàng là cửa
+     * vào DUY NHẤT còn lại — gỡ nốt nó là một trang còn sống mà không
+     * ai tới được, và khai quyền cho nó thành rác thật.
+     */
+    const PURCHASING_HUB = readFileSync(
+      resolve(__dirname, "..", "src/app/(dashboard)/purchasing/page.tsx"),
+      "utf-8"
+    )
+    expect(
+      PURCHASING_HUB.includes('href: "/purchasing/invoices"'),
+      "trang Mua hàng không còn ô nào dẫn tới /purchasing/invoices — trang đó thành không tới được"
+    ).toBe(true)
   })
 
   /** Khai quyền mà không dùng thì là rác — và rác che mất chỗ thiếu. */

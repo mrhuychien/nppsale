@@ -306,11 +306,17 @@ describe("tra soát mã hàng: xuất theo hóa đơn nào, cho ai", () => {
 
   /** Và phải vẽ ra ở cả bảng máy tính lẫn danh sách điện thoại. */
   it("hiện mã hóa đơn, ngày và tên khách ở cả hai khổ màn", () => {
-    expect(CARD).toContain("<TableHead>Hóa đơn / Khách</TableHead>")
+    /* ⚠ CỘT ĐỔI TÊN THÀNH "Đối tác / Hóa đơn" (chủ nhà chốt 20/09/2026:
+       "Thêm cột VD xuất cho Khách hàng nào. Nhập của NCC nào") — nay nó
+       mang CẢ khách của dòng xuất lẫn NCC của dòng nhập. Thứ phải canh
+       không đổi: khách hàng vẫn phải hiện ra ở cả hai khổ màn. */
+    expect(CARD).toContain("<TableHead>Đối tác / Hóa đơn</TableHead>")
     const flat = CARD.replace(/\s+/g, " ")
     expect(flat).toContain("{m.invoice_code ? (")
-    expect(flat).toContain("{m.invoice_code && (")
-    expect(flat).toContain("{m.customer_name ? ` · ${m.customer_name}` : \"\"}")
+    expect(
+      (flat.match(/\{m\.customer_name \? ` · \$\{m\.customer_name\}` : ""\}/g) ?? []).length,
+      "tên khách phải hiện ở CẢ bảng máy tính lẫn danh sách điện thoại"
+    ).toBe(2)
   })
 
   /**

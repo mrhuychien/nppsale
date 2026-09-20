@@ -600,6 +600,21 @@ export default function InventoryPage() {
                                     tiết
                                   </Link>
                                 </DropdownMenuItem>
+                                {/*
+                                  ⚠ XEM NHANH GIAO DỊCH CỦA MÃ HÀNG từ ngay
+                                    danh sách tồn kho (chủ nhà chốt
+                                    20/09/2026). Trước đây muốn xem mã này
+                                    nhập của ai, xuất cho ai thì phải đi
+                                    vòng qua màn Tra soát rồi gõ tìm lại
+                                    đúng mã đang đứng trước mặt.
+                                */}
+                                {b.product?.id && (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/inventory/stock-card/${b.product.id}`}>
+                                      <ClipboardList className="mr-2 h-4 w-4" /> Thẻ kho — nhập/xuất của mã này
+                                    </Link>
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>

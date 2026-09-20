@@ -11,7 +11,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
-import { Factory, FileText, CreditCard, ArrowRight, Plus, PackagePlus, RotateCcw } from "lucide-react"
+import { Factory, FileText, CreditCard, ArrowRight, Plus, PackagePlus, RotateCcw, PackageSearch,
+} from "lucide-react"
 
 export default function PurchasingHubPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
@@ -51,7 +52,11 @@ export default function PurchasingHubPage() {
 
   const cards = [
     { title: "Tạo phiếu nhập kho", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/inventory/stock-in", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
-    { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-[#b54708]", bg: "bg-[#fff4ed]" },
+    { title: "Đề xuất đặt hàng", description: "So đơn hàng đang treo với tồn kho — cần đặt gì, của NCC nào", href: "/purchasing/reorder", icon: PackageSearch, color: "text-[#b54708]", bg: "bg-[#fff4ed]" },
+    /* ⚠ RỜI KHỎI MENU NHƯNG KHÔNG BỊ XOÁ (chủ nhà chốt 20/09/2026).
+       Đây là cửa vào duy nhất còn lại của trang tra cứu — gỡ nốt ô này
+       là một trang còn sống mà không ai tới được. */
+    { title: "Hoá đơn mua hàng (tra cứu)", description: "Danh sách phiếu nhập từ NCC — bấm để sửa phiếu nhập", href: "/purchasing/invoices", icon: FileText, color: "text-muted-foreground", bg: "bg-muted/40" },
     { title: "Trả hàng NCC", description: "Hoàn trả hàng cho NCC — xuất kho + giảm công nợ", href: "/purchase-returns", icon: RotateCcw, color: "text-[#c2410c]", bg: "bg-[#fff4ed]" },
     { title: "Nhà cung cấp", description: "Danh sách và thông tin nhà cung cấp", href: "/suppliers", icon: Factory, color: "text-tertiary", bg: "bg-[#ecfdf3]" },
     { title: "Công nợ NCC", description: "Theo dõi & thanh toán công nợ phải trả", href: "/payables", icon: CreditCard, color: "text-error", bg: "bg-error-container" },

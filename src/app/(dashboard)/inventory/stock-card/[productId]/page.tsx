@@ -61,6 +61,15 @@ type MovementRow = {
   invoice_code: string | null
   invoice_date: string | null
   customer_name: string | null
+  /**
+   * Phiếu NHẬP này nhận hàng của NCC nào (chủ nhà chốt 20/09/2026:
+   * "Thêm cột VD xuất cho Khách hàng nào. Nhập của NCC nào").
+   *
+   * ⚠ `null` NGHĨA LÀ PHIẾU KHÔNG GẮN NCC — nhập kho thường, kiểm kê
+   * thừa, chuyển kho. Điền một dấu gạch vào đó là đúng; bịa ra một cái
+   * tên là sai.
+   */
+  supplier_name: string | null
 }
 
 const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: "in" | "out" | "adjust" }> = {
@@ -91,7 +100,7 @@ export default function StockCardPage() {
       supabase
         .from("stock_entry_lines")
         .select(
-          "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, creator:users!stock_entries_created_by_fkey(full_name))"
+          "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))"
         )
         .eq("product_id", productId),
       /**
@@ -140,6 +149,7 @@ export default function StockCardPage() {
         status: string
         posted_at: string | null
         created_at: string
+        supplier?: { name?: string } | null
         creator?: { full_name?: string } | null
       } | null
     }
@@ -184,6 +194,7 @@ export default function StockCardPage() {
         invoice_code: invByEntry[l.entry!.id]?.code ?? null,
         invoice_date: invByEntry[l.entry!.id]?.date ?? null,
         customer_name: invByEntry[l.entry!.id]?.customer ?? null,
+        supplier_name: l.entry!.supplier?.name ?? null,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -374,10 +385,13 @@ export default function StockCardPage() {
                   <TableHead>Ngày</TableHead>
                   <TableHead>Phiếu</TableHead>
                   <TableHead>Loại</TableHead>
-                  {/* ⚠ HÓA ĐƠN VÀ KHÁCH ĐỨNG CẠNH NHAU (chủ nhà chốt
-                      20/09/2026). Tra soát là đi tìm "lô này đi đâu";
-                      mã phiếu kho một mình không trả lời được câu đó. */}
-                  <TableHead>Hóa đơn / Khách</TableHead>
+                  {/* ⚠ MỘT CỘT CHO CẢ HAI CHIỀU (chủ nhà chốt
+                      20/09/2026: "Thêm cột VD xuất cho Khách hàng nào.
+                      Nhập của NCC nào"). Tra soát là đi tìm "lô này ở
+                      đâu ra, đi đâu về" — mã phiếu kho một mình không
+                      trả lời được câu đó. Hai cột riêng thì mỗi dòng bỏ
+                      trống đúng một cột, và bảng rộng thêm vô ích. */}
+                  <TableHead>Đối tác / Hóa đơn</TableHead>
                   <TableHead>Người tạo</TableHead>
                   <TableHead>Lô</TableHead>
                   <TableHead className="text-right">Nhập</TableHead>
@@ -415,9 +429,14 @@ export default function StockCardPage() {
                               {m.customer_name ? ` · ${m.customer_name}` : ""}
                             </span>
                           </>
+                        ) : m.supplier_name ? (
+                          <>
+                            <span className="font-semibold">{m.supplier_name}</span>
+                            <span className="block text-muted-foreground">nhà cung cấp</span>
+                          </>
                         ) : (
-                          /* ⚠ Phiếu không đi theo hóa đơn (chuyển kho, kiểm
-                             kê, trả nhà cung cấp) thì để gạch — đừng bịa. */
+                          /* ⚠ Phiếu không gắn đối tác nào (nhập kho thường,
+                             chuyển kho, kiểm kê) thì để gạch — đừng bịa. */
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
@@ -473,13 +492,17 @@ export default function StockCardPage() {
                           </p>
                           {/* ⚠ Đi theo hóa đơn nào, cho ai — xem chú thích
                               ở cột cùng tên của bảng máy tính. */}
-                          {m.invoice_code && (
+                          {m.invoice_code ? (
                             <p className="mt-0.5 truncate text-xs font-semibold text-on-surface-variant">
                               {m.invoice_code}
                               {m.invoice_date ? ` · ${formatDate(m.invoice_date)}` : ""}
                               {m.customer_name ? ` · ${m.customer_name}` : ""}
                             </p>
-                          )}
+                          ) : m.supplier_name ? (
+                            <p className="mt-0.5 truncate text-xs font-semibold text-on-surface-variant">
+                              NCC: {m.supplier_name}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-right">
                           <p className={`font-bold text-sm ${isIn ? "text-tertiary" : isOut ? "text-error" : ""}`}>

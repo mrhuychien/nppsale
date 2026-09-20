@@ -9,7 +9,7 @@ import { NEW_ORDER_HREF } from "@/lib/nav/new-order"
 import type { Role } from "@/types"
 import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
-  CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3,
+  CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3, PackageSearch,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
@@ -66,7 +66,17 @@ const NAV_GROUPS: NavGroup[] = [
       //   nhóm này; mọi thứ còn lại là tra cứu hoặc danh mục.
       { label: "Phiếu nhập hàng", href: "/purchasing/receipts", icon: ShoppingCart },
       { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw },
-      { label: "Hoá đơn mua (tra cứu)", href: "/purchasing/invoices", icon: FileText },
+      /**
+       * ⚠ THAY CHO "Hoá đơn mua (tra cứu)" (chủ nhà chốt 20/09/2026:
+       *   "Menu bên trái thay Hoá đơn mua (tra cứu) (bỏ Hoá đơn mua)").
+       *   Màn tra cứu ấy chỉ liệt kê lại đúng những phiếu nhập đã có ở
+       *   mục "Phiếu nhập hàng" ngay trên nó, kèm cột công nợ mà mục
+       *   "Công nợ NCC" ngay dưới nói kỹ hơn — ba mục cho một việc.
+       *
+       * ⚠ TRANG CŨ KHÔNG BỊ XOÁ, chỉ rời khỏi menu: đường
+       *   `/purchasing/invoices` vẫn mở được cho ai còn giữ liên kết.
+       */
+      { label: "Đề xuất đặt hàng", href: "/purchasing/reorder", icon: PackageSearch },
       { label: "Nhà cung cấp", href: "/suppliers", icon: Factory },
       { label: "Công nợ NCC", href: "/payables", icon: CreditCard },
     ],

@@ -67,6 +67,13 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   // thì còn nặng hơn: hoàn thành một phiếu là cộng kho VÀ ghi công nợ.
   "/purchasing/receipts": { module: "inventory", feature: "purchasing.invoices", action: "create" },
   "/purchasing/invoices": { module: "inventory", feature: "purchasing.invoices" },
+  /**
+   * ⚠ CHỈ ĐỌC, NÊN CHỈ CẦN QUYỀN XEM. Màn đề xuất đặt hàng không lập
+   *   phiếu, không đụng kho, không đụng công nợ — nó trả lời một câu
+   *   hỏi rồi đưa người dùng sang màn lập phiếu, và màn ấy tự đòi
+   *   quyền `create` của nó.
+   */
+  "/purchasing/reorder": { module: "inventory", feature: "purchasing.invoices" },
   "/purchase-returns": { module: "inventory", feature: "purchasing.returns" },
   "/suppliers": { module: "inventory", feature: "suppliers" },
   "/payables": { module: "receivables", feature: "payables" },

@@ -37,7 +37,7 @@ import {
   ArrowRight,
   Quote,
   Store,
-  type LucideIcon,
+  type LucideIcon, PackageSearch,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -112,7 +112,10 @@ const TILES: Tile[] = [
   { label: "Trả hàng", href: "/returns", icon: RotateCcw, color: "rose" },
 
   // Mua hàng
-  { label: "Hoá đơn mua", href: "/purchasing/invoices", icon: FileText, color: "purple" },
+  /* ⚠ THAY "Hoá đơn mua" (chủ nhà chốt 20/09/2026: "bỏ Hoá đơn mua").
+     Trang tra cứu ấy vẫn mở được từ trang Mua hàng; ô trên Trang chủ
+     nhường chỗ cho việc người mua hàng mở hằng ngày. */
+  { label: "Đề xuất đặt hàng", href: "/purchasing/reorder", icon: PackageSearch, color: "purple" },
   { label: "Nhà cung cấp", href: "/suppliers", icon: Factory, color: "cyan" },
 
   // Kế toán & Tài chính

@@ -326,7 +326,14 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    */
   it("hiện ghi chú chung của đơn, và KHÔNG chép vào ô nhập", () => {
     expect(EDITOR).toContain('.from("sales_orders")')
-    expect(EDITOR).toContain("setOrderNotes(")
+    /**
+     * ⚠ GHI CHÚ LẤY TỪ CỘT `notes` CỦA ĐƠN, không phải từ một state nào
+     * khác. Từ 20/09/2026 nó đi chung câu đọc đầu đơn (cùng tên khách,
+     * ngày đặt, hình thức trả) — nên chốt phải bám vào phép rút ra, thứ
+     * còn lại sau khi cách nạp đổi.
+     */
+    expect(EDITOR).toContain('const orderNotes = (head?.notes ?? "").trim() || null')
+    expect(EDITOR).toContain("notes, order_date, payment_terms,")
     /**
      * ⚠ KIỂM CẢ ĐIỀU KIỆN LẪN THÂN. Chỉ tìm chữ "Ghi chú đơn hàng" thì
      * đổi điều kiện thành `{false && (` vẫn xanh — khối còn nguyên trong

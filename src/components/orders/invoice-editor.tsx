@@ -30,7 +30,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { formatCurrency } from "@/lib/utils"
+import { DetailCustomerCard } from "@/components/detail/detail-chrome"
+import { fullCustomerAddress } from "@/lib/customers/address"
+import { shortTermLabel } from "@/lib/orders/list-summary"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
@@ -44,6 +47,31 @@ import {
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
+
+/**
+ * Phần ĐẦU ĐƠN — thứ người xuất hàng phải đọc trước khi quyết định.
+ *
+ * ⚠ ĐỌC Ở ĐÂY, KHÔNG NHẬN QUA PROPS. Màn này có HAI lối vào
+ * (`/sales-invoices/new?order=` và `/sales-invoices/[id]/edit`), và cả
+ * hai đều đã đọc `sales_orders` cho việc riêng của chúng. Bắt cả hai
+ * đọc thêm cùng một khối là hai câu truy vấn phải sửa song song mỗi lần
+ * đổi một trường — và lối vào nào quên sửa thì màn xuất hàng ở đó lại
+ * trống tên khách y như cũ.
+ */
+interface OrderHeadRow {
+  notes: string | null
+  order_date: string | null
+  payment_terms: string | null
+  customer?: {
+    store_name?: string | null
+    phone?: string | null
+    address?: string | null
+    ward?: string | null
+    district?: string | null
+    province?: string | null
+  } | null
+  sales_user?: { full_name?: string | null } | null
+}
 
 interface Props {
   orderId: string
@@ -77,7 +105,15 @@ export function InvoiceEditor({
    * người xuất kho dặn lúc giao. Chép sang là tờ hóa đơn in ra hai lần
    * cùng một câu với hai nhãn khác nhau — xem `noteBlocksOf`.
    */
-  const [orderNotes, setOrderNotes] = useState<string | null>(null)
+  const [head, setHead] = useState<OrderHeadRow | null>(null)
+  /**
+   * ⚠ TÁCH RIÊNG KHỎI `head`. `head === null` có HAI nghĩa — chưa đọc
+   * xong, và đọc xong nhưng không ra dòng nào (RLS từ chối trả về 0 dòng
+   * kèm `error` null). Nhập hai nghĩa vào một biến là ô xương cá quay
+   * mãi mãi cho những người không có quyền xem đơn.
+   */
+  const [headLoaded, setHeadLoaded] = useState(false)
+  const orderNotes = (head?.notes ?? "").trim() || null
   const [loadError, setLoadError] = useState<string | null>(null)
 
   /**
@@ -117,33 +153,39 @@ export function InvoiceEditor({
   }, [orderId, reissueOf?.invoiceId])
 
   /**
-   * Đọc hàng đổi / trả còn hiệu lực của đơn.
-   *
-   * ⚠ CHỈ PHIẾU CÒN HIỆU LỰC (`status <> 'cancelled'`). Phiếu đã huỷ
-   *   không trừ gì; hiện nó ở đây là báo một khoản giảm không có thật.
+   * Đọc phần ĐẦU ĐƠN: khách, ngày đặt, hình thức trả, nhân viên bán, ghi chú.
    *
    * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG. Đây là phần bổ sung;
    *   ném lỗi ở đây là chặn cả việc xuất hàng vì một khối thông tin.
    */
-  /**
-   * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG — cùng nguyên tắc với
-   *   khối hàng đổi/trả ngay dưới.
-   */
   useEffect(() => {
     let cancelled = false
+    setHeadLoaded(false)
     supabase
       .from("sales_orders")
-      .select("notes")
+      .select(
+        "notes, order_date, payment_terms, customer:customers(store_name, phone, address, ward, district, province), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+      )
       .eq("id", orderId)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return
-        setOrderNotes(((data as { notes?: string | null } | null)?.notes ?? "").trim() || null)
+        setHead(((data as unknown) as OrderHeadRow | null) ?? null)
+        setHeadLoaded(true)
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId])
 
+  /**
+   * Đọc hàng đổi / trả còn hiệu lực của đơn.
+   *
+   * ⚠ CHỈ PHIẾU CÒN HIỆU LỰC (`status <> 'cancelled'`). Phiếu đã huỷ
+   *   không trừ gì; hiện nó ở đây là báo một khoản giảm không có thật.
+   *
+   * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG — cùng nguyên tắc với
+   *   khối đầu đơn ở trên.
+   */
   useEffect(() => {
     let cancelled = false
     supabase
@@ -324,6 +366,49 @@ export function InvoiceEditor({
       >
         <Badge variant="secondary" className="font-mono">{orderCode}</Badge>
       </PageHeader>
+
+      {/*
+        KHỐI ĐẦU ĐƠN — tên khách, liên hệ, ngày đặt, hình thức trả, NVBH.
+
+        ⚠ MÀN NÀY TRƯỚC ĐÂY CHỈ CÓ MÃ ĐƠN (chủ nhà hỏi 20/09/2026: "sao
+          màn Xuất hàng không có thông tin đơn hàng như tên khách hàng").
+          "DH-0108" không nói được hàng này giao cho ai — người đứng ở
+          kho phải mở tab khác tra đơn mới biết mình đang xuất cho cửa
+          hàng nào, và đó đúng là lúc dễ xuất nhầm đơn nhất.
+
+        ⚠ DÙNG `DetailCustomerCard`, KHÔNG TỰ VẼ. Chi tiết đơn và chi
+          tiết hóa đơn đã vẽ khối khách bằng khuôn này; vẽ khuôn thứ ba
+          là cùng một khách hiện ba kiểu trên ba màn đi liền nhau.
+
+        ⚠ KHÔNG CHO BẤM VÀO TÊN. `onNameClick` mở modal xem nhanh khách —
+          hay ở màn chi tiết, nhưng ở đây người dùng đang GÕ DỞ số lượng
+          trên một biểu mẫu chưa lưu. Một cú bấm nhầm mở modal là một cú
+          bấm nữa để đóng, và không ai được lợi gì.
+      */}
+      {!headLoaded ? (
+        <Skeleton className="h-[86px] rounded-2xl" />
+      ) : head ? (
+        <DetailCustomerCard
+          name={head.customer?.store_name || "Khách lẻ"}
+          contact={
+            [head.customer?.phone, fullCustomerAddress(head.customer ?? {})]
+              .filter(Boolean)
+              .join(" · ") || null
+          }
+          stats={[
+            {
+              label: "Ngày đặt",
+              /* ⚠ KHÔNG CÓ THÌ NÓI LÀ CHƯA XÁC ĐỊNH, đừng in ngày hôm
+                 nay hay một dấu gạch — cả hai đều đọc như dữ liệu thật. */
+              value: head.order_date ? formatDate(head.order_date) : "chưa xác định",
+            },
+            { label: "Thanh toán", value: shortTermLabel(head.payment_terms) || "chưa xác định" },
+            ...(head.sales_user?.full_name
+              ? [{ label: "Nhân viên bán", value: head.sales_user.full_name }]
+              : []),
+          ]}
+        />
+      ) : null}
 
       {loading ? (
         <div className="space-y-2">

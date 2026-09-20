@@ -284,6 +284,7 @@ describe("câu embed customers dùng cột có thật", () => {
   for (const [ten, src] of [
     ["màn lập hóa đơn", NEW_PAGE],
     ["màn sửa hóa đơn", EDIT_PAGE],
+    ["khối đầu đơn ở màn soạn", EDITOR],
   ] as const) {
     it(`${ten}: mọi cột trong customers(...) đều có trong schema`, () => {
       const m = src.match(/customer:customers\(([^)]*)\)/)
@@ -300,5 +301,93 @@ describe("câu embed customers dùng cột có thật", () => {
   it("nhóm giá truyền vào màn soạn lấy từ đúng cột đó", () => {
     expect(strip(NEW_PAGE)).toContain("priceGroupId={order.customer?.group_id ?? null}")
     expect(strip(EDIT_PAGE)).toContain("priceGroupId={inv.customer?.group_id ?? null}")
+  })
+})
+
+// =====================================================================
+
+/**
+ * MÀN XUẤT HÀNG PHẢI NÓI RÕ ĐANG XUẤT CHO AI.
+ *
+ * ⚠ CHUYỆN ĐÃ XẢY RA: màn này chỉ có tiêu đề "Xuất hàng" và một viên mã
+ * đơn "DH-0108". Chủ nhà hỏi 20/09/2026: "sao màn Xuất hàng không có
+ * thông tin đơn hàng như tên khách hàng". Người đứng ở kho phải mở tab
+ * khác tra đơn mới biết mình đang xuất cho cửa hàng nào — đúng thao tác
+ * mà người bận sẽ bỏ qua, và đúng lúc dễ xuất nhầm đơn nhất.
+ *
+ * ⚠ ĐỌC TRONG CHÍNH MÀN SOẠN, KHÔNG NHẬN QUA PROPS. Màn này có hai lối
+ * vào; nhận qua props là hai câu truy vấn phải sửa song song, và lối vào
+ * nào quên sửa thì ở đó tên khách lại trống y như cũ.
+ */
+describe("khối đầu đơn ở màn Xuất hàng", () => {
+  /** Câu đọc `sales_orders` trong chính màn soạn. */
+  const headSelect = (() => {
+    const i = EDITOR.indexOf('.from("sales_orders")')
+    if (i < 0) throw new Error("màn soạn không còn đọc sales_orders")
+    return EDITOR.slice(i, EDITOR.indexOf('.eq("id", orderId)', i))
+  })()
+
+  it("đọc tên khách, liên hệ, ngày đặt, hình thức trả và nhân viên bán", () => {
+    for (const col of ["store_name", "phone", "address"]) {
+      expect(headSelect, `câu đọc đầu đơn thiếu customers.${col}`).toContain(col)
+    }
+    expect(headSelect).toContain("order_date")
+    expect(headSelect).toContain("payment_terms")
+    expect(headSelect).toContain("notes")
+    expect(headSelect).toMatch(/sales_user:users!sales_orders_sales_user_id_fkey\(full_name\)/)
+  })
+
+  /**
+   * ⚠ TÊN KHÁCH PHẢI THỰC SỰ ĐƯỢC VẼ RA. Đọc về rồi bỏ trong state là
+   * đúng y cái lỗi chủ nhà báo — chốt phải bắt cả câu đọc lẫn chỗ vẽ.
+   */
+  it("vẽ tên khách ra màn, bằng khuôn chung của chi tiết đơn / hóa đơn", () => {
+    expect(EDITOR).toContain("<DetailCustomerCard")
+    expect(EDITOR).toContain("head.customer?.store_name")
+    expect(EDITOR).toMatch(/import \{ DetailCustomerCard \} from "@\/components\/detail\/detail-chrome"/)
+  })
+
+  /**
+   * ⚠ ĐỊA CHỈ GHÉP BẰNG `fullCustomerAddress`. Lấy trơ `address` là in
+   * "47 Cẩm" — người xuất hàng không biết đó là phường nào (xem
+   * `src/lib/customers/address.ts`).
+   */
+  it("địa chỉ ghép bằng một chỗ ghép duy nhất của kho", () => {
+    expect(EDITOR).toContain("fullCustomerAddress(head.customer ?? {})")
+    for (const col of ["ward", "district", "province"]) {
+      expect(headSelect, `ghép địa chỉ cần customers.${col}`).toContain(col)
+    }
+  })
+
+  /**
+   * ⚠ RLS TỪ CHỐI = 0 DÒNG, HTTP 200, `error` null. Nếu ô xương cá được
+   * khoá trên `head === null` thì người không có quyền xem đơn nhìn một
+   * ô xám quay mãi mãi. Phải có cờ "đã đọc xong" riêng, và cờ đó phải
+   * được bật trong CHÍNH nhánh trả về.
+   */
+  it("đọc xong mà không ra dòng nào thì thôi vẽ, không quay xương cá mãi", () => {
+    expect(EDITOR).toContain("!headLoaded ? (")
+    expect(EDITOR).not.toContain("!head ? (")
+    const then = EDITOR.slice(EDITOR.indexOf(".then(", EDITOR.indexOf('.from("sales_orders")')))
+    expect(then.slice(0, 300)).toContain("setHeadLoaded(true)")
+  })
+
+  /**
+   * ⚠ NGÀY / HÌNH THỨC TRẢ TRỐNG THÌ GẮN NHÃN "chưa xác định". In một
+   * dấu gạch đọc như "không có", in ngày hôm nay thì là bịa.
+   */
+  it("trường trống được gắn nhãn chưa xác định", () => {
+    expect(EDITOR).toContain('head.order_date ? formatDate(head.order_date) : "chưa xác định"')
+    expect(EDITOR).toContain('shortTermLabel(head.payment_terms) || "chưa xác định"')
+  })
+
+  /**
+   * ⚠ GHI CHÚ ĐƠN VẪN PHẢI CÒN. Nó được gộp vào cùng câu đọc đầu đơn ở
+   * lần sửa này; gộp nhầm là mất luôn khối ghi chú chủ nhà chốt trước đó
+   * ("phần Xuất hàng cũng phải có ghi chú đầy đủ cho NPP duyệt").
+   */
+  it("ghi chú chung của đơn vẫn được vẽ", () => {
+    expect(EDITOR).toContain('const orderNotes = (head?.notes ?? "").trim() || null')
+    expect(EDITOR).toMatch(/\{orderNotes && \([\s\S]{0,400}Ghi chú đơn hàng/)
   })
 })

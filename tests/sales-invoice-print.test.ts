@@ -55,7 +55,14 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
 
   /** Bảy cột, đúng thứ tự trái → phải của mẫu. */
   it("bảng đủ bảy cột, đúng thứ tự", () => {
+    /**
+     * ⚠ BỎ CHÚ THÍCH TRƯỚC KHI DÒ THỨ TỰ. Trong `<thead>` có khối chú
+     * thích giải thích bề rộng cột, và nó nhắc tên cột ("một cột CK
+     * toàn số 0…") SỚM HƠN thẻ `<th>` thật — dò trên chữ thô thì thứ tự
+     * đọc ra là thứ tự của câu văn, không phải của bảng.
+     */
     const head = TPL.slice(TPL.indexOf("<thead>"), TPL.indexOf("</thead>"))
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
     const cols = ["STT", "Tên hàng và quy cách", "ĐVT", "SL", "Đ.giá", "CK", "Thành tiền"]
     let at = -1
     for (const c of cols) {

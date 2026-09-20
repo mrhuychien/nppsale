@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -227,6 +228,13 @@ export default function OrdersPage() {
   const [lineCountByOrder, setLineCountByOrder] = useState<Record<string, number>>({})
   /** Đơn đang mở ở ngăn chi tiết bên phải (máy tính). */
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  /**
+   * ⚠ QUAY VỀ TAB NÀY THÌ ĐỌC LẠI. Nút "Xuất hàng" nay mở TAB MỚI, nên
+   * tab danh sách không còn bị rời đi và quay lại — nó nằm im với bản
+   * chụp cũ, và đơn vừa xuất vẫn hiện ở tab Phiếu tạm như chưa có gì.
+   * Xem `useRefreshOnFocus`.
+   */
+  const focusTick = useRefreshOnFocus()
   const [sort, setSort] = useState<OrderSort | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   /**
@@ -480,7 +488,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
@@ -555,7 +563,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -658,7 +666,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders

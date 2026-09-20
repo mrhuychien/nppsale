@@ -27,6 +27,7 @@ import { ChevronDown, ChevronUp, FileText, Filter, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { usePagination } from "@/hooks/use-pagination"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -137,6 +138,7 @@ export default function SalesInvoicesPage() {
   const [filterSheet, setFilterSheet] = useState(false)
   const [sort, setSort] = useState<InvoiceSort | null>(null)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  const focusTick = useRefreshOnFocus()
 
   const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name">[]>([])
@@ -295,17 +297,26 @@ export default function SalesInvoicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyFilters, routeFilter])
 
+  /**
+   * ⚠ QUAY VỀ TAB NÀY THÌ ĐỌC LẠI — cùng lý do với màn đơn hàng. Nút
+   * "Sửa hóa đơn" / "Huỷ đơn" / "In" ở ngăn xem nhanh nay mở TAB MỚI,
+   * nên tab danh sách nằm im với bản chụp cũ và hiện trạng thái đã lỗi
+   * thời. Xem `useRefreshOnFocus`.
+   */
   useEffect(() => {
     if (!authLoading) fetchData()
-  }, [authLoading, fetchData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, fetchData, focusTick])
 
   useEffect(() => {
     if (!authLoading) fetchTotal()
-  }, [authLoading, fetchTotal])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, fetchTotal, focusTick])
 
   useEffect(() => {
     if (!authLoading) fetchCounts()
-  }, [authLoading, fetchCounts])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, fetchCounts, focusTick])
 
   /** Đổi bộ lọc thì về trang 1 — đứng ở trang 7 của một kết quả 2 dòng là màn trắng. */
   useEffect(() => {

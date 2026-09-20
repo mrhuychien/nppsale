@@ -85,3 +85,74 @@ describe("cỡ chữ chép từ tờ mẫu KiotViet", () => {
     expect(CSS.slice(i, CSS.indexOf("}", i))).toContain("line-height: 1.08")
   })
 })
+
+describe("bề rộng cột: dồn chỗ cho tên hàng", () => {
+  /**
+   * CHỦ NHÀ CHỐT 20/09/2026: "cho cột tên hàng rộng ra, cột đvt, sl, ck,
+   * thành tiền nhỏ lại để tiết kiệm dòng khi in".
+   *
+   * ⚠ CỘT TÊN HÀNG LÀ CỘT DUY NHẤT KHÔNG ĐẶT BỀ RỘNG — nó nhận toàn bộ
+   * chỗ còn lại. Đặt một con số cho nó là biến nó thành cột thứ bảy có
+   * trần, và chỗ thừa rơi vào đâu không ai biết.
+   */
+  const th = (label: string): string | null => {
+    const re = new RegExp(`<th className=\\{(?:\`\\$\\{CELL\\} ([\\w-]+)\`|CELL)\\}>${label}<`)
+    const m = re.exec(DOC)
+    return m ? (m[1] ?? "") : null
+  }
+  /** Tailwind `w-N` → px. */
+  const px = (cls: string) => (cls ? Number(cls.replace("w-", "")) * 4 : NaN)
+
+  it("cột tên hàng không đặt bề rộng", () => {
+    expect(th("Tên hàng và quy cách"), "không tìm thấy cột tên hàng").toBe("")
+  })
+
+  it.each([
+    ["ĐVT", 48],
+    ["SL", 32],
+    ["CK", 32],
+    ["Thành tiền", 80],
+  ])("cột %s rộng %ipx", (label, want) => {
+    const cls = th(label)
+    expect(cls, `không tìm thấy cột ${label}`).toBeTruthy()
+    expect(px(cls!)).toBe(want)
+  })
+
+  /**
+   * ⚠ SÁU CỘT CÓ TRẦN KHÔNG ĐƯỢC PHÌNH TRỞ LẠI. Đây là tripwire: cột nào
+   * được nới ra sau này thì chỗ ấy lấy thẳng từ cột tên hàng, và cả thay
+   * đổi hôm nay thành vô nghĩa.
+   *
+   * Phép đo, ghi lại để đừng ai phải đo lại:
+   *   A5 rộng 148mm, lề 8mm mỗi bên → ~132mm ≈ 499px cho cả bảng.
+   *   `box-sizing: border-box` nên đệm nằm TRONG bề rộng đã đặt; chỉ cột
+   *   tên hàng mới phải trừ đệm của chính nó.
+   *
+   *   TRƯỚC: 36+64+48+80+64+96 = 388px → tên hàng còn 111px, trừ đệm
+   *          px-1.5 còn ~99px ≈ 19 ký tự một dòng ở 10,5pt Times.
+   *   SAU:   36+48+32+80+32+80 = 308px → tên hàng được 191px, trừ đệm
+   *          px-1 còn ~183px ≈ 35 ký tự.
+   *   Tên hàng ~50 ký tự vì thế xuống từ 3 dòng còn 2 — mỗi mặt hàng
+   *   tiết kiệm một dòng.
+   *
+   * ⚠ KHÔNG HẠ TIẾP `Đ.giá` VÀ `Thành tiền`: 80px đã sát min-content của
+   *   một số tiền tám chữ số ("12.345.678" ≈ 83px ở 10,5pt). Hạ nữa thì
+   *   trình duyệt bỏ qua con số, hoặc tệ hơn là cột tiền xuống dòng.
+   */
+  it("sáu cột có trần không phình trở lại", () => {
+    const fixed = ["STT", "ĐVT", "SL", "Đ.giá", "CK", "Thành tiền"]
+      .map((l) => px(th(l)!))
+      .reduce((a, b) => a + b, 0)
+    expect(Number.isNaN(fixed)).toBe(false)
+    expect(fixed, `sáu cột chiếm ${fixed}px, trước khi sửa là 388px`).toBeLessThanOrEqual(308)
+  })
+
+  /**
+   * ⚠ ĐỆM NGANG LÀ BẢY CỘT × HAI BÊN. Mỗi 1px bớt đi trả lại 14px cho
+   * bảng, và toàn bộ chảy vào cột tên hàng. Đây là chỗ lấy lại được
+   * nhiều nhất mà không ai phải đọc chữ nhỏ hơn.
+   */
+  it("đệm ngang của ô bảng là px-1", () => {
+    expect(DOC).toContain('const CELL = "border border-black px-1 py-[2px] align-top leading-tight"')
+  })
+})

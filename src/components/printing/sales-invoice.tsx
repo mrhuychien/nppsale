@@ -38,17 +38,19 @@
  * ⚠ NGÀY KÈM GIỜ (chủ nhà chốt). Giờ lấy từ `created_at`, không lấy từ
  *   cột ngày kiểu `date` — xem `docStampAt`.
  *
- * ⚠ KHỔ GIẤY DO NƠI GỌI CHỌN, mặc định của kho này là A5.
+ * ⚠ KHỔ GIẤY DO NƠI GỌI CHỌN, mặc định của kho này là A5 — đúng khổ của
+ *   tờ mẫu chủ nhà gửi.
  *
- *   Chủ nhà chốt 20/09/2026: chữ trên giấy phải là 13pt — xem khối
- *   `.a4-doc` trong `globals.css`, ĐÓ mới là nơi quyết cỡ chữ khi in,
- *   không phải các lớp `text-[12px]` dưới đây (chúng chỉ còn tác dụng ở
- *   bản xem trước trên màn hình).
+ *   CỠ CHỮ KHI IN nằm ở khối `.a4-doc` trong `globals.css`, KHÔNG phải ở
+ *   các lớp `text-[12px]` dưới đây (chúng chỉ còn tác dụng ở bản xem
+ *   trước trên màn hình). Con số hiện tại là 10,5pt, đo từ chính tờ mẫu
+ *   KiotViet — xem chú thích tại chỗ và `tests/print-font-sample`.
  *
- *   Ở 13pt thì bảy cột trên khổ A5 chỉ còn ~18 ký tự một dòng cho tên
- *   hàng, nên một hóa đơn 10 mặt hàng tràn sang trang thứ hai; cùng cỡ
- *   chữ ấy trên A4 được ~43 ký tự và vẫn gọn một trang. Ai cần một
- *   trang thì chọn A4 ở dropdown của `PrintButton`.
+ * ⚠ CỘT TÊN HÀNG LÀ CỘT DUY NHẤT KHÔNG ĐẶT BỀ RỘNG, nên nó nhận toàn bộ
+ *   chỗ còn lại của bảng. Mọi pixel bớt được ở đệm ô và ở sáu cột kia
+ *   đều chảy vào đây, và tên hàng ngắn đi một dòng là cả tờ giấy ngắn đi
+ *   một dòng cho MỖI mặt hàng (chủ nhà chốt 20/09/2026: "cho cột tên
+ *   hàng rộng ra … để tiết kiệm dòng khi in").
  */
 
 import { formatCurrency } from "@/lib/utils"
@@ -223,8 +225,13 @@ export function grossUpLines(
  * 2px mỗi hàng; một hóa đơn 25 dòng mất thêm nửa trang vì bốn pixel.
  * `leading-tight` cũng cần: mặc định của Tailwind là 1.5, quá thưa cho
  * một bảng chứng từ.
+ *
+ * ⚠ ĐỆM NGANG `px-1` CHỨ KHÔNG `px-1.5` (chủ nhà chốt: "cho cột tên
+ * hàng rộng ra"). Bảy cột × hai bên: mỗi 1px bớt đi trả lại 14px cho
+ * bảng, và toàn bộ phần ấy chảy vào cột tên hàng — cột DUY NHẤT không
+ * đặt bề rộng. Bớt đệm rẻ hơn bớt cỡ chữ: không dòng nào khó đọc thêm.
  */
-const CELL = "border border-black px-1.5 py-[2px] align-top leading-tight"
+const CELL = "border border-black px-1 py-[2px] align-top leading-tight"
 
 /**
  * Các khối ghi chú thật sự in ra: bỏ khối rỗng, khử trùng theo NỘI DUNG.
@@ -296,16 +303,30 @@ export function SalesInvoice(props: SalesInvoiceProps) {
       <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-center font-bold">
+            {/*
+              ⚠ BỀ RỘNG CỘT LÀ GỢI Ý, KHÔNG PHẢI LỆNH. Bảng này để
+                `table-layout: auto`, nên trình duyệt KHÔNG ép cột hẹp
+                hơn nội dung ngắn nhất của nó (min-content). Đặt số nhỏ
+                là "co xuống khi được phép", không phải "cắt chữ" — một
+                cột CK toàn số 0 sẽ teo lại, còn cột có "1.500.000" tự
+                nong ra. Vì vậy hạ mấy con số dưới đây KHÔNG làm vỡ bảng.
+
+              ⚠ CỘT TÊN HÀNG CỐ Ý KHÔNG ĐẶT BỀ RỘNG: nó nhận TOÀN BỘ chỗ
+                còn lại. Mọi pixel bớt được ở sáu cột kia đều chảy vào
+                đây — đó là cách "cho cột tên hàng rộng ra" (chủ nhà chốt
+                20/09/2026), và tên hàng ngắn đi một dòng là cả tờ giấy
+                ngắn đi một dòng cho MỖI mặt hàng.
+            */}
             <th className={`${CELL} w-9`}>STT</th>
             <th className={CELL}>Tên hàng và quy cách</th>
-            <th className={`${CELL} w-16`}>ĐVT</th>
-            <th className={`${CELL} w-12`}>SL</th>
+            <th className={`${CELL} w-12`}>ĐVT</th>
+            <th className={`${CELL} w-8`}>SL</th>
             <th className={`${CELL} w-20`}>Đ.giá</th>
             {/* ⚠ CỘT CK ĐÃ KHÔI PHỤC (chủ nhà chốt: in giống mẫu). Nó
                 tham gia phép tính chứ không chỉ để trang trí — xem
                 `grossUpLines`: Đ.giá × SL − CK = Thành tiền. */}
-            <th className={`${CELL} w-16`}>CK</th>
-            <th className={`${CELL} w-24`}>Thành tiền</th>
+            <th className={`${CELL} w-8`}>CK</th>
+            <th className={`${CELL} w-20`}>Thành tiền</th>
           </tr>
         </thead>
         <tbody>

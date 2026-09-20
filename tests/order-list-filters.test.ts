@@ -215,8 +215,14 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
     expect(ORDERS).toContain("applyCommonFilters(")
     expect(ORDERS).toContain("COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st))")
     // Đếm phải chạy lại khi bất kỳ bộ lọc chung nào đổi.
+    /**
+     * ⚠ `focusTick` Ở CUỐI LÀ CÓ CHỦ Ý, không phải rác: quay về tab này
+     * thì phép đếm phải đọc lại cùng danh sách. Thiếu nó thì thẻ "Phiếu
+     * tạm" giữ con số cũ trong khi danh sách dưới nó đã đổi — xem
+     * `useRefreshOnFocus`.
+     */
     expect(ORDERS).toMatch(
-      /\}, \[debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax\]/
+      /\}, \[debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick\]/
     )
   })
 

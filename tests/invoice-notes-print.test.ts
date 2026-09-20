@@ -207,7 +207,7 @@ describe("tờ in gọn lại", () => {
    */
   it("ô bảng đệm mỏng và dãn dòng chặt", () => {
     expect(DOC).toContain(
-      'const CELL = "border border-black px-1.5 py-[2px] align-top leading-tight"'
+      'const CELL = "border border-black px-1 py-[2px] align-top leading-tight"'
     )
   })
 

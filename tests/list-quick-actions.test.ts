@@ -322,3 +322,64 @@ describe("tra soát mã hàng: xuất theo hóa đơn nào, cho ai", () => {
     expect(CARD.replace(/\s+/g, " ")).toContain('<span className="text-muted-foreground">—</span>')
   })
 })
+
+describe("quay về tab danh sách thì đọc lại", () => {
+  /**
+   * ⚠ CHỦ NHÀ BÁO 20/09/2026: "tạo hoá đơn xong thì mất luôn đơn hàng
+   * chứ không chuyển trạng thái?".
+   *
+   * ĐƠN KHÔNG MẤT. `post_invoice` gọi `_wf2b_sync_order_status`
+   * (mig 125) và đổi trạng thái `submitted` → `completed`; đã kiểm trên
+   * Postgres thật: 6 đơn trước, 6 đơn sau, không dòng nào bị xoá. Đơn
+   * rời tab "Phiếu tạm" sang tab "Hoàn thành" — đúng thiết kế.
+   *
+   * ⚠ CÁI SAI LÀ MÀN HÌNH KHÔNG NÓI RA, VÀ NÓI MUỘN. Từ khi nút "Xuất
+   * hàng" mở TAB MỚI, tab danh sách không còn bị rời đi và quay lại: nó
+   * nằm im với bản chụp cũ, hiện đơn vẫn ở Phiếu tạm như chưa có gì xảy
+   * ra, rồi tới lần tải lại tình cờ nào đó thì đơn biến mất không dấu
+   * vết. Đọc lại khi người dùng quay về tab là chỗ vá đúng.
+   */
+  const HOOK = read("src/hooks/use-refresh-on-focus.ts")
+
+  it.each([
+    ["đơn hàng", "src/app/(dashboard)/orders/page.tsx"],
+    ["hóa đơn", "src/app/(dashboard)/sales-invoices/page.tsx"],
+  ])("%s: danh sách đọc lại khi tab sáng lại", (_l, rel) => {
+    const src = read(rel)
+    expect(src).toContain("useRefreshOnFocus()")
+    // Không chỉ khai ra rồi bỏ đó — phải nằm trong mảng phụ thuộc.
+    expect((src.match(/focusTick\]/g) ?? []).length,
+      "khai focusTick mà không effect nào nghe").toBeGreaterThan(0)
+  })
+
+  /** ⚠ Cả ba phép đọc, không chỉ danh sách: số đếm trên thẻ và tổng tiền cũng cũ theo. */
+  it("đơn hàng: đọc lại cả danh sách, phép đếm và phép cộng tiền", () => {
+    expect((ORDERS_NOW().match(/, focusTick\]\)/g) ?? []).length).toBe(3)
+  })
+
+  /**
+   * ⚠ `visibilitychange`, KHÔNG `focus`. `focus` bắn cả khi người dùng
+   * chỉ bấm vào thanh địa chỉ rồi bấm lại vào trang — mỗi lần là một
+   * lượt tải cho một thứ không đổi.
+   */
+  it("nghe visibilitychange, không nghe focus", () => {
+    expect(HOOK).toContain('document.addEventListener("visibilitychange", onChange)')
+    expect(code(HOOK)).not.toContain('addEventListener("focus"')
+    expect(HOOK).toContain('document.removeEventListener("visibilitychange", onChange)')
+  })
+
+  /**
+   * ⚠ CHỈ ĐỌC LẠI KHI ĐÃ RỜI ĐI ĐỦ LÂU. Chuyển tab đi rồi về ngay trong
+   * một giây là thao tác nhầm, không phải một vòng làm việc — tải lại ở
+   * đó chỉ làm danh sách nhấp nháy dưới tay người đang đọc.
+   */
+  it("bỏ qua lần rời tab quá ngắn", () => {
+    expect(HOOK).toContain("Date.now() - hiddenAt >= minAwayMs")
+    expect(HOOK).toContain("minAwayMs = 3000")
+  })
+})
+
+/** Đọc lại tại thời điểm chạy — file đã đổi sau khi module này nạp hằng số. */
+function ORDERS_NOW() {
+  return read("src/app/(dashboard)/orders/page.tsx")
+}

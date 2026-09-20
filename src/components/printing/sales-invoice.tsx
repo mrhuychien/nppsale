@@ -58,6 +58,14 @@ export interface SalesInvoiceLine {
   unitPrice: number
   discount: number
   lineTotal: number
+  /**
+   * Ghi chú riêng của dòng hàng — in ngay dưới tên (chủ nhà chốt
+   * 20/09/2026: "chưa có ghi chú từng sản phẩm").
+   *
+   * ⚠ RỖNG THÌ KHÔNG IN DÒNG NÀO. Đây là tờ giấy đang bị ép cho gọn lại;
+   * một dòng "Ghi chú:" trống trên mỗi mặt hàng là tốn giấy cho hư không.
+   */
+  note?: string | null
 }
 
 /** Một dòng hàng đổi / trả trên bản in. */
@@ -119,6 +127,19 @@ export interface SalesInvoiceProps {
    * thì tờ in phải khớp từng dòng với tờ đã gửi cơ quan thuế.
    */
   returnLines?: SalesInvoiceReturnLine[]
+  /**
+   * Các khối ghi chú in trong bảng, ngay dưới phần cộng tiền.
+   *
+   * ⚠ ĐÂY LÀ CHỖ CỦA GHI CHÚ ĐƠN / HÓA ĐƠN, không phải `footerNote`.
+   * `footerNote` in ở cỡ 9px cạnh chân trang — đủ cho một câu nhắc số tài
+   * khoản, nhưng ghi chú của người bán là thứ người nhận hàng phải đọc
+   * được ("giao trước 8h", "nợ 15 ngày"), nhét vào đó là giấu nó đi.
+   *
+   * ⚠ KHỐI RỖNG BỊ BỎ, VÀ HAI KHỐI TRÙNG CHỮ CHỈ IN MỘT. Ghi chú hóa đơn
+   * thường được chép từ ghi chú đơn; in hai lần cùng một câu là tờ giấy
+   * trông như có hai yêu cầu khác nhau.
+   */
+  notes?: { label: string; text: string | null | undefined }[]
   /** Dòng ghi chú nhỏ dưới bảng — ví dụ nhắc số tài khoản. */
   footerNote?: string | null
 }
@@ -188,15 +209,44 @@ export function grossUpLines(
   return { rows, goodsTotal }
 }
 
-const CELL = "border border-black px-1.5 py-1 align-top"
+/**
+ * ⚠ ĐỆM DỌC LÀ CHỖ TỐN GIẤY NHẤT CỦA TỜ NÀY (chủ nhà chốt 20/09/2026:
+ * "đẩy sát khoảng cách các dòng để tiết kiệm giấy"). Mỗi 1px đệm là
+ * 2px mỗi hàng; một hóa đơn 25 dòng mất thêm nửa trang vì bốn pixel.
+ * `leading-tight` cũng cần: mặc định của Tailwind là 1.5, quá thưa cho
+ * một bảng chứng từ.
+ */
+const CELL = "border border-black px-1.5 py-[2px] align-top leading-tight"
+
+/**
+ * Các khối ghi chú thật sự in ra: bỏ khối rỗng, khử trùng theo NỘI DUNG.
+ *
+ * ⚠ KHỬ TRÙNG THEO CHỮ, KHÔNG THEO NHÃN. Ghi chú hóa đơn thường được
+ * chép nguyên văn từ ghi chú đơn; hai nhãn khác nhau kèm một câu giống
+ * hệt là tờ giấy trông như có hai yêu cầu khác nhau, và người nhận hàng
+ * đi tìm chỗ khác biệt không có thật. Khối ĐẦU giữ lại, vì nó là nguồn.
+ *
+ * ⚠ CẮT KHOẢNG TRẮNG TRƯỚC KHI SO. Một ghi chú chỉ gồm dấu cách hay
+ * xuống dòng là ghi chú rỗng; in cái nhãn "Ghi chú:" cho nó là tốn một
+ * dòng giấy cho hư không.
+ */
+export function noteBlocksOf(
+  notes: { label: string; text: string | null | undefined }[]
+): { label: string; text: string }[] {
+  return notes
+    .map((n) => ({ label: n.label, text: (n.text ?? "").trim() }))
+    .filter((n, i, all) => n.text !== "" && all.findIndex((x) => x.text === n.text) === i)
+}
 
 export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, title = "HÓA ĐƠN BÁN HÀNG", numberLabel = "Số HĐ",
     invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines,
-    total, returnCredit = 0, returnLines = [], footerNote,
+    total, returnCredit = 0, returnLines = [], notes = [], footerNote,
   } = props
+
+  const noteBlocks = noteBlocksOf(notes)
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
 
@@ -206,22 +256,22 @@ export function SalesInvoice(props: SalesInvoiceProps) {
   return (
     <div className="a4-doc mx-auto max-w-3xl bg-white text-black print:max-w-none">
       {/* Tiêu đề công ty — căn TRÁI như mẫu. */}
-      <div className="mb-3">
+      <div className="mb-1.5">
         <p className="text-lg font-bold uppercase leading-tight">{org.name || "—"}</p>
-        {org.address && <p className="text-[11px] leading-snug">Địa chỉ: {org.address}</p>}
-        {org.phone && <p className="text-[11px] leading-snug">Điện thoại: {org.phone}</p>}
+        {org.address && <p className="text-[12px] leading-tight">Địa chỉ: {org.address}</p>}
+        {org.phone && <p className="text-[12px] leading-tight">Điện thoại: {org.phone}</p>}
       </div>
 
-      <div className="mb-3 text-center">
-        <h1 className="text-xl font-bold">{title}</h1>
+      <div className="mb-1.5 text-center">
+        <h1 className="text-xl font-bold leading-tight">{title}</h1>
         {/* ⚠ NGÀY KÈM GIỜ (chủ nhà chốt) — xem `docStampAt`: giờ thật nằm
             ở `created_at`, không nằm ở cột ngày kiểu `date`. */}
-        <p className="mt-1 text-xs font-bold">Ngày {stampVN(issuedAt)}</p>
-        <p className="text-xs">{numberLabel}: {invoiceNumber || "—"}</p>
+        <p className="text-[12px] font-bold leading-tight">Ngày {stampVN(issuedAt)}</p>
+        <p className="text-[12px] leading-tight">{numberLabel}: {invoiceNumber || "—"}</p>
       </div>
 
       {/* Khối khách hàng — mỗi dòng một nhãn, căn trái. */}
-      <div className="mb-2 space-y-0.5 text-[11px] leading-snug">
+      <div className="mb-1 text-[12px] leading-tight">
         <p>
           Khách hàng: <span className="font-bold">{customerName || "—"}</span>
         </p>
@@ -235,7 +285,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         </p>
       </div>
 
-      <table className="w-full border-collapse text-[11px]">
+      <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-center font-bold">
             <th className={`${CELL} w-9`}>STT</th>
@@ -264,6 +314,12 @@ export function SalesInvoice(props: SalesInvoiceProps) {
                 <td className={CELL}>
                   {l.name}
                   {l.spec ? ` (${l.spec})` : ""}
+                  {/* ⚠ CỠ CHỮ THEO `em`, KHÔNG THEO px. Bảng này đổi cỡ
+                      theo khổ giấy trong globals.css; đặt px là ghi chú
+                      to bằng tên hàng ở A5 và bé như hạt bụi ở A4. */}
+                  {l.note ? (
+                    <div className="text-[0.9em] italic leading-tight">Ghi chú: {l.note}</div>
+                  ) : null}
                 </td>
                 <td className={`${CELL} text-center`}>{l.unitName}</td>
                 <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
@@ -356,8 +412,16 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               </tr>
             </>
           )}
+          {/* Ghi chú của đơn / hóa đơn — chủ nhà chốt 20/09/2026. */}
+          {noteBlocks.map((n) => (
+            <tr key={n.label}>
+              <td className={`${CELL} whitespace-pre-wrap`} colSpan={7}>
+                <span className="font-bold">{n.label}:</span> {n.text}
+              </td>
+            </tr>
+          ))}
           <tr>
-            <td className={`${CELL} h-6`} colSpan={7}></td>
+            <td className={`${CELL} h-4`} colSpan={7}></td>
           </tr>
           <tr>
             <td className={CELL} colSpan={7}>
@@ -370,13 +434,13 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         </tbody>
       </table>
 
-      <div className="mt-2 grid grid-cols-2 items-start gap-4">
-        <p className="text-[9px] leading-snug">{footerNote || ""}</p>
-        <p className="text-right text-[11px]">{longDateVN(issuedAt)}</p>
+      <div className="mt-1.5 grid grid-cols-2 items-start gap-4">
+        <p className="text-[10px] leading-tight">{footerNote || ""}</p>
+        <p className="text-right text-[12px] leading-tight">{longDateVN(issuedAt)}</p>
       </div>
 
       {/* Ba ô ký — mẫu cũ chỉ có hai. */}
-      <div className="mt-2 grid grid-cols-3 gap-4 text-center text-[11px]">
+      <div className="mt-1.5 grid grid-cols-3 gap-4 text-center text-[12px]">
         {[
           "Người nhận hàng",
           "Kế toán",

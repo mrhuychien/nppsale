@@ -186,12 +186,20 @@
     khối này thì chọn A5 là bảng tràn ra ngoài lề và cột tiền bị cắt —
     hỏng theo kiểu chỉ lộ ra trên giấy, sau khi đã in.
   */
+  /*
+    ⚠ CỠ CHỮ TRÊN GIẤY DO KHỐI NÀY QUYẾT, KHÔNG PHẢI `text-[12px]` Ở
+    COMPONENT. Các lớp Tailwind kia chỉ còn tác dụng ở bản xem trước trên
+    màn hình; muốn tờ in to lên thì phải sửa ở đây. Chủ nhà chốt
+    20/09/2026: "font chữ hoá đơn cho to lên chút, đẩy sát khoảng cách
+    các dòng để tiết kiệm giấy" — nên mỗi nấc chữ đi kèm một nấc dòng
+    chặt hơn, không thì to chữ lại tốn thêm giấy.
+  */
   html:not([data-paper-size="A4"]) .a4-doc {
-    font-size: 7.5pt;
-    line-height: 1.1;
+    font-size: 8.5pt; /* trước 7.5pt */
+    line-height: 1.08; /* trước 1.1 */
     font-family: "Times New Roman", Times, serif;
   }
-  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 7pt; }
+  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 8pt; } /* trước 7pt */
   html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 11pt; }
   /* Chỗ ký thu lại cho vừa trang; vẫn đủ để ký tay. */
   html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }
@@ -200,7 +208,20 @@
   html[data-paper-size="A4"] .a4-doc {
     font-family: "Times New Roman", Times, serif;
     font-size: 11pt;
+    /*
+      ⚠ TRƯỚC ĐÂY KHÔNG ĐẶT `line-height` Ở ĐÂY nên bảng thừa hưởng 1.5
+      của Tailwind — bảy cột giãn thưa hết cả trang A4 mà không ai chọn
+      thế. Đây là phần lớn chỗ giấy tiết kiệm được.
+    */
+    line-height: 1.15;
   }
+  /*
+    ⚠ A4 TRƯỚC ĐÂY KHÔNG CÓ DÒNG NÀY, nên cả bảng in ở `text-[11px]`
+    (≈8,3pt) của Tailwind trong khi phần chữ quanh nó là 11pt — bảng,
+    tức là gần hết tờ giấy, bé hơn hẳn phần còn lại. Đặt 10pt để hai
+    phần đọc được như nhau; bảy cột vẫn vừa lề 12mm của A4.
+  */
+  html[data-paper-size="A4"] .a4-doc table { font-size: 10pt; }
 }
 
 @layer utilities {

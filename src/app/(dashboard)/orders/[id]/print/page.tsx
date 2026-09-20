@@ -65,6 +65,8 @@ interface LineRow {
   unit_price: number
   line_discount: number
   line_total: number
+  /** Ghi chú riêng của dòng hàng (`sales_order_lines.note`). */
+  note?: string | null
   product?: { name?: string | null; sku?: string | null } | null
 }
 
@@ -109,7 +111,7 @@ export default function OrderPrintPage() {
         .maybeSingle(),
       supabase
         .from("sales_order_lines")
-        .select("id, unit_name, quantity, unit_price, line_discount, line_total, product:products(name, sku)")
+        .select("id, unit_name, quantity, unit_price, line_discount, line_total, note, product:products(name, sku)")
         .eq("order_id", id),
       /**
        * Phiếu đổi / trả kèm đơn.
@@ -183,6 +185,7 @@ export default function OrderPrintPage() {
     unitPrice: Number(l.unit_price) || 0,
     discount: Number(l.line_discount) || 0,
     lineTotal: Number(l.line_total) || 0,
+    note: l.note ?? null,
   }))
 
   /**
@@ -233,6 +236,13 @@ export default function OrderPrintPage() {
           salesPersonName={order.sales_user?.full_name}
           salesPersonPhone={order.sales_user?.phone}
           lines={printLines}
+          /**
+           * ⚠ GHI CHÚ ĐƠN RA KHỐI RIÊNG, KHÔNG NHÉT VÀO `footerNote`.
+           *   Bản trước ghép nó vào cuối câu cảnh báo ở cỡ chữ nhỏ nhất
+           *   tờ giấy — tức là in ra cho đủ chứ không cho ai đọc. Người
+           *   nhận hàng cần đọc được "giao trước 8h".
+           */
+          notes={[{ label: "Ghi chú đơn hàng", text: order.notes }]}
           total={Number(order.total) || 0}
           returnLines={printReturnLines}
           /**
@@ -244,7 +254,7 @@ export default function OrderPrintPage() {
           footerNote={
             order.status === "cancelled"
               ? "⚠ ĐƠN ĐÃ HUỶ — không có giá trị."
-              : `Đơn đặt hàng — chưa phải chứng từ thanh toán.${st ? ` Trạng thái: ${st.label}.` : ""}${order.notes ? ` Ghi chú: ${order.notes}` : ""}`
+              : `Đơn đặt hàng — chưa phải chứng từ thanh toán.${st ? ` Trạng thái: ${st.label}.` : ""}`
           }
         />
       </div>

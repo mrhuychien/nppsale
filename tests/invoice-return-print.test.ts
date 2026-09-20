@@ -264,7 +264,9 @@ describe("dọn mẫu in theo chốt của chủ nhà", () => {
    */
   it("bản in bỏ dòng hàng đổi xuất đi", () => {
     expect(PRINT_PAGE).toContain("lines.filter((l) => !l.is_exchange).map")
-    expect(PRINT_PAGE).toContain("is_exchange, product:products(name, sku)")
+    // Lọc được là vì câu truy vấn có kéo `is_exchange` về; thiếu nó thì
+    // mọi dòng đều `undefined` và không dòng nào bị bỏ.
+    expect(PRINT_PAGE).toContain("is_exchange, note, product:products(name, sku)")
   })
 
   /** ⚠ Chỉ bỏ TRÊN BẢN IN — dòng ấy vẫn trừ kho và vẫn nằm trong `total`. */

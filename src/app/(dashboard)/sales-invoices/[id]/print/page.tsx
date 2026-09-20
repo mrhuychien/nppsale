@@ -38,6 +38,8 @@ interface InvoiceRow {
   total: number
   created_at: string | null
   order_id: string
+  /** Ghi chú nhập lúc xuất hàng. */
+  notes: string | null
   customer?: {
     store_name?: string | null
     billing_name?: string | null
@@ -51,7 +53,13 @@ interface InvoiceRow {
     phone?: string | null
   } | null
   sales_user?: { full_name?: string | null; phone?: string | null } | null
-  order?: { order_code?: string | null } | null
+  /**
+   * ⚠ GHI CHÚ CHUNG CỦA ĐƠN LẤY TỪ ĐƠN, KHÔNG CHÉP SANG HÓA ĐƠN. RPC
+   * `post_invoice` chỉ lưu ghi chú người dùng gõ lúc xuất; ghi chú của
+   * đơn nằm ở `sales_orders.notes`. Đọc thẳng từ đó thì mọi hóa đơn cũ
+   * cũng in ra được — chép sang chỉ cứu được hóa đơn lập từ nay về sau.
+   */
+  order?: { order_code?: string | null; notes?: string | null } | null
 }
 
 interface LineRow {
@@ -62,6 +70,8 @@ interface LineRow {
   line_discount: number
   line_total: number
   is_exchange?: boolean | null
+  /** Ghi chú riêng của dòng hàng (`sales_invoice_lines.note`). */
+  note?: string | null
   product?: { name?: string | null; sku?: string | null } | null
 }
 
@@ -88,13 +98,13 @@ export default function SalesInvoicePrintPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, total, created_at, order_id, customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code)"
+          "id, org_id, invoice_code, invoice_date, status, total, created_at, notes, order_id, customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code, notes)"
         )
         .eq("id", id)
         .maybeSingle(),
       supabase
         .from("sales_invoice_lines")
-        .select("id, unit_name, quantity, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
+        .select("id, unit_name, quantity, unit_price, line_discount, line_total, is_exchange, note, product:products(name, sku)")
         .eq("invoice_id", id)
         .order("sort_order", { ascending: true }),
       supabase
@@ -228,6 +238,7 @@ export default function SalesInvoicePrintPage() {
     unitPrice: Number(l.unit_price) || 0,
     discount: Number(l.line_discount) || 0,
     lineTotal: Number(l.line_total) || 0,
+    note: l.note ?? null,
   }))
 
   return (
@@ -267,6 +278,17 @@ export default function SalesInvoicePrintPage() {
           salesPersonName={inv.sales_user?.full_name}
           salesPersonPhone={inv.sales_user?.phone}
           lines={printLines}
+          /**
+           * ⚠ HAI GHI CHÚ LÀ HAI THỨ KHÁC NHAU, in cả hai và ghi rõ của
+           *   ai: ghi chú của đơn là lời người bán dặn lúc đặt hàng, ghi
+           *   chú hóa đơn là lời người xuất kho dặn lúc giao. Gộp làm một
+           *   là mất mất ai nói câu nào. Trùng chữ thì `SalesInvoice` tự
+           *   bỏ bớt một.
+           */
+          notes={[
+            { label: "Ghi chú đơn hàng", text: inv.order?.notes },
+            { label: "Ghi chú hóa đơn", text: inv.notes },
+          ]}
           total={Number(inv.total) || 0}
           returnCredit={printCredit}
           returnLines={printReturnLines}

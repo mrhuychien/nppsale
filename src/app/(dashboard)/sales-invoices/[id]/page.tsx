@@ -70,7 +70,13 @@ interface InvoiceRow {
     tax_code?: string | null
     phone?: string | null
   } | null
-  order?: { order_code?: string | null } | null
+  /**
+   * ⚠ GHI CHÚ CHUNG CỦA ĐƠN ĐỌC THẲNG TỪ ĐƠN. `post_invoice` chỉ lưu ghi
+   * chú người dùng gõ lúc xuất (`sales_invoices.notes`); ghi chú của đơn
+   * ở lại `sales_orders.notes`. Đọc thẳng từ đó thì mọi hóa đơn CŨ cũng
+   * hiện ra — chép sang lúc xuất chỉ cứu được hóa đơn lập từ nay về sau.
+   */
+  order?: { order_code?: string | null; notes?: string | null } | null
 }
 
 interface LineRow {
@@ -115,7 +121,7 @@ export default function SalesInvoiceDetailPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name), order:sales_orders(order_code)"
+          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name), order:sales_orders(order_code, notes)"
         )
         .eq("id", id)
         .maybeSingle(),
@@ -463,6 +469,18 @@ export default function SalesInvoiceDetailPage() {
                             <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>
                           )}
                         </div>
+                        {/* ⚠ GHI CHÚ TỪNG MẶT HÀNG (chủ nhà chốt
+                            20/09/2026). Nó đã được lưu từ đầu — `note`
+                            đi từ dòng đơn qua `post_invoice` vào
+                            `sales_invoice_lines.note` — và câu truy vấn
+                            đã kéo về, chỉ là chưa chỗ nào in ra. Một ghi
+                            chú đã nhập mà màn hình không hiện thì người
+                            bán tưởng mình quên nhập và nhập lại. */}
+                        {l.note && (
+                          <div className="mt-0.5 whitespace-pre-wrap text-xs italic text-on-surface-variant [overflow-wrap:anywhere]">
+                            Ghi chú: {l.note}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums">
                         {l.quantity} {l.unit_name}
@@ -490,11 +508,24 @@ export default function SalesInvoiceDetailPage() {
           </div>
           </DetailCard>
 
-          {inv.notes && (
-            <DetailCard title="Ghi chú" bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm">
-              {inv.notes}
-            </DetailCard>
-          )}
+          {/* ⚠ HAI GHI CHÚ LÀ HAI THỨ KHÁC NHAU, và phải ghi rõ của ai:
+              ghi chú ĐƠN là lời người bán dặn lúc đặt hàng, ghi chú HÓA
+              ĐƠN là lời người xuất kho dặn lúc giao. Gộp làm một là mất
+              mất ai nói câu nào. Trùng chữ thì chỉ hiện khối đầu. */}
+          {[
+            { label: "Ghi chú đơn hàng", text: (inv.order?.notes ?? "").trim() },
+            { label: "Ghi chú hóa đơn", text: (inv.notes ?? "").trim() },
+          ]
+            .filter((n, i, all) => n.text !== "" && all.findIndex((x) => x.text === n.text) === i)
+            .map((n) => (
+              <DetailCard
+                key={n.label}
+                title={n.label}
+                bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm [overflow-wrap:anywhere]"
+              >
+                {n.text}
+              </DetailCard>
+            ))}
           </>
         }
         rail={

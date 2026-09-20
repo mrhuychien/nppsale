@@ -132,7 +132,7 @@ export default function EditPurchaseReceiptPage() {
         .select("id, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, vat_override, notes, status")
         .eq("id", id).maybeSingle(),
       supabase.from("purchase_invoice_lines")
-        .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, note, sort_order")
+        .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, notes, sort_order")
         .eq("invoice_id", id).order("sort_order"),
     ])
     const prods = (prodRes.data as ReceiptProduct[]) || []
@@ -169,7 +169,7 @@ export default function EditPurchaseReceiptPage() {
       lines: ((lRes.data as Array<{
         id: string; product_id: string; unit_name: string; quantity: number
         unit_price: number; line_discount: number | null; vat_rate: number | null
-        conversion_factor: number | null; note: string | null
+        conversion_factor: number | null; notes: string | null
       }>) || []).map((l): ReceiptLine => {
         const p = prods.find((x) => x.id === l.product_id)
         return {
@@ -179,7 +179,7 @@ export default function EditPurchaseReceiptPage() {
              tên là giấu mất chính thứ cần sửa. */
           product_name: p?.name || "Sản phẩm đã xoá",
           sku: p?.sku || "",
-          note: l.note || "",
+          note: l.notes || "",
           unit_name: l.unit_name,
           quantity: String(l.quantity),
           unit_price: String(l.unit_price),

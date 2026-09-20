@@ -56,7 +56,8 @@ interface Line {
   vat_rate: number | null
   conversion_factor: number | null
   line_total: number | null
-  note: string | null
+  /** Cột trong CSDL tên `notes`, số nhiều. */
+  notes: string | null
   product?: { name?: string | null; sku?: string | null; base_unit?: string | null } | null
 }
 
@@ -79,7 +80,7 @@ export default function PurchaseReceiptDetailPage() {
         .select("id, receipt_code, invoice_number, invoice_date, status, warehouse_zone, subtotal, vat, discount, total, notes, cancel_reason, completed_at, stock_entry_id, payable_id, supplier:suppliers(name, code)")
         .eq("id", id).maybeSingle(),
       supabase.from("purchase_invoice_lines")
-        .select("id, sort_order, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, line_total, note, product:products(name, sku, base_unit)")
+        .select("id, sort_order, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, line_total, notes, product:products(name, sku, base_unit)")
         .eq("invoice_id", id).order("sort_order"),
     ])
     if (hRes.error) console.error("[receipts/detail] lỗi:", hRes.error.message)
@@ -196,7 +197,7 @@ export default function PurchaseReceiptDetailPage() {
                     <td className="px-2 py-2 tabular-nums text-muted-foreground">{l.sort_order || i + 1}</td>
                     <td className="px-2 py-2 font-mono text-xs">{l.product?.sku || "—"}</td>
                     <td className="px-2 py-2">{l.product?.name || "Sản phẩm đã xoá"}</td>
-                    <td className="px-2 py-2 text-muted-foreground">{l.note || "—"}</td>
+                    <td className="px-2 py-2 text-muted-foreground">{l.notes || "—"}</td>
                     <td className="px-2 py-2">
                       {l.unit_name}
                       {Number(l.conversion_factor) > 1 && (

@@ -47,7 +47,10 @@ export async function saveReceiptLines(
     vat_rate: percentToRatio(l.vat_percent),
     conversion_factor: Number(l.conversion_factor) || 1,
     line_total: lineTotalOf(l),
-    note: l.note.trim() || null,
+    // ⚠ CỘT TÊN LÀ `notes`, SỐ NHIỀU. Trường trong biểu mẫu tên `note`;
+    //   gõ theo trí nhớ thành `note` ở đây là PostgREST từ chối cả phép
+    //   ghi với "Could not find the 'note' column" — chủ nhà đã gặp.
+    notes: l.note.trim() || null,
     // STT người dùng nhìn thấy, 1-based.
     sort_order: i + 1,
   }))

@@ -154,6 +154,47 @@ export function scopeToSupplier<T extends { primary_supplier_id?: string | null 
   return products.filter((p) => inSupplierScope(p, supplierId))
 }
 
+/**
+ * DÒNG NÀO TRÊN PHIẾU ĐANG THUỘC NCC KHÁC.
+ *
+ * ⚠ LỌC Ô TÌM CHỈ CHẶN LÚC THÊM. Thêm hàng xong rồi mới ĐỔI NCC ở đầu
+ * phiếu thì những dòng đã có vẫn nằm nguyên — phiếu thành trộn hai NCC,
+ * đúng cái mà phép lọc sinh ra để chặn, chỉ là đi vào bằng cửa sau.
+ * Không ai thấy, vì trên bảng hàng không có cột NCC.
+ *
+ * ⚠ CHỈ CẢNH BÁO, KHÔNG CHẶN. Cột `primary_supplier_id` mang NCC nhập
+ * GẦN NHẤT (migration 030), nên một mã vừa chuyển sang NCC mới còn treo
+ * tên NCC cũ cho tới lần nhập kế — chặn cứng là chặn oan đúng cái phiếu
+ * hợp lệ đang sửa chuyện đó. Việc ở đây là NÓI RA để người lập phiếu tự
+ * quyết.
+ *
+ * ⚠ MÃ ĐÃ XOÁ KHỎI DANH MỤC THÌ KHÔNG KẾT TỘI. Tra không ra sản phẩm là
+ * CHƯA BIẾT nó của ai — cùng quy ước với `inSupplierScope`. Hô lên
+ * "thuộc NCC khác" cho một mã mình không tra được là nói bừa, và người
+ * dùng sẽ học cách bỏ qua mọi cảnh báo của màn này.
+ */
+export function linesOutOfSupplierScope<T extends { product_id: string }>(
+  lines: T[],
+  products: Array<{ id: string; primary_supplier_id?: string | null }>,
+  supplierId: string | null | undefined
+): T[] {
+  /**
+   * ⚠ KHÔNG CHẶN SỚM BẰNG `if (!supplierId) return []`. Nghe thì hợp
+   *   lý, nhưng đó là chép lại luật của `inSupplierScope` ra bản thứ
+   *   hai — và bản thứ hai thì chốt không canh. Đã thử phá: gỡ dòng
+   *   chặn sớm ấy đi mà cả 85 chốt vẫn XANH, vì hành vi không đổi.
+   *   Một dòng mã mà xoá đi không chốt nào kêu là một dòng không ai
+   *   canh; đúng kiểu ấy đã làm `scopeToSupplier` nói dối một lần rồi.
+   *   Luật nằm ở MỘT chỗ: `inSupplierScope`.
+   */
+  const byId = new Map(products.map((p) => [p.id, p]))
+  return lines.filter((l) => {
+    const p = byId.get(l.product_id)
+    if (!p) return false
+    return !inSupplierScope(p, supplierId)
+  })
+}
+
 /** Nhãn lý do trả — định nghĩa cạnh tập giá trị, không rải ra JSX. */
 export const RETURN_REASONS = [
   { value: "near_expiry", label: "Hàng gần hạn" },

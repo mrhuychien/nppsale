@@ -37,7 +37,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency, formatInt } from "@/lib/utils"
-import { inSupplierScope, scopeToSupplier, searchReturnProducts } from "@/lib/purchasing/return-form"
+import {
+  inSupplierScope, linesOutOfSupplierScope, scopeToSupplier, searchReturnProducts,
+} from "@/lib/purchasing/return-form"
 import type { PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
   lineFromProduct, lineTotalOf, receiptTotals, unitCostOf, unitPatch,
@@ -156,6 +158,15 @@ export function PurchasingLinesEditor({
     const other = products.filter((p) => !inSupplierScope(p, supplierId))
     return searchReturnProducts(other, term, onSlip, 200).length
   }, [products, supplierId, term, onSlip, showAll])
+
+  /**
+   * ⚠ ĐỔI NCC SAU KHI ĐÃ THÊM HÀNG là cửa sau của phép lọc ô tìm. Bảng
+   *   hàng không có cột NCC nên không ai thấy — phải nói ra ở đây.
+   */
+  const lacDong = useMemo(
+    () => linesOutOfSupplierScope(value.lines, products, supplierId),
+    [value.lines, products, supplierId]
+  )
 
   const setLines = (fn: (a: ReceiptLine[]) => ReceiptLine[]) => onChange({ lines: fn(value.lines) })
   const patchLine = (id: string, patch: Partial<ReceiptLine>) =>
@@ -298,6 +309,21 @@ export function PurchasingLinesEditor({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:px-6 sm:pb-6">
+          {/*
+            ⚠ VÀNG, KHÔNG ĐỎ. Đây là chuyện đáng ngó lại, không phải lỗi
+              cứng: mã vừa đổi NCC còn treo tên NCC cũ tới lần nhập kế.
+              Đỏ ở đây là dạy người dùng bỏ qua màu đỏ.
+          */}
+          {lacDong.length > 0 && (
+            <div className="mx-3 mb-3 rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs text-[#7a4b00] sm:mx-0">
+              <span className="font-semibold">
+                {lacDong.length} dòng trên phiếu thuộc NCC khác:
+              </span>{" "}
+              {lacDong.map((l) => l.product_name).join(" · ")}.{" "}
+              Một phiếu trộn hai NCC là công nợ ghi sai chỗ — bỏ những dòng này ra, hoặc
+              đổi lại NCC ở đầu phiếu.
+            </div>
+          )}
           {value.lines.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Phiếu chưa có mặt hàng nào. Tìm ở ô trên rồi bấm Thêm.

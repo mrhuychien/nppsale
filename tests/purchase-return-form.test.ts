@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   searchReturnProducts, friendlyReturnError, ratioToPercent, percentToRatio,
-  inSupplierScope, scopeToSupplier,
+  inSupplierScope, linesOutOfSupplierScope, scopeToSupplier,
   type ReturnProduct,
 } from "../src/lib/purchasing/return-form"
 import {
@@ -896,6 +896,64 @@ describe("ô tìm hàng thu về đúng NCC đang chọn", () => {
     expect(EDITOR).toContain("showAllFor !== null && showAllFor === supplierId")
     expect(EDITOR, "đang dùng cờ bật/tắt — đổi NCC thì lọc tắt lúc nào không hay")
       .not.toContain("useState(false)")
+  })
+
+  /**
+   * ⚠ ĐỔI NCC SAU KHI ĐÃ THÊM HÀNG LÀ CỬA SAU CỦA PHÉP LỌC. Lọc ô tìm
+   * chỉ chặn lúc THÊM; thêm xong rồi mới đổi NCC ở đầu phiếu thì những
+   * dòng cũ vẫn nằm nguyên và phiếu thành trộn hai NCC — đúng cái phép
+   * lọc sinh ra để chặn, chỉ là đi vào bằng cửa sau. Bảng hàng không có
+   * cột NCC nên không ai thấy.
+   */
+  describe("dòng đã có trên phiếu mà thuộc NCC khác", () => {
+    const cat = [p("a", "ncc1"), p("b", "ncc2"), p("c", null)]
+    const ln = (pid: string) => ({ product_id: pid, product_name: pid })
+
+    it("chỉ ra đúng dòng thuộc NCC khác", () => {
+      const out = linesOutOfSupplierScope([ln("a"), ln("b"), ln("c")], cat, "ncc1")
+      expect(out.map((l) => l.product_id)).toEqual(["b"])
+    })
+
+    it("chưa chọn NCC thì không kết tội dòng nào", () => {
+      expect(linesOutOfSupplierScope([ln("a"), ln("b")], cat, null)).toHaveLength(0)
+      expect(linesOutOfSupplierScope([ln("a"), ln("b")], cat, "")).toHaveLength(0)
+    })
+
+    /** ⚠ Chưa gán NCC là CHƯA BIẾT — cùng quy ước với `inSupplierScope`. */
+    it("hàng chưa gán NCC không bị kể là của NCC khác", () => {
+      expect(linesOutOfSupplierScope([ln("c")], cat, "ncc1")).toHaveLength(0)
+    })
+
+    /**
+     * ⚠ TRA KHÔNG RA THÌ IM. Màn sửa dựng lại dòng từ phiếu đã lưu, và
+     * mã đã xoá khỏi danh mục hiện là "Sản phẩm đã xoá" — hô lên "thuộc
+     * NCC khác" cho một mã mình không tra được là nói bừa, rồi người
+     * dùng học cách bỏ qua mọi cảnh báo của màn này.
+     */
+    it("mã đã xoá khỏi danh mục thì không kết tội", () => {
+      expect(linesOutOfSupplierScope([ln("da-xoa")], cat, "ncc1")).toHaveLength(0)
+    })
+
+    it("biểu mẫu có hiện cảnh báo, và hiện tên hàng nào", () => {
+      expect(EDITOR).toContain("linesOutOfSupplierScope(value.lines, products, supplierId)")
+      expect(EDITOR).toContain("dòng trên phiếu thuộc NCC khác")
+      expect(EDITOR, "không nói rõ dòng nào — bắt người dùng tự dò cả phiếu")
+        .toContain("lacDong.map((l) => l.product_name).join")
+    })
+
+    /**
+     * ⚠ CẢNH BÁO, KHÔNG CHẶN. `primary_supplier_id` mang NCC nhập GẦN
+     * NHẤT, nên mã vừa chuyển sang NCC mới còn treo tên NCC cũ tới lần
+     * nhập kế — chặn cứng là chặn oan đúng cái phiếu đang sửa chuyện đó.
+     */
+    it("chỉ cảnh báo, không khoá nút gửi phiếu", () => {
+      for (const [ten, src] of [["phiếu trả", FORM], ["phiếu nhập", RECEIPT_FORM]] as const) {
+        expect(src, `${ten} đang khoá nút theo NCC — chặn oan mã vừa đổi NCC`)
+          .not.toContain("lacDong")
+      }
+      expect(EDITOR, "đang vô hiệu hoá nút theo cảnh báo NCC")
+        .not.toContain("disabled={lacDong")
+    })
   })
 
   /** ⚠ Hai biểu mẫu đều phải truyền NCC xuống, nếu không lọc không chạy. */

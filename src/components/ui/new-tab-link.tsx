@@ -51,12 +51,29 @@ export function NewTabLink({
  * những chỗ chỉ nhận được một hàm gọi lại (`onApprove`), không nhận được
  * đường dẫn lúc dựng.
  *
- * ⚠ CHẶN CỬA SỔ BẬT LÊN THÌ PHẢI ĐI TIẾP, KHÔNG ĐƯỢC IM. `window.open`
- * trả `null` khi trình duyệt chặn; không có nhánh dự phòng thì người
- * dùng bấm nút và KHÔNG CÓ GÌ XẢY RA — họ bấm tiếp mấy lần rồi kết luận
- * app hỏng. Thà chuyển trang cùng tab còn hơn không đi đâu cả.
+ * ⚠ KHÔNG ĐƯỢC ĐƯA `noopener` VÀO THAM SỐ THỨ BA. Theo chuẩn, `window.open`
+ * kèm `noopener` LUÔN trả `null` — kể cả khi tab mới mở ra bình thường.
+ * Bản đầu đọc `null` đó là "bị chặn cửa sổ bật lên" rồi chạy nhánh dự
+ * phòng, nên MỖI LẦN bấm đều mở tab mới VÀ chuyển luôn cả tab cũ. Người
+ * dùng báo đúng chuyện đó: "bật tab mới để chuyển trang nhưng lại chuyển
+ * trang cả tab cũ". Cắt liên hệ bằng cách gán `opener = null` SAU khi mở
+ * — cùng tác dụng bảo mật, mà `null` lại giữ đúng nghĩa "bị chặn".
+ *
+ * ⚠ VẪN GIỮ NHÁNH DỰ PHÒNG. Khi trình duyệt chặn thật thì không có nhánh
+ * này là người dùng bấm nút và KHÔNG CÓ GÌ XẢY RA — họ bấm tiếp mấy lần
+ * rồi kết luận app hỏng. Thà chuyển trang cùng tab còn hơn không đi đâu.
  */
 export function openInNewTab(href: string) {
-  const w = typeof window !== "undefined" ? window.open(href, "_blank", "noopener,noreferrer") : null
-  if (!w && typeof window !== "undefined") window.location.href = href
+  if (typeof window === "undefined") return
+  const w = window.open(href, "_blank")
+  if (!w) {
+    window.location.href = href
+    return
+  }
+  // Tab mới không được nắm `window.opener` của tab này.
+  try {
+    w.opener = null
+  } catch {
+    /* Trình duyệt không cho gán thì thôi — tab mới vẫn mở đúng. */
+  }
 }

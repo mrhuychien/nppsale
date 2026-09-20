@@ -92,10 +92,19 @@ describe("chặn cửa sổ bật lên thì vẫn phải đi tiếp", () => {
   const g = globalThis as unknown as { window?: unknown }
   afterEach(() => { delete g.window })
 
+  /**
+   * ⚠ CỬA SỔ GIẢ PHẢI GHI LẠI CẢ THAM SỐ THỨ BA. Chính tham số ấy là chỗ
+   * hỏng: `window.open(..., "noopener")` LUÔN trả `null` theo chuẩn, kể
+   * cả khi tab mới mở ra bình thường — và nhánh dự phòng đọc `null` đó
+   * thành "bị chặn" rồi chuyển luôn cả tab cũ.
+   */
   const stub = (openReturns: unknown) => {
-    const calls: string[] = []
+    const calls: Array<[string, string | undefined, string | undefined]> = []
     const w = {
-      open: (href: string) => { calls.push(href); return openReturns },
+      open: (href: string, target?: string, features?: string) => {
+        calls.push([href, target, features])
+        return openReturns
+      },
       location: { href: "" },
     }
     g.window = w
@@ -103,10 +112,24 @@ describe("chặn cửa sổ bật lên thì vẫn phải đi tiếp", () => {
   }
 
   it("mở được thì KHÔNG đụng tới địa chỉ tab hiện tại", () => {
-    const { w, calls } = stub({})
+    const opened: { opener: unknown } = { opener: {} }
+    const { w, calls } = stub(opened)
     openInNewTab("/orders/abc")
-    expect(calls).toEqual(["/orders/abc"])
+    expect(calls.map((c) => c[0])).toEqual(["/orders/abc"])
     expect(w.location.href, "đã mở tab mới mà còn chuyển cả tab cũ").toBe("")
+    // Và tab mới không được giữ tay nắm sang tab này.
+    expect(opened.opener).toBeNull()
+  })
+
+  /**
+   * ⚠ KHÔNG TRUYỀN `noopener` QUA THAM SỐ THỨ BA — xem chú thích trên.
+   * Đây là chốt trực tiếp cho lỗi người dùng báo 20/09/2026.
+   */
+  it("không truyền noopener vào window.open", () => {
+    const { calls } = stub({ opener: {} })
+    openInNewTab("/orders/abc")
+    expect(calls[0][1]).toBe("_blank")
+    expect(String(calls[0][2] ?? "")).not.toContain("noopener")
   })
 
   it("bị chặn thì chuyển ngay ở tab hiện tại", () => {
@@ -157,7 +180,12 @@ describe("đọc tồn kho: chia trang phải có mốc ổn định", () => {
    * và màn bán hàng cho đặt nhiều hơn số thật sự có.
    */
   it("câu đọc lô hàng có sắp thứ tự cố định", () => {
-    expect(REF).toContain('.gt("qty_on_hand", 0).order("id").range(from, to)')
+    // ⚠ Từ 20/09/2026 câu này còn lọc vùng kho (xem tests/sale-zone-only);
+    //   mốc chia trang phải sống sót qua thay đổi đó.
+    expect(REF).toContain('.order("id").range(from, to)')
+    expect(REF, "mốc chia trang phải nằm NGAY TRƯỚC range").toMatch(
+      /\.eq\("warehouse_zone", "sale"\)\.order\("id"\)\.range\(from, to\)/
+    )
   })
 
   /** ⚠ Chạm trần là tồn cộng THIẾU — phải nói, như danh mục và khách đã nói. */

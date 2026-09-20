@@ -32,7 +32,12 @@ const PROD_COLS =
 export interface SellRefData {
   customers: Customer[]
   products: SellProduct[]
-  /** product_id → tồn kho theo ĐƠN VỊ CƠ SỞ, cộng mọi lô. */
+  /**
+   * product_id → tồn kho theo ĐƠN VỊ CƠ SỞ, cộng các lô Ở KHO BÁN.
+   *
+   * ⚠ KHÔNG GỒM KHO CẬN DATE. Đây là "số bán được", không phải "số có
+   * trong kho" — hai thứ khác nhau kể từ 20/09/2026.
+   */
   stockByProduct: Record<string, number>
   /** `cache` = đang dùng bản lưu ngoại tuyến. */
   source: "server" | "cache" | "empty"
@@ -63,7 +68,9 @@ type Client = {
       // ⚠ `.order(...)` PHẢI CÓ TRONG KIỂU NÀY. Xem chỗ đọc `batches`:
       //   chia trang mà không sắp thứ tự thì các trang lặp và sót dòng.
       gt: (c: string, v: unknown) => {
-        order: (c: string) => { range: (a: number, b: number) => unknown }
+        eq: (c: string, v: unknown) => {
+          order: (c: string) => { range: (a: number, b: number) => unknown }
+        }
       }
     }
   }
@@ -213,9 +220,16 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
      *   lớn và không ai còn kiểm tay được nữa. `id` là khoá chính nên
      *   luôn duy nhất, đủ làm mốc chia trang ổn định.
      */
+    /**
+     * ⚠ CHỈ KHO BÁN (chủ nhà chốt 20/09/2026: "hàng trong kho cận date
+     *   không được bán"). Bản cũ cộng MỌI vùng kho, nên con số "tồn"
+     *   trên màn bán hàng lớn hơn số thật sự xuất được — nhân viên đặt
+     *   theo nó rồi màn Xuất hàng báo thiếu. Vùng `date` là hàng gần
+     *   hạn (mig 028); muốn bán xả thì chuyển lô về vùng `sale` trước.
+     */
     fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).order("id").range(from, to)) as any
+      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).eq("warehouse_zone", "sale").order("id").range(from, to)) as any
     ),
   ])
 

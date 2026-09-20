@@ -170,46 +170,29 @@ describe("tờ in gọn lại", () => {
    * trên màn hình. Sửa nhầm chỗ là tờ in ra y như cũ.
    */
   /**
-   * ⚠ 13pt LÀ CON SỐ CHỦ NHÀ ĐỌC TRÊN GIẤY THẬT (chốt 20/09/2026: "font
-   * chữ ở mẫu in bé quá, cho lên 13 khi in"), không phải con số suy ra
-   * từ màn hình. Đường đi của nó: 7.5pt → 8.5pt → 13pt ở A5, và
-   * 11pt → 13pt ở A4. Hạ xuống cho "vừa trang" là quay lại đúng thứ vừa
-   * bị báo là không đọc được.
+   * ⚠ CỠ CHỮ CỤ THỂ ĐÃ CHUYỂN SANG `tests/print-font-sample.test.ts`,
+   * nơi các con số được ĐO TỪ TỜ MẪU KiotViet chứ không ước lượng. Ở đây
+   * chỉ giữ phần thuộc về "tờ in gọn lại": dãn dòng và đệm ô.
+   *
+   * Đường đi của con số, ghi lại để không ai lật mù: 7,5pt (quá bé) →
+   * 8,5pt → 13pt (tôi đoán sai, chủ nhà báo "to quá") → 10,5pt (đo từ
+   * tờ mẫu). Chỉ đổi tiếp khi có một tờ giấy thật để đo.
    */
-  it("A4: thân và bảng cùng 13pt, dãn dòng chặt", () => {
-    expect(CSS, "bảng A4 phải bằng cỡ thân, không nhỏ hơn một nấc").toContain(
-      'html[data-paper-size="A4"] .a4-doc table { font-size: 13pt; }'
-    )
+  it("A4 có dãn dòng riêng, không thừa hưởng 1.5 của Tailwind", () => {
     const i = CSS.indexOf('html[data-paper-size="A4"] .a4-doc {')
     expect(i).toBeGreaterThan(0)
-    const block = CSS.slice(i, CSS.indexOf("}", i))
-    expect(block).toContain("font-size: 13pt")
-    expect(block, "thiếu line-height nên bảng thừa hưởng 1.5").toContain("line-height: 1.15")
-  })
-
-  it("A5: cũng 13pt, dòng vẫn chặt", () => {
-    const i = CSS.indexOf('html:not([data-paper-size="A4"]) .a4-doc {')
-    const block = CSS.slice(i, CSS.indexOf("}", i))
-    expect(block).toContain("font-size: 13pt")
-    // ⚠ To chữ mà nới dòng là xoá luôn phần giấy tiết kiệm được hôm trước.
-    expect(block).toContain("line-height: 1.08")
-    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc table { font-size: 13pt; }')
+    expect(CSS.slice(i, CSS.indexOf("}", i))).toContain("line-height: 1.15")
   })
 
   /**
-   * ⚠ TIÊU ĐỀ PHẢI TO HƠN THÂN. Thân lên 13pt mà tiêu đề ở nguyên 11pt
-   * thì "HÓA ĐƠN BÁN HÀNG" thành dòng chữ NHỎ NHẤT tờ giấy — người cầm
-   * tờ giấy không còn biết mình đang cầm cái gì.
+   * ⚠ THỨ BẬC CỠ CHỮ nay do `tests/print-font-sample.test.ts` giữ — ở đó
+   * so tiêu đề với chính cỡ thân, chứ không so với một con số viết tay.
+   * Bản cũ ở đây khoá `h1 > 13`, và con số 13 ấy đã hết đúng.
    */
-  it("A5: tiêu đề vẫn to hơn thân", () => {
-    const h1 = /\.a4-doc h1 \{ font-size: (\d+(?:\.\d+)?)pt; \}/.exec(CSS)
-    expect(h1, "không tìm thấy cỡ tiêu đề").not.toBeNull()
-    expect(Number(h1![1])).toBeGreaterThan(13)
-  })
 
   /**
-   * ⚠ Ở 13pt trên A5, cột tên hàng chỉ còn ~18 ký tự một dòng. Tên hàng
-   * ở kho này có cụm dài không dấu cách ("300g(30gói/th)"); thiếu
+   * ⚠ Cột tên hàng trên khổ A5 chỉ rộng bằng vài chục ký tự. Tên hàng ở
+   * kho này có cụm dài không dấu cách ("300g(30gói/th)"); thiếu
    * `overflow-wrap` là cụm ấy tự nong cột ra, đẩy cột tiền qua lề và bị
    * cắt — hỏng theo kiểu chỉ lộ ra sau khi đã in.
    */

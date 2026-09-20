@@ -67,6 +67,17 @@ export function InvoiceEditor({
   const [saving, setSaving] = useState(false)
   const [rows, setRows] = useState<EditorRow[]>([])
   const [notes, setNotes] = useState("")
+  /**
+   * Ghi chú chung của ĐƠN — để NPP duyệt trước khi xuất (chủ nhà chốt
+   * 20/09/2026: "phần Xuất hàng cũng phải có ghi chú đầy đủ cho NPP
+   * duyệt").
+   *
+   * ⚠ CHỈ ĐỌC, KHÔNG CHÉP VÀO Ô "Ghi chú hóa đơn". Hai thứ khác nhau:
+   * ghi chú đơn là lời người bán dặn lúc đặt, ghi chú hóa đơn là lời
+   * người xuất kho dặn lúc giao. Chép sang là tờ hóa đơn in ra hai lần
+   * cùng một câu với hai nhãn khác nhau — xem `noteBlocksOf`.
+   */
+  const [orderNotes, setOrderNotes] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   /**
@@ -114,6 +125,25 @@ export function InvoiceEditor({
    * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG. Đây là phần bổ sung;
    *   ném lỗi ở đây là chặn cả việc xuất hàng vì một khối thông tin.
    */
+  /**
+   * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN MÀN XUẤT HÀNG — cùng nguyên tắc với
+   *   khối hàng đổi/trả ngay dưới.
+   */
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from("sales_orders")
+      .select("notes")
+      .eq("id", orderId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        setOrderNotes(((data as { notes?: string | null } | null)?.notes ?? "").trim() || null)
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId])
+
   useEffect(() => {
     let cancelled = false
     supabase
@@ -338,6 +368,17 @@ export function InvoiceEditor({
                             {r.isExchange && <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>}
                             {r.addedByHand && <Badge variant="outline" className="ml-1.5">Thêm tay</Badge>}
                           </div>
+                          {/* ⚠ GHI CHÚ CỦA DÒNG PHẢI HIỆN Ở ĐÂY. `note` đi
+                              theo `loadInvoiceableLines` từ dòng đơn, và
+                              đây là màn NPP quyết định xuất bao nhiêu —
+                              giấu lời dặn của người bán ("lấy lô mới",
+                              "không nhận hàng cận hạn") đúng vào lúc cần
+                              đọc nó nhất là bỏ phí cả việc nhập. */}
+                          {r.note && (
+                            <div className="mt-0.5 whitespace-pre-wrap text-xs italic text-amber-700 [overflow-wrap:anywhere]">
+                              Ghi chú: {r.note}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
                           {r.orderLineId ? `${r.orderedQty} / ${r.invoicedQty}` : "—"}
@@ -513,6 +554,18 @@ export function InvoiceEditor({
                 ))}
               </CardContent>
             </Card>
+          )}
+
+          {/* ⚠ GHI CHÚ CỦA ĐƠN ĐỨNG RIÊNG VÀ ĐỨNG TRƯỚC. Đây là lời người
+              bán dặn, thứ NPP phải đọc TRƯỚC khi quyết định xuất bao
+              nhiêu — không phải thứ để trộn vào ô nhập bên dưới. */}
+          {orderNotes && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">
+              <p className="text-xs uppercase tracking-wider text-amber-700">Ghi chú đơn hàng</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-amber-900 [overflow-wrap:anywhere]">
+                {orderNotes}
+              </p>
+            </div>
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">

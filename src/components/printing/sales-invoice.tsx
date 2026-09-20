@@ -265,7 +265,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
     <div className="a4-doc mx-auto max-w-3xl bg-white text-black print:max-w-none">
       {/* Tiêu đề công ty — căn TRÁI như mẫu. */}
       <div className="mb-1.5">
-        <p className="text-lg font-bold uppercase leading-tight">{org.name || "—"}</p>
+        <p className="doc-org-name text-lg font-bold uppercase leading-tight">{org.name || "—"}</p>
         {org.address && <p className="text-[12px] leading-tight">Địa chỉ: {org.address}</p>}
         {org.phone && <p className="text-[12px] leading-tight">Điện thoại: {org.phone}</p>}
       </div>
@@ -448,7 +448,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
       </table>
 
       <div className="mt-1.5 grid grid-cols-2 items-start gap-4">
-        <p className="text-[10px] leading-tight">{footerNote || ""}</p>
+        <p className="doc-footer-note text-[10px] leading-tight">{footerNote || ""}</p>
         <p className="text-right text-[12px] leading-tight">{longDateVN(issuedAt)}</p>
       </div>
 

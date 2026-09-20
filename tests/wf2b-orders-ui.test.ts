@@ -306,6 +306,44 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
     expect(CODE).not.toContain("router.push(r.invoiceId")
   })
 
+  /**
+   * ⚠ MÀN XUẤT HÀNG PHẢI HIỆN ĐỦ GHI CHÚ CHO NPP DUYỆT (chủ nhà chốt
+   * 20/09/2026). Đây là chỗ NPP quyết định xuất bao nhiêu; giấu lời dặn
+   * của người bán ("lấy lô mới", "giao trước 8h") đúng vào lúc cần đọc
+   * nó nhất là bỏ phí cả việc nhập.
+   */
+  it("hiện ghi chú của từng dòng hàng", () => {
+    const flat = EDITOR.replace(/\s+/g, " ")
+    expect(flat).toContain(
+      '{r.note && ( <div className="mt-0.5 whitespace-pre-wrap text-xs italic text-amber-700 [overflow-wrap:anywhere]"> Ghi chú: {r.note} </div> )}'
+    )
+  })
+
+  /**
+   * ⚠ GHI CHÚ CỦA ĐƠN CHỈ ĐỌC, KHÔNG CHÉP VÀO Ô "Ghi chú hóa đơn". Hai
+   * thứ khác nhau; chép sang là tờ hóa đơn in hai lần cùng một câu với
+   * hai nhãn khác nhau.
+   */
+  it("hiện ghi chú chung của đơn, và KHÔNG chép vào ô nhập", () => {
+    expect(EDITOR).toContain('.from("sales_orders")')
+    expect(EDITOR).toContain("setOrderNotes(")
+    /**
+     * ⚠ KIỂM CẢ ĐIỀU KIỆN LẪN THÂN. Chỉ tìm chữ "Ghi chú đơn hàng" thì
+     * đổi điều kiện thành `{false && (` vẫn xanh — khối còn nguyên trong
+     * file mà màn hình không hiện gì.
+     */
+    const flat = EDITOR.replace(/\s+/g, " ")
+    expect(flat).toContain(
+      '{orderNotes && ( <div className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">'
+    )
+    expect(flat).toContain("{orderNotes} </p>")
+    expect(EDITOR, "đang chép ghi chú đơn sang ô ghi chú hóa đơn").not.toContain(
+      "setNotes(orderNotes"
+    )
+    // Và phải đứng TRƯỚC ô nhập — NPP đọc rồi mới ghi.
+    expect(EDITOR.indexOf("Ghi chú đơn hàng")).toBeLessThan(EDITOR.indexOf('htmlFor="inv-note"'))
+  })
+
   /** Ô số lượng theo quy ước giao diện của dự án. */
   it("ô số lượng dùng step any và min 0", () => {
     expect(CODE).toContain('step="any"')

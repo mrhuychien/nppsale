@@ -43,7 +43,7 @@ import {
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { RouteFilter } from "@/components/orders/route-filter"
-import { PipelineTabs } from "@/components/orders/pipeline-tabs"
+import { StatusChips } from "@/components/ui/status-chips"
 import {
   DesktopInvoiceTable,
   type InvoiceRow,
@@ -479,11 +479,14 @@ export default function SalesInvoicesPage() {
         description="Chứng từ thực xuất: trừ kho, sinh công nợ, là nguồn của hoá đơn điện tử."
       />
 
-      <PipelineTabs
-        className="grid"
+      {/* ⚠ CÙNG DẢI VỚI MÀN ĐƠN HÀNG (chủ nhà chốt 20/09/2026: dải thống
+          kê "về đơn giản, không cần khung như cũ"). Hai màn nằm cạnh nhau
+          trong cùng một nhóm; để một bên khung một bên viên thuốc là bắt
+          người dùng học hai cách đọc cho cùng một việc. */}
+      <StatusChips
         active={status}
         onPick={setStatus}
-        tabs={TABS.map((t) => ({
+        chips={TABS.map((t) => ({
           key: t.key,
           label: t.label,
           count: counts[t.key] ?? 0,

@@ -32,7 +32,7 @@ const NOTIF_PAGE = read("src/app/(dashboard)/notifications/page.tsx")
 const MIG119 = read("supabase/migrations/119_workflow_v2.sql")
 const MIG120 = read("supabase/migrations/120_workflow_v2_rpcs.sql")
 
-describe("Màn đơn hàng: bốn tab, và chỉ bốn", () => {
+describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
   /**
    * ⚠ GHI LẠI CẢ HAI PHÍA — ĐỪNG LẬT MÙ THÊM LẦN NỮA.
    *
@@ -49,20 +49,31 @@ describe("Màn đơn hàng: bốn tab, và chỉ bốn", () => {
    *   · "Tất cả" đứng CUỐI (giống màn hóa đơn), không đứng đầu;
    *   · màn vẫn MỞ RA ở "Phiếu tạm" — xem chốt `DEFAULT_ORDER_TAB` dưới.
    */
-  it("danh sách tab đúng bằng ba trạng thái sau khi gửi, cộng Tất cả ở cuối", () => {
+  it("đủ viên cho mọi trạng thái làm việc, Tất cả đứng đầu", () => {
     const i = LIST.indexOf("const ORDER_TABS = ")
     expect(i, "không tìm thấy danh sách tab").toBeGreaterThan(0)
-    const decl = LIST.slice(i, LIST.indexOf("\n", i))
-    for (const s of ["submitted", "completed", "cancelled", "all"]) {
+    const decl = LIST.slice(i, LIST.indexOf("] as const", i))
+    /**
+     * ⚠ `partially_invoiced` LÀ VIÊN THỨ NĂM, thêm 20/09/2026. Thiếu nó
+     * thì đơn xuất một phần không nằm trong viên nào và biến mất khỏi
+     * màn hình — đúng chuyện chủ nhà báo. Xem `tests/order-tabs-cover-all`.
+     */
+    for (const s of ["all", "submitted", "partially_invoiced", "completed", "cancelled"]) {
       expect(decl, `thiếu tab ${s}`).toContain(`"${s}"`)
     }
     // ⚠ "Nháp" KHÔNG có tab riêng: màn này không có nút nào làm được gì
     // với một bản nháp. Cho nó một tab là người dùng mở đúng chỗ không có
     // nút. (Nháp vẫn nằm trong "Tất cả" — đó là chuyện khác.)
     expect(decl).not.toContain('"draft"')
-    // ⚠ "Tất cả" ĐỨNG CUỐI. Đưa lên đầu là ô đầu tiên mắt chạm tới không
-    // còn là hàng đợi việc trong ngày.
-    expect(decl.indexOf('"all"')).toBeGreaterThan(decl.indexOf('"cancelled"'))
+    /**
+     * ⚠ "TẤT CẢ" NAY ĐỨNG ĐẦU — LẬT SO VỚI BẢN TRƯỚC, GHI LẠI CẢ HAI.
+     * Bản trước bắt nó đứng CUỐI, lý do: ô đầu tiên mắt chạm tới phải là
+     * hàng đợi việc trong ngày. Chủ nhà chốt lại 20/09/2026: "cho mặc
+     * định hiển thị là tất cả, sau đó bấm vào trạng thái nào thì lọc đơn
+     * trạng thái đó" — viên đang chọn phải là viên đầu tiên, nếu không
+     * dải mở ra với viên thứ tư được tô đậm.
+     */
+    expect(decl.indexOf('"all"')).toBeLessThan(decl.indexOf('"submitted"'))
     // ⚠ Và KHÔNG rẽ theo vai trò: nhà phân phối cũng bốn tab ấy.
     expect(LIST).toContain("const tabKeys: readonly string[] = ORDER_TABS")
   })
@@ -73,11 +84,24 @@ describe("Màn đơn hàng: bốn tab, và chỉ bốn", () => {
    * tình huống khác hẳn nhau, và màn mở ra ở tab Tất cả thay vì hàng đợi
    * việc. Ô trống "" mới là "chưa chạm tab nào".
    */
-  it("chưa chạm tab nào thì mở ra ở Phiếu tạm, không phải Tất cả", () => {
+  /**
+   * ⚠ MẶC ĐỊNH ĐÃ LẬT: "Phiếu tạm" → "Tất cả" (chủ nhà chốt 20/09/2026).
+   * Lý do cũ: mở ra ở hàng đợi việc trong ngày. Lý do mới nặng hơn — mở
+   * ra ở một tab đã lọc là mọi đơn ngoài tab ấy trông như không tồn tại,
+   * và đó chính là cách `partially_invoiced` biến mất mà không ai ngờ.
+   *
+   * ⚠ Ô TRỐNG "" VẪN GIỮ NGHĨA "CHƯA CHẠM TAB NÀO" dù nay nó quy về
+   * "all": hai thứ vẫn khác nhau ở chỗ `statusIsFiltered`, và trộn lại
+   * là nút "Xoá lọc" mọc ra cho một thứ không ai đặt.
+   */
+  it("chưa chạm tab nào thì mở ra ở Tất cả", () => {
     expect(LIST, 'trị "chưa chọn" phải là ô trống').toContain(
       'const [statusFilter, setStatusFilter] = useState("")'
     )
-    expect(LIST).toContain('const DEFAULT_ORDER_TAB = "submitted"')
+    expect(LIST).toContain('const DEFAULT_ORDER_TAB = "all"')
+    // Và huy hiệu "đang lọc" phải so với chính mặc định ấy, không so
+    // với một chuỗi viết tay đứng yên khi mặc định đổi.
+    expect(LIST).toContain("const statusIsFiltered = effectiveStatus !== DEFAULT_ORDER_TAB")
     const i = LIST.indexOf("const effectiveStatus =")
     expect(i).toBeGreaterThan(0)
     const expr = LIST.slice(i, LIST.indexOf("\n\n", i))

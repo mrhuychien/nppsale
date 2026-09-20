@@ -258,21 +258,30 @@ describe("M2.2 — /orders", () => {
     expect(ORDERS_CODE).not.toContain("extra={{")
     /**
      * ⚠ MỘT chỗ vẽ, cho CẢ HAI khổ màn. Bản cũ có hai: hàng chip trong
-     * sheet lọc (điện thoại) và thẻ `PipelineTabs` (máy tính). Hai chỗ
+     * sheet lọc (điện thoại) và thẻ `StatusChips` (máy tính). Hai chỗ
      * cùng ghi một giá trị là hai chỗ để trôi khỏi nhau — nay chỉ còn
-     * `PipelineTabs`, và nó KHÔNG bị giấu trên điện thoại.
+     * `StatusChips`, và nó KHÔNG bị giấu trên điện thoại.
      */
     expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(1)
     expect(ORDERS_CODE).not.toContain("statusChips")
-    expect(ORDERS_CODE.match(/<PipelineTabs/g)?.length).toBe(1)
+    expect(ORDERS_CODE.match(/<StatusChips/g)?.length).toBe(1)
     expect(ORDERS_CODE).not.toContain('"hidden lg:grid"')
   })
 
-  /** Bảy chip không được xuống dòng thành ba hàng trên điện thoại. */
-  it("hàng chip cuộn ngang trên điện thoại", () => {
-    expect(ORDERS_CODE).toContain("overflow-x-auto")
-    // Chip theo mẫu "Đơn của tôi": 34px, không co, không xuống dòng.
-    expect(ORDERS_CODE).toContain("h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full")
+  /**
+   * ⚠ KHÔNG ĐƯỢC XUỐNG DÒNG THÀNH NHIỀU HÀNG TRÊN ĐIỆN THOẠI. Dải nay có
+   * NĂM viên (thêm "Xuất một phần" ngày 20/09/2026) và còn thêm nữa khi
+   * database thêm trạng thái — cuộn ngang là cách duy nhất không đặt
+   * trần cho số viên.
+   *
+   * Hình dáng viên nằm ở `status-chips.tsx`, không còn ở trang này: bản
+   * cũ dựng chip tay ngay trong trang nên mỗi màn một kiểu.
+   */
+  it("dải trạng thái cuộn ngang, không xuống dòng", () => {
+    const CHIPS = read("src/components/ui/status-chips.tsx")
+    expect(CHIPS).toContain("overflow-x-auto")
+    expect(CHIPS).toContain("h-9 shrink-0 items-center gap-1.5 rounded-full")
+    expect(CHIPS).toContain("whitespace-nowrap")
   })
 
   /**

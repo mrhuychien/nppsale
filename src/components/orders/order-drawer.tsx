@@ -230,7 +230,12 @@ export function OrderDrawer({
   }, [orderId])
 
   const tone = order ? orderTone(order.status) : null
-  const pending = !!order && order.status === "submitted"
+  /**
+   * ⚠ GỒM CẢ ĐƠN XUẤT MỘT PHẦN — nó vẫn còn hàng phải giao. Xem chú
+   * thích cùng việc ở `desktop-order-table`.
+   */
+  const pending =
+    !!order && (order.status === "submitted" || order.status === "partially_invoiced")
 
   /**
    * Đối chiếu tồn — CHỈ cho phiếu tạm. Đơn đã xuất thì kho đã trừ rồi,

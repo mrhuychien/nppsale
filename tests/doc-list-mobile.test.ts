@@ -25,7 +25,6 @@ const MOBILE_ORD = read("src/components/orders/mobile-order-list.tsx")
 const INV_TABLE = read("src/components/sales-invoices/desktop-invoice-table.tsx")
 const ORD_TABLE = read("src/components/orders/desktop-order-table.tsx")
 const HEADER = read("src/components/ui/page-header.tsx")
-const TABS = read("src/components/orders/pipeline-tabs.tsx")
 const MOBILE_NAV = read("src/components/layout/mobile-nav.tsx")
 
 describe("khuôn hàng dùng chung", () => {
@@ -253,25 +252,29 @@ describe("dọn dải trên đầu danh sách (điện thoại)", () => {
   })
 })
 
-describe("thẻ đếm trạng thái: bốn ô", () => {
+describe("dải đếm trạng thái", () => {
   /**
-   * ⚠ CẢ HAI MÀN ĐỀU CÓ Ô "TẤT CẢ", VÀ NÓ ĐỨNG CUỐI. Chủ nhà chốt
-   * 19/09/2026 ("3 ô thống kê thành 4 ô — áp dụng cả sang bên ds hoá
-   * đơn"). Đứng cuối chứ không đứng đầu: ô đầu tiên mắt chạm tới phải là
-   * hàng đợi việc trong ngày.
+   * ⚠ CẢ HAI MÀN ĐỀU CÓ VIÊN "TẤT CẢ" — chủ nhà chốt 19/09/2026 ("3 ô
+   * thống kê thành 4 ô, áp dụng cả sang bên ds hoá đơn").
    *
-   * Màn hóa đơn chỉ có BA ô vì sổ chỉ có hai trạng thái hóa đơn — `posted`
-   * và `cancelled`, sinh ra cùng một RPC, không có nháp. Bịa ra ô thứ tư
-   * là in một con số không có nghĩa.
+   * ⚠ CHỖ ĐỨNG CỦA NÓ ĐÃ LẬT, ghi lại cả hai. Bản 19/09 bắt nó đứng
+   * CUỐI, lý do: ô đầu tiên mắt chạm tới phải là hàng đợi việc trong
+   * ngày. Chủ nhà chốt lại 20/09/2026: "cho mặc định hiển thị là tất
+   * cả" — viên đang chọn phải là viên đầu tiên, nếu không dải mở ra với
+   * một viên ở giữa được tô đậm.
+   *
+   * Riêng màn HÓA ĐƠN giữ "Tất cả" ở cuối vì mặc định của nó vẫn là "Đã
+   * xuất": hóa đơn huỷ là nhiễu, không phải việc phải làm.
    */
-  it("đơn hàng: bốn ô, Tất cả đứng cuối", () => {
+  it("đơn hàng: Tất cả đứng đầu vì nó là mặc định", () => {
     const i = ORDERS.indexOf("const ORDER_TABS = ")
-    const decl = ORDERS.slice(i, ORDERS.indexOf("\n", i))
-    expect(decl.match(/"/g)?.length, "phải đúng bốn ô").toBe(8)
-    expect(decl.indexOf('"all"')).toBeGreaterThan(decl.indexOf('"cancelled"'))
+    const decl = ORDERS.slice(i, ORDERS.indexOf("] as const", i))
+    expect(decl.indexOf('"all"')).toBeLessThan(decl.indexOf('"submitted"'))
+    expect(ORDERS).toContain('const DEFAULT_ORDER_TAB = "all"')
   })
 
-  it("hóa đơn: Tất cả cũng đứng cuối", () => {
+  it("hóa đơn: Tất cả vẫn đứng cuối, mặc định là Đã xuất", () => {
+    expect(INVOICES).toContain('useState<string>("posted")')
     const i = INVOICES.indexOf("const TABS = [")
     const decl = INVOICES.slice(i, INVOICES.indexOf("] as const", i))
     expect(decl).toContain('label: "Tất cả"')
@@ -279,16 +282,11 @@ describe("thẻ đếm trạng thái: bốn ô", () => {
   })
 
   /**
-   * ⚠ BỐN Ô PHẢI VỪA MÀN 375px. Giữ nguyên đệm của ba ô thì mỗi ô còn
-   * ~54px cho chữ và "Hoàn thành" cụt thành "Hoàn…" — người dùng đọc
-   * nhãn cụt rồi đoán, đúng thứ bốn ô sinh ra để khỏi phải đoán.
+   * ⚠ CHỐT CŨ "đệm và cỡ chữ co lại ở khổ hẹp" ĐÃ BỎ CÙNG VỚI THỨ NÓ
+   * GIỮ. Nó đo đệm và cỡ chữ của `PipelineTabs` — thẻ có khung chia ô
+   * đều nhau, phải thu đệm cho bốn ô vừa màn 375px. Chính cái trần ấy
+   * là lý do trạng thái thứ năm không có ô nào và đơn xuất một phần
+   * biến mất; chủ nhà chốt 20/09/2026 bỏ khung, dùng hàng viên thuốc
+   * cuộn ngang. Hình dáng mới do `tests/orders-desktop-template` giữ.
    */
-  it("đệm và cỡ chữ co lại ở khổ hẹp", () => {
-    const flat = TABS.replace(/\s+/g, " ")
-    expect(flat).toContain("px-2 py-3 text-left transition-colors hover:bg-surface-container-low sm:px-4 sm:py-3.5")
-    expect(flat).toContain('"truncate text-[11px] font-bold sm:text-xs"')
-    expect(flat).toContain("text-[19px] font-extrabold leading-none tabular-data sm:text-[22px]")
-    // Và nhãn vẫn phải cắt được chứ không đẩy ngang cả thẻ.
-    expect(flat).toContain("truncate")
-  })
 })

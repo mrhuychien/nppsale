@@ -181,7 +181,14 @@ export function DesktopOrderTable({
         {rows.map((o) => {
           const checked = selectedIds.has(o.id)
           const tone = orderTone(o.status)
-          const pending = o.status === "submitted"
+          /**
+           * ⚠ ĐƠN XUẤT MỘT PHẦN VẪN CÒN HÀNG PHẢI GIAO, nên nút "Xuất
+           * hàng" phải hiện cho nó nữa. Thanh chọn nhiều vốn đã nhận cả
+           * hai trạng thái (xem `hasSubmitted` ở màn danh sách); chỉ
+           * riêng nút trên từng dòng là bỏ sót, nên người dùng phải mở
+           * từng đơn một chỉ để bấm đúng cái nút này.
+           */
+          const pending = o.status === "submitted" || o.status === "partially_invoiced"
           const rep = repAvatar(o.sales_user?.full_name)
           const route = o.customer?.channel ? (routeNameByCode[o.customer.channel] ?? o.customer.channel) : null
           const lines = lineCountByOrder[o.id]

@@ -29,7 +29,7 @@ import {
   type ListPeriod, type DocLineSummary,
 } from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
-import { PipelineTabs } from "@/components/orders/pipeline-tabs"
+import { StatusChips } from "@/components/ui/status-chips"
 import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
 import { OrderDrawer } from "@/components/orders/order-drawer"
 import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
@@ -112,15 +112,52 @@ const TOTAL_SELECT_WITH_ROUTE = "total, customer:customers!inner(id)"
 const COUNTED_STATUSES = [
   "draft",
   "submitted",
+  "partially_invoiced",
   "completed",
+  "closed",
   "cancelled",
 ] as const
 
 const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
   draft: "Nháp",
   submitted: "Phiếu tạm",
+  partially_invoiced: "Xuất một phần",
   completed: "Hoàn thành",
+  closed: "Đã đóng",
   cancelled: "Đã huỷ",
+}
+
+/**
+ * MỖI TAB PHỦ NHỮNG TRẠNG THÁI NÀO.
+ *
+ * ⚠ LÝ DO CÓ BẢNG NÀY: `sales_orders.status` cho phép SÁU giá trị
+ * (mig 119 mở rộng ràng buộc CHECK: draft · submitted ·
+ * partially_invoiced · completed · closed · cancelled) nhưng màn này chỉ
+ * có bốn tab. Trước hôm nay mỗi tab lọc đúng MỘT trạng thái, nên đơn
+ * `partially_invoiced` và `closed` KHÔNG NẰM TRONG TAB NÀO — chúng biến
+ * mất khỏi Phiếu tạm, khỏi Hoàn thành, khỏi Đã huỷ, và chỉ còn thấy
+ * được ở "Tất cả".
+ *
+ * Chủ nhà báo đúng chuyện đó: "đơn hàng hoàn thành xong thấy biến mất
+ * luôn, không ở bên hoàn thành". Xuất thiếu một dòng là đơn thành
+ * `partially_invoiced` — và từ 20/09/2026 nhân viên được đặt vượt tồn
+ * nên xuất thiếu là chuyện THƯỜNG, không phải ngoại lệ.
+ *
+ * ⚠ `partially_invoiced` VỀ "PHIẾU TẠM", KHÔNG VỀ "HOÀN THÀNH". Đơn xuất
+ * một phần vẫn còn hàng phải giao — nó thuộc hàng đợi việc. Thanh chọn
+ * nhiều vốn đã coi hai trạng thái này là một (xem `hasSubmitted`), nên
+ * gộp ở đây là làm cho khớp, không phải đặt luật mới.
+ *
+ * ⚠ `closed` VỀ "HOÀN THÀNH", và huy hiệu vẫn phân biệt. Hai trạng thái
+ * đều là KẾT: không còn gì để giao. Nhưng `completed` = đã giao đủ,
+ * `closed` = thôi không giao nốt — `orderTone` giữ chúng hai màu khác
+ * nhau (xanh / xám đậm) nên gộp tab không xoá mất khác biệt ấy.
+ */
+const TAB_STATUSES: Record<string, readonly string[]> = {
+  submitted: ["submitted"],
+  partially_invoiced: ["partially_invoiced"],
+  completed: ["completed", "closed"],
+  cancelled: ["cancelled"],
 }
 
 /**
@@ -148,7 +185,13 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
  * ⚠ KHÔNG thu `COUNTED_STATUSES` xuống theo. Đó là danh sách ĐẾM và là
  * nguồn nhãn; nháp vẫn phải đếm được để còn dẫn người dùng sang đúng chỗ.
  */
-const ORDER_TABS = ["submitted", "completed", "cancelled", "all"] as const
+const ORDER_TABS = [
+  "all",
+  "submitted",
+  "partially_invoiced",
+  "completed",
+  "cancelled",
+] as const
 
 /**
  * Tab mở màn: hàng đợi việc, không phải "Tất cả".
@@ -159,7 +202,7 @@ const ORDER_TABS = ["submitted", "completed", "cancelled", "all"] as const
  * Khởi tạo thẳng bằng "submitted" là mọi lần tìm từ thanh tiêu đề đều bị
  * ép về Phiếu tạm và trả RỖNG cho đơn đã hoàn thành hoặc đã huỷ.
  */
-const DEFAULT_ORDER_TAB = "submitted"
+const DEFAULT_ORDER_TAB = "all"
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
@@ -435,11 +478,22 @@ export default function OrdersPage() {
         : DEFAULT_ORDER_TAB
       : statusFilter
 
+  /**
+   * Lọc theo trạng thái — theo NHÓM của tab, không theo một giá trị.
+   *
+   * ⚠ `.in(...)` CHỨ KHÔNG `.eq(...)` CHO TAB. Xem `TAB_STATUSES`: bốn
+   * tab phải phủ hết sáu trạng thái, nếu không đơn rơi vào khe giữa các
+   * tab và biến mất khỏi màn hình.
+   *
+   * ⚠ GIÁ TRỊ KHÔNG PHẢI TAB THÌ LỌC ĐÚNG NÓ. Đường dẫn sâu
+   * `/orders?status=draft` là lựa chọn tường minh của nơi gọi; quy nó về
+   * một nhóm là trả về thứ người ta không hỏi.
+   */
   const applyStatusFilter = <T,>(q: T, status: string): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (status !== "all") {
-      x = x.eq("status", status)
-    }
+    if (status === "all") return x as T
+    const group = TAB_STATUSES[status]
+    x = group ? x.in("status", group) : x.eq("status", status)
     return x as T
   }
 
@@ -482,6 +536,15 @@ export default function OrdersPage() {
       COUNTED_STATUSES.forEach((st, i) => {
         counts[st] = resps[i].count ?? 0
       })
+      /**
+       * ⚠ SỐ TRÊN TAB PHẢI LÀ SỐ CỦA CẢ NHÓM. Đếm riêng `submitted` rồi
+       * dán lên tab đang lọc `submitted + partially_invoiced` là con số
+       * trên thẻ nhỏ hơn số dòng đếm được bên dưới nó — đúng loại lệch
+       * mà thẻ đếm sinh ra để tránh.
+       */
+      for (const [tab, group] of Object.entries(TAB_STATUSES)) {
+        counts[tab] = group.reduce((n, st) => n + (counts[st] ?? 0), 0)
+      }
       setStatusCounts(counts)
     }
     loadCounts()
@@ -1013,10 +1076,13 @@ export default function OrdersPage() {
   // danh sách thiếu đơn.
   /**
    * ⚠ TAB TRẠNG THÁI LÀ ĐIỀU HƯỚNG, KHÔNG PHẢI BỘ LỌC NÂNG CAO. Đếm nó
-   * vào huy hiệu "đang lọc" thì tab mặc định (Phiếu tạm) cũng làm huy
-   * hiệu sáng lên và nút "Xoá lọc" mọc ra cho một thứ không ai đặt.
+   * vào huy hiệu "đang lọc" thì tab MẶC ĐỊNH cũng làm huy hiệu sáng lên
+   * và nút "Xoá lọc" mọc ra cho một thứ không ai đặt. So với
+   * `DEFAULT_ORDER_TAB` chứ không so với một chuỗi viết tay: mặc định
+   * đã đổi từ "Phiếu tạm" sang "Tất cả" (chủ nhà chốt 20/09/2026), và
+   * một chuỗi viết tay ở đây sẽ đứng yên.
    */
-  const statusIsFiltered = effectiveStatus !== "submitted"
+  const statusIsFiltered = effectiveStatus !== DEFAULT_ORDER_TAB
   /**
    * Danh sách đang bị thu hẹp bởi MỘT thao tác nào đó của người dùng —
    * tab, ô tìm, bộ lọc nâng cao hay bước xử lý. Dùng để phân biệt "lọc
@@ -1344,14 +1410,20 @@ export default function OrdersPage() {
           trên nói về BỘ LỌC; ba tab này là ĐIỀU HƯỚNG — màn mở ra ở tab
           Phiếu tạm, giấu tab đi là không có đường nào sang Hoàn thành /
           Đã huỷ. Ba cột vừa khít 375px (năm thì nhãn cụt thành "Ho…"). */}
-      <PipelineTabs
-        className="grid"
+      {/*
+        ⚠ MỘT HÀNG VIÊN THUỐC, KHÔNG KHUNG (chủ nhà chốt 20/09/2026).
+          Thẻ có khung chia ô đều nhau vốn ÉP số ô: bốn ô đã phải thu đệm
+          và cỡ chữ cho vừa màn 375px, và chính cái trần ấy là lý do
+          `partially_invoiced` không có ô nào — đơn xuất thiếu vì thế
+          biến mất khỏi mọi tab. Hàng cuộn ngang thì không có trần.
+      */}
+      <StatusChips
         active={pipelineStep ? "" : effectiveStatus}
         onPick={(k) => {
           setStatusFilter(k)
           setPipelineStep(null)
         }}
-        tabs={tabKeys.map((k) => ({
+        chips={tabKeys.map((k) => ({
           key: k,
           label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]],
           count: statusCounts[k] ?? 0,

@@ -10,7 +10,7 @@ const code = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
 const PAGE = code(read("src/app/(dashboard)/orders/page.tsx"))
-const TABS = code(read("src/components/orders/pipeline-tabs.tsx"))
+const TABS = code(read("src/components/ui/status-chips.tsx"))
 const TABLE = code(read("src/components/orders/desktop-order-table.tsx"))
 const DRAWER = code(read("src/components/orders/order-drawer.tsx"))
 
@@ -19,9 +19,9 @@ const DRAWER = code(read("src/components/orders/order-drawer.tsx"))
  * thẻ trạng thái có số to, một thẻ bảng gồm thanh công cụ + dải chọn nhiều +
  * bảng + phân trang, và ngăn chi tiết bên phải khi chạm một dòng.
  */
-describe("Thẻ trạng thái (PipelineTabs) — cùng số với bảng bên dưới", () => {
+describe("Thẻ trạng thái (StatusChips) — cùng số với bảng bên dưới", () => {
   it("dựng từ COUNTED_STATUSES với số đếm từ máy chủ, vạch màu theo orderTone", () => {
-    const i = PAGE.indexOf("<PipelineTabs")
+    const i = PAGE.indexOf("<StatusChips")
     const block = PAGE.slice(i, PAGE.indexOf("/>", i))
     expect(block).toContain("tabKeys.map(")
     expect(block).toContain("count: statusCounts[k] ?? 0")
@@ -30,18 +30,28 @@ describe("Thẻ trạng thái (PipelineTabs) — cùng số với bảng bên d�
     expect(block).toContain("setPipelineStep(null)")
   })
 
-  it("ô 0 đơn mờ đi, ô đang chọn có vạch đáy; hiện ở mọi khổ màn", () => {
-    /**
-     * ⚠ KHÔNG CÒN LÀ THỨ CHỈ CÓ Ở MÀN RỘNG. Ba tab này LÀ điều hướng của
-     * màn đơn hàng cho mọi vai trò, và hàng chip trong sheet lọc đã bỏ —
-     * nên giấu chúng trên điện thoại là màn mở ra ở tab Phiếu tạm và kẹt
-     * ở đó, không có đường nào sang hai tab kia.
-     */
-    expect(PAGE).toContain('className="grid"')
-    expect(PAGE).not.toContain('"hidden lg:grid"')
-    expect(TABS).toContain('t.count === 0 ? "text-outline-variant" : "text-on-surface"')
-    expect(TABS).toContain("background: on ? t.accent : \"transparent\"")
-    expect(TABS).toContain("aria-selected={on}")
+  /**
+   * ⚠ DẢI THỐNG KÊ NAY LÀ MỘT HÀNG VIÊN THUỐC, KHÔNG KHUNG (chủ nhà chốt
+   * 20/09/2026: "cho về đơn giản dễ nhìn thôi, không cần làm khung như
+   * cũ nữa"). Bản cũ là thẻ có viền chia ô đều nhau — và chính cái lưới
+   * chia đều ấy ĐẶT TRẦN cho số ô: bốn ô đã phải thu đệm cho vừa màn
+   * 375px, nên `partially_invoiced` không có ô nào và đơn xuất một phần
+   * biến mất khỏi màn hình. Hàng cuộn ngang thì không có trần.
+   */
+  it("viên thuốc cuộn ngang, hiện ở mọi khổ màn", () => {
+    expect(PAGE, "dải bị giấu trên điện thoại").not.toContain('"hidden lg:grid"')
+    expect(PAGE).not.toContain('"hidden lg:flex"> <StatusChips')
+    // ⚠ Gộp khoảng trắng: Prettier ngắt dòng biểu thức ba ngôi, và một
+    //   luật dò bám vào dấu cách sẽ không khớp nữa — chốt hoá xanh vì
+    //   không tìm thấy gì để kiểm.
+    const flat = TABS.replace(/\s+/g, " ")
+    expect(flat).toContain("overflow-x-auto")
+    // Không co lại, không xuống dòng — dải dài thì cuộn, không gãy.
+    expect(flat).toContain("shrink-0")
+    expect(flat).toContain("aria-selected={on}")
+    // Viên đang chọn tô đậm; chấm màu giữ lại ngôn ngữ màu của orderTone.
+    expect(flat).toContain('on ? "bg-on-surface text-surface"')
+    expect(flat).toContain("background: c.accent")
   })
 })
 

@@ -13,7 +13,6 @@ import {
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
-  PackagePlus, PackageMinus,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -77,14 +76,19 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Boxes,
     items: [
       { label: "Kho hàng", href: "/inventory", icon: Boxes },
-      // ⚠ PHIẾU NHẬP KHO CHUYỂN HẲN SANG ĐÂY (chủ nhà chốt 20/09/2026).
-      //   Nó không còn là đường nhập hàng từ NCC — đường đó nay là
-      //   "Phiếu nhập hàng" ở nhóm Mua hàng, và đi qua RPC một giao
-      //   dịch. Ở lại đây nó làm đúng một việc: nhập kho thông thường,
-      //   không NCC, không công nợ. Phiếu xuất kho là bản đối xứng
-      //   cho việc xuất lẻ: hàng vỡ, hàng biếu, chuyển chi nhánh.
-      { label: "Phiếu nhập kho", href: "/inventory/stock-in", icon: PackagePlus },
-      { label: "Phiếu xuất kho", href: "/inventory/stock-issue", icon: PackageMinus },
+      /**
+       * ⚠ MỘT MỤC "PHIẾU KHO", KHÔNG PHẢI HAI MỤC NHẬP/XUẤT (chủ nhà
+       *   chốt 20/09/2026: "Bỏ phiếu nhập kho, phiếu xuất kho → Thành
+       *   Phiếu kho"). Hai mục cũ trỏ thẳng vào màn LẬP phiếu, nên menu
+       *   không có đường nào dẫn tới DANH SÁCH phiếu — muốn xem lại một
+       *   phiếu đã lập thì phải nhớ đường `/inventory/entries` hoặc đi
+       *   vòng qua trang Kho hàng.
+       *
+       * ⚠ LẬP PHIẾU NAY NẰM SAU NÚT "TẠO PHIẾU" của chính màn danh
+       *   sách — cả nhập, xuất, chuyển kho lẫn kiểm kê. Một cửa vào cho
+       *   cả bốn việc thì không còn chỗ cho hai mục menu lệch nhau.
+       */
+      { label: "Phiếu kho", href: "/inventory/entries", icon: ClipboardList },
       { label: "Sản phẩm", href: "/products", icon: Package },
       { label: "Giao hàng", href: "/deliveries", icon: Truck },
     ],

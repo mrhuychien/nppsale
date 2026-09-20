@@ -111,12 +111,44 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
     )
   })
 
+  /**
+   * ⚠ ĐÍCH CỦA MỘT NÚT, KHÔNG PHẢI MỘT MỤC MENU. Ba đường này vẫn là
+   * trang thật, `useRoleGuard` vẫn phải canh cửa, nhưng người dùng tới
+   * đó bằng cách bấm nút chứ không bằng cách mở ngăn kéo.
+   *
+   * ⚠ DANH SÁCH NÀY PHẢI NGẮN VÀ PHẢI GIẢI THÍCH ĐƯỢC. Nó là lỗ duy
+   * nhất trong chốt "khai quyền mà không dùng là rác"; thêm một đường
+   * vào đây mà không có nút thật trỏ tới là tự tay đục lỗ. Chốt ngay
+   * dưới đi tìm đúng cái nút ấy trong mã nguồn.
+   */
+  const NUT_KHONG_PHAI_MENU: Record<string, string> = {
+    "/sell": "nút CTA \"Tạo đơn mới\"",
+    "/inventory/stock-in": "nút \"Tạo phiếu → Nhập kho\" ở màn Phiếu kho",
+    "/inventory/stock-issue": "nút \"Tạo phiếu → Xuất kho\" ở màn Phiếu kho",
+  }
+
+  /**
+   * ⚠ KHAI LÀ "ĐÍCH CỦA NÚT" THÌ PHẢI CÓ NÚT THẬT. Không kiểm điều này
+   * thì `NUT_KHONG_PHAI_MENU` biến thành chỗ nhét mọi khai quyền chết —
+   * đúng thứ mà chốt "không có khai quyền thừa" sinh ra để chặn.
+   */
+  it("mỗi đường ngoài menu đều có nút thật trỏ tới", () => {
+    const ENTRIES = readFileSync(
+      resolve(__dirname, "..", "src/app/(dashboard)/inventory/entries/page.tsx"),
+      "utf-8"
+    )
+    for (const href of ["/inventory/stock-in", "/inventory/stock-issue"]) {
+      expect(
+        ENTRIES.includes(`router.push("${href}")`),
+        `khai ${href} là đích của nút, nhưng màn Phiếu kho không có nút nào trỏ tới`
+      ).toBe(true)
+    }
+  })
+
   /** Khai quyền mà không dùng thì là rác — và rác che mất chỗ thiếu. */
   it("không có khai quyền thừa", () => {
     const used = new Set(MENUS.flatMap((m) => m.hrefs))
-    // `/sell` cũng là đích của nút CTA "Tạo đơn mới" — nó nằm trong JSX
-    // chứ không trong mảng menu.
-    used.add("/sell")
+    for (const h of Object.keys(NUT_KHONG_PHAI_MENU)) used.add(h)
     for (const h of Object.keys(NAV_PERMISSION)) {
       expect(used.has(h), `khai quyền cho ${h} nhưng không menu nào dùng`).toBe(true)
     }

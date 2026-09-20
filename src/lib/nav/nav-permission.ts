@@ -73,9 +73,17 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
 
   // Kho vận
   "/inventory": { module: "inventory", feature: "inventory" },
+  /**
+   * ⚠ DANH SÁCH PHIẾU CHỈ CẦN QUYỀN XEM. Mục menu "Phiếu kho" trỏ vào
+   *   đây; nút "Tạo phiếu" bên trong mới đòi quyền tạo, và nó tự ẩn
+   *   theo `hasPermission(role, "inventory", "create")`.
+   */
+  "/inventory/entries": { module: "inventory", feature: "inventory" },
   // ⚠ PHIẾU NHẬP KHO NẰM Ở NHÓM KHO VẬN TỪ 20/09/2026 (chủ nhà chốt).
   //   Nó không còn là đường nhập hàng từ NCC — đường đó là
   //   `/purchasing/receipts`. Quyền giữ nguyên: nó vẫn cộng kho thật.
+  //   Từ 20/09/2026 nó KHÔNG còn là mục menu, chỉ còn là đích của nút
+  //   "Tạo phiếu"; khai ở đây để `useRoleGuard` vẫn canh đúng cửa vào.
   "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
   // Phiếu xuất kho TRỪ kho thật — cùng một mức quyền với phiếu nhập.
   "/inventory/stock-issue": { module: "inventory", feature: "inventory", action: "create" },

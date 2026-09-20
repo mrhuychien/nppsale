@@ -331,13 +331,24 @@ describe("menu: Phiếu xuất kho ở nhóm Kho vận", () => {
     return SIDEBAR.slice(i, SIDEBAR.indexOf("  {\n    label:", i + 10))
   }
 
-  it("nằm ở Kho vận, ngay cạnh Phiếu nhập kho", () => {
-    const kho = group("Kho vận")
-    expect(kho).toContain('href: "/inventory/stock-issue"')
-    expect(
-      kho.indexOf('href: "/inventory/stock-in"'),
-      "Phiếu xuất kho không đứng ngay sau Phiếu nhập kho"
-    ).toBeLessThan(kho.indexOf('href: "/inventory/stock-issue"'))
+  /**
+   * ⚠ KHÔNG CÒN LÀ MỘT MỤC MENU (chủ nhà chốt 20/09/2026: "Bỏ phiếu
+   * nhập kho, phiếu xuất kho → Thành Phiếu kho"). Cửa vào nay là nút
+   * "Tạo phiếu → Xuất kho" ở màn Phiếu kho.
+   *
+   * ⚠ NHƯNG CỬA VÀO PHẢI CÓ THẬT. Gỡ mục menu mà quên nút là màn xuất
+   * kho lẻ biến mất khỏi ứng dụng — vẫn còn trong mã, không ai tới
+   * được. Chốt này đi tìm đúng cái nút ấy.
+   */
+  it("vào được từ nút Tạo phiếu ở màn Phiếu kho, không còn là mục menu", () => {
+    const ENTRIES = readFileSync(
+      resolve(__dirname, "..", "src/app/(dashboard)/inventory/entries/page.tsx"),
+      "utf-8"
+    )
+    expect(ENTRIES, "màn Phiếu kho không có nút tạo phiếu xuất kho")
+      .toContain('router.push("/inventory/stock-issue")')
+    expect(group("Kho vận"), "menu phải gom về một mục Phiếu kho")
+      .toContain('href: "/inventory/entries"')
   })
 
   it("không lạc sang nhóm Mua hàng", () => {

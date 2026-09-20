@@ -101,10 +101,22 @@ describe("Ẩn khỏi menu, nhưng vẫn mở được chứng từ cũ", () => 
    * nhận một dòng chữ từ chối, ở một màn không ai giải thích vì sao lại
    * mở ra được.
    */
+  /**
+   * ⚠ CANH HÀNH VI, KHÔNG CANH CÁCH VIẾT. Bản đầu đòi có đúng câu
+   * `!LEGACY_V2_HREFS.has("/inventory/stock-out")` bọc quanh mục menu —
+   * tức là ép một CÁCH LÀM. Khi mục ấy được thay hẳn bằng đường mới
+   * (`/inventory/stock-issue`, 20/09/2026) thì chốt đỏ dù hành vi đã
+   * đúng hơn trước: giờ không còn dòng nào trỏ về màn cũ, chứ không
+   * phải chỉ bị ẩn đi.
+   *
+   * Thứ thật sự phải canh: "Tạo phiếu" KHÔNG được dẫn tới màn soạn hàng
+   * đã khoá ghi ở P7 — bấm vào đó chỉ nhận một dòng từ chối.
+   */
   it("danh sách phiếu kho không mời tạo phiếu xuất theo lối cũ", () => {
-    expect(ENTRIES_LIST).toContain('!LEGACY_V2_HREFS.has("/inventory/stock-out")')
-    const i = ENTRIES_LIST.indexOf('!LEGACY_V2_HREFS.has("/inventory/stock-out")')
-    expect(ENTRIES_LIST.slice(i, i + 300)).toContain('router.push("/inventory/stock-out")')
+    expect(ENTRIES_LIST, "vẫn còn đường dẫn tới màn soạn hàng đã khoá ghi")
+      .not.toContain('router.push("/inventory/stock-out")')
+    expect(ENTRIES_LIST, "mất luôn cửa tạo phiếu xuất kho lẻ")
+      .toContain('router.push("/inventory/stock-issue")')
   })
 })
 

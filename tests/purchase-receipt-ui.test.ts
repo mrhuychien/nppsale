@@ -364,10 +364,19 @@ describe("menu: phiếu nhập kho chuyển sang Kho vận", () => {
     return SIDEBAR.slice(i, SIDEBAR.indexOf("  {\n    label:", i + 10))
   }
 
-  it("Phiếu nhập kho nằm ở nhóm Kho vận, không còn ở Mua hàng", () => {
-    expect(group("Kho vận")).toContain('href: "/inventory/stock-in"')
-    expect(group("Mua hàng"), "Phiếu nhập kho vẫn còn ở nhóm Mua hàng")
-      .not.toContain('href: "/inventory/stock-in"')
+  /**
+   * ⚠ TỪ 20/09/2026 MENU CHỈ CÒN MỘT MỤC "PHIẾU KHO" (chủ nhà chốt: "Bỏ
+   * phiếu nhập kho, phiếu xuất kho → Thành Phiếu kho"). Cái phải canh
+   * KHÔNG đổi: đường nhập hàng từ NCC là `/purchasing/receipts`, và
+   * nhóm Mua hàng KHÔNG được có đường nhập kho thường — lẫn hai thứ là
+   * người dùng nhập hàng NCC bằng một phiếu không ghi công nợ.
+   */
+  it("nhóm Kho vận có Phiếu kho, và nhóm Mua hàng không có đường nhập kho", () => {
+    expect(group("Kho vận")).toContain('href: "/inventory/entries"')
+    for (const legacy of ["/inventory/stock-in", "/inventory/stock-issue"]) {
+      expect(group("Mua hàng"), `đường nhập/xuất kho thường lạc sang nhóm Mua hàng: ${legacy}`)
+        .not.toContain(`href: "${legacy}"`)
+    }
   })
 
   it("Phiếu nhập hàng nằm ở nhóm Mua hàng và đứng đầu", () => {

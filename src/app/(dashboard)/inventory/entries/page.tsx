@@ -27,9 +27,9 @@ import { useToast } from "@/hooks/use-toast"
 import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
+import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
 import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
 import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
-import { LEGACY_V2_HREFS } from "@/lib/nav/nav-permission"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
@@ -179,19 +179,55 @@ export default function StockEntriesPage() {
           viIncludes((e.notes || ""), q)
         if (!matches) return false
       }
-      if (filterActive("type") && typeFilter !== "all" && e.type !== typeFilter)
-        return false
+      /**
+       * ⚠ KHÔNG GÁC SAU `filterActive("type")` NỮA. Dải viên thuốc LUÔN
+       *   hiện, nên nó phải LUÔN lọc — gác sau ô bật/tắt của
+       *   `FilterPicker` là người dùng tắt bộ lọc "Loại" đi rồi bấm một
+       *   viên và không có gì xảy ra, không lời giải thích nào.
+       */
+      if (typeFilter !== "all" && e.type !== typeFilter) return false
       if (filterActive("status") && statusFilter !== "all" && (e.status || "posted") !== statusFilter)
         return false
       return true
     })
   }, [entries, search, typeFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Stats
-  const importCount = entries.filter((e) => e.type === "import").length
-  const exportCount = entries.filter((e) => e.type === "export").length
-  const stocktakeCount = entries.filter((e) => e.type === "stocktake").length
   const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length
+
+  /**
+   * DẢI VIÊN THUỐC THEO LOẠI PHIẾU — bấm được, thay cho bốn thẻ số to.
+   *
+   * ⚠ CHỦ NHÀ CHỐT 20/09/2026: "Thống kê các loại phiếu ở đầu cho nhỏ
+   *   gọn như ở danh sách Đơn hàng (bấm được vào từng loại)". Dùng
+   *   đúng `StatusChips` của màn đơn hàng, không dựng bản thứ hai.
+   *
+   * ⚠ DỰNG TỪ `STOCK_ENTRY_TYPES`, KHÔNG GÕ TAY TỪNG VIÊN. Bản cũ gõ
+   *   tay BA thẻ — nhập, xuất, kiểm kê — và bỏ quên `transfer`, nên
+   *   phiếu chuyển kho không được đếm ở đâu cả. Đúng cái bẫy đã làm đơn
+   *   `partially_invoiced` biến mất khỏi màn đơn hàng: danh sách trên
+   *   màn hẹp hơn tập giá trị thật của cột.
+   *
+   * ⚠ CÓ VIÊN "TẤT CẢ" ĐỨNG ĐẦU. Không có nó thì bấm vào một loại rồi
+   *   không có đường quay lại xem hết.
+   */
+  const TYPE_ACCENT: Record<string, string> = {
+    import: "#12b76a",
+    export: "#f79009",
+    transfer: "#2563eb",
+    stocktake: "#7a5af8",
+  }
+  const typeChips: StatusChip[] = useMemo(
+    () => [
+      { key: "all", label: "Tất cả", count: entries.length, accent: "#98a2b3" },
+      ...STOCK_ENTRY_TYPES.map((t) => ({
+        key: t.value,
+        label: t.label,
+        count: entries.filter((e) => e.type === t.value).length,
+        accent: TYPE_ACCENT[t.value] ?? "#98a2b3",
+      })),
+    ],
+    [entries] // eslint-disable-line react-hooks/exhaustive-deps
+  )
 
   const getStatusMeta = (status: string): { label: string; variant: "success" | "warning" | "secondary" | "danger" } => {
     switch (status) {
@@ -353,16 +389,19 @@ export default function StockEntriesPage() {
                 <ArrowDownToLine className="mr-2 h-4 w-4 text-tertiary" />
                 Nhập kho
               </DropdownMenuItem>
-              {/* ⚠ Ô "Tạo phiếu" LÀ LỜI MỜI TẠO MỚI, không phải đường tra
-                  cứu. Màn soạn hàng đã khoá ghi ở P7 nên để lại mục này là
-                  dẫn người dùng tới một nút bấm vào không làm gì. Ở v2,
-                  phiếu xuất do nút "Xuất hàng" trên đơn tự dựng. */}
-              {!LEGACY_V2_HREFS.has("/inventory/stock-out") && (
-                <DropdownMenuItem onClick={() => router.push("/inventory/stock-out")}>
-                  <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
-                  Xuất kho
-                </DropdownMenuItem>
-              )}
+              {/*
+                ⚠ ĐÂY LÀ `/inventory/stock-issue`, KHÔNG PHẢI
+                  `/inventory/stock-out` (chủ nhà chốt 20/09/2026: "Nút
+                  tạo phiếu ở màn Phiếu kho thêm phần Phiếu xuất kho").
+                  `stock-out` là màn SOẠN HÀNG của luồng cũ, đã khoá ghi
+                  ở P7 — dẫn vào đó là dẫn tới một nút bấm không làm gì.
+                  `stock-issue` là phiếu xuất lẻ thật: FIFO qua RPC
+                  `post_stock_issue`, có vết lấy lô, huỷ được.
+              */}
+              <DropdownMenuItem onClick={() => router.push("/inventory/stock-issue")}>
+                <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
+                Xuất kho
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/inventory/stocktake-adjust")}>
                 <ClipboardCheck className="mr-2 h-4 w-4 text-primary" />
@@ -377,25 +416,13 @@ export default function StockEntriesPage() {
         )}
       </PageHeader>
 
-      {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-tertiary/40">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Nhập kho</p>
-          <p className="text-2xl font-black text-foreground mt-1">{importCount}</p>
-        </div>
-        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-[#fdb022]/40">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Xuất kho</p>
-          <p className="text-2xl font-black text-foreground mt-1">{exportCount}</p>
-        </div>
-        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-primary">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Kiểm kê</p>
-          <p className="text-2xl font-black text-foreground mt-1">{stocktakeCount}</p>
-        </div>
-        <div className="bg-card rounded-xl shadow-card p-4 border-l-4 border-[#f97316]/40">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Phiếu nháp</p>
-          <p className="text-2xl font-black text-foreground mt-1">{draftCount}</p>
-        </div>
-      </div>
+      {/*
+        ⚠ VIÊN THUỐC ĐIỀU KHIỂN CHÍNH `typeFilter` mà ô chọn "Tất cả
+          loại" đang dùng — MỘT trạng thái, không phải hai. Cho dải này
+          một ô nhớ riêng là hai thứ trên cùng màn nói hai chuyện khác
+          nhau về cùng một bộ lọc.
+      */}
+      <StatusChips chips={typeChips} active={typeFilter} onPick={setTypeFilter} />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">

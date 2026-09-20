@@ -22,7 +22,6 @@ import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
 import { availableMapFrom } from "@/lib/sell/committed"
-import { useOrg } from "@/hooks/use-org"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
@@ -57,15 +56,18 @@ export default function SellCartPage() {
     () => availableMapFrom(stockByProduct, committedByProduct),
     [stockByProduct, committedByProduct]
   )
-  const { org } = useOrg()
   /**
-   * ⚠ TÔN TRỌNG CÔNG TẮC ĐÃ CÓ, ĐỪNG DỰNG LUẬT THỨ HAI.
-   * `organizations.allow_oversell` (mig 086) đã là nơi chủ nhà nói
-   * "được phép bán vượt tồn hay không", và `post_stock_export` đọc đúng
-   * cột đó. Chỗ này chỉ đổi NGƯỠNG so sánh từ "tồn" thành "tồn − đã
-   * đặt"; ai bật công tắc kia thì ở đây vẫn chỉ là cảnh báo.
+   * ⚠ KHÔNG ĐỌC `allow_oversell` Ở MÀN NÀY NỮA, và đó là chủ ý.
+   *
+   * Công tắc ấy (mig 086) trả lời câu "có được GHI SỔ một phiếu xuất làm
+   * tồn âm không" — việc của `post_stock_export`. Màn này trả lời một
+   * câu khác hẳn: "có được GHI LẠI một nhu cầu chưa có hàng không". Từ
+   * 20/09/2026 câu trả lời luôn là CÓ (chủ nhà chốt: "cho nhân viên đặt
+   * hàng vượt số tồn và đặt, kèm cảnh báo — để tính được nhu cầu").
+   *
+   * Trộn hai câu vào một công tắc là bật nó lên để cứu việc ghi nhu cầu
+   * rồi vô tình cho phép cả việc xuất kho âm.
    */
-  const oversellAllowed = org?.allow_oversell === true
 
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
@@ -446,31 +448,34 @@ export default function SellCartPage() {
         )}
 
         {/*
-          ⚠ TỪ NAY LÀ CHẶN, KHÔNG CÒN CHỈ CẢNH BÁO — VÀ ĐÂY LÀ MỘT THAY
-          ĐỔI CÓ CHỦ Ý, NGƯỢC VỚI CHÚ THÍCH CŨ Ở ĐÂY.
+          ⚠ CHỈ CẢNH BÁO, KHÔNG CHẶN — VÀ ĐÃ LẬT BA LẦN, GHI LẠI CẢ BA ĐỂ
+          KHÔNG AI LẬT MÙ LẦN THỨ TƯ.
 
-          Bản cũ chỉ cảnh báo, với lý do: số tồn trên máy có thể đã cũ
-          vài giờ, chặn là mất đơn thật vì một số liệu không chắc. Lý do
-          đó đúng khi mẫu số là TỒN KHO — một con số thay đổi sau lưng
-          người bán. Nó không còn đúng khi mẫu số là TỒN − ĐÃ ĐẶT: phần
-          "đã đặt" là những lời hứa do chính công ty ghi ra, đọc lại
-          được, và chính chủ nhà chốt không được vượt.
+          1. Bản đầu: chỉ cảnh báo. Lý do: số tồn trên máy có thể đã cũ
+             vài giờ, chặn là mất đơn thật vì một số liệu không chắc.
+          2. Chủ nhà chốt "số lượng đặt hoặc đổi ko được lớn hơn tồn kho
+             − hàng đã đặt" → đổi thành CHẶN, với lý do phần "đã đặt" là
+             lời hứa do chính công ty ghi ra nên đọc lại được.
+          3. Chủ nhà chốt lại 20/09/2026: "cho nhân viên đặt hàng vượt số
+             tồn và đặt, kèm cảnh báo (để tính được nhu cầu)" → về lại
+             CẢNH BÁO.
 
-          ⚠ VẪN ĐI QUA CÔNG TẮC `allow_oversell`. Đơn vị nào bật cho phép
-          bán vượt tồn thì ở đây vẫn chỉ là cảnh báo — nếu không thì màn
-          này và `post_stock_export` nói hai luật khác nhau.
+          Lý do mới nặng hơn cả hai lý do cũ, và nó không phải về kho:
+          một đơn bị chặn là một nhu cầu KHÔNG ĐƯỢC GHI LẠI. Nhà phân
+          phối mất luôn con số "khách muốn mua bao nhiêu" — thứ duy nhất
+          để biết phải nhập thêm bao nhiêu.
+
+          ⚠ CẢNH BÁO PHẢI ĐI TỚI TẬN NGƯỜI XUẤT HÀNG, không dừng ở màn
+          này. Nó đi tiếp: dòng tô đỏ ở giỏ → "Thiếu N đơn vị cơ sở" ở
+          ngăn xem nhanh đơn → từng dòng ở màn Xuất hàng. NPP là người
+          quyết cuối, và `post_stock_export` vẫn là chốt chặn thật.
         */}
         {hasOver && (
-          <div
-            className={
-              oversellAllowed
-                ? "rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]"
-                : "rounded-xl bg-error-container px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-error-container"
-            }
-          >
-            {oversellAllowed
-              ? "Có mặt hàng vượt phần còn đặt được (tồn kho trừ hàng đã đặt ở Phiếu tạm khác). Đơn vị đang cho phép bán vượt tồn nên vẫn gửi được."
-              : "Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở các Phiếu tạm khác. Giảm số lượng ở dòng tô đỏ rồi gửi lại."}
+          <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
+            Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở
+            các Phiếu tạm khác. <strong>Vẫn gửi đơn được</strong> để nhà phân
+            phối biết nhu cầu thật; khi xuất hàng sẽ chỉ giao được phần có
+            trong kho.
           </div>
         )}
 
@@ -673,8 +678,7 @@ export default function SellCartPage() {
               cart.cart.length === 0 ||
               !cart.customerId ||
               hasPriceBad ||
-              returnPriceBad > 0 ||
-              (hasOver && !oversellAllowed)
+              returnPriceBad > 0
             }
             onClick={() => submit(false)}
             className="h-13 flex-[1.3] rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary disabled:opacity-40"
@@ -687,11 +691,9 @@ export default function SellCartPage() {
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
                     ? "Giá hàng trả quá cao"
-                    : hasOver && !oversellAllowed
-                      ? "Vượt phần còn đặt được"
-                      : editing
-                        ? "Lưu thay đổi"
-                        : "Gửi đơn"}
+                    : editing
+                      ? "Lưu thay đổi"
+                      : "Gửi đơn"}
           </button>
         </div>
       </SellBottomBar>

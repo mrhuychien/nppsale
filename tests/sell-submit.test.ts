@@ -242,33 +242,42 @@ describe("Màn giỏ hàng", () => {
     // Đơn GỬI ĐI thì phải có hàng.
     expect(sendBtn![0]).toContain("cart.cart.length === 0")
     /**
-     * ⚠ NÚT GỬI CHẶN KHI VƯỢT PHẦN CÒN ĐẶT ĐƯỢC — VÀ ĐÂY LÀ MỘT LẦN ĐỔI
-     * LUẬT CÓ CHỦ Ý, NGƯỢC VỚI BẢN TRƯỚC CỦA CHÍNH CHỐT NÀY.
+     * ⚠ VƯỢT PHẦN CÒN ĐẶT ĐƯỢC THÌ **KHÔNG CHẶN** — VÀ LUẬT NÀY ĐÃ LẬT
+     * BA LẦN. Ghi cả ba ở đây để không ai lật mù lần thứ tư:
      *
-     * Bản trước cấm `hasOver` xuất hiện ở nút này, lý do: số tồn trên
-     * máy có thể đã cũ vài giờ, chặn là nhân viên đứng ở quầy mất đơn
-     * thật vì một số liệu không chắc. Lý do đó đúng khi mẫu số là TỒN
-     * KHO — thứ thay đổi sau lưng người bán.
+     *   1. Bản đầu: chỉ cảnh báo. Lý do — số tồn trên máy có thể đã cũ
+     *      vài giờ, chặn là nhân viên đứng ở quầy mất đơn thật vì một
+     *      số liệu không chắc.
+     *   2. Chủ nhà chốt "không được lớn hơn tồn − đã đặt" → đổi thành
+     *      CHẶN (qua công tắc `allow_oversell`), lý do: phần "đã đặt"
+     *      là lời hứa do chính công ty ghi ra nên đọc lại được.
+     *   3. Chủ nhà chốt lại 20/09/2026: "cho nhân viên đặt hàng vượt số
+     *      tồn và đặt, kèm cảnh báo (để tính được nhu cầu)" → về lại
+     *      KHÔNG CHẶN.
      *
-     * Nó không còn đúng khi mẫu số là TỒN − ĐÃ ĐẶT (mig 136): phần "đã
-     * đặt" là những lời hứa do chính công ty ghi ra, đọc lại được, và
-     * chủ nhà đã chốt không được vượt.
+     * Lý do thứ ba nặng hơn cả hai lý do trước và không phải về kho:
+     * một đơn bị chặn là một NHU CẦU KHÔNG ĐƯỢC GHI LẠI, và nhà phân
+     * phối mất luôn con số để biết phải nhập thêm bao nhiêu.
      *
-     * ⚠ NHƯNG PHẢI ĐI QUA CÔNG TẮC `allow_oversell`. Chặn thẳng tay là
-     * dựng luật thứ hai cạnh `post_stock_export` (mig 086) — hai nơi
-     * nói hai điều khác nhau về cùng một câu hỏi.
+     * ⚠ KHÔNG CÒN ĐỌC `allow_oversell` Ở MÀN NÀY. Công tắc đó trả lời
+     * "có được GHI SỔ một phiếu xuất làm tồn âm không" — việc của
+     * `post_stock_export`. Trộn hai câu vào một công tắc là bật nó lên
+     * để cứu việc ghi nhu cầu rồi vô tình cho phép cả xuất kho âm.
      */
-    expect(sendBtn![0], `nút Gửi đơn không chặn vượt tồn: ${sendBtn![0]}`).toContain(
-      "hasOver && !oversellAllowed"
+    for (const b of [draftBtn, sendBtn![0]]) {
+      expect(b, `nút đang chặn vượt tồn: ${b}`).not.toContain("hasOver")
+    }
+    expect(FLAT, "màn giỏ không được đọc allow_oversell nữa").not.toContain(
+      "org?.allow_oversell"
     )
-    expect(FLAT).toContain("const oversellAllowed = org?.allow_oversell === true")
 
     /**
-     * ⚠ "LƯU NHÁP" THÌ KHÔNG CHẶN. Nháp chưa hứa gì với ai và không
-     * được tính vào phần đã đặt (xem mig 136), nên chặn nó là chặn đúng
-     * chỗ người bán ghi lại những gì khách vừa đọc cho nghe.
+     * ⚠ NHƯNG CẢNH BÁO PHẢI CÒN. Bỏ chặn mà bỏ luôn cảnh báo thì nhân
+     * viên không biết mình vừa hứa thứ chưa có, và NPP nhận một đơn
+     * không ai đánh dấu là thiếu hàng.
      */
-    expect(draftBtn, `nút Lưu nháp chặn theo tồn: ${draftBtn}`).not.toContain("hasOver")
+    expect(FLAT, "mất băng cảnh báo vượt tồn").toContain("{hasOver && (")
+    expect(FLAT).toContain("Vẫn gửi đơn được")
     /**
      * ⚠ GIÁ DÒNG TRẢ cũng là thẩm quyền, không phải chuyện thời điểm — nên
      * CẢ HAI nút đều chặn. Trả cao hơn giá bảng là một đường rút tiền:

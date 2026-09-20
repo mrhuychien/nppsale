@@ -189,25 +189,45 @@
   /*
     ⚠ CỠ CHỮ TRÊN GIẤY DO KHỐI NÀY QUYẾT, KHÔNG PHẢI `text-[12px]` Ở
     COMPONENT. Các lớp Tailwind kia chỉ còn tác dụng ở bản xem trước trên
-    màn hình; muốn tờ in to lên thì phải sửa ở đây. Chủ nhà chốt
-    20/09/2026: "font chữ hoá đơn cho to lên chút, đẩy sát khoảng cách
-    các dòng để tiết kiệm giấy" — nên mỗi nấc chữ đi kèm một nấc dòng
-    chặt hơn, không thì to chữ lại tốn thêm giấy.
+    màn hình; muốn tờ in to lên thì phải sửa ở đây.
+
+    CHỦ NHÀ CHỐT 20/09/2026: "font chữ ở mẫu in bé quá, cho lên 13 khi
+    in" → 13pt, ở CẢ HAI khổ giấy. Đây là con số chủ nhà đọc trên tờ
+    giấy thật, không phải con số tôi đoán từ màn hình.
+
+    ⚠ 13pt Ở A5 THÌ BẢY CỘT KHÔNG CÒN CHỖ CHO TÊN HÀNG, và đó là cái giá
+    phải nói ra chứ không phải chỗ để tự ý hạ xuống 11pt cho gọn. Đo:
+    A5 rộng 148mm, lề 8mm → 132mm ≈ 499px. Sáu cột số ở 13pt cần tối
+    thiểu ≈ 356px, còn ≈ 143px cho tên hàng ≈ 18 ký tự một dòng. Tên
+    hàng ở kho này dài ~50 ký tự nên mỗi dòng hàng xuống 3–4 dòng chữ,
+    và một hóa đơn 10 mặt hàng tràn sang trang thứ hai.
+    Cùng phép đo ở A4: 186mm ≈ 703px, tên hàng được ≈ 347px ≈ 43 ký tự
+    → 2 dòng chữ, một hóa đơn 10 mặt hàng vẫn gọn trong một trang.
+    Muốn vừa to vừa một trang thì chọn A4 ở dropdown của nút In.
+
+    ⚠ DÃN DÒNG VẪN CHẶT NHƯ CŨ (chủ nhà chốt hôm trước: "đẩy sát khoảng
+    cách các dòng để tiết kiệm giấy"). To chữ mà nới dòng là xoá luôn
+    phần giấy vừa tiết kiệm được.
   */
   html:not([data-paper-size="A4"]) .a4-doc {
-    font-size: 8.5pt; /* trước 7.5pt */
-    line-height: 1.08; /* trước 1.1 */
+    font-size: 13pt; /* 7.5 → 8.5 → 13 (chủ nhà chốt 20/09/2026) */
+    line-height: 1.08;
     font-family: "Times New Roman", Times, serif;
   }
-  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 8pt; } /* trước 7pt */
-  html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 11pt; }
+  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 13pt; } /* 7 → 8 → 13 */
+  /*
+    ⚠ TIÊU ĐỀ PHẢI TO HƠN THÂN, không được để nguyên 11pt. Thân đã lên
+    13pt nên 11pt biến "HÓA ĐƠN BÁN HÀNG" thành dòng chữ NHỎ NHẤT tờ
+    giấy — người cầm tờ giấy không còn biết mình đang cầm cái gì.
+  */
+  html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 16pt; }
   /* Chỗ ký thu lại cho vừa trang; vẫn đủ để ký tay. */
   html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }
 
   /* Ở A4 thì dùng Times như mọi chứng từ chính thức khác của kho này. */
   html[data-paper-size="A4"] .a4-doc {
     font-family: "Times New Roman", Times, serif;
-    font-size: 11pt;
+    font-size: 13pt; /* 11 → 13 (chủ nhà chốt 20/09/2026) */
     /*
       ⚠ TRƯỚC ĐÂY KHÔNG ĐẶT `line-height` Ở ĐÂY nên bảng thừa hưởng 1.5
       của Tailwind — bảy cột giãn thưa hết cả trang A4 mà không ai chọn
@@ -218,10 +238,13 @@
   /*
     ⚠ A4 TRƯỚC ĐÂY KHÔNG CÓ DÒNG NÀY, nên cả bảng in ở `text-[11px]`
     (≈8,3pt) của Tailwind trong khi phần chữ quanh nó là 11pt — bảng,
-    tức là gần hết tờ giấy, bé hơn hẳn phần còn lại. Đặt 10pt để hai
-    phần đọc được như nhau; bảy cột vẫn vừa lề 12mm của A4.
+    tức là gần hết tờ giấy, bé hơn hẳn phần còn lại.
+
+    ⚠ BẰNG ĐÚNG CỠ CHỮ THÂN, KHÔNG NHỎ HƠN MỘT NẤC. Bảng chính là tờ hóa
+    đơn; để nó nhỏ hơn phần chữ quanh nó là đúng cái chủ nhà vừa báo
+    ("font chữ ở mẫu in bé quá").
   */
-  html[data-paper-size="A4"] .a4-doc table { font-size: 10pt; }
+  html[data-paper-size="A4"] .a4-doc table { font-size: 13pt; }
 }
 
 @layer utilities {

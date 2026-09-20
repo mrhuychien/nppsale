@@ -27,6 +27,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -162,6 +163,13 @@ export default function OrderPrintPage() {
     printedRef.current = true
     printWithPaper("A5")
   }, [loading, order, params])
+
+  /**
+   * ⚠ IN XONG LÀ RỜI MÀN IN (chủ nhà chốt 20/09/2026). Bật sau khi dữ
+   *   liệu về: gắn sớm hơn thì một lần in của trang KHÁC còn đang dở
+   *   cũng bắn `afterprint` vào đây. Xem `useLeaveAfterPrint`.
+   */
+  useLeaveAfterPrint(!loading)
 
   if (authLoading || loading) {
     return (

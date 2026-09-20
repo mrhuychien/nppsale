@@ -290,10 +290,20 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    * dùng nhìn đúng những con số vừa gửi đi và tưởng chưa có gì xảy ra —
    * rồi bấm Xuất lần nữa, và lần này kho trừ thật hai lượt.
    */
-  it("xuất xong thì sang màn in và tự bật cửa sổ in", () => {
-    const i = CODE.indexOf("router.push(r.invoiceId")
-    expect(i).toBeGreaterThan(0)
+  /**
+   * ⚠ `replace`, KHÔNG `push` (đổi 20/09/2026). Hai lý do cùng hướng:
+   *   · hóa đơn đã ghi sổ thì màn soạn nó KHÔNG được nằm lại trong lịch
+   *     sử — lùi một bước vào đó là mời bấm Xuất hàng lần nữa cho một
+   *     đơn đã xuất;
+   *   · màn in nay tự rời đi khi đóng hộp thoại in (`useLeaveAfterPrint`),
+   *     nên `push` làm "đường về" của nó là màn soạn vừa xong, còn
+   *     `replace` trả người dùng về chỗ họ đứng TRƯỚC khi bấm Xuất hàng.
+   */
+  it("xuất xong thì THAY màn soạn bằng màn in và tự bật cửa sổ in", () => {
+    const i = CODE.indexOf("router.replace(r.invoiceId")
+    expect(i, "còn dùng push — màn soạn vẫn nằm lại trong lịch sử").toBeGreaterThan(0)
     expect(CODE.slice(i, i + 160)).toContain("/sales-invoices/${r.invoiceId}/print?auto=1")
+    expect(CODE).not.toContain("router.push(r.invoiceId")
   })
 
   /** Ô số lượng theo quy ước giao diện của dự án. */

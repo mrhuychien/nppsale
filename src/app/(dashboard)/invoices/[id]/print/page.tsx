@@ -9,6 +9,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { PrintButton } from "@/components/ui/print-button"
+import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 import type { Invoice, SalesOrder, SalesOrderLine } from "@/types"
 
@@ -28,6 +29,14 @@ export default function InvoicePrintPage() {
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+
+  /**
+   * ⚠ IN XONG LÀ RỜI MÀN IN (chủ nhà chốt 20/09/2026) — xem
+   *   `useLeaveAfterPrint`. Màn này không tự in, nhưng vẫn là một chỗ đi
+   *   qua: bỏ người dùng lại trên tờ giấy đã in là bắt họ tự nghĩ ra
+   *   đường về.
+   */
+  useLeaveAfterPrint(!loading)
 
   const fetchData = useCallback(async () => {
     setLoading(true)

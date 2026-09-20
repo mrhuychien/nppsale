@@ -263,7 +263,17 @@ export function InvoiceEditor({
        *   không có gì để in; quay về chỗ cũ còn hơn mở một màn trống rồi
        *   bật hộp thoại in lên trên nó.
        */
-      router.push(r.invoiceId ? `/sales-invoices/${r.invoiceId}/print?auto=1` : backHref)
+      /**
+       * ⚠ `replace`, KHÔNG `push`. Hai lý do, cùng một hướng:
+       *   · Hóa đơn đã ghi sổ rồi thì màn soạn nó KHÔNG được nằm lại
+       *     trong lịch sử — lùi một bước vào đó là mời người dùng bấm
+       *     Xuất hàng lần nữa cho một đơn đã xuất.
+       *   · Màn in nay tự rời đi khi đóng hộp thoại in
+       *     (`useLeaveAfterPrint`). `push` thì đường về của nó là màn
+       *     soạn vừa xong; `replace` thì đường về là chỗ người dùng đứng
+       *     TRƯỚC khi bấm Xuất hàng — đúng "chỗ cũ" chủ nhà chốt.
+       */
+      router.replace(r.invoiceId ? `/sales-invoices/${r.invoiceId}/print?auto=1` : backHref)
     } catch (e) {
       toast({ title: "Không xuất được", description: errorMessage(e), variant: "destructive" })
     } finally {

@@ -38,9 +38,17 @@
  * ⚠ NGÀY KÈM GIỜ (chủ nhà chốt). Giờ lấy từ `created_at`, không lấy từ
  *   cột ngày kiểu `date` — xem `docStampAt`.
  *
- * ⚠ KHỔ GIẤY DO NƠI GỌI CHỌN. Mặc định của kho này là A5; bảy cột ở A5
- *   thì chữ khoảng 8pt, ai cần rộng hơn thì chọn A4 ở dropdown của
- *   `PrintButton`.
+ * ⚠ KHỔ GIẤY DO NƠI GỌI CHỌN, mặc định của kho này là A5.
+ *
+ *   Chủ nhà chốt 20/09/2026: chữ trên giấy phải là 13pt — xem khối
+ *   `.a4-doc` trong `globals.css`, ĐÓ mới là nơi quyết cỡ chữ khi in,
+ *   không phải các lớp `text-[12px]` dưới đây (chúng chỉ còn tác dụng ở
+ *   bản xem trước trên màn hình).
+ *
+ *   Ở 13pt thì bảy cột trên khổ A5 chỉ còn ~18 ký tự một dòng cho tên
+ *   hàng, nên một hóa đơn 10 mặt hàng tràn sang trang thứ hai; cùng cỡ
+ *   chữ ấy trên A4 được ~43 ký tự và vẫn gọn một trang. Ai cần một
+ *   trang thì chọn A4 ở dropdown của `PrintButton`.
  */
 
 import { formatCurrency } from "@/lib/utils"
@@ -311,7 +319,12 @@ export function SalesInvoice(props: SalesInvoiceProps) {
             rows.map((l, i) => (
               <tr key={l.id}>
                 <td className={`${CELL} text-center`}>{i + 1}</td>
-                <td className={CELL}>
+                {/* ⚠ Ở 13pt trên khổ A5, cột tên hàng chỉ còn ~18 ký tự
+                    một dòng. Tên hàng ở kho này có cụm dài không dấu
+                    cách như "300g(30gói/th)"; thiếu `overflow-wrap` là
+                    cụm ấy tự nong cột ra, đẩy cột tiền qua lề và bị cắt
+                    — hỏng theo kiểu chỉ lộ ra sau khi đã in. */}
+                <td className={`${CELL} [overflow-wrap:anywhere]`}>
                   {l.name}
                   {l.spec ? ` (${l.spec})` : ""}
                   {/* ⚠ CỠ CHỮ THEO `em`, KHÔNG THEO px. Bảng này đổi cỡ
@@ -342,7 +355,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
           {returnLines.map((l, i) => (
             <tr key={l.id}>
               <td className={`${CELL} text-center`}>{rows.length + i + 1}</td>
-              <td className={CELL}>
+              <td className={`${CELL} [overflow-wrap:anywhere]`}>
                 <span className="font-semibold">
                   {l.isExchange ? "(Hàng đổi) " : "(Hàng trả) "}
                 </span>

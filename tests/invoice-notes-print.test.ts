@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { noteBlocksOf } from "@/components/printing/sales-invoice"
+import { leavePrintView } from "@/hooks/use-leave-after-print"
 
 /**
  * GHI CHÚ TRÊN HÓA ĐƠN, và tờ in gọn lại — chủ nhà chốt 20/09/2026:
@@ -168,22 +169,53 @@ describe("tờ in gọn lại", () => {
    * COMPONENT. Các lớp Tailwind kia chỉ còn tác dụng ở bản xem trước
    * trên màn hình. Sửa nhầm chỗ là tờ in ra y như cũ.
    */
-  it("A4 có cỡ chữ riêng cho bảng và có dãn dòng", () => {
-    expect(CSS, "bảng A4 vẫn rơi về text-[11px] của Tailwind").toContain(
-      'html[data-paper-size="A4"] .a4-doc table { font-size: 10pt; }'
+  /**
+   * ⚠ 13pt LÀ CON SỐ CHỦ NHÀ ĐỌC TRÊN GIẤY THẬT (chốt 20/09/2026: "font
+   * chữ ở mẫu in bé quá, cho lên 13 khi in"), không phải con số suy ra
+   * từ màn hình. Đường đi của nó: 7.5pt → 8.5pt → 13pt ở A5, và
+   * 11pt → 13pt ở A4. Hạ xuống cho "vừa trang" là quay lại đúng thứ vừa
+   * bị báo là không đọc được.
+   */
+  it("A4: thân và bảng cùng 13pt, dãn dòng chặt", () => {
+    expect(CSS, "bảng A4 phải bằng cỡ thân, không nhỏ hơn một nấc").toContain(
+      'html[data-paper-size="A4"] .a4-doc table { font-size: 13pt; }'
     )
     const i = CSS.indexOf('html[data-paper-size="A4"] .a4-doc {')
     expect(i).toBeGreaterThan(0)
     const block = CSS.slice(i, CSS.indexOf("}", i))
+    expect(block).toContain("font-size: 13pt")
     expect(block, "thiếu line-height nên bảng thừa hưởng 1.5").toContain("line-height: 1.15")
   })
 
-  it("A5 to lên một nấc, dòng chặt lại", () => {
+  it("A5: cũng 13pt, dòng vẫn chặt", () => {
     const i = CSS.indexOf('html:not([data-paper-size="A4"]) .a4-doc {')
     const block = CSS.slice(i, CSS.indexOf("}", i))
-    expect(block).toContain("font-size: 8.5pt")
+    expect(block).toContain("font-size: 13pt")
+    // ⚠ To chữ mà nới dòng là xoá luôn phần giấy tiết kiệm được hôm trước.
     expect(block).toContain("line-height: 1.08")
-    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc table { font-size: 8pt; }')
+    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc table { font-size: 13pt; }')
+  })
+
+  /**
+   * ⚠ TIÊU ĐỀ PHẢI TO HƠN THÂN. Thân lên 13pt mà tiêu đề ở nguyên 11pt
+   * thì "HÓA ĐƠN BÁN HÀNG" thành dòng chữ NHỎ NHẤT tờ giấy — người cầm
+   * tờ giấy không còn biết mình đang cầm cái gì.
+   */
+  it("A5: tiêu đề vẫn to hơn thân", () => {
+    const h1 = /\.a4-doc h1 \{ font-size: (\d+(?:\.\d+)?)pt; \}/.exec(CSS)
+    expect(h1, "không tìm thấy cỡ tiêu đề").not.toBeNull()
+    expect(Number(h1![1])).toBeGreaterThan(13)
+  })
+
+  /**
+   * ⚠ Ở 13pt trên A5, cột tên hàng chỉ còn ~18 ký tự một dòng. Tên hàng
+   * ở kho này có cụm dài không dấu cách ("300g(30gói/th)"); thiếu
+   * `overflow-wrap` là cụm ấy tự nong cột ra, đẩy cột tiền qua lề và bị
+   * cắt — hỏng theo kiểu chỉ lộ ra sau khi đã in.
+   */
+  it("ô tên hàng ngắt được cụm chữ dài", () => {
+    expect(DOC.match(/\$\{CELL\} \[overflow-wrap:anywhere\]/g)?.length,
+      "phải có ở cả bảng hàng bán lẫn bảng hàng đổi/trả").toBe(2)
   })
 
   /**
@@ -211,5 +243,88 @@ describe("tờ in gọn lại", () => {
   it("ô ký giữ nguyên tên lớp mà CSS đang bám vào", () => {
     expect(DOC).toContain('<div className="h-16" />')
     expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }')
+  })
+})
+
+describe("in xong thì rời màn in", () => {
+  /**
+   * ⚠ MÀN IN LÀ CHỖ ĐI QUA, KHÔNG PHẢI CHỖ ĐỨNG (chủ nhà chốt
+   * 20/09/2026: "in xong đóng cửa sổ in → về chỗ cũ khi bấm nút in chứ
+   * không ở trang in"). Bỏ người dùng lại trên tờ giấy đã in là bắt họ
+   * tự nghĩ ra đường về — với tờ mở ở tab riêng thì đường về còn là "tự
+   * tìm nút đóng tab".
+   */
+  const HOOK = read("src/hooks/use-leave-after-print.ts")
+
+  const spy = (historyLength: number) => {
+    const hit: string[] = []
+    return {
+      nav: {
+        historyLength,
+        close: () => hit.push("close"),
+        back: () => hit.push("back"),
+      },
+      hit,
+    }
+  }
+
+  /**
+   * ⚠ TAB RIÊNG THÌ ĐÓNG, KHÔNG LÙI. Tab vừa mở bằng `target="_blank"`
+   * chỉ có một mốc lịch sử; `back()` ở đó không đi đâu cả và người dùng
+   * ngồi lại trên tờ giấy.
+   */
+  it("tab riêng (một mốc lịch sử) thì đóng tab", () => {
+    const { nav, hit } = spy(1)
+    leavePrintView(nav)
+    expect(hit).toEqual(["close"])
+  })
+
+  /** ⚠ CÙNG TAB THÌ LÙI, KHÔNG ĐÓNG — đóng là mất luôn cả phiên làm việc. */
+  it("cùng tab (có lịch sử) thì lùi một bước", () => {
+    const { nav, hit } = spy(4)
+    leavePrintView(nav)
+    expect(hit).toEqual(["back"])
+  })
+
+  /**
+   * ⚠ ĐÚNG HAI MỐC LÀ RANH GIỚI, VÀ PHẢI CHẠM VÀO NÓ. Không có ca này
+   * thì nới ngưỡng thành `<= 2` vẫn xanh — mà nới một bậc nghĩa là màn
+   * in mở CÙNG TAB từ màn chi tiết sẽ ĐÓNG cả tab của người dùng thay
+   * vì lùi về chỗ cũ.
+   */
+  it("đúng hai mốc lịch sử là cùng tab, phải lùi chứ không đóng", () => {
+    const { nav, hit } = spy(2)
+    leavePrintView(nav)
+    expect(hit).toEqual(["back"])
+  })
+
+  /** Trình duyệt báo 0 mốc thì vẫn là tab riêng, không được rơi sang lùi. */
+  it("không có mốc nào cũng coi là tab riêng", () => {
+    const { nav, hit } = spy(0)
+    leavePrintView(nav)
+    expect(hit).toEqual(["close"])
+  })
+
+  /**
+   * ⚠ `afterprint` FIRE CẢ KHI BẤM HUỶ trong hộp thoại in, và đó là điều
+   * ĐÚNG: huỷ in rồi vẫn muốn về chỗ cũ. Nghe `beforeprint` để mở lại
+   * chốt, nếu không lần in THỨ HAI (đổi khổ giấy in lại) mất đường về.
+   */
+  it("nghe afterprint, và mở lại chốt ở beforeprint", () => {
+    expect(HOOK).toContain('window.addEventListener("afterprint", onAfter)')
+    expect(HOOK).toContain('window.addEventListener("beforeprint", onBefore)')
+    expect(HOOK).toContain("leaving.current = false")
+    // Gỡ listener khi rời trang — để lại là mỗi lần vào màn in thêm một cái.
+    expect(HOOK).toContain('window.removeEventListener("afterprint", onAfter)')
+    expect(HOOK).toContain('window.removeEventListener("beforeprint", onBefore)')
+  })
+
+  /** ⚠ CHỈ BẬT KHI DỮ LIỆU ĐÃ VỀ — xem chú thích tại chỗ gọi. */
+  it.each([
+    ["bản in hóa đơn", "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx"],
+    ["bản in đơn hàng", "src/app/(dashboard)/orders/[id]/print/page.tsx"],
+    ["bản in hóa đơn điện tử", "src/app/(dashboard)/invoices/[id]/print/page.tsx"],
+  ])("%s: có gắn", (_l, rel) => {
+    expect(read(rel)).toContain("useLeaveAfterPrint(!loading)")
   })
 })

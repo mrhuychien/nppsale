@@ -332,12 +332,21 @@ describe("Màn danh sách đơn", () => {
    * một chỗ về `approveOrders` là mất chỗ sửa số lượng ở đúng đường
    * người ta hay dùng nhất.
    */
-  it("hai chỗ sang màn soạn, không chỗ nào xuất thẳng", () => {
+  /**
+   * ⚠ SANG TAB MỚI, KHÔNG CHUYỂN TRANG CÙNG TAB (chủ nhà chốt
+   * 20/09/2026). Trước đây hai chỗ này gọi `router.push`; giữ nguyên
+   * kiểu ấy là nút hay dùng nhất vẫn ném người dùng ra khỏi danh sách
+   * đang lọc. Xem `openInNewTab`.
+   */
+  it("hai chỗ sang màn soạn ở tab mới, không chỗ nào xuất thẳng", () => {
     expect(
-      (CODE.match(/onApprove=\{\(o\) => router\.push\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g) ?? [])
+      (CODE.match(/onApprove=\{\(o\) => openInNewTab\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g) ?? [])
         .length
     ).toBe(2)
     expect(CODE).not.toContain("onApprove={(o) => approveOrders([o.id])}")
+    expect(CODE, "còn sót đường chuyển trang cùng tab").not.toContain(
+      "router.push(`/sales-invoices/new?order="
+    )
   })
 
   /**

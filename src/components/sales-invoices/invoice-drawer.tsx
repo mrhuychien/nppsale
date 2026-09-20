@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/client"
+import { NewTabLink } from "@/components/ui/new-tab-link"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
@@ -14,6 +14,7 @@ import {
   RETURN_SUMMARY_SELECT,
   type ReturnSummaryRow,
 } from "@/components/orders/return-summary"
+import { noteBlocksOf } from "@/components/printing/sales-invoice"
 import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
 
 /**
@@ -53,10 +54,21 @@ export function InvoiceDrawer({
   canEdit: boolean
   onClose: () => void
 }) {
-  const router = useRouter()
   const [lines, setLines] = useState<DrawerLine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
+  /**
+   * Ghi chú chung — của ĐƠN và của HÓA ĐƠN (chủ nhà chốt 20/09/2026).
+   *
+   * ⚠ ĐỌC KHI MỞ, KHÔNG KÉO SẴN TRONG DANH SÁCH. Cùng lý do với dòng
+   * hàng: danh sách 50 hóa đơn không cần mang theo 50 đoạn chữ, và ghi
+   * chú của ĐƠN còn phải nhúng thêm một bảng nữa.
+   *
+   * ⚠ GHI CHÚ CỦA ĐƠN NẰM Ở `sales_orders.notes`, KHÔNG được chép sang
+   * hóa đơn lúc xuất — `post_invoice` chỉ lưu câu người dùng gõ ở màn
+   * Xuất hàng. Đọc thẳng từ đơn thì mọi hóa đơn CŨ cũng hiện ra.
+   */
+  const [notes, setNotes] = useState<{ label: string; text: string }[]>([])
 
   const invoiceId = invoice?.id ?? null
   useEffect(() => {
@@ -65,6 +77,7 @@ export function InvoiceDrawer({
     setLines(null)
     setError(null)
     setReturns([])
+    setNotes([])
     ;(async () => {
       const supabase = createClient()
 
@@ -86,6 +99,26 @@ export function InvoiceDrawer({
         .then(({ data: retData }) => {
           if (cancelled) return
           setReturns(((retData as unknown) as ReturnSummaryRow[]) ?? [])
+        })
+
+      /**
+       * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN — phần phụ của màn xem nhanh, và
+       *   dòng hàng mới là thứ người ta mở ngăn ra để xem.
+       */
+      supabase
+        .from("sales_invoices")
+        .select("notes, order:sales_orders(notes)")
+        .eq("id", invoiceId)
+        .maybeSingle()
+        .then(({ data: nRow }) => {
+          if (cancelled || !nRow) return
+          const r = (nRow as unknown) as { notes?: string | null; order?: { notes?: string | null } | null }
+          setNotes(
+            noteBlocksOf([
+              { label: "Ghi chú đơn hàng", text: r.order?.notes },
+              { label: "Ghi chú hóa đơn", text: r.notes },
+            ])
+          )
         })
 
       const { data, error } = await supabase
@@ -217,6 +250,20 @@ export function InvoiceDrawer({
               */}
               <ReturnSummary returns={returns} />
 
+              {/* ⚠ HAI GHI CHÚ LÀ HAI THỨ KHÁC NHAU, ghi rõ của ai: ghi
+                  chú ĐƠN là lời người bán dặn lúc đặt hàng, ghi chú HÓA
+                  ĐƠN là lời người xuất kho dặn lúc giao. `noteBlocksOf`
+                  bỏ khối rỗng và gộp hai khối trùng chữ. */}
+              {notes.map((n) => (
+                <div
+                  key={n.label}
+                  className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant [overflow-wrap:anywhere]"
+                >
+                  {n.label}:{" "}
+                  <span className="whitespace-pre-wrap text-on-surface">{n.text}</span>
+                </div>
+              ))}
+
               {invoice.replaced_by && (
                 <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[12px] font-bold leading-snug text-[#7a4b00]">
                   Hóa đơn này đã bị một bản lập lại thay thế. Mở Chi tiết để sang bản mới.
@@ -232,29 +279,33 @@ export function InvoiceDrawer({
             <div className="flex gap-2 border-t border-outline-variant/40 px-5 pb-5 pt-3">
               {/* ⚠ CHỈ HÓA ĐƠN ĐÃ XUẤT MỚI SỬA ĐƯỢC. Hiện nút trên một hóa
                   đơn đã huỷ là mời người ta đi vào một màn sẽ từ chối họ. */}
+              {/* ⚠ BA NÚT NÀY SANG TAB MỚI (chủ nhà chốt 20/09/2026).
+                  Kế toán lướt danh sách để đối chiếu; đi sang một màn
+                  khác rồi bấm Back là mất bộ lọc và chỗ đang đứng, phải
+                  cuộn lại từ đầu cho từng hóa đơn. Xem `NewTabLink`.
+                  Riêng "In hóa đơn" còn một lý do nữa: màn in tự bật hộp
+                  thoại in, đóng nó ở cùng tab là quay về một danh sách
+                  vừa tải lại từ đầu. */}
               {canEdit && posted && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/sales-invoices/${invoice.id}/edit`)}
+                <NewTabLink
+                  href={`/sales-invoices/${invoice.id}/edit`}
                   className="h-11 flex-1 rounded-xl bg-primary text-sm font-extrabold text-on-primary"
                 >
                   Sửa hóa đơn
-                </button>
+                </NewTabLink>
               )}
-              <button
-                type="button"
-                onClick={() => router.push(`/sales-invoices/${invoice.id}/print`)}
+              <NewTabLink
+                href={`/sales-invoices/${invoice.id}/print`}
                 className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
               >
                 In hóa đơn
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push(`/sales-invoices/${invoice.id}`)}
+              </NewTabLink>
+              <NewTabLink
+                href={`/sales-invoices/${invoice.id}`}
                 className="h-11 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest px-4 text-sm font-extrabold text-on-surface"
               >
                 Chi tiết
-              </button>
+              </NewTabLink>
             </div>
           </>
         )}

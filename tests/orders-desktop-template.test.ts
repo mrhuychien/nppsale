@@ -145,7 +145,8 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
   it("một hàm cho loạt nhiều đơn, một đường sang màn soạn", () => {
     expect(PAGE).toContain("const approveOrders = async (ids: string[]) => {")
     expect(PAGE).toContain("const handleBulkApprove = () => approveOrders(Array.from(selectedIds))")
-    expect(PAGE.match(/onApprove=\{\(o\) => router\.push\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g)?.length).toBe(2)
+    // ⚠ Sang tab MỚI từ 20/09/2026 — xem `openInNewTab`.
+    expect(PAGE.match(/onApprove=\{\(o\) => openInNewTab\(`\/sales-invoices\/new\?order=\$\{o\.id\}`\)\}/g)?.length).toBe(2)
   })
 
   /**
@@ -191,8 +192,8 @@ describe("Xuất hàng: MỘT hàm cho dải chọn, dòng, ngăn chi tiết", (
    * dòng, và đường đó sang màn soạn. Gộp làm một là hoặc bắt mở mười màn
    * soạn cho mười đơn, hoặc mất hẳn chỗ sửa.
    */
-  it("nút trên từng dòng sang màn soạn, không xuất thẳng", () => {
-    expect(PAGE).toContain("onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}")
+  it("nút trên từng dòng sang màn soạn (tab mới), không xuất thẳng", () => {
+    expect(PAGE).toContain("onApprove={(o) => openInNewTab(`/sales-invoices/new?order=${o.id}`)}")
     expect(PAGE).not.toContain("onApprove={(o) => approveOrders([o.id])}")
     // Hộp thoại cũ đã gỡ — để sót là hai màn soạn song song.
     expect(PAGE).not.toContain("<InvoiceDialog")

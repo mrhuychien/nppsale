@@ -60,7 +60,11 @@ type Client = {
   from: (t: string) => {
     select: (cols: string, opts?: unknown) => {
       eq: (c: string, v: unknown) => { order: (c: string) => { range: (a: number, b: number) => unknown } }
-      gt: (c: string, v: unknown) => { range: (a: number, b: number) => unknown }
+      // ⚠ `.order(...)` PHẢI CÓ TRONG KIỂU NÀY. Xem chỗ đọc `batches`:
+      //   chia trang mà không sắp thứ tự thì các trang lặp và sót dòng.
+      gt: (c: string, v: unknown) => {
+        order: (c: string) => { range: (a: number, b: number) => unknown }
+      }
     }
   }
 }
@@ -197,9 +201,21 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   const [custRes0, prodRes0, batchRes] = await Promise.all([
     pageAll<Customer>(CUST_COLS, "customers", "store_name"),
     pageAll<SellProduct>(PROD_COLS, "products", "name"),
+    /**
+     * ⚠ PHẢI CÓ `.order("id")`. `fetchAllForAggregate` chia trang bằng
+     *   `range(from, to)` và gọi các trang SONG SONG; không có thứ tự cố
+     *   định thì Postgres được quyền trả mỗi request một thứ tự khác,
+     *   nên `OFFSET/LIMIT` vừa LẶP vừa BỎ SÓT dòng. Ở đây các dòng được
+     *   CỘNG lại thành tồn kho: lô bị đếm hai lần là tồn PHỒNG LÊN, và
+     *   màn bán hàng cho nhân viên đặt nhiều hơn số thật sự có.
+     *
+     *   Chỉ lộ ra khi đơn vị vượt một trang (1.000 lô) — đúng lúc kho đã
+     *   lớn và không ai còn kiểm tay được nữa. `id` là khoá chính nên
+     *   luôn duy nhất, đủ làm mốc chia trang ổn định.
+     */
     fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).range(from, to)) as any
+      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).order("id").range(from, to)) as any
     ),
   ])
 
@@ -225,6 +241,15 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   // nhân viên tìm một mã có thật mà không ra kết quả.
   if (prodRes.truncated) warnings.push("Danh mục sản phẩm quá lớn, màn hình còn THIẾU một phần.")
   if (custRes.truncated) warnings.push("Danh sách khách quá lớn, màn hình còn THIẾU một phần.")
+  /**
+   * ⚠ TRẦN CỦA LÔ HÀNG CŨNG PHẢI NÓI. Hai dòng trên đã kiểm `truncated`
+   * từ lâu, dòng này thì quên — nên khi kho vượt trần, tồn của một số
+   * mặt hàng bị cộng THIẾU và màn hình chặn nhầm những đơn hợp lệ, hoặc
+   * hiện "hết hàng" cho thứ đang còn đầy kho. Cùng một loại lỗi im lặng.
+   */
+  if (batchRes.truncated) {
+    warnings.push("Số lô hàng vượt trần tải về nên TỒN KHO trên màn này đang thiếu một phần.")
+  }
 
   const customers = custRes.rows
   const products = prodRes.rows

@@ -22,6 +22,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
 import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { openInNewTab } from "@/components/ui/new-tab-link"
 import {
   periodFrom, nextPeriod, summariseDocLines,
   type ListPeriod, type DocLineSummary,
@@ -1503,7 +1504,7 @@ export default function OrdersPage() {
             onOpen={(o) => setDrawerId(o.id)}
             canApprove={!!canApprove}
             approvingId={approvingId}
-            onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}
+            onApprove={(o) => openInNewTab(`/sales-invoices/new?order=${o.id}`)}
             misaLoadingId={misaLoadingId}
             onInvoice={handleXuatHoaDonList}
             sort={sort}
@@ -1650,7 +1651,7 @@ export default function OrdersPage() {
           })
         }
         approving={approvingId === drawerOrder?.id}
-        onApprove={(o) => router.push(`/sales-invoices/new?order=${o.id}`)}
+        onApprove={(o) => openInNewTab(`/sales-invoices/new?order=${o.id}`)}
         canCancel={!!canApprove}
         cancelling={bulkLoading}
         onCancel={(o) => cancelOrders([o.id])}

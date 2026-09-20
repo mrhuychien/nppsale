@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TriangleAlert } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { NewTabLink } from "@/components/ui/new-tab-link"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { stockMapFrom } from "@/lib/sell/ref-data"
 import { useOrg } from "@/hooks/use-org"
@@ -81,7 +81,6 @@ export function OrderDrawer({
   cancelling: boolean
   onCancel: (order: SalesOrder) => void
 }) {
-  const router = useRouter()
   const { org } = useOrg()
   const [lines, setLines] = useState<DrawerLine[] | null>(null)
   const [stock, setStock] = useState<Record<string, number> | null>(null)
@@ -456,16 +455,17 @@ export function OrderDrawer({
                   {approving ? "Đang xuất hàng…" : "Xuất hàng"}
                 </button>
               )}
+              {/* ⚠ SANG TAB MỚI, KHÔNG CHUYỂN TRANG CÙNG TAB (chủ nhà chốt
+                  20/09/2026). Người đối chiếu sổ đang đứng ở trang 3 của
+                  một danh sách đã lọc; đi rồi bấm Back là mất cả bộ lọc
+                  lẫn chỗ đang đứng. Xem `NewTabLink`. */}
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(isSellEditable(order.status) ? `/sell/edit/${order.id}` : `/orders/${order.id}`)
-                  }
+                <NewTabLink
+                  href={isSellEditable(order.status) ? `/sell/edit/${order.id}` : `/orders/${order.id}`}
                   className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
                 >
                   Sửa đơn
-                </button>
+                </NewTabLink>
               )}
               {/*
                 ⚠ CHỈ ĐƠN CHƯA XUẤT MỚI HUỶ Ở ĐÂY. Đơn đã xuất phải đi qua
@@ -484,13 +484,12 @@ export function OrderDrawer({
                   {cancelling ? "Đang huỷ…" : "Huỷ đơn"}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => router.push(`/orders/${order.id}`)}
+              <NewTabLink
+                href={`/orders/${order.id}`}
                 className="h-11 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest px-4 text-sm font-extrabold text-on-surface"
               >
                 Chi tiết
-              </button>
+              </NewTabLink>
             </div>
           </>
         )}

@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Loader2, PackageMinus, Plus, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, Loader2, PackageMinus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { formatInt } from "@/lib/utils"
+import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import {
   baseQtyOf, overIssueProducts, validIssueLines, friendlyIssueError,
@@ -80,7 +81,10 @@ export default function StockIssuePage() {
     () => new Set(lines.map((l) => l.product_id).filter(Boolean)),
     [lines]
   )
-  const hits = useMemo(() => searchReturnProducts(products, term, onSlip), [products, term, onSlip])
+  const hits = useMemo(
+    () => searchReturnProducts(products, term, onSlip, PICKER_PEEK),
+    [products, term, onSlip]
+  )
   const over = useMemo(() => overIssueProducts(lines), [lines])
 
   const patchLine = (id: string, p: Partial<IssueLine>) =>
@@ -269,40 +273,25 @@ export default function StockIssuePage() {
         </CardContent>
       </Card>
 
+      {/*
+        ⚠ BẤM VÀO LÀ XỔ DANH SÁCH (chủ nhà chốt 20/09/2026). Dùng chung
+          `ProductPicker` với phiếu nhập hàng, phiếu trả NCC và phiếu
+          nhập kho — một ô tìm cho cả bốn màn.
+      */}
       <Card>
-        <CardContent className="space-y-3 pt-5">
-          <Label htmlFor="si-find" className="text-xs uppercase tracking-wider text-muted-foreground">
-            Thêm mặt hàng
-          </Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="si-find" value={term} onChange={(e) => setTerm(e.target.value)}
-              placeholder={products.length ? "Tên hàng, mã SKU hoặc mã vạch…" : "Đang nạp danh mục…"}
-              disabled={products.length === 0}
-              className="pl-8"
-            />
-          </div>
-          {term.trim() !== "" && hits.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Không tìm thấy mã nào khớp, hoặc mã đó đã có trên phiếu.
-            </p>
-          )}
-          {hits.length > 0 && (
-            <ul className="divide-y rounded-xl border">
-              {hits.map((p) => (
-                <li key={p.id} className="flex flex-wrap items-center gap-2 p-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.sku || "—"} · {p.base_unit}</div>
-                  </div>
-                  <Button size="sm" onClick={() => addProduct(p)} disabled={submitting}>
-                    <Plus className="mr-1 h-4 w-4" /> Thêm
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+        <CardContent className="pt-5">
+          <ProductPicker
+            id="si-find"
+            term={term}
+            onTermChange={setTerm}
+            disabled={products.length === 0 || submitting}
+            items={hits.map((p) => ({
+              ...p,
+              title: p.name,
+              subtitle: `${p.sku || "—"} · ${p.base_unit}`,
+            }))}
+            onPick={(p) => addProduct(p)}
+          />
         </CardContent>
       </Card>
 

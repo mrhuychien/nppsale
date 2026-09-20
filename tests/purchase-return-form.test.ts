@@ -370,10 +370,51 @@ describe("ô tìm hàng của phiếu", () => {
     expect(searchReturnProducts(catalog, "banh", new Set(["p1"]))).toHaveLength(0)
   })
 
-  /** ⚠ Chưa gõ gì mà đổ cả danh mục xuống là dựng lại đúng danh sách phải cuộn. */
-  it("chưa gõ gì thì không gợi ý gì", () => {
-    expect(searchReturnProducts(catalog, "", new Set())).toHaveLength(0)
-    expect(searchReturnProducts(catalog, "   ", new Set())).toHaveLength(0)
+  /**
+   * ⚠ LUẬT NÀY ĐÃ BỊ ĐẢO NGƯỢC ngày 20/09/2026, và chốt phải đi theo.
+   *
+   *   Luật cũ mà chốt này từng canh: "chưa gõ gì thì không gợi ý gì".
+   *   Chủ nhà chốt ngược: "bấm vào là phải xổ list rồi (như khi chọn NCC
+   *   ấy)".
+   *
+   * ⚠ NHƯNG PHẦN NGUY HIỂM CỦA LUẬT CŨ THÌ GIỮ. Lý do cũ — "đổ cả danh
+   *   mục xuống là dựng lại đúng cái danh sách phải cuộn" — vẫn đúng
+   *   với một danh mục 1.700 mã. Nên luật mới là "xổ `limit` mục đầu",
+   *   KHÔNG phải "xổ hết", và đây là chốt canh đúng cái trần ấy. Bỏ
+   *   chốt này đi là mở đường cho một ô tìm đổ cả kho xuống màn.
+   */
+  it("chưa gõ gì thì xổ limit mục đầu, KHÔNG đổ cả danh mục", () => {
+    const many = Array.from({ length: 50 }, (_, i) =>
+      prod({ id: `x${i}`, sku: `S${i}`, name: `Hàng số ${i}` } as Partial<ReturnProduct>)
+    )
+    expect(searchReturnProducts(many, "", new Set(), 30)).toHaveLength(30)
+    expect(searchReturnProducts(many, "   ", new Set(), 30)).toHaveLength(30)
+    expect(
+      searchReturnProducts(many, "", new Set(), 30).length,
+      "đang đổ cả danh mục xuống dưới ô tìm"
+    ).toBeLessThan(many.length)
+  })
+
+  /** ⚠ Mã đã có trên phiếu cũng không được lọt vào danh sách xổ sẵn. */
+  it("danh sách xổ sẵn vẫn bỏ mã đã có trên phiếu", () => {
+    expect(searchReturnProducts(catalog, "", new Set(["p1"])).map((x) => x.id)).toEqual(["p2"])
+  })
+
+  /**
+   * ⚠ TRẦN CỦA Ô XỔ LÀ MỘT HẰNG SỐ DÙNG CHUNG, không phải con số gõ tay
+   * ở từng màn. Bốn màn mỗi màn một trần là bốn hành vi khác nhau cho
+   * cùng một thao tác.
+   */
+  it("bốn màn dùng chung một trần PICKER_PEEK", () => {
+    const STOCK_IN = strip(read("src/app/(dashboard)/inventory/stock-in/page.tsx"))
+    const STOCK_ISSUE = strip(read("src/app/(dashboard)/inventory/stock-issue/page.tsx"))
+    for (const [ten, src] of [
+      ["phiếu nhập hàng + trả NCC", EDITOR],
+      ["phiếu nhập kho", STOCK_IN],
+      ["phiếu xuất kho", STOCK_ISSUE],
+    ] as const) {
+      expect(src, `${ten} không dùng trần chung`).toContain("PICKER_PEEK")
+    }
   })
 
   it("cắt bớt khi quá nhiều kết quả", () => {
@@ -867,7 +908,7 @@ describe("ô tìm hàng thu về đúng NCC đang chọn", () => {
    */
   it("biểu mẫu thu về NCC TRƯỚC khi tìm, không ngược lại", () => {
     expect(EDITOR).toContain("scopeToSupplier(products, supplierId)")
-    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip)")
+    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip, PICKER_PEEK)")
     expect(EDITOR, "đang tìm trên cả danh mục rồi mới lọc — mất mã ở cuối danh sách")
       .not.toContain("searchReturnProducts(products, term, onSlip)")
   })

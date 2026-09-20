@@ -87,8 +87,20 @@ export function percentToRatio(percent: number | string | null | undefined): num
  * trong một phiếu, và người đối chiếu với NCC không hiểu vì sao một mặt
  * hàng xuất hiện hai lần.
  *
- * ⚠ CHƯA GÕ GÌ THÌ KHÔNG GỢI Ý GÌ. Đổ cả danh mục xuống dưới ô tìm là
- * dựng lại đúng cái danh sách phải cuộn mà ô tìm sinh ra để thay thế.
+ * ⚠ CHƯA GÕ GÌ THÌ TRẢ VỀ `limit` MỤC ĐẦU — LUẬT NÀY VỪA BỊ ĐẢO, ngày
+ * 20/09/2026, và ghi lại cho rõ vì bản cũ có lý do viết hẳn ra.
+ *
+ *   Luật cũ: "chưa gõ gì thì không gợi ý gì. Đổ cả danh mục xuống dưới
+ *   ô tìm là dựng lại đúng cái danh sách phải cuộn mà ô tìm sinh ra để
+ *   thay thế."
+ *
+ *   Chủ nhà chốt ngược lại: "bấm vào là phải xổ list rồi (như khi chọn
+ *   NCC ấy)". Và lý do cũ KHÔNG mất hiệu lực — nó chỉ áp cho trường hợp
+ *   đổ TẤT CẢ. `SearchSelect` (ô chọn NCC) mà chủ nhà chỉ làm mẫu xổ
+ *   đúng 30 mục đầu rồi lọc dần khi gõ: đủ để thấy ngay mình đang ở
+ *   đâu, không đủ để thành một danh sách phải cuộn. Nên luật mới là
+ *   "xổ `limit` mục đầu", không phải "xổ hết" — và `limit` là thứ nơi
+ *   gọi phải đặt cho tử tế.
  */
 export function searchReturnProducts(
   products: ReturnProduct[],
@@ -96,7 +108,6 @@ export function searchReturnProducts(
   alreadyOnSlip: ReadonlySet<string>,
   limit = 12
 ): ReturnProduct[] {
-  if (!term.trim()) return []
   const out: ReturnProduct[] = []
   for (const p of products) {
     if (alreadyOnSlip.has(p.id)) continue

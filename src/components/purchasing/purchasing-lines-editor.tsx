@@ -23,7 +23,7 @@
  */
 
 import { useMemo, useRef, useState } from "react"
-import { Info, Plus, Search, Trash2 } from "lucide-react"
+import { Info, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,6 +37,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency, formatInt } from "@/lib/utils"
+import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import {
   inSupplierScope, linesOutOfSupplierScope, scopeToSupplier, searchReturnProducts,
 } from "@/lib/purchasing/return-form"
@@ -145,7 +146,7 @@ export function PurchasingLinesEditor({
     [products, supplierId, showAll]
   )
   const hits = useMemo(
-    () => searchReturnProducts(scoped, term, onSlip),
+    () => searchReturnProducts(scoped, term, onSlip, PICKER_PEEK),
     [scoped, term, onSlip]
   )
   /**
@@ -154,7 +155,10 @@ export function PurchasingLinesEditor({
    *   sao — tưởng danh mục thiếu mã, rồi đi tạo mã trùng.
    */
   const hiddenCount = useMemo(() => {
-    if (showAll || !supplierId) return 0
+    /* ⚠ CHỈ ĐẾM KHI ĐÃ GÕ. Từ 20/09/2026 ô trống cũng xổ danh sách, nên
+       không chặn ở đây là lúc vừa bấm vào ô đã hiện "còn N mã thuộc NCC
+       khác" — một câu cảnh báo cho một phép tìm chưa xảy ra. */
+    if (showAll || !supplierId || term.trim() === "") return 0
     const other = products.filter((p) => !inSupplierScope(p, supplierId))
     return searchReturnProducts(other, term, onSlip, 200).length
   }, [products, supplierId, term, onSlip, showAll])
@@ -193,111 +197,83 @@ export function PurchasingLinesEditor({
       {header}
 
       {/* ---------------- Tìm hàng để thêm ---------------- */}
+      {/*
+        ⚠ BẤM VÀO LÀ XỔ DANH SÁCH (chủ nhà chốt 20/09/2026). Dùng chung
+          `ProductPicker` với phiếu nhập kho và phiếu xuất kho — bốn màn
+          một ô tìm, không phải bốn bản vẽ tay.
+      */}
       <Card>
-        <CardContent className="space-y-3 pt-5">
-          <Label htmlFor="pr-find" className="text-xs uppercase tracking-wider text-muted-foreground">
-            Thêm mặt hàng
-          </Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="pr-find" value={term} onChange={(e) => setTerm(e.target.value)}
-              placeholder={products.length ? "Tên hàng, mã SKU hoặc mã vạch…" : "Đang nạp danh mục…"}
-              disabled={products.length === 0}
-              className="pl-8"
-            />
-          </div>
-          {term.trim() !== "" && hits.length === 0 && hiddenCount === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Không tìm thấy mã nào khớp, hoặc mã đó đã có trên phiếu.
-            </p>
-          )}
-          {/*
-            ⚠ NÓI RÕ ĐANG LỌC, VÀ CHO ĐƯỜNG THOÁT. Cột
-              `products.primary_supplier_id` được backfill từ phiếu nhập
-              gần nhất (migration 030), nên một mã nhập từ NCC mới sẽ
-              còn mang tên NCC cũ cho tới lần nhập kế. Không có nút này
-              thì người nhập kẹt cứng: mã có thật, gõ đúng tên, mà ô tìm
-              một mực nói không có.
-          */}
-          {term.trim() !== "" && hiddenCount > 0 && !showAll && (
-            <p className="text-xs text-muted-foreground">
-              Đang chỉ hiện hàng của NCC đã chọn — còn {hiddenCount} mã khớp thuộc NCC khác.{" "}
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
-                className="font-medium text-primary underline"
-              >
-                Hiện tất cả
-              </button>
-            </p>
-          )}
-          {showAll && supplierId && (
-            <p className="text-xs text-[#7a4b00]">
-              Đang hiện hàng của MỌI NCC. Thêm nhầm hàng của NCC khác là công nợ ghi sai chỗ.{" "}
-              <button
-                type="button"
-                onClick={() => setShowAll(false)}
-                className="font-medium text-primary underline"
-              >
-                Lọc lại theo NCC
-              </button>
-            </p>
-          )}
-          {hits.length > 0 && (
-            <ul className="divide-y overflow-hidden rounded-xl border">
-              {hits.map((p) => {
-                const x = extras[p.id]
-                return (
-                  <li key={p.id}>
-                    {/*
-                      ⚠ CẢ DÒNG LÀ NÚT (chủ nhà chốt 20/09/2026: "bấm vào
-                        dòng là thêm được hàng luôn"). Bản cũ bắt trúng
-                        đúng cái nút "Thêm" rộng 70px ở mép phải — trên
-                        điện thoại đó là một mục tiêu nhỏ giữa một dòng
-                        rộng cả màn hình, và mọi cú chạm trượt đều không
-                        làm gì cả.
-                    */}
+        <CardContent className="pt-5">
+          <ProductPicker
+            id="pr-find"
+            term={term}
+            onTermChange={setTerm}
+            disabled={products.length === 0 || submitting}
+            items={hits.map((p) => ({
+              ...p,
+              title: p.name,
+              subtitle: [
+                p.sku || "—",
+                p.base_unit,
+                /* ⚠ NCC HIỆN Ở ĐÂY để người nhập biết mình có đang chọn
+                   nhầm hàng của NCC khác không — một phiếu nhập trộn hai
+                   NCC là công nợ ghi sai chỗ. Trống là CHƯA GÁN, nói ra
+                   chứ không để người dùng đoán. */
+                p.primary_supplier_id == null
+                  ? "chưa gán NCC"
+                  : extras[p.id]?.supplierName ?? "",
+              ].filter(Boolean).join(" · "),
+            }))}
+            onPick={(p) => addProduct(p)}
+            renderMeta={(p) => {
+              const x = extras[p.id]
+              return (
+                <span className="shrink-0 text-right text-xs">
+                  <span className="block text-muted-foreground">Tồn</span>
+                  {/* ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI LÀ CHƯA BIẾT. */}
+                  <span className="block font-semibold tabular-nums">
+                    {x && x.onHand !== null ? formatInt(x.onHand) : "…"}
+                  </span>
+                </span>
+              )
+            }}
+            hint={
+              <>
+                {/*
+                  ⚠ NÓI RÕ ĐANG LỌC, VÀ CHO ĐƯỜNG THOÁT. Cột
+                    `products.primary_supplier_id` được backfill từ phiếu
+                    nhập gần nhất (migration 030), nên một mã nhập từ NCC
+                    mới sẽ còn mang tên NCC cũ cho tới lần nhập kế. Không
+                    có nút này thì người nhập kẹt cứng: mã có thật, gõ
+                    đúng tên, mà ô tìm một mực nói không có.
+                */}
+                {term.trim() !== "" && hiddenCount > 0 && !showAll && (
+                  <p className="text-xs text-muted-foreground">
+                    Đang chỉ hiện hàng của NCC đã chọn — còn {hiddenCount} mã khớp thuộc NCC khác.{" "}
                     <button
                       type="button"
-                      onClick={() => addProduct(p)}
-                      disabled={submitting}
-                      className="flex w-full items-center gap-2 p-2 text-left hover:bg-muted/50 disabled:opacity-50"
+                      onClick={() => setShowAll(true)}
+                      className="font-medium text-primary underline"
                     >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{p.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {p.sku || "—"} · {p.base_unit}
-                          {/* ⚠ NCC HIỆN Ở ĐÂY để người nhập biết mình có
-                              đang chọn nhầm hàng của NCC khác không —
-                              một phiếu nhập trộn hai NCC là công nợ ghi
-                              sai chỗ. */}
-                          {/* ⚠ TRỐNG KHÁC CHƯA ĐỌC XONG. `primary_supplier_id`
-                              NULL là CHƯA GÁN — nói ra để người nhập biết
-                              vì sao mã này vẫn hiện dù đang lọc theo NCC.
-                              Còn `supplierName` rỗng khi cột có giá trị
-                              chỉ là danh sách NCC chưa nạp xong. */}
-                          {p.primary_supplier_id == null
-                            ? " · chưa gán NCC"
-                            : x?.supplierName
-                              ? ` · ${x.supplierName}`
-                              : ""}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right text-xs">
-                        <span className="block text-muted-foreground">Tồn</span>
-                        {/* ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI LÀ CHƯA BIẾT. */}
-                        <span className="block font-semibold tabular-nums">
-                          {x && x.onHand !== null ? formatInt(x.onHand) : "…"}
-                        </span>
-                      </span>
-                      <Plus className="h-4 w-4 shrink-0 text-primary" />
+                      Hiện tất cả
                     </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+                  </p>
+                )}
+                {showAll && supplierId && (
+                  <p className="text-xs text-[#7a4b00]">
+                    Đang hiện hàng của MỌI NCC. Thêm nhầm hàng của NCC khác là công nợ ghi sai chỗ.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowAll(false)}
+                      className="font-medium text-primary underline"
+                    >
+                      Lọc lại theo NCC
+                    </button>
+                  </p>
+                )}
+              </>
+            }
+          />
         </CardContent>
       </Card>
 

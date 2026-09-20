@@ -27,7 +27,8 @@ import {
   seedUnitCost,
   vnToday,
 } from "@/lib/inventory/opening-stock"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { searchReturnProducts } from "@/lib/purchasing/return-form"
+import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import Link from "next/link"
 import {
   Dialog,
@@ -200,13 +201,20 @@ export default function StockInPage() {
     return { qtyTotal, subtotal, vat: vatRounded, total }
   }, [lines])
 
-  const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return []
-    const q = viNormalize(productSearch)
-    return products.filter(
-      (p) => viIncludes(p.name, q) || viIncludes(p.sku, q)
-    )
-  }, [productSearch, products])
+  /**
+   * ⚠ DÙNG CHUNG `searchReturnProducts` VỚI BA MÀN PHIẾU KIA. Bản cũ tự
+   *   lọc bằng `viIncludes(name) || viIncludes(sku)` — thiếu MÃ VẠCH,
+   *   nên quét mã vạch ở màn này không ra gì trong khi ba màn kia ra
+   *   ngay. Bốn bản lọc là bốn lần phải nhớ sửa.
+   *
+   * ⚠ Ô TRỐNG CŨNG XỔ DANH SÁCH từ 20/09/2026 (chủ nhà chốt: "bấm vào
+   *   là phải xổ list rồi"). Trần là `PICKER_PEEK`, không phải cả danh
+   *   mục — xem `ProductPicker`.
+   */
+  const filteredProducts = useMemo(
+    () => searchReturnProducts(products, productSearch, new Set<string>(), PICKER_PEEK),
+    [productSearch, products]
+  )
 
   // Auto-add empty row when last row is filled
   useEffect(() => {
@@ -704,30 +712,24 @@ export default function StockInPage() {
           {/* Inline product search - ABOVE table to avoid overflow clipping */}
           <div className="relative flex gap-2">
             <div className="relative flex-1">
-            <Input
-              value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              placeholder="Tìm nhanh: gõ tên hoặc mã SKU sản phẩm..."
-              className="h-10"
-            />
-            {filteredProducts.length > 0 && (
-              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border/50 rounded-xl shadow-card-hover max-h-72 overflow-y-auto">
-                {filteredProducts.slice(0, 10).map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => addProductLine(p.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-surface-low transition-colors flex items-center justify-between gap-3 border-b border-border/20 last:border-0"
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        SKU: {p.sku} • {p.base_unit}
-                      </p>
-                    </div>
-                    <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </button>
-                ))}
+            {/*
+              ⚠ BẤM VÀO LÀ XỔ DANH SÁCH (chủ nhà chốt 20/09/2026). Dùng
+                chung `ProductPicker` với phiếu nhập hàng, phiếu trả NCC
+                và phiếu xuất kho.
+            */}
+            <ProductPicker
+              id="si-add-product"
+              label="Thêm mặt hàng"
+              term={productSearch}
+              onTermChange={setProductSearch}
+              items={filteredProducts.map((p) => ({
+                ...p,
+                title: p.name,
+                subtitle: `SKU: ${p.sku} • ${p.base_unit}`,
+              }))}
+              onPick={(p) => addProductLine(p.id)}
+              emptyHint="Không tìm thấy mã nào khớp."
+              footer={
                 <div className="border-t border-border/50 p-2">
                   <button
                     type="button"
@@ -735,13 +737,13 @@ export default function StockInPage() {
                       setPendingProductSearch(productSearch)
                       setCreateProductOpen(true)
                     }}
-                    className="w-full flex items-center gap-2 px-2 py-2 text-xs font-semibold text-primary hover:bg-surface-low rounded-lg transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-low"
                   >
                     <Plus className="h-3 w-3" /> Tạo sản phẩm mới
                   </button>
                 </div>
-              </div>
-            )}
+              }
+            />
             </div>
             <Button
               type="button"

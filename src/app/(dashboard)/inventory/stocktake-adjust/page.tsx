@@ -78,22 +78,34 @@ export default function StocktakeAdjustPage() {
   // Search products. Use a left-join so products without active batches
   // (new SKUs, items that fell to 0) still surface — operator needs to be
   // able to record a surplus for them.
+  /**
+   * ⚠ BẤM VÀO LÀ XỔ DANH SÁCH (chủ nhà chốt 20/09/2026: "bấm vào là
+   *   phải xổ list rồi"). Bản cũ chỉ hỏi máy chủ khi đã gõ từ hai ký tự
+   *   trở lên, nên bấm vào ô là một hộp trống không nói gì.
+   *
+   * ⚠ MÀN NÀY TÌM Ở MÁY CHỦ, không nạp sẵn cả danh mục như ba màn phiếu
+   *   kia — nên nó KHÔNG dùng được `ProductPicker`. Chưa gõ gì thì lấy
+   *   15 mã đầu theo tên; gõ rồi thì lọc như cũ. Cùng một hành vi nhìn
+   *   từ phía người dùng, hai cách làm vì hai nguồn dữ liệu.
+   *
+   * ⚠ CHỈ HỎI KHI HỘP ĐANG MỞ. Hỏi lúc hộp đóng là một lượt gọi máy chủ
+   *   cho một danh sách không ai nhìn.
+   */
   useEffect(() => {
-    if (search.trim().length < 2) {
-      setMatches([])
-      return
-    }
+    if (!searchOpen) return
     const controller = new AbortController()
     const run = async () => {
       const q = search.trim()
-      const { data, error } = await supabase
+      const base = supabase
         .from("products")
         .select("id, sku, name, base_unit, batches(id, batch_code, qty_on_hand, unit_cost, expires_at)")
-        .or(`sku.ilike.%${q}%,name.ilike.%${q}%`)
         .eq("status", "active")
         .order("name")
         .limit(15)
-        .abortSignal(controller.signal)
+      const { data, error } = await (q.length >= 2
+        ? base.or(`sku.ilike.%${q}%,name.ilike.%${q}%`)
+        : base
+      ).abortSignal(controller.signal)
       if (error) {
         // eslint-disable-next-line no-console
         console.warn("[stocktake search]", error.message)
@@ -103,7 +115,7 @@ export default function StocktakeAdjustPage() {
     }
     run()
     return () => controller.abort()
-  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, searchOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addRow = (product: Product & { batches?: Batch[] }) => {
     // If multiple batches, pick the one with most qty_on_hand as primary

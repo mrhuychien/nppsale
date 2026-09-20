@@ -18,6 +18,8 @@ const strip = (s: string) =>
  */
 const FORM = strip(read("src/components/purchasing/purchase-receipt-form.tsx"))
 const EDITOR = strip(read("src/components/purchasing/purchasing-lines-editor.tsx"))
+/** Ô tìm hàng dùng chung của bốn màn phiếu. */
+const PICKER = strip(read("src/components/ui/product-picker.tsx"))
 const NEW_PAGE = strip(read("src/app/(dashboard)/purchasing/receipts/new/page.tsx"))
 const EDIT_PAGE = strip(read("src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx"))
 const DETAIL = strip(read("src/app/(dashboard)/purchasing/receipts/[id]/page.tsx"))
@@ -113,7 +115,7 @@ describe("biểu mẫu phiếu nhập theo khuôn màn đặt hàng", () => {
     /* ⚠ TÌM TRÊN DANH MỤC ĐÃ THU VỀ NCC (`scoped`), không trên cả
        danh mục — ô tìm cắt ở 12 kết quả đầu, lọc sau là mất mã đứng
        thứ 13. Xem chốt ở `tests/purchase-return-form.test.ts`. */
-    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip)")
+    expect(EDITOR).toContain("searchReturnProducts(scoped, term, onSlip, PICKER_PEEK)")
     const add = EDITOR.slice(EDITOR.indexOf("const addProduct"), EDITOR.indexOf("const toggleDiscountMode"))
     expect(add).toContain("lineFromProduct(p, seqRef.current)")
     expect(add, "thêm xong phải xoá ô tìm").toContain('setTerm("")')
@@ -410,12 +412,14 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
      * trọng: phần bấm được phải RỘNG CẢ DÒNG (`w-full`), chứ không phải
      * một nút nhỏ ở mép phải.
      */
-    const flat = EDITOR.replace(/\s+/g, " ")
+    /* ⚠ Ô TÌM NAY NẰM Ở `ProductPicker` DÙNG CHUNG — soi đúng tệp ấy.
+       Để nguyên `EDITOR` là chốt xanh vì đọc phải chuỗi rỗng. */
+    const flat = PICKER.replace(/\s+/g, " ")
     expect(flat, "gợi ý không còn là nút bấm cả dòng").toMatch(
-      /<button type="button" onClick=\{\(\) => addProduct\(p\)\}[^>]*className="flex w-full/
+      /<button type="button" onClick=\{\(\) => pick\(p\)\}[\s\S]{0,160}?className=\{cn\( "flex w-full/
     )
     expect(flat, "vẫn còn nút Thêm nhỏ ở mép phải").not.toMatch(
-      /<Button size="sm" onClick=\{\(\) => addProduct\(p\)\}/
+      /<Button size="sm" onClick=/
     )
   })
 
@@ -424,15 +428,43 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
    * nhập trộn hai NCC là công nợ ghi sai chỗ.
    */
   it("gợi ý hiện NCC và tồn kho", () => {
-    const list = EDITOR.slice(EDITOR.indexOf("{hits.map("), EDITOR.indexOf("{linesTitle}"))
-    expect(list, "gợi ý không hiện NCC").toContain("x?.supplierName")
+    const list = EDITOR.slice(EDITOR.indexOf("<ProductPicker"), EDITOR.indexOf("{linesTitle}"))
+    expect(list, "gợi ý không hiện NCC").toContain("extras[p.id]?.supplierName")
     expect(list, "gợi ý không hiện tồn kho").toContain("x.onHand")
+    /* ⚠ Trống là CHƯA GÁN NCC, nói ra chứ không để người dùng đoán. */
+    expect(list, "không phân biệt chưa gán NCC với chưa đọc xong")
+      .toContain('p.primary_supplier_id == null')
   })
 
   /** ⚠ Chưa đọc được tồn thì nói là chưa biết — 0 đọc như "hết hàng". */
   it("chưa đọc được tồn thì hiện dấu ba chấm, không hiện 0", () => {
-    const list = EDITOR.slice(EDITOR.indexOf("{hits.map("), EDITOR.indexOf("{linesTitle}"))
+    const list = EDITOR.slice(EDITOR.indexOf("<ProductPicker"), EDITOR.indexOf("{linesTitle}"))
     expect(list).toContain('x && x.onHand !== null ? formatInt(x.onHand) : "…"')
+  })
+
+  /**
+   * ⚠ BẤM VÀO LÀ XỔ DANH SÁCH (chủ nhà chốt 20/09/2026: "bấm vào là
+   * phải xổ list rồi (như khi chọn NCC ấy)"). `onFocus` chứ không chỉ
+   * `onClick` — Tab tới ô cũng phải xổ, đây là màn nhập liệu hàng loạt.
+   */
+  it("bấm hoặc Tab vào ô là xổ danh sách", () => {
+    expect(PICKER).toContain("onFocus={() => setOpen(true)}")
+    expect(PICKER).toContain("onClick={() => setOpen(true)}")
+    expect(PICKER, "danh sách chỉ hiện khi đã gõ — đúng cái luật vừa bị đảo")
+      .not.toContain("term.trim() !== \"\" && ")
+  })
+
+  /** ⚠ Bàn phím phải dùng được: mũi tên, Enter thêm, Esc đóng. */
+  it("dùng được bằng bàn phím", () => {
+    for (const k of ["ArrowDown", "ArrowUp", "Enter", "Escape"]) {
+      expect(PICKER, `ô tìm không xử lý phím ${k}`).toContain(`"${k}"`)
+    }
+  })
+
+  /** ⚠ Bấm ra ngoài phải đóng, nếu không dải gợi ý che mất bảng hàng. */
+  it("bấm ra ngoài thì đóng", () => {
+    expect(PICKER).toContain("boxRef.current?.contains")
+    expect(PICKER).toContain("setOpen(false)")
   })
 })
 

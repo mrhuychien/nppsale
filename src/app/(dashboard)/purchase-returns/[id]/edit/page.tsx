@@ -22,7 +22,7 @@ import {
   PurchaseReturnForm, type PurchaseReturnFormValue,
 } from "@/components/purchasing/purchase-return-form"
 import {
-  friendlyReturnError, linePayload, returnTotals, validReturnLines,
+  friendlyReturnError, linePayload, ratioToPercent, returnTotals, validReturnLines,
   type ReturnLine, type ReturnProduct,
 } from "@/lib/purchasing/return-form"
 import type { Supplier, SupplierReturn, SupplierReturnLine } from "@/types"
@@ -119,7 +119,7 @@ export default function EditPurchaseReturnPage() {
           unit_name: l.unit_name,
           quantity: String(l.quantity),
           unit_price: String(l.unit_price),
-          vat_rate: String(l.vat_rate || 0),
+          vat_percent: ratioToPercent(l.vat_rate),
           conversion_factor: String(l.conversion_factor || 1),
           available_units: prod?.units || [],
           base_unit: prod?.base_unit || l.unit_name,

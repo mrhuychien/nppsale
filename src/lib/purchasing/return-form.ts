@@ -7,10 +7,17 @@
  * tính ở một bên mà quên bên kia là phiếu tạo ra một số, phiếu sửa lại
  * ra số khác cho đúng cùng mấy dòng hàng — và không màn nào nói gì.
  *
- * ⚠ `vat_rate` Ở ĐÂY LÀ PHẦN TRĂM (10), KHÔNG PHẢI TỈ LỆ (0,1). Đó là
- * quy ước sẵn có của màn phiếu trả NCC: ô nhập ghi nhãn "VAT %" và phép
- * tính chia cho 100. Nó KHÁC quy ước của `sales_invoice_lines.vat_rate`
- * (tỉ lệ). Xem cảnh báo ở `lineFromProduct` — chỗ hai quy ước gặp nhau.
+ * ⚠ HAI ĐƠN VỊ, GỌI TÊN KHÁC NHAU. Trong BIỂU MẪU thuế suất là PHẦN
+ * TRĂM và trường tên `vat_percent` — vì ô nhập ghi nhãn "VAT %" và
+ * người dùng gõ 10 chứ không gõ 0,1. Trong CƠ SỞ DỮ LIỆU thuế suất là
+ * TỈ LỆ ở cột `vat_rate`, giống `products.vat_rate` và
+ * `sales_invoice_lines.vat_rate` (migration 141 đổi cột này từ phần
+ * trăm sang tỉ lệ).
+ *
+ * Hai cái tên khác nhau là cố ý: trước đây cả hai đều tên `vat_rate` và
+ * đúng vì thế mà giá trị 0,1 của danh mục chui thẳng vào ô phần trăm
+ * mà không ai nhận ra. Mọi phép quy đổi nằm ở `percentToRatio` /
+ * `ratioToPercent` bên dưới — hai chỗ duy nhất, và đều có chốt.
  */
 
 import type { Product, ProductUnit } from "@/types"
@@ -18,6 +25,40 @@ import { viMatchAllWords } from "@/lib/search"
 
 /** Sản phẩm kèm danh sách đơn vị quy đổi, đúng hình dạng hai màn đang đọc. */
 export type ReturnProduct = Product & { units?: ProductUnit[] }
+
+/**
+ * TỈ LỆ (cột `vat_rate`) → PHẦN TRĂM (ô nhập). 0.1 → "10".
+ *
+ * ⚠ LÀM TRÒN TỚI MỘT CHỮ SỐ THẬP PHÂN. `0.08 * 100` trong dấu phẩy động
+ * ra `8.000000000000002`, và chuỗi đó rơi thẳng vào ô nhập cho người
+ * dùng nhìn. Một chữ số là đủ cho mọi thuế suất có thật (0 · 5 · 8 · 10)
+ * và vẫn giữ được những mức lẻ như 1,5%.
+ *
+ * ⚠ KHÔNG PHẢI SỐ THÌ TRẢ "0", đừng trả "NaN". Chuỗi "NaN" trong một ô
+ * `type="number"` là một ô không xoá được — gõ gì cũng không sửa nổi.
+ */
+export function ratioToPercent(ratio: number | string | null | undefined): string {
+  const n = Number(ratio)
+  if (!Number.isFinite(n)) return "0"
+  return String(Math.round(n * 1000) / 10)
+}
+
+/**
+ * PHẦN TRĂM (ô nhập) → TỈ LỆ (cột `vat_rate`). "10" → 0.1.
+ *
+ * ⚠ Ô TRỐNG LÀ 0. Phiếu soạn dở có ô thuế trắng là chuyện thường; để nó
+ * thành `NaN` là gửi `NaN` lên máy chủ, và cột `numeric` nhận về một giá
+ * trị không ai đọc được.
+ *
+ * ⚠ LÀM TRÒN TỚI SÁU CHỮ SỐ. `8 / 100` ra `0.08` gọn, nhưng `0.1 / 100`
+ * kiểu dấu phẩy động sinh đuôi rác; sáu chữ số dư sức cho mọi thuế suất
+ * và không để đuôi rác đi vào cơ sở dữ liệu.
+ */
+export function percentToRatio(percent: number | string | null | undefined): number {
+  const n = Number(percent)
+  if (!Number.isFinite(n)) return 0
+  return Math.round((n / 100) * 1_000_000) / 1_000_000
+}
 
 /**
  * Một dòng hàng trả.
@@ -35,8 +76,8 @@ export interface ReturnLine {
   unit_name: string
   quantity: string
   unit_price: string
-  /** PHẦN TRĂM (10 = 10%), xem đầu tệp. */
-  vat_rate: string
+  /** PHẦN TRĂM (10 = 10%) — giá trị của ô nhập, xem đầu tệp. */
+  vat_percent: string
   conversion_factor: string
   available_units: ProductUnit[]
   base_unit: string
@@ -55,9 +96,7 @@ export interface ReturnLine {
  *
  * ⚠ `products.vat_rate` LÀ TỈ LỆ (0,1) CÒN Ô NÀY LÀ PHẦN TRĂM. Chép
  * thẳng sang là ghi 0,1% thay cho 10% — thuế hụt 100 lần, và không có
- * chỗ nào kêu. Quy ước của màn phiếu trả NCC được GIỮ NGUYÊN (đổi nó là
- * đổi nghĩa của những dòng đã lưu trong cơ sở dữ liệu), nên phép nhân
- * 100 nằm ở đây, đúng chỗ hai quy ước gặp nhau.
+ * chỗ nào kêu. Đó là lỗi có thật của bản cũ.
  */
 export function lineFromProduct(p: ReturnProduct, seq: number): ReturnLine {
   return {
@@ -71,7 +110,7 @@ export function lineFromProduct(p: ReturnProduct, seq: number): ReturnLine {
     conversion_factor: "1",
     quantity: "",
     unit_price: p.cost_price ? String(p.cost_price) : "",
-    vat_rate: p.vat_rate != null ? String(Number(p.vat_rate) * 100) : "0",
+    vat_percent: p.vat_rate != null ? ratioToPercent(p.vat_rate) : "0",
   }
 }
 
@@ -107,7 +146,7 @@ export function returnTotals(lines: ReturnLine[]): ReturnTotals {
   for (const l of lines) {
     const lineSub = (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0)
     sub += lineSub
-    vat += (lineSub * (parseFloat(l.vat_rate) || 0)) / 100
+    vat += (lineSub * (parseFloat(l.vat_percent) || 0)) / 100
   }
   return { sub, vat, total: sub + vat }
 }
@@ -116,7 +155,7 @@ export function returnTotals(lines: ReturnLine[]): ReturnTotals {
 export function lineTotalOf(l: ReturnLine): number {
   const q = parseFloat(l.quantity) || 0
   const p = parseFloat(l.unit_price) || 0
-  const v = parseFloat(l.vat_rate) || 0
+  const v = parseFloat(l.vat_percent) || 0
   return q * p * (1 + v / 100)
 }
 
@@ -140,7 +179,7 @@ export function linePayload(returnId: string, l: ReturnLine) {
     unit_name: l.unit_name || l.base_unit,
     quantity: parseFloat(l.quantity),
     unit_price: parseFloat(l.unit_price),
-    vat_rate: parseFloat(l.vat_rate) || 0,
+    vat_rate: percentToRatio(l.vat_percent),
     conversion_factor: parseFloat(l.conversion_factor) || 1,
     line_total: lineTotalOf(l),
   }

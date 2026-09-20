@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { Send, Trash2, ExternalLink, Pencil } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { ratioToPercent } from "@/lib/purchasing/return-form"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -226,7 +227,10 @@ export default function PurchaseReturnDetailPage() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{l.quantity}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(l.unit_price)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{l.vat_rate}%</td>
+                    {/* ⚠ CỘT `vat_rate` LÀ TỈ LỆ (mig 141) — in thẳng nó
+                        rồi dán dấu % vào là hiện "0.1%" cho một dòng
+                        thuế 10%. Quy đổi bằng đúng hàm mà biểu mẫu dùng. */}
+                    <td className="px-3 py-2 text-right tabular-nums">{ratioToPercent(l.vat_rate)}%</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatCurrency(l.line_total)}</td>
                   </tr>
                 ))}

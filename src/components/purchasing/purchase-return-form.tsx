@@ -289,8 +289,8 @@ export function PurchaseReturnForm({
                   <div className="space-y-1 sm:col-span-3">
                     <Label className="text-xs">VAT %</Label>
                     <Input
-                      type="number" step="any" min={0} max={100} value={l.vat_rate}
-                      onChange={(e) => patchLine(l.id, { vat_rate: e.target.value })}
+                      type="number" step="any" min={0} max={100} value={l.vat_percent}
+                      onChange={(e) => patchLine(l.id, { vat_percent: e.target.value })}
                       className="text-right tabular-nums"
                     />
                   </div>

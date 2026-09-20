@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   lineFromProduct, lineTotalOf, linePayload, returnTotals, searchReturnProducts,
-  unitPatch, validReturnLines, friendlyReturnError,
+  unitPatch, validReturnLines, friendlyReturnError, ratioToPercent, percentToRatio,
   type ReturnLine, type ReturnProduct,
 } from "../src/lib/purchasing/return-form"
 
@@ -38,11 +38,73 @@ const line = (o: Partial<ReturnLine> = {}): ReturnLine => ({
   unit_name: "hộp",
   quantity: "2",
   unit_price: "8000",
-  vat_rate: "10",
+  vat_percent: "10",
   conversion_factor: "1",
   available_units: [],
   base_unit: "hộp",
   ...o,
+})
+
+/**
+ * HAI ĐƠN VỊ THUẾ, MỘT CHỖ QUY ĐỔI.
+ *
+ * ⚠ CỘT `supplier_return_lines.vat_rate` LÀ TỈ LỆ TỪ MIGRATION 141, ô
+ * nhập trên biểu mẫu vẫn là PHẦN TRĂM. Trước 141 cột này là bảng dòng
+ * hàng DUY NHẤT trong kho giữ phần trăm — và chính sự lẻ loi đó làm giá
+ * trị 0,1 của `products.vat_rate` chui thẳng vào ô phần trăm mà không
+ * ai nhận ra, cho ra thuế 0,1% thay vì 10%.
+ */
+describe("quy đổi thuế suất giữa tỉ lệ và phần trăm", () => {
+  it("tỉ lệ sang phần trăm", () => {
+    expect(ratioToPercent(0.1)).toBe("10")
+    expect(ratioToPercent(0)).toBe("0")
+    expect(ratioToPercent(0.015)).toBe("1.5")
+  })
+
+  /**
+   * ⚠ `0.08 * 100` TRONG DẤU PHẨY ĐỘNG RA `8.000000000000002`. Không
+   * làm tròn thì chuỗi rác đó rơi thẳng vào ô nhập cho người dùng nhìn.
+   */
+  it("không để đuôi rác của dấu phẩy động lọt vào ô nhập", () => {
+    expect(ratioToPercent(0.08)).toBe("8")
+    expect(ratioToPercent(0.07)).toBe("7")
+  })
+
+  /**
+   * ⚠ KHÔNG PHẢI SỐ THÌ RA "0", ĐỪNG RA "NaN". Chuỗi "NaN" trong một ô
+   * `type="number"` là một ô không xoá được — gõ gì cũng không sửa nổi.
+   */
+  it("giá trị rỗng hoặc hỏng ra 0, không ra NaN", () => {
+    expect(ratioToPercent(null)).toBe("0")
+    expect(ratioToPercent(undefined)).toBe("0")
+    expect(ratioToPercent("")).toBe("0")
+    expect(ratioToPercent("abc")).toBe("0")
+  })
+
+  it("phần trăm sang tỉ lệ", () => {
+    expect(percentToRatio("10")).toBe(0.1)
+    expect(percentToRatio("8")).toBe(0.08)
+    expect(percentToRatio("0")).toBe(0)
+    expect(percentToRatio("1.5")).toBe(0.015)
+  })
+
+  /** ⚠ Ô thuế để trắng trên phiếu soạn dở là chuyện thường — không NaN. */
+  it("ô trống ra 0, không gửi NaN lên máy chủ", () => {
+    expect(percentToRatio("")).toBe(0)
+    expect(percentToRatio(null)).toBe(0)
+    expect(Number.isNaN(percentToRatio("abc"))).toBe(false)
+  })
+
+  /**
+   * ⚠ ĐI MỘT VÒNG PHẢI VỀ ĐÚNG CHỖ CŨ. Màn sửa phiếu đọc tỉ lệ từ cơ sở
+   * dữ liệu, đổi sang phần trăm cho ô nhập, rồi lưu lại thành tỉ lệ.
+   * Lệch một nhịp ở đây là mỗi lần mở phiếu ra bấm Lưu là thuế đổi số.
+   */
+  it("đọc ra rồi lưu lại không làm thuế trôi đi", () => {
+    for (const r of [0, 0.05, 0.08, 0.1, 0.015]) {
+      expect(percentToRatio(ratioToPercent(r)), `tỉ lệ ${r} trôi sau một vòng`).toBe(r)
+    }
+  })
 })
 
 describe("dựng dòng từ mặt hàng vừa chọn", () => {
@@ -53,9 +115,9 @@ describe("dựng dòng từ mặt hàng vừa chọn", () => {
    * một dòng nào trên màn kêu lên.
    */
   it("thuế suất đổi từ tỉ lệ sang phần trăm", () => {
-    expect(lineFromProduct(prod(), 1).vat_rate).toBe("10")
-    expect(lineFromProduct(prod({ vat_rate: 0.08 } as Partial<ReturnProduct>), 1).vat_rate).toBe("8")
-    expect(lineFromProduct(prod({ vat_rate: 0 } as Partial<ReturnProduct>), 1).vat_rate).toBe("0")
+    expect(lineFromProduct(prod(), 1).vat_percent).toBe("10")
+    expect(lineFromProduct(prod({ vat_rate: 0.08 } as Partial<ReturnProduct>), 1).vat_percent).toBe("8")
+    expect(lineFromProduct(prod({ vat_rate: 0 } as Partial<ReturnProduct>), 1).vat_percent).toBe("0")
   })
 
   /**
@@ -122,7 +184,7 @@ describe("đổi đơn vị của dòng", () => {
 
 describe("cộng phiếu", () => {
   it("cộng tiền hàng và thuế theo phần trăm", () => {
-    const t = returnTotals([line({ quantity: "2", unit_price: "8000", vat_rate: "10" })])
+    const t = returnTotals([line({ quantity: "2", unit_price: "8000", vat_percent: "10" })])
     expect(t.sub).toBe(16000)
     expect(t.vat).toBe(1600)
     expect(t.total).toBe(17600)
@@ -135,8 +197,8 @@ describe("cộng phiếu", () => {
    */
   it("dòng còn trống không làm hỏng tổng", () => {
     const t = returnTotals([
-      line({ quantity: "2", unit_price: "8000", vat_rate: "10" }),
-      line({ id: "l2", quantity: "", unit_price: "", vat_rate: "" }),
+      line({ quantity: "2", unit_price: "8000", vat_percent: "10" }),
+      line({ id: "l2", quantity: "", unit_price: "", vat_percent: "" }),
     ])
     expect(Number.isNaN(t.total)).toBe(false)
     expect(t.total).toBe(17600)
@@ -147,7 +209,7 @@ describe("cộng phiếu", () => {
   })
 
   it("thành tiền một dòng đã gồm thuế", () => {
-    expect(lineTotalOf(line({ quantity: "2", unit_price: "8000", vat_rate: "10" }))).toBe(17600)
+    expect(lineTotalOf(line({ quantity: "2", unit_price: "8000", vat_percent: "10" }))).toBe(17600)
     expect(Number.isNaN(lineTotalOf(line({ quantity: "", unit_price: "" })))).toBe(false)
   })
 })
@@ -174,13 +236,13 @@ describe("dòng nào được ghi xuống", () => {
 
 describe("tải trọng gửi lên máy chủ", () => {
   it("đúng hình dạng bảng supplier_return_lines", () => {
-    expect(linePayload("r1", line({ quantity: "2", unit_price: "8000", vat_rate: "10" }))).toEqual({
+    expect(linePayload("r1", line({ quantity: "2", unit_price: "8000", vat_percent: "10" }))).toEqual({
       return_id: "r1",
       product_id: "p1",
       unit_name: "hộp",
       quantity: 2,
       unit_price: 8000,
-      vat_rate: 10,
+      vat_rate: 0.1,
       conversion_factor: 1,
       line_total: 17600,
     })
@@ -341,7 +403,7 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
     expect(EDIT_PAGE).not.toContain("lineFromProduct")
     expect(EDIT_PAGE).toContain("quantity: String(l.quantity)")
     expect(EDIT_PAGE).toContain("unit_price: String(l.unit_price)")
-    expect(EDIT_PAGE).toContain("vat_rate: String(l.vat_rate || 0)")
+    expect(EDIT_PAGE).toContain("vat_percent: ratioToPercent(l.vat_rate)")
     /* Mã đã xoá khỏi danh mục vẫn phải hiện ra, không vẽ dòng không tên. */
     expect(EDIT_PAGE).toContain('prod?.name || "Sản phẩm đã xoá"')
   })
@@ -351,5 +413,93 @@ describe("biểu mẫu phiếu trả NCC theo khuôn màn đặt hàng", () => {
     for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
       expect(src, `${ten} không đọc cột barcode`).toContain("id, name, sku, barcode, base_unit")
     }
+  })
+})
+
+// =====================================================================
+
+/**
+ * MIGRATION 141 — CỘT `vat_rate` VỀ ĐÚNG QUY ƯỚC CỦA CẢ KHO.
+ *
+ * ⚠ `supplier_return_lines` LÀ BẢNG DÒNG HÀNG DUY NHẤT TỪNG GIỮ PHẦN
+ * TRĂM. `products`, `sales_invoice_lines` và `stock_entry_lines` đều
+ * giữ tỉ lệ. Chính sự lẻ loi đó làm giá trị 0,1 của danh mục chui thẳng
+ * vào ô "VAT %" của phiếu trả mà không ai nhận ra.
+ */
+describe("migration 141 — đơn vị thuế suất của phiếu trả NCC", () => {
+  /**
+   * ⚠ BỎ DÒNG CHÚ THÍCH SQL TRƯỚC KHI SOI. Chốt bản đầu bám vào chuỗi
+   * "COMMENT ON COLUMN ..." và vẫn XANH khi đem dòng đó biến thành chú
+   * thích bằng `-- ` — chuỗi còn nguyên trong tệp mà lệnh thì không
+   * chạy. Đó đúng là đột biến nguy hiểm nhất ở đây: không có COMMENT
+   * thì chốt chặn chạy lại không bao giờ bật, và lần chạy thứ hai chia
+   * 100 thêm một lần nữa. Phần đầu tệp cũng nói cả câu "TỈ LỆ" trong
+   * chú thích, nên không lọc là mấy chốt dưới đọc nhầm văn xuôi.
+   */
+  const MIG = read("supabase/migrations/141_supplier_return_vat_ratio.sql")
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("--"))
+    .join("\n")
+  const DETAIL = strip(read("src/app/(dashboard)/purchase-returns/[id]/page.tsx"))
+
+  it("đổi đơn vị bằng phép chia 100, không đoán lại ý người nhập", () => {
+    expect(MIG).toContain("SET vat_rate = vat_rate / 100")
+  })
+
+  /**
+   * ⚠ CHẠY LẠI LẦN HAI LÀ CHIA 100 THÊM LẦN NỮA — thuế thành một phần
+   * vạn. Không có cột "phiên bản" nào để bám, nên COMMENT của cột chính
+   * là dấu: có chữ "TỈ LỆ" nghĩa là đã đổi rồi.
+   */
+  it("chạy lại được: có chốt chặn dựa trên COMMENT của cột", () => {
+    expect(MIG).toContain("col_description('public.supplier_return_lines'::regclass")
+    expect(MIG).toContain("RETURN;")
+    expect(MIG).toContain("COMMENT ON COLUMN supplier_return_lines.vat_rate IS")
+  })
+
+  /**
+   * ⚠ HAI NỬA PHẢI KHỚP NHAU. Chốt chặn đi tìm một chuỗi trong COMMENT;
+   * COMMENT thì do chính migration này đặt. Có đủ CẢ HAI lệnh vẫn chưa
+   * đủ — đặt một COMMENT KHÔNG chứa chuỗi mà chốt chặn tìm là chốt chặn
+   * không bao giờ bật, và lần chạy thứ hai chia 100 thêm một lần nữa.
+   * Bản đầu của chốt này chỉ kiểm từng nửa nên vẫn xanh trước đúng đột
+   * biến đó.
+   */
+  it("chuỗi chốt chặn đi tìm phải nằm thật trong COMMENT được đặt", () => {
+    const guard = MIG.match(/v_marker LIKE '%(.+?)%'/)
+    expect(guard, "không tìm thấy chốt chặn chạy lại").toBeTruthy()
+    const marker = guard![1]
+
+    const i = MIG.indexOf("COMMENT ON COLUMN supplier_return_lines.vat_rate IS")
+    const comment = MIG.slice(i, MIG.indexOf(";", i))
+    expect(
+      comment.includes(marker),
+      `COMMENT đặt xuống không chứa "${marker}" — chốt chặn chạy lại sẽ ` +
+        "không bao giờ bật, và lần chạy thứ hai chia 100 thêm lần nữa."
+    ).toBe(true)
+  })
+
+  it("đếm số dòng đã đổi và nạp lại lược đồ", () => {
+    expect(MIG).toContain("GET DIAGNOSTICS v_n = ROW_COUNT")
+    expect(MIG).toContain("RAISE NOTICE")
+    expect(MIG).toContain("NOTIFY pgrst, 'reload schema'")
+  })
+
+  /**
+   * ⚠ MÀN CHI TIẾT IN THẲNG `{l.vat_rate}%` LÀ HIỆN "0.1%" cho một dòng
+   * thuế 10%. Đổi đơn vị dưới cơ sở dữ liệu mà quên màn đọc nó là dời
+   * lỗi sang chỗ khác chứ không sửa được gì.
+   */
+  it("màn chi tiết quy đổi trước khi in, không in thẳng cột", () => {
+    expect(DETAIL).toContain("{ratioToPercent(l.vat_rate)}%")
+    expect(DETAIL).not.toContain("{l.vat_rate}%")
+    expect(DETAIL).toContain('import { ratioToPercent } from "@/lib/purchasing/return-form"')
+  })
+
+  /** Biểu mẫu chỉ được chạm cột qua hai hàm quy đổi, không parse thẳng. */
+  it("biểu mẫu không đọc thẳng cột vat_rate", () => {
+    expect(FORM).toContain("l.vat_percent")
+    expect(FORM).not.toContain("l.vat_rate")
+    expect(EDIT_PAGE).toContain("ratioToPercent(l.vat_rate)")
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { getAgingStatus } from "@/lib/utils"
 
@@ -19,21 +19,53 @@ import { getAgingStatus } from "@/lib/utils"
  *  Test này khoá cả hai lại với nhau: nó đọc thẳng file SQL và đối chiếu.
  */
 
-const SQL_RAW = readFileSync(
-  resolve(__dirname, "../supabase/migrations/093_aggregate_functions.sql"),
-  "utf-8"
-)
+/**
+ * ⚠ ĐỌC BẢN ĐỊNH NGHĨA ĐANG CHẠY, KHÔNG ĐỌC MIGRATION 093. Chốt này
+ * trước đây bám cứng vào 093. Migration 140 định nghĩa lại
+ * `receivables_summary` (đổi `CURRENT_DATE` sang `vn_today()`), và từ
+ * lúc đó 093 chỉ còn là lịch sử — chốt vẫn xanh vì tệp 093 không đổi,
+ * trong khi hàm thật sự chạy thì không ai canh nữa. Nên: quét cả thư
+ * mục migration và lấy tệp ĐÁNH SỐ CAO NHẤT có định nghĩa hàm.
+ */
+const MIG_DIR = resolve(__dirname, "../supabase/migrations")
+
+/** Bỏ dòng chú thích — chính tệp SQL có câu "TUYỆT ĐỐI KHÔNG dùng
+ *  SECURITY DEFINER", và không lọc thì chốt đỏ vì đúng câu cảnh báo đó. */
+const stripSql = (raw: string) =>
+  raw.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n")
+
+/** Tệp migration mới nhất có `CREATE FUNCTION public.<name>(`. */
+function latestMigrationDefining(fn: string): { file: string; sql: string } {
+  const files = readdirSync(MIG_DIR).filter((f) => f.endsWith(".sql")).sort()
+  let found: { file: string; sql: string } | null = null
+  for (const f of files) {
+    const sql = stripSql(readFileSync(resolve(MIG_DIR, f), "utf-8"))
+    if (sql.includes(`CREATE FUNCTION public.${fn}(`)) found = { file: f, sql }
+  }
+  if (!found) throw new Error(`không migration nào định nghĩa ${fn}`)
+  return found
+}
+
+const SUMMARY = latestMigrationDefining("receivables_summary")
+const SQL = SUMMARY.sql
+
+/** Khối thân hàm `receivables_summary` trong bản mới nhất. */
+const BLOCK = (() => {
+  const i = SQL.indexOf("CREATE FUNCTION public.receivables_summary()")
+  return SQL.slice(i, SQL.indexOf("$$;", i))
+})()
 
 /**
- * Bỏ dòng comment trước khi kiểm. Cần thiết vì chính file SQL có đoạn ghi
- * chú "TUYỆT ĐỐI KHÔNG dùng SECURITY DEFINER" — nếu không lọc, test sẽ đỏ
- * vì đúng cái câu cảnh báo đó.
+ * Phép lấy "hôm nay" mà SQL đang dùng.
+ *
+ * ⚠ PHẢI LÀ `vn_today()`, KHÔNG PHẢI `CURRENT_DATE`. Máy chủ chạy giờ
+ * UTC; Việt Nam đi trước 7 tiếng, nên từ 00:00 tới 07:00 giờ Việt Nam
+ * `CURRENT_DATE` vẫn là NGÀY HÔM QUA — ô tổng đầu trang xếp một khoản
+ * đến hạn hôm nay vào "chưa tới hạn" trong khi bảng ngay bên dưới, do
+ * trình duyệt tính theo giờ Việt Nam, đã xếp nó sang "quá hạn".
  */
-const SQL = SQL_RAW.split("\n")
-  .filter((l) => !l.trimStart().startsWith("--"))
-  .join("\n")
+const TODAY_EXPR = "public.vn_today()"
 
-/** Ngày quá hạn → nhóm, theo đúng thứ tự CASE trong hàm SQL. */
 const SQL_THRESHOLDS: Array<[number, string]> = [
   [0, "current"],
   [30, "warning"],
@@ -60,30 +92,37 @@ function dueDateOverdueBy(daysOverdue: number): string {
 
 describe("ngưỡng tuổi nợ — SQL và TypeScript phải khớp nhau", () => {
   it("file SQL dùng đúng các ngưỡng mà getAgingStatus đang dùng", () => {
-    // Bắt đúng khối CASE của receivables_summary, không phải chỗ khác.
-    const block = SQL.slice(
-      SQL.indexOf("CREATE FUNCTION public.receivables_summary()"),
-      SQL.indexOf("$$;", SQL.indexOf("CREATE FUNCTION public.receivables_summary()"))
-    )
     for (const [days, bucket] of SQL_THRESHOLDS) {
       const re = new RegExp(
-        `\\(CURRENT_DATE - due_date\\) <= ${days}\\s+THEN '${bucket}'`
+        `\\(public\\.vn_today\\(\\) - due_date\\) <= ${days}\\s+THEN '${bucket}'`
       )
       expect(
-        re.test(block),
+        re.test(BLOCK),
         `SQL thiếu nhánh "<= ${days} → ${bucket}". Nếu bạn vừa đổi ngưỡng ở ` +
-          `getAgingStatus() thì phải đổi cả trong migration 093.`
+          `getAgingStatus() thì phải đổi cả trong ${SUMMARY.file}.`
       ).toBe(true)
     }
     // Nhánh cuối: quá 60 ngày.
-    expect(/ELSE 'critical'/.test(block)).toBe(true)
+    expect(/ELSE 'critical'/.test(BLOCK)).toBe(true)
+  })
+
+  /**
+   * ⚠ NGÀY VIỆT NAM, KHÔNG PHẢI NGÀY UTC. Đây là chốt riêng chứ không
+   * gộp vào chốt ngưỡng ở trên: đổi `vn_today()` về `CURRENT_DATE` là
+   * một lỗi KHÁC HẲN việc đổi con số ngưỡng, và thông báo khi đỏ phải
+   * nói đúng lỗi nào.
+   */
+  it("phép lấy hôm nay là giờ Việt Nam, không phải CURRENT_DATE của máy chủ", () => {
+    expect(BLOCK).toContain(TODAY_EXPR)
+    expect(
+      BLOCK,
+      `${SUMMARY.file} còn dùng CURRENT_DATE — máy chủ chạy giờ UTC, ` +
+        "nên suốt 00:00-07:00 giờ Việt Nam nó trả về ngày hôm qua."
+    ).not.toContain("CURRENT_DATE")
   })
 
   it("SQL không còn nhánh nào ngoài 4 nhóm đã biết", () => {
-    const block = SQL.slice(
-      SQL.indexOf("CREATE FUNCTION public.receivables_summary()"),
-      SQL.indexOf("$$;", SQL.indexOf("CREATE FUNCTION public.receivables_summary()"))
-    )
+    const block = BLOCK
     const buckets = Array.from(block.matchAll(/THEN '(\w+)'|ELSE '(\w+)'/g)).map(
       (m) => m[1] ?? m[2]
     )
@@ -104,7 +143,7 @@ describe("ngưỡng tuổi nợ — SQL và TypeScript phải khớp nhau", () =
   })
 })
 
-describe("migration 093 — các bất biến về bảo mật", () => {
+describe(`${SUMMARY.file} — các bất biến về bảo mật`, () => {
   it("KHÔNG hàm nào được là SECURITY DEFINER", () => {
     // SECURITY DEFINER ở đây là mở toang toàn bộ số liệu tài chính cho mọi
     // vai trò: hàm sẽ chạy bằng quyền chủ sở hữu và bỏ qua RLS, mà không có

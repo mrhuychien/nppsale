@@ -1,6 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { toast } from "@/hooks/use-toast"
+import { cancelInvoice } from "@/lib/orders/post-invoice"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -48,11 +53,14 @@ export function InvoiceDrawer({
   routeName,
   canEdit,
   onClose,
+  onChanged,
 }: {
   invoice: InvoiceRow | null
   routeName: string | null
   canEdit: boolean
   onClose: () => void
+  /** Huỷ xong thì danh sách phải đọc lại — trạng thái và tổng tiền đều đổi. */
+  onChanged?: () => void
 }) {
   const [lines, setLines] = useState<DrawerLine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -69,6 +77,9 @@ export function InvoiceDrawer({
    * Xuất hàng. Đọc thẳng từ đơn thì mọi hóa đơn CŨ cũng hiện ra.
    */
   const [notes, setNotes] = useState<{ label: string; text: string }[]>([])
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelling, setCancelling] = useState(false)
 
   const invoiceId = invoice?.id ?? null
   useEffect(() => {
@@ -294,12 +305,35 @@ export function InvoiceDrawer({
                   Sửa hóa đơn
                 </NewTabLink>
               )}
+              {/* ⚠ `?auto=1` — BẬT THẲNG CỬA SỔ IN (chủ nhà chốt
+                  20/09/2026). Người bấm "In hóa đơn" đã nói rõ họ muốn
+                  in; bắt bấm thêm một nút In nữa ở màn sau là tính thuế
+                  lên mỗi tờ giấy. Màn in tự rời đi khi đóng hộp thoại —
+                  xem `useLeaveAfterPrint`. */}
               <NewTabLink
-                href={`/sales-invoices/${invoice.id}/print`}
+                href={`/sales-invoices/${invoice.id}/print?auto=1`}
                 className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
               >
                 In hóa đơn
               </NewTabLink>
+              {/* ⚠ HUỶ ĐI QUA RPC `cancel_invoice`, KHÔNG UPDATE THẲNG.
+                  Huỷ một hóa đơn là hoàn hàng về ĐÚNG các lô đã lấy, xoá
+                  công nợ và lùi trạng thái đơn — ba việc trong một giao
+                  dịch. Một lệnh ghi trạng thái từ trình duyệt để kho
+                  thiếu hàng mà sổ nói đã huỷ.
+                  ⚠ KHÔNG tự mờ nút theo hóa đơn điện tử ở đây: ngăn xem
+                  nhanh không đọc bảng `invoices`, và chốt chặn thật nằm
+                  trong RPC (`LOCKED_EINVOICE`). Bấm vào sẽ nhận đúng câu
+                  giải thích, không phải một thất bại im lặng. */}
+              {canEdit && posted && (
+                <button
+                  type="button"
+                  onClick={() => setCancelOpen(true)}
+                  className="h-11 shrink-0 rounded-xl border-[1.5px] border-error/40 bg-surface-container-lowest px-4 text-sm font-extrabold text-on-error-container"
+                >
+                  Huỷ đơn
+                </button>
+              )}
               <NewTabLink
                 href={`/sales-invoices/${invoice.id}`}
                 className="h-11 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest px-4 text-sm font-extrabold text-on-surface"
@@ -310,6 +344,46 @@ export function InvoiceDrawer({
           </>
         )}
       </SheetContent>
+
+      {invoice && (
+        <ConfirmDialog
+          open={cancelOpen}
+          onOpenChange={(o) => !cancelling && setCancelOpen(o)}
+          title={`Huỷ hóa đơn ${invoice.invoice_code}?`}
+          description="Hàng hoàn về đúng các lô đã lấy, công nợ của hóa đơn này bị xoá, và đơn quay lại trạng thái tương ứng. Không hoàn tác được."
+          confirmLabel="Huỷ hóa đơn"
+          variant="destructive"
+          loading={cancelling}
+          onConfirm={async () => {
+            setCancelling(true)
+            try {
+              await cancelInvoice(createClient(), invoice.id, cancelReason.trim())
+              toast({ title: `Đã huỷ hóa đơn ${invoice.invoice_code}` })
+              setCancelOpen(false)
+              setCancelReason("")
+              onChanged?.()
+              onClose()
+            } catch (e) {
+              toast({ title: "Không huỷ được", description: errorMessage(e), variant: "destructive" })
+            } finally {
+              setCancelling(false)
+            }
+          }}
+        >
+          <div>
+            <Label htmlFor="drawer-cancel-reason" className="text-xs uppercase tracking-wider text-muted-foreground">
+              Lý do (bắt buộc)
+            </Label>
+            <Textarea
+              id="drawer-cancel-reason"
+              rows={2}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Ví dụ: giao nhầm hàng, khách trả lại toàn bộ"
+            />
+          </div>
+        </ConfirmDialog>
+      )}
     </Sheet>
   )
 }

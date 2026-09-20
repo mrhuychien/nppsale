@@ -65,7 +65,8 @@ describe("mở sang tab mới", () => {
 
   it("ngăn hóa đơn: Sửa, In và Chi tiết đều là thẻ mở tab mới", () => {
     const flat = INV_DRAWER.replace(/\s+/g, " ")
-    for (const h of ["/edit`}", "/print`}", "<NewTabLink href={`/sales-invoices/${invoice.id}`}"]) {
+    // ⚠ `/print?auto=1` từ 20/09/2026 — nút In bật thẳng cửa sổ in.
+    for (const h of ["/edit`}", "/print?auto=1`}", "<NewTabLink href={`/sales-invoices/${invoice.id}`}"]) {
       expect(flat).toContain(h)
     }
     expect((flat.match(/<NewTabLink/g) ?? []).length).toBe(3)
@@ -232,5 +233,92 @@ describe("bản vá 137 — số đã đặt đọc qua nhiều trang", () => {
     const body = (s: string) =>
       s.slice(s.indexOf("WITH live_orders AS"), s.indexOf("HAVING SUM(x.qty) > 0"))
     expect(body(MIG137)).toBe(body(m136))
+  })
+})
+
+describe("xem nhanh hóa đơn: in ngay và huỷ được", () => {
+  /**
+   * ⚠ `?auto=1` — BẬT THẲNG CỬA SỔ IN (chủ nhà chốt 20/09/2026). Người
+   * bấm "In hóa đơn" đã nói rõ họ muốn in; bắt bấm thêm một nút In nữa ở
+   * màn sau là tính thuế lên mỗi tờ giấy.
+   */
+  it("nút In mở màn in ở chế độ tự in", () => {
+    expect(INV_DRAWER.replace(/\s+/g, " ")).toContain(
+      "<NewTabLink href={`/sales-invoices/${invoice.id}/print?auto=1`}"
+    )
+  })
+
+  /**
+   * ⚠ HUỶ ĐI QUA RPC `cancel_invoice`, KHÔNG UPDATE THẲNG. Huỷ một hóa
+   * đơn là hoàn hàng về ĐÚNG các lô đã lấy, xoá công nợ và lùi trạng
+   * thái đơn — ba việc trong một giao dịch.
+   */
+  it("nút Huỷ đơn gọi RPC, không ghi trạng thái thẳng", () => {
+    expect(INV_DRAWER).toContain("cancelInvoice(createClient(), invoice.id, cancelReason.trim())")
+    expect(code(INV_DRAWER)).not.toContain('update({ status: "cancelled" })')
+  })
+
+  /** ⚠ LÝ DO LÀ BẮT BUỘC — sổ huỷ không có lý do thì tra cứu về sau vô nghĩa. */
+  it("hỏi lý do trước khi huỷ, qua ConfirmDialog chứ không confirm()", () => {
+    expect(INV_DRAWER).toContain("<ConfirmDialog")
+    expect(INV_DRAWER).toContain("cancelReason")
+    expect(code(INV_DRAWER), "dùng confirm() cho thao tác huỷ").not.toContain("confirm(")
+  })
+
+  /** Chỉ hóa đơn ĐÃ XUẤT mới huỷ được, và chỉ người có quyền. */
+  it("nút chỉ hiện với hóa đơn đã xuất và người có quyền", () => {
+    const i = INV_DRAWER.indexOf("Huỷ đơn")
+    expect(INV_DRAWER.slice(i - 400, i)).toContain("canEdit && posted")
+  })
+
+  /** ⚠ Huỷ xong danh sách phải đọc lại — trạng thái và tổng tiền đều đổi. */
+  it("huỷ xong thì báo cho danh sách đọc lại", () => {
+    expect(INV_DRAWER).toContain("onChanged?.()")
+    expect(read("src/app/(dashboard)/sales-invoices/page.tsx")).toContain("onChanged={fetchData}")
+  })
+})
+
+describe("tra soát mã hàng: xuất theo hóa đơn nào, cho ai", () => {
+  const CARD = read("src/app/(dashboard)/inventory/stock-card/[productId]/page.tsx")
+
+  /**
+   * ⚠ HỎI TỪ PHÍA DÒNG HÓA ĐƠN, KHÔNG HỎI TỪ PHÍA PHIẾU KHO. Hỏi
+   * `sales_invoices` theo danh sách `stock_entry_id` là dựng một câu
+   * `in(...)` dài bằng số lần xuất của mặt hàng — mặt hàng chạy có hàng
+   * nghìn lần, và URL vỡ trước khi truy vấn chạy.
+   */
+  it("đọc hóa đơn từ dòng hóa đơn của chính mặt hàng", () => {
+    expect(CARD).toContain('.from("sales_invoice_lines")')
+    expect(CARD).toContain("invoice:sales_invoices!inner(invoice_code, invoice_date, status, stock_entry_id, customer:customers(store_name, billing_name))")
+    expect(CARD).toContain('.eq("product_id", productId)')
+  })
+
+  /** ⚠ Bảng có thể vượt 1.000 dòng — phải phân trang và có mốc. */
+  it("phân trang qua fetchAllForAggregate và có mốc chia trang", () => {
+    expect(CARD).toContain("fetchAllForAggregate<InvLineRow>")
+    expect(CARD).toContain('.order("id")')
+  })
+
+  /** ⚠ Chỉ hóa đơn CÒN HIỆU LỰC. Hóa đơn đã huỷ không nói lên hàng đi đâu. */
+  it("bỏ hóa đơn đã huỷ", () => {
+    expect(CARD).toContain('inv.status !== "posted"')
+  })
+
+  /** Và phải vẽ ra ở cả bảng máy tính lẫn danh sách điện thoại. */
+  it("hiện mã hóa đơn, ngày và tên khách ở cả hai khổ màn", () => {
+    expect(CARD).toContain("<TableHead>Hóa đơn / Khách</TableHead>")
+    const flat = CARD.replace(/\s+/g, " ")
+    expect(flat).toContain("{m.invoice_code ? (")
+    expect(flat).toContain("{m.invoice_code && (")
+    expect(flat).toContain("{m.customer_name ? ` · ${m.customer_name}` : \"\"}")
+  })
+
+  /**
+   * ⚠ PHIẾU KHÔNG ĐI THEO HÓA ĐƠN (chuyển kho, kiểm kê, trả nhà cung
+   * cấp) THÌ ĐỂ GẠCH. Bịa một cái tên vào đó là nói dối về nơi hàng đi.
+   */
+  it("phiếu không có hóa đơn thì để dấu gạch", () => {
+    expect(CARD).toContain("invoice_code: string | null")
+    expect(CARD.replace(/\s+/g, " ")).toContain('<span className="text-muted-foreground">—</span>')
   })
 })

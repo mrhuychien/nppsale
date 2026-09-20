@@ -28,6 +28,7 @@ import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
+import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
 import { LEGACY_V2_HREFS } from "@/lib/nav/nav-permission"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
@@ -138,18 +139,20 @@ export default function StockEntriesPage() {
     }
   }
 
+  /**
+   * ⚠ HUỶ ĐI QUA RPC `cancel_stock_entry`, KHÔNG UPDATE THẲNG. Bản cũ
+   *   ghi thẳng `status = 'cancelled'` nên kho KHÔNG đổi — huỷ phiếu
+   *   nhập đã ghi sổ là giữ lại hàng chưa từng có thật. Xem
+   *   `@/lib/inventory/cancel-entry`.
+   */
   const handleCancel = async (e: StockEntry) => {
-    if (!confirm(`Hủy phiếu ${e.entry_code}? Phiếu sẽ được đánh dấu đã hủy, giữ lại để kiểm toán.`)) return
+    if (!confirm(`Hủy phiếu ${e.entry_code}? Hàng của phiếu sẽ được hoàn lại kho. Không hoàn tác được.`)) return
     try {
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ status: "cancelled" })
-        .eq("id", e.id)
-      if (error) throw error
-      toast({ title: `Đã hủy phiếu ${e.entry_code}` })
+      const r = await cancelStockEntry(supabase, e.id, "Huỷ từ danh sách phiếu")
+      toast({ title: cancelEntryMessage(e.entry_code, r) })
       fetchData()
     } catch (err) {
-      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
+      toast({ title: "Không huỷ được phiếu", description: errorMessage(err), variant: "destructive" })
     }
   }
 
@@ -270,21 +273,40 @@ export default function StockEntriesPage() {
     fetchData()
   }
 
+  /**
+   * ⚠ HUỶ HÀNG LOẠT CŨNG PHẢI ĐI QUA RPC, VÀ ĐI TỪNG PHIẾU MỘT. Bản cũ
+   *   chạy một lệnh `UPDATE ... IN (ids)`: kho không đổi, và một phiếu
+   *   không huỷ được cũng bị đánh dấu đã huỷ như mọi phiếu khác.
+   *
+   * ⚠ HỎNG MỘT PHIẾU THÌ VẪN LÀM NỐT PHẦN CÒN LẠI, rồi BÁO RA từng
+   *   phiếu hỏng kèm lý do. Dừng cả loạt vì một phiếu là bắt người dùng
+   *   tự đoán phiếu nào đã chạy; im lặng bỏ qua còn tệ hơn.
+   */
   const cancelBulk = async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`Hủy ${selectedIds.size} phiếu đã chọn? Phiếu posted sẽ trở về cancelled.`)) return
+    if (!confirm(`Hủy ${selectedIds.size} phiếu đã chọn? Hàng của các phiếu đã ghi sổ sẽ được hoàn lại kho. Không hoàn tác được.`)) return
     setBulkSaving(true)
     const ids = Array.from(selectedIds)
-    const { error } = await supabase
-      .from("stock_entries")
-      .update({ status: "cancelled" })
-      .in("id", ids)
-    setBulkSaving(false)
-    if (error) {
-      toast({ title: "Lỗi hủy phiếu", description: error.message, variant: "destructive" })
-      return
+    let ok = 0
+    const failed: string[] = []
+    for (const id of ids) {
+      const code = entries.find((e) => e.id === id)?.entry_code ?? id
+      try {
+        await cancelStockEntry(supabase, id, "Huỷ hàng loạt từ danh sách phiếu")
+        ok += 1
+      } catch (err) {
+        failed.push(`${code}: ${errorMessage(err)}`)
+      }
     }
-    toast({ title: `Đã hủy ${ids.length} phiếu` })
+    setBulkSaving(false)
+    if (ok > 0) toast({ title: `Đã huỷ ${ok}/${ids.length} phiếu và hoàn kho` })
+    if (failed.length > 0) {
+      toast({
+        title: `${failed.length} phiếu KHÔNG huỷ được`,
+        description: failed.join(" · "),
+        variant: "destructive",
+      })
+    }
     clearSelection()
     fetchData()
   }

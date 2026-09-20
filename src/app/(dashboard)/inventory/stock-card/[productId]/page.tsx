@@ -21,7 +21,20 @@ import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList, Package,
   TrendingUp, TrendingDown, AlertCircle,
 } from "lucide-react"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import type { Product, Batch } from "@/types"
+
+/** Một dòng hóa đơn của chính mặt hàng đang xem. */
+type InvLineRow = {
+  id: string
+  invoice?: {
+    invoice_code: string
+    invoice_date: string | null
+    status: string
+    stock_entry_id: string | null
+    customer?: { store_name?: string | null; billing_name?: string | null } | null
+  } | null
+}
 
 type MovementRow = {
   id: string
@@ -37,6 +50,17 @@ type MovementRow = {
   notes: string | null
   source: string
   creator_name: string | null
+  /**
+   * Phiếu xuất này đi theo HÓA ĐƠN nào, ngày nào, cho ai (chủ nhà chốt
+   * 20/09/2026).
+   *
+   * ⚠ `null` NGHĨA LÀ KHÔNG PHẢI PHIẾU BÁN HÀNG — phiếu xuất huỷ, xuất
+   * chuyển kho, xuất trả nhà cung cấp đều không có hóa đơn. Điền một
+   * dấu gạch vào đó là đúng; bịa ra một cái tên là sai.
+   */
+  invoice_code: string | null
+  invoice_date: string | null
+  customer_name: string | null
 }
 
 const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: "in" | "out" | "adjust" }> = {
@@ -61,7 +85,7 @@ export default function StockCardPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [productRes, batchesRes, linesRes] = await Promise.all([
+    const [productRes, batchesRes, linesRes, invRes] = await Promise.all([
       supabase.from("products").select("id, sku, name, base_unit").eq("id", productId).maybeSingle(),
       supabase.from("batches").select("id, batch_code, qty_on_hand, unit_cost, expires_at").eq("product_id", productId).order("expires_at"),
       supabase
@@ -70,6 +94,29 @@ export default function StockCardPage() {
           "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, creator:users!stock_entries_created_by_fkey(full_name))"
         )
         .eq("product_id", productId),
+      /**
+       * Hóa đơn bán có dòng của CHÍNH sản phẩm này.
+       *
+       * ⚠ HỎI TỪ PHÍA DÒNG HÓA ĐƠN, KHÔNG HỎI TỪ PHÍA PHIẾU KHO. Hỏi
+       *   `sales_invoices` theo danh sách `stock_entry_id` là dựng một
+       *   câu `in(...)` dài bằng số lần xuất của mặt hàng — mặt hàng
+       *   chạy có hàng nghìn lần, và URL vỡ trước khi truy vấn chạy.
+       *
+       * ⚠ QUA `fetchAllForAggregate` VÀ CÓ `.order("id")`: đây là bảng
+       *   có thể vượt 1.000 dòng, và chia trang không mốc thì các trang
+       *   lặp/sót — xem `lib/supabase/aggregate`.
+       */
+      fetchAllForAggregate<InvLineRow>((from, to) =>
+        supabase
+          .from("sales_invoice_lines")
+          .select(
+            "id, invoice:sales_invoices!inner(invoice_code, invoice_date, status, stock_entry_id, customer:customers(store_name, billing_name))",
+            { count: "exact" }
+          )
+          .eq("product_id", productId)
+          .order("id")
+          .range(from, to)
+      ),
     ])
     const qErr = ([productRes, batchesRes, linesRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
@@ -97,6 +144,25 @@ export default function StockCardPage() {
       } | null
     }
 
+    /**
+     * phiếu kho → hóa đơn. `stock_entry_id` là sợi dây duy nhất nối hai
+     * bên (mig 124), nên hóa đơn nào chưa có phiếu kho thì bỏ qua.
+     */
+    const invByEntry: Record<string, { code: string; date: string | null; customer: string | null }> = {}
+    if (invRes.error) {
+      console.error("[stock-card/productId] không đọc được hóa đơn:", invRes.error)
+    } else {
+      for (const r of invRes.rows) {
+        const inv = r.invoice
+        if (!inv?.stock_entry_id || inv.status !== "posted") continue
+        invByEntry[inv.stock_entry_id] = {
+          code: inv.invoice_code,
+          date: inv.invoice_date ?? null,
+          customer: inv.customer?.billing_name || inv.customer?.store_name || null,
+        }
+      }
+    }
+
     const rawLines = ((linesRes.data as unknown) as LineRow[] | null) || []
     // Only posted entries count for the stock card
     const rows: MovementRow[] = rawLines
@@ -115,6 +181,9 @@ export default function StockCardPage() {
         notes: l.notes,
         source: l.entry!.entry_code,
         creator_name: l.entry!.creator?.full_name || null,
+        invoice_code: invByEntry[l.entry!.id]?.code ?? null,
+        invoice_date: invByEntry[l.entry!.id]?.date ?? null,
+        customer_name: invByEntry[l.entry!.id]?.customer ?? null,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -305,6 +374,10 @@ export default function StockCardPage() {
                   <TableHead>Ngày</TableHead>
                   <TableHead>Phiếu</TableHead>
                   <TableHead>Loại</TableHead>
+                  {/* ⚠ HÓA ĐƠN VÀ KHÁCH ĐỨNG CẠNH NHAU (chủ nhà chốt
+                      20/09/2026). Tra soát là đi tìm "lô này đi đâu";
+                      mã phiếu kho một mình không trả lời được câu đó. */}
+                  <TableHead>Hóa đơn / Khách</TableHead>
                   <TableHead>Người tạo</TableHead>
                   <TableHead>Lô</TableHead>
                   <TableHead className="text-right">Nhập</TableHead>
@@ -332,6 +405,21 @@ export default function StockCardPage() {
                         <Badge className={`${meta.color} border-0`} variant="outline">
                           {meta.label}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {m.invoice_code ? (
+                          <>
+                            <span className="font-mono font-bold text-primary">{m.invoice_code}</span>
+                            <span className="block text-muted-foreground">
+                              {m.invoice_date ? formatDate(m.invoice_date) : "—"}
+                              {m.customer_name ? ` · ${m.customer_name}` : ""}
+                            </span>
+                          </>
+                        ) : (
+                          /* ⚠ Phiếu không đi theo hóa đơn (chuyển kho, kiểm
+                             kê, trả nhà cung cấp) thì để gạch — đừng bịa. */
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {m.creator_name || "-"}
@@ -383,6 +471,15 @@ export default function StockCardPage() {
                             {formatDate(m.date)}
                             {m.batch_code ? ` • Lô ${m.batch_code}` : ""}
                           </p>
+                          {/* ⚠ Đi theo hóa đơn nào, cho ai — xem chú thích
+                              ở cột cùng tên của bảng máy tính. */}
+                          {m.invoice_code && (
+                            <p className="mt-0.5 truncate text-xs font-semibold text-on-surface-variant">
+                              {m.invoice_code}
+                              {m.invoice_date ? ` · ${formatDate(m.invoice_date)}` : ""}
+                              {m.customer_name ? ` · ${m.customer_name}` : ""}
+                            </p>
+                          )}
                         </div>
                         <div className="shrink-0 text-right">
                           <p className={`font-bold text-sm ${isIn ? "text-tertiary" : isOut ? "text-error" : ""}`}>

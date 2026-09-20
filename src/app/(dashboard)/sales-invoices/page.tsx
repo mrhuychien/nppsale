@@ -633,6 +633,7 @@ export default function SalesInvoicesPage() {
         }
         canEdit={canEdit}
         onClose={() => setDrawerId(null)}
+        onChanged={fetchData}
       />
     </div>
   )

@@ -16,11 +16,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
-import { Pencil, Trash2, X, Package, Truck, Printer } from "lucide-react"
+import { Pencil, Trash2, X, Package, Truck, Printer, CircleX } from "lucide-react"
 import { PrintButton } from "@/components/ui/print-button"
 import { DeliverySlip } from "@/components/printing/delivery-slip"
 import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
@@ -105,6 +106,9 @@ export default function StockEntryDetailPage() {
   }>>([])
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelling, setCancelling] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editNotes, setEditNotes] = useState("")
   const [actionLoading, setActionLoading] = useState(false)
@@ -870,6 +874,34 @@ export default function StockEntryDetailPage() {
             </Card>
           )}
 
+          {/*
+            ⚠ NÚT HUỶ PHẢI CÓ Ở ĐÂY (chủ nhà báo 20/09/2026: "phiếu nhập
+              kho không có nút Huỷ bên trong chi tiết"). Trước đây huỷ
+              chỉ làm được từ danh sách, nên người đang mở phiếu ra xem
+              phải thoát ra, tìm lại nó trong danh sách rồi mới huỷ.
+
+            ⚠ HUỶ ĐI QUA RPC `cancel_stock_entry`: hoàn kho và đổi trạng
+              thái trong CÙNG một giao dịch. Xem `@/lib/inventory/cancel-entry`.
+          */}
+          {canEdit && entry.status !== "cancelled" && (
+            <Card className="border-destructive/30">
+              <CardContent className="pt-6">
+                <Button
+                  variant="outline"
+                  className="w-full h-11 justify-start border-destructive/40 text-destructive hover:bg-destructive/5"
+                  onClick={() => setCancelOpen(true)}
+                >
+                  <CircleX className="h-4 w-4 mr-2" /> Huỷ phiếu
+                </Button>
+                <p className="text-[11px] text-muted-foreground pt-2">
+                  {entry.status === "posted"
+                    ? "Phiếu đã ghi sổ: hàng sẽ được HOÀN LẠI kho trong cùng một giao dịch. Hàng đã xuất bớt thì không huỷ được — chỉ sửa."
+                    : "Phiếu chưa ghi sổ nên kho không đổi."}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Thông tin phiếu</CardTitle>
@@ -950,6 +982,47 @@ export default function StockEntryDetailPage() {
           )}
         </aside>
       </div>
+
+      <ConfirmDialog
+        open={cancelOpen}
+        onOpenChange={(o) => !cancelling && setCancelOpen(o)}
+        title={`Huỷ phiếu ${entry.entry_code}?`}
+        description={
+          entry.status === "posted"
+            ? "Hàng của phiếu sẽ được hoàn lại đúng các lô đã ghi. Không hoàn tác được."
+            : "Phiếu chưa ghi sổ nên kho không đổi. Không hoàn tác được."
+        }
+        variant="destructive"
+        confirmLabel="Huỷ phiếu"
+        loading={cancelling}
+        onConfirm={async () => {
+          setCancelling(true)
+          try {
+            const r = await cancelStockEntry(supabase, entry.id, cancelReason.trim())
+            toast({ title: cancelEntryMessage(entry.entry_code, r) })
+            setCancelOpen(false)
+            setCancelReason("")
+            fetchData()
+          } catch (e) {
+            toast({ title: "Không huỷ được phiếu", description: errorMessage(e), variant: "destructive" })
+          } finally {
+            setCancelling(false)
+          }
+        }}
+      >
+        <div>
+          <Label htmlFor="entry-cancel-reason" className="text-xs uppercase tracking-wider text-muted-foreground">
+            Lý do
+          </Label>
+          <Textarea
+            id="entry-cancel-reason"
+            rows={2}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="Ví dụ: nhập nhầm nhà cung cấp, sai số lượng"
+          />
+        </div>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteOpen}

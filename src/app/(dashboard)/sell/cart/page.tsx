@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -36,6 +36,7 @@ import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-orde
 import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
 import { submitSellOrder } from "@/lib/sell/submit"
 import { applyOrderEdit, decideEditStatus, editHint } from "@/lib/sell/order-edit"
+import { SearchSelect } from "@/components/ui/search-select"
 import { toast } from "@/hooks/use-toast"
 
 export default function SellCartPage() {
@@ -116,6 +117,47 @@ export default function SellCartPage() {
   // Quyền sửa giá theo từng người — NVBH phải được bật riêng.
   const rules = userPriceRulesFrom(user)
   const isSales = user?.role === "sales"
+  /**
+   * NPP LẬP ĐƠN GIÚP NHÂN VIÊN (chủ nhà chốt 21/09/2026).
+   *
+   * ⚠ CHỈ CHỦ NHÀ / QUẢN LÝ THẤY Ô NÀY. Nhân viên bán hàng lập đơn của
+   *   chính mình — cho họ chọn tên người khác là mở đường ghi doanh số
+   *   sang tên đồng nghiệp. Giao diện chỉ là lớp đầu; trigger
+   *   `trg_orders_guard_sales_user` (mig 153) mới là chỗ chặn thật, vì
+   *   `sales_orders` ghi trực tiếp từ trình duyệt.
+   */
+  const canPickSeller = user?.role === "owner" || user?.role === "manager"
+  const [sellerId, setSellerId] = useState("")
+  const [sellers, setSellers] = useState<Array<{ id: string; full_name: string; role: string }>>([])
+
+  useEffect(() => {
+    if (!canPickSeller || !user?.org_id) return
+    let cancelled = false
+    createClient()
+      .from("users")
+      .select("id, full_name, role")
+      .eq("org_id", user.org_id)
+      /* ⚠ ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP — xem mig 153. Hiện ra
+         một cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
+      .in("role", ["sales", "manager", "owner"])
+      .order("full_name")
+      .then(({ data }) => {
+        if (!cancelled) {
+          setSellers((data as Array<{ id: string; full_name: string; role: string }>) || [])
+        }
+      })
+    return () => { cancelled = true }
+  }, [canPickSeller, user?.org_id])
+
+  const sellerOptions = useMemo(
+    () =>
+      sellers.map((u) => ({
+        id: u.id,
+        label: u.full_name || "(chưa đặt tên)",
+        hint: u.id === user?.id ? "chính bạn" : u.role,
+      })),
+    [sellers, user?.id]
+  )
   const canEditPrice = !isSales || rules.allow_price_edit
   const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
 
@@ -262,6 +304,10 @@ export default function SellCartPage() {
         createdAt: new Date().toISOString(),
         returnReason: cart.returnReason,
         returnLines: cart.returnLines,
+        /* ⚠ RỖNG = CHÍNH NGƯỜI ĐANG LẬP. Đi trong TẢI TRỌNG chứ không
+           trong `ctx`, để đơn xếp hàng lúc mất mạng vẫn giữ đúng người
+           đứng tên khi mạng về — xem `OfflineOrderPayload`. */
+        salesUserId: canPickSeller ? sellerId || null : null,
       })
 
       // Ngữ cảnh quy tắc chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
@@ -548,6 +594,39 @@ export default function SellCartPage() {
             ))
           )}
         </div>
+
+        {/*
+          LẬP ĐƠN GIÚP NHÂN VIÊN — chủ nhà chốt 21/09/2026: "NPP tạo đơn
+          xong chọn nhân viên -> thành đơn hàng của nhân viên".
+
+          ⚠ CHỈ HIỆN CHO CHỦ NHÀ / QUẢN LÝ. Nhân viên bán hàng lập đơn
+            của chính mình; cho họ chọn tên người khác là mở đường ghi
+            doanh số sang tên đồng nghiệp.
+
+          ⚠ ĐỨNG NGAY TRƯỚC KHỐI HÀNG TRẢ, TRÊN THANH LƯU. Đây là một
+            quyết định về NGƯỜI, không phải về hàng — nhét lẫn vào bảng
+            dòng hàng là nó chìm mất giữa lúc người ta đang gõ số lượng.
+
+          ⚠ ĐỂ TRỐNG LÀ CHÍNH MÌNH, và nói ra chứ không để đoán. Một ô
+            rỗng không nhãn là người dùng không biết đơn sẽ đứng tên ai.
+        */}
+        {canPickSeller && (
+          <div className="rounded-2xl bg-surface-container-lowest p-3.5 shadow-card">
+            <p className="text-sm font-extrabold">Đơn này của nhân viên nào</p>
+            <p className="mb-2 mt-px text-xs font-semibold text-on-surface-variant">
+              Để trống là đơn đứng tên bạn. Chọn nhân viên thì doanh số và hoa hồng
+              tính cho người đó.
+            </p>
+            <SearchSelect
+              id="cart-seller"
+              options={sellerOptions}
+              valueId={sellerId}
+              onPick={(o) => setSellerId(o?.id ?? "")}
+              placeholder="Gõ tên nhân viên…"
+              emptyHint="Không tìm thấy nhân viên nào khớp."
+            />
+          </div>
+        )}
 
         <button
           type="button"

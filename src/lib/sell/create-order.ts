@@ -30,6 +30,14 @@ export interface BuildPayloadInput {
   createdAt: string
   returnReason: string
   returnLines: ReturnCartLine[]
+  /**
+   * NPP lập đơn GIÚP nhân viên — mã nhân viên đứng tên đơn.
+   *
+   * ⚠ RỖNG LÀ CHÍNH NGƯỜI ĐANG LẬP, và đó là đường thường ngày. Chỉ NPP
+   * / quản lý mới đặt được cột này sang người khác; trigger mig 153 là
+   * chỗ chặn, không phải màn hình.
+   */
+  salesUserId?: string | null
 }
 
 /**
@@ -92,6 +100,8 @@ export function buildOrderPayload(i: BuildPayloadInput): OfflineOrderPayload {
       vat: i.totals.vat,
       total: i.totals.grandTotal,
       notes: i.notes.trim() || null,
+      /* Rỗng = chính người đang lập. Xem `OfflineOrderPayload`. */
+      sales_user_id: i.salesUserId || null,
     },
     lines: i.cart.map(toOrderLine),
     // ⚠ Không có dòng trả thì KHÔNG tạo phiếu trả rỗng. Một phiếu trả 0

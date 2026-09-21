@@ -37,6 +37,23 @@ export interface OfflineOrderPayload {
     vat: number
     total: number
     notes: string | null
+    /**
+     * NHÂN VIÊN ĐỨNG TÊN ĐƠN — rỗng nghĩa là chính người đang lập.
+     *
+     * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "NPP tạo đơn xong chọn nhân viên ->
+     *   thành đơn hàng của nhân viên".
+     *
+     * ⚠ NẰM TRONG TẢI TRỌNG, KHÔNG NẰM Ở `ctx`. Đơn lập lúc mất mạng
+     *   nằm trong hàng đợi rồi mới ghi khi có mạng, và `ctx` lúc ấy
+     *   dựng lại từ người ĐANG đăng nhập. Để lựa chọn ở `ctx` là NPP
+     *   chọn nhân viên A, mạng về, đơn ghi tên chính NPP — sai âm thầm,
+     *   và chỉ lộ ra ở kỳ tính hoa hồng.
+     *
+     * ⚠ AI ĐƯỢC ĐẶT CỘT NÀY DO TRIGGER `trg_orders_guard_sales_user`
+     *   (mig 153) QUYẾT, không do màn hình. RLS không canh cột này, mà
+     *   hoa hồng và lương đều đếm theo nó.
+     */
+    sales_user_id?: string | null
   }
   lines: OfflineOrderLine[]
   /**
@@ -87,7 +104,9 @@ export async function createOrderRecords(
     .from("sales_orders")
     .insert({
       org_id: ctx.orgId,
-      sales_user_id: ctx.userId,
+      /* ⚠ TẢI TRỌNG THẮNG `ctx` — xem chú thích của trường ấy. Trigger
+         mig 153 mới là chỗ quyết ai được đặt gì. */
+      sales_user_id: payload.order.sales_user_id || ctx.userId,
       client_request_id: payload.clientRequestId,
       order_code: payload.order.order_code,
       customer_id: payload.order.customer_id,

@@ -31,34 +31,39 @@ import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discoun
 import { posTotals, type PosTotalLine } from "@/lib/pos/totals"
 
 /* ==================================================================
- * §8.1 — LÔ & HSD BẮT BUỘC KHI NHẬP
+ * §8.1 — LÔ & HSD KHI NHẬP: MÁY CHỦ TỰ SINH
  * ================================================================== */
 
-export interface LotCheckLine {
-  /** Số thứ tự hiển thị, 1-based. */
-  index: number
-  lotCode?: string | null
-}
-
 /**
- * Những dòng còn thiếu lô — spec §8 mục 1.
+ * Mã lô mà `complete_purchase_invoice` SẼ đặt cho dòng thứ `index`.
  *
- * ⚠ TRẢ VỀ SỐ THỨ TỰ DÒNG, KHÔNG TRẢ VỀ `true/false`. Nút mờ mà chỉ
- * nói "có dòng thiếu lô" là người dùng phải dò cả bảng. Spec chốt
- * "tooltip nói rõ dòng nào thiếu".
+ * ⚠ SPEC §8 MỤC 1 NÓI "LÔ & HSD BẮT BUỘC", VÀ BẢN ĐẦU CỦA MÀN NHẬP ĐÃ
+ * DỰNG MỘT Ô GÕ TAY CHO NÓ. Ô ấy không đi tới đâu cả:
  *
- * ⚠ CHUỖI TOÀN KHOẢNG TRẮNG CŨNG LÀ THIẾU. Một ô lô chứa dấu cách đi
- * thẳng vào `batch_code` và không ai tra ra lô ấy về sau.
+ *   · `purchase_invoice_lines` KHÔNG có cột lô nào — `linePayloadOf`
+ *     (`src/lib/purchasing/save-receipt.ts:34`) ghi đúng 10 cột và
+ *     không có cột nào nhận mã lô.
+ *   · `complete_purchase_invoice` (migration 145, dòng 141) tự đặt
+ *     `batch_code := <mã phiếu> || '-' || lpad(seq,3,'0')`.
+ *   · Hạn dùng cũng không do người nhập gõ: cùng hàm ấy lấy
+ *     `products.shelf_life_days` (dòng 107) rồi cộng vào ngày hôm nay.
+ *
+ * Nên bắt người dùng gõ một mã lô rồi vứt đi là hai điều sai cùng lúc:
+ * đòi một việc vô ích, và hứa rằng mã họ gõ sẽ tra ra được về sau.
+ * Hàm này trả về mã THẬT sẽ xuất hiện trong kho, để màn hình hiện đúng
+ * thứ sắp xảy ra.
+ *
+ * ⚠ CHƯA CÓ MÃ PHIẾU THÌ TRẢ `null`, KHÔNG BỊA MỘT TIỀN TỐ. Phiếu mới
+ * chưa lưu chưa có `receipt_code`; đoán bừa là hiện ra một mã lô không
+ * bao giờ tồn tại.
  */
-export function missingLotLines(lines: readonly LotCheckLine[]): number[] {
-  return lines.filter((l) => !(l.lotCode ?? "").trim()).map((l) => l.index)
-}
-
-/** Câu cho `title` của nút mờ — nói đúng dòng nào. */
-export function missingLotMessage(thieu: readonly number[]): string | null {
-  if (thieu.length === 0) return null
-  const ds = thieu.join(", ")
-  return `Chưa nhập lô & hạn sử dụng ở dòng ${ds}. Hàng nhập kho phải có lô để còn truy được nguồn và hạn.`
+export function generatedLotCode(
+  receiptCode: string | null | undefined,
+  index: number
+): string | null {
+  const ma = (receiptCode ?? "").trim()
+  if (!ma || index < 1) return null
+  return `${ma}-${String(index).padStart(3, "0")}`
 }
 
 /* ==================================================================

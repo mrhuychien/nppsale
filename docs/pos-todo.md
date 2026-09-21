@@ -32,9 +32,13 @@ giữ ở state client nên đổi số lượng vẫn chạy đúng luật.
 
 **Chỗ:** panel màn 1, dòng ngay dưới `Tính vào công nợ`.
 
-**Thiếu:** công nợ hiện tại của khách chưa được nạp vào màn POS.
+**ĐÃ NỐI (đợt 5).** `loadCustomerDebt` / `loadSupplierDebt` đọc
+`receivables` / `payables` qua `fetchAllForAggregate`.
 
-**Đang hiện:** chữ `chưa xác định`.
+**Còn thiếu:** không có gì — nhưng luật `null` phải giữ: đọc hỏng hoặc bị
+cắt 1.000 dòng thì trả `null`, và màn hiện `chưa xác định`.
+
+**Đang hiện:** số thật; `chưa xác định` khi chưa đọc được.
 
 ⚠ **Cố tình không hiện `0`.** Số 0 ở ô công nợ đọc như "khách này sạch nợ",
 và người đi đòi tiền tin vào nó. Đây đúng là luật §4 của Coder Pack.
@@ -45,18 +49,17 @@ và người đi đòi tiền tin vào nó. Đây đúng là luật §4 của Co
 
 **Chỗ:** bảng hàng màn 1 (spec §4).
 
-**Thiếu:**
-- `Đã đặt N` — số đã đặt của mặt hàng, chưa nạp.
-- `đã xuất N` — số đã xuất của **dòng** này; đây là thứ chặn stepper ở màn
-  sửa đơn (spec §7.1).
-- `giá gần nhất … · N lần mua` — lịch sử giá bán cho đúng khách này.
+**ĐÃ NỐI (đợt 5):**
+- `đã xuất N` — qua `loadInvoiceableLines`, và đó chính là **sàn của
+  stepper** ở màn sửa đơn (§7.1).
+- `giá gần nhất … · N lần mua` — `loadLastPrices`, đọc từ **dòng hóa đơn**
+  đã ghi sổ (không đọc dòng đơn: đơn là thứ đã thoả thuận, hóa đơn là thứ
+  đã thu). Trần 500 dòng gần nhất — là **gợi ý**, không phải thống kê đủ.
 
-**Đang hiện:** phần `Tồn N` có thật và đúng (đọc qua `loadSellRefData`,
-chỉ cộng kho BÁN). Ba số còn lại không vẽ ra chứ không vẽ số 0.
+**Còn thiếu:** `Đã đặt N` (số đã đặt của mặt hàng trên các đơn khác).
 
-**Hệ quả cần biết:** vì `đã xuất` chưa có, **sàn của stepper ở màn sửa đơn
-đang là 0**. Ràng buộc §7.1 đã được cài sẵn trong `QtyStepper` (`min`), chỉ
-chờ số thật cắm vào.
+**Đang hiện:** `Tồn N` và hai số đã nối là số thật; `Đã đặt` không vẽ ra
+chứ không vẽ số 0.
 
 ---
 
@@ -64,15 +67,15 @@ chờ số thật cắm vào.
 
 **Chỗ:** cột `LÔ / HSD` (spec §4) và select lô trong bảng trả/đổi.
 
-**Thiếu:** danh sách lô còn hàng theo từng mặt hàng.
+**ĐÃ NỐI (đợt 5):** `loadLotsByProduct` — lô còn hàng, **chỉ kho BÁN**,
+sắp **hạn gần trước** (lô cần đẩy đi trước nằm trên cùng).
 
-**Đang hiện:** select có đúng một lựa chọn `chưa chọn lô`.
+**Còn thiếu:** không có ở phía BÁN.
 
 ⚠ Không để select rỗng — một select rỗng trông y hệt một select đã chọn xong.
 
-**Liên quan đến đợt 4:** spec §8 đòi *"Trả NCC: select lô chỉ liệt kê lô
-thuộc phiếu nhập gốc"*, và *"lô & HSD bắt buộc khi nhập"*. Cả hai cần dữ
-liệu này.
+⚠ **Phía MUA thì khác hẳn, xem mục 16 và 17:** màn nhập không có ô lô (máy
+chủ tự sinh), màn trả NCC không có ô chọn lô (máy chủ lấy FIFO).
 
 ---
 
@@ -85,7 +88,7 @@ liệu này.
 thế nào" khi lưu.
 
 **Đang hiện:** dải nói được phần suy ra từ chính các dòng đang gõ — CHIỀU
-và SỐ LƯỢNG hàng vào Kho hàng lỗi / ra Kho bán. Hai thứ còn thiếu là tồn
+và SỐ LƯỢNG hàng vào kho nhận / ra Kho bán. Hai thứ còn thiếu là tồn
 TRƯỚC/SAU và công nợ TRƯỚC/SAU; ô nào chưa biết thì hiện `đang tính…`.
 
 ⚠ **Cố tình không vẽ số 0 vào phần chưa biết.** Một dải toàn 0 đọc như
@@ -114,17 +117,27 @@ nút, ghi TODO"*.
 
 **Chỗ:** nút `Lưu tạm` / `Lưu thay đổi` / `Xuất hàng & lập HĐ` màn 1.
 
-**Thiếu:** phần nối xuống `createOrderRecords` / `applyOrderEdit` /
-`post_invoice`. Đợt này dựng **bề mặt** (spec §"Phạm vi": *"dựng bề mặt
-`/pos` desktop, bind vào API và store đã có"*), và phần bind dữ liệu ĐỌC đã
-xong (danh mục hàng, khách, tồn kho, hóa đơn, phiếu trả).
+**ĐÃ NỐI (đợt 5)** — toàn bộ nằm ở `src/lib/pos/save.ts`, và tệp ấy
+KHÔNG viết một dòng nghiệp vụ mới nào. Nó chỉ dịch state của màn POS sang
+đúng tải trọng mà lib/RPC đang chạy đã nhận:
 
-**Đang hiện:** nút có thật, mờ khi chưa đủ điều kiện, và nói rõ lý do mờ
-trong `title`.
+| chứng từ | đi qua |
+|---|---|
+| đơn hàng | `createOrderRecords` / `applyOrderEdit` |
+| hóa đơn | `postInvoice` / `reissueInvoice` |
+| phiếu trả | bảng `returns` + `completeReturn` |
+| phiếu nhập | `saveReceiptLines` + RPC `complete_purchase_invoice` |
+| trả NCC | `saveReturnLines` + RPC `complete_supplier_return` |
+
+**Còn thiếu:** nút `Lưu thay đổi` của màn 1b làm **hai bước** khi vừa lưu
+vừa lập hóa đơn (`applyOrderEdit` rồi `postInvoice`). Bước 2 hỏng thì đơn
+ĐÃ lưu, và màn nói thẳng điều đó thay vì báo "chưa lưu được".
 
 ⚠ **Không** tự gọi đại một RPC cho có. Mọi thao tác đụng tồn kho / công nợ
 / trạng thái đơn phải đi qua đúng RPC `SECURITY DEFINER` đang có, một giao
-dịch, idempotent — nối ẩu ở đây là đúng loại lỗi đắt nhất.
+dịch, idempotent. Có chốt canh ba việc: chỉ `lib/pos/save.ts` được gọi
+`.rpc()`, mọi tên RPC phải có trong migration, và tên tham số phải khớp
+đúng thứ `/purchasing` đang gửi.
 
 ---
 
@@ -141,9 +154,13 @@ thiết lập riêng cho POS chưa có trong đợt này.
 
 **Chỗ:** góc phải sub-header (spec §2).
 
-**Thiếu:** danh sách nhân viên bán hàng và danh sách tuyến chưa nạp vào POS.
+**ĐÃ NỐI một nửa (đợt 5):** `loadSellers` nạp NVBH — và **đúng bộ vai trò
+trigger cho phép** (`sales/manager/owner`, migration 153). Hiện ra một cái
+tên máy chủ sẽ từ chối là bẫy người dùng.
 
-**Đang hiện:** select có ô rỗng `—` và không có lựa chọn nào khác.
+**Còn thiếu:** danh sách **tuyến**.
+
+**Đang hiện:** select NVBH có tên thật; select tuyến chỉ có ô rỗng `—`.
 
 ⚠ Select **phải** có ô rỗng rõ ràng, nếu không người dùng không có cách
 nào bỏ chọn thứ họ lỡ chọn.
@@ -155,12 +172,15 @@ nào bỏ chọn thứ họ lỡ chọn.
 
 **Chỗ:** màn 3, dòng `Giá gốc hàng mua` trên panel và ô tìm hàng trả.
 
-**Thiếu:** modal chọn hóa đơn gốc đã dựng và đọc được danh sách hóa đơn
-thật, nhưng chọn xong thì chưa nạp dòng hàng của tờ ấy vào bảng hàng trả,
-và chưa lấy được giá khách đã mua.
+**ĐÃ NỐI (đợt 5):** `loadInvoiceLinesForReturn` nạp dòng của tờ gốc vào
+bảng hàng trả, kèm giá khách đã mua. **Số lượng nạp về 0**, không nạp bằng
+số đã mua — điền sẵn cả tờ là một cú Enter nhầm trả sạch hóa đơn.
 
-**Đang hiện:** `Giá gốc hàng mua` để chữ `chưa xác định`. Ô tìm hàng trả
-đang tìm trong toàn danh mục chứ chưa giới hạn trong hóa đơn gốc.
+⚠ **Bỏ dòng `is_exchange` của tờ gốc.** Dòng ấy là hàng đã GIAO BÙ cho
+khách, không phải hàng khách mua — trả lại nó là một việc khác hẳn.
+
+**Còn thiếu:** ô tìm hàng trả vẫn tìm trong toàn danh mục chứ chưa giới hạn
+trong hóa đơn gốc (người dùng thêm tay được một món ngoài tờ).
 
 ⚠ Đây là **ràng buộc nghiệp vụ**, không phải thẩm mỹ: trả một món không có
 trên hóa đơn gốc là trả hàng không bán. Phần nghiệp vụ đang chạy đã có chốt
@@ -269,22 +289,28 @@ khoá một phiếu sửa được và không ai gỡ nổi.
 
 ---
 
-## 14. Phiếu trả NCC chưa nối phiếu nhập gốc
+## 14. ⚠ ĐƯỜNG VỀ PHIẾU NHẬP GỐC KHÔNG LƯU XUỐNG ĐƯỢC
 
-**Chỗ:** màn 11/12 — cột `LÔ / HSD` và cột `ĐÃ NHẬP`.
+**Chỗ:** màn 11/12 — ô `Phiếu nhập gốc`, cột `Lô của phiếu gốc`, cột `ĐÃ NHẬP`.
 
-**Thiếu:** phiếu nhập gốc, để lấy (a) danh sách **lô thuộc phiếu ấy** và
-(b) **số đã nhập còn lại** của từng dòng.
+**ĐÃ NỐI một nửa (đợt 5):** chọn một phiếu nhập đã hoàn thành của NCC ấy
+(`loadReceiptsOfSupplier`, 50 phiếu gần nhất) thì nạp sẵn dòng hàng, giá
+nhập, **số đã nhập** và **lô mà phiếu ấy đã sinh ra**
+(`loadReceiptLinesForReturn`, nhận lô qua `batch_code LIKE '<mã phiếu>-%'`).
 
-**Đang hiện:** select lô ghi `chưa nối phiếu nhập gốc`; cột `ĐÃ NHẬP` để
-dấu `—`.
+**Cái KHÔNG làm được:** `supplier_returns` **không có cột trỏ về phiếu
+nhập**. Nên đường nối ấy chỉ sống trong phiên đang lập; mở lại phiếu đã lưu
+là mất cả lô lẫn cột `ĐÃ NHẬP`.
 
-⚠ **Cố tình không đổ toàn kho vào select lô.** Spec §8 mục 4 chốt riêng
-điều này: trả một lô không thuộc phiếu gốc là trả cho NCC món họ không bán
-cho mình, và `cancel_supplier_return` sẽ vướng `LO_DA_DONG` về sau.
+⚠ **Mở lại thì `ordered` về `null`, KHÔNG về 0.** `supplierReturnMax(0)` là
+0 — stepper khoá cứng ở 0 và người dùng không sửa nổi phiếu họ vừa lưu.
 
-⚠ **Và cột `ĐÃ NHẬP` để `—` chứ không để 0.** Số 0 đọc như "đã nhận hết
-rồi, không trả được gì" — chặn nhầm một việc hợp lệ.
+⚠ **Không có chốt chặn phía máy chủ cho trần này.** `complete_supplier_return`
+không kiểm "trả quá số đã nhập"; nó chỉ báo `INSUFFICIENT_STOCK` khi kho
+không đủ. Trần ở màn hình là **tiện ích**, không phải hàng rào.
+
+**Muốn sống qua lần mở lại** thì cần thêm cột
+`supplier_returns.purchase_invoice_id` — đổi schema, nằm ngoài đợt này.
 
 ---
 
@@ -292,7 +318,99 @@ rồi, không trả được gì" — chặn nhầm một việc hợp lệ.
 
 **Chỗ:** card đối tác của màn 9–12, và dropdown `F4`.
 
-**Thiếu:** `loadSellRefData` nạp khách hàng, không nạp NCC.
+**ĐÃ NỐI (đợt 5):** `loadSuppliers` — nạp RIÊNG, không nhét vào
+`loadSellRefData`. Hàm ấy phục vụ `/sell` trên điện thoại; NVBH ngoài quầy
+không cần danh mục NCC, và mỗi cột thêm vào đó là thêm dữ liệu tải về đúng
+những máy có đường truyền kém nhất.
 
-**Đang hiện:** dropdown rỗng kèm câu *"Chưa nạp được danh sách nhà cung cấp
-vào màn POS"*, và dòng `Nợ NCC sau phiếu` để `chưa xác định`.
+**Đang hiện:** dropdown `F4` có NCC thật; `Nợ NCC sau phiếu` có số thật, và
+`chưa xác định` khi chưa đọc được.
+
+---
+
+## 16. ⚠ MÀN NHẬP TỪNG BẮT GÕ MÃ LÔ, VÀ MÃ ẤY BỊ VỨT ĐI
+
+**Chỗ:** màn 9/10 — cột `LÔ / HSD`.
+
+**Bản đợt 4 ghi:** một ô gõ tay `L2609 · 12/26`, thiếu thì viền đỏ và nút
+`Hoàn thành & nhập kho` mờ.
+
+**Cơ chế thật:** giá trị ấy **không đi tới đâu cả.**
+
+- `purchase_invoice_lines` không có cột lô nào. `linePayloadOf`
+  (`src/lib/purchasing/save-receipt.ts:34`) ghi đúng 10 cột, không cột nào
+  nhận mã lô — kể cả khi tải trọng có mang.
+- `complete_purchase_invoice` (migration 145, dòng 141) tự đặt tên:
+  `batch_code := <mã phiếu> || '-' || lpad(seq, 3, '0')`.
+- Hạn dùng cũng không do người nhập gõ: cùng hàm ấy lấy
+  `products.shelf_life_days` (dòng 107) cộng vào ngày hôm nay, và mốc
+  `2099-12-31` nghĩa là "không hạn".
+
+**Đã làm gì (đợt 5):** bỏ ô gõ. Cột nay hiện **mã lô THẬT sẽ được đặt**
+(`generatedLotCode`), và chân bảng nói rõ mã lô theo mã phiếu, hạn dùng
+theo hồ sơ mặt hàng. Bỏ luôn điều kiện "thiếu lô thì mờ nút" — nó đòi một
+việc vô ích. Có chốt cấm ô ấy quay lại.
+
+⚠ **Đây là lỗi của chính đợt 4, không phải của bản thiết kế.** Spec §8 mục
+1 viết "lô & HSD bắt buộc khi nhập" — đúng, và máy chủ ĐANG bắt buộc thật.
+Cái sai là đọc nó thành "bắt người dùng gõ".
+
+**Muốn người nhập tự đặt mã lô** thì cần thêm cột vào
+`purchase_invoice_lines` và sửa `complete_purchase_invoice` — đổi schema và
+sửa một RPC đang chạy ngoài thị trường, nằm ngoài đợt này.
+
+---
+
+## 17. ⚠ TRẢ NCC KHÔNG CHỌN ĐƯỢC LÔ — máy chủ lấy FIFO
+
+**Chỗ:** màn 11/12 — cột `Lô của phiếu gốc`.
+
+**Bản thiết kế ghi (spec §8 mục 4):** *"select lô CHỈ liệt kê lô thuộc
+phiếu nhập gốc, không liệt kê toàn kho"*.
+
+**Cơ chế thật:** không có select nào là thật được.
+
+- `supplier_return_lines` (migration 068 dòng 51-65, 146 dòng 41) **không
+  có cột lô nào**.
+- `complete_supplier_return` (migration 146, dòng 155-165) tự chọn:
+  `ORDER BY expires_at NULLS LAST, created_at, id` trong `warehouse_zone`
+  của phiếu — **FIFO theo hạn**.
+
+Một ô chọn lô ở đây là một cái cần gạt không nối vào đâu: người dùng chọn
+`L2609`, máy chủ lấy lô cũ nhất, và không câu nào báo cho họ biết. Đó là
+kiểu nói dối tệ nhất — đúng tại chỗ người dùng cẩn thận nhất.
+
+**Đã làm gì (đợt 5):** lô của phiếu gốc hiện dưới dạng **chữ đọc để đối
+chiếu**, và chân bảng nói thẳng *"Lô xuất đi do hệ thống chọn: hạn cũ
+trước, trong <kho>"*. Có chốt cấm ô chọn quay lại.
+
+⚠ **Và vì thế `Kho xuất` thành ô BẮT BUỘC trên sub-header.** FIFO chỉ quét
+trong đúng vùng kho ghi trên phiếu; mặc định cứng vào `date` là trả hàng từ
+kho bán sẽ ăn `INSUFFICIENT_STOCK` trong khi kho bán đang đầy đúng món ấy.
+
+---
+
+## 18. Hình thức hoàn tiền của phiếu trả NCC chưa đi xuống sổ
+
+**Chỗ:** màn 11/12 — ba nút `Trừ công nợ / Tiền mặt / Chuyển khoản`.
+
+**Cơ chế thật:** `complete_supplier_return` **luôn** ghi một dòng
+`payables` mang số ÂM — tức luôn là "trừ công nợ". Tiền mặt và chuyển khoản
+là một **phiếu chi riêng**, và màn POS chưa lập phiếu chi.
+
+**Đang hiện:** ba nút đổi câu chữ trên màn, và khi chọn hai hình thức kia
+thì có một dòng chữ cam nói thẳng rằng phiếu vẫn ghi giảm công nợ, phải lập
+phiếu chi riêng.
+
+⚠ Cùng lý do với mục 6: không tự gọi đại một đường ghi sổ cho khớp nhãn.
+
+---
+
+## 19. Ô `HĐ điều chỉnh NCC` chưa có cột lưu
+
+**Chỗ:** màn 11/12 — ô cuối panel (spec §8 mục 3).
+
+**Thiếu:** `supplier_returns` không có cột nào cho số hóa đơn điều chỉnh.
+
+**Đang hiện:** ô gõ được, và ngay dưới có câu *"Chưa có cột lưu số này; ghi
+vào đây chỉ để in trên phiếu"*.

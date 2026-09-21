@@ -120,13 +120,19 @@ export function debtAfterReturn(
  * Câu mô tả giao dịch kho, hiện trong box cảnh báo amber cuối panel.
  *
  * ⚠ NÓI ĐÚNG HAI CHIỀU, VÀ NÓI RÕ LÀ MỘT GIAO DỊCH. Hàng trả ĐI VÀO
- * kho hàng lỗi, hàng đổi ĐI RA khỏi kho bán — hai chiều ngược nhau
- * trong cùng một lần bấm. Người lập phiếu phải thấy cả hai trước khi
- * bấm, vì sau đó là bút toán kho thật.
+ * kho nhận, hàng đổi ĐI RA khỏi kho bán — hai chiều ngược nhau trong
+ * cùng một lần bấm. Người lập phiếu phải thấy cả hai trước khi bấm, vì
+ * sau đó là bút toán kho thật.
+ *
+ * ⚠ TÊN KHO NHẬN DO NƠI GỌI TRUYỀN VÀO, KHÔNG VIẾT CỨNG "Kho hàng lỗi".
+ * `complete_return` chỉ nhận HAI vùng — `sale` và `date` (xem
+ * `ReturnZone`). Không có vùng "hàng lỗi" nào cả; gọi tên một vùng
+ * không tồn tại là người dùng đi tìm nó trong báo cáo kho và không
+ * thấy, rồi tưởng hàng trả đã bốc hơi.
  */
-export function warehouseSentence(t: ReturnTotals): string | null {
+export function warehouseSentence(t: ReturnTotals, zoneLabel = "kho nhận hàng trả"): string | null {
   const ve: string[] = []
-  if (t.returnQty > 0) ve.push(`nhập ${t.returnQty} sản phẩm vào Kho hàng lỗi`)
+  if (t.returnQty > 0) ve.push(`nhập ${t.returnQty} sản phẩm vào ${zoneLabel}`)
   if (t.exchangeQty > 0) ve.push(`xuất ${t.exchangeQty} sản phẩm hàng đổi khỏi Kho bán`)
   // ⚠ Phiếu rỗng thì không có câu nào — đừng hứa một giao dịch không xảy ra.
   if (ve.length === 0) return null

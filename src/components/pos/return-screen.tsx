@@ -18,10 +18,18 @@
  * đúng con số bản thiết kế — đừng tính lại ở đây.
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { errorMessage } from "@/lib/errors"
+import { useAuth } from "@/hooks/use-auth"
+import { useToast } from "@/hooks/use-toast"
+import { loadCustomerDebt, loadInvoiceLinesForReturn, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
+import { savePosReturn } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { returnTotals, debtAfterReturn, warehouseSentence } from "@/lib/pos/return-totals"
+import { RETURN_ZONES, type ReturnZone } from "@/lib/returns/complete-return"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
@@ -56,7 +64,8 @@ const LY_DO = [
 export interface ReturnScreenProps {
   /** `lap` = phiếu mới / còn nháp. `sua` = phiếu ĐÃ nhập kho, mở ra sửa. */
   mode: "lap" | "sua"
-  slipCode?: string | null
+  /** `null` = phiếu mới. */
+  returnId?: string | null
   badge?: PosBadge | null
 }
 
@@ -67,8 +76,11 @@ const GRID_DOI = "24px 84px minmax(0,1fr) 96px 104px 120px 24px"
 let dem = 0
 const newKey = () => `r${++dem}`
 
-export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
+export function ReturnScreen({ mode, returnId = null, badge }: ReturnScreenProps) {
   const { products, customers, stockByProduct, loading, warnings } = usePosRefData()
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const router = useRouter()
 
   const [traLines, setTraLines] = useState<PosLine[]>([])
   const [doiLines, setDoiLines] = useState<PosLine[]>([])
@@ -78,10 +90,19 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
   const [lyDo, setLyDo] = useState("damaged")
   const [ghiChu, setGhiChu] = useState("")
   const [thoiDiem, setThoiDiem] = useState("")
+  /* ⚠ MẶC ĐỊNH KHO CẬN DATE cho hàng trả về: hàng khách trả thường
+     không bán lại ngay được. Người lập phiếu đổi được, nhưng mặc định
+     phải là hướng an toàn. */
+  const [zone, setZone] = useState<ReturnZone>("date")
   const [moTimTra, setMoTimTra] = useState(false)
   const [moTimDoi, setMoTimDoi] = useState(false)
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [moChonHD, setMoChonHD] = useState(false)
+  const [slipCode, setSlipCode] = useState<string | null>(null)
+  const [invoiceId, setInvoiceId] = useState<string | null>(null)
+  const [invoiceCode, setInvoiceCode] = useState<string | null>(null)
+  const [dangLuu, setDangLuu] = useState(false)
+  const [loiNap, setLoiNap] = useState<string | null>(null)
 
   const tatCaDong = useMemo(
     () => [
@@ -93,7 +114,10 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
 
   const t = useMemo(() => returnTotals({ lines: tatCaDong, fee: phi }), [tatCaDong, phi])
   const noConLai = debtAfterReturn(khach?.debt, t.dueToCustomer)
-  const cauKho = warehouseSentence(t)
+  /* ⚠ TÊN KHO NHẬN LẤY TỪ `RETURN_ZONES` — chỉ có `sale` và `date`.
+     Xem `warehouseSentence`. */
+  const tenKhoNhan = RETURN_ZONES.find((z) => z.value === zone)?.label ?? "kho nhận"
+  const cauKho = warehouseSentence(t, tenKhoNhan)
 
   const themDong = useCallback(
     (productId: string, doi: boolean) => {
@@ -116,6 +140,160 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
       else setTraLines((c) => [...c, moi])
     },
     [products, stockByProduct]
+  )
+
+  /** Nạp phiếu trả đã lưu. */
+  useEffect(() => {
+    if (!returnId) return
+    let huy = false
+    ;(async () => {
+      try {
+        const sb = createClient()
+        const { data, error } = await sb
+          .from("returns")
+          .select("id, return_code, customer_id, invoice_id, reason, notes, status, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
+          .eq("id", returnId)
+          .maybeSingle()
+        if (huy) return
+        if (error) { setLoiNap(errorMessage(error)); return }
+        const r = (data as unknown) as {
+          return_code?: string | null; customer_id: string; invoice_id: string | null
+          reason: string | null; notes: string | null
+          customer?: { store_name?: string | null; phone?: string | null } | null
+          lines?: Array<{
+            id: string; product_id: string; unit_name: string; quantity: number
+            unit_price: number; is_exchange: boolean; note: string | null
+            product?: { name?: string | null; sku?: string | null } | null
+          }> | null
+        } | null
+        if (!r) { setLoiNap("Không tìm thấy phiếu trả này."); return }
+        setSlipCode(r.return_code ?? null)
+        setInvoiceId(r.invoice_id)
+        setLyDo(r.reason || "damaged")
+        setGhiChu(r.notes || "")
+        setKhach({ id: r.customer_id, name: r.customer?.store_name || "Khách lẻ", meta: r.customer?.phone ?? "" })
+        const ds = (r.lines ?? []).map((x) => ({
+          key: newKey(),
+          productId: x.product_id,
+          sku: x.product?.sku ?? "",
+          name: x.product?.name ?? "Sản phẩm đã xoá",
+          unit: x.unit_name,
+          units: [{ unit_name: x.unit_name, conversion: 1 }],
+          qty: Number(x.quantity) || 0,
+          price: Number(x.unit_price) || 0,
+          discount: { value: 0, unit: "vnd" as const },
+          isExchange: x.is_exchange === true,
+          note: x.note ?? undefined,
+        }))
+        setTraLines(ds.filter((x) => !x.isExchange))
+        setDoiLines(ds.filter((x) => x.isExchange))
+      } catch (e) {
+        if (!huy) setLoiNap(errorMessage(e))
+      }
+    })()
+    return () => { huy = true }
+  }, [returnId])
+
+  /** Công nợ khách — `null` là chưa đọc được, panel nói "chưa xác định". */
+  useEffect(() => {
+    const id = khach?.id
+    if (!id) return
+    let huy = false
+    ;(async () => {
+      const no = await loadCustomerDebt(createClient(), id).catch(() => null)
+      if (!huy) setKhach((c) => (c && c.id === id ? { ...c, debt: no } : c))
+    })()
+    return () => { huy = true }
+  }, [khach?.id])
+
+  /** Lô còn hàng cho các dòng ĐỔI (lấy ra khỏi kho bán). */
+  useEffect(() => {
+    const ids = doiLines.map((l) => l.productId).filter(Boolean)
+    if (ids.length === 0) return
+    let huy = false
+    ;(async () => {
+      const lo = await loadLotsByProduct(createClient(), ids).catch(() => ({}))
+      if (!huy) setDoiLines((cu) => attachLineExtras(cu, { lotsByProduct: lo }))
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doiLines.length])
+
+  /**
+   * NẠP DÒNG TỪ HÓA ĐƠN GỐC.
+   *
+   * ⚠ CHỈ TRẢ ĐƯỢC MÓN CÓ TRÊN TỜ GỐC. `enforce_return_line_cap` chặn
+   * thật ở máy chủ; nạp sẵn ở đây là chặn sớm và đỡ cho người nhập cả
+   * việc gõ lại tên hàng với giá đã bán.
+   */
+  const napTuHoaDon = useCallback(
+    async (id: string) => {
+      try {
+        const sb = createClient()
+        const [ds, hd] = await Promise.all([
+          loadInvoiceLinesForReturn(sb, id),
+          sb.from("sales_invoices").select("invoice_code").eq("id", id).maybeSingle(),
+        ])
+        setInvoiceId(id)
+        setInvoiceCode(((hd.data as unknown) as { invoice_code?: string } | null)?.invoice_code ?? null)
+        setTraLines(
+          ds.map((x) => ({
+            key: newKey(),
+            productId: x.productId,
+            sku: x.sku,
+            name: x.name,
+            unit: x.unitName,
+            units: [{ unit_name: x.unitName, conversion: 1 }],
+            /* ⚠ SỐ LƯỢNG VỀ 0, KHÔNG BẰNG SỐ ĐÃ BÁN. Nạp sẵn cả số là
+               một phiếu trả TOÀN BỘ đơn hàng chỉ sau một cú bấm — và
+               người dùng phải sửa từng dòng xuống. Hướng an toàn là
+               ngược lại. */
+            qty: 0,
+            price: x.unitPrice,
+            discount: { value: 0, unit: "vnd" as const },
+            isExchange: false,
+          }))
+        )
+        toast({ title: `Đã nạp ${ds.length} dòng từ hóa đơn gốc — nhập số lượng trả cho từng dòng` })
+      } catch (e) {
+        toast({ title: "Không nạp được hóa đơn gốc", description: errorMessage(e), variant: "destructive" })
+      }
+    },
+    [toast]
+  )
+
+  /** Lưu phiếu trả — ghi kho đi qua `complete_return`, một giao dịch. */
+  const luuPhieu = useCallback(
+    async (complete: boolean) => {
+      if (!user?.org_id || !user.id) return
+      if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
+      const dong = [...traLines, ...doiLines].filter((l) => l.productId && l.qty > 0)
+      if (dong.length === 0) { toast({ title: "Phiếu chưa có dòng hàng nào", variant: "destructive" }); return }
+      setDangLuu(true)
+      try {
+        const r = await savePosReturn(createClient(), {
+          returnId,
+          orgId: user.org_id,
+          userId: user.id,
+          customerId: khach.id,
+          invoiceId,
+          reason: lyDo,
+          notes: ghiChu,
+          lines: dong,
+          complete,
+          zone,
+        })
+        toast({
+          title: complete ? `Đã ghi nhận — hàng vào ${tenKhoNhan}` : "Đã lưu phiếu nháp",
+        })
+        if (!returnId) router.replace(`/pos/tra-hang/${r.returnId}`)
+      } catch (e) {
+        toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
+      } finally {
+        setDangLuu(false)
+      }
+    },
+    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, zone, tenKhoNhan, router, toast]
   )
 
   /**
@@ -185,7 +363,7 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
       )
     }
     return [
-      { label: "Kho hàng lỗi", body: oKho(traLines, 1, "sp") },
+      { label: tenKhoNhan, body: oKho(traLines, 1, "sp") },
       { label: "Kho bán", body: oKho(doiLines, -1, "sp") },
       {
         label: "Công nợ khách",
@@ -197,7 +375,7 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
           ),
       },
     ]
-  }, [traLines, doiLines, khach, noConLai])
+  }, [traLines, doiLines, khach, noConLai, tenKhoNhan])
 
   const bang = (
     lines: PosLine[],
@@ -249,7 +427,7 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
                   ) : (
                     `Tồn ${l.stock.toLocaleString("vi-VN")}`
                   )}
-                  {doi ? " · xuất từ Kho bán" : " · nhập vào Kho hàng lỗi"}
+                  {doi ? " · xuất từ Kho bán" : ` · nhập vào ${tenKhoNhan}`}
                 </div>
               </div>
               {!doi && (
@@ -322,15 +500,13 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
         code={slipCode}
         badge={badge ?? (mode === "lap" ? { label: "NHÁP", tone: "tam" } : null)}
         subtitle={
-          mode === "lap" ? (
-            <button
-              type="button"
-              onClick={() => setMoChonHD(true)}
-              className="font-semibold text-[#2563eb] underline"
-            >
-              Chọn hóa đơn gốc
-            </button>
-          ) : undefined
+          <button
+            type="button"
+            onClick={() => setMoChonHD(true)}
+            className="font-semibold text-[#2563eb] underline"
+          >
+            {invoiceId ? `Hóa đơn gốc ${invoiceCode ?? "đã gắn"} — đổi` : "Chọn hóa đơn gốc"}
+          </button>
         }
         right={<SubHeaderDate value={thoiDiem} onChange={setThoiDiem} />}
       />
@@ -340,6 +516,7 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
+          {loiNap && <DocBanner tone="warn">Không nạp được phiếu — {loiNap}</DocBanner>}
 
           {/*
             ⚠ BANNER MÔ TẢ CƠ CHẾ ĐANG CÓ (spec §7.2). Phiếu đã nhập kho
@@ -481,6 +658,26 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
               ))}
             </div>
 
+            {/*
+              ⚠ NGƯỜI LẬP PHIẾU PHẢI CHỌN KHO NHẬN. `complete_return`
+                nhận đúng hai vùng (`ReturnZone`); mặc định là kho cận
+                date vì hàng khách trả thường không bán lại ngay được,
+                nhưng đó là mặc định chứ không phải quyết định thay họ.
+            */}
+            <label htmlFor="pos-kho" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+              Kho nhận hàng trả
+            </label>
+            <select
+              id="pos-kho"
+              value={zone}
+              onChange={(e) => setZone(e.target.value as ReturnZone)}
+              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] text-[#0f172a]"
+            >
+              {RETURN_ZONES.map((z) => (
+                <option key={z.value} value={z.value}>{z.label} — {z.hint}</option>
+              ))}
+            </select>
+
             <label htmlFor="pos-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
               Lý do trả hàng
             </label>
@@ -533,18 +730,27 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
           </div>
 
           <PanelActions>
-            <PanelButton width={54}>In</PanelButton>
-            <PanelButton width={96}>{mode === "sua" ? "Huỷ" : "Lưu nháp"}</PanelButton>
+            <PanelButton width={54} onClick={() => window.print()}>In</PanelButton>
+            <PanelButton
+              width={96}
+              disabled={dangLuu}
+              onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
+            >
+              {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
+            </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={t.returnLineCount === 0 && t.exchangeLineCount === 0}
+              disabled={dangLuu || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
+              onClick={() => luuPhieu(true)}
               title={
                 t.returnLineCount === 0 && t.exchangeLineCount === 0
                   ? "Chưa có dòng hàng nào trong phiếu"
-                  : undefined
+                  : !khach
+                    ? "Chưa chọn khách hàng"
+                    : `Nhập hàng trả vào ${tenKhoNhan} và giảm công nợ — một giao dịch`
               }
             >
-              Ghi nhận &amp; nhập kho
+              {dangLuu ? "Đang ghi…" : "Ghi nhận & nhập kho"}
             </PanelButton>
           </PanelActions>
 
@@ -576,7 +782,7 @@ export function ReturnScreen({ mode, slipCode, badge }: ReturnScreenProps) {
         open={moChonHD}
         onClose={() => setMoChonHD(false)}
         customerId={khach?.id ?? null}
-        onPick={() => setMoChonHD(false)}
+        onPick={(id) => { void napTuHoaDon(id); setMoChonHD(false) }}
       />
     </>
   )

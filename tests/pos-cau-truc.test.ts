@@ -214,9 +214,16 @@ describe("sửa đơn dùng đúng component của màn lập đơn", () => {
     const s = code(read("src/components/pos/order-screen.tsx"))
     const i = s.indexOf('variant="primary"')
     expect(i, "không thấy nút chính").toBeGreaterThan(-1)
+    /* ⚠ QUÉT TỚI HẾT THẺ, ĐỪNG CẮT CỨNG SỐ KÝ TỰ. Bản đầu cắt 400 ký
+       tự và trượt khỏi nhãn ngay khi nút có thêm một `title` dài — chốt
+       đỏ vì độ dài chú thích, không vì luật nào sai. */
+    const het = s.indexOf("</PanelButton>", i)
+    expect(het, "không thấy thẻ đóng của nút chính").toBeGreaterThan(i)
+    const nut = s.slice(i, het)
+    expect(nut).toContain("Xuất hàng")
     /* Nút chính nằm NGOÀI nhánh `mode === "sua" ? … : …`, nên chỉ có
        MỘT nhãn cho nó. */
-    expect(s.slice(i, i + 400)).toContain("Xuất hàng")
+    expect(s.slice(0, i)).not.toContain("Xuất hàng")
   })
 })
 
@@ -320,16 +327,56 @@ describe("phím tắt không bắt toàn cục", () => {
  * diff của đợt này. Đây là ranh giới chủ nhà vẽ rõ nhất trong cả spec.
  */
 describe("không đụng vào nghiệp vụ", () => {
-  it("/pos không gọi rpc nào", () => {
-    const pham: string[] = []
-    for (const f of FILES) {
-      const s = code(readFileSync(f, "utf-8"))
-      if (/\.rpc\(/.test(s)) pham.push(f.replace(ROOT, ""))
+  /**
+   * ⚠ COMPONENT KHÔNG ĐƯỢC GỌI RPC. Chỉ `src/lib/pos/save.ts` được gọi,
+   * và nó chỉ gọi RPC ĐANG CÓ.
+   *
+   * Lý do: một `.rpc()` nằm trong màn là một phép ghi sổ không ai chạy
+   * chốt lên được, và lần sau đổi tham số thì phải đi dò từng màn. Đây
+   * đúng là cái đang xảy ra ở `/purchasing` và `/purchase-returns` —
+   * hai màn ấy gọi thẳng trong page, và vì thế mới cần chốt đối chiếu
+   * bên dưới.
+   */
+  it("chỉ lib save mới gọi rpc, component thì không", () => {
+    const pham = FILES.filter(
+      (f) => /\.rpc\(/.test(code(readFileSync(f, "utf-8"))) && !f.endsWith("/lib/pos/save.ts")
+    )
+    expect(pham.map((f) => f.replace(ROOT, ""))).toEqual([])
+  })
+
+  /**
+   * ⚠ KHÔNG RPC MỚI. Spec §"Không đụng vào" chốt điều này, và cách kiểm
+   * là: mọi tên RPC `/pos` gọi đều PHẢI xuất hiện ở một migration.
+   */
+  it("mọi RPC /pos gọi đều đã có trong migration", () => {
+    const save = readFileSync(resolve(ROOT, "src/lib/pos/save.ts"), "utf-8")
+    const ten = Array.from(save.matchAll(/\.rpc\(\s*"([a-z_]+)"/g)).map((m) => m[1])
+    expect(ten.length, "không thấy lời gọi RPC nào — chốt đang soi chỗ trống").toBeGreaterThan(0)
+    const dir = resolve(ROOT, "supabase/migrations")
+    const all = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => readFileSync(resolve(dir, f), "utf-8"))
+      .join("\n")
+    const thieu = ten.filter((t) => !all.includes(`FUNCTION public.${t}(`) && !all.includes(`FUNCTION ${t}(`))
+    expect(thieu, "gọi một RPC không migration nào dựng").toEqual([])
+  })
+
+  /**
+   * ⚠ HAI CHỖ GỌI CÙNG MỘT RPC MUA HÀNG. `/purchasing` và
+   * `/purchase-returns` gọi thẳng trong page; `/pos` gọi qua lib. Hai
+   * chỗ là hai chỗ trôi xa nhau được, nên đối chiếu TÊN THAM SỐ — đổi
+   * tham số ở RPC mà chỉ sửa một bên là bên kia gãy trong im lặng.
+   */
+  it("tên tham số RPC mua hàng khớp với màn đang chạy", () => {
+    const save = readFileSync(resolve(ROOT, "src/lib/pos/save.ts"), "utf-8")
+    for (const [rpc, param, mau] of [
+      ["complete_purchase_invoice", "p_invoice_id", "src/app/(dashboard)/purchasing/receipts/new/page.tsx"],
+      ["complete_supplier_return", "p_return_id", "src/app/(dashboard)/purchase-returns/new/page.tsx"],
+    ] as const) {
+      expect(save, `${rpc} trong lib POS`).toContain(`"${rpc}", { ${param}:`)
+      const cu = readFileSync(resolve(ROOT, mau), "utf-8")
+      expect(cu, `${rpc} ở màn đang chạy`).toContain(param)
     }
-    expect(
-      pham,
-      "đợt này chỉ dựng bề mặt — mọi thao tác ghi sổ phải đi qua đúng RPC đang có, và việc nối đó chưa thuộc đợt này"
-    ).toEqual([])
   })
 
   /** ⚠ Màu và chữ của POS phải nằm trong `.pos-scope`, không ở `:root`. */

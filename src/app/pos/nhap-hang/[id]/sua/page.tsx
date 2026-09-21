@@ -17,5 +17,5 @@ import { PurchaseScreen } from "@/components/pos/purchase-screen"
 
 export default function PosPurchaseEditPage() {
   const { id } = useParams<{ id: string }>()
-  return <PurchaseScreen mode="sua" slipCode={id} />
+  return <PurchaseScreen mode="sua" receiptId={id} />
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import {
-  missingLotLines, missingLotMessage, supplierReturnMax,
+  generatedLotCode, supplierReturnMax,
   purchaseCancelLock, supplierReturnCancelLock,
   purchaseTotals, supplierReturnTotals, lotUnitCost,
 } from "../src/lib/pos/purchase"
@@ -21,36 +21,77 @@ const code = (s: string) =>
 const vnd = (value: number) => ({ value, unit: "vnd" as const })
 const pct = (value: number) => ({ value, unit: "pct" as const })
 
-describe("§8.1 — lô & HSD bắt buộc khi nhập", () => {
-  /** ⚠ Trả về SỐ THỨ TỰ DÒNG; spec chốt "tooltip nói rõ dòng nào thiếu". */
-  it("chỉ đúng dòng nào thiếu lô", () => {
-    expect(
-      missingLotLines([
-        { index: 1, lotCode: "L2609" },
-        { index: 2, lotCode: "" },
-        { index: 3, lotCode: null },
-        { index: 4, lotCode: "L2610" },
-      ])
-    ).toEqual([2, 3])
+/**
+ * §8.1 — LÔ & HSD KHI NHẬP.
+ *
+ * ⚠ BỘ CHỐT NÀY ĐÃ TỪNG CANH SAI HẲN MỘT LUẬT KHÔNG TỒN TẠI. Bản đầu
+ * đọc spec §8 mục 1 ("lô & HSD bắt buộc") thành một Ô GÕ TAY, rồi chốt
+ * rất chặt rằng nút nhập kho phải mờ khi ô ấy trống. Hệ thật không có
+ * chỗ nào nhận giá trị ấy:
+ *
+ *   · `purchase_invoice_lines` không có cột lô — `linePayloadOf`
+ *     (`src/lib/purchasing/save-receipt.ts:34`) ghi 10 cột, không cột
+ *     nào là mã lô.
+ *   · `complete_purchase_invoice` (migration 145, dòng 141) tự đặt
+ *     `batch_code := <mã phiếu>-<seq>`, và lấy hạn từ
+ *     `products.shelf_life_days` (dòng 107).
+ *
+ * Nên chốt cũ bảo vệ một lời hứa sai: người dùng gõ mã lô, phần mềm
+ * vứt đi, rồi ba tháng sau họ tra mã ấy trong kho và không thấy. Chốt
+ * mới canh đúng chuyện đang xảy ra thật.
+ */
+describe("§8.1 — mã lô do máy chủ sinh, màn nhập chỉ hiện ra", () => {
+  /** ⚠ ĐÚNG KHUÔN `complete_purchase_invoice`: `lpad(seq, 3, '0')`. */
+  it("ghép đúng mã lô máy chủ sẽ đặt", () => {
+    expect(generatedLotCode("PN-260921-0007", 1)).toBe("PN-260921-0007-001")
+    expect(generatedLotCode("PN-260921-0007", 12)).toBe("PN-260921-0007-012")
+    expect(generatedLotCode("PN-260921-0007", 345)).toBe("PN-260921-0007-345")
   })
 
   /**
-   * ⚠ CHUỖI TOÀN KHOẢNG TRẮNG CŨNG LÀ THIẾU. Một ô lô chứa dấu cách đi
-   * thẳng vào `batch_code` và không ai tra ra lô ấy về sau.
+   * ⚠ CHƯA CÓ MÃ PHIẾU THÌ KHÔNG BỊA. Phiếu mới chưa lưu chưa có
+   * `receipt_code`; đoán bừa là hiện ra một mã lô không bao giờ tồn
+   * tại, và người dùng chép nó vào sổ tay.
    */
-  it("khoảng trắng không tính là đã nhập lô", () => {
-    expect(missingLotLines([{ index: 1, lotCode: "   " }])).toEqual([1])
+  it("chưa có mã phiếu thì trả null", () => {
+    expect(generatedLotCode(null, 1)).toBeNull()
+    expect(generatedLotCode("", 1)).toBeNull()
+    expect(generatedLotCode("   ", 1)).toBeNull()
+    expect(generatedLotCode(undefined, 1)).toBeNull()
   })
 
-  it("đủ lô thì không có câu nhắc nào", () => {
-    expect(missingLotLines([{ index: 1, lotCode: "L1" }])).toEqual([])
-    expect(missingLotMessage([])).toBeNull()
+  it("số thứ tự không hợp lệ thì trả null", () => {
+    expect(generatedLotCode("PN-1", 0)).toBeNull()
   })
 
-  /** ⚠ Nút mờ PHẢI nói dòng nào — "có dòng thiếu lô" là bắt người ta dò cả bảng. */
-  it("câu nhắc gọi tên đúng dòng", () => {
-    const m = missingLotMessage([2, 5]) ?? ""
-    expect(m).toContain("dòng 2, 5")
+  /**
+   * ⚠ VÀ MÀN NHẬP KHÔNG ĐƯỢC CÓ Ô GÕ LÔ NỮA. Đây là chốt chống quay
+   * lại: ô ấy trông vô hại nên rất dễ được thêm lại "cho đủ spec".
+   */
+  it("màn nhập hàng không có ô gõ mã lô", () => {
+    const S = code(read("src/components/pos/purchase-screen.tsx"))
+    expect(
+      /aria-label=\{`Lô[^`]*`\}\s*[\s\S]{0,200}?onChange/.test(S),
+      "ô lô gõ tay đã quay lại — giá trị ấy không cột nào nhận"
+    ).toBe(false)
+    expect(/patchLine\([^)]*lotId/.test(S), "màn nhập vẫn ghi lotId").toBe(false)
+  })
+
+  /** ⚠ Và phải NÓI RA ai đặt mã lô, chứ không im lặng bỏ cột đi. */
+  it("màn nhập nói mã lô do hệ thống sinh", () => {
+    /* ⚠ Bản đã bóc chú thích — chốt phải nhìn thứ người dùng đọc. */
+    const P = code(read("src/components/pos/purchase-screen.tsx"))
+    expect(/tự sinh/i.test(P)).toBe(true)
+  })
+
+  /**
+   * ⚠ VÀ KHÔNG ĐƯỢC GỬI `batch_code` XUỐNG NỮA. Bản đầu nhét nó vào
+   * `ReceiptLine` bằng một phép ép kiểu — `satisfies` chặn được, nhưng
+   * chốt này nói VÌ SAO cho người sửa sau.
+   */
+  it("không gửi batch_code trong tải trọng phiếu nhập", () => {
+    const S = code(read("src/lib/pos/save.ts"))
+    expect(/batch_code:/.test(S), "cột này không tồn tại ở purchase_invoice_lines").toBe(false)
   })
 })
 
@@ -235,37 +276,30 @@ describe("giá vốn theo LÔ, không phải bình quân", () => {
  * Trộn hai thứ là một phiếu vừa nhập vừa trả trong cùng một bút toán —
  * và không ai đối chiếu nổi kho sau đó.
  */
-describe("§8.1 — nút nhập kho mờ khi còn dòng thiếu lô", () => {
+/**
+ * ⚠ NÚT CHÍNH CỦA MÀN NHẬP VẪN PHẢI MỜ VÌ NHỮNG LÝ DO CÓ THẬT.
+ * Chốt cũ ở đây canh điều kiện `thieuLo` — một điều kiện nay đã bỏ vì
+ * nó đòi một thứ không đi tới đâu. Nhưng bỏ chốt mà không thay chốt là
+ * mở toang nút: bấm "Hoàn thành & nhập kho" trên một phiếu rỗng là ăn
+ * nguyên câu `PHIEU_KHONG_CO_HANG` của máy chủ.
+ */
+describe("§8.1 — nút nhập kho vẫn mờ đúng lúc", () => {
   const S = code(read("src/components/pos/purchase-screen.tsx"))
 
-  /**
-   * ⚠ ĐÂY LÀ LUẬT QUAN TRỌNG NHẤT CỦA §8, và bản đầu của bộ chốt này
-   * KHÔNG canh nó: đột biến gỡ điều kiện `thieuLo` khỏi `disabled` mà
-   * mọi chốt vẫn xanh. Hàm `missingLotLines` đúng nhưng không ai NỐI
-   * nó vào nút — hàng vào kho không lô, và chỉ lộ ra khi cần truy
-   * nguồn một lô đã bán đi.
-   */
-  it("điều kiện thiếu lô có trong disabled của nút chính", () => {
+  it("phiếu rỗng hoặc đang lưu thì nút chính mờ", () => {
     const i = S.indexOf('variant="primary"')
     expect(i, "không thấy nút chính").toBeGreaterThan(-1)
     const nut = S.slice(i, i + 420)
-    expect(
-      /disabled=\{[^}]*thieuLo/.test(nut),
-      "nút Hoàn thành & nhập kho không mờ khi còn dòng thiếu lô"
-    ).toBe(true)
+    expect(/disabled=\{[^}]*lines\.length === 0/.test(nut), "nút mở trên phiếu rỗng").toBe(true)
+    expect(/disabled=\{[^}]*dangLuu/.test(nut), "bấm hai lần được khi đang lưu").toBe(true)
   })
 
-  /** ⚠ Và `title` phải mang câu gọi tên đúng dòng. */
-  it("nút mờ nói đúng dòng nào thiếu", () => {
+  /** ⚠ Nút mờ PHẢI nói vì sao — mờ câm là người dùng bấm mãi không hiểu. */
+  it("nút mờ nói lý do", () => {
     const i = S.indexOf('variant="primary"')
     const nut = S.slice(i, i + 420)
     expect(nut).toMatch(/title=/)
-    expect(nut).toContain("cauThieuLo")
-  })
-
-  /** ⚠ Dòng thiếu lô phải VIỀN ĐỎ — spec §8 mục 1 chốt riêng. */
-  it("dòng thiếu lô có viền đỏ", () => {
-    expect(S).toMatch(/thieu \?\s*"border-\[#dc2626\]/)
+    expect(nut).toContain("Chưa có mặt hàng nào")
   })
 })
 
@@ -277,22 +311,110 @@ describe("§8.6 — phiếu nhập không có bảng trả/đổi kèm", () => {
 })
 
 /**
- * ⚠ SPEC §8.4: "Trả NCC: select lô CHỈ liệt kê lô thuộc phiếu nhập
- * gốc, không liệt kê toàn kho."
+ * §8.4 — LÔ CỦA PHIẾU TRẢ NCC.
  *
- * Trả một lô không thuộc phiếu gốc là trả cho NCC món họ không bán cho
- * mình — và `cancel_supplier_return` sẽ vướng `LO_DA_DONG` về sau.
+ * ⚠ SPEC VIẾT "select lô CHỈ liệt kê lô thuộc phiếu nhập gốc", VÀ
+ * KHÔNG CÓ SELECT NÀO Ở ĐÂY LÀ THẬT ĐƯỢC. Hai sự thật của hệ đang
+ * chạy:
+ *
+ *   · `supplier_return_lines` (migration 068, dòng 51-65 + 146 dòng
+ *     41) không có cột lô nào — `linePayloadOf` cũng không ghi cột nào
+ *     như thế.
+ *   · `complete_supplier_return` (migration 146, dòng 155-165) chọn lô
+ *     FIFO: `ORDER BY expires_at NULLS LAST, created_at, id` trong
+ *     `warehouse_zone` của phiếu.
+ *
+ * Nên một ô chọn lô ở màn này là một cái cần gạt không nối vào đâu:
+ * người dùng chọn L2609, máy chủ lấy lô cũ nhất, và không một câu nào
+ * báo cho họ biết. Chốt dưới đây canh rằng màn hình KHÔNG dựng cái cần
+ * gạt ấy, mà vẫn hiện lô của phiếu gốc để đối chiếu.
  */
-describe("§8.4 — lô của phiếu trả NCC chỉ lấy từ phiếu gốc", () => {
+describe("§8.4 — lô của phiếu trả NCC: hiện để đối chiếu, không cho chọn", () => {
   const S = code(read("src/components/pos/supplier-return-screen.tsx"))
 
-  it("select lô đọc từ dòng, không đọc từ danh mục kho", () => {
-    const i = S.indexOf("Lô hàng")
-    expect(i, "không thấy select lô").toBeGreaterThan(-1)
-    const khoi = S.slice(i, i + 700)
-    expect(khoi).toMatch(/l\.lots/)
-    /* Không được rơi về danh mục sản phẩm hay bản đồ tồn kho. */
-    expect(/stockByProduct|products\.map/.test(khoi), "select lô rơi về toàn kho").toBe(false)
+  /** ⚠ Lô vẫn phải lấy từ dòng (phiếu gốc), không rơi về toàn kho. */
+  it("lô đọc từ dòng, không đọc từ danh mục kho", () => {
+    expect(S).toMatch(/l\.lots/)
+    expect(
+      /stockByProduct|loadLotsByProduct/.test(S),
+      "lô rơi về toàn kho thay vì lô của phiếu nhập gốc"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ KHÔNG CÓ Ô CHỌN LÔ. Đây là chốt chống quay lại — một `<select>`
+   * lô trông rất hợp lý với người đọc spec, và nó sẽ được thêm lại nếu
+   * không có gì chặn.
+   */
+  it("không dựng ô chọn lô, và không ghi lotId", () => {
+    expect(/patchLine\([^)]*lotId/.test(S), "màn trả NCC vẫn ghi lotId").toBe(false)
+    const i = S.indexOf("l.lots")
+    const khoi = S.slice(Math.max(0, i - 600), i + 600)
+    expect(
+      /<select[\s\S]{0,400}l\.lots/.test(khoi),
+      "ô chọn lô đã quay lại — máy chủ lấy FIFO và bỏ qua lựa chọn này"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ VÀ PHẢI NÓI RA AI CHỌN LÔ. Bỏ ô chọn đi mà im lặng là người dùng
+   * tưởng phần mềm đang trả đúng lô họ cầm trên tay.
+   */
+  it("màn hình nói rõ máy chủ lấy lô theo hạn cũ trước", () => {
+    /* ⚠ ĐỌC BẢN ĐÃ BÓC CHÚ THÍCH. Bản đầu của chốt này đọc tệp thô và
+       khớp với chính câu giải thích ở đầu tệp — đột biến xoá sạch câu
+       trên MÀN HÌNH mà chốt vẫn xanh. Chốt phải nhìn thứ người dùng
+       đọc, không nhìn thứ lập trình viên viết cho nhau. */
+    expect(/hạn cũ trước/i.test(S), "không có câu nào nói ai chọn lô").toBe(true)
+  })
+
+  /**
+   * ⚠ VÙNG KHO PHẢI CHỌN ĐƯỢC. FIFO của máy chủ chỉ quét trong
+   * `warehouse_zone` của phiếu; không cho chọn là mặc định cứng vào
+   * `date`, và trả hàng từ kho bán sẽ ăn `INSUFFICIENT_STOCK` trong
+   * khi kho bán đang đầy đúng món ấy.
+   */
+  it("có ô chọn vùng kho xuất", () => {
+    expect(S).toMatch(/SubHeaderSelect/)
+    expect(S).toMatch(/id="sr-kho"/)
+    expect(S).toMatch(/zone: kho/)
+  })
+})
+
+/**
+ * §8.5 — CỘT "ĐÃ NHẬP" CHỈ CÓ KHI CÒN ĐƯỜNG VỀ PHIẾU GỐC.
+ *
+ * ⚠ `supplier_returns` KHÔNG CÓ CỘT TRỎ VỀ PHIẾU NHẬP. Nên trần "số đã
+ * nhập" chỉ dựng được trong phiên đang lập phiếu; mở lại phiếu đã lưu
+ * là mất nó. Cái sai đắt ở đây là để nó về `0` thay vì `null`:
+ * `supplierReturnMax(0)` là 0, stepper khoá cứng, và người dùng không
+ * sửa nổi một phiếu họ vừa lưu.
+ */
+describe("§8.5 — mở lại phiếu đã lưu thì 'đã nhập' là chưa biết, không phải 0", () => {
+  const S = code(read("src/components/pos/supplier-return-screen.tsx"))
+
+  it("dòng nạp từ phiếu đã lưu mang ordered null", () => {
+    const i = S.indexOf("supplier_return_lines")
+    expect(i, "không thấy chỗ nạp phiếu đã lưu").toBeGreaterThan(-1)
+    const khoi = S.slice(i, i + 1800)
+    expect(khoi).toMatch(/ordered: null/)
+    expect(/ordered: 0\b/.test(khoi), "0 khoá cứng stepper ở 0").toBe(false)
+  })
+
+  /** ⚠ Và nạp từ phiếu gốc thì `ordered` là số đã nhập THẬT. */
+  it("dòng nạp từ phiếu gốc mang số đã nhập", () => {
+    const i = S.indexOf("napTuPhieuGoc")
+    expect(i).toBeGreaterThan(-1)
+    const khoi = S.slice(i, i + 1400)
+    expect(khoi).toMatch(/ordered: x\.receivedQty/)
+    /* ⚠ Số lượng trả KHÔNG điền sẵn bằng cả chuyến hàng. */
+    expect(khoi).toMatch(/qty: 0/)
+  })
+
+  /** ⚠ Và màn hình phải nói ra rằng đường nối ấy không lưu xuống. */
+  it("nói rõ đường nối phiếu gốc không lưu vào phiếu", () => {
+    /* ⚠ Bản đã bóc chú thích — cùng lý do với chốt "hạn cũ trước". */
+    expect(/không lưu vào phiếu/i.test(S)).toBe(true)
   })
 })
 

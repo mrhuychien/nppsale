@@ -14,5 +14,5 @@ import { ReturnScreen } from "@/components/pos/return-screen"
 export default function PosReturnPage() {
   const { id } = useParams<{ id: string }>()
   const moi = id === "moi"
-  return <ReturnScreen mode="lap" slipCode={moi ? null : id} />
+  return <ReturnScreen mode="lap" returnId={moi ? null : id} />
 }

@@ -15,5 +15,5 @@ import { SupplierReturnScreen } from "@/components/pos/supplier-return-screen"
 
 export default function PosSupplierReturnEditPage() {
   const { id } = useParams<{ id: string }>()
-  return <SupplierReturnScreen mode="sua" slipCode={id} />
+  return <SupplierReturnScreen mode="sua" returnId={id} />
 }

@@ -25,12 +25,5 @@ export default function PosOrderEditPage() {
    * nhầm một dòng người dùng được phép sửa. Đoán ngược lại thì màn
    * hình chặn một việc hợp lệ và không ai gỡ được.
    */
-  return (
-    <OrderScreen
-      mode="sua"
-      orderCode={id}
-      badge={{ label: "PHIẾU TẠM", tone: "tam" }}
-      partiallyIssued={false}
-    />
-  )
+  return <OrderScreen mode="sua" orderId={id} />
 }

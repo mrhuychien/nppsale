@@ -19,7 +19,20 @@
  * "phần còn lại sửa thoải mái".
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { errorMessage } from "@/lib/errors"
+import { useAuth } from "@/hooks/use-auth"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
+import { buildOrderPayload } from "@/lib/sell/create-order"
+import { generateOrderCode } from "@/lib/utils"
+import { cartTotals } from "@/lib/sell/cart"
+import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
+import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
+import { savePosOrder, savePosInvoice, posLinesToCart } from "@/lib/pos/save"
+import { invoiceWarnings } from "@/lib/orders/post-invoice"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { posTotals, cashSuggestions } from "@/lib/pos/totals"
@@ -43,27 +56,20 @@ import { ReturnExchangeTable } from "@/components/pos/return-exchange-table"
 export interface OrderScreenProps {
   /** `lap` = đơn mới hoặc phiếu tạm. `sua` = đơn đã lưu, mở ra sửa. */
   mode: "lap" | "sua"
-  orderCode?: string | null
-  /** Trạng thái thật của đơn — quyết định badge và ràng buộc. */
-  badge?: PosBadge | null
-  /** `Đã xuất 1 lần · HD-0143`. */
-  subtitle?: React.ReactNode
-  /** Đơn đã xuất một phần → hiện banner xanh, spec §7.1. */
-  partiallyIssued?: boolean
+  /** `null` = đơn mới. Có mã thì nạp đơn ấy lên. */
+  orderId?: string | null
 }
 
 let demDong = 0
 const newKey = () => `d${++demDong}`
 
-export function OrderScreen({
-  mode,
-  orderCode,
-  badge,
-  subtitle,
-  partiallyIssued = false,
-}: OrderScreenProps) {
+export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const { settings } = usePosSettings()
-  const { products, customers, stockByProduct, loading, warnings } = usePosRefData()
+  const { user } = useAuth()
+  const { products, customers, sellers, stockByProduct, loading, warnings, productById } =
+    usePosRefData()
+  const { toast } = useToast()
+  const router = useRouter()
 
   const [lines, setLines] = useState<PosLine[]>([])
   const [retLines, setRetLines] = useState<PosLine[]>([])
@@ -80,6 +86,14 @@ export function OrderScreen({
   const [thoiDiem, setThoiDiem] = useState(() => "")
   const [moTimHang, setMoTimHang] = useState(false)
   const [moTimKhach, setMoTimKhach] = useState(false)
+  const [orderCode, setOrderCode] = useState<string | null>(null)
+  const [orderStatus, setOrderStatus] = useState<"draft" | "submitted" | string>("draft")
+  const [issuedCode, setIssuedCode] = useState<string | null>(null)
+  const [dangLuu, setDangLuu] = useState(false)
+  const [loiNap, setLoiNap] = useState<string | null>(null)
+
+  /** Có dòng nào ĐÃ XUẤT một phần — quyết định banner và sàn stepper. */
+  const partiallyIssued = useMemo(() => lines.some((l) => (Number(l.issued) || 0) > 0), [lines])
 
   /* ---------------------------------------------------------------- */
 
@@ -156,6 +170,114 @@ export function OrderScreen({
     [products, settings.mergeDuplicateLines, settings.defaultDiscountUnit, stockByProduct]
   )
 
+  /**
+   * NẠP ĐƠN ĐÃ LƯU.
+   *
+   * ⚠ DÒNG HÀNG ĐỌC QUA `get_invoiceable_lines`, KHÔNG ĐỌC THẲNG BẢNG.
+   * RPC ấy trả kèm `invoiced_qty` — SỐ ĐÃ XUẤT của từng dòng — và đó
+   * chính là sàn của stepper ở màn sửa (spec §7.1). Đọc thẳng
+   * `sales_order_lines` thì không có số ấy, và ràng buộc duy nhất của
+   * màn này mất tác dụng trong im lặng.
+   */
+  useEffect(() => {
+    if (!orderId) return
+    let huy = false
+    ;(async () => {
+      try {
+        const sb = createClient()
+        const [h, ds, hd] = await Promise.all([
+          sb.from("sales_orders")
+            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id")
+            .eq("id", orderId).maybeSingle(),
+          loadInvoiceableLines(sb, orderId),
+          sb.from("sales_invoices")
+            .select("invoice_code").eq("order_id", orderId).eq("status", "posted")
+            .order("created_at", { ascending: false }).limit(1),
+        ])
+        if (huy) return
+        const head = (h.data as unknown) as {
+          order_code: string; status: string; customer_id: string
+          payment_terms: string | null; expected_delivery: string | null
+          notes: string | null; sales_user_id: string | null
+        } | null
+        if (!head) { setLoiNap("Không tìm thấy đơn này."); return }
+        setOrderCode(head.order_code)
+        setOrderStatus(head.status)
+        setDieuKhoan(head.payment_terms || "COD")
+        setNgayGiao(head.expected_delivery || "")
+        setNvbh(head.sales_user_id || "")
+        const inv = ((hd.data as unknown) as Array<{ invoice_code: string }>) ?? []
+        setIssuedCode(inv[0]?.invoice_code ?? null)
+
+        setLines(
+          ds
+            /* ⚠ BỎ DÒNG HÀNG ĐỔI. RPC trả cả dòng trả/đổi kèm đơn; chúng
+               không phải dòng hàng BÁN và không thuộc bảng này. */
+            .filter((r) => !r.isExchange && r.orderLineId)
+            .map((r) => ({
+              key: newKey(),
+              productId: r.productId,
+              sku: r.sku ?? "",
+              name: r.productName,
+              unit: r.unitName,
+              units: [{ unit_name: r.unitName, conversion: r.conversionFactor }],
+              qty: r.orderedQty,
+              unitPriceSource: r.unitPrice,
+              price: r.unitPrice,
+              discount: { value: 0, unit: settings.defaultDiscountUnit },
+              stock: r.availableBase,
+              ordered: r.orderedQty,
+              /* ⚠ SÀN CỦA STEPPER — spec §7.1. */
+              issued: r.invoicedQty,
+              note: r.note ?? undefined,
+            }) as PosLine)
+        )
+      } catch (e) {
+        if (!huy) setLoiNap(errorMessage(e))
+      }
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId])
+
+  /**
+   * Công nợ + giá bán gần nhất của khách đang chọn.
+   *
+   * ⚠ ĐỌC HỎNG THÌ ĐỂ `null`, và panel hiện "chưa xác định". Cộng từ 0
+   * ra một con số trông như thật là nói với người đi đòi tiền rằng
+   * khách này sạch nợ.
+   */
+  useEffect(() => {
+    const id = khach?.id
+    if (!id) return
+    let huy = false
+    ;(async () => {
+      const sb = createClient()
+      const [no, gia] = await Promise.all([
+        loadCustomerDebt(sb, id).catch(() => null),
+        loadLastPrices(sb, id).catch(() => ({})),
+      ])
+      if (huy) return
+      setKhach((c) => (c && c.id === id ? { ...c, debt: no } : c))
+      setLines((cu) => attachLineExtras(cu, { lastPrices: gia }))
+    })()
+    return () => { huy = true }
+  }, [khach?.id])
+
+  /** Lô còn hàng của các mặt hàng đang có trong giỏ — spec §4. */
+  useEffect(() => {
+    const ids = lines.map((l) => l.productId).filter(Boolean)
+    if (ids.length === 0) return
+    let huy = false
+    ;(async () => {
+      const lo = await loadLotsByProduct(createClient(), ids).catch(() => ({}))
+      if (huy) return
+      setLines((cu) => attachLineExtras(cu, { lotsByProduct: lo }))
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.length])
+
   /* --- phím tắt, spec §10 --- */
   usePosKeys({
     F3: () => setMoTimHang(true),
@@ -199,8 +321,130 @@ export function OrderScreen({
 
   /* ---------------------------------------------------------------- */
 
+  /**
+   * LƯU ĐƠN — đi qua `savePosOrder`, tức qua `createOrderRecords` /
+   * `applyOrderEdit` đang chạy.
+   *
+   * ⚠ KHÔNG GHI THẲNG `sales_orders` TỪ ĐÂY. Hai lib ấy đã gánh sẵn
+   * những thứ không nhìn thấy được: idempotent theo `client_request_id`
+   * (bấm hai lần không ra hai đơn), so khớp dòng hàng thay vì xoá sạch
+   * rồi chèn lại (khoá ngoại `sales_invoice_lines_order_line_id_fkey`),
+   * và đếm dòng trả về sau mỗi lệnh ghi vì RLS từ chối là 0 dòng +
+   * HTTP 200 + `error` null.
+   */
+  const luuDon = useCallback(
+    async (asDraft: boolean) => {
+      if (!user?.org_id || !user.id) return
+      if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
+      if (lines.length === 0) { toast({ title: "Đơn chưa có mặt hàng nào", variant: "destructive" }); return }
+      setDangLuu(true)
+      try {
+        const cart = posLinesToCart(lines)
+        const payload = buildOrderPayload({
+          clientRequestId:
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          orderCode: orderCode || generateOrderCode(),
+          customerId: khach.id,
+          customerName: khach.name,
+          paymentTerms: dieuKhoan,
+          expectedDelivery: ngayGiao || null,
+          notes: "",
+          cart,
+          totals: cartTotals(cart),
+          createdAt: new Date().toISOString(),
+          returnReason: "damaged",
+          returnLines: [],
+          /* ⚠ ĐI TRONG TẢI TRỌNG, KHÔNG ĐI TRONG `ctx` — xem mig 153. */
+          salesUserId: nvbh || null,
+        })
+        const r = await savePosOrder(createClient(), {
+          orderId,
+          payload,
+          lines,
+          status: asDraft ? "draft" : "submitted",
+          reason: "",
+          userId: user.id,
+          orgId: user.org_id,
+          salesUserId: nvbh || null,
+          productName: (id) => productById(id)?.name,
+        })
+        if (asDraft) {
+          toast({ title: orderId ? `Đã lưu thay đổi ${r.orderCode}` : `Đã lưu đơn ${r.orderCode}` })
+          if (!orderId) router.replace(`/pos/don-hang/${r.orderId}`)
+          return
+        }
+
+        /**
+         * ⚠ HAI BƯỚC, VÀ NÓI RÕ KHI BƯỚC HAI HỎNG. Nút mang tên "Xuất
+         * hàng & lập HĐ" nên nó phải LÀM cả hai; nhưng ghi đơn và ghi
+         * hóa đơn là hai giao dịch riêng của hệ đang chạy, không có
+         * lệnh nào gộp chúng.
+         *
+         * Bước 2 hỏng thì ĐƠN VẪN CÒN ở phiếu tạm — đó là một trạng
+         * thái hợp lệ, không phải hỏng. Im lặng ở đây là người dùng
+         * tưởng mất cả đơn và đi lập lại một đơn thứ hai.
+         */
+        try {
+          const hd = await savePosInvoice(createClient(), {
+            invoiceId: null,
+            orderId: r.orderId,
+            lines,
+            paymentTerms: dieuKhoan,
+          })
+          toast({
+            title: `Đã xuất hàng — hóa đơn ${hd.invoiceCode}`,
+            description: invoiceWarnings(hd) ?? undefined,
+          })
+          router.replace(`/pos/hoa-don/${hd.invoiceId}`)
+        } catch (e2) {
+          toast({
+            title: `Đã lưu đơn ${r.orderCode} nhưng CHƯA xuất được hàng`,
+            description: `${errorMessage(e2)} — đơn đang ở Phiếu tạm, mở lại để xuất.`,
+            variant: "destructive",
+          })
+          router.replace(`/pos/don-hang/${r.orderId}`)
+        }
+      } catch (e) {
+        /* ⚠ `errorMessage` — lỗi PostgREST là OBJECT THƯỜNG, không phải
+           `Error`. `err instanceof Error ? … : "Lỗi không xác định"` nuốt
+           sạch câu máy chủ vừa nói. */
+        toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
+      } finally {
+        setDangLuu(false)
+      }
+    },
+    [user, khach, lines, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, router, toast]
+  )
+
+  /**
+   * Badge và phụ đề — spec §7.1 bảng năm điểm khác nhau.
+   *
+   * ⚠ LẤY TỪ TRẠNG THÁI THẬT CỦA ĐƠN, không nhận từ ngoài truyền vào.
+   * Truyền từ route là route phải tự đọc đơn lần nữa, và hai chỗ đọc
+   * cùng một thứ là hai chỗ nói khác nhau được.
+   */
   const badgeThat: PosBadge | null =
-    badge ?? (mode === "lap" ? { label: "PHIẾU TẠM", tone: "tam" } : null)
+    mode === "lap"
+      ? { label: "PHIẾU TẠM", tone: "tam" }
+      : orderStatus === "completed" || orderStatus === "closed"
+        ? { label: "HOÀN THÀNH", tone: "xong" }
+        : partiallyIssued
+          ? { label: "XUẤT MỘT PHẦN", tone: "mot-phan" }
+          : { label: "PHIẾU TẠM", tone: "tam" }
+
+  const phuDe =
+    mode === "lap" ? (
+      "Tạo offline · chưa kiểm tồn"
+    ) : issuedCode ? (
+      <>
+        Đã xuất 1 lần ·{" "}
+        <Link href={`/sales-invoices`} className="font-semibold text-[#2563eb] underline">
+          {issuedCode}
+        </Link>
+      </>
+    ) : undefined
 
   return (
     <>
@@ -208,7 +452,7 @@ export function OrderScreen({
         title={mode === "sua" ? "Sửa đơn hàng" : "Đơn đặt hàng"}
         code={orderCode}
         badge={badgeThat}
-        subtitle={subtitle ?? (mode === "lap" ? "Tạo offline · chưa kiểm tồn" : undefined)}
+        subtitle={phuDe}
         right={
           <>
             <SubHeaderSelect
@@ -216,7 +460,7 @@ export function OrderScreen({
               label="NVBH"
               value={nvbh}
               onChange={setNvbh}
-              options={[]}
+              options={sellers.map((u) => ({ id: u.id, label: u.full_name }))}
             />
             <SubHeaderDate value={thoiDiem} onChange={setThoiDiem} />
           </>
@@ -235,6 +479,7 @@ export function OrderScreen({
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
+          {loiNap && <DocBanner tone="warn">Không nạp được đơn — {loiNap}</DocBanner>}
 
           {/* Banner của màn sửa — chỉ khi đơn đã xuất một phần, spec §7.1. */}
           {mode === "sua" && partiallyIssued && (
@@ -526,28 +771,36 @@ export function OrderScreen({
           <PanelActions>
             {mode === "sua" ? (
               <>
-                <PanelButton width={62}>Huỷ</PanelButton>
-                <PanelButton width={126}>Lưu thay đổi</PanelButton>
+                <PanelButton width={62} onClick={() => router.back()}>Huỷ</PanelButton>
+                <PanelButton width={126} disabled={dangLuu} onClick={() => luuDon(true)}>
+                  {dangLuu ? "Đang lưu…" : "Lưu thay đổi"}
+                </PanelButton>
               </>
             ) : (
               <>
-                <PanelButton width={62}>In</PanelButton>
-                <PanelButton width={104}>Lưu tạm</PanelButton>
+                <PanelButton width={62} onClick={() => window.print()}>In</PanelButton>
+                <PanelButton width={104} disabled={dangLuu} onClick={() => luuDon(true)}>
+                  {dangLuu ? "Đang lưu…" : "Lưu tạm"}
+                </PanelButton>
               </>
             )}
             {/* ⚠ Nút chính GIỮ NGUYÊN ở cả hai bản — spec §7.1. */}
             <PanelButton
               variant="primary"
-              disabled={lines.length === 0 || !khach}
+              disabled={lines.length === 0 || !khach || dangLuu}
+              onClick={() => luuDon(false)}
               title={
                 lines.length === 0
                   ? "Chưa có mặt hàng nào trong đơn"
                   : !khach
                     ? "Chưa chọn khách hàng"
-                    : undefined
+                    : /* ⚠ NÚT NÀY LÀM ĐÚNG HAI VIỆC TÊN NÓ NÓI: lưu đơn
+                         rồi lập hóa đơn. Hai giao dịch riêng — xem
+                         `luuDon`, nhánh bước 2 hỏng. */
+                      "Lưu đơn rồi xuất hàng và lập hóa đơn"
               }
             >
-              Xuất hàng &amp; lập HĐ
+              {dangLuu ? "Đang lưu…" : "Xuất hàng & lập HĐ"}
             </PanelButton>
           </PanelActions>
 

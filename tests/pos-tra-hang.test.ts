@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import {
   returnTotals, debtAfterReturn, warehouseSentence,
 } from "../src/lib/pos/return-totals"
@@ -110,22 +112,47 @@ describe("công nợ sau phiếu trả", () => {
 
 describe("câu mô tả giao dịch kho", () => {
   /**
-   * ⚠ NÓI ĐÚNG HAI CHIỀU. Hàng trả ĐI VÀO kho hàng lỗi, hàng đổi ĐI RA
+   * ⚠ NÓI ĐÚNG HAI CHIỀU. Hàng trả ĐI VÀO kho nhận, hàng đổi ĐI RA
    * khỏi kho bán — hai chiều ngược nhau trong cùng một lần bấm.
    */
   it("nói cả nhập lẫn xuất khi có cả hai loại", () => {
-    const s = warehouseSentence(returnTotals({ lines: dongMau })) ?? ""
+    const s = warehouseSentence(returnTotals({ lines: dongMau }), "Kho cận date") ?? ""
     expect(s).toContain("nhập 2")
-    expect(s).toContain("Kho hàng lỗi")
+    expect(s).toContain("Kho cận date")
     expect(s).toContain("xuất 6")
     expect(s).toContain("Kho bán")
     expect(s).toContain("cùng một giao dịch")
   })
 
   it("chỉ có hàng trả thì không nhắc kho bán", () => {
-    const s = warehouseSentence(returnTotals({ lines: [dongMau[0]] })) ?? ""
-    expect(s).toContain("Kho hàng lỗi")
+    const s = warehouseSentence(returnTotals({ lines: [dongMau[0]] }), "Kho cận date") ?? ""
+    expect(s).toContain("Kho cận date")
     expect(s).not.toContain("Kho bán")
+  })
+
+  /**
+   * ⚠ KHÔNG VIẾT CỨNG MỘT TÊN KHO KHÔNG TỒN TẠI. `complete_return` chỉ
+   * nhận HAI vùng — `sale` và `date` (`ReturnZone`). Bản đầu của màn
+   * này ghi "Kho hàng lỗi", một vùng không có trong hệ: người dùng đi
+   * tìm nó trong báo cáo kho và không thấy, rồi tưởng hàng trả đã bốc
+   * hơi.
+   */
+  it("tên kho nhận do nơi gọi truyền vào, không viết cứng", () => {
+    const s = warehouseSentence(returnTotals({ lines: [dongMau[0]] }), "Kho bán") ?? ""
+    expect(s).toContain("Kho bán")
+    expect(
+      /kho hàng lỗi/i.test(s),
+      "câu nhắc gọi tên một vùng kho không tồn tại trong hệ"
+    ).toBe(false)
+  })
+
+  /** ⚠ Và cả màn phiếu trả cũng không được nhắc tới vùng ấy. */
+  it("màn phiếu trả không nhắc kho hàng lỗi", () => {
+    const src = readFileSync(
+      resolve(__dirname, "..", "src/components/pos/return-screen.tsx"),
+      "utf-8"
+    ).replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(/Kho hàng lỗi/i.test(src)).toBe(false)
   })
 
   /** ⚠ Phiếu rỗng thì KHÔNG có câu nào — đừng hứa một giao dịch không xảy ra. */

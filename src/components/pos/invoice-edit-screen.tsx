@@ -24,6 +24,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
+import { loadCustomerDebt, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
+import { savePosInvoice } from "@/lib/pos/save"
+import { invoiceWarnings } from "@/lib/orders/post-invoice"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency } from "@/lib/utils"
@@ -84,6 +89,9 @@ const newKey = () => `e${++dem}`
 
 export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   const { products, customers, stockByProduct, warnings } = usePosRefData()
+  const { toast } = useToast()
+  const router = useRouter()
+  const [dangLuu, setDangLuu] = useState(false)
 
   const [head, setHead] = useState<Head | null>(null)
   const [lines, setLines] = useState<PosLine[]>([])
@@ -307,6 +315,60 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
       })),
     [customers]
   )
+
+  /** Công nợ khách + lô còn hàng. */
+  useEffect(() => {
+    const id = khach?.id
+    if (!id) return
+    let huy = false
+    ;(async () => {
+      const no = await loadCustomerDebt(createClient(), id).catch(() => null)
+      if (!huy) setKhach((c) => (c && c.id === id ? { ...c, debt: no } : c))
+    })()
+    return () => { huy = true }
+  }, [khach?.id])
+
+  useEffect(() => {
+    const ids = lines.map((l) => l.productId).filter(Boolean)
+    if (ids.length === 0) return
+    let huy = false
+    ;(async () => {
+      const lo = await loadLotsByProduct(createClient(), ids).catch(() => ({}))
+      if (!huy) setLines((cu) => attachLineExtras(cu, { lotsByProduct: lo }))
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.length])
+
+  /**
+   * LẬP LẠI HÓA ĐƠN — đi qua `reissueInvoice`, tức RPC `reissue_invoice`.
+   *
+   * ⚠ MỘT LỜI GỌI, MỘT GIAO DỊCH. RPC ấy huỷ tờ cũ (hoàn hàng về đúng
+   * lô đã lấy) rồi lập tờ mới mang số `-1`, trong cùng một hàm. Tách ra
+   * làm hai lệnh từ trình duyệt là có lúc kho đã hoàn mà hóa đơn mới
+   * chưa lập — và không ai gỡ được trạng thái đó.
+   */
+  const lapLai = useCallback(async () => {
+    if (khoa) return
+    setDangLuu(true)
+    try {
+      const r = await savePosInvoice(createClient(), {
+        invoiceId,
+        lines,
+        paymentTerms: dieuKhoan,
+        notes: ghiChu,
+      })
+      toast({
+        title: `Đã lập lại — hóa đơn ${r.invoiceCode}`,
+        description: invoiceWarnings(r) ?? undefined,
+      })
+      router.replace(`/pos/hoa-don/${r.invoiceId}`)
+    } catch (e) {
+      toast({ title: "Chưa lập lại được", description: errorMessage(e), variant: "destructive" })
+    } finally {
+      setDangLuu(false)
+    }
+  }, [khoa, invoiceId, lines, dieuKhoan, ghiChu, router, toast])
 
   /**
    * DẢI DELTA — ba ô của spec §7.2: `KHO` · `CÔNG NỢ` · `HĐĐT MISA`.
@@ -665,14 +727,15 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           </div>
 
           <PanelActions>
-            <PanelButton width={54}>Huỷ</PanelButton>
-            <PanelButton width={96}>Lưu nháp</PanelButton>
+            <PanelButton width={54} onClick={() => router.back()}>Huỷ</PanelButton>
+            <PanelButton width={96} onClick={() => window.print()}>In</PanelButton>
             <PanelButton
               variant="primary"
-              disabled={!!khoa || lines.length === 0}
+              disabled={!!khoa || lines.length === 0 || dangLuu}
+              onClick={lapLai}
               title={khoa ? khoa.message : lines.length === 0 ? "Hóa đơn không còn dòng hàng nào" : undefined}
             >
-              Huỷ HĐ &amp; lập lại
+              {dangLuu ? "Đang lập lại…" : "Huỷ HĐ & lập lại"}
             </PanelButton>
           </PanelActions>
 

@@ -8,5 +8,5 @@ import { SupplierReturnScreen } from "@/components/pos/supplier-return-screen"
 export default function PosSupplierReturnPage() {
   const { id } = useParams<{ id: string }>()
   const moi = id === "moi"
-  return <SupplierReturnScreen mode="lap" slipCode={moi ? null : id} />
+  return <SupplierReturnScreen mode="lap" returnId={moi ? null : id} />
 }

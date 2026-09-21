@@ -8,5 +8,5 @@ import { PurchaseScreen } from "@/components/pos/purchase-screen"
 export default function PosPurchasePage() {
   const { id } = useParams<{ id: string }>()
   const moi = id === "moi"
-  return <PurchaseScreen mode="lap" slipCode={moi ? null : id} />
+  return <PurchaseScreen mode="lap" receiptId={moi ? null : id} />
 }

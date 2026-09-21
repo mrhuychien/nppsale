@@ -3,22 +3,44 @@
 /**
  * MÀN 11 — PHIẾU TRẢ NCC, và MÀN 12 — SỬA PHIẾU TRẢ NCC.
  *
- * ⚠ HAI RÀNG BUỘC RIÊNG CỦA PHÍA NÀY (spec §8):
+ * ⚠ BA CHỖ BẢN THIẾT KẾ NÓI KHÁC HỆ ĐANG CHẠY. Spec §7.2 cho phép
+ * chỉnh câu chữ cho khớp hành vi thật, nên màn này nói theo hệ:
  *
- *   · mục 4 — select lô CHỈ liệt kê lô thuộc PHIẾU NHẬP GỐC, không
- *     liệt kê toàn kho. Trả một lô không thuộc phiếu gốc là trả cho
- *     NCC món họ không bán cho mình.
- *   · mục 5 — cột `ĐÃ NHẬP`: stepper chặn vượt số đã nhập CÒN LẠI.
- *     Trả nhiều hơn số đã nhận là dựng ra hàng từ không khí.
+ *   1. §8 mục 4 — "select lô chỉ liệt kê lô thuộc phiếu nhập gốc".
+ *      KHÔNG CÓ SELECT LÔ Ở ĐÂY ĐƯỢC. `supplier_return_lines` không có
+ *      cột lô nào, và `complete_supplier_return` (migration 146, dòng
+ *      155-165) tự chọn lô FIFO theo `expires_at` trong vùng kho của
+ *      phiếu. Một ô chọn mà máy chủ bỏ qua là nói dối đúng tại chỗ
+ *      người dùng cẩn thận nhất. Nên lô của phiếu gốc hiện ra dưới
+ *      dạng CHỮ ĐỌC, kèm một câu nói rõ máy chủ lấy theo hạn cũ trước.
  *
- * ⚠ BẢN THIẾT KẾ NÓI SAI MỘT CHỖ. Artboard 12 mượn câu của màn 8 —
- * "giữ nguyên số phiếu". Phía bán có `reissue_invoice` nên giữ được số;
- * phía mua chỉ có `cancel_supplier_return` + `complete_supplier_return`
- * RỜI NHAU, nên huỷ rồi lập lại là một phiếu MỚI mang số MỚI. Spec
- * §7.2 cho phép chỉnh câu chữ cho khớp hành vi thật.
+ *   2. §8 mục 5 — cột `ĐÃ NHẬP` chặn vượt số đã nhận. Chặn được ở đây,
+ *      nhưng CHỈ khi người dùng chọn phiếu nhập gốc trong phiên này:
+ *      `supplier_returns` không có cột trỏ về phiếu nhập, nên mở lại
+ *      phiếu đã lưu là mất đường về gốc và cột ấy hiện `—`. KHÔNG CÓ
+ *      chốt chặn phía máy chủ cho trần này.
+ *
+ *   3. Artboard 12 mượn câu của màn 8 — "giữ nguyên số phiếu". Phía bán
+ *      có `reissue_invoice` nên giữ được số; phía mua chỉ có
+ *      `cancel_supplier_return` + `complete_supplier_return` RỜI NHAU,
+ *      nên huỷ rồi lập lại là một phiếu MỚI mang số MỚI.
+ *
+ * ⚠ VÙNG KHO LÀ Ô BẮT BUỘC, KHÔNG PHẢI TUỲ CHỌN. `complete_supplier_return`
+ * xuất hàng TỪ vùng kho ghi trên phiếu; chọn nhầm là câu
+ * `INSUFFICIENT_STOCK` trong khi kho bên kia đang đầy hàng.
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { errorMessage } from "@/lib/errors"
+import { useAuth } from "@/hooks/use-auth"
+import { useToast } from "@/hooks/use-toast"
+import {
+  loadSupplierDebt, loadReceiptsOfSupplier, loadReceiptLinesForReturn,
+  type PosReceiptRef,
+} from "@/lib/pos/load"
+import { savePosSupplierReturn } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
@@ -27,7 +49,9 @@ import {
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { DocSubHeader, SubHeaderDate, DocBanner } from "@/components/pos/doc-sub-header"
+import {
+  DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner,
+} from "@/components/pos/doc-sub-header"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell, LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
@@ -45,17 +69,23 @@ const HOAN_LABEL: Record<HoanTien, string> = {
   "chuyen-khoan": "Chuyển khoản",
 }
 
+/**
+ * ⚠ ĐÚNG BỘ MÃ MIGRATION 068 GHI TRONG `reason`: `damaged /
+ * near_expiry / wrong_item / other`. Cột `reason` là text tự do nên
+ * gõ gì cũng lưu được — và đó chính là lý do phải chọn đúng bộ: báo cáo
+ * gom theo chuỗi, mỗi màn một cách viết là gom ra mấy nhóm rỗng.
+ */
 const LY_DO = [
   { id: "damaged", label: "Hàng hư hỏng" },
-  { id: "wrong", label: "Giao sai hàng" },
+  { id: "wrong_item", label: "Giao sai hàng" },
   { id: "near_expiry", label: "Gần hết hạn" },
-  { id: "over", label: "Giao thừa" },
-  { id: "quality", label: "Không đạt chất lượng" },
+  { id: "other", label: "Lý do khác" },
 ]
 
 export interface SupplierReturnScreenProps {
   mode: "lap" | "sua"
-  slipCode?: string | null
+  /** `null` = phiếu mới. */
+  returnId?: string | null
   badge?: PosBadge | null
   /** Khoản giảm công nợ đã được cấn trừ — khoá `DA_CAN_TRU`. */
   creditOffset?: number
@@ -68,12 +98,19 @@ const newKey = () => `sr${++dem}`
 
 export function SupplierReturnScreen({
   mode,
-  slipCode,
+  returnId = null,
   badge,
   creditOffset = 0,
   lotClosed = false,
 }: SupplierReturnScreenProps) {
-  const { products, loading, warnings } = usePosRefData()
+  const { products, suppliers, loading, warnings } = usePosRefData()
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const router = useRouter()
+
+  const [slipCode, setSlipCode] = useState<string | null>(null)
+  const [dangLuu, setDangLuu] = useState(false)
+  const [loiNap, setLoiNap] = useState<string | null>(null)
 
   const [lines, setLines] = useState<PosLine[]>([])
   const [ncc, setNcc] = useState<PosPartner | null>(null)
@@ -83,8 +120,13 @@ export function SupplierReturnScreen({
   const [ghiChu, setGhiChu] = useState("")
   const [hdDieuChinh, setHdDieuChinh] = useState("")
   const [thoiDiem, setThoiDiem] = useState("")
+  const [kho, setKho] = useState("date")
   const [moTimHang, setMoTimHang] = useState(false)
   const [moTimNcc, setMoTimNcc] = useState(false)
+
+  /** Phiếu nhập gốc — chỉ sống trong PHIÊN này. Xem đầu tệp, mục 2. */
+  const [phieuGoc, setPhieuGoc] = useState<PosReceiptRef[]>([])
+  const [phieuGocId, setPhieuGocId] = useState("")
 
   const t = useMemo(
     () =>
@@ -114,18 +156,20 @@ export function SupplierReturnScreen({
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: [{ unit_name: p.base_unit, conversion: 1 }],
+          units: (p.units ?? []).map((u) => ({
+            unit_name: u.unit_name,
+            conversion: Number(u.conversion) || 1,
+          })),
           qty: 1,
           price: 0,
           discount: { value: 0, unit: "vnd" },
           /**
            * ⚠ `lots` ĐỂ RỖNG, KHÔNG ĐỔ TOÀN KHO VÀO (spec §8 mục 4).
-           * Lô hợp lệ là lô thuộc PHIẾU NHẬP GỐC; chưa nối được phiếu
-           * gốc thì để rỗng và nói ra, chứ không mời người dùng chọn
-           * một lô sai.
+           * Lô hiện ra ở đây là lô của PHIẾU NHẬP GỐC; dòng thêm tay
+           * không có phiếu gốc nào nên không có lô nào để kể.
            */
           lots: [],
-          /* ⚠ `ordered` ở màn này mang nghĩa SỐ ĐÃ NHẬP CÒN LẠI —
+          /* ⚠ `ordered` ở màn này mang nghĩa SỐ ĐÃ NHẬP theo phiếu gốc —
              `null` là chưa biết, và khi đó không chặn. */
           ordered: null,
         },
@@ -151,10 +195,185 @@ export function SupplierReturnScreen({
     [products]
   )
 
+  const mucNcc = useMemo<SearchItem[]>(
+    () =>
+      suppliers.map((x) => ({
+        id: x.id,
+        title: x.name,
+        meta: [x.code, x.phone, x.address].filter(Boolean).join(" · "),
+        keywords: `${x.code ?? ""} ${x.phone ?? ""}`,
+      })),
+    [suppliers]
+  )
+
+  /** Nạp phiếu trả NCC đã lưu. */
+  useEffect(() => {
+    if (!returnId) return
+    let huy = false
+    ;(async () => {
+      try {
+        const sb = createClient()
+        const { data, error } = await sb
+          .from("supplier_returns")
+          .select(
+            "id, return_code, supplier_id, return_date, warehouse_zone, reason, notes, status, " +
+              "supplier:suppliers(name, code), " +
+              "lines:supplier_return_lines(product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))"
+          )
+          .eq("id", returnId)
+          .maybeSingle()
+        if (huy) return
+        if (error) { setLoiNap(errorMessage(error)); return }
+        const r = (data as unknown) as {
+          return_code: string | null; supplier_id: string; return_date: string
+          warehouse_zone: string | null; reason: string | null; notes: string | null
+          supplier?: { name?: string | null; code?: string | null } | null
+          lines?: Array<{
+            product_id: string; unit_name: string; quantity: number; unit_price: number
+            line_discount: number; notes: string | null
+            product?: { name?: string | null; sku?: string | null } | null
+          }> | null
+        } | null
+        if (!r) { setLoiNap("Không tìm thấy phiếu trả NCC này."); return }
+        setSlipCode(r.return_code)
+        setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
+        setThoiDiem(r.return_date || "")
+        setKho(r.warehouse_zone || "date")
+        if (r.reason) setLyDo(r.reason)
+        setGhiChu(r.notes || "")
+        setLines(
+          (r.lines ?? []).map((x) => ({
+            key: newKey(),
+            productId: x.product_id,
+            sku: x.product?.sku ?? "",
+            name: x.product?.name ?? "Sản phẩm đã xoá",
+            unit: x.unit_name,
+            units: [{ unit_name: x.unit_name, conversion: 1 }],
+            qty: Number(x.quantity) || 0,
+            price: Number(x.unit_price) || 0,
+            discount: { value: Number(x.line_discount) || 0, unit: "vnd" as const },
+            /* ⚠ MỞ LẠI PHIẾU LÀ MẤT ĐƯỜNG VỀ PHIẾU NHẬP GỐC —
+               `supplier_returns` không có cột trỏ về nó. Nên lô và số
+               đã nhập về `null` chứ không về 0: 0 đọc như "đã trả hết
+               rồi", và stepper sẽ khoá cứng ở 0. Xem đầu tệp, mục 2. */
+            lots: [],
+            ordered: null,
+            note: x.notes ?? undefined,
+          }))
+        )
+      } catch (e) {
+        if (!huy) setLoiNap(errorMessage(e))
+      }
+    })()
+    return () => { huy = true }
+  }, [returnId])
+
+  /** Công nợ NCC + danh sách phiếu nhập của NCC ấy. */
+  useEffect(() => {
+    const id = ncc?.id
+    if (!id) { setPhieuGoc([]); setPhieuGocId(""); return }
+    let huy = false
+    ;(async () => {
+      const sb = createClient()
+      const [no, ds] = await Promise.all([
+        loadSupplierDebt(sb, id).catch(() => null),
+        loadReceiptsOfSupplier(sb, id).catch(() => [] as PosReceiptRef[]),
+      ])
+      if (huy) return
+      setNcc((c) => (c && c.id === id ? { ...c, debt: no } : c))
+      setPhieuGoc(ds)
+    })()
+    return () => { huy = true }
+  }, [ncc?.id])
+
+  /**
+   * NẠP DÒNG TỪ PHIẾU NHẬP GỐC — spec §8 mục 4 và 5.
+   *
+   * ⚠ THAY CẢ BỘ DÒNG, và nút chọn đã hỏi trước. Gộp thêm vào bộ đang
+   * có là trả hai lần cùng một chuyến hàng mà không ai thấy.
+   */
+  const napTuPhieuGoc = useCallback(
+    async (id: string) => {
+      setPhieuGocId(id)
+      if (!id) return
+      try {
+        const { lines: ds } = await loadReceiptLinesForReturn(createClient(), id)
+        setLines(
+          ds.map((x) => ({
+            key: newKey(),
+            productId: x.productId,
+            sku: x.sku,
+            name: x.name,
+            unit: x.unitName,
+            units: [{ unit_name: x.unitName, conversion: 1 }],
+            /* ⚠ SỐ LƯỢNG VỀ 0, KHÔNG BẰNG SỐ ĐÃ NHẬP. Điền sẵn cả
+               chuyến là một cú bấm Enter nhầm trả sạch phiếu nhập. */
+            qty: 0,
+            price: x.unitPrice,
+            discount: { value: 0, unit: "vnd" as const },
+            lots: x.lots,
+            ordered: x.receivedQty,
+          }))
+        )
+      } catch (e) {
+        toast({ title: "Không nạp được phiếu nhập gốc", description: errorMessage(e), variant: "destructive" })
+      }
+    },
+    [toast]
+  )
+
+  /**
+   * LƯU PHIẾU TRẢ NCC.
+   *
+   * ⚠ XUẤT KHO ĐI QUA RPC `complete_supplier_return`, một giao dịch —
+   * nó trừ `batches`, ghi `stock_entries` và ghi dòng `payables` ÂM
+   * trong cùng một lần. Màn này không tự làm bất kỳ phần nào trong ba.
+   */
+  const luuPhieu = useCallback(
+    async (complete: boolean) => {
+      if (!user?.org_id || !user.id) return
+      if (!ncc) { toast({ title: "Chưa chọn nhà cung cấp", variant: "destructive" }); return }
+      if (lines.length === 0) { toast({ title: "Phiếu chưa có dòng hàng nào", variant: "destructive" }); return }
+      if (complete && lines.every((l) => l.qty <= 0)) {
+        toast({ title: "Mọi dòng đang có số lượng 0", description: "Nhập số lượng trả trước khi ghi nhận.", variant: "destructive" })
+        return
+      }
+      setDangLuu(true)
+      try {
+        const r = await savePosSupplierReturn(createClient(), {
+          returnId,
+          orgId: user.org_id,
+          userId: user.id,
+          supplierId: ncc.id,
+          returnDate: thoiDiem || new Date().toISOString().slice(0, 10),
+          zone: kho,
+          reason: lyDo,
+          notes: ghiChu,
+          /* ⚠ "Chi phí trả hàng" TRỪ đi — cùng chỗ với `discount` của
+             phiếu, vì `complete_supplier_return` tính
+             `total = subtotal + vat − discount`. */
+          discount: t.fee,
+          lines,
+          complete,
+          subtotal: t.goods - t.lineDiscount,
+          vat: 0,
+          total: t.dueFromSupplier,
+        })
+        toast({ title: complete ? "Đã ghi nhận — xuất kho và giảm công nợ NCC" : "Đã lưu phiếu nháp" })
+        if (!returnId) router.replace(`/pos/tra-ncc/${r.returnId}`)
+      } catch (e) {
+        toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
+      } finally {
+        setDangLuu(false)
+      }
+    },
+    [user, ncc, lines, returnId, thoiDiem, kho, lyDo, ghiChu, t, router, toast]
+  )
+
   const deltaCells = useMemo<DeltaCell[]>(
     () => [
       {
-        label: "Kho bán",
+        label: kho === "sale" ? "Kho bán" : "Kho cận date",
         body:
           lines.length === 0 ? (
             <span className="text-[#94a3b8]">chưa có dòng hàng</span>
@@ -172,7 +391,7 @@ export function SupplierReturnScreen({
         body: <span className="text-[#64748b]">lô trả về đóng bớt, giá vốn lô không đổi</span>,
       },
     ],
-    [lines]
+    [lines, kho]
   )
 
   const g = POS_GRID.supplierReturn
@@ -183,7 +402,22 @@ export function SupplierReturnScreen({
         title={mode === "sua" ? "Sửa phiếu trả NCC" : "Phiếu trả NCC"}
         code={slipCode}
         badge={badge ?? (mode === "lap" ? { label: "NHÁP", tone: "tam" } : { label: "ĐÃ XUẤT KHO", tone: "da-kho" })}
-        right={<SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày trả" />}
+        right={
+          <>
+            {/* ⚠ VÙNG KHO QUYẾT ĐỊNH HÀNG LẤY TỪ ĐÂU — xem đầu tệp. */}
+            <SubHeaderSelect
+              id="sr-kho"
+              label="Kho xuất"
+              value={kho}
+              onChange={setKho}
+              options={[
+                { id: "date", label: "Kho cận date" },
+                { id: "sale", label: "Kho bán" },
+              ]}
+            />
+            <SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày trả" />
+          </>
+        }
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
@@ -206,6 +440,8 @@ export function SupplierReturnScreen({
             </DocBanner>
           )}
 
+          {loiNap && <DocBanner tone="warn">Không nạp được phiếu — {loiNap}</DocBanner>}
+
           {khoa && (
             <DocBanner tone="warn">
               <strong>Chưa huỷ được phiếu này.</strong> {khoa.message}{" "}
@@ -219,7 +455,7 @@ export function SupplierReturnScreen({
                 grid="supplierReturn"
                 cells={[
                   { label: "#" }, { label: "Mã hàng" }, { label: "Tên hàng" },
-                  { label: "Lô / HSD" },
+                  { label: "Lô của phiếu gốc" },
                   { label: "Đã nhập", align: "center" },
                   { label: "SL trả", align: "center" },
                   { label: "Giá nhập", align: "right" },
@@ -228,6 +464,20 @@ export function SupplierReturnScreen({
                   { label: "" },
                 ]}
               />
+            }
+            footer={
+              lines.length > 0 ? (
+                /*
+                  ⚠ NÓI RA AI CHỌN LÔ. `complete_supplier_return` lấy
+                    FIFO theo hạn trong vùng kho đã chọn; cột lô bên
+                    trái chỉ kể lô mà phiếu nhập gốc đã sinh ra.
+                */
+                <div className="shrink-0 bg-[#f8fafc] px-4 py-2 text-[11.5px] text-[#64748b]">
+                  Lô xuất đi do hệ thống chọn: hạn cũ trước, trong{" "}
+                  <strong>{kho === "sale" ? "kho bán" : "kho cận date"}</strong>. Cột
+                  &ldquo;Lô của phiếu gốc&rdquo; chỉ để đối chiếu, không phải ô chọn.
+                </div>
+              ) : undefined
             }
           >
             {lines.length === 0 && (
@@ -247,9 +497,10 @@ export function SupplierReturnScreen({
               </div>
             )}
             {lines.map((l, i) => {
-              /** ⚠ Spec §8 mục 5 — trần đúng số đã nhập còn lại. */
+              /** ⚠ Spec §8 mục 5 — trần đúng số đã nhập theo phiếu gốc. */
               const tran = supplierReturnMax(l.ordered)
               const chamTran = tran != null && l.qty >= tran
+              const dsLo = l.lots ?? []
               return (
                 <div
                   key={l.key}
@@ -260,25 +511,23 @@ export function SupplierReturnScreen({
                   <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
                   <div className="truncate text-[12.5px] font-semibold text-[#0f172a]">{l.name}</div>
                   {/*
-                    ⚠ CHỈ LÔ CỦA PHIẾU NHẬP GỐC (spec §8 mục 4). Danh
-                      sách lấy từ `l.lots`; chưa nối phiếu gốc thì nó
-                      RỖNG và ô nói ra — không rơi về toàn kho.
+                    ⚠ CHỮ ĐỌC, KHÔNG PHẢI Ô CHỌN. Máy chủ lấy lô FIFO và
+                      `supplier_return_lines` không có cột lô để nhận
+                      lựa chọn nào. Danh sách lấy từ `l.lots` — lô của
+                      PHIẾU NHẬP GỐC, không rơi về toàn kho.
                   */}
-                  <select
-                    aria-label={`Lô hàng dòng ${i + 1}`}
-                    value={l.lotId ?? ""}
-                    onChange={(e) => patchLine(l.key, { lotId: e.target.value || null })}
-                    className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[10.5px]"
+                  <div
+                    className="n truncate text-[10.5px] text-[#64748b]"
+                    title={dsLo.map((lo) => `${lo.code}${lo.expiry ? ` · ${lo.expiry}` : ""}`).join(", ")}
                   >
-                    <option value="">
-                      {(l.lots ?? []).length === 0 ? "chưa nối phiếu nhập gốc" : "chưa chọn lô"}
-                    </option>
-                    {(l.lots ?? []).map((lo) => (
-                      <option key={lo.id} value={lo.id}>
-                        {lo.code}{lo.expiry ? ` · ${lo.expiry}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    {dsLo.length === 0 ? (
+                      <span className="text-[#94a3b8]">chưa nối phiếu nhập gốc</span>
+                    ) : (
+                      `${dsLo[0].code}${dsLo[0].expiry ? ` · ${dsLo[0].expiry}` : ""}${
+                        dsLo.length > 1 ? ` +${dsLo.length - 1}` : ""
+                      }`
+                    )}
+                  </div>
                   <div className="n text-center text-[12px] text-[#64748b]">
                     {/* ⚠ Chưa biết thì nói thế, đừng hiện 0 — 0 đọc như
                         "đã nhận hết rồi, không trả được gì". */}
@@ -345,14 +594,49 @@ export function SupplierReturnScreen({
               onClose={() => setMoTimNcc(false)}
               title="Tìm nhà cung cấp"
               placeholder="Tên NCC, mã, SĐT…"
-              items={[]}
+              items={mucNcc}
               onPick={(it) => setNcc({ id: it.id, name: it.title, meta: it.meta })}
-              emptyHint="Chưa nạp được danh sách nhà cung cấp vào màn POS."
+              emptyHint="Không tìm thấy nhà cung cấp nào khớp."
             />
           </div>
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
-            <MoneyRow label="Tổng tiền hàng trả" value={t.goods} />
+            {/*
+              ⚠ Ô NÀY LÀ ĐƯỜNG DUY NHẤT LẤY ĐƯỢC "SỐ ĐÃ NHẬP" VÀ LÔ CỦA
+                PHIẾU GỐC, và nó KHÔNG lưu xuống — xem đầu tệp, mục 2.
+                Câu dưới ô nói thẳng điều đó để người dùng không tưởng
+                phiếu đang giữ đường về gốc.
+            */}
+            <label htmlFor="sr-goc" className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+              Phiếu nhập gốc
+            </label>
+            <select
+              id="sr-goc"
+              value={phieuGocId}
+              onChange={(e) => napTuPhieuGoc(e.target.value)}
+              disabled={!ncc}
+              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] disabled:bg-[#f8fafc] disabled:text-[#94a3b8]"
+            >
+              <option value="">
+                {!ncc
+                  ? "chọn nhà cung cấp trước"
+                  : phieuGoc.length === 0
+                    ? "NCC này chưa có phiếu nhập nào đã hoàn thành"
+                    : "Không nạp từ phiếu nào"}
+              </option>
+              {phieuGoc.map((p) => (
+                <option key={p.id} value={p.id}>{p.code} · {p.date}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[#94a3b8]">
+              Nạp sẵn dòng hàng, giá nhập và số đã nhập. Đường nối này{" "}
+              <strong>không lưu vào phiếu</strong> — mở lại phiếu sẽ không còn cột
+              &ldquo;Đã nhập&rdquo;. 50 phiếu gần nhất.
+            </p>
+
+            <div className="mt-3 border-t border-[#f1f5f9] pt-2">
+              <MoneyRow label="Tổng tiền hàng trả" value={t.goods} />
+            </div>
             {/*
               ⚠ Ô NÀY TRỪ ĐI, ngược hẳn "Chi phí nhập khác" của màn 9.
                 Cùng chữ "chi phí", hai chiều ngược nhau — dấu `−` là
@@ -387,6 +671,13 @@ export function SupplierReturnScreen({
             <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
               Hình thức hoàn
             </p>
+            {/*
+              ⚠ BA NÚT NÀY CHƯA ĐI XUỐNG SỔ. `complete_supplier_return`
+                luôn ghi một dòng `payables` ÂM — tức LUÔN là "trừ công
+                nợ". Tiền mặt / chuyển khoản là một phiếu chi riêng, và
+                màn POS chưa lập phiếu chi. Nên ô này chỉ đổi câu chữ
+                trên màn, và `docs/pos-todo.md` giữ mục ấy.
+            */}
             <div className="mt-1.5 flex gap-1.5">
               {(Object.keys(HOAN_LABEL) as HoanTien[]).map((h) => (
                 <button
@@ -404,6 +695,12 @@ export function SupplierReturnScreen({
                 </button>
               ))}
             </div>
+            {hoan !== "cong-no" && (
+              <p className="mt-1 text-[11px] text-[#b45309]">
+                Phiếu vẫn ghi giảm công nợ NCC. Tiền mặt / chuyển khoản phải lập phiếu chi
+                riêng — màn này chưa làm được việc đó.
+              </p>
+            )}
 
             <label htmlFor="sr-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
               Lý do trả NCC
@@ -437,19 +734,30 @@ export function SupplierReturnScreen({
               value={hdDieuChinh}
               onChange={(e) => setHdDieuChinh(e.target.value)}
             />
+            {/* ⚠ Bảng `supplier_returns` chưa có cột cho số này — nói ra. */}
+            <p className="mt-1 text-[11px] text-[#94a3b8]">
+              Chưa có cột lưu số này; ghi vào đây chỉ để in trên phiếu.
+            </p>
 
             <div className="flex-grow" />
           </div>
 
           <PanelActions>
-            <PanelButton width={54}>In</PanelButton>
-            <PanelButton width={96}>{mode === "sua" ? "Huỷ" : "Lưu nháp"}</PanelButton>
+            <PanelButton width={54} onClick={() => window.print()}>In</PanelButton>
+            <PanelButton
+              width={96}
+              disabled={dangLuu}
+              onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
+            >
+              {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
+            </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={!!khoa || lines.length === 0}
+              onClick={() => luuPhieu(true)}
+              disabled={!!khoa || lines.length === 0 || dangLuu}
               title={khoa ? khoa.message : lines.length === 0 ? "Chưa có dòng hàng nào trong phiếu" : undefined}
             >
-              Ghi nhận &amp; xuất kho
+              {dangLuu ? "Đang ghi…" : "Ghi nhận & xuất kho"}
             </PanelButton>
           </PanelActions>
 

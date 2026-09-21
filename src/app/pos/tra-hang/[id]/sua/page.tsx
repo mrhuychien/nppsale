@@ -20,7 +20,7 @@ export default function PosReturnEditPage() {
   return (
     <ReturnScreen
       mode="sua"
-      slipCode={id}
+      returnId={id}
       badge={{ label: "ĐÃ NHẬP KHO", tone: "da-kho" }}
     />
   )

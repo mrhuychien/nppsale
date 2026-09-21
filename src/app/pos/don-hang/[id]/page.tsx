@@ -11,5 +11,5 @@ import { OrderScreen } from "@/components/pos/order-screen"
 export default function PosOrderPage() {
   const { id } = useParams<{ id: string }>()
   const moi = id === "moi"
-  return <OrderScreen mode="lap" orderCode={moi ? null : id} />
+  return <OrderScreen mode="lap" orderId={moi ? null : id} />
 }

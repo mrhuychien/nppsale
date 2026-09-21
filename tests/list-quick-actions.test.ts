@@ -146,7 +146,12 @@ describe("ghi chú chung trong xem nhanh hóa đơn", () => {
    * hàng: danh sách 50 hóa đơn không cần mang theo 50 đoạn chữ.
    */
   it("đọc cả ghi chú hóa đơn lẫn ghi chú của đơn", () => {
-    expect(INV_DRAWER).toContain('.select("notes, order:sales_orders(notes)")')
+    /* ⚠ GHIM LUẬT, KHÔNG GHIM NGUYÊN VĂN CÂU `select`. Lượt đọc này nay
+       lấy thêm `subtotal, vat` cho khối Cộng tiền; ghim cả câu là chốt
+       đỏ vì có người THÊM cột, chứ không vì ghi chú nào mất. */
+    const sel = INV_DRAWER.match(/\.select\("([^"]*order:sales_orders\(notes\)[^"]*)"\)/)
+    expect(sel, "không thấy lượt đọc ghi chú của đơn").toBeTruthy()
+    expect(sel![1]).toMatch(/\bnotes\b/)
     expect(INV_DRAWER).toContain(".eq(\"id\", invoiceId)")
   })
 

@@ -626,7 +626,10 @@ describe("Danh sách hóa đơn bán", () => {
    */
   it("ngăn xem nhanh in tổng của hóa đơn, không tự cộng", () => {
     const D = strip(INV_DRAWER)
-    expect(D).toContain("formatCurrency(invoice.total)")
+    /* ⚠ GHIM LUẬT, KHÔNG GHIM CHỮ. Con số đi qua khối dùng chung
+       `InvoiceMoneySummary` từ 21/09/2026; điều phải giữ là nó lấy
+       `invoice.total` chứ không cộng lại từ dòng hàng. */
+    expect(D).toMatch(/total:\s*invoice\.total|formatCurrency\(invoice\.total\)/)
     expect(D).not.toMatch(/lines[^\n]*reduce\(/)
   })
 

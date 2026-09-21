@@ -159,26 +159,19 @@ describe("mẫu in và màn chi tiết", () => {
     expect(PRINT).not.toContain("numberToVietnameseWords(total)")
   })
 
-  it("màn chi tiết hiện khoản trừ và số còn phải thu", () => {
-    expect(DETAIL).toContain("{returnCredit > 0 && (")
-    expect(DETAIL).toContain('label="Trừ hàng trả"')
-    expect(DETAIL).toContain('label="Còn phải thu"')
-  })
-
   /**
-   * ⚠ ĐẾM PHIẾU CHƯA TRỪ, KHÔNG ĐẾM PHIẾU CHƯA HOÀN THÀNH.
+   * ⚠ HAI LUẬT NÀY NAY NẰM TRONG KHỐI DÙNG CHUNG `InvoiceMoneySummary`
+   * (chủ nhà chốt 21/09/2026: ngăn xem nhanh cũng phải hiện đủ), và
+   * `tests/cong-tien-hoa-don.test.ts` CHẠY THẬT khối ấy — cả dòng "Trừ
+   * hàng trả / Còn phải thu" lẫn luật "chỉ nhắc phiếu CHƯA trừ".
    *
-   * Từ mig 133, phiếu trả sinh ra từ đơn đã trừ vào công nợ ngay lúc xuất
-   * hóa đơn, dù nó còn ở "Chờ xử lý". Đếm nó vào lời nhắc "số phải thu sẽ
-   * giảm tiếp" là báo người đi đòi tiền rằng còn giảm nữa — và họ đòi
-   * THIẾU đúng bằng khoản ấy.
+   * Ở đây chỉ còn canh đúng một điều: màn chi tiết không quay về tự
+   * cộng lấy. Hai phép trừ cho cùng một tờ hóa đơn thì sẽ lệch nhau
+   * đúng vào hôm có người sửa một bên.
    */
-  it("màn chi tiết chỉ nhắc những phiếu trả CHƯA trừ vào công nợ", () => {
-    expect(DETAIL).toContain("{uncountedReturns > 0 && (")
-    expect(DETAIL).toContain("!creditCounted(r)")
-    expect(DETAIL).toContain("chưa trừ vào công nợ")
-    // ⚠ Không được quay lại đếm theo trạng thái.
-    expect(DETAIL).not.toContain('r.status === "draft" || r.status === "submitted"')
+  it("màn chi tiết không tự cộng khoản trừ", () => {
+    expect(DETAIL).toContain("<InvoiceMoneySummary")
+    expect(/creditOnInvoice\s*\(/.test(DETAIL), "tự cộng lần thứ hai").toBe(false)
   })
 
   it("màn in đi qua showCreditOnPrint, không tự quyết", () => {

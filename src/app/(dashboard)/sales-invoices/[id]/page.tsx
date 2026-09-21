@@ -28,6 +28,7 @@ import {
   DetailCustomerCard, type TimelineStep,
 } from "@/components/detail/detail-chrome"
 import { CustomerQuickView } from "@/components/customers/customer-quick-view"
+import { InvoiceMoneySummary } from "@/components/orders/invoice-money-summary"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -38,9 +39,7 @@ import { cancelInvoice } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
-import {
-  creditOnInvoice, creditCounted, netDueOnInvoice, type InvoiceReturnRow,
-} from "@/lib/orders/invoice-credit"
+import { type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 
 interface InvoiceRow {
   id: string
@@ -214,19 +213,6 @@ export default function SalesInvoiceDetailPage() {
     }
   }
 
-  const returnCredit = creditOnInvoice(invReturns)
-  const netDue = netDueOnInvoice(Number(inv.total || 0), returnCredit)
-  /**
-   * Phiếu trả CHƯA trừ vào công nợ — số phải thu sẽ còn giảm tiếp.
-   *
-   * ⚠ KHÔNG PHẢI "CHƯA HOÀN THÀNH". Từ mig 133, phiếu trả sinh ra từ đơn
-   *   đã trừ ngay lúc xuất hóa đơn dù còn ở 'Chờ xử lý'; đếm nó vào đây
-   *   là báo người đi đòi tiền rằng số sẽ giảm tiếp, trong khi nó đã giảm
-   *   rồi — và họ đòi thiếu đúng bằng khoản ấy.
-   */
-  const uncountedReturns = invReturns.filter(
-    (r) => r.status !== "cancelled" && !creditCounted(r)
-  ).length
 
   const statusLabel = INVOICE_STATUS_MAP[inv.status]?.label ?? inv.status
   /**
@@ -530,42 +516,14 @@ export default function SalesInvoiceDetailPage() {
         }
         rail={
           <>
+          {/* ⚠ CÙNG MỘT KHỐI VỚI NGĂN XEM NHANH — xem
+              `InvoiceMoneySummary`. Hai chỗ tự cộng là hai con số cho
+              cùng một tờ hóa đơn. */}
           <DetailCard title="Cộng tiền">
-            <DetailRow label="Tiền hàng" value={formatCurrency(inv.subtotal)} />
-            <DetailRow label="Thuế GTGT" value={formatCurrency(inv.vat)} />
-            {/*
-              ⚠ TỔNG HÓA ĐƠN KHÔNG ĐỔI khi có hàng trả — nó là giá trị lô
-                hàng đã giao, thứ tờ hóa đơn chứng nhận. Khoản trừ và số
-                còn phải thu là hai dòng THÊM, đúng như sổ công nợ tính.
-                Trước đây màn chỉ hiện tổng, nên người mở tờ hóa đơn ra
-                nhìn 10.000.000 mà sổ ghi 9.200.000 và không có gì trên
-                màn giải thích chênh lệch.
-            */}
-            <DetailRow
-              label={returnCredit > 0 ? "Tổng hóa đơn" : "Tổng cộng"}
-              value={formatCurrency(inv.total)}
-              strong={returnCredit === 0}
+            <InvoiceMoneySummary
+              invoice={{ total: inv.total, subtotal: inv.subtotal, vat: inv.vat }}
+              returns={invReturns}
             />
-            {returnCredit > 0 && (
-              <>
-                <DetailRow
-                  label="Trừ hàng trả"
-                  value={`−${formatCurrency(returnCredit)}`}
-                />
-                <DetailRow label="Còn phải thu" value={formatCurrency(netDue)} strong />
-              </>
-            )}
-            {/*
-              ⚠ CHỈ ĐẾM PHIẾU CHƯA TRỪ. Nói ra để người đi đòi tiền không
-                đòi nhầm một số sắp thay đổi — nhưng phiếu ĐÃ trừ rồi thì
-                đừng nhắc, nhắc là họ tưởng còn giảm nữa và đòi thiếu.
-            */}
-            {uncountedReturns > 0 && (
-              <p className="mt-2 rounded-lg bg-[#fff7e6] px-2.5 py-2 text-xs font-semibold text-[#7a4b00]">
-                Còn {uncountedReturns} phiếu trả chưa trừ vào công nợ — hoàn thành (nhập hàng
-                về kho) xong thì số phải thu sẽ giảm tiếp.
-              </p>
-            )}
           </DetailCard>
 
           <DetailCard title="Thanh toán">

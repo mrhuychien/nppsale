@@ -19,6 +19,7 @@ import {
   RETURN_SUMMARY_SELECT,
   type ReturnSummaryRow,
 } from "@/components/orders/return-summary"
+import { InvoiceMoneySummary } from "@/components/orders/invoice-money-summary"
 import { noteBlocksOf } from "@/components/printing/sales-invoice"
 import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
 
@@ -77,6 +78,18 @@ export function InvoiceDrawer({
    * Xuất hàng. Đọc thẳng từ đơn thì mọi hóa đơn CŨ cũng hiện ra.
    */
   const [notes, setNotes] = useState<{ label: string; text: string }[]>([])
+  /**
+   * Tiền hàng + thuế của tờ hóa đơn.
+   *
+   * ⚠ ĐI NHỜ ĐÚNG LƯỢT ĐỌC ĐANG CÓ, không mở thêm một lượt nữa và cũng
+   *   không bắt danh sách 50 hóa đơn kéo thêm hai cột. Lượt ấy vốn đọc
+   *   ghi chú, nên chỉ thêm hai tên cột vào `select`.
+   *
+   * ⚠ `null` LÀ "CHƯA ĐỌC ĐƯỢC", và khi đó hai dòng ấy KHÔNG vẽ. Điền 0
+   *   cho một lỗi mạng đọc như một hóa đơn không thuế. Phần còn lại của
+   *   khối vẫn đúng vì nó chỉ cần `total` — số đã có sẵn từ danh sách.
+   */
+  const [tien, setTien] = useState<{ subtotal: number; vat: number } | null>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   const [cancelling, setCancelling] = useState(false)
@@ -89,6 +102,7 @@ export function InvoiceDrawer({
     setError(null)
     setReturns([])
     setNotes([])
+    setTien(null)
     ;(async () => {
       const supabase = createClient()
 
@@ -118,12 +132,20 @@ export function InvoiceDrawer({
        */
       supabase
         .from("sales_invoices")
-        .select("notes, order:sales_orders(notes)")
+        .select("subtotal, vat, notes, order:sales_orders(notes)")
         .eq("id", invoiceId)
         .maybeSingle()
         .then(({ data: nRow }) => {
           if (cancelled || !nRow) return
-          const r = (nRow as unknown) as { notes?: string | null; order?: { notes?: string | null } | null }
+          const r = (nRow as unknown) as {
+            subtotal?: number | null
+            vat?: number | null
+            notes?: string | null
+            order?: { notes?: string | null } | null
+          }
+          if (r.subtotal != null && r.vat != null) {
+            setTien({ subtotal: Number(r.subtotal), vat: Number(r.vat) })
+          }
           setNotes(
             noteBlocksOf([
               { label: "Ghi chú đơn hàng", text: r.order?.notes },
@@ -245,11 +267,23 @@ export function InvoiceDrawer({
                     </span>
                   </div>
                 ))}
-                <div className="grid gap-1.5 border-t border-outline-variant/30 px-3 py-3 text-[13px] font-semibold text-on-surface-variant">
-                  <div className="flex items-baseline justify-between border-t-0 text-sm font-extrabold text-on-surface">
-                    <span>Tổng tiền</span>
-                    <span className="text-xl tabular-data">{formatCurrency(invoice.total)}</span>
-                  </div>
+                {/*
+                  ⚠ CÙNG MỘT KHỐI VỚI MÀN CHI TIẾT (chủ nhà chốt
+                    21/09/2026: "Xem nhanh bên ngoài cũng phải hiện chi
+                    tiết thế này chứ"). Trước đây chỗ này chỉ có một dòng
+                    "Tổng tiền": người mở ngăn nhìn 1.000.000 trong khi
+                    khối hàng trả ngay dưới nói −164.000, và không có
+                    dòng nào trên màn nói số phải thu thật là 836.000.
+                */}
+                <div className="border-t border-outline-variant/30 px-3 py-3">
+                  <InvoiceMoneySummary
+                    invoice={{
+                      total: invoice.total,
+                      subtotal: tien?.subtotal ?? null,
+                      vat: tien?.vat ?? null,
+                    }}
+                    returns={returns}
+                  />
                 </div>
               </div>
 

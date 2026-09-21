@@ -64,8 +64,22 @@ export function creditCounted(
     : r.status === "completed"
 }
 
+/**
+ * Ba trường phép trừ THẬT SỰ dùng — và chỉ ba.
+ *
+ * ⚠ CÙNG LÝ DO VỚI `creditCounted`. Bắt cả `InvoiceReturnRow` là mọi nơi
+ * gọi phải mang theo `lines`, `reason`… và chỗ nào có hình dạng hơi khác
+ * (ví dụ `ReturnSummaryRow` của ngăn xem nhanh, dòng của nó không có
+ * `unit_price`) thì phải ép kiểu. Ép kiểu ở đường tính tiền là chỗ lỗi
+ * đi qua mà không ai thấy.
+ */
+export type CreditInput = Pick<InvoiceReturnRow, "status"> & {
+  credit_note_amount?: number | null
+  credit_with_invoice?: boolean | null
+}
+
 /** Tổng khoản trừ ĐÃ vào công nợ của hóa đơn này. */
-export function creditOnInvoice(returns: readonly InvoiceReturnRow[]): number {
+export function creditOnInvoice(returns: readonly CreditInput[]): number {
   return returns
     .filter(creditCounted)
     .reduce((s, r) => s + Math.max(0, Number(r.credit_note_amount || 0)), 0)

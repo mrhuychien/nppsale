@@ -11,6 +11,19 @@ import path from "path"
  *        npm run test:coverage
  */
 export default defineConfig({
+  /**
+   * ⚠ JSX DỰNG THEO LỐI MỚI, để chốt GỌI THẲNG được một khối giao diện.
+   *
+   * `tsconfig.json` để `jsx: "preserve"` cho Next.js tự lo; esbuild của
+   * vitest khi ấy dựng ra `React.createElement` và cần `React` trong
+   * phạm vi — tệp nguồn không import React (Next.js không bắt), nên nổ
+   * "React is not defined" NGAY LÚC CHẠY chốt.
+   *
+   * Cần vì chốt tiền thật sự CHẠY khối `InvoiceMoneySummary` rồi soi
+   * cây phần tử trả về, thay vì ghim nguyên văn một dòng mã — thứ vỡ
+   * ngay khi mã dời chỗ chứ không vì luật nào sai.
+   */
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],

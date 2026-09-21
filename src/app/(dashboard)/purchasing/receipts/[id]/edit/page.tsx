@@ -57,6 +57,8 @@ export default function EditPurchaseReceiptPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<ReceiptProduct[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -92,6 +94,7 @@ export default function EditPurchaseReceiptPage() {
     const prods = prodRes.rows
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
+    setCatTruncated(prodRes.truncated)
     /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
     void fillExtras(prods)
 
@@ -252,6 +255,7 @@ export default function EditPurchaseReceiptPage() {
       <PurchaseReceiptForm
         suppliers={suppliers}
         products={products}
+        catalogueTruncated={catTruncated}
         value={form}
         onChange={patch}
         submitting={submitting}

@@ -18,6 +18,7 @@ import {
   Search, Package, ChevronRight, Warehouse, AlertCircle,
 } from "lucide-react"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import type { Product, Batch } from "@/types"
 
 type ProductWithStock = Product & {
@@ -35,6 +36,18 @@ export default function InventoryAuditPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  /**
+   * Đọc chưa hết — màn này phải nói ra, và nói RÕ THIẾU CÁI GÌ.
+   *
+   * ⚠ HAI NGUỒN, HAI HẬU QUẢ KHÁC NHAU. Danh mục đọc thiếu là THIẾU
+   *   DÒNG: mã hàng không hiện ra để tra soát. Bảng lô đọc thiếu là SAI
+   *   SỐ: mã vẫn hiện, nhưng tồn và giá trị tồn cộng ra THẤP HƠN sự
+   *   thật — và một con số sai trông y hệt một con số đúng. Gộp hai
+   *   thứ vào một câu là người tra soát không biết mình đang đọc thiếu
+   *   dòng hay đọc sai số.
+   */
+  const [shortProducts, setShortProducts] = useState(false)
+  const [shortBatches, setShortBatches] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,6 +87,8 @@ export default function InventoryAuditPage() {
         _stock: stockByProduct[p.id] || { on_hand: 0, value: 0, batch_count: 0 },
       }))
     )
+    setShortProducts(prodRes.truncated)
+    setShortBatches(batchRes.truncated || batchRes.error !== null)
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,6 +162,14 @@ export default function InventoryAuditPage() {
           autoFocus
         />
       </div>
+
+      {shortProducts && <CatalogueShortNote />}
+      {shortBatches && (
+        <CatalogueShortNote>
+          Chưa đọc hết bảng lô — cột Tồn và Giá trị đang cộng THIẾU. Tải lại
+          trang trước khi dùng số ở đây để đối chiếu.
+        </CatalogueShortNote>
+      )}
 
       {/* Results */}
       {loading ? (

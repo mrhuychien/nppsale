@@ -44,6 +44,8 @@ export default function NewPurchaseReturnPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<ReceiptProduct[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReturnFormValue>(() => ({
@@ -86,6 +88,7 @@ export default function NewPurchaseReturnPage() {
     const prods = prodRes.rows
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
+    setCatTruncated(prodRes.truncated)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
       void fillExtras(prods)
     })()
@@ -167,6 +170,7 @@ export default function NewPurchaseReturnPage() {
       <PurchaseReturnForm
         suppliers={suppliers}
         products={products}
+        catalogueTruncated={catTruncated}
         value={form}
         onChange={patch}
         submitting={submitting}

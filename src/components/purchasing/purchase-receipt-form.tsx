@@ -53,6 +53,7 @@ export interface PurchaseReceiptFormValue {
 export function PurchaseReceiptForm({
   suppliers,
   products,
+  catalogueTruncated,
   value,
   onChange,
   submitting,
@@ -61,6 +62,8 @@ export function PurchaseReceiptForm({
 }: {
   suppliers: Supplier[]
   products: ReceiptProduct[]
+  /** Danh mục trên đọc chưa hết — chuyển thẳng xuống ô tìm. */
+  catalogueTruncated?: boolean
   value: PurchaseReceiptFormValue
   onChange: (patch: Partial<PurchaseReceiptFormValue>) => void
   submitting: boolean
@@ -75,6 +78,7 @@ export function PurchaseReceiptForm({
   return (
     <PurchasingLinesEditor
       products={products}
+      catalogueTruncated={catalogueTruncated}
       value={value}
       onChange={onChange}
       submitting={submitting}

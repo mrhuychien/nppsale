@@ -65,6 +65,7 @@ import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 
 type NextStatus = {
   value: OrderStatus
@@ -112,22 +113,6 @@ type OrderStockEntry = {
     unit_cost: number
     product?: { name: string; sku: string } | null
   }>
-}
-
-/**
- * Câu nói "danh mục đọc chưa hết", dùng cho CẢ HAI ô tra hàng ở màn này.
- *
- * ⚠ MỘT CHỖ, KHÔNG HAI. Ô "Đổi sản phẩm" và ô "Thêm sản phẩm mới vào
- * đơn" dùng CHUNG `swapCatalog`, nên chúng thiếu hệt nhau — viết câu
- * cảnh báo hai lần là có ngày sửa một chỗ và quên chỗ kia, rồi một
- * trong hai ô lại im lặng.
- */
-function CatalogueShortNote() {
-  return (
-    <p className="text-xs text-[#b54708]">
-      Danh mục đọc chưa hết — kết quả tìm đang thiếu. Tải lại trang.
-    </p>
-  )
 }
 
 /**

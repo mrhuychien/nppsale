@@ -30,6 +30,7 @@ import {
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import Link from "next/link"
 import {
   Dialog,
@@ -101,6 +102,8 @@ export default function StockInPage() {
   const supabase = createClient()
 
   const [products, setProducts] = useState<ProductWithRelations[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [saving, setSaving] = useState(false)
@@ -153,6 +156,7 @@ export default function StockInPage() {
     )
     const list = res.rows
     setProducts(list)
+    setCatTruncated(res.truncated)
     const newest = list
       .slice()
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0]
@@ -180,6 +184,7 @@ export default function StockInPage() {
       if (qErr) console.error("[inventory/stock-in] truy vấn lỗi:", qErr.message)
       /* ⚠ `rows` — danh mục kéo ĐỦ theo trang, xem `loadCatalogue`. */
       setProducts(prodRes.rows)
+      setCatTruncated(prodRes.truncated)
       // Suppliers might fail silently if migration 006 not yet run - that's OK
       if (supRes.data) setSuppliers(supRes.data as Supplier[])
       setProductsLoading(false)
@@ -738,6 +743,7 @@ export default function StockInPage() {
               }))}
               onPick={(p) => addProductLine(p.id)}
               emptyHint="Không tìm thấy mã nào khớp."
+              hint={catTruncated ? <CatalogueShortNote /> : null}
               footer={
                 <div className="border-t border-border/50 p-2">
                   <button

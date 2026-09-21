@@ -43,6 +43,8 @@ export default function NewPurchaseReceiptPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<ReceiptProduct[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReceiptFormValue>(() => ({
@@ -76,6 +78,7 @@ export default function NewPurchaseReceiptPage() {
     const prods = prodRes.rows
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
+    setCatTruncated(prodRes.truncated)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
       void fillExtras(prods)
     })()
@@ -157,6 +160,7 @@ export default function NewPurchaseReceiptPage() {
       <PurchaseReceiptForm
         suppliers={suppliers}
         products={products}
+        catalogueTruncated={catTruncated}
         value={form}
         onChange={patch}
         submitting={submitting}

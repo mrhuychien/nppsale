@@ -34,6 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatInt } from "@/lib/utils"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import {
   baseQtyOf, overIssueProducts, validIssueLines, friendlyIssueError,
@@ -51,6 +52,8 @@ export default function StockIssuePage() {
   const { toast } = useToast()
 
   const [products, setProducts] = useState<IssueProduct[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [zone, setZone] = useState("sale")
   const [reason, setReason] = useState("damaged")
   /**
@@ -77,6 +80,7 @@ export default function StockIssuePage() {
     ).then((res) => {
       if (cancelled) return
       setProducts(res.rows)
+      setCatTruncated(res.truncated)
     })
     return () => { cancelled = true }
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -364,6 +368,7 @@ export default function StockIssuePage() {
               subtitle: `${p.sku || "—"} · ${p.base_unit}`,
             }))}
             onPick={(p) => addProduct(p)}
+            hint={catTruncated ? <CatalogueShortNote /> : null}
           />
         </CardContent>
       </Card>

@@ -61,6 +61,7 @@ export interface PurchaseReturnFormValue {
 export function PurchaseReturnForm({
   suppliers,
   products,
+  catalogueTruncated,
   value,
   onChange,
   submitting,
@@ -69,6 +70,8 @@ export function PurchaseReturnForm({
 }: {
   suppliers: Supplier[]
   products: ReceiptProduct[]
+  /** Danh mục trên đọc chưa hết — chuyển thẳng xuống ô tìm. */
+  catalogueTruncated?: boolean
   value: PurchaseReturnFormValue
   onChange: (patch: Partial<PurchaseReturnFormValue>) => void
   submitting: boolean
@@ -84,6 +87,7 @@ export function PurchaseReturnForm({
   return (
     <PurchasingLinesEditor
       products={products}
+      catalogueTruncated={catalogueTruncated}
       value={value}
       onChange={onChange}
       submitting={submitting}

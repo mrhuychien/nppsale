@@ -48,6 +48,7 @@ import {
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 
 /**
@@ -616,14 +617,7 @@ export function InvoiceEditor({
                     đúng tên một mã có thật, không thấy gì, rồi kết luận
                     danh mục thiếu mã — đúng cái đã xảy ra hôm nay.
                 */
-                hint={
-                  catalogTruncated ? (
-                    <p className="flex items-start gap-1.5 text-xs text-[#b54708]">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>Danh mục đọc chưa hết — kết quả tìm đang thiếu. Tải lại trang.</span>
-                    </p>
-                  ) : null
-                }
+                hint={catalogTruncated ? <CatalogueShortNote /> : null}
               />
             </CardContent>
           </Card>

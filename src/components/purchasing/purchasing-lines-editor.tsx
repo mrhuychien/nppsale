@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog"
 import { formatCurrency, formatInt } from "@/lib/utils"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import {
   inSupplierScope, linesOutOfSupplierScope, scopeToSupplier, searchReturnProducts,
 } from "@/lib/purchasing/return-form"
@@ -84,6 +85,7 @@ export interface PurchasingLinesValue {
 
 export function PurchasingLinesEditor({
   products,
+  catalogueTruncated = false,
   value,
   onChange,
   submitting,
@@ -95,6 +97,17 @@ export function PurchasingLinesEditor({
   totalLabel,
 }: {
   products: ReceiptProduct[]
+  /**
+   * Danh mục trên đọc CHƯA HẾT — ô tìm phải nói ra.
+   *
+   * ⚠ MẶC ĐỊNH `false` CÓ CHỦ Ý, VÀ ĐÓ LÀ MỘT ĐÁNH ĐỔI. Bốn màn dùng
+   * component này đều phải truyền cờ vào; quên truyền thì ô tìm im
+   * lặng như cũ. Đổi thành bắt buộc sẽ bắt được lỗi quên ngay lúc biên
+   * dịch — nhưng `catalogue-full-load.test.ts` đã canh đúng việc ấy ở
+   * cả bốn màn, và một prop bắt buộc nữa làm chữ ký component dài thêm
+   * cho mọi nơi gọi.
+   */
+  catalogueTruncated?: boolean
   value: PurchasingLinesValue
   onChange: (patch: Partial<PurchasingLinesValue>) => void
   submitting: boolean
@@ -239,6 +252,12 @@ export function PurchasingLinesEditor({
             }}
             hint={
               <>
+                {/* ⚠ ĐỌC THIẾU THÌ NÓI RA TRƯỚC MỌI CÂU KHÁC. Các dòng
+                    nhắc bên dưới nói về phép LỌC theo NCC; nếu danh mục
+                    vốn đã đọc thiếu thì chúng giải thích sai nguyên
+                    nhân, và người dùng đi bật "Hiện tất cả" cho một mã
+                    chưa bao giờ được nạp về. */}
+                {catalogueTruncated && <CatalogueShortNote />}
                 {/*
                   ⚠ NÓI RÕ ĐANG LỌC, VÀ CHO ĐƯỜNG THOÁT. Cột
                     `products.primary_supplier_id` được backfill từ phiếu

@@ -58,6 +58,8 @@ export default function EditPurchaseReturnPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<ReceiptProduct[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -110,6 +112,7 @@ export default function EditPurchaseReturnPage() {
     const prods = prodRes.rows
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
+    setCatTruncated(prodRes.truncated)
     void fillExtras(prods)
 
     const hdr = hdrRes.data as (SupplierReturn & {
@@ -292,6 +295,7 @@ export default function EditPurchaseReturnPage() {
       <PurchaseReturnForm
         suppliers={suppliers}
         products={products}
+        catalogueTruncated={catTruncated}
         value={form}
         onChange={patch}
         submitting={submitting}

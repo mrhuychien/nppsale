@@ -225,50 +225,96 @@ describe("không màn nào nạp danh mục kiểu bị cắt", () => {
  * mục thiếu mã rồi đi tạo một mã trùng. Kéo đủ mà không báo được là mới
  * dời cái bẫy đi xa hơn, không phải gỡ nó.
  */
-const CON_NO_NUOT_CO_THIEU = [
-  /**
-   * ⚠ BẢY MÀN NÀY NHẬN CỜ RỒI VỨT ĐI. Chúng chuyển sang `loadCatalogue`
-   * hôm 21/09/2026 trong lượt sửa lỗi "Sản phẩm đã xoá" — phần kéo đủ
-   * đã xong, phần nói ra thì chưa nối dây. Đã báo chủ nhà, chưa được
-   * yêu cầu sửa.
-   */
-  "src/app/(dashboard)/purchasing/receipts/new/page.tsx",
-  "src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx",
-  "src/app/(dashboard)/purchase-returns/new/page.tsx",
-  "src/app/(dashboard)/purchase-returns/[id]/edit/page.tsx",
-  "src/app/(dashboard)/inventory/stock-issue/page.tsx",
-  "src/app/(dashboard)/inventory/stock-in/page.tsx",
-  "src/app/(dashboard)/inventory/audit/page.tsx",
-]
+/**
+ * ⚠ DANH SÁCH NAY RỖNG (chủ nhà chốt 21/09/2026: "làm nốt màn 7 phiếu").
+ * Bảy màn từng nằm đây — phiếu nhập hàng tạo/sửa, phiếu trả NCC
+ * tạo/sửa, phiếu xuất kho, phiếu nhập kho, màn tra soát — nay đều nói
+ * ra khi danh mục đọc chưa hết.
+ *
+ * ⚠ GIỮ MẢNG LẠI DÙ RỖNG, ĐỪNG XOÁ. Nó là chỗ DUY NHẤT hợp lệ để ghi
+ * một màn còn nuốt cờ, và chốt ngay dưới đòi mỗi tên trong đó phải
+ * THẬT SỰ còn nuốt — nên không ai nhét được một màn đã sửa vào đây để
+ * né. Xoá mảng đi thì lần sau người ta lại nới chính chốt quét.
+ */
+const CON_NO_NUOT_CO_THIEU: string[] = []
+
+/**
+ * Màn này có NÓI RA cho người dùng không.
+ *
+ * ⚠ ĐÒI THỨ NGƯỜI DÙNG NHÌN THẤY, KHÔNG ĐÒI MỘT BIẾN. Bản đầu của chốt
+ * này chỉ tìm chữ `truncated` ở đâu đó trong tệp — `const x =
+ * res.truncated` rồi vứt đi cũng qua được, mà đó CHÍNH LÀ lỗi cần
+ * chặn. Thứ thật sự quan trọng là câu chữ có tới mắt người nhập không,
+ * nên mốc là `CatalogueShortNote` (màn tự vẽ) hoặc `catalogueTruncated=`
+ * (màn chuyền cờ xuống một component vẽ hộ).
+ */
+function coNoiRa(src: string): boolean {
+  return /CatalogueShortNote/.test(src) || /catalogueTruncated=/.test(src)
+}
 
 describe("đọc thiếu danh mục thì màn hình phải nói ra", () => {
-  it("mọi nơi gọi loadCatalogue đều dùng tới cờ truncated", () => {
+  it("mọi nơi gọi loadCatalogue đều nói ra khi đọc thiếu", () => {
     const bad: string[] = []
     for (const abs of allScanned()) {
       const rel = abs.slice(ROOT.length + 1)
       if (CON_NO_NUOT_CO_THIEU.includes(rel)) continue
       const src = strip(readFileSync(abs, "utf-8"))
       if (!src.includes("loadCatalogue<")) continue
-      if (!/truncated/.test(src)) bad.push(rel)
+      if (!coNoiRa(src)) bad.push(rel)
     }
     expect(
       bad,
-      "nạp danh mục qua loadCatalogue nhưng vứt cờ `truncated` — đọc thiếu " +
-        "mà màn hình im lặng, đúng hình dạng của lỗi 21/09/2026:\n  " + bad.join("\n  ")
+      "nạp danh mục qua loadCatalogue nhưng không nói gì khi đọc thiếu — " +
+        "người nhập gõ đúng tên một mã có thật, ô tìm im lặng trả về rỗng, " +
+        "rồi họ đi tạo một mã trùng:\n  " + bad.join("\n  ")
     ).toEqual([])
   })
 
   /** ⚠ Sửa màn nào thì xoá tên màn ấy — nếu không cái lỗ vẫn mở. */
-  it("mỗi màn trong danh sách nợ đều thật sự còn nuốt cờ", () => {
+  it("mỗi màn trong danh sách nợ đều thật sự còn im lặng", () => {
     for (const rel of CON_NO_NUOT_CO_THIEU) {
       const src = strip(read(rel))
       expect(src, `${rel} không còn gọi loadCatalogue — xem lại danh sách nợ`)
         .toContain("loadCatalogue<")
       expect(
-        /truncated/.test(src),
-        `${rel} đã dùng tới cờ truncated — xoá tên nó khỏi CON_NO_NUOT_CO_THIEU`
+        coNoiRa(src),
+        `${rel} đã nói ra khi đọc thiếu — xoá tên nó khỏi CON_NO_NUOT_CO_THIEU`
       ).toBe(false)
     }
+  })
+
+  /**
+   * ⚠ PHÉP QUÉT PHẢI NHÌN THẤY GÌ ĐÓ. `allScanned()` hỏng, hay
+   * `loadCatalogue<` đổi cách viết, thì `bad` rỗng và chốt trên XANH
+   * vĩnh viễn — đúng kiểu chốt nói dối đã để lọt lỗi 21/09/2026. Chín
+   * màn đang nạp danh mục qua đường chung; nếu không thấy chúng nữa
+   * thì phép quét hỏng, không phải kho mã sạch.
+   */
+  it("phép quét thật sự nhìn thấy các màn nạp danh mục", () => {
+    const thay = allScanned().filter((abs) =>
+      strip(readFileSync(abs, "utf-8")).includes("loadCatalogue<")
+    )
+    expect(thay.length, "phép quét hỏng — không thấy màn nào gọi loadCatalogue")
+      .toBeGreaterThanOrEqual(9)
+  })
+
+  /**
+   * ⚠ CÂU CHỮ NẰM MỘT CHỖ. Chép ra từng màn là chín lần phải nhớ sửa,
+   * và màn nào quên thì lại im lặng — đúng thứ cờ `truncated` sinh ra
+   * để chặn. Ai dựng lại câu ấy bằng JSX viết thẳng thì chốt này đỏ.
+   */
+  it("không màn nào tự chép lại câu cảnh báo", () => {
+    const bad: string[] = []
+    for (const abs of allScanned()) {
+      const rel = abs.slice(ROOT.length + 1)
+      if (rel === "src/components/ui/catalogue-short-note.tsx") continue
+      const src = strip(readFileSync(abs, "utf-8"))
+      if (/Danh mục đọc chưa hết/.test(src)) bad.push(rel)
+    }
+    expect(
+      bad,
+      "viết thẳng câu cảnh báo thay vì dùng <CatalogueShortNote>:\n  " + bad.join("\n  ")
+    ).toEqual([])
   })
 
   /**

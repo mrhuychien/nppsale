@@ -45,7 +45,7 @@ import {
   returnsBrokenBy, type PendingReturnLine,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
-import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
+import { sellableUnits, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import { vatLabel } from "@/lib/constants"
@@ -146,6 +146,25 @@ export function InvoiceEditor({
    *   lưu lại ghi đè cả những dòng không ai chạm tới.
    */
   const [retEdits, setRetEdits] = useState<Record<string, number>>({})
+  /**
+   * Dòng hàng đổi / trả NGƯỜI DÙNG VỪA THÊM, chưa ghi xuống sổ.
+   *
+   * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Sao phần Tạo hoá đơn (Xuất hàng) và Sửa
+   *   hoá đơn không thêm được hàng đổi / trả. Tao muốn nó đủ chức năng
+   *   như khi Tạo đơn hàng cơ mà?". Bản 149 mới cho SỬA và BỎ — mà
+   *   khách đưa hàng trả lại đúng lúc giao là chuyện thường ngày.
+   *
+   * ⚠ GIỮ RIÊNG KHỎI `retLines`. `retLines` là thứ ĐÃ có trong sổ; trộn
+   *   hai thứ là không biết cái nào cần gửi lên với tư cách "thêm mới",
+   *   và lần lưu sau lại thêm một bản nữa.
+   */
+  const [retAdds, setRetAdds] = useState<
+    Array<{
+      key: string; productId: string; name: string; unit: string
+      qty: number; price: number; vatRate: number; isExchange: boolean
+    }>
+  >([])
+  const [retTerm, setRetTerm] = useState("")
   const [catalog, setCatalog] = useState<PricedProduct[]>([])
   /** Danh mục đọc chưa hết — màn hình phải nói ra, đừng để người dùng đoán. */
   const [catalogTruncated, setCatalogTruncated] = useState(false)
@@ -371,9 +390,14 @@ export function InvoiceEditor({
    *   vừa bỏ một dòng trả mà thanh tổng vẫn trừ tiền của nó là đọc cho
    *   khách một con số sắp sai.
    */
-  const retCreditNow = retLines.length > 0
-    ? retLines.reduce((sum, l) => sum + retCreditOf(l), 0)
-    : retCredit
+  /** Khoản trừ của một dòng VỪA THÊM — cùng công thức với máy chủ. */
+  const addCreditOf = (a: { qty: number; price: number; vatRate: number; isExchange: boolean }) =>
+    a.isExchange ? 0 : Math.round(a.qty * a.price * (1 + (a.vatRate || 0)))
+
+  const retCreditNow =
+    (retLines.length > 0
+      ? retLines.reduce((sum, l) => sum + retCreditOf(l), 0)
+      : retCredit) + retAdds.reduce((sum, a) => sum + addCreditOf(a), 0)
 
   const returnConflicts = reissueOf
     ? returnsBrokenBy(
@@ -467,9 +491,18 @@ export function InvoiceEditor({
             lines: draft, notes: notes.trim() || null,
             /* ⚠ ĐI CÙNG MỘT GIAO DỊCH — xem `return_edits`, mig 149. */
             returnEdits: returnEdits,
+            returnAdds: retAdds.map((a) => ({
+              productId: a.productId, unitName: a.unit, quantity: a.qty,
+              unitPrice: a.price, vatRate: a.vatRate, isExchange: a.isExchange,
+            })),
           })
         : await postInvoice(supabase, {
             orderId, lines: draft, notes: notes.trim() || null,
+            /* ⚠ XUẤT HÀNG LẦN ĐẦU CŨNG THÊM ĐƯỢC — xem mig 152. */
+            returnAdds: retAdds.map((a) => ({
+              productId: a.productId, unitName: a.unit, quantity: a.qty,
+              unitPrice: a.price, vatRate: a.vatRate, isExchange: a.isExchange,
+            })),
           })
       const w = invoiceWarnings(r)
       toast({
@@ -937,6 +970,97 @@ export function InvoiceEditor({
                     </div>
                   )
                 })}
+
+                {/* Dòng VỪA THÊM, chưa ghi xuống sổ. */}
+                {retAdds.map((a) => (
+                  <div key={a.key} className="flex flex-wrap items-center gap-2 text-[13px]">
+                    <span
+                      className={
+                        a.isExchange
+                          ? "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-primary ring-1 ring-primary/30"
+                          : "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-[#b54708] ring-1 ring-[#b54708]/30"
+                      }
+                    >
+                      {a.isExchange ? "ĐỔI" : "TRẢ"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-semibold">{a.name}</span>
+                    <Badge variant="outline" className="shrink-0">Mới</Badge>
+                    <input
+                      type="number" min={0} step="any" value={a.qty}
+                      aria-label={`Số lượng trả ${a.name}`}
+                      onChange={(e) =>
+                        setRetAdds((prev) =>
+                          prev.map((x) =>
+                            x.key === a.key
+                              ? { ...x, qty: Math.max(0, Number(e.target.value) || 0) }
+                              : x
+                          )
+                        )
+                      }
+                      className="h-9 w-20 shrink-0 rounded-lg border px-2 text-right tabular-nums"
+                    />
+                    <span className="shrink-0 text-muted-foreground">{a.unit}</span>
+                    <span className="w-[92px] shrink-0 text-right font-semibold tabular-nums">
+                      {a.isExchange ? "không trừ" : `−${formatCurrency(addCreditOf(a))}`}
+                    </span>
+                    {/* ⚠ CHƯA GHI XUỐNG SỔ THÌ BỎ HẲN, không cần hoàn tác. */}
+                    <button
+                      type="button"
+                      onClick={() => setRetAdds((prev) => prev.filter((x) => x.key !== a.key))}
+                      aria-label={`Bỏ ${a.name}`}
+                      className="shrink-0 text-muted-foreground"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {/*
+                  ⚠ THÊM ĐƯỢC NGAY TẠI ĐÂY. Khách đưa hàng trả lại đúng
+                    lúc giao là chuyện thường ngày, và người xuất hàng
+                    đang đứng ngay đó — bắt họ sang màn khác lập một
+                    phiếu trả riêng là bỏ phí cả thao tác.
+
+                  ⚠ MẶC ĐỊNH LÀ TRẢ, KHÔNG PHẢI ĐỔI. Trả thì trừ công
+                    nợ, đổi thì không — đoán sai chiều nào cũng là sai
+                    tiền, nên chọn cái người ta dùng nhiều hơn và cho
+                    bấm đổi ngay trên dòng.
+                */}
+                <div className="mt-1 border-t pt-3">
+                  <ProductPicker
+                    id="inv-add-return"
+                    label="Thêm hàng đổi / trả"
+                    placeholder="Tên hàng, mã SKU hoặc mã vạch…"
+                    emptyHint="Không tìm thấy mã nào khớp."
+                    disabled={catalog.length === 0}
+                    term={retTerm}
+                    onTermChange={setRetTerm}
+                    items={searchAddable(catalog, retTerm, new Set(), PICKER_PEEK).map((p) => ({
+                      ...p,
+                      title: p.name,
+                      subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+                    }))}
+                    onPick={(p) => {
+                      seqRef.current += 1
+                      setRetAdds((prev) => [
+                        ...prev,
+                        {
+                          key: `ra${seqRef.current}`,
+                          productId: p.id,
+                          name: p.name,
+                          unit: p.base_unit,
+                          qty: 1,
+                          /* ⚠ GIÁ TRẢ LẤY THEO NHÓM GIÁ CỦA KHÁCH, y
+                             như dòng bán — trả theo giá bảng chung là
+                             hoàn cho khách nhiều hơn số họ đã trả. */
+                          price: unitPriceFor(p, p.base_unit, priceGroupId),
+                          vatRate: Number(p.vat_rate ?? 0),
+                          isExchange: false,
+                        },
+                      ])
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}

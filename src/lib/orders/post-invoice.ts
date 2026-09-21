@@ -312,7 +312,7 @@ export interface PostInvoicePayload {
  */
 export async function postInvoice(
   supabase: SupabaseClient,
-  payload: PostInvoicePayload
+  payload: PostInvoicePayload & { returnAdds?: ReturnLineAdd[] }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
   if (lines.length === 0) {
@@ -336,6 +336,7 @@ export async function postInvoice(
         is_exchange: l.isExchange,
         note: l.note,
       })),
+      ...returnAddsPayload(payload.returnAdds),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))
@@ -416,10 +417,50 @@ export interface ReturnLineEdit {
   quantity: number
 }
 
+/**
+ * Dòng hàng đổi / trả THÊM MỚI, gửi kèm khi xuất hoặc sửa hóa đơn.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Sao phần Tạo hoá đơn (Xuất hàng) và Sửa
+ * hoá đơn không thêm được hàng đổi / trả".
+ *
+ * ⚠ KHÔNG GỬI `line_total` — RPC `_apply_return_adds` (mig 152) tính
+ * lại từ `quantity`, `unitPrice`, `vatRate`. Con số ấy đi thẳng vào
+ * `credit_note_amount` rồi vào công nợ khách.
+ */
+export interface ReturnLineAdd {
+  productId: string
+  unitName: string
+  quantity: number
+  unitPrice: number
+  vatRate: number
+  /** Đổi hàng thì KHÔNG trừ công nợ — chỉ ra khỏi kho. */
+  isExchange: boolean
+  note?: string | null
+}
+
+/** Dựng phần `return_adds` của tải trọng, hoặc bỏ hẳn khoá khi rỗng. */
+function returnAddsPayload(adds?: ReturnLineAdd[]) {
+  if (!adds || adds.length === 0) return {}
+  return {
+    return_adds: adds.map((a) => ({
+      product_id: a.productId,
+      unit_name: a.unitName,
+      quantity: a.quantity,
+      unit_price: a.unitPrice,
+      vat_rate: a.vatRate,
+      is_exchange: a.isExchange,
+      ...(a.note ? { note: a.note } : {}),
+    })),
+  }
+}
+
 export async function reissueInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
-  payload: Omit<PostInvoicePayload, "orderId"> & { returnEdits?: ReturnLineEdit[] }
+  payload: Omit<PostInvoicePayload, "orderId"> & {
+    returnEdits?: ReturnLineEdit[]
+    returnAdds?: ReturnLineAdd[]
+  }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
   if (lines.length === 0) {
@@ -456,6 +497,7 @@ export async function reissueInvoice(
             })),
           }
         : {}),
+      ...returnAddsPayload(payload.returnAdds),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))

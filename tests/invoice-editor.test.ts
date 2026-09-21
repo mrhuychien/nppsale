@@ -801,3 +801,123 @@ describe("phần sửa phiếu trả đi kèm khi lập lại hóa đơn", () =>
     expect(MIG149).toContain("NOT EXISTS (SELECT 1 FROM return_lines rl WHERE rl.return_id = returns.id)")
   })
 })
+
+// =====================================================================
+
+const MIG152 = readFileSync(
+  resolve(__dirname, "..", "supabase/migrations/152_invoice_adds_return_lines.sql"), "utf-8"
+)
+
+/**
+ * HUỶ HÓA ĐƠN KHÔNG ĐƯỢC HUỶ PHIẾU TRẢ CỦA ĐƠN.
+ *
+ * ⚠ CHỦ NHÀ BÁO 21/09/2026: "tại sao khi huỷ hoá đơn lại huỷ cả phần
+ * trả về của Đơn hàng", kèm ảnh một phiếu trả mang nhãn "Đã huỷ · −0đ".
+ *
+ * ⚠ ĐÂY LÀ LỖI LẶP LẠI, VÀ ĐÓ MỚI LÀ ĐIỀU ĐÁNG GHI. Migration 131 đã
+ * sửa đúng sai lầm này một lần cho `cancel_invoice`: phiếu trả kèm đơn
+ * bám vào ĐƠN, không bám vào hóa đơn; huỷ nó là ghi vào sổ rằng khách
+ * CHƯA TỪNG trả hàng, trong khi hàng có thể đang nằm đó thật. Migration
+ * 149 của tôi dựng một câu huỷ MỚI ở `reissue_invoice` cho phiếu rỗng
+ * dòng — cùng sai lầm, chỗ khác, và không chốt nào canh.
+ *
+ * ⚠ KHÔNG CẦN THÊM TRẠNG THÁI MỚI. Chủ nhà hỏi "có cần để thêm 1 trạng
+ * thái phiếu tạm cho phiếu trả để còn back trạng thái khi huỷ hoá đơn?"
+ * — `draft` đã là đúng trạng thái ấy, và `cancel_invoice` (mig 131 +
+ * 133) đã hạ phiếu về đó từ trước.
+ */
+describe("phiếu trả kèm đơn không bị huỷ theo hóa đơn", () => {
+  /** ⚠ `cancel_invoice` hạ về `draft` và gỡ liên kết — không huỷ. */
+  it("cancel_invoice hạ phiếu của ĐƠN về phiếu tạm, chỉ huỷ phiếu độc lập", () => {
+    const m131 = readFileSync(
+      resolve(__dirname, "..", "supabase/migrations/131_cancel_invoice_keeps_returns.sql"),
+      "utf-8"
+    )
+    expect(m131).toContain("order_id IS NOT NULL")
+    expect(m131).toContain("order_id IS NULL")
+  })
+
+  /**
+   * ⚠ VÀ `reissue_invoice` CŨNG KHÔNG ĐƯỢC HUỶ. Câu của mig 149 nay hạ
+   * về `draft`; một câu `status = 'cancelled'` nhắm vào `returns` ở
+   * đây là sai lầm cũ quay lại.
+   */
+  it("reissue_invoice không huỷ phiếu trả nào", () => {
+    const than = MIG152.slice(
+      MIG152.indexOf("FUNCTION public.reissue_invoice"),
+      MIG152.indexOf("GRANT EXECUTE ON FUNCTION public.reissue_invoice")
+    )
+    const code = than.replace(/--[^\n]*/g, "")
+    expect(
+      /UPDATE returns[\s\S]{0,200}?status\s*=\s*'cancelled'/.test(code),
+      "reissue_invoice đang huỷ phiếu trả — hàng khách đã đưa lại sẽ biến " +
+        "mất khỏi sổ. Hạ về 'draft' như cancel_invoice vẫn làm."
+    ).toBe(false)
+    expect(code, "phiếu rỗng dòng không được hạ về phiếu tạm").toContain("SET status = 'draft'")
+  })
+
+  /**
+   * ⚠ VÀ CHỈ ĐỤNG KHI CHÍNH LƯỢT NÀY LÀM RỖNG NÓ. Không có điều kiện
+   * ấy thì một phiếu vốn dĩ đã rỗng bị hạ trạng thái ở lần sửa hóa đơn
+   * kế tiếp, dù người dùng không hề chạm vào.
+   */
+  it("chỉ hạ trạng thái khi lượt sửa này làm rỗng phiếu", () => {
+    expect(MIG152).toContain("IF v_edited > 0 THEN")
+  })
+})
+
+/**
+ * THÊM HÀNG ĐỔI / TRẢ NGAY TRÊN MÀN HÓA ĐƠN.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Tao muốn nó đủ chức năng như khi Tạo đơn
+ * hàng cơ mà?".
+ */
+describe("thêm hàng đổi / trả khi xuất và sửa hóa đơn", () => {
+  it("cả hai đường đều gửi được phần thêm", () => {
+    expect(POST_INV, "postInvoice chưa gửi return_adds").toContain(
+      "returnAddsPayload(payload.returnAdds)"
+    )
+    expect(
+      (POST_INV.match(/returnAddsPayload\(payload\.returnAdds\)/g) ?? []).length,
+      "chỉ một trong hai đường (xuất lần đầu / sửa) gửi được"
+    ).toBe(2)
+    expect(EDITOR_UI).toContain("returnAdds: retAdds.map(")
+  })
+
+  /**
+   * ⚠ GỠ `return_adds` TRƯỚC KHI `reissue_invoice` GỌI `post_invoice` —
+   * NẾU KHÔNG DÒNG TRẢ BỊ THÊM HAI LẦN. Đo trên Postgres thật trước khi
+   * phát hành: thêm 1 dòng trả 216.000 và 1 dòng đổi thì sổ ghi hai bản
+   * mỗi loại, credit vọt từ 316.000 lên 532.000 — trừ công nợ khách GẤP
+   * ĐÔI.
+   */
+  it("không thêm hai lần khi sửa hóa đơn", () => {
+    expect(MIG152).toContain("v_payload := v_payload - 'return_adds'")
+    const than = MIG152.slice(
+      MIG152.indexOf("FUNCTION public.reissue_invoice"),
+      MIG152.indexOf("GRANT EXECUTE ON FUNCTION public.reissue_invoice")
+    )
+    expect(
+      than.indexOf("v_payload - 'return_adds'"),
+      "gỡ SAU khi gọi post_invoice thì vô nghĩa"
+    ).toBeLessThan(than.indexOf("SELECT * INTO v_new FROM public.post_invoice"))
+  })
+
+  /** ⚠ `line_total` tính ở server — nó đi thẳng vào công nợ. */
+  it("không gửi thành tiền lên máy chủ", () => {
+    const blk = POST_INV.match(/function returnAddsPayload[\s\S]{0,600}?\n\}/)
+    expect(blk, "không đọc được phần dựng return_adds").not.toBeNull()
+    expect(blk![0], "đang gửi thành tiền lên máy chủ").not.toContain("line_total")
+    expect(MIG152, "RPC không tự tính line_total").toContain("round(v_qty * v_price * (1 + v_vat))")
+  })
+
+  /** ⚠ Chưa có phiếu nào thì DỰNG, và phiếu mới luôn ở `draft`. */
+  it("dựng phiếu trả khi đơn chưa có, và để ở phiếu tạm", () => {
+    const fn = MIG152.slice(
+      MIG152.indexOf("FUNCTION public._pending_return_for"),
+      MIG152.indexOf("COMMENT ON FUNCTION public._pending_return_for")
+    )
+    expect(fn).toContain("INSERT INTO returns")
+    expect(fn, "phiếu mới không được tự nhảy sang submitted").toContain("'draft'")
+  })
+})

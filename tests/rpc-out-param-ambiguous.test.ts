@@ -135,14 +135,18 @@ describe("RPC không để tên cột đụng tên tham số OUT", () => {
     expect(cauNhapNhang(lanh), "chốt đang kêu oan những chỗ hợp lệ").toEqual([])
   })
 
-  /** ⚠ Và bản ĐANG CHẠY của `reissue_invoice` phải là bản đã sửa. */
-  it("reissue_invoice gọi đích danh returns.invoice_id", () => {
+  /**
+   * ⚠ BẢN ĐANG CHẠY CỦA `reissue_invoice` PHẢI GỌI ĐÍCH DANH — nhưng
+   * ĐÍCH DANH BẰNG GÌ THÌ KHÔNG QUAN TRỌNG. Bản đầu của chốt này ghim
+   * đúng một cách viết (`returns.invoice_id`, cách của mig 150); mig
+   * 151 dùng bí danh `rr` — cách mà mig 128 đã đặt ra từ đầu và là thứ
+   * nên giữ — nên chốt đỏ vì một tên bí danh chứ không vì hành vi.
+   */
+  it("reissue_invoice không còn tên trần ở câu gom phiếu trả", () => {
     const fn = banDangChay().get("reissue_invoice")
     expect(fn, "không tìm thấy reissue_invoice").toBeTruthy()
-    expect(fn!.body).toContain("WHERE returns.invoice_id = p_invoice_id")
-    expect(
-      /WHERE invoice_id = p_invoice_id/.test(fn!.body),
-      "bản đang chạy vẫn còn câu trần — sửa hóa đơn có phiếu trả sẽ lỗi"
-    ).toBe(false)
+    expect(cauNhapNhang(fn!.body), "bản đang chạy vẫn còn tên trần").toEqual([])
+    /* Và câu ấy vẫn phải còn — mất hẳn thì không gom được phiếu trả nào. */
+    expect(fn!.body).toMatch(/\w+\.invoice_id = p_invoice_id/)
   })
 })

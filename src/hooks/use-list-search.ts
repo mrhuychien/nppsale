@@ -18,7 +18,7 @@
  * sách thiếu ấy.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   idsMatching, buildOrFilter, lookupSettled, NO_MATCH, type IdMatch,
@@ -99,5 +99,26 @@ export function useListSearch(
     match: state.matches[i] ?? NO_MATCH,
   }))
   const or = buildOrFilter(t, ownColumns, idFilters)
-  return { filter: or.filter, ready, truncated: or.truncated }
+  const filter = or.filter
+  const truncated = or.truncated
+
+  /**
+   * ⚠ PHẢI TRẢ VỀ MỘT OBJECT CÓ DANH TÍNH ỔN ĐỊNH. Đây là lỗi ĐÃ LÀM
+   *   TRỐNG TRƠN danh sách đơn hàng và hoá đơn trên máy chủ thật (chủ
+   *   nhà báo 21/09/2026: "Sao vào danh sách đơn hàng với hóa đơn trống
+   *   trơn rồi").
+   *
+   *   Bản đầu trả thẳng `{ filter, ready, truncated }` — một object
+   *   MỚI mỗi lần vẽ lại. Sáu màn nhét object ấy vào mảng phụ thuộc
+   *   của `useEffect`, nên hiệu ứng nạp danh sách chạy lại ở MỌI lần
+   *   vẽ; lần chạy trước bị dọn dẹp đặt `cancelled = true` trước khi
+   *   `await` của nó kịp về, và câu `if (cancelled) return` chặn luôn
+   *   `setOrders(...)`. Danh sách không bao giờ được ghi — màn hình
+   *   trống trơn, không một dòng lỗi nào.
+   *
+   *   `useMemo` ở đây giữ nguyên danh tính khi ba giá trị không đổi,
+   *   nên mảng phụ thuộc so sánh được bằng tham chiếu như React chờ
+   *   đợi.
+   */
+  return useMemo(() => ({ filter, ready, truncated }), [filter, ready, truncated])
 }

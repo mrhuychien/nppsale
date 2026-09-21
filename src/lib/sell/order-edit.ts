@@ -1,4 +1,4 @@
-import type { OfflineOrderPayload, OfflineReturnLine } from "@/lib/orders/create"
+import type { OfflineOrderLine, OfflineOrderPayload, OfflineReturnLine } from "@/lib/orders/create"
 import { insertReturnLines } from "@/lib/orders/create"
 import type { ReturnCartLine } from "@/lib/sell/returns"
 import { conversionFor, unitPriceFor } from "@/lib/sell/pricing"
@@ -178,13 +178,82 @@ export function returnLinesToCart(r: PendingReturnRow): ReturnCartLine[] {
   }))
 }
 
+/** Dòng hàng ĐÃ CÓ của đơn — đúng những cột cần để so khớp. */
+export interface ExistingOrderLine {
+  id: string
+  product_id: string
+  unit_name: string
+}
+
+export interface OrderLinePlan {
+  /** Dòng cũ giữ lại, ghi đè bằng số mới. */
+  update: Array<{ id: string; row: OfflineOrderLine }>
+  /** Dòng chưa từng có — chèn mới. */
+  insert: OfflineOrderLine[]
+  /** Dòng người dùng đã bỏ khỏi giỏ — xoá. */
+  remove: Array<{ id: string; product_id: string }>
+}
+
 /**
- * Ghi thay đổi xuống đơn đã có.
+ * SO KHỚP DÒNG CŨ VỚI DÒNG MỚI, THAY VÌ XOÁ SẠCH RỒI CHÈN LẠI.
  *
- * ⚠ XOÁ RỒI CHÈN LẠI TOÀN BỘ DÒNG. Chỉ an toàn vì màn này chỉ sửa được
- * đơn `draft`/`confirmed` — hai trạng thái chưa có phiếu xuất kho nào trỏ
- * vào dòng hàng. Nới sang `picking` là làm đứt liên kết lô đã pick.
+ * ⚠ CHỦ NHÀ BÁO 21/09/2026, kèm nguyên văn lỗi: `update or delete on
+ * table "sales_order_lines" violates foreign key constraint
+ * "sales_invoice_lines_order_line_id_fkey"` (mã 23503).
+ *
+ * NGUYÊN NHÂN. `applyOrderEdit` xoá HẾT `sales_order_lines` của đơn rồi
+ * chèn lại bộ mới. Nhưng `sales_invoice_lines.order_line_id` trỏ vào
+ * chính những dòng ấy, và khoá ngoại ấy là NO ACTION — nên hễ đơn TỪNG
+ * được xuất hóa đơn là lệnh xoá bị từ chối.
+ *
+ * ⚠ VÀ HUỶ HÓA ĐƠN KHÔNG GỠ ĐƯỢC. `cancel_invoice` chỉ đổi
+ * `sales_invoices.status`; dòng hóa đơn nằm nguyên, vì đó là bản ghi
+ * của thứ đã bị huỷ — xoá đi là mất dấu vết. Hệ quả: một đơn đã xuất
+ * hàng rồi huỷ hết hóa đơn thì VĨNH VIỄN không sửa được nữa, dù trạng
+ * thái đã quay về Phiếu tạm và màn hình vẫn mời người dùng bấm Sửa.
+ *
+ * ⚠ KHOÁ SO KHỚP LÀ (SẢN PHẨM + ĐƠN VỊ), đúng khoá dòng của giỏ hàng.
+ * Cùng một mặt hàng đặt 3 thùng và 5 chai là hai dòng khác nhau, và
+ * chúng có thể khác giá.
+ *
+ * ⚠ HAI DÒNG CŨ TRÙNG KHOÁ THÌ CHỈ GIỮ MỘT. Dữ liệu cũ có thể có hai
+ * dòng cùng (sản phẩm, đơn vị); khớp cả hai vào một dòng giỏ là ghi đè
+ * hai lần rồi đơn cộng gấp đôi. Dòng thừa đi vào `remove`.
  */
+export function planOrderLines(
+  existing: readonly ExistingOrderLine[],
+  next: readonly OfflineOrderLine[]
+): OrderLinePlan {
+  const key = (p: string, u: string) => `${p}|${u}`
+  const con = new Map<string, ExistingOrderLine>()
+  const thua: ExistingOrderLine[] = []
+  for (const e of existing) {
+    const k = key(e.product_id, e.unit_name)
+    if (con.has(k)) thua.push(e)
+    else con.set(k, e)
+  }
+
+  const plan: OrderLinePlan = { update: [], insert: [], remove: [] }
+  const daDung = new Set<string>()
+  for (const row of next) {
+    const k = key(row.product_id, row.unit_name)
+    const cu = con.get(k)
+    /* ⚠ MỘT DÒNG CŨ CHỈ NHẬN MỘT DÒNG MỚI. Giỏ cũng khoá theo cùng cặp
+       ấy nên thường không trùng, nhưng tải trọng đến từ hàng đợi ngoại
+       tuyến của bản cũ thì có thể. */
+    if (cu && !daDung.has(cu.id)) {
+      daDung.add(cu.id)
+      plan.update.push({ id: cu.id, row })
+    } else {
+      plan.insert.push(row)
+    }
+  }
+  for (const e of Array.from(con.values()).concat(thua)) {
+    if (!daDung.has(e.id)) plan.remove.push({ id: e.id, product_id: e.product_id })
+  }
+  return plan
+}
+
 export async function applyOrderEdit(
   supabase: Client,
   opts: {
@@ -201,39 +270,97 @@ export async function applyOrderEdit(
      * trả, xem `syncOrderReturn`.
      */
     heldReturnId?: string | null
+    /**
+     * Tên mặt hàng, để câu báo lỗi gọi đúng tên thay vì một mã UUID.
+     *
+     * ⚠ NHẬN QUA HÀM, KHÔNG NHẬN CẢ DANH MỤC. Nơi gọi đã có sẵn
+     * `productById`; bắt nó truyền cả danh mục 1.700 mã vào đây chỉ để
+     * dựng một câu lỗi là kéo theo một phụ thuộc không cần thiết.
+     */
+    productName?: (productId: string) => string | undefined
   }
 ): Promise<void> {
-  // ⚠ THỨ TỰ Ở ĐÂY LÀ CÓ CHỦ Ý: DÒNG HÀNG TRƯỚC, ĐẦU ĐƠN SAU.
-  //
-  // Phép xoá là phép DUY NHẤT hỏng mà không báo — RLS từ chối thì Postgres
-  // xoá 0 dòng, PostgREST trả HTTP 200 và `error` là null. Để nó chạy
-  // trước và bắt lỗi ngay thì khi từ chối, CHƯA có gì bị đổi. Làm ngược
-  // lại — sửa đầu đơn xong mới xoá — thì đơn còn tổng tiền mới trên bộ
-  // dòng hàng cũ, và không ai biết vì sao hai con số không khớp.
-  const { error: delErr } = await supabase
+  /**
+   * ⚠ SO KHỚP RỒI SỬA TẠI CHỖ — KHÔNG XOÁ SẠCH RỒI CHÈN LẠI.
+   *
+   * Bản cũ xoá hết `sales_order_lines` của đơn rồi chèn bộ mới. Chủ nhà
+   * báo 21/09/2026 kèm nguyên văn: khoá ngoại
+   * `sales_invoice_lines_order_line_id_fkey` (mã 23503) chặn lệnh xoá,
+   * vì dòng hóa đơn trỏ vào chính những dòng đơn ấy — kể cả hóa đơn ĐÃ
+   * HUỶ, vì `cancel_invoice` chỉ đổi trạng thái chứ không xoá dòng.
+   *
+   * Hệ quả của bản cũ: một đơn từng xuất hàng rồi huỷ hết hóa đơn thì
+   * VĨNH VIỄN không sửa được, dù trạng thái đã quay về Phiếu tạm và màn
+   * hình vẫn mời người dùng bấm Sửa. Xem `planOrderLines`.
+   *
+   * ⚠ THỨ TỰ: XOÁ TRƯỚC, RỒI SỬA, RỒI CHÈN. Xoá là phép duy nhất có thể
+   * bị từ chối — cả bởi RLS (0 dòng, HTTP 200, `error` null) lẫn bởi
+   * khoá ngoại. Để nó chạy đầu thì khi hỏng, CHƯA có gì bị đổi.
+   */
+  const { data: cu, error: readErr } = await supabase
     .from("sales_order_lines")
-    .delete()
+    .select("id, product_id, unit_name")
     .eq("order_id", opts.orderId)
-  if (delErr) throw delErr
+  if (readErr) throw readErr
 
-  // ⚠ ĐỌC LẠI, BẮT PHẢI RỖNG, TRƯỚC KHI CHÈN. Xoá bị từ chối mà vẫn chèn
-  // tiếp thì đơn có HAI bộ dòng hàng: bộ cũ còn nguyên cộng bộ mới. Kho
-  // lấy gấp đôi số hàng và hoá đơn ghi gấp đôi tiền.
-  const { data: left, error: checkErr } = await supabase
-    .from("sales_order_lines")
-    .select("id")
-    .eq("order_id", opts.orderId)
-    .limit(1)
-  if (checkErr) throw checkErr
-  if (left && left.length > 0) {
-    throw new Error(
-      "Không xoá được dòng hàng cũ nên chưa lưu được — bạn không còn quyền sửa đơn này. Tải lại đơn để xem trạng thái mới."
-    )
+  const plan = planOrderLines(
+    (cu as ExistingOrderLine[]) ?? [],
+    opts.cart.map(toOrderLine)
+  )
+
+  if (plan.remove.length > 0) {
+    const ids = plan.remove.map((r) => r.id)
+    const { data: del, error: delErr } = await supabase
+      .from("sales_order_lines")
+      .delete()
+      .in("id", ids)
+      .select("id")
+    if (delErr) {
+      /**
+       * ⚠ DỊCH MÃ 23503 THÀNH CÂU NGƯỜI ĐỌC ĐƯỢC. Dòng bị bỏ khỏi giỏ
+       *   nhưng đã từng nằm trên một tờ hóa đơn; xoá nó là mất dấu vết
+       *   của tờ hóa đơn ấy, nên cơ sở dữ liệu từ chối và ĐÚNG. Việc
+       *   của chỗ này là nói ra mặt hàng nào, và lối đi tiếp.
+       */
+      if ((delErr as { code?: string }).code === "23503") {
+        const ten = plan.remove
+          .map((r) => opts.productName?.(r.product_id))
+          .filter(Boolean)
+          .join(", ")
+        throw new Error(
+          `Không bỏ được ${ten ? `mặt hàng ${ten}` : "một mặt hàng"} khỏi đơn: ` +
+            "nó đã từng nằm trên một tờ hóa đơn của đơn này, và tờ ấy vẫn còn " +
+            "trong sổ (kể cả khi đã huỷ). Giữ dòng đó lại và đặt số lượng về 0, " +
+            "hoặc sửa các dòng khác rồi lưu."
+        )
+      }
+      throw delErr
+    }
+    // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi.
+    if (!del || del.length !== ids.length) {
+      throw new Error(
+        "Không xoá được dòng hàng cũ nên chưa lưu được — bạn không còn quyền sửa đơn này. Tải lại đơn để xem trạng thái mới."
+      )
+    }
   }
 
-  if (opts.cart.length > 0) {
-    const lines = opts.cart.map((l) => ({ order_id: opts.orderId, ...toOrderLine(l) }))
-    const { error: insErr } = await supabase.from("sales_order_lines").insert(lines)
+  for (const u of plan.update) {
+    const { data: upd, error: updErr } = await supabase
+      .from("sales_order_lines")
+      .update(u.row)
+      .eq("id", u.id)
+      .select("id")
+    if (updErr) throw updErr
+    if (!upd || upd.length === 0) {
+      throw new Error(
+        "Không sửa được dòng hàng nên chưa lưu được — bạn không còn quyền sửa đơn này. Tải lại đơn để xem trạng thái mới."
+      )
+    }
+  }
+
+  if (plan.insert.length > 0) {
+    const rows = plan.insert.map((r) => ({ order_id: opts.orderId, ...r }))
+    const { error: insErr } = await supabase.from("sales_order_lines").insert(rows)
     if (insErr) throw insErr
   }
 

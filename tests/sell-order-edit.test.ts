@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   applyOrderEdit,
+  planOrderLines,
   decideEditStatus,
   isSellEditable,
   orderLinesToCart,
@@ -185,28 +186,66 @@ describe("Trạng thái sau khi lưu bản sửa", () => {
 })
 
 /** Khách hàng giả lập của PostgREST, đủ để đo THỨ TỰ và số lần gọi. */
+/**
+ * Client giả cho luồng sửa đơn.
+ *
+ * ⚠ DỰNG LẠI THEO HÌNH DẠNG MỚI (21/09/2026). Bản cũ mô phỏng luồng
+ * "xoá sạch rồi chèn lại"; nay `applyOrderEdit` ĐỌC dòng cũ, so khớp,
+ * rồi chỉ xoá / sửa / chèn đúng phần cần — vì khoá ngoại
+ * `sales_invoice_lines_order_line_id_fkey` chặn lệnh xoá trên mọi đơn
+ * đã từng xuất hóa đơn. Xem `planOrderLines`.
+ */
 function fakeClient(opts: {
-  /** Xoá xong còn sót dòng nào không — mô phỏng RLS từ chối trong im lặng. */
-  linesLeftAfterDelete?: number
-  /** UPDATE đầu đơn sửa được mấy dòng. 0 = RLS từ chối. */
+  /** Dòng hàng đơn đang có. */
+  existing?: Array<{ id: string; product_id: string; unit_name: string }>
+  /** Số dòng lệnh xoá thật sự xoá được — thấp hơn yêu cầu = RLS từ chối. */
+  deletedRows?: number
+  /** Lỗi trả về cho lệnh xoá (ví dụ khoá ngoại 23503). */
+  deleteError?: { code?: string; message?: string }
+  /** Số dòng lệnh sửa đầu đơn trả về. */
   headerRows?: number
 }) {
   const calls: string[] = []
   const inserted: unknown[] = []
-  const left = opts.linesLeftAfterDelete ?? 0
+  const updated: unknown[] = []
+  const existing = opts.existing ?? []
   const headerRows = opts.headerRows ?? 1
+
   const client = {
     from(table: string) {
-      const q = {
-        _op: "",
-        update(_v: unknown) {
+      let op = ""
+      let payload: unknown = null
+      const q: Record<string, unknown> = {
+        select(_c: string) {
+          if (op === "") {
+            op = "select"
+            calls.push(`select:${table}`)
+            return q
+          }
+          if (op === "delete") {
+            const n = opts.deletedRows ?? existing.length
+            return Promise.resolve(
+              opts.deleteError
+                ? { data: null, error: opts.deleteError }
+                : { data: Array.from({ length: n }, (_, i) => ({ id: `d${i}` })), error: null }
+            )
+          }
+          // update
+          return Promise.resolve({
+            data: Array.from({ length: headerRows }, (_, i) => ({ id: `u${i}` })),
+            error: null,
+          })
+        },
+        update(v: unknown) {
+          op = "update"
+          payload = v
+          updated.push(v)
           calls.push(`update:${table}`)
-          q._op = "update"
           return q
         },
         delete() {
+          op = "delete"
           calls.push(`delete:${table}`)
-          q._op = "delete"
           return q
         },
         insert(rows: unknown) {
@@ -214,33 +253,22 @@ function fakeClient(opts: {
           inserted.push(rows)
           return Promise.resolve({ data: null, error: null })
         },
-        select(_c: string) {
-          if (q._op === "") {
-            calls.push(`select:${table}`)
-            q._op = "select"
-            return q
-          }
-          return Promise.resolve({
-            data: Array.from({ length: q._op === "update" ? headerRows : 1 }, (_, i) => ({
-              id: `r${i}`,
-            })),
-            error: null,
-          })
-        },
         eq(_c: string, _v: unknown) {
           return q
         },
-        limit(_n: number) {
-          return Promise.resolve({
-            data: Array.from({ length: left }, (_, i) => ({ id: `old${i}` })),
-            error: null,
-          })
+        in(_c: string, _v: unknown) {
+          return q
+        },
+        /** Đọc dòng cũ: `select(...).eq("order_id", …)` rồi await thẳng. */
+        then(res: (v: unknown) => void) {
+          void payload
+          res({ data: existing, error: null })
         },
       }
       return q
     },
   }
-  return { client, calls, inserted }
+  return { client, calls, inserted, updated }
 }
 
 const payload = (cart: CartLine[]) =>
@@ -262,7 +290,13 @@ const payload = (cart: CartLine[]) =>
 describe("Ghi bản sửa xuống đơn đã có", () => {
   const cart = [line()]
 
-  it("xoá dòng cũ, chèn dòng mới, rồi mới sửa đầu đơn", async () => {
+  /**
+   * ⚠ ĐỌC TRƯỚC, XOÁ SAU, RỒI MỚI SỬA/CHÈN, ĐẦU ĐƠN CUỐI CÙNG. Xoá là
+   * phép duy nhất có thể bị từ chối — cả bởi RLS (0 dòng, HTTP 200,
+   * `error` null) lẫn bởi khoá ngoại. Để nó chạy trước thì khi hỏng,
+   * CHƯA có gì bị đổi.
+   */
+  it("đọc dòng cũ, xử lý dòng hàng, rồi mới sửa đầu đơn", async () => {
     const { client, calls } = fakeClient({})
     await applyOrderEdit(client, {
       orderId: "o1",
@@ -273,12 +307,64 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
       userId: "u1",
       orgId: "org1",
     })
+    /* Đơn chưa có dòng nào → không xoá, không sửa, chỉ chèn. */
     expect(calls).toEqual([
-      "delete:sales_order_lines",
       "select:sales_order_lines",
       "insert:sales_order_lines",
       "update:sales_orders",
     ])
+    expect(calls.indexOf("update:sales_orders")).toBe(calls.length - 1)
+  })
+
+  /**
+   * ⚠ DÒNG CÒN TRONG GIỎ THÌ SỬA TẠI CHỖ, KHÔNG XOÁ RỒI CHÈN LẠI. Đây
+   * là cả điểm của lần sửa 21/09/2026: khoá ngoại
+   * `sales_invoice_lines_order_line_id_fkey` trỏ vào `sales_order_lines`
+   * và là NO ACTION, nên xoá một dòng đã từng nằm trên hóa đơn là bị từ
+   * chối — kể cả khi hóa đơn ấy ĐÃ HUỶ, vì `cancel_invoice` chỉ đổi
+   * trạng thái chứ không xoá dòng hóa đơn.
+   */
+  it("dòng còn trong giỏ thì SỬA, không xoá rồi chèn lại", async () => {
+    const { client, calls, inserted } = fakeClient({
+      existing: [{ id: "L1", product_id: "p1", unit_name: "thùng" }],
+    })
+    await applyOrderEdit(client, {
+      orderId: "o1",
+      payload: payload(cart),
+      cart,
+      status: "submitted",
+      reason: "",
+      userId: "u1",
+      orgId: "org1",
+    })
+    expect(calls, "vẫn còn xoá dòng đang dùng").not.toContain("delete:sales_order_lines")
+    expect(calls).toContain("update:sales_order_lines")
+    expect(inserted, "sửa tại chỗ thì không chèn dòng mới").toHaveLength(0)
+  })
+
+  /**
+   * ⚠ KHOÁ NGOẠI TỪ CHỐI THÌ NÓI RA MẶT HÀNG NÀO. Chủ nhà nhận đúng
+   * nguyên văn của Postgres (`violates foreign key constraint … 23503`)
+   * — một câu không ai hành động được. Phải dịch thành tên hàng và lối
+   * đi tiếp.
+   */
+  it("khoá ngoại chặn xoá thì báo tên mặt hàng, không báo mã 23503", async () => {
+    const { client } = fakeClient({
+      existing: [{ id: "L9", product_id: "pX", unit_name: "hộp" }],
+      deleteError: { code: "23503", message: "violates foreign key constraint" },
+    })
+    await expect(
+      applyOrderEdit(client, {
+        orderId: "o1",
+        payload: payload(cart),
+        cart,
+        status: "submitted",
+        reason: "",
+        userId: "u1",
+        orgId: "org1",
+        productName: (id) => (id === "pX" ? "Bắp nếp tím 200g" : undefined),
+      })
+    ).rejects.toThrow(/Bắp nếp tím 200g[\s\S]*hóa đơn/i)
   })
 
   /**
@@ -287,7 +373,11 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
    * số hàng và hoá đơn ghi gấp đôi tiền.
    */
   it("xoá bị từ chối trong im lặng thì DỪNG, không chèn thêm", async () => {
-    const { client, calls, inserted } = fakeClient({ linesLeftAfterDelete: 3 })
+    const { client, calls, inserted } = fakeClient({
+      existing: [{ id: "L9", product_id: "pX", unit_name: "hộp" }],
+      /* Yêu cầu xoá 1 dòng, cơ sở dữ liệu trả về 0 — RLS nuốt lệnh. */
+      deletedRows: 0,
+    })
     await expect(
       applyOrderEdit(client, {
         orderId: "o1",
@@ -318,6 +408,62 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
         orgId: "org1",
       })
     ).rejects.toThrow(/tổng đơn/i)
+  })
+
+  /**
+   * ⚠ HAI DÒNG CŨ TRÙNG (SẢN PHẨM, ĐƠN VỊ) THÌ CHỈ MỘT DÒNG ĐƯỢC KHỚP.
+   * Dữ liệu cũ có thể có hai dòng cùng cặp ấy. Khớp cả hai vào một dòng
+   * giỏ là ghi cùng số lượng xuống hai bản ghi — đơn cộng gấp đôi, kho
+   * lấy gấp đôi hàng, hoá đơn ghi gấp đôi tiền. Dòng thừa phải đi vào
+   * `remove`, không được để nguyên.
+   */
+  it("hai dòng cũ trùng khoá thì giữ một, dòng thừa đem xoá", () => {
+    const plan = planOrderLines(
+      [
+        { id: "L1", product_id: "p1", unit_name: "thùng" },
+        { id: "L2", product_id: "p1", unit_name: "thùng" },
+      ],
+      [{ product_id: "p1", unit_name: "thùng", quantity: 3 } as never]
+    )
+    expect(plan.update, "chỉ một dòng cũ được nhận số mới").toHaveLength(1)
+    expect(plan.insert, "dòng đã khớp thì không chèn thêm").toHaveLength(0)
+    const giu = plan.update[0].id
+    expect(
+      plan.remove.map((r) => r.id),
+      "dòng cũ trùng còn lại phải bị xoá, không được để nguyên"
+    ).toEqual([giu === "L1" ? "L2" : "L1"])
+  })
+
+  /** ⚠ Dòng bị bỏ khỏi giỏ phải vào `remove`, kèm mã hàng để gọi tên. */
+  it("dòng bỏ khỏi giỏ thì xoá, dòng mới thì chèn", () => {
+    const plan = planOrderLines(
+      [
+        { id: "L1", product_id: "p1", unit_name: "thùng" },
+        { id: "L2", product_id: "p2", unit_name: "hộp" },
+      ],
+      [
+        { product_id: "p1", unit_name: "thùng", quantity: 3 } as never,
+        { product_id: "p9", unit_name: "chai", quantity: 1 } as never,
+      ]
+    )
+    expect(plan.update.map((u) => u.id)).toEqual(["L1"])
+    expect(plan.insert.map((r) => r.product_id)).toEqual(["p9"])
+    expect(plan.remove).toEqual([{ id: "L2", product_id: "p2" }])
+  })
+
+  /**
+   * ⚠ CÙNG MẶT HÀNG, KHÁC ĐƠN VỊ LÀ HAI DÒNG KHÁC NHAU. 3 thùng và 5
+   * chai của cùng một mã là hai dòng, và chúng khác giá. Khớp chỉ theo
+   * `product_id` là gộp chúng làm một.
+   */
+  it("cùng mã hàng khác đơn vị thì không khớp vào nhau", () => {
+    const plan = planOrderLines(
+      [{ id: "L1", product_id: "p1", unit_name: "thùng" }],
+      [{ product_id: "p1", unit_name: "chai", quantity: 5 } as never]
+    )
+    expect(plan.update, "khác đơn vị mà vẫn khớp").toHaveLength(0)
+    expect(plan.insert).toHaveLength(1)
+    expect(plan.remove.map((r) => r.id)).toEqual(["L1"])
   })
 
   it("dọn hẳn dấu vết đã duyệt của luồng cũ", () => {

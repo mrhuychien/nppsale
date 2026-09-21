@@ -352,6 +352,9 @@ export default function SellCartPage() {
           //   "không biết đơn này có phiếu trả nào" và `applyOrderEdit`
           //   phải đứng yên; ép về `null` là nó tạo thêm một phiếu trả.
           heldReturnId: editing.heldReturnId,
+          /* ⚠ Để câu báo lỗi gọi đúng TÊN mặt hàng thay vì một mã UUID —
+             xem nhánh 23503 trong `applyOrderEdit`. */
+          productName: (id) => productById(id)?.name,
         })
         cart.clear()
         router.replace(

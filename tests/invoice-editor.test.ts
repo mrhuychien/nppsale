@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   makeAddedRow, withStock, toDraft, rowsOverOrdered, searchAddable, seedForReissue,
-  type EditorRow,
+  returnsBrokenBy,
+  type EditorRow, type PendingReturnLine,
 } from "../src/lib/orders/invoice-editor"
 import type { PricedProduct } from "../src/lib/sell/pricing"
 import type { InvoiceableLine } from "../src/lib/orders/post-invoice"
@@ -525,5 +526,124 @@ describe("bỏ dòng khỏi tờ hóa đơn", () => {
   it("nói rõ phần chưa xuất vẫn còn trên đơn", () => {
     expect(EDITOR_UI).toContain("khỏi tờ hóa đơn này")
     expect(EDITOR_UI).toContain("vẫn còn")
+  })
+})
+
+// =====================================================================
+
+/**
+ * SỬA HÓA ĐƠN CÓ HÀNG ĐỔI / TRẢ.
+ *
+ * ⚠ CHỦ NHÀ BÁO 21/09/2026: sửa hóa đơn có hàng đổi/trả thì vấp
+ * "REISSUE_BREAKS_RETURN: hóa đơn mới không còn bán "bắp nếp tím pho
+ * mai 250g" mà phiếu trả đang chờ xử lý đòi trả. Huỷ phiếu trả trước,
+ * rồi sửa lại hóa đơn." — và chỉ biết SAU KHI đã sửa xong cả tờ.
+ */
+const rr = (o: Partial<PendingReturnLine> = {}): PendingReturnLine => ({
+  returnId: "r1",
+  returnStatus: "submitted",
+  productId: "p1",
+  productName: "Bắp nếp tím pho mai 250g",
+  isExchange: false,
+  ...o,
+})
+const row = (o: Partial<EditorRow> = {}): EditorRow =>
+  ({ key: "k", productId: "p1", qty: 5, isExchange: false, ...o }) as unknown as EditorRow
+
+describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => {
+  it("bỏ hẳn món khỏi hóa đơn thì báo xung đột", () => {
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr()])).toEqual([
+      { returnId: "r1", productName: "Bắp nếp tím pho mai 250g" },
+    ])
+  })
+
+  /**
+   * ⚠ ĐỂ SỐ LƯỢNG 0 CŨNG LÀ BỎ. `reissue_invoice` soi
+   * `quantity > 0`, nên một dòng còn trên màn mà để 0 thì máy chủ vẫn
+   * coi như hóa đơn không bán món ấy. Chốt theo đúng luật của máy chủ,
+   * không theo "dòng có còn trên màn không".
+   */
+  it("để số lượng 0 cũng tính là không bán", () => {
+    expect(returnsBrokenBy([row({ qty: 0 })], [rr()])).toHaveLength(1)
+  })
+
+  it("còn bán thì không báo gì", () => {
+    expect(returnsBrokenBy([row()], [rr()])).toEqual([])
+  })
+
+  /**
+   * ⚠ DÒNG ĐỔI KHÔNG TÍNH — hàng đổi không trừ công nợ, và
+   * `reissue_invoice` cũng lọc `rl.is_exchange = false`. Kể vào đây là
+   * chặn một tờ hóa đơn mà máy chủ sẽ nhận.
+   */
+  it("hàng đổi không bị kể là xung đột", () => {
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ isExchange: true })])).toEqual([])
+  })
+
+  /**
+   * ⚠ VÀ DÒNG ĐỔI TRÊN HÓA ĐƠN KHÔNG ĐƯỢC TÍNH LÀ "CÒN BÁN". Máy chủ
+   * soi `is_exchange = false` ở CẢ hai vế; nhận nhầm một dòng đổi làm
+   * bằng chứng "vẫn bán" là để lọt đúng tờ hóa đơn máy chủ sẽ từ chối.
+   */
+  it("dòng đổi trên hóa đơn không cứu được xung đột", () => {
+    expect(returnsBrokenBy([row({ isExchange: true })], [rr()])).toHaveLength(1)
+  })
+
+  /** ⚠ Phiếu đã huỷ / đã xong không chặn ai. */
+  it("chỉ phiếu đang chờ mới chặn", () => {
+    for (const st of ["cancelled", "completed"]) {
+      expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: st })])).toEqual([])
+    }
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: "draft" })]))
+      .toHaveLength(1)
+  })
+
+  it("không báo trùng khi một phiếu có nhiều dòng cùng mã", () => {
+    expect(
+      returnsBrokenBy([row({ productId: "p2" })], [rr(), rr()])
+    ).toHaveLength(1)
+  })
+
+  /**
+   * ⚠ MÀN HÌNH PHẢI KHOÁ NÚT, KHÔNG CHỈ VẼ MỘT DÒNG CHỮ. Máy chủ sẽ từ
+   * chối tờ này; để bấm được là bắt người dùng sửa cả màn rồi đổi lấy
+   * một câu lỗi.
+   */
+  it("màn hình khoá nút lưu khi có xung đột", () => {
+    expect(EDITOR_UI).toContain("returnConflicts.length > 0")
+    expect(EDITOR_UI).toContain("disabled={saving || picked.length === 0 || returnConflicts.length > 0}")
+  })
+
+  /**
+   * ⚠ VÀ CHỈ ĐƯỜNG, KHÔNG CHỈ CHẶN. Câu lỗi của máy chủ bảo "huỷ phiếu
+   * trả" — huỷ CẢ phiếu là mất luôn những dòng khác trên đó.
+   */
+  it("mở được đúng phiếu trả đang vướng", () => {
+    expect(EDITOR_UI).toContain("`/returns/${rid}`")
+    /* ⚠ TAB MỚI — đang sửa dở một tờ hóa đơn CHƯA LƯU. */
+    expect(EDITOR_UI).toContain('window.open(`/returns/${rid}`, "_blank")')
+  })
+
+  /**
+   * ⚠ CHỈ CẢNH BÁO KHI ĐANG SỬA LẠI. Lập lần đầu thì phiếu trả kèm đơn
+   * còn `draft` và chưa gắn hóa đơn nào; cảnh báo ở đó là kêu oan cho
+   * một xung đột chưa tồn tại — và người dùng học được cách bỏ qua.
+   */
+  it("lập hóa đơn lần đầu thì không cảnh báo", () => {
+    expect(EDITOR_UI).toContain("reissueOf ? returnsBrokenBy(rows, pendingReturns) : []")
+  })
+
+  /**
+   * ⚠ LUẬT Ở MÁY CHỦ PHẢI CÒN ĐÓ. Phép tính trên trình duyệt chỉ để
+   * NÓI SỚM; nó không thay được chốt chặn. Ngày nào `reissue_invoice`
+   * thôi kiểm thì một tab cũ mở sẵn vẫn lưu được tờ hóa đơn phá phiếu
+   * trả — nhập kho khống và trừ công nợ khống.
+   */
+  it("máy chủ vẫn là chỗ chặn thật", () => {
+    const mig = readFileSync(
+      resolve(__dirname, "..", "supabase/migrations/125_wf2b_invoice_rpcs.sql"), "utf-8"
+    )
+    expect(mig, "reissue_invoice thôi chặn phiếu trả bị vỡ").toContain("REISSUE_BREAKS_RETURN")
+    expect(mig).toContain("AND rl.is_exchange = false")
   })
 })

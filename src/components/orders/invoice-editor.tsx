@@ -42,6 +42,7 @@ import {
 import {
   seedForNew, seedForReissue, makeAddedRow, withStock, toDraft,
   rowsOverOrdered, searchAddable, rowToCartLine, patchRowFromCart,
+  returnsBrokenBy, type PendingReturnLine,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
@@ -128,6 +129,8 @@ export function InvoiceEditor({
    *   một con số cao hơn số sẽ ghi vào sổ, và khách trả dư.
    */
   const [retCredit, setRetCredit] = useState(0)
+  /** Dòng hàng trả đang chờ — để cảnh báo TRƯỚC khi lưu. */
+  const [pendingReturns, setPendingReturns] = useState<PendingReturnLine[]>([])
   const [retLines, setRetLines] = useState<
     Array<{ id: string; name: string; qty: number; unit: string; credit: number; isExchange: boolean }>
   >([])
@@ -200,7 +203,7 @@ export function InvoiceEditor({
     supabase
       .from("returns")
       .select(
-        "id, status, credit_note_amount, lines:return_lines(id, unit_name, quantity, line_total, is_exchange, product:products(name))"
+        "id, status, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, line_total, is_exchange, product:products(name))"
       )
       .eq("order_id", orderId)
       .neq("status", "cancelled")
@@ -208,12 +211,26 @@ export function InvoiceEditor({
         if (cancelled) return
         const rs = ((data as unknown) as Array<{
           id: string
+          status: string
           credit_note_amount: number | null
           lines?: Array<{
-            id: string; unit_name: string; quantity: number; line_total: number
+            id: string; product_id: string; unit_name: string; quantity: number
+            line_total: number
             is_exchange?: boolean | null; product?: { name?: string | null } | null
           }> | null
         }>) ?? []
+        /* ⚠ GIỮ LẠI ĐỂ SOI XUNG ĐỘT — xem `returnsBrokenBy`. */
+        setPendingReturns(
+          rs.flatMap((r) =>
+            (r.lines ?? []).map((l) => ({
+              returnId: r.id,
+              returnStatus: r.status,
+              productId: l.product_id,
+              productName: l.product?.name || "Sản phẩm đã xoá",
+              isExchange: l.is_exchange === true,
+            }))
+          )
+        )
         setRetCredit(rs.reduce((s2, r) => s2 + Math.max(0, Number(r.credit_note_amount || 0)), 0))
         setRetLines(
           rs.flatMap((r) =>
@@ -293,6 +310,15 @@ export function InvoiceEditor({
   }
 
   const shortRows = rows.filter((r) => r.qty > 0 && r.stockKnown && shortageOf(r, r.qty) > 0)
+  /**
+   * Phiếu trả đang chờ sẽ vỡ nếu lưu tờ này — xem `returnsBrokenBy`.
+   *
+   * ⚠ CHỈ TÍNH KHI ĐANG SỬA LẠI. Lập hóa đơn LẦN ĐẦU thì phiếu trả kèm
+   *   đơn còn ở trạng thái `draft` và chưa gắn vào hóa đơn nào;
+   *   `post_invoice` mới là chỗ gắn. Cảnh báo ở đó là kêu oan cho một
+   *   xung đột chưa tồn tại.
+   */
+  const returnConflicts = reissueOf ? returnsBrokenBy(rows, pendingReturns) : []
   const overRows = rowsOverOrdered(rows)
 
   const setQty = (key: string, v: number) =>
@@ -594,6 +620,55 @@ export function InvoiceEditor({
           </div>
 
           {/*
+            XUNG ĐỘT VỚI PHIẾU TRẢ ĐANG CHỜ — nói ra NGAY, không đợi máy
+            chủ từ chối.
+
+            ⚠ CHỦ NHÀ BÁO 21/09/2026: sửa hóa đơn có hàng đổi/trả thì
+              vấp "hóa đơn mới không còn bán … Huỷ phiếu trả trước, rồi
+              sửa lại hóa đơn" — sau khi đã sửa xong cả tờ.
+
+            ⚠ LUẬT Ở MÁY CHỦ ĐÚNG, CHỖ NÓI RA THÌ SAI. Trần số được trả
+              lại đếm theo HÓA ĐƠN; bỏ món khỏi hóa đơn mà giữ phiếu trả
+              là để khách trả một món chưa từng rời kho — nhập kho khống
+              và trừ công nợ khống. Nên không tự gỡ, không tự xoá; xem
+              `returnsBrokenBy`.
+
+            ⚠ VÀ CHỈ ĐƯỜNG THAY VÌ CHỈ CHẶN. Câu lỗi của máy chủ bảo
+              "huỷ phiếu trả" — huỷ CẢ phiếu là mất luôn những dòng
+              khác trên đó. Mở đúng phiếu ra là sửa được một dòng.
+          */}
+          {returnConflicts.length > 0 && (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3">
+              <p className="flex items-start gap-1.5 text-sm font-bold text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Tờ hóa đơn này không còn bán{" "}
+                  {returnConflicts.map((c) => `“${c.productName}”`).join(", ")}, nhưng
+                  phiếu trả đang chờ xử lý đòi trả đúng món đó.
+                </span>
+              </p>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Khách chỉ trả được thứ đã thực xuất, nên lưu tờ này sẽ bị từ chối. Hoặc
+                giữ lại món trên hóa đơn, hoặc mở phiếu trả ra bỏ dòng đó đi.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Array.from(new Set(returnConflicts.map((c) => c.returnId))).map((rid) => (
+                  <Button
+                    key={rid}
+                    variant="outline"
+                    size="sm"
+                    /* ⚠ TAB MỚI. Người dùng đang sửa dở một tờ hóa đơn
+                       CHƯA LƯU — điều hướng đi là mất sạch. */
+                    onClick={() => window.open(`/returns/${rid}`, "_blank")}
+                  >
+                    Mở phiếu trả
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/*
             ⚠ BỎ DÒNG PHẢI HOÀN TÁC ĐƯỢC. Màn này KHÔNG có bản nháp —
               không có gì được ghi xuống cho tới nút cuối. Bấm nhầm cái
               thùng rác mà cách duy nhất để lấy lại là tải lại trang thì
@@ -813,8 +888,17 @@ export function InvoiceEditor({
               </Button>
               <Button
                 onClick={submit}
-                disabled={saving || picked.length === 0}
-                title={picked.length === 0 ? "Nhập số lượng cho ít nhất một dòng" : undefined}
+                disabled={saving || picked.length === 0 || returnConflicts.length > 0}
+                /* ⚠ KHOÁ NÚT KÈM LÝ DO, đừng để họ bấm rồi mới biết.
+                   Máy chủ sẽ từ chối tờ này — bấm là mất công sửa cả
+                   màn để đổi lấy một câu lỗi. */
+                title={
+                  returnConflicts.length > 0
+                    ? "Phiếu trả đang chờ đòi trả món tờ này không còn bán — xử lý phiếu trả trước"
+                    : picked.length === 0
+                      ? "Nhập số lượng cho ít nhất một dòng"
+                      : undefined
+                }
               >
                 {saving
                   ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

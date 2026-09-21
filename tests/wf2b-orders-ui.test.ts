@@ -241,7 +241,21 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    * luật thứ hai mâu thuẫn với cấu hình của chính tổ chức đó.
    */
   it("thiếu tồn không khoá nút Xuất", () => {
-    expect(CODE).toContain("disabled={saving || picked.length === 0}")
+    /**
+     * ⚠ SOI THỨ CÓ TRONG `disabled`, ĐỪNG GHIM NGUYÊN CÂU. Bản cũ đòi
+     * đúng chuỗi `disabled={saving || picked.length === 0}`, nên thêm
+     * một điều kiện HỢP LỆ (xung đột phiếu trả, 21/09/2026) cũng làm
+     * chốt đỏ — đỏ vì cách viết, không vì hành vi. Thứ phải giữ: nút
+     * khoá theo `saving` và "chưa nhập dòng nào", và TUYỆT ĐỐI không
+     * theo thiếu tồn.
+     */
+    /* ⚠ NEO VÀO `onClick={submit}`. Nút "Huỷ" cũng có
+       `disabled={saving}` và đứng TRƯỚC — bắt nhầm nó là chốt đỏ vì
+       đọc sai nút, không vì hành vi. */
+    const m = CODE.match(/onClick=\{submit\}[\s\S]{0,120}?disabled=\{([^}]*)\}/)
+    expect(m, "không đọc được điều kiện khoá nút Xuất").not.toBeNull()
+    expect(m![1]).toContain("picked.length === 0")
+    expect(m![1], "thiếu tồn đang khoá nút Xuất").not.toContain("shortRows")
     expect(CODE).not.toMatch(/disabled=\{[^}]*shortRows/)
   })
 

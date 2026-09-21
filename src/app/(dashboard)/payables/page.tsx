@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { MATCH_CAP } from "@/lib/search/list-search"
+import { useListSearch } from "@/hooks/use-list-search"
 import { Factory, Plus, Search } from "lucide-react"
 import Link from "next/link"
 import type { Payable, PayableStatus } from "@/types"
@@ -78,11 +79,22 @@ export default function PayablesPage() {
     pg.reset()
   }, [debouncedSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * ⚠ TÊN NCC PHẢI TRA RIÊNG: PostgREST không cho `or` bắc qua bảng
+   *   nhúng. Phần nối dây ở `useListSearch`.
+   */
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, user?.org_id, ["invoice_number"],
+    [{ column: "supplier_id", table: "suppliers", columns: ["name", "code"] }]
+  )
+
   // Paginated table query.
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
       setLoading(true)
+      /* ⚠ CHỜ LƯỢT TRA MÃ NCC — xem `useListSearch`. */
+      if (!listSearch.ready) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
       const build = (select: string) => {
@@ -91,10 +103,14 @@ export default function PayablesPage() {
           .select(select, { count: "exact" })
           .order("due_date")
           .range(pg.from, pg.to)
-        if (debouncedSearch) {
-          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-          q = q.ilike("invoice_number", term)
-        }
+        /**
+         * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
+         *   Bản cũ chỉ `ilike("invoice_number")` trên máy chủ rồi lọc
+         *   thêm theo TÊN NCC ở trình duyệt — gõ tên NCC là chỉ tìm
+         *   trong 50 dòng đang hiện, còn `pg.setTotal(count)` vẫn ghi
+         *   tổng của phép đếm chưa lọc.
+         */
+        if (listSearch.filter) q = q.or(listSearch.filter)
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         return q
       }
@@ -112,22 +128,16 @@ export default function PayablesPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter supplier name client-side trên page hiện tại (cross-table join filter
-  // không trực tiếp được trên server-side với Supabase).
-  const filtered = useMemo(() => {
-    if (!debouncedSearch) return payables
-    const q = viNormalize(debouncedSearch)
-    // Nếu invoice_number đã match server-side, mọi row đều OK.
-    // Đồng thời also lọc theo supplier nếu user search tên NCC.
-    return payables.filter(
-      (p) =>
-        viIncludes(p.invoice_number, q) ||
-        viIncludes(p.supplier?.name, q) ||
-        viIncludes(p.supplier?.code, q)
-    )
-  }, [payables, debouncedSearch])
+  /**
+   * ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT. Máy chủ đã lọc cả số hoá đơn lẫn
+   * NCC (xem `listSearch`). Chú thích cũ nói "cross-table join filter
+   * không trực tiếp được trên server-side với Supabase" — đúng một
+   * nửa: `or` không bắc qua bảng nhúng được, nhưng tra mã NCC trước
+   * rồi lọc `supplier_id.in.(…)` thì được.
+   */
+  const filtered = payables
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -162,6 +172,20 @@ export default function PayablesPage() {
           </Button>
         </div>
       </PageHeader>
+
+      {/*
+        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
+          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
+      */}
+      {listSearch.truncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} nhà cung cấp khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới
+            chưa đủ. Gõ thêm cho hẹp lại.
+          </p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

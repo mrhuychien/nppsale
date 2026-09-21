@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
-import { likeTerm, buildOrFilter, MATCH_CAP, NO_MATCH } from "../src/lib/search/list-search"
+import {
+  likeTerm, buildOrFilter, lookupSettled, MATCH_CAP, NO_MATCH,
+} from "../src/lib/search/list-search"
 
 /**
  * Ô TÌM TRÊN DANH SÁCH CÓ PHÂN TRANG PHẢI HỎI MÁY CHỦ.
@@ -66,6 +68,28 @@ describe("phép dựng mệnh đề tìm", () => {
     expect(r.truncated).toBe(true)
   })
 
+  /**
+   * ⚠ LUẬT "ĐÃ TRA XONG CHƯA" PHẢI ĐƯỢC CANH THẲNG. Đã thử phá bằng
+   * cách cho hook trả `ready = true` luôn — cả 35 chốt vẫn xanh, vì
+   * chúng chỉ soi được rằng các màn CÓ GỌI `listSearch.ready`. Luật
+   * nay nằm ở `lookupSettled` và có chốt riêng.
+   */
+  it("chỉ sẵn sàng khi đã tra đúng từ khoá hiện tại", () => {
+    expect(lookupSettled("", "")).toBe(true)
+    expect(lookupSettled("", "  ")).toBe(true)
+    expect(lookupSettled("abc", "abc")).toBe(true)
+    expect(lookupSettled("abc", " abc ")).toBe(true)
+    expect(lookupSettled("", "abc"), "chưa tra mà đã báo sẵn sàng").toBe(false)
+    expect(lookupSettled("abc", "abcd"), "mã của từ khoá CŨ mà đã báo sẵn sàng").toBe(false)
+  })
+
+  it("hook dùng chung luật ấy, không viết lại", () => {
+    const HOOK = strip(read("src/hooks/use-list-search.ts"))
+    expect(HOOK).toContain("lookupSettled(state.term, t)")
+    expect(HOOK, "hook tự viết lại luật — chốt trên không canh được nữa")
+      .not.toContain("const ready = state.term === t")
+  })
+
   it("có trần, và trần là một hằng số dùng chung", () => {
     expect(MATCH_CAP).toBeGreaterThan(0)
     for (const [ten, src] of [["đơn hàng", ORDERS], ["hoá đơn bán", SALES_INV]] as const) {
@@ -74,16 +98,31 @@ describe("phép dựng mệnh đề tìm", () => {
   })
 })
 
-describe("hai danh sách chủ nhà báo đã tìm cả sổ", () => {
-  for (const [ten, src] of [["đơn hàng", ORDERS], ["hoá đơn bán", SALES_INV]] as const) {
+const RETURNS = strip(read("src/app/(dashboard)/returns/page.tsx"))
+const PAYABLES = strip(read("src/app/(dashboard)/payables/page.tsx"))
+const INVENTORY = strip(read("src/app/(dashboard)/inventory/page.tsx"))
+const PURCH_INV = strip(read("src/app/(dashboard)/purchasing/invoices/page.tsx"))
+
+/** Sáu màn có phân trang phía máy chủ và có ô tìm. */
+const MAN_CO_O_TIM = [
+  ["đơn hàng", ORDERS],
+  ["hoá đơn bán", SALES_INV],
+  ["trả hàng", RETURNS],
+  ["công nợ NCC", PAYABLES],
+  ["kho hàng", INVENTORY],
+  ["hoá đơn mua", PURCH_INV],
+] as const
+
+describe("mọi danh sách có phân trang đều tìm cả sổ", () => {
+  for (const [ten, src] of MAN_CO_O_TIM) {
     /**
      * ⚠ LỌC BẰNG `.or(...)` TRÊN TRUY VẤN, không bằng `rows.filter(...)`
      * sau khi đã `.range()`. Lọc sau phân trang là chỉ lọc trang đang
      * xem — đúng cái chủ nhà báo.
      */
     it(`${ten}: dựng mệnh đề tìm cho truy vấn, không lọc mảng đã phân trang`, () => {
-      expect(src, `${ten} không dùng phép dựng mệnh đề chung`).toContain("buildOrFilter(")
-      expect(src).toContain('from "@/lib/search/list-search"')
+      expect(src, `${ten} không dùng hook tìm chung`).toContain("useListSearch(")
+      expect(src, `${ten} không đưa mệnh đề tìm vào truy vấn`).toContain("listSearch.filter")
     })
 
     /**
@@ -93,21 +132,15 @@ describe("hai danh sách chủ nhà báo đã tìm cả sổ", () => {
      * thiếu ấy.
      */
     it(`${ten}: truy vấn chính chờ lượt tra mã`, () => {
-      expect(src).toContain("if (!searchReady) return")
-      expect(src).toContain("searchReady =")
-    })
-
-    /**
-     * ⚠ GIỮ CẢ TỪ KHOÁ ĐÃ TRA. Chỉ giữ danh sách mã là không phân biệt
-     * được "đã tra xong cho từ khoá này" với "đây là mã của từ khoá
-     * trước".
-     */
-    it(`${ten}: nhớ cả từ khoá đã tra, không chỉ nhớ danh sách mã`, () => {
-      expect(src).toContain("term: string; match: IdMatch")
+      expect(
+        src.includes("if (!searchReady) return") || src.includes("if (!listSearch.ready) return"),
+        `${ten} không chờ lượt tra mã — lần gõ đầu trả về danh sách thiếu rồi tự sửa`
+      ).toBe(true)
     })
 
     /** ⚠ Chạm trần thì NÓI RA — thiếu mà im là đi lại con đường cũ. */
     it(`${ten}: chạm trần thì cảnh báo ra màn`, () => {
+      expect(src).toContain("listSearch.truncated")
       expect(src).toContain("Kết quả tìm đang thiếu")
     })
 
@@ -124,15 +157,15 @@ describe("hai danh sách chủ nhà báo đã tìm cả sổ", () => {
    * trang 1", vì không có trang nào chứa kết quả cả.
    */
   it("đơn hàng tìm được theo tên khách và số điện thoại", () => {
-    expect(ORDERS).toContain('"customers", ["store_name", "owner_name", "phone"]')
+    expect(ORDERS).toContain('table: "customers", columns: ["store_name", "owner_name", "phone"]')
     expect(ORDERS, "ô tìm vẫn chỉ soi mã đơn")
       .not.toMatch(/x = x\.ilike\("order_code"/)
   })
 
   it("hoá đơn bán tìm được theo số hoá đơn, mã đơn và tên khách", () => {
-    expect(SALES_INV).toContain('"customers", ["store_name", "owner_name", "phone"]')
-    expect(SALES_INV).toContain('"sales_orders", ["order_code"]')
-    expect(SALES_INV).toContain('buildOrFilter(debouncedSearch, ["invoice_code"]')
+    expect(SALES_INV).toContain('table: "customers", columns: ["store_name", "owner_name", "phone"]')
+    expect(SALES_INV).toContain('table: "sales_orders", columns: ["order_code"]')
+    expect(SALES_INV).toContain('["invoice_code"]')
   })
 
   /**
@@ -151,17 +184,16 @@ describe("hai danh sách chủ nhà báo đã tìm cả sổ", () => {
 /**
  * QUÉT CẢ KHO MÃ — còn màn nào lọc sau khi phân trang nữa không.
  *
- * ⚠ DANH SÁCH NỢ, KHÔNG PHẢI DANH SÁCH THA. Bốn màn dưới đây mắc ĐÚNG
- * lỗi vừa sửa và chủ nhà chưa yêu cầu sửa chúng, nên chúng được ghi nợ
- * ở đây — có tên, không giấu. Sửa màn nào thì XOÁ tên màn ấy khỏi danh
- * sách; thêm tên mới vào đây là tự tay đục một lỗ.
+ * ⚠ DANH SÁCH NỢ NAY RỖNG (chủ nhà chốt 21/09/2026: "Dọn nốt"). Bốn
+ * màn từng nằm đây — Trả hàng, Công nợ NCC, Kho hàng, Hoá đơn mua —
+ * đã chuyển hẳn sang lọc ở máy chủ.
+ *
+ * ⚠ GIỮ DANH SÁCH LẠI DÙ RỖNG, ĐỪNG XOÁ. Nó là chỗ DUY NHẤT hợp lệ để
+ * ghi một màn còn mắc lỗi, và chốt ngay dưới đòi mỗi tên trong đó phải
+ * THẬT SỰ còn mắc lỗi — nên không ai nhét được một màn đã sửa vào đây
+ * để né. Xoá mảng đi thì lần sau người ta lại nới chính chốt quét.
  */
-const CON_NO_LOC_SAU_PHAN_TRANG = [
-  "src/app/(dashboard)/returns/page.tsx",
-  "src/app/(dashboard)/payables/page.tsx",
-  "src/app/(dashboard)/inventory/page.tsx",
-  "src/app/(dashboard)/purchasing/invoices/page.tsx",
-]
+const CON_NO_LOC_SAU_PHAN_TRANG: string[] = []
 
 function allPages(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

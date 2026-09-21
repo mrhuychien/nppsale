@@ -26,9 +26,8 @@ import Link from "next/link"
 import { ChevronDown, ChevronUp, FileText, Filter, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
-import {
-  idsMatching, buildOrFilter, NO_MATCH, MATCH_CAP, type IdMatch,
-} from "@/lib/search/list-search"
+import { MATCH_CAP } from "@/lib/search/list-search"
+import { useListSearch } from "@/hooks/use-list-search"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { usePagination } from "@/hooks/use-pagination"
@@ -131,20 +130,14 @@ export default function SalesInvoicesPage() {
   const [status, setStatus] = useState<string>("posted")
   const [search, setSearch] = useState("")
   /**
-   * ⚠ Ô TÌM PHẢI HỎI MÁY CHỦ, KHÔNG LỌC TRONG TRANG ĐANG XEM (chủ nhà
-   *   báo 21/09/2026: "Tìm kiếm chỉ tìm trong trang 1, phải tìm toàn bộ
+   * ⚠ Ô TÌM HỎI MÁY CHỦ, KHÔNG LỌC TRONG TRANG ĐANG XEM (chủ nhà báo
+   *   21/09/2026: "Tìm kiếm chỉ tìm trong trang 1, phải tìm toàn bộ
    *   chứ?"). Bản cũ lọc `rows` — 50 dòng của trang hiện tại — và có
    *   hẳn một chú thích thừa nhận điều đó, kèm cách vá là ghi vào
    *   placeholder. Một danh sách nghìn hoá đơn thì ô tìm ấy đúng vài
    *   phần trăm số lần dùng.
    */
   const [debouncedSearch, setDebouncedSearch] = useState("")
-  const [customerMatch, setCustomerMatch] = useState<{ term: string; match: IdMatch }>({
-    term: "", match: NO_MATCH,
-  })
-  const [orderMatch, setOrderMatch] = useState<{ term: string; match: IdMatch }>({
-    term: "", match: NO_MATCH,
-  })
   const [routeFilter, setRouteFilter] = useState("all")
   const [customerFilter, setCustomerFilter] = useState("all")
   const [salesFilter, setSalesFilter] = useState("all")
@@ -198,36 +191,19 @@ export default function SalesInvoicesPage() {
   }, [search])
 
   /**
-   * TRA MÃ KHÁCH VÀ MÃ ĐƠN KHỚP Ô TÌM.
-   *
-   * ⚠ HAI LƯỢT TRA RIÊNG VÌ PostgREST KHÔNG CHO `or` BẮC QUA BẢNG NHÚNG.
-   *   Tìm theo tên điểm bán hay theo mã đơn đều phải hỏi mã trước rồi
-   *   mới lọc theo khoá ngoại.
+   * ⚠ HAI LƯỢT TRA RIÊNG VÌ PostgREST KHÔNG CHO `or` BẮC QUA BẢNG
+   *   NHÚNG. Tìm theo tên điểm bán hay theo mã đơn gốc đều phải hỏi mã
+   *   trước rồi mới lọc theo khoá ngoại. Phần nối dây ở `useListSearch`.
    */
-  useEffect(() => {
-    const t = debouncedSearch.trim()
-    if (!t) {
-      setCustomerMatch({ term: "", match: NO_MATCH })
-      setOrderMatch({ term: "", match: NO_MATCH })
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      const [c, o] = await Promise.all([
-        idsMatching(supabase, "customers", ["store_name", "owner_name", "phone"], t, user?.org_id),
-        idsMatching(supabase, "sales_orders", ["order_code"], t, user?.org_id),
-      ])
-      if (cancelled) return
-      setCustomerMatch({ term: t, match: c })
-      setOrderMatch({ term: t, match: o })
-    })()
-    return () => { cancelled = true }
-  }, [debouncedSearch, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** ⚠ Truy vấn chính CHỜ hai lượt tra — xem chú thích ở màn đơn hàng. */
-  const searchReady =
-    customerMatch.term === debouncedSearch.trim() && orderMatch.term === debouncedSearch.trim()
-  const searchTruncated = customerMatch.match.truncated || orderMatch.match.truncated
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, user?.org_id, ["invoice_code"],
+    [
+      { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
+      { column: "order_id", table: "sales_orders", columns: ["order_code"] },
+    ]
+  )
+  const searchReady = listSearch.ready
+  const searchTruncated = listSearch.truncated
 
   const applyFilters = useCallback(
     <T extends {
@@ -245,11 +221,7 @@ export default function SalesInvoicesPage() {
        *   thì con số trên thẻ tóm tắt cộng trên một tập còn danh sách
        *   hiện một tập khác.
        */
-      const or = buildOrFilter(debouncedSearch, ["invoice_code"], [
-        { column: "customer_id", match: customerMatch.match },
-        { column: "order_id", match: orderMatch.match },
-      ])
-      if (or.filter) x = x.or(or.filter)
+      if (listSearch.filter) x = x.or(listSearch.filter)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
       if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
@@ -267,7 +239,7 @@ export default function SalesInvoicesPage() {
       return x
     },
     [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, period,
-     debouncedSearch, customerMatch, orderMatch]
+     listSearch]
   )
 
   const fetchData = useCallback(async () => {

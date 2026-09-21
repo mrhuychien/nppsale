@@ -99,7 +99,7 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
   it("placeholder ô tìm nói đúng thứ nó tìm", () => {
     expect(PAGE).toContain('placeholder="Tìm mã đơn, tên khách, số điện thoại…"')
     expect(PAGE, "hứa tìm tên khách mà không tra bảng khách")
-      .toContain('"customers", ["store_name", "owner_name", "phone"]')
+      .toContain('table: "customers", columns: ["store_name", "owner_name", "phone"]')
     expect(PAGE, "vẫn còn ô tìm chỉ soi mã đơn")
       .not.toContain('x = x.ilike("order_code", term)')
   })

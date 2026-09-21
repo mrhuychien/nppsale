@@ -20,7 +20,8 @@ import {
   DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { MATCH_CAP } from "@/lib/search/list-search"
+import { useListSearch } from "@/hooks/use-list-search"
 import { Search, FileText, Plus, Columns3, X, Pencil } from "lucide-react"
 
 type ColKey = "entry_code" | "supplier" | "invoice_number" | "date" | "total" | "paid" | "remaining" | "debt_status"
@@ -105,25 +106,57 @@ export default function PurchaseInvoicesLookupPage() {
     pg.reset()
   }, [debouncedSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * ⚠ HAI LƯỢT TRA RIÊNG. Tên NCC nằm ở `suppliers`; SỐ HOÁ ĐƠN nằm ở
+   *   `payables` và phải lấy ra `stock_entry_id` — khoá ngoại TRỎ
+   *   NGƯỢC về bảng đang liệt kê. PostgREST không cho `or` bắc qua
+   *   bảng nhúng nên cả hai đều phải tra trước.
+   */
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, user?.org_id, ["entry_code"],
+    [
+      { column: "supplier_id", table: "suppliers", columns: ["name", "code"] },
+      {
+        column: "id", table: "payables", columns: ["invoice_number"],
+        idColumn: "stock_entry_id",
+      },
+    ]
+  )
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true)
       // 1. Query phiếu nhập paginated.
+      /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
+      if (!listSearch.ready) return
+      /**
+       * ⚠ LỌC CÔNG NỢ Ở MÁY CHỦ BẰNG PHÉP NỐI `!inner`. Bản cũ nạp một
+       *   trang rồi mới hỏi `payables` và lọc ở trình duyệt — "còn nợ"
+       *   chỉ lọc trong 50 dòng đang hiện, còn phân trang vẫn hứa theo
+       *   tổng CHƯA lọc. Phần nối này CHỈ để lọc; phần hiển thị vẫn đọc
+       *   riêng ở bước 2 để giữ nguyên hình dạng dữ liệu.
+       */
+      const joinDebt = debtFilter === "open" || debtFilter === "paid"
       let q = supabase
         .from("stock_entries")
         .select(
-          "id, entry_code, posted_at, created_at, supplier:suppliers(name, code)",
+          "id, entry_code, posted_at, created_at, supplier:suppliers(name, code)"
+            + (joinDebt ? ", debt:payables!inner(status)" : ""),
           { count: "exact" }
         )
         .eq("type", "import")
         .order("created_at", { ascending: false })
         .range(pg.from, pg.to)
-      if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.ilike("entry_code", term)
-      }
-      if (debtFilter === "no_supplier") q = q.is("supplier_id", null)
+      /**
+       * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
+       *   Bản cũ chỉ `ilike("entry_code")` trên máy chủ rồi lọc thêm
+       *   theo TÊN NCC và SỐ HOÁ ĐƠN ở trình duyệt.
+       */
+      if (listSearch.filter) q = q.or(listSearch.filter)
+      if (debtFilter === "open") q = q.neq("debt.status", "paid")
+      else if (debtFilter === "paid") q = q.eq("debt.status", "paid")
+      else if (debtFilter === "no_supplier") q = q.is("supplier_id", null)
       const { data: entriesData, count , error: qErr } = await q
       if (qErr) console.error("[purchasing/invoices] truy vấn lỗi:", qErr.message)
       if (cancelled) return
@@ -144,27 +177,16 @@ export default function PurchaseInvoicesLookupPage() {
         }
       }
 
-      let list = entries.map((e) => ({ ...e, payable: payByEntry.get(e.id) || null }))
+      const list = entries.map((e) => ({ ...e, payable: payByEntry.get(e.id) || null }))
 
-      // Debt filter (open/paid) phụ thuộc payable → áp client-side trên page.
-      // Search supplier name/invoice number cũng cross-table → áp client-side trên page.
-      if (debtFilter === "open") list = list.filter((r) => !!r.payable && r.payable.status !== "paid")
-      else if (debtFilter === "paid") list = list.filter((r) => !!r.payable && r.payable.status === "paid")
-      if (debouncedSearch) {
-        const term = viNormalize(debouncedSearch)
-        list = list.filter((r) =>
-          viIncludes(r.entry_code, term) ||
-          viIncludes((r.supplier?.name || ""), term) ||
-          viIncludes((r.supplier?.code || ""), term) ||
-          viIncludes((r.payable?.invoice_number || ""), term)
-        )
-      }
+      /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc cả ô tìm lẫn
+         trạng thái công nợ. Lọc sau phân trang là chỉ lọc trang đang xem. */
       setRows(list)
       pg.setTotal(count ?? 0)
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pass-through, đã filter ở effect trên.
   const filtered = rows
@@ -218,6 +240,20 @@ export default function PurchaseInvoicesLookupPage() {
           </Button>
         )}
       </PageHeader>
+
+      {/*
+        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
+          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
+      */}
+      {listSearch.truncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} mục khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới chưa
+            đủ. Gõ thêm cho hẹp lại.
+          </p>
+        </div>
+      )}
 
       <div className="rounded-lg border border-primary-fixed-dim bg-primary-fixed p-3 text-xs text-on-primary-fixed-variant">
         Trang này chỉ để tra cứu. Việc tạo / sửa hàng nhập + công nợ NCC thực hiện ở phiếu nhập kho

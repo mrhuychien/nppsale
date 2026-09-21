@@ -38,7 +38,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { MATCH_CAP } from "@/lib/search/list-search"
+import { useListSearch } from "@/hooks/use-list-search"
 import { StockBalanceTable } from "@/components/inventory/stock-balance-table"
 import {
   Activity,
@@ -162,11 +163,22 @@ export default function InventoryPage() {
     pg.reset()
   }, [debouncedSearch, brandFilter, locationFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * ⚠ TÊN / SKU SẢN PHẨM PHẢI TRA RIÊNG: PostgREST không cho `or` bắc
+   *   qua bảng nhúng. Phần nối dây ở `useListSearch`.
+   */
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, user?.org_id, ["batch_code"],
+    [{ column: "product_id", table: "products", columns: ["name", "sku", "barcode"] }]
+  )
+
   // Paginated batches list.
   useEffect(() => {
     let cancelled = false
     async function fetchBatchesList() {
       setLoading(true)
+      /* ⚠ CHỜ LƯỢT TRA MÃ SẢN PHẨM — xem `useListSearch`. */
+      if (!listSearch.ready) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.
       const build = (select: string) => {
         let q = supabase
@@ -175,40 +187,41 @@ export default function InventoryPage() {
           .gt("qty_on_hand", 0)
           .order("expires_at")
           .range(pg.from, pg.to)
-        if (debouncedSearch) {
-          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-          q = q.ilike("batch_code", term)
-        }
+        /**
+         * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
+         *   Bản cũ chỉ `ilike("batch_code")` trên máy chủ rồi lọc thêm
+         *   theo TÊN / SKU sản phẩm ở trình duyệt — gõ tên hàng là chỉ
+         *   tìm trong trang đang hiện, còn `pg.setTotal(count)` vẫn ghi
+         *   tổng của phép đếm chưa lọc.
+         */
+        if (listSearch.filter) q = q.or(listSearch.filter)
         if (locationFilter !== "all") q = q.eq("location", locationFilter)
+        /**
+         * ⚠ LỌC NHÃN HÀNG CŨNG PHẢI Ở MÁY CHỦ. Nó lọc trên bảng NHÚNG
+         *   nên phần nhúng phải là `!inner` — không thì PostgREST vẫn
+         *   trả lô về và chỉ bỏ trống phần sản phẩm.
+         */
+        if (brandFilter !== "all") q = q.eq("product.brand", brandFilter)
         return q
       }
+      const prod = brandFilter !== "all" ? "product:products!inner(*)" : "product:products(*)"
       const res = await selectResilient<BatchWithProduct>(
         build,
-        "id, batch_code, qty_on_hand, expires_at, manufactured_at, location, product:products(*)",
+        `id, batch_code, qty_on_hand, expires_at, manufactured_at, location, ${prod}`,
         // eslint-disable-next-line no-restricted-syntax
-        "*, product:products(*)"
+        `*, ${prod}`
       )
       if (cancelled) return
-      let list = res.data
-      // Filter brand + search cross-table (product.name/sku) client-side trên page.
-      if (brandFilter !== "all") list = list.filter((b) => b.product?.brand === brandFilter)
-      if (debouncedSearch) {
-        const term = viNormalize(debouncedSearch)
-        list = list.filter(
-          (b) =>
-            viIncludes((b.product?.name || ""), term) ||
-            viIncludes((b.product?.sku || ""), term) ||
-            viIncludes(b.batch_code, term)
-        )
-      }
-      setBatches(list)
+      /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc cả ô tìm lẫn
+         nhãn hàng. Lọc sau khi phân trang là chỉ lọc trang đang xem. */
+      setBatches(res.data)
       setLoadError(res.error)
       pg.setTotal(res.count ?? 0)
       setLoading(false)
     }
     fetchBatchesList()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, brandFilter, locationFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, brandFilter, locationFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     let expiringSoon = 0
@@ -256,6 +269,19 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      {/*
+        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
+          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
+      */}
+      {listSearch.truncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} mặt hàng khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới
+            chưa đủ. Gõ thêm cho hẹp lại.
+          </p>
+        </div>
+      )}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <h1 className="text-2xl lg:text-2xl font-bold tracking-tight text-foreground">

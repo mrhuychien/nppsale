@@ -445,8 +445,8 @@ describe("Danh sách hóa đơn bán", () => {
       .not.toContain("Tìm trong trang này")
     expect(CODE).toContain("Tìm số hóa đơn, mã đơn, tên khách…")
     /* Hứa gì thì phải tra thật thứ đó. */
-    expect(CODE).toContain('"sales_orders", ["order_code"]')
-    expect(CODE).toContain('"customers", ["store_name", "owner_name", "phone"]')
+    expect(CODE).toContain('table: "sales_orders", columns: ["order_code"]')
+    expect(CODE).toContain('table: "customers", columns: ["store_name", "owner_name", "phone"]')
   })
 
   /**

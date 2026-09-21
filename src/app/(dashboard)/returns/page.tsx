@@ -40,7 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { MATCH_CAP } from "@/lib/search/list-search"
+import { useListSearch } from "@/hooks/use-list-search"
 import { RETURN_REASONS } from "@/lib/constants"
 import { RotateCcw, PieChart, Search, Info, Plus } from "lucide-react"
 import Link from "next/link"
@@ -140,10 +141,26 @@ export default function ReturnsPage() {
     pg.reset()
   }, [debouncedSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
+   *   nghị và mã đơn gốc — cả ba đều là bảng nhúng, mà PostgREST không
+   *   cho `or` bắc qua bảng nhúng.
+   */
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, authUser?.org_id, [],
+    [
+      { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
+      { column: "requested_by", table: "users", columns: ["full_name"] },
+      { column: "order_id", table: "sales_orders", columns: ["order_code"] },
+    ]
+  )
+
   useEffect(() => {
     let cancelled = false
     async function fetch() {
       setLoading(true)
+      /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
+      if (!listSearch.ready) return
       let q = supabase
         .from("returns")
         .select(
@@ -152,6 +169,14 @@ export default function ReturnsPage() {
         )
         .order("created_at", { ascending: false })
         .range(pg.from, pg.to)
+      /**
+       * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
+       *   Bản cũ đọc một trang rồi `raw.filter(...)` ở trình duyệt —
+       *   gõ tên khách của một phiếu ở trang 3 là ra rỗng, và
+       *   `pg.setTotal(count)` vẫn ghi tổng của phép đếm CHƯA lọc, nên
+       *   phân trang hứa 8 trang trong khi chỉ có vài dòng hiện ra.
+       */
+      if (listSearch.filter) q = q.or(listSearch.filter)
       if (filterActive("reason") && reasonFilter !== "all") {
         q = q.eq("reason", reasonFilter)
       }
@@ -161,24 +186,16 @@ export default function ReturnsPage() {
       const { data, count , error: qErr } = await q
       if (qErr) console.error("[returns] truy vấn lỗi:", qErr.message)
       if (cancelled) return
-      const raw = (data as unknown as Return[]) || []
-      // Search cross-table (customer/requester/order) → client-side trên page.
-      let list = raw
-      if (filterActive("search") && debouncedSearch) {
-        const term = viNormalize(debouncedSearch)
-        list = raw.filter((r) =>
-          viIncludes((r.customer?.store_name || ""), term) ||
-          viIncludes((r.requester?.full_name || ""), term) ||
-          viIncludes(((r as Return & { order?: { order_code?: string } }).order?.order_code || ""), term)
-        )
-      }
-      setReturns(list)
+      /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc. Lọc hai lần
+         theo hai luật khác nhau là dòng máy chủ vừa trả về lại bị trình
+         duyệt giấu đi, và số trên phân trang không khớp số dòng thấy. */
+      setReturns((data as unknown as Return[]) || [])
       pg.setTotal(count ?? 0)
       setLoading(false)
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -211,6 +228,20 @@ export default function ReturnsPage() {
           </Link>
         </Button>
       </PageHeader>
+
+      {/*
+        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
+          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
+      */}
+      {listSearch.truncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} mục khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới chưa
+            đủ. Gõ thêm cho hẹp lại.
+          </p>
+        </div>
+      )}
 
       {/*
         ⚠ CÂU CŨ Ở ĐÂY LÀ NGUYÊN NHÂN CỦA CẢ MỘT LỚP LỖI. Nó bảo người

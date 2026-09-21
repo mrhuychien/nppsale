@@ -68,18 +68,27 @@ export async function idsMatching(
   table: string,
   columns: string[],
   term: string,
-  orgId?: string | null
+  orgId?: string | null,
+  /**
+   * Cột lấy ra làm khoá.
+   *
+   * ⚠ KHÔNG PHẢI LÚC NÀO CŨNG LÀ `id`. Tìm phiếu nhập theo SỐ HOÁ ĐƠN
+   * thì số ấy nằm ở `payables`, và thứ cần lấy ra là
+   * `payables.stock_entry_id` — khoá ngoại TRỎ NGƯỢC về bảng đang
+   * liệt kê. Cố định `id` là không tra được chiều ấy.
+   */
+  idColumn = "id"
 ): Promise<IdMatch> {
   const t = term.trim()
   if (!t || columns.length === 0) return NO_MATCH
   const like = likeTerm(t)
   let q = supabase
     .from(table)
-    .select("id")
+    .select(idColumn)
     .or(columns.map((c) => `${c}.ilike.${like}`).join(","))
     // ⚠ CÓ MỐC SẮP XẾP. Không có thì hai lần gọi cùng một từ khoá có thể
     //   trả về hai tập 300 mã khác nhau, và danh sách nhấp nháy.
-    .order("id")
+    .order(idColumn)
     .limit(MATCH_CAP + 1)
   if (orgId) q = q.eq("org_id", orgId)
 
@@ -93,11 +102,29 @@ export async function idsMatching(
     console.error(`[list-search] tra ${table} lỗi:`, error.message)
     return { ids: [], truncated: true }
   }
-  const rows = (data as Array<{ id: string }>) || []
+  const rows = ((data as unknown) as Array<Record<string, string | null>>) || []
   return {
-    ids: rows.slice(0, MATCH_CAP).map((r) => r.id),
+    /* ⚠ BỎ KHOÁ RỖNG. `stock_entry_id` có thể NULL; nhét `null` vào
+       `in.(…)` là một câu truy vấn hỏng. */
+    ids: rows.slice(0, MATCH_CAP).map((r) => r[idColumn]).filter(Boolean) as string[],
     truncated: rows.length > MATCH_CAP,
   }
+}
+
+/**
+ * ĐÃ TRA XONG CHO ĐÚNG TỪ KHOÁ HIỆN TẠI CHƯA.
+ *
+ * ⚠ MỘT DÒNG, NHƯNG PHẢI NẰM Ở ĐÂY CHỨ KHÔNG NẰM TRONG HOOK. Đã thử
+ * phá: đổi nó thành `true` bên trong `useListSearch` mà cả 35 chốt vẫn
+ * XANH — vì chốt chỉ soi được rằng các màn CÓ GỌI `listSearch.ready`,
+ * không soi được luật quyết định giá trị ấy. Một luật không ai canh là
+ * một luật sẽ trôi.
+ *
+ * ⚠ `""` KHỚP `""`: lúc không tìm gì thì luôn sẵn sàng, không bắt màn
+ * hình chờ một lượt tra không bao giờ chạy.
+ */
+export function lookupSettled(lookedUpTerm: string, currentTerm: string): boolean {
+  return lookedUpTerm === currentTerm.trim()
 }
 
 export interface OrClause {

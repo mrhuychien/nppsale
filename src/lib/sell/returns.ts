@@ -1,6 +1,7 @@
 import type { OfflineReturnLine } from "@/lib/orders/create"
 import { RETURN_REASONS as CONSTANT_REASONS } from "@/lib/constants"
 import { ceilingFor } from "@/lib/sell/cart"
+import { viMatchAllWords } from "@/lib/search"
 
 /**
  * Hàng trả / đổi đi kèm một đơn bán.
@@ -158,4 +159,33 @@ export function returnPriceViolation(
 /** Trần giá trả — hiện lên màn hình để người dùng biết mình đi tới đâu. */
 export function returnCeilingFor(listPrice: number, rules: ReturnPriceRules): number {
   return rules.free ? Infinity : ceilingFor(listPrice, rules.maxIncreasePct)
+}
+
+/**
+ * LỌC DANH MỤC CHO Ô THÊM HÀNG Ở PHIẾU TRẢ.
+ *
+ * ⚠ MỘT DÒNG, NHƯNG PHẢI NẰM Ở ĐÂY CHỨ KHÔNG NẰM TRONG MÀN HÌNH. Đã thử
+ * phá: chặn lại ô trống ngay trong `page.tsx` mà chốt vẫn XANH — vì chốt
+ * chỉ soi được MỘT CÁCH VIẾT (`if (!term) return []`), còn luật thì viết
+ * được mười kiểu. Một luật không ai canh là một luật sẽ trôi, và luật
+ * này đã trôi hai lần rồi.
+ *
+ * ⚠ TỪ KHOÁ RỖNG THÌ KHỚP TẤT CẢ, KHÔNG TRẢ VỀ RỖNG. Chủ nhà chốt
+ * 20/09/2026 "bấm vào là phải xổ list rồi", nhắc lại 21/09/2026 đúng màn
+ * này. `viMatchAllWords` vốn đã khớp tất cả khi không có từ nào —
+ * thứ phải giữ là ĐỪNG chặn trước nó.
+ *
+ * ⚠ VẪN CÓ TRẦN. Đổ cả 1.700 mã xuống là dựng lại đúng cái danh sách
+ * phải cuộn mà ô tìm sinh ra để thay thế.
+ */
+export function searchReturnable<
+  T extends { name: string; sku: string; barcode?: string | null }
+>(products: T[], term: string, limit: number): T[] {
+  const out: T[] = []
+  for (const p of products) {
+    if (!viMatchAllWords(term, p.name, p.sku, p.barcode ?? "")) continue
+    out.push(p)
+    if (out.length >= limit) break
+  }
+  return out
 }

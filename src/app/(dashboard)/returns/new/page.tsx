@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Plus, Search, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -14,11 +14,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchSelect } from "@/components/ui/search-select"
+import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
-import { viMatchAllWords } from "@/lib/search"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { userPriceRulesFrom } from "@/lib/pricing"
@@ -28,6 +27,7 @@ import {
   patchReturnLine,
   returnCreditOf,
   returnPriceViolation,
+  searchReturnable,
   setReturnQty,
   toReturnLine,
   type ReturnCartLine,
@@ -86,7 +86,12 @@ interface ProductLite {
   sell_price: number | null
 }
 
-const PICK_CAP = 20
+/**
+ * ⚠ DÙNG TRẦN CHUNG `PICKER_PEEK`, KHÔNG GIỮ MỘT CON SỐ RIÊNG. Năm ô
+ * tìm hàng trong kho mã này xổ cùng một số mục; một màn lệch số là
+ * người dùng thấy hai ô hành xử khác nhau mà không hiểu vì sao.
+ */
+const PICK_CAP = PICKER_PEEK
 
 export default function NewReturnPage() {
   const { user } = useAuth()
@@ -290,13 +295,21 @@ export default function NewReturnPage() {
     )
   }
 
-  const found = useMemo(() => {
-    const term = q.trim()
-    if (!term) return []
-    return products
-      .filter((p) => viMatchAllWords(term, p.name, p.sku, p.barcode ?? ""))
-      .slice(0, PICK_CAP)
-  }, [q, products])
+  /**
+   * ⚠ Ô TRỐNG CŨNG XỔ DANH SÁCH. Chủ nhà chốt 20/09/2026 "bấm vào là
+   *   phải xổ list rồi", và 21/09/2026 hỏi lại đúng màn này: "Đơn trả
+   *   hàng phần tìm kiếm sản phẩm khi tìm kiếm phải xổ list". Màn này
+   *   bị bỏ sót vì nó TỰ VẼ ô tìm thay vì dùng `ProductPicker` — cùng
+   *   một lý do với màn hóa đơn hôm nay. `viMatchAllWords` khớp tất cả
+   *   khi từ khoá rỗng, nên bỏ câu `if (!term) return []` là đủ.
+   *
+   * ⚠ TRẦN GIỮ NGUYÊN. Đổ cả 1.700 mã xuống là dựng lại đúng cái danh
+   *   sách phải cuộn mà ô tìm sinh ra để thay thế.
+   */
+  /* ⚠ LUẬT NẰM Ở `searchReturnable`, không viết lại ở đây — xem chú
+     thích của hàm ấy: bản viết thẳng vào màn thì không chốt nào canh
+     được, và nó đã trôi hai lần. */
+  const found = useMemo(() => searchReturnable(products, q, PICK_CAP), [q, products])
 
   const credit = returnCreditOf(lines)
   /** ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền. */
@@ -520,34 +533,28 @@ export default function NewReturnPage() {
               </div>
             )}
 
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Tìm sản phẩm khác: tên, mã hàng, mã vạch…"
-                {...SEARCH_FIELD_PROPS}
-                className="pl-10"
-              />
-            </div>
-            {found.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {found.map((p) => (
-                  <Button
-                    key={p.id}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-auto py-1.5"
-                    onClick={() => addFromCatalog(p)}
-                  >
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    {p.name}
-                    <span className="ml-1.5 text-muted-foreground">{p.sku}</span>
-                  </Button>
-                ))}
-              </div>
-            )}
+            {/*
+              ⚠ DÙNG `ProductPicker`, KHÔNG TỰ VẼ. Ô tìm tự vẽ ở đây
+                chính là lý do màn này bị bỏ sót khi chủ nhà chốt "bấm
+                vào là phải xổ list" — bốn màn phiếu đổi theo, hai màn
+                tự vẽ (hóa đơn và phiếu trả) thì không. Nay năm màn một
+                ô tìm.
+            */}
+            <ProductPicker
+              id="ret-add-product"
+              label="Tìm sản phẩm khác"
+              placeholder="Tên hàng, mã hàng hoặc mã vạch…"
+              emptyHint="Không tìm thấy mã nào khớp."
+              term={q}
+              onTermChange={setQ}
+              disabled={products.length === 0}
+              items={found.map((p) => ({
+                ...p,
+                title: p.name,
+                subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+              }))}
+              onPick={(p) => addFromCatalog(p)}
+            />
 
             {lines.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">

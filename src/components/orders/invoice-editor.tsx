@@ -134,6 +134,8 @@ export function InvoiceEditor({
   const [catalog, setCatalog] = useState<PricedProduct[]>([])
   /** Danh mục đọc chưa hết — màn hình phải nói ra, đừng để người dùng đoán. */
   const [catalogTruncated, setCatalogTruncated] = useState(false)
+  /** Dòng đã bỏ khỏi tờ hóa đơn đang soạn — giữ để hoàn tác. */
+  const [dropped, setDropped] = useState<EditorRow[]>([])
   const [term, setTerm] = useState("")
   const [addUnit, setAddUnit] = useState<Record<string, string>>({})
   const seqRef = useRef(0)
@@ -295,7 +297,43 @@ export function InvoiceEditor({
     setRows((p) => p.map((r) => (r.key === key ? { ...r, qty: Math.max(0, v) } : r)))
   const setPrice = (key: string, v: number) =>
     setRows((p) => p.map((r) => (r.key === key ? { ...r, price: Math.max(0, v) } : r)))
-  const dropRow = (key: string) => setRows((p) => p.filter((r) => r.key !== key))
+  /**
+   * BỎ MỘT DÒNG KHỎI TỜ HÓA ĐƠN ĐANG SOẠN.
+   *
+   * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Màn Xuất hàng và Sửa Hoá đơn bán chưa
+   *   có phần xoá dòng mặt hàng đi?". Trước nay chỉ dòng THÊM TAY mới
+   *   xoá được; dòng của đơn phải tự đặt số lượng về 0.
+   *
+   * ⚠ BỎ DÒNG KHÔNG ĐỤNG GÌ TỚI ĐƠN, và hai đường cho ra dữ liệu Y HỆT
+   *   NHAU. `postInvoice`/`reissueInvoice` đều lọc `quantity > 0`
+   *   trước khi gọi RPC (xem `post-invoice.ts`), nên một dòng để 0 và
+   *   một dòng bị bỏ đi là cùng một thứ đối với cơ sở dữ liệu. Phần
+   *   chưa xuất vẫn nằm nguyên trên đơn, lần lập hóa đơn sau vẫn thấy.
+   *
+   * ⚠ HÀNG ĐỔI THÌ KHÔNG. Dòng `isExchange` đến từ phiếu trả của
+   *   khách, không phải từ đơn — bỏ nó đi là hàng khách đã đưa lại mà
+   *   tờ hóa đơn không ghi nhận, và khoản trừ công nợ biến mất. Đây là
+   *   luật đã có sẵn của kho mã này, xem `addedByHand` ở
+   *   `seedForReissue`.
+   */
+  const dropRow = (key: string) =>
+    setRows((p) => {
+      const row = p.find((r) => r.key === key)
+      if (!row || row.isExchange) return p
+      /* ⚠ GIỮ LẠI ĐỂ HOÀN TÁC. Màn này không có bản nháp — bấm nhầm mà
+         phải tải lại trang là mất sạch số lượng và giá đã sửa tay. */
+      setDropped((d) => [...d, row])
+      return p.filter((r) => r.key !== key)
+    })
+
+  /** Dòng vừa bỏ, xếp theo thứ tự bỏ — hoàn tác lấy cái cuối cùng. */
+  const undoDrop = () =>
+    setDropped((d) => {
+      const last = d[d.length - 1]
+      if (!last) return d
+      setRows((p) => (p.some((r) => r.key === last.key) ? p : [...p, last]))
+      return d.slice(0, -1)
+    })
 
   const addProduct = async (p: PricedProduct) => {
     const unit = addUnit[p.id] || p.base_unit
@@ -523,14 +561,18 @@ export function InvoiceEditor({
                           {formatCurrency(r.qty * r.price)}
                         </td>
                         <td className="px-2 py-2">
-                          {/* ⚠ CHỈ XOÁ ĐƯỢC DÒNG TỰ THÊM. Dòng của đơn phải
-                              đặt số lượng 0 — xoá nó khỏi màn là giấu mất
-                              phần đơn chưa xuất. */}
-                          {r.addedByHand && (
+                          {/* ⚠ HÀNG ĐỔI KHÔNG BỎ ĐƯỢC — xem `dropRow`. Ô
+                              trống ở đây là câu trả lời đúng, không phải
+                              chỗ chưa làm xong. */}
+                          {!r.isExchange && (
                             <Button
                               variant="ghost" size="icon" className="h-8 w-8 text-destructive"
                               onClick={() => dropRow(r.key)}
-                              title="Bỏ dòng thêm tay này"
+                              title={
+                                r.addedByHand
+                                  ? "Bỏ dòng thêm tay này"
+                                  : "Bỏ khỏi tờ hóa đơn này — phần chưa xuất vẫn còn trên đơn"
+                              }
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -543,6 +585,30 @@ export function InvoiceEditor({
               </tbody>
             </table>
           </div>
+
+          {/*
+            ⚠ BỎ DÒNG PHẢI HOÀN TÁC ĐƯỢC. Màn này KHÔNG có bản nháp —
+              không có gì được ghi xuống cho tới nút cuối. Bấm nhầm cái
+              thùng rác mà cách duy nhất để lấy lại là tải lại trang thì
+              mất sạch mọi số lượng và giá đã sửa tay, có khi là hai
+              mươi dòng. Một nút hoàn tác rẻ hơn nhiều so với việc gõ
+              lại cả tờ hóa đơn.
+
+            ⚠ VÀ NÓI RÕ BỎ KHỎI ĐÂU. "Đã bỏ 3 dòng" mà không nói bỏ khỏi
+              cái gì là để người xuất hàng tưởng mình vừa xoá hàng khỏi
+              ĐƠN của khách.
+          */}
+          {dropped.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                Đã bỏ {dropped.length} dòng khỏi tờ hóa đơn này. Phần chưa xuất vẫn còn
+                trên đơn {orderCode}.
+              </p>
+              <Button variant="outline" size="sm" onClick={undoDrop}>
+                Hoàn tác
+              </Button>
+            </div>
+          )}
 
           {/* ⚠ VẤN ĐỀ VÀ THÔNG TIN TÁCH RIÊNG. Gộp "thiếu hàng" với "xuất
               vượt đơn" vào một dòng vàng thì người đọc bỏ qua cả hai. */}

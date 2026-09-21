@@ -240,9 +240,27 @@ describe("sửa hóa đơn: dòng thêm tay của bản cũ", () => {
 })
 
 describe("màn soạn: ràng buộc giao diện", () => {
-  /** ⚠ Chỉ dòng tự thêm mới có nút xoá. */
-  it("nút xoá dòng chỉ hiện cho dòng thêm tay", () => {
-    expect(EDITOR).toContain("{r.addedByHand && (")
+  /**
+   * ⚠ LUẬT NÀY ĐÃ BỊ ĐẢO NGƯỢC, VÀ CHỐT PHẢI NÓI RA. Bản cũ: "Chỉ dòng
+   * tự thêm mới có nút xoá" — dòng của đơn phải tự đặt số lượng về 0,
+   * với lý do ghi trong mã là "xoá nó khỏi màn là giấu mất phần đơn
+   * chưa xuất".
+   *
+   * Chủ nhà chốt 21/09/2026: "Màn Xuất hàng và Sửa Hoá đơn bán chưa có
+   * phần xoá dòng mặt hàng đi?". Việc bỏ dòng an toàn vì
+   * `postInvoice`/`reissueInvoice` đều lọc `quantity > 0` — một dòng để
+   * 0 và một dòng bị bỏ đi là CÙNG MỘT THỨ đối với cơ sở dữ liệu. Lý do
+   * cũ chỉ đúng về mặt NHÌN, và phần nhìn ấy nay được trả lại bằng
+   * thanh "Đã bỏ N dòng … vẫn còn trên đơn" cộng nút hoàn tác.
+   *
+   * Xem trọn bộ chốt ở "bỏ dòng khỏi tờ hóa đơn" cuối tệp này.
+   */
+  it("nút bỏ dòng hiện cho mọi dòng trừ hàng đổi", () => {
+    expect(EDITOR).toContain("{!r.isExchange && (")
+    expect(
+      EDITOR.includes("{r.addedByHand && ("),
+      "nút bỏ dòng vẫn chỉ hiện trên dòng thêm tay"
+    ).toBe(false)
   })
 
   /** ⚠ Tồn chưa tra xong thì in "…", đừng in 0 — 0 đọc như "hết hàng". */
@@ -418,5 +436,89 @@ describe("khối đầu đơn ở màn Xuất hàng", () => {
   it("ghi chú chung của đơn vẫn được vẽ", () => {
     expect(EDITOR).toContain('const orderNotes = (head?.notes ?? "").trim() || null')
     expect(EDITOR).toMatch(/\{orderNotes && \([\s\S]{0,400}Ghi chú đơn hàng/)
+  })
+})
+
+// =====================================================================
+
+const EDITOR_UI = readFileSync(
+  resolve(__dirname, "..", "src/components/orders/invoice-editor.tsx"), "utf-8"
+).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+const POST_INVOICE = readFileSync(
+  resolve(__dirname, "..", "src/lib/orders/post-invoice.ts"), "utf-8"
+)
+
+/**
+ * BỎ MỘT DÒNG KHỎI TỜ HÓA ĐƠN ĐANG SOẠN.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Màn Xuất hàng và Sửa Hoá đơn bán chưa có
+ * phần xoá dòng mặt hàng đi?". Trước nay chỉ dòng THÊM TAY mới bỏ được;
+ * dòng của đơn phải tự đặt số lượng về 0.
+ *
+ * ⚠ LUẬT CŨ CÓ LÝ DO, VÀ LÝ DO ẤY ĐÃ ĐƯỢC CÂN NHẮC CHỨ KHÔNG BỊ GẠT ĐI.
+ * Chú thích cũ viết: "xoá nó khỏi màn là giấu mất phần đơn chưa xuất".
+ * Đúng về mặt NHÌN, nhưng không đúng về mặt DỮ LIỆU — và chốt ngay dưới
+ * canh chính chỗ đó.
+ */
+describe("bỏ dòng khỏi tờ hóa đơn", () => {
+  /**
+   * ⚠ ĐÂY LÀ ĐIỀU KIỆN KHIẾN VIỆC BỎ DÒNG AN TOÀN. `postInvoice` và
+   * `reissueInvoice` đều lọc `quantity > 0` trước khi gọi RPC, nên một
+   * dòng để 0 và một dòng bị bỏ đi là CÙNG MỘT THỨ đối với cơ sở dữ
+   * liệu. Ngày nào phép lọc ấy mất đi thì nút bỏ dòng thành một đường
+   * ghi khác hẳn — chốt này đỏ trước khi chuyện đó kịp ra máy chủ thật.
+   */
+  it("hai đường cho ra dữ liệu y hệt: RPC vẫn lọc quantity > 0", () => {
+    const n = POST_INVOICE.match(
+      /payload\.lines\.filter\(\(l\) => \(Number\(l\.quantity\) \|\| 0\) > 0\)/g
+    )
+    expect(n, "post-invoice thôi lọc dòng số lượng 0").not.toBeNull()
+    expect(n!.length, "chỉ một trong hai đường (lập mới / lập lại) còn lọc").toBe(2)
+  })
+
+  /**
+   * ⚠ HÀNG ĐỔI KHÔNG BỎ ĐƯỢC. Dòng `isExchange` đến từ phiếu trả của
+   * khách, không phải từ đơn — bỏ nó đi là hàng khách đã đưa lại mà tờ
+   * hóa đơn không ghi nhận, và khoản trừ công nợ biến mất.
+   */
+  it("hàng đổi vẫn không bỏ được", () => {
+    expect(
+      /const row = p\.find\(\(r\) => r\.key === key\)\s*if \(!row \|\| row\.isExchange\) return p/.test(
+        EDITOR_UI
+      ),
+      "dropRow thôi chặn dòng hàng đổi — khoản trừ công nợ của khách biến mất"
+    ).toBe(true)
+    expect(EDITOR_UI, "nút bỏ dòng hiện cả trên dòng hàng đổi").toContain("{!r.isExchange && (")
+  })
+
+  /** ⚠ Và dòng CỦA ĐƠN thì bỏ được — đúng thứ chủ nhà yêu cầu. */
+  it("dòng của đơn bỏ được, không chỉ dòng thêm tay", () => {
+    const cell = EDITOR_UI.match(/<td className="px-2 py-2">[\s\S]*?<\/td>/)
+    expect(cell, "không đọc được ô nút của dòng").not.toBeNull()
+    expect(
+      cell![0].includes("r.addedByHand && ("),
+      "nút bỏ dòng vẫn chỉ hiện trên dòng thêm tay"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ BỎ NHẦM PHẢI LẤY LẠI ĐƯỢC. Màn này không có bản nháp — không có
+   * gì được ghi xuống cho tới nút cuối. Bấm nhầm mà cách duy nhất để
+   * lấy lại là tải lại trang thì mất sạch số lượng và giá đã sửa tay.
+   */
+  it("bỏ nhầm thì hoàn tác được", () => {
+    expect(EDITOR_UI, "không giữ lại dòng đã bỏ").toContain("setDropped((d) => [...d, row])")
+    expect(EDITOR_UI, "không có đường hoàn tác").toContain("const undoDrop =")
+    expect(EDITOR_UI, "không có nút hoàn tác").toContain("Hoàn tác")
+  })
+
+  /**
+   * ⚠ VÀ NÓI RÕ BỎ KHỎI ĐÂU. "Đã bỏ 3 dòng" mà không nói bỏ khỏi cái
+   * gì là để người xuất hàng tưởng mình vừa xoá hàng khỏi ĐƠN của
+   * khách — thứ màn này không làm và không được phép làm.
+   */
+  it("nói rõ phần chưa xuất vẫn còn trên đơn", () => {
+    expect(EDITOR_UI).toContain("khỏi tờ hóa đơn này")
+    expect(EDITOR_UI).toContain("vẫn còn")
   })
 })

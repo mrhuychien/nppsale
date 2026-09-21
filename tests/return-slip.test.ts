@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
-import { returnCreditOf, toReturnLine, type ReturnCartLine } from "../src/lib/sell/returns"
+import {
+  returnCreditOf, searchReturnable, toReturnLine, type ReturnCartLine,
+} from "../src/lib/sell/returns"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -384,5 +386,140 @@ describe("không màn nào MỚI bắt cuộn để chọn khách", () => {
     for (const rel of CON_NO_CHON_KHACH_PHAI_CUON) {
       expect(chonKhachPhaiCuon(code(read(rel))), `phép quét không thấy ${rel}`).toBe(true)
     }
+  })
+})
+
+// =====================================================================
+
+/**
+ * Ô TÌM HÀNG Ở PHIẾU TRẢ: BẤM VÀO LÀ XỔ DANH SÁCH.
+ *
+ * ⚠ CHỦ NHÀ BÁO 21/09/2026: "Đơn trả hàng phần tìm kiếm sản phẩm khi
+ * tìm kiếm phải xổ list, rà soát lại xem chuẩn chưa?".
+ *
+ * ⚠ VÀ ĐÂY LÀ LẦN THỨ BA CÙNG MỘT CHỖ HỎNG. Luật "bấm vào là xổ list"
+ * chốt ngày 20/09; bốn màn phiếu đổi theo vì chúng dùng chung
+ * `ProductPicker`. Hai màn TỰ VẼ ô tìm riêng bị bỏ sót — màn hóa đơn
+ * (sửa sáng 21/09) và màn này. Mỗi ô tìm tự vẽ là một lần nữa phải nhớ,
+ * và trí nhớ đã hỏng hai lần rồi. Chốt dưới cùng canh đúng chuyện đó.
+ */
+describe("ô tìm hàng ở phiếu trả xổ danh sách khi bấm vào", () => {
+  it("dùng ProductPicker, không tự vẽ ô tìm", () => {
+    expect(NEW, "màn phiếu trả vẫn tự vẽ ô tìm hàng").toContain("<ProductPicker")
+  })
+
+  /**
+   * ⚠ CHẠY THẬT CÁI LUẬT, ĐỪNG SOI CÁCH VIẾT. Bản đầu của chốt này tìm
+   * đúng một chuỗi `if (!term) return []` trong `page.tsx`. Đã thử phá
+   * bằng một cách viết khác (`q.trim() ? products : []`) và chốt VẪN
+   * XANH — nó canh một cách gõ, không canh một hành vi. Luật nay nằm ở
+   * `searchReturnable` và được gọi thẳng ở đây.
+   */
+  it("ô trống thì xổ danh sách, có trần", () => {
+    const cat = [
+      { id: "p1", name: "Bánh Đậu Xanh", sku: "S1", barcode: null },
+      { id: "p2", name: "Kem Sữa Dừa", sku: "S2", barcode: "8938" },
+    ]
+    expect(searchReturnable(cat, "", 30).map((p) => p.id)).toEqual(["p1", "p2"])
+    expect(searchReturnable(cat, "   ", 30).map((p) => p.id)).toEqual(["p1", "p2"])
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      id: `x${i}`, name: `Bánh ${i}`, sku: `S${i}`, barcode: null,
+    }))
+    expect(searchReturnable(many, "", 30)).toHaveLength(30)
+  })
+
+  /** ⚠ Gõ rời rạc, sai thứ tự, không dấu — cách người bán thật sự gõ. */
+  it("gõ rồi thì lọc, bỏ dấu và không cần đúng thứ tự", () => {
+    const cat = [
+      { id: "p1", name: "Bánh Đậu Xanh", sku: "S1", barcode: null },
+      { id: "p2", name: "Kem Sữa Dừa", sku: "S2", barcode: "8938" },
+    ]
+    expect(searchReturnable(cat, "xanh banh", 30).map((p) => p.id)).toEqual(["p1"])
+    expect(searchReturnable(cat, "dua", 30).map((p) => p.id)).toEqual(["p2"])
+    expect(searchReturnable(cat, "8938", 30).map((p) => p.id)).toEqual(["p2"])
+  })
+
+  /** ⚠ Và màn hình phải GỌI cái luật ấy, không chép lại một bản riêng. */
+  it("màn hình gọi luật chung, không tự lọc", () => {
+    expect(NEW).toContain("searchReturnable(products, q, PICK_CAP)")
+    expect(
+      /viMatchAllWords\(/.test(NEW),
+      "màn hình vẫn tự lọc — luật lại nằm ở chỗ không chốt nào canh được"
+    ).toBe(false)
+  })
+
+  it("dùng trần chung PICKER_PEEK như bốn màn phiếu kia", () => {
+    expect(NEW).toContain("PICKER_PEEK")
+  })
+})
+
+/**
+ * QUÉT CẢ KHO MÃ — còn ô thêm hàng nào tự vẽ nữa không.
+ *
+ * ⚠ LUẬT CHUNG, KHÔNG THEO TỪNG MÀN. Sửa riêng phiếu trả thì lần sau
+ * một màn khác tự vẽ ô tìm lại lọt đúng như hai lần trước.
+ */
+const CON_NO_TU_VE_O_TIM_HANG = [
+  /**
+   * ⚠ MÀN NÀY TÌM Ở MÁY CHỦ, không nạp sẵn cả danh mục — nên nó KHÔNG
+   * dùng được `ProductPicker`, và đó là lý do kỹ thuật thật chứ không
+   * phải bỏ sót. Nó ĐÃ xổ 15 mã đầu khi ô còn trống, tức hành vi nhìn
+   * từ phía người dùng là đúng. Ghi tên ở đây để phép quét không báo
+   * oan, kèm chốt riêng bên dưới canh phần hành vi.
+   */
+  "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
+]
+
+/** Màn có ô THÊM HÀNG VÀO PHIẾU (không phải bộ lọc của màn báo cáo). */
+function laOThemHang(src: string): boolean {
+  return (
+    /searchAddable\(|searchReturnProducts\(/.test(src) ||
+    /setMatches\(/.test(src) ||
+    /addProductLine\(|addFromCatalog\(|addProduct\(/.test(src)
+  )
+}
+
+describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
+  it("mọi ô thêm hàng đều đi qua ProductPicker", () => {
+    const bad: string[] = []
+    for (const base of ["src/app", "src/components"]) {
+      for (const abs of moiTsx(resolve(ROOT, base))) {
+        const rel = abs.slice(ROOT.length + 1)
+        if (CON_NO_TU_VE_O_TIM_HANG.includes(rel)) continue
+        const src = code(readFileSync(abs, "utf-8"))
+        if (!laOThemHang(src)) continue
+        if (!src.includes("ProductPicker")) bad.push(rel)
+      }
+    }
+    expect(
+      bad,
+      "tự vẽ ô thêm hàng thay vì dùng ProductPicker — lần sau đổi luật " +
+        'ô tìm thì màn này lại bị bỏ sót, đúng như đã xảy ra hai lần:\n  ' +
+        bad.join("\n  ")
+    ).toEqual([])
+  })
+
+  /**
+   * ⚠ MÀN NGOẠI LỆ VẪN PHẢI XỔ LIST. Được miễn dùng component chung
+   * KHÔNG phải được miễn cái luật — nếu không thì danh sách nợ thành
+   * cửa sau.
+   */
+  it("màn tìm ở máy chủ vẫn xổ danh sách khi ô còn trống", () => {
+    const src = code(read("src/app/(dashboard)/inventory/stocktake-adjust/page.tsx"))
+    expect(
+      /q\.length >= 2\s*\?\s*base\.or\(/.test(src),
+      "màn kiểm kê thôi xổ danh sách khi ô còn trống"
+    ).toBe(true)
+  })
+
+  /** ⚠ Phép quét phải còn nhận ra mẫu ấy — nếu không nó xanh vì mù. */
+  it("phép quét còn nhìn thấy các ô thêm hàng", () => {
+    let thay = 0
+    for (const base of ["src/app", "src/components"]) {
+      for (const abs of moiTsx(resolve(ROOT, base))) {
+        if (laOThemHang(code(readFileSync(abs, "utf-8")))) thay += 1
+      }
+    }
+    expect(thay, "phép quét hỏng — không thấy ô thêm hàng nào").toBeGreaterThanOrEqual(6)
   })
 })

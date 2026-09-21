@@ -37,22 +37,22 @@ export function DeltaPreviewStrip({
   cells: DeltaCell[]
 }) {
   return (
-    <div className="flex shrink-0 items-stretch gap-4 rounded-xl border border-[#bfdbfe] bg-white px-4 py-3">
-      <div className="w-[164px] shrink-0 border-r border-[#e2e8f0] pr-4">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#1e3a8a]">
+    <div className="flex shrink-0 items-stretch gap-4 rounded-xl border border-[var(--pos-primary-border)] bg-white px-4 py-3">
+      <div className="w-[164px] shrink-0 border-r border-[var(--pos-line)] pr-4">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-primary-deep)]">
           {title}
         </div>
-        {subtitle && <div className="mt-0.5 text-[11px] text-[#64748b]">{subtitle}</div>}
+        {subtitle && <div className="mt-0.5 text-[11px] text-[var(--pos-muted)]">{subtitle}</div>}
       </div>
       <div className="grid min-w-0 flex-grow grid-cols-3 gap-4">
         {cells.map((c) => (
           <div key={c.label} className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-[0.05em] text-[#64748b]">
+            <div className="text-[10px] font-bold uppercase tracking-[0.05em] text-[var(--pos-muted)]">
               {c.label}
             </div>
-            <div className="n mt-1 text-[11.5px] leading-snug text-[#334155]">
+            <div className="n mt-1 text-[11.5px] leading-snug text-[var(--pos-muted)]">
               {/* ⚠ Xem đầu tệp: chưa tính được thì nói thế, đừng vẽ 0. */}
-              {c.body ?? <span className="text-[#94a3b8]">đang tính…</span>}
+              {c.body ?? <span className="text-[var(--pos-dim)]">đang tính…</span>}
             </div>
           </div>
         ))}
@@ -85,17 +85,17 @@ export function DeltaStock({
 }) {
   return (
     <span>
-      <span className="text-[#0f172a]">{sku}</span>
-      {lot && <span className="text-[#64748b]"> · {lot}</span>}
+      <span className="text-[var(--pos-ink)]">{sku}</span>
+      {lot && <span className="text-[var(--pos-muted)]"> · {lot}</span>}
       {(parts ?? []).map((p) => (
-        <span key={p.label} className={p.value >= 0 ? " text-[#16a34a]" : " text-[#dc2626]"}>
+        <span key={p.label} className={p.value >= 0 ? " text-[var(--pos-ok)]" : " text-[var(--pos-danger)]"}>
           {"  "}
           {p.label} {p.value >= 0 ? "+" : "−"}
           {Math.abs(p.value)}
         </span>
       ))}
       {net != null && (
-        <span className="text-[#64748b]">
+        <span className="text-[var(--pos-muted)]">
           {"  "}ròng {net >= 0 ? "+" : "−"}
           {Math.abs(net)} {unit}
         </span>
@@ -118,11 +118,11 @@ export function DeltaMoney({
   const chenh = to - from
   return (
     <span>
-      <span className="text-[#64748b]">{formatCurrency(from)}</span>
-      <span className="text-[#94a3b8]"> → </span>
-      <strong className="text-[#0f172a]">{formatCurrency(to)}</strong>
+      <span className="text-[var(--pos-muted)]">{formatCurrency(from)}</span>
+      <span className="text-[var(--pos-dim)]"> → </span>
+      <strong className="text-[var(--pos-ink)]">{formatCurrency(to)}</strong>
       {chenh !== 0 && (
-        <span className={chenh < 0 ? " text-[#16a34a]" : " text-[#dc2626]"}>
+        <span className={chenh < 0 ? " text-[var(--pos-ok)]" : " text-[var(--pos-danger)]"}>
           {"  "}
           {chenh < 0 ? verb : "tăng"} {formatCurrency(Math.abs(chenh))}
         </span>

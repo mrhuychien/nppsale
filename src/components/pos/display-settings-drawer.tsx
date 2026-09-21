@@ -32,9 +32,9 @@ function Toggle({
   return (
     <div className="flex items-start justify-between gap-3 py-2.5">
       <label htmlFor={id} className="min-w-0 flex-grow cursor-pointer">
-        <span className="block text-[13px] font-medium text-[#0f172a]">{label}</span>
+        <span className="block text-[13px] font-medium text-[var(--pos-ink)]">{label}</span>
         {note && (
-          <span className={`mt-px block text-[11px] ${noteDanger ? "text-[#dc2626]" : "text-[#64748b]"}`}>
+          <span className={`mt-px block text-[11px] ${noteDanger ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}>
             {note}
           </span>
         )}
@@ -47,7 +47,7 @@ function Toggle({
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative h-[22px] w-10 shrink-0 rounded-full transition-colors ${
-          checked ? "bg-[#2563eb]" : "bg-[#cbd5e1]"
+          checked ? "bg-[var(--pos-primary)]" : "bg-[var(--pos-edge)]"
         }`}
       >
         <span
@@ -81,17 +81,17 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
 
   return (
     <>
-      <button type="button" aria-label="Đóng" onClick={onClose} className="fixed inset-0 z-40 cursor-default bg-[#0f172a]/30" />
+      <button type="button" aria-label="Đóng" onClick={onClose} className="fixed inset-0 z-40 cursor-default bg-[var(--pos-ink)]/30" />
       <aside
         className="fixed right-0 top-0 z-50 flex h-screen w-[452px] flex-col bg-white shadow-[0_0_40px_rgba(15,23,42,.18)]"
         aria-label="Thiết lập hiển thị"
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#e2e8f0] px-4">
-          <h2 className="text-[16px] font-bold text-[#0f172a]">Thiết lập hiển thị</h2>
-          <button type="button" aria-label="Đóng thiết lập" onClick={onClose} className="h-8 w-8 rounded-lg text-[18px] leading-none text-[#64748b] hover:bg-[#f1f5f9]">×</button>
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--pos-line)] px-4">
+          <h2 className="text-[16px] font-bold text-[var(--pos-ink)]">Thiết lập hiển thị</h2>
+          <button type="button" aria-label="Đóng thiết lập" onClick={onClose} className="h-8 w-8 rounded-lg text-[18px] leading-none text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)]">×</button>
         </div>
 
-        <div className="flex shrink-0 gap-1 border-b border-[#e2e8f0] px-4">
+        <div className="flex shrink-0 gap-1 border-b border-[var(--pos-line)] px-4">
           {([
             ["cot", "Cột bảng hàng"],
             ["thao-tac", "Thao tác bán"],
@@ -103,7 +103,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
               onClick={() => setTab(k)}
               aria-current={tab === k ? "true" : undefined}
               className={`-mb-px border-b-2 px-3 py-2.5 text-[12.5px] ${
-                tab === k ? "border-[#2563eb] font-semibold text-[#0f172a]" : "border-transparent text-[#64748b]"
+                tab === k ? "border-[var(--pos-primary)] font-semibold text-[var(--pos-ink)]" : "border-transparent text-[var(--pos-muted)]"
               }`}
             >
               {t}
@@ -114,7 +114,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
         <div className="min-h-0 flex-grow overflow-y-auto px-4 py-3">
           {tab === "cot" && (
             <>
-              <p className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+              <p className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
                 Hiển thị trong bảng
               </p>
               <Toggle id="s-stt" label="Số thứ tự" checked={nhap.colIndex} onChange={(v) => set({ colIndex: v })} />
@@ -132,10 +132,10 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
                 onChange={(v) => set({ colImage: v })}
               />
 
-              <div className="mt-3 border-t border-[#f1f5f9] pt-3">
+              <div className="mt-3 border-t border-[var(--pos-line-soft)] pt-3">
                 <div className="flex items-start justify-between gap-3">
                   <label htmlFor="s-dvgiam" className="min-w-0 flex-grow">
-                    <span className="block text-[13px] font-medium text-[#0f172a]">Đơn vị giảm giá mặc định</span>
+                    <span className="block text-[13px] font-medium text-[var(--pos-ink)]">Đơn vị giảm giá mặc định</span>
                     {/*
                       ⚠ CÂU NÀY LÀ BẮT BUỘC, spec §9 chốt nguyên văn ý:
                         đây chỉ là giá trị KHỞI TẠO cho dòng mới. Thiếu
@@ -143,7 +143,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
                         đã gõ đổi theo — và tưởng màn hình hỏng khi chúng
                         không đổi.
                     */}
-                    <span className="mt-px block text-[11px] text-[#64748b]">
+                    <span className="mt-px block text-[11px] text-[var(--pos-muted)]">
                       Chỉ là giá trị khởi tạo cho dòng MỚI. Mỗi dòng vẫn tự đổi ₫/% riêng.
                     </span>
                   </label>
@@ -151,7 +151,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
                     id="s-dvgiam"
                     value={nhap.defaultDiscountUnit}
                     onChange={(e) => set({ defaultDiscountUnit: e.target.value as "vnd" | "pct" })}
-                    className="h-8 shrink-0 rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px]"
+                    className="h-8 shrink-0 rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px]"
                   >
                     <option value="vnd">VND</option>
                     <option value="pct">%</option>
@@ -163,7 +163,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
 
           {tab === "thao-tac" && (
             <>
-              <p className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+              <p className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
                 Hỗ trợ nhập liệu
               </p>
               <Toggle id="s-giagan" label="Xem giá bán gần nhất" checked={nhap.showLastPrice} onChange={(v) => set({ showLastPrice: v })} />
@@ -176,15 +176,15 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
                 checked={nhap.defaultCreditAll}
                 onChange={(v) => set({ defaultCreditAll: v })}
               />
-              <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#f1f5f9] pt-3">
-                <label htmlFor="s-sort" className="text-[13px] font-medium text-[#0f172a]">
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--pos-line-soft)] pt-3">
+                <label htmlFor="s-sort" className="text-[13px] font-medium text-[var(--pos-ink)]">
                   Sắp xếp hàng hóa
                 </label>
                 <select
                   id="s-sort"
                   value={nhap.sortBy}
                   onChange={(e) => set({ sortBy: e.target.value as PosSettings["sortBy"] })}
-                  className="h-8 rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px]"
+                  className="h-8 rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px]"
                 >
                   <option value="moi-nhat">Thêm sau nằm dưới</option>
                   <option value="ten">Theo tên hàng</option>
@@ -195,7 +195,7 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
           )}
 
           {tab === "in" && (
-            <p className="py-6 text-[12.5px] leading-relaxed text-[#64748b]">
+            <p className="py-6 text-[12.5px] leading-relaxed text-[var(--pos-muted)]">
               Mẫu in dùng chung với phần đang chạy (phiếu giao A5, hóa đơn bán, phiếu thu).
               Thiết lập riêng cho màn POS chưa có trong đợt này — xem{" "}
               <span className="n">docs/pos-todo.md</span>.
@@ -203,11 +203,11 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 border-t border-[#e2e8f0] px-4 py-3">
+        <div className="flex shrink-0 items-center gap-2 border-t border-[var(--pos-line)] px-4 py-3">
           <button
             type="button"
             onClick={() => setNhap(POS_SETTINGS_DEFAULT)}
-            className="text-[12px] font-semibold text-[#64748b] hover:text-[#334155]"
+            className="text-[12px] font-semibold text-[var(--pos-muted)] hover:text-[var(--pos-muted)]"
           >
             Khôi phục mặc định
           </button>
@@ -215,14 +215,14 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-lg border border-[#cbd5e1] bg-white px-4 text-[13px] font-semibold text-[#334155]"
+            className="h-9 rounded-lg border border-[var(--pos-edge)] bg-white px-4 text-[13px] font-semibold text-[var(--pos-muted)]"
           >
             Hủy
           </button>
           <button
             type="button"
             onClick={() => { patch(nhap); onClose() }}
-            className="h-9 rounded-lg bg-[#2563eb] px-4 text-[13px] font-bold text-white"
+            className="h-9 rounded-lg bg-[var(--pos-primary)] px-4 text-[13px] font-bold text-white"
           >
             Áp dụng
           </button>

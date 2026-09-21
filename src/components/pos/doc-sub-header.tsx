@@ -24,18 +24,18 @@ export function DocSubHeader({
   right?: ReactNode
 }) {
   return (
-    <div className="flex h-[52px] shrink-0 items-center gap-3 border-b border-[#e2e8f0] bg-white px-4">
-      <span className="shrink-0 text-[15px] font-bold text-[#0f172a]">{title}</span>
-      {code && <span className="n shrink-0 text-[13px] text-[#64748b]">{code}</span>}
+    <div className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--pos-line-soft)] bg-white px-5">
+      <span className="shrink-0 text-[19px] font-extrabold tracking-[-0.3px] text-[var(--pos-ink)]">{title}</span>
+      {code && <span className="n shrink-0 text-[13px] font-bold text-[var(--pos-muted)]">{code}</span>}
       {badge && (
         <span
-          className="shrink-0 rounded-[5px] px-2 py-1 text-[10px] font-bold tracking-[0.05em]"
+          className="shrink-0 rounded-[6px] px-[7px] py-px text-[11px] font-extrabold"
           style={{ background: POS_BADGE_STYLE[badge.tone].bg, color: POS_BADGE_STYLE[badge.tone].fg }}
         >
           {badge.label}
         </span>
       )}
-      {subtitle && <span className="ml-1 truncate text-[12px] text-[#64748b]">{subtitle}</span>}
+      {subtitle && <span className="ml-1 truncate text-[13px] font-semibold text-[var(--pos-muted)]">{subtitle}</span>}
       <div className="flex-grow" />
       {right}
     </div>
@@ -58,14 +58,14 @@ export function SubHeaderSelect({
 }) {
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <label htmlFor={id} className="text-[11px] text-[#64748b]">
+      <label htmlFor={id} className="text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
         {label}
       </label>
       <select
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 max-w-[168px] rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] font-medium text-[#0f172a]"
+        className="h-[38px] max-w-[180px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white px-2.5 text-[13px] font-bold text-[var(--pos-ink)]"
       >
         {/* ⚠ Có lựa chọn rỗng RÕ RÀNG. Một select không có ô trống là
             người dùng không có cách nào bỏ chọn thứ họ lỡ chọn. */}
@@ -112,18 +112,18 @@ export function SubHeaderDate({
 }) {
   return (
     <div
-      className={`flex h-8 shrink-0 items-center gap-[7px] rounded-[7px] border border-[#cbd5e1] px-2.5 ${
-        readOnly ? "bg-[#f8fafc]" : "bg-white"
+      className={`flex h-[38px] shrink-0 items-center gap-[7px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2.5 ${
+        readOnly ? "bg-[var(--pos-head)]" : "bg-white"
       }`}
       title={readOnly ? `${label} ghi theo lúc lưu` : undefined}
     >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pos-muted)" strokeWidth="2" strokeLinecap="round" aria-hidden>
         <rect x="3" y="5" width="18" height="16" rx="2" />
         <path d="M3 10h18M8 3v4M16 3v4" />
       </svg>
       <input
-        className={`n w-[132px] border-none bg-transparent text-[12px] outline-none ${
-          readOnly ? "text-[#64748b]" : "text-[#0f172a]"
+        className={`n w-[132px] border-none bg-transparent text-[13px] font-bold outline-none ${
+          readOnly ? "text-[var(--pos-muted)]" : "text-[var(--pos-ink)]"
         }`}
         type="date"
         aria-label={label}
@@ -151,11 +151,11 @@ export function DocBanner({
 }) {
   const t =
     tone === "warn"
-      ? { bg: "#fffbeb", border: "#fde68a", fg: "#92400e" }
-      : { bg: "#eff6ff", border: "#bfdbfe", fg: "#1e3a8a" }
+      ? { bg: "var(--pos-warn-soft)", border: "var(--pos-warn-border)", fg: "var(--pos-warn)" }
+      : { bg: "var(--pos-primary-faint)", border: "var(--pos-primary-border)", fg: "var(--pos-primary-deep)" }
   return (
     <div
-      className="shrink-0 rounded-[10px] border px-3.5 py-2.5 text-[12px] font-medium leading-snug"
+      className="shrink-0 rounded-[10px] border px-3.5 py-2.5 text-[12px] font-bold leading-relaxed"
       style={{ background: t.bg, borderColor: t.border, color: t.fg }}
     >
       {children}

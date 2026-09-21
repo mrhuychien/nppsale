@@ -462,36 +462,85 @@
  * ⚠ KHÔNG TẠO TỆP CSS MỚI. Kho mã này chỉ có một tệp CSS, và luật ấy
  *   có lý do: hai tệp là hai chỗ định nghĩa cùng một màu.
  * ==================================================================== */
+/* ⚠ BỘ MÀU NÀY LÀ BỘ MÀU CỦA CHÍNH APP, KHÔNG PHẢI BỘ THỨ HAI.
+ *
+ *   Bản đầu của `/pos` dùng một dải slate riêng (`#0f172a`, `#64748b`,
+ *   `#e2e8f0`, `#eef2f7`) lấy từ bản xem thiết kế. Nó lệch với token
+ *   app ở mọi sắc: chữ xanh-xám thay vì đen ngả nâu, viền lạnh hơn,
+ *   nền xám xanh. Mở `/pos` cạnh một tab `/orders` là thấy hai sản phẩm.
+ *
+ *   Bản thiết kế chủ nhà chốt 21/09/2026 dùng ĐÚNG các giá trị `:root`
+ *   ở đầu tệp này: `#181c1e` = `--foreground`, `#565a67` =
+ *   `--muted-foreground`, `#2563eb` = `--primary`, `#ba1a1a` =
+ *   `--destructive`, `#dadde5` = `--border`, `#004e33` = `--success`,
+ *   `#f1f4f7` = `--surface-container-low`. Nên bảng dưới đây không đem
+ *   vào màu mới — nó KÉO `/pos` VỀ đúng bộ màu app vốn có.
+ *
+ * ⚠ VẪN GIỮ TÊN BIẾN `--pos-*` VÀ VẪN NẰM TRONG `.pos-scope`. Hai lý
+ *   do: mười hai tệp đang gọi đúng các tên này nên đổi giá trị là đủ,
+ *   không phải sửa từng chỗ; và `/pos` có vài sắc `:root` chưa có
+ *   (nền đầu bảng, chữ cấp ba, viền nét đứt) — khai chúng ở `:root` là
+ *   đổ thêm biến lên mọi màn còn lại để phục vụ một màn. */
 .pos-scope {
-  --pos-ink: #0f172a;
-  --pos-muted: #64748b;
-  --pos-line: #e2e8f0;
-  --pos-bg: #eef2f7;
+  --pos-ink: #181c1e;
+  --pos-muted: #565a67;
+  /* Chữ cấp BA — số thứ tự dòng, mã SKU, câu gợi ý dưới ô nhập. Dùng
+     `--pos-muted` cho những chỗ này là chúng nặng ngang nhãn cột. */
+  --pos-dim: #8a8f9c;
+  --pos-line: #e5e8ee;
+  /* Ba cấp đường kẻ, nhạt dần: viền thẻ · vạch trong thẻ · vạch giữa
+     hai dòng hàng. Một cấp duy nhất thì bảng 20 dòng đọc như lưới kẻ ô. */
+  --pos-line-soft: #eef1f5;
+  --pos-line-faint: #f1f4f7;
+  /* Viền NÚT — đậm hơn viền thẻ. Nút viền cùng sắc với thẻ thì không
+     nhận ra được đâu là chỗ bấm. */
+  --pos-edge: #dadde5;
+  --pos-edge-dash: #b9c4d6;
+  --pos-bg: #f4f6f9;
   --pos-card: #ffffff;
+  /* Nền hàng tiêu đề bảng và nền dòng đang rê chuột. */
+  --pos-head: #f8fafc;
   --pos-primary: #2563eb;
-  --pos-primary-soft: #eff6ff;
-  --pos-primary-border: #bfdbfe;
-  --pos-warn: #b45309;
-  --pos-warn-soft: #fffbeb;
-  --pos-warn-border: #fde68a;
-  --pos-danger: #dc2626;
-  --pos-danger-soft: #fef2f2;
-  --pos-ok: #16a34a;
-  --pos-ok-soft: #f0fdf4;
-  --pos-ok-border: #bbf7d0;
+  /* Xanh ĐẬM hơn một bậc — chữ xanh trên nền trắng, và nền nút xanh khi
+     rê chuột. Dùng `--pos-primary` làm chữ trên nền nhạt thì nó sáng quá
+     và chữ mảnh đọc bị rung. */
+  --pos-primary-deep: #1d4ed8;
+  --pos-primary-soft: #e3edfb;
+  /* Nhạt hơn `--pos-primary-soft` một bậc: nền dòng đang chọn trong
+     bảng, nơi một mảng `#e3edfb` cả dòng sẽ hét lên. */
+  --pos-primary-faint: #f7faff;
+  --pos-primary-border: #9dbbf0;
+  --pos-warn: #8a5a00;
+  --pos-warn-soft: #fff4e0;
+  --pos-warn-border: #f0d9a8;
+  --pos-danger: #ba1a1a;
+  --pos-danger-soft: #fff8f8;
+  --pos-danger-border: #fee2e2;
+  --pos-ok: #004e33;
+  --pos-ok-soft: #e3f5ec;
+  --pos-ok-border: #cbe8da;
+  --pos-ok-edge: #9ccdb5;
 
-  /* THANH TRÊN CÙNG — chủ nhà chốt đợt 9: "Màu Đen header -> màu xanh
-   * lam đang dùng". Bản đầu để `#0f172a` (gần như đen) theo bản xem
-   * thiết kế; cả app dùng xanh lam `--primary: #2563eb`, nên một thanh
-   * đen ở `/pos` đọc như một sản phẩm khác.
+  /* THANH TRÊN CÙNG.
    *
-   * ⚠ BA SẮC, KHÔNG PHẢI MỘT. Ô lõm (ô tìm), đường kẻ và chữ phụ nằm
-   * TRÊN nền xanh ấy — dùng lại đúng `#2563eb` cho chúng là chúng biến
-   * mất. Ba biến này giữ cùng một họ màu với `--pos-primary`. */
-  --pos-bar: #2563eb;
-  --pos-bar-deep: #1d4ed8;
-  --pos-bar-line: #60a5fa;
-  --pos-bar-dim: #dbeafe;
+   * ⚠ ĐÃ ĐỔI HAI LẦN, ĐỌC KỸ TRƯỚC KHI ĐỔI LẦN BA.
+   *   · Bản đầu: `#0f172a` — gần như đen.
+   *   · Đợt 9, chủ nhà chốt miệng: *"Màu Đen header -> màu xanh lam
+   *     đang dùng"* → nền `#2563eb`, chữ trắng.
+   *   · Bản thiết kế chủ nhà đưa 21/09/2026 lại vẽ thanh TRẮNG, viền
+   *     dưới `#e5e8ee`, và để màu xanh cho ô logo + tab đang mở.
+   *
+   *   Lấy theo bản thiết kế, vì điều chủ nhà bác là màu ĐEN chứ không
+   *   phải màu trắng, và màu xanh vẫn còn nguyên ở chỗ nhấn. Nhưng đây
+   *   là chỗ lật một câu chốt miệng — đã báo cáo, đổi lại chỉ cần sửa
+   *   bốn dòng dưới đây.
+   *
+   * ⚠ THANH NỀN TRẮNG THÌ CHỮ KHÔNG CÒN LÀ MÀU TRẮNG. Bốn biến này đi
+   *   thành BỘ: đổi nền mà quên `--pos-bar-fg` là cả thanh biến mất. */
+  --pos-bar: #ffffff;
+  --pos-bar-fg: #181c1e;
+  --pos-bar-dim: #565a67;
+  --pos-bar-line: #e5e8ee;
 
   /* ⚠ KHÔNG KHAI `font-family` Ở ĐÂY. `/pos` dùng đúng Manrope mà
    *   `body` đã đặt cho toàn app (chủ nhà chốt đợt 8). Bản đầu khai

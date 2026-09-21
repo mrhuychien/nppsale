@@ -778,7 +778,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     ) : issuedCode ? (
       <>
         Đã xuất 1 lần ·{" "}
-        <Link href={`/sales-invoices`} className="font-semibold text-[#2563eb] underline">
+        <Link href={`/sales-invoices`} className="font-semibold text-[var(--pos-primary)] underline">
           {issuedCode}
         </Link>
       </>
@@ -852,7 +852,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     màn đơn cũ ghi cho dòng hàng trả.
                 */}
                 {coGiaXau && (
-                  <div className="shrink-0 bg-[#fef2f2] px-4 py-2 text-[11.5px] text-[#991b1b]">
+                  <div className="shrink-0 bg-[var(--pos-danger-soft)] px-4 py-2 text-[11.5px] text-[var(--pos-danger)]">
                     Có dòng đặt giá ngoài hạn mức của bạn — sửa lại trước khi lưu.
                   </div>
                 )}
@@ -860,18 +860,32 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             }
           >
             {lines.length === 0 && (
-              <div className="px-4 py-10 text-center">
-                <p className="text-[13px] text-[#64748b]">
-                  {loading ? "Đang tải danh mục hàng…" : "Chưa có mặt hàng nào trong đơn."}
+              /*
+                ⚠ Ô RỖNG PHẢI CHỈ ĐƯỜNG, KHÔNG CHỈ BÁO RỖNG. Bản thiết kế
+                  21/09/2026 dựng ba tầng: một câu nói trạng thái, một câu
+                  nói LÀM GÌ TIẾP, và một nút làm hộ luôn. Bản trước chỉ có
+                  tầng một và một dòng chữ xanh nhỏ — người mở đơn lần đầu
+                  không biết ô tìm hàng nằm đâu trên màn.
+              */
+              <div className="px-8 py-[72px] text-center">
+                <p className="text-[15px] font-bold text-[var(--pos-ink)]">
+                  {loading ? "Đang tải danh mục hàng…" : "Đơn chưa có dòng hàng"}
                 </p>
                 {!loading && (
-                  <button
-                    type="button"
-                    onClick={focusPosPicker}
-                    className="mt-2 text-[13px] font-semibold text-[#2563eb]"
-                  >
-                    Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
-                  </button>
+                  <>
+                    <p className="mx-auto mt-1.5 max-w-[420px] text-[13px] font-semibold leading-relaxed text-[var(--pos-muted)]">
+                      Bấm ô tìm hàng trên thanh đầu trang để xổ danh sách, hoặc quét mã vạch.
+                      <br />
+                      Nhấn Enter để thêm nhanh kết quả đầu tiên.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={focusPosPicker}
+                      className="mt-4 h-10 rounded-[10px] bg-[var(--pos-primary)] px-[18px] text-[14px] font-extrabold text-white"
+                    >
+                      Thêm hàng <span className="n text-[12px] opacity-75">F3</span>
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -883,23 +897,23 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               return (
                 <div
                   key={l.key}
-                  className={`grid min-h-[64px] items-center border-b border-[#f1f5f9] px-4 py-2 ${
-                    r?.over ? "bg-[#fef2f2]" : ""
+                  className={`grid min-h-[70px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2 ${
+                    r?.over ? "bg-[var(--pos-danger-soft)]" : ""
                   }`}
                   style={{ gridTemplateColumns: cot.cols, gap: POS_GRID.order.gap }}
                 >
                   {settings.colIndex && (
-                    <div className="n text-[12px] text-[#94a3b8]">{i + 1}</div>
+                    <div className="n text-[12px] text-[var(--pos-dim)]">{i + 1}</div>
                   )}
                   {settings.colSku && (
-                    <div className="n truncate text-[11.5px] text-[#64748b]">{l.sku}</div>
+                    <div className="n truncate text-[11.5px] text-[var(--pos-muted)]">{l.sku}</div>
                   )}
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-semibold leading-tight text-[#0f172a]">
+                    <div className="truncate text-[13px] font-semibold leading-tight text-[var(--pos-ink)]">
                       {l.name}
                     </div>
                     {settings.colStock && (
-                      <div className="mt-[3px] truncate text-[11px] text-[#64748b]">
+                      <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
                         {/*
                           ⚠ TỒN THEO ĐƠN VỊ CỦA DÒNG (`stockInUnit`), không
                             theo đơn vị cơ sở. "Tồn 240" cạnh "2 thùng" là
@@ -908,9 +922,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                             số 0 cho một lỗi đọc đọc như hàng đã hết.
                         */}
                         {r?.tonTheoDonVi == null ? (
-                          <span className="text-[#94a3b8]">tồn chưa xác định</span>
+                          <span className="text-[var(--pos-dim)]">tồn chưa xác định</span>
                         ) : (
-                          <span className={r.over ? "font-semibold text-[#dc2626]" : r.tonTheoDonVi <= 0 ? "text-[#b45309]" : undefined}>
+                          <span className={r.over ? "font-semibold text-[var(--pos-danger)]" : r.tonTheoDonVi <= 0 ? "text-[var(--pos-warn)]" : undefined}>
                             Tồn {r.tonTheoDonVi.toLocaleString("vi-VN")} {l.unit}
                             {r.over ? " · vượt tồn" : ""}
                           </span>
@@ -918,14 +932,14 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                         {san > 0 && (
                           <>
                             {" · "}
-                            <span className="font-semibold text-[#1e40af]">đã xuất {san}</span>
+                            <span className="font-semibold text-[var(--pos-primary-deep)]">đã xuất {san}</span>
                             {` — không giảm dưới ${san}`}
                           </>
                         )}
                         {settings.showLastPrice && l.lastPrice != null && (
                           <>
                             {" · "}
-                            <span className="text-[#2563eb]">
+                            <span className="text-[var(--pos-primary)]">
                               giá gần nhất {formatCurrency(l.lastPrice)}
                               {l.lastBuyCount ? ` · ${l.lastBuyCount} lần mua` : ""}
                             </span>
@@ -935,7 +949,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     )}
                     {l.note != null && l.note !== "" && (
                       <input
-                        className="mt-1 h-[21px] w-full rounded border border-[#fde68a] bg-[#fffbeb] px-1.5 text-[10px] text-[#b45309]"
+                        className="mt-1 h-[21px] w-full rounded border border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] px-1.5 text-[10px] text-[var(--pos-warn)]"
                         aria-label={`Ghi chú dòng ${i + 1}`}
                         value={l.note}
                         onChange={(e) => patchLine(l.key, { note: e.target.value })}
@@ -966,7 +980,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                           : l.units,
                       })
                     }}
-                    className="h-[30px] w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[12px] text-[#0f172a]"
+                    className="h-[30px] w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[12px] text-[var(--pos-ink)]"
                   >
                     {l.units.map((u) => (
                       <option key={u.unit_name} value={u.unit_name}>
@@ -990,9 +1004,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     <input
                       className={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] ${
                         r?.xauGia
-                          ? "border-[#dc2626] bg-[#fef2f2] text-[#991b1b]"
-                          : "border-[#cbd5e1] text-[#0f172a]"
-                      } disabled:bg-[#f8fafc] disabled:text-[#94a3b8]`}
+                          ? "border-[var(--pos-danger)] bg-[var(--pos-danger-soft)] text-[var(--pos-danger)]"
+                          : "border-[var(--pos-edge)] text-[var(--pos-ink)]"
+                      } disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)]`}
                       aria-label={`Đơn giá dòng ${i + 1}`}
                       inputMode="numeric"
                       disabled={!canEditPrice}
@@ -1003,12 +1017,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       }
                     />
                     {r?.xauGia === "below_list" && (
-                      <div className="mt-px text-right text-[9.5px] font-semibold text-[#dc2626]">
+                      <div className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
                         ≥ {formatCurrency(r.giaBang)}
                       </div>
                     )}
                     {r?.xauGia === "above_ceiling" && (
-                      <div className="mt-px text-right text-[9.5px] font-semibold text-[#dc2626]">
+                      <div className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
                         ≤ {formatCurrency(ceilingFor(r.giaBang, maxIncreasePct))}
                       </div>
                     )}
@@ -1018,7 +1032,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                         type="button"
                         onClick={() => patchLine(l.key, { price: r.lechBangGia!, listPrice: r.lechBangGia! })}
                         title="Bảng giá của khách này khác — bấm để lấy giá mới"
-                        className="mt-px block w-full text-right text-[9.5px] font-semibold text-[#b45309]"
+                        className="mt-px block w-full text-right text-[9.5px] font-semibold text-[var(--pos-warn)]"
                       >
                         bảng giá mới {formatCurrency(r.lechBangGia)}
                       </button>
@@ -1042,7 +1056,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       aria-label={`Thuế GTGT dòng ${i + 1}`}
                       value={String(l.vatRate ?? 0)}
                       onChange={(e) => patchLine(l.key, { vatRate: Number(e.target.value) })}
-                      className="h-[30px] w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[12px] text-[#0f172a]"
+                      className="h-[30px] w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[12px] text-[var(--pos-ink)]"
                     >
                       {vatChoices(l.vatRate ?? 0).map((v) => (
                         <option key={v.value} value={v.value}>{v.label}</option>
@@ -1071,14 +1085,14 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           )}
           {/* ⚠ Không nắm được phiếu trả (nhiều phiếu nháp / đọc hỏng) thì nói ra. */}
           {mode === "sua" && heldReturnId === undefined && retLines.length === 0 && (
-            <p className="shrink-0 text-[11px] text-[#b45309]">
+            <p className="shrink-0 text-[11px] text-[var(--pos-warn)]">
               Hàng trả kèm đơn không nạp được ở đây — lưu đơn sẽ không làm nó đổi. Sửa ở màn Trả hàng.
             </p>
           )}
         </div>
 
         {/* ---------------- panel phải ---------------- */}
-        <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+        <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
           <div className="relative">
             <PartnerCard
               partner={khach}
@@ -1097,7 +1111,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             />
           </div>
 
-          <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <MoneyRow label="Tổng tiền hàng" value={totals.gross} />
             <MoneyRow label="Giảm giá dòng" value={totals.lineDiscount} tone="muted" />
             <DocDiscountRow
@@ -1120,12 +1134,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             <TotalsHero label="Khách cần trả" value={totals.due} />
 
             <div className="mt-3.5 flex items-center justify-between gap-2.5">
-              <label htmlFor="pos-tra" className="text-[13px] text-[#334155]">
+              <label htmlFor="pos-tra" className="text-[13px] text-[var(--pos-muted)]">
                 Khách thanh toán
               </label>
               <input
                 id="pos-tra"
-                className="n h-[34px] w-[150px] rounded-[7px] border border-[#cbd5e1] px-2.5 text-right text-[14px] font-semibold text-[#0f172a]"
+                className="n h-[34px] w-[150px] rounded-[7px] border border-[var(--pos-edge)] px-2.5 text-right text-[14px] font-semibold text-[var(--pos-ink)]"
                 inputMode="numeric"
                 value={traTien === 0 ? "0" : String(traTien)}
                 onChange={(e) => setTraTien(Number(e.target.value.replace(/\D/g, "")) || 0)}
@@ -1146,15 +1160,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               <CashChips values={cashSuggestions(totals.due)} onPick={setTraTien} />
             )}
 
-            <div className="mt-3.5 flex items-center justify-between border-t border-[#f1f5f9] pt-3">
-              <span className="text-[13px] text-[#334155]">Tính vào công nợ</span>
-              <span className="n text-[14px] font-bold text-[#b45309]">
+            <div className="mt-3.5 flex items-center justify-between border-t border-[var(--pos-line-soft)] pt-3">
+              <span className="text-[13px] text-[var(--pos-muted)]">Tính vào công nợ</span>
+              <span className="n text-[14px] font-bold text-[var(--pos-warn)]">
                 {formatCurrency(Math.max(0, totals.due - traTien))}
               </span>
             </div>
             <div className="flex items-center justify-between pt-1">
-              <span className="text-[11.5px] text-[#64748b]">Nợ sau đơn này</span>
-              <span className="n text-[11.5px] text-[#64748b]">
+              <span className="text-[11.5px] text-[var(--pos-muted)]">Nợ sau đơn này</span>
+              <span className="n text-[11.5px] text-[var(--pos-muted)]">
                 {/* ⚠ CHƯA BIẾT NỢ HIỆN TẠI THÌ ĐỂ TRỐNG, đừng cộng từ 0 —
                     xem `docs/pos-todo.md`. */}
                 {khach?.debt == null
@@ -1163,27 +1177,27 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               </span>
             </div>
 
-            <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[#f1f5f9] pt-3">
-              <label htmlFor="pos-ngaygiao" className="text-[13px] text-[#334155]">
+            <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[var(--pos-line-soft)] pt-3">
+              <label htmlFor="pos-ngaygiao" className="text-[13px] text-[var(--pos-muted)]">
                 Ngày giao dự kiến
               </label>
               <input
                 id="pos-ngaygiao"
                 type="date"
-                className="n h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] px-2.5 text-right text-[12.5px] text-[#0f172a]"
+                className="n h-8 w-[150px] rounded-[7px] border border-[var(--pos-edge)] px-2.5 text-right text-[12.5px] text-[var(--pos-ink)]"
                 value={ngayGiao}
                 onChange={(e) => setNgayGiao(e.target.value)}
               />
             </div>
             <div className="mt-2 flex items-center justify-between gap-2.5">
-              <label htmlFor="pos-dk" className="text-[13px] text-[#334155]">
+              <label htmlFor="pos-dk" className="text-[13px] text-[var(--pos-muted)]">
                 Điều khoản TT
               </label>
               <select
                 id="pos-dk"
                 value={dieuKhoan}
                 onChange={(e) => setDieuKhoan(e.target.value)}
-                className="h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] text-[#0f172a]"
+                className="h-8 w-[150px] rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] text-[var(--pos-ink)]"
               >
                 <option>COD</option>
                 <option>Công nợ 15 ngày</option>

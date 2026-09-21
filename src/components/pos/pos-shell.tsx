@@ -125,9 +125,9 @@ export function PosShell({ children }: { children: ReactNode }) {
       <div className="pos-scope flex h-screen items-center justify-center p-6 text-center">
         <div>
           <p className="text-[15px] font-bold">Màn hình quá hẹp — dùng /sell trên điện thoại</p>
-          <p className="mt-1.5 text-[13px] text-[#64748b]">
+          <p className="mt-1.5 text-[13px] text-[var(--pos-muted)]">
             Màn POS dựng cho khổ 1280px trở lên. Trên điện thoại hãy mở{" "}
-            <a href="/sell" className="font-semibold text-[#2563eb] underline">
+            <a href="/sell" className="font-semibold text-[var(--pos-primary)] underline">
               màn bán hàng
             </a>
             .

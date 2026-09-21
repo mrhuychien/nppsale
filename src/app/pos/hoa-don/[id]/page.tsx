@@ -151,37 +151,37 @@ export default function PosInvoicePage() {
             }
           >
             {loi && (
-              <p className="px-4 py-4 text-[13px] font-semibold text-[#dc2626]">
+              <p className="px-4 py-4 text-[13px] font-semibold text-[var(--pos-danger)]">
                 Không tải được hóa đơn — {loi}
               </p>
             )}
             {!loi && dangTai && (
-              <p className="px-4 py-10 text-center text-[13px] text-[#64748b]">Đang tải…</p>
+              <p className="px-4 py-10 text-center text-[13px] text-[var(--pos-muted)]">Đang tải…</p>
             )}
             {!loi && !dangTai && lines.length === 0 && (
-              <p className="px-4 py-10 text-center text-[13px] text-[#64748b]">
+              <p className="px-4 py-10 text-center text-[13px] text-[var(--pos-muted)]">
                 Hóa đơn này không có dòng hàng nào.
               </p>
             )}
             {lines.map((l, i) => (
               <div
                 key={l.id}
-                className="grid min-h-[50px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+                className="grid min-h-[50px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
                 style={{ gridTemplateColumns: g.cols, gap: g.gap }}
               >
-                <div className="n text-[12px] text-[#94a3b8]">{i + 1}</div>
-                <div className="n truncate text-[11.5px] text-[#64748b]">{l.product?.sku ?? "—"}</div>
-                <div className="truncate text-[13px] font-semibold text-[#0f172a]">
-                  {l.product?.name ?? <span className="italic text-[#94a3b8]">Sản phẩm đã xoá</span>}
+                <div className="n text-[12px] text-[var(--pos-dim)]">{i + 1}</div>
+                <div className="n truncate text-[11.5px] text-[var(--pos-muted)]">{l.product?.sku ?? "—"}</div>
+                <div className="truncate text-[13px] font-semibold text-[var(--pos-ink)]">
+                  {l.product?.name ?? <span className="italic text-[var(--pos-dim)]">Sản phẩm đã xoá</span>}
                 </div>
-                <div className="truncate text-[12px] text-[#64748b]">{l.unit_name}</div>
+                <div className="truncate text-[12px] text-[var(--pos-muted)]">{l.unit_name}</div>
                 <div className="n text-center text-[13px] font-semibold">{l.quantity}</div>
                 <div className="n text-right text-[13px]">{formatCurrency(l.unit_price)}</div>
                 {/* ⚠ Giảm theo dòng CÓ cột thật — bản đầu vẽ "—" cho mọi dòng. */}
-                <div className="n text-right text-[12px] text-[#64748b]">
+                <div className="n text-right text-[12px] text-[var(--pos-muted)]">
                   {Number(l.line_discount) > 0 ? formatCurrency(Number(l.line_discount)) : "—"}
                 </div>
-                <div className="text-center text-[10px] font-bold text-[#1d4ed8]">
+                <div className="text-center text-[10px] font-bold text-[var(--pos-primary-deep)]">
                   {l.is_exchange ? "ĐỔI" : ""}
                 </div>
                 <div className="n text-right text-[13.5px] font-bold">{formatCurrency(l.line_total)}</div>
@@ -206,13 +206,13 @@ export default function PosInvoicePage() {
             }
           />
 
-          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <MoneyRow label="Tiền hàng" value={Number(head?.subtotal || 0)} />
             <MoneyRow label="Thuế GTGT" value={Number(head?.vat || 0)} tone="muted" />
             <TotalsHero label="Tổng cộng" value={tong} />
 
             {/* ⚠ BA BẬC — xem đầu tệp. Tổng hóa đơn ở trên KHÔNG bị trừ. */}
-            <div className="mt-3.5 border-t border-[#f1f5f9] pt-3">
+            <div className="mt-3.5 border-t border-[var(--pos-line-soft)] pt-3">
               {daThu != null && daThu > 0 && (
                 <MoneyRow label="Đã thu" value={`− ${formatCurrency(daThu)}`} tone="ok" />
               )}
@@ -220,18 +220,18 @@ export default function PosInvoicePage() {
               {credit > 0 && (
                 <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(credit)}`} tone="warn" />
               )}
-              <div className="mt-1 border-t border-[#f1f5f9] pt-2">
+              <div className="mt-1 border-t border-[var(--pos-line-soft)] pt-2">
                 <MoneyRow label="Công nợ ròng" value={netDue == null ? "chưa xác định" : netDue} strong />
               </div>
             </div>
 
-            <div className="mt-3.5 flex items-center justify-between border-t border-[#f1f5f9] pt-3">
-              <span className="text-[13px] text-[#334155]">Điều khoản TT</span>
-              <span className="text-[12.5px] font-medium text-[#0f172a]">{head?.payment_terms || "—"}</span>
+            <div className="mt-3.5 flex items-center justify-between border-t border-[var(--pos-line-soft)] pt-3">
+              <span className="text-[13px] text-[var(--pos-muted)]">Điều khoản TT</span>
+              <span className="text-[12.5px] font-medium text-[var(--pos-ink)]">{head?.payment_terms || "—"}</span>
             </div>
             <div className="flex items-center justify-between pt-1">
-              <span className="text-[11.5px] text-[#64748b]">Hạn trả</span>
-              <span className="n text-[11.5px] text-[#64748b]">
+              <span className="text-[11.5px] text-[var(--pos-muted)]">Hạn trả</span>
+              <span className="n text-[11.5px] text-[var(--pos-muted)]">
                 {head?.due_date ? formatDate(head.due_date) : "—"}
               </span>
             </div>
@@ -239,7 +239,7 @@ export default function PosInvoicePage() {
             <div className="flex-grow" />
 
             {daHuy && (
-              <p className="mt-3 text-[11.5px] leading-snug text-[#b45309]">
+              <p className="mt-3 text-[11.5px] leading-snug text-[var(--pos-warn)]">
                 Hóa đơn đã huỷ — không sửa, không trả hàng, không phát hành được nữa.
               </p>
             )}

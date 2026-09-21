@@ -49,14 +49,14 @@ export function PartnerCard({
 }) {
   if (!partner) {
     return (
-      <div className="shrink-0 rounded-xl border border-dashed border-[#cbd5e1] bg-white p-3.5">
+      <div className="shrink-0 rounded-[12px] border-[1.5px] border-dashed border-[var(--pos-edge-dash)] bg-white p-3.5">
         {readOnly ? (
-          <p className="text-center text-[12.5px] text-[#94a3b8]">Chưa có {label}</p>
+          <p className="text-center text-[12.5px] text-[var(--pos-dim)]">Chưa có {label}</p>
         ) : (
           <button
             type="button"
             onClick={onPick}
-            className="flex w-full items-center justify-center gap-2 text-[13px] font-semibold text-[#2563eb]"
+            className="flex w-full items-center justify-center gap-2 text-[13px] font-extrabold text-[var(--pos-primary-deep)]"
           >
             + Chọn {label} <span className="n text-[11px] opacity-70">{hotkey}</span>
           </button>
@@ -66,14 +66,14 @@ export function PartnerCard({
   }
 
   return (
-    <div className="shrink-0 rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-3">
+    <div className="shrink-0 rounded-[12px] border-[1.5px] border-[var(--pos-line)] bg-white px-3 py-2.5">
       <div className="flex items-start gap-2.5">
-        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] bg-[#dbeafe] text-[12px] font-bold text-[#1d4ed8]">
+        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] bg-[var(--pos-primary-soft)] text-[12px] font-extrabold text-[var(--pos-primary-deep)]">
           {viTat(partner.name)}
         </div>
         <div className="min-w-0 flex-grow">
-          <div className="truncate text-[14px] font-bold text-[#1d4ed8]">{partner.name}</div>
-          {partner.meta && <div className="n mt-0.5 truncate text-[11px] text-[#64748b]">{partner.meta}</div>}
+          <div className="truncate text-[14px] font-extrabold text-[var(--pos-ink)]">{partner.name}</div>
+          {partner.meta && <div className="n mt-0.5 truncate text-[11px] text-[var(--pos-muted)]">{partner.meta}</div>}
           {/*
             ⚠ `null` LÀ "CHƯA ĐỌC ĐƯỢC", KHÔNG PHẢI "KHÔNG NỢ". Vẽ badge
               `Nợ 0` cho một lỗi mạng là nói với người đi đòi tiền rằng
@@ -82,16 +82,16 @@ export function PartnerCard({
           {partner.debt != null && (
             <div
               className={`mt-1.5 inline-flex items-center gap-1.5 rounded-[5px] px-[7px] py-[3px] ${
-                partner.debt > 0 ? "bg-[#fee2e2]" : "bg-[#f1f5f9]"
+                partner.debt > 0 ? "bg-[var(--pos-danger-border)]" : "bg-[var(--pos-line-soft)]"
               }`}
             >
               <span
-                className={`text-[10.5px] font-semibold ${partner.debt > 0 ? "text-[#991b1b]" : "text-[#64748b]"}`}
+                className={`text-[10.5px] font-semibold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
               >
                 Nợ
               </span>
               <span
-                className={`n text-[11.5px] font-bold ${partner.debt > 0 ? "text-[#991b1b]" : "text-[#64748b]"}`}
+                className={`n text-[11.5px] font-bold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
               >
                 {formatCurrency(partner.debt)}
               </span>
@@ -105,7 +105,7 @@ export function PartnerCard({
               type="button"
               aria-label={`Bỏ chọn ${label}`}
               onClick={onClear}
-              className="h-[22px] w-[22px] rounded text-[15px] leading-none text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#334155]"
+              className="h-[22px] w-[22px] rounded text-[15px] leading-none text-[var(--pos-dim)] hover:bg-[var(--pos-line-soft)] hover:text-[var(--pos-muted)]"
             >
               ×
             </button>
@@ -113,7 +113,7 @@ export function PartnerCard({
           <button
             type="button"
             onClick={onPick}
-            className="h-6 rounded-md border border-[#cbd5e1] bg-white px-2 text-[10.5px] font-semibold text-[#334155] hover:border-[#94a3b8]"
+            className="h-7 rounded-[8px] border-[1.5px] border-[var(--pos-edge)] bg-white px-2.5 text-[11px] font-bold text-[var(--pos-muted)] hover:border-[var(--pos-dim)]"
           >
             Đổi {label === "khách hàng" ? "khách" : "NCC"}{" "}
             <span className="n opacity-70">{hotkey}</span>

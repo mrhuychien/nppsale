@@ -55,9 +55,9 @@ export function ReturnExchangeTable({
     onChange(lines.map((l) => (l.key === key ? { ...l, ...p } : l)))
 
   return (
-    <div className="shrink-0 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
+    <div className="shrink-0 overflow-hidden rounded-xl border border-[var(--pos-line)] bg-white">
       <div
-        className="grid h-[34px] items-center border-b border-[#e2e8f0] bg-[#f8fafc] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[#64748b]"
+        className="grid h-[34px] items-center border-b border-[var(--pos-line)] bg-[var(--pos-head)] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--pos-muted)]"
         style={{ gridTemplateColumns: g.cols, gap: g.gap }}
       >
         <div>#</div><div>Loại</div><div>Mã hàng</div><div>Tên hàng</div>
@@ -72,24 +72,24 @@ export function ReturnExchangeTable({
         return (
           <div
             key={l.key}
-            className="grid min-h-[52px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+            className="grid min-h-[52px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
             style={{ gridTemplateColumns: g.cols, gap: g.gap }}
           >
-            <div className="n text-[11.5px] text-[#94a3b8]">{i + 1}</div>
+            <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
             <select
               aria-label={`Loại dòng ${i + 1}`}
               value={l.isExchange ? "doi" : "tra"}
               onChange={(e) => patch(l.key, { isExchange: e.target.value === "doi" })}
               className={`h-7 w-full rounded-md border px-0.5 text-[11px] font-bold ${
                 l.isExchange
-                  ? "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]"
-                  : "border-[#fde68a] bg-[#fffbeb] text-[#92400e]"
+                  ? "border-[var(--pos-primary-border)] bg-[var(--pos-primary-faint)] text-[var(--pos-primary-deep)]"
+                  : "border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] text-[var(--pos-warn)]"
               }`}
             >
               <option value="tra">TRẢ</option>
               <option value="doi">ĐỔI</option>
             </select>
-            <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
+            <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
             <select
               aria-label={`Mặt hàng dòng ${i + 1}`}
               value={l.productId}
@@ -103,7 +103,7 @@ export function ReturnExchangeTable({
                   price: Number(p?.sell_price) || 0,
                 })
               }}
-              className="h-7 w-full min-w-0 rounded-md border border-[#cbd5e1] bg-white px-1 text-[12px] text-[#0f172a]"
+              className="h-7 w-full min-w-0 rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[12px] text-[var(--pos-ink)]"
             >
               <option value="">— chọn mặt hàng —</option>
               {products.map((p) => (
@@ -114,7 +114,7 @@ export function ReturnExchangeTable({
               aria-label={`Lô hàng dòng ${i + 1}`}
               value={l.lotId ?? ""}
               onChange={(e) => patch(l.key, { lotId: e.target.value || null })}
-              className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[11px] text-[#0f172a]"
+              className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11px] text-[var(--pos-ink)]"
             >
               {/* ⚠ CHƯA CÓ DANH SÁCH LÔ THÌ NÓI THẾ, đừng để select rỗng
                   trông như đã chọn xong — xem `docs/pos-todo.md`. */}
@@ -132,7 +132,7 @@ export function ReturnExchangeTable({
               onChange={(v) => patch(l.key, { qty: v })}
             />
             <input
-              className="n h-7 w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12px] text-[#0f172a]"
+              className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] text-[var(--pos-ink)]"
               aria-label={`Đơn giá dòng ${i + 1}`}
               inputMode="numeric"
               value={l.price === 0 ? "0" : String(l.price)}
@@ -144,26 +144,26 @@ export function ReturnExchangeTable({
                 aria-label={`Trừ tiền dòng ${i + 1}`}
                 checked={!l.isExchange}
                 onChange={(e) => patch(l.key, { isExchange: !e.target.checked })}
-                className="h-4 w-4 accent-[#2563eb]"
+                className="h-4 w-4 accent-[var(--pos-primary)]"
               />
             </div>
             <div className="text-right">
               {l.isExchange ? (
                 <>
-                  <div className="n text-[12px] text-[#94a3b8] line-through">{formatCurrency(tien)}</div>
-                  <div className="text-[9.5px] font-semibold text-[#2563eb]">không trừ tiền</div>
+                  <div className="n text-[12px] text-[var(--pos-dim)] line-through">{formatCurrency(tien)}</div>
+                  <div className="text-[9.5px] font-semibold text-[var(--pos-primary)]">không trừ tiền</div>
                 </>
               ) : (
-                <div className="n text-[13px] font-bold text-[#b45309]">{formatCurrency(tien)}</div>
+                <div className="n text-[13px] font-bold text-[var(--pos-warn)]">{formatCurrency(tien)}</div>
               )}
             </div>
             <button
               type="button"
               aria-label={`Xoá dòng ${l.isExchange ? "đổi" : "trả"} ${i + 1}`}
               onClick={() => onChange(lines.filter((x) => x.key !== l.key))}
-              className="flex h-[22px] w-[22px] items-center justify-center rounded hover:bg-[#f1f5f9]"
+              className="flex h-[22px] w-[22px] items-center justify-center rounded hover:bg-[var(--pos-line-soft)]"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pos-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
               </svg>
             </button>
@@ -171,13 +171,13 @@ export function ReturnExchangeTable({
         )
       })}
 
-      <div className="flex h-10 items-center gap-2.5 bg-[#f8fafc] px-4">
+      <div className="flex h-10 items-center gap-2.5 bg-[var(--pos-head)] px-4">
         <select
           aria-label="Lý do trả hàng"
           value={reason ?? "damaged"}
           onChange={(e) => onReason?.(e.target.value)}
           disabled={!onReason}
-          className="h-7 rounded-md border border-[#cbd5e1] bg-white px-1.5 text-[11.5px] text-[#0f172a] disabled:bg-[#f1f5f9]"
+          className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-1.5 text-[11.5px] text-[var(--pos-ink)] disabled:bg-[var(--pos-line-soft)]"
         >
           {/* ⚠ Đúng bộ CHECK của `returns.reason` — xem `ReturnScreen`. */}
           {RETURN_REASONS.map((r) => (
@@ -191,11 +191,11 @@ export function ReturnExchangeTable({
           value={note ?? ""}
           onChange={(e) => onNote?.(e.target.value)}
           disabled={!onNote}
-          className="h-7 min-w-0 flex-grow rounded-md border border-[#e2e8f0] bg-white px-2 text-[11.5px] text-[#334155] disabled:bg-[#f1f5f9]"
+          className="h-7 min-w-0 flex-grow rounded-md border border-[var(--pos-line)] bg-white px-2 text-[11.5px] text-[var(--pos-muted)] disabled:bg-[var(--pos-line-soft)]"
         />
-        <span className="shrink-0 text-[11px] text-[#64748b]">
-          Trả trừ công nợ <strong className="n text-[#b45309]">{formatCurrency(tienTra)}</strong>
-          {" · "}Đổi không trừ <strong className="n text-[#2563eb]">{formatCurrency(tienDoi)}</strong>
+        <span className="shrink-0 text-[11px] text-[var(--pos-muted)]">
+          Trả trừ công nợ <strong className="n text-[var(--pos-warn)]">{formatCurrency(tienTra)}</strong>
+          {" · "}Đổi không trừ <strong className="n text-[var(--pos-primary)]">{formatCurrency(tienDoi)}</strong>
         </span>
       </div>
     </div>

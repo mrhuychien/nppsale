@@ -43,7 +43,7 @@ export function LineTableFrame({
   return (
     /* ⚠ `min-h-0` — xem `PosShell`. Thiếu nó thì bảng phình theo nội
        dung và đẩy hàng nút ra ngoài màn thay vì tự cuộn. */
-    <div className="flex min-h-0 flex-grow flex-col overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
+    <div className="flex min-h-0 flex-grow flex-col overflow-hidden rounded-[14px] border border-[var(--pos-line)] bg-white">
       {header}
       <div className="min-h-0 flex-grow overflow-y-auto">{children}</div>
       {footer}
@@ -71,7 +71,7 @@ export function LineTableHeader({
   const g = POS_GRID[grid]
   return (
     <div
-      className="grid h-[38px] shrink-0 items-center border-b border-[#e2e8f0] bg-[#f8fafc] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[#64748b]"
+      className="grid h-[42px] shrink-0 items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
       style={{ gridTemplateColumns: cols ?? g.cols, gap: g.gap }}
     >
       {cells.map((c, i) => (
@@ -106,18 +106,21 @@ export function QtyStepper({
   compact?: boolean
 }) {
   const [dangGo, setDangGo] = useState(false)
-  const h = compact ? "h-7" : "h-[30px]"
-  const nut = compact ? "h-[26px] w-6 text-[13px]" : "h-7 w-[26px] text-[14px]"
+  /* ⚠ CỠ THEO BẢN THIẾT KẾ 21/09/2026: ô nhập cao 38px, bo 10px, viền
+     1.5px. Chế độ gọn giữ nhỏ hơn một bậc — nó có lý do riêng (xem
+     `DisplaySettingsDrawer`), không phải bản chưa chỉnh. */
+  const h = compact ? "h-[32px]" : "h-[38px]"
+  const nut = compact ? "h-[30px] w-6 text-[15px]" : "h-[36px] w-7 text-[19px]"
   const chamSan = value <= min
 
   return (
-    <div className={`flex ${h} items-center justify-center overflow-hidden rounded-[7px] border border-[#cbd5e1]`}>
+    <div className={`flex ${h} items-center justify-center overflow-hidden rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white`}>
       <button
         type="button"
         aria-label={`Giảm ${label}`}
         disabled={chamSan}
         onClick={() => onChange(Math.max(min, value - 1))}
-        className={`${nut} shrink-0 border-none bg-[#f8fafc] text-[#334155] disabled:cursor-not-allowed disabled:text-[#cbd5e1]`}
+        className={`${nut} shrink-0 border-0 border-r-[1.5px] border-[var(--pos-line-soft)] bg-white font-bold leading-none text-[var(--pos-primary)] disabled:cursor-not-allowed disabled:text-[var(--pos-edge)]`}
         /* ⚠ NÓI VÌ SAO MỜ. Nút mờ không giải thích là người dùng bấm
            mãi rồi kết luận màn hình hỏng. */
         title={chamSan && min > 0 ? `Không giảm dưới ${min} — phần đã xuất` : undefined}
@@ -126,7 +129,7 @@ export function QtyStepper({
       </button>
       {dangGo ? (
         <input
-          className="n min-w-0 flex-grow bg-transparent text-center text-[13px] font-semibold text-[#0f172a] outline-none"
+          className="n min-w-0 flex-grow bg-transparent text-center text-[15px] font-extrabold text-[var(--pos-ink)] outline-none"
           aria-label={label}
           autoFocus
           type="number"
@@ -141,7 +144,7 @@ export function QtyStepper({
           type="button"
           onClick={() => setDangGo(true)}
           aria-label={`${label} — đang là ${value}, bấm để nhập tay`}
-          className="n min-w-0 flex-grow text-center text-[13px] font-semibold text-[#0f172a]"
+          className="n min-w-0 flex-grow text-center text-[15px] font-extrabold text-[var(--pos-ink)]"
         >
           {value}
         </button>
@@ -150,7 +153,7 @@ export function QtyStepper({
         type="button"
         aria-label={`Tăng ${label}`}
         onClick={() => onChange(value + 1)}
-        className={`${nut} shrink-0 border-none bg-[#f8fafc] text-[#334155]`}
+        className={`${nut} shrink-0 border-0 border-l-[1.5px] border-[var(--pos-line-soft)] bg-white font-bold leading-none text-[var(--pos-primary)]`}
       >
         +
       </button>
@@ -179,10 +182,10 @@ export function DiscountCell({
   return (
     <div className="flex items-center gap-1">
       <input
-        className={`n h-7 w-0 flex-grow rounded-md border px-[5px] text-right text-[11.5px] ${
+        className={`n h-[34px] w-0 flex-grow rounded-[10px] border-[1.5px] px-2 text-right text-[13px] ${
           dangPhanTram || line.discount.value > 0
-            ? "border-[#2563eb] font-semibold text-[#0f172a]"
-            : "border-[#cbd5e1] font-normal text-[#64748b]"
+            ? "border-[var(--pos-primary-border)] font-bold text-[var(--pos-ink)]"
+            : "border-[var(--pos-edge)] font-normal text-[var(--pos-muted)]"
         }`}
         type="text"
         inputMode="decimal"
@@ -196,10 +199,10 @@ export function DiscountCell({
         type="button"
         aria-label={unitAriaLabel(line.discount.unit, index)}
         onClick={() => onChange(switchUnit(line.discount, gross))}
-        className={`h-7 w-[26px] shrink-0 rounded-md border text-[12px] font-bold leading-none ${
+        className={`h-[34px] w-[30px] shrink-0 rounded-[10px] border-[1.5px] text-[13px] font-extrabold leading-none ${
           dangPhanTram
-            ? "border-[#2563eb] bg-[#eff6ff] text-[#1d4ed8]"
-            : "border-[#cbd5e1] bg-[#f8fafc] text-[#475569]"
+            ? "border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] text-[var(--pos-primary-deep)]"
+            : "border-[var(--pos-edge)] bg-[var(--pos-head)] text-[var(--pos-muted)]"
         }`}
       >
         {unitLabel(line.discount.unit)}
@@ -221,9 +224,9 @@ export function LineAmountCell({ line }: { line: PosLine }) {
   return (
     <div className="text-right">
       {daDoi && (
-        <div className="n text-[10.5px] text-[#94a3b8] line-through">{formatCurrency(truoc)}</div>
+        <div className="n text-[10.5px] text-[var(--pos-dim)] line-through">{formatCurrency(truoc)}</div>
       )}
-      <div className="n text-[13.5px] font-bold text-[#0f172a]">{formatCurrency(now)}</div>
+      <div className="n text-[14px] font-extrabold text-[var(--pos-ink)]">{formatCurrency(now)}</div>
     </div>
   )
 }
@@ -260,7 +263,7 @@ export function LineMenu({
         aria-expanded={mo}
         onClick={() => setMo((v) => !v)}
         className={`h-6 w-6 rounded-md text-[15px] leading-none ${
-          mo ? "bg-[#e2e8f0] text-[#334155]" : "text-[#94a3b8] hover:bg-[#f1f5f9]"
+          mo ? "bg-[var(--pos-line)] text-[var(--pos-muted)]" : "text-[var(--pos-dim)] hover:bg-[var(--pos-line-soft)]"
         }`}
       >
         ⋮
@@ -278,16 +281,16 @@ export function LineMenu({
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setMo(false)}
           />
-          <div className="absolute right-0 top-7 z-20 w-[212px] overflow-hidden rounded-[10px] border border-[#e2e8f0] bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,.13)]">
+          <div className="absolute right-0 top-7 z-20 w-[212px] overflow-hidden rounded-[10px] border border-[var(--pos-line)] bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,.13)]">
             {muc.map((m, i) => (
               <div key={m.text}>
-                {i === muc.length - 1 && <div className="my-1 h-px bg-[#f1f5f9]" />}
+                {i === muc.length - 1 && <div className="my-1 h-px bg-[var(--pos-line-soft)]" />}
                 <button
                   type="button"
                   disabled={!m.fn}
                   onClick={() => { setMo(false); m.fn?.() }}
-                  className={`block w-full px-3 py-[7px] text-left text-[12.5px] disabled:cursor-not-allowed disabled:text-[#cbd5e1] ${
-                    m.danger ? "text-[#dc2626] hover:bg-[#fef2f2]" : "text-[#334155] hover:bg-[#f8fafc]"
+                  className={`block w-full px-3 py-[7px] text-left text-[12.5px] disabled:cursor-not-allowed disabled:text-[var(--pos-edge)] ${
+                    m.danger ? "text-[var(--pos-danger)] hover:bg-[var(--pos-danger-soft)]" : "text-[var(--pos-muted)] hover:bg-[var(--pos-head)]"
                   }`}
                 >
                   {m.text}
@@ -311,7 +314,7 @@ export function LineMenu({
 export function NegativeStockStrip({ count }: { count: number }) {
   if (count <= 0) return null
   return (
-    <div className="shrink-0 bg-[#fef2f2] px-4 py-2 text-[11.5px] text-[#991b1b]">
+    <div className="shrink-0 bg-[var(--pos-danger-soft)] px-4 py-2 text-[11.5px] text-[var(--pos-danger)]">
       {count} dòng vượt tồn kho bán — tồn sẽ âm cho tới khi nhập bù.
     </div>
   )

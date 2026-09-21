@@ -317,7 +317,7 @@ export function PurchaseScreen({
         label: "Kho bán",
         body:
           lines.length === 0 ? (
-            <span className="text-[#94a3b8]">chưa có dòng hàng</span>
+            <span className="text-[var(--pos-dim)]">chưa có dòng hàng</span>
           ) : (
             <DeltaStock sku={`${lines.length} lô mới`} net={lines.reduce((s, l) => s + l.qty, 0)} unit="sp" />
           ),
@@ -327,7 +327,7 @@ export function PurchaseScreen({
       {
         label: "Giá vốn lô",
         body: (
-          <span className="text-[#64748b]">
+          <span className="text-[var(--pos-muted)]">
             mỗi dòng ghi một lô, giá vốn riêng từng lô
           </span>
         ),
@@ -421,7 +421,7 @@ export function PurchaseScreen({
             }
             footer={
               lines.length > 0 ? (
-                <div className="shrink-0 bg-[#f8fafc] px-4 py-2 text-[11.5px] text-[#64748b]">
+                <div className="shrink-0 bg-[var(--pos-head)] px-4 py-2 text-[11.5px] text-[var(--pos-muted)]">
                   Mỗi dòng sinh một lô riêng lúc nhập kho. Mã lô đặt theo mã phiếu, hạn dùng
                   tính theo hạn dùng khai trong hồ sơ mặt hàng — không gõ tay ở đây.
                 </div>
@@ -430,14 +430,14 @@ export function PurchaseScreen({
           >
             {lines.length === 0 && (
               <div className="px-4 py-10 text-center">
-                <p className="text-[13px] text-[#64748b]">
+                <p className="text-[13px] text-[var(--pos-muted)]">
                   {loading ? "Đang tải danh mục hàng…" : "Chưa có mặt hàng nào trong phiếu."}
                 </p>
                 {!loading && (
                   <button
                     type="button"
                     onClick={() => setMoTimHang(true)}
-                    className="mt-2 text-[13px] font-semibold text-[#2563eb]"
+                    className="mt-2 text-[13px] font-semibold text-[var(--pos-primary)]"
                   >
                     Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
                   </button>
@@ -450,17 +450,17 @@ export function PurchaseScreen({
               return (
                 <div
                   key={l.key}
-                  className="grid min-h-[54px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+                  className="grid min-h-[54px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
                   style={{ gridTemplateColumns: g.cols, gap: g.gap }}
                 >
-                  <div className="n text-[11.5px] text-[#94a3b8]">{i + 1}</div>
-                  <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
-                  <div className="truncate text-[12.5px] font-semibold text-[#0f172a]">{l.name}</div>
+                  <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
+                  <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
+                  <div className="truncate text-[12.5px] font-semibold text-[var(--pos-ink)]">{l.name}</div>
                   <select
                     aria-label={`Đơn vị tính dòng ${i + 1}`}
                     value={l.unit}
                     onChange={(e) => patchLine(l.key, { unit: e.target.value })}
-                    className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[11.5px]"
+                    className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11.5px]"
                   >
                     {l.units.map((u) => (
                       <option key={u.unit_name} value={u.unit_name}>{u.unit_name}</option>
@@ -473,8 +473,8 @@ export function PurchaseScreen({
                       tay ở đây đòi người dùng nhập một thứ không cột
                       nào nhận và không hàm nào đọc. Xem đầu tệp.
                   */}
-                  <div className="n truncate text-[10.5px] text-[#64748b]" title={maLo ?? undefined}>
-                    {maLo ?? <span className="text-[#94a3b8]">tự sinh khi nhập kho</span>}
+                  <div className="n truncate text-[10.5px] text-[var(--pos-muted)]" title={maLo ?? undefined}>
+                    {maLo ?? <span className="text-[var(--pos-dim)]">tự sinh khi nhập kho</span>}
                   </div>
                   <QtyStepper
                     compact
@@ -483,7 +483,7 @@ export function PurchaseScreen({
                     onChange={(v) => patchLine(l.key, { qty: v })}
                   />
                   <input
-                    className="n h-7 w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12px]"
+                    className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px]"
                     aria-label={`Giá nhập dòng ${i + 1}`}
                     inputMode="numeric"
                     value={l.price === 0 ? "" : String(l.price)}
@@ -497,15 +497,15 @@ export function PurchaseScreen({
               )
             })}
             {lines.length > 0 && (
-              <div className="flex h-10 items-center gap-2 bg-[#f8fafc] px-4">
+              <div className="flex h-10 items-center gap-2 bg-[var(--pos-head)] px-4">
                 <button
                   type="button"
                   onClick={() => setMoTimHang(true)}
-                  className="h-7 rounded-md border border-[#cbd5e1] bg-white px-2.5 text-[11.5px] font-semibold text-[#334155]"
+                  className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
                   + Thêm hàng <span className="n opacity-70">F3</span>
                 </button>
-                <span className="text-[11px] text-[#64748b]">
+                <span className="text-[11px] text-[var(--pos-muted)]">
                   {lines.length} dòng · {lines.reduce((s, l) => s + l.qty, 0)} sp
                 </span>
               </div>
@@ -517,7 +517,7 @@ export function PurchaseScreen({
           )}
         </div>
 
-        <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+        <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
           <div className="relative">
             <PartnerCard
               partner={ncc}
@@ -536,12 +536,12 @@ export function PurchaseScreen({
             />
           </div>
 
-          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <div className="flex items-center justify-between gap-2.5 pb-1">
-              <label htmlFor="p-hd" className="text-[13px] text-[#334155]">Số hóa đơn đầu vào</label>
+              <label htmlFor="p-hd" className="text-[13px] text-[var(--pos-muted)]">Số hóa đơn đầu vào</label>
               <input
                 id="p-hd"
-                className="n h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] px-2 text-right text-[12.5px]"
+                className="n h-8 w-[150px] rounded-[7px] border border-[var(--pos-edge)] px-2 text-right text-[12.5px]"
                 /* ⚠ Cho để trống lúc lập (spec §8 mục 2) — hóa đơn NCC
                    thường về sau hàng. */
                 placeholder="Chưa có"
@@ -550,18 +550,18 @@ export function PurchaseScreen({
               />
             </div>
             <div className="flex items-center justify-between gap-2.5 pb-2">
-              <label htmlFor="p-po" className="text-[13px] text-[#334155]">Mã đặt hàng nhập</label>
+              <label htmlFor="p-po" className="text-[13px] text-[var(--pos-muted)]">Mã đặt hàng nhập</label>
               <select
                 id="p-po"
                 value={maDatHang}
                 onChange={(e) => setMaDatHang(e.target.value)}
-                className="h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px]"
+                className="h-8 w-[150px] rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px]"
               >
                 <option value="">Không gắn đơn</option>
               </select>
             </div>
 
-            <div className="border-t border-[#f1f5f9] pt-2">
+            <div className="border-t border-[var(--pos-line-soft)] pt-2">
               <MoneyRow label="Tổng tiền hàng" value={t.goods} />
               <MoneyRow label="Giảm giá dòng" value={t.lineDiscount} tone="muted" />
               <DocDiscountRow
@@ -572,14 +572,14 @@ export function PurchaseScreen({
                 onChange={(d) => setDocDiscount(d.unit === docDiscount.unit ? d : switchUnit(docDiscount, t.goods))}
               />
               <div className="flex items-center gap-2 py-[5px]">
-                <label htmlFor="p-vat" className="flex-grow text-[13px] text-[#334155]">
+                <label htmlFor="p-vat" className="flex-grow text-[13px] text-[var(--pos-muted)]">
                   Thuế GTGT đầu vào
                 </label>
                 <select
                   id="p-vat"
                   value={vatRate}
                   onChange={(e) => setVatRate(Number(e.target.value))}
-                  className="h-[30px] w-[74px] rounded-md border border-[#cbd5e1] bg-white px-1.5 text-[12.5px]"
+                  className="h-[30px] w-[74px] rounded-md border border-[var(--pos-edge)] bg-white px-1.5 text-[12.5px]"
                 >
                   {[0, 5, 8, 10].map((v) => <option key={v} value={v}>{v}%</option>)}
                 </select>
@@ -597,20 +597,20 @@ export function PurchaseScreen({
                 khỏi "Tính vào công nợ", lưu xong sổ vẫn ghi nợ đủ. Ô
                 không đi xuống sổ thì không vẽ.
             */}
-            <div className="mt-3.5 flex items-center justify-between border-t border-[#f1f5f9] pt-3">
-              <span className="text-[13px] text-[#334155]">Tính vào công nợ NCC</span>
-              <span className="n text-[14px] font-bold text-[#b45309]">
+            <div className="mt-3.5 flex items-center justify-between border-t border-[var(--pos-line-soft)] pt-3">
+              <span className="text-[13px] text-[var(--pos-muted)]">Tính vào công nợ NCC</span>
+              <span className="n text-[14px] font-bold text-[var(--pos-warn)]">
                 {formatCurrency(t.dueToSupplier)}
               </span>
             </div>
             <div className="flex items-center justify-between pt-1">
-              <span className="text-[11.5px] text-[#64748b]">Nợ NCC sau phiếu</span>
-              <span className="n text-[11.5px] text-[#64748b]">
+              <span className="text-[11.5px] text-[var(--pos-muted)]">Nợ NCC sau phiếu</span>
+              <span className="n text-[11.5px] text-[var(--pos-muted)]">
                 {/* ⚠ Chưa đọc được nợ NCC → nói thế, đừng cộng từ 0. */}
                 {ncc?.debt == null ? "chưa xác định" : formatCurrency(ncc.debt + t.dueToSupplier)}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-[#94a3b8]">
+            <p className="mt-1 text-[11px] text-[var(--pos-dim)]">
               Trả tiền NCC lập phiếu chi ở màn Công nợ NCC sau khi nhập kho.
             </p>
 
@@ -620,7 +620,7 @@ export function PurchaseScreen({
               placeholder="Ghi chú phiếu nhập…"
               value={ghiChu}
               onChange={(e) => setGhiChu(e.target.value)}
-              className="mt-3 h-8 w-full rounded-[7px] border border-[#cbd5e1] px-2 text-[12.5px] text-[#334155]"
+              className="mt-3 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] px-2 text-[12.5px] text-[var(--pos-muted)]"
             />
 
             <div className="flex-grow" />

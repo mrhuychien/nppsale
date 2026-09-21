@@ -390,7 +390,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           alert: ton <= 0,
           keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
           right: (
-            <span className="n text-[12.5px] font-semibold text-[#0f172a]">
+            <span className="n text-[12.5px] font-semibold text-[var(--pos-ink)]">
               {formatCurrency(Number(p.sell_price) || 0)}
             </span>
           ),
@@ -432,7 +432,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
    */
   const deltaCells = useMemo<DeltaCell[]>(() => {
     const oKho = (ds: PosLine[], dau: 1 | -1, donVi: string): DeltaCell["body"] => {
-      if (ds.length === 0) return <span className="text-[#94a3b8]">không đổi</span>
+      if (ds.length === 0) return <span className="text-[var(--pos-dim)]">không đổi</span>
       const d = ds[0]
       return (
         <DeltaStock
@@ -469,7 +469,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     return (
       <>
         <div
-          className="grid h-[34px] shrink-0 items-center border-b border-[#e2e8f0] bg-[#f8fafc] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[#64748b]"
+          className="grid h-[34px] shrink-0 items-center border-b border-[var(--pos-line)] bg-[var(--pos-head)] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--pos-muted)]"
           style={{ gridTemplateColumns: g, gap: 8 }}
         >
           <div>#</div><div>Mã hàng</div><div>Tên hàng</div>
@@ -480,7 +480,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           <div />
         </div>
         {lines.length === 0 && (
-          <p className="px-4 py-6 text-center text-[12.5px] text-[#64748b]">
+          <p className="px-4 py-6 text-center text-[12.5px] text-[var(--pos-muted)]">
             {loading
               ? "Đang tải danh mục hàng…"
               : doi
@@ -493,18 +493,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           return (
             <div
               key={l.key}
-              className="grid min-h-[52px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+              className="grid min-h-[52px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
               style={{ gridTemplateColumns: g, gap: 8 }}
             >
-              <div className="n text-[11.5px] text-[#94a3b8]">{i + 1}</div>
-              <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
+              <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
+              <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
               <div className="min-w-0">
-                <div className="truncate text-[12.5px] font-medium leading-tight text-[#0f172a]">
+                <div className="truncate text-[12.5px] font-medium leading-tight text-[var(--pos-ink)]">
                   {l.name}
                 </div>
-                <div className="mt-px truncate text-[11px] text-[#64748b]">
+                <div className="mt-px truncate text-[11px] text-[var(--pos-muted)]">
                   {l.stock == null ? (
-                    <span className="text-[#94a3b8]">tồn chưa xác định</span>
+                    <span className="text-[var(--pos-dim)]">tồn chưa xác định</span>
                   ) : (
                     `Tồn ${l.stock.toLocaleString("vi-VN")}`
                   )}
@@ -516,7 +516,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   aria-label={`Lô hàng trả dòng ${i + 1}`}
                   value={l.lotId ?? ""}
                   onChange={(e) => patch(l.key, { lotId: e.target.value || null })}
-                  className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[11px] text-[#0f172a]"
+                  className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11px] text-[var(--pos-ink)]"
                 >
                   {/* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */}
                   <option value="">chưa chọn lô</option>
@@ -534,7 +534,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 onChange={(v) => patch(l.key, { qty: v })}
               />
               <input
-                className="n h-7 w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12px] text-[#0f172a]"
+                className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] text-[var(--pos-ink)]"
                 aria-label={`Đơn giá dòng ${i + 1}`}
                 inputMode="numeric"
                 value={l.price === 0 ? "0" : String(l.price)}
@@ -548,22 +548,22 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                         đi thì người lập phiếu không biết món ấy đáng bao
                         nhiêu; để số trần thì họ tưởng nó đang được trừ.
                     */}
-                    <div className="n text-[12.5px] text-[#94a3b8] line-through">
+                    <div className="n text-[12.5px] text-[var(--pos-dim)] line-through">
                       {formatCurrency(tien)}
                     </div>
-                    <div className="text-[9.5px] font-semibold text-[#2563eb]">không trừ tiền</div>
+                    <div className="text-[9.5px] font-semibold text-[var(--pos-primary)]">không trừ tiền</div>
                   </>
                 ) : (
-                  <div className="n text-[13px] font-bold text-[#b45309]">{formatCurrency(tien)}</div>
+                  <div className="n text-[13px] font-bold text-[var(--pos-warn)]">{formatCurrency(tien)}</div>
                 )}
               </div>
               <button
                 type="button"
                 aria-label={`Xoá dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
                 onClick={() => setLines(lines.filter((x) => x.key !== l.key))}
-                className="flex h-[22px] w-[22px] items-center justify-center rounded hover:bg-[#f1f5f9]"
+                className="flex h-[22px] w-[22px] items-center justify-center rounded hover:bg-[var(--pos-line-soft)]"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pos-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden>
                   <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
                 </svg>
               </button>
@@ -584,7 +584,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           <button
             type="button"
             onClick={() => setMoChonHD(true)}
-            className="font-semibold text-[#2563eb] underline"
+            className="font-semibold text-[var(--pos-primary)] underline"
           >
             {invoiceId ? `Hóa đơn gốc ${invoiceCode ?? "đã gắn"} — đổi` : "Chọn hóa đơn gốc"}
           </button>
@@ -637,18 +637,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
 
           <LineTableFrame
             header={
-              <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-[#e2e8f0] bg-white px-4">
-                <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#92400e]">
+              <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-[var(--pos-line)] bg-white px-4">
+                <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--pos-warn)]">
                   Hàng trả về
                 </span>
-                <span className="text-[11px] text-[#64748b]">
+                <span className="text-[11px] text-[var(--pos-muted)]">
                   {t.returnLineCount} dòng · {t.returnQty} sp
                 </span>
                 <div className="flex-grow" />
                 <button
                   type="button"
                   onClick={() => setMoTimTra(true)}
-                  className="h-7 rounded-md border border-[#cbd5e1] bg-white px-2.5 text-[11.5px] font-semibold text-[#334155]"
+                  className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
                   + Hàng trả <span className="n opacity-70">F3</span>
                 </button>
@@ -657,18 +657,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           >
             {bang(traLines, setTraLines, false)}
 
-            <div className="flex h-[38px] items-center gap-2 border-y border-[#e2e8f0] bg-[#f8fafc] px-4">
-              <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#1d4ed8]">
+            <div className="flex h-[38px] items-center gap-2 border-y border-[var(--pos-line)] bg-[var(--pos-head)] px-4">
+              <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--pos-primary-deep)]">
                 Hàng đổi
               </span>
-              <span className="text-[11px] text-[#64748b]">
+              <span className="text-[11px] text-[var(--pos-muted)]">
                 {t.exchangeLineCount} dòng · {t.exchangeQty} sp · không trừ tiền
               </span>
               <div className="flex-grow" />
               <button
                 type="button"
                 onClick={() => setMoTimDoi(true)}
-                className="h-7 rounded-md border border-[#cbd5e1] bg-white px-2.5 text-[11.5px] font-semibold text-[#334155]"
+                className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
               >
                 + Hàng đổi <span className="n opacity-70">F7</span>
               </button>
@@ -684,7 +684,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           )}
         </div>
 
-        <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+        <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
           <div className="relative">
             <PartnerCard
               partner={khach}
@@ -702,7 +702,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             />
           </div>
 
-          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             {/* ⚠ "Giá gốc hàng mua" CHỈ ĐỂ ĐỐI CHIẾU, không vào phép cộng —
                 xem `return-totals.ts`. Chưa gắn hóa đơn gốc thì nói
                 "chưa xác định" chứ không điền 0. */}
@@ -713,10 +713,10 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             />
             <MoneyRow label="Tổng tiền hàng trả" value={t.goodsReturned} />
             <div className="flex items-center justify-between py-[5px]">
-              <span className="text-[13px] text-[#334155]">Giá trị hàng đổi</span>
+              <span className="text-[13px] text-[var(--pos-muted)]">Giá trị hàng đổi</span>
               <span className="text-right">
-                <span className="mr-2 text-[10px] font-semibold text-[#2563eb]">không trừ tiền</span>
-                <span className="n text-[13.5px] text-[#94a3b8]">
+                <span className="mr-2 text-[10px] font-semibold text-[var(--pos-primary)]">không trừ tiền</span>
+                <span className="n text-[13.5px] text-[var(--pos-dim)]">
                   {formatCurrency(t.exchangeValue)}
                 </span>
               </span>
@@ -735,7 +735,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               }
             />
 
-            <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Hình thức hoàn
             </p>
             <div className="mt-1.5 flex gap-1.5">
@@ -747,8 +747,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   onClick={() => setHoan(h)}
                   className={`h-8 flex-grow rounded-[7px] border text-[12px] ${
                     hoan === h
-                      ? "border-[#2563eb] bg-[#eff6ff] font-semibold text-[#1d4ed8]"
-                      : "border-[#cbd5e1] bg-white font-medium text-[#334155]"
+                      ? "border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] font-semibold text-[var(--pos-primary-deep)]"
+                      : "border-[var(--pos-edge)] bg-white font-medium text-[var(--pos-muted)]"
                   }`}
                 >
                   {HOAN_LABEL[h]}
@@ -761,7 +761,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 màn POS chưa lập — nói ra, đừng để hai nút kia im lặng.
             */}
             {hoan !== "cong-no" && (
-              <p className="mt-1 text-[11px] text-[#b45309]">
+              <p className="mt-1 text-[11px] text-[var(--pos-warn)]">
                 Phiếu vẫn ghi giảm công nợ khách. Hoàn bằng {HOAN_LABEL[hoan].toLowerCase()} phải
                 lập phiếu chi riêng — màn này chưa làm được việc đó.
               </p>
@@ -773,35 +773,35 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 date vì hàng khách trả thường không bán lại ngay được,
                 nhưng đó là mặc định chứ không phải quyết định thay họ.
             */}
-            <label htmlFor="pos-kho" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="pos-kho" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Kho nhận hàng trả
             </label>
             <select
               id="pos-kho"
               value={zone}
               onChange={(e) => setZone(e.target.value as ReturnZone)}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] text-[#0f172a]"
+              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] text-[var(--pos-ink)]"
             >
               {RETURN_ZONES.map((z) => (
                 <option key={z.value} value={z.value}>{z.label} — {z.hint}</option>
               ))}
             </select>
 
-            <label htmlFor="pos-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="pos-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Lý do trả hàng
             </label>
             <select
               id="pos-lydo"
               value={lyDo}
               onChange={(e) => setLyDo(e.target.value)}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] text-[#0f172a]"
+              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] text-[var(--pos-ink)]"
             >
               {LY_DO.map((r) => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
 
-            <label htmlFor="pos-ghichu" className="mt-2.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="pos-ghichu" className="mt-2.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Ghi chú
             </label>
             <input
@@ -810,7 +810,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               value={ghiChu}
               onChange={(e) => setGhiChu(e.target.value)}
               placeholder="VD: hàng móp thùng khi giao, khách báo lúc nhận…"
-              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] px-2 text-[12.5px] text-[#334155]"
+              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] px-2 text-[12.5px] text-[var(--pos-muted)]"
             />
 
             <div className="flex-grow" />
@@ -821,17 +821,17 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 — xem `warehouseSentence`.
             */}
             {cauKho && (
-              <div className="mt-3 flex items-start gap-2 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2.5">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round" className="mt-0.5 shrink-0" aria-hidden>
+              <div className="mt-3 flex items-start gap-2 rounded-[10px] border border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] px-3 py-2.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pos-warn)" strokeWidth="2" strokeLinecap="round" className="mt-0.5 shrink-0" aria-hidden>
                   <path d="M12 8v5M12 17h.01" />
                   <circle cx="12" cy="12" r="9" />
                 </svg>
-                <span className="text-[11.5px] leading-snug text-[#92400e]">{cauKho}</span>
+                <span className="text-[11.5px] leading-snug text-[var(--pos-warn)]">{cauKho}</span>
               </div>
             )}
 
             {mode === "sua" && (
-              <p className="mt-2 text-[11px] leading-snug text-[#64748b]">
+              <p className="mt-2 text-[11px] leading-snug text-[var(--pos-muted)]">
                 Số phiếu {slipCode || "này"} giữ nguyên. Bản ghi cũ vào nhật ký kèm người sửa
                 và thời điểm.
               </p>

@@ -26,9 +26,9 @@ export default function PosHomePage() {
   const { openNew, tabs } = usePosTabs()
   return (
     <div className="flex min-h-0 flex-grow items-center justify-center p-6">
-      <div className="w-[560px] rounded-2xl border border-[#e2e8f0] bg-white p-6">
-        <h1 className="text-[16px] font-bold text-[#0f172a]">Mở chứng từ mới</h1>
-        <p className="mt-1 text-[12.5px] text-[#64748b]">
+      <div className="w-[560px] rounded-2xl border border-[var(--pos-line)] bg-white p-6">
+        <h1 className="text-[16px] font-bold text-[var(--pos-ink)]">Mở chứng từ mới</h1>
+        <p className="mt-1 text-[12.5px] text-[var(--pos-muted)]">
           {tabs.length > 0
             ? "Hoặc bấm vào một tab đang mở phía trên."
             : "Chưa có tab nào. Chọn loại chứng từ để bắt đầu."}
@@ -39,19 +39,19 @@ export default function PosHomePage() {
               key={k}
               type="button"
               onClick={() => openNew(k)}
-              className="flex items-start gap-2.5 rounded-xl border border-[#e2e8f0] px-3.5 py-3 text-left hover:border-[#2563eb] hover:bg-[#eff6ff]"
+              className="flex items-start gap-2.5 rounded-xl border border-[var(--pos-line)] px-3.5 py-3 text-left hover:border-[var(--pos-primary)] hover:bg-[var(--pos-primary-faint)]"
             >
               <span aria-hidden className="mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: POS_DOT[k] }} />
               <span className="min-w-0">
-                <span className="block text-[13px] font-semibold text-[#0f172a]">{POS_DOC_LABEL[k]}</span>
-                <span className="mt-px block text-[11px] text-[#64748b]">{PHIM[k]}</span>
+                <span className="block text-[13px] font-semibold text-[var(--pos-ink)]">{POS_DOC_LABEL[k]}</span>
+                <span className="mt-px block text-[11px] text-[var(--pos-muted)]">{PHIM[k]}</span>
               </span>
             </button>
           ))}
         </div>
         {/* ⚠ Hóa đơn không lập trực tiếp — nó sinh ra từ nút "Xuất hàng &
             lập HĐ" của đơn hàng. Nói ra để không ai đi tìm nút ấy. */}
-        <p className="mt-4 text-[11.5px] text-[#94a3b8]">
+        <p className="mt-4 text-[11.5px] text-[var(--pos-dim)]">
           Hóa đơn bán được lập từ đơn hàng — bấm <strong>Xuất hàng &amp; lập HĐ</strong> trên
           màn đơn.
         </p>

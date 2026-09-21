@@ -392,7 +392,7 @@ export function SupplierReturnScreen({
         label: kho === "sale" ? "Kho bán" : "Kho cận date",
         body:
           lines.length === 0 ? (
-            <span className="text-[#94a3b8]">chưa có dòng hàng</span>
+            <span className="text-[var(--pos-dim)]">chưa có dòng hàng</span>
           ) : (
             <DeltaStock
               sku={`${lines.length} dòng`}
@@ -404,7 +404,7 @@ export function SupplierReturnScreen({
       { label: "Công nợ NCC", body: null },
       {
         label: "Giá vốn lô",
-        body: <span className="text-[#64748b]">lô trả về đóng bớt, giá vốn lô không đổi</span>,
+        body: <span className="text-[var(--pos-muted)]">lô trả về đóng bớt, giá vốn lô không đổi</span>,
       },
     ],
     [lines, kho]
@@ -501,7 +501,7 @@ export function SupplierReturnScreen({
                     FIFO theo hạn trong vùng kho đã chọn; cột lô bên
                     trái chỉ kể lô mà phiếu nhập gốc đã sinh ra.
                 */
-                <div className="shrink-0 bg-[#f8fafc] px-4 py-2 text-[11.5px] text-[#64748b]">
+                <div className="shrink-0 bg-[var(--pos-head)] px-4 py-2 text-[11.5px] text-[var(--pos-muted)]">
                   Lô xuất đi do hệ thống chọn: hạn cũ trước, trong{" "}
                   <strong>{kho === "sale" ? "kho bán" : "kho cận date"}</strong>. Cột
                   &ldquo;Lô của phiếu gốc&rdquo; chỉ để đối chiếu, không phải ô chọn.
@@ -511,14 +511,14 @@ export function SupplierReturnScreen({
           >
             {lines.length === 0 && (
               <div className="px-4 py-10 text-center">
-                <p className="text-[13px] text-[#64748b]">
+                <p className="text-[13px] text-[var(--pos-muted)]">
                   {loading ? "Đang tải danh mục hàng…" : "Chưa có mặt hàng nào trong phiếu."}
                 </p>
                 {!loading && (
                   <button
                     type="button"
                     onClick={() => setMoTimHang(true)}
-                    className="mt-2 text-[13px] font-semibold text-[#2563eb]"
+                    className="mt-2 text-[13px] font-semibold text-[var(--pos-primary)]"
                   >
                     Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
                   </button>
@@ -533,12 +533,12 @@ export function SupplierReturnScreen({
               return (
                 <div
                   key={l.key}
-                  className="grid min-h-[54px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+                  className="grid min-h-[54px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
                   style={{ gridTemplateColumns: g.cols, gap: g.gap }}
                 >
-                  <div className="n text-[11.5px] text-[#94a3b8]">{i + 1}</div>
-                  <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
-                  <div className="truncate text-[12.5px] font-semibold text-[#0f172a]">{l.name}</div>
+                  <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
+                  <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
+                  <div className="truncate text-[12.5px] font-semibold text-[var(--pos-ink)]">{l.name}</div>
                   {/*
                     ⚠ CHỮ ĐỌC, KHÔNG PHẢI Ô CHỌN. Máy chủ lấy lô FIFO và
                       `supplier_return_lines` không có cột lô để nhận
@@ -546,21 +546,21 @@ export function SupplierReturnScreen({
                       PHIẾU NHẬP GỐC, không rơi về toàn kho.
                   */}
                   <div
-                    className="n truncate text-[10.5px] text-[#64748b]"
+                    className="n truncate text-[10.5px] text-[var(--pos-muted)]"
                     title={dsLo.map((lo) => `${lo.code}${lo.expiry ? ` · ${lo.expiry}` : ""}`).join(", ")}
                   >
                     {dsLo.length === 0 ? (
-                      <span className="text-[#94a3b8]">chưa nối phiếu nhập gốc</span>
+                      <span className="text-[var(--pos-dim)]">chưa nối phiếu nhập gốc</span>
                     ) : (
                       `${dsLo[0].code}${dsLo[0].expiry ? ` · ${dsLo[0].expiry}` : ""}${
                         dsLo.length > 1 ? ` +${dsLo.length - 1}` : ""
                       }`
                     )}
                   </div>
-                  <div className="n text-center text-[12px] text-[#64748b]">
+                  <div className="n text-center text-[12px] text-[var(--pos-muted)]">
                     {/* ⚠ Chưa biết thì nói thế, đừng hiện 0 — 0 đọc như
                         "đã nhận hết rồi, không trả được gì". */}
-                    {l.ordered == null ? <span className="text-[#94a3b8]">—</span> : l.ordered}
+                    {l.ordered == null ? <span className="text-[var(--pos-dim)]">—</span> : l.ordered}
                   </div>
                   <div>
                     <QtyStepper
@@ -570,13 +570,13 @@ export function SupplierReturnScreen({
                       onChange={(v) => patchLine(l.key, { qty: tran == null ? v : Math.min(tran, v) })}
                     />
                     {chamTran && (
-                      <div className="mt-px text-center text-[9.5px] font-semibold text-[#b45309]">
+                      <div className="mt-px text-center text-[9.5px] font-semibold text-[var(--pos-warn)]">
                         đã chạm số đã nhập
                       </div>
                     )}
                   </div>
                   <input
-                    className="n h-7 w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12px]"
+                    className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px]"
                     aria-label={`Giá nhập dòng ${i + 1}`}
                     inputMode="numeric"
                     value={l.price === 0 ? "" : String(l.price)}
@@ -590,15 +590,15 @@ export function SupplierReturnScreen({
               )
             })}
             {lines.length > 0 && (
-              <div className="flex h-10 items-center gap-2 bg-[#f8fafc] px-4">
+              <div className="flex h-10 items-center gap-2 bg-[var(--pos-head)] px-4">
                 <button
                   type="button"
                   onClick={() => setMoTimHang(true)}
-                  className="h-7 rounded-md border border-[#cbd5e1] bg-white px-2.5 text-[11.5px] font-semibold text-[#334155]"
+                  className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
                   + Thêm hàng <span className="n opacity-70">F3</span>
                 </button>
-                <span className="text-[11px] text-[#64748b]">
+                <span className="text-[11px] text-[var(--pos-muted)]">
                   {lines.length} dòng · {lines.reduce((s, l) => s + l.qty, 0)} sp
                 </span>
               </div>
@@ -610,7 +610,7 @@ export function SupplierReturnScreen({
           )}
         </div>
 
-        <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+        <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
           <div className="relative">
             <PartnerCard
               partner={ncc}
@@ -629,14 +629,14 @@ export function SupplierReturnScreen({
             />
           </div>
 
-          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             {/*
               ⚠ Ô NÀY LÀ ĐƯỜNG DUY NHẤT LẤY ĐƯỢC "SỐ ĐÃ NHẬP" VÀ LÔ CỦA
                 PHIẾU GỐC, và nó KHÔNG lưu xuống — xem đầu tệp, mục 2.
                 Câu dưới ô nói thẳng điều đó để người dùng không tưởng
                 phiếu đang giữ đường về gốc.
             */}
-            <label htmlFor="sr-goc" className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="sr-goc" className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Phiếu nhập gốc
             </label>
             <select
@@ -644,7 +644,7 @@ export function SupplierReturnScreen({
               value={phieuGocId}
               onChange={(e) => napTuPhieuGoc(e.target.value)}
               disabled={!ncc}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px] disabled:bg-[#f8fafc] disabled:text-[#94a3b8]"
+              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)]"
             >
               <option value="">
                 {!ncc
@@ -657,13 +657,13 @@ export function SupplierReturnScreen({
                 <option key={p.id} value={p.id}>{p.code} · {p.date}</option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-[#94a3b8]">
+            <p className="mt-1 text-[11px] text-[var(--pos-dim)]">
               Nạp sẵn dòng hàng, giá nhập và số đã nhập. Đường nối này{" "}
               <strong>không lưu vào phiếu</strong> — mở lại phiếu sẽ không còn cột
               &ldquo;Đã nhập&rdquo;. 50 phiếu gần nhất.
             </p>
 
-            <div className="mt-3 border-t border-[#f1f5f9] pt-2">
+            <div className="mt-3 border-t border-[var(--pos-line-soft)] pt-2">
               <MoneyRow label="Tổng tiền hàng trả" value={t.goods} />
             </div>
             {/*
@@ -678,7 +678,7 @@ export function SupplierReturnScreen({
               amount={t.fee}
               onChange={(d) => setPhi(d.unit === phi.unit ? d : switchUnit(phi, t.goods))}
             />
-            <div className="flex items-center justify-between py-[5px] text-[11px] text-[#b45309]">
+            <div className="flex items-center justify-between py-[5px] text-[11px] text-[var(--pos-warn)]">
               <span />
               <span className="n">− {formatCurrency(t.fee)} trừ đi</span>
             </div>
@@ -697,7 +697,7 @@ export function SupplierReturnScreen({
               }
             />
 
-            <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Hình thức hoàn
             </p>
             {/*
@@ -716,8 +716,8 @@ export function SupplierReturnScreen({
                   onClick={() => setHoan(h)}
                   className={`h-8 flex-grow rounded-[7px] border text-[12px] ${
                     hoan === h
-                      ? "border-[#2563eb] bg-[#eff6ff] font-semibold text-[#1d4ed8]"
-                      : "border-[#cbd5e1] bg-white font-medium text-[#334155]"
+                      ? "border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] font-semibold text-[var(--pos-primary-deep)]"
+                      : "border-[var(--pos-edge)] bg-white font-medium text-[var(--pos-muted)]"
                   }`}
                 >
                   {HOAN_LABEL[h]}
@@ -725,20 +725,20 @@ export function SupplierReturnScreen({
               ))}
             </div>
             {hoan !== "cong-no" && (
-              <p className="mt-1 text-[11px] text-[#b45309]">
+              <p className="mt-1 text-[11px] text-[var(--pos-warn)]">
                 Phiếu vẫn ghi giảm công nợ NCC. Tiền mặt / chuyển khoản phải lập phiếu chi
                 riêng — màn này chưa làm được việc đó.
               </p>
             )}
 
-            <label htmlFor="sr-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="sr-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Lý do trả NCC
             </label>
             <select
               id="sr-lydo"
               value={lyDo}
               onChange={(e) => setLyDo(e.target.value)}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px]"
+              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px]"
             >
               {LY_DO.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
             </select>
@@ -749,22 +749,22 @@ export function SupplierReturnScreen({
               placeholder="Ghi chú phiếu trả…"
               value={ghiChu}
               onChange={(e) => setGhiChu(e.target.value)}
-              className="mt-2.5 h-8 w-full rounded-[7px] border border-[#cbd5e1] px-2 text-[12.5px] text-[#334155]"
+              className="mt-2.5 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] px-2 text-[12.5px] text-[var(--pos-muted)]"
             />
 
             {/* ⚠ Spec §8 mục 3 — ô riêng trên panel phiếu trả NCC. */}
-            <label htmlFor="sr-hddc" className="mt-2.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#64748b]">
+            <label htmlFor="sr-hddc" className="mt-2.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               HĐ điều chỉnh NCC
             </label>
             <input
               id="sr-hddc"
-              className="n mt-1 h-8 w-full rounded-[7px] border border-[#cbd5e1] px-2 text-[12.5px]"
+              className="n mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] px-2 text-[12.5px]"
               placeholder="Chưa có"
               value={hdDieuChinh}
               onChange={(e) => setHdDieuChinh(e.target.value)}
             />
             {/* ⚠ Bảng `supplier_returns` chưa có cột cho số này — nói ra. */}
-            <p className="mt-1 text-[11px] text-[#94a3b8]">
+            <p className="mt-1 text-[11px] text-[var(--pos-dim)]">
               Chưa có cột lưu số này; ghi vào đây chỉ để in trên phiếu.
             </p>
 

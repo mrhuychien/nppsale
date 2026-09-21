@@ -61,19 +61,25 @@ export function PosTopBar() {
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-5 bg-[var(--pos-bar)] px-4">
+      <div className="flex h-14 shrink-0 items-center gap-5 border-b border-[var(--pos-bar-line)] bg-[var(--pos-bar)] px-5">
+        {/*
+          ⚠ Ô LOGO GIỮ MÀU XANH KHI THANH ĐÃ TRẮNG. Bản thiết kế
+            21/09/2026 chuyển nền thanh sang trắng nhưng để lại đúng một
+            mảng xanh ở đây — bỏ nốt nó là thanh trên cùng không còn chỗ
+            nào nhận ra đây là app nào.
+        */}
         <button
           type="button"
           onClick={() => router.push("/pos")}
-          className="w-[150px] shrink-0 text-left"
+          className="flex shrink-0 items-center gap-3 text-left"
           title="Về trang mở chứng từ"
         >
-          <div className="truncate text-[13px] font-bold tracking-[0.02em] text-white">
-            npp.sale
-          </div>
-          <div className="mt-px truncate text-[11px] text-[var(--pos-bar-dim)]">
-            {user?.full_name || "Đang tải…"}
-          </div>
+          <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] bg-[var(--pos-primary)] text-[14px] font-extrabold text-white">
+            N
+          </span>
+          <span className="whitespace-nowrap text-[15px] font-extrabold text-[var(--pos-bar-fg)]">
+            POS bán hàng
+          </span>
         </button>
 
         {reg ? (
@@ -108,16 +114,16 @@ export function PosTopBar() {
                  ra, đừng im. */
               if (!firePosKey("F3")) router.push("/pos")
             }}
-            className="flex h-9 w-[360px] shrink-0 items-center gap-2 rounded-lg border border-[var(--pos-bar-line)] bg-[var(--pos-bar-deep)] px-2.5 text-left hover:border-white/60"
+            className="flex h-[38px] w-[360px] shrink-0 items-center gap-2 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-[var(--pos-card)] px-2.5 text-left hover:border-[var(--pos-primary-border)]"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-[var(--pos-bar-dim)]" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="shrink-0 text-[var(--pos-muted)]" aria-hidden>
               <circle cx="11" cy="11" r="7" />
               <path d="M20 20l-3.5-3.5" />
             </svg>
-            <span className="min-w-0 flex-grow truncate text-[13px] text-[var(--pos-bar-dim)]">
+            <span className="min-w-0 flex-grow truncate text-[13px] font-semibold text-[var(--pos-dim)]">
               Tìm hàng hóa, mã vạch…
             </span>
-            <span className="n shrink-0 rounded border border-[var(--pos-bar-line)] px-1.5 py-0.5 text-[10px] text-[var(--pos-bar-dim)]">
+            <span className="n shrink-0 rounded-[6px] bg-[var(--pos-line-soft)] px-2 py-0.5 text-[11px] font-extrabold text-[var(--pos-muted)]">
               F3
             </span>
           </button>
@@ -139,9 +145,9 @@ export function PosTopBar() {
             disabled={!inHref}
             title={inHref ? "Mở trang in" : "Chỉ in được chứng từ đã lưu (đơn hàng, hóa đơn)"}
             onClick={() => { if (inHref) window.open(inHref, "_blank") }}
-            className="flex h-8 w-8 items-center justify-center rounded-[7px] hover:bg-[var(--pos-bar-deep)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 9V3h12v6M6 18H4v-7h16v7h-2" />
               <path d="M6 14h12v7H6z" />
             </svg>
@@ -150,25 +156,33 @@ export function PosTopBar() {
             type="button"
             aria-label="Thiết lập hiển thị"
             onClick={() => setMoThietLap(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-[7px] hover:bg-[var(--pos-bar-deep)]"
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)]"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" aria-hidden>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
               <path d="M4 8h10M18 8h2M4 16h4M12 16h8" />
               <circle cx="16" cy="8" r="2" />
               <circle cx="10" cy="16" r="2" />
             </svg>
           </button>
-          <div className="ml-1 flex items-center gap-2 border-l border-[var(--pos-bar-line)] pl-2">
-            <div className="text-right">
-              <div className="text-[12px] font-semibold text-white">{user?.full_name || "—"}</div>
+          {/* ⚠ VẠCH NGĂN LÀ MỘT Ô CÓ CHIỀU CAO RIÊNG, không phải `border-l`
+              chạy hết chiều cao thanh — bản thiết kế để nó cao 24px, ngắn
+              hơn thanh, nên hai bên đọc như hai nhóm chứ không như hai cột. */}
+          <span className="mx-1 h-6 w-px shrink-0 bg-[var(--pos-bar-line)]" />
+          <div className="flex items-center gap-2">
+            {/* ⚠ Avatar trên nền TRẮNG dùng nền xanh nhạt + chữ xanh đậm.
+                Bản nền-xanh trước đây dùng chữ trắng; giữ nguyên là một
+                ô trắng trên nền trắng. */}
+            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--pos-primary-soft)] text-[11px] font-extrabold text-[var(--pos-primary-deep)]">
+              {viTat(user?.full_name || "")}
+            </div>
+            <div>
+              <div className="whitespace-nowrap text-[13px] font-bold text-[var(--pos-bar-fg)]">
+                {user?.full_name || "—"}
+              </div>
               {/* ⚠ Nhãn tiếng Việt, không phải mã vai `owner`. */}
-              <div className="text-[10px] text-[var(--pos-bar-dim)]">
+              <div className="text-[11px] font-semibold text-[var(--pos-bar-dim)]">
                 {user?.role ? ROLE_LABELS[user.role] ?? user.role : ""}
               </div>
-            </div>
-            {/* ⚠ Avatar trên nền xanh phải ĐẬM hơn nền, không cùng màu nền. */}
-            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--pos-bar-deep)] text-[11px] font-bold text-white">
-              {viTat(user?.full_name || "")}
             </div>
           </div>
         </div>
@@ -182,14 +196,14 @@ export function PosTopBar() {
       {notice && (
         <div
           role="status"
-          className="flex shrink-0 items-center gap-2 border-b border-[#bfdbfe] bg-[#eff6ff] px-4 py-2 text-[12.5px] font-medium text-[#1e3a8a]"
+          className="flex shrink-0 items-center gap-2 border-b border-[var(--pos-primary-border)] bg-[var(--pos-primary-faint)] px-4 py-2 text-[12.5px] font-medium text-[var(--pos-primary-deep)]"
         >
           <span className="flex-grow">{notice}</span>
           <button
             type="button"
             onClick={clearNotice}
             aria-label="Đóng thông báo"
-            className="shrink-0 rounded px-2 py-0.5 text-[#1d4ed8] hover:bg-[#dbeafe]"
+            className="shrink-0 rounded px-2 py-0.5 text-[var(--pos-primary-deep)] hover:bg-[var(--pos-primary-soft)]"
           >
             ×
           </button>

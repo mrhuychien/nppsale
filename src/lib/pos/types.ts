@@ -98,15 +98,22 @@ export interface PosBadge {
   tone: PosBadgeTone
 }
 
+/**
+ * ⚠ BIẾN, KHÔNG PHẢI MÃ MÀU — và cả ba nơi dùng bảng này (`/pos`,
+ *   `DocSubHeader`, `DocTabs`) đều nằm TRONG `.pos-scope`, nơi các biến
+ *   ấy được khai. Đem bảng này ra một màn ngoài `/pos` là ba nhãn mất
+ *   màu, không phải đổi màu — nhớ điều đó trước khi tái sử dụng.
+ *
+ * ⚠ XUẤT MỘT PHẦN DÙNG TÔNG XANH, không dùng amber. Spec §7.1 chốt như
+ *   vậy: amber ở đây lẫn với PHIẾU TẠM, mà hai trạng thái ấy cho phép
+ *   sửa khác hẳn nhau.
+ */
 export const POS_BADGE_STYLE: Record<PosBadgeTone, { bg: string; fg: string }> = {
-  tam: { bg: "#fef3c7", fg: "#92400e" },
-  /* ⚠ XUẤT MỘT PHẦN DÙNG TÔNG XANH, không dùng amber. Spec §7.1 chốt
-     `#1e40af` trên `#dbeafe` — amber ở đây lẫn với PHIẾU TẠM, mà hai
-     trạng thái ấy cho phép sửa khác hẳn nhau. */
-  "mot-phan": { bg: "#dbeafe", fg: "#1e40af" },
-  xong: { bg: "#f0fdf4", fg: "#166534" },
-  "dang-sua": { bg: "#fef3c7", fg: "#92400e" },
-  "da-kho": { bg: "#fef3c7", fg: "#92400e" },
+  tam: { bg: "var(--pos-warn-soft)", fg: "var(--pos-warn)" },
+  "mot-phan": { bg: "var(--pos-primary-soft)", fg: "var(--pos-primary-deep)" },
+  xong: { bg: "var(--pos-ok-soft)", fg: "var(--pos-ok)" },
+  "dang-sua": { bg: "var(--pos-warn-soft)", fg: "var(--pos-warn)" },
+  "da-kho": { bg: "var(--pos-warn-soft)", fg: "var(--pos-warn)" },
 }
 
 /** Phương thức thanh toán trên panel — spec §6 và §9. */

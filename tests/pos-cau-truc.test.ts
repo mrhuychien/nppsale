@@ -279,10 +279,20 @@ describe("dải delta không bịa số", () => {
     expect(STRIP).toMatch(/c\.body \?\?/)
   })
 
-  /** ⚠ `+` xanh, `−` đỏ — ba con số cùng màu là người đọc phải tự dò chiều. */
+  /**
+   * ⚠ `+` một màu, `−` một màu KHÁC — ba con số cùng màu là người đọc
+   * phải tự dò chiều.
+   *
+   * ⚠ CHỐT CANH "HAI MÀU KHÁC NHAU", KHÔNG CANH HAI MÃ MÀU. Bản đầu ghim
+   * thẳng `#16a34a` và `#dc2626`; đợt đổi giao diện 21/09/2026 thay mọi
+   * mã cứng bằng biến `--pos-*` và chốt đỏ oan, trong khi luật thì còn
+   * nguyên. Nay nó đọc CẶP token và chỉ đòi chúng đừng trùng nhau.
+   */
   it("chiều tăng giảm có màu riêng", () => {
-    expect(STRIP).toContain("#16a34a")
-    expect(STRIP).toContain("#dc2626")
+    expect(STRIP, "dải delta còn mã màu cứng").not.toMatch(/#[0-9a-fA-F]{6}/)
+    const tang = /--pos-ok/.test(STRIP)
+    const giam = /--pos-danger/.test(STRIP)
+    expect(tang && giam, "chiều tăng và chiều giảm không còn hai màu riêng").toBe(true)
   })
 })
 

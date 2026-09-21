@@ -114,14 +114,14 @@ export function SearchDropdown({
         type="button"
         aria-label="Đóng"
         onClick={onClose}
-        className="fixed inset-0 z-40 cursor-default bg-[#0f172a]/10"
+        className="fixed inset-0 z-40 cursor-default bg-[var(--pos-ink)]/10"
       />
       <div
-        className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_rgba(15,23,42,.13)]"
+        className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-[14px] border border-[var(--pos-line)] bg-white shadow-[0_10px_30px_rgba(15,23,42,.13)]"
         onKeyDown={onKeyDown}
       >
-        <div className="flex h-[46px] items-center gap-2 border-b border-[#f1f5f9] px-3">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <div className="flex h-[46px] items-center gap-2 border-b border-[var(--pos-line-soft)] px-3">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--pos-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-3.5-3.5" />
           </svg>
@@ -132,14 +132,14 @@ export function SearchDropdown({
             placeholder={placeholder}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="min-w-0 flex-grow text-[13px] text-[#0f172a] outline-none"
+            className="min-w-0 flex-grow text-[13px] text-[var(--pos-ink)] outline-none"
           />
-          <span className="n shrink-0 text-[11px] text-[#64748b]">{ketQua.length} kết quả</span>
+          <span className="n shrink-0 text-[11px] font-bold text-[var(--pos-muted)]">{ketQua.length} kết quả</span>
         </div>
 
         <div ref={listRef} className="max-h-[320px] overflow-y-auto">
           {ketQua.length === 0 && (
-            <p className="px-3.5 py-6 text-center text-[12.5px] text-[#64748b]">
+            <p className="px-3.5 py-6 text-center text-[12.5px] text-[var(--pos-muted)]">
               {emptyHint || "Không tìm thấy gì khớp."}
             </p>
           )}
@@ -151,13 +151,13 @@ export function SearchDropdown({
               onMouseEnter={() => setI(k)}
               onClick={() => { onPick(it); onClose() }}
               className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left ${
-                k === i ? "border-l-[3px] border-[#2563eb] bg-[#eff6ff] pl-[11px]" : "border-l-[3px] border-transparent pl-[11px]"
+                k === i ? "border-l-[3px] border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] pl-[11px]" : "border-l-[3px] border-transparent pl-[11px]"
               }`}
             >
               <span className="min-w-0 flex-grow">
-                <span className="block truncate text-[13px] font-medium text-[#0f172a]">{it.title}</span>
+                <span className="block truncate text-[13px] font-bold text-[var(--pos-ink)]">{it.title}</span>
                 {it.meta && (
-                  <span className={`n mt-px block truncate text-[11px] ${it.alert ? "text-[#dc2626]" : "text-[#64748b]"}`}>
+                  <span className={`n mt-px block truncate text-[11px] ${it.alert ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}>
                     {it.meta}
                   </span>
                 )}
@@ -167,18 +167,18 @@ export function SearchDropdown({
           ))}
         </div>
 
-        <div className="flex h-[42px] items-center gap-2 border-t border-[#f1f5f9] px-3.5">
+        <div className="flex h-[42px] items-center gap-2 border-t border-[var(--pos-line-soft)] px-3.5">
           {onCreate && (
             <button
               type="button"
               onClick={() => { onCreate(); onClose() }}
-              className="text-[12px] font-semibold text-[#2563eb]"
+              className="text-[12px] font-extrabold text-[var(--pos-primary-deep)]"
             >
               + {createLabel || "Thêm mới"}
             </button>
           )}
           <span className="flex-grow" />
-          <span className="text-[11px] text-[#64748b]">↑↓ chọn · Enter thêm</span>
+          <span className="text-[11px] text-[var(--pos-muted)]">↑↓ chọn · Enter thêm</span>
         </div>
       </div>
     </>

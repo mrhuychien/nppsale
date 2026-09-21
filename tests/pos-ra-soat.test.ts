@@ -639,31 +639,126 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
   })
 
   /**
-   * ⚠ HEADER XANH LAM, KHÔNG CÒN ĐEN. `#0f172a` là màu của bản xem
-   * thiết kế; cả app dùng `--primary: #2563eb`.
+   * ⚠ NỀN THANH LẤY TỪ TOKEN, VÀ CHỮ CŨNG VẬY — đây là một CẶP.
+   *
+   * Thanh trên cùng đã đổi nền hai lần: đen → xanh lam (chủ nhà chốt
+   * miệng đợt 9) → trắng (bản thiết kế 21/09/2026). Cả hai lần, cái
+   * suýt hỏng là cùng một thứ: đổi nền mà quên màu chữ. Bản nền xanh
+   * dùng `text-white` khắp nơi; để nguyên chuỗi ấy khi nền thành trắng
+   * là cả thanh biến mất — chữ trắng trên nền trắng.
+   *
+   * Nên chốt không hỏi "thanh màu gì". Nó hỏi: nền có lấy từ token
+   * không, và chữ có lấy từ token không.
    */
-  it("header dùng token xanh, không còn nền đen", () => {
+  it("nền và chữ của thanh đều lấy từ token, không ghim màu", () => {
     expect(BAR).toMatch(/bg-\[var\(--pos-bar\)\]/)
-    expect(/#0f172a/.test(BAR), "nền đen của bản thiết kế đã quay lại header").toBe(false)
-    expect(/#1e293b|#334155|#475569/.test(BAR), "còn sắc xám của thanh nền đen").toBe(false)
+    expect(BAR, "thanh header còn mã màu cứng").not.toMatch(/#[0-9a-fA-F]{6}/)
+    /**
+     * ⚠ `text-white` CHỈ ĐƯỢC NẰM TRÊN MỘT MẢNG MÀU ĐẶC. Ô logo là mảng
+     * ấy (nền `--pos-primary`). Mọi chỗ khác dùng `text-white` là đang
+     * giả định thanh có nền tối — đúng giả định đã chết hai lần.
+     */
+    const trang = BAR.match(/text-white/g) ?? []
+    expect(
+      trang.length,
+      "còn chữ trắng ngoài ô logo — thanh nay nền sáng, chữ trắng là chữ vô hình"
+    ).toBeLessThanOrEqual(1)
+    expect(BAR, "chữ trên thanh không lấy từ token").toMatch(/var\(--pos-bar-fg\)/)
   })
 
-  /** ⚠ Token thanh header khai trong `.pos-scope`, không rò ra `:root`. */
-  it("token thanh header nằm trong .pos-scope", () => {
+  /**
+   * ⚠ Token thanh header khai trong `.pos-scope`, không rò ra `:root` —
+   * khai ở `:root` là đổ biến của một màn lên mọi màn còn lại.
+   *
+   * ⚠ VÀ NỀN PHẢI ĐI KÈM CHỮ. Danh sách dưới đây không liệt kê mọi
+   * token của thanh (bản trước liệt kê, rồi đỏ oan khi `--pos-bar-deep`
+   * được gộp vào `--pos-primary-deep`); nó chỉ đòi đúng cặp không được
+   * thiếu một vế.
+   */
+  it("token thanh header nằm trong .pos-scope, và có đủ cặp nền–chữ", () => {
     const css = read("src/app/globals.css")
     const i = css.indexOf(".pos-scope {")
     const khoi = css.slice(i, css.indexOf("\n}", i))
-    for (const t of ["--pos-bar", "--pos-bar-deep", "--pos-bar-line", "--pos-bar-dim"]) {
+    for (const t of ["--pos-bar", "--pos-bar-fg", "--pos-bar-line"]) {
       expect(khoi, `thiếu token ${t}`).toContain(`${t}:`)
     }
     expect(/--pos-bar[a-z-]*\s*:/.test(css.slice(0, i)), "token thanh khai ngoài .pos-scope").toBe(false)
   })
 
-  /** ⚠ Dãy tab nằm TRÊN nền xanh — không được giữ màu chữ của nền đen. */
-  it("dãy tab đổi màu theo nền xanh", () => {
-    const tabs = code(read("src/components/pos/doc-tabs.tsx"))
-    expect(tabs).toMatch(/var\(--pos-bar-dim\)/)
-    expect(/#cbd5e1|#475569|#94a3b8/.test(tabs.replace(/text-\[#94a3b8\][^"]*hover:bg-\[#e2e8f0\]/, "")),
-      "tab còn màu chữ của thanh nền đen").toBe(false)
+  /**
+   * ⚠ KHÔNG MÃ MÀU CỨNG Ở BẤT KỲ ĐÂU TRONG `/pos`.
+   *
+   * Đây là luật đợt đổi giao diện 21/09/2026 dựng ra, và là luật sẽ mục
+   * trước nhất: trước đợt ấy `/pos` có 496 mã màu rải khắp mười chín
+   * tệp, nên bộ token `--pos-*` gần như không điều khiển được gì — đổi
+   * token mà màn hình không đổi. Một mã cứng lọt lại là bắt đầu đúng
+   * con đường ấy.
+   */
+  /**
+   * ⚠ `/pos` DÙNG CHUNG BỘ MÀU VỚI APP, KHÔNG PHẢI BỘ THỨ HAI.
+   *
+   * Đây là lý do tồn tại của đợt đổi giao diện 21/09/2026. Bản đầu của
+   * `/pos` lấy một dải slate riêng (`#0f172a`, `#64748b`, `#e2e8f0`) —
+   * mở `/pos` cạnh một tab `/orders` là thấy hai sản phẩm khác nhau.
+   * Bản thiết kế chủ nhà đưa dùng ĐÚNG các giá trị `:root`.
+   *
+   * ⚠ CHỐT TỰ ĐỔI HSL SANG RGB RỒI SO, không so chuỗi. `:root` khai
+   * HSL, `.pos-scope` khai hex — so chuỗi thì không bao giờ khớp, mà
+   * đọc mã hex trong CHÚ THÍCH của `:root` thì chỉ là so hai câu chữ
+   * với nhau: sửa biến mà quên sửa chú thích là chốt vẫn xanh.
+   *
+   * ⚠ CÓ SAI SỐ, VÌ HSL LÀM TRÒN. `222 83% 53%` quay về RGB ra `#245feb`
+   * chứ không đúng `#2563eb` — lệch 4 ở một kênh. Ngưỡng 8 vẫn bắt được
+   * mọi lần đổi màu thật (khác họ màu là lệch hàng chục).
+   */
+  it("bộ màu /pos trùng bộ màu app, không phải hệ thứ hai", () => {
+    const css = read("src/app/globals.css")
+    const hslToRgb = (h: number, s: number, l: number) => {
+      const c = (1 - Math.abs(2 * l - 1)) * s
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+      const m = l - c / 2
+      const [r, g, b] =
+        h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+        : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x]
+      return [r, g, b].map((v) => Math.round((v + m) * 255))
+    }
+    const docRoot = (ten: string) => {
+      const m = css.match(new RegExp(`\\n\\s*${ten}:\\s*([\\d.]+) ([\\d.]+)% ([\\d.]+)%`))
+      expect(m, `không đọc được ${ten} ở :root`).toBeTruthy()
+      return hslToRgb(Number(m![1]), Number(m![2]) / 100, Number(m![3]) / 100)
+    }
+    const i = css.indexOf(".pos-scope {")
+    const khoiPos = css.slice(i, css.indexOf("\n}", i))
+    const docPos = (ten: string) => {
+      const m = khoiPos.match(new RegExp(`${ten}:\\s*#([0-9a-fA-F]{6})`))
+      expect(m, `không đọc được ${ten} ở .pos-scope`).toBeTruthy()
+      const h = m![1]
+      return [0, 2, 4].map((k) => parseInt(h.slice(k, k + 2), 16))
+    }
+
+    /* Bốn vai chịu lực: chữ · màu chính · chữ phụ · màu báo lỗi. */
+    for (const [posVar, rootVar] of [
+      ["--pos-ink", "--foreground"],
+      ["--pos-primary", "--primary"],
+      ["--pos-muted", "--muted-foreground"],
+      ["--pos-danger", "--destructive"],
+    ]) {
+      const a = docPos(posVar)
+      const b = docRoot(rootVar)
+      const lech = Math.max(...a.map((v, k) => Math.abs(v - b[k])))
+      expect(
+        lech,
+        `${posVar} đã tách khỏi ${rootVar} — /pos quay lại thành một hệ màu riêng`
+      ).toBeLessThanOrEqual(8)
+    }
+  })
+
+  it("không tệp nào trong /pos ghim mã màu", () => {
+    const pham: string[] = []
+    for (const f of FILES) {
+      const hit = code(readFileSync(f, "utf-8")).match(/#[0-9a-fA-F]{6}/g)
+      if (hit) pham.push(`${f.slice(ROOT.length + 1)} (${hit.slice(0, 3).join(", ")})`)
+    }
+    expect(pham, "mã màu cứng quay lại /pos — bộ token thành mã chết").toEqual([])
   })
 })

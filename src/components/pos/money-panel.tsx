@@ -31,14 +31,14 @@ export function MoneyRow({
   prev?: number | null
 }) {
   const mau =
-    tone === "warn" ? "text-[#b45309]" : tone === "ok" ? "text-[#16a34a]" : tone === "muted" ? "text-[#64748b]" : "text-[#0f172a]"
+    tone === "warn" ? "text-[var(--pos-warn)]" : tone === "ok" ? "text-[var(--pos-ok)]" : tone === "muted" ? "text-[var(--pos-muted)]" : "text-[var(--pos-ink)]"
   const daDoi = prev != null && typeof value === "number" && prev !== value
   return (
     <div className="flex items-center justify-between py-[5px]">
-      <span className={`text-[13px] ${tone === "muted" ? "text-[#64748b]" : "text-[#334155]"}`}>{label}</span>
+      <span className="text-[13px] font-semibold text-[var(--pos-muted)]">{label}</span>
       <span className="text-right">
-        {daDoi && <span className="n block text-[10.5px] text-[#94a3b8] line-through">{formatCurrency(prev)}</span>}
-        <span className={`n text-[13.5px] ${strong ? "font-bold" : ""} ${mau}`}>
+        {daDoi && <span className="n block text-[10.5px] text-[var(--pos-dim)] line-through">{formatCurrency(prev)}</span>}
+        <span className={`n text-[14px] ${strong ? "font-extrabold" : "font-bold"} ${mau}`}>
           {typeof value === "number" ? formatCurrency(value) : value}
         </span>
       </span>
@@ -70,12 +70,12 @@ export function DocDiscountRow({
 }) {
   return (
     <div className="flex items-center gap-2 py-[5px]">
-      <label htmlFor={id} className="flex-grow text-[13px] text-[#334155]">
+      <label htmlFor={id} className="flex-grow text-[13px] text-[var(--pos-muted)]">
         {label}
       </label>
       <input
         id={id}
-        className="n h-[30px] w-[74px] rounded-md border border-[#cbd5e1] px-[7px] text-right text-[12.5px] text-[#0f172a]"
+        className="n h-[34px] w-[78px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2 text-right text-[14px] font-bold text-[var(--pos-ink)]"
         type="text"
         inputMode="decimal"
         value={discount.value === 0 ? "0" : String(discount.value)}
@@ -83,7 +83,7 @@ export function DocDiscountRow({
           onChange({ value: Number(e.target.value.replace(/[^\d.]/g, "")) || 0, unit: discount.unit })
         }
       />
-      <div className="flex shrink-0 gap-0.5 rounded-[7px] bg-[#f1f5f9] p-0.5">
+      <div className="flex shrink-0 gap-0.5 rounded-[7px] bg-[var(--pos-line-soft)] p-0.5">
         {(["vnd", "pct"] as const).map((u) => {
           const dang = discount.unit === u
           return (
@@ -97,8 +97,8 @@ export function DocDiscountRow({
               onClick={() => { if (!dang) onChange({ value: discount.value, unit: u }) }}
               className={`h-[26px] rounded-[5px] text-[11px] ${u === "vnd" ? "w-[38px]" : "w-7"} ${
                 dang
-                  ? "bg-white font-bold text-[#0f172a] shadow-[0_1px_2px_rgba(15,23,42,0.12)]"
-                  : "bg-transparent text-[#64748b]"
+                  ? "bg-white font-bold text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(15,23,42,0.12)]"
+                  : "bg-transparent text-[var(--pos-muted)]"
               }`}
             >
               {u === "vnd" ? "VND" : unitLabel("pct")}
@@ -106,7 +106,7 @@ export function DocDiscountRow({
           )
         })}
       </div>
-      <span className="n w-[84px] text-right text-[13.5px] text-[#0f172a]">{formatCurrency(amount)}</span>
+      <span className="n w-[84px] text-right text-[14px] font-bold text-[var(--pos-ink)]">{formatCurrency(amount)}</span>
     </div>
   )
 }
@@ -125,18 +125,18 @@ export function TotalsHero({
 }) {
   const t =
     tone === "green"
-      ? { bg: "#f0fdf4", border: "#bbf7d0", fg: "#166534", num: "#16a34a" }
-      : { bg: "#eff6ff", border: "#bfdbfe", fg: "#1e3a8a", num: "#1d4ed8" }
+      ? { bg: "var(--pos-ok-soft)", border: "var(--pos-ok-border)", fg: "var(--pos-ok)", num: "var(--pos-ok)" }
+      : { bg: "var(--pos-primary-faint)", border: "var(--pos-primary-border)", fg: "var(--pos-primary-deep)", num: "var(--pos-primary-deep)" }
   return (
     <div
-      className="mt-2.5 rounded-[10px] border px-3.5 py-3"
+      className="mt-2.5 rounded-[12px] border px-3.5 py-3"
       style={{ background: t.bg, borderColor: t.border }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[13.5px] font-semibold" style={{ color: t.fg }}>
+        <span className="text-[14px] font-extrabold" style={{ color: t.fg }}>
           {label}
         </span>
-        <span className="n text-[24px] font-bold" style={{ color: t.num }}>
+        <span className="n text-[24px] font-extrabold" style={{ color: t.num }}>
           {formatCurrency(value)}
         </span>
       </div>
@@ -171,10 +171,10 @@ export function PaymentButtons({
             type="button"
             aria-pressed={dang}
             onClick={() => onChange(m)}
-            className={`h-8 flex-grow rounded-[7px] border text-[12px] ${
+            className={`h-[34px] flex-grow rounded-[10px] border-[1.5px] text-[12px] font-bold ${
               dang
-                ? "border-[#2563eb] bg-[#eff6ff] font-semibold text-[#1d4ed8]"
-                : "border-[#cbd5e1] bg-white font-medium text-[#334155]"
+                ? "border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] font-semibold text-[var(--pos-primary-deep)]"
+                : "border-[var(--pos-edge)] bg-white font-medium text-[var(--pos-muted)]"
             }`}
           >
             {POS_PAY_LABEL[m]}
@@ -186,7 +186,7 @@ export function PaymentButtons({
         aria-label="Chia nhiều phương thức"
         onClick={onSplit}
         disabled={!onSplit}
-        className="h-8 w-8 shrink-0 rounded-[7px] border border-[#cbd5e1] bg-white text-[14px] leading-none text-[#334155] disabled:text-[#cbd5e1]"
+        className="h-[34px] w-[34px] shrink-0 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white text-[14px] leading-none text-[var(--pos-muted)] disabled:text-[var(--pos-edge)]"
       >
         ⋮
       </button>
@@ -210,7 +210,7 @@ export function CashChips({
           key={v}
           type="button"
           onClick={() => onPick(v)}
-          className="n h-7 flex-grow rounded-md border border-[#e2e8f0] bg-[#f8fafc] text-[11.5px] text-[#334155] hover:border-[#cbd5e1]"
+          className="n h-[30px] flex-grow rounded-[8px] border-[1.5px] border-[var(--pos-line)] bg-[var(--pos-head)] text-[11.5px] font-bold text-[var(--pos-muted)] hover:border-[var(--pos-edge)]"
         >
           {formatCurrency(v)}
         </button>
@@ -242,17 +242,17 @@ export function PanelButton({
 }) {
   const v =
     variant === "primary"
-      ? "border-none bg-[#2563eb] text-[14px] font-bold text-white disabled:bg-[#93c5fd]"
+      ? "border-none bg-[var(--pos-primary)] text-[14px] font-bold text-white disabled:bg-[var(--pos-primary-border)]"
       : variant === "warn"
-        ? "border border-[#f59e0b] bg-white text-[13px] font-semibold text-[#92400e]"
-        : "border border-[#cbd5e1] bg-white text-[13px] font-semibold text-[#334155]"
+        ? "border border-[var(--pos-warn)] bg-white text-[13px] font-semibold text-[var(--pos-warn)]"
+        : "border border-[var(--pos-edge)] bg-white text-[13px] font-semibold text-[var(--pos-muted)]"
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`h-[46px] rounded-[10px] ${v} ${width ? "" : "flex-grow"} disabled:cursor-not-allowed`}
+      className={`h-[46px] rounded-[12px] ${v} ${width ? "" : "flex-grow"} disabled:cursor-not-allowed`}
       style={width ? { width } : undefined}
     >
       {children}

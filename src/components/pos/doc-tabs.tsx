@@ -32,10 +32,18 @@ export function DocTabs() {
         {tabs.map((t) => {
           const dang = t.key === activeKey
           return (
+            /*
+              ⚠ VIÊN THUỐC CÓ VIỀN, KHÔNG PHẢI MẢNG NỀN. Bản thiết kế
+                21/09/2026 vẽ tab là viên bo tròn viền 1.5px: trên thanh
+                TRẮNG, một tab chỉ tô nền nhạt thì mép nó tan vào thanh và
+                không đếm được đang mở mấy chứng từ.
+            */
             <div
               key={t.key}
-              className={`flex h-[34px] shrink-0 items-center rounded-lg ${
-                dang ? "bg-white pl-3 pr-1.5" : "px-3"
+              className={`flex h-[34px] shrink-0 items-center gap-2 rounded-full border-[1.5px] ${
+                dang
+                  ? "border-[var(--pos-primary-border)] bg-[var(--pos-primary-soft)] pl-3 pr-1.5"
+                  : "border-[var(--pos-edge)] bg-[var(--pos-card)] px-3"
               }`}
             >
               <button
@@ -43,8 +51,8 @@ export function DocTabs() {
                 onClick={() => activate(t.key)}
                 aria-current={dang ? "page" : undefined}
                 title={POS_DOC_LABEL[t.docType]}
-                className={`flex items-center gap-[7px] text-[13px] ${
-                  dang ? "font-semibold text-[#0f172a]" : "font-medium text-[var(--pos-bar-dim)]"
+                className={`flex items-center gap-[7px] text-[13px] font-bold ${
+                  dang ? "text-[var(--pos-primary-deep)]" : "text-[var(--pos-muted)]"
                 }`}
               >
                 <span
@@ -61,12 +69,10 @@ export function DocTabs() {
                 */}
                 {t.dirty && (
                   <span
-                    /* ⚠ Tab chưa chọn nằm trên nền XANH — chip nâu sẫm của
-                       bản nền đen gần như chìm hẳn ở đó. Amber sáng trên
-                       chữ nâu đọc được trên cả hai nền. */
-                    className={`shrink-0 rounded px-1.5 py-px text-[10px] font-bold ${
-                      dang ? "bg-[#fef3c7] text-[#92400e]" : "bg-[#fcd34d] text-[#78350f]"
-                    }`}
+                    /* ⚠ Thanh nay nền TRẮNG nên hai trạng thái dùng CHUNG
+                       một cặp màu được — bản trước phải tách hai vì tab
+                       chưa chọn nằm trên nền xanh đậm. */
+                    className="shrink-0 rounded-[6px] bg-[var(--pos-warn-soft)] px-1.5 py-px text-[10px] font-extrabold text-[var(--pos-warn)]"
                   >
                     chưa lưu
                   </span>
@@ -77,7 +83,7 @@ export function DocTabs() {
                   type="button"
                   onClick={() => close(t.key)}
                   aria-label={`Đóng tab ${t.label}`}
-                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[15px] leading-none text-[#94a3b8] hover:bg-[#e2e8f0] hover:text-[#334155]"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[15px] leading-none text-[var(--pos-primary-deep)] hover:bg-[var(--pos-card)]"
                 >
                   ×
                 </button>
@@ -92,7 +98,7 @@ export function DocTabs() {
           aria-label="Mở chứng từ mới"
           aria-expanded={moMenu}
           onClick={() => setMoMenu((v) => !v)}
-          className="ml-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--pos-bar-line)] text-[16px] leading-none text-[var(--pos-bar-dim)] hover:border-white hover:text-white"
+          className="ml-1 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-[var(--pos-edge-dash)] bg-[var(--pos-card)] text-[18px] font-bold leading-none text-[var(--pos-primary-deep)] hover:border-[var(--pos-primary)] hover:bg-[var(--pos-primary-soft)]"
         >
           +
         </button>
@@ -104,13 +110,13 @@ export function DocTabs() {
               className="fixed inset-0 z-40 cursor-default"
               onClick={() => setMoMenu(false)}
             />
-            <div className="absolute right-0 top-9 z-50 w-[200px] overflow-hidden rounded-[10px] border border-[#e2e8f0] bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,.18)]">
+            <div className="absolute right-0 top-9 z-50 w-[200px] overflow-hidden rounded-[10px] border border-[var(--pos-line)] bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,.18)]">
               {LOAI_MO_MOI.map((k) => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => { setMoMenu(false); openNew(k) }}
-                  className="flex w-full items-center gap-2 px-3 py-[7px] text-left text-[12.5px] text-[#334155] hover:bg-[#f8fafc]"
+                  className="flex w-full items-center gap-2 px-3 py-[7px] text-left text-[12.5px] text-[var(--pos-muted)] hover:bg-[var(--pos-head)]"
                 >
                   <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: POS_DOT[k] }} />
                   {POS_DOC_LABEL[k]}

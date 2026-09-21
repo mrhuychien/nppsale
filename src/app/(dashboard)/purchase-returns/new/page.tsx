@@ -32,6 +32,7 @@ import {
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import { saveReturnLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 export default function NewPurchaseReturnPage() {
@@ -74,17 +75,15 @@ export default function NewPurchaseReturnPage() {
           .eq("org_id", user.org_id)
           .eq("is_active", true)
           .order("name"),
-        supabase
-          .from("products")
-          .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)")
-          .eq("org_id", user.org_id)
-          .order("name"),
+        loadCatalogue<ReceiptProduct>(supabase, "id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)", { orgId: user.org_id }),
       ])
       if (cancelled) return
-      const qErr = ([supRes, prodRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr = ([supRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[purchase-returns/new] truy vấn lỗi:", qErr.message)
-      const prods = (prodRes.data as ReceiptProduct[]) || []
+      /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
+       không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
+    const prods = prodRes.rows
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */

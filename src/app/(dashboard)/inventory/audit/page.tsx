@@ -17,6 +17,7 @@ import { viIncludes, viNormalize } from "@/lib/search"
 import {
   Search, Package, ChevronRight, Warehouse, AlertCircle,
 } from "lucide-react"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import type { Product, Batch } from "@/types"
 
 type ProductWithStock = Product & {
@@ -38,7 +39,13 @@ export default function InventoryAuditPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const [prodRes, batchRes] = await Promise.all([
-      supabase.from("products").select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id").order("name"),
+      /* ⚠ KÉO ĐỦ DANH MỤC. Màn tra soát liệt kê TOÀN BỘ mã hàng; đọc
+         bằng `.select()` trơn là PostgREST cắt ở 1.000 dòng và 700 mã
+         cuối không tra soát được — xem `loadCatalogue`. */
+      loadCatalogue<Product>(
+        supabase,
+        "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id"
+      ),
       // Cộng giá trị tồn → phải lấy đủ.
       fetchAllForAggregate<Pick<Batch, "product_id" | "qty_on_hand" | "unit_cost">>((from, to) =>
         supabase
@@ -49,10 +56,7 @@ export default function InventoryAuditPage() {
       ),
     ])
     if (batchRes.error) console.error("[inventory/audit] truy vấn lỗi:", batchRes.error)
-    const qErr = ([prodRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[inventory/audit] truy vấn lỗi:", qErr.message)
-    const prodList = (prodRes.data as Product[]) || []
+    const prodList = prodRes.rows
     const batchList = batchRes.rows
 
     const stockByProduct: Record<string, { on_hand: number; value: number; batch_count: number }> = {}

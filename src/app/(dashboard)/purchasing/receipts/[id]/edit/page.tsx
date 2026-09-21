@@ -44,6 +44,7 @@ import {
 import { percentToRatio, ratioToPercent } from "@/lib/purchasing/return-form"
 import { saveReceiptLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 export default function EditPurchaseReceiptPage() {
@@ -78,9 +79,7 @@ export default function EditPurchaseReceiptPage() {
     const [supRes, prodRes, hRes, lRes] = await Promise.all([
       supabase.from("suppliers").select("id, name, code")
         .eq("org_id", user.org_id).eq("is_active", true).order("name"),
-      supabase.from("products")
-        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)")
-        .eq("org_id", user.org_id).order("name"),
+      loadCatalogue<ReceiptProduct>(supabase, "id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)", { orgId: user.org_id }),
       supabase.from("purchase_invoices")
         .select("id, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, vat_override, notes, status")
         .eq("id", id).maybeSingle(),
@@ -88,7 +87,9 @@ export default function EditPurchaseReceiptPage() {
         .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, notes, sort_order")
         .eq("invoice_id", id).order("sort_order"),
     ])
-    const prods = (prodRes.data as ReceiptProduct[]) || []
+    /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
+       không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
+    const prods = prodRes.rows
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
     /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */

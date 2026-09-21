@@ -31,6 +31,7 @@ import {
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import { saveReturnLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier, SupplierReturn } from "@/types"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 /** Dòng đọc lên từ `supplier_return_lines` — đúng các cột đang chọn. */
@@ -89,11 +90,7 @@ export default function EditPurchaseReturnPage() {
         .eq("org_id", user.org_id)
         .eq("is_active", true)
         .order("name"),
-      supabase
-        .from("products")
-        .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)")
-        .eq("org_id", user.org_id)
-        .order("name"),
+      loadCatalogue<ReceiptProduct>(supabase, "id, name, sku, barcode, base_unit, cost_price, vat_rate, primary_supplier_id, units:product_units(*)", { orgId: user.org_id }),
       supabase
         .from("supplier_returns")
         .select("id, supplier_id, return_date, warehouse_zone, reason, discount, vat_override, notes, status")
@@ -105,10 +102,12 @@ export default function EditPurchaseReturnPage() {
         .eq("return_id", id)
         .order("sort_order"),
     ])
-    const qErr = ([supRes, prodRes, hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr = ([supRes, hdrRes, lineRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[purchase-returns/edit] truy vấn lỗi:", qErr.message)
-    const prods = (prodRes.data as ReceiptProduct[]) || []
+    /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
+       không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
+    const prods = prodRes.rows
     setSuppliers((supRes.data as Supplier[]) || [])
     setProducts(prods)
     void fillExtras(prods)

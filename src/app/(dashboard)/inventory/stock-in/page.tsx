@@ -28,6 +28,7 @@ import {
   vnToday,
 } from "@/lib/inventory/opening-stock"
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import Link from "next/link"
 import {
@@ -137,19 +138,26 @@ export default function StockInPage() {
   // Refetch products and add the newest one to the next empty line so the
   // user can immediately keep filling the import.
   const refetchProductsAndPickLatest = async () => {
-    const { data, error: dataErr } = await supabase
-      .from("products")
-      // cost_price = giá vốn mặc định của sản phẩm (nhập từ file Excel sản
-      // phẩm). Trước đây không lấy về, nên ô "Giá vốn" đành mồi bằng giá
-      // BÁN — lãi gộp ra 0 mà không ai hay.
-      .select("id, sku, name, base_unit, barcode, vat_rate, cost_price, price_lists(*), units:product_units(*)")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-    if (dataErr) console.error("[inventory/stock-in] truy vấn lỗi:", dataErr.message)
-    const list = (data as ProductWithRelations[]) || []
+    /**
+     * ⚠ KÉO ĐỦ DANH MỤC — xem `loadCatalogue`.
+     *
+     * ⚠ MÃ VỪA TẠO KHÔNG CÒN ĐỨNG ĐẦU DANH SÁCH. Bản cũ sắp theo
+     *   `created_at DESC` rồi lấy phần tử đầu làm "mã vừa tạo"; nay
+     *   danh mục sắp theo TÊN, nên phải tự tìm mã mới nhất thay vì tin
+     *   vào vị trí.
+     */
+    const res = await loadCatalogue<ProductWithRelations & { created_at?: string }>(
+      supabase,
+      "id, sku, name, base_unit, barcode, vat_rate, cost_price, created_at, price_lists(*), units:product_units(*)",
+      { activeOnly: true }
+    )
+    const list = res.rows
     setProducts(list)
-    if (list.length > 0) {
-      addProductLine(list[0].id)
+    const newest = list
+      .slice()
+      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0]
+    if (newest) {
+      addProductLine(newest.id)
     }
     setProductSearch("")
   }
@@ -157,20 +165,21 @@ export default function StockInPage() {
   useEffect(() => {
     async function fetchData() {
       const [prodRes, supRes] = await Promise.all([
-        supabase
-          .from("products")
-          // cost_price = giá vốn mặc định của sản phẩm (nhập từ file Excel sản
-      // phẩm). Trước đây không lấy về, nên ô "Giá vốn" đành mồi bằng giá
-      // BÁN — lãi gộp ra 0 mà không ai hay.
-      .select("id, sku, name, base_unit, barcode, vat_rate, cost_price, price_lists(*), units:product_units(*)")
-          .eq("status", "active")
-          .order("name"),
+        // cost_price = giá vốn mặc định của sản phẩm (nhập từ file Excel
+        // sản phẩm). Trước đây không lấy về, nên ô "Giá vốn" đành mồi
+        // bằng giá BÁN — lãi gộp ra 0 mà không ai hay.
+        loadCatalogue<ProductWithRelations>(
+          supabase,
+          "id, sku, name, base_unit, barcode, vat_rate, cost_price, price_lists(*), units:product_units(*)",
+          { activeOnly: true }
+        ),
         supabase.from("suppliers").select("id, code, name").eq("is_active", true).order("name"),
       ])
-      const qErr = ([prodRes, supRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr = ([supRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[inventory/stock-in] truy vấn lỗi:", qErr.message)
-      setProducts((prodRes.data as ProductWithRelations[]) || [])
+      /* ⚠ `rows` — danh mục kéo ĐỦ theo trang, xem `loadCatalogue`. */
+      setProducts(prodRes.rows)
       // Suppliers might fail silently if migration 006 not yet run - that's OK
       if (supRes.data) setSuppliers(supRes.data as Supplier[])
       setProductsLoading(false)

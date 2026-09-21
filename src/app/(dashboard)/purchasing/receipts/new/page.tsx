@@ -31,6 +31,7 @@ import {
 import { percentToRatio } from "@/lib/purchasing/return-form"
 import { saveReceiptLines } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 export default function NewPurchaseReceiptPage() {
@@ -64,15 +65,15 @@ export default function NewPurchaseReceiptPage() {
       const [supRes, prodRes] = await Promise.all([
         supabase.from("suppliers").select("id, name, code")
           .eq("org_id", user.org_id).eq("is_active", true).order("name"),
-        supabase.from("products")
-          .select("id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)")
-          .eq("org_id", user.org_id).order("name"),
+        loadCatalogue<ReceiptProduct>(supabase, "id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)", { orgId: user.org_id }),
       ])
       if (cancelled) return
-      const e = ([supRes, prodRes] as Array<{ error?: { message?: string } | null }>)
+      const e = ([supRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (e) console.error("[purchasing/receipts/new] truy vấn lỗi:", e.message)
-      const prods = (prodRes.data as ReceiptProduct[]) || []
+      /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
+       không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
+    const prods = prodRes.rows
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */

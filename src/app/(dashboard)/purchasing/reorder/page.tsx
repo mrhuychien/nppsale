@@ -62,10 +62,20 @@ export default function ReorderPage() {
     setLoading(true)
 
     /**
-     * ⚠ BA CÂU ĐỌC, HAI TRONG SỐ ĐÓ QUA `fetchAllForAggregate`.
-     *   PostgREST cắt ở 1.000 dòng. Dòng đơn hàng và lô hàng đều vượt
-     *   xa con số đó ở một nhà phân phối thật — cắt ở đây là đề xuất
-     *   đặt hàng THIẾU, và không có gì trên màn nói rằng nó thiếu.
+     * ⚠ BỐN CÂU ĐỌC, CẢ BỐN QUA `fetchAllForAggregate`. PostgREST cắt ở
+     *   1.000 dòng — cắt ở đây là đề xuất đặt hàng THIẾU, và một bảng
+     *   thiếu trông y hệt một bảng đủ.
+     *
+     * ⚠ KỂ CẢ CÂU ĐỌC DANH MỤC, và đây là lỗi CÓ THẬT đã lọt ra màn
+     *   hình (chủ nhà báo 21/09/2026: "Sao đề xuất đặt hàng lại ra toàn
+     *   Sản phẩm đã xóa là sao?"). Bản đầu đọc `products` bằng một
+     *   `.select()` trơn, nên với danh mục 1.700 mã thì 700 mã cuối
+     *   KHÔNG có trong bộ nhớ — và mọi dòng đơn trỏ tới chúng bị gán
+     *   nhãn "Sản phẩm đã xoá". Bảng đề xuất vẫn đủ số lượng, chỉ là
+     *   không còn tên hàng, mã SKU, đơn vị hay NCC nào để mà đặt.
+     *
+     * ⚠ PHÂN TRANG THEO `id`, KHÔNG THEO `name`. Mốc chia trang phải
+     *   DUY NHẤT; hai mặt hàng trùng tên là các trang lặp/sót nhau.
      */
     const [lineRes, batchRes, prodRes, supRes] = await Promise.all([
       fetchAllForAggregate<DemandLine & { order?: { status: string } | null }>((from, to) =>
@@ -87,12 +97,22 @@ export default function ReorderPage() {
           .order("id")
           .range(from, to)
       ),
-      supabase
-        .from("products")
-        .select("id, name, sku, base_unit, primary_supplier_id")
-        .eq("org_id", user.org_id)
-        .order("name"),
-      supabase.from("suppliers").select("id, name").eq("org_id", user.org_id),
+      fetchAllForAggregate<ProdRow>((from, to) =>
+        supabase
+          .from("products")
+          .select("id, name, sku, base_unit, primary_supplier_id", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .order("id")
+          .range(from, to)
+      ),
+      fetchAllForAggregate<{ id: string; name: string }>((from, to) =>
+        supabase
+          .from("suppliers")
+          .select("id, name", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .order("id")
+          .range(from, to)
+      ),
     ])
 
     const stock: StockByProduct = {}
@@ -100,24 +120,21 @@ export default function ReorderPage() {
       stock[b.product_id] = (stock[b.product_id] ?? 0) + Number(b.qty_on_hand ?? 0)
     }
     const supplierNames: Record<string, string> = {}
-    for (const s of ((supRes.data as Array<{ id: string; name: string }>) || [])) {
+    for (const s of supRes.rows) {
       supplierNames[s.id] = s.name
     }
 
     setRows(
-      buildReorder(
-        lineRes.rows,
-        stock,
-        (prodRes.data as ProdRow[]) || [],
-        supplierNames
-      )
+      buildReorder(lineRes.rows, stock, prodRes.rows, supplierNames)
     )
     /**
      * ⚠ ĐỌC BỊ CẮT THÌ NÓI RA. Một bảng đề xuất thiếu trông y hệt một
      *   bảng đề xuất đủ — người mua hàng đặt theo nó rồi hết hàng, và
      *   không ai biết vì sao.
      */
-    setTruncated(lineRes.truncated || batchRes.truncated)
+    setTruncated(
+      lineRes.truncated || batchRes.truncated || prodRes.truncated || supRes.truncated
+    )
     setLoading(false)
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 

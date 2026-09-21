@@ -40,6 +40,7 @@ import {
   ISSUE_REASONS, ISSUE_ZONES, destZonesFor, isTransfer,
   type IssueLine, type IssueProduct,
 } from "@/lib/inventory/stock-issue"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 export default function StockIssuePage() {
@@ -69,19 +70,14 @@ export default function StockIssuePage() {
   useEffect(() => {
     if (!user?.org_id) return
     let cancelled = false
-    supabase
-      .from("products")
-      .select("id, name, sku, barcode, base_unit, units:product_units(*)")
-      .eq("org_id", user.org_id)
-      .order("name")
-      .then(({ data, error }) => {
-        if (cancelled) return
-        if (error) {
-          console.error("[stock-issue] nạp danh mục lỗi:", error.message)
-          return
-        }
-        setProducts(((data as unknown) as IssueProduct[]) || [])
-      })
+    /* ⚠ KÉO ĐỦ DANH MỤC, không dừng ở 1.000 mã đầu — xem `loadCatalogue`. */
+    loadCatalogue<IssueProduct>(
+      supabase, "id, name, sku, barcode, base_unit, units:product_units(*)",
+      { orgId: user.org_id }
+    ).then((res) => {
+      if (cancelled) return
+      setProducts(res.rows)
+    })
     return () => { cancelled = true }
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 

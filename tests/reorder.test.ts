@@ -206,15 +206,58 @@ describe("chỉ tính đơn còn hiệu lực", () => {
 
 describe("màn đề xuất đặt hàng", () => {
   /**
-   * ⚠ PHẢI ĐỌC ĐỦ. PostgREST cắt ở 1.000 dòng; dòng đơn hàng và lô hàng
-   * đều vượt xa con số đó ở một nhà phân phối thật. Cắt là đề xuất
-   * THIẾU, và một bảng thiếu trông y hệt một bảng đủ.
+   * ⚠ PHẢI ĐỌC ĐỦ. PostgREST cắt ở 1.000 dòng; dòng đơn hàng, lô hàng
+   * VÀ DANH MỤC đều vượt xa con số đó ở một nhà phân phối thật.
+   *
+   * ⚠ CHỐT NÀY TỪNG NÓI DỐI, VÀ LỖI ĐÃ LỌT RA MÀN HÌNH. Bản đầu đếm số
+   * lần xuất hiện của CHUỖI `fetchAllForAggregate` và đòi ≥ 3 — nhưng
+   * DÒNG `import` cũng là một lần xuất hiện. Hai câu đọc thật cộng một
+   * dòng import là vừa đủ 3, nên chốt xanh trong khi câu đọc `products`
+   * vẫn là `.select()` trơn. Kết quả: với danh mục 1.700 mã thì 700 mã
+   * cuối không có trong bộ nhớ, và chủ nhà mở màn ra thấy "toàn Sản
+   * phẩm đã xoá".
+   *
+   * Nay đếm đúng LỜI GỌI (`fetchAllForAggregate<`), và gọi tên TỪNG
+   * bảng phải đi qua nó — không còn chỗ cho một câu đọc trơn nào.
    */
-  it("đọc dòng đơn và lô hàng qua fetchAllForAggregate", () => {
-    const n = (PAGE.match(/fetchAllForAggregate/g) ?? []).length
-    expect(n, `mới ${n} câu đọc dùng phép đọc đủ — còn câu bị cắt ở 1.000 dòng`).toBeGreaterThanOrEqual(3)
-    expect(PAGE, "câu đọc phân trang thiếu mốc sắp xếp — các trang sẽ lặp/sót")
-      .toContain('.order("id")')
+  it("cả bốn câu đọc đều qua fetchAllForAggregate", () => {
+    const calls = (PAGE.match(/fetchAllForAggregate</g) ?? []).length
+    expect(
+      calls,
+      `mới ${calls} LỜI GỌI phép đọc đủ — còn câu đọc bị cắt ở 1.000 dòng`
+    ).toBe(4)
+
+    /* Mỗi bảng phải nằm TRONG một lời gọi, không đứng một mình. */
+    for (const table of ["sales_order_lines", "batches", "products", "suppliers"]) {
+      const at = PAGE.indexOf(`.from("${table}")`)
+      expect(at, `không thấy câu đọc bảng ${table}`).toBeGreaterThan(-1)
+      const before = PAGE.slice(Math.max(0, at - 260), at)
+      expect(
+        before.includes("fetchAllForAggregate<"),
+        `câu đọc bảng ${table} KHÔNG qua fetchAllForAggregate — sẽ bị cắt ở 1.000 dòng`
+      ).toBe(true)
+    }
+
+    /**
+     * ⚠ MỐC CHIA TRANG PHẢI DUY NHẤT. `.order("name")` trên `products`
+     * là hai mặt hàng trùng tên làm các trang lặp/sót nhau.
+     */
+    const orders = (PAGE.match(/\.order\("([a-z_]+)"\)/g) ?? [])
+    expect(orders.length, "không thấy mốc sắp xếp nào").toBeGreaterThanOrEqual(4)
+    for (const o of orders) {
+      expect(o, `mốc chia trang không duy nhất: ${o}`).toBe('.order("id")')
+    }
+  })
+
+  /**
+   * ⚠ ĐỌC BỊ CẮT Ở BẤT KỲ CÂU NÀO CŨNG LÀ BẢNG THIẾU. Bản đầu chỉ ngấm
+   * cờ của hai câu; câu `products` bị cắt thì màn im lặng và hiện
+   * "Sản phẩm đã xoá" như thể mã ấy đã bị xoá thật.
+   */
+  it("cờ đọc-bị-cắt gom từ CẢ BỐN câu đọc", () => {
+    for (const r of ["lineRes", "batchRes", "prodRes", "supRes"]) {
+      expect(PAGE, `cờ đọc-bị-cắt bỏ quên ${r}`).toContain(`${r}.truncated`)
+    }
   })
 
   /** ⚠ Đọc bị cắt thì NÓI RA, đừng để người mua hàng đặt theo bảng thiếu. */

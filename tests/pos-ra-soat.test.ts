@@ -130,11 +130,37 @@ describe("phím tắt chạy ngay khi mở trang", () => {
     expect(/(document|window)\.addEventListener\(\s*["']keydown/.test(S)).toBe(false)
   })
 
-  /** ⚠ Ô tìm ở topbar phải dẫn tới dropdown thật, không phải một `<input>` chết. */
-  it("ô tìm topbar kích F3 của màn đang mở, không phải input rời", () => {
-    const t = code(read("src/components/pos/pos-top-bar.tsx"))
-    expect(t).toMatch(/firePosKey\("F3"\)/)
-    expect(/id="pos-tim-hang"/.test(t), "input tìm không nối vào đâu đã quay lại").toBe(false)
+  /**
+   * ⚠ Ô TÌM PHẢI NỐI VÀO SỔ ĐĂNG KÝ CỦA MÀN ĐANG MỞ, không phải một
+   * `<input>` chết. Bản đầu của ô ấy đúng là một `<input>` không nối
+   * vào đâu: gõ vào thì chữ hiện ra rồi không có gì xảy ra.
+   *
+   * ⚠ CHỐT KHÔNG GHIM VỊ TRÍ NỮA. Bản trước soi thẳng `pos-top-bar.tsx`;
+   * ô tìm đã chuyển sang cột phải (chủ nhà chốt *"2 bên phải"*) và chốt
+   * đỏ oan trong khi luật còn nguyên. Nay nó tìm component NÀO đang vẽ
+   * ô ấy, rồi kiểm chỗ nối.
+   */
+  it("ô tìm nối vào sổ đăng ký của màn đang mở, không phải input rời", () => {
+    const veO = FILES.filter((f) => /POS_PICKER_ID/.test(code(readFileSync(f, "utf-8"))))
+      .filter((f) => !f.endsWith("product-search.tsx"))
+    expect(veO.length, "không tệp nào vẽ ô tìm — hoặc nhiều hơn một tệp vẽ").toBe(1)
+    const tep = code(readFileSync(veO[0], "utf-8"))
+    /**
+     * ⚠ CẮT ĐÚNG THÂN HÀM VẼ Ô, ĐỪNG SOI CẢ TỆP. Bản đầu của chốt này
+     * soi cả tệp và một đột biến gỡ hẳn `if (!reg) return null` khỏi ô
+     * tìm vẫn LỌT — vì cái nút ở cuối tệp cũng có đúng dòng ấy. Chốt
+     * xanh, còn màn không có gì để thêm thì mọc ra một ô rỗng.
+     */
+    const i = tep.indexOf("export function PosProductSearchBox")
+    expect(i, "không thấy hàm vẽ ô tìm").toBeGreaterThan(-1)
+    const j = tep.indexOf("export function", i + 10)
+    const t = tep.slice(i, j > -1 ? j : undefined)
+    expect(t, "ô tìm không đọc sổ đăng ký").toMatch(/usePosProductSearchHost\(\)/)
+    expect(t, "ô tìm không lấy danh mục từ màn đang mở").toMatch(/items=\{reg\.items\}/)
+    expect(t, "ô tìm không nối việc chọn về màn").toMatch(/onPick=\{reg\.onPick\}/)
+    /* ⚠ Màn không đăng ký thì KHÔNG vẽ ô — vẽ ô rỗng là mời người dùng
+       gõ vào một chỗ không trả lời. */
+    expect(t, "màn không đăng ký vẫn bị vẽ một ô rỗng").toMatch(/if \(!reg\) return null/)
   })
 })
 
@@ -586,9 +612,23 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
     expect(khoi).toMatch(/onPick: chonHang/)
   })
 
-  /** ⚠ Và khung vẽ đúng MỘT ô, không vẽ hai. */
-  it("header vẽ đúng một ô tìm hàng", () => {
-    expect(BAR.split("<ProductPicker").length - 1, "header vẽ nhiều hơn một ô tìm").toBe(1)
+  /**
+   * ⚠ ĐÚNG MỘT Ô TÌM HÀNG TRONG CẢ `/pos` — luật bất biến qua ba lần
+   * đổi chỗ (hai ô → một ô trên header → một ô ở cột phải). Đây chính
+   * là điều chủ nhà đếm được và bác: *"đang có 2 cái"*.
+   *
+   * ⚠ ĐẾM TRÊN TOÀN `/pos`, KHÔNG ĐẾM TRONG MỘT TỆP. Bản trước chỉ đếm
+   * trong `pos-top-bar.tsx`: dựng thêm một `ProductPicker` ở tệp khác là
+   * hai ô mà chốt vẫn xanh.
+   */
+  it("cả /pos vẽ đúng một ô tìm hàng", () => {
+    const o: string[] = []
+    for (const f of FILES) {
+      const n = code(readFileSync(f, "utf-8")).split("<ProductPicker").length - 1
+      for (let k = 0; k < n; k++) o.push(f.slice(ROOT.length + 1))
+    }
+    expect(o, "số ô tìm hàng trong /pos khác 1").toHaveLength(1)
+    expect(BAR, "ô tìm quay lại thanh header").not.toMatch(/<ProductPicker/)
   })
 
   /**
@@ -608,8 +648,11 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
    * header: năm màn khác đang chạy cố ý giữ danh sách mở để nhập hàng
    * loạt, và đổi mặc định là đổi luôn cả năm mà không ai yêu cầu.
    */
-  it("ô trên header đóng danh sách sau khi thêm", () => {
-    expect(BAR).toMatch(/closeOnPick/)
+  it("ô tìm dùng chung đóng danh sách sau khi thêm", () => {
+    /* ⚠ Đọc TỆP ĐANG VẼ ô, không đọc header — ô đã chuyển sang cột phải. */
+    const veO = FILES.filter((f) => /<ProductPicker/.test(code(readFileSync(f, "utf-8"))))
+    expect(veO).toHaveLength(1)
+    expect(code(readFileSync(veO[0], "utf-8"))).toMatch(/closeOnPick/)
     const picker = code(read("src/components/ui/product-picker.tsx"))
     expect(picker).toMatch(/closeOnPick = false/)
     /**
@@ -621,6 +664,35 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
      */
     expect(picker).toMatch(/gui\(\{ t: "pick", refocus:/)
     expect(/setOpen\(/.test(picker), "component lại tự giữ trạng thái đóng/mở").toBe(false)
+  })
+
+  /**
+   * ⚠ NÚT "THÊM SẢN PHẨM" Ở CỘT TRÁI CHỈ ĐƯA TIÊU ĐIỂM, KHÔNG TỰ TÌM.
+   *
+   * Chủ nhà chốt 21/09/2026: *"3 bấm vào đó nhảy sang ô thêm sản phẩm
+   * bên phải"*. Nút ấy tồn tại vì ô tìm đã sang cột kia — nhưng nếu ai
+   * đó "tiện tay" cho nó một ô nhập và một dải gợi ý riêng thì `/pos`
+   * lại có hai chỗ thêm hàng, đúng thứ chủ nhà đã đếm và bác ở đợt 9.
+   *
+   * Chốt canh cả hai vế: nút PHẢI gọi `focusPosPicker`, và tệp vẽ nút
+   * KHÔNG được chứa ô nhập hay dải gợi ý nào ngoài ô dùng chung.
+   */
+  it("nút thêm sản phẩm chỉ nhảy sang ô bên phải, không tự tìm", () => {
+    const src = code(read("src/components/pos/product-search-box.tsx"))
+    const i = src.indexOf("export function PosAddProductButton")
+    expect(i, "không còn nút thêm sản phẩm").toBeGreaterThan(-1)
+    const nut = src.slice(i)
+    expect(nut, "nút không đưa tiêu điểm về ô tìm").toMatch(/onClick=\{focusPosPicker\}/)
+    expect(/<input|<ProductPicker|<SearchDropdown/.test(nut),
+      "nút tự mọc ô tìm riêng — /pos lại có hai chỗ thêm hàng").toBe(false)
+    /* ⚠ Và nút phải NẤP ĐI ở màn không có gì để thêm (trang gốc, xem
+       hóa đơn) — một nút dẫn tới ô không tồn tại là ngõ cụt. */
+    expect(nut, "nút vẫn hiện ở màn không đăng ký ô tìm").toMatch(/if \(!reg\) return null/)
+
+    /* ⚠ Và màn đơn phải THẬT SỰ vẽ nút — bộ luật đúng mà không ai gọi
+       thì vô nghĩa, đúng cái bẫy đã sập ở `missingLotLines`. */
+    expect(ORDER, "màn đơn không vẽ nút thêm sản phẩm").toMatch(/<PosAddProductButton\s*\/>/)
+    expect(ORDER, "màn đơn không vẽ ô tìm ở cột phải").toMatch(/<PosProductSearchBox\s*\/>/)
   })
 
   /** ⚠ Các màn cũ KHÔNG được đổi hành vi — không màn nào bật cờ ấy. */

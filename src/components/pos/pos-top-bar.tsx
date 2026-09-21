@@ -1,22 +1,18 @@
 "use client"
 
 /**
- * TOPBAR `/pos` — logo · ô tìm hàng (F3) · tab chứng từ · icon + người dùng.
- * Spec §2 và §3.
+ * TOPBAR `/pos` — logo · tab chứng từ · icon + người dùng. Spec §2 và §3.
  *
- * ⚠ Ô TÌM Ở ĐÂY LÀ Ô TÌM THẬT — chủ nhà chốt đợt 9: *"giữ cái trên
- * header, khi ấn vào tìm hàng, danh sách xổ ngay đó"*.
+ * ⚠ KHÔNG CÓ Ô TÌM HÀNG Ở ĐÂY NỮA, và đừng đặt lại. Ô ấy đã đi qua ba
+ * chỗ, mỗi lần một câu chốt của chủ nhà:
+ *   · hai ô (một nút trên header + một `ProductPicker` trên bảng) →
+ *     chủ nhà đếm được và bác: *"Bỏ bớt 1 cái thêm hàng. đang có 2 cái"*;
+ *   · một ô, trên header (đợt 9);
+ *   · một ô, ở CỘT PHẢI — bản thiết kế 21/09/2026, chủ nhà chốt *"2 bên
+ *     phải"*. Xem `components/pos/product-search-box.tsx`.
  *
- * Nó đã qua hai bản sai. Bản đầu là một `<input>` KHÔNG nối vào đâu:
- * gõ vào thì chữ hiện ra rồi không có gì xảy ra. Bản hai đổi thành một
- * cái NÚT kích `F3` của màn, tức mở một ô tìm THỨ HAI nằm dưới — hai
- * chỗ thêm hàng làm cùng một việc. Nay chính ô này là `ProductPicker`,
- * và danh sách xổ ngay dưới nó.
- *
- * ⚠ MÀN NÀO KHÔNG ĐĂNG KÝ THÌ VẪN CÒN CÁI NÚT CŨ. Trang gốc `/pos` và
- * màn xem hóa đơn không có hàng để thêm; bốn màn chứng từ còn lại vẫn
- * dùng ô tìm riêng của chúng. Vẽ một ô tìm rỗng ở đó là mời người dùng
- * gõ vào một chỗ không trả lời.
+ * Luật bất biến qua cả ba lần: ĐÚNG MỘT ô tìm hàng trong cả `/pos`.
+ * Thêm một ô vào đây là quay lại cái đã bị bác.
  */
 
 import { useEffect, useState } from "react"
@@ -27,9 +23,6 @@ import { usePosTabs } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
 import { DocTabs } from "@/components/pos/doc-tabs"
 import { DisplaySettingsDrawer } from "@/components/pos/display-settings-drawer"
-import { firePosKey } from "@/components/pos/pos-shell"
-import { ProductPicker } from "@/components/ui/product-picker"
-import { POS_PICKER_ID, usePosProductSearchHost } from "@/store/pos/product-search"
 
 /** Chữ cái đầu để làm avatar — hai chữ, đúng như bản thiết kế. */
 function viTat(ten: string): string {
@@ -43,7 +36,6 @@ export function PosTopBar() {
   const { user } = useAuth()
   const router = useRouter()
   const { notice, clearNotice, tabs, activeKey } = usePosTabs()
-  const { term, setTerm, reg } = usePosProductSearchHost()
   const [moThietLap, setMoThietLap] = useState(false)
   const dang = tabs.find((t) => t.key === activeKey)
   const inHref = dang?.docId ? posPrintHref(dang.docType, dang.docId) : null
@@ -82,52 +74,7 @@ export function PosTopBar() {
           </span>
         </button>
 
-        {reg ? (
-          /*
-            ⚠ DANH SÁCH XỔ NGAY DƯỚI Ô NÀY. `ProductPicker` neo dải gợi ý
-              bằng `absolute top-full` vào khung của chính nó, nên chỗ
-              nào đặt ô là chỗ đó xổ ra.
-            ⚠ `closeOnPick` — thêm xong thì thu gọn lại, vì dải gợi ý ở
-              đây đè lên bảng hàng và người vừa thêm cần nhìn thấy dòng
-              mình vừa thêm. Xem prop ấy trong `ProductPicker`.
-          */
-          <ProductPicker
-            id={POS_PICKER_ID}
-            className="w-[360px] shrink-0"
-            hideLabel
-            closeOnPick
-            label="Tìm hàng hóa"
-            placeholder={reg.placeholder ?? "Tìm hàng hóa, mã SKU, mã vạch…"}
-            emptyHint="Không tìm thấy mã nào khớp."
-            disabled={reg.disabled}
-            term={term}
-            onTermChange={setTerm}
-            items={reg.items}
-            onPick={reg.onPick}
-            renderMeta={reg.renderMeta}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              /* ⚠ Màn không có ô tìm hàng (trang gốc, xem hóa đơn) thì nói
-                 ra, đừng im. */
-              if (!firePosKey("F3")) router.push("/pos")
-            }}
-            className="flex h-[38px] w-[360px] shrink-0 items-center gap-2 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-[var(--pos-card)] px-2.5 text-left hover:border-[var(--pos-primary-border)]"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="shrink-0 text-[var(--pos-muted)]" aria-hidden>
-              <circle cx="11" cy="11" r="7" />
-              <path d="M20 20l-3.5-3.5" />
-            </svg>
-            <span className="min-w-0 flex-grow truncate text-[13px] font-semibold text-[var(--pos-dim)]">
-              Tìm hàng hóa, mã vạch…
-            </span>
-            <span className="n shrink-0 rounded-[6px] bg-[var(--pos-line-soft)] px-2 py-0.5 text-[11px] font-extrabold text-[var(--pos-muted)]">
-              F3
-            </span>
-          </button>
-        )}
+        <div className="flex-grow" />
 
         <DocTabs />
 

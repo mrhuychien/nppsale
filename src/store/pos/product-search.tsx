@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Ô TÌM HÀNG DÙNG CHUNG CỦA `/pos` — MỘT CÁI, NẰM TRÊN HEADER.
+ * Ô TÌM HÀNG DÙNG CHUNG CỦA `/pos` — MỘT CÁI, NẰM Ở CỘT PHẢI.
  *
  * ⚠ CHỦ NHÀ CHỐT (đợt 9): *"Bỏ bớt 1 cái thêm hàng. đang có 2 cái. Bỏ
  * cái dưới. giữ cái trên header, khi ấn vào tìm hàng, danh sách xổ ngay
@@ -10,16 +10,17 @@
  * đặt trên bảng hàng. Hai chỗ làm cùng một việc là người dùng phải
  * chọn, và cái nút trên header thì không tự tìm được gì.
  *
- * ⚠ VÌ SAO PHẢI CÓ SỔ ĐĂNG KÝ. Ô tìm vẽ ở KHUNG (`PosTopBar`), nhưng
+ * ⚠ VÌ SAO PHẢI CÓ SỔ ĐĂNG KÝ. Ô tìm vẽ ở một component DÙNG CHUNG
+ * (`components/pos/product-search-box`), nhưng
  * danh sách hàng và việc "thêm vào chứng từ" thuộc về MÀN đang mở.
  * Khung không biết gì về màn, nên màn phải đưa hai thứ ấy lên. Đây
  * đúng mô hình `usePosKeys` đang dùng cho phím tắt — khác một chỗ:
  * phím tắt chỉ cần ĐỌC lúc bấm nên giữ được ở biến mô-đun, còn ô tìm
  * phải VẼ LẠI khi danh sách đổi, nên phải là state của React.
  *
- * ⚠ TỪ KHOÁ ĐANG GÕ THUỘC VỀ KHUNG, KHÔNG THUỘC VỀ MÀN. Ô nhập nằm ở
- * khung; để màn giữ từ khoá là mỗi lần đổi tab lại mất chữ đang gõ dở
- * theo một đường vòng không ai đoán được.
+ * ⚠ TỪ KHOÁ ĐANG GÕ THUỘC VỀ SỔ NÀY, KHÔNG THUỘC VỀ MÀN. Để màn giữ
+ * từ khoá là mỗi lần đổi tab lại mất chữ đang gõ dở theo một đường vòng
+ * không ai đoán được.
  */
 
 import {
@@ -27,7 +28,7 @@ import {
   type ReactNode,
 } from "react"
 
-/** ⚠ `F3` và nút "Thêm hàng" của bảng rỗng tìm ô này bằng `id`. */
+/** ⚠ `F3`, nút "Thêm sản phẩm" và nút của bảng rỗng tìm ô này bằng `id`. */
 export const POS_PICKER_ID = "pos-tim-hang"
 
 export interface PosPickerItem {
@@ -70,12 +71,12 @@ function useCtx(): Value {
   return v
 }
 
-/** Khung đọc cái này để vẽ ô tìm. */
+/** Component vẽ ô tìm đọc cái này. */
 export function usePosProductSearchHost(): Value {
   return useCtx()
 }
 
-/** Từ khoá đang gõ trên header — màn đọc để tự lọc danh sách của mình. */
+/** Từ khoá đang gõ — màn đọc để tự lọc danh sách của mình. */
 export function usePosSearchTerm(): string {
   return useCtx().term
 }
@@ -87,7 +88,7 @@ export function usePosSearchTerm(): string {
  * lại chúng ở mỗi lần vẽ là effect này chạy lại mỗi lần vẽ, và mỗi lần
  * chạy lại `setReg` một lần nữa — vòng lặp vô tận.
  *
- * ⚠ RỜI MÀN THÌ GỠ ĐĂNG KÝ. Giữ lại là ô tìm trên header còn hiện danh
+ * ⚠ RỜI MÀN THÌ GỠ ĐĂNG KÝ. Giữ lại là ô tìm còn hiện danh
  * mục của màn vừa đóng, và bấm chọn là thêm hàng vào một chứng từ
  * không còn trên màn.
  */
@@ -115,7 +116,13 @@ export function useRegisterPosProductSearch<T extends PosPickerItem>(
   }, [setTerm])
 }
 
-/** Đưa tiêu điểm về ô tìm trên header — `F3` và nút của bảng rỗng dùng chung. */
+/**
+ * Đưa tiêu điểm về ô tìm ở cột phải.
+ *
+ * ⚠ BA CHỖ GỌI CHUNG HÀM NÀY: phím `F3`, nút "Thêm sản phẩm" ở đỉnh cột
+ * trái, và nút của bảng rỗng. Ba chỗ ấy phải dẫn về CÙNG một ô — đó là
+ * toàn bộ lý do ô tìm chỉ có một.
+ */
 export function focusPosPicker(): void {
   document.getElementById(POS_PICKER_ID)?.focus()
 }

@@ -90,6 +90,7 @@ import {
   MoneyRow, DocDiscountRow, TotalsHero, PaymentButtons, CashChips,
   PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
+import { PosAddProductButton, PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import type { SellProduct } from "@/lib/sell/ref-data"
@@ -841,6 +842,21 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             </DocBanner>
           )}
 
+          {/*
+            ⚠ HÀNG NÀY KHÔNG PHẢI Ô TÌM THỨ HAI. Chủ nhà chốt *"bấm vào
+              đó nhảy sang ô thêm sản phẩm bên phải"*: nút chỉ đưa tiêu
+              điểm sang ô duy nhất ở cột phải. Nó có mặt vì ô tìm nay
+              nằm ở cột kia — không có nó thì người mở đơn lần đầu không
+              biết thêm hàng ở đâu, đúng lý do bản thiết kế vẽ nó.
+          */}
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[13px] font-bold text-[var(--pos-muted)]">
+              Dòng hàng <span className="n">· {lines.length}</span>
+            </span>
+            <div className="flex-grow" />
+            <PosAddProductButton />
+          </div>
+
           <LineTableFrame
             header={<LineTableHeader grid="order" cols={cot.cols} cells={cot.cells} />}
             footer={
@@ -874,7 +890,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 {!loading && (
                   <>
                     <p className="mx-auto mt-1.5 max-w-[420px] text-[13px] font-semibold leading-relaxed text-[var(--pos-muted)]">
-                      Bấm ô tìm hàng trên thanh đầu trang để xổ danh sách, hoặc quét mã vạch.
+                      Bấm ô tìm sản phẩm ở cột bên phải để xổ danh sách, hoặc quét mã vạch.
                       <br />
                       Nhấn Enter để thêm nhanh kết quả đầu tiên.
                     </p>
@@ -1110,6 +1126,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               emptyHint="Không tìm thấy khách nào khớp."
             />
           </div>
+
+          <PosProductSearchBox />
 
           <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <MoneyRow label="Tổng tiền hàng" value={totals.gross} />

@@ -587,8 +587,14 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
    *   này thì sổ đăng ký thành một cửa sau: màn "đăng ký" rồi khung tự
    *   vẽ một ô tìm khác, và cả hai chốt trên vẫn xanh.
    */
-  it("ô tìm trên header của /pos là ProductPicker", () => {
-    const src = code(read("src/components/pos/pos-top-bar.tsx"))
+  it("ô tìm dùng chung của /pos là ProductPicker", () => {
+    /**
+     * ⚠ CHỐT KHÔNG GHIM TỆP NỮA. Bản trước soi thẳng `pos-top-bar.tsx`;
+     * ô tìm đã chuyển sang cột phải (chủ nhà chốt *"2 bên phải"*) và chốt
+     * đỏ oan trong khi luật — "ô dùng chung ấy chính là `ProductPicker`,
+     * không phải một ô tự vẽ" — còn nguyên.
+     */
+    const src = code(read("src/components/pos/product-search-box.tsx"))
     expect(src).toContain("<ProductPicker")
     expect(src).toMatch(/id=\{POS_PICKER_ID\}/)
   })
@@ -616,12 +622,23 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
    * ⚠ VÀ CẢ `/pos` CHỈ CÓ MỘT Ô TÌM HÀNG. Đây đúng là thứ danh sách nợ
    *   sinh ra để canh: miễn cho một màn rồi màn thứ hai tự vẽ tiếp là
    *   quay lại đúng chỗ cũ.
+   *
+   * ⚠ HAI TỆP ĐƯỢC PHÉP, VÀ CHÚNG LÀM HAI VIỆC KHÁC NHAU:
+   *   · `search-dropdown` — dải xổ bật bằng phím, dùng ở màn phiếu trả,
+   *     nhập hàng, trả NCC (và để tìm KHÁCH ở mọi màn);
+   *   · `product-search-box` — ô tìm hàng dùng chung ở cột phải, bọc
+   *     `ProductPicker` của app (chủ nhà chốt *"2 bên phải"*).
+   *   Thêm tệp thứ ba vào danh sách này là đang dựng ô tìm thứ hai —
+   *   đừng nới danh sách, hãy dùng lại một trong hai.
    */
-  it("/pos chỉ có một component ô tìm dùng chung", () => {
+  it("/pos chỉ có hai component ô tìm dùng chung", () => {
     const pham = moiTsx(resolve(ROOT, "src/components/pos"))
       .map((p) => p.slice(ROOT.length + 1))
       .filter((rel) => /search|picker|dropdown/i.test(rel))
-    expect(pham).toEqual(["src/components/pos/search-dropdown.tsx"])
+    expect(pham.sort()).toEqual([
+      "src/components/pos/product-search-box.tsx",
+      "src/components/pos/search-dropdown.tsx",
+    ])
   })
 
   /** ⚠ Phép quét phải còn nhận ra mẫu ấy — nếu không nó xanh vì mù. */

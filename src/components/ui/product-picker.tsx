@@ -60,6 +60,7 @@ export function ProductPicker<T extends PickerItem>({
   disabled,
   id = "pp-find",
   renderMeta,
+  renderAside,
   footer,
   hint,
   term,
@@ -75,6 +76,17 @@ export function ProductPicker<T extends PickerItem>({
   id?: string
   /** Cột phải của mỗi dòng — tồn kho, giá… */
   renderMeta?: (item: T) => React.ReactNode
+  /**
+   * Ô ĐIỀU KHIỂN đứng cạnh mỗi dòng — ví dụ chọn đơn vị bán.
+   *
+   * ⚠ TÁCH RIÊNG KHỎI `renderMeta`, VÀ VẼ NGOÀI CÁI NÚT. `renderMeta`
+   * nằm TRONG `<button>` của dòng: một `<select>` đặt ở đó là HTML sai
+   * (nút lồng trong nút) và mọi cú bấm để mở nó đều rơi vào `onPick` —
+   * người dùng định chọn "thùng" thì mặt hàng bị thêm luôn theo đơn vị
+   * cũ. Khe này là anh em ruột của nút trong cùng một `<li>`, nên bấm
+   * vào đây không thêm gì cả.
+   */
+  renderAside?: (item: T) => React.ReactNode
   /** Dải cuối danh sách — ví dụ "Tạo sản phẩm mới". */
   footer?: React.ReactNode
   /** Dòng nhắc dưới ô — ví dụ "đang lọc theo NCC". */
@@ -161,7 +173,7 @@ export function ProductPicker<T extends PickerItem>({
           ) : (
             <ul className="max-h-72 divide-y overflow-y-auto">
               {shown.map((p, i) => (
-                <li key={p.id}>
+                <li key={p.id} className="flex items-center">
                   {/*
                     ⚠ CẢ DÒNG LÀ NÚT. Một nút nhỏ ở mép phải là mục tiêu
                       bé giữa một dòng rộng cả màn, và mọi cú chạm trượt
@@ -172,7 +184,7 @@ export function ProductPicker<T extends PickerItem>({
                     onClick={() => pick(p)}
                     onMouseEnter={() => setActive(i)}
                     className={cn(
-                      "flex w-full items-center gap-2 p-2 text-left",
+                      "flex min-w-0 flex-1 items-center gap-2 p-2 text-left",
                       i === active ? "bg-muted/60" : "hover:bg-muted/50"
                     )}
                   >
@@ -186,6 +198,7 @@ export function ProductPicker<T extends PickerItem>({
                     </span>
                     {renderMeta?.(p)}
                   </button>
+                  {renderAside && <span className="shrink-0 pr-2">{renderAside(p)}</span>}
                 </li>
               ))}
             </ul>

@@ -14,6 +14,7 @@
 
 import type { InvoiceableLine, InvoiceDraftLine } from "@/lib/orders/post-invoice"
 import { conversionFor, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
+import { viMatchAllWords } from "@/lib/search"
 
 /** Dòng của hóa đơn ĐANG SỬA, do trang gọi truyền vào. */
 export interface ReissueSeedLine {
@@ -234,6 +235,20 @@ export function rowsOverOrdered(rows: EditorRow[]): EditorRow[] {
  * ⚠ LOẠI MÃ ĐÃ CÓ TRÊN MÀN. Thêm lần hai thành hai dòng cùng một mã, và
  * `invoiced_qty` của đơn cộng gộp cả hai — người tra sổ không hiểu vì sao
  * một mặt hàng xuất hiện hai lần trong cùng một tờ hóa đơn.
+ *
+ * ⚠ Ô TRỐNG THÌ XỔ `limit` MÃ ĐẦU, KHÔNG TRẢ VỀ RỖNG. Đây là một luật
+ * BỊ ĐẢO NGƯỢC, và nói ra cho rõ: bản cũ cố ý không gợi ý gì khi chưa
+ * gõ. Chủ nhà chốt 20/09/2026 "bấm vào là phải xổ list rồi (như khi
+ * chọn NCC ấy)", và bốn màn phiếu đã đổi theo — màn hóa đơn này bị bỏ
+ * sót vì nó tự vẽ ô tìm riêng thay vì dùng `ProductPicker`. Trần
+ * `limit` giữ nguyên tinh thần cũ: đủ để thấy mình đang ở đâu, không
+ * đủ để thành một danh sách phải cuộn.
+ *
+ * ⚠ KHỚP TỪNG TỪ RỜI, KHÔNG KHỚP CẢ CHUỖI. Bản cũ dùng `includes` trên
+ * nguyên từ khoá, nên gõ "banh dau" không ra "Bánh đậu xanh" — mà gõ
+ * rời rạc, sai thứ tự là cách người bán thật sự gõ. `viMatchAllWords`
+ * là phép mà mọi ô tìm hàng khác trong kho mã này đã dùng, và nó soi
+ * cả mã vạch.
  */
 export function searchAddable(
   products: PricedProduct[],
@@ -241,24 +256,12 @@ export function searchAddable(
   alreadyOnScreen: ReadonlySet<string>,
   limit = 20
 ): PricedProduct[] {
-  const t = normalize(term)
-  if (!t) return []
   const out: PricedProduct[] = []
   for (const p of products) {
     if (alreadyOnScreen.has(p.id)) continue
-    if (normalize(p.name).includes(t) || normalize(p.sku ?? "").includes(t)) {
-      out.push(p)
-      if (out.length >= limit) break
-    }
+    if (!viMatchAllWords(term, p.name, p.sku, p.barcode)) continue
+    out.push(p)
+    if (out.length >= limit) break
   }
   return out
-}
-
-function normalize(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/gi, "d")
-    .toLowerCase()
-    .trim()
 }

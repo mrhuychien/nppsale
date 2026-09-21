@@ -175,10 +175,39 @@ describe("ô tìm mã hàng để thêm", () => {
     expect(searchAddable(cat, "banh", new Set(["p1"]))).toEqual([])
   })
 
-  /** Ô rỗng thì KHÔNG đổ cả danh mục ra màn. */
-  it("chưa gõ gì thì không gợi ý gì", () => {
-    expect(searchAddable(cat, "", new Set())).toEqual([])
-    expect(searchAddable(cat, "   ", new Set())).toEqual([])
+  /**
+   * ⚠ LUẬT NÀY ĐÃ BỊ ĐẢO NGƯỢC, VÀ CHỐT PHẢI NÓI RA. Bản cũ khẳng định
+   * "chưa gõ gì thì không gợi ý gì". Chủ nhà chốt 20/09/2026 "bấm vào
+   * là phải xổ list rồi (như khi chọn NCC ấy)" — bốn màn phiếu đã đổi
+   * theo, màn hóa đơn bị bỏ sót vì nó tự vẽ ô tìm riêng, tới
+   * 21/09/2026 chủ nhà hỏi lại "Bấm vào vẫn phải xổ list kèm tìm kiếm
+   * chứ?".
+   *
+   * ⚠ NHƯNG VẪN CÓ TRẦN. Đổ cả 1.700 mã xuống là dựng lại đúng cái danh
+   * sách phải cuộn mà ô tìm sinh ra để thay thế — đó là lý do luật cũ
+   * tồn tại, và nó vẫn đúng. Xổ `limit` mục đầu giữ được cả hai.
+   */
+  it("ô trống thì xổ danh sách, có trần", () => {
+    expect(searchAddable(cat, "", new Set()).map((p) => p.id)).toEqual(["p1", "p2"])
+    expect(searchAddable(cat, "   ", new Set()).map((p) => p.id)).toEqual(["p1", "p2"])
+    const many = Array.from({ length: 50 }, (_, i) => prod({ id: `x${i}`, name: `Bánh ${i}` }))
+    expect(searchAddable(many, "", new Set(), 30)).toHaveLength(30)
+  })
+
+  /** Ô trống vẫn phải bỏ mã đã có trên hóa đơn — kể cả khi chưa gõ gì. */
+  it("ô trống vẫn loại mã đã có trên hóa đơn", () => {
+    expect(searchAddable(cat, "", new Set(["p1"])).map((p) => p.id)).toEqual(["p2"])
+  })
+
+  /**
+   * ⚠ KHỚP TỪNG TỪ RỜI. Bản cũ `includes` nguyên từ khoá, nên gõ
+   * "banh xanh" không ra "Bánh Đậu Xanh" — mà gõ rời rạc, sai thứ tự là
+   * cách người bán thật sự gõ giữa lúc giao hàng.
+   */
+  it("gõ rời rạc, sai thứ tự vẫn ra", () => {
+    const c = [prod({ id: "p9", sku: "S9", name: "Bánh Đậu Xanh Rồng Vàng" })]
+    expect(searchAddable(c, "xanh banh", new Set()).map((p) => p.id)).toEqual(["p9"])
+    expect(searchAddable(c, "vang dau", new Set()).map((p) => p.id)).toEqual(["p9"])
   })
 
   it("cắt bớt khi quá nhiều kết quả", () => {

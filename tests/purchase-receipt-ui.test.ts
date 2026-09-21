@@ -415,12 +415,46 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
     /* ⚠ Ô TÌM NAY NẰM Ở `ProductPicker` DÙNG CHUNG — soi đúng tệp ấy.
        Để nguyên `EDITOR` là chốt xanh vì đọc phải chuỗi rỗng. */
     const flat = PICKER.replace(/\s+/g, " ")
-    expect(flat, "gợi ý không còn là nút bấm cả dòng").toMatch(
-      /<button type="button" onClick=\{\(\) => pick\(p\)\}[\s\S]{0,160}?className=\{cn\( "flex w-full/
+    /**
+     * ⚠ ĐÒI "NỞ HẾT CHỖ CÒN LẠI", KHÔNG ĐÒI ĐÚNG CHỮ `w-full`. Từ
+     * 21/09/2026 dòng gợi ý có thêm khe `renderAside` (ô chọn đơn vị ở
+     * màn hóa đơn), nên `<li>` thành một hộp flex và cái nút chuyển
+     * sang `flex-1`. Nó vẫn rộng cả dòng trừ đúng phần ô chọn — luật
+     * không đổi, chỉ có cách viết đổi. Bám vào một chuỗi lớp CSS cụ thể
+     * là chốt đỏ vì cách viết chứ không vì hành vi.
+     */
+    const btn = flat.match(
+      /<button type="button" onClick=\{\(\) => pick\(p\)\}[\s\S]{0,200}?className=\{cn\( "([^"]*)"/
     )
+    expect(btn, "dòng gợi ý không còn là một nút bấm được").not.toBeNull()
+    expect(
+      /\bw-full\b/.test(btn![1]) || /\bflex-1\b/.test(btn![1]),
+      `phần bấm được không nở hết dòng ("${btn![1]}") — trên điện thoại đó là ` +
+        "một mục tiêu nhỏ giữa một dòng rộng cả màn"
+    ).toBe(true)
     expect(flat, "vẫn còn nút Thêm nhỏ ở mép phải").not.toMatch(
       /<Button size="sm" onClick=/
     )
+  })
+
+  /**
+   * ⚠ KHE `renderAside` PHẢI NẰM NGOÀI CÁI NÚT. Đặt một `<Select>` vào
+   * `renderMeta` (bên trong `<button>`) là HTML sai — nút lồng trong nút
+   * — và mọi cú bấm để mở nó rơi thẳng vào `onPick`: người dùng định
+   * chọn "thùng" thì mặt hàng bị thêm luôn theo đơn vị cũ.
+   */
+  it("ô điều khiển của dòng vẽ ngoài nút, không lồng trong nút", () => {
+    const flat = PICKER.replace(/\s+/g, " ")
+    const li = flat.match(/<li key=\{p\.id\}[\s\S]*?<\/li>/)
+    expect(li, "không đọc được dòng gợi ý").not.toBeNull()
+    const closeBtn = li![0].indexOf("</button>")
+    const aside = li![0].indexOf("renderAside(p)")
+    expect(closeBtn, "dòng gợi ý không còn cái nút nào").toBeGreaterThan(-1)
+    expect(aside, "ProductPicker không còn khe renderAside").toBeGreaterThan(-1)
+    expect(
+      aside > closeBtn,
+      "renderAside đang vẽ TRONG <button> — bấm vào ô chọn là thêm nhầm hàng"
+    ).toBe(true)
   })
 
   /**

@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Loader2, PackageCheck, Plus, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, Loader2, PackageCheck, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -47,6 +47,8 @@ import {
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
+import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 
 /**
  * Phần ĐẦU ĐƠN — thứ người xuất hàng phải đọc trước khi quyết định.
@@ -129,6 +131,8 @@ export function InvoiceEditor({
     Array<{ id: string; name: string; qty: number; unit: string; credit: number; isExchange: boolean }>
   >([])
   const [catalog, setCatalog] = useState<PricedProduct[]>([])
+  /** Danh mục đọc chưa hết — màn hình phải nói ra, đừng để người dùng đoán. */
+  const [catalogTruncated, setCatalogTruncated] = useState(false)
   const [term, setTerm] = useState("")
   const [addUnit, setAddUnit] = useState<Record<string, string>>({})
   const seqRef = useRef(0)
@@ -228,21 +232,34 @@ export function InvoiceEditor({
    *   còn lại của đơn — việc thường ngày. Bắt họ chờ cả bảng sản phẩm
    *   tải xong mới thấy dòng hàng là bắt chờ cho một tính năng họ có thể
    *   không dùng tới.
+   *
+   * ⚠ PHẢI KÉO HẾT THEO TRANG — chủ nhà báo 21/09/2026: "Thêm mã hàng
+   *   không có trong đơn tại sao gõ ko ra mã hàng?". Bản cũ đọc bằng
+   *   một `.select()` trơn kèm `.order("name")`. PostgREST CẮT Ở 1.000
+   *   DÒNG, nên với danh mục 1.700 mã thì mọi mặt hàng xếp sau chữ cái
+   *   thứ một nghìn KHÔNG hề có trong bộ nhớ — gõ đúng tên vẫn ra rỗng,
+   *   và ô tìm không có cách nào nói ra là nó chưa đọc hết. Xem
+   *   `loadCatalogue`.
    */
   useEffect(() => {
     let cancelled = false
-    supabase
-      .from("products")
-      .select("id, sku, name, base_unit, vat_rate, sell_price, status, price_lists(*), units:product_units(*)")
-      .eq("status", "active")
-      .order("name")
-      .then(({ data, error }) => {
+    loadCatalogue<PricedProduct>(
+      supabase,
+      "id, sku, name, barcode, base_unit, vat_rate, sell_price, status, price_lists(*), units:product_units(*)",
+      { activeOnly: true }
+    )
+      .then((res) => {
         if (cancelled) return
-        if (error) {
-          console.error("[invoice-editor] nạp danh mục lỗi:", error.message)
-          return
-        }
-        setCatalog(((data as unknown) as PricedProduct[]) || [])
+        setCatalog(res.rows)
+        setCatalogTruncated(res.truncated)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        console.error("[invoice-editor] nạp danh mục lỗi:", errorMessage(e))
+        /* ⚠ ĐỌC HỎNG THÌ COI NHƯ ĐỌC THIẾU, đừng im. Danh mục rỗng mà
+           không một dòng chữ nào là đúng cái lỗi ở trên, chỉ khác
+           nguyên nhân. */
+        setCatalogTruncated(true)
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,8 +270,10 @@ export function InvoiceEditor({
   const picked = rows.filter((r) => r.qty > 0)
 
   const onScreen = useMemo(() => new Set(rows.map((r) => r.productId)), [rows])
+  /* ⚠ CÙNG TRẦN VỚI BỐN MÀN PHIẾU KIA. Ô trống xổ đúng `PICKER_PEEK`
+     mục, không đổ cả 1.700 mã — xem chú thích của `PICKER_PEEK`. */
   const hits = useMemo(
-    () => searchAddable(catalog, term, onScreen),
+    () => searchAddable(catalog, term, onScreen, PICKER_PEEK),
     [catalog, term, onScreen]
   )
 
@@ -545,57 +564,67 @@ export function InvoiceEditor({
             </p>
           )}
 
-          {/* ---------------- Thêm mã hàng ngoài đơn ---------------- */}
+          {/*
+            ---------------- Thêm mã hàng ngoài đơn ----------------
+            ⚠ DÙNG `ProductPicker`, KHÔNG TỰ VẼ Ô TÌM. Màn này từng có
+              một ô tìm riêng, và chính vì thế nó BỊ BỎ SÓT khi chủ nhà
+              chốt 20/09/2026 "bấm vào là phải xổ list rồi" — bốn màn
+              phiếu đổi theo, màn hóa đơn thì không. Một ô tìm dùng
+              chung là một chỗ phải sửa, không phải năm.
+          */}
           <Card>
-            <CardContent className="space-y-3 pt-5">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Thêm mã hàng không có trong đơn
-              </Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={term}
-                  onChange={(e) => setTerm(e.target.value)}
-                  placeholder={catalog.length ? "Tên hàng hoặc mã SKU…" : "Đang nạp danh mục…"}
-                  disabled={catalog.length === 0}
-                  className="pl-8"
-                />
-              </div>
-              {term.trim() !== "" && hits.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Không tìm thấy mã nào khớp, hoặc mã đó đã có trên hóa đơn.
-                </p>
-              )}
-              {hits.length > 0 && (
-                <ul className="divide-y rounded-xl border">
-                  {hits.map((p) => {
-                    const units = sellableUnits(p)
-                    const unit = addUnit[p.id] || p.base_unit
-                    return (
-                      <li key={p.id} className="flex flex-wrap items-center gap-2 p-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{p.name}</div>
-                          <div className="text-xs text-muted-foreground">{p.sku || "—"}</div>
-                        </div>
-                        {units.length > 1 && (
-                          <Select
-                            value={unit}
-                            onValueChange={(v) => setAddUnit((s) => ({ ...s, [p.id]: v }))}
-                          >
-                            <SelectTrigger className="h-9 w-28"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <Button size="sm" onClick={() => addProduct(p)}>
-                          <Plus className="mr-1 h-4 w-4" /> Thêm
-                        </Button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+            <CardContent className="pt-5">
+              <ProductPicker
+                id="inv-add-find"
+                label="Thêm mã hàng không có trong đơn"
+                placeholder="Tên hàng, mã SKU hoặc mã vạch…"
+                emptyHint="Không tìm thấy mã nào khớp, hoặc mã đó đã có trên hóa đơn."
+                disabled={catalog.length === 0}
+                term={term}
+                onTermChange={setTerm}
+                items={hits.map((p) => ({
+                  ...p,
+                  title: p.name,
+                  subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+                }))}
+                onPick={(p) => addProduct(p)}
+                /*
+                  ⚠ CHỌN ĐƠN VỊ NGAY TẠI DÒNG GỢI Ý, VÌ SAU KHI THÊM
+                    KHÔNG SỬA ĐƯỢC NỮA. Bảng hóa đơn hiện `unitName` ở
+                    dạng chữ thường, không phải ô chọn — thêm nhầm "hộp"
+                    thay vì "thùng" là phải xoá dòng rồi làm lại. Khe
+                    `renderAside` vẽ NGOÀI cái nút của dòng nên bấm vào
+                    đây không thêm hàng.
+                */
+                renderAside={(p) => {
+                  const units = sellableUnits(p)
+                  if (units.length <= 1) return null
+                  return (
+                    <Select
+                      value={addUnit[p.id] || p.base_unit}
+                      onValueChange={(v) => setAddUnit((s) => ({ ...s, [p.id]: v }))}
+                    >
+                      <SelectTrigger className="h-9 w-24"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )
+                }}
+                /*
+                  ⚠ ĐỌC THIẾU THÌ NÓI RA. Im lặng ở đây là người dùng gõ
+                    đúng tên một mã có thật, không thấy gì, rồi kết luận
+                    danh mục thiếu mã — đúng cái đã xảy ra hôm nay.
+                */
+                hint={
+                  catalogTruncated ? (
+                    <p className="flex items-start gap-1.5 text-xs text-[#b54708]">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>Danh mục đọc chưa hết — kết quả tìm đang thiếu. Tải lại trang.</span>
+                    </p>
+                  ) : null
+                }
+              />
             </CardContent>
           </Card>
 

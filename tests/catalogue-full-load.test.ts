@@ -82,6 +82,15 @@ const MIEN_TRU = [
  * vào đây để né, và sửa xong mà quên xoá thì cũng đỏ.
  */
 const CON_NO_DOC_DANH_MUC = [
+  /**
+   * ⚠ MỚI LỘ RA 21/09/2026 khi phép quét được nới ra cả
+   * `src/components`. Ô "Ngành hàng" đọc `select("category")` của MỌI
+   * sản phẩm để dựng danh sách gợi ý — cắt ở 1.000 dòng nghĩa là ngành
+   * hàng nào chỉ có ở những mã xếp sau đó sẽ KHÔNG hiện trong ô chọn,
+   * và người nhập sẽ gõ tay một ngành hàng trùng tên. Đã báo chủ nhà,
+   * chưa được yêu cầu sửa.
+   */
+  "src/components/products/product-form.tsx",
   "src/app/(dashboard)/analytics/business/overview/page.tsx",
   "src/app/(dashboard)/analytics/products/categories/page.tsx",
   "src/app/(dashboard)/analytics/products/overview/page.tsx",
@@ -101,10 +110,27 @@ const CON_NO_DOC_DANH_MUC = [
   "src/app/(dashboard)/reports/suppliers/page.tsx",
 ]
 
+/**
+ * Câu GHI, không phải câu đọc danh mục.
+ *
+ * ⚠ `.insert(…).select(…)` CHỈ TRẢ VỀ DÒNG VỪA GHI, không trả về cả
+ * bảng — nó không hứa hẹn "đây là cả danh mục" nên trần 1.000 dòng
+ * không đụng tới nó. Không tách ra thì mọi màn tạo/sửa sản phẩm đều bị
+ * báo oan, và cách duy nhất để chốt xanh lại là nhét chúng vào danh
+ * sách nợ — tức là tự tay đục một lỗ thật để bịt một báo động giả.
+ */
+function laCauGhi(stmt: string): boolean {
+  const sel = stmt.indexOf(".select(")
+  const write = stmt.search(/\.(insert|upsert|update|delete)\(/)
+  if (write === -1) return false
+  return sel === -1 || write < sel
+}
+
 /** Câu đọc `products` ở `at` có bị cắt ở 1.000 dòng không. */
 function docBiCat(src: string, at: number): boolean {
   const stmt = src.slice(at, at + 420)
   const before = src.slice(Math.max(0, at - 300), at)
+  if (laCauGhi(stmt)) return false
   const safe =
     /\.eq\("id",/.test(stmt) ||
     /\.in\("id",/.test(stmt) ||
@@ -115,19 +141,38 @@ function docBiCat(src: string, at: number): boolean {
   return !safe
 }
 
-function allPages(dir: string, acc: string[] = []): string[] {
+/**
+ * ⚠ QUÉT CẢ `src/components`, KHÔNG CHỈ `page.tsx`. Bản đầu của chốt
+ * này chỉ soi các tệp tên `page.tsx` — và ĐÚNG VÌ THẾ nó bỏ lọt
+ * `src/components/orders/invoice-editor.tsx`, nơi màn Sửa hóa đơn đọc
+ * cả danh mục bằng một `.select()` trơn. Chủ nhà phát hiện thay nó,
+ * 21/09/2026: "Thêm mã hàng không có trong đơn tại sao gõ ko ra mã
+ * hàng?".
+ *
+ * Một màn hình không dừng ở tệp `page.tsx` của nó. Phép quét nào dừng
+ * ở đó thì canh được cái vỏ chứ không canh được chỗ thật sự hỏi máy
+ * chủ.
+ */
+function allSources(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
-    if (statSync(p).isDirectory()) allPages(p, acc)
-    else if (name === "page.tsx") acc.push(p)
+    if (statSync(p).isDirectory()) allSources(p, acc)
+    else if (name.endsWith(".tsx") || name.endsWith(".ts")) acc.push(p)
   }
   return acc
+}
+
+function allScanned(): string[] {
+  return [
+    ...allSources(resolve(ROOT, "src/app/(dashboard)")),
+    ...allSources(resolve(ROOT, "src/components")),
+  ]
 }
 
 describe("không màn nào nạp danh mục kiểu bị cắt", () => {
   it("mọi câu đọc cả danh mục đều đi qua loadCatalogue", () => {
     const bad: string[] = []
-    for (const abs of allPages(resolve(ROOT, "src/app/(dashboard)"))) {
+    for (const abs of allScanned()) {
       const rel = abs.slice(ROOT.length + 1)
       if (MIEN_TRU.includes(rel)) continue
       if (CON_NO_DOC_DANH_MUC.includes(rel)) continue

@@ -539,9 +539,11 @@ describe("bỏ dòng khỏi tờ hóa đơn", () => {
  * mai 250g" mà phiếu trả đang chờ xử lý đòi trả. Huỷ phiếu trả trước,
  * rồi sửa lại hóa đơn." — và chỉ biết SAU KHI đã sửa xong cả tờ.
  */
+const INV = "inv-dang-sua"
 const rr = (o: Partial<PendingReturnLine> = {}): PendingReturnLine => ({
   returnId: "r1",
   returnStatus: "submitted",
+  invoiceId: INV,
   productId: "p1",
   productName: "Bắp nếp tím pho mai 250g",
   isExchange: false,
@@ -552,7 +554,7 @@ const row = (o: Partial<EditorRow> = {}): EditorRow =>
 
 describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => {
   it("bỏ hẳn món khỏi hóa đơn thì báo xung đột", () => {
-    expect(returnsBrokenBy([row({ productId: "p2" })], [rr()])).toEqual([
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr()], INV)).toEqual([
       { returnId: "r1", productName: "Bắp nếp tím pho mai 250g" },
     ])
   })
@@ -564,11 +566,11 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
    * không theo "dòng có còn trên màn không".
    */
   it("để số lượng 0 cũng tính là không bán", () => {
-    expect(returnsBrokenBy([row({ qty: 0 })], [rr()])).toHaveLength(1)
+    expect(returnsBrokenBy([row({ qty: 0 })], [rr()], INV)).toHaveLength(1)
   })
 
   it("còn bán thì không báo gì", () => {
-    expect(returnsBrokenBy([row()], [rr()])).toEqual([])
+    expect(returnsBrokenBy([row()], [rr()], INV)).toEqual([])
   })
 
   /**
@@ -577,7 +579,7 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
    * chặn một tờ hóa đơn mà máy chủ sẽ nhận.
    */
   it("hàng đổi không bị kể là xung đột", () => {
-    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ isExchange: true })])).toEqual([])
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ isExchange: true })], INV)).toEqual([])
   })
 
   /**
@@ -586,21 +588,42 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
    * bằng chứng "vẫn bán" là để lọt đúng tờ hóa đơn máy chủ sẽ từ chối.
    */
   it("dòng đổi trên hóa đơn không cứu được xung đột", () => {
-    expect(returnsBrokenBy([row({ isExchange: true })], [rr()])).toHaveLength(1)
+    expect(returnsBrokenBy([row({ isExchange: true })], [rr()], INV)).toHaveLength(1)
   })
 
   /** ⚠ Phiếu đã huỷ / đã xong không chặn ai. */
   it("chỉ phiếu đang chờ mới chặn", () => {
     for (const st of ["cancelled", "completed"]) {
-      expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: st })])).toEqual([])
+      expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: st })], INV)).toEqual([])
     }
-    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: "draft" })]))
+    expect(returnsBrokenBy([row({ productId: "p2" })], [rr({ returnStatus: "draft" })], INV))
       .toHaveLength(1)
+  })
+
+  /**
+   * ⚠ PHIẾU TRẢ CỦA MỘT HÓA ĐƠN KHÁC KHÔNG ĐƯỢC CHẶN. Đây là lỗi chủ
+   * nhà vấp phải 21/09/2026 ("Đoạn này là sao?"): bản đầu đọc phiếu trả
+   * theo ĐƠN, mà một đơn giao nhiều đợt có NHIỀU hóa đơn.
+   * `reissue_invoice` chỉ soi `WHERE r.invoice_id = p_invoice_id`, nên
+   * màn hình chặn một tờ mà máy chủ sẽ nhận — người dùng kẹt cứng, và
+   * không hiểu vì sao. Một lời từ chối SAI tệ hơn không cảnh báo.
+   */
+  it("phiếu trả của hóa đơn KHÁC không chặn tờ đang sửa", () => {
+    expect(
+      returnsBrokenBy([row({ productId: "p2" })], [rr({ invoiceId: "inv-khac" })], INV)
+    ).toEqual([])
+  })
+
+  /** ⚠ Phiếu trả chưa gắn hóa đơn nào cũng không — máy chủ không soi nó. */
+  it("phiếu trả chưa gắn hóa đơn không chặn", () => {
+    expect(
+      returnsBrokenBy([row({ productId: "p2" })], [rr({ invoiceId: null })], INV)
+    ).toEqual([])
   })
 
   it("không báo trùng khi một phiếu có nhiều dòng cùng mã", () => {
     expect(
-      returnsBrokenBy([row({ productId: "p2" })], [rr(), rr()])
+      returnsBrokenBy([row({ productId: "p2" })], [rr(), rr()], INV)
     ).toHaveLength(1)
   })
 
@@ -630,7 +653,10 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
    * một xung đột chưa tồn tại — và người dùng học được cách bỏ qua.
    */
   it("lập hóa đơn lần đầu thì không cảnh báo", () => {
-    expect(EDITOR_UI).toContain("reissueOf ? returnsBrokenBy(rows, pendingReturns) : []")
+    expect(EDITOR_UI).toContain("returnsBrokenBy(rows, pendingReturns, reissueOf.invoiceId)")
+    /* ⚠ VÀ CHỈ SOI PHIẾU GẮN VÀO ĐÚNG TỜ ĐANG SỬA — xem chốt
+       "phiếu trả của hóa đơn KHÁC" ở trên. */
+    expect(EDITOR_UI).toContain("const returnConflicts = reissueOf")
   })
 
   /**

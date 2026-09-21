@@ -328,6 +328,17 @@ export function patchRowFromCart(r: EditorRow, patch: Partial<CartLine>): Editor
 export interface PendingReturnLine {
   returnId: string
   returnStatus: string
+  /**
+   * Hóa đơn mà phiếu trả này ĐANG GẮN VÀO — có thể rỗng.
+   *
+   * ⚠ KHÔNG SUY RA TỪ ĐƠN. Một đơn giao nhiều đợt có NHIỀU hóa đơn, và
+   * `reissue_invoice` chỉ soi phiếu trả gắn vào ĐÚNG tờ đang sửa
+   * (`WHERE r.invoice_id = p_invoice_id`). Lọc theo đơn là kể cả phiếu
+   * trả của đợt giao khác — máy chủ sẽ nhận tờ hóa đơn ấy, mà màn hình
+   * thì chặn. Một lời từ chối SAI còn tệ hơn không cảnh báo: người
+   * dùng không có cách nào đi tiếp, và cũng không hiểu vì sao.
+   */
+  invoiceId: string | null
   productId: string
   productName: string
   isExchange: boolean
@@ -368,10 +379,18 @@ export interface ReturnConflict {
  * ⚠ DÒNG ĐỔI KHÔNG TÍNH — hàng đổi không trừ công nợ, và `reissue_invoice`
  * cũng lọc `rl.is_exchange = false`. Kể vào đây là chặn một tờ hóa đơn
  * mà máy chủ sẽ nhận.
+ *
+ * ⚠ VÀ CHỈ PHIẾU GẮN VÀO ĐÚNG TỜ ĐANG SỬA. Bản đầu lọc theo ĐƠN, nên
+ * một đơn giao hai đợt thì sửa hóa đơn đợt 2 lại bị chặn vì phiếu trả
+ * của đợt 1 — máy chủ nhận, màn hình từ chối, và người dùng kẹt cứng
+ * không hiểu vì sao. Chủ nhà hỏi đúng chỗ ấy: "Đoạn này là sao?".
+ * Phép này phải soi ĐÚNG điều kiện máy chủ soi, không rộng hơn.
  */
 export function returnsBrokenBy(
   rows: EditorRow[],
-  pending: PendingReturnLine[]
+  pending: PendingReturnLine[],
+  /** Tờ hóa đơn ĐANG SỬA. Chỉ phiếu trả gắn vào đúng tờ này mới tính. */
+  invoiceId: string
 ): ReturnConflict[] {
   /* Món mà tờ hóa đơn này CÒN BÁN — đúng điều kiện máy chủ soi:
      số lượng > 0 và không phải dòng đổi. */
@@ -381,6 +400,8 @@ export function returnsBrokenBy(
   const out: ReturnConflict[] = []
   const seen = new Set<string>()
   for (const l of pending) {
+    /* ⚠ ĐÚNG TỜ ĐANG SỬA, KHÔNG PHẢI CẢ ĐƠN — xem `invoiceId` ở trên. */
+    if (l.invoiceId !== invoiceId) continue
     if (l.isExchange) continue
     if (l.returnStatus !== "draft" && l.returnStatus !== "submitted") continue
     if (sold.has(l.productId)) continue

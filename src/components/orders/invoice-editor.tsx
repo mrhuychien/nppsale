@@ -203,7 +203,7 @@ export function InvoiceEditor({
     supabase
       .from("returns")
       .select(
-        "id, status, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, line_total, is_exchange, product:products(name))"
+        "id, status, invoice_id, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, line_total, is_exchange, product:products(name))"
       )
       .eq("order_id", orderId)
       .neq("status", "cancelled")
@@ -212,6 +212,7 @@ export function InvoiceEditor({
         const rs = ((data as unknown) as Array<{
           id: string
           status: string
+          invoice_id: string | null
           credit_note_amount: number | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
@@ -225,6 +226,7 @@ export function InvoiceEditor({
             (r.lines ?? []).map((l) => ({
               returnId: r.id,
               returnStatus: r.status,
+              invoiceId: r.invoice_id,
               productId: l.product_id,
               productName: l.product?.name || "Sản phẩm đã xoá",
               isExchange: l.is_exchange === true,
@@ -318,7 +320,9 @@ export function InvoiceEditor({
    *   `post_invoice` mới là chỗ gắn. Cảnh báo ở đó là kêu oan cho một
    *   xung đột chưa tồn tại.
    */
-  const returnConflicts = reissueOf ? returnsBrokenBy(rows, pendingReturns) : []
+  const returnConflicts = reissueOf
+    ? returnsBrokenBy(rows, pendingReturns, reissueOf.invoiceId)
+    : []
   const overRows = rowsOverOrdered(rows)
 
   const setQty = (key: string, v: number) =>
@@ -639,17 +643,32 @@ export function InvoiceEditor({
           */}
           {returnConflicts.length > 0 && (
             <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3">
+              {/*
+                ⚠ NÓI THEO THỨ TỰ NGƯỜI TA NGHĨ: vừa làm gì → hỏng ở đâu
+                  → làm gì tiếp. Bản đầu mở đầu bằng "Tờ hóa đơn này
+                  không còn bán X" — một câu nói từ phía hệ thống, và
+                  chủ nhà đọc xong hỏi lại "Đoạn này là sao?".
+              */}
               <p className="flex items-start gap-1.5 text-sm font-bold text-destructive">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  Tờ hóa đơn này không còn bán{" "}
-                  {returnConflicts.map((c) => `“${c.productName}”`).join(", ")}, nhưng
-                  phiếu trả đang chờ xử lý đòi trả đúng món đó.
+                  Chưa lưu được: bạn vừa bỏ{" "}
+                  {returnConflicts.map((c) => `“${c.productName}”`).join(", ")} khỏi hóa
+                  đơn {reissueOf?.invoiceCode ?? ""}, nhưng khách đang có phiếu trả chờ
+                  xử lý đòi trả lại đúng món đó.
                 </span>
               </p>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Khách chỉ trả được thứ đã thực xuất, nên lưu tờ này sẽ bị từ chối. Hoặc
-                giữ lại món trên hóa đơn, hoặc mở phiếu trả ra bỏ dòng đó đi.
+                Khách chỉ trả được hàng đã thực xuất. Bỏ món khỏi hóa đơn nghĩa là hóa
+                đơn này chưa từng bán nó — phiếu trả kia thành đòi trả một món chưa rời
+                kho, nên máy chủ sẽ từ chối.
+              </p>
+              <p className="mt-1.5 text-xs font-semibold">
+                Chọn một trong hai:{" "}
+                <span className="font-normal text-muted-foreground">
+                  giữ lại món trên hóa đơn (đặt số lượng về như cũ), hoặc mở phiếu trả
+                  ra bỏ đúng dòng đó rồi quay lại lưu.
+                </span>
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from(new Set(returnConflicts.map((c) => c.returnId))).map((rid) => (

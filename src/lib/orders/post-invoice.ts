@@ -399,10 +399,27 @@ export async function cancelInvoice(
  * sang bản mới; đứng lại ở trang cũ là người dùng nhìn một hóa đơn vừa
  * bị huỷ và tưởng việc sửa thất bại.
  */
+/**
+ * Phần sửa DÒNG PHIẾU TRẢ gửi kèm khi sửa hóa đơn.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Khi sửa và tạo hoá đơn cho phép sửa cả
+ * đổi trả -> sửa thế nào cập nhật vào phiếu trả là xong".
+ *
+ * ⚠ KHÔNG GỬI `line_total`. Con số ấy đi thẳng vào
+ * `returns.credit_note_amount` rồi vào công nợ của khách; để trình
+ * duyệt gửi là mở một đường ghi tiền tuỳ ý. RPC `_apply_return_edits`
+ * (mig 149) tính lại từ `unit_price` và `vat_rate` đang lưu.
+ */
+export interface ReturnLineEdit {
+  lineId: string
+  /** 0 nghĩa là BỎ HẲN dòng đó. */
+  quantity: number
+}
+
 export async function reissueInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
-  payload: Omit<PostInvoicePayload, "orderId">
+  payload: Omit<PostInvoicePayload, "orderId"> & { returnEdits?: ReturnLineEdit[] }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
   if (lines.length === 0) {
@@ -426,6 +443,19 @@ export async function reissueInvoice(
         is_exchange: l.isExchange,
         note: l.note,
       })),
+      /**
+       * ⚠ BỎ QUA HẲN KHI KHÔNG CÓ GÌ SỬA. Gửi `[]` cũng vô hại (RPC
+       * đọc ra 0 dòng), nhưng một tải trọng không có khoá ấy là bằng
+       * chứng rõ ràng rằng màn hình KHÔNG định đụng vào phiếu trả.
+       */
+      ...(payload.returnEdits && payload.returnEdits.length > 0
+        ? {
+            return_edits: payload.returnEdits.map((e) => ({
+              line_id: e.lineId,
+              quantity: e.quantity,
+            })),
+          }
+        : {}),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))

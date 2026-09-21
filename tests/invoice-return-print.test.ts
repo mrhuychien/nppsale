@@ -25,13 +25,20 @@ describe("màn soạn hóa đơn hiện khoản trừ hàng trả", () => {
   it("có dòng Trừ hàng trả và dòng Khách phải trả", () => {
     expect(EDITOR).toContain("Trừ hàng trả")
     expect(EDITOR).toContain("Khách phải trả")
-    expect(EDITOR).toContain("Math.max(0, totals.total - retCredit)")
+    /**
+     * ⚠ SỐ ĐANG HIỆN, KHÔNG PHẢI SỐ ĐỌC TỪ SỔ. Từ 21/09/2026 khối hàng
+     * trả sửa được ngay trên màn này, nên khoản trừ phải tính lại theo
+     * số lượng người dùng vừa đặt (`retCreditNow`). Dùng `retCredit`
+     * đọc lúc mở màn là: vừa bỏ một dòng trả mà thanh tổng vẫn trừ
+     * tiền của nó — đọc cho khách một con số sắp sai.
+     */
+    expect(EDITOR).toContain("Math.max(0, totals.total - retCreditNow)")
   })
 
   /** ⚠ Thanh đáy là chỗ ngón tay dừng lại — nó cũng phải nói số thật. */
   it("thanh đáy hiện số khách phải trả, không hiện tổng gộp", () => {
     const bar = EDITOR.slice(EDITOR.indexOf("fixed inset-x-0 bottom-0"))
-    expect(bar).toContain("Math.max(0, totals.total - retCredit)")
+    expect(bar).toContain("Math.max(0, totals.total - retCreditNow)")
     expect(bar).toContain("đã trừ")
   })
 

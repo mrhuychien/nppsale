@@ -132,8 +132,20 @@ export function InvoiceEditor({
   /** Dòng hàng trả đang chờ — để cảnh báo TRƯỚC khi lưu. */
   const [pendingReturns, setPendingReturns] = useState<PendingReturnLine[]>([])
   const [retLines, setRetLines] = useState<
-    Array<{ id: string; name: string; qty: number; unit: string; credit: number; isExchange: boolean }>
+    Array<{
+      id: string; returnId: string; productId: string; name: string
+      qty: number; unit: string; unitPrice: number; vatRate: number
+      credit: number; isExchange: boolean
+    }>
   >([])
+  /**
+   * Số lượng NGƯỜI DÙNG vừa đặt lại cho từng dòng trả — 0 nghĩa là bỏ.
+   *
+   * ⚠ GIỮ RIÊNG, KHÔNG SỬA THẲNG `retLines`. Cần biết CÁI GÌ ĐÃ ĐỔI để
+   *   chỉ gửi đúng phần ấy lên máy chủ; trộn vào một mảng là mỗi lần
+   *   lưu lại ghi đè cả những dòng không ai chạm tới.
+   */
+  const [retEdits, setRetEdits] = useState<Record<string, number>>({})
   const [catalog, setCatalog] = useState<PricedProduct[]>([])
   /** Danh mục đọc chưa hết — màn hình phải nói ra, đừng để người dùng đoán. */
   const [catalogTruncated, setCatalogTruncated] = useState(false)
@@ -203,7 +215,7 @@ export function InvoiceEditor({
     supabase
       .from("returns")
       .select(
-        "id, status, invoice_id, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, line_total, is_exchange, product:products(name))"
+        "id, status, invoice_id, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(name))"
       )
       .eq("order_id", orderId)
       .neq("status", "cancelled")
@@ -216,7 +228,7 @@ export function InvoiceEditor({
           credit_note_amount: number | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
-            line_total: number
+            unit_price: number | null; vat_rate: number | null; line_total: number
             is_exchange?: boolean | null; product?: { name?: string | null } | null
           }> | null
         }>) ?? []
@@ -224,6 +236,7 @@ export function InvoiceEditor({
         setPendingReturns(
           rs.flatMap((r) =>
             (r.lines ?? []).map((l) => ({
+              lineId: l.id,
               returnId: r.id,
               returnStatus: r.status,
               invoiceId: r.invoice_id,
@@ -238,6 +251,10 @@ export function InvoiceEditor({
           rs.flatMap((r) =>
             (r.lines ?? []).map((l) => ({
               id: l.id,
+              returnId: r.id,
+              productId: l.product_id,
+              unitPrice: Number(l.unit_price ?? 0),
+              vatRate: Number(l.vat_rate ?? 0),
               name: l.product?.name || "Sản phẩm đã xoá",
               qty: Number(l.quantity) || 0,
               unit: l.unit_name,
@@ -320,8 +337,56 @@ export function InvoiceEditor({
    *   `post_invoice` mới là chỗ gắn. Cảnh báo ở đó là kêu oan cho một
    *   xung đột chưa tồn tại.
    */
+  /** Số lượng trả ĐANG hiện của một dòng — phần sửa thắng số gốc. */
+  const retQty = (l: { id: string; qty: number }) => retEdits[l.id] ?? l.qty
+  /**
+   * Khoản trừ của một dòng trả theo số lượng ĐANG hiện.
+   *
+   * ⚠ TÍNH LẠI Y HỆT MÁY CHỦ: round(qty × đơn giá × (1 + thuế)) — cùng
+   *   công thức với `toReturnLine` và `_apply_return_edits` (mig 149).
+   *   Lệch một đồng ở đây là người dùng đọc cho khách một con số, còn
+   *   sổ ghi một con số khác.
+   */
+  const retCreditOf = (l: {
+    id: string; qty: number; unitPrice: number; vatRate: number; isExchange: boolean
+  }) =>
+    l.isExchange ? 0 : Math.round(retQty(l) * l.unitPrice * (1 + (l.vatRate || 0)))
+
+  /**
+   * Phần sửa phiếu trả sẽ gửi kèm — CHỈ những dòng thật sự đổi.
+   *
+   * ⚠ GỬI CẢ NHỮNG DÒNG KHÔNG ĐỔI là ghi đè `line_total` của chúng bằng
+   *   phép tính lại, và một dòng cũ có `line_total` lệch (nhập tay, dữ
+   *   liệu cũ) sẽ lặng lẽ đổi số tiền — sửa một thứ người ta không yêu
+   *   cầu sửa.
+   */
+  const returnEdits = retLines
+    .filter((l) => retEdits[l.id] !== undefined && retEdits[l.id] !== l.qty)
+    .map((l) => ({ lineId: l.id, quantity: retEdits[l.id] }))
+
+  /**
+   * Khoản trừ tổng theo số lượng ĐANG hiện.
+   *
+   * ⚠ DÙNG SỐ ĐANG HIỆN, KHÔNG DÙNG `retCredit` ĐỌC TỪ SỔ. Người dùng
+   *   vừa bỏ một dòng trả mà thanh tổng vẫn trừ tiền của nó là đọc cho
+   *   khách một con số sắp sai.
+   */
+  const retCreditNow = retLines.length > 0
+    ? retLines.reduce((sum, l) => sum + retCreditOf(l), 0)
+    : retCredit
+
   const returnConflicts = reissueOf
-    ? returnsBrokenBy(rows, pendingReturns, reissueOf.invoiceId)
+    ? returnsBrokenBy(
+        rows,
+        /* ⚠ SOI TRẠNG THÁI SAU KHI SỬA. Người dùng vừa bỏ dòng trả của
+           món đã gỡ khỏi hóa đơn thì xung đột KHÔNG còn — cảnh báo phải
+           tắt ngay, nếu không họ sửa đúng rồi mà nút vẫn khoá. */
+        pendingReturns.filter((pr) => {
+          const l = retLines.find((x) => x.id === pr.lineId)
+          return !l || retQty(l) > 0
+        }),
+        reissueOf.invoiceId
+      )
     : []
   const overRows = rowsOverOrdered(rows)
 
@@ -400,6 +465,8 @@ export function InvoiceEditor({
       const r: PostInvoiceResult = reissueOf
         ? await reissueInvoice(supabase, reissueOf.invoiceId, {
             lines: draft, notes: notes.trim() || null,
+            /* ⚠ ĐI CÙNG MỘT GIAO DỊCH — xem `return_edits`, mig 149. */
+            returnEdits: returnEdits,
           })
         : await postInvoice(supabase, {
             orderId, lines: draft, notes: notes.trim() || null,
@@ -663,27 +730,20 @@ export function InvoiceEditor({
                 đơn này chưa từng bán nó — phiếu trả kia thành đòi trả một món chưa rời
                 kho, nên máy chủ sẽ từ chối.
               </p>
+              {/*
+                ⚠ CHỈ ĐƯỜNG TỚI CHỖ SỬA NGAY TRÊN MÀN NÀY. Bản trước bảo
+                  "mở phiếu trả ra bỏ dòng đó" và mở một tab mới — hai
+                  màn cho một việc. Từ 21/09/2026 khối "Hàng đổi / trả
+                  kèm đơn" ngay dưới sửa được tại chỗ, và phần sửa đi
+                  cùng một giao dịch với việc lập lại hóa đơn.
+              */}
               <p className="mt-1.5 text-xs font-semibold">
                 Chọn một trong hai:{" "}
                 <span className="font-normal text-muted-foreground">
-                  giữ lại món trên hóa đơn (đặt số lượng về như cũ), hoặc mở phiếu trả
-                  ra bỏ đúng dòng đó rồi quay lại lưu.
+                  giữ lại món trên hóa đơn (đặt số lượng về như cũ), hoặc kéo xuống khối
+                  “Hàng đổi / trả kèm đơn” và đưa số lượng dòng đó về 0.
                 </span>
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {Array.from(new Set(returnConflicts.map((c) => c.returnId))).map((rid) => (
-                  <Button
-                    key={rid}
-                    variant="outline"
-                    size="sm"
-                    /* ⚠ TAB MỚI. Người dùng đang sửa dở một tờ hóa đơn
-                       CHƯA LƯU — điều hướng đi là mất sạch. */
-                    onClick={() => window.open(`/returns/${rid}`, "_blank")}
-                  >
-                    Mở phiếu trả
-                  </Button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -807,26 +867,76 @@ export function InvoiceEditor({
                 </p>
               </CardHeader>
               <CardContent className="grid gap-1.5">
-                {retLines.map((l) => (
-                  <div key={l.id} className="flex items-baseline gap-2 text-[13px]">
-                    <span
-                      className={
-                        l.isExchange
-                          ? "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-primary ring-1 ring-primary/30"
-                          : "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-[#b54708] ring-1 ring-[#b54708]/30"
-                      }
+                {retLines.map((l) => {
+                  const q = retQty(l)
+                  const bo = q <= 0
+                  return (
+                    <div
+                      key={l.id}
+                      className={`flex flex-wrap items-center gap-2 text-[13px] ${bo ? "opacity-50" : ""}`}
                     >
-                      {l.isExchange ? "ĐỔI" : "TRẢ"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-semibold">{l.name}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">
-                      {l.qty} {l.unit}
-                    </span>
-                    <span className="w-[92px] shrink-0 text-right font-semibold tabular-nums">
-                      {l.isExchange ? "không trừ" : `−${formatCurrency(l.credit)}`}
-                    </span>
-                  </div>
-                ))}
+                      <span
+                        className={
+                          l.isExchange
+                            ? "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-primary ring-1 ring-primary/30"
+                            : "shrink-0 rounded px-1 py-px text-[10px] font-extrabold text-[#b54708] ring-1 ring-[#b54708]/30"
+                        }
+                      >
+                        {l.isExchange ? "ĐỔI" : "TRẢ"}
+                      </span>
+                      <span
+                        className={`min-w-0 flex-1 truncate font-semibold ${bo ? "line-through" : ""}`}
+                      >
+                        {l.name}
+                      </span>
+                      {/*
+                        ⚠ SỬA ĐƯỢC NGAY TẠI ĐÂY (chủ nhà chốt 21/09/2026:
+                          "cho phép sửa cả đổi trả -> sửa thế nào cập nhật
+                          vào phiếu trả là xong"). Trước nay khối này chỉ
+                          để ĐỌC, nên bỏ một món khỏi hóa đơn là phải đi
+                          sang màn phiếu trả rồi quay lại.
+
+                        ⚠ VÀ PHẦN SỬA ĐI CÙNG MỘT GIAO DỊCH với việc lập
+                          lại hóa đơn — xem `return_edits` ở mig 149. Ghi
+                          thẳng từ đây rồi mới gọi RPC là hai bước: bước
+                          một xong, bước hai hỏng, và phiếu trả đã bị sửa
+                          cho một hóa đơn không bao giờ được lập.
+                      */}
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={q}
+                        aria-label={`Số lượng trả ${l.name}`}
+                        onChange={(e) =>
+                          setRetEdits((prev) => ({
+                            ...prev,
+                            [l.id]: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="h-9 w-20 shrink-0 rounded-lg border px-2 text-right tabular-nums"
+                      />
+                      <span className="shrink-0 text-muted-foreground">{l.unit}</span>
+                      <span className="w-[92px] shrink-0 text-right font-semibold tabular-nums">
+                        {l.isExchange ? "không trừ" : `−${formatCurrency(retCreditOf(l))}`}
+                      </span>
+                      {/* ⚠ ĐƯA VỀ 0 LÀ BỎ DÒNG, và phải lấy lại được —
+                          bấm nhầm mà chỉ còn cách tải lại trang là mất
+                          sạch tờ hóa đơn đang soạn dở. */}
+                      {bo && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRetEdits((prev) => ({ ...prev, [l.id]: l.qty }))
+                          }
+                          className="shrink-0 text-xs font-semibold text-primary underline"
+                        >
+                          Hoàn tác
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </CardContent>
             </Card>
           )}
@@ -870,16 +980,16 @@ export function InvoiceEditor({
               {/* ⚠ KHOẢN TRỪ HÀNG TRẢ VÀO CÔNG NỢ NGAY KHI GHI SỔ (mig 133).
                   Không hiện ở đây thì người xuất hàng đọc cho khách con số
                   "Tổng cộng" — cao hơn số sẽ ghi vào sổ đúng bằng khoản trừ. */}
-              {retCredit > 0 && (
+              {retCreditNow > 0 && (
                 <>
                   <div className="flex justify-between text-[#b54708]">
                     <dt>Trừ hàng trả</dt>
-                    <dd className="tabular-nums">−{formatCurrency(retCredit)}</dd>
+                    <dd className="tabular-nums">−{formatCurrency(retCreditNow)}</dd>
                   </div>
                   <div className="flex justify-between border-t pt-1 text-base font-extrabold">
                     <dt>Khách phải trả</dt>
                     <dd className="tabular-nums">
-                      {formatCurrency(Math.max(0, totals.total - retCredit))}
+                      {formatCurrency(Math.max(0, totals.total - retCreditNow))}
                     </dd>
                   </div>
                 </>
@@ -894,10 +1004,10 @@ export function InvoiceEditor({
               <div className="min-w-0 flex-1">
                 <div className="text-xs text-muted-foreground">{picked.length} dòng</div>
                 <div className="truncate text-lg font-bold tabular-nums">
-                  {formatCurrency(Math.max(0, totals.total - retCredit))}
-                  {retCredit > 0 && (
+                  {formatCurrency(Math.max(0, totals.total - retCreditNow))}
+                  {retCreditNow > 0 && (
                     <span className="ml-1.5 text-xs font-semibold text-[#b54708]">
-                      đã trừ {formatCurrency(retCredit)} hàng trả
+                      đã trừ {formatCurrency(retCreditNow)} hàng trả
                     </span>
                   )}
                 </div>

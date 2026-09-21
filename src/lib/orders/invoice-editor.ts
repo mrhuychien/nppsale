@@ -326,6 +326,8 @@ export function patchRowFromCart(r: EditorRow, patch: Partial<CartLine>): Editor
 
 /** Một dòng hàng trả đang chờ, gắn vào hóa đơn đang sửa. */
 export interface PendingReturnLine {
+  /** Dòng `return_lines` — để soi lại sau khi người dùng vừa sửa nó. */
+  lineId: string
   returnId: string
   returnStatus: string
   /**

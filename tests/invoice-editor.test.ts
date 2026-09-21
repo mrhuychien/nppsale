@@ -541,6 +541,7 @@ describe("bỏ dòng khỏi tờ hóa đơn", () => {
  */
 const INV = "inv-dang-sua"
 const rr = (o: Partial<PendingReturnLine> = {}): PendingReturnLine => ({
+  lineId: "rl1",
   returnId: "r1",
   returnStatus: "submitted",
   invoiceId: INV,
@@ -638,13 +639,26 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
   })
 
   /**
-   * ⚠ VÀ CHỈ ĐƯỜNG, KHÔNG CHỈ CHẶN. Câu lỗi của máy chủ bảo "huỷ phiếu
-   * trả" — huỷ CẢ phiếu là mất luôn những dòng khác trên đó.
+   * ⚠ VÀ CHỈ ĐƯỜNG TỚI CHỖ SỬA NGAY TRÊN MÀN NÀY. Bản 21/09/2026 sớm
+   * hơn bảo "mở phiếu trả ra" và mở một tab mới — hai màn cho một
+   * việc. Chủ nhà chốt: "cho phép sửa cả đổi trả -> sửa thế nào cập
+   * nhật vào phiếu trả là xong", nên lối thoát phải nằm ngay dưới.
    */
-  it("mở được đúng phiếu trả đang vướng", () => {
-    expect(EDITOR_UI).toContain("`/returns/${rid}`")
-    /* ⚠ TAB MỚI — đang sửa dở một tờ hóa đơn CHƯA LƯU. */
-    expect(EDITOR_UI).toContain('window.open(`/returns/${rid}`, "_blank")')
+  it("chỉ đường tới khối sửa hàng trả ngay trên màn này", () => {
+    expect(EDITOR_UI).toContain("Hàng đổi / trả kèm đơn")
+    expect(
+      EDITOR_UI.includes("window.open(`/returns/"),
+      "vẫn đẩy người dùng sang một tab khác để sửa phiếu trả"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ SỬA XONG THÌ CẢNH BÁO PHẢI TẮT. Người dùng đưa số lượng dòng trả
+   * về 0 là xung đột hết; nút vẫn khoá thì họ đã làm đúng mà vẫn kẹt.
+   */
+  it("cảnh báo soi trạng thái SAU khi sửa hàng trả", () => {
+    expect(EDITOR_UI).toContain("pendingReturns.filter((pr) => {")
+    expect(EDITOR_UI).toContain("return !l || retQty(l) > 0")
   })
 
   /**
@@ -653,7 +667,7 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
    * một xung đột chưa tồn tại — và người dùng học được cách bỏ qua.
    */
   it("lập hóa đơn lần đầu thì không cảnh báo", () => {
-    expect(EDITOR_UI).toContain("returnsBrokenBy(rows, pendingReturns, reissueOf.invoiceId)")
+    expect(EDITOR_UI).toContain("reissueOf.invoiceId")
     /* ⚠ VÀ CHỈ SOI PHIẾU GẮN VÀO ĐÚNG TỜ ĐANG SỬA — xem chốt
        "phiếu trả của hóa đơn KHÁC" ở trên. */
     expect(EDITOR_UI).toContain("const returnConflicts = reissueOf")
@@ -671,5 +685,119 @@ describe("phiếu trả đang chờ vỡ vì hóa đơn bỏ mất món", () => 
     )
     expect(mig, "reissue_invoice thôi chặn phiếu trả bị vỡ").toContain("REISSUE_BREAKS_RETURN")
     expect(mig).toContain("AND rl.is_exchange = false")
+  })
+})
+
+// =====================================================================
+
+const MIG149 = readFileSync(
+  resolve(__dirname, "..", "supabase/migrations/149_reissue_updates_returns.sql"), "utf-8"
+)
+const POST_INV = readFileSync(
+  resolve(__dirname, "..", "src/lib/orders/post-invoice.ts"), "utf-8"
+)
+
+/**
+ * SỬA HÓA ĐƠN THÌ SỬA LUÔN PHIẾU TRẢ — CÙNG MỘT GIAO DỊCH.
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026: "Khi sửa và tạo hoá đơn cho phép sửa cả
+ * đổi trả -> sửa thế nào cập nhật vào phiếu trả là xong".
+ */
+describe("phần sửa phiếu trả đi kèm khi lập lại hóa đơn", () => {
+  /**
+   * ⚠ PHẢI NẰM TRONG RPC. Sửa `return_lines` là đụng
+   * `returns.credit_note_amount` (trigger mig 035) và từ đó đụng CÔNG
+   * NỢ. Ghi từ trình duyệt rồi mới gọi RPC là hai bước: bước một xong,
+   * bước hai hỏng, và phiếu trả đã bị sửa cho một hóa đơn không bao
+   * giờ được lập.
+   */
+  it("màn hình KHÔNG tự ghi thẳng vào return_lines", () => {
+    expect(
+      /from\("return_lines"\)[\s\S]{0,80}?\.(update|delete|insert|upsert)\(/.test(EDITOR_UI),
+      "màn soạn hóa đơn đang ghi thẳng vào return_lines — phải đi qua RPC"
+    ).toBe(false)
+  })
+
+  it("gửi phần sửa kèm lời gọi reissue", () => {
+    expect(POST_INV).toContain("return_edits")
+    expect(EDITOR_UI).toContain("returnEdits: returnEdits")
+  })
+
+  /**
+   * ⚠ KHÔNG GỬI `line_total`. Con số ấy đi thẳng vào công nợ; để trình
+   * duyệt gửi là mở một đường ghi tiền tuỳ ý. RPC tính lại từ
+   * `unit_price` và `vat_rate` đang lưu.
+   */
+  it("chỉ gửi số lượng, không gửi thành tiền", () => {
+    const blk = POST_INV.match(/return_edits: payload\.returnEdits\.map\([\s\S]{0,200}?\}\)\)/)
+    expect(blk, "không đọc được phần dựng return_edits").not.toBeNull()
+    expect(blk![0]).toContain("line_id")
+    expect(blk![0]).toContain("quantity")
+    expect(blk![0], "đang gửi thành tiền lên máy chủ").not.toContain("line_total")
+    expect(MIG149, "RPC không tự tính lại line_total").toContain("line_total = round(")
+  })
+
+  /**
+   * ⚠ CHỈ GỬI DÒNG THẬT SỰ ĐỔI. Gửi cả dòng không đổi là ghi đè
+   * `line_total` của chúng bằng phép tính lại — một dòng cũ có
+   * `line_total` lệch sẽ lặng lẽ đổi số tiền.
+   */
+  it("chỉ gửi những dòng người dùng thật sự sửa", () => {
+    expect(EDITOR_UI).toContain("retEdits[l.id] !== undefined && retEdits[l.id] !== l.qty")
+  })
+
+  /**
+   * ⚠ ÁP PHẦN SỬA TRƯỚC KHI KIỂM. Đó là cả điểm của migration 149 —
+   * kiểm trên trạng thái CŨ thì người dùng vừa bỏ dòng trả xong vẫn bị
+   * từ chối.
+   */
+  it("RPC áp phần sửa TRƯỚC phép kiểm", () => {
+    /* ⚠ SOI TRONG THÂN HÀM, KHÔNG SOI CẢ TỆP. `REISSUE_BREAKS_RETURN`
+       còn xuất hiện ở khối chú thích đầu migration — bắt phải nó là
+       chốt đỏ vì một dòng chữ, không vì thứ tự lệnh. */
+    const body = MIG149.slice(MIG149.indexOf("FUNCTION public.reissue_invoice"))
+    const iApply = body.indexOf("_apply_return_edits(p_invoice_id, p->'return_edits')")
+    const iCheck = body.indexOf("REISSUE_BREAKS_RETURN")
+    expect(iApply, "RPC không gọi _apply_return_edits").toBeGreaterThan(-1)
+    expect(iCheck, "RPC bỏ mất phép kiểm").toBeGreaterThan(-1)
+    expect(iApply, "áp phần sửa SAU phép kiểm — vô nghĩa").toBeLessThan(iCheck)
+  })
+
+  /**
+   * ⚠ CHỐT CHẶN GIỮ NGUYÊN. Phép tính trên trình duyệt chỉ để nói sớm;
+   * một tab cũ mở sẵn, hay một nơi gọi quên gửi phần sửa, vẫn phải bị
+   * từ chối chứ không được lặng lẽ tạo phiếu trả đòi món chưa rời kho.
+   */
+  it("phép kiểm của máy chủ vẫn còn nguyên", () => {
+    expect(MIG149).toContain("AND rl.is_exchange = false")
+    expect(MIG149).toContain("r.status IN ('draft', 'submitted')")
+  })
+
+  /**
+   * ⚠ CHỈ ĐỤNG DÒNG CỦA HÓA ĐƠN NÀY. `SECURITY DEFINER` bỏ qua RLS,
+   * nên không chặn thì một `line_id` gõ bừa sửa được phiếu trả của
+   * khách khác.
+   */
+  it("RPC chặn line_id của hóa đơn khác", () => {
+    const fn = MIG149.slice(
+      MIG149.indexOf("FUNCTION public._apply_return_edits"),
+      MIG149.indexOf("COMMENT ON FUNCTION public._apply_return_edits")
+    )
+    expect(fn).toContain("AND r.invoice_id = p_invoice_id")
+    expect(fn).toContain("AND r.status IN ('draft', 'submitted')")
+  })
+
+  /** ⚠ Không gửi gì thì không đụng gì — nơi gọi cũ không phải sửa. */
+  it("không gửi phần sửa thì RPC không đụng gì", () => {
+    expect(MIG149).toContain("IF p_edits IS NULL OR jsonb_typeof(p_edits) <> 'array' THEN")
+  })
+
+  /**
+   * ⚠ BỎ HẾT DÒNG THÌ HUỶ HẲN PHIẾU. Để lại một phiếu `submitted`
+   * không dòng nào là một việc treo vĩnh viễn ở hàng đợi kho.
+   */
+  it("phiếu trả rỗng dòng thì bị huỷ, không nằm chờ", () => {
+    expect(MIG149).toContain("SET status = 'cancelled'")
+    expect(MIG149).toContain("NOT EXISTS (SELECT 1 FROM return_lines rl WHERE rl.return_id = returns.id)")
   })
 })

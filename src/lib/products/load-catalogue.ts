@@ -58,5 +58,18 @@ export async function loadCatalogue<T extends { name?: string | null }>(
     return q
   })
   const rows = res.rows.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
-  return { rows, truncated: res.truncated }
+  /**
+   * ⚠ ĐỌC HỎNG CŨNG LÀ ĐỌC THIẾU. `fetchAllForAggregate` trả
+   * `truncated: false` khi câu truy vấn LỖI — nó đặt `error` và trả
+   * mảng rỗng. Bản đầu của hàm này bỏ qua `error` và chỉ chuyển tiếp
+   * `truncated`, nên một lần đọc hỏng ra đúng hình dạng của "danh mục
+   * trống": không dòng nào, không cờ nào, không một câu nào. Đó CHÍNH
+   * LÀ cái mặt mà lỗi 21/09/2026 hiện ra với người dùng — gõ đúng tên
+   * hàng, ô tìm im lặng trả về rỗng.
+   *
+   * ⚠ VÀ NHỚ RẰNG RLS TỪ CHỐI KHÔNG PHẢI LÀ LỖI: 0 dòng, HTTP 200,
+   * `error` null. Ca ấy KHÔNG gắn cờ ở đây được — nó là "bạn không
+   * được xem gì", và màn hình phải tự nói bằng trạng thái rỗng của nó.
+   */
+  return { rows, truncated: res.truncated || res.error !== null }
 }

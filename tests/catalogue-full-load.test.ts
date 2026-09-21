@@ -82,15 +82,6 @@ const MIEN_TRU = [
  * vào đây để né, và sửa xong mà quên xoá thì cũng đỏ.
  */
 const CON_NO_DOC_DANH_MUC = [
-  /**
-   * ⚠ MỚI LỘ RA 21/09/2026 khi phép quét được nới ra cả
-   * `src/components`. Ô "Ngành hàng" đọc `select("category")` của MỌI
-   * sản phẩm để dựng danh sách gợi ý — cắt ở 1.000 dòng nghĩa là ngành
-   * hàng nào chỉ có ở những mã xếp sau đó sẽ KHÔNG hiện trong ô chọn,
-   * và người nhập sẽ gõ tay một ngành hàng trùng tên. Đã báo chủ nhà,
-   * chưa được yêu cầu sửa.
-   */
-  "src/components/products/product-form.tsx",
   "src/app/(dashboard)/analytics/business/overview/page.tsx",
   "src/app/(dashboard)/analytics/products/categories/page.tsx",
   "src/app/(dashboard)/analytics/products/overview/page.tsx",
@@ -100,7 +91,6 @@ const CON_NO_DOC_DANH_MUC = [
   "src/app/(dashboard)/inventory/stock-out/page.tsx",
   "src/app/(dashboard)/inventory/stocktake/page.tsx",
   "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
-  "src/app/(dashboard)/orders/[id]/page.tsx",
   "src/app/(dashboard)/reports/page.tsx",
   "src/app/(dashboard)/reports/customers/page.tsx",
   "src/app/(dashboard)/reports/employees/page.tsx",
@@ -222,5 +212,76 @@ describe("không màn nào nạp danh mục kiểu bị cắt", () => {
       expect(strip(read(rel)), `${rel} không nạp danh mục qua loadCatalogue`)
         .toContain("loadCatalogue<")
     }
+  })
+})
+
+/**
+ * KÉO ĐỦ LÀ MỘT NỬA; NỬA CÒN LẠI LÀ NÓI RA KHI KÉO CHƯA ĐỦ.
+ *
+ * ⚠ `loadCatalogue` trả về cờ `truncated` CHÍNH VÌ CÓ LÚC NÓ KÉO KHÔNG
+ * ĐỦ — chạm trần `AGGREGATE_ROW_CAP`, hoặc câu truy vấn lỗi. Nơi gọi mà
+ * vứt cờ ấy đi thì màn hình quay lại đúng hình dạng của lỗi 21/09/2026:
+ * gõ đúng tên hàng, ô tìm im lặng trả về rỗng, người dùng kết luận danh
+ * mục thiếu mã rồi đi tạo một mã trùng. Kéo đủ mà không báo được là mới
+ * dời cái bẫy đi xa hơn, không phải gỡ nó.
+ */
+const CON_NO_NUOT_CO_THIEU = [
+  /**
+   * ⚠ BẢY MÀN NÀY NHẬN CỜ RỒI VỨT ĐI. Chúng chuyển sang `loadCatalogue`
+   * hôm 21/09/2026 trong lượt sửa lỗi "Sản phẩm đã xoá" — phần kéo đủ
+   * đã xong, phần nói ra thì chưa nối dây. Đã báo chủ nhà, chưa được
+   * yêu cầu sửa.
+   */
+  "src/app/(dashboard)/purchasing/receipts/new/page.tsx",
+  "src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx",
+  "src/app/(dashboard)/purchase-returns/new/page.tsx",
+  "src/app/(dashboard)/purchase-returns/[id]/edit/page.tsx",
+  "src/app/(dashboard)/inventory/stock-issue/page.tsx",
+  "src/app/(dashboard)/inventory/stock-in/page.tsx",
+  "src/app/(dashboard)/inventory/audit/page.tsx",
+]
+
+describe("đọc thiếu danh mục thì màn hình phải nói ra", () => {
+  it("mọi nơi gọi loadCatalogue đều dùng tới cờ truncated", () => {
+    const bad: string[] = []
+    for (const abs of allScanned()) {
+      const rel = abs.slice(ROOT.length + 1)
+      if (CON_NO_NUOT_CO_THIEU.includes(rel)) continue
+      const src = strip(readFileSync(abs, "utf-8"))
+      if (!src.includes("loadCatalogue<")) continue
+      if (!/truncated/.test(src)) bad.push(rel)
+    }
+    expect(
+      bad,
+      "nạp danh mục qua loadCatalogue nhưng vứt cờ `truncated` — đọc thiếu " +
+        "mà màn hình im lặng, đúng hình dạng của lỗi 21/09/2026:\n  " + bad.join("\n  ")
+    ).toEqual([])
+  })
+
+  /** ⚠ Sửa màn nào thì xoá tên màn ấy — nếu không cái lỗ vẫn mở. */
+  it("mỗi màn trong danh sách nợ đều thật sự còn nuốt cờ", () => {
+    for (const rel of CON_NO_NUOT_CO_THIEU) {
+      const src = strip(read(rel))
+      expect(src, `${rel} không còn gọi loadCatalogue — xem lại danh sách nợ`)
+        .toContain("loadCatalogue<")
+      expect(
+        /truncated/.test(src),
+        `${rel} đã dùng tới cờ truncated — xoá tên nó khỏi CON_NO_NUOT_CO_THIEU`
+      ).toBe(false)
+    }
+  })
+
+  /**
+   * ⚠ ĐỌC HỎNG CŨNG PHẢI GẮN CỜ. `fetchAllForAggregate` trả
+   * `truncated: false` kèm `error` khi câu truy vấn lỗi — chuyển tiếp
+   * thẳng `res.truncated` là một lần đọc hỏng ra đúng hình dạng của
+   * "danh mục trống": không dòng nào, không cờ nào, không một câu nào.
+   */
+  it("loadCatalogue coi câu truy vấn lỗi là đọc thiếu", () => {
+    const src = strip(read("src/lib/products/load-catalogue.ts"))
+    expect(
+      /truncated:\s*res\.truncated\s*\|\|\s*res\.error\s*!==\s*null/.test(src),
+      "loadCatalogue bỏ qua `error` — đọc hỏng sẽ im lặng trông như danh mục rỗng"
+    ).toBe(true)
   })
 })

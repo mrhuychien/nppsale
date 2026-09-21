@@ -64,6 +64,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoice } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 
 type NextStatus = {
   value: OrderStatus
@@ -111,6 +112,22 @@ type OrderStockEntry = {
     unit_cost: number
     product?: { name: string; sku: string } | null
   }>
+}
+
+/**
+ * Câu nói "danh mục đọc chưa hết", dùng cho CẢ HAI ô tra hàng ở màn này.
+ *
+ * ⚠ MỘT CHỖ, KHÔNG HAI. Ô "Đổi sản phẩm" và ô "Thêm sản phẩm mới vào
+ * đơn" dùng CHUNG `swapCatalog`, nên chúng thiếu hệt nhau — viết câu
+ * cảnh báo hai lần là có ngày sửa một chỗ và quên chỗ kia, rồi một
+ * trong hai ô lại im lặng.
+ */
+function CatalogueShortNote() {
+  return (
+    <p className="text-xs text-[#b54708]">
+      Danh mục đọc chưa hết — kết quả tìm đang thiếu. Tải lại trang.
+    </p>
+  )
 }
 
 /**
@@ -254,6 +271,8 @@ export default function OrderDetailPage() {
   const [swapCatalog, setSwapCatalog] = useState<
     { id: string; name: string; sku: string; sell_price: number; base_unit: string }[]
   >([])
+  /** Danh mục đọc chưa hết — cả hai ô dùng nó phải nói ra. */
+  const [swapTruncated, setSwapTruncated] = useState(false)
   const [swapDialogFor, setSwapDialogFor] = useState<string | null>(null)
   const [swapSearch, setSwapSearch] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -618,17 +637,31 @@ export default function OrderDetailPage() {
       })
     )
     setLinesEditMode(true)
-    // Lazy-load product catalog the first time the user opens edit mode
+    /**
+     * Danh mục cho hai ô "Đổi sản phẩm" và "Thêm sản phẩm mới vào đơn",
+     * nạp lần đầu người dùng mở chế độ sửa dòng hàng.
+     *
+     * ⚠ PHẢI KÉO HẾT THEO TRANG — chủ nhà chốt 21/09/2026 ("màn Xuất
+     *   hàng … cũng có ô thêm sản phẩm đó"). Bản cũ đọc bằng một
+     *   `.select()` trơn kèm `.order("name")`; PostgREST CẮT Ở 1.000
+     *   DÒNG, nên với danh mục 1.700 mã thì mọi mặt hàng xếp sau chữ
+     *   cái thứ một nghìn không có trong bộ nhớ — gõ đúng tên vẫn ra
+     *   "Không tìm thấy sản phẩm", và người dùng kết luận danh mục
+     *   thiếu mã. Xem `loadCatalogue`.
+     */
     if (swapCatalog.length === 0) {
-      const { data, error: dataErr } = await supabase
-        .from("products")
-        .select("id, name, sku, sell_price, base_unit")
-        .eq("status", "active")
-        .order("name")
-      if (dataErr) console.error("[orders/id] truy vấn lỗi:", dataErr.message)
-      setSwapCatalog(
-        (data as Array<{ id: string; name: string; sku: string; sell_price: number; base_unit: string }>) || []
-      )
+      try {
+        const res = await loadCatalogue<{
+          id: string; name: string; sku: string; sell_price: number; base_unit: string
+        }>(supabase, "id, name, sku, sell_price, base_unit", { activeOnly: true })
+        setSwapCatalog(res.rows)
+        setSwapTruncated(res.truncated)
+      } catch (e) {
+        console.error("[orders/id] truy vấn lỗi:", errorMessage(e))
+        /* ⚠ ĐỌC HỎNG CŨNG LÀ ĐỌC THIẾU. Danh mục rỗng mà không một dòng
+           chữ nào là cùng một lỗi, chỉ khác nguyên nhân. */
+        setSwapTruncated(true)
+      }
     }
   }
 
@@ -2823,6 +2856,7 @@ export default function OrderDetailPage() {
             onChange={(e) => setSwapSearch(e.target.value)}
             placeholder="Tìm theo tên / SKU…"
           />
+          {swapTruncated && <CatalogueShortNote />}
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
               const q = viNormalize(swapSearch)
@@ -2876,6 +2910,7 @@ export default function OrderDetailPage() {
             onChange={(e) => setAddLineSearch(e.target.value)}
             placeholder="Tìm theo tên / SKU…"
           />
+          {swapTruncated && <CatalogueShortNote />}
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
               const q = viNormalize(addLineSearch)

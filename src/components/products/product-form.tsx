@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 type Tab = "info" | "description" | "warranty"
 
@@ -168,6 +169,8 @@ export function ProductForm({
   // Suggestion lists pulled from existing data so the user can pick or
   // type a brand-new value (KiotViet-style "Tạo mới" inline).
   const [categorySuggest, setCategorySuggest] = useState<string[]>([])
+  /** Danh sách ngành hàng đọc chưa hết — ô chọn phải nói ra. */
+  const [categoryTruncated, setCategoryTruncated] = useState(false)
   const [showNewCategory, setShowNewCategory] = useState(false)
   /** Danh sách NCC để gắn vào SP (bắt buộc 1). */
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
@@ -178,22 +181,45 @@ export function ProductForm({
     let cancelled = false
     async function load() {
       const [catsRes, supRes] = await Promise.all([
-        supabase.from("products").select("category").eq("org_id", orgId!),
+        /**
+         * ⚠ KÉO HẾT THEO TRANG, KHÔNG `.select()` TRƠN. Đây là câu đọc
+         *   CẢ BẢNG `products` — PostgREST cắt ở 1.000 dòng, nên ngành
+         *   hàng nào chỉ xuất hiện ở những mã nằm sau vạch ấy sẽ KHÔNG
+         *   có trong ô chọn. Người nhập không thấy "Sữa đặc" trong danh
+         *   sách nên gõ tay một cái mới, và từ đó báo cáo theo ngành
+         *   hàng tách làm hai dòng cho cùng một thứ. Hỏng trong im lặng,
+         *   phát hiện ra thì dữ liệu đã lệch từ lâu.
+         *
+         * ⚠ PHÂN TRANG THEO `id`. Mốc chia trang phải DUY NHẤT; chia
+         *   theo `category` là hai mặt hàng cùng ngành làm các trang
+         *   lặp/sót nhau. Thứ tự hiện ra do `.sort()` ở dưới lo.
+         */
+        fetchAllForAggregate<{ category: string | null }>((from, to) =>
+          supabase
+            .from("products")
+            .select("id, category", { count: "exact" })
+            .eq("org_id", orgId!)
+            .order("id")
+            .range(from, to)
+        ),
         supabase
           .from("suppliers")
           .select("id, name")
           .eq("org_id", orgId!)
           .order("name"),
       ])
-      const qErr = ([catsRes, supRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[products/product-form] truy vấn lỗi:", qErr.message)
+      if (supRes.error) {
+        console.error("[products/product-form] truy vấn lỗi:", supRes.error.message)
+      }
       if (cancelled) return
       const cats = new Set<string>()
-      for (const p of (catsRes.data as { category: string | null }[]) || []) {
+      for (const p of catsRes.rows) {
         if (p.category) cats.add(p.category)
       }
       setCategorySuggest(Array.from(cats).sort())
+      /* ⚠ ĐỌC CHƯA HẾT THÌ NÓI RA. Im lặng ở đây là người nhập tin rằng
+         danh sách ngành hàng đã đủ, rồi tạo một ngành hàng trùng. */
+      setCategoryTruncated(catsRes.truncated)
       setSuppliers((supRes.data as { id: string; name: string }[]) || [])
     }
     load()
@@ -400,6 +426,7 @@ export function ProductForm({
           form={form}
           setForm={setForm}
           categorySuggest={categorySuggest}
+          categoryTruncated={categoryTruncated}
           suppliers={suppliers}
           showNewCategory={showNewCategory}
           setShowNewCategory={setShowNewCategory}
@@ -514,6 +541,8 @@ interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   categorySuggest: string[]
+  /** Danh sách trên đọc chưa hết — ô chọn phải nói ra. */
+  categoryTruncated: boolean
   suppliers: { id: string; name: string }[]
   showNewCategory: boolean
   setShowNewCategory: (v: boolean) => void
@@ -534,6 +563,7 @@ function InfoTab({
   form,
   setForm,
   categorySuggest,
+  categoryTruncated,
   suppliers,
   showNewCategory,
   setShowNewCategory,
@@ -631,6 +661,19 @@ function InfoTab({
                     )}
                   </SelectContent>
                 </Select>
+              )}
+              {/*
+                ⚠ ĐỌC THIẾU THÌ NÓI RA, VÀ CHỈ DẪN LỐI THOÁT. Im lặng ở
+                  đây là người nhập không thấy ngành hàng mình cần, tưởng
+                  chưa có, rồi bấm "Tạo mới" và sinh ra một nhãn trùng —
+                  báo cáo theo ngành hàng từ đó tách làm hai dòng cho
+                  cùng một thứ.
+              */}
+              {categoryTruncated && (
+                <p className="text-xs text-[#b54708]">
+                  Danh sách nhóm hàng đọc chưa hết. Tải lại trang trước khi bấm
+                  &quot;Tạo mới&quot;, tránh tạo trùng nhóm đã có.
+                </p>
               )}
             </div>
             <div className="space-y-1.5">

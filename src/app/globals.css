@@ -480,18 +480,27 @@
   --pos-ok-soft: #f0fdf4;
   --pos-ok-border: #bbf7d0;
 
-  font-family: var(--font-be-vietnam), system-ui, sans-serif;
+  /* ⚠ KHÔNG KHAI `font-family` Ở ĐÂY. `/pos` dùng đúng Manrope mà
+   *   `body` đã đặt cho toàn app (chủ nhà chốt đợt 8). Bản đầu khai
+   *   Be Vietnam Pro riêng cho khối này: mở `/pos` ra là một app khác
+   *   hẳn phần còn lại. Khai lại Manrope ở đây cũng không đúng — hai
+   *   chỗ khai cùng một họ chữ là hai chỗ phải nhớ sửa. */
   color: var(--pos-ink);
   background: var(--pos-bg);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ⚠ MỌI CON SỐ DÙNG `.n`. `tabular-nums` là thứ giữ cột tiền thẳng
- *   hàng; thiếu nó thì "1.111.111" hẹp hơn "8.888.888" và mắt không
- *   dò được cột nào lệch. */
+/* ⚠ MỌI CON SỐ DÙNG `.n`, VÀ NÓ CHỈ LÀM MỘT VIỆC: giữ cột tiền thẳng
+ *   hàng. Thiếu `tabular-nums` thì "1.111.111" hẹp hơn "8.888.888" và
+ *   mắt không dò được cột nào lệch.
+ *
+ * ⚠ KHÔNG ĐỔI SANG HỌ CHỮ KHÁC. Bản đầu cho `.n` dùng JetBrains Mono —
+ *   một họ chữ thứ hai chỉ để hiện số, và nó làm mọi con số trên `/pos`
+ *   trông khác hẳn số ở các màn còn lại. Đúng bộ thuộc tính mà
+ *   `.tabular-data` của app đang dùng là đủ cho việc thẳng hàng. */
 .pos-scope .n {
-  font-family: var(--font-jetbrains), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 .pos-scope *,

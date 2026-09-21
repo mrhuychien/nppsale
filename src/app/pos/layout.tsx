@@ -1,5 +1,4 @@
 import type { ReactNode } from "react"
-import { Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google"
 import { PosShell } from "@/components/pos/pos-shell"
 import { PosTabsProvider } from "@/store/pos/tabs"
 import { PosSettingsProvider } from "@/store/pos/settings"
@@ -8,40 +7,27 @@ import { PosRefDataProvider } from "@/store/pos/ref-data"
 /**
  * KHUNG `/pos` — spec chốt 21/09/2026.
  *
- * ⚠ HAI BỘ CHỮ NẠP Ở ĐÂY, KHÔNG Ở `app/layout.tsx`. Cả app đang dùng
- * Manrope; nạp thêm hai họ chữ vào layout gốc là mọi trang `/sell`
- * trên điện thoại phải tải thứ chúng không dùng — đúng những máy có
- * đường truyền kém nhất.
+ * ⚠ KHÔNG NẠP BỘ CHỮ RIÊNG Ở ĐÂY (chủ nhà chốt đợt 8: *"các font chữ
+ * điều chỉnh về theo phong cách thiết kế cũ"*).
  *
- * ⚠ `next/font` CHỨ KHÔNG PHẢI THẺ `<link>` TỚI Google Fonts. Bản xem
- * thiết kế dùng `<link>` vì nó là một tệp HTML rời; trong Next.js thì
- * `next/font` tự tải chữ về cùng máy chủ, nên không có lượt gọi sang
- * miền khác và không có nhịp chữ nhảy khi tải xong.
+ * Bản đầu nạp Be Vietnam Pro + JetBrains Mono cho riêng `/pos`, theo
+ * bản xem thiết kế. Hệ quả là mở `/pos` ra thấy một app KHÁC: cả phần
+ * còn lại dùng Manrope, và hai họ chữ cạnh nhau trong cùng một sản
+ * phẩm đọc như hai phần mềm ghép lại. Nay `/pos` dùng đúng Manrope mà
+ * `app/layout.tsx` đã nạp sẵn cho toàn app.
+ *
+ * ⚠ VÀ ĐÓ CŨNG LÀ BỎ HAI LƯỢT TẢI CHỮ. Hai họ chữ × bốn độ đậm là dữ
+ * liệu tải về chỉ để phục vụ một màn — trong khi họ chữ đúng đã nằm
+ * sẵn trong bộ nhớ đệm của trình duyệt từ mọi màn khác.
  */
-const beVietnam = Be_Vietnam_Pro({
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-be-vietnam",
-  display: "swap",
-})
-
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-jetbrains",
-  display: "swap",
-})
-
 export default function PosLayout({ children }: { children: ReactNode }) {
   return (
-    <div className={`${beVietnam.variable} ${jetbrains.variable}`}>
-      <PosSettingsProvider>
-        <PosRefDataProvider>
-          <PosTabsProvider>
-            <PosShell>{children}</PosShell>
-          </PosTabsProvider>
-        </PosRefDataProvider>
-      </PosSettingsProvider>
-    </div>
+    <PosSettingsProvider>
+      <PosRefDataProvider>
+        <PosTabsProvider>
+          <PosShell>{children}</PosShell>
+        </PosTabsProvider>
+      </PosRefDataProvider>
+    </PosSettingsProvider>
   )
 }

@@ -529,3 +529,45 @@ không bị import vào `/pos`"). Cần tách phần đọc khỏi store trướ
 **Còn thiếu — bốn màn POS kia:** phiếu trả, nhập hàng, trả NCC, sửa hóa
 đơn vẫn dùng `SearchDropdown` của POS. Chủ nhà mới chốt cho *"phần làm
 đơn hàng"*; chưa đổi bốn màn kia để khỏi tự quyết thay.
+
+---
+
+## 23. Đợt 8 — bộ chữ về đúng bộ chữ của app
+
+Chủ nhà chốt: *"các font chữ điều chỉnh về theo phong cách thiết kế cũ"*.
+
+**Bản đầu** nạp riêng cho `/pos` hai họ chữ theo bản xem thiết kế:
+Be Vietnam Pro cho chữ, JetBrains Mono cho mọi con số (`.n`). Hệ quả là
+mở `/pos` ra thấy một app khác hẳn phần còn lại — cả app dùng **Manrope**
+— và số liệu thì mang một họ chữ thứ ba.
+
+**Nay:** `/pos` không nạp bộ chữ nào. Nó thừa hưởng Manrope mà
+`app/layout.tsx` đã nạp cho toàn app, kể cả `font-feature-settings` của
+`body`. Lớp `.n` giữ nguyên tên và giữ đúng việc của nó — `tabular-nums`
+để cột tiền thẳng hàng, đúng bộ thuộc tính `.tabular-data` của app đang
+dùng — nhưng không còn đổi họ chữ.
+
+Bỏ luôn hai lượt tải chữ: hai họ × bốn độ đậm, tải về chỉ để phục vụ một
+màn, trong khi họ chữ đúng đã nằm sẵn trong bộ nhớ đệm từ mọi màn khác.
+
+**Còn một chỗ chưa chỉnh — CỠ CHỮ.** `/pos` đặt cỡ bằng px tường minh và
+xuống tới 9,5px:
+
+| cỡ | số chỗ dùng |
+|---|---|
+| 13px | 55 |
+| 11px | 47 |
+| 12,5px | 46 |
+| 11,5px | 38 |
+| 12px | 29 |
+| 10,5px | 26 |
+| 10px / 9,5px | 14 |
+
+Thang chữ của app (`tailwind.config.ts`) dừng ở **12px** (`label-md`) và
+lấy **14px** làm cỡ đọc chuẩn (`body-md`). Tức chữ `/pos` nhỏ hơn hẳn
+phần còn lại.
+
+Chưa chỉnh vì **bề rộng cột của bảng hàng được căn theo đúng những cỡ
+ấy** (`POS_GRID`: 24px, 80px, 92px…). Nâng cỡ chữ mà không căn lại cột là
+chữ tràn ô. Đây là một quyết định về mật độ màn hình, không phải một phép
+đổi máy móc — chờ chủ nhà chốt.

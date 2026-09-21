@@ -501,3 +501,61 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
     expect(S).toMatch(/<SearchDropdown/)
   })
 })
+
+/* ==================================================================
+ * 7. ĐỢT 8 — BỘ CHỮ CỦA `/pos` LÀ BỘ CHỮ CỦA APP
+ *
+ * Chủ nhà chốt: *"các font chữ điều chỉnh về theo phong cách thiết kế
+ * cũ"*. Bản đầu nạp Be Vietnam Pro + JetBrains Mono riêng cho `/pos`
+ * theo bản xem thiết kế — mở `/pos` ra là một app khác hẳn phần còn
+ * lại, và số liệu thì mang một họ chữ thứ ba.
+ * ================================================================== */
+describe("§đợt8 — /pos dùng đúng bộ chữ của app", () => {
+  /**
+   * ⚠ KHÔNG NẠP HỌ CHỮ RIÊNG. Đây là chốt chống quay lại: nạp thêm một
+   * họ chữ "cho đúng bản thiết kế" là việc rất dễ làm lại.
+   */
+  it("layout /pos không nạp bộ chữ nào", () => {
+    const s = code(read("src/app/pos/layout.tsx"))
+    expect(/next\/font/.test(s), "/pos lại nạp bộ chữ riêng").toBe(false)
+    expect(/Be_Vietnam_Pro|JetBrains_Mono/.test(s)).toBe(false)
+  })
+
+  /**
+   * ⚠ VÀ KHÔNG KHAI `font-family` TRONG `.pos-scope`. Khối ấy nằm trong
+   * `body`, nên nó THỪA HƯỞNG Manrope — khai lại là hai chỗ giữ cùng
+   * một họ chữ, và chỗ nào quên sửa thì `/pos` lại trôi đi.
+   */
+  it(".pos-scope không khai font-family riêng", () => {
+    const css = read("src/app/globals.css")
+    const i = css.indexOf(".pos-scope {")
+    expect(i, "không thấy khối .pos-scope").toBeGreaterThan(-1)
+    const khoi = css.slice(i, css.indexOf("\n}", i)).replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(/font-family/.test(khoi), ".pos-scope khai font-family riêng").toBe(false)
+  })
+
+  /**
+   * ⚠ `.n` CHỈ LÀM MỘT VIỆC: giữ cột số thẳng hàng. Cho nó một họ chữ
+   * riêng là mọi con số trên `/pos` khác hẳn số ở các màn còn lại — và
+   * `tabular-nums` mới là thứ thật sự làm cột thẳng.
+   */
+  it(".n giữ tabular-nums và không đổi họ chữ", () => {
+    const css = read("src/app/globals.css")
+    const i = css.indexOf(".pos-scope .n {")
+    expect(i, "không thấy quy tắc .n").toBeGreaterThan(-1)
+    const khoi = css.slice(i, css.indexOf("}", i))
+    expect(khoi).toMatch(/font-variant-numeric:\s*tabular-nums/)
+    expect(/font-family/.test(khoi), ".n lại mang một họ chữ riêng").toBe(false)
+  })
+
+  /** ⚠ Và không còn biến chữ nào của bản cũ sót lại trong mã. */
+  it("không còn biến --font-be-vietnam / --font-jetbrains", () => {
+    const pham: string[] = []
+    for (const f of [...FILES, resolve(ROOT, "src/app/globals.css")]) {
+      if (/var\(--font-(be-vietnam|jetbrains)\)/.test(code(readFileSync(f, "utf-8")))) {
+        pham.push(f.replace(ROOT, ""))
+      }
+    }
+    expect(pham).toEqual([])
+  })
+})

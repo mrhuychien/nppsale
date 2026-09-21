@@ -27334,3 +27334,302 @@ BEGIN
   END IF;
 END $$;
 
+
+-- ####################################################################
+-- # 154_sales_sees_customer_of_own_order.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 154_sales_sees_customer_of_own_order
+--
+-- NHÂN VIÊN MỞ ĐƠN NPP GIAO CHO MÌNH → KHÔNG CÓ TÊN KHÁCH HÀNG.
+--
+-- ⚠ CHỦ NHÀ BÁO 21/09/2026: "Tạo đơn hàng hộ nhân viên — Nhân viên vào
+--   xem ko có tên khách hàng".
+--
+-- NGUYÊN NHÂN. Hai chính sách RLS dùng HAI LUẬT KHÁC NHAU cho cùng một
+-- việc:
+--
+--   `sales_order_select` (mig 119) cho NVBH thấy đơn khi
+--      `sales_user_id = auth.uid()`  — tức là "đơn đứng tên tôi".
+--
+--   `customer_select` (mig 042) KHÔNG có vế ấy. NVBH chỉ thấy khách khi
+--      có dòng `customer_assignments` đang hoạt động, hoặc chính mình
+--      tạo ra khách đó.
+--
+-- Nên khi NPP lập đơn hộ nhân viên cho một khách CHƯA giao cho người ấy:
+-- nhân viên thấy ĐƠN, nhưng dòng khách bị RLS chặn. Màn đơn đọc khách
+-- bằng embed `customer:customers(...)` — PostgREST trả `null` cho phần
+-- bị chặn, KHÔNG báo lỗi. Người dùng thấy một đơn không tên khách, và
+-- không có gì nói cho họ biết vì sao.
+--
+-- ⚠ CHỮA Ở customers, KHÔNG PHẢI Ở customer_assignments. Cách kia là
+--   NPP giao đơn thì tự thêm một dòng phân công — nhưng phân công là
+--   một quyết định KHÁC và nặng hơn nhiều: nó mở cho nhân viên toàn bộ
+--   lịch sử, công nợ, và mọi đơn khác của khách ấy, vĩnh viễn. Ở đây
+--   chỉ cần đúng một điều: đơn đứng tên ai thì người đó đọc được khách
+--   CỦA ĐƠN ẤY. Đó chính là luật mà `sales_order_select` đang dùng.
+--
+-- ⚠ PHẢI ĐI QUA HÀM `SECURITY DEFINER`, KHÔNG ĐƯỢC TRUY VẤN THẲNG.
+--   `customers` hỏi `sales_orders`, mà chính sách của `sales_orders` lại
+--   hỏi `customer_assignments`, và chính sách của bảng ấy hỏi ngược
+--   `customers` → đệ quy vô tận, PostgREST trả 500. Kho mã này đã dính
+--   đúng lỗi đó hai lần (mig 005, mig 037) và đã có sẵn lối ra: nhấc
+--   phép tra cứu vào một hàm `SECURITY DEFINER` chạy bằng quyền chủ
+--   bảng, bỏ qua RLS, nên không bật ngược lại được.
+-- ====================================================================
+
+-- --------------------------------------------------------------------
+-- Khách này có đơn nào đang đứng tên tôi không?
+--
+-- ⚠ KHÔNG LỌC TRẠNG THÁI ĐƠN. Đơn đã huỷ, đã xong, hay còn nháp đều là
+--   đơn nhân viên ấy phải mở ra xem lại được — và mở ra mà không có tên
+--   khách thì đúng bằng không mở được.
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.user_sells_to_customer(p_customer_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.sales_orders so
+    WHERE so.customer_id = p_customer_id
+      AND so.sales_user_id = auth.uid()
+  );
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.user_sells_to_customer(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_sells_to_customer(uuid) TO authenticated;
+
+COMMENT ON FUNCTION public.user_sells_to_customer(uuid) IS
+  'Khách này có đơn nào đứng tên người đang đăng nhập không. SECURITY '
+  'DEFINER để chính sách của customers hỏi sales_orders mà không bật '
+  'ngược về customers qua customer_assignments (xem mig 005, 037).';
+
+-- --------------------------------------------------------------------
+-- Dựng lại `customer_select` — giữ NGUYÊN bản mig 042, thêm MỘT vế.
+--
+-- ⚠ CHÉP TỪ BẢN ĐANG CHẠY, KHÔNG CHÉP TỪ TỆP CŨ NHẤT TÌM THẤY. Bài học
+--   của mig 151: viết lại trọn một thứ bằng bản cũ là ÂM THẦM xoá mọi
+--   miếng vá sau nó. Ở đây mig 042 là migration cuối cùng đụng tới
+--   `customers`, và khối tự kiểm ở cuối tệp đối chiếu lại bản thật.
+-- --------------------------------------------------------------------
+DROP POLICY IF EXISTS customer_select ON customers;
+
+CREATE POLICY customer_select ON customers
+  FOR SELECT TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND (
+      public.user_role() IN ('owner', 'manager', 'accountant')
+      OR public.user_has_permission(auth.uid(), 'customer.view_all')
+      OR (
+        EXISTS (
+          SELECT 1 FROM customer_assignments ca
+          WHERE ca.customer_id = customers.id
+            AND ca.user_id = auth.uid()
+            AND ca.status = 'active'
+        )
+      )
+      OR (
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'customers' AND column_name = 'created_by'
+        ) AND created_by = auth.uid()
+      )
+      -- ⚠ VẾ MỚI CỦA MIG 154. Đơn đứng tên tôi thì tôi đọc được khách
+      --   của đơn ấy — đúng luật mà `sales_order_select` đang dùng để
+      --   cho tôi thấy chính cái đơn đó.
+      OR public.user_sells_to_customer(customers.id)
+    )
+  );
+
+NOTIFY pgrst, 'reload schema';
+
+-- --------------------------------------------------------------------
+-- Kiểm BẢN ĐANG CHẠY, không kiểm tệp.
+-- --------------------------------------------------------------------
+DO $$
+DECLARE v_src text; v_thieu text := '';
+BEGIN
+  SELECT qual INTO v_src FROM pg_policies
+  WHERE schemaname = 'public' AND tablename = 'customers'
+    AND policyname = 'customer_select';
+
+  IF v_src IS NULL THEN
+    RAISE WARNING '--- 154 ⚠ không thấy chính sách customer_select ---';
+    RETURN;
+  END IF;
+
+  IF position('user_sells_to_customer' IN v_src) = 0 THEN
+    v_thieu := v_thieu || ' [thiếu vế đơn-đứng-tên-tôi của mig 154]';
+  END IF;
+  IF position('customer_assignments' IN v_src) = 0 THEN
+    v_thieu := v_thieu || ' [MẤT vế phân công khách — NVBH sẽ không thấy khách được giao]';
+  END IF;
+  IF position('created_by' IN v_src) = 0 THEN
+    v_thieu := v_thieu || ' [MẤT vế khách do chính mình tạo]';
+  END IF;
+  IF position('user_has_permission' IN v_src) = 0 THEN
+    v_thieu := v_thieu || ' [MẤT vế quyền customer.view_all]';
+  END IF;
+
+  IF v_thieu = '' THEN
+    RAISE NOTICE '--- 154: nhân viên đọc được khách của đơn đứng tên mình, bốn vế cũ còn nguyên ---';
+  ELSE
+    RAISE WARNING '--- 154 ⚠ customer_select THIẾU:% ---', v_thieu;
+  END IF;
+END $$;
+
+
+-- ####################################################################
+-- # 155_guard_sales_user_on_update.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 155_guard_sales_user_on_update
+--
+-- CANH `sales_user_id` CẢ KHI SỬA ĐƠN, KHÔNG CHỈ KHI LẬP ĐƠN.
+--
+-- Mig 153 dựng `trg_orders_guard_sales_user` chỉ ở `BEFORE INSERT`, vì
+-- lúc ấy đường SỬA đơn không hề ghi cột này. Nay nó có ghi (chủ nhà báo
+-- 21/09/2026: "Sửa -> gán nhân viên lưu lại đơn ko hiệu lực"), nên cái
+-- lỗ mà mig 153 bịt ở đường tạo đơn đang mở toang ở đường sửa:
+--
+-- ⚠ RLS KHÔNG CANH CỘT NÀY KHI SỬA. `"Admin roles can update orders"`
+--   (mig 119) chỉ đòi đúng đơn vị và vai trò owner/manager/warehouse —
+--   `WITH CHECK (org_id = public.user_org_id())`, không một lời nào về
+--   `sales_user_id`. Nghĩa là một tài khoản KHO sửa được đơn và gán
+--   doanh số cho bất kỳ ai. Hoa hồng và lương đếm theo cột ấy.
+--
+--   (Vế NVBH thì RLS đã canh sẵn: `"Sales can update own open orders"`
+--   có `WITH CHECK (sales_user_id = auth.uid())`, nên NVBH không đẩy
+--   đơn sang tên người khác được. Thiếu đúng vế owner/manager/warehouse.)
+--
+-- ⚠ CHỈ CANH KHI CỘT THẬT SỰ ĐỔI. Một đơn cũ có thể đang đứng tên người
+--   nay đã chuyển sang làm kho, hoặc đã nghỉ. Bắt mọi lần sửa đơn ấy
+--   phải qua phép kiểm vai trò là KHOÁ CỨNG một đơn hợp lệ vì lý do
+--   không liên quan gì tới lần sửa này.
+--
+-- ⚠ SỬA MÀ ĐỂ RỖNG THÌ GIỮ NGUYÊN NGƯỜI CŨ, KHÔNG GÁN NGƯỜI ĐANG SỬA.
+--   Khác hẳn lúc INSERT. Nếu gán người đang sửa thì NPP mở một đơn của
+--   nhân viên ra, bấm Lưu, là đơn nhảy sang tên NPP — đúng cái chủ nhà
+--   vừa báo, chỉ ngược chiều. Và để `NULL` thì đơn thành một dòng doanh
+--   số không ai nhận, chỉ lộ ra ở kỳ tính lương.
+-- ====================================================================
+
+CREATE OR REPLACE FUNCTION public.guard_order_sales_user()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_me   uuid := auth.uid();
+  v_role text;
+  u      record;
+BEGIN
+  -- ⚠ RPC `SECURITY DEFINER` tự chịu trách nhiệm phần của nó; cờ này là
+  --   quy ước sẵn có của kho mã (xem mig 119/120).
+  IF COALESCE(current_setting('npp.via_rpc', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  -- ⚠ SỬA MÀ KHÔNG ĐỔI NGƯỜI ĐỨNG TÊN THÌ KHÔNG CÓ GÌ ĐỂ CANH. Xem đầu
+  --   tệp: canh ở đây là khoá cứng những đơn cũ hợp lệ.
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.sales_user_id IS NULL THEN
+      NEW.sales_user_id := OLD.sales_user_id;
+    END IF;
+    IF NEW.sales_user_id IS NOT DISTINCT FROM OLD.sales_user_id THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  -- Không có phiên đăng nhập (seed, backfill, job) thì không canh được
+  -- gì có ý nghĩa — để nguyên.
+  IF v_me IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.sales_user_id IS NULL THEN
+    NEW.sales_user_id := v_me;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.sales_user_id = v_me THEN
+    RETURN NEW;
+  END IF;
+
+  v_role := public.user_role();
+  IF v_role NOT IN ('owner', 'manager') THEN
+    RAISE EXCEPTION
+      'DON_HO_KHONG_DUOC_PHEP: chỉ chủ nhà phân phối hoặc quản lý mới lập đơn đứng tên nhân viên khác.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT us.id, us.org_id, us.role INTO u
+  FROM users us WHERE us.id = NEW.sales_user_id;
+
+  IF NOT FOUND OR u.org_id <> NEW.org_id THEN
+    RAISE EXCEPTION
+      'NHAN_VIEN_KHONG_HOP_LE: nhân viên được chọn không thuộc đơn vị này.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ⚠ CHỈ VAI TRÒ CÓ BÁN HÀNG. Gán cho tài khoản kho hay kế toán là
+  --   dựng ra một dòng doanh số không ai nhận.
+  IF u.role NOT IN ('sales', 'manager', 'owner') THEN
+    RAISE EXCEPTION
+      'NHAN_VIEN_KHONG_BAN_HANG: % không phải vai trò bán hàng, không đứng tên đơn được.',
+      u.role USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_orders_guard_sales_user ON sales_orders;
+CREATE TRIGGER trg_orders_guard_sales_user
+  BEFORE INSERT OR UPDATE OF sales_user_id ON sales_orders
+  FOR EACH ROW EXECUTE FUNCTION public.guard_order_sales_user();
+
+COMMENT ON FUNCTION public.guard_order_sales_user() IS
+  'Chỉ owner/manager được đặt sales_user_id khác chính mình; người được '
+  'gán phải cùng org và có vai trò bán hàng. Canh cả INSERT lẫn UPDATE: '
+  'RLS không nói gì về cột này ở cả hai chiều, mà hoa hồng và lương đếm '
+  'theo nó. Sửa mà để rỗng thì giữ nguyên người cũ.';
+
+NOTIFY pgrst, 'reload schema';
+
+DO $$
+DECLARE v_n int; v_src text; v_thieu text := '';
+BEGIN
+  SELECT count(*) INTO v_n FROM pg_trigger
+  WHERE tgname = 'trg_orders_guard_sales_user' AND NOT tgisinternal;
+  IF v_n <> 1 THEN
+    RAISE WARNING '--- 155 ⚠ trigger chưa dựng được ---';
+    RETURN;
+  END IF;
+
+  -- ⚠ tgtype bit 2 = BEFORE, bit 4 = INSERT, bit 16 = UPDATE.
+  SELECT CASE WHEN (tgtype & 4) > 0 AND (tgtype & 16) > 0 THEN 'ok' ELSE 'thieu' END
+  INTO v_src FROM pg_trigger
+  WHERE tgname = 'trg_orders_guard_sales_user' AND NOT tgisinternal;
+  IF v_src <> 'ok' THEN
+    v_thieu := v_thieu || ' [trigger không chạy đủ cả INSERT lẫn UPDATE]';
+  END IF;
+
+  SELECT pg_get_functiondef(pr.oid) INTO v_src
+  FROM pg_proc pr JOIN pg_namespace n ON n.oid = pr.pronamespace
+  WHERE n.nspname = 'public' AND pr.proname = 'guard_order_sales_user';
+  IF position('OLD.sales_user_id' IN v_src) = 0 THEN
+    v_thieu := v_thieu || ' [mất vế giữ nguyên người cũ khi sửa — đơn sẽ nhảy sang tên người đang sửa]';
+  END IF;
+
+  IF v_thieu = '' THEN
+    RAISE NOTICE '--- 155: đổi người đứng tên đơn bị canh ở cả lập đơn lẫn sửa đơn ---';
+  ELSE
+    RAISE WARNING '--- 155 ⚠ THIẾU:% ---', v_thieu;
+  END IF;
+END $$;
+

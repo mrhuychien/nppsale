@@ -208,6 +208,8 @@ function fakeClient(opts: {
   const calls: string[] = []
   const inserted: unknown[] = []
   const updated: unknown[] = []
+  /** Riêng phần sửa ĐẦU ĐƠN — nơi `sales_user_id` phải (hoặc không được) xuất hiện. */
+  const dauDon: Array<Record<string, unknown>> = []
   const existing = opts.existing ?? []
   const headerRows = opts.headerRows ?? 1
 
@@ -240,6 +242,7 @@ function fakeClient(opts: {
           op = "update"
           payload = v
           updated.push(v)
+          if (table === "sales_orders") dauDon.push(v as Record<string, unknown>)
           calls.push(`update:${table}`)
           return q
         },
@@ -268,7 +271,7 @@ function fakeClient(opts: {
       return q
     },
   }
-  return { client, calls, inserted, updated }
+  return { client, calls, inserted, updated, dauDon }
 }
 
 const payload = (cart: CartLine[]) =>
@@ -464,6 +467,58 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
     expect(plan.update, "khác đơn vị mà vẫn khớp").toHaveLength(0)
     expect(plan.insert).toHaveLength(1)
     expect(plan.remove.map((r) => r.id)).toEqual(["L1"])
+  })
+
+  /**
+   * ⚠ CHỦ NHÀ BÁO 21/09/2026: "Sửa -> gán nhân viên lưu lại đơn ko hiệu
+   * lực, đơn vẫn đứng tên NPP". Đầu đơn KHÔNG hề có `sales_user_id`:
+   * ô chọn nhân viên chỉ đi vào tải trọng dùng lúc TẠO đơn, đường sửa
+   * đọc xong rồi bỏ. Người dùng chọn, bấm Lưu, thấy "đã lưu", không gì
+   * đổi. Doanh số và hoa hồng đếm theo cột này.
+   */
+  it("gán nhân viên khi sửa đơn thì ghi xuống thật", async () => {
+    const { client, dauDon } = fakeClient({})
+    await applyOrderEdit(client, {
+      orderId: "o1",
+      payload: payload(cart),
+      cart,
+      status: "submitted",
+      reason: "",
+      userId: "npp",
+      orgId: "org1",
+      salesUserId: "nv-dung",
+    })
+    expect(dauDon).toHaveLength(1)
+    expect(dauDon[0].sales_user_id, "chọn nhân viên mà đơn vẫn đứng tên cũ").toBe("nv-dung")
+  })
+
+  /**
+   * ⚠ RỖNG LÀ "KHÔNG ĐỤNG TỚI", KHÔNG PHẢI "XOÁ TÊN NGƯỜI PHỤ TRÁCH".
+   * NVBH sửa đơn của chính mình thì không có ô chọn, nên giá trị truyền
+   * xuống là rỗng. Ghi rỗng ấy vào cột là đơn thành một dòng doanh số
+   * không ai nhận — và nó chỉ lộ ra ở kỳ tính lương.
+   */
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["chuỗi rỗng", ""],
+  ])("để %s thì KHÔNG đụng tới người đứng tên đơn", async (_ten, v) => {
+    const { client, dauDon } = fakeClient({})
+    await applyOrderEdit(client, {
+      orderId: "o1",
+      payload: payload(cart),
+      cart,
+      status: "submitted",
+      reason: "",
+      userId: "u1",
+      orgId: "org1",
+      salesUserId: v as string | null | undefined,
+    })
+    expect(dauDon).toHaveLength(1)
+    expect(
+      Object.prototype.hasOwnProperty.call(dauDon[0], "sales_user_id"),
+      "ghi rỗng xuống là xoá tên người phụ trách đơn"
+    ).toBe(false)
   })
 
   it("dọn hẳn dấu vết đã duyệt của luồng cũ", () => {

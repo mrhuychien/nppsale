@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -149,6 +149,26 @@ export default function SellCartPage() {
     return () => { cancelled = true }
   }, [canPickSeller, user?.org_id])
 
+  /**
+   * ⚠ MỞ ĐƠN RA SỬA THÌ Ô NÀY PHẢI SẴN TÊN NGƯỜI ĐANG ĐỨNG ĐƠN.
+   *
+   * Ô rỗng có nghĩa "đơn đứng tên bạn". Để nó rỗng khi đang sửa đơn của
+   * một nhân viên là chỉ cần bấm Lưu một cái, đơn nhảy sang tên NPP —
+   * doanh số và hoa hồng đi theo. Người sửa không hề chọn gì, nên cũng
+   * không có lý do nào để nghi ngờ.
+   *
+   * ⚠ CHỈ NẠP MỘT LẦN CHO MỖI ĐƠN. Nạp lại ở mỗi lần vẽ là đè lên đúng
+   *   lựa chọn người dùng vừa đổi — ô không bao giờ đổi được.
+   */
+  const daNapNguoiBan = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (!canPickSeller) return
+    const key = editing?.orderId ?? null
+    if (daNapNguoiBan.current === key) return
+    daNapNguoiBan.current = key
+    setSellerId(editing?.salesUserId ?? "")
+  }, [canPickSeller, editing?.orderId, editing?.salesUserId])
+
   const sellerOptions = useMemo(
     () =>
       sellers.map((u) => ({
@@ -288,6 +308,23 @@ export default function SellCartPage() {
           "Mất mạng nên chưa lưu được thay đổi. Đơn cũ vẫn nguyên — thử lại khi có sóng."
         )
       }
+      /**
+       * Người đứng tên đơn, tính MỘT LẦN cho cả đường tạo lẫn đường sửa.
+       *
+       * ⚠ RỖNG Ở Ô CHỌN NGHĨA LÀ "CHÍNH TÔI" — nên phải quy ra mã người
+       *   đang đăng nhập NGAY Ở ĐÂY, đừng để `null` đi tiếp. Đường tạo
+       *   đơn có `createOrderRecords` đỡ cho (`|| ctx.userId`), nhưng
+       *   đường sửa thì không: ở đó `null` phải có nghĩa "không đụng tới
+       *   cột", nếu không mỗi lần NVBH sửa đơn của chính mình là xoá
+       *   trắng tên người phụ trách.
+       *
+       * ⚠ KHÔNG CÓ QUYỀN CHỌN THÌ LÀ `null`, và đường sửa sẽ để nguyên
+       *   cột. NVBH sửa đơn NPP giao cho mình thì đơn vẫn của mình; ghi
+       *   đè bằng `user.id` ở đây cũng ra cùng kết quả, nhưng để nguyên
+       *   thì không có gì để mà sai.
+       */
+      const nguoiDungTen = canPickSeller ? sellerId || user.id : null
+
       const payload = buildOrderPayload({
         clientRequestId:
           typeof crypto !== "undefined" && crypto.randomUUID
@@ -307,7 +344,7 @@ export default function SellCartPage() {
         /* ⚠ RỖNG = CHÍNH NGƯỜI ĐANG LẬP. Đi trong TẢI TRỌNG chứ không
            trong `ctx`, để đơn xếp hàng lúc mất mạng vẫn giữ đúng người
            đứng tên khi mạng về — xem `OfflineOrderPayload`. */
-        salesUserId: canPickSeller ? sellerId || null : null,
+        salesUserId: nguoiDungTen,
       })
 
       // Ngữ cảnh quy tắc chỉ cần khi THẬT SỰ gửi đi và đang có mạng.
@@ -352,6 +389,9 @@ export default function SellCartPage() {
           //   "không biết đơn này có phiếu trả nào" và `applyOrderEdit`
           //   phải đứng yên; ép về `null` là nó tạo thêm một phiếu trả.
           heldReturnId: editing.heldReturnId,
+          /* ⚠ RỖNG = KHÔNG ĐỤNG TỚI CỘT, không phải "xoá tên người phụ
+             trách" — xem `salesUserId` trong `applyOrderEdit`. */
+          salesUserId: nguoiDungTen,
           /* ⚠ Để câu báo lỗi gọi đúng TÊN mặt hàng thay vì một mã UUID —
              xem nhánh 23503 trong `applyOrderEdit`. */
           productName: (id) => productById(id)?.name,

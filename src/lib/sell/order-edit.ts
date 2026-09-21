@@ -278,6 +278,21 @@ export async function applyOrderEdit(
      * dựng một câu lỗi là kéo theo một phụ thuộc không cần thiết.
      */
     productName?: (productId: string) => string | undefined
+    /**
+     * Người đứng tên đơn sau khi sửa.
+     *
+     * ⚠ BA GIÁ TRỊ, KHÔNG PHẢI HAI — giống `heldReturnId`.
+     *   `string`    = ghi đè `sales_user_id` bằng người này;
+     *   `undefined` = KHÔNG ĐỤNG TỚI cột (người sửa không có quyền đổi);
+     *   `null`      = cũng KHÔNG ĐỤNG TỚI.
+     *
+     * ⚠ VÌ SAO `null` KHÔNG ĐƯỢC GHI XUỐNG. Đơn không có người đứng tên
+     *   là một dòng doanh số không ai nhận, và nó chỉ lộ ra ở kỳ tính
+     *   lương. `createOrderRecords` cũng không bao giờ để cột này rỗng
+     *   (`payload.order.sales_user_id || ctx.userId`). Muốn chuyển đơn
+     *   về tên mình thì truyền THẲNG mã của mình, đừng truyền rỗng.
+     */
+    salesUserId?: string | null
   }
 ): Promise<void> {
   /**
@@ -377,6 +392,22 @@ export async function applyOrderEdit(
     // cũ, dọn hẳn để không ai đọc nhầm là đơn đã được ai đó thông qua.
     approved_by: null,
     approved_at: null,
+  }
+
+  /**
+   * ⚠ CHỦ NHÀ BÁO 21/09/2026: "Sửa -> gán nhân viên lưu lại đơn ko hiệu
+   *   lực, đơn vẫn đứng tên NPP".
+   *
+   * Đúng vậy: đầu đơn ở trên KHÔNG hề có `sales_user_id`. Màn giỏ có ô
+   * chọn nhân viên, nhưng ô ấy chỉ đi vào tải trọng dùng lúc TẠO đơn —
+   * đường SỬA đơn đọc xong rồi bỏ đi. Người dùng chọn, bấm Lưu, thấy
+   * "đã lưu", và không có gì đổi.
+   *
+   * ⚠ CHỈ GHI KHI THẬT SỰ CÓ NGƯỜI. Xem chú thích ở `salesUserId`: rỗng
+   *   là "không đụng tới", không phải "xoá tên người phụ trách".
+   */
+  if (typeof opts.salesUserId === "string" && opts.salesUserId) {
+    header.sales_user_id = opts.salesUserId
   }
 
   const { data: rows, error: headErr } = await supabase

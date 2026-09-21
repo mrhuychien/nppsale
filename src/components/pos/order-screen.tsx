@@ -28,6 +28,12 @@
  *     `tests/return-slip.test.ts` — đúng cái danh sách sinh ra để không
  *     ai tự vẽ ô tìm nữa. Nay hết nợ.
  *
+ *     ⚠ VÀ ĐỢT 9 DỜI HẲN Ô ẤY LÊN HEADER. Đợt 7 đặt nó thành một thẻ
+ *     riêng trên bảng hàng, thành ra màn có HAI chỗ thêm hàng: ô trên
+ *     header (lúc đó là một cái nút kích `F3`) và thẻ này. Chủ nhà
+ *     chốt bỏ cái dưới. Màn nay chỉ ĐĂNG KÝ danh mục + việc cần làm
+ *     vào `useRegisterPosProductSearch`; khung vẽ ô tìm.
+ *
  *   · BẢNG DÒNG HÀNG BỐ TRÍ KHÁC, CHỨC NĂNG GIỮ NGUYÊN. Bản đầu làm
  *     rơi mất năm thứ của màn đơn cũ, và cả năm đều đụng TIỀN:
  *       1. giá lấy `products.sell_price` thay vì `unitPriceFor` — bỏ
@@ -58,7 +64,9 @@ import { isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { toStockLines } from "@/lib/sell/stock"
 import { viMatchAllWords } from "@/lib/search"
 import { VAT_RATES, vatLabel } from "@/lib/constants"
-import { ProductPicker } from "@/components/ui/product-picker"
+import {
+  useRegisterPosProductSearch, usePosSearchTerm, focusPosPicker,
+} from "@/store/pos/product-search"
 import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
@@ -96,9 +104,6 @@ export interface OrderScreenProps {
 
 let demDong = 0
 const newKey = () => `d${++demDong}`
-
-/** ⚠ `F3` tìm ô này bằng `id` — một chỗ duy nhất giữ chuỗi ấy. */
-const PICKER_ID = "pos-them-hang"
 
 /**
  * Các bậc thuế cho ô chọn của dòng.
@@ -140,7 +145,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
   const [thoiDiem] = useState(homNay)
-  const [moTimHang, setMoTimHang] = useState("")
+  /* ⚠ TỪ KHOÁ TÌM HÀNG NẰM Ở KHUNG, không ở màn — ô nhập ở header. */
+  const moTimHang = usePosSearchTerm()
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [orderCode, setOrderCode] = useState<string | null>(null)
   const [orderStatus, setOrderStatus] = useState<"draft" | "submitted" | string>("draft")
@@ -543,11 +549,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   }, [lines.length])
 
   /* --- phím tắt, spec §10 --- */
-  /* ⚠ `F3` ĐƯA TIÊU ĐIỂM VỀ Ô TÌM, không mở một lớp phủ. `ProductPicker`
-     tự xổ danh sách khi nhận tiêu điểm (`onFocus`), nên một lệnh focus
-     là đủ — và ô ấy nằm ngay trên bảng nên người dùng thấy nó. */
+  /* ⚠ `F3` ĐƯA TIÊU ĐIỂM VỀ Ô TÌM TRÊN HEADER. `ProductPicker` tự xổ
+     danh sách khi nhận tiêu điểm (`onFocus`), nên một lệnh focus là đủ. */
   usePosKeys({
-    F3: () => document.getElementById(PICKER_ID)?.focus(),
+    F3: focusPosPicker,
     F4: () => setMoTimKhach(true),
     F8: () => setRetLines((c) => [...c, emptyReturnLine(false)]),
     F9: () => setRetLines((c) => [...c, emptyReturnLine(true)]),
@@ -584,6 +589,39 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     },
     [products, moTimHang]
   )
+
+  /**
+   * ⚠ GIÁ HIỆN Ở GỢI Ý LÀ GIÁ CỦA ĐÚNG KHÁCH ĐANG CHỌN. Hiện
+   * `sell_price` phẳng là người lập đơn đọc một giá rồi thêm vào lại ra
+   * giá khác — xem `groupId`.
+   */
+  const veGoiY = useCallback(
+    (p: SellProduct) => {
+      const ton = stockByProduct[p.id] ?? 0
+      return (
+        <span className="shrink-0 text-right">
+          <span className="block text-sm font-semibold tabular-nums">
+            {formatCurrency(unitPriceFor(p, sellableUnits(p)[0], groupId))}
+          </span>
+          <span className={`block text-xs tabular-nums ${ton <= 0 ? "text-destructive" : "text-muted-foreground"}`}>
+            tồn {ton.toLocaleString("vi-VN")}
+          </span>
+        </span>
+      )
+    },
+    [stockByProduct, groupId]
+  )
+  const chonHang = useCallback((p: SellProduct) => addProduct(p.id), [addProduct])
+
+  /* ⚠ Ô TÌM HÀNG VẼ Ở KHUNG — màn chỉ đưa danh mục và việc cần làm lên.
+     Xem `src/store/pos/product-search.tsx`. */
+  useRegisterPosProductSearch({
+    items: mucHang,
+    onPick: chonHang,
+    disabled: loading,
+    placeholder: "Tên hàng, mã SKU hoặc mã vạch…",
+    renderMeta: veGoiY,
+  })
 
   const mucKhach = useMemo<SearchItem[]>(
     () =>
@@ -785,43 +823,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               tối đi. Ở đây nó xổ đè lên bảng hàng, rộng bằng bảng.
           */}
           {/*
-            ⚠ `ProductPicker` DÙNG CHUNG, KHÔNG PHẢI Ô TÌM RIÊNG CỦA POS.
-              Chủ nhà chốt đợt 7 — xem đầu tệp. Nó mang sẵn những thứ
-              bản riêng phải làm lại: xổ danh sách khi ô còn trống, cắt
-              ở `PICKER_PEEK`, `↑↓ Enter`, bấm ra ngoài thì đóng, và
-              KHÔNG đóng sau mỗi lần thêm (người nhập ba mươi dòng thêm
-              liên tiếp).
-          */}
-          <div className="shrink-0 rounded-xl border border-[#e2e8f0] bg-white px-3.5 pb-3.5 pt-2">
-            <ProductPicker
-              id={PICKER_ID}
-              label="Thêm mặt hàng — F3"
-              placeholder="Tên hàng, mã SKU hoặc mã vạch…"
-              emptyHint="Không tìm thấy mã nào khớp."
-              disabled={loading}
-              term={moTimHang}
-              onTermChange={setMoTimHang}
-              items={mucHang}
-              onPick={(p) => addProduct(p.id)}
-              /* ⚠ GIÁ HIỆN Ở ĐÂY LÀ GIÁ CỦA ĐÚNG KHÁCH ĐANG CHỌN. Hiện
-                 `sell_price` phẳng là người lập đơn đọc một giá rồi
-                 thêm vào lại ra giá khác. */
-              renderMeta={(p) => {
-                const ton = stockByProduct[p.id] ?? 0
-                return (
-                  <span className="shrink-0 text-right">
-                    <span className="block text-sm font-semibold tabular-nums">
-                      {formatCurrency(unitPriceFor(p, sellableUnits(p)[0], groupId))}
-                    </span>
-                    <span className={`block text-xs tabular-nums ${ton <= 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                      tồn {ton.toLocaleString("vi-VN")}
-                    </span>
-                  </span>
-                )
-              }}
-            />
-          </div>
-          {/*
             ⚠ CẢNH BÁO DANH MỤC THIẾU PHẢI NẰM TRÊN CÙNG. Đây đúng là
               những câu "danh mục quá lớn, màn hình còn THIẾU một phần" —
               người đang tìm một mã không ra kết quả cần đọc nó TRƯỚC khi
@@ -866,7 +867,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 {!loading && (
                   <button
                     type="button"
-                    onClick={() => document.getElementById(PICKER_ID)?.focus()}
+                    onClick={focusPosPicker}
                     className="mt-2 text-[13px] font-semibold text-[#2563eb]"
                   >
                     Thêm hàng <span className="n text-[11px] opacity-70">F3</span>

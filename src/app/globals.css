@@ -480,6 +480,19 @@
   --pos-ok-soft: #f0fdf4;
   --pos-ok-border: #bbf7d0;
 
+  /* THANH TRÊN CÙNG — chủ nhà chốt đợt 9: "Màu Đen header -> màu xanh
+   * lam đang dùng". Bản đầu để `#0f172a` (gần như đen) theo bản xem
+   * thiết kế; cả app dùng xanh lam `--primary: #2563eb`, nên một thanh
+   * đen ở `/pos` đọc như một sản phẩm khác.
+   *
+   * ⚠ BA SẮC, KHÔNG PHẢI MỘT. Ô lõm (ô tìm), đường kẻ và chữ phụ nằm
+   * TRÊN nền xanh ấy — dùng lại đúng `#2563eb` cho chúng là chúng biến
+   * mất. Ba biến này giữ cùng một họ màu với `--pos-primary`. */
+  --pos-bar: #2563eb;
+  --pos-bar-deep: #1d4ed8;
+  --pos-bar-line: #60a5fa;
+  --pos-bar-dim: #dbeafe;
+
   /* ⚠ KHÔNG KHAI `font-family` Ở ĐÂY. `/pos` dùng đúng Manrope mà
    *   `body` đã đặt cho toàn app (chủ nhà chốt đợt 8). Bản đầu khai
    *   Be Vietnam Pro riêng cho khối này: mở `/pos` ra là một app khác

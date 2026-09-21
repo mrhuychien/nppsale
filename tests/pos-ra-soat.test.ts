@@ -477,19 +477,9 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
     ).toBe(false)
   })
 
-  /** ⚠ `F3` phải tới đúng ô tìm của `ProductPicker`. */
-  it("F3 đưa tiêu điểm về ô tìm hàng", () => {
-    expect(S).toMatch(/F3: \(\) => document\.getElementById\(PICKER_ID\)\?\.focus\(\)/)
-    expect(S).toMatch(/id=\{PICKER_ID\}/)
-  })
-
-  /** ⚠ Ô tìm hàng vẫn phải nằm TRÊN bảng — cùng lý do với mục 3. */
-  it("ProductPicker nằm trước bảng hàng", () => {
-    const picker = S.indexOf("<ProductPicker")
-    const bang = S.indexOf("<LineTableFrame")
-    expect(picker).toBeGreaterThan(-1)
-    expect(bang).toBeGreaterThan(-1)
-    expect(picker, "ô tìm hàng neo sau bảng — sẽ mở rơi khỏi màn").toBeLessThan(bang)
+  /** ⚠ `F3` phải tới đúng ô tìm trên header. */
+  it("F3 đưa tiêu điểm về ô tìm trên header", () => {
+    expect(S).toMatch(/F3: focusPosPicker/)
   })
 
   /**
@@ -557,5 +547,115 @@ describe("§đợt8 — /pos dùng đúng bộ chữ của app", () => {
       }
     }
     expect(pham).toEqual([])
+  })
+})
+
+/* ==================================================================
+ * 8. ĐỢT 9 — MỘT Ô THÊM HÀNG, NẰM TRÊN HEADER, NỀN XANH
+ *
+ * Chủ nhà chốt: *"Bỏ bớt 1 cái thêm hàng. đang có 2 cái. Bỏ cái dưới.
+ * giữ cái trên header, khi ấn vào tìm hàng, danh sách xổ ngay đó"*,
+ * *"Màu Đen header -> màu xanh lam đang dùng"*, *"Khi ấn vào thêm hàng
+ * xong danh sách phải thu gọn lại chứ?"*.
+ * ================================================================== */
+describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
+  const ORDER = code(read("src/components/pos/order-screen.tsx"))
+  const BAR = code(read("src/components/pos/pos-top-bar.tsx"))
+
+  /**
+   * ⚠ ĐÚNG MỘT Ô THÊM HÀNG TRÊN MÀN ĐƠN. Đây là chính cái chủ nhà đếm
+   * được: header có một, trên bảng hàng có một nữa.
+   */
+  it("màn đơn không còn ô tìm hàng thứ hai", () => {
+    expect(/<ProductPicker/.test(ORDER), "thẻ ô tìm dưới bảng đã quay lại").toBe(false)
+    expect(/<SearchDropdown[\s\S]*?open=\{moTimHang\}/.test(ORDER)).toBe(false)
+    /* Ô tìm KHÁCH thì vẫn còn — chủ nhà chốt giữ nguyên. */
+    expect(ORDER).toMatch(/open=\{moTimKhach\}/)
+  })
+
+  /**
+   * ⚠ VÀ MÀN PHẢI THẬT SỰ GỌI HÀM ĐĂNG KÝ. Không có chốt này thì gỡ
+   *   sạch lời gọi vẫn xanh — ô tìm trên header rỗng, bấm vào không ra
+   *   mã nào, và mọi chốt khác vẫn đúng.
+   */
+  it("màn đơn gọi hàm đăng ký, kèm danh mục và việc cần làm", () => {
+    const i = ORDER.search(/useRegisterPosProductSearch\(\{/)
+    expect(i, "màn đơn không gọi hàm đăng ký").toBeGreaterThan(-1)
+    const khoi = ORDER.slice(i, ORDER.indexOf("})", i))
+    expect(khoi).toMatch(/items: mucHang/)
+    expect(khoi).toMatch(/onPick: chonHang/)
+  })
+
+  /** ⚠ Và khung vẽ đúng MỘT ô, không vẽ hai. */
+  it("header vẽ đúng một ô tìm hàng", () => {
+    expect(BAR.split("<ProductPicker").length - 1, "header vẽ nhiều hơn một ô tìm").toBe(1)
+  })
+
+  /**
+   * ⚠ DANH SÁCH XỔ NGAY DƯỚI Ô. `ProductPicker` neo dải gợi ý bằng
+   * `absolute top-full` vào khung của chính nó — nên chốt canh rằng
+   * khung ấy có `relative`, nếu không dải gợi ý neo nhầm vào tổ tiên
+   * xa hơn và rơi ra giữa màn.
+   */
+  it("dải gợi ý neo vào chính ô tìm", () => {
+    const picker = code(read("src/components/ui/product-picker.tsx"))
+    expect(picker).toMatch(/cn\("relative"/)
+    expect(picker).toMatch(/absolute inset-x-0 top-full/)
+  })
+
+  /**
+   * ⚠ THÊM XONG THÌ THU GỌN — chủ nhà chốt. Nhưng CHỈ cho ô trên
+   * header: năm màn khác đang chạy cố ý giữ danh sách mở để nhập hàng
+   * loạt, và đổi mặc định là đổi luôn cả năm mà không ai yêu cầu.
+   */
+  it("ô trên header đóng danh sách sau khi thêm", () => {
+    expect(BAR).toMatch(/closeOnPick/)
+    const picker = code(read("src/components/ui/product-picker.tsx"))
+    expect(picker).toMatch(/closeOnPick = false/)
+    expect(picker).toMatch(/if \(closeOnPick\) setOpen\(false\)/)
+  })
+
+  /** ⚠ Các màn cũ KHÔNG được đổi hành vi — không màn nào bật cờ ấy. */
+  it("năm màn đang chạy giữ nguyên hành vi mở", () => {
+    const pham: string[] = []
+    for (const rel of [
+      "src/components/orders/invoice-editor.tsx",
+      "src/components/purchasing/purchasing-lines-editor.tsx",
+      "src/app/(dashboard)/inventory/stock-issue/page.tsx",
+      "src/app/(dashboard)/inventory/stock-in/page.tsx",
+      "src/app/(dashboard)/returns/new/page.tsx",
+    ]) {
+      if (/closeOnPick/.test(code(read(rel)))) pham.push(rel)
+    }
+    expect(pham, "một màn đang chạy bị đổi hành vi mở/đóng danh sách").toEqual([])
+  })
+
+  /**
+   * ⚠ HEADER XANH LAM, KHÔNG CÒN ĐEN. `#0f172a` là màu của bản xem
+   * thiết kế; cả app dùng `--primary: #2563eb`.
+   */
+  it("header dùng token xanh, không còn nền đen", () => {
+    expect(BAR).toMatch(/bg-\[var\(--pos-bar\)\]/)
+    expect(/#0f172a/.test(BAR), "nền đen của bản thiết kế đã quay lại header").toBe(false)
+    expect(/#1e293b|#334155|#475569/.test(BAR), "còn sắc xám của thanh nền đen").toBe(false)
+  })
+
+  /** ⚠ Token thanh header khai trong `.pos-scope`, không rò ra `:root`. */
+  it("token thanh header nằm trong .pos-scope", () => {
+    const css = read("src/app/globals.css")
+    const i = css.indexOf(".pos-scope {")
+    const khoi = css.slice(i, css.indexOf("\n}", i))
+    for (const t of ["--pos-bar", "--pos-bar-deep", "--pos-bar-line", "--pos-bar-dim"]) {
+      expect(khoi, `thiếu token ${t}`).toContain(`${t}:`)
+    }
+    expect(/--pos-bar[a-z-]*\s*:/.test(css.slice(0, i)), "token thanh khai ngoài .pos-scope").toBe(false)
+  })
+
+  /** ⚠ Dãy tab nằm TRÊN nền xanh — không được giữ màu chữ của nền đen. */
+  it("dãy tab đổi màu theo nền xanh", () => {
+    const tabs = code(read("src/components/pos/doc-tabs.tsx"))
+    expect(tabs).toMatch(/var\(--pos-bar-dim\)/)
+    expect(/#cbd5e1|#475569|#94a3b8/.test(tabs.replace(/text-\[#94a3b8\][^"]*hover:bg-\[#e2e8f0\]/, "")),
+      "tab còn màu chữ của thanh nền đen").toBe(false)
   })
 })

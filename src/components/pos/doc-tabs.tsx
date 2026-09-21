@@ -44,7 +44,7 @@ export function DocTabs() {
                 aria-current={dang ? "page" : undefined}
                 title={POS_DOC_LABEL[t.docType]}
                 className={`flex items-center gap-[7px] text-[13px] ${
-                  dang ? "font-semibold text-[#0f172a]" : "font-medium text-[#cbd5e1]"
+                  dang ? "font-semibold text-[#0f172a]" : "font-medium text-[var(--pos-bar-dim)]"
                 }`}
               >
                 <span
@@ -61,8 +61,11 @@ export function DocTabs() {
                 */}
                 {t.dirty && (
                   <span
+                    /* ⚠ Tab chưa chọn nằm trên nền XANH — chip nâu sẫm của
+                       bản nền đen gần như chìm hẳn ở đó. Amber sáng trên
+                       chữ nâu đọc được trên cả hai nền. */
                     className={`shrink-0 rounded px-1.5 py-px text-[10px] font-bold ${
-                      dang ? "bg-[#fef3c7] text-[#92400e]" : "bg-[#78350f] text-[#fde68a]"
+                      dang ? "bg-[#fef3c7] text-[#92400e]" : "bg-[#fcd34d] text-[#78350f]"
                     }`}
                   >
                     chưa lưu
@@ -89,7 +92,7 @@ export function DocTabs() {
           aria-label="Mở chứng từ mới"
           aria-expanded={moMenu}
           onClick={() => setMoMenu((v) => !v)}
-          className="ml-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#475569] text-[16px] leading-none text-[#94a3b8] hover:border-[#64748b] hover:text-[#cbd5e1]"
+          className="ml-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--pos-bar-line)] text-[16px] leading-none text-[var(--pos-bar-dim)] hover:border-white hover:text-white"
         >
           +
         </button>

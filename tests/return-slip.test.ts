@@ -520,7 +520,16 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
         if (CON_NO_TU_VE_O_TIM_HANG.includes(rel)) continue
         const src = code(readFileSync(abs, "utf-8"))
         if (!laOThemHang(src)) continue
-        if (!src.includes("ProductPicker")) bad.push(rel)
+        /**
+         * ⚠ ĐĂNG KÝ VÀO Ô TÌM DÙNG CHUNG CŨNG LÀ ĐẠT. Luật ở đây là
+         * "đừng tự vẽ ô tìm", không phải "phải viết đúng chữ
+         * ProductPicker". Màn đơn của `/pos` đưa danh mục lên ô tìm
+         * trên header (`useRegisterPosProductSearch`) — ô ấy CHÍNH LÀ
+         * `ProductPicker`, chỉ vẽ ở khung chứ không vẽ trong màn.
+         */
+        if (!src.includes("ProductPicker") && !src.includes("useRegisterPosProductSearch")) {
+          bad.push(rel)
+        }
       }
     }
     expect(
@@ -550,15 +559,38 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
    *   bằng một câu "màn desktop cần ô tìm riêng", và đó đúng là lý do
    *   nó đã được miễn một lần.
    */
-  it("màn đơn hàng /pos dùng ProductPicker, không tự vẽ ô tìm hàng", () => {
+  it("màn đơn hàng /pos đăng ký vào ô tìm dùng chung, không tự vẽ", () => {
     const src = code(read("src/components/pos/order-screen.tsx"))
-    expect(src, "màn đơn hàng /pos lại tự vẽ ô tìm hàng").toContain("<ProductPicker")
+    /**
+     * ⚠ CANH CHỖ GỌI, KHÔNG CANH DÒNG `import`. Bản đầu của chốt này
+     * dùng `.toContain("useRegisterPosProductSearch")` — và dòng nhập
+     * khẩu ở đầu tệp đã đủ làm nó xanh. Đột biến gỡ SẠCH lời gọi mà
+     * chốt vẫn không kêu: màn không còn đưa danh mục lên header, ô tìm
+     * trên đó rỗng, và không gì đỏ.
+     */
+    expect(
+      /useRegisterPosProductSearch\(\{/.test(src),
+      "màn đơn không GỌI useRegisterPosProductSearch — ô tìm trên header sẽ rỗng"
+    ).toBe(true)
+    /* ⚠ VÀ KHÔNG TỰ VẼ Ô NÀO NỮA — đợt 9 bỏ cái thứ hai. */
+    expect(/<ProductPicker/.test(src), "màn đơn lại tự vẽ ô tìm hàng thứ hai").toBe(false)
     /* Ô tìm KHÁCH vẫn là `SearchDropdown` của POS — chủ nhà chốt giữ
        nguyên. Nên chỉ cấm dùng nó cho HÀNG HÓA. */
     expect(
       /open=\{moTimHang\}/.test(src),
       "ô tìm hàng riêng của POS đã quay lại màn đơn hàng"
     ).toBe(false)
+  })
+
+  /**
+   * ⚠ VÀ Ô TÌM DÙNG CHUNG ẤY CHÍNH LÀ `ProductPicker`. Không có chốt
+   *   này thì sổ đăng ký thành một cửa sau: màn "đăng ký" rồi khung tự
+   *   vẽ một ô tìm khác, và cả hai chốt trên vẫn xanh.
+   */
+  it("ô tìm trên header của /pos là ProductPicker", () => {
+    const src = code(read("src/components/pos/pos-top-bar.tsx"))
+    expect(src).toContain("<ProductPicker")
+    expect(src).toMatch(/id=\{POS_PICKER_ID\}/)
   })
 
   /**

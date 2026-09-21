@@ -65,6 +65,9 @@ export function ProductPicker<T extends PickerItem>({
   hint,
   term,
   onTermChange,
+  hideLabel = false,
+  closeOnPick = false,
+  className,
 }: {
   /** Danh sách ĐÃ lọc theo `term` và đã bỏ mã có trên phiếu. */
   items: T[]
@@ -93,6 +96,32 @@ export function ProductPicker<T extends PickerItem>({
   hint?: React.ReactNode
   term: string
   onTermChange: (t: string) => void
+  /**
+   * Ẩn nhãn phía trên ô.
+   *
+   * ⚠ NHÃN ẨN THÌ `aria-label` PHẢI THAY CHỖ. Bỏ hẳn nhãn là người dùng
+   * trình đọc màn hình nghe được một ô nhập không tên. Dùng khi ô nằm
+   * trong một thanh chật — thanh trên cùng của `/pos` — chứ không phải
+   * để tiết kiệm chỗ ở một biểu mẫu bình thường.
+   */
+  hideLabel?: boolean
+  /**
+   * Đóng danh sách sau khi chọn một mã.
+   *
+   * ⚠ MẶC ĐỊNH `false`, VÀ ĐÓ LÀ HÀNH VI CŨ CỦA MỌI MÀN ĐANG CHẠY —
+   * xem `pick()`. Người nhập một phiếu ba mươi dòng thêm liên tiếp, nên
+   * đóng lại là mỗi dòng một cú bấm thừa.
+   *
+   * ⚠ NHƯNG Ô NẰM TRÊN THANH ĐẦU MÀN THÌ NGƯỢC LẠI: danh sách xổ ra đè
+   * lên bảng hàng, và người dùng vừa thêm xong cần NHÌN THẤY dòng mình
+   * vừa thêm. Chủ nhà chốt đợt 9 cho `/pos`: *"Khi ấn vào thêm hàng
+   * xong danh sách phải thu gọn lại"*. Đây là một tuỳ chọn chứ không
+   * phải đổi mặc định — đổi mặc định là đổi luôn sáu màn đang chạy mà
+   * không ai yêu cầu.
+   */
+  closeOnPick?: boolean
+  /** Lớp CSS của khung ngoài — để nơi gọi đặt bề rộng. */
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -118,19 +147,26 @@ export function ProductPicker<T extends PickerItem>({
     onPick(it)
     onTermChange("")
     /**
-     * ⚠ KHÔNG ĐÓNG SAU KHI THÊM. Người nhập một phiếu ba mươi dòng thêm
-     *   liên tiếp; đóng lại là mỗi dòng một lần bấm thừa. Mã vừa thêm
-     *   biến khỏi danh sách (nơi gọi đã loại mã có trên phiếu), nên
-     *   danh sách tự nói "đã nhận rồi".
+     * ⚠ MẶC ĐỊNH KHÔNG ĐÓNG SAU KHI THÊM. Người nhập một phiếu ba mươi
+     *   dòng thêm liên tiếp; đóng lại là mỗi dòng một lần bấm thừa. Mã
+     *   vừa thêm biến khỏi danh sách (nơi gọi đã loại mã có trên
+     *   phiếu), nên danh sách tự nói "đã nhận rồi".
+     *
+     * ⚠ `closeOnPick` ĐẢO LẠI CHO Ô NẰM TRÊN THANH ĐẦU MÀN — xem chú
+     *   thích của prop ấy. Vẫn giữ tiêu điểm trong ô để gõ tiếp mã sau
+     *   mà không phải bấm lại.
      */
+    if (closeOnPick) setOpen(false)
     inputRef.current?.focus()
   }
 
   return (
-    <div ref={boxRef} className="relative space-y-2">
-      <Label htmlFor={id} className="text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </Label>
+    <div ref={boxRef} className={cn("relative", hideLabel ? "" : "space-y-2", className)}>
+      {hideLabel ? null : (
+        <Label htmlFor={id} className="text-xs uppercase tracking-wider text-muted-foreground">
+          {label}
+        </Label>
+      )}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -159,6 +195,8 @@ export function ProductPicker<T extends PickerItem>({
           }}
           placeholder={disabled ? "Đang nạp danh mục…" : placeholder}
           disabled={disabled}
+          /* ⚠ Nhãn ẩn thì `aria-label` thay chỗ — xem prop `hideLabel`. */
+          aria-label={hideLabel ? label : undefined}
           className="pl-8"
           autoComplete="off"
         />

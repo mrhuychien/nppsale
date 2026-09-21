@@ -571,3 +571,39 @@ Chưa chỉnh vì **bề rộng cột của bảng hàng được căn theo đú
 ấy** (`POS_GRID`: 24px, 80px, 92px…). Nâng cỡ chữ mà không căn lại cột là
 chữ tràn ô. Đây là một quyết định về mật độ màn hình, không phải một phép
 đổi máy móc — chờ chủ nhà chốt.
+
+---
+
+## 24. Đợt 9 — một ô thêm hàng, nằm trên header, nền xanh
+
+Chủ nhà chốt bốn việc: *"Bỏ bớt 1 cái thêm hàng. đang có 2 cái. Bỏ cái
+dưới. giữ cái trên header, khi ấn vào tìm hàng, danh sách xổ ngay đó"*,
+*"Màu Đen header -> màu xanh lam đang dùng"*, *"Khi ấn vào thêm hàng xong
+danh sách phải thu gọn lại chứ?"*.
+
+**Hai ô thêm hàng → một.** Ô tìm trên header đã qua hai bản sai: bản đầu
+là một `<input>` không nối vào đâu (gõ vào không có gì xảy ra); đợt 7 đổi
+thành một cái NÚT kích `F3`, tức mở một ô tìm THỨ HAI nằm dưới. Nay chính
+ô trên header là `ProductPicker`, và danh sách xổ ngay dưới nó.
+
+**Sổ đăng ký** (`src/store/pos/product-search.tsx`): ô tìm vẽ ở KHUNG,
+nhưng danh mục và việc "thêm vào chứng từ" thuộc về MÀN. Màn gọi
+`useRegisterPosProductSearch({ items, onPick, renderMeta })`; khung vẽ.
+Cùng mô hình `usePosKeys` — khác một chỗ: phím tắt chỉ cần ĐỌC lúc bấm
+nên giữ được ở biến mô-đun, còn ô tìm phải VẼ LẠI khi danh mục đổi.
+
+**Thêm xong thì thu gọn:** `ProductPicker` có thêm prop `closeOnPick`,
+**mặc định `false`**. Năm màn đang chạy (hóa đơn, phiếu nhập, xuất kho,
+nhập kho, phiếu trả) cố ý giữ danh sách mở để nhập hàng loạt — đổi mặc
+định là đổi luôn cả năm mà không ai yêu cầu. Chỉ ô trên header bật cờ.
+
+**Header xanh lam.** `#0f172a` (gần như đen, theo bản xem thiết kế) →
+`--pos-bar: #2563eb`, đúng `--primary` của app. Ba sắc phụ đi kèm
+(`--pos-bar-deep/line/dim`) cho ô lõm, đường kẻ và chữ phụ — dùng lại
+đúng một màu cho cả bốn thì chúng biến mất trên nền ấy. Dãy tab đổi màu
+chữ theo (chip "chưa lưu" của tab chưa chọn từ nâu sẫm → amber sáng).
+
+**Còn lại — bốn màn POS kia** (phiếu trả, nhập hàng, trả NCC, sửa hóa
+đơn) vẫn có ô tìm riêng ở đầu cột trái, và ô trên header của chúng vẫn
+là cái nút kích `F3`. Tức chúng vẫn ở trạng thái "hai chỗ thêm hàng".
+Chủ nhà mới chốt cho màn đơn; chuyển nốt bốn màn là việc của đợt sau.

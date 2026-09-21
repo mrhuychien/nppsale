@@ -3,6 +3,7 @@ import { PosShell } from "@/components/pos/pos-shell"
 import { PosTabsProvider } from "@/store/pos/tabs"
 import { PosSettingsProvider } from "@/store/pos/settings"
 import { PosRefDataProvider } from "@/store/pos/ref-data"
+import { PosProductSearchProvider } from "@/store/pos/product-search"
 
 /**
  * KHUNG `/pos` — spec chốt 21/09/2026.
@@ -25,7 +26,10 @@ export default function PosLayout({ children }: { children: ReactNode }) {
     <PosSettingsProvider>
       <PosRefDataProvider>
         <PosTabsProvider>
-          <PosShell>{children}</PosShell>
+          {/* ⚠ Ô tìm hàng vẽ ở khung, danh mục do màn đăng ký — xem store. */}
+          <PosProductSearchProvider>
+            <PosShell>{children}</PosShell>
+          </PosProductSearchProvider>
         </PosTabsProvider>
       </PosRefDataProvider>
     </PosSettingsProvider>

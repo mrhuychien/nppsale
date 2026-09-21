@@ -72,10 +72,19 @@ export function posLinesToCart(lines: readonly PosLine[]): CartLine[] {
        * Đó chính là mục 1 của `docs/pos-todo.md`.
        */
       price: l.qty > 0 ? Math.round((g - giam) / l.qty) : 0,
-      listPrice: l.price,
+      /**
+       * ⚠ GIÁ BẢNG, KHÔNG PHẢI GIÁ ĐÃ GÕ. Bản đầu đặt `listPrice =
+       * l.price`: `lineDiscountOf` khi đó luôn ra đúng khoản giảm theo
+       * dòng của POS và BỎ QUA phần người bán tự hạ đơn giá. Đơn ghi
+       * chiết khấu thiếu đúng bằng phần ấy. Dòng chưa tra được giá bảng
+       * (mặt hàng ngoài danh mục) thì rơi về giá đang gõ — chiết khấu 0
+       * còn hơn một con số âm.
+       */
+      listPrice: l.listPrice ?? l.price,
       note: l.note ?? "",
       conversion: l.units.find((u) => u.unit_name === l.unit)?.conversion || 1,
-      vatRate: 0,
+      /* ⚠ THUẾ THEO DÒNG ĐI VÀO `sales_orders.vat` qua `cartTotals`. */
+      vatRate: Number(l.vatRate) || 0,
     }
   })
 }
@@ -159,11 +168,16 @@ export async function savePosOrder(
  *
  * @param vatRate thuế suất theo TỈ LỆ (0.1 = 10%) áp cho MỌI dòng.
  *
- * ⚠ THUẾ CỦA MÀN POS ĐẶT Ở CẤP CHỨNG TỪ (ô `Thuế GTGT` trên panel),
- * nhưng `sales_invoices` KHÔNG có cột thuế suất — RPC cộng thuế từ
- * `vat_rate` của TỪNG DÒNG. Nên ô cấp chứng từ được đẩy xuống mọi dòng.
- * Bản đầu gửi 0 ở đây trong khi panel vẫn vẽ số thuế: người dùng thấy
- * tổng có thuế, lưu xong hóa đơn không thuế.
+ * ⚠ THUẾ CỦA MÀN SỬA HÓA ĐƠN ĐẶT Ở CẤP CHỨNG TỪ (ô `Thuế GTGT` trên
+ * panel), nhưng `sales_invoices` KHÔNG có cột thuế suất — RPC cộng thuế
+ * từ `vat_rate` của TỪNG DÒNG. Nên ô cấp chứng từ được đẩy xuống mọi
+ * dòng. Bản đầu gửi 0 ở đây trong khi panel vẫn vẽ số thuế: người dùng
+ * thấy tổng có thuế, lưu xong hóa đơn không thuế.
+ *
+ * ⚠ THUẾ RIÊNG CỦA DÒNG THẮNG. Màn đơn hàng có ô thuế trên TỪNG dòng
+ * (đúng như màn đơn cũ) — cùng một mặt hàng có lúc xuất có hóa đơn, có
+ * lúc không. Đè nó bằng một thuế suất cấp chứng từ là xoá lựa chọn
+ * người lập đơn vừa làm.
  */
 export function posLinesToInvoice(lines: readonly PosLine[], vatRate = 0): InvoiceDraftLine[] {
   return lines.map((l) => {
@@ -178,7 +192,7 @@ export function posLinesToInvoice(lines: readonly PosLine[], vatRate = 0): Invoi
       /* ⚠ HÓA ĐƠN CÓ CỘT GIẢM THEO DÒNG — gửi số tiền đã quy, đừng nhét
          vào đơn giá như bên đơn hàng. */
       lineDiscount: discountAmount(l.discount, g),
-      vatRate,
+      vatRate: l.vatRate ?? vatRate,
       isExchange: l.isExchange === true,
       note: l.note ?? null,
     }

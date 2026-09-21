@@ -17,6 +17,29 @@
  * ⚠ RÀNG BUỘC DUY NHẤT CỦA BẢN SỬA: dòng đã xuất một phần thì stepper
  * có `min = số đã xuất`. Không có gì khác bị khoá — spec §7.1 nói rõ
  * "phần còn lại sửa thoải mái".
+ *
+ * ⚠ CHỦ NHÀ CHỐT 21/09/2026 (ĐỢT 7): "phần tìm hàng hoá dùng
+ * ProductPicker đã viết sẵn" và "các dòng trong đơn chỉ bố trí hình
+ * thức khác đi thôi chứ vẫn phải giữ các chức năng của làm đơn hàng
+ * cũ". Hai câu ấy đảo hai quyết định của đợt 1, và đảo có lý do:
+ *
+ *   · Ô tìm hàng nay là `ProductPicker` dùng chung. Bản đầu tự vẽ một
+ *     `SearchDropdown` riêng cho POS và được ghi vào danh sách nợ của
+ *     `tests/return-slip.test.ts` — đúng cái danh sách sinh ra để không
+ *     ai tự vẽ ô tìm nữa. Nay hết nợ.
+ *
+ *   · BẢNG DÒNG HÀNG BỐ TRÍ KHÁC, CHỨC NĂNG GIỮ NGUYÊN. Bản đầu làm
+ *     rơi mất năm thứ của màn đơn cũ, và cả năm đều đụng TIỀN:
+ *       1. giá lấy `products.sell_price` thay vì `unitPriceFor` — bỏ
+ *          qua BẢNG GIÁ THEO NHÓM KHÁCH. Khách sỉ bị tính giá lẻ.
+ *       2. đổi đơn vị nhân/chia hệ số thay vì tra lại bảng giá.
+ *       3. không có `listPrice` → `line_discount` của đơn luôn bằng
+ *          khoản giảm gõ tay, bỏ qua phần người bán tự hạ giá.
+ *       4. không có chốt chặn giá (`priceViolation`) → NVBH bán dưới
+ *          giá bảng mà không gì cản.
+ *       5. không có thuế theo DÒNG.
+ *     Cả năm nay dùng đúng `@/lib/sell/pricing` và `@/lib/sell/cart` mà
+ *     màn cũ đang dùng — không chép lại phép tính nào.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -28,7 +51,14 @@ import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
-import { cartTotals } from "@/lib/sell/cart"
+import { cartTotals, priceViolation, ceilingFor } from "@/lib/sell/cart"
+import { unitPriceFor, conversionFor, sellableUnits, stockInUnit } from "@/lib/sell/pricing"
+import { userPriceRulesFrom } from "@/lib/pricing"
+import { isSaleLineOverstock } from "@/lib/orders/stock-check"
+import { toStockLines } from "@/lib/sell/stock"
+import { viMatchAllWords } from "@/lib/search"
+import { VAT_RATES, vatLabel } from "@/lib/constants"
+import { ProductPicker } from "@/components/ui/product-picker"
 import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
@@ -54,6 +84,7 @@ import {
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import type { SellProduct } from "@/lib/sell/ref-data"
 import { ReturnExchangeTable } from "@/components/pos/return-exchange-table"
 
 export interface OrderScreenProps {
@@ -66,10 +97,28 @@ export interface OrderScreenProps {
 let demDong = 0
 const newKey = () => `d${++demDong}`
 
+/** ⚠ `F3` tìm ô này bằng `id` — một chỗ duy nhất giữ chuỗi ấy. */
+const PICKER_ID = "pos-them-hang"
+
+/**
+ * Các bậc thuế cho ô chọn của dòng.
+ *
+ * ⚠ GIỮ ĐÚNG THUẾ SUẤT LẠ CỦA DÒNG. Sản phẩm khai 7% mà ép về bậc gần
+ * nhất là lặng lẽ đổi số thuế người ta đã khai; mở ô ra không thấy bậc
+ * nào sáng thì người dùng tưởng dòng chưa có thuế. Cùng luật với
+ * `LineEditSheet` của màn đơn cũ.
+ */
+function vatChoices(current: number): Array<{ value: number; label: string }> {
+  const cur = Number(current) || 0
+  const base: Array<{ value: number; label: string }> = [...VAT_RATES]
+  if (base.some((v) => Math.abs(v.value - cur) < 1e-9)) return base
+  return [...base, { value: cur, label: vatLabel(cur) }].sort((a, b) => a.value - b.value)
+}
+
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
-  const { products, customers, sellers, stockByProduct, loading, warnings, productById } =
+  const { products, customers, sellers, stockByProduct, loading, warnings, productById, customerById } =
     usePosRefData()
   const { toast } = useToast()
   const router = useRouter()
@@ -91,7 +140,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
   const [thoiDiem] = useState(homNay)
-  const [moTimHang, setMoTimHang] = useState(false)
+  const [moTimHang, setMoTimHang] = useState("")
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [orderCode, setOrderCode] = useState<string | null>(null)
   const [orderStatus, setOrderStatus] = useState<"draft" | "submitted" | string>("draft")
@@ -131,6 +180,24 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
 
   /** Có dòng nào ĐÃ XUẤT một phần — quyết định banner và sàn stepper. */
   const partiallyIssued = useMemo(() => lines.some((l) => (Number(l.issued) || 0) > 0), [lines])
+
+  /**
+   * ⚠ NHÓM GIÁ CỦA KHÁCH QUYẾT ĐỊNH GIÁ BẢNG. Đây là thứ bản đầu bỏ
+   * mất: `unitPriceFor` xét bảng giá riêng của nhóm TRƯỚC bảng giá
+   * chung, nên khách sỉ và khách lẻ ra hai giá khác nhau cho cùng một
+   * mã. Lấy `sell_price` phẳng là mọi khách một giá.
+   */
+  const groupId = customerById(khach?.id)?.group_id ?? null
+
+  /**
+   * ⚠ CHỐT CHẶN GIÁ CỦA NVBH — sàn là giá bảng, trần là +N%. Đây là
+   * chốt duy nhất giữa một cú gõ nhầm và việc cho không hàng, và nó
+   * phải đọc CÙNG một bộ quy tắc với màn đơn cũ.
+   */
+  const rules = userPriceRulesFrom(user)
+  const isSales = user?.role === "sales"
+  const canEditPrice = !isSales || rules.allow_price_edit
+  const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
 
   /* Tab: tên theo mã thật, chip "chưa lưu" theo chữ ký state. */
   usePosDocLabel("SO", orderId, orderCode)
@@ -181,15 +248,82 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     setLines((cu) => cu.map((l) => (l.key === key ? { ...l, ...p } : l)))
   }, [])
 
+  /**
+   * SỐ LIỆU PHỤ CỦA TỪNG DÒNG — đúng bộ mà màn đơn cũ tính.
+   *
+   * ⚠ VƯỢT TỒN XÉT TRÊN TỔNG MỌI DÒNG CÙNG MẶT HÀNG. Hai dòng mỗi dòng
+   * 6 thùng trên tồn 10 thì từng dòng đều "hợp lệ" — bản đầu so từng
+   * dòng với tồn nên không dòng nào đỏ.
+   *
+   * ⚠ TỒN HIỆN THEO ĐƠN VỊ CỦA DÒNG. Bản đầu in tồn theo đơn vị CƠ SỞ
+   * cạnh một dòng đang đặt theo thùng: "Tồn 240" bên cạnh "2 thùng".
+   */
+  const stockLines = useMemo(() => toStockLines(posLinesToCart(lines)), [lines])
+  const rows = useMemo(
+    () =>
+      lines.map((l, i) => {
+        const p = productById(l.productId)
+        const giaBang = l.listPrice ?? 0
+        const giaBangNay = p ? unitPriceFor(p, l.unit, groupId) : giaBang
+        return {
+          over: p ? isSaleLineOverstock(i, stockLines, products, stockByProduct) : false,
+          tonTheoDonVi: p ? stockInUnit(p, l.unit, stockByProduct[l.productId] ?? 0) : null,
+          /* ⚠ Đổi khách là đổi bảng giá. Dòng đã có giữ giá cũ, nên phải
+             NÓI RA chỗ nào lệch chứ đừng lặng lẽ tính giá cũ. */
+          lechBangGia: giaBangNay !== giaBang ? giaBangNay : null,
+          xauGia: priceViolation(
+            { price: l.price, listPrice: giaBang },
+            { canEditPrice, maxIncreasePct }
+          ),
+          giaBang,
+        }
+      }),
+    [lines, productById, groupId, stockLines, products, stockByProduct, canEditPrice, maxIncreasePct]
+  )
+  const coGiaXau = rows.some((r) => r.xauGia !== null)
+
+  /**
+   * CỘT CỦA BẢNG — dựng theo drawer thiết lập.
+   *
+   * ⚠ TẮT MỘT CỘT LÀ BỎ HẲN NÓ KHỎI LƯỚI, không phải vẽ một ô rỗng. Bản
+   * đầu giữ nguyên `grid-template-columns` rồi để trống ô: tắt "Mã
+   * hàng" xong vẫn thấy một khoảng 88px trống giữa bảng, và người dùng
+   * tưởng thiết lập không ăn.
+   *
+   * ⚠ MỘT NGUỒN CHO CẢ ĐẦU BẢNG LẪN DÒNG. Hai danh sách cột rời nhau là
+   * hai chỗ phải sửa, và lệch nhau một cột là cả bảng so le.
+   */
+  const cot = useMemo(() => {
+    const c: Array<{ w: string; label: string; align?: "left" | "center" | "right" }> = []
+    if (settings.colIndex) c.push({ w: "28px", label: "#" })
+    if (settings.colSku) c.push({ w: "88px", label: "Mã hàng" })
+    c.push({ w: "minmax(0,1fr)", label: "Tên hàng" })
+    c.push({ w: "76px", label: "ĐVT" })
+    c.push({ w: "96px", label: "Số lượng", align: "center" })
+    c.push({ w: "100px", label: "Đơn giá", align: "right" })
+    if (settings.colLineDiscount) c.push({ w: "92px", label: "Giảm", align: "right" })
+    if (settings.colVat) c.push({ w: "66px", label: "VAT", align: "center" })
+    c.push({ w: "116px", label: "Thành tiền", align: "right" })
+    c.push({ w: "28px", label: "" })
+    return {
+      cols: c.map((x) => x.w).join(" "),
+      cells: c.map((x) => ({ label: x.label, align: x.align })),
+    }
+  }, [settings.colIndex, settings.colSku, settings.colLineDiscount, settings.colVat])
+
   const addProduct = useCallback(
     (productId: string) => {
       const p = products.find((x) => x.id === productId)
       if (!p) return
-      const units = (p.units ?? []).map((u) => ({
-        unit_name: u.unit_name,
-        conversion: Number(u.conversion) || 1,
-      }))
-      const donVi = units[0]?.unit_name || p.base_unit
+      /**
+       * ⚠ ĐƠN VỊ MẶC ĐỊNH LÀ ĐƠN VỊ CƠ SỞ, và `sellableUnits` là chỗ
+       * duy nhất trả lời câu ấy cho MỌI màn. Bản đầu lấy `units[0]` của
+       * `product_units` — bảng đó có thể xếp "thùng" lên trước, và khi
+       * ấy thêm một mã là thêm cả thùng thay vì một chai.
+       */
+      const tenDonVi = sellableUnits(p)
+      const units = tenDonVi.map((u) => ({ unit_name: u, conversion: conversionFor(p, u) }))
+      const donVi = tenDonVi[0]
       setLines((cu) => {
         /**
          * ⚠ GỘP DÒNG TRÙNG THEO (MÃ HÀNG + ĐƠN VỊ), và chỉ khi người
@@ -205,6 +339,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             return sao
           }
         }
+        /* ⚠ GIÁ TRA TỪ BẢNG GIÁ THEO NHÓM KHÁCH — xem `groupId`. */
+        const gia = unitPriceFor(p, donVi, groupId)
         const moi: PosLine = {
           key: newKey(),
           productId: p.id,
@@ -213,7 +349,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           unit: donVi,
           units: units.length ? units : [{ unit_name: p.base_unit, conversion: 1 }],
           qty: 1,
-          price: Number(p.sell_price) || 0,
+          price: gia,
+          listPrice: gia,
+          /* ⚠ Thuế suất của mặt hàng là TỈ LỆ (0,1), không phải phần trăm. */
+          vatRate: Number(p.vat_rate) || 0,
           // ⚠ Đơn vị giảm lấy từ THIẾT LẬP, và chỉ ở lúc TẠO dòng.
           discount: { value: 0, unit: settings.defaultDiscountUnit },
           stock: stockByProduct[p.id] ?? null,
@@ -223,7 +362,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         return [...cu, moi]
       })
     },
-    [products, settings.mergeDuplicateLines, settings.defaultDiscountUnit, stockByProduct]
+    [products, settings.mergeDuplicateLines, settings.defaultDiscountUnit, stockByProduct, groupId]
   )
 
   /**
@@ -243,7 +382,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         const sb = createClient()
         const [h, ds, hd, rt] = await Promise.all([
           sb.from("sales_orders")
-            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, customer:customers(store_name, phone, address)")
+            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, customer:customers(store_name, phone, address, group_id)")
             .eq("id", orderId).maybeSingle(),
           loadInvoiceableLines(sb, orderId),
           sb.from("sales_invoices")
@@ -264,7 +403,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           order_code: string; status: string; customer_id: string
           payment_terms: string | null; expected_delivery: string | null
           notes: string | null; sales_user_id: string | null
-          customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
+          customer?: {
+            store_name?: string | null; phone?: string | null
+            address?: string | null; group_id?: string | null
+          } | null
         } | null
         if (!head) { setLoiNap("Không tìm thấy đơn này."); return }
         setOrderCode(head.order_code)
@@ -297,6 +439,14 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               units: [{ unit_name: r.unitName, conversion: r.conversionFactor }],
               qty: r.orderedQty,
               price: r.unitPrice,
+              /* ⚠ GIÁ BẢNG TRA LẠI THEO KHÁCH CỦA ĐƠN. Đơn đã lưu chỉ
+                 ghi `unit_price`; không tra lại thì mọi dòng trông như
+                 đúng giá bảng và chốt chặn giá im lặng. */
+              listPrice: (() => {
+                const p = productById(r.productId)
+                return p ? unitPriceFor(p, r.unitName, head.customer?.group_id ?? null) : r.unitPrice
+              })(),
+              vatRate: Number(productById(r.productId)?.vat_rate) || 0,
               discount: { value: 0, unit: "vnd" as const },
               stock: r.availableBase,
               ordered: r.orderedQty,
@@ -393,33 +543,46 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   }, [lines.length])
 
   /* --- phím tắt, spec §10 --- */
+  /* ⚠ `F3` ĐƯA TIÊU ĐIỂM VỀ Ô TÌM, không mở một lớp phủ. `ProductPicker`
+     tự xổ danh sách khi nhận tiêu điểm (`onFocus`), nên một lệnh focus
+     là đủ — và ô ấy nằm ngay trên bảng nên người dùng thấy nó. */
   usePosKeys({
-    F3: () => setMoTimHang(true),
+    F3: () => document.getElementById(PICKER_ID)?.focus(),
     F4: () => setMoTimKhach(true),
     F8: () => setRetLines((c) => [...c, emptyReturnLine(false)]),
     F9: () => setRetLines((c) => [...c, emptyReturnLine(true)]),
-    Escape: () => { setMoTimHang(false); setMoTimKhach(false) },
+    /* ⚠ `ProductPicker` tự xử `Esc` của nó; ở đây chỉ đóng ô tìm khách. */
+    Escape: () => setMoTimKhach(false),
   })
 
   /* --- dữ liệu cho hai dropdown --- */
-  const mucHang = useMemo<SearchItem[]>(
-    () =>
-      products.map((p) => {
-        const ton = stockByProduct[p.id] ?? 0
-        return {
-          id: p.id,
+  /**
+   * Danh sách cho `ProductPicker` — component ấy nhận danh sách ĐÃ LỌC.
+   *
+   * ⚠ KHÔNG BỎ MÃ ĐÃ CÓ TRÊN ĐƠN. `searchAddable` của màn hóa đơn bỏ
+   * chúng vì ở đó một mã chỉ được một dòng; ở đây cùng một mã đặt 3
+   * thùng và 5 chai là hai dòng hợp lệ (xem `lineKey`), và thiết lập
+   * "gộp dòng trùng" mới quyết định có gộp hay không.
+   *
+   * ⚠ CÓ TRẦN. Ô rỗng xổ cả 1.700 mã là dựng lại đúng danh sách phải
+   * cuộn mà ô tìm sinh ra để thay thế — `ProductPicker` tự cắt ở
+   * `PICKER_PEEK`, trần ở đây chỉ để phép lọc không quét vô ích.
+   */
+  const mucHang = useMemo(
+    () => {
+      const out: Array<SellProduct & { title: string; subtitle: string }> = []
+      for (const p of products) {
+        if (!viMatchAllWords(moTimHang, p.name, p.sku, p.barcode)) continue
+        out.push({
+          ...p,
           title: p.name,
-          meta: `${p.sku ?? "—"} · ${p.base_unit} · Tồn ${ton.toLocaleString("vi-VN")}`,
-          alert: ton <= 0,
-          keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
-          right: (
-            <span className="n text-[12.5px] font-semibold text-[#0f172a]">
-              {formatCurrency(Number(p.sell_price) || 0)}
-            </span>
-          ),
-        }
-      }),
-    [products, stockByProduct]
+          subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+        })
+        if (out.length >= 60) break
+      }
+      return out
+    },
+    [products, moTimHang]
   )
 
   const mucKhach = useMemo<SearchItem[]>(
@@ -451,6 +614,21 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
       if (!user?.org_id || !user.id) return
       if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
       if (lines.length === 0) { toast({ title: "Đơn chưa có mặt hàng nào", variant: "destructive" }); return }
+      /**
+       * ⚠ GIÁ NGOÀI HẠN MỨC CHẶN LƯU. Đây là chốt chặn duy nhất giữa một
+       * cú gõ nhầm và việc cho không hàng — màn đơn cũ chặn ở đây, và
+       * bản đầu của màn này bỏ mất nó hoàn toàn.
+       */
+      if (coGiaXau) {
+        toast({
+          title: "Có dòng đặt giá ngoài hạn mức",
+          description: canEditPrice
+            ? `Không được thấp hơn giá bảng, và tối đa +${maxIncreasePct}%.`
+            : "Bạn không có quyền sửa giá.",
+          variant: "destructive",
+        })
+        return
+      }
       /* ⚠ Dòng trả kèm đơn còn trống mặt hàng thì nói ra, đừng lặng lẽ bỏ. */
       const traBoDo = retLines.filter((l) => !l.productId).length
       if (traBoDo > 0) {
@@ -537,7 +715,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         setDangLuu(false)
       }
     },
-    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, router, toast]
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast]
   )
 
   /**
@@ -606,15 +784,41 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               bị khung `overflow-hidden` cắt sạch — bấm F3 chỉ thấy nền
               tối đi. Ở đây nó xổ đè lên bảng hàng, rộng bằng bảng.
           */}
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
+          {/*
+            ⚠ `ProductPicker` DÙNG CHUNG, KHÔNG PHẢI Ô TÌM RIÊNG CỦA POS.
+              Chủ nhà chốt đợt 7 — xem đầu tệp. Nó mang sẵn những thứ
+              bản riêng phải làm lại: xổ danh sách khi ô còn trống, cắt
+              ở `PICKER_PEEK`, `↑↓ Enter`, bấm ra ngoài thì đóng, và
+              KHÔNG đóng sau mỗi lần thêm (người nhập ba mươi dòng thêm
+              liên tiếp).
+          */}
+          <div className="shrink-0 rounded-xl border border-[#e2e8f0] bg-white px-3.5 pb-3.5 pt-2">
+            <ProductPicker
+              id={PICKER_ID}
+              label="Thêm mặt hàng — F3"
+              placeholder="Tên hàng, mã SKU hoặc mã vạch…"
+              emptyHint="Không tìm thấy mã nào khớp."
+              disabled={loading}
+              term={moTimHang}
+              onTermChange={setMoTimHang}
               items={mucHang}
-              onPick={(it) => addProduct(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
+              onPick={(p) => addProduct(p.id)}
+              /* ⚠ GIÁ HIỆN Ở ĐÂY LÀ GIÁ CỦA ĐÚNG KHÁCH ĐANG CHỌN. Hiện
+                 `sell_price` phẳng là người lập đơn đọc một giá rồi
+                 thêm vào lại ra giá khác. */
+              renderMeta={(p) => {
+                const ton = stockByProduct[p.id] ?? 0
+                return (
+                  <span className="shrink-0 text-right">
+                    <span className="block text-sm font-semibold tabular-nums">
+                      {formatCurrency(unitPriceFor(p, sellableUnits(p)[0], groupId))}
+                    </span>
+                    <span className={`block text-xs tabular-nums ${ton <= 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      tồn {ton.toLocaleString("vi-VN")}
+                    </span>
+                  </span>
+                )
+              }}
             />
           </div>
           {/*
@@ -637,23 +841,22 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           )}
 
           <LineTableFrame
-            header={
-              <LineTableHeader
-                grid="order"
-                cells={[
-                  { label: "#" },
-                  { label: "Mã hàng" },
-                  { label: "Tên hàng" },
-                  { label: "ĐVT" },
-                  { label: "Số lượng", align: "center" },
-                  { label: "Đơn giá", align: "right" },
-                  { label: "Giảm", align: "right" },
-                  { label: "Thành tiền", align: "right" },
-                  { label: "" },
-                ]}
-              />
+            header={<LineTableHeader grid="order" cols={cot.cols} cells={cot.cells} />}
+            footer={
+              <>
+                <NegativeStockStrip count={vuotTon} />
+                {/*
+                  ⚠ GIÁ SAI PHẢI CHẶN LƯU, không chỉ tô đỏ. Một vệt đỏ mà
+                    vẫn gửi đơn được thì nó chỉ là trang trí — đúng lý do
+                    màn đơn cũ ghi cho dòng hàng trả.
+                */}
+                {coGiaXau && (
+                  <div className="shrink-0 bg-[#fef2f2] px-4 py-2 text-[11.5px] text-[#991b1b]">
+                    Có dòng đặt giá ngoài hạn mức của bạn — sửa lại trước khi lưu.
+                  </div>
+                )}
+              </>
             }
-            footer={<NegativeStockStrip count={vuotTon} />}
           >
             {lines.length === 0 && (
               <div className="px-4 py-10 text-center">
@@ -663,7 +866,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 {!loading && (
                   <button
                     type="button"
-                    onClick={() => setMoTimHang(true)}
+                    onClick={() => document.getElementById(PICKER_ID)?.focus()}
                     className="mt-2 text-[13px] font-semibold text-[#2563eb]"
                   >
                     Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
@@ -673,37 +876,43 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             )}
 
             {lines.map((l, i) => {
-              const g = POS_GRID.order
               /* ⚠ SÀN = SỐ ĐÃ XUẤT. Ràng buộc duy nhất của màn sửa. */
               const san = mode === "sua" ? Math.max(0, Number(l.issued) || 0) : 0
+              const r = rows[i]
               return (
                 <div
                   key={l.key}
-                  className="grid min-h-[64px] items-center border-b border-[#f1f5f9] px-4 py-2"
-                  style={{ gridTemplateColumns: g.cols, gap: g.gap }}
+                  className={`grid min-h-[64px] items-center border-b border-[#f1f5f9] px-4 py-2 ${
+                    r?.over ? "bg-[#fef2f2]" : ""
+                  }`}
+                  style={{ gridTemplateColumns: cot.cols, gap: POS_GRID.order.gap }}
                 >
-                  <div className="n text-[12px] text-[#94a3b8]">{settings.colIndex ? i + 1 : ""}</div>
-                  <div className="n truncate text-[11.5px] text-[#64748b]">
-                    {settings.colSku ? l.sku : ""}
-                  </div>
+                  {settings.colIndex && (
+                    <div className="n text-[12px] text-[#94a3b8]">{i + 1}</div>
+                  )}
+                  {settings.colSku && (
+                    <div className="n truncate text-[11.5px] text-[#64748b]">{l.sku}</div>
+                  )}
                   <div className="min-w-0">
                     <div className="truncate text-[13px] font-semibold leading-tight text-[#0f172a]">
                       {l.name}
                     </div>
                     {settings.colStock && (
                       <div className="mt-[3px] truncate text-[11px] text-[#64748b]">
-                        {l.stock == null ? (
-                          /* ⚠ CHƯA ĐỌC ĐƯỢC TỒN THÌ NÓI THẾ, đừng ghi
-                             "Tồn 0" — số 0 cho một lỗi đọc đọc như hàng
-                             đã hết, và người bán từ chối một đơn bán được. */
+                        {/*
+                          ⚠ TỒN THEO ĐƠN VỊ CỦA DÒNG (`stockInUnit`), không
+                            theo đơn vị cơ sở. "Tồn 240" cạnh "2 thùng" là
+                            hai đơn vị khác nhau đứng cạnh nhau không nhãn.
+                          ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI THẾ, đừng ghi "Tồn 0" —
+                            số 0 cho một lỗi đọc đọc như hàng đã hết.
+                        */}
+                        {r?.tonTheoDonVi == null ? (
                           <span className="text-[#94a3b8]">tồn chưa xác định</span>
                         ) : (
-                          <>
-                            <span className={l.stock <= 0 ? "text-[#b45309]" : undefined}>
-                              Tồn {l.stock.toLocaleString("vi-VN")}
-                            </span>
-                            {l.ordered != null && ` · Đã đặt ${l.ordered.toLocaleString("vi-VN")}`}
-                          </>
+                          <span className={r.over ? "font-semibold text-[#dc2626]" : r.tonTheoDonVi <= 0 ? "text-[#b45309]" : undefined}>
+                            Tồn {r.tonTheoDonVi.toLocaleString("vi-VN")} {l.unit}
+                            {r.over ? " · vượt tồn" : ""}
+                          </span>
                         )}
                         {san > 0 && (
                           <>
@@ -737,15 +946,23 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     value={l.unit}
                     onChange={(e) => {
                       /**
-                       * ⚠ ĐỔI ĐƠN VỊ THÌ GIÁ TÍNH LẠI THEO HỆ SỐ. Giữ
-                       * nguyên giá là bán một thùng bằng giá một gói —
-                       * và không có gì trên màn nói ra điều đó.
+                       * ⚠ ĐỔI ĐƠN VỊ LÀ TRA LẠI BẢNG GIÁ, không nhân chia
+                       * hệ số. Bản đầu làm `giá / hệ số cũ × hệ số mới` —
+                       * đúng khi bảng giá tuyến tính, SAI ngay khi NPP đặt
+                       * giá thùng rẻ hơn 12 lần giá chai (chuyện thường
+                       * ngày của bán sỉ). `unitPriceFor` tra đúng dòng bảng
+                       * giá của đơn vị ấy.
                        */
-                      const cu = l.units.find((u) => u.unit_name === l.unit)?.conversion || 1
-                      const moi = l.units.find((u) => u.unit_name === e.target.value)?.conversion || 1
+                      const u = e.target.value
+                      const p = productById(l.productId)
+                      const gia = p ? unitPriceFor(p, u, groupId) : l.price
                       patchLine(l.key, {
-                        unit: e.target.value,
-                        price: Math.round((l.price / cu) * moi),
+                        unit: u,
+                        price: gia,
+                        listPrice: gia,
+                        units: p
+                          ? sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) }))
+                          : l.units,
                       })
                     }}
                     className="h-[30px] w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[12px] text-[#0f172a]"
@@ -762,23 +979,74 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     min={san}
                     onChange={(v) => patchLine(l.key, { qty: v })}
                   />
-                  <input
-                    className="n h-[30px] w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[13px] text-[#0f172a]"
-                    aria-label={`Đơn giá dòng ${i + 1}`}
-                    inputMode="numeric"
-                    value={l.price === 0 ? "0" : String(l.price)}
-                    onChange={(e) =>
-                      patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })
-                    }
-                  />
-                  {settings.colLineDiscount ? (
+                  {/*
+                    ⚠ Ô GIÁ MANG CẢ CHỐT CHẶN. Viền đỏ khi ngoài hạn mức,
+                      và dòng chữ dưới nói ĐÚNG con số vừa chặn — "sai
+                      giá" mà không nói giá bảng là bao nhiêu thì người
+                      bán sửa mò.
+                  */}
+                  <div>
+                    <input
+                      className={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] ${
+                        r?.xauGia
+                          ? "border-[#dc2626] bg-[#fef2f2] text-[#991b1b]"
+                          : "border-[#cbd5e1] text-[#0f172a]"
+                      } disabled:bg-[#f8fafc] disabled:text-[#94a3b8]`}
+                      aria-label={`Đơn giá dòng ${i + 1}`}
+                      inputMode="numeric"
+                      disabled={!canEditPrice}
+                      title={canEditPrice ? undefined : "Bạn không có quyền sửa giá"}
+                      value={l.price === 0 ? "0" : String(l.price)}
+                      onChange={(e) =>
+                        patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })
+                      }
+                    />
+                    {r?.xauGia === "below_list" && (
+                      <div className="mt-px text-right text-[9.5px] font-semibold text-[#dc2626]">
+                        ≥ {formatCurrency(r.giaBang)}
+                      </div>
+                    )}
+                    {r?.xauGia === "above_ceiling" && (
+                      <div className="mt-px text-right text-[9.5px] font-semibold text-[#dc2626]">
+                        ≤ {formatCurrency(ceilingFor(r.giaBang, maxIncreasePct))}
+                      </div>
+                    )}
+                    {/* ⚠ Đổi khách là đổi bảng giá — nói ra chỗ lệch. */}
+                    {!r?.xauGia && r?.lechBangGia != null && (
+                      <button
+                        type="button"
+                        onClick={() => patchLine(l.key, { price: r.lechBangGia!, listPrice: r.lechBangGia! })}
+                        title="Bảng giá của khách này khác — bấm để lấy giá mới"
+                        className="mt-px block w-full text-right text-[9.5px] font-semibold text-[#b45309]"
+                      >
+                        bảng giá mới {formatCurrency(r.lechBangGia)}
+                      </button>
+                    )}
+                  </div>
+                  {settings.colLineDiscount && (
                     <DiscountCell
                       line={l}
                       index={i + 1}
                       onChange={(d) => patchLine(l.key, { discount: d })}
                     />
-                  ) : (
-                    <div />
+                  )}
+                  {/*
+                    ⚠ THUẾ THEO DÒNG — người dùng đã báo một lần ở màn cũ:
+                      "bấm vào chi tiết hàng trong đơn chưa có chỗ để tuỳ
+                      chọn VAT". Cùng một mặt hàng có lúc xuất có hóa đơn,
+                      có lúc không. Bật/tắt cột ở drawer thiết lập.
+                  */}
+                  {settings.colVat && (
+                    <select
+                      aria-label={`Thuế GTGT dòng ${i + 1}`}
+                      value={String(l.vatRate ?? 0)}
+                      onChange={(e) => patchLine(l.key, { vatRate: Number(e.target.value) })}
+                      className="h-[30px] w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[12px] text-[#0f172a]"
+                    >
+                      {vatChoices(l.vatRate ?? 0).map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
                   )}
                   <LineAmountCell line={l} />
                   <LineMenu
@@ -952,17 +1220,19 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             {/* ⚠ Nút chính GIỮ NGUYÊN ở cả hai bản — spec §7.1. */}
             <PanelButton
               variant="primary"
-              disabled={lines.length === 0 || !khach || dangLuu}
+              disabled={lines.length === 0 || !khach || coGiaXau || dangLuu}
               onClick={() => luuDon(false)}
               title={
                 lines.length === 0
                   ? "Chưa có mặt hàng nào trong đơn"
                   : !khach
                     ? "Chưa chọn khách hàng"
-                    : /* ⚠ NÚT NÀY LÀM ĐÚNG HAI VIỆC TÊN NÓ NÓI: lưu đơn
-                         rồi lập hóa đơn. Hai giao dịch riêng — xem
-                         `luuDon`, nhánh bước 2 hỏng. */
-                      "Lưu đơn rồi xuất hàng và lập hóa đơn"
+                    : coGiaXau
+                      ? "Có dòng đặt giá ngoài hạn mức của bạn"
+                      : /* ⚠ NÚT NÀY LÀM ĐÚNG HAI VIỆC TÊN NÓ NÓI: lưu đơn
+                           rồi lập hóa đơn. Hai giao dịch riêng — xem
+                           `luuDon`, nhánh bước 2 hỏng. */
+                        "Lưu đơn rồi xuất hàng và lập hóa đơn"
               }
             >
               {dangLuu ? "Đang lưu…" : "Xuất hàng & lập HĐ"}

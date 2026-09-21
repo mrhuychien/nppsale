@@ -35,6 +35,22 @@ export interface PosLine {
   units: PosUnitOption[]
   qty: number
   price: number
+  /**
+   * GIÁ BẢNG của đúng (mặt hàng + đơn vị + nhóm giá của khách).
+   *
+   * ⚠ KHÔNG PHẢI `price` LÚC MỚI THÊM. Đây là số `unitPriceFor` tra ra
+   * từ bảng giá; `price` là số đang áp dụng, có thể đã bị sửa tay. Hai
+   * số ấy KHÁC NGHĨA và cả hai đều đi xuống sổ:
+   * `sales_order_lines.line_discount` = `(listPrice − price) × qty`
+   * (xem `lineDiscountOf`). Để `listPrice = price` là mọi đơn ghi chiết
+   * khấu 0 dù người bán vừa hạ giá — và không báo cáo nào lần ra được.
+   *
+   * ⚠ CŨNG LÀ MỐC CỦA CHỐT CHẶN GIÁ. `priceViolation` so `price` với
+   * `listPrice`: thiếu nó thì sàn giá của NVBH biến mất trong im lặng.
+   */
+  listPrice?: number
+  /** Thuế suất theo TỈ LỆ (0,1 = 10%) của riêng dòng này. */
+  vatRate?: number
   discount: DiscountInput
   note?: string
 

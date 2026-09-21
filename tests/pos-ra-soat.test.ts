@@ -339,3 +339,165 @@ describe("ngày là ô ngày, in đi qua mẫu in thật", () => {
     expect(r).toMatch(/sourceInvoiceId/)
   })
 })
+
+/* ==================================================================
+ * 6. ĐỢT 7 — MÀN ĐƠN HÀNG GIỮ ĐỦ CHỨC NĂNG CỦA MÀN ĐƠN CŨ
+ *
+ * Chủ nhà chốt 21/09/2026: "các dòng trong đơn đặt hàng chỉ bố trí hình
+ * thức khác đi thôi chứ vẫn phải giữ các chức năng của làm đơn hàng cũ".
+ *
+ * ⚠ MỖI CHỐT DƯỚI ĐÂY LÀ MỘT THỨ BẢN ĐẦU ĐÃ LÀM RƠI, và cả năm đều
+ * đụng TIỀN. Chốt canh rằng màn POS gọi ĐÚNG hàm mà màn cũ gọi — không
+ * chép lại phép tính, vì hai bản sao của một phép tính tiền là hai chỗ
+ * trôi xa nhau được.
+ * ================================================================== */
+describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn cũ", () => {
+  const S = code(read("src/components/pos/order-screen.tsx"))
+
+  /**
+   * ⚠ BẢNG GIÁ THEO NHÓM KHÁCH. `unitPriceFor` xét bảng giá riêng của
+   * nhóm TRƯỚC bảng giá chung; lấy `products.sell_price` phẳng là khách
+   * sỉ bị tính giá lẻ, và không gì trên màn nói ra.
+   */
+  it("giá tra từ unitPriceFor kèm nhóm giá của khách", () => {
+    expect(S).toMatch(/unitPriceFor\(/)
+    expect(S).toMatch(/const groupId = customerById\(khach\?\.id\)\?\.group_id \?\? null/)
+    /* Thêm hàng KHÔNG được lấy `sell_price` phẳng nữa. */
+    expect(
+      /price: Number\(p\.sell_price\)/.test(S),
+      "thêm hàng lại lấy sell_price phẳng, bỏ qua bảng giá của khách"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ ĐỔI ĐƠN VỊ LÀ TRA LẠI BẢNG GIÁ. Nhân chia hệ số đúng khi bảng giá
+   * tuyến tính và SAI ngay khi NPP đặt giá thùng rẻ hơn 12× giá chai —
+   * chuyện thường ngày của bán sỉ.
+   */
+  it("đổi đơn vị tra lại bảng giá, không nhân chia hệ số", () => {
+    const i = S.indexOf("Đơn vị tính dòng")
+    expect(i, "không thấy ô chọn đơn vị").toBeGreaterThan(-1)
+    const o = S.slice(i, i + 900)
+    expect(o).toMatch(/unitPriceFor\(p, u, groupId\)/)
+    expect(
+      /price: Math\.round\(\(l\.price \/ cu\) \* moi\)/.test(S),
+      "đổi đơn vị lại nhân chia hệ số thay vì tra bảng giá"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ `listPrice` ĐI XUỐNG SỔ. `lineDiscountOf` tính
+   * `(listPrice − price) × qty` và ghi vào `sales_order_lines.line_discount`.
+   * Để `listPrice = price` là mọi đơn ghi chiết khấu 0 dù vừa hạ giá.
+   */
+  it("dòng mang giá bảng riêng, và save.ts gửi nó xuống", () => {
+    expect(S).toMatch(/listPrice: gia/)
+    const save = code(read("src/lib/pos/save.ts"))
+    expect(save).toMatch(/listPrice: l\.listPrice \?\? l\.price/)
+    expect(
+      /listPrice: l\.price,/.test(save),
+      "save.ts lại lấy giá đang gõ làm giá bảng — chiết khấu của đơn về 0"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ CHỐT CHẶN GIÁ CỦA NVBH. Sàn là giá bảng, trần là +N%. Tô đỏ mà
+   * vẫn lưu được thì vệt đỏ chỉ là trang trí — phải chặn cả nút.
+   */
+  it("có chốt chặn giá, và nó chặn cả nút lưu", () => {
+    expect(S).toMatch(/priceViolation\(/)
+    expect(S).toMatch(/userPriceRulesFrom\(user\)/)
+    const i = S.indexOf('variant="primary"')
+    expect(i).toBeGreaterThan(-1)
+    const nut = S.slice(i, i + 700)
+    expect(/disabled=\{[^}]*coGiaXau/.test(nut), "nút lưu không mờ khi giá ngoài hạn mức").toBe(true)
+    /* Và đường lưu cũng chặn — nút mờ không thay được chốt trong hàm. */
+    expect(S).toMatch(/if \(coGiaXau\) \{/)
+  })
+
+  /** ⚠ Không có quyền sửa giá thì ô giá phải khoá, và nói vì sao. */
+  it("ô giá khoá khi không có quyền sửa giá", () => {
+    const i = S.indexOf("Đơn giá dòng")
+    const o = S.slice(Math.max(0, i - 700), i + 700)
+    expect(o).toMatch(/disabled=\{!canEditPrice\}/)
+    expect(o).toMatch(/không có quyền sửa giá/)
+  })
+
+  /**
+   * ⚠ THUẾ THEO DÒNG. Người dùng đã báo một lần ở màn cũ: "bấm vào chi
+   * tiết hàng trong đơn chưa có chỗ để tuỳ chọn VAT".
+   */
+  it("có ô thuế theo dòng, và thuế ấy đi xuống hóa đơn", () => {
+    expect(S).toMatch(/Thuế GTGT dòng/)
+    expect(S).toMatch(/vatChoices\(/)
+    const save = code(read("src/lib/pos/save.ts"))
+    expect(save).toMatch(/vatRate: l\.vatRate \?\? vatRate/)
+    expect(save).toMatch(/vatRate: Number\(l\.vatRate\) \|\| 0/)
+  })
+
+  /** ⚠ Thuế suất lạ (7%) của mặt hàng không bị ép về bậc gần nhất. */
+  it("giữ thuế suất lạ của dòng trong ô chọn", () => {
+    const i = S.indexOf("function vatChoices")
+    expect(i).toBeGreaterThan(-1)
+    const f = S.slice(i, i + 500)
+    expect(f).toMatch(/Math\.abs\(v\.value - cur\) < 1e-9/)
+    expect(f).toMatch(/vatLabel\(cur\)/)
+  })
+
+  /**
+   * ⚠ VƯỢT TỒN XÉT TRÊN TỔNG MỌI DÒNG CÙNG MẶT HÀNG, và tồn hiện theo
+   * ĐƠN VỊ CỦA DÒNG. Hai dòng 6 thùng trên tồn 10 thì từng dòng đều
+   * "hợp lệ"; "Tồn 240" cạnh "2 thùng" là hai đơn vị không nhãn.
+   */
+  it("vượt tồn xét theo tổng, tồn hiện theo đơn vị của dòng", () => {
+    expect(S).toMatch(/isSaleLineOverstock\(/)
+    expect(S).toMatch(/stockInUnit\(p, l\.unit/)
+  })
+
+  /**
+   * ⚠ ĐỔI KHÁCH LÀ ĐỔI BẢNG GIÁ, và dòng đã có giữ giá cũ. Lặng lẽ giữ
+   * giá cũ là bán theo bảng giá của khách trước.
+   */
+  it("nói ra khi bảng giá của khách mới khác giá đang dùng", () => {
+    expect(S).toMatch(/lechBangGia/)
+    expect(read("src/components/pos/order-screen.tsx")).toMatch(/bảng giá mới/)
+  })
+
+  /**
+   * ⚠ TẮT MỘT CỘT LÀ BỎ HẲN NÓ KHỎI LƯỚI. Bản đầu giữ nguyên lưới rồi
+   * để trống ô — tắt "Mã hàng" xong vẫn thấy một khoảng 88px trống.
+   */
+  it("cột bật/tắt dựng lưới và ô từ cùng một nguồn", () => {
+    expect(S).toMatch(/cols=\{cot\.cols\}/)
+    expect(S).toMatch(/cells=\{cot\.cells\}/)
+    expect(S).toMatch(/gridTemplateColumns: cot\.cols/)
+    expect(
+      /settings\.colIndex \? i \+ 1 : ""/.test(S),
+      "cột tắt vẫn vẽ một ô rỗng thay vì rời khỏi lưới"
+    ).toBe(false)
+  })
+
+  /** ⚠ `F3` phải tới đúng ô tìm của `ProductPicker`. */
+  it("F3 đưa tiêu điểm về ô tìm hàng", () => {
+    expect(S).toMatch(/F3: \(\) => document\.getElementById\(PICKER_ID\)\?\.focus\(\)/)
+    expect(S).toMatch(/id=\{PICKER_ID\}/)
+  })
+
+  /** ⚠ Ô tìm hàng vẫn phải nằm TRÊN bảng — cùng lý do với mục 3. */
+  it("ProductPicker nằm trước bảng hàng", () => {
+    const picker = S.indexOf("<ProductPicker")
+    const bang = S.indexOf("<LineTableFrame")
+    expect(picker).toBeGreaterThan(-1)
+    expect(bang).toBeGreaterThan(-1)
+    expect(picker, "ô tìm hàng neo sau bảng — sẽ mở rơi khỏi màn").toBeLessThan(bang)
+  })
+
+  /**
+   * ⚠ Ô TÌM KHÁCH GIỮ NGUYÊN. Chủ nhà chốt riêng câu ấy cùng đợt — nó
+   * vẫn là `SearchDropdown` của POS, không đổi sang component khác.
+   */
+  it("ô tìm khách vẫn là SearchDropdown của POS", () => {
+    expect(S).toMatch(/open=\{moTimKhach\}/)
+    expect(S).toMatch(/<SearchDropdown/)
+  })
+})

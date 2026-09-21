@@ -491,19 +491,16 @@ const CON_NO_TU_VE_O_TIM_HANG = [
    * oan, kèm chốt riêng bên dưới canh phần hành vi.
    */
   "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
-  /**
-   * ⚠ `/pos` LÀ MỘT BỘ GIAO DIỆN KHÁC, THEO SPEC CHỐT 21/09/2026 §9.
-   *   Nó có `SearchDropdown` riêng vì ô tìm của màn desktop khác hẳn:
-   *   điều hướng `↑↓ Enter`, đếm kết quả ở đầu, dòng gợi ý phím ở chân,
-   *   và mở như một lớp phủ chứ không phải một sheet. `ProductPicker`
-   *   dựng cho màn điện thoại và không mang được những thứ ấy.
-   *
-   * ⚠ ĐƯỢC MIỄN COMPONENT KHÔNG PHẢI ĐƯỢC MIỄN LUẬT. Có chốt riêng bên
-   *   dưới canh đúng phần hành vi: ô rỗng vẫn phải xổ danh sách, và cả
-   *   `/pos` chỉ được có MỘT ô tìm hàng dùng chung.
-   */
-  "src/components/pos/order-screen.tsx",
 ]
+
+/*
+ * ⚠ `src/components/pos/order-screen.tsx` ĐÃ RỜI DANH SÁCH NÀY.
+ *
+ * Nó từng được miễn với lý do "ô tìm của màn desktop khác hẳn". Chủ nhà
+ * bác lý do ấy (chốt 21/09/2026, đợt 7): *"phần tìm hàng hoá dùng
+ * productpicker đã viết sẵn"*. Nay màn đơn hàng của `/pos` dùng đúng
+ * component chung, và chốt dưới đây canh điều đó.
+ */
 
 /** Màn có ô THÊM HÀNG VÀO PHIẾU (không phải bộ lọc của màn báo cáo). */
 function laOThemHang(src: string): boolean {
@@ -548,10 +545,27 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
   })
 
   /**
-   * ⚠ `/pos` ĐƯỢC MIỄN `ProductPicker` NHƯNG KHÔNG ĐƯỢC MIỄN LUẬT.
-   *   Chủ nhà đã chốt cho toàn app: "bấm vào là phải xổ list rồi (như
-   *   khi chọn NCC ấy)". Ô rỗng trả về danh sách rỗng là người dùng
-   *   phải đoán từ khoá.
+   * ⚠ MÀN ĐƠN HÀNG CỦA `/pos` DÙNG `ProductPicker`. Chủ nhà chốt đợt 7.
+   *   Chốt này canh chính cái quyết định ấy — nó dễ bị đảo ngược lại
+   *   bằng một câu "màn desktop cần ô tìm riêng", và đó đúng là lý do
+   *   nó đã được miễn một lần.
+   */
+  it("màn đơn hàng /pos dùng ProductPicker, không tự vẽ ô tìm hàng", () => {
+    const src = code(read("src/components/pos/order-screen.tsx"))
+    expect(src, "màn đơn hàng /pos lại tự vẽ ô tìm hàng").toContain("<ProductPicker")
+    /* Ô tìm KHÁCH vẫn là `SearchDropdown` của POS — chủ nhà chốt giữ
+       nguyên. Nên chỉ cấm dùng nó cho HÀNG HÓA. */
+    expect(
+      /open=\{moTimHang\}/.test(src),
+      "ô tìm hàng riêng của POS đã quay lại màn đơn hàng"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ CÁC MÀN `/pos` CÒN LẠI VẪN DÙNG `SearchDropdown`, và luật "bấm
+   *   vào là xổ list" vẫn phải đúng ở đó. Chủ nhà đã chốt cho toàn app:
+   *   "bấm vào là phải xổ list rồi (như khi chọn NCC ấy)". Ô rỗng trả
+   *   về danh sách rỗng là người dùng phải đoán từ khoá.
    */
   it("ô tìm hàng của /pos vẫn xổ danh sách khi còn trống", () => {
     const src = code(read("src/components/pos/search-dropdown.tsx"))

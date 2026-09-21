@@ -54,15 +54,25 @@ export function LineTableFrame({
 export function LineTableHeader({
   grid,
   cells,
+  cols,
 }: {
   grid: PosGridKey
   cells: Array<{ label: string; align?: "left" | "center" | "right" }>
+  /**
+   * Đè `grid-template-columns` của `POS_GRID`.
+   *
+   * ⚠ DÀNH CHO BẢNG CÓ CỘT BẬT/TẮT ĐƯỢC (màn đơn hàng, theo drawer
+   * thiết lập). Tắt một cột mà vẫn dùng lưới cứng là để lại một khoảng
+   * trống giữa bảng — nơi gọi phải dựng lưới và bộ ô TỪ CÙNG một nguồn,
+   * nếu không hai thứ lệch nhau một cột là cả bảng so le.
+   */
+  cols?: string
 }) {
   const g = POS_GRID[grid]
   return (
     <div
       className="grid h-[38px] shrink-0 items-center border-b border-[#e2e8f0] bg-[#f8fafc] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[#64748b]"
-      style={{ gridTemplateColumns: g.cols, gap: g.gap }}
+      style={{ gridTemplateColumns: cols ?? g.cols, gap: g.gap }}
     >
       {cells.map((c, i) => (
         <div

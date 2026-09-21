@@ -26,6 +26,11 @@ giữ ở state client nên đổi số lượng vẫn chạy đúng luật.
 **Muốn sống qua lần mở lại** thì cần thêm một cột `discount_unit` — đó là
 đổi schema, nằm ngoài đợt này.
 
+**Rà soát (đợt 7):** phần TIỀN nay ghi đúng hai bậc. `listPrice` là GIÁ
+BẢNG thật (`unitPriceFor`), `price` là giá đang áp dụng, nên
+`sales_order_lines.line_discount` gộp cả khoản giảm gõ tay LẪN phần người
+bán tự hạ giá — bản đầu chỉ ghi khoản đầu.
+
 ---
 
 ## 2. "Nợ sau đơn này" chưa có số
@@ -480,3 +485,47 @@ thật; ô không lưu được thì không vẽ, hoặc hiện để đọc.
   (bản đầu đóng tab cuối là 404).
 - **Thiết lập đọc từ `localStorage` sau lần vẽ đầu** nên đơn vị giảm mặc
   định / ghi nợ mặc định người dùng đã chọn bị bỏ qua — nay áp khi `ready`.
+
+---
+
+## 22. Đợt 7 — màn đơn hàng trả lại chức năng của màn đơn cũ
+
+Chủ nhà chốt 21/09/2026: *"phần tìm hàng hoá dùng productpicker đã viết
+sẵn"*, *"các dòng trong đơn đặt hàng chỉ bố trí hình thức khác đi thôi chứ
+vẫn phải giữ các chức năng của làm đơn hàng cũ"*, *"phần tìm khách giữ
+nguyên như đã thiết kế"*.
+
+**Ô tìm hàng** nay là `ProductPicker` dùng chung. `order-screen.tsx` đã
+rời danh sách nợ của `tests/return-slip.test.ts` — nó từng được miễn với
+lý do "ô tìm màn desktop khác hẳn", và chủ nhà bác lý do ấy. Ô tìm KHÁCH
+giữ nguyên `SearchDropdown` của POS.
+
+**Năm chức năng bản đầu làm rơi, cả năm đều đụng tiền:**
+
+| | Bản đầu | Nay |
+|---|---|---|
+| giá mặt hàng | `products.sell_price` phẳng | `unitPriceFor(p, đơn vị, nhóm giá của khách)` |
+| đổi đơn vị | `giá / hệ số cũ × hệ số mới` | tra lại bảng giá của đơn vị ấy |
+| `listPrice` | bằng giá đang gõ | giá bảng thật → chiết khấu của đơn ghi đủ |
+| chốt chặn giá | không có | `priceViolation` + `userPriceRulesFrom`, chặn cả nút lưu |
+| thuế | chỉ cấp chứng từ | ô thuế theo TỪNG DÒNG (bật ở drawer, cột `VAT`) |
+
+Cái sai nặng nhất là hai dòng đầu: **khách sỉ bị tính giá lẻ**, và đổi
+đơn vị ra giá sai ngay khi NPP đặt giá thùng rẻ hơn 12× giá chai.
+
+**Hai thứ khác cũng trả lại:** tồn hiện theo ĐƠN VỊ của dòng
+(`stockInUnit`) thay vì đơn vị cơ sở, và vượt tồn xét trên TỔNG mọi dòng
+cùng mặt hàng (`isSaleLineOverstock`) thay vì từng dòng.
+
+**Cột bật/tắt của drawer nay ăn thật:** tắt một cột là nó rời khỏi lưới,
+không còn để lại một khoảng trống giữa bảng.
+
+**Còn thiếu — "còn đặt được N":** màn đơn cũ hiện số hàng đã bị các đơn
+khác giữ chỗ (`useCommittedStock`). Hook ấy phụ thuộc `useSellCart`, tức
+store của `/sell` — kéo nó vào `/pos` là vi phạm spec §12 ("store `/sell`
+không bị import vào `/pos`"). Cần tách phần đọc khỏi store trước; ngoài
+đợt này.
+
+**Còn thiếu — bốn màn POS kia:** phiếu trả, nhập hàng, trả NCC, sửa hóa
+đơn vẫn dùng `SearchDropdown` của POS. Chủ nhà mới chốt cho *"phần làm
+đơn hàng"*; chưa đổi bốn màn kia để khỏi tự quyết thay.

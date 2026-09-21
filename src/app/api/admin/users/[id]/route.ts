@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * DELETE /api/admin/users/:id - delete user (auth + profile cascade)
@@ -67,7 +68,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Lỗi không xác định"
+    const message = errorMessage(err, "Lỗi không xác định")
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

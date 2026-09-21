@@ -3,13 +3,18 @@
 import { createClient } from "@/lib/supabase/client"
 import { createOrderRecords } from "@/lib/orders/create"
 import { listOutbox, removeEntry, markEntry } from "./outbox"
+import { errorMessage } from "@/lib/errors"
 
 let syncing = false
 
 function isTransient(err: unknown): boolean {
   // Lỗi mạng (mất sóng, timeout) → giữ đơn trong hàng chờ, thử lại sau.
   // Ngược lại (lỗi dữ liệu 4xx) → đánh dấu để người dùng xử lý.
-  const msg = (err instanceof Error ? err.message : String(err || "")).toLowerCase()
+  /* ⚠ ĐỌC QUA `errorMessage`. Lỗi PostgREST là object thường, nên
+     `String(err)` cho ra "[object Object]" và mọi phép so chuỗi bên
+     dưới đều trượt — một lỗi mạng của PostgREST bị xếp nhầm thành lỗi
+     dữ liệu, và đơn bị đánh dấu bắt người dùng xử lý thay vì thử lại. */
+  const msg = errorMessage(err, "").toLowerCase()
   const code = (err as { code?: string })?.code
   // Chưa chạy migration 089 (thiếu cột client_request_id): insert đơn
   // FAIL trước khi tạo dòng nào → an toàn thử lại, tự khỏi sau migration.
@@ -80,7 +85,7 @@ export async function syncOutbox(): Promise<SyncResult> {
         await markEntry(entry.id, {
           status: "error",
           attempts: entry.attempts + 1,
-          lastError: err instanceof Error ? err.message : "Lỗi không xác định",
+          lastError: errorMessage(err, "Lỗi không xác định"),
         })
       }
     }

@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import type { SalesOrder } from "@/types"
 import { PendingWorkWidget } from "@/components/dashboard/pending-work-widget"
+import { errorMessage } from "@/lib/errors"
 
 interface DashboardStats {
   todayOrders: number
@@ -197,7 +198,7 @@ export default function DashboardPage() {
         setChannelBreakdown(channelList)
       } catch (err) {
         console.error("Dashboard fetch error:", err)
-        setError(err instanceof Error ? err.message : "Không thể tải dữ liệu")
+        setError(errorMessage(err, "Không thể tải dữ liệu"))
       } finally {
         setLoading(false)
       }

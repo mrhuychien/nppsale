@@ -235,7 +235,7 @@ export default function AdjustmentsPage() {
       toast({ title: `Đã hủy ${a.entry_code}` })
       await fetchData()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Lỗi"
+      const msg = errorMessage(err, "Lỗi")
       toast({ title: "Lỗi", description: msg, variant: "destructive" })
     } finally {
       setRejectingId(null)

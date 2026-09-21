@@ -27,6 +27,7 @@ import {
   Package, CircleX, RotateCcw, Search,
 } from "lucide-react"
 import { RETURN_REASONS } from "@/lib/constants"
+import { errorMessage } from "@/lib/errors"
 
 // --- Đơn chờ xuất (confirmed sales orders) ---
 type ConfirmedOrder = {
@@ -405,7 +406,7 @@ export default function PendingStockPage() {
       setSelectedFailedLines(new Set())
       router.push(`/inventory/entries/${entry.id}`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Lỗi"
+      const msg = errorMessage(err, "Lỗi")
       toast({ title: "Lỗi", description: msg, variant: "destructive" })
     } finally {
       setRestocking(false)

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client"
 import type { Entity, ExistingOpening, PlanRow } from "./parse"
 import type { Kind } from "./schema"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * Nạp dữ liệu và ghi kế hoạch công nợ đầu kỳ.
@@ -166,7 +167,7 @@ export async function commitPlan(
       res.failures.push({
         rowNo: r.rowNo,
         label: r.label,
-        message: e instanceof Error ? e.message : "lỗi không xác định",
+        message: errorMessage(e, "lỗi không xác định"),
       })
     }
   }

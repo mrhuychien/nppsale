@@ -121,7 +121,7 @@ export default function SellDraftsPage() {
     } catch (err) {
       toast({
         title: "Không gửi được đơn",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: errorMessage(err, "Lỗi không xác định"),
         variant: "destructive",
       })
     } finally {

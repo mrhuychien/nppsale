@@ -139,7 +139,7 @@ export default function SalesRoutesPage() {
       setDialogOpen(false)
       fetchData()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Lỗi khi lưu"
+      const msg = errorMessage(err, "Lỗi khi lưu")
       toast({ title: "Lỗi", description: msg, variant: "destructive" })
     } finally {
       setSaving(false)

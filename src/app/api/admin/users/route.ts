@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isValidPhone, syntheticEmailForPhone } from "@/lib/users/phone"
 import { qrLoginUrl } from "@/lib/qr-login"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * POST /api/admin/users — tạo nhân viên: tài khoản đăng nhập + hồ sơ + MÃ QR.
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     console.error("[/api/admin/users] error:", err)
-    const message = err instanceof Error ? err.message : "Lỗi không xác định"
+    const message = errorMessage(err, "Lỗi không xác định")
     const hint = message.includes("SUPABASE_SERVICE_ROLE_KEY")
       ? "Vercel chưa có env var SUPABASE_SERVICE_ROLE_KEY. Thêm trong Vercel → Settings → Environment Variables."
       : undefined

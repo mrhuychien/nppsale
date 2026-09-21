@@ -16,6 +16,7 @@ import {
   type Fix,
 } from "@/lib/customers/photos"
 import { formatDate } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
 
 const BUCKET = "customer-photos"
 
@@ -165,7 +166,7 @@ export function CustomerPhotoCapture({
     } catch (e) {
       toast({
         title: "Không lưu được ảnh",
-        description: e instanceof Error ? e.message : "Lỗi không xác định",
+        description: errorMessage(e, "Lỗi không xác định"),
         variant: "destructive",
       })
     } finally {
@@ -185,7 +186,7 @@ export function CustomerPhotoCapture({
     } catch (e) {
       toast({
         title: "Không xoá được",
-        description: e instanceof Error ? e.message : "Lỗi không xác định",
+        description: errorMessage(e, "Lỗi không xác định"),
         variant: "destructive",
       })
     }

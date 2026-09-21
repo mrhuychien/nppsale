@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return await handlePublish(req)
   } catch (err) {
     console.error("[/api/einvoice/publish] fatal:", err)
-    const msg = err instanceof Error ? err.message : "Lỗi server không xác định khi gọi MISA"
+    const msg = errorMessage(err, "Lỗi server không xác định khi gọi MISA")
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
@@ -446,7 +446,7 @@ async function handlePublish(req: Request) {
       sandbox: cfg.sandbox,
     })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Lỗi không xác định khi gọi MISA"
+    const msg = errorMessage(err, "Lỗi không xác định khi gọi MISA")
     console.error("[/api/einvoice/publish] uncaught:", err)
     try {
       // audit-ok: ghi log best-effort trong catch — nếu chính việc ghi log

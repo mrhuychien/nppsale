@@ -14,6 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Camera, MapPin, RotateCcw, Loader2, Check, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { errorMessage } from "@/lib/errors"
 
 interface VisitCheckinDialogProps {
   open: boolean
@@ -235,7 +236,7 @@ export function VisitCheckinDialog({
       onSuccess?.()
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Không thể ghi nhận"
+      const message = errorMessage(err, "Không thể ghi nhận")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)

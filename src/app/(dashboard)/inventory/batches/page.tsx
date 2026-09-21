@@ -33,6 +33,7 @@ import {
   DEFAULT_BATCH_COLUMNS,
   type BatchColumnKey,
 } from "./list-config"
+import { errorMessage } from "@/lib/errors"
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -125,7 +126,7 @@ export default function BatchesPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: err instanceof Error ? err.message : "Không thể chuyển kho",
+        description: errorMessage(err, "Không thể chuyển kho"),
         variant: "destructive",
       })
     } finally {
@@ -147,7 +148,7 @@ export default function BatchesPage() {
     } catch (err) {
       toast({
         title: "Lỗi",
-        description: err instanceof Error ? err.message : "Không thể rà soát",
+        description: errorMessage(err, "Không thể rà soát"),
         variant: "destructive",
       })
     } finally {

@@ -25,6 +25,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { Plus, Search, Trash2, Wallet, Receipt, Info } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -179,7 +180,7 @@ export default function ExpensesPage() {
       setDialogOpen(false)
       fetch()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Lỗi khi lưu"
+      const message = errorMessage(err, "Lỗi khi lưu")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)
@@ -195,7 +196,7 @@ export default function ExpensesPage() {
       toast({ title: "Đã xóa" })
       setExpenses((prev) => prev.filter((e) => e.id !== id))
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Lỗi"
+      const message = errorMessage(err, "Lỗi")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setDeleting(null)

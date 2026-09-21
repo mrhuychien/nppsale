@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/utils"
 import { DEFAULT_APPROVAL_RULES } from "@/lib/approval"
 import { Save, RotateCcw, Info } from "lucide-react"
 import type { ApprovalRules } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 /**
  * ⚠ MÀN NÀY KHÔNG CÒN CẤU HÌNH VIỆC DUYỆT — vì workflow v2 không còn
@@ -121,7 +122,7 @@ export default function ApprovalRulesPage() {
 
       toast({ title: "Đã lưu quy tắc duyệt" })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Không thể lưu"
+      const message = errorMessage(err, "Không thể lưu")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)

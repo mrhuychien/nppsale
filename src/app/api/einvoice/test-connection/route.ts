@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     return await handle(req)
   } catch (err) {
     console.error("[/api/einvoice/test-connection] fatal:", err)
-    const msg = err instanceof Error ? err.message : "Lỗi không xác định"
+    const msg = errorMessage(err, "Lỗi không xác định")
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

@@ -20,6 +20,7 @@ import {
   ClipboardList, Plus, Trash2, Search, Save, AlertCircle, ScanBarcode,
 } from "lucide-react"
 import type { Product, Batch, ExpenseCategory } from "@/types"
+import { errorMessage } from "@/lib/errors"
 
 interface AdjustRow {
   key: string
@@ -319,7 +320,7 @@ export default function StocktakeAdjustPage() {
       })
       router.push(`/inventory/adjustments`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Lỗi khi lưu"
+      const message = errorMessage(err, "Lỗi khi lưu")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
     } finally {
       setSaving(false)

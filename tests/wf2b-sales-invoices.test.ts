@@ -428,12 +428,25 @@ describe("Danh sách hóa đơn bán", () => {
   })
 
   /**
-   * ⚠ Ô TÌM CHỈ LỌC TRANG ĐANG XEM — nó không hỏi lại máy chủ. Placeholder
-   * phải nói ra, nếu không người dùng gõ mã của một hóa đơn ở trang 3,
-   * không thấy gì, và kết luận là hóa đơn đã mất.
+   * ⚠ LUẬT NÀY ĐÃ ĐẢO ngày 21/09/2026 (chủ nhà báo: "Tìm kiếm chỉ tìm
+   * trong trang 1, phải tìm toàn bộ chứ?").
+   *
+   *   Luật cũ mà chốt này từng canh: placeholder PHẢI thú nhận "Tìm
+   *   trong trang này", vì ô tìm chỉ lọc 50 dòng đang hiện. Đó là vá
+   *   một lỗi bằng một dòng chữ.
+   *
+   *   Nay ô tìm hỏi máy chủ thật, nên placeholder KHÔNG được thú nhận
+   *   nữa — và cũng không được hứa suông: chốt dưới buộc mỗi thứ nó hứa
+   *   phải có một lượt tra thật trong mã. Xem
+   *   `tests/list-search-server-side.test.ts`.
    */
   it("placeholder ô tìm nói đúng phạm vi nó tìm", () => {
-    expect(CODE).toContain("Tìm trong trang này")
+    expect(CODE, "vẫn còn thú nhận chỉ tìm trong trang đang xem")
+      .not.toContain("Tìm trong trang này")
+    expect(CODE).toContain("Tìm số hóa đơn, mã đơn, tên khách…")
+    /* Hứa gì thì phải tra thật thứ đó. */
+    expect(CODE).toContain('"sales_orders", ["order_code"]')
+    expect(CODE).toContain('"customers", ["store_name", "owner_name", "phone"]')
   })
 
   /**

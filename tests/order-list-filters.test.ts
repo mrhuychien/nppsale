@@ -156,7 +156,9 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
    */
   it("máy tính: bộ lọc tuyến đứng cạnh ô tìm mã đơn", () => {
     const row = ORDERS.indexOf('<div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">')
-    const search = ORDERS.indexOf('placeholder="Tìm mã đơn hàng…"', row)
+    /* ⚠ NEO VÀO PHẦN KHÔNG ĐỔI của placeholder — nó được nối dài khi ô
+       tìm mở rộng sang tên khách (21/09/2026). */
+    const search = ORDERS.indexOf('placeholder="Tìm mã đơn', row)
     const route = ORDERS.indexOf("<RouteFilter routes={routes}", search)
     const advanced = ORDERS.indexOf("Bộ lọc nâng cao", search)
     expect(row).toBeGreaterThan(0)
@@ -198,10 +200,20 @@ describe("Lọc theo tuyến bán hàng", () => {
     expect(ORDERS).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"')
   })
 
-  /** Đổi bộ lọc mà không tải lại là bộ lọc không có tác dụng. */
+  /**
+   * Đổi bộ lọc mà không tải lại là bộ lọc không có tác dụng.
+   *
+   * ⚠ KIỂM TỪNG TÊN CÓ MẶT, KHÔNG KIỂM CẢ MẢNG GIỐNG HỆT. Bản đầu neo
+   * vào nguyên văn mảng phụ thuộc, nên THÊM một phụ thuộc đúng đắn
+   * (`customerMatch` của ô tìm toàn sổ, 21/09/2026) cũng làm chốt đỏ.
+   * Chốt phải bắt khi MẤT một phụ thuộc, không phải khi có thêm.
+   */
   it("đổi tuyến thì tải lại danh sách và về trang 1", () => {
-    const deps = ORDERS.match(/\}, \[pg\.from, pg\.to, debouncedSearch, effectiveStatus, routeFilter/)
-    expect(deps, "truy vấn danh sách không theo dõi routeFilter").toBeTruthy()
+    const m = /\}, \[pg\.from, pg\.to,([^\]]*)\]/.exec(ORDERS)
+    expect(m, "không tìm thấy mảng phụ thuộc của truy vấn danh sách").toBeTruthy()
+    for (const dep of ["debouncedSearch", "effectiveStatus", "routeFilter"]) {
+      expect(m![1], `truy vấn danh sách không theo dõi ${dep}`).toContain(dep)
+    }
     expect(ORDERS).toMatch(/pg\.reset\(\)[\s\S]{0,200}?routeFilter/)
   })
 })
@@ -223,9 +235,15 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
      * tạm" giữ con số cũ trong khi danh sách dưới nó đã đổi — xem
      * `useRefreshOnFocus`.
      */
-    expect(ORDERS).toMatch(
-      /\}, \[debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick\]/
-    )
+    /* ⚠ KIỂM TỪNG TÊN, KHÔNG KIỂM NGUYÊN VĂN MẢNG — xem chốt ở trên. */
+    const m = /\}, \[debouncedSearch,([^\]]*)focusTick\]/.exec(ORDERS)
+    expect(m, "không tìm thấy mảng phụ thuộc của phép đếm").toBeTruthy()
+    for (const dep of [
+      "routeFilter", "customerFilter", "salesFilter",
+      "dateFrom", "dateTo", "amountMin", "amountMax",
+    ]) {
+      expect(m![1], `phép đếm không chạy lại khi đổi ${dep}`).toContain(dep)
+    }
   })
 
   /** Một nơi khai duy nhất thì không có chỗ để hai bên lệch nhau. */

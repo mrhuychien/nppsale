@@ -26,6 +26,9 @@ import Link from "next/link"
 import { ChevronDown, ChevronUp, FileText, Filter, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import {
+  idsMatching, buildOrFilter, NO_MATCH, MATCH_CAP, type IdMatch,
+} from "@/lib/search/list-search"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { usePagination } from "@/hooks/use-pagination"
@@ -127,6 +130,21 @@ export default function SalesInvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<string>("posted")
   const [search, setSearch] = useState("")
+  /**
+   * ⚠ Ô TÌM PHẢI HỎI MÁY CHỦ, KHÔNG LỌC TRONG TRANG ĐANG XEM (chủ nhà
+   *   báo 21/09/2026: "Tìm kiếm chỉ tìm trong trang 1, phải tìm toàn bộ
+   *   chứ?"). Bản cũ lọc `rows` — 50 dòng của trang hiện tại — và có
+   *   hẳn một chú thích thừa nhận điều đó, kèm cách vá là ghi vào
+   *   placeholder. Một danh sách nghìn hoá đơn thì ô tìm ấy đúng vài
+   *   phần trăm số lần dùng.
+   */
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [customerMatch, setCustomerMatch] = useState<{ term: string; match: IdMatch }>({
+    term: "", match: NO_MATCH,
+  })
+  const [orderMatch, setOrderMatch] = useState<{ term: string; match: IdMatch }>({
+    term: "", match: NO_MATCH,
+  })
   const [routeFilter, setRouteFilter] = useState("all")
   const [customerFilter, setCustomerFilter] = useState("all")
   const [salesFilter, setSalesFilter] = useState("all")
@@ -173,11 +191,65 @@ export default function SalesInvoicesPage() {
    * thêm điều kiện vào một chỗ, và số trên thẻ trạng thái không còn khớp
    * với số dòng bên dưới — ngay trên cùng một màn.
    */
+  /* Gõ tới đâu hỏi tới đó thì mỗi phím một lượt gọi — chờ 300ms. */
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  /**
+   * TRA MÃ KHÁCH VÀ MÃ ĐƠN KHỚP Ô TÌM.
+   *
+   * ⚠ HAI LƯỢT TRA RIÊNG VÌ PostgREST KHÔNG CHO `or` BẮC QUA BẢNG NHÚNG.
+   *   Tìm theo tên điểm bán hay theo mã đơn đều phải hỏi mã trước rồi
+   *   mới lọc theo khoá ngoại.
+   */
+  useEffect(() => {
+    const t = debouncedSearch.trim()
+    if (!t) {
+      setCustomerMatch({ term: "", match: NO_MATCH })
+      setOrderMatch({ term: "", match: NO_MATCH })
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const [c, o] = await Promise.all([
+        idsMatching(supabase, "customers", ["store_name", "owner_name", "phone"], t, user?.org_id),
+        idsMatching(supabase, "sales_orders", ["order_code"], t, user?.org_id),
+      ])
+      if (cancelled) return
+      setCustomerMatch({ term: t, match: c })
+      setOrderMatch({ term: t, match: o })
+    })()
+    return () => { cancelled = true }
+  }, [debouncedSearch, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** ⚠ Truy vấn chính CHỜ hai lượt tra — xem chú thích ở màn đơn hàng. */
+  const searchReady =
+    customerMatch.term === debouncedSearch.trim() && orderMatch.term === debouncedSearch.trim()
+  const searchTruncated = customerMatch.match.truncated || orderMatch.match.truncated
+
   const applyFilters = useCallback(
-    <T extends { eq: (c: string, v: unknown) => T; gte: (c: string, v: unknown) => T; lte: (c: string, v: unknown) => T }>(
+    <T extends {
+      eq: (c: string, v: unknown) => T
+      gte: (c: string, v: unknown) => T
+      lte: (c: string, v: unknown) => T
+      or: (f: string) => T
+    }>(
       q: T
     ): T => {
       let x = q
+      /**
+       * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM. Mệnh đề này đi vào CẢ
+       *   truy vấn danh sách LẪN các truy vấn đếm/cộng tiền — nếu không
+       *   thì con số trên thẻ tóm tắt cộng trên một tập còn danh sách
+       *   hiện một tập khác.
+       */
+      const or = buildOrFilter(debouncedSearch, ["invoice_code"], [
+        { column: "customer_id", match: customerMatch.match },
+        { column: "order_id", match: orderMatch.match },
+      ])
+      if (or.filter) x = x.or(or.filter)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
       if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
@@ -194,11 +266,15 @@ export default function SalesInvoicesPage() {
       if (pFrom) x = x.gte("invoice_date", pFrom)
       return x
     },
-    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, period]
+    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, period,
+     debouncedSearch, customerMatch, orderMatch]
   )
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    /* ⚠ CHỜ LƯỢT TRA MÃ. Giữ "đang nạp" chứ không vẽ một danh sách
+       thiếu rồi tự sửa vài trăm mili giây sau. */
+    if (!searchReady) return
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     let q = supabase
       .from("sales_invoices")
@@ -248,7 +324,7 @@ export default function SalesInvoicesPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, applyFilters, pg.from, pg.to])
+  }, [status, applyFilters, searchReady, pg.from, pg.to])
 
   /**
    * Tổng tiền của CẢ bộ lọc, cho dải tóm tắt trên điện thoại.
@@ -322,7 +398,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax])
+  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -339,19 +415,14 @@ export default function SalesInvoicesPage() {
   }, [rows])
 
   /**
-   * ⚠ Ô TÌM NHANH LỌC TRONG TRANG ĐANG XEM — nó không hỏi lại máy chủ.
-   * Placeholder phải nói ra, nếu không người dùng gõ số của một hóa đơn ở
-   * trang 3, không thấy gì, và kết luận là hóa đơn đã mất.
+   * ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT NỮA. Ô tìm nay hỏi máy chủ (xem
+   * `applyFilters`), nên `rows` ĐÃ là kết quả tìm — lọc thêm một lần ở
+   * đây là lọc hai lần theo hai luật khác nhau: máy chủ dùng `ilike`
+   * không dấu-nhạy, trình duyệt dùng `toLowerCase().includes`. Hai luật
+   * lệch nhau là dòng vừa được máy chủ trả về lại bị trình duyệt giấu
+   * đi, và số đếm trên phân trang không khớp số dòng nhìn thấy.
    */
-  const term = search.trim().toLowerCase()
-  const filtered = term
-    ? rows.filter(
-        (r) =>
-          r.invoice_code.toLowerCase().includes(term) ||
-          (r.customer?.store_name || "").toLowerCase().includes(term) ||
-          (r.order?.order_code || "").toLowerCase().includes(term)
-      )
-    : rows
+  const filtered = rows
 
   const rangeOf = (days: number) => {
     const to = vnDateKey(new Date())
@@ -494,10 +565,24 @@ export default function SalesInvoicesPage() {
         }))}
       />
 
+      {/*
+        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
+          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
+      */}
+      {searchTruncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} điểm bán hoặc đơn hàng khớp &ldquo;{debouncedSearch}&rdquo; —
+            danh sách dưới chưa đủ. Gõ thêm cho hẹp lại.
+          </p>
+        </div>
+      )}
+
       <MobileFilterBar
         value={search}
         onChange={setSearch}
-        placeholder="Tìm số hóa đơn, khách…"
+        placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
         activeCount={activeFilterCount}
         onClear={clearAdvanced}
         open={filterSheet}
@@ -522,7 +607,7 @@ export default function SalesInvoicesPage() {
             <div className="relative min-w-[220px] max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Tìm trong trang này: số hóa đơn, khách…"
+                placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"

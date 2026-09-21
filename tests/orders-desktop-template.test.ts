@@ -59,7 +59,9 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
   it("một thẻ, thứ tự đúng, chỉ máy tính", () => {
     const card = PAGE.indexOf('<div className="hidden lg:flex flex-col overflow-hidden rounded-2xl')
     expect(card).toBeGreaterThan(0)
-    const toolbar = PAGE.indexOf('placeholder="Tìm mã đơn hàng…"', card)
+    /* ⚠ NEO VÀO Ô TÌM, và placeholder của nó đổi khi ô tìm được mở
+       rộng sang tên khách (21/09/2026) — neo vào phần KHÔNG đổi. */
+    const toolbar = PAGE.indexOf('placeholder="Tìm mã đơn', card)
     const bulk = PAGE.indexOf("{bulkBar}", card)
     const table = PAGE.indexOf("<DesktopOrderTable", card)
     const pager = PAGE.indexOf("<DataPagination", card)
@@ -87,10 +89,19 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
     expect(PAGE).toContain('{rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}')
   })
 
-  /** Ô tìm chỉ khớp MÃ ĐƠN trên máy chủ — placeholder không được hứa tìm tên khách. */
+  /**
+   * ⚠ LUẬT NÀY ĐÃ ĐẢO ngày 21/09/2026. Bản cũ canh đúng chiều ngược
+   * lại: ô tìm CHỈ khớp mã đơn, nên placeholder KHÔNG được hứa tìm tên
+   * khách. Chủ nhà báo ô tìm phải tìm toàn bộ, nên nay nó tra cả điểm
+   * bán — và placeholder được phép hứa, với điều kiện lời hứa có một
+   * lượt tra thật đứng sau.
+   */
   it("placeholder ô tìm nói đúng thứ nó tìm", () => {
-    expect(PAGE).not.toContain('placeholder="Tìm mã đơn, tên khách, SĐT…"')
-    expect(PAGE).toContain('x = x.ilike("order_code", term)')
+    expect(PAGE).toContain('placeholder="Tìm mã đơn, tên khách, số điện thoại…"')
+    expect(PAGE, "hứa tìm tên khách mà không tra bảng khách")
+      .toContain('"customers", ["store_name", "owner_name", "phone"]')
+    expect(PAGE, "vẫn còn ô tìm chỉ soi mã đơn")
+      .not.toContain('x = x.ilike("order_code", term)')
   })
 
   it("dải chọn nhiều là một JSX dùng cho cả hai khổ màn, in tổng tiền đã chọn", () => {

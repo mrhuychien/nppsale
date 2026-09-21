@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
+import {
+  idsMatching, buildOrFilter, NO_MATCH, MATCH_CAP, type IdMatch,
+} from "@/lib/search/list-search"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -293,6 +296,25 @@ export default function OrdersPage() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  /**
+   * MÃ KHÁCH KHỚP Ô TÌM — tra riêng một lượt.
+   *
+   * ⚠ CHỦ NHÀ BÁO 21/09/2026: "Tìm kiếm chỉ tìm trong trang 1, phải tìm
+   *   toàn bộ chứ?". Ô tìm của màn này TRƯỚC ĐÂY chỉ soi `order_code`,
+   *   nên gõ tên khách là ra RỖNG — còn tệ hơn "chỉ trang 1".
+   *
+   * ⚠ PHẢI TRA RIÊNG VÌ PostgREST KHÔNG CHO `or` BẮC QUA BẢNG NHÚNG.
+   *   `or=(order_code.ilike.*x*,customer.store_name.ilike.*x*)` không
+   *   chạy; phải hỏi mã khách trước rồi lọc `customer_id.in.(…)`.
+   *
+   * ⚠ GIỮ CẢ TỪ KHOÁ ĐÃ TRA. Không giữ thì lúc người dùng vừa gõ xong,
+   *   truy vấn chính chạy với danh sách mã của từ khoá CŨ — và trả về
+   *   một tập kết quả sai trong khoảnh khắc trước khi tự sửa.
+   */
+  const [customerMatch, setCustomerMatch] = useState<{ term: string; match: IdMatch }>({
+    term: "",
+    match: NO_MATCH,
+  })
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -414,8 +436,15 @@ export default function OrdersPage() {
   const applyCommonFilters = <T,>(q: T): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
     if (debouncedSearch) {
-      const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-      x = x.ilike("order_code", term)
+      /**
+       * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM, và tìm cả theo KHÁCH.
+       *   Bản cũ chỉ `ilike("order_code")` — gõ tên điểm bán ra rỗng,
+       *   và người dùng kết luận là đơn đã mất.
+       */
+      const or = buildOrFilter(debouncedSearch, ["order_code"], [
+        { column: "customer_id", match: customerMatch.match },
+      ])
+      if (or.filter) x = x.or(or.filter)
     }
     // ⚠ Tuyến của đơn = tuyến của ĐIỂM BÁN, và nó nằm ở `customers.channel`
     // (cột lưu MÃ tuyến — xem migration 018). Lọc trên bảng nhúng thì phần
@@ -551,7 +580,37 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, customerMatch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * TRA MÃ KHÁCH KHỚP Ô TÌM.
+   *
+   * ⚠ CHẠY TRƯỚC TRUY VẤN CHÍNH, và truy vấn chính CHỜ nó. Xem
+   *   `searchReady` bên dưới: không chờ thì lần gõ đầu tiên trả về một
+   *   danh sách thiếu (chỉ khớp mã đơn) rồi tự sửa sau vài trăm mili
+   *   giây — người dùng đọc phải cái danh sách thiếu ấy.
+   */
+  useEffect(() => {
+    const t = debouncedSearch.trim()
+    if (!t) {
+      setCustomerMatch({ term: "", match: NO_MATCH })
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const match = await idsMatching(
+        supabase, "customers", ["store_name", "owner_name", "phone"], t, user?.org_id
+      )
+      if (!cancelled) setCustomerMatch({ term: t, match })
+    })()
+    return () => { cancelled = true }
+  }, [debouncedSearch, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ⚠ Ô TÌM ĐÃ SẴN SÀNG CHƯA. `""` khớp `""` nên lúc không tìm gì thì
+   *   luôn sẵn sàng; khi đang tìm thì phải đúng từ khoá vừa tra xong.
+   */
+  const searchReady = customerMatch.term === debouncedSearch.trim()
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
@@ -563,6 +622,9 @@ export default function OrdersPage() {
     let cancelled = false
     async function fetchOrders() {
       setLoading(true)
+      /* ⚠ CHỜ LƯỢT TRA MÃ KHÁCH. Giữ nguyên trạng thái "đang nạp" chứ
+         không vẽ ra một danh sách thiếu rồi tự sửa. */
+      if (!searchReady) return
       // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự thử
       // lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error để hiển thị.
       const build = (select: string) => {
@@ -626,7 +688,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, customerMatch, searchReady, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -729,7 +791,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, customerMatch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
@@ -1485,7 +1547,7 @@ export default function OrdersPage() {
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Tìm mã đơn hàng…"
+              placeholder="Tìm mã đơn, tên khách, số điện thoại…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -1601,6 +1663,23 @@ export default function OrdersPage() {
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách đơn hàng</p>
           <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
+      {/*
+        ⚠ TRA MÃ KHÁCH CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và nó
+          trông y hệt lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa,
+          chỉ đổi chỗ sang "300 khách đầu". Im lặng ở đây là đi lại đúng
+          con đường cũ.
+      */}
+      {customerMatch.match.truncated && !loading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+          <p className="font-semibold">Kết quả tìm đang thiếu</p>
+          <p className="mt-0.5">
+            Có hơn {MATCH_CAP} điểm bán khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới
+            chỉ gồm đơn của {MATCH_CAP} điểm bán đầu. Gõ thêm cho hẹp lại, hoặc lọc theo
+            điểm bán.
+          </p>
         </div>
       )}
 

@@ -1,7 +1,18 @@
 "use client"
 
-import { DotChuaLam } from "@/components/pos/dot-chua-lam"
+/**
+ * MÀN 7 — SỬA HÓA ĐƠN ĐÃ GHI SỔ.
+ *
+ * ⚠ KHÁC HẲN MÀN 1b VÀ MÀN 8. Sửa đơn hàng là sửa tại chỗ; sửa phiếu
+ * trả là hoàn tác rồi ghi lại và GIỮ số phiếu. Còn sửa hóa đơn là HUỶ
+ * tờ cũ và lập một tờ MỚI mang số `-1` — vì một tờ hóa đơn đã phát
+ * hành thì không sửa được, chỉ thay được.
+ */
 
-export default function Page() {
-  return <DotChuaLam title="Sửa hóa đơn" dot={3} gom="mở toàn bộ trường của hóa đơn đã ghi sổ và dải xem trước delta" />
+import { useParams } from "next/navigation"
+import { InvoiceEditScreen } from "@/components/pos/invoice-edit-screen"
+
+export default function PosInvoiceEditPage() {
+  const { id } = useParams<{ id: string }>()
+  return <InvoiceEditScreen invoiceId={id} />
 }

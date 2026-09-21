@@ -165,3 +165,60 @@ và chưa lấy được giá khách đã mua.
 ⚠ Đây là **ràng buộc nghiệp vụ**, không phải thẩm mỹ: trả một món không có
 trên hóa đơn gốc là trả hàng không bán. Phần nghiệp vụ đang chạy đã có chốt
 chặn (`enforce_return_line_cap`); màn này chỉ cần chặn sớm cho đỡ mất công.
+
+
+---
+
+## 11. ⚠ BẢN THIẾT KẾ NÓI SAI VỀ TIỀN ĐÃ THU — đã chỉnh câu chữ
+
+**Chỗ:** màn 7, khối `ĐÃ THU` trên panel.
+
+**Bản thiết kế ghi:** `ĐÃ THU — GIỮ NGUYÊN QUA LẬP LẠI`.
+
+**Cơ chế thật KHÔNG như vậy.** `reissue_invoice` gọi `cancel_invoice`, và
+`cancel_invoice` **từ chối thẳng** khi hóa đơn đã có tiền thu:
+
+```sql
+IF EXISTS (SELECT 1 FROM receivables r
+           WHERE r.invoice_id = … AND COALESCE(r.paid, 0) > 0)
+   OR EXISTS (SELECT 1 FROM cash_receipt_lines crl
+              JOIN cash_receipts cr ON cr.id = crl.receipt_id
+              WHERE cr.status <> 'voided' AND (…))
+THEN RAISE EXCEPTION 'LOCKED_HAS_PAYMENT: hóa đơn đã có tiền thu, huỷ phiếu thu trước'
+```
+
+**Đo trên Postgres 16 thật:**
+
+| Tình huống | Kết quả |
+|---|---|
+| chưa có tiền thu | lập lại **được** → số mới `HD-0001-1` |
+| có tiền thu | **`LOCKED_HAS_PAYMENT`** — chặn hẳn |
+
+**Đã làm gì:** spec §7.2 cho phép — *"Chỉnh lại câu chữ cho khớp hành vi
+thật nếu khác"*. Nhãn nay là `Đã thu — phải huỷ trước khi lập lại`, và nút
+`Huỷ HĐ & lập lại` **mờ kèm lý do** khi còn phiếu thu. Có chốt cấm câu cũ
+quay lại.
+
+**Còn thiếu:** nút `×` gỡ phiếu thu đang **mờ**. Huỷ một phiếu thu là ghi
+sổ thật; đợt này chỉ dựng bề mặt. Người dùng vẫn huỷ được ở màn Thu tiền
+đang chạy.
+
+⚠ Chốt chặn thứ hai cũng đã nối: `LOCKED_EINVOICE` — hóa đơn đã phát hành
+hóa đơn điện tử thì không lập lại được. Ô `HĐĐT MISA` của dải delta nói
+đúng điều đó thay vì "cần điều chỉnh" (một đường đi phần mềm không mở).
+
+---
+
+## 12. Ô `KHO` của dải delta màn 7 chưa nói được chiều
+
+**Chỗ:** dải delta màn 7, ô đầu tiên.
+
+**Thiếu:** danh sách **lô đã lấy** của tờ hóa đơn cũ. Không có nó thì không
+dựng được câu `SP001754 · L2609  hoàn về +5  trừ lại −3  ròng +2 gói` mà
+spec §7.2 mô tả.
+
+**Đang hiện:** số dòng hàng, không vẽ phần ròng.
+
+⚠ Cố tình không đoán chiều. `cancel_invoice` hoàn hàng về **đúng lô đã
+lấy**; đoán sai lô là dải này nói một chiều kho khác với chiều máy chủ sẽ
+ghi — ngay trước lúc người dùng bấm.

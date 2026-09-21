@@ -1,0 +1,694 @@
+"use client"
+
+/**
+ * MÀN 7 — SỬA HÓA ĐƠN ĐÃ GHI SỔ. Spec §6, §7.2.
+ *
+ * ⚠ NPP TOÀN QUYỀN — MỌI TRƯỜNG MỞ (spec §7.2): khách, kho, lô/HSD,
+ * ngày giờ, NVBH, tuyến, giá, giảm, thêm/xoá dòng, gỡ phiếu thu.
+ *
+ * ⚠ NHƯNG CÓ HAI KHOÁ THẬT, VÀ MÀN PHẢI NÓI RA TRƯỚC KHI NGƯỜI DÙNG
+ * BẤM. `reissue_invoice` gọi `cancel_invoice`, và hàm ấy TỪ CHỐI khi:
+ *
+ *   · `LOCKED_HAS_PAYMENT` — hóa đơn đã có tiền thu
+ *   · `LOCKED_EINVOICE`    — đã phát hành hóa đơn điện tử
+ *
+ * Bản thiết kế để nhãn "ĐÃ THU — GIỮ NGUYÊN QUA LẬP LẠI"; điều đó
+ * KHÔNG đúng với cơ chế đang chạy. Spec §7.2 chốt: *"Nội dung banner
+ * mô tả cơ chế đang có… Chỉnh lại câu chữ cho khớp hành vi thật nếu
+ * khác."* Nên nhãn ở đây nói đúng: tiền đã thu CHẶN việc lập lại cho
+ * tới khi phiếu thu bị huỷ. Xem `reissueLock`.
+ *
+ * ⚠ SỐ CŨ GẠCH NGANG Ở CẢ Ô THÀNH TIỀN LẪN DÒNG TỔNG (spec §7.2). Đây
+ * là màn duy nhất người dùng so hai phiên bản của cùng một tờ; không
+ * có số cũ thì họ phải nhớ.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { errorMessage } from "@/lib/errors"
+import { formatCurrency } from "@/lib/utils"
+import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
+import { reissueLock, invoiceEditTotals } from "@/lib/pos/invoice-edit"
+import { creditOnInvoice, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
+import type { PosLine } from "@/lib/pos/types"
+import { usePosRefData } from "@/store/pos/ref-data"
+import { usePosKeys } from "@/components/pos/pos-shell"
+import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner } from "@/components/pos/doc-sub-header"
+import {
+  LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
+  LineAmountCell, LineMenu,
+} from "@/components/pos/line-table"
+import {
+  MoneyRow, DocDiscountRow, TotalsHero, PanelActions, PanelButton,
+} from "@/components/pos/money-panel"
+import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
+import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import {
+  DeltaPreviewStrip, DeltaStock, DeltaMoney, type DeltaCell,
+} from "@/components/pos/delta-preview-strip"
+
+interface Head {
+  id: string
+  invoice_code: string
+  status: string
+  subtotal: number
+  vat: number
+  total: number
+  payment_terms: string | null
+  due_date: string | null
+  notes: string | null
+  customer_id: string
+  customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
+}
+
+interface SrcLine {
+  id: string
+  product_id: string
+  quantity: number
+  unit_name: string
+  unit_price: number
+  line_total: number
+  product?: { name?: string | null; sku?: string | null } | null
+}
+
+/** Phiếu thu đang gắn vào hóa đơn — spec §6 khối `ĐÃ THU`. */
+interface Receipt {
+  id: string
+  amount: number
+  method: string | null
+  ref: string | null
+}
+
+let dem = 0
+const newKey = () => `e${++dem}`
+
+export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
+  const { products, customers, stockByProduct, warnings } = usePosRefData()
+
+  const [head, setHead] = useState<Head | null>(null)
+  const [lines, setLines] = useState<PosLine[]>([])
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [rets, setRets] = useState<InvoiceReturnRow[]>([])
+  const [eInvoiceIssued, setEInvoiceIssued] = useState(false)
+  const [loi, setLoi] = useState<string | null>(null)
+  const [dangTai, setDangTai] = useState(true)
+
+  const [khach, setKhach] = useState<PosPartner | null>(null)
+  const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
+  const [vatRate, setVatRate] = useState(0)
+  const [thuKhac, setThuKhac] = useState(0)
+  const [dieuKhoan, setDieuKhoan] = useState("COD")
+  const [hanTra, setHanTra] = useState("")
+  const [ghiChu, setGhiChu] = useState("")
+  const [kho, setKho] = useState("")
+  const [nvbh, setNvbh] = useState("")
+  const [thoiDiem, setThoiDiem] = useState("")
+  const [moTimHang, setMoTimHang] = useState(false)
+  const [moTimKhach, setMoTimKhach] = useState(false)
+
+  useEffect(() => {
+    let huy = false
+    ;(async () => {
+      const sb = createClient()
+      const [h, l, r, e] = await Promise.all([
+        sb.from("sales_invoices")
+          .select("id, invoice_code, status, subtotal, vat, total, payment_terms, due_date, notes, customer_id, customer:customers(store_name, phone, address)")
+          .eq("id", invoiceId).maybeSingle(),
+        sb.from("sales_invoice_lines")
+          .select("id, product_id, quantity, unit_name, unit_price, line_total, product:products(name, sku)")
+          .eq("invoice_id", invoiceId).order("sort_order", { ascending: true }),
+        sb.from("returns")
+          .select("id, status, credit_note_amount, credit_with_invoice")
+          .eq("invoice_id", invoiceId),
+        /**
+         * ⚠ ĐỌC HÓA ĐƠN ĐIỆN TỬ ĐỂ BIẾT KHOÁ. `cancel_invoice` chặn khi
+         *   `status='issued' OR misa_inv_no IS NOT NULL OR misa_status
+         *   IN ('signed','replaced')` — đọc đúng bộ cột ấy để giao diện
+         *   nói cùng một câu với máy chủ.
+         */
+        sb.from("invoices")
+          .select("id, status, misa_inv_no, misa_status")
+          .eq("sales_invoice_id", invoiceId).maybeSingle(),
+      ])
+      if (huy) return
+      const err = h.error || l.error || r.error
+      if (err) setLoi(errorMessage(err))
+
+      const hd = (h.data as unknown as Head) ?? null
+      setHead(hd)
+      if (hd?.customer) {
+        setKhach({
+          id: hd.customer_id,
+          name: hd.customer.store_name || "Khách lẻ",
+          meta: [hd.customer.phone, hd.customer.address].filter(Boolean).join(" · "),
+        })
+      }
+      setDieuKhoan(hd?.payment_terms || "COD")
+      setGhiChu(hd?.notes || "")
+
+      const ds = (l.data as unknown as SrcLine[]) ?? []
+      setLines(
+        ds.map((x) => ({
+          key: newKey(),
+          productId: x.product_id,
+          sku: x.product?.sku ?? "",
+          name: x.product?.name ?? "Sản phẩm đã xoá",
+          unit: x.unit_name,
+          units: [{ unit_name: x.unit_name, conversion: 1 }],
+          qty: Number(x.quantity) || 0,
+          price: Number(x.unit_price) || 0,
+          discount: { value: 0, unit: "vnd" },
+          stock: stockByProduct[x.product_id] ?? null,
+          /* ⚠ SỐ CŨ ĐỂ GẠCH NGANG — spec §7.2. */
+          prevAmount: Number(x.line_total) || 0,
+        }))
+      )
+      setRets((r.data as unknown as InvoiceReturnRow[]) ?? [])
+      const ei = e.data as unknown as { status?: string; misa_inv_no?: string | null; misa_status?: string | null } | null
+      setEInvoiceIssued(
+        !!ei &&
+          (ei.status === "issued" ||
+            !!ei.misa_inv_no ||
+            ei.misa_status === "signed" ||
+            ei.misa_status === "replaced")
+      )
+      setDangTai(false)
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceId])
+
+  /**
+   * Phiếu thu đang gắn.
+   *
+   * ⚠ ĐỌC RIÊNG VÀ ĐỌC HỎNG THÌ NÓI RA. Số này quyết định nút chính có
+   * mờ hay không — đọc hỏng mà im là màn hình mời người dùng bấm vào
+   * một lệnh máy chủ sẽ từ chối.
+   */
+  const [receiptErr, setReceiptErr] = useState<string | null>(null)
+  useEffect(() => {
+    let huy = false
+    ;(async () => {
+      const { data, error } = await createClient()
+        .from("cash_receipt_lines")
+        .select("id, amount, receipt:cash_receipts(id, status, method, receipt_code)")
+        .eq("invoice_id", invoiceId)
+      if (huy) return
+      if (error) { setReceiptErr(errorMessage(error)); return }
+      const rows = (data as unknown as Array<{
+        id: string
+        amount: number
+        receipt?: { status?: string; method?: string | null; receipt_code?: string | null } | null
+      }>) ?? []
+      setReceipts(
+        rows
+          .filter((x) => x.receipt?.status !== "voided")
+          .map((x) => ({
+            id: x.id,
+            amount: Number(x.amount) || 0,
+            method: x.receipt?.method ?? null,
+            ref: x.receipt?.receipt_code ?? null,
+          }))
+      )
+    })()
+    return () => { huy = true }
+  }, [invoiceId])
+
+  const daThu = receipts.reduce((s, r) => s + r.amount, 0)
+  const returnCredit = creditOnInvoice(rets)
+
+  const t = useMemo(
+    () =>
+      invoiceEditTotals({
+        lines: lines.map((l) => ({ qty: l.qty, price: l.price, discount: l.discount })),
+        docDiscount,
+        vatRate,
+        other: thuKhac,
+        paid: daThu,
+        returnCredit,
+      }),
+    [lines, docDiscount, vatRate, thuKhac, daThu, returnCredit]
+  )
+
+  /**
+   * ⚠ KHOÁ TÍNH TỪ SỐ THẬT, KHÔNG TỪ PHỎNG ĐOÁN. Đọc phiếu thu hỏng
+   *   thì coi như CÓ phiếu thu — chặn nhầm một tờ lập lại được còn hơn
+   *   mời người dùng vào một lệnh máy chủ sẽ từ chối giữa chừng.
+   */
+  const khoa = reissueLock({
+    paidAmount: daThu,
+    receiptCount: receiptErr ? 1 : receipts.length,
+    eInvoiceIssued,
+  })
+
+  const patchLine = useCallback((key: string, p: Partial<PosLine>) => {
+    setLines((cu) => cu.map((l) => (l.key === key ? { ...l, ...p } : l)))
+  }, [])
+
+  const themHang = useCallback(
+    (productId: string) => {
+      const p = products.find((x) => x.id === productId)
+      if (!p) return
+      setLines((cu) => [
+        ...cu,
+        {
+          key: newKey(),
+          productId: p.id,
+          sku: p.sku ?? "",
+          name: p.name,
+          unit: p.base_unit,
+          units: (p.units ?? []).map((u) => ({
+            unit_name: u.unit_name,
+            conversion: Number(u.conversion) || 1,
+          })),
+          qty: 1,
+          price: Number(p.sell_price) || 0,
+          discount: { value: 0, unit: "vnd" },
+          stock: stockByProduct[p.id] ?? null,
+          /* ⚠ Dòng MỚI thêm thì không có số cũ — `prevAmount` để trống,
+             không đặt 0. Đặt 0 là vẽ một số gạch ngang "0" gây hiểu
+             nhầm là dòng ấy từng có trên tờ cũ. */
+        },
+      ])
+    },
+    [products, stockByProduct]
+  )
+
+  usePosKeys({
+    F3: () => setMoTimHang(true),
+    F4: () => setMoTimKhach(true),
+    Escape: () => { setMoTimHang(false); setMoTimKhach(false) },
+  })
+
+  const mucHang = useMemo<SearchItem[]>(
+    () =>
+      products.map((p) => ({
+        id: p.id,
+        title: p.name,
+        meta: `${p.sku ?? "—"} · ${p.base_unit} · Tồn ${(stockByProduct[p.id] ?? 0).toLocaleString("vi-VN")}`,
+        alert: (stockByProduct[p.id] ?? 0) <= 0,
+        keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
+        right: (
+          <span className="n text-[12.5px] font-semibold text-[#0f172a]">
+            {formatCurrency(Number(p.sell_price) || 0)}
+          </span>
+        ),
+      })),
+    [products, stockByProduct]
+  )
+
+  const mucKhach = useMemo<SearchItem[]>(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        title: c.store_name,
+        meta: [c.phone, c.address].filter(Boolean).join(" · "),
+        keywords: `${c.owner_name ?? ""} ${c.phone ?? ""}`,
+      })),
+    [customers]
+  )
+
+  /**
+   * DẢI DELTA — ba ô của spec §7.2: `KHO` · `CÔNG NỢ` · `HĐĐT MISA`.
+   *
+   * ⚠ Ô KHO CẦN LÔ ĐÃ LẤY CỦA TỜ CŨ để nói "hoàn về +5, trừ lại −3,
+   * ròng +2" — số ấy chưa đọc được nên để `đang tính…`. Ô CÔNG NỢ thì
+   * nói được: tờ cũ còn nợ bao nhiêu, tờ mới còn nợ bao nhiêu.
+   */
+  const deltaCells = useMemo<DeltaCell[]>(() => {
+    const noCu = Math.max(0, Number(head?.total || 0) - daThu - returnCredit)
+    return [
+      {
+        label: "Kho",
+        body:
+          lines.length === 0 ? (
+            <span className="text-[#94a3b8]">không còn dòng hàng nào</span>
+          ) : (
+            /* ⚠ `net: null` → không vẽ phần ròng. Chưa biết lô đã lấy
+               của tờ cũ thì không suy ra được chiều thật. */
+            <DeltaStock sku={`${lines.length} dòng hàng`} net={null} />
+          ),
+      },
+      {
+        label: "Công nợ",
+        body: head ? <DeltaMoney from={noCu} to={t.netDebt} verb="giảm" /> : null,
+      },
+      {
+        label: "HĐĐT MISA",
+        body: eInvoiceIssued ? (
+          /* ⚠ ĐÃ PHÁT HÀNH THÌ KHÔNG PHẢI "CẦN ĐIỀU CHỈNH" — nó CHẶN
+             hẳn việc lập lại (`LOCKED_EINVOICE`). Nói "cần điều chỉnh"
+             là hứa một đường đi phần mềm không mở. */
+          <span className="text-[#dc2626]">Đã phát hành — không lập lại được</span>
+        ) : (
+          <span>
+            Chưa phát hành — <span className="text-[#16a34a]">không cần điều chỉnh</span>
+          </span>
+        ),
+      },
+    ]
+  }, [lines.length, head, daThu, returnCredit, t.netDebt, eInvoiceIssued])
+
+  const g = POS_GRID.invoiceEdit
+
+  return (
+    <>
+      <DocSubHeader
+        title="Sửa hóa đơn"
+        code={head?.invoice_code ?? (dangTai ? "…" : null)}
+        badge={{ label: "ĐANG SỬA", tone: "dang-sua" }}
+        subtitle="NPP toàn quyền · mọi trường mở"
+        right={
+          <>
+            <SubHeaderSelect id="e-nvbh" label="NVBH" value={nvbh} onChange={setNvbh} options={[]} />
+            <SubHeaderSelect
+              id="e-kho"
+              label="Kho xuất"
+              value={kho}
+              onChange={setKho}
+              options={[
+                { id: "sale", label: "Kho bán" },
+                { id: "date", label: "Kho cận date" },
+              ]}
+            />
+            <SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày xuất" />
+          </>
+        }
+      />
+
+      <div className="flex min-h-0 flex-grow gap-4 p-4">
+        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+          {warnings.map((w) => (
+            <DocBanner key={w} tone="warn">{w}</DocBanner>
+          ))}
+
+          {/*
+            ⚠ BANNER NÓI ĐÚNG CƠ CHẾ ĐANG CÓ (spec §7.2), và ba vế đều
+              kiểm được: `reissue_invoice` huỷ tờ cũ rồi gọi
+              `post_invoice` trong CÙNG một hàm — tức một giao dịch;
+              `cancel_invoice` hoàn hàng về đúng lô đã lấy; và miếng vá
+              `reissue_of` (mig 128, phục hồi ở mig 151) cho tờ mới
+              mang số `-1`.
+          */}
+          <DocBanner tone="warn">
+            Lưu thay đổi sẽ <strong>huỷ {head?.invoice_code || "hóa đơn này"} và lập một
+            hóa đơn mới</strong> trong cùng một giao dịch. Kho hoàn về đúng lô đã lấy rồi
+            mới trừ lại theo số mới — số hóa đơn mới là{" "}
+            <span className="n">{head?.invoice_code || "HD-xxxx"}-1</span>.
+          </DocBanner>
+
+          {/*
+            ⚠ KHOÁ PHẢI NÓI TRƯỚC KHI NGƯỜI DÙNG GÕ XONG CẢ TỜ. Để câu
+              này xuống cạnh nút là họ sửa mười dòng rồi mới biết không
+              lưu được.
+          */}
+          {khoa && (
+            <DocBanner tone="warn">
+              <strong>Chưa lập lại được.</strong> {khoa.message}{" "}
+              <span className="n text-[11px] opacity-70">({khoa.code})</span>
+            </DocBanner>
+          )}
+
+          <LineTableFrame
+            header={
+              <LineTableHeader
+                grid="invoiceEdit"
+                cells={[
+                  { label: "#" }, { label: "Mã hàng" }, { label: "Tên hàng" },
+                  { label: "ĐVT" }, { label: "Lô / HSD" },
+                  { label: "Số lượng", align: "center" },
+                  { label: "Đơn giá", align: "right" },
+                  { label: "Giảm", align: "right" },
+                  { label: "Thành tiền", align: "right" },
+                  { label: "" },
+                ]}
+              />
+            }
+          >
+            {loi && (
+              <p className="px-4 py-4 text-[13px] font-semibold text-[#dc2626]">
+                Không tải được hóa đơn — {loi}
+              </p>
+            )}
+            {!loi && dangTai && (
+              <p className="px-4 py-10 text-center text-[13px] text-[#64748b]">Đang tải…</p>
+            )}
+            {lines.map((l, i) => (
+              <div
+                key={l.key}
+                className="grid min-h-[54px] items-center border-b border-[#f1f5f9] px-4 py-1.5"
+                style={{ gridTemplateColumns: g.cols, gap: g.gap }}
+              >
+                <div className="n text-[11.5px] text-[#94a3b8]">{i + 1}</div>
+                <div className="n truncate text-[11px] text-[#64748b]">{l.sku || "—"}</div>
+                <div className="truncate text-[12.5px] font-semibold text-[#0f172a]">{l.name}</div>
+                <select
+                  aria-label={`Đơn vị tính dòng ${i + 1}`}
+                  value={l.unit}
+                  onChange={(e) => patchLine(l.key, { unit: e.target.value })}
+                  className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[11.5px]"
+                >
+                  {l.units.map((u) => (
+                    <option key={u.unit_name} value={u.unit_name}>{u.unit_name}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label={`Lô hàng dòng ${i + 1}`}
+                  value={l.lotId ?? ""}
+                  onChange={(e) => patchLine(l.key, { lotId: e.target.value || null })}
+                  className="h-7 w-full rounded-md border border-[#cbd5e1] bg-white px-1 text-[10.5px]"
+                >
+                  {/* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */}
+                  <option value="">chưa chọn lô</option>
+                  {(l.lots ?? []).map((lo) => (
+                    <option key={lo.id} value={lo.id}>
+                      {lo.code}{lo.expiry ? ` · ${lo.expiry}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <QtyStepper
+                  compact
+                  label={`số lượng dòng ${i + 1}`}
+                  value={l.qty}
+                  onChange={(v) => patchLine(l.key, { qty: v })}
+                />
+                <input
+                  className="n h-7 w-full rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12px]"
+                  aria-label={`Đơn giá dòng ${i + 1}`}
+                  inputMode="numeric"
+                  value={l.price === 0 ? "0" : String(l.price)}
+                  onChange={(e) => patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                />
+                <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: d })} />
+                <LineAmountCell line={l} />
+                <LineMenu
+                  index={i + 1}
+                  onRemove={() => setLines((c) => c.filter((x) => x.key !== l.key))}
+                />
+              </div>
+            ))}
+            <div className="flex h-10 items-center gap-2 bg-[#f8fafc] px-4">
+              <button
+                type="button"
+                onClick={() => setMoTimHang(true)}
+                className="h-7 rounded-md border border-[#cbd5e1] bg-white px-2.5 text-[11.5px] font-semibold text-[#334155]"
+              >
+                + Thêm hàng <span className="n opacity-70">F3</span>
+              </button>
+              <span className="text-[11px] text-[#64748b]">
+                {lines.length} dòng · {lines.reduce((s, l) => s + l.qty, 0)} sp
+              </span>
+            </div>
+          </LineTableFrame>
+
+          <DeltaPreviewStrip subtitle="Xem trước trước khi lập lại" cells={deltaCells} />
+        </div>
+
+        <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+          <div className="relative">
+            <PartnerCard partner={khach} onPick={() => setMoTimKhach(true)} />
+            <SearchDropdown
+              open={moTimKhach}
+              onClose={() => setMoTimKhach(false)}
+              title="Tìm khách hàng"
+              placeholder="Tên cửa hàng, SĐT, địa chỉ…"
+              items={mucKhach}
+              onPick={(it) => setKhach({ id: it.id, name: it.title, meta: it.meta })}
+              emptyHint="Không tìm thấy khách nào khớp."
+            />
+          </div>
+
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+            {/* ⚠ Số CŨ gạch ngang — spec §7.2. */}
+            <MoneyRow label="Tiền hàng" value={t.goods} prev={head ? Number(head.subtotal) : null} />
+            {t.lineDiscount > 0 && (
+              <MoneyRow label="Giảm giá dòng" value={t.lineDiscount} tone="muted" />
+            )}
+            <DocDiscountRow
+              id="e-giam"
+              label="Giảm giá đơn"
+              discount={docDiscount}
+              amount={t.docDiscount}
+              onChange={(d) => setDocDiscount(d.unit === docDiscount.unit ? d : switchUnit(docDiscount, t.goods))}
+            />
+            <div className="flex items-center gap-2 py-[5px]">
+              <label htmlFor="e-vat" className="flex-grow text-[13px] text-[#334155]">Thuế GTGT</label>
+              <select
+                id="e-vat"
+                value={vatRate}
+                onChange={(e) => setVatRate(Number(e.target.value))}
+                className="h-[30px] w-[74px] rounded-md border border-[#cbd5e1] bg-white px-1.5 text-[12.5px]"
+              >
+                {[0, 5, 8, 10].map((v) => <option key={v} value={v}>{v}%</option>)}
+              </select>
+              <span className="n w-[84px] text-right text-[13.5px] text-[#0f172a]">
+                {formatCurrency(t.vat)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 py-[5px]">
+              <label htmlFor="e-thukhac" className="flex-grow text-[13px] text-[#334155]">Thu khác</label>
+              <input
+                id="e-thukhac"
+                className="n h-[30px] w-[74px] rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12.5px]"
+                inputMode="numeric"
+                value={thuKhac === 0 ? "0" : String(thuKhac)}
+                onChange={(e) => setThuKhac(Number(e.target.value.replace(/\D/g, "")) || 0)}
+              />
+              <span className="n w-[84px] text-right text-[13.5px] text-[#0f172a]">
+                {formatCurrency(t.other)}
+              </span>
+            </div>
+
+            <TotalsHero label="Tổng cộng" value={t.total} />
+
+            {/*
+              ⚠ NHÃN NÀY KHÁC BẢN THIẾT KẾ, VÀ CỐ Ý. Artboard ghi "ĐÃ THU
+                — GIỮ NGUYÊN QUA LẬP LẠI"; cơ chế thật thì tiền đã thu
+                CHẶN hẳn việc lập lại (`LOCKED_HAS_PAYMENT`). Xem đầu tệp
+                và `reissueLock`.
+            */}
+            {(receipts.length > 0 || receiptErr) && (
+              <>
+                <p className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#92400e]">
+                  Đã thu — phải huỷ trước khi lập lại
+                </p>
+                {receiptErr && (
+                  <p className="mt-1 text-[11.5px] font-semibold text-[#dc2626]">
+                    Không đọc được phiếu thu — {receiptErr}. Màn hình đang coi như CÓ tiền thu
+                    để khỏi mời bạn vào một lệnh máy chủ sẽ từ chối.
+                  </p>
+                )}
+                {receipts.map((r) => (
+                  <div key={r.id} className="mt-1.5 flex items-center gap-2 rounded-lg border border-[#e2e8f0] px-2.5 py-2">
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md bg-[#f0fdf4]">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                        <rect x="2" y="6" width="20" height="13" rx="2" />
+                        <path d="M2 10h20" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0 flex-grow">
+                      <div className="truncate text-[12px] font-semibold text-[#0f172a]">
+                        {r.method || "Phiếu thu"}
+                      </div>
+                      {r.ref && <div className="n truncate text-[10.5px] text-[#64748b]">{r.ref}</div>}
+                    </div>
+                    <span className="n shrink-0 text-[12.5px] font-bold text-[#16a34a]">
+                      {formatCurrency(r.amount)}
+                    </span>
+                    {/*
+                      ⚠ NÚT GỠ CHƯA NỐI — huỷ một phiếu thu là ghi sổ
+                        thật, và đợt này chỉ dựng bề mặt. Mờ nút KÈM lý
+                        do còn hơn một nút bấm vào không có gì xảy ra.
+                    */}
+                    <button
+                      type="button"
+                      aria-label={`Gỡ phiếu thu ${r.ref || ""}`}
+                      disabled
+                      title="Huỷ phiếu thu ở màn Thu tiền — xem docs/pos-todo.md"
+                      className="h-5 w-5 shrink-0 rounded text-[14px] leading-none text-[#cbd5e1]"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            <div className="mt-3.5 border-t border-[#f1f5f9] pt-3">
+              <MoneyRow label="Còn lại hóa đơn" value={t.remaining} />
+              {returnCredit > 0 && (
+                <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(returnCredit)}`} tone="warn" />
+              )}
+              <div className="mt-1 border-t border-[#f1f5f9] pt-2">
+                <MoneyRow label="Công nợ ròng" value={t.netDebt} strong />
+              </div>
+            </div>
+
+            <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[#f1f5f9] pt-3">
+              <label htmlFor="e-dk" className="text-[13px] text-[#334155]">Điều khoản TT</label>
+              <select
+                id="e-dk"
+                value={dieuKhoan}
+                onChange={(e) => setDieuKhoan(e.target.value)}
+                className="h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] bg-white px-2 text-[12.5px]"
+              >
+                <option>COD</option>
+                <option>Công nợ 15 ngày</option>
+                <option>Công nợ 30 ngày</option>
+              </select>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2.5">
+              <label htmlFor="e-han" className="text-[13px] text-[#334155]">Hạn trả</label>
+              <input
+                id="e-han"
+                type="date"
+                value={hanTra}
+                onChange={(e) => setHanTra(e.target.value)}
+                className="n h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] px-2.5 text-right text-[12.5px]"
+              />
+            </div>
+            <input
+              type="text"
+              aria-label="Ghi chú hóa đơn"
+              placeholder="Ghi chú hóa đơn…"
+              value={ghiChu}
+              onChange={(e) => setGhiChu(e.target.value)}
+              className="mt-2 h-8 w-full rounded-[7px] border border-[#cbd5e1] px-2 text-[12.5px] text-[#334155]"
+            />
+
+            <div className="flex-grow" />
+
+            <p className="mt-3 text-[11px] leading-snug text-[#64748b]">
+              {head?.invoice_code || "Hóa đơn này"} sẽ chuyển trạng thái{" "}
+              <strong className="text-[#0f172a]">Đã huỷ</strong> và giữ trong sổ để truy vết.
+            </p>
+          </div>
+
+          <PanelActions>
+            <PanelButton width={54}>Huỷ</PanelButton>
+            <PanelButton width={96}>Lưu nháp</PanelButton>
+            <PanelButton
+              variant="primary"
+              disabled={!!khoa || lines.length === 0}
+              title={khoa ? khoa.message : lines.length === 0 ? "Hóa đơn không còn dòng hàng nào" : undefined}
+            >
+              Huỷ HĐ &amp; lập lại
+            </PanelButton>
+          </PanelActions>
+
+          <div className="relative">
+            <SearchDropdown
+              open={moTimHang}
+              onClose={() => setMoTimHang(false)}
+              title="Tìm hàng hóa"
+              placeholder="Tên hàng, mã hàng, mã vạch…"
+              items={mucHang}
+              onPick={(it) => themHang(it.id)}
+              emptyHint="Không tìm thấy mặt hàng nào khớp."
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}

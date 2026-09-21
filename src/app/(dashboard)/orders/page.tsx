@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
+import { SearchSelect } from "@/components/ui/search-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -217,8 +218,22 @@ export default function OrdersPage() {
   const { toast } = useToast()
   const [orders, setOrders] = useState<SalesOrder[]>([])
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice>>({})
-  const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
+  const [customers, setCustomers] = useState<
+    Pick<Customer, "id" | "store_name" | "owner_name" | "phone">[]
+  >([])
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name">[]>([])
+  /* ⚠ Dựng một lần theo `customers` — mảng mới mỗi lần vẽ là ô tìm nhận
+     một danh sách "đổi" liên tục. */
+  const customerOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: c.store_name,
+        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
+        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
+      })),
+    [customers]
+  )
   const [receivablesByOrder, setReceivablesByOrder] = useState<
     Record<string, { amount: number; paid: number; status: string; due_date: string | null }>
   >({})
@@ -387,7 +402,24 @@ export default function OrdersPage() {
 
     async function loadMeta() {
       const [customersRes, usersRes, routesRes] = await Promise.all([
-        supabase.from("customers").select("id, store_name").order("store_name"),
+        /**
+         * ⚠ KÉO ĐỦ THEO TRANG, và đọc cả `owner_name` + `phone`.
+         *   `.select()` trơn cắt ở 1.000 dòng: khách thứ 1.001 trở đi
+         *   không lọc được, mà bộ lọc im lặng như thể họ không có đơn
+         *   nào. Và một ô GÕ ĐỂ TÌM chỉ soi tên cửa hàng thì gõ số điện
+         *   thoại vẫn ra rỗng.
+         *
+         * ⚠ Phân trang theo `id` — mốc chia trang phải DUY NHẤT; hai
+         *   cửa hàng trùng tên là các trang lặp/sót nhau.
+         */
+        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>(
+          (from, to) =>
+            supabase
+              .from("customers")
+              .select("id, store_name, owner_name, phone", { count: "exact" })
+              .order("id")
+              .range(from, to)
+        ),
         supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
         supabase
           .from("sales_routes")
@@ -398,7 +430,11 @@ export default function OrdersPage() {
       const qErr2 = ([customersRes, usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr2) console.error("[app/orders] truy vấn lỗi:", qErr2.message)
-      setCustomers((customersRes.data as Pick<Customer, "id" | "store_name">[]) || [])
+      setCustomers(
+        customersRes.rows
+          .slice()
+          .sort((a, b) => (a.store_name ?? "").localeCompare(b.store_name ?? ""))
+      )
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
       setRoutes((routesRes.data as Array<{ code: string; name: string }>) || [])
 
@@ -1154,19 +1190,19 @@ export default function OrdersPage() {
             {filterActive("customer") && (
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground">Khách hàng</label>
-                <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tất cả" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tất cả khách hàng</SelectItem>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.store_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/*
+            ⚠ GÕ ĐỂ TÌM, KHÔNG CUỘN (chủ nhà chốt 21/09/2026). Bỏ chọn
+              (nút ✕) là quay về "tất cả khách" — vai trò cũ của mục
+              "Tất cả khách hàng" trong `<Select>`.
+          */}
+          <SearchSelect
+            id="ord-customer"
+            options={customerOptions}
+            valueId={customerFilter === "all" ? "" : customerFilter}
+            onPick={(o) => setCustomerFilter(o?.id ?? "all")}
+            placeholder="Tất cả khách hàng — gõ để lọc…"
+            emptyHint="Không tìm thấy khách nào khớp."
+          />
               </div>
             )}
             {filterActive("sales") && (

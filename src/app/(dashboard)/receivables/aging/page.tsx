@@ -4,18 +4,12 @@ import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { SearchSelect } from "@/components/ui/search-select"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { FileText, Printer, Users } from "lucide-react"
@@ -38,6 +32,16 @@ export default function AccountantLedgerPage() {
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedId, setSelectedId] = useState<string>("")
+  const customerOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: c.store_name,
+        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
+        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
+      })),
+    [customers]
+  )
   const [orders, setOrders] = useState<SalesOrder[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(true)
@@ -45,12 +49,31 @@ export default function AccountantLedgerPage() {
 
   useEffect(() => {
     async function fetchCustomers() {
-      const { data, error: dataErr } = await supabase
-        .from("customers")
-        .select("id, store_name, owner_name, phone, address, credit_limit, status")
-        .order("store_name")
-      if (dataErr) console.error("[receivables/aging] truy vấn lỗi:", dataErr.message)
-      setCustomers((data as Customer[]) || [])
+      /**
+       * ⚠ KÉO ĐỦ THEO TRANG. Bản cũ đọc bằng `.select()` trơn —
+       *   PostgREST cắt ở 1.000 dòng, nên khách thứ 1.001 trở đi KHÔNG
+       *   tra được sổ chi tiết, và ô chọn im lặng như thể họ không tồn
+       *   tại. Với một ô chỉ để CUỘN thì lỗi ấy còn chìm; với một ô GÕ
+       *   ĐỂ TÌM thì nó thành "gõ đúng tên mà không ra" — đúng thứ vừa
+       *   phải dọn ở ô tìm hàng.
+       *
+       * ⚠ PHÂN TRANG THEO `id`: mốc chia trang phải DUY NHẤT, hai cửa
+       *   hàng trùng tên là các trang lặp/sót nhau.
+       */
+      const res = await fetchAllForAggregate<Customer>((from, to) =>
+        supabase
+          .from("customers")
+          .select(
+            "id, store_name, owner_name, phone, address, credit_limit, status",
+            { count: "exact" }
+          )
+          .order("id")
+          .range(from, to)
+      )
+      if (res.error) console.error("[receivables/aging] truy vấn lỗi:", res.error)
+      setCustomers(
+        res.rows.slice().sort((a, b) => (a.store_name ?? "").localeCompare(b.store_name ?? ""))
+      )
       setLoadingCustomers(false)
     }
     fetchCustomers()
@@ -165,18 +188,21 @@ export default function AccountantLedgerPage() {
             <label className="min-w-[140px] text-sm font-semibold">
               Chọn khách hàng
             </label>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger className="sm:max-w-md">
-                <SelectValue placeholder="-- Chọn khách hàng để xem sổ chi tiết --" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.store_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="sm:max-w-md">
+              {/*
+                ⚠ GÕ ĐỂ TÌM, KHÔNG CUỘN (chủ nhà chốt 21/09/2026). Một
+                  `<Select>` liệt kê cả nghìn khách thì không ai tìm nổi
+                  một cái tên trong đó.
+              */}
+              <SearchSelect
+                id="aging-customer"
+                options={customerOptions}
+                valueId={selectedId}
+                onPick={(o) => setSelectedId(o?.id ?? "")}
+                placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
+                emptyHint="Không tìm thấy khách nào khớp."
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

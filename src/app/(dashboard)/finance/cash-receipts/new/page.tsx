@@ -34,6 +34,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { SearchSelect } from "@/components/ui/search-select"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -160,8 +161,22 @@ export default function NewCashReceiptPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [customers, setCustomers] = useState<Array<{ id: string; store_name: string }>>([])
+  const [customers, setCustomers] = useState<
+    Array<{ id: string; store_name: string; owner_name: string | null; phone: string | null }>
+  >([])
   const [customerId, setCustomerId] = useState("")
+  /* ⚠ Dựng một lần theo `customers` — dựng lại mỗi lần vẽ là một mảng
+     mới mỗi lần, và ô tìm nhận một danh sách "đổi" liên tục. */
+  const customerOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: c.store_name,
+        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
+        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
+      })),
+    [customers]
+  )
   const [method, setMethod] = useState("cash")
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState("")
@@ -197,11 +212,17 @@ export default function NewCashReceiptPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const res = await fetchAllForAggregate<{ id: string; store_name: string }>((from, to) =>
+      const res = await fetchAllForAggregate<{
+        id: string; store_name: string; owner_name: string | null; phone: string | null
+      }>((from, to) =>
         supabase
           .from("customers")
-          .select("id, store_name", { count: "exact" })
-          .order("store_name")
+          .select("id, store_name, owner_name, phone", { count: "exact" })
+          /* ⚠ PHÂN TRANG THEO `id`, KHÔNG THEO `store_name`. Mốc chia
+             trang phải DUY NHẤT — hai cửa hàng trùng tên là các trang
+             lặp/sót nhau, và khách bị sót thì không lập được phiếu thu
+             cho họ. Ô tìm tự sắp theo tên khi hiện ra. */
+          .order("id")
           .range(from, to)
       )
       if (cancelled) return
@@ -576,18 +597,23 @@ export default function NewCashReceiptPage() {
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                   Khách hàng
                 </Label>
-                <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn khách hàng" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.store_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/*
+                  ⚠ GÕ ĐỂ TÌM, KHÔNG CUỘN (chủ nhà chốt 21/09/2026). Danh
+                    sách khách kéo ĐỦ theo trang — một `<Select>` liệt kê
+                    cả nghìn dòng là không chọn nổi. Lập phiếu thu mà
+                    không chọn được khách thì không lập được phiếu.
+
+                  ⚠ KHÔNG CHO GÕ TỰ DO: `customer_id` đi thẳng vào công
+                    nợ, một cái tên gõ tay không ghi thu cho ai cả.
+                */}
+                <SearchSelect
+                  id="cr-customer"
+                  options={customerOptions}
+                  valueId={customerId}
+                  onPick={(o) => setCustomerId(o?.id ?? "")}
+                  placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
+                  emptyHint="Không tìm thấy khách nào khớp."
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">

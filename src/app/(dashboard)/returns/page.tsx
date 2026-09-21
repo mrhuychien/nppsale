@@ -164,7 +164,7 @@ export default function ReturnsPage() {
       let q = supabase
         .from("returns")
         .select(
-          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code)",
+          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -370,6 +370,7 @@ export default function ReturnsPage() {
                       {show("date") && <TableHead>Ngày</TableHead>}
                       <TableHead>Khách hàng</TableHead>
                       {show("orderCode") && <TableHead>Đơn gốc</TableHead>}
+                      {show("invoiceCode") && <TableHead>Hóa đơn gốc</TableHead>}
                       {show("reason") && <TableHead>Lý do</TableHead>}
                       {show("requester") && <TableHead>Người tạo</TableHead>}
                       {show("creditNote") && <TableHead className="text-right">Credit Note</TableHead>}
@@ -379,6 +380,8 @@ export default function ReturnsPage() {
                   <TableBody>
                     {filtered.map((r) => {
                       const orderCode = (r as Return & { order?: { order_code?: string } }).order?.order_code
+                      const invoiceCode = (r as Return & { invoice?: { invoice_code?: string } })
+                        .invoice?.invoice_code
                       return (
                         <TableRow
                           key={r.id}
@@ -396,6 +399,11 @@ export default function ReturnsPage() {
                           {show("orderCode") && (
                             <TableCell className="font-mono text-xs">
                               {orderCode || "—"}
+                            </TableCell>
+                          )}
+                          {show("invoiceCode") && (
+                            <TableCell className="font-mono text-xs">
+                              {invoiceCode || "—"}
                             </TableCell>
                           )}
                           {show("reason") && <TableCell>{getReasonLabel(r.reason)}</TableCell>}
@@ -425,6 +433,8 @@ export default function ReturnsPage() {
               <div className="lg:hidden space-y-3">
                 {filtered.map((r) => {
                   const orderCode = (r as Return & { order?: { order_code?: string } }).order?.order_code
+                  const invoiceCode = (r as Return & { invoice?: { invoice_code?: string } })
+                    .invoice?.invoice_code
                   return (
                     <div
                       key={r.id}
@@ -446,6 +456,11 @@ export default function ReturnsPage() {
                             {orderCode && (
                               <p className="text-xs text-muted-foreground mt-0.5 truncate">
                                 Đơn gốc: <span className="font-mono">{orderCode}</span>
+                              </p>
+                            )}
+                            {invoiceCode && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                Hóa đơn gốc: <span className="font-mono">{invoiceCode}</span>
                               </p>
                             )}
                             {r.requester?.full_name && (

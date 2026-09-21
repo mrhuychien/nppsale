@@ -318,23 +318,17 @@ describe("phiếu trả chỉ ra hóa đơn bán của nó", () => {
  * `<Select>` liệt kê `customers.map(...)` thì người dùng phải cuộn qua
  * hàng nghìn dòng để tìm một cái tên — và không gõ được chữ nào.
  */
-const CON_NO_CHON_KHACH_PHAI_CUON = [
-  /**
-   * ⚠ BỘ LỌC CỦA MÀN DANH SÁCH, KHÔNG PHẢI Ô BẮT BUỘC CHỌN. Ba màn này
-   * có "Tất cả khách" làm mặc định, nên người dùng vẫn làm được việc
-   * mà không đụng tới ô. Vẫn khó dùng với danh sách dài — đã báo chủ
-   * nhà, chưa được yêu cầu sửa.
-   */
-  "src/app/(dashboard)/orders/page.tsx",
-  "src/app/(dashboard)/sales-invoices/page.tsx",
-  "src/app/(dashboard)/receivables/aging/page.tsx",
-  /**
-   * ⚠ Ô BẮT BUỘC CHỌN, CÙNG LOẠI VỚI PHIẾU TRẢ. Lập phiếu thu mà không
-   * chọn được khách thì không lập được phiếu. Đã báo chủ nhà, chưa
-   * được yêu cầu sửa.
-   */
-  "src/app/(dashboard)/finance/cash-receipts/new/page.tsx",
-]
+/**
+ * ⚠ DANH SÁCH NAY RỖNG (chủ nhà chốt 21/09/2026: "XỬ lý nốt 4 màn bắt
+ * cuộn chọn khách"). Bốn màn từng nằm đây — Đơn hàng, Hóa đơn bán, Tuổi
+ * nợ, Phiếu thu — nay đều gõ để tìm.
+ *
+ * ⚠ GIỮ MẢNG LẠI DÙ RỖNG, ĐỪNG XOÁ. Nó là chỗ DUY NHẤT hợp lệ để ghi
+ * một màn còn bắt cuộn, và chốt ngay dưới đòi mỗi tên trong đó phải
+ * THẬT SỰ còn bắt cuộn — nên không ai nhét được một màn đã sửa vào đây
+ * để né. Xoá mảng đi thì lần sau người ta lại nới chính chốt quét.
+ */
+const CON_NO_CHON_KHACH_PHAI_CUON: string[] = []
 
 function chonKhachPhaiCuon(src: string): boolean {
   return /<Select\b[\s\S]{0,700}?\{\s*customers\.map\(/.test(src)
@@ -382,9 +376,38 @@ describe("không màn nào MỚI bắt cuộn để chọn khách", () => {
    * hôm nay. Bốn màn trong danh sách nợ là bằng chứng phép quét còn chạy.
    */
   it("phép quét còn nhận ra được mẫu ấy", () => {
-    expect(CON_NO_CHON_KHACH_PHAI_CUON.length).toBeGreaterThan(0)
-    for (const rel of CON_NO_CHON_KHACH_PHAI_CUON) {
-      expect(chonKhachPhaiCuon(code(read(rel))), `phép quét không thấy ${rel}`).toBe(true)
+    /* ⚠ DANH SÁCH NỢ ĐÃ RỖNG, nên phải thử trên một mẫu DỰNG SẴN — nếu
+       không thì phép quét hỏng cũng xanh, đúng kiểu chốt nói dối. */
+    const xau = `
+      <Select value={customerFilter} onValueChange={setCustomerFilter}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {customers.map((c) => (
+            <SelectItem key={c.id} value={c.id}>{c.store_name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>`
+    expect(chonKhachPhaiCuon(xau), "phép quét không còn nhận ra mẫu xấu").toBe(true)
+    const tot = `
+      <SearchSelect options={customerOptions} valueId={customerFilter}
+        onPick={(o) => setCustomerFilter(o?.id ?? "all")} />`
+    expect(chonKhachPhaiCuon(tot), "phép quét báo oan ô đã sửa").toBe(false)
+  })
+
+  /** ⚠ Và bốn màn ấy thật sự đã dùng ô gõ tìm, không chỉ "hết khớp mẫu". */
+  it("bốn màn từng bắt cuộn nay đều gõ để tìm", () => {
+    for (const rel of [
+      "src/app/(dashboard)/orders/page.tsx",
+      "src/app/(dashboard)/sales-invoices/page.tsx",
+      "src/app/(dashboard)/receivables/aging/page.tsx",
+      "src/app/(dashboard)/finance/cash-receipts/new/page.tsx",
+    ]) {
+      const src = code(read(rel))
+      expect(src, `${rel} không dùng ô chọn có tìm kiếm`).toContain("<SearchSelect")
+      /* ⚠ TÌM ĐƯỢC BẰNG THỨ NGƯỜI TA NHỚ — tên chủ và số điện thoại,
+         không chỉ tên cửa hàng. */
+      expect(src, `${rel} không đọc tên chủ / số điện thoại để tìm`)
+        .toContain("id, store_name, owner_name, phone")
     }
   })
 })

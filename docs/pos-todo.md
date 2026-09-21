@@ -1,0 +1,143 @@
+# `/pos` — những chỗ giao diện đang chờ dữ liệu
+
+Spec giao diện `/pos` chốt 21/09/2026, mục "⛔ Không đụng vào":
+
+> Nếu gặp chỗ UI cần dữ liệu mà backend chưa trả → **ghi TODO vào
+> `docs/pos-todo.md`, render placeholder, đi tiếp**. Không tự thêm endpoint.
+
+Tệp này là danh sách ấy. Mỗi mục ghi **chỗ nào trên màn**, **thiếu gì**,
+và **màn hình đang hiện gì thay thế** — để lần sau ai mở ra cũng biết
+ngay là chưa làm chứ không phải hỏng.
+
+---
+
+## 1. Đơn vị giảm giá không sống qua lần mở lại
+
+**Chỗ:** cột `GIẢM` của bảng hàng (spec §5) và dòng `Giảm giá đơn` trong panel.
+
+**Thiếu:** bảng chứng từ hiện chỉ có cột **số tiền đã quy đổi**, không có
+cột `discount_unit`. Nên một dòng gõ `5%` lưu xuống thành `33.500`, và lần
+mở lại nó hiện `33.500 ₫` chứ không phải `5 %`.
+
+**Đang hiện:** đúng số tiền — **con số không sai**, chỉ mất thông tin
+"người dùng đã gõ theo đơn vị nào". Trong cùng một phiên thì đơn vị được
+giữ ở state client nên đổi số lượng vẫn chạy đúng luật.
+
+**Muốn sống qua lần mở lại** thì cần thêm một cột `discount_unit` — đó là
+đổi schema, nằm ngoài đợt này.
+
+---
+
+## 2. "Nợ sau đơn này" chưa có số
+
+**Chỗ:** panel màn 1, dòng ngay dưới `Tính vào công nợ`.
+
+**Thiếu:** công nợ hiện tại của khách chưa được nạp vào màn POS.
+
+**Đang hiện:** chữ `chưa xác định`.
+
+⚠ **Cố tình không hiện `0`.** Số 0 ở ô công nợ đọc như "khách này sạch nợ",
+và người đi đòi tiền tin vào nó. Đây đúng là luật §4 của Coder Pack.
+
+---
+
+## 3. Dòng phụ dưới tên hàng còn thiếu ba số
+
+**Chỗ:** bảng hàng màn 1 (spec §4).
+
+**Thiếu:**
+- `Đã đặt N` — số đã đặt của mặt hàng, chưa nạp.
+- `đã xuất N` — số đã xuất của **dòng** này; đây là thứ chặn stepper ở màn
+  sửa đơn (spec §7.1).
+- `giá gần nhất … · N lần mua` — lịch sử giá bán cho đúng khách này.
+
+**Đang hiện:** phần `Tồn N` có thật và đúng (đọc qua `loadSellRefData`,
+chỉ cộng kho BÁN). Ba số còn lại không vẽ ra chứ không vẽ số 0.
+
+**Hệ quả cần biết:** vì `đã xuất` chưa có, **sàn của stepper ở màn sửa đơn
+đang là 0**. Ràng buộc §7.1 đã được cài sẵn trong `QtyStepper` (`min`), chỉ
+chờ số thật cắm vào.
+
+---
+
+## 4. Lô & hạn sử dụng chưa có danh sách
+
+**Chỗ:** cột `LÔ / HSD` (spec §4) và select lô trong bảng trả/đổi.
+
+**Thiếu:** danh sách lô còn hàng theo từng mặt hàng.
+
+**Đang hiện:** select có đúng một lựa chọn `chưa chọn lô`.
+
+⚠ Không để select rỗng — một select rỗng trông y hệt một select đã chọn xong.
+
+**Liên quan đến đợt 4:** spec §8 đòi *"Trả NCC: select lô chỉ liệt kê lô
+thuộc phiếu nhập gốc"*, và *"lô & HSD bắt buộc khi nhập"*. Cả hai cần dữ
+liệu này.
+
+---
+
+## 5. Dải xem trước delta chưa có số
+
+**Chỗ:** cuối cột trái các màn sửa chứng từ đã ghi sổ (spec §7.2, màn 7/8/10/12).
+
+**Thiếu:** endpoint dry-run trả trước "kho sẽ đổi thế nào, công nợ sẽ đổi
+thế nào" khi lưu.
+
+**Đang hiện:** các màn ấy thuộc đợt 3–4, chưa dựng. Khi dựng thì theo spec
+là render khung với `đang tính…`.
+
+⚠ Spec ghi rõ: **không tự viết RPC**.
+
+---
+
+## 6. Nút `Hoàn tác` trên toast
+
+**Chỗ:** toast xác nhận sau khi lập hóa đơn (spec §9).
+
+**Thiếu:** chưa xác nhận đường huỷ nào dùng được ngay sau khi lập mà không
+đụng nghiệp vụ. Kho mã có `cancelInvoice` (đi qua RPC `cancel_invoice`),
+nhưng huỷ một hóa đơn vừa lập là một thao tác **ghi sổ thật**, không phải
+"hoàn tác" theo nghĩa nhẹ nhàng mà toast gợi ra.
+
+**Đang hiện:** chưa dựng toast hoàn tác. Spec cho phép: *"Nếu chưa có → ẩn
+nút, ghi TODO"*.
+
+---
+
+## 7. Lưu chứng từ từ `/pos` chưa nối
+
+**Chỗ:** nút `Lưu tạm` / `Lưu thay đổi` / `Xuất hàng & lập HĐ` màn 1.
+
+**Thiếu:** phần nối xuống `createOrderRecords` / `applyOrderEdit` /
+`post_invoice`. Đợt này dựng **bề mặt** (spec §"Phạm vi": *"dựng bề mặt
+`/pos` desktop, bind vào API và store đã có"*), và phần bind dữ liệu ĐỌC đã
+xong (danh mục hàng, khách, tồn kho, hóa đơn, phiếu trả).
+
+**Đang hiện:** nút có thật, mờ khi chưa đủ điều kiện, và nói rõ lý do mờ
+trong `title`.
+
+⚠ **Không** tự gọi đại một RPC cho có. Mọi thao tác đụng tồn kho / công nợ
+/ trạng thái đơn phải đi qua đúng RPC `SECURITY DEFINER` đang có, một giao
+dịch, idempotent — nối ẩu ở đây là đúng loại lỗi đắt nhất.
+
+---
+
+## 8. Tab `In phiếu` trong drawer thiết lập
+
+**Chỗ:** drawer thiết lập hiển thị (spec §9), tab thứ ba.
+
+**Đang hiện:** một câu nói rằng mẫu in dùng chung với phần đang chạy và
+thiết lập riêng cho POS chưa có trong đợt này.
+
+---
+
+## 9. Ô `NVBH` và `Tuyến` trên sub-header màn 1
+
+**Chỗ:** góc phải sub-header (spec §2).
+
+**Thiếu:** danh sách nhân viên bán hàng và danh sách tuyến chưa nạp vào POS.
+
+**Đang hiện:** select có ô rỗng `—` và không có lựa chọn nào khác.
+
+⚠ Select **phải** có ô rỗng rõ ràng, nếu không người dùng không có cách
+nào bỏ chọn thứ họ lỡ chọn.

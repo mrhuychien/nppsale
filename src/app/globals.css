@@ -450,3 +450,65 @@
     @apply border-t border-border/30 transition-colors hover:bg-muted/30;
   }
 }
+
+/* ====================================================================
+ * POS DESKTOP — spec chốt 21/09/2026.
+ *
+ * ⚠ MỌI THỨ Ở ĐÂY NẰM TRONG `.pos-scope`, KHÔNG Ở `:root`. POS có bộ
+ *   màu và bộ chữ RIÊNG, khác hẳn phần còn lại của app (Manrope + token
+ *   ngữ nghĩa). Đặt ở `:root` là đổi màu cả `/sell` trên điện thoại —
+ *   đúng thứ spec §14 cấm ("Không refactor /sell").
+ *
+ * ⚠ KHÔNG TẠO TỆP CSS MỚI. Kho mã này chỉ có một tệp CSS, và luật ấy
+ *   có lý do: hai tệp là hai chỗ định nghĩa cùng một màu.
+ * ==================================================================== */
+.pos-scope {
+  --pos-ink: #0f172a;
+  --pos-muted: #64748b;
+  --pos-line: #e2e8f0;
+  --pos-bg: #eef2f7;
+  --pos-card: #ffffff;
+  --pos-primary: #2563eb;
+  --pos-primary-soft: #eff6ff;
+  --pos-primary-border: #bfdbfe;
+  --pos-warn: #b45309;
+  --pos-warn-soft: #fffbeb;
+  --pos-warn-border: #fde68a;
+  --pos-danger: #dc2626;
+  --pos-danger-soft: #fef2f2;
+  --pos-ok: #16a34a;
+  --pos-ok-soft: #f0fdf4;
+  --pos-ok-border: #bbf7d0;
+
+  font-family: var(--font-be-vietnam), system-ui, sans-serif;
+  color: var(--pos-ink);
+  background: var(--pos-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ⚠ MỌI CON SỐ DÙNG `.n`. `tabular-nums` là thứ giữ cột tiền thẳng
+ *   hàng; thiếu nó thì "1.111.111" hẹp hơn "8.888.888" và mắt không
+ *   dò được cột nào lệch. */
+.pos-scope .n {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-scope *,
+.pos-scope *::before,
+.pos-scope *::after {
+  box-sizing: border-box;
+}
+
+.pos-scope button { font-family: inherit; cursor: pointer; }
+.pos-scope input,
+.pos-scope select { font-family: inherit; }
+
+/* ⚠ Ô đang được bàn phím chọn phải THẤY ĐƯỢC. Spec §11 đòi Tab đi qua
+ *   mọi control — đi qua mà không nhìn ra mình đang ở đâu thì bằng
+ *   không. Trình duyệt vẽ viền mặc định rất mờ trên nền xám này. */
+.pos-scope :focus-visible {
+  outline: 2px solid var(--pos-primary);
+  outline-offset: 1px;
+  border-radius: 4px;
+}

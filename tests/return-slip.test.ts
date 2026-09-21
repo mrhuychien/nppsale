@@ -491,6 +491,18 @@ const CON_NO_TU_VE_O_TIM_HANG = [
    * oan, kèm chốt riêng bên dưới canh phần hành vi.
    */
   "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
+  /**
+   * ⚠ `/pos` LÀ MỘT BỘ GIAO DIỆN KHÁC, THEO SPEC CHỐT 21/09/2026 §9.
+   *   Nó có `SearchDropdown` riêng vì ô tìm của màn desktop khác hẳn:
+   *   điều hướng `↑↓ Enter`, đếm kết quả ở đầu, dòng gợi ý phím ở chân,
+   *   và mở như một lớp phủ chứ không phải một sheet. `ProductPicker`
+   *   dựng cho màn điện thoại và không mang được những thứ ấy.
+   *
+   * ⚠ ĐƯỢC MIỄN COMPONENT KHÔNG PHẢI ĐƯỢC MIỄN LUẬT. Có chốt riêng bên
+   *   dưới canh đúng phần hành vi: ô rỗng vẫn phải xổ danh sách, và cả
+   *   `/pos` chỉ được có MỘT ô tìm hàng dùng chung.
+   */
+  "src/components/pos/order-screen.tsx",
 ]
 
 /** Màn có ô THÊM HÀNG VÀO PHIẾU (không phải bộ lọc của màn báo cáo). */
@@ -533,6 +545,37 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
       /q\.length >= 2\s*\?\s*base\.or\(/.test(src),
       "màn kiểm kê thôi xổ danh sách khi ô còn trống"
     ).toBe(true)
+  })
+
+  /**
+   * ⚠ `/pos` ĐƯỢC MIỄN `ProductPicker` NHƯNG KHÔNG ĐƯỢC MIỄN LUẬT.
+   *   Chủ nhà đã chốt cho toàn app: "bấm vào là phải xổ list rồi (như
+   *   khi chọn NCC ấy)". Ô rỗng trả về danh sách rỗng là người dùng
+   *   phải đoán từ khoá.
+   */
+  it("ô tìm hàng của /pos vẫn xổ danh sách khi còn trống", () => {
+    const src = code(read("src/components/pos/search-dropdown.tsx"))
+    /* Không gõ gì → `words` rỗng → vẫn trả về danh sách, không trả rỗng. */
+    expect(
+      /if \(!words\.length\) return items/.test(src),
+      "ô tìm của /pos thôi xổ danh sách khi ô còn trống"
+    ).toBe(true)
+    expect(
+      /if \(!words\.length\) return \[\]/.test(src),
+      "ô tìm của /pos trả danh sách RỖNG khi chưa gõ"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ VÀ CẢ `/pos` CHỈ CÓ MỘT Ô TÌM HÀNG. Đây đúng là thứ danh sách nợ
+   *   sinh ra để canh: miễn cho một màn rồi màn thứ hai tự vẽ tiếp là
+   *   quay lại đúng chỗ cũ.
+   */
+  it("/pos chỉ có một component ô tìm dùng chung", () => {
+    const pham = moiTsx(resolve(ROOT, "src/components/pos"))
+      .map((p) => p.slice(ROOT.length + 1))
+      .filter((rel) => /search|picker|dropdown/i.test(rel))
+    expect(pham).toEqual(["src/components/pos/search-dropdown.tsx"])
   })
 
   /** ⚠ Phép quét phải còn nhận ra mẫu ấy — nếu không nó xanh vì mù. */

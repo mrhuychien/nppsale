@@ -1,7 +1,12 @@
 "use client"
 
-import { DotChuaLam } from "@/components/pos/dot-chua-lam"
+/** MÀN 9 — PHIẾU NHẬP HÀNG. */
 
-export default function Page() {
-  return <DotChuaLam title="Phiếu nhập hàng" dot={4} gom="phiếu nhập, sửa phiếu nhập, trả NCC và sửa trả NCC (màn 9–12)" />
+import { useParams } from "next/navigation"
+import { PurchaseScreen } from "@/components/pos/purchase-screen"
+
+export default function PosPurchasePage() {
+  const { id } = useParams<{ id: string }>()
+  const moi = id === "moi"
+  return <PurchaseScreen mode="lap" slipCode={moi ? null : id} />
 }

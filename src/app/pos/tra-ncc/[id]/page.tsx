@@ -1,7 +1,12 @@
 "use client"
 
-import { DotChuaLam } from "@/components/pos/dot-chua-lam"
+/** MÀN 11 — PHIẾU TRẢ NCC. */
 
-export default function Page() {
-  return <DotChuaLam title="Phiếu trả NCC" dot={4} gom="phiếu nhập, sửa phiếu nhập, trả NCC và sửa trả NCC (màn 9–12)" />
+import { useParams } from "next/navigation"
+import { SupplierReturnScreen } from "@/components/pos/supplier-return-screen"
+
+export default function PosSupplierReturnPage() {
+  const { id } = useParams<{ id: string }>()
+  const moi = id === "moi"
+  return <SupplierReturnScreen mode="lap" slipCode={moi ? null : id} />
 }

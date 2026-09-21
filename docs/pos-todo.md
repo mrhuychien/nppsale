@@ -222,3 +222,77 @@ spec §7.2 mô tả.
 ⚠ Cố tình không đoán chiều. `cancel_invoice` hoàn hàng về **đúng lô đã
 lấy**; đoán sai lô là dải này nói một chiều kho khác với chiều máy chủ sẽ
 ghi — ngay trước lúc người dùng bấm.
+
+
+---
+
+## 13. ⚠ BÊN MUA KHÔNG CÓ LỆNH "LẬP LẠI" — đã chỉnh câu chữ
+
+**Chỗ:** banner màn 10 (sửa phiếu nhập) và màn 12 (sửa phiếu trả NCC).
+
+**Bản thiết kế ghi:** màn 10 mượn câu của màn 7 — *"huỷ và lập lại trong
+cùng một giao dịch… giá vốn bình quân được tính lại"*; màn 12 mượn câu của
+màn 8 — *"giữ nguyên số phiếu"*.
+
+**Cơ chế thật khác cả ba điểm:**
+
+| | Bên BÁN | Bên MUA |
+|---|---|---|
+| lệnh lập lại một bước | `reissue_invoice` ✓ | **không có** |
+| giữ số chứng từ | `HD-0143-1` ✓ | **không** — phiếu mới, số mới |
+| giá vốn | — | **theo LÔ** (`batches.unit_cost`), không có số bình quân |
+
+Bên mua chỉ có `cancel_purchase_invoice` / `cancel_supplier_return` rời với
+`complete_*`. Huỷ rồi lập lại là **hai thao tác riêng**, không phải một
+giao dịch.
+
+Giá vốn ghi ở `complete_purchase_invoice`:
+
+```sql
+v_unit_cost := (quantity * unit_price - line_discount) / base_qty
+```
+
+— từng lô một giá riêng. Không có số bình quân nào trôi theo mỗi lần nhập,
+nên ô delta `GIÁ VỐN BQ` của spec §7.2 đổi thành **`GIÁ VỐN LÔ`**.
+
+**Đã làm gì:** spec §7.2 cho phép — *"Chỉnh lại câu chữ cho khớp hành vi
+thật nếu khác"*. Banner nay nói đúng: hai thao tác riêng, phiếu mới mang số
+mới, giá vốn theo lô. Có chốt cấm cả ba câu cũ quay lại.
+
+**Còn thiếu:** hai bộ khoá chưa đọc được từ màn POS —
+`DA_TRA_TIEN` / `HANG_DA_XUAT` (phiếu nhập) và
+`DA_CAN_TRU` / `LO_DA_DONG` (trả NCC). Luật đã cài sẵn
+(`purchaseCancelLock`, `supplierReturnCancelLock`) và có chốt; chỉ chờ số
+thật cắm vào. Mặc định là **không khoá** — đoán sai theo hướng này chỉ mất
+một lời nhắc sớm, còn máy chủ vẫn chặn thật. Đoán ngược lại thì màn hình
+khoá một phiếu sửa được và không ai gỡ nổi.
+
+---
+
+## 14. Phiếu trả NCC chưa nối phiếu nhập gốc
+
+**Chỗ:** màn 11/12 — cột `LÔ / HSD` và cột `ĐÃ NHẬP`.
+
+**Thiếu:** phiếu nhập gốc, để lấy (a) danh sách **lô thuộc phiếu ấy** và
+(b) **số đã nhập còn lại** của từng dòng.
+
+**Đang hiện:** select lô ghi `chưa nối phiếu nhập gốc`; cột `ĐÃ NHẬP` để
+dấu `—`.
+
+⚠ **Cố tình không đổ toàn kho vào select lô.** Spec §8 mục 4 chốt riêng
+điều này: trả một lô không thuộc phiếu gốc là trả cho NCC món họ không bán
+cho mình, và `cancel_supplier_return` sẽ vướng `LO_DA_DONG` về sau.
+
+⚠ **Và cột `ĐÃ NHẬP` để `—` chứ không để 0.** Số 0 đọc như "đã nhận hết
+rồi, không trả được gì" — chặn nhầm một việc hợp lệ.
+
+---
+
+## 15. Danh mục nhà cung cấp chưa nạp vào POS
+
+**Chỗ:** card đối tác của màn 9–12, và dropdown `F4`.
+
+**Thiếu:** `loadSellRefData` nạp khách hàng, không nạp NCC.
+
+**Đang hiện:** dropdown rỗng kèm câu *"Chưa nạp được danh sách nhà cung cấp
+vào màn POS"*, và dòng `Nợ NCC sau phiếu` để `chưa xác định`.

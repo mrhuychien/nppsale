@@ -3,8 +3,14 @@
 /**
  * MÀN 7 — SỬA HÓA ĐƠN ĐÃ GHI SỔ. Spec §6, §7.2.
  *
- * ⚠ NPP TOÀN QUYỀN — MỌI TRƯỜNG MỞ (spec §7.2): khách, kho, lô/HSD,
- * ngày giờ, NVBH, tuyến, giá, giảm, thêm/xoá dòng, gỡ phiếu thu.
+ * ⚠ SPEC §7.2 VIẾT "NPP TOÀN QUYỀN — MỌI TRƯỜNG MỞ", VÀ `reissue_invoice`
+ * KHÔNG NHẬN PHẦN LỚN TRONG SỐ ĐÓ. RPC ấy chỉ nhận: dòng hàng (số
+ * lượng, giá, giảm theo dòng, thuế theo dòng), `payment_terms`,
+ * `invoice_date` và `notes`. Khách, kho xuất, NVBH, hạn trả, giảm giá
+ * cấp chứng từ, thu khác — không có cổng nào nhận. Bản đầu vẽ đủ các ô
+ * ấy; người dùng đổi khách, bấm lưu, tờ mới vẫn mang khách cũ và không
+ * câu nào báo. Nay chỉ vẽ những ô LƯU ĐƯỢC; thứ không lưu được thì hiện
+ * để đọc, không mời sửa. Spec §7.2 cho phép chỉnh cho khớp hành vi thật.
  *
  * ⚠ NHƯNG CÓ HAI KHOÁ THẬT, VÀ MÀN PHẢI NÓI RA TRƯỚC KHI NGƯỜI DÙNG
  * BẤM. `reissue_invoice` gọi `cancel_invoice`, và hàm ấy TỪ CHỐI khi:
@@ -31,20 +37,21 @@ import { savePosInvoice } from "@/lib/pos/save"
 import { invoiceWarnings } from "@/lib/orders/post-invoice"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
-import { formatCurrency } from "@/lib/utils"
-import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { reissueLock, invoiceEditTotals } from "@/lib/pos/invoice-edit"
 import { creditOnInvoice, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 import type { PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner } from "@/components/pos/doc-sub-header"
+import { DocSubHeader, SubHeaderDate, DocBanner, homNay } from "@/components/pos/doc-sub-header"
+import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
+import { posPrintHref } from "@/lib/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
   LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
 import {
-  MoneyRow, DocDiscountRow, TotalsHero, PanelActions, PanelButton,
+  MoneyRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
@@ -72,6 +79,8 @@ interface SrcLine {
   quantity: number
   unit_name: string
   unit_price: number
+  line_discount: number | null
+  vat_rate: number | null
   line_total: number
   product?: { name?: string | null; sku?: string | null } | null
 }
@@ -88,7 +97,7 @@ let dem = 0
 const newKey = () => `e${++dem}`
 
 export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
-  const { products, customers, stockByProduct, warnings } = usePosRefData()
+  const { products, stockByProduct, warnings } = usePosRefData()
   const { toast } = useToast()
   const router = useRouter()
   const [dangLuu, setDangLuu] = useState(false)
@@ -102,17 +111,14 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   const [dangTai, setDangTai] = useState(true)
 
   const [khach, setKhach] = useState<PosPartner | null>(null)
-  const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
   const [vatRate, setVatRate] = useState(0)
-  const [thuKhac, setThuKhac] = useState(0)
   const [dieuKhoan, setDieuKhoan] = useState("COD")
-  const [hanTra, setHanTra] = useState("")
   const [ghiChu, setGhiChu] = useState("")
-  const [kho, setKho] = useState("")
-  const [nvbh, setNvbh] = useState("")
-  const [thoiDiem, setThoiDiem] = useState("")
+  /* ⚠ Ngày của tờ MỚI — `reissue_invoice` nhận `invoice_date`, mặc định hôm nay. */
+  const [thoiDiem, setThoiDiem] = useState(homNay)
   const [moTimHang, setMoTimHang] = useState(false)
-  const [moTimKhach, setMoTimKhach] = useState(false)
+  const [daNap, setDaNap] = useState(false)
+  const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
 
   useEffect(() => {
     let huy = false
@@ -123,7 +129,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           .select("id, invoice_code, status, subtotal, vat, total, payment_terms, due_date, notes, customer_id, customer:customers(store_name, phone, address)")
           .eq("id", invoiceId).maybeSingle(),
         sb.from("sales_invoice_lines")
-          .select("id, product_id, quantity, unit_name, unit_price, line_total, product:products(name, sku)")
+          .select("id, product_id, quantity, unit_name, unit_price, line_discount, vat_rate, line_total, product:products(name, sku)")
           .eq("invoice_id", invoiceId).order("sort_order", { ascending: true }),
         sb.from("returns")
           .select("id, status, credit_note_amount, credit_with_invoice")
@@ -165,12 +171,18 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           units: [{ unit_name: x.unit_name, conversion: 1 }],
           qty: Number(x.quantity) || 0,
           price: Number(x.unit_price) || 0,
-          discount: { value: 0, unit: "vnd" },
+          /* ⚠ GIẢM THEO DÒNG CỦA TỜ CŨ LÊN MÀN. Bản đầu để 0: mở tờ có
+             giảm 50.000/dòng ra sửa, bấm lưu là tờ mới mất sạch giảm. */
+          discount: { value: Number(x.line_discount) || 0, unit: "vnd" },
           stock: stockByProduct[x.product_id] ?? null,
           /* ⚠ SỐ CŨ ĐỂ GẠCH NGANG — spec §7.2. */
           prevAmount: Number(x.line_total) || 0,
         }))
       )
+      /* Thuế suất của tờ cũ: mọi dòng cùng một suất thì lên ô chọn. */
+      const suat = Array.from(new Set(ds.map((x) => Math.round((Number(x.vat_rate) || 0) * 100))))
+      if (suat.length === 1) setVatRate(suat[0])
+      setDaNap(true)
       setRets((r.data as unknown as InvoiceReturnRow[]) ?? [])
       const ei = e.data as unknown as { status?: string; misa_inv_no?: string | null; misa_status?: string | null } | null
       setEInvoiceIssued(
@@ -229,14 +241,26 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
     () =>
       invoiceEditTotals({
         lines: lines.map((l) => ({ qty: l.qty, price: l.price, discount: l.discount })),
-        docDiscount,
+        /* ⚠ Không có giảm cấp chứng từ / thu khác — `sales_invoices`
+           không có cột, RPC không nhận. Xem đầu tệp. */
+        docDiscount: { value: 0, unit: "vnd" },
         vatRate,
-        other: thuKhac,
+        other: 0,
         paid: daThu,
         returnCredit,
       }),
-    [lines, docDiscount, vatRate, thuKhac, daThu, returnCredit]
+    [lines, vatRate, daThu, returnCredit]
   )
+
+  usePosDocLabel("INV", invoiceId, head?.invoice_code ?? null)
+  const chuKy = useMemo(
+    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), vatRate, dieuKhoan, ghiChu, thoiDiem]),
+    [lines, vatRate, dieuKhoan, ghiChu, thoiDiem]
+  )
+  useEffect(() => {
+    if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
+  }, [daNap, chuKy, mocChuaLuu])
+  usePosDirty(chuKy, mocChuaLuu)
 
   /**
    * ⚠ KHOÁ TÍNH TỪ SỐ THẬT, KHÔNG TỪ PHỎNG ĐOÁN. Đọc phiếu thu hỏng
@@ -284,8 +308,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
 
   usePosKeys({
     F3: () => setMoTimHang(true),
-    F4: () => setMoTimKhach(true),
-    Escape: () => { setMoTimHang(false); setMoTimKhach(false) },
+    Escape: () => setMoTimHang(false),
   })
 
   const mucHang = useMemo<SearchItem[]>(
@@ -303,17 +326,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         ),
       })),
     [products, stockByProduct]
-  )
-
-  const mucKhach = useMemo<SearchItem[]>(
-    () =>
-      customers.map((c) => ({
-        id: c.id,
-        title: c.store_name,
-        meta: [c.phone, c.address].filter(Boolean).join(" · "),
-        keywords: `${c.owner_name ?? ""} ${c.phone ?? ""}`,
-      })),
-    [customers]
   )
 
   /** Công nợ khách + lô còn hàng. */
@@ -357,7 +369,10 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         lines,
         paymentTerms: dieuKhoan,
         notes: ghiChu,
+        /* ⚠ Ô thuế trên panel đẩy xuống TỪNG DÒNG — xem `posLinesToInvoice`. */
+        vatRate: vatRate / 100,
       })
+      setMocChuaLuu(chuKy)
       toast({
         title: `Đã lập lại — hóa đơn ${r.invoiceCode}`,
         description: invoiceWarnings(r) ?? undefined,
@@ -368,7 +383,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
     } finally {
       setDangLuu(false)
     }
-  }, [khoa, invoiceId, lines, dieuKhoan, ghiChu, router, toast])
+  }, [khoa, invoiceId, lines, dieuKhoan, ghiChu, vatRate, chuKy, router, toast])
 
   /**
    * DẢI DELTA — ba ô của spec §7.2: `KHO` · `CÔNG NỢ` · `HĐĐT MISA`.
@@ -420,26 +435,24 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         code={head?.invoice_code ?? (dangTai ? "…" : null)}
         badge={{ label: "ĐANG SỬA", tone: "dang-sua" }}
         subtitle="NPP toàn quyền · mọi trường mở"
-        right={
-          <>
-            <SubHeaderSelect id="e-nvbh" label="NVBH" value={nvbh} onChange={setNvbh} options={[]} />
-            <SubHeaderSelect
-              id="e-kho"
-              label="Kho xuất"
-              value={kho}
-              onChange={setKho}
-              options={[
-                { id: "sale", label: "Kho bán" },
-                { id: "date", label: "Kho cận date" },
-              ]}
-            />
-            <SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày xuất" />
-          </>
-        }
+        right={<SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày tờ mới" />}
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
-        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+        {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/* ⚠ Neo dropdown tìm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
+          <div className="relative">
+            <SearchDropdown
+              open={moTimHang}
+              onClose={() => setMoTimHang(false)}
+              title="Tìm hàng hóa"
+              placeholder="Tên hàng, mã hàng, mã vạch…"
+              items={mucHang}
+              onPick={(it) => themHang(it.id)}
+              emptyHint="Không tìm thấy mặt hàng nào khớp."
+            />
+          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -567,18 +580,8 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         </div>
 
         <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
-          <div className="relative">
-            <PartnerCard partner={khach} onPick={() => setMoTimKhach(true)} />
-            <SearchDropdown
-              open={moTimKhach}
-              onClose={() => setMoTimKhach(false)}
-              title="Tìm khách hàng"
-              placeholder="Tên cửa hàng, SĐT, địa chỉ…"
-              items={mucKhach}
-              onPick={(it) => setKhach({ id: it.id, name: it.title, meta: it.meta })}
-              emptyHint="Không tìm thấy khách nào khớp."
-            />
-          </div>
+          {/* ⚠ Khách của tờ cũ đi theo tờ mới — RPC không nhận khách khác. */}
+          <PartnerCard partner={khach} readOnly />
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
             {/* ⚠ Số CŨ gạch ngang — spec §7.2. */}
@@ -586,13 +589,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
             {t.lineDiscount > 0 && (
               <MoneyRow label="Giảm giá dòng" value={t.lineDiscount} tone="muted" />
             )}
-            <DocDiscountRow
-              id="e-giam"
-              label="Giảm giá đơn"
-              discount={docDiscount}
-              amount={t.docDiscount}
-              onChange={(d) => setDocDiscount(d.unit === docDiscount.unit ? d : switchUnit(docDiscount, t.goods))}
-            />
             <div className="flex items-center gap-2 py-[5px]">
               <label htmlFor="e-vat" className="flex-grow text-[13px] text-[#334155]">Thuế GTGT</label>
               <select
@@ -607,20 +603,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                 {formatCurrency(t.vat)}
               </span>
             </div>
-            <div className="flex items-center gap-2 py-[5px]">
-              <label htmlFor="e-thukhac" className="flex-grow text-[13px] text-[#334155]">Thu khác</label>
-              <input
-                id="e-thukhac"
-                className="n h-[30px] w-[74px] rounded-md border border-[#cbd5e1] px-1.5 text-right text-[12.5px]"
-                inputMode="numeric"
-                value={thuKhac === 0 ? "0" : String(thuKhac)}
-                onChange={(e) => setThuKhac(Number(e.target.value.replace(/\D/g, "")) || 0)}
-              />
-              <span className="n w-[84px] text-right text-[13.5px] text-[#0f172a]">
-                {formatCurrency(t.other)}
-              </span>
-            </div>
-
             <TotalsHero label="Tổng cộng" value={t.total} />
 
             {/*
@@ -699,15 +681,12 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                 <option>Công nợ 30 ngày</option>
               </select>
             </div>
+            {/* ⚠ Hạn trả do máy chủ tính từ điều khoản — hiện, không mời sửa. */}
             <div className="mt-2 flex items-center justify-between gap-2.5">
-              <label htmlFor="e-han" className="text-[13px] text-[#334155]">Hạn trả</label>
-              <input
-                id="e-han"
-                type="date"
-                value={hanTra}
-                onChange={(e) => setHanTra(e.target.value)}
-                className="n h-8 w-[150px] rounded-[7px] border border-[#cbd5e1] px-2.5 text-right text-[12.5px]"
-              />
+              <span className="text-[13px] text-[#334155]">Hạn trả tờ cũ</span>
+              <span className="n text-[12.5px] text-[#64748b]">
+                {head?.due_date ? formatDate(head.due_date) : "—"}
+              </span>
             </div>
             <input
               type="text"
@@ -728,7 +707,13 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
 
           <PanelActions>
             <PanelButton width={54} onClick={() => router.back()}>Huỷ</PanelButton>
-            <PanelButton width={96} onClick={() => window.print()}>In</PanelButton>
+            <PanelButton
+              width={96}
+              title="Mở trang in hóa đơn hiện tại"
+              onClick={() => { const h = posPrintHref("INV", invoiceId); if (h) window.open(h, "_blank") }}
+            >
+              In
+            </PanelButton>
             <PanelButton
               variant="primary"
               disabled={!!khoa || lines.length === 0 || dangLuu}
@@ -738,18 +723,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
               {dangLuu ? "Đang lập lại…" : "Huỷ HĐ & lập lại"}
             </PanelButton>
           </PanelActions>
-
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
-              items={mucHang}
-              onPick={(it) => themHang(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
         </div>
       </div>
     </>

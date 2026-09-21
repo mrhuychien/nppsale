@@ -50,8 +50,9 @@ import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import {
-  DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner,
+  DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay,
 } from "@/components/pos/doc-sub-header"
+import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell, LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
@@ -119,8 +120,10 @@ export function SupplierReturnScreen({
   const [lyDo, setLyDo] = useState("damaged")
   const [ghiChu, setGhiChu] = useState("")
   const [hdDieuChinh, setHdDieuChinh] = useState("")
-  const [thoiDiem, setThoiDiem] = useState("")
+  const [thoiDiem, setThoiDiem] = useState(homNay)
   const [kho, setKho] = useState("date")
+  const [daNap, setDaNap] = useState(!returnId)
+  const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   const [moTimHang, setMoTimHang] = useState(false)
   const [moTimNcc, setMoTimNcc] = useState(false)
 
@@ -139,6 +142,16 @@ export function SupplierReturnScreen({
 
   const khoa = mode === "sua" ? supplierReturnCancelLock({ creditOffset, lotClosed }) : null
   const noConLai = ncc?.debt == null ? null : Math.max(0, ncc.debt - t.dueFromSupplier)
+
+  usePosDocLabel("PRET", returnId, slipCode)
+  const chuKy = useMemo(
+    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, phi, lyDo, ghiChu, kho, thoiDiem]),
+    [lines, ncc?.id, phi, lyDo, ghiChu, kho, thoiDiem]
+  )
+  useEffect(() => {
+    if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
+  }, [daNap, chuKy, mocChuaLuu])
+  usePosDirty(chuKy, mocChuaLuu)
 
   const patchLine = useCallback((key: string, p: Partial<PosLine>) => {
     setLines((cu) => cu.map((l) => (l.key === key ? { ...l, ...p } : l)))
@@ -216,7 +229,7 @@ export function SupplierReturnScreen({
         const { data, error } = await sb
           .from("supplier_returns")
           .select(
-            "id, return_code, supplier_id, return_date, warehouse_zone, reason, notes, status, " +
+            "id, return_code, supplier_id, return_date, warehouse_zone, reason, discount, notes, status, " +
               "supplier:suppliers(name, code), " +
               "lines:supplier_return_lines(product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))"
           )
@@ -226,7 +239,7 @@ export function SupplierReturnScreen({
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
           return_code: string | null; supplier_id: string; return_date: string
-          warehouse_zone: string | null; reason: string | null; notes: string | null
+          warehouse_zone: string | null; reason: string | null; discount: number | null; notes: string | null
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
@@ -237,7 +250,8 @@ export function SupplierReturnScreen({
         if (!r) { setLoiNap("Không tìm thấy phiếu trả NCC này."); return }
         setSlipCode(r.return_code)
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
-        setThoiDiem(r.return_date || "")
+        setThoiDiem(r.return_date || homNay())
+        setPhi({ value: Number(r.discount) || 0, unit: "vnd" })
         setKho(r.warehouse_zone || "date")
         if (r.reason) setLyDo(r.reason)
         setGhiChu(r.notes || "")
@@ -261,6 +275,7 @@ export function SupplierReturnScreen({
             note: x.notes ?? undefined,
           }))
         )
+        setDaNap(true)
       } catch (e) {
         if (!huy) setLoiNap(errorMessage(e))
       }
@@ -345,7 +360,7 @@ export function SupplierReturnScreen({
           orgId: user.org_id,
           userId: user.id,
           supplierId: ncc.id,
-          returnDate: thoiDiem || new Date().toISOString().slice(0, 10),
+          returnDate: thoiDiem || homNay(),
           zone: kho,
           reason: lyDo,
           notes: ghiChu,
@@ -359,6 +374,7 @@ export function SupplierReturnScreen({
           vat: 0,
           total: t.dueFromSupplier,
         })
+        setMocChuaLuu(chuKy)
         toast({ title: complete ? "Đã ghi nhận — xuất kho và giảm công nợ NCC" : "Đã lưu phiếu nháp" })
         if (!returnId) router.replace(`/pos/tra-ncc/${r.returnId}`)
       } catch (e) {
@@ -367,7 +383,7 @@ export function SupplierReturnScreen({
         setDangLuu(false)
       }
     },
-    [user, ncc, lines, returnId, thoiDiem, kho, lyDo, ghiChu, t, router, toast]
+    [user, ncc, lines, returnId, thoiDiem, kho, lyDo, ghiChu, t, chuKy, router, toast]
   )
 
   const deltaCells = useMemo<DeltaCell[]>(
@@ -421,7 +437,20 @@ export function SupplierReturnScreen({
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
-        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+        {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/* ⚠ Neo dropdown tìm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
+          <div className="relative">
+            <SearchDropdown
+              open={moTimHang}
+              onClose={() => setMoTimHang(false)}
+              title="Tìm hàng trả NCC"
+              placeholder="Tên hàng, mã hàng…"
+              items={mucHang}
+              onPick={(it) => themHang(it.id)}
+              emptyHint="Không tìm thấy mặt hàng nào khớp."
+            />
+          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -743,7 +772,8 @@ export function SupplierReturnScreen({
           </div>
 
           <PanelActions>
-            <PanelButton width={54} onClick={() => window.print()}>In</PanelButton>
+            {/* ⚠ Chưa có mẫu in phiếu trả NCC — nút mờ kèm lý do. */}
+            <PanelButton width={54} disabled title="Chưa có mẫu in phiếu trả NCC">In</PanelButton>
             <PanelButton
               width={96}
               disabled={dangLuu}
@@ -760,18 +790,6 @@ export function SupplierReturnScreen({
               {dangLuu ? "Đang ghi…" : "Ghi nhận & xuất kho"}
             </PanelButton>
           </PanelActions>
-
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng trả NCC"
-              placeholder="Tên hàng, mã hàng…"
-              items={mucHang}
-              onPick={(it) => themHang(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
         </div>
       </div>
     </>

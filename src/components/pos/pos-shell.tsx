@@ -14,6 +14,15 @@
  * ⚠ DƯỚI 1280px THÌ NÓI THẲNG. Spec §2. Bóp màn POS xuống điện thoại
  * là dựng một màn thứ ba không ai thiết kế; `/sell` đã có sẵn cho khổ
  * ấy và nó tốt hơn bất cứ thứ gì ép ra từ đây.
+ *
+ * ⚠ KHUNG PHẢI GIỮ ĐƯỢC TIÊU ĐIỂM, nếu không phím tắt CHẾT. `keydown`
+ * chỉ nổi bọt từ phần tử đang có tiêu điểm; mở trang xong tiêu điểm
+ * nằm ở `<body>` — ngoài khung — nên `F3` không tới đây cho tới khi
+ * người dùng bấm chuột vào đâu đó bên trong. Bản đầu đúng y như thế:
+ * mở `/pos`, bấm F3, không có gì xảy ra. Nay khung có `tabIndex={-1}`,
+ * tự lấy tiêu điểm lúc dựng, và lấy lại mỗi khi tiêu điểm rơi ra
+ * `<body>` (đóng modal là một lần như vậy). Vẫn KHÔNG gắn lên
+ * `document` — spec §10.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
@@ -48,8 +57,22 @@ export function usePosKeys(handlers: PosKeyHandlers) {
   }, [])
 }
 
+/**
+ * Kích một phím tắt từ một nút trên màn — ô tìm ở topbar dùng cái này
+ * để mở đúng dropdown của màn đang đứng.
+ *
+ * @returns `false` nếu màn đang mở không đăng ký phím ấy.
+ */
+export function firePosKey(k: PosKey): boolean {
+  const fn = dangKy.doc()[k]
+  if (!fn) return false
+  fn()
+  return true
+}
+
 export function PosShell({ children }: { children: ReactNode }) {
   const [hepQua, setHepQua] = useState(false)
+  const khungRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const do1 = () => setHepQua(window.innerWidth < 1280)
@@ -57,6 +80,11 @@ export function PosShell({ children }: { children: ReactNode }) {
     window.addEventListener("resize", do1)
     return () => window.removeEventListener("resize", do1)
   }, [])
+
+  /* ⚠ Lấy tiêu điểm lúc dựng — xem đầu tệp. */
+  useEffect(() => {
+    if (!hepQua) khungRef.current?.focus({ preventScroll: true })
+  }, [hepQua])
 
   /**
    * ⚠ GẮN Ở KHUNG NÀY, KHÔNG GẮN `document` (spec §10). `keydown` nổi
@@ -80,6 +108,18 @@ export function PosShell({ children }: { children: ReactNode }) {
     fn()
   }, [])
 
+  /* ⚠ Tiêu điểm rơi ra `<body>` (phần tử đang có tiêu điểm bị gỡ khỏi
+     DOM — đóng dropdown, xoá dòng) thì kéo về khung. `relatedTarget`
+     rỗng nghĩa là không có phần tử nào nhận tiêu điểm tiếp theo. */
+  const onBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    if (e.relatedTarget) return
+    const khung = khungRef.current
+    if (!khung) return
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) khung.focus({ preventScroll: true })
+    })
+  }, [])
+
   if (hepQua) {
     return (
       <div className="pos-scope flex h-screen items-center justify-center p-6 text-center">
@@ -98,7 +138,13 @@ export function PosShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="pos-scope flex h-screen flex-col overflow-hidden" onKeyDown={onKeyDown}>
+    <div
+      ref={khungRef}
+      tabIndex={-1}
+      className="pos-scope flex h-screen flex-col overflow-hidden outline-none"
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+    >
       <PosTopBar />
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>

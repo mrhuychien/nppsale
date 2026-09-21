@@ -80,28 +80,56 @@ export function SubHeaderSelect({
   )
 }
 
-/** Ô ngày giờ của chứng từ — spec §2, có icon lịch. */
+/** Hôm nay theo giờ máy, dạng `YYYY-MM-DD` — giá trị mặc định cho ô ngày. */
+export function homNay(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/**
+ * Ô ngày của chứng từ — spec §2, có icon lịch.
+ *
+ * ⚠ `type="date"`, KHÔNG PHẢI Ô CHỮ TỰ DO. Bản đầu là `type="text"`, và
+ * giá trị ấy đi thẳng vào cột `date` của `purchase_invoices` /
+ * `supplier_returns` — người dùng gõ `21/09/2026` là Postgres từ chối
+ * cả phiếu. Ô ngày của trình duyệt chỉ cho ra `YYYY-MM-DD`.
+ *
+ * ⚠ `readOnly` cho những chứng từ mà ngày do máy chủ đặt lúc ghi sổ
+ * (đơn hàng, hóa đơn, phiếu trả): vẫn hiện để người dùng biết, nhưng
+ * không mời họ đổi một thứ không lưu.
+ */
 export function SubHeaderDate({
   value,
   onChange,
-  label = "Thời điểm phiếu",
+  label = "Ngày chứng từ",
+  readOnly,
 }: {
   value: string
-  onChange: (v: string) => void
+  onChange?: (v: string) => void
   label?: string
+  readOnly?: boolean
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-[7px] rounded-[7px] border border-[#cbd5e1] bg-white px-2.5">
+    <div
+      className={`flex h-8 shrink-0 items-center gap-[7px] rounded-[7px] border border-[#cbd5e1] px-2.5 ${
+        readOnly ? "bg-[#f8fafc]" : "bg-white"
+      }`}
+      title={readOnly ? `${label} ghi theo lúc lưu` : undefined}
+    >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" aria-hidden>
         <rect x="3" y="5" width="18" height="16" rx="2" />
         <path d="M3 10h18M8 3v4M16 3v4" />
       </svg>
       <input
-        className="n w-[124px] border-none text-[12px] text-[#0f172a] outline-none"
-        type="text"
+        className={`n w-[132px] border-none bg-transparent text-[12px] outline-none ${
+          readOnly ? "text-[#64748b]" : "text-[#0f172a]"
+        }`}
+        type="date"
         aria-label={label}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
+        onChange={(e) => onChange?.(e.target.value)}
       />
     </div>
   )

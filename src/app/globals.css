@@ -510,5 +510,14 @@
 .pos-scope :focus-visible {
   outline: 2px solid var(--pos-primary);
   outline-offset: 1px;
-  border-radius: 4px;
+  /* ⚠ KHÔNG đặt `border-radius` ở đây: nó đè lên bo góc riêng của từng
+   *   ô (`rounded-md`, `rounded-[7px]`…) — ô đang được chọn đổi hình
+   *   dạng so với ô bên cạnh, đúng lúc mắt đang nhìn vào nó. */
+}
+
+/* ⚠ Khung POS tự giữ tiêu điểm để phím tắt chạy (xem `PosShell`) — nó
+ *   không được vẽ viền khi nhận tiêu điểm, vì đó không phải một ô
+ *   người dùng đang thao tác. */
+.pos-scope.pos-scope:focus-visible {
+  outline: none;
 }

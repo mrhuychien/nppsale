@@ -11,13 +11,20 @@
  * `<button>` là HTML không hợp lệ; trình duyệt tự gỡ lồng và kết quả
  * là bấm `×` lại kích cả tab. Hai nút anh em, tab lo chuyển, `×` lo
  * đóng.
+ *
+ * ⚠ NÚT `+` HỎI LOẠI CHỨNG TỪ. Bản đầu mở thẳng một đơn hàng — người
+ * cần lập phiếu nhập không có cách nào mở nó từ topbar, phải gõ URL.
  */
 
+import { useState } from "react"
 import { usePosTabs } from "@/store/pos/tabs"
-import { POS_DOT } from "@/lib/pos/tabs"
+import { POS_DOC_LABEL, POS_DOT, type PosDocType } from "@/lib/pos/tabs"
+
+const LOAI_MO_MOI: PosDocType[] = ["SO", "RET", "PUR", "PRET"]
 
 export function DocTabs() {
   const { tabs, activeKey, close, activate, openNew } = usePosTabs()
+  const [moMenu, setMoMenu] = useState(false)
 
   return (
     <div className="flex min-w-0 flex-grow items-center gap-1">
@@ -35,6 +42,7 @@ export function DocTabs() {
                 type="button"
                 onClick={() => activate(t.key)}
                 aria-current={dang ? "page" : undefined}
+                title={POS_DOC_LABEL[t.docType]}
                 className={`flex items-center gap-[7px] text-[13px] ${
                   dang ? "font-semibold text-[#0f172a]" : "font-medium text-[#cbd5e1]"
                 }`}
@@ -75,14 +83,40 @@ export function DocTabs() {
           )
         })}
       </div>
-      <button
-        type="button"
-        aria-label="Mở chứng từ mới"
-        onClick={() => openNew("SO")}
-        className="ml-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#475569] text-[16px] leading-none text-[#94a3b8] hover:border-[#64748b] hover:text-[#cbd5e1]"
-      >
-        +
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Mở chứng từ mới"
+          aria-expanded={moMenu}
+          onClick={() => setMoMenu((v) => !v)}
+          className="ml-1 flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#475569] text-[16px] leading-none text-[#94a3b8] hover:border-[#64748b] hover:text-[#cbd5e1]"
+        >
+          +
+        </button>
+        {moMenu && (
+          <>
+            <button
+              type="button"
+              aria-label="Đóng menu"
+              className="fixed inset-0 z-40 cursor-default"
+              onClick={() => setMoMenu(false)}
+            />
+            <div className="absolute right-0 top-9 z-50 w-[200px] overflow-hidden rounded-[10px] border border-[#e2e8f0] bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,.18)]">
+              {LOAI_MO_MOI.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => { setMoMenu(false); openNew(k) }}
+                  className="flex w-full items-center gap-2 px-3 py-[7px] text-left text-[12.5px] text-[#334155] hover:bg-[#f8fafc]"
+                >
+                  <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: POS_DOT[k] }} />
+                  {POS_DOC_LABEL[k]}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

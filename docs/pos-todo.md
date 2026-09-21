@@ -30,7 +30,7 @@ giữ ở state client nên đổi số lượng vẫn chạy đúng luật.
 
 ## 2. "Nợ sau đơn này" chưa có số
 
-**Chỗ:** panel màn 1, dòng ngay dưới `Tính vào công nợ`.
+**Chỗ:** panel màn 1, dòng ngay dưới `Tính vào công nợ`; card NCC màn 9–12.
 
 **ĐÃ NỐI (đợt 5).** `loadCustomerDebt` / `loadSupplierDebt` đọc
 `receivables` / `payables` qua `fetchAllForAggregate`.
@@ -129,6 +129,11 @@ KHÔNG viết một dòng nghiệp vụ mới nào. Nó chỉ dịch state của
 | phiếu nhập | `saveReceiptLines` + RPC `complete_purchase_invoice` |
 | trả NCC | `saveReturnLines` + RPC `complete_supplier_return` |
 
+**Rà soát (đợt 6):** hàng trả kèm đơn (`F8`/`F9`) nay đi xuống thật qua
+`returnLines` + `heldReturnId` — bản đầu gửi `[]` trong khi panel vẫn trừ
+"Trừ hàng trả". Mã chống lặp `client_request_id` sinh MỘT lần mỗi lần mở
+màn (bản đầu sinh mỗi cú bấm nên bấm lại sau rớt mạng là hai đơn).
+
 **Còn thiếu:** nút `Lưu thay đổi` của màn 1b làm **hai bước** khi vừa lưu
 vừa lập hóa đơn (`applyOrderEdit` rồi `postInvoice`). Bước 2 hỏng thì đơn
 ĐÃ lưu, và màn nói thẳng điều đó thay vì báo "chưa lưu được".
@@ -141,12 +146,17 @@ dịch, idempotent. Có chốt canh ba việc: chỉ `lib/pos/save.ts` được 
 
 ---
 
-## 8. Tab `In phiếu` trong drawer thiết lập
+## 8. In phiếu — chưa có mẫu in riêng cho POS
 
-**Chỗ:** drawer thiết lập hiển thị (spec §9), tab thứ ba.
+**Chỗ:** nút `In` ở topbar và trên panel mọi màn; tab `In phiếu` của drawer.
 
-**Đang hiện:** một câu nói rằng mẫu in dùng chung với phần đang chạy và
-thiết lập riêng cho POS chưa có trong đợt này.
+**Rà soát (đợt 6):** bản đầu gọi `window.print()` — in cả màn POS ra một
+trang toàn nút bấm. Nay: đơn hàng và hóa đơn đã lưu **mở trang in của
+phần đang chạy** (`/orders/[id]/print`, `/sales-invoices/[id]/print`, xem
+`posPrintHref`); phiếu trả / phiếu nhập / trả NCC **chưa có mẫu in** nên
+nút mờ kèm lý do.
+
+**Thiếu:** mẫu in cho ba loại phiếu kia, và thiết lập in riêng cho POS.
 
 ---
 
@@ -179,8 +189,12 @@ số đã mua — điền sẵn cả tờ là một cú Enter nhầm trả sạc
 ⚠ **Bỏ dòng `is_exchange` của tờ gốc.** Dòng ấy là hàng đã GIAO BÙ cho
 khách, không phải hàng khách mua — trả lại nó là một việc khác hẳn.
 
-**Còn thiếu:** ô tìm hàng trả vẫn tìm trong toàn danh mục chứ chưa giới hạn
-trong hóa đơn gốc (người dùng thêm tay được một món ngoài tờ).
+**Rà soát (đợt 6):** đã gắn hóa đơn gốc thì ô tìm hàng trả **chỉ liệt kê
+món có trên tờ ấy**; khách của tờ lên card luôn; `Giá gốc hàng mua` có số
+thật khi mọi dòng trả đều nằm trên tờ gốc. Nút `Trả hàng` trên màn hóa đơn
+mở thẳng phiếu mới nạp sẵn tờ ấy (`/pos/tra-hang/moi?invoice=`).
+
+**Còn thiếu:** không có gì ở phía nạp.
 
 ⚠ Đây là **ràng buộc nghiệp vụ**, không phải thẩm mỹ: trả một món không có
 trên hóa đơn gốc là trả hàng không bán. Phần nghiệp vụ đang chạy đã có chốt
@@ -414,3 +428,55 @@ phiếu chi riêng.
 
 **Đang hiện:** ô gõ được, và ngay dưới có câu *"Chưa có cột lưu số này; ghi
 vào đây chỉ để in trên phiếu"*.
+
+---
+
+## 20. ⚠ RÀ SOÁT ĐỢT 6 — những ô ĐÃ BỎ vì không có cột
+
+Mỗi ô dưới đây bản đầu vẽ đúng theo spec §6, và mỗi ô đều **đổi số trên
+màn mà không đi xuống sổ**. Spec §7.2 cho phép chỉnh cho khớp hành vi
+thật; ô không lưu được thì không vẽ, hoặc hiện để đọc.
+
+| Màn | Ô đã bỏ / khoá | Vì sao |
+|---|---|---|
+| 3/8 phiếu trả | `Phí trả hàng` | `returns` không có cột; `complete_return` tính `credit_note_amount` từ dòng |
+| 7 sửa HĐ | `Giảm giá đơn`, `Thu khác`, `Hạn trả`, `Kho xuất`, `NVBH`, đổi khách | `reissue_invoice` chỉ nhận dòng, `payment_terms`, `invoice_date`, `notes` |
+| 9/10 nhập hàng | `Chi phí nhập khác` | `purchase_invoices` không có cột; RPC tính `subtotal + vat − discount` |
+| 9/10 nhập hàng | `Tiền trả NCC` + 3 nút phương thức | RPC luôn ghi cả phiếu vào `payables`; trả tiền là phiếu chi riêng |
+| 3/8, 11/12 | 3 nút `Hình thức hoàn` | vẫn vẽ, nhưng chọn tiền mặt/CK thì có câu nói phiếu vẫn ghi công nợ |
+
+**Muốn có lại** thì cần thêm cột + sửa RPC — đổi schema, ngoài đợt này.
+
+**Thuế thì giữ được:** màn 7 đẩy thuế suất xuống `vat_rate` từng dòng; màn
+9 gửi `vat_override` (bản đầu gửi `vat` ở đầu phiếu rồi RPC ghi đè bằng 0).
+
+---
+
+## 21. Rà soát đợt 6 — lỗi giao diện đã sửa
+
+- **Phím tắt chết cho tới khi bấm chuột vào màn** — khung không có tiêu
+  điểm nên `keydown` từ `<body>` không tới. Nay khung `tabIndex={-1}`, tự
+  lấy tiêu điểm, và kéo về khi tiêu điểm rơi ra `<body>`.
+- **Dropdown tìm hàng mở rơi khỏi màn** — neo ở đáy panel phải, mở xuống
+  dưới mép màn, bị `overflow-hidden` cắt. Nay neo ở đỉnh cột trái, xổ đè
+  lên bảng.
+- **Cột trái cứng 1012px** — 1366px bị cắt panel phải. Nay `flex-1`.
+- **Tab không đồng bộ URL** — dán link không mở tab; lưu xong tab vẫn
+  "Đơn mới 1"; chip "chưa lưu" không bao giờ hiện. Nay store nghe
+  `pathname`, màn đặt tên tab qua `usePosDocLabel`, chip qua `usePosDirty`.
+- **Ô tìm ở topbar là `<input>` không nối vào đâu** — nay là nút mở
+  dropdown F3 của màn đang đứng.
+- **Ô ngày là chữ tự do** đi vào cột `date` — nay `type="date"`, mặc định
+  hôm nay; chứng từ mà ngày do máy chủ đặt thì chỉ đọc.
+- **`returns.reason = 'wrong'`** vi phạm CHECK — nay dùng `RETURN_REASONS`.
+- **Mở đơn đã lưu không lên khách** — nút lưu từ chối "chưa chọn khách"
+  trên đơn đã có khách.
+- **Mở HĐ ra sửa mất giảm giá dòng** — bản đầu nạp `discount: 0`.
+- **`<Link>` lồng trong `<button>`** ở nút Sửa HĐ; nút `Phát hành HĐĐT`
+  và `In` không làm gì — nay dẫn tới màn/trang thật của phần đang chạy.
+- **Hóa đơn: "Còn lại" = tổng** — nay trừ tiền đã thu (đọc
+  `cash_receipt_lines`), `chưa xác định` khi chưa đọc được.
+- **Nút `+` chỉ mở đơn hàng** — nay hỏi loại chứng từ. Có trang gốc `/pos`
+  (bản đầu đóng tab cuối là 404).
+- **Thiết lập đọc từ `localStorage` sau lần vẽ đầu** nên đơn vị giảm mặc
+  định / ghi nợ mặc định người dùng đã chọn bị bỏ qua — nay áp khi `ready`.

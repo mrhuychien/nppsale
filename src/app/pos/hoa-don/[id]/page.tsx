@@ -14,22 +14,31 @@
  * chỗ DUY NHẤT trong kho mã trả lời "phiếu này đã trừ chưa", và nó là
  * bản sao của câu SQL trong mig 133. Tự xét ở màn POS là màn hình nói
  * một đằng, sổ ghi một nẻo.
+ *
+ * ⚠ "CÒN LẠI HÓA ĐƠN" LÀ TỔNG TRỪ TIỀN ĐÃ THU. Bản đầu ghi nó bằng
+ * tổng — bậc hai và bậc một trùng nhau, và người đọc không biết khách
+ * đã trả đồng nào chưa. Đọc `cash_receipt_lines` như màn 7 đang đọc.
+ *
+ * ⚠ NÚT NÀO CHƯA LÀM ĐƯỢC Ở ĐÂY THÌ DẪN TỚI CHỖ LÀM ĐƯỢC, không để
+ * một nút bấm vào không có gì xảy ra. In → trang in của phần đang
+ * chạy; Phát hành HĐĐT → màn hóa đơn của phần đang chạy (nơi nút phát
+ * hành thật đang nằm); Trả hàng → mở phiếu trả mới nạp sẵn tờ này.
  */
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
-import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   creditOnInvoice, netDueOnInvoice, type InvoiceReturnRow,
 } from "@/lib/orders/invoice-credit"
+import { posPrintHref } from "@/lib/pos/tabs"
+import { usePosDocLabel } from "@/store/pos/tabs"
 import { DocSubHeader } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, LineTableHeader, POS_GRID } from "@/components/pos/line-table"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton } from "@/components/pos/money-panel"
 import { PartnerCard } from "@/components/pos/partner-card"
-import { SourceInvoiceModal } from "@/components/pos/source-invoice-modal"
 
 interface Head {
   id: string
@@ -41,6 +50,7 @@ interface Head {
   total: number
   payment_terms: string | null
   due_date: string | null
+  customer_id: string
   customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
 }
 
@@ -49,6 +59,7 @@ interface Line {
   quantity: number
   unit_name: string
   unit_price: number
+  line_discount: number | null
   line_total: number
   is_exchange: boolean
   product?: { name?: string | null; sku?: string | null } | null
@@ -56,27 +67,34 @@ interface Line {
 
 export default function PosInvoicePage() {
   const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const [head, setHead] = useState<Head | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [rets, setRets] = useState<InvoiceReturnRow[]>([])
+  /** Đã thu — `null` là chưa đọc được, và bậc hai hiện "chưa xác định". */
+  const [daThu, setDaThu] = useState<number | null>(null)
   const [loi, setLoi] = useState<string | null>(null)
   const [dangTai, setDangTai] = useState(true)
-  const [moChonHD, setMoChonHD] = useState(false)
+
+  usePosDocLabel("INV", id, head?.invoice_code ?? null)
 
   useEffect(() => {
     if (!id || id === "moi") { setDangTai(false); return }
     let huy = false
     ;(async () => {
       const sb = createClient()
-      const [h, l, r] = await Promise.all([
+      const [h, l, r, p] = await Promise.all([
         sb.from("sales_invoices")
-          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer:customers(store_name, phone, address)")
+          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, customer:customers(store_name, phone, address)")
           .eq("id", id).maybeSingle(),
         sb.from("sales_invoice_lines")
-          .select("id, quantity, unit_name, unit_price, line_total, is_exchange, product:products(name, sku)")
+          .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
           .eq("invoice_id", id).order("sort_order", { ascending: true }),
         sb.from("returns")
           .select("id, status, credit_note_amount, credit_with_invoice, created_at, reason")
+          .eq("invoice_id", id),
+        sb.from("cash_receipt_lines")
+          .select("amount, receipt:cash_receipts(status)")
           .eq("invoice_id", id),
       ])
       if (huy) return
@@ -90,26 +108,34 @@ export default function PosInvoicePage() {
       setHead((h.data as unknown as Head) ?? null)
       setLines((l.data as unknown as Line[]) ?? [])
       setRets((r.data as unknown as InvoiceReturnRow[]) ?? [])
+      if (!p.error) {
+        const rows = (p.data as unknown as Array<{ amount: number; receipt?: { status?: string } | null }>) ?? []
+        setDaThu(rows.filter((x) => x.receipt?.status !== "voided").reduce((s, x) => s + (Number(x.amount) || 0), 0))
+      }
       setDangTai(false)
     })()
     return () => { huy = true }
   }, [id])
 
   const credit = creditOnInvoice(rets)
-  const netDue = netDueOnInvoice(Number(head?.total || 0), credit)
+  const tong = Number(head?.total || 0)
+  const conLai = daThu == null ? null : Math.max(0, tong - daThu)
+  const netDue = conLai == null ? null : netDueOnInvoice(conLai, credit)
   const g = POS_GRID.invoiceView
+  const daHuy = head?.status === "cancelled"
 
   return (
     <>
       <DocSubHeader
         title="Hóa đơn bán"
         code={head?.invoice_code ?? (dangTai ? "…" : null)}
-        badge={head ? { label: head.status === "posted" ? "ĐÃ XUẤT" : "ĐÃ HUỶ", tone: head.status === "posted" ? "xong" : "tam" } : null}
+        badge={head ? { label: daHuy ? "ĐÃ HUỶ" : "ĐÃ XUẤT", tone: daHuy ? "tam" : "xong" } : null}
         subtitle={head ? `${formatDate(head.invoice_date)} · ${lines.length} mặt hàng` : undefined}
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
-        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+        {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <LineTableFrame
             header={
               <LineTableHeader
@@ -151,7 +177,10 @@ export default function PosInvoicePage() {
                 <div className="truncate text-[12px] text-[#64748b]">{l.unit_name}</div>
                 <div className="n text-center text-[13px] font-semibold">{l.quantity}</div>
                 <div className="n text-right text-[13px]">{formatCurrency(l.unit_price)}</div>
-                <div className="n text-right text-[12px] text-[#64748b]">—</div>
+                {/* ⚠ Giảm theo dòng CÓ cột thật — bản đầu vẽ "—" cho mọi dòng. */}
+                <div className="n text-right text-[12px] text-[#64748b]">
+                  {Number(l.line_discount) > 0 ? formatCurrency(Number(l.line_discount)) : "—"}
+                </div>
                 <div className="text-center text-[10px] font-bold text-[#1d4ed8]">
                   {l.is_exchange ? "ĐỔI" : ""}
                 </div>
@@ -163,32 +192,36 @@ export default function PosInvoicePage() {
         </div>
 
         <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
+          {/* ⚠ Xem hóa đơn thì không đổi khách — card chỉ đọc, không vẽ nút. */}
           <PartnerCard
+            readOnly
             partner={
               head?.customer
                 ? {
-                    id: "kh",
+                    id: head.customer_id,
                     name: head.customer.store_name || "Khách lẻ",
                     meta: [head.customer.phone, head.customer.address].filter(Boolean).join(" · "),
                   }
                 : null
             }
-            onPick={() => {}}
           />
 
-          <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[#e2e8f0] bg-white p-3.5">
+          <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[#e2e8f0] bg-white p-3.5">
             <MoneyRow label="Tiền hàng" value={Number(head?.subtotal || 0)} />
             <MoneyRow label="Thuế GTGT" value={Number(head?.vat || 0)} tone="muted" />
-            <TotalsHero label="Tổng cộng" value={Number(head?.total || 0)} />
+            <TotalsHero label="Tổng cộng" value={tong} />
 
             {/* ⚠ BA BẬC — xem đầu tệp. Tổng hóa đơn ở trên KHÔNG bị trừ. */}
             <div className="mt-3.5 border-t border-[#f1f5f9] pt-3">
-              <MoneyRow label="Còn lại hóa đơn" value={Number(head?.total || 0)} />
+              {daThu != null && daThu > 0 && (
+                <MoneyRow label="Đã thu" value={`− ${formatCurrency(daThu)}`} tone="ok" />
+              )}
+              <MoneyRow label="Còn lại hóa đơn" value={conLai == null ? "chưa xác định" : conLai} />
               {credit > 0 && (
                 <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(credit)}`} tone="warn" />
               )}
               <div className="mt-1 border-t border-[#f1f5f9] pt-2">
-                <MoneyRow label="Công nợ ròng" value={netDue} strong />
+                <MoneyRow label="Công nợ ròng" value={netDue == null ? "chưa xác định" : netDue} strong />
               </div>
             </div>
 
@@ -204,25 +237,56 @@ export default function PosInvoicePage() {
             </div>
 
             <div className="flex-grow" />
+
+            {daHuy && (
+              <p className="mt-3 text-[11.5px] leading-snug text-[#b45309]">
+                Hóa đơn đã huỷ — không sửa, không trả hàng, không phát hành được nữa.
+              </p>
+            )}
           </div>
 
           <PanelActions>
-            <PanelButton width={54}>In</PanelButton>
-            <PanelButton width={92} onClick={() => setMoChonHD(true)}>Trả hàng</PanelButton>
-            <PanelButton variant="warn" width={80}>
-              <Link href={`/pos/hoa-don/${id}/sua`}>Sửa HĐ</Link>
+            <PanelButton
+              width={54}
+              disabled={!head}
+              title="Mở trang in hóa đơn"
+              onClick={() => { const h = posPrintHref("INV", id); if (h) window.open(h, "_blank") }}
+            >
+              In
             </PanelButton>
-            <PanelButton variant="primary">Phát hành HĐĐT</PanelButton>
+            <PanelButton
+              width={92}
+              disabled={!head || daHuy}
+              title={daHuy ? "Hóa đơn đã huỷ" : "Lập phiếu trả hàng nạp sẵn tờ này"}
+              onClick={() => router.push(`/pos/tra-hang/moi?invoice=${id}`)}
+            >
+              Trả hàng
+            </PanelButton>
+            <PanelButton
+              variant="warn"
+              width={80}
+              disabled={!head || daHuy}
+              title={daHuy ? "Hóa đơn đã huỷ" : "Huỷ tờ này và lập tờ mới"}
+              onClick={() => router.push(`/pos/hoa-don/${id}/sua`)}
+            >
+              Sửa HĐ
+            </PanelButton>
+            {/*
+              ⚠ PHÁT HÀNH HĐĐT CHƯA CÓ TRÊN MÀN POS — nút thật nằm ở màn
+                hóa đơn của phần đang chạy (`/sales-invoices/[id]`). Dẫn
+                tới đó thay vì một nút bấm vào không có gì xảy ra.
+            */}
+            <PanelButton
+              variant="primary"
+              disabled={!head || daHuy}
+              title="Mở màn hóa đơn để phát hành hóa đơn điện tử"
+              onClick={() => window.open(`/sales-invoices/${id}`, "_blank")}
+            >
+              Phát hành HĐĐT ↗
+            </PanelButton>
           </PanelActions>
         </div>
       </div>
-
-      <SourceInvoiceModal
-        open={moChonHD}
-        onClose={() => setMoChonHD(false)}
-        customerId={null}
-        onPick={() => setMoChonHD(false)}
-      />
     </>
   )
 }

@@ -15,6 +15,7 @@
 
 import { useMemo } from "react"
 import { formatCurrency } from "@/lib/utils"
+import { RETURN_REASONS } from "@/lib/constants"
 import { lineGross } from "@/lib/pos/discount"
 import type { PosLine } from "@/lib/pos/types"
 import type { SellProduct } from "@/lib/sell/ref-data"
@@ -178,10 +179,10 @@ export function ReturnExchangeTable({
           disabled={!onReason}
           className="h-7 rounded-md border border-[#cbd5e1] bg-white px-1.5 text-[11.5px] text-[#0f172a] disabled:bg-[#f1f5f9]"
         >
-          <option value="damaged">Hàng hư hỏng</option>
-          <option value="wrong">Sai hàng</option>
-          <option value="near_expiry">Gần hết hạn</option>
-          <option value="refused">Khách từ chối nhận</option>
+          {/* ⚠ Đúng bộ CHECK của `returns.reason` — xem `ReturnScreen`. */}
+          {RETURN_REASONS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
         </select>
         <input
           type="text"

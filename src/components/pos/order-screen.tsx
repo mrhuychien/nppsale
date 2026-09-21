@@ -19,7 +19,7 @@
  * "phần còn lại sửa thoải mái".
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -29,18 +29,21 @@ import Link from "next/link"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
 import { cartTotals } from "@/lib/sell/cart"
+import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
-import { savePosOrder, savePosInvoice, posLinesToCart } from "@/lib/pos/save"
+import { savePosOrder, savePosInvoice, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
 import { invoiceWarnings } from "@/lib/orders/post-invoice"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { posTotals, cashSuggestions } from "@/lib/pos/totals"
+import { posPrintHref } from "@/lib/pos/tabs"
 import type { PosBadge, PosLine, PosPayMethod } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
 import { usePosRefData } from "@/store/pos/ref-data"
+import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner } from "@/components/pos/doc-sub-header"
+import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay } from "@/components/pos/doc-sub-header"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
   LineAmountCell, LineMenu, NegativeStockStrip,
@@ -64,7 +67,7 @@ let demDong = 0
 const newKey = () => `d${++demDong}`
 
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
-  const { settings } = usePosSettings()
+  const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
   const { products, customers, sellers, stockByProduct, loading, warnings, productById } =
     usePosRefData()
@@ -73,17 +76,21 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
 
   const [lines, setLines] = useState<PosLine[]>([])
   const [retLines, setRetLines] = useState<PosLine[]>([])
+  const [retReason, setRetReason] = useState("damaged")
+  /**
+   * Phiếu trả nháp kèm đơn mà màn đang nắm — ba giá trị, xem
+   * `applyOrderEdit`: `string` ghi đè, `null` chưa có, `undefined`
+   * KHÔNG BIẾT (đọc hỏng hoặc đơn có nhiều phiếu nháp) → lúc lưu đứng yên.
+   */
+  const [heldReturnId, setHeldReturnId] = useState<string | null | undefined>(orderId ? undefined : null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
-  const [docDiscount, setDocDiscount] = useState<DiscountInput>({
-    value: 0,
-    unit: settings.defaultDiscountUnit,
-  })
+  const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
   const [traTien, setTraTien] = useState(0)
-  const [pay, setPay] = useState<PosPayMethod>(settings.defaultCreditAll ? "no" : "tien-mat")
+  const [pay, setPay] = useState<PosPayMethod>("no")
   const [ngayGiao, setNgayGiao] = useState("")
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
-  const [thoiDiem, setThoiDiem] = useState(() => "")
+  const [thoiDiem] = useState(homNay)
   const [moTimHang, setMoTimHang] = useState(false)
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [orderCode, setOrderCode] = useState<string | null>(null)
@@ -91,9 +98,58 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [issuedCode, setIssuedCode] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
   const [loiNap, setLoiNap] = useState<string | null>(null)
+  /** Đã nạp xong đơn (đơn mới thì xong ngay) — mốc "chưa lưu" đặt sau đó. */
+  const [daNap, setDaNap] = useState(!orderId)
+  const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
+
+  /**
+   * ⚠ MÃ CHỐNG LẶP SINH MỘT LẦN CHO MỖI LẦN MỞ MÀN, không phải mỗi lần
+   * bấm. `createOrderRecords` idempotent theo `client_request_id` — nhưng
+   * bản đầu sinh mã mới ở mỗi cú bấm, nên bấm lần hai sau một lần rớt
+   * mạng là một đơn thứ hai. Lưu xong (có `orderId`) thì mã này không
+   * còn được dùng nữa vì đường lưu đổi sang `applyOrderEdit`.
+   */
+  const clientRequestId = useRef(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
+
+  /**
+   * ⚠ THIẾT LẬP ĐỌC TỪ `localStorage` SAU LẦN VẼ ĐẦU. Khởi tạo state
+   * từ `settings` ở lần vẽ đầu là lấy MẶC ĐỊNH của hệ chứ không phải
+   * lựa chọn người dùng đã lưu — họ chọn "%" làm đơn vị giảm mặc định
+   * và mỗi lần mở màn vẫn thấy "₫". Áp một lần khi `ready`, và chỉ khi
+   * người dùng chưa đụng gì (đơn mới, chưa có dòng).
+   */
+  useEffect(() => {
+    if (!settingsReady || orderId) return
+    setDocDiscount((d) => (d.value === 0 ? { value: 0, unit: settings.defaultDiscountUnit } : d))
+    setPay(settings.defaultCreditAll ? "no" : "tien-mat")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsReady])
 
   /** Có dòng nào ĐÃ XUẤT một phần — quyết định banner và sàn stepper. */
   const partiallyIssued = useMemo(() => lines.some((l) => (Number(l.issued) || 0) > 0), [lines])
+
+  /* Tab: tên theo mã thật, chip "chưa lưu" theo chữ ký state. */
+  usePosDocLabel("SO", orderId, orderCode)
+  const chuKy = useMemo(
+    () =>
+      JSON.stringify([
+        lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount, l.note ?? ""]),
+        retLines.map((l) => [l.productId, l.unit, l.qty, l.price, l.isExchange]),
+        khach?.id ?? null, docDiscount, dieuKhoan, ngayGiao, nvbh, retReason,
+      ]),
+    [lines, retLines, khach?.id, docDiscount, dieuKhoan, ngayGiao, nvbh, retReason]
+  )
+  /* ⚠ Mốc lấy ở lần vẽ đầu tiên SAU khi nạp xong — lúc ấy `chuKy` đã
+     phản ánh đúng state đã nạp. Lấy sớm hơn là mốc rỗng, và mọi đơn
+     đã lưu vừa mở ra đều mang chip "chưa lưu". */
+  useEffect(() => {
+    if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
+  }, [daNap, chuKy, mocChuaLuu])
+  usePosDirty(chuKy, mocChuaLuu)
 
   /* ---------------------------------------------------------------- */
 
@@ -185,20 +241,30 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     ;(async () => {
       try {
         const sb = createClient()
-        const [h, ds, hd] = await Promise.all([
+        const [h, ds, hd, rt] = await Promise.all([
           sb.from("sales_orders")
-            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id")
+            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, customer:customers(store_name, phone, address)")
             .eq("id", orderId).maybeSingle(),
           loadInvoiceableLines(sb, orderId),
           sb.from("sales_invoices")
             .select("invoice_code").eq("order_id", orderId).eq("status", "posted")
             .order("created_at", { ascending: false }).limit(1),
+          /**
+           * ⚠ ĐỌC CẢ PHIẾU TRẢ KÈM ĐƠN — cùng câu với `/sell/edit`.
+           * Không đọc là bảng hàng trả dưới đơn trống trơn, người sửa
+           * tưởng mất và nhập lại → hai phiếu trả cho một đơn.
+           */
+          sb.from("returns")
+            .select("id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note)")
+            .eq("order_id", orderId)
+            .neq("status", "cancelled"),
         ])
         if (huy) return
         const head = (h.data as unknown) as {
           order_code: string; status: string; customer_id: string
           payment_terms: string | null; expected_delivery: string | null
           notes: string | null; sales_user_id: string | null
+          customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
         } | null
         if (!head) { setLoiNap("Không tìm thấy đơn này."); return }
         setOrderCode(head.order_code)
@@ -206,6 +272,14 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         setDieuKhoan(head.payment_terms || "COD")
         setNgayGiao(head.expected_delivery || "")
         setNvbh(head.sales_user_id || "")
+        /* ⚠ KHÁCH CỦA ĐƠN PHẢI LÊN CARD. Bản đầu quên: mở đơn đã lưu
+           thì card ghi "+ Chọn khách hàng" và nút lưu từ chối vì "chưa
+           chọn khách" — trên một đơn đã có khách. */
+        setKhach({
+          id: head.customer_id,
+          name: head.customer?.store_name || "Khách lẻ",
+          meta: [head.customer?.phone, head.customer?.address].filter(Boolean).join(" · "),
+        })
         const inv = ((hd.data as unknown) as Array<{ invoice_code: string }>) ?? []
         setIssuedCode(inv[0]?.invoice_code ?? null)
 
@@ -222,16 +296,56 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               unit: r.unitName,
               units: [{ unit_name: r.unitName, conversion: r.conversionFactor }],
               qty: r.orderedQty,
-              unitPriceSource: r.unitPrice,
               price: r.unitPrice,
-              discount: { value: 0, unit: settings.defaultDiscountUnit },
+              discount: { value: 0, unit: "vnd" as const },
               stock: r.availableBase,
               ordered: r.orderedQty,
               /* ⚠ SÀN CỦA STEPPER — spec §7.1. */
               issued: r.invoicedQty,
               note: r.note ?? undefined,
-            }) as PosLine)
+            }))
         )
+
+        /* Phiếu trả kèm đơn — cùng luật `editableReturnOf` với `/sell`. */
+        if (rt.error) {
+          setHeldReturnId(undefined)
+          toast({
+            title: "Chưa đọc được hàng trả kèm đơn",
+            description: "Phần hàng trả sẽ không hiện và KHÔNG bị thay đổi khi lưu. " + errorMessage(rt.error),
+            variant: "destructive",
+          })
+        } else {
+          const rets = ((rt.data as unknown) as PendingReturnRow[]) ?? []
+          const held = editableReturnOf(rets)
+          const holdable = rets.filter((r) => r.status === "draft" && !r.invoice_id)
+          setHeldReturnId(held ? held.id : holdable.length === 0 ? null : undefined)
+          if (held) {
+            setRetReason(held.reason || "damaged")
+            setRetLines(
+              held.lines.map((l) => ({
+                key: newKey(),
+                productId: l.product_id,
+                sku: productById(l.product_id)?.sku ?? "",
+                name: productById(l.product_id)?.name ?? "",
+                unit: l.unit_name,
+                units: [{ unit_name: l.unit_name, conversion: 1 }],
+                qty: Number(l.quantity) || 0,
+                price: Number(l.unit_price) || 0,
+                discount: { value: 0, unit: "vnd" as const },
+                isExchange: l.is_exchange === true,
+                note: l.note ?? undefined,
+              }))
+            )
+          }
+          if (holdable.length > 1) {
+            toast({
+              title: `Đơn có ${holdable.length} phiếu trả nháp`,
+              description: "Màn này chỉ sửa được một phiếu nên không nạp phiếu nào. Lưu đơn sẽ KHÔNG làm chúng đổi.",
+              variant: "destructive",
+            })
+          }
+        }
+        setDaNap(true)
       } catch (e) {
         if (!huy) setLoiNap(errorMessage(e))
       }
@@ -337,14 +451,17 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
       if (!user?.org_id || !user.id) return
       if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
       if (lines.length === 0) { toast({ title: "Đơn chưa có mặt hàng nào", variant: "destructive" }); return }
+      /* ⚠ Dòng trả kèm đơn còn trống mặt hàng thì nói ra, đừng lặng lẽ bỏ. */
+      const traBoDo = retLines.filter((l) => !l.productId).length
+      if (traBoDo > 0) {
+        toast({ title: `${traBoDo} dòng hàng trả chưa chọn mặt hàng`, description: "Chọn mặt hàng hoặc xoá dòng đó trước khi lưu.", variant: "destructive" })
+        return
+      }
       setDangLuu(true)
       try {
         const cart = posLinesToCart(lines)
         const payload = buildOrderPayload({
-          clientRequestId:
-            typeof crypto !== "undefined" && crypto.randomUUID
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          clientRequestId: clientRequestId.current,
           orderCode: orderCode || generateOrderCode(),
           customerId: khach.id,
           customerName: khach.name,
@@ -354,8 +471,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           cart,
           totals: cartTotals(cart),
           createdAt: new Date().toISOString(),
-          returnReason: "damaged",
-          returnLines: [],
+          /* ⚠ HÀNG TRẢ KÈM ĐƠN ĐI XUỐNG THẬT. Bản đầu gửi `[]` trong khi
+             panel vẫn trừ "Trừ hàng trả" vào số khách cần trả — người
+             dùng thấy một tổng mà sổ không ghi. */
+          returnReason: retReason,
+          returnLines: posLinesToReturnCart(retLines),
           /* ⚠ ĐI TRONG TẢI TRỌNG, KHÔNG ĐI TRONG `ctx` — xem mig 153. */
           salesUserId: nvbh || null,
         })
@@ -368,8 +488,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           userId: user.id,
           orgId: user.org_id,
           salesUserId: nvbh || null,
+          heldReturnId,
           productName: (id) => productById(id)?.name,
         })
+        setMocChuaLuu(chuKy)
         if (asDraft) {
           toast({ title: orderId ? `Đã lưu thay đổi ${r.orderCode}` : `Đã lưu đơn ${r.orderCode}` })
           if (!orderId) router.replace(`/pos/don-hang/${r.orderId}`)
@@ -415,7 +537,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         setDangLuu(false)
       }
     },
-    [user, khach, lines, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, router, toast]
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, router, toast]
   )
 
   /**
@@ -462,14 +584,39 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               onChange={setNvbh}
               options={sellers.map((u) => ({ id: u.id, label: u.full_name }))}
             />
-            <SubHeaderDate value={thoiDiem} onChange={setThoiDiem} />
+            {/* ⚠ Ngày đơn do máy chủ ghi lúc lưu — hiện, không mời sửa. */}
+            <SubHeaderDate value={thoiDiem} label="Ngày lập" readOnly />
           </>
         }
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
-        {/* ---------------- cột trái ---------------- */}
-        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+        {/*
+          ---------------- cột trái ----------------
+          ⚠ `min-w-0 flex-1`, KHÔNG PHẢI `w-[1012px]`. Bản đầu cứng 1012px
+            theo artboard 1440; cộng panel phải 380 và lề là 1440 — trên
+            màn 1366px (laptop phổ biến nhất ở đây) panel phải bị cắt
+            mất 74px và khung `overflow-hidden` giấu luôn nút lưu. Lưới
+            cột có `minmax(0,1fr)` ở cột tên nên co được.
+        */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/*
+            ⚠ NEO DROPDOWN TÌM HÀNG Ở ĐỈNH CỘT TRÁI. Bản đầu neo nó ở
+              ĐÁY panel phải: dropdown mở XUỐNG từ mép dưới màn hình và
+              bị khung `overflow-hidden` cắt sạch — bấm F3 chỉ thấy nền
+              tối đi. Ở đây nó xổ đè lên bảng hàng, rộng bằng bảng.
+          */}
+          <div className="relative">
+            <SearchDropdown
+              open={moTimHang}
+              onClose={() => setMoTimHang(false)}
+              title="Tìm hàng hóa"
+              placeholder="Tên hàng, mã hàng, mã vạch…"
+              items={mucHang}
+              onPick={(it) => addProduct(it.id)}
+              emptyHint="Không tìm thấy mặt hàng nào khớp."
+            />
+          </div>
           {/*
             ⚠ CẢNH BÁO DANH MỤC THIẾU PHẢI NẰM TRÊN CÙNG. Đây đúng là
               những câu "danh mục quá lớn, màn hình còn THIẾU một phần" —
@@ -649,7 +796,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               lines={retLines}
               onChange={setRetLines}
               products={products}
+              reason={retReason}
+              onReason={setRetReason}
             />
+          )}
+          {/* ⚠ Không nắm được phiếu trả (nhiều phiếu nháp / đọc hỏng) thì nói ra. */}
+          {mode === "sua" && heldReturnId === undefined && retLines.length === 0 && (
+            <p className="shrink-0 text-[11px] text-[#b45309]">
+              Hàng trả kèm đơn không nạp được ở đây — lưu đơn sẽ không làm nó đổi. Sửa ở màn Trả hàng.
+            </p>
           )}
         </div>
 
@@ -688,8 +843,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 )
               }
             />
-            <MoneyRow label="Thu khác · VAT" value={totals.other} tone="muted" />
-            <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(totals.returnCredit)}`} tone="warn" />
+            {/* ⚠ Chỉ vẽ khi có hàng trả — một dòng "− 0" thường trực là nhiễu. */}
+            {totals.returnCredit > 0 && (
+              <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(totals.returnCredit)}`} tone="warn" />
+            )}
 
             <TotalsHero label="Khách cần trả" value={totals.due} />
 
@@ -778,7 +935,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               </>
             ) : (
               <>
-                <PanelButton width={62} onClick={() => window.print()}>In</PanelButton>
+                {/* ⚠ In qua mẫu in của phần đang chạy — xem `posPrintHref`. */}
+                <PanelButton
+                  width={62}
+                  disabled={!orderId}
+                  title={orderId ? "Mở trang in đơn hàng" : "Lưu tạm trước rồi mới in được"}
+                  onClick={() => { const h = orderId && posPrintHref("SO", orderId); if (h) window.open(h, "_blank") }}
+                >
+                  In
+                </PanelButton>
                 <PanelButton width={104} disabled={dangLuu} onClick={() => luuDon(true)}>
                   {dangLuu ? "Đang lưu…" : "Lưu tạm"}
                 </PanelButton>
@@ -803,19 +968,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               {dangLuu ? "Đang lưu…" : "Xuất hàng & lập HĐ"}
             </PanelButton>
           </PanelActions>
-
-          {/* Neo cho dropdown tìm hàng (F3). */}
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
-              items={mucHang}
-              onPick={(it) => addProduct(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
         </div>
       </div>
     </>

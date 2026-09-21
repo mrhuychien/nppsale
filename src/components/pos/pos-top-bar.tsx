@@ -3,13 +3,24 @@
 /**
  * TOPBAR `/pos` — logo · ô tìm hàng (F3) · tab chứng từ · icon + người dùng.
  * Spec §2 và §3.
+ *
+ * ⚠ Ô TÌM Ở ĐÂY LÀ MỘT NÚT MỞ DROPDOWN, KHÔNG PHẢI MỘT Ô GÕ. Bản đầu
+ * đặt một `<input>` thật và KHÔNG nối nó vào đâu — gõ vào là chữ hiện
+ * ra rồi không có gì xảy ra. Mỗi màn có dropdown tìm hàng riêng (`F3`,
+ * spec §9) và đã có ô gõ ở đó; ô này chỉ cần đưa người dùng tới đúng
+ * chỗ. Một nút trông như ô tìm mà mở ngay dropdown là thật hơn một ô
+ * tìm không tìm được gì.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
+import { ROLE_LABELS } from "@/lib/constants"
 import { usePosTabs } from "@/store/pos/tabs"
+import { posPrintHref } from "@/lib/pos/tabs"
 import { DocTabs } from "@/components/pos/doc-tabs"
 import { DisplaySettingsDrawer } from "@/components/pos/display-settings-drawer"
+import { firePosKey } from "@/components/pos/pos-shell"
 
 /** Chữ cái đầu để làm avatar — hai chữ, đúng như bản thiết kế. */
 function viTat(ten: string): string {
@@ -21,9 +32,11 @@ function viTat(ten: string): string {
 
 export function PosTopBar() {
   const { user } = useAuth()
-  const { notice, clearNotice } = usePosTabs()
+  const router = useRouter()
+  const { notice, clearNotice, tabs, activeKey } = usePosTabs()
   const [moThietLap, setMoThietLap] = useState(false)
-  const timRef = useRef<HTMLInputElement>(null)
+  const dang = tabs.find((t) => t.key === activeKey)
+  const inHref = dang?.docId ? posPrintHref(dang.docType, dang.docId) : null
 
   /**
    * ⚠ CÂU NHẮC TỰ TẮT SAU 6 GIÂY. Nó nói một việc đã xảy ra rồi ("đã
@@ -39,37 +52,64 @@ export function PosTopBar() {
   return (
     <>
       <div className="flex h-14 shrink-0 items-center gap-5 bg-[#0f172a] px-4">
-        <div className="w-[150px] shrink-0">
+        <button
+          type="button"
+          onClick={() => router.push("/pos")}
+          className="w-[150px] shrink-0 text-left"
+          title="Về trang mở chứng từ"
+        >
           <div className="truncate text-[13px] font-bold tracking-[0.02em] text-white">
             npp.sale
           </div>
           <div className="mt-px truncate text-[11px] text-[#94a3b8]">
             {user?.full_name || "Đang tải…"}
           </div>
-        </div>
+        </button>
 
-        {/* Ô tìm hàng — F3 đưa tiêu điểm về đây, xem `usePosKeys`. */}
-        <div className="flex h-9 w-[320px] shrink-0 items-center gap-2 rounded-lg border border-[#334155] bg-[#1e293b] px-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            /* ⚠ Màn không có ô tìm hàng (trang gốc, xem hóa đơn) thì nói
+               ra, đừng im. */
+            if (!firePosKey("F3")) router.push("/pos")
+          }}
+          className="flex h-9 w-[320px] shrink-0 items-center gap-2 rounded-lg border border-[#334155] bg-[#1e293b] px-2.5 text-left hover:border-[#475569]"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-3.5-3.5" />
           </svg>
-          <input
-            ref={timRef}
-            id="pos-tim-hang"
-            type="text"
-            aria-label="Tìm hàng hóa"
-            placeholder="Tìm hàng hóa, mã vạch…"
-            className="min-w-0 flex-grow bg-transparent text-[13px] text-[#e2e8f0] outline-none placeholder:text-[#64748b]"
-          />
+          <span className="min-w-0 flex-grow truncate text-[13px] text-[#64748b]">
+            Tìm hàng hóa, mã vạch…
+          </span>
           <span className="n shrink-0 rounded border border-[#475569] bg-[#0f172a] px-1.5 py-0.5 text-[10px] text-[#94a3b8]">
             F3
           </span>
-        </div>
+        </button>
 
         <DocTabs />
 
         <div className="flex shrink-0 items-center gap-1.5">
+          {/*
+            ⚠ IN ĐI QUA MẪU IN ĐANG CHẠY, KHÔNG `window.print()` MÀN POS.
+              Màn POS không có mẫu in; in thẳng nó là ra một trang toàn
+              nút và ô nhập. Chứng từ đã lưu thì có trang in riêng ở
+              phần đang chạy — dẫn tới đó. Chưa lưu thì nút mờ và nói
+              vì sao.
+          */}
+          <button
+            type="button"
+            aria-label="In chứng từ đang mở"
+            disabled={!inHref}
+            title={inHref ? "Mở trang in" : "Chỉ in được chứng từ đã lưu (đơn hàng, hóa đơn)"}
+            onClick={() => { if (inHref) window.open(inHref, "_blank") }}
+            className="flex h-8 w-8 items-center justify-center rounded-[7px] hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M6 9V3h12v6M6 18H4v-7h16v7h-2" />
+              <path d="M6 14h12v7H6z" />
+            </svg>
+          </button>
           <button
             type="button"
             aria-label="Thiết lập hiển thị"
@@ -82,21 +122,13 @@ export function PosTopBar() {
               <circle cx="10" cy="16" r="2" />
             </svg>
           </button>
-          <button
-            type="button"
-            aria-label="In phiếu"
-            onClick={() => window.print()}
-            className="flex h-8 w-8 items-center justify-center rounded-[7px] hover:bg-[#1e293b]"
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 9V3h12v6M6 18H4v-7h16v7h-2" />
-              <path d="M6 14h12v7H6z" />
-            </svg>
-          </button>
           <div className="ml-1 flex items-center gap-2 border-l border-[#334155] pl-2">
             <div className="text-right">
               <div className="text-[12px] font-semibold text-white">{user?.full_name || "—"}</div>
-              <div className="text-[10px] text-[#94a3b8]">{user?.role || ""}</div>
+              {/* ⚠ Nhãn tiếng Việt, không phải mã vai `owner`. */}
+              <div className="text-[10px] text-[#94a3b8]">
+                {user?.role ? ROLE_LABELS[user.role] ?? user.role : ""}
+              </div>
             </div>
             <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[#2563eb] text-[11px] font-bold text-white">
               {viTat(user?.full_name || "")}

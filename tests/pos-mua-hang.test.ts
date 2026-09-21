@@ -396,7 +396,10 @@ describe("§8.5 — mở lại phiếu đã lưu thì 'đã nhập' là chưa bi
   it("dòng nạp từ phiếu đã lưu mang ordered null", () => {
     const i = S.indexOf("supplier_return_lines")
     expect(i, "không thấy chỗ nạp phiếu đã lưu").toBeGreaterThan(-1)
-    const khoi = S.slice(i, i + 1800)
+    /* ⚠ Quét tới hết khối nạp (`} catch`), không cắt theo số ký tự —
+       một lát cứng 1.800 ký tự đã đỏ oan khi khối ấy dài thêm vài dòng. */
+    const het = S.indexOf("} catch", i)
+    const khoi = S.slice(i, het > 0 ? het : i + 4000)
     expect(khoi).toMatch(/ordered: null/)
     expect(/ordered: 0\b/.test(khoi), "0 khoá cứng stepper ở 0").toBe(false)
   })

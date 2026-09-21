@@ -44,20 +44,20 @@ import {
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner } from "@/components/pos/doc-sub-header"
+import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay } from "@/components/pos/doc-sub-header"
+import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
   LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
 import {
-  MoneyRow, DocDiscountRow, TotalsHero, PaymentButtons, PanelActions, PanelButton,
+  MoneyRow, DocDiscountRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import {
   DeltaPreviewStrip, DeltaStock, type DeltaCell,
 } from "@/components/pos/delta-preview-strip"
-import type { PosPayMethod } from "@/lib/pos/types"
 
 export interface PurchaseScreenProps {
   mode: "lap" | "sua"
@@ -93,26 +93,42 @@ export function PurchaseScreen({
   const [soHdDauVao, setSoHdDauVao] = useState("")
   const [maDatHang, setMaDatHang] = useState("")
   const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
-  const [chiPhi, setChiPhi] = useState<DiscountInput>({ value: 0, unit: "vnd" })
   const [vatRate, setVatRate] = useState(0)
-  const [traTien, setTraTien] = useState(0)
-  const [pay, setPay] = useState<PosPayMethod>("no")
   const [ghiChu, setGhiChu] = useState("")
-  const [kho, setKho] = useState("")
-  const [thoiDiem, setThoiDiem] = useState("")
+  /* ⚠ Kho nhập mặc định KHO BÁN — hàng mới về là hàng bán được. */
+  const [kho, setKho] = useState("sale")
+  const [thoiDiem, setThoiDiem] = useState(homNay)
+  const [daNap, setDaNap] = useState(!receiptId)
+  const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   const [moTimHang, setMoTimHang] = useState(false)
   const [moTimNcc, setMoTimNcc] = useState(false)
 
   const t = useMemo(
     () =>
+      /**
+       * ⚠ KHÔNG CÓ "CHI PHÍ NHẬP KHÁC". Bản thiết kế (spec §6) vẽ ô ấy,
+       * nhưng `purchase_invoices` không có cột nào cho nó và
+       * `complete_purchase_invoice` tính `total = subtotal + vat −
+       * discount`. Một ô cộng thêm tiền trên màn rồi không đi xuống sổ
+       * là công nợ NCC hiện một số, sổ ghi số khác. Xem `docs/pos-todo.md`.
+       */
       purchaseTotals({
         lines: lines.map((l) => ({ qty: l.qty, price: l.price, discount: l.discount })),
         docDiscount,
-        otherCost: chiPhi,
         vatRate,
       }),
-    [lines, docDiscount, chiPhi, vatRate]
+    [lines, docDiscount, vatRate]
   )
+
+  usePosDocLabel("PUR", receiptId, slipCode)
+  const chuKy = useMemo(
+    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, soHdDauVao, docDiscount, vatRate, ghiChu, kho, thoiDiem]),
+    [lines, ncc?.id, soHdDauVao, docDiscount, vatRate, ghiChu, kho, thoiDiem]
+  )
+  useEffect(() => {
+    if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
+  }, [daNap, chuKy, mocChuaLuu])
+  usePosDirty(chuKy, mocChuaLuu)
 
   const khoa = mode === "sua" ? purchaseCancelLock({ paidToSupplier, stockIssued }) : null
 
@@ -149,11 +165,9 @@ export function PurchaseScreen({
     [products]
   )
 
-  /** ⚠ Spec §10: `F8` ở màn nhập là đưa tiêu điểm về ô tiền trả NCC. */
   usePosKeys({
     F3: () => setMoTimHang(true),
     F4: () => setMoTimNcc(true),
-    F8: () => document.getElementById("p-tra")?.focus(),
     Escape: () => { setMoTimHang(false); setMoTimNcc(false) },
   })
 
@@ -188,14 +202,14 @@ export function PurchaseScreen({
         const sb = createClient()
         const { data, error } = await sb
           .from("purchase_invoices")
-          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))")
+          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))")
           .eq("id", receiptId)
           .maybeSingle()
         if (huy) return
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
           receipt_code: string | null; supplier_id: string; invoice_number: string | null
-          invoice_date: string; warehouse_zone: string | null; notes: string | null
+          invoice_date: string; warehouse_zone: string | null; discount: number | null; notes: string | null
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
@@ -207,9 +221,10 @@ export function PurchaseScreen({
         setSlipCode(r.receipt_code)
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
         setSoHdDauVao(r.invoice_number || "")
-        setThoiDiem(r.invoice_date || "")
-        setKho(r.warehouse_zone || "")
+        setThoiDiem(r.invoice_date || homNay())
+        setKho(r.warehouse_zone || "sale")
         setGhiChu(r.notes || "")
+        setDocDiscount({ value: Number(r.discount) || 0, unit: "vnd" })
         setLines(
           (r.lines ?? []).map((x) => ({
             key: newKey(),
@@ -224,6 +239,7 @@ export function PurchaseScreen({
             note: x.notes ?? undefined,
           }))
         )
+        setDaNap(true)
       } catch (e) {
         if (!huy) setLoiNap(errorMessage(e))
       }
@@ -264,7 +280,7 @@ export function PurchaseScreen({
           userId: user.id,
           supplierId: ncc.id,
           invoiceNumber: soHdDauVao,
-          invoiceDate: thoiDiem || new Date().toISOString().slice(0, 10),
+          invoiceDate: thoiDiem || homNay(),
           zone: kho || "sale",
           discount: t.docDiscount,
           notes: ghiChu,
@@ -274,6 +290,7 @@ export function PurchaseScreen({
           vat: t.vat,
           total: t.dueToSupplier,
         })
+        setMocChuaLuu(chuKy)
         toast({ title: complete ? "Đã hoàn thành — nhập kho và ghi công nợ NCC" : "Đã lưu phiếu tạm" })
         if (!receiptId) router.replace(`/pos/nhap-hang/${r.receiptId}`)
       } catch (e) {
@@ -282,7 +299,7 @@ export function PurchaseScreen({
         setDangLuu(false)
       }
     },
-    [user, ncc, lines, receiptId, soHdDauVao, thoiDiem, kho, ghiChu, t, router, toast]
+    [user, ncc, lines, receiptId, soHdDauVao, thoiDiem, kho, ghiChu, t, chuKy, router, toast]
   )
 
   /**
@@ -346,7 +363,20 @@ export function PurchaseScreen({
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
-        <div className="flex min-h-0 w-[1012px] shrink-0 flex-col gap-3">
+        {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/* ⚠ Neo dropdown tìm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
+          <div className="relative">
+            <SearchDropdown
+              open={moTimHang}
+              onClose={() => setMoTimHang(false)}
+              title="Tìm hàng hóa"
+              placeholder="Tên hàng, mã hàng, mã vạch…"
+              items={mucHang}
+              onPick={(it) => themHang(it.id)}
+              emptyHint="Không tìm thấy mặt hàng nào khớp."
+            />
+          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -541,22 +571,6 @@ export function PurchaseScreen({
                 amount={t.docDiscount}
                 onChange={(d) => setDocDiscount(d.unit === docDiscount.unit ? d : switchUnit(docDiscount, t.goods))}
               />
-              {/*
-                ⚠ Ô NÀY CỘNG VÀO, KHÔNG TRỪ — tiền bốc xếp, vận chuyển.
-                  Dấu `+` trước con số là thứ duy nhất phân biệt nó với
-                  ô giảm giá ngay trên, nên đừng bỏ.
-              */}
-              <DocDiscountRow
-                id="p-chiphi"
-                label="Chi phí nhập khác"
-                discount={chiPhi}
-                amount={t.otherCost}
-                onChange={(d) => setChiPhi(d.unit === chiPhi.unit ? d : switchUnit(chiPhi, t.goods))}
-              />
-              <div className="flex items-center justify-between py-[5px] text-[11px] text-[#16a34a]">
-                <span />
-                <span className="n">+ {formatCurrency(t.otherCost)} cộng vào</span>
-              </div>
               <div className="flex items-center gap-2 py-[5px]">
                 <label htmlFor="p-vat" className="flex-grow text-[13px] text-[#334155]">
                   Thuế GTGT đầu vào
@@ -575,43 +589,30 @@ export function PurchaseScreen({
 
             <TotalsHero label="Cần trả NCC" value={t.dueToSupplier} />
 
-            <div className="mt-3.5 flex items-center justify-between gap-2.5">
-              <label htmlFor="p-tra" className="text-[13px] text-[#334155]">
-                Tiền trả NCC <span className="n text-[11px] opacity-70">F8</span>
-              </label>
-              <input
-                id="p-tra"
-                className="n h-[34px] w-[150px] rounded-[7px] border border-[#cbd5e1] px-2.5 text-right text-[14px] font-semibold"
-                inputMode="numeric"
-                value={traTien === 0 ? "0" : String(traTien)}
-                onChange={(e) => setTraTien(Number(e.target.value.replace(/\D/g, "")) || 0)}
-              />
-            </div>
-            {/* ⚠ "Ghi nợ hết" là mặc định — spec §6. */}
-            <PaymentButtons
-              value={pay}
-              onChange={(m) => {
-                setPay(m)
-                if (m === "no") setTraTien(0)
-                else if (traTien === 0) setTraTien(t.dueToSupplier)
-              }}
-            />
-
+            {/*
+              ⚠ KHÔNG CÓ Ô "TIỀN TRẢ NCC" Ở ĐÂY. `complete_purchase_invoice`
+                luôn ghi CẢ phiếu vào công nợ NCC; trả tiền là một phiếu
+                chi riêng ở màn Công nợ NCC. Bản đầu vẽ ô ấy và ba nút
+                phương thức: người dùng gõ "đã trả 10 triệu", màn trừ
+                khỏi "Tính vào công nợ", lưu xong sổ vẫn ghi nợ đủ. Ô
+                không đi xuống sổ thì không vẽ.
+            */}
             <div className="mt-3.5 flex items-center justify-between border-t border-[#f1f5f9] pt-3">
-              <span className="text-[13px] text-[#334155]">Tính vào công nợ</span>
+              <span className="text-[13px] text-[#334155]">Tính vào công nợ NCC</span>
               <span className="n text-[14px] font-bold text-[#b45309]">
-                {formatCurrency(Math.max(0, t.dueToSupplier - traTien))}
+                {formatCurrency(t.dueToSupplier)}
               </span>
             </div>
             <div className="flex items-center justify-between pt-1">
               <span className="text-[11.5px] text-[#64748b]">Nợ NCC sau phiếu</span>
               <span className="n text-[11.5px] text-[#64748b]">
                 {/* ⚠ Chưa đọc được nợ NCC → nói thế, đừng cộng từ 0. */}
-                {ncc?.debt == null
-                  ? "chưa xác định"
-                  : formatCurrency(ncc.debt + Math.max(0, t.dueToSupplier - traTien))}
+                {ncc?.debt == null ? "chưa xác định" : formatCurrency(ncc.debt + t.dueToSupplier)}
               </span>
             </div>
+            <p className="mt-1 text-[11px] text-[#94a3b8]">
+              Trả tiền NCC lập phiếu chi ở màn Công nợ NCC sau khi nhập kho.
+            </p>
 
             <input
               type="text"
@@ -626,7 +627,8 @@ export function PurchaseScreen({
           </div>
 
           <PanelActions>
-            <PanelButton width={54} onClick={() => window.print()}>In</PanelButton>
+            {/* ⚠ Chưa có mẫu in phiếu nhập — nút mờ kèm lý do. */}
+            <PanelButton width={54} disabled title="Chưa có mẫu in phiếu nhập hàng">In</PanelButton>
             <PanelButton
               width={96}
               disabled={dangLuu}
@@ -649,18 +651,6 @@ export function PurchaseScreen({
               {dangLuu ? "Đang ghi…" : "Hoàn thành & nhập kho"}
             </PanelButton>
           </PanelActions>
-
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
-              items={mucHang}
-              onPick={(it) => themHang(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
         </div>
       </div>
     </>

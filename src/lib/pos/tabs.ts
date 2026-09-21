@@ -58,6 +58,49 @@ export function posHref(t: Pick<PosTab, "docType" | "docId">): string {
   return `${goc[t.docType]}/${t.docId ?? "moi"}`
 }
 
+/**
+ * Trang IN của một chứng từ đã lưu — dùng mẫu in của phần đang chạy.
+ *
+ * ⚠ `null` = CHƯA CÓ MẪU IN cho loại này. Màn POS không có mẫu in
+ * riêng (spec §9 tab "In phiếu" để trống), và `window.print()` cả màn
+ * POS là in ra một trang toàn nút bấm. Loại nào phần đang chạy đã có
+ * trang in thì dẫn tới đó; loại nào chưa có thì nút mờ và nói vì sao.
+ */
+export function posPrintHref(docType: PosDocType, docId: string): string | null {
+  switch (docType) {
+    case "SO": return `/orders/${docId}/print`
+    case "INV": return `/sales-invoices/${docId}/print`
+    default: return null
+  }
+}
+
+/**
+ * Đọc ngược một đường dẫn `/pos/...` ra (loại, mã) — phép nghịch đảo
+ * của `posHref`.
+ *
+ * ⚠ VÌ SAO CẦN: bộ tab và URL là HAI nguồn sự thật, và bản đầu chỉ
+ * viết theo một chiều (tab → URL). Người dùng dán thẳng
+ * `/pos/hoa-don/<id>` từ màn Xem nhanh, hoặc màn lập đơn `replace` URL
+ * sang mã thật sau khi lưu — cả hai đều làm URL đi trước mà tab đứng
+ * yên: tab vẫn ghi "Đơn mới 1" trong khi màn đang hiện DH-0154, và mở
+ * DH-0154 lần nữa là ra tab thứ hai của cùng một tờ.
+ *
+ * `/pos/don-hang/<id>/sua` cũng về cùng một tab với `/pos/don-hang/<id>`
+ * — sửa và xem là hai màn của MỘT chứng từ.
+ */
+export function parsePosPath(pathname: string): { docType: PosDocType; docId: string | null } | null {
+  const m = /^\/pos\/(don-hang|hoa-don|tra-hang|nhap-hang|tra-ncc)\/([^/?#]+)/.exec(pathname)
+  if (!m) return null
+  const loai: Record<string, PosDocType> = {
+    "don-hang": "SO",
+    "hoa-don": "INV",
+    "tra-hang": "RET",
+    "nhap-hang": "PUR",
+    "tra-ncc": "PRET",
+  }
+  return { docType: loai[m[1]], docId: m[2] === "moi" ? null : m[2] }
+}
+
 export interface OpenResult {
   tabs: PosTab[]
   /** Tab sẽ được kích hoạt. */

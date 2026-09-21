@@ -37,6 +37,7 @@ import type { ReceiptLine } from "@/lib/purchasing/receipt-form"
 import { lineGross, discountAmount } from "@/lib/pos/discount"
 import type { PosLine } from "@/lib/pos/types"
 import type { CartLine } from "@/lib/sell/cart"
+import type { ReturnCartLine } from "@/lib/sell/returns"
 
 /** ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi. */
 function assertWrote(rows: unknown[] | null, what: string): void {
@@ -79,6 +80,29 @@ export function posLinesToCart(lines: readonly PosLine[]): CartLine[] {
   })
 }
 
+/**
+ * Dòng hàng trả/đổi kèm đơn (bảng dưới bảng hàng, `F8`/`F9`) → dòng giỏ
+ * hàng trả, đúng hình dạng `buildOrderPayload.returnLines` nhận.
+ *
+ * ⚠ BỎ DÒNG CHƯA CHỌN MẶT HÀNG VÀ DÒNG SỐ LƯỢNG 0. `F8` thêm một dòng
+ * trống để người dùng chọn; họ đổi ý và để nguyên thì dòng ấy không
+ * được đi vào phiếu trả — `return_lines.product_id` là `NOT NULL`, và
+ * một dòng rỗng là cả lệnh lưu nổ ở bước phụ sau khi đầu đơn đã ghi.
+ */
+export function posLinesToReturnCart(lines: readonly PosLine[]): ReturnCartLine[] {
+  return lines
+    .filter((l) => l.productId && l.qty > 0)
+    .map((l) => ({
+      productId: l.productId,
+      unit: l.unit,
+      qty: l.qty,
+      price: l.price,
+      vatRate: 0,
+      isExchange: l.isExchange === true,
+      note: l.note ?? "",
+    }))
+}
+
 export async function savePosOrder(
   sb: SupabaseClient,
   o: {
@@ -91,6 +115,12 @@ export async function savePosOrder(
     userId: string
     orgId: string
     salesUserId?: string | null
+    /**
+     * Phiếu trả kèm đơn mà màn đang nắm — cùng ba giá trị với
+     * `applyOrderEdit`: `string` ghi đè phiếu ấy, `null` là đơn chưa có
+     * phiếu (tạo mới nếu có dòng), `undefined` là KHÔNG BIẾT và đứng yên.
+     */
+    heldReturnId?: string | null
     productName?: (id: string) => string | undefined
   }
 ): Promise<{ orderId: string; orderCode: string }> {
@@ -105,9 +135,9 @@ export async function savePosOrder(
       userId: o.userId,
       orgId: o.orgId,
       /* ⚠ `undefined` = KHÔNG BIẾT phiếu trả nào, và `syncOrderReturn`
-         phải đứng yên. Màn POS chưa nắm phiếu trả kèm đơn, nên để
-         nguyên chứ không ép về `null` (ép là nó tạo thêm một phiếu). */
-      heldReturnId: undefined,
+         phải đứng yên — không ép về `null` (ép là nó tạo thêm một
+         phiếu). Màn đơn đọc phiếu trả nháp của đơn rồi truyền xuống. */
+      heldReturnId: o.heldReturnId,
       salesUserId: o.salesUserId,
       productName: o.productName,
     })
@@ -124,8 +154,18 @@ export async function savePosOrder(
  * HÓA ĐƠN — màn 2 / 7
  * ================================================================== */
 
-/** Dòng POS → dòng hóa đơn. */
-export function posLinesToInvoice(lines: readonly PosLine[]): InvoiceDraftLine[] {
+/**
+ * Dòng POS → dòng hóa đơn.
+ *
+ * @param vatRate thuế suất theo TỈ LỆ (0.1 = 10%) áp cho MỌI dòng.
+ *
+ * ⚠ THUẾ CỦA MÀN POS ĐẶT Ở CẤP CHỨNG TỪ (ô `Thuế GTGT` trên panel),
+ * nhưng `sales_invoices` KHÔNG có cột thuế suất — RPC cộng thuế từ
+ * `vat_rate` của TỪNG DÒNG. Nên ô cấp chứng từ được đẩy xuống mọi dòng.
+ * Bản đầu gửi 0 ở đây trong khi panel vẫn vẽ số thuế: người dùng thấy
+ * tổng có thuế, lưu xong hóa đơn không thuế.
+ */
+export function posLinesToInvoice(lines: readonly PosLine[], vatRate = 0): InvoiceDraftLine[] {
   return lines.map((l) => {
     const g = lineGross(l.qty, l.price)
     return {
@@ -138,10 +178,7 @@ export function posLinesToInvoice(lines: readonly PosLine[]): InvoiceDraftLine[]
       /* ⚠ HÓA ĐƠN CÓ CỘT GIẢM THEO DÒNG — gửi số tiền đã quy, đừng nhét
          vào đơn giá như bên đơn hàng. */
       lineDiscount: discountAmount(l.discount, g),
-      /* ⚠ THUẾ THEO DÒNG CHƯA CÓ Ô TRÊN MÀN POS — gửi 0 chứ không
-         gửi `undefined`, và ghi vào `docs/pos-todo.md`. Thuế của màn
-         này đặt ở CẤP CHỨNG TỪ (ô `Thuế GTGT` trên panel). */
-      vatRate: 0,
+      vatRate,
       isExchange: l.isExchange === true,
       note: l.note ?? null,
     }
@@ -157,9 +194,11 @@ export async function savePosInvoice(
     lines: PosLine[]
     paymentTerms?: string | null
     notes?: string | null
+    /** Thuế suất theo tỉ lệ (0.1 = 10%), áp cho mọi dòng. */
+    vatRate?: number
   }
 ) {
-  const lines = posLinesToInvoice(o.lines)
+  const lines = posLinesToInvoice(o.lines, o.vatRate ?? 0)
   if (o.invoiceId) {
     return reissueInvoice(sb, o.invoiceId, {
       lines,
@@ -356,6 +395,15 @@ export async function savePosPurchase(
     subtotal: o.subtotal,
     vat: o.vat,
     total: o.total,
+    /**
+     * ⚠ THUẾ GÕ Ở CẤP PHIẾU PHẢI ĐI QUA `vat_override`. Dòng gửi xuống
+     * mang `vat_rate = 0` (thuế của màn POS đặt ở panel), nên lúc hoàn
+     * thành RPC tự cộng ra 0 — và cột `vat` ở trên bị ghi đè bằng 0.
+     * `vat_override` là đúng cái cổng migration 145 mở cho trường hợp
+     * "số gõ tay thắng số tự cộng"; `/purchasing` cũng gửi qua đó.
+     * Không có thuế thì để `null` để RPC tự cộng như thường.
+     */
+    vat_override: o.vat > 0 ? o.vat : null,
   }
 
   let id = o.receiptId

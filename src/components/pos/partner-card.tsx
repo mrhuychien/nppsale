@@ -32,24 +32,35 @@ export function PartnerCard({
   hotkey = "F4",
   onPick,
   onClear,
+  readOnly,
 }: {
   partner: PosPartner | null
   /** `khách hàng` | `nhà cung cấp` — đi vào mọi câu `aria-label`. */
   label?: string
   hotkey?: string
-  onPick: () => void
+  onPick?: () => void
   onClear?: () => void
+  /**
+   * ⚠ CHỨNG TỪ KHÔNG ĐỔI ĐƯỢC ĐỐI TÁC THÌ KHÔNG VẼ NÚT "ĐỔI". Hóa đơn
+   * đã ghi sổ và `reissue_invoice` không nhận khách mới — một nút
+   * "Đổi khách F4" ở đó là mời người dùng làm một việc sẽ không lưu.
+   */
+  readOnly?: boolean
 }) {
   if (!partner) {
     return (
       <div className="shrink-0 rounded-xl border border-dashed border-[#cbd5e1] bg-white p-3.5">
-        <button
-          type="button"
-          onClick={onPick}
-          className="flex w-full items-center justify-center gap-2 text-[13px] font-semibold text-[#2563eb]"
-        >
-          + Chọn {label} <span className="n text-[11px] opacity-70">{hotkey}</span>
-        </button>
+        {readOnly ? (
+          <p className="text-center text-[12.5px] text-[#94a3b8]">Chưa có {label}</p>
+        ) : (
+          <button
+            type="button"
+            onClick={onPick}
+            className="flex w-full items-center justify-center gap-2 text-[13px] font-semibold text-[#2563eb]"
+          >
+            + Chọn {label} <span className="n text-[11px] opacity-70">{hotkey}</span>
+          </button>
+        )}
       </div>
     )
   }
@@ -87,6 +98,7 @@ export function PartnerCard({
             </div>
           )}
         </div>
+        {!readOnly && (
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {onClear && (
             <button
@@ -107,6 +119,7 @@ export function PartnerCard({
             <span className="n opacity-70">{hotkey}</span>
           </button>
         </div>
+        )}
       </div>
     </div>
   )

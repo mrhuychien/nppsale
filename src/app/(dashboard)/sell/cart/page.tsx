@@ -375,6 +375,21 @@ export default function SellCartPage() {
           (reason ? `&reason=${encodeURIComponent(reason)}` : "")
       )
     } catch (err) {
+      /**
+       * ⚠ IN NGUYÊN VĂN RA CONSOLE, NGOÀI CÂU HIỆN TRÊN MÀN.
+       *
+       * Chủ nhà báo 21/09/2026 hai lần liền rằng không lưu được đơn khi
+       * thêm hàng trả, và tôi KHÔNG tái hiện được: đã chạy từng lệnh mà
+       * `applyOrderEdit` gửi đi — xoá dòng, chèn dòng, sửa đầu đơn, tạo
+       * phiếu trả, chèn dòng trả — trên Postgres 16 có bật RLS, tất cả
+       * đều chạy.
+       *
+       * Toast chỉ hiện được một dòng và bị cắt; `details`/`hint` của
+       * PostgREST thường là chỗ nói rõ ràng buộc nào vỡ. In cả object
+       * ra console để lần sau chụp màn hình là đủ chẩn đoán, không phải
+       * đoán tiếp.
+       */
+      console.error("[sell/cart] không lưu được đơn — nguyên văn:", err)
       toast({
         title: "Không gửi được đơn",
         description: errorMessage(err, "Lỗi không xác định"),

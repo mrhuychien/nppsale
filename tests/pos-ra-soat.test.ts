@@ -612,7 +612,15 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
     expect(BAR).toMatch(/closeOnPick/)
     const picker = code(read("src/components/ui/product-picker.tsx"))
     expect(picker).toMatch(/closeOnPick = false/)
-    expect(picker).toMatch(/if \(closeOnPick\) setOpen\(false\)/)
+    /**
+     * ⚠ HÀNH VI THẬT NẰM Ở `tests/picker-open.test.ts` — chạy đúng chuỗi
+     * sự kiện. Bản đầu của chốt này ghim chuỗi `if (closeOnPick)
+     * setOpen(false)`: dòng ấy CÓ trong mã, chốt xanh, mà dải gợi ý vẫn
+     * mở nguyên vì lệnh trả tiêu điểm mở lại nó. Chủ nhà phải báo tay.
+     * Ở đây chỉ canh chỗ NỐI.
+     */
+    expect(picker).toMatch(/gui\(\{ t: "pick", refocus:/)
+    expect(/setOpen\(/.test(picker), "component lại tự giữ trạng thái đóng/mở").toBe(false)
   })
 
   /** ⚠ Các màn cũ KHÔNG được đổi hành vi — không màn nào bật cờ ấy. */

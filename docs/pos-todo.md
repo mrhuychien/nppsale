@@ -607,3 +607,43 @@ chữ theo (chip "chưa lưu" của tab chưa chọn từ nâu sẫm → amber s
 đơn) vẫn có ô tìm riêng ở đầu cột trái, và ô trên header của chúng vẫn
 là cái nút kích `F3`. Tức chúng vẫn ở trạng thái "hai chỗ thêm hàng".
 Chủ nhà mới chốt cho màn đơn; chuyển nốt bốn màn là việc của đợt sau.
+
+---
+
+## 25. Đợt 9b — dải gợi ý vẫn không ẩn, và một lần CHỐT NÓI DỐI
+
+Chủ nhà báo lại: *"bấm thêm hàng xong danh sách nó chưa ẩn đi"*.
+
+**Lỗi.** `pick()` đóng dải gợi ý rồi trả tiêu điểm về ô nhập cho người
+dùng gõ tiếp. Nhưng ô nhập mở dải khi NHẬN TIÊU ĐIỂM (`onFocus`) — và
+bấm chuột vào một dòng gợi ý đã đẩy tiêu điểm sang cái nút của dòng ấy.
+Nên lệnh trả tiêu điểm sinh một lượt `focus` MỚI, và lượt ấy mở lại đúng
+cái dải vừa đóng. Hai lệnh nằm trong cùng một lượt xử lý sự kiện nên
+React gộp lại: kết quả cuối là MỞ.
+
+**Vì sao chốt không bắt được.** Bản vá đợt 9 viết đúng một dòng
+`if (closeOnPick) setOpen(false)`, và chốt khi ấy chỉ ĐỌC MÃ NGUỒN tìm
+đúng dòng ấy. Dòng có thật → chốt xanh → màn hình vẫn sai. Chốt canh
+CHÍNH TẢ, không canh LUẬT.
+
+**Đã làm gì.** Luật đóng/mở dời sang `src/lib/ui/picker-open.ts` dưới
+dạng một bộ rút gọn thuần (`pickerOpenReducer`), và
+`tests/picker-open.test.ts` CHẠY đúng chuỗi sự kiện thật:
+`click → pick(refocus) → focus` phải còn ĐÓNG. Cờ `skipNextFocus` chỉ
+bỏ qua ĐÚNG MỘT lượt, và chỉ bật khi tiêu điểm thật sự sẽ quay lại
+(bấm chuột) — đường `Enter` giữ tiêu điểm sẵn trong ô nên không bật,
+nếu không cờ ấy ở lại nuốt mất lượt Tab kế tiếp.
+
+**Ba chốt cũ cùng bệnh đã viết lại** (`purchase-receipt-ui`: "bấm hoặc
+Tab vào ô là xổ danh sách", "bấm ra ngoài thì đóng"; `pos-ra-soat`: "ô
+trên header đóng danh sách sau khi thêm") — chúng ghim chuỗi
+`setOpen(true)` / `setOpen(false)` nên vừa đỏ oan khi mã dời chỗ, vừa
+không bao giờ bắt được lỗi chuỗi sự kiện.
+
+**Tám đột biến, hai con lọt lần đầu và đã vá:**
+- chốt "mặc định vẫn MỞ" chạy cả lượt `focus` phía sau rồi mới đo — lượt
+  ấy mở lại dải, nên đột biến "pick LUÔN đóng" vẫn xanh. Nay đo NGAY
+  sau `pick`.
+- chốt "component không tự giữ state" tìm chuỗi `setOpen(`; một đột biến
+  khai `const [open, setOpen] = useState(false)` rồi không gọi lần nào
+  đã lọt. Nay canh cái BIẾN.

@@ -27,11 +27,14 @@
  * hàng loạt: mũi tên lên/xuống, Enter thêm, Esc đóng.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import {
+  pickerOpenReducer, PICKER_OPEN_INIT, type PickerEvent,
+} from "@/lib/ui/picker-open"
 
 /**
  * Số mục xổ xuống khi ô còn TRỐNG.
@@ -123,7 +126,17 @@ export function ProductPicker<T extends PickerItem>({
   /** Lớp CSS của khung ngoài — để nơi gọi đặt bề rộng. */
   className?: string
 }) {
-  const [open, setOpen] = useState(false)
+  /**
+   * ⚠ LUẬT ĐÓNG/MỞ NẰM Ở `@/lib/ui/picker-open`, KHÔNG NẰM Ở ĐÂY. Nó có
+   * một cái bẫy chỉ lộ ra khi chạy (chọn xong, tiêu điểm quay về ô, và
+   * lượt `focus` ấy mở lại đúng dải vừa đóng) — để trong component là
+   * không có cách nào chạy chốt lên nó. Xem đầu tệp ấy.
+   */
+  const [mo, gui] = useReducer(
+    (st: typeof PICKER_OPEN_INIT, e: PickerEvent) => pickerOpenReducer(st, e, { closeOnPick }),
+    PICKER_OPEN_INIT
+  )
+  const open = mo.open
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -132,7 +145,7 @@ export function ProductPicker<T extends PickerItem>({
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (!boxRef.current?.contains(e.target as Node)) setOpen(false)
+      if (!boxRef.current?.contains(e.target as Node)) gui({ t: "outside" })
     }
     document.addEventListener("mousedown", onDown)
     return () => document.removeEventListener("mousedown", onDown)
@@ -143,7 +156,7 @@ export function ProductPicker<T extends PickerItem>({
 
   const shown = useMemo(() => items.slice(0, PICKER_PEEK), [items])
 
-  const pick = (it: T) => {
+  const pick = useCallback((it: T) => {
     onPick(it)
     onTermChange("")
     /**
@@ -156,9 +169,16 @@ export function ProductPicker<T extends PickerItem>({
      *   thích của prop ấy. Vẫn giữ tiêu điểm trong ô để gõ tiếp mã sau
      *   mà không phải bấm lại.
      */
-    if (closeOnPick) setOpen(false)
+    /**
+     * ⚠ NÓI CHO BỘ LUẬT BIẾT TIÊU ĐIỂM CÓ QUAY LẠI KHÔNG. Bấm chuột vào
+     *   một dòng gợi ý đã đẩy tiêu điểm sang cái nút của dòng ấy, nên
+     *   lệnh dưới sinh một lượt `focus` mới; bấm `Enter` thì tiêu điểm
+     *   vẫn nằm trong ô và KHÔNG có lượt nào. Bật cờ bỏ qua cho trường
+     *   hợp thứ hai là nuốt mất lượt Tab kế tiếp của người dùng.
+     */
+    gui({ t: "pick", refocus: document.activeElement !== inputRef.current })
     inputRef.current?.focus()
-  }
+  }, [onPick, onTermChange])
 
   return (
     <div ref={boxRef} className={cn("relative", hideLabel ? "" : "space-y-2", className)}>
@@ -173,14 +193,14 @@ export function ProductPicker<T extends PickerItem>({
           id={id}
           ref={inputRef}
           value={term}
-          onChange={(e) => { onTermChange(e.target.value); setOpen(true) }}
+          onChange={(e) => { onTermChange(e.target.value); gui({ t: "type" }) }}
           /* ⚠ `onFocus` CHỨ KHÔNG CHỈ `onClick` — Tab tới ô cũng phải xổ. */
-          onFocus={() => setOpen(true)}
-          onClick={() => setOpen(true)}
+          onFocus={() => gui({ t: "focus" })}
+          onClick={() => gui({ t: "click" })}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault()
-              setOpen(true)
+              gui({ t: "click" })
               setActive((i) => Math.min(i + 1, shown.length - 1))
             } else if (e.key === "ArrowUp") {
               e.preventDefault()
@@ -190,7 +210,7 @@ export function ProductPicker<T extends PickerItem>({
               const it = shown[active]
               if (it) pick(it)
             } else if (e.key === "Escape") {
-              setOpen(false)
+              gui({ t: "escape" })
             }
           }}
           placeholder={disabled ? "Đang nạp danh mục…" : placeholder}

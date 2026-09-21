@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { pickerOpenReducer, PICKER_OPEN_INIT } from "../src/lib/ui/picker-open"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { RECEIPT_STATUS, receiptStatusLabel } from "../src/lib/purchasing/receipt-status"
@@ -482,8 +483,20 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
    * `onClick` — Tab tới ô cũng phải xổ, đây là màn nhập liệu hàng loạt.
    */
   it("bấm hoặc Tab vào ô là xổ danh sách", () => {
-    expect(PICKER).toContain("onFocus={() => setOpen(true)}")
-    expect(PICKER).toContain("onClick={() => setOpen(true)}")
+    /**
+     * ⚠ CANH HÀNH VI, KHÔNG CANH CHỮ `setOpen(true)`. Bản trước ghim
+     * đúng hai chuỗi ấy, và khi luật đóng/mở dời sang
+     * `@/lib/ui/picker-open` thì chốt đỏ vì cách viết chứ không vì luật
+     * nào sai. Tệ hơn: ghim chữ không bao giờ bắt được lỗi CHUỖI SỰ
+     * KIỆN — xem `tests/picker-open.test.ts`.
+     */
+    for (const t of ["focus", "click"] as const) {
+      expect(
+        pickerOpenReducer(PICKER_OPEN_INIT, { t }, { closeOnPick: false }).open,
+        `"${t}" không xổ được danh sách`
+      ).toBe(true)
+      expect(PICKER, `lối vào "${t}" không nối vào bộ luật`).toContain(`gui({ t: "${t}"`)
+    }
     expect(PICKER, "danh sách chỉ hiện khi đã gõ — đúng cái luật vừa bị đảo")
       .not.toContain("term.trim() !== \"\" && ")
   })
@@ -498,7 +511,12 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
   /** ⚠ Bấm ra ngoài phải đóng, nếu không dải gợi ý che mất bảng hàng. */
   it("bấm ra ngoài thì đóng", () => {
     expect(PICKER).toContain("boxRef.current?.contains")
-    expect(PICKER).toContain("setOpen(false)")
+    expect(PICKER).toContain('gui({ t: "outside" })')
+    const mo = { open: true, skipNextFocus: false }
+    expect(
+      pickerOpenReducer(mo, { t: "outside" }, { closeOnPick: false }).open,
+      "bấm ra ngoài không đóng — dải gợi ý che mất bảng hàng"
+    ).toBe(false)
   })
 })
 

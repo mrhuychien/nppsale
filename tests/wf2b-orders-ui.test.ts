@@ -313,10 +313,14 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    * nó nhất là bỏ phí cả việc nhập.
    */
   it("hiện ghi chú của từng dòng hàng", () => {
+    /* ⚠ BÁM VÀO LUẬT, KHÔNG BÁM VÀO THẺ. Bản cũ đòi đúng một chuỗi JSX
+       có `<div>`; bố cục 21/09/2026 đổi sang thẻ dòng nên nó thành
+       `<span>`, và chốt đỏ vì một tên thẻ chứ không vì hành vi. Thứ
+       phải giữ: ghi chú CÓ hiện ra, và hiện nguyên xuống dòng. */
     const flat = EDITOR.replace(/\s+/g, " ")
-    expect(flat).toContain(
-      '{r.note && ( <div className="mt-0.5 whitespace-pre-wrap text-xs italic text-amber-700 [overflow-wrap:anywhere]"> Ghi chú: {r.note} </div> )}'
-    )
+    expect(flat).toContain("{r.note && (")
+    expect(flat).toContain("Ghi chú: {r.note}")
+    expect(flat, "ghi chú nhiều dòng bị ép thành một dòng").toContain("whitespace-pre-wrap")
   })
 
   /**
@@ -351,10 +355,15 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
     expect(EDITOR.indexOf("Ghi chú đơn hàng")).toBeLessThan(EDITOR.indexOf('htmlFor="inv-note"'))
   })
 
-  /** Ô số lượng theo quy ước giao diện của dự án. */
-  it("ô số lượng dùng step any và min 0", () => {
-    expect(CODE).toContain('step="any"')
-    expect(CODE).toContain("min={0}")
+  /**
+   * ⚠ SỐ LƯỢNG PHẢI XUỐNG ĐƯỢC 0, và luật ấy sống sót qua lần đổi bố
+   * cục 21/09/2026. Ở màn hóa đơn, 0 nghĩa là "đợt này KHÔNG xuất dòng
+   * này" — một trạng thái CÓ THẬT, khác hẳn bỏ dòng: phần còn lại vẫn
+   * nằm trên đơn và dòng vẫn hiện ra. Ép sàn 1 (mặc định của `Stepper`
+   * ở giỏ hàng) là bắt người dùng bỏ hẳn dòng để nói "chưa xuất".
+   */
+  it("số lượng xuống được 0", () => {
+    expect(CODE, "Stepper của màn hóa đơn không hạ được sàn về 0").toContain("min={0}")
   })
 })
 

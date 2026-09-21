@@ -15,6 +15,7 @@
 import type { InvoiceableLine, InvoiceDraftLine } from "@/lib/orders/post-invoice"
 import { conversionFor, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { viMatchAllWords } from "@/lib/search"
+import type { CartLine } from "@/lib/sell/cart"
 
 /** Dòng của hóa đơn ĐANG SỬA, do trang gọi truyền vào. */
 export interface ReissueSeedLine {
@@ -264,4 +265,61 @@ export function searchAddable(
     if (out.length >= limit) break
   }
   return out
+}
+
+/**
+ * ĐỔI MỘT DÒNG HÓA ĐƠN THÀNH HÌNH DẠNG CỦA GIỎ HÀNG — và ngược lại.
+ *
+ * ⚠ VÌ SAO CẦN. Chủ nhà chốt 21/09/2026: màn Xuất hàng và Sửa hóa đơn
+ * phải "giống hệt màn Sửa đơn hàng". Màn ấy dùng `LineEditSheet`, mà
+ * sheet đó nhận `CartLine`. Hai hình dạng gần nhau nhưng KHÔNG bằng
+ * nhau, và mấy chỗ lệch đều là chỗ mất tiền nếu ánh xạ ẩu.
+ *
+ * ⚠ `listPrice` CỦA HAI BÊN KHÁC NGHĨA. Ở giỏ hàng nó là giá bảng THEO
+ * ĐƠN VỊ ĐANG BÁN. Ở dòng hóa đơn, `listPrice` là giá bảng theo ĐƠN VỊ
+ * CƠ SỞ (xem `InvoiceableLine`) — chỉ để so, không để tính tiền. Bê
+ * thẳng sang là sheet báo "giá sửa" cho mọi dòng bán theo thùng.
+ * Dùng `unitPrice` (giá ĐANG áp dụng của dòng đơn) làm mốc so.
+ *
+ * ⚠ CHIẾT KHẤU KHÔNG CÓ CHỖ TRONG `CartLine`, và KHÔNG ĐƯỢC BỎ. Nó nằm
+ * lại ở `EditorRow` và chỉ đi qua `toDraft`; sheet không đụng tới. Ánh
+ * xạ hai chiều bằng cách GHI ĐÈ trường thay vì dựng một dòng mới, nên
+ * `lineDiscount` / `discountBase` / `orderLineId` / `isExchange` không
+ * thể rơi mất.
+ */
+export function rowToCartLine(r: EditorRow): CartLine {
+  return {
+    productId: r.productId,
+    unit: r.unitName,
+    qty: r.qty,
+    price: r.price,
+    /* Mốc so "giá đã sửa" là giá TRÊN ĐƠN, không phải `products.sell_price`. */
+    listPrice: r.unitPrice,
+    note: r.note ?? "",
+    conversion: r.conversionFactor,
+    vatRate: r.vatRate,
+  }
+}
+
+/**
+ * Nhận lại phần sheet vừa sửa.
+ *
+ * ⚠ CHỈ NHẬN NHỮNG TRƯỜNG SHEET THẬT SỰ SỬA. Nhận cả `listPrice` là
+ * ghi đè mốc so giá của dòng đơn bằng giá bảng hiện tại — và từ đó
+ * cảnh báo "giá lệch so với đơn" thôi kêu, đúng lúc nó cần kêu nhất.
+ *
+ * ⚠ ĐỔI ĐƠN VỊ THÌ PHẢI ĐỔI CẢ HỆ SỐ QUY ĐỔI. Giữ hệ số cũ là trừ kho
+ * sai đúng bằng tỉ lệ quy đổi — 1 thùng trừ 1 hộp.
+ */
+export function patchRowFromCart(r: EditorRow, patch: Partial<CartLine>): EditorRow {
+  const next: EditorRow = { ...r }
+  if (patch.qty !== undefined) next.qty = Math.max(0, patch.qty)
+  if (patch.price !== undefined) next.price = Math.max(0, patch.price)
+  if (patch.vatRate !== undefined) next.vatRate = patch.vatRate
+  if (patch.note !== undefined) next.note = patch.note || null
+  if (patch.unit !== undefined) {
+    next.unitName = patch.unit
+    if (patch.conversion !== undefined) next.conversionFactor = patch.conversion
+  }
+  return next
 }

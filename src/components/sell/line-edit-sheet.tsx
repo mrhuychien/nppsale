@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Lock } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { VAT_RATES, vatLabel } from "@/lib/constants"
@@ -31,6 +32,9 @@ export function LineEditSheet({
   onPatch,
   onRemove,
   onClose,
+  lockUnit = null,
+  canRemove = true,
+  freePrice = false,
 }: {
   line: CartLine | null
   product: PricedProduct | undefined
@@ -41,6 +45,33 @@ export function LineEditSheet({
   onPatch: (patch: Partial<CartLine>) => void
   onRemove: () => void
   onClose: () => void
+  /**
+   * Khoá ô ĐƠN VỊ, kèm lý do hiện cho người dùng đọc.
+   *
+   * ⚠ MÀN HÓA ĐƠN PHẢI KHOÁ, VÀ ĐÂY LÀ LÝ DO THẬT chứ không phải cẩn
+   * thận thừa. `sales_order_lines.invoiced_qty` được trigger
+   * `trg_sync_invoiced_qty` (mig 124) tính bằng `sum(sil.quantity)` —
+   * CỘNG THẲNG, KHÔNG QUY ĐỔI — và chú thích cột viết rõ "cùng đơn vị
+   * với quantity". Đổi đơn vị của một dòng đang gắn `order_line_id` là
+   * ghi vào `invoiced_qty` một con số ở đơn vị khác: đơn đặt 10 thùng,
+   * xuất 10 hộp, đơn đọc thành "đã xuất đủ" trong khi kho mới ra chưa
+   * tới một thùng. Sai trong im lặng, và chỉ lộ ra ở lần đối soát.
+   *
+   * Dòng THÊM TAY (`order_line_id` rỗng) không có ràng buộc ấy — đổi
+   * đơn vị thoải mái.
+   */
+  lockUnit?: string | null
+  /** Cho bỏ dòng không. Hàng đổi của phiếu trả thì không. */
+  canRemove?: boolean
+  /**
+   * Không áp trần giá của nhân viên bán hàng.
+   *
+   * ⚠ MÀN HÓA ĐƠN LÀ CỦA NPP, và luật đã ghi từ đầu: "NPP TOÀN QUYỀN
+   * SỬA SỐ LƯỢNG VÀ GIÁ. Không có chốt chặn nào ở đây, chỉ cảnh báo
+   * vàng". Để nguyên trần của `/sell` là ô giá đỏ lên và câu nhắc nói
+   * "Không được thấp hơn giá bảng" — một câu SAI ở màn này.
+   */
+  freePrice?: boolean
 }) {
   const open = !!line && !!product
   const vp = useViewportInsets(open)
@@ -58,10 +89,12 @@ export function LineEditSheet({
   const units = sellableUnits(product)
   const listPrice = unitPriceFor(product, line.unit, groupId)
   const ceiling = ceilingFor(listPrice, maxIncreasePct)
-  const bad = priceViolation(line, { canEditPrice, maxIncreasePct })
+  const bad = freePrice ? null : priceViolation(line, { canEditPrice, maxIncreasePct })
   const stock = stockInUnit(product, line.unit, baseOnHand)
 
-  const hint = !canEditPrice
+  const hint = freePrice
+    ? `Giá bảng ${formatCurrency(listPrice)} — sửa được, không có trần.`
+    : !canEditPrice
     ? `Bạn không có quyền sửa giá (giá bảng ${formatCurrency(listPrice)})`
     : bad === "below_list"
       ? `Không được thấp hơn giá bảng ${formatCurrency(listPrice)}`
@@ -83,6 +116,19 @@ export function LineEditSheet({
           </p>
 
           <Label>Đơn vị</Label>
+          {lockUnit ? (
+            /* ⚠ KHOÁ THÌ NÓI RA LÝ DO, ĐỪNG CHỈ LÀM MỜ ĐI. Một ô xám
+               không bấm được mà không giải thích là người dùng bấm mãi
+               rồi kết luận màn hình hỏng. Màu hổ phách + ổ khoá là quy
+               ước sẵn có của kho mã này cho "khoá có lý do". */
+            <div className="rounded-[10px] border-[1.5px] border-amber-300 bg-amber-50/60 px-3 py-2">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-amber-700">
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                {line.unit}
+              </p>
+              <p className="mt-0.5 text-xs font-semibold text-amber-700/90">{lockUnit}</p>
+            </div>
+          ) : (
           <div className="flex gap-1 rounded-[10px] bg-surface-container p-[3px]">
             {units.map((u) => {
               const active = u === line.unit
@@ -111,6 +157,7 @@ export function LineEditSheet({
               )
             })}
           </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="min-w-0">
@@ -200,13 +247,17 @@ export function LineEditSheet({
         </div>
 
         <div className="mt-auto flex gap-2.5">
-          <button
-            type="button"
-            onClick={onRemove}
-            className="h-12 rounded-2xl border-[1.5px] border-error/30 px-4 text-sm font-extrabold text-error"
-          >
-            Xoá dòng
-          </button>
+          {/* ⚠ Ô TRỐNG LÀ CÂU TRẢ LỜI ĐÚNG khi dòng không được bỏ (hàng
+              đổi của phiếu trả) — xem `canRemove` ở nơi gọi. */}
+          {canRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="h-12 rounded-2xl border-[1.5px] border-error/30 px-4 text-sm font-extrabold text-error"
+            >
+              Xoá dòng
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -245,9 +296,21 @@ function Label({ children }: { children: React.ReactNode }) {
 export function Stepper({
   qty,
   onChange,
+  min = 1,
 }: {
   qty: number
   onChange: (q: number) => void
+  /**
+   * Sàn của nút −.
+   *
+   * ⚠ GIỎ HÀNG SÀN 1, HÓA ĐƠN SÀN 0 — hai nghĩa khác nhau chứ không
+   * phải một tuỳ chọn cho vui. Ở giỏ, 0 nghĩa là bỏ dòng nên nút − phải
+   * dừng ở 1 (xem chú thích trên). Ở màn hóa đơn, 0 nghĩa là "đợt này
+   * KHÔNG xuất dòng này" — một trạng thái có thật, khác hẳn bỏ dòng:
+   * phần còn lại vẫn nằm trên đơn và dòng vẫn hiện ra để người ta thấy.
+   * Ép sàn 1 ở đó là bắt người dùng bỏ hẳn dòng để nói "chưa xuất".
+   */
+  min?: number
 }) {
   /**
    * ⚠ NÚT − KHÔNG BAO GIỜ XOÁ DÒNG.
@@ -261,7 +324,7 @@ export function Stepper({
    * Nay xoá là một nút RIÊNG, luôn có mặt trên mỗi dòng. Nút − chỉ giảm,
    * và dừng ở 1.
    */
-  const atMin = qty <= 1
+  const atMin = qty <= min
   return (
     <div className="flex h-12 items-center overflow-hidden rounded-xl border-[1.5px] border-outline-variant">
       <button
@@ -284,7 +347,7 @@ export function Stepper({
         onChange={(e) => {
           const digits = e.target.value.replace(/\D/g, "")
           if (digits === "") return
-          onChange(Math.max(1, parseInt(digits, 10)))
+          onChange(Math.max(min, parseInt(digits, 10)))
         }}
         className="h-12 w-full min-w-0 flex-1 border-x-[1.5px] border-surface-container bg-surface-container-lowest text-center text-lg font-extrabold outline-none"
       />

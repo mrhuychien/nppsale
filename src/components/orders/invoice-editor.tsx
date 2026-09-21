@@ -19,12 +19,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, Loader2, PackageCheck, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MoneyInput } from "@/components/ui/money-input"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -43,11 +41,13 @@ import {
 } from "@/lib/orders/post-invoice"
 import {
   seedForNew, seedForReissue, makeAddedRow, withStock, toDraft,
-  rowsOverOrdered, searchAddable,
+  rowsOverOrdered, searchAddable, rowToCartLine, patchRowFromCart,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
+import { vatLabel } from "@/lib/constants"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 
@@ -136,6 +136,8 @@ export function InvoiceEditor({
   const [catalogTruncated, setCatalogTruncated] = useState(false)
   /** Dòng đã bỏ khỏi tờ hóa đơn đang soạn — giữ để hoàn tác. */
   const [dropped, setDropped] = useState<EditorRow[]>([])
+  /** Dòng đang mở ô sửa — giống hệt màn Sửa đơn hàng. */
+  const [editKey, setEditKey] = useState<string | null>(null)
   const [term, setTerm] = useState("")
   const [addUnit, setAddUnit] = useState<Record<string, string>>({})
   const seqRef = useRef(0)
@@ -295,8 +297,6 @@ export function InvoiceEditor({
 
   const setQty = (key: string, v: number) =>
     setRows((p) => p.map((r) => (r.key === key ? { ...r, qty: Math.max(0, v) } : r)))
-  const setPrice = (key: string, v: number) =>
-    setRows((p) => p.map((r) => (r.key === key ? { ...r, price: Math.max(0, v) } : r)))
   /**
    * BỎ MỘT DÒNG KHỎI TỜ HÓA ĐƠN ĐANG SOẠN.
    *
@@ -478,39 +478,72 @@ export function InvoiceEditor({
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border bg-card">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 text-left">Mặt hàng</th>
-                  <th className="px-3 py-2 text-right">Đặt / đã xuất</th>
-                  <th className="px-3 py-2 text-right">Tồn kho</th>
-                  <th className="px-3 py-2 text-right">SL xuất</th>
-                  <th className="px-3 py-2 text-right">Đơn giá</th>
-                  <th className="px-3 py-2 text-right">Thành tiền</th>
-                  <th className="w-10 px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr className="border-t">
-                    <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      Đơn không còn dòng nào để xuất. Thêm mã hàng bên dưới nếu cần.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r) => {
-                    const short = r.qty > 0 && r.stockKnown ? shortageOf(r, r.qty) : 0
-                    const over = !!r.orderLineId && r.qty > r.remainingQty
-                    return (
-                      <tr key={r.key} className="border-t">
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{r.productName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {r.sku ? `${r.sku} · ` : ""}{r.unitName}
-                            {r.isExchange && <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>}
-                            {r.addedByHand && <Badge variant="outline" className="ml-1.5">Thêm tay</Badge>}
-                          </div>
+<div className="overflow-hidden rounded-2xl border bg-card">
+            {rows.length === 0 ? (
+              <p className="p-7 text-center text-sm font-semibold text-muted-foreground">
+                Đơn không còn dòng nào để xuất. Thêm mã hàng bên dưới nếu cần.
+              </p>
+            ) : (
+              rows.map((r) => {
+                const short = r.qty > 0 && r.stockKnown ? shortageOf(r, r.qty) : 0
+                const over = !!r.orderLineId && r.qty > r.remainingQty
+                return (
+                  <div
+                    key={r.key}
+                    className="flex flex-col gap-2 border-b p-3 last:border-0"
+                  >
+                    <div className="flex items-start gap-1">
+                      {/*
+                        ⚠ CẢ DÒNG LÀ NÚT MỞ Ô SỬA — giống hệt màn Sửa đơn
+                          hàng (chủ nhà chốt 21/09/2026). Bảng cũ bắt gõ
+                          số vào hai ô bé xíu nằm cạnh nhau; trên điện
+                          thoại đó là hai mục tiêu 24px và một bàn phím
+                          che mất nửa màn.
+                      */}
+                      <button
+                        type="button"
+                        onClick={() => setEditKey(r.key)}
+                        className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] font-bold leading-snug">
+                            {r.productName}{" "}
+                            <span className="font-semibold text-muted-foreground">
+                              ({r.unitName})
+                            </span>
+                          </span>
+                          <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-semibold text-muted-foreground">
+                            <span>
+                              {formatCurrency(r.price)} × {r.qty}
+                            </span>
+                            {r.isExchange && <Badge variant="secondary">Hàng đổi</Badge>}
+                            {r.addedByHand && <Badge variant="outline">Thêm tay</Badge>}
+                            {/* ⚠ "ĐẶT / ĐÃ XUẤT" LÀ THỨ QUYẾT ĐỊNH SỐ
+                                LƯỢNG — bảng cũ có cột riêng, bố cục mới
+                                đưa vào đây chứ không bỏ đi. */}
+                            {r.orderLineId && (
+                              <span>
+                                đặt {r.orderedQty} · đã xuất {r.invoicedQty}
+                              </span>
+                            )}
+                            <span className={short > 0 ? "text-amber-600" : undefined}>
+                              {/* ⚠ CHƯA TRA XONG THÌ NÓI LÀ CHƯA BIẾT,
+                                  đừng in 0 — 0 đọc như "hết hàng". */}
+                              tồn {r.stockKnown ? r.availableBase : "…"}
+                            </span>
+                            {over && (
+                              <span className="font-extrabold text-amber-600">Vượt phần còn lại</span>
+                            )}
+                            {short > 0 && (
+                              <span className="font-extrabold text-amber-600">Thiếu {short}</span>
+                            )}
+                            {priceOff(r) && (
+                              <span className="rounded-md bg-amber-100 px-1.5 py-px font-bold text-amber-700">
+                                Giá lệch so với đơn
+                              </span>
+                            )}
+                            {(r.vatRate || 0) > 0 && <span>VAT {vatLabel(r.vatRate)}</span>}
+                          </span>
                           {/* ⚠ GHI CHÚ CỦA DÒNG PHẢI HIỆN Ở ĐÂY. `note` đi
                               theo `loadInvoiceableLines` từ dòng đơn, và
                               đây là màn NPP quyết định xuất bao nhiêu —
@@ -518,72 +551,46 @@ export function InvoiceEditor({
                               "không nhận hàng cận hạn") đúng vào lúc cần
                               đọc nó nhất là bỏ phí cả việc nhập. */}
                           {r.note && (
-                            <div className="mt-0.5 whitespace-pre-wrap text-xs italic text-amber-700 [overflow-wrap:anywhere]">
+                            <span className="mt-0.5 block whitespace-pre-wrap text-xs italic text-amber-700 [overflow-wrap:anywhere]">
                               Ghi chú: {r.note}
-                            </div>
+                            </span>
                           )}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
-                          {r.orderLineId ? `${r.orderedQty} / ${r.invoicedQty}` : "—"}
-                        </td>
-                        <td className={`px-3 py-2 text-right tabular-nums text-xs ${short > 0 ? "text-amber-600" : "text-muted-foreground"}`}>
-                          {/* ⚠ CHƯA TRA XONG THÌ NÓI LÀ CHƯA BIẾT, đừng in 0 —
-                              0 đọc như "hết hàng" và đó là một câu nói dối. */}
-                          {r.stockKnown ? r.availableBase : "…"}
-                        </td>
-                        {/*
-                          ⚠ ĐẨY Ô NHẬP VỀ SÁT PHẢI. `text-right` trên ô bảng
-                            chỉ căn CHỮ, không căn phần tử con — mà ô nhập
-                            có bề rộng cố định (w-24 / w-32) nên nó nằm im
-                            bên trái trong khi tiêu đề cột căn phải. Nhìn ra
-                            là hai cột lệch hẳn khỏi nhãn của chúng. Bọc
-                            flex justify-end mới kéo được ô nhập về đúng chỗ.
-                        */}
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end">
-                            <Input
-                              type="number" step="any" min={0} value={r.qty}
-                              onChange={(e) => setQty(r.key, Number(e.target.value))}
-                              className={`h-9 w-24 text-right tabular-nums ${over ? "border-amber-300" : ""}`}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end">
-                            <MoneyInput
-                              value={r.price} onChange={(v) => setPrice(r.key, v)}
-                              showSuffix={false} className="w-32"
-                              inputClassName={`h-9 text-right tabular-nums ${priceOff(r) ? "border-amber-300" : ""}`}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {formatCurrency(r.qty * r.price)}
-                        </td>
-                        <td className="px-2 py-2">
-                          {/* ⚠ HÀNG ĐỔI KHÔNG BỎ ĐƯỢC — xem `dropRow`. Ô
-                              trống ở đây là câu trả lời đúng, không phải
-                              chỗ chưa làm xong. */}
-                          {!r.isExchange && (
-                            <Button
-                              variant="ghost" size="icon" className="h-8 w-8 text-destructive"
-                              onClick={() => dropRow(r.key)}
-                              title={
-                                r.addedByHand
-                                  ? "Bỏ dòng thêm tay này"
-                                  : "Bỏ khỏi tờ hóa đơn này — phần chưa xuất vẫn còn trên đơn"
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
+                        </span>
+                      </button>
+                      {/* ⚠ HÀNG ĐỔI KHÔNG BỎ ĐƯỢC — xem `dropRow`. */}
+                      {!r.isExchange && (
+                        <button
+                          type="button"
+                          onClick={() => dropRow(r.key)}
+                          aria-label={`Bỏ ${r.productName}`}
+                          title={
+                            r.addedByHand
+                              ? "Bỏ dòng thêm tay này"
+                              : "Bỏ khỏi tờ hóa đơn này — phần chưa xuất vẫn còn trên đơn"
+                          }
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-muted-foreground active:bg-destructive/10 active:text-destructive"
+                        >
+                          <Trash2 className="h-[18px] w-[18px]" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[17px] font-extrabold tabular-nums">
+                        {formatCurrency(r.qty * r.price)}
+                      </span>
+                      <div className="w-[164px]">
+                        {/* ⚠ CHO VỀ 0 ĐƯỢC. Ở giỏ hàng, 0 nghĩa là bỏ
+                            dòng; ở đây 0 nghĩa là "đợt này không xuất
+                            dòng này" — một trạng thái CÓ THẬT và khác
+                            hẳn với bỏ dòng, vì phần còn lại vẫn nằm trên
+                            đơn và dòng vẫn hiện ra để người ta thấy. */}
+                        <Stepper qty={r.qty} onChange={(q) => setQty(r.key, q)} min={0} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
 
           {/*
@@ -818,6 +825,49 @@ export function InvoiceEditor({
           </div>
         </>
       )}
+
+      {/*
+        Ô SỬA DÒNG — CÙNG MỘT SHEET VỚI MÀN SỬA ĐƠN HÀNG.
+        ⚠ Chủ nhà chốt 21/09/2026: hai màn này phải "giống hệt màn Sửa
+          đơn hàng". Dùng chung `LineEditSheet` chứ không vẽ bản thứ hai
+          — hai bản là hai lần phải nhớ sửa, và đó đúng là cái đã làm ô
+          tìm hàng bị bỏ sót ba lần liền.
+      */}
+      {(() => {
+        const r = rows.find((x) => x.key === editKey)
+        if (!r) return null
+        return (
+          <LineEditSheet
+            line={rowToCartLine(r)}
+            product={catalog.find((p) => p.id === r.productId)}
+            groupId={priceGroupId}
+            canEditPrice
+            maxIncreasePct={0}
+            /* ⚠ NPP TOÀN QUYỀN SỬA GIÁ ở màn này — luật đã ghi từ đầu
+               tệp. Để nguyên trần của `/sell` là ô giá đỏ lên kèm câu
+               "Không được thấp hơn giá bảng", một câu SAI ở đây. */
+            freePrice
+            baseOnHand={r.stockKnown ? r.availableBase : 0}
+            /* ⚠ KHOÁ ĐƠN VỊ CỦA DÒNG GẮN VỚI ĐƠN — xem `lockUnit`. */
+            lockUnit={
+              r.orderLineId
+                ? "Dòng này thuộc đơn hàng nên phải giữ đúng đơn vị đã đặt. Muốn đổi đơn vị thì bỏ dòng rồi thêm lại bằng ô Thêm mã hàng."
+                : null
+            }
+            canRemove={!r.isExchange}
+            onPatch={(patch) =>
+              setRows((prev) =>
+                prev.map((x) => (x.key === r.key ? patchRowFromCart(x, patch) : x))
+              )
+            }
+            onRemove={() => {
+              dropRow(r.key)
+              setEditKey(null)
+            }}
+            onClose={() => setEditKey(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

@@ -491,12 +491,17 @@ describe("bỏ dòng khỏi tờ hóa đơn", () => {
     expect(EDITOR_UI, "nút bỏ dòng hiện cả trên dòng hàng đổi").toContain("{!r.isExchange && (")
   })
 
-  /** ⚠ Và dòng CỦA ĐƠN thì bỏ được — đúng thứ chủ nhà yêu cầu. */
+  /**
+   * ⚠ Và dòng CỦA ĐƠN thì bỏ được — đúng thứ chủ nhà yêu cầu.
+   *
+   * ⚠ BÁM VÀO ĐIỀU KIỆN, KHÔNG BÁM VÀO Ô BẢNG. Bản cũ đọc
+   * `<td className="px-2 py-2">`; bố cục 21/09/2026 bỏ hẳn bảng, nên
+   * chốt đỏ vì một tên thẻ chứ không vì hành vi.
+   */
   it("dòng của đơn bỏ được, không chỉ dòng thêm tay", () => {
-    const cell = EDITOR_UI.match(/<td className="px-2 py-2">[\s\S]*?<\/td>/)
-    expect(cell, "không đọc được ô nút của dòng").not.toBeNull()
+    expect(EDITOR_UI, "nút bỏ dòng không còn chặn hàng đổi").toContain("{!r.isExchange && (")
     expect(
-      cell![0].includes("r.addedByHand && ("),
+      EDITOR_UI.includes("{r.addedByHand && ("),
       "nút bỏ dòng vẫn chỉ hiện trên dòng thêm tay"
     ).toBe(false)
   })

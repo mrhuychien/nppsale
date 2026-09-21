@@ -69,14 +69,18 @@ describe("Nút − không bao giờ xoá dòng", () => {
   })
 
   it("− khoá lại ở số 1, không giảm tiếp và không xoá", () => {
-    expect(STEPPER).toContain("const atMin = qty <= 1")
+    /* ⚠ SÀN NAY LÀ THAM SỐ, MẶC ĐỊNH 1 — màn hóa đơn cần sàn 0 ("đợt
+       này không xuất dòng này"), giỏ hàng vẫn sàn 1. Chốt đòi ĐÚNG hai
+       điều: mặc định là 1, và nút − so với sàn ấy. */
+    expect(STEPPER).toContain("min = 1,")
+    expect(STEPPER).toContain("const atMin = qty <= min")
     expect(STEPPER).toContain("disabled={atMin}")
     expect(STEPPER).toMatch(/onClick=\{\(\) => onChange\(qty - 1\)\}/)
   })
 
   /** Gõ tay số 0 cũng không được biến thành xoá dòng. */
   it("gõ tay không tụt xuống dưới 1", () => {
-    expect(STEPPER).toContain("onChange(Math.max(1, parseInt(digits, 10)))")
+    expect(STEPPER).toContain("onChange(Math.max(min, parseInt(digits, 10)))")
   })
 
   /**

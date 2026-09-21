@@ -378,19 +378,29 @@ describe("xoá đơn: vét hết phiếu trả chưa hoàn thành", () => {
 })
 
 /**
- * MÀN SOẠN HÓA ĐƠN: hai cột nhập phải nằm dưới đúng nhãn của chúng.
+ * MÀN SOẠN HÓA ĐƠN: KHÔNG CÒN LÀ MỘT CÁI BẢNG.
+ *
+ * ⚠ CHỐT CŨ Ở ĐÂY ĐÃ ĐƯỢC THAY, VÀ NÓI RA VÌ SAO. Nó canh việc hai ô
+ * nhập trong bảng phải bọc `flex justify-end` để nằm dưới đúng nhãn
+ * cột. Chủ nhà chốt 21/09/2026: hai màn Xuất hàng / Sửa hóa đơn phải
+ * "giống hệt màn Sửa đơn hàng" — tức là thẻ dòng bấm được, không phải
+ * bảng có ô nhập. Không còn cột thì không còn gì để căn.
+ *
+ * Luật THẬT SỰ quan trọng của bố cục cũ — sửa số lượng và giá mà không
+ * phải nhắm vào một ô 24px — nay do `Stepper` và `LineEditSheet` lo, và
+ * có chốt riêng ở `tests/wf2b-orders-ui.test.ts`.
  */
-describe("màn soạn: ô nhập căn phải theo tiêu đề cột", () => {
+describe("màn soạn: dòng hàng là thẻ bấm được, không phải bảng", () => {
   const E = read("src/components/orders/invoice-editor.tsx")
 
-  /**
-   * ⚠ `text-right` TRÊN Ô BẢNG CHỈ CĂN CHỮ, không căn phần tử con. Ô
-   * nhập có bề rộng cố định (w-24 / w-32) nên nó nằm im bên trái trong
-   * khi tiêu đề cột căn phải — nhìn ra là hai cột lệch hẳn khỏi nhãn.
-   */
-  it("ô SL xuất và Đơn giá được bọc flex justify-end", () => {
-    expect((E.match(/<div className="flex justify-end">/g) ?? []).length).toBe(2)
-    expect(E).not.toContain('<td className="px-3 py-2 text-right">\n                          <Input')
+  it("không còn bảng có ô nhập trong ô bảng", () => {
+    expect(E, "màn soạn hóa đơn vẫn còn bảng dòng hàng").not.toContain("<table")
+    expect(E, "vẫn còn ô nhập nằm trong ô bảng").not.toContain("<td ")
+  })
+
+  it("dùng chung ô sửa dòng với màn Sửa đơn hàng", () => {
+    expect(E).toContain("<LineEditSheet")
+    expect(E).toContain("<Stepper")
   })
 })
 

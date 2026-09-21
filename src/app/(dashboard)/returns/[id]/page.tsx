@@ -56,7 +56,18 @@ export default function ReturnDetailPage() {
       supabase
         .from("returns")
         .select(
-          "id, order_id, reason, status, credit_note_amount, photo_url, notes, created_at, destination_zone, completed_at, cancel_reason, applied_receipt_id, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code)"
+          /*
+           * ⚠ ĐỌC CẢ HÓA ĐƠN BÁN, KHÔNG CHỈ ĐƠN HÀNG. Phiếu trả TỰ SINH
+           *   (đơn có hàng đổi/trả kèm) được `post_invoice` gắn
+           *   `invoice_id` lúc xuất hàng — mig 125. Cái mốc ấy có thật
+           *   trong sổ nhưng chưa từng hiện ra màn nào, nên người đối
+           *   chiếu không biết khoản trừ này thuộc tờ hóa đơn nào.
+           *
+           * ⚠ ĐƠN VÀ HÓA ĐƠN LÀ HAI MỐC KHÁC NHAU, giữ cả hai. Một đơn
+           *   giao nhiều đợt có nhiều hóa đơn; chỉ hiện mã đơn là người
+           *   ta phải tự đoán đợt nào.
+           */
+          "id, order_id, invoice_id, reason, status, credit_note_amount, photo_url, notes, created_at, destination_zone, completed_at, cancel_reason, applied_receipt_id, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code), invoice:sales_invoices(invoice_code, invoice_date)"
         )
         .eq("id", id)
         .single(),
@@ -207,6 +218,10 @@ export default function ReturnDetailPage() {
 
   const reasonLabel = RETURN_REASONS.find((r) => r.value === ret.reason)?.label || ret.reason || "—"
   const orderCode = (ret as Return & { order?: { order_code?: string } }).order?.order_code
+  const inv = (ret as Return & {
+    invoice_id?: string | null
+    invoice?: { invoice_code?: string; invoice_date?: string } | null
+  })
   // Phiếu trả giờ chỉ là bản ghi tra cứu — không còn workflow duyệt.
   // Cho phép sửa ghi chú / credit note + (owner) xoá.
   const canEdit = !!user && hasPermission(user.role, "returns", "update")
@@ -531,6 +546,27 @@ export default function ReturnDetailPage() {
                 >
                   <ExternalLink className="h-4 w-4" />
                   Đơn hàng gốc {orderCode ? `(${orderCode})` : ""}
+                </Link>
+              )}
+              {/*
+                ⚠ HÓA ĐƠN BÁN LÀ MỐC ĐỐI CHIẾU THẬT của khoản trừ này.
+                  Khách chỉ trả được thứ đã THỰC XUẤT, và cả trigger lẫn
+                  RPC đều đếm trần trả theo hóa đơn — nên khi đối chiếu
+                  công nợ, đây mới là tờ giấy phải mở ra, không phải đơn
+                  đặt hàng.
+              */}
+              {inv.invoice_id && (
+                <Link
+                  href={`/sales-invoices/${inv.invoice_id}`}
+                  className="flex items-center gap-2 text-primary hover:underline font-semibold"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Hóa đơn bán{" "}
+                  {inv.invoice?.invoice_code
+                    ? `(${inv.invoice.invoice_code}${
+                        inv.invoice.invoice_date ? ` · ${formatDate(inv.invoice.invoice_date)}` : ""
+                      })`
+                    : ""}
                 </Link>
               )}
               <div className="pt-2 border-t border-border/40">

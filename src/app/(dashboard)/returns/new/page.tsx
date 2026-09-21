@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect } from "@/components/ui/search-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { SEARCH_FIELD_PROPS } from "@/lib/ui/search-field"
@@ -103,7 +104,15 @@ export default function NewReturnPage() {
     return { maxIncreasePct: Number(r.price_edit_max_increase_pct ?? 0), free: r.free }
   })()
 
-  const [customers, setCustomers] = useState<Pick<Customer, "id" | "store_name">[]>([])
+  /**
+   * ⚠ ĐỌC CẢ `owner_name` VÀ `phone`, KHÔNG CHỈ `store_name`. Người lập
+   *   phiếu trả thường chỉ nhớ số điện thoại hoặc tên chủ cửa hàng —
+   *   một danh sách chỉ có tên cửa hàng thì "tìm được" cũng bằng không.
+   *   Đây đúng bộ ba mà ô tìm ở màn Đơn hàng đang dùng.
+   */
+  const [customers, setCustomers] = useState<
+    Pick<Customer, "id" | "store_name" | "owner_name" | "phone">[]
+  >([])
   const [products, setProducts] = useState<ProductLite[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -121,6 +130,22 @@ export default function NewReturnPage() {
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<ReturnCartLine[]>([])
+  /**
+   * ⚠ DỰNG MỘT LẦN THEO `customers`. Dựng lại ở mỗi lần vẽ là mảng mới
+   *   mỗi lần, và `SearchSelect` nhận một danh sách "đổi" liên tục.
+   */
+  const customerOptions = useMemo(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        label: c.store_name,
+        /* Hiện số điện thoại để phân biệt hai cửa hàng trùng tên. */
+        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
+        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
+      })),
+    [customers]
+  )
+
   const [q, setQ] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -129,10 +154,10 @@ export default function NewReturnPage() {
       const [custRes, prodRes] = await Promise.all([
         // ⚠ Phân trang: hơn 1.000 khách là chuyện thường, mà server cắt ở
         // 1.000 dòng và KHÔNG báo — khách nằm sau đó thì không lập được phiếu.
-        fetchAllForAggregate<Pick<Customer, "id" | "store_name">>((from, to) =>
+        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>((from, to) =>
           createClient()
             .from("customers")
-            .select("id, store_name", { count: "exact" })
+            .select("id, store_name, owner_name, phone", { count: "exact" })
             .eq("status", "active")
             .order("store_name")
             .range(from, to)
@@ -398,18 +423,26 @@ export default function NewReturnPage() {
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Khách hàng *
               </Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn khách hàng" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.store_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/*
+                ⚠ Ô CHỌN PHẢI GÕ TÌM ĐƯỢC (chủ nhà báo 21/09/2026: "list
+                  khách hàng xổ xuống chưa tìm kiếm được khách hàng").
+                  Danh sách này kéo ĐỦ theo trang — với NPP có hơn một
+                  nghìn khách thì một `<Select>` liệt kê hết rồi bắt cuộn
+                  là không dùng được. `SearchSelect` là ô mà chủ nhà đã
+                  chỉ đích danh làm mẫu ("như khi chọn NCC ấy").
+
+                ⚠ KHÔNG CHO GÕ TỰ DO. Phiếu trả PHẢI gắn vào một khách có
+                  thật — `customer_id` đi thẳng vào công nợ. Một cái tên
+                  gõ tay không trừ nợ cho ai cả.
+              */}
+              <SearchSelect
+                id="ret-customer"
+                options={customerOptions}
+                valueId={customerId}
+                onPick={(o) => setCustomerId(o?.id ?? "")}
+                placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
+                emptyHint="Không tìm thấy khách nào khớp."
+              />
             </div>
 
             <div className="space-y-2">

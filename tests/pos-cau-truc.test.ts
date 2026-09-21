@@ -221,6 +221,65 @@ describe("sửa đơn dùng đúng component của màn lập đơn", () => {
 })
 
 /**
+ * ⚠ SPEC §13 ĐỢT 2: màn 8 (sửa phiếu trả) phải dùng LẠI màn 3, đúng lý
+ * do của §7.1 — hai bản sao là hai chỗ phải sửa khi đổi quy tắc tiền,
+ * và bản "sửa" là bản sẽ bị quên.
+ */
+describe("sửa phiếu trả dùng đúng component của màn lập phiếu", () => {
+  const LAP = read("src/app/pos/tra-hang/[id]/page.tsx")
+  const SUA = read("src/app/pos/tra-hang/[id]/sua/page.tsx")
+
+  it("hai route cùng render <ReturnScreen>", () => {
+    expect(LAP).toContain("<ReturnScreen")
+    expect(SUA).toContain("<ReturnScreen")
+  })
+
+  it("không có bản sao thứ hai của màn phiếu trả", () => {
+    const nghiNgo = FILES.filter((f) =>
+      /return-(edit|sua)-screen|return-screen-(edit|sua)/i.test(f)
+    )
+    expect(nghiNgo.map((f) => f.replace(ROOT, ""))).toEqual([])
+  })
+
+  /**
+   * ⚠ DẢI DELTA CHỈ Ở MÀN SỬA. Phiếu chưa ghi nhận thì chưa có bút
+   * toán nào để hoàn tác — vẽ một dải "thay đổi sẽ ghi" ở màn lập
+   * phiếu là hứa một phép so sánh không tồn tại.
+   */
+  it("dải delta chỉ hiện ở chế độ sửa", () => {
+    const s = code(read("src/components/pos/return-screen.tsx"))
+    const i = s.indexOf("<DeltaPreviewStrip")
+    expect(i, "không thấy dải delta").toBeGreaterThan(-1)
+    /* Câu dựng nó phải nằm sau một điều kiện `mode === "sua"`. */
+    expect(s.slice(Math.max(0, i - 160), i)).toMatch(/mode === "sua"/)
+  })
+})
+
+/**
+ * ⚠ SPEC §7.2: "Nếu chưa có endpoint dry-run: render khung với `đang
+ * tính…`, ghi TODO, KHÔNG tự viết RPC".
+ *
+ * Một dải delta toàn số 0 đọc như "lưu xong chẳng có gì đổi" — câu trả
+ * lời nguy hiểm nhất có thể hiện ở chỗ đó, vì nó đứng ngay trước một
+ * bút toán kho thật.
+ */
+describe("dải delta không bịa số", () => {
+  const STRIP = code(read("src/components/pos/delta-preview-strip.tsx"))
+
+  it("ô chưa tính được thì nói đang tính, không vẽ 0", () => {
+    expect(STRIP).toContain("đang tính…")
+    /* `body` rỗng phải rơi về câu ấy, không rơi về một con số. */
+    expect(STRIP).toMatch(/c\.body \?\?/)
+  })
+
+  /** ⚠ `+` xanh, `−` đỏ — ba con số cùng màu là người đọc phải tự dò chiều. */
+  it("chiều tăng giảm có màu riêng", () => {
+    expect(STRIP).toContain("#16a34a")
+    expect(STRIP).toContain("#dc2626")
+  })
+})
+
+/**
  * ⚠ SPEC §10: bind phím ở cấp `PosShell`, KHÔNG global keydown trên
  * `document` (tránh đụng `/sell`).
  */

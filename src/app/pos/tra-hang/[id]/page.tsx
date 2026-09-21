@@ -1,7 +1,18 @@
 "use client"
 
-import { DotChuaLam } from "@/components/pos/dot-chua-lam"
+/**
+ * MÀN 3 — PHIẾU TRẢ HÀNG. `/pos/tra-hang/moi` là phiếu mới.
+ *
+ * ⚠ KHÔNG CÓ DẢI DELTA Ở ĐÂY. Phiếu chưa ghi nhận thì chưa có bút toán
+ * nào để hoàn tác — không có gì để xem trước (spec §7.1 nói đúng ý ấy
+ * cho màn lập đơn, và nó đúng y hệt ở đây).
+ */
 
-export default function Page() {
-  return <DotChuaLam title="Phiếu trả hàng" dot={2} gom="phiếu trả hàng (màn 3) và sửa phiếu trả (màn 8)" />
+import { useParams } from "next/navigation"
+import { ReturnScreen } from "@/components/pos/return-screen"
+
+export default function PosReturnPage() {
+  const { id } = useParams<{ id: string }>()
+  const moi = id === "moi"
+  return <ReturnScreen mode="lap" slipCode={moi ? null : id} />
 }

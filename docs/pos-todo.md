@@ -76,15 +76,21 @@ liệu này.
 
 ---
 
-## 5. Dải xem trước delta chưa có số
+## 5. Dải xem trước delta mới nói được một nửa
 
-**Chỗ:** cuối cột trái các màn sửa chứng từ đã ghi sổ (spec §7.2, màn 7/8/10/12).
+**Chỗ:** cuối cột trái các màn sửa chứng từ đã ghi sổ (spec §7.2). Đã dựng
+ở màn 8 (sửa phiếu trả); màn 7/10/12 thuộc đợt 3–4.
 
 **Thiếu:** endpoint dry-run trả trước "kho sẽ đổi thế nào, công nợ sẽ đổi
 thế nào" khi lưu.
 
-**Đang hiện:** các màn ấy thuộc đợt 3–4, chưa dựng. Khi dựng thì theo spec
-là render khung với `đang tính…`.
+**Đang hiện:** dải nói được phần suy ra từ chính các dòng đang gõ — CHIỀU
+và SỐ LƯỢNG hàng vào Kho hàng lỗi / ra Kho bán. Hai thứ còn thiếu là tồn
+TRƯỚC/SAU và công nợ TRƯỚC/SAU; ô nào chưa biết thì hiện `đang tính…`.
+
+⚠ **Cố tình không vẽ số 0 vào phần chưa biết.** Một dải toàn 0 đọc như
+"lưu xong chẳng có gì đổi" — câu trả lời nguy hiểm nhất có thể hiện ở đó,
+vì nó đứng ngay trước một bút toán kho thật.
 
 ⚠ Spec ghi rõ: **không tự viết RPC**.
 
@@ -141,3 +147,21 @@ thiết lập riêng cho POS chưa có trong đợt này.
 
 ⚠ Select **phải** có ô rỗng rõ ràng, nếu không người dùng không có cách
 nào bỏ chọn thứ họ lỡ chọn.
+
+
+---
+
+## 10. Phiếu trả chưa nối hóa đơn gốc
+
+**Chỗ:** màn 3, dòng `Giá gốc hàng mua` trên panel và ô tìm hàng trả.
+
+**Thiếu:** modal chọn hóa đơn gốc đã dựng và đọc được danh sách hóa đơn
+thật, nhưng chọn xong thì chưa nạp dòng hàng của tờ ấy vào bảng hàng trả,
+và chưa lấy được giá khách đã mua.
+
+**Đang hiện:** `Giá gốc hàng mua` để chữ `chưa xác định`. Ô tìm hàng trả
+đang tìm trong toàn danh mục chứ chưa giới hạn trong hóa đơn gốc.
+
+⚠ Đây là **ràng buộc nghiệp vụ**, không phải thẩm mỹ: trả một món không có
+trên hóa đơn gốc là trả hàng không bán. Phần nghiệp vụ đang chạy đã có chốt
+chặn (`enforce_return_line_cap`); màn này chỉ cần chặn sớm cho đỡ mất công.

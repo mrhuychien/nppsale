@@ -179,31 +179,85 @@ describe("bố cục vừa màn 1280–1440", () => {
   })
 
   /**
-   * ⚠ DROPDOWN TÌM HÀNG NEO Ở ĐỈNH CỘT TRÁI. Neo ở đáy panel phải là
-   * nó mở XUỐNG từ mép dưới màn hình và bị `overflow-hidden` cắt sạch —
-   * bấm F3 chỉ thấy nền tối đi. Chốt: trong mỗi màn, `SearchDropdown`
-   * tìm hàng (mở bằng `moTimHang`/`moTimTra`) phải xuất hiện TRƯỚC
-   * `LineTableFrame` trong mã, tức nằm trên bảng.
+   * ⚠ Ô TÌM HÀNG NEO Ở ĐỈNH CỘT PHẢI, KHÔNG Ở ĐÁY.
+   *
+   * Đây là một lỗi ĐÃ CÓ THẬT: bản đầu neo dải gợi ý ở đáy panel phải,
+   * nên nó mở XUỐNG từ mép dưới màn hình và bị `overflow-hidden` của
+   * khung cắt sạch — bấm `F3` chỉ thấy nền tối đi.
+   *
+   * ⚠ LUẬT GIỮ NGUYÊN QUA CẢ HAI LẦN ĐỔI CHỖ, CHỐT THÌ PHẢI ĐỔI. Bản
+   * trước canh `SearchDropdown` tìm hàng nằm trước `LineTableFrame` ở
+   * cột TRÁI; nay cả bốn màn dùng ô chung ở cột PHẢI, nên chốt canh nó
+   * nằm trước khối TỔNG TIỀN — tức ở nửa trên của cột, nơi dải gợi ý
+   * còn đủ chỗ mở xuống.
    */
-  it("dropdown tìm hàng nằm trước bảng hàng trong cột trái", () => {
+  it("ô tìm hàng neo ở nửa trên cột phải", () => {
     for (const f of MAN) {
       const s = code(read(f))
-      const bang = s.indexOf("<LineTableFrame")
-      if (bang < 0) continue
-      const mo = s.search(/open=\{moTim(Hang|Tra)\}/)
-      if (mo < 0) continue
-      expect(mo, `${f}: dropdown tìm hàng neo sau bảng — sẽ mở rơi khỏi màn`).toBeLessThan(bang)
+      const o = s.indexOf("<PosProductSearchBox")
+      if (o < 0) continue
+      const tong = s.indexOf("<MoneyRow")
+      expect(tong, `${f}: không thấy khối tổng tiền để so`).toBeGreaterThan(-1)
+      expect(o, `${f}: ô tìm neo dưới khối tổng tiền — dải gợi ý sẽ mở rơi khỏi màn`)
+        .toBeLessThan(tong)
     }
   })
 
-  /** ⚠ Chống mù: phải có ít nhất 4 màn thật sự có cả hai thứ. */
-  it("phép quét dropdown nhìn thấy các màn", () => {
-    let n = 0
-    for (const f of MAN) {
-      const s = code(read(f))
-      if (s.indexOf("<LineTableFrame") >= 0 && s.search(/open=\{moTim(Hang|Tra)\}/) >= 0) n++
+  /**
+   * ⚠ ĐĂNG KÝ VÀ VẼ Ô LÀ MỘT CẶP — thiếu vế nào cũng hỏng, theo hai
+   * kiểu khác nhau:
+   *   · đăng ký mà không vẽ ô → danh mục nằm đó, người dùng không có
+   *     đường nào tới nó, và `F3` đưa tiêu điểm về một ô không tồn tại;
+   *   · vẽ ô mà không đăng ký → ô tự ẩn (`if (!reg) return null`), tức
+   *     một dòng mã chết mà không ai biết.
+   *
+   * ⚠ ĐẾM SỐ MÀN KHÔNG ĐỦ. Bản đầu của chốt này đòi "ít nhất 4 màn có
+   * ô tìm", và một đột biến gỡ hẳn ô khỏi màn NHẬP HÀNG vẫn lọt — vì
+   * bốn màn còn lại vẫn đủ đếm. Nay nó so HAI TẬP phải trùng nhau.
+   */
+  it("mọi màn đăng ký danh mục đều vẽ ô tìm, và ngược lại", () => {
+    const dangKy: string[] = []
+    const veO: string[] = []
+    for (const f of FILES) {
+      const s = code(readFileSync(f, "utf-8"))
+      const ten = f.slice(ROOT.length + 1)
+      if (/useRegisterPosProductSearch\(\{/.test(s)) dangKy.push(ten)
+      if (/<PosProductSearchBox/.test(s)) veO.push(ten)
     }
-    expect(n).toBeGreaterThanOrEqual(4)
+    expect(dangKy.length, "không màn nào đăng ký danh mục hàng").toBeGreaterThanOrEqual(5)
+    expect(veO.sort(), "tập màn vẽ ô lệch tập màn đăng ký danh mục").toEqual(dangKy.sort())
+  })
+
+  /**
+   * ⚠ DANH MỤC ĐƯA LÊN Ô TÌM PHẢI LÀ DANH MỤC THẬT, VÀ PHẢI LỌC THEO
+   * TỪ KHOÁ ĐANG GÕ.
+   *
+   * Ô tìm dùng chung KHÔNG tự lọc — mỗi màn một luật lọc nên sổ đăng ký
+   * nhận danh sách đã lọc sẵn. Hai kiểu hỏng, cả hai đều im lặng:
+   *   · truyền thẳng `[]` → gõ gì cũng không ra mã nào, màn thành vô
+   *     dụng mà không có lỗi nào để lần ra;
+   *   · quên lọc theo từ khoá → gõ bao nhiêu chữ dải gợi ý vẫn y nguyên
+   *     60 dòng đầu danh mục.
+   */
+  it("mỗi màn đưa lên danh mục thật, lọc theo từ khoá đang gõ", () => {
+    for (const f of FILES) {
+      const s = code(readFileSync(f, "utf-8"))
+      const i = s.indexOf("useRegisterPosProductSearch({")
+      if (i < 0) continue
+      const ten = f.slice(ROOT.length + 1)
+      const khoi = s.slice(i, s.indexOf("})", i))
+      const m = khoi.match(/items:\s*([^,\n]+)/)
+      expect(m, `${ten}: đăng ký không có danh mục`).toBeTruthy()
+      expect(
+        /^[A-Za-z_$][\w$]*$/.test(m![1].trim()),
+        `${ten}: danh mục đưa lên là "${m![1].trim()}" chứ không phải một danh sách thật`
+      ).toBe(true)
+      expect(s, `${ten}: không đọc từ khoá của ô tìm`).toMatch(/usePosSearchTerm\(\)/)
+      expect(
+        s,
+        `${ten}: danh mục không lọc theo từ khoá — gõ chữ nào dải gợi ý cũng y nguyên`
+      ).toMatch(/viMatchAllWords\(\s*tuKhoa|viMatchAllWords\(\s*moTimHang/)
+    }
   })
 
   /** ⚠ `:focus-visible` không được đổi bo góc của ô đang chọn. */
@@ -693,6 +747,63 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
        thì vô nghĩa, đúng cái bẫy đã sập ở `missingLotLines`. */
     expect(ORDER, "màn đơn không vẽ nút thêm sản phẩm").toMatch(/<PosAddProductButton\s*\/>/)
     expect(ORDER, "màn đơn không vẽ ô tìm ở cột phải").toMatch(/<PosProductSearchBox\s*\/>/)
+  })
+
+  /**
+   * ⚠ MÀN PHIẾU TRẢ CÓ HAI GIỎ, VÀ MỘT Ô TÌM. Đây là chỗ nguy nhất của
+   * đợt chuyển ô tìm sang cột phải.
+   *
+   * Phiếu trả vừa nhận HÀNG KHÁCH TRẢ VỀ vừa nhận HÀNG MÌNH ĐỔI LẠI.
+   * Hai bảng nằm chồng nhau và nhìn rất giống nhau. Nếu ô tìm không đi
+   * theo giỏ đang chọn thì một món khách trả bị ghi thành một món mình
+   * đưa thêm — lệch hẳn chiều tiền, và không ai thấy vì số dòng vẫn
+   * đúng.
+   *
+   * Chốt canh ba vế của cùng một luật: việc chọn đi theo giỏ, ô tìm
+   * HIỆN RA giỏ ấy, và hai nút "+ Hàng trả" / "+ Hàng đổi" mỗi nút đặt
+   * đúng giỏ của nó.
+   */
+  it("màn phiếu trả: ô tìm đi theo giỏ đang chọn, và nói ra giỏ ấy", () => {
+    const s = code(read("src/components/pos/return-screen.tsx"))
+
+    /* 1. Việc chọn đọc giỏ đích — không đặt cứng một bên. */
+    const i = s.indexOf("const chonHang")
+    expect(i, "màn phiếu trả không còn hàm chọn hàng").toBeGreaterThan(-1)
+    const chon = s.slice(i, i + 220)
+    expect(chon, "việc chọn không đọc giỏ đích — mọi mã rơi vào cùng một giỏ")
+      .toMatch(/gioDich\s*===\s*"doi"/)
+
+    /* 2. Danh mục cũng đổi theo giỏ: giỏ hàng trả bị hóa đơn gốc chặn. */
+    const j = s.indexOf("const mucChoODung")
+    expect(j).toBeGreaterThan(-1)
+    expect(s.slice(j, j + 260), "danh mục không đổi theo giỏ")
+      .toMatch(/gioDich\s*===\s*"tra"\s*\?\s*mucHangTra/)
+
+    /* 3. Ô tìm phải HIỆN giỏ đang chọn — xem `PosProductSearchBox`. */
+    const k = s.indexOf("<PosProductSearchBox")
+    expect(k, "màn phiếu trả không vẽ ô tìm").toBeGreaterThan(-1)
+    const o = s.slice(k, s.indexOf("/>", k))
+    expect(o, "ô tìm không nói đang thêm vào giỏ nào").toMatch(/note=\{/)
+    expect(o, "dải báo giỏ không đổi theo giỏ").toMatch(/gioDich\s*===\s*"tra"/)
+
+    /* 4. Hai nút mỗi nút một giỏ — cùng trỏ một giỏ là một nút chết. */
+    expect(s, 'thiếu nút đặt giỏ "hàng trả"').toMatch(/themVao\("tra"\)/)
+    expect(s, 'thiếu nút đặt giỏ "hàng đổi"').toMatch(/themVao\("doi"\)/)
+  })
+
+  /**
+   * ⚠ KHÔNG CÒN NÚT NÀO TRỎ VÀO DROPDOWN ĐÃ GỠ. Ba màn vừa chuyển sang
+   * ô tìm dùng chung; mỗi màn có sẵn hai nút "Thêm hàng" ở ô rỗng và ở
+   * thanh chân bảng. Quên chỉnh một nút là nó thành NÚT CHẾT — bấm
+   * không ra gì, và không có lỗi nào để lần ra.
+   */
+  it("không còn nút thêm hàng trỏ vào dropdown đã gỡ", () => {
+    const pham: string[] = []
+    for (const f of FILES) {
+      const s = code(readFileSync(f, "utf-8"))
+      if (/setMoTim(Hang|Tra|Doi)\(true\)/.test(s)) pham.push(f.slice(ROOT.length + 1))
+    }
+    expect(pham, "nút thêm hàng còn mở một dropdown không còn tồn tại").toEqual([])
   })
 
   /** ⚠ Các màn cũ KHÔNG được đổi hành vi — không màn nào bật cờ ấy. */

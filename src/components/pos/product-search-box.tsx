@@ -39,18 +39,39 @@ import {
  * vẽ gì — vẽ một ô rỗng ở đó là mời người dùng gõ vào một chỗ không
  * trả lời.
  */
-export function PosProductSearchBox({ note }: { note?: string }) {
+/** Sắc của dải "đang thêm vào…" — khớp màu của chính khối bảng ấy. */
+const TONE = {
+  warn: "bg-[var(--pos-warn-soft)] text-[var(--pos-warn)]",
+  primary: "bg-[var(--pos-primary-soft)] text-[var(--pos-primary-deep)]",
+} as const
+
+export function PosProductSearchBox({
+  note,
+}: {
+  /**
+   * Chứng từ có HAI giỏ (màn phiếu trả: hàng trả · hàng đổi) thì nói rõ
+   * mã sắp gõ sẽ rơi vào giỏ nào.
+   */
+  note?: { text: string; tone: keyof typeof TONE }
+}) {
   const { term, setTerm, reg } = usePosProductSearchHost()
   if (!reg) return null
 
   return (
     <div className="shrink-0 rounded-[12px] border-[1.5px] border-[var(--pos-line)] bg-white p-3">
-      {/* ⚠ NÓI RÕ ĐANG THÊM VÀO ĐÂU khi chứng từ có hai giỏ (màn phiếu
-          trả: hàng trả và hàng đổi). Không có câu này thì người dùng gõ
-          một mã rồi mới biết nó rơi vào giỏ kia. */}
+      {/*
+        ⚠ NÓI RÕ ĐANG THÊM VÀO ĐÂU, VÀ DÙNG ĐÚNG SẮC CỦA KHỐI ẤY. Màn
+          phiếu trả có hai bảng nằm chồng nhau, mỗi bảng một sắc (hàng
+          trả nâu, hàng đổi xanh). Một dải trung tính ở đây là người
+          dùng gõ xong một mã mới biết nó rơi vào giỏ kia — và ở màn
+          này, gõ nhầm giỏ nghĩa là ghi một món KHÁCH TRẢ thành một món
+          MÌNH ĐƯA THÊM, tức lệch hẳn chiều tiền.
+      */}
       {note && (
-        <div className="mb-2 rounded-[8px] bg-[var(--pos-ok-soft)] px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-ok)]">
-          {note}
+        <div
+          className={`mb-2 rounded-[8px] px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] ${TONE[note.tone]}`}
+        >
+          Đang thêm vào: {note.text}
         </div>
       )}
       {/*

@@ -55,6 +55,13 @@ import {
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import { PosProductSearchBox } from "@/components/pos/product-search-box"
+import { viMatchAllWords } from "@/lib/search"
+import {
+  focusPosPicker,
+  useRegisterPosProductSearch,
+  usePosSearchTerm,
+} from "@/store/pos/product-search"
 import {
   DeltaPreviewStrip, DeltaStock, type DeltaCell,
 } from "@/components/pos/delta-preview-strip"
@@ -100,7 +107,6 @@ export function PurchaseScreen({
   const [thoiDiem, setThoiDiem] = useState(homNay)
   const [daNap, setDaNap] = useState(!receiptId)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
-  const [moTimHang, setMoTimHang] = useState(false)
   const [moTimNcc, setMoTimNcc] = useState(false)
 
   const t = useMemo(
@@ -165,22 +171,51 @@ export function PurchaseScreen({
     [products]
   )
 
+  /* ⚠ Từ khoá thuộc về ô tìm dùng chung, không thuộc màn — xem
+     `store/pos/product-search`. Màn chỉ ĐỌC để tự lọc danh mục. */
+  const tuKhoa = usePosSearchTerm()
+
   usePosKeys({
-    F3: () => setMoTimHang(true),
+    F3: focusPosPicker,
     F4: () => setMoTimNcc(true),
-    Escape: () => { setMoTimHang(false); setMoTimNcc(false) },
+    Escape: () => setMoTimNcc(false),
   })
 
-  const mucHang = useMemo<SearchItem[]>(
-    () =>
-      products.map((p) => ({
-        id: p.id,
-        title: p.name,
-        meta: `${p.sku ?? "—"} · ${p.base_unit}`,
-        keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
-      })),
-    [products]
+  /**
+   * ⚠ LỌC NGAY Ở ĐÂY, VÌ Ô TÌM DÙNG CHUNG KHÔNG TỰ LỌC. Sổ đăng ký
+   *   nhận danh sách ĐÃ lọc — mỗi màn một luật lọc, và màn này lọc theo
+   *   tên · mã SKU · mã vạch. Chặn 60 dòng: danh mục vài nghìn mã đổ
+   *   hết vào dải gợi ý là trình duyệt khựng ở mỗi ký tự gõ vào.
+   */
+  const mucHang = useMemo(
+    () => {
+      const out: Array<{ id: string; title: string; subtitle: string; sku: string | null }> = []
+      for (const p of products) {
+        if (!viMatchAllWords(tuKhoa, p.name, p.sku, p.barcode)) continue
+        out.push({
+          id: p.id,
+          title: p.name,
+          subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+          sku: p.sku ?? null,
+        })
+        if (out.length >= 60) break
+      }
+      return out
+    },
+    [products, tuKhoa]
   )
+
+  const chonHang = useCallback(
+    (it: { id: string }) => themHang(it.id),
+    [themHang]
+  )
+
+  useRegisterPosProductSearch({
+    items: mucHang,
+    onPick: chonHang,
+    disabled: loading,
+    placeholder: "Tên hàng, mã hàng, mã vạch…",
+  })
 
   const mucNcc = useMemo<SearchItem[]>(
     () =>
@@ -365,18 +400,6 @@ export function PurchaseScreen({
       <div className="flex min-h-0 flex-grow gap-4 p-4">
         {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          {/* ⚠ Neo dropdown tìm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
-              items={mucHang}
-              onPick={(it) => themHang(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -436,7 +459,7 @@ export function PurchaseScreen({
                 {!loading && (
                   <button
                     type="button"
-                    onClick={() => setMoTimHang(true)}
+                    onClick={focusPosPicker}
                     className="mt-2 text-[13px] font-semibold text-[var(--pos-primary)]"
                   >
                     Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
@@ -500,7 +523,7 @@ export function PurchaseScreen({
               <div className="flex h-10 items-center gap-2 bg-[var(--pos-head)] px-4">
                 <button
                   type="button"
-                  onClick={() => setMoTimHang(true)}
+                  onClick={focusPosPicker}
                   className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
                   + Thêm hàng <span className="n opacity-70">F3</span>
@@ -535,6 +558,8 @@ export function PurchaseScreen({
               emptyHint="Không tìm thấy nhà cung cấp nào khớp."
             />
           </div>
+
+          <PosProductSearchBox />
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <div className="flex items-center justify-between gap-2.5 pb-1">

@@ -42,6 +42,13 @@ import {
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import { PosProductSearchBox } from "@/components/pos/product-search-box"
+import { viMatchAllWords } from "@/lib/search"
+import {
+  focusPosPicker,
+  useRegisterPosProductSearch,
+  usePosSearchTerm,
+} from "@/store/pos/product-search"
 import { SourceInvoiceModal } from "@/components/pos/source-invoice-modal"
 import {
   DeltaPreviewStrip, DeltaStock, DeltaMoney, type DeltaCell,
@@ -102,8 +109,19 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
      không bán lại ngay được. Người lập phiếu đổi được, nhưng mặc định
      phải là hướng an toàn. */
   const [zone, setZone] = useState<ReturnZone>("date")
-  const [moTimTra, setMoTimTra] = useState(false)
-  const [moTimDoi, setMoTimDoi] = useState(false)
+  /**
+   * GIỎ ĐÍCH của ô tìm dùng chung — màn này là màn DUY NHẤT có hai giỏ.
+   *
+   * ⚠ MỘT Ô TÌM, HAI GIỎ, NÊN PHẢI CÓ TRẠNG THÁI NÀY. Chủ nhà chốt cả
+   *   `/pos` chỉ một ô tìm; mà phiếu trả thì vừa nhận HÀNG KHÁCH TRẢ
+   *   vừa nhận HÀNG MÌNH ĐỔI LẠI. Thiếu biến này thì một trong hai giỏ
+   *   không có đường thêm hàng.
+   *
+   * ⚠ VÀ PHẢI HIỆN RA TRÊN Ô TÌM (`note`). Gõ nhầm giỏ ở màn này không
+   *   phải lỗi nhỏ: nó ghi một món khách TRẢ thành một món mình ĐƯA
+   *   THÊM — lệch hẳn chiều tiền, mà hai bảng thì nhìn rất giống nhau.
+   */
+  const [gioDich, setGioDich] = useState<"tra" | "doi">("tra")
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [moChonHD, setMoChonHD] = useState(false)
   const [slipCode, setSlipCode] = useState<string | null>(null)
@@ -372,11 +390,19 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
    * dành cho hàng trả KÈM trong đơn/hóa đơn — ở màn này ô hàng trả là
    * bảng chính nên nó nhận `F3`.
    */
+  const tuKhoa = usePosSearchTerm()
+
+  /** Chọn giỏ rồi đưa tiêu điểm về ô tìm — hai nút và hai phím dùng chung. */
+  const themVao = useCallback((gio: "tra" | "doi") => {
+    setGioDich(gio)
+    focusPosPicker()
+  }, [])
+
   usePosKeys({
-    F3: () => setMoTimTra(true),
+    F3: () => themVao("tra"),
     F4: () => setMoTimKhach(true),
-    F7: () => setMoTimDoi(true),
-    Escape: () => { setMoTimTra(false); setMoTimDoi(false); setMoTimKhach(false); setMoChonHD(false) },
+    F7: () => themVao("doi"),
+    Escape: () => { setMoTimKhach(false); setMoChonHD(false) },
   })
 
   const mucHang = useMemo<SearchItem[]>(
@@ -408,6 +434,41 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     () => (invoiceId ? mucHang.filter((it) => giaGoc[it.id] != null) : mucHang),
     [mucHang, invoiceId, giaGoc]
   )
+
+  /**
+   * ⚠ DANH MỤC ĐƯA LÊN Ô TÌM ĐỔI THEO GIỎ ĐÍCH. Giỏ HÀNG TRẢ khi đã gắn
+   *   hóa đơn gốc thì chỉ được chọn trong tờ ấy (`mucHangTra`); giỏ HÀNG
+   *   ĐỔI lấy từ kho bán nên dùng cả danh mục. Đưa nhầm danh mục là mời
+   *   người dùng chọn một món mà `enforce_return_line_cap` sẽ chặn ở
+   *   máy chủ — chặn sớm ngay ở đây thì họ không phải gõ hai lần.
+   *
+   * ⚠ LỌC Ở ĐÂY, VÌ Ô TÌM DÙNG CHUNG KHÔNG TỰ LỌC — xem sổ đăng ký.
+   */
+  const mucChoODung = useMemo(() => {
+    const nguon = gioDich === "tra" ? mucHangTra : mucHang
+    const out: Array<{ id: string; title: string; subtitle: string; meta: string; alert?: boolean }> = []
+    for (const it of nguon) {
+      if (!viMatchAllWords(tuKhoa, it.title, it.keywords ?? "")) continue
+      out.push({ id: it.id, title: it.title, subtitle: it.meta ?? "", meta: it.meta ?? "", alert: it.alert })
+      if (out.length >= 60) break
+    }
+    return out
+  }, [gioDich, mucHangTra, mucHang, tuKhoa])
+
+  const chonHang = useCallback(
+    (it: { id: string }) => themDong(it.id, gioDich === "doi"),
+    [themDong, gioDich]
+  )
+
+  useRegisterPosProductSearch({
+    items: mucChoODung,
+    onPick: chonHang,
+    disabled: loading,
+    placeholder:
+      gioDich === "tra"
+        ? (invoiceId ? "Tìm trong hóa đơn gốc…" : "Tên hàng, mã hàng…")
+        : "Thêm hàng đổi từ kho bán…",
+  })
 
   const mucKhach = useMemo<SearchItem[]>(
     () =>
@@ -595,27 +656,6 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
       <div className="flex min-h-0 flex-grow gap-4 p-4">
         {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          {/* ⚠ Neo hai dropdown thêm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
-          <div className="relative">
-            <SearchDropdown
-              open={moTimTra}
-              onClose={() => setMoTimTra(false)}
-              title="Tìm hàng trả"
-              placeholder={invoiceId ? "Tìm trong hóa đơn gốc…" : "Tên hàng, mã hàng…"}
-              items={mucHangTra}
-              onPick={(it) => themDong(it.id, false)}
-              emptyHint={invoiceId ? "Hóa đơn gốc không có mặt hàng này." : "Không tìm thấy mặt hàng nào khớp."}
-            />
-            <SearchDropdown
-              open={moTimDoi}
-              onClose={() => setMoTimDoi(false)}
-              title="Thêm hàng đổi"
-              placeholder="Thêm hàng đổi từ kho bán…"
-              items={mucHang}
-              onPick={(it) => themDong(it.id, true)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -647,7 +687,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 <div className="flex-grow" />
                 <button
                   type="button"
-                  onClick={() => setMoTimTra(true)}
+                  onClick={() => themVao("tra")}
                   className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
                   + Hàng trả <span className="n opacity-70">F3</span>
@@ -667,7 +707,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               <div className="flex-grow" />
               <button
                 type="button"
-                onClick={() => setMoTimDoi(true)}
+                onClick={() => themVao("doi")}
                 className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
               >
                 + Hàng đổi <span className="n opacity-70">F7</span>
@@ -701,6 +741,14 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               emptyHint="Không tìm thấy khách nào khớp."
             />
           </div>
+
+          <PosProductSearchBox
+            note={
+              gioDich === "tra"
+                ? { text: "Hàng khách trả", tone: "warn" }
+                : { text: "Hàng đổi lại cho khách", tone: "primary" }
+            }
+          />
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             {/* ⚠ "Giá gốc hàng mua" CHỈ ĐỂ ĐỐI CHIẾU, không vào phép cộng —

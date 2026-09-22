@@ -54,7 +54,13 @@ import {
   MoneyRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
-import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import { PosProductSearchBox } from "@/components/pos/product-search-box"
+import { viMatchAllWords } from "@/lib/search"
+import {
+  focusPosPicker,
+  useRegisterPosProductSearch,
+  usePosSearchTerm,
+} from "@/store/pos/product-search"
 import {
   DeltaPreviewStrip, DeltaStock, DeltaMoney, type DeltaCell,
 } from "@/components/pos/delta-preview-strip"
@@ -116,7 +122,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   const [ghiChu, setGhiChu] = useState("")
   /* ⚠ Ngày của tờ MỚI — `reissue_invoice` nhận `invoice_date`, mặc định hôm nay. */
   const [thoiDiem, setThoiDiem] = useState(homNay)
-  const [moTimHang, setMoTimHang] = useState(false)
   const [daNap, setDaNap] = useState(false)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
 
@@ -306,27 +311,69 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
     [products, stockByProduct]
   )
 
+  /* ⚠ Từ khoá thuộc về ô tìm dùng chung — màn chỉ ĐỌC để tự lọc. */
+  const tuKhoa = usePosSearchTerm()
+
   usePosKeys({
-    F3: () => setMoTimHang(true),
-    Escape: () => setMoTimHang(false),
+    F3: focusPosPicker,
   })
 
-  const mucHang = useMemo<SearchItem[]>(
-    () =>
-      products.map((p) => ({
-        id: p.id,
-        title: p.name,
-        meta: `${p.sku ?? "—"} · ${p.base_unit} · Tồn ${(stockByProduct[p.id] ?? 0).toLocaleString("vi-VN")}`,
-        alert: (stockByProduct[p.id] ?? 0) <= 0,
-        keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
-        right: (
-          <span className="n text-[12.5px] font-semibold text-[var(--pos-ink)]">
-            {formatCurrency(Number(p.sell_price) || 0)}
-          </span>
-        ),
-      })),
-    [products, stockByProduct]
+  /**
+   * ⚠ LỌC Ở ĐÂY, VÌ Ô TÌM DÙNG CHUNG KHÔNG TỰ LỌC — xem sổ đăng ký.
+   *   Chặn 60 dòng: danh mục vài nghìn mã đổ hết vào dải gợi ý là trình
+   *   duyệt khựng ở mỗi ký tự gõ vào.
+   */
+  const mucHang = useMemo(
+    () => {
+      const out: Array<{ id: string; title: string; subtitle: string; ton: number; gia: number }> = []
+      for (const p of products) {
+        if (!viMatchAllWords(tuKhoa, p.name, p.sku, p.barcode)) continue
+        out.push({
+          id: p.id,
+          title: p.name,
+          subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
+          ton: stockByProduct[p.id] ?? 0,
+          gia: Number(p.sell_price) || 0,
+        })
+        if (out.length >= 60) break
+      }
+      return out
+    },
+    [products, stockByProduct, tuKhoa]
   )
+
+  /**
+   * ⚠ GỢI Ý PHẢI HIỆN TỒN, VÀ HIỆN RÕ KHI HẾT HÀNG. Màn này sửa một tờ
+   *   hóa đơn ĐÃ XUẤT: thêm một mã đang âm kho vào đây là dựng thêm một
+   *   dòng xuất mà kho không có.
+   */
+  const veGoiY = useCallback(
+    (p: { ton: number; gia: number }) => (
+      <span className="shrink-0 text-right">
+        <span className="n block text-[12.5px] font-bold text-[var(--pos-ink)]">
+          {formatCurrency(p.gia)}
+        </span>
+        <span
+          className={`n block text-[11px] font-semibold ${
+            p.ton <= 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"
+          }`}
+        >
+          Tồn {p.ton.toLocaleString("vi-VN")}
+        </span>
+      </span>
+    ),
+    []
+  )
+
+  const chonHang = useCallback((it: { id: string }) => themHang(it.id), [themHang])
+
+  useRegisterPosProductSearch({
+    items: mucHang,
+    onPick: chonHang,
+    disabled: dangTai,
+    placeholder: "Tên hàng, mã hàng, mã vạch…",
+    renderMeta: veGoiY,
+  })
 
   /** Công nợ khách + lô còn hàng. */
   useEffect(() => {
@@ -441,18 +488,6 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
       <div className="flex min-h-0 flex-grow gap-4 p-4">
         {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          {/* ⚠ Neo dropdown tìm hàng ở ĐỈNH cột trái — xem `OrderScreen`. */}
-          <div className="relative">
-            <SearchDropdown
-              open={moTimHang}
-              onClose={() => setMoTimHang(false)}
-              title="Tìm hàng hóa"
-              placeholder="Tên hàng, mã hàng, mã vạch…"
-              items={mucHang}
-              onPick={(it) => themHang(it.id)}
-              emptyHint="Không tìm thấy mặt hàng nào khớp."
-            />
-          </div>
           {warnings.map((w) => (
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
@@ -565,7 +600,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
             <div className="flex h-10 items-center gap-2 bg-[var(--pos-head)] px-4">
               <button
                 type="button"
-                onClick={() => setMoTimHang(true)}
+                onClick={focusPosPicker}
                 className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
               >
                 + Thêm hàng <span className="n opacity-70">F3</span>
@@ -582,6 +617,8 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
           {/* ⚠ Khách của tờ cũ đi theo tờ mới — RPC không nhận khách khác. */}
           <PartnerCard partner={khach} readOnly />
+
+          <PosProductSearchBox />
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             {/* ⚠ Số CŨ gạch ngang — spec §7.2. */}

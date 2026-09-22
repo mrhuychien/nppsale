@@ -59,6 +59,7 @@ interface Value {
   close: (key: string) => void
   activate: (key: string) => void
   setDirty: (key: string, dirty: boolean) => void
+  setCount: (key: string, count: number) => void
   /**
    * Đặt tên cho tab của một chứng từ đã lưu — màn nào đọc được mã thì
    * gọi. Không có tab nào khớp thì thôi.
@@ -187,6 +188,14 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
+  const setCount = useCallback<Value["setCount"]>((key, count) => {
+    setTabs((cu) =>
+      cu.some((t) => t.key === key && t.count === count)
+        ? cu
+        : cu.map((t) => (t.key === key ? { ...t, count } : t))
+    )
+  }, [])
+
   const label = useCallback<Value["label"]>((docType, docId, ten) => {
     setTabs((cu) =>
       cu.some((t) => t.docType === docType && t.docId === docId && t.label !== ten)
@@ -246,8 +255,8 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
   const clearNotice = useCallback(() => setNotice(null), [])
 
   const value = useMemo<Value>(
-    () => ({ tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, label }),
-    [tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, label]
+    () => ({ tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label }),
+    [tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
@@ -279,6 +288,17 @@ export function usePosDocLabel(docType: PosDocType, docId: string | null | undef
  * bộ dòng khác rỗng ngay mà chưa ai sửa gì — coi đó là "chưa lưu" là
  * chip cam hiện trên mọi tab vừa mở. Nơi gọi truyền `signature` (chuỗi
  * tóm tắt state) và `baseline` (chữ ký lúc nạp xong / lưu xong).
+ */
+export function usePosDocCount(count: number) {
+  const { activeKey, setCount } = usePosTabs()
+  useEffect(() => {
+    if (!activeKey) return
+    setCount(activeKey, count)
+  }, [activeKey, count, setCount])
+}
+
+/**
+ * Báo tab đang đứng có bao nhiêu dòng hàng — xem `PosTab.count`.
  */
 export function usePosDirty(signature: string, baseline: string | null) {
   const { activeKey, setDirty } = usePosTabs()

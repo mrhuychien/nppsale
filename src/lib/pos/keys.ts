@@ -11,9 +11,9 @@
  * nằm trong modal mà `Esc` không đóng được modal là một cái bẫy.
  */
 
-export type PosKey = "F3" | "F4" | "F7" | "F8" | "F9" | "Escape"
+export type PosKey = "F2" | "F3" | "F4" | "F6" | "F7" | "F8" | "F9" | "Escape"
 
-const NHAN: readonly string[] = ["F3", "F4", "F7", "F8", "F9", "Escape"]
+const NHAN: readonly string[] = ["F2", "F3", "F4", "F6", "F7", "F8", "F9", "Escape"]
 
 /** Phím này có phải phím POS quan tâm không. */
 export function posKeyOf(key: string): PosKey | null {
@@ -41,10 +41,27 @@ export function posShouldHandle(
 
 /** Nhãn hiển thị cạnh ô tìm / nút — để mọi chỗ gọi cùng một tên. */
 export const POS_KEY_HINT: Record<PosKey, string> = {
-  F3: "Tìm hàng hóa",
+  /**
+   * ⚠ BẢN THIẾT KẾ CHỦ NHÀ ĐƯA CHỐT BỘ PHÍM NÀY, và nó KHÁC bộ cũ.
+   *   Bản vẽ ghi rõ trên ba chỗ: nút "Thêm sản phẩm (F2)", nút "Lưu
+   *   nháp (F6)", và dòng gợi ý chân bảng "Enter thêm dòng · F6 lưu
+   *   nháp · F9 gửi đơn".
+   *
+   * ⚠ `F9` ĐỔI NGHĨA. Trước đây nó là "thêm dòng hàng đổi" ở màn đơn;
+   *   bản vẽ giao nó cho "gửi đơn". Giữ nghĩa cũ là màn hình nói một
+   *   đằng phím làm một nẻo.
+   *
+   * ⚠ `F3` CÒN LẠI CHO MÀN CHƯA ĐƯỢC VẼ. Bốn màn kia (phiếu trả, nhập
+   *   hàng, trả NCC, sửa hóa đơn) không có trong bản thiết kế; chúng
+   *   dùng `F2` như màn đơn để người dùng chỉ phải nhớ MỘT phím, và
+   *   `F3` giữ lại như bí danh cũ cho quen tay.
+   */
+  F2: "Thêm sản phẩm",
+  F3: "Thêm sản phẩm",
   F4: "Tìm khách hàng / NCC",
+  F6: "Lưu nháp",
   F7: "Thêm hàng đổi",
   F8: "Thêm hàng trả",
-  F9: "Thêm hàng đổi",
+  F9: "Gửi đơn",
   Escape: "Đóng",
 }

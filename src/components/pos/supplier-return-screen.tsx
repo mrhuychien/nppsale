@@ -52,7 +52,7 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import {
   DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay,
 } from "@/components/pos/doc-sub-header"
-import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell, LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
@@ -201,7 +201,10 @@ export function SupplierReturnScreen({
      `store/pos/product-search`. Màn chỉ ĐỌC để tự lọc danh mục. */
   const tuKhoa = usePosSearchTerm()
 
+  usePosDocCount(lines.length)
+
   usePosKeys({
+    F2: focusPosPicker,
     F3: focusPosPicker,
     F4: () => setMoTimNcc(true),
     Escape: () => setMoTimNcc(false),
@@ -543,7 +546,7 @@ export function SupplierReturnScreen({
                     onClick={focusPosPicker}
                     className="mt-2 text-[13px] font-semibold text-[var(--pos-primary)]"
                   >
-                    Thêm hàng <span className="n text-[11px] opacity-70">F3</span>
+                    Thêm hàng <span className="n text-[11px] opacity-70">F2</span>
                   </button>
                 )}
               </div>
@@ -619,7 +622,7 @@ export function SupplierReturnScreen({
                   onClick={focusPosPicker}
                   className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
-                  + Thêm hàng <span className="n opacity-70">F3</span>
+                  + Thêm hàng <span className="n opacity-70">F2</span>
                 </button>
                 <span className="text-[11px] text-[var(--pos-muted)]">
                   {lines.length} dòng · {lines.reduce((s, l) => s + l.qty, 0)} sp

@@ -62,6 +62,24 @@ export function DocTabs() {
                 />
                 <span className="max-w-[160px] truncate">{t.label}</span>
                 {/*
+                  ⚠ SỐ DÒNG HÀNG CỦA TAB — bản thiết kế vẽ con số này
+                    ngay cạnh nhãn. Nó trả lời một câu hỏi thật: mở bốn
+                    tab thì tab nào còn rỗng. Không có nó, người bán
+                    phải bấm vào từng tab để biết.
+
+                  ⚠ TAB RỖNG KHÔNG VẼ SỐ 0. Một dãy số 0 cạnh mọi tab là
+                    nhiễu; chỗ nào có hàng thì chỗ ấy mới đáng nhìn.
+                */}
+                {t.count > 0 && (
+                  <span
+                    className={`n shrink-0 text-[12px] font-extrabold ${
+                      dang ? "text-[var(--pos-primary)]" : "text-[var(--pos-dim)]"
+                    }`}
+                  >
+                    {t.count}
+                  </span>
+                )}
+                {/*
                   ⚠ CHIP "CHƯA LƯU" LÀ CHỮ, KHÔNG PHẢI MỘT CHẤM NỮA.
                     Spec §3 mục 2. Một chấm thứ hai cạnh chấm loại chứng
                     từ là hai chấm không ai phân biệt được; chữ thì đọc

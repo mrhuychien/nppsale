@@ -118,7 +118,7 @@ export function PosAddProductButton({ disabled }: { disabled?: boolean }) {
       onClick={focusPosPicker}
       className="h-9 shrink-0 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3.5 text-[13px] font-bold text-[var(--pos-ink)] hover:border-[var(--pos-primary-border)] disabled:cursor-not-allowed disabled:text-[var(--pos-dim)]"
     >
-      Thêm sản phẩm <span className="n text-[11px] opacity-70">F3</span>
+      Thêm sản phẩm <span className="n text-[11px] opacity-70">F2</span>
     </button>
   )
 }

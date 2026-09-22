@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { ROLE_LABELS } from "@/lib/constants"
 import { usePosTabs } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
@@ -34,6 +35,7 @@ function viTat(ten: string): string {
 
 export function PosTopBar() {
   const { user } = useAuth()
+  const { org } = useOrg()
   const router = useRouter()
   const { notice, clearNotice, tabs, activeKey } = usePosTabs()
   const [moThietLap, setMoThietLap] = useState(false)
@@ -73,6 +75,20 @@ export function PosTopBar() {
             POS bán hàng
           </span>
         </button>
+
+        {/*
+          ⚠ HUY HIỆU NƠI ĐANG ĐỨNG — bản thiết kế vẽ "Kho Q.8 · Quầy 01".
+            Sổ này KHÔNG có khái niệm "quầy", nên chỗ ấy để tên đơn vị:
+            dựng một con số quầy không có thật là bịa dữ liệu lên màn
+            hình, đúng thứ §4 của Coder Pack cấm. Chưa tải xong thì
+            KHÔNG vẽ gì — một viên thuốc rỗng nhấp nháy mỗi lần mở tab
+            còn tệ hơn là chưa có.
+        */}
+        {org?.name && (
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-[var(--pos-primary-soft)] px-2.5 py-1 text-[12px] font-extrabold text-[var(--pos-primary-deep)]">
+            {org.name}
+          </span>
+        )}
 
         <div className="flex-grow" />
 

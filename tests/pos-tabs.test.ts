@@ -17,6 +17,7 @@ const tab = (o: Partial<PosTab> & Pick<PosTab, "key" | "docType">): PosTab => ({
   docId: null,
   label: o.key,
   dirty: false,
+  count: 0,
   ...o,
 })
 

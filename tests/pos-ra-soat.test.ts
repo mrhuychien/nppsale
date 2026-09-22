@@ -455,14 +455,28 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
    * chuyện thường ngày của bán sỉ.
    */
   it("đổi đơn vị tra lại bảng giá, không nhân chia hệ số", () => {
-    const i = S.indexOf("Đơn vị tính dòng")
-    expect(i, "không thấy ô chọn đơn vị").toBeGreaterThan(-1)
-    const o = S.slice(i, i + 900)
-    expect(o).toMatch(/unitPriceFor\(p, u, groupId\)/)
+    /**
+     * ⚠ BÁM VÀO PHÉP ĐỔI, KHÔNG BÁM VÀO Ô ĐIỀU KHIỂN. Bản đầu của chốt
+     * này neo vào chuỗi `"Đơn vị tính dòng"` — nhãn của một `<select>`.
+     * Bản thiết kế chủ nhà đưa thay `<select>` ấy bằng dải chip, nhãn
+     * biến mất, và chốt đỏ oan trong khi LUẬT — "đổi đơn vị là tra lại
+     * bảng giá" — còn nguyên trong `doiDonVi`.
+     */
+    const i = S.search(/const doiDonVi = useCallback\(/)
+    expect(i, "không thấy phép đổi đơn vị của dòng hàng").toBeGreaterThan(-1)
+    const o = S.slice(i, S.indexOf("addProduct", i))
+    expect(o, "đổi đơn vị không tra bảng giá theo nhóm khách")
+      .toMatch(/unitPriceFor\(p, u, groupId\)/)
+    /* ⚠ Và phép đổi phải THẬT SỰ ghi giá mới xuống dòng. */
+    expect(o, "tra giá rồi không ghi xuống dòng").toMatch(/price: gia/)
+    expect(o, "tra giá rồi không cập nhật giá bảng").toMatch(/listPrice: gia/)
     expect(
       /price: Math\.round\(\(l\.price \/ cu\) \* moi\)/.test(S),
       "đổi đơn vị lại nhân chia hệ số thay vì tra bảng giá"
     ).toBe(false)
+    /* ⚠ Và dải chip phải nối vào chính phép ấy — bộ luật đúng mà không
+       ai gọi thì vô nghĩa. */
+    expect(S, "chip đơn vị không gọi phép đổi").toMatch(/doiDonVi\(l, u\.unit_name\)/)
   })
 
   /**

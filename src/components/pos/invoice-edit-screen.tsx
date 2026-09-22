@@ -44,7 +44,7 @@ import type { PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocSubHeader, SubHeaderDate, DocBanner, homNay } from "@/components/pos/doc-sub-header"
-import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
@@ -314,7 +314,10 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   /* ⚠ Từ khoá thuộc về ô tìm dùng chung — màn chỉ ĐỌC để tự lọc. */
   const tuKhoa = usePosSearchTerm()
 
+  usePosDocCount(lines.length)
+
   usePosKeys({
+    F2: focusPosPicker,
     F3: focusPosPicker,
   })
 
@@ -603,7 +606,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                 onClick={focusPosPicker}
                 className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
               >
-                + Thêm hàng <span className="n opacity-70">F3</span>
+                + Thêm hàng <span className="n opacity-70">F2</span>
               </button>
               <span className="text-[11px] text-[var(--pos-muted)]">
                 {lines.length} dòng · {lines.reduce((s, l) => s + l.qty, 0)} sp

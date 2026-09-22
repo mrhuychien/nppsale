@@ -33,7 +33,7 @@ import { returnTotals, debtAfterReturn, warehouseSentence } from "@/lib/pos/retu
 import { RETURN_ZONES, type ReturnZone } from "@/lib/returns/complete-return"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
-import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocSubHeader, SubHeaderDate, DocBanner, homNay } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, QtyStepper } from "@/components/pos/line-table"
@@ -398,7 +398,10 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     focusPosPicker()
   }, [])
 
+  usePosDocCount(traLines.length + doiLines.length)
+
   usePosKeys({
+    F2: () => themVao("tra"),
     F3: () => themVao("tra"),
     F4: () => setMoTimKhach(true),
     F7: () => themVao("doi"),
@@ -690,7 +693,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   onClick={() => themVao("tra")}
                   className="h-7 rounded-md border border-[var(--pos-edge)] bg-white px-2.5 text-[11.5px] font-semibold text-[var(--pos-muted)]"
                 >
-                  + Hàng trả <span className="n opacity-70">F3</span>
+                  + Hàng trả <span className="n opacity-70">F2</span>
                 </button>
               </div>
             }

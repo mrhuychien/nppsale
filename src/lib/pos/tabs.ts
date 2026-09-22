@@ -24,6 +24,14 @@ export interface PosTab {
   /** `DH-0154` hoặc `Đơn mới 1`. */
   label: string
   dirty: boolean
+  /**
+   * Số dòng hàng của chứng từ — bản thiết kế chủ nhà đưa vẽ con số này
+   * ngay cạnh nhãn tab.
+   *
+   * ⚠ NÓ TRẢ LỜI MỘT CÂU HỎI THẬT: mở bốn tab thì tab nào còn rỗng.
+   *   Không có nó, người bán phải bấm vào từng tab để biết.
+   */
+  count: number
 }
 
 /** Tối đa 8 tab — spec §3 mục 3. */
@@ -151,7 +159,7 @@ export function openTab(
     }
   }
 
-  const moi: PosTab = { key: newKey, docType: doc.docType, docId: doc.docId, label: doc.label, dirty: false }
+  const moi: PosTab = { key: newKey, docType: doc.docType, docId: doc.docId, label: doc.label, dirty: false, count: 0 }
   return { tabs: [...tabs, moi], activeKey: newKey, notice: null, refused: false }
 }
 

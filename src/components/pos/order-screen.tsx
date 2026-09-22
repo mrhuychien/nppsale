@@ -53,8 +53,8 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
+import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
 import { cartTotals, priceViolation, ceilingFor } from "@/lib/sell/cart"
@@ -79,9 +79,9 @@ import { posPrintHref } from "@/lib/pos/tabs"
 import type { PosBadge, PosLine, PosPayMethod } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
 import { usePosRefData } from "@/store/pos/ref-data"
-import { usePosDocLabel, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay } from "@/components/pos/doc-sub-header"
+import { DocBanner } from "@/components/pos/doc-sub-header"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
   LineAmountCell, LineMenu, NegativeStockStrip,
@@ -124,6 +124,7 @@ function vatChoices(current: number): Array<{ value: number; label: string }> {
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
+  const { groups } = useCustomerGroups()
   const { products, customers, sellers, stockByProduct, loading, warnings, productById, customerById } =
     usePosRefData()
   const { toast } = useToast()
@@ -145,7 +146,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [ngayGiao, setNgayGiao] = useState("")
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
-  const [thoiDiem] = useState(homNay)
   /* ⚠ TỪ KHOÁ TÌM HÀNG NẰM Ở KHUNG, không ở màn — ô nhập ở header. */
   const moTimHang = usePosSearchTerm()
   const [moTimKhach, setMoTimKhach] = useState(false)
@@ -301,22 +301,61 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    * hai chỗ phải sửa, và lệch nhau một cột là cả bảng so le.
    */
   const cot = useMemo(() => {
+    /**
+     * ⚠ CỘT LẤY ĐÚNG BẢN THIẾT KẾ CHỦ NHÀ ĐƯA:
+     *     34px · minmax(170px,1fr) · 100px · 108px · 128px · 74px · 120px · 34px
+     *     #   · Sản phẩm / đơn vị · Số lượng · Đơn giá · Giảm giá · VAT · Thành tiền · (xoá)
+     *
+     * ⚠ MÃ HÀNG VÀ ĐƠN VỊ KHÔNG CÒN LÀ CỘT RIÊNG. Bản vẽ gộp cả hai vào
+     *   ô "Sản phẩm / đơn vị": mã SKU nằm ở dòng phụ, còn đơn vị là một
+     *   dải CHIP bấm được. Bản trước của tôi tách chúng thành hai cột
+     *   88px và 76px — thành ra bảng chín cột, hẹp hơn hẳn ở cột tên, và
+     *   khác bản vẽ.
+     *
+     * ⚠ HAI THIẾT LẬP `colSku` / `colStock` VẪN CÒN TÁC DỤNG, chỉ đổi
+     *   chỗ: nay chúng bật/tắt dòng phụ TRONG ô tên, không bật/tắt một
+     *   cột. Bỏ chúng đi là lấy mất một thứ chủ nhà đã chốt ở drawer
+     *   thiết lập hiển thị.
+     */
     const c: Array<{ w: string; label: string; align?: "left" | "center" | "right" }> = []
-    if (settings.colIndex) c.push({ w: "28px", label: "#" })
-    if (settings.colSku) c.push({ w: "88px", label: "Mã hàng" })
-    c.push({ w: "minmax(0,1fr)", label: "Tên hàng" })
-    c.push({ w: "76px", label: "ĐVT" })
-    c.push({ w: "96px", label: "Số lượng", align: "center" })
-    c.push({ w: "100px", label: "Đơn giá", align: "right" })
-    if (settings.colLineDiscount) c.push({ w: "92px", label: "Giảm", align: "right" })
-    if (settings.colVat) c.push({ w: "66px", label: "VAT", align: "center" })
-    c.push({ w: "116px", label: "Thành tiền", align: "right" })
-    c.push({ w: "28px", label: "" })
+    if (settings.colIndex) c.push({ w: "34px", label: "#", align: "center" })
+    c.push({ w: "minmax(170px,1fr)", label: "Sản phẩm / đơn vị" })
+    c.push({ w: "100px", label: "Số lượng", align: "center" })
+    c.push({ w: "108px", label: "Đơn giá", align: "right" })
+    if (settings.colLineDiscount) c.push({ w: "128px", label: "Giảm giá", align: "center" })
+    if (settings.colVat) c.push({ w: "74px", label: "VAT", align: "center" })
+    c.push({ w: "120px", label: "Thành tiền", align: "right" })
+    c.push({ w: "34px", label: "" })
     return {
       cols: c.map((x) => x.w).join(" "),
       cells: c.map((x) => ({ label: x.label, align: x.align })),
     }
-  }, [settings.colIndex, settings.colSku, settings.colLineDiscount, settings.colVat])
+  }, [settings.colIndex, settings.colLineDiscount, settings.colVat])
+
+  /**
+   * ĐỔI ĐƠN VỊ CỦA MỘT DÒNG.
+   *
+   * ⚠ TRA LẠI BẢNG GIÁ, KHÔNG NHÂN CHIA HỆ SỐ. Nhân giá cũ với tỉ lệ
+   *   quy đổi chỉ đúng khi bảng giá tuyến tính, và SAI ngay khi NPP đặt
+   *   giá thùng rẻ hơn 12 lần giá chai — chuyện thường ngày của bán sỉ.
+   *   `unitPriceFor` tra đúng dòng bảng giá của đơn vị ấy, theo nhóm
+   *   khách đang chọn.
+   */
+  const doiDonVi = useCallback(
+    (l: PosLine, u: string) => {
+      const p = productById(l.productId)
+      const gia = p ? unitPriceFor(p, u, groupId) : l.price
+      patchLine(l.key, {
+        unit: u,
+        price: gia,
+        listPrice: gia,
+        units: p
+          ? sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) }))
+          : l.units,
+      })
+    },
+    [productById, groupId, patchLine]
+  )
 
   const addProduct = useCallback(
     (productId: string) => {
@@ -549,14 +588,35 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines.length])
 
-  /* --- phím tắt, spec §10 --- */
-  /* ⚠ `F3` ĐƯA TIÊU ĐIỂM VỀ Ô TÌM TRÊN HEADER. `ProductPicker` tự xổ
-     danh sách khi nhận tiêu điểm (`onFocus`), nên một lệnh focus là đủ. */
+  usePosDocCount(lines.length)
+
+  /**
+   * PHÍM TẮT — BỘ PHÍM CỦA BẢN THIẾT KẾ, không phải bộ cũ.
+   *
+   * Bản vẽ ghi ba chỗ: nút "Thêm sản phẩm (F2)", nút "Lưu nháp (F6)",
+   * và dòng chân bảng "Enter thêm dòng · F6 lưu nháp · F9 gửi đơn".
+   *
+   * ⚠ `F9` ĐỔI NGHĨA, VÀ ĐÂY LÀ CHỖ NGUY. Trước đây nó thêm một dòng
+   *   HÀNG ĐỔI; nay nó GỬI ĐƠN. Ai quen tay bấm F9 để thêm dòng sẽ gửi
+   *   nhầm cả tờ đơn. Vì vậy nút gửi vẫn đi qua đúng `luuDon(false)`
+   *   với đủ mọi phép chặn của nó (chưa có khách, giá ngoài hạn mức,
+   *   đơn rỗng) — phím không được là một đường tắt bỏ qua phép chặn.
+   *
+   * ⚠ `F8` GIỮ NGUYÊN nghĩa "thêm dòng hàng trả" vì bản vẽ không nhắc
+   *   tới nó, và khối hàng trả vẫn cần một đường bàn phím.
+   *
+   * ⚠ `F3` GIỮ LÀM BÍ DANH của `F2` — thói quen tay của người đang dùng.
+   */
   usePosKeys({
+    F2: focusPosPicker,
     F3: focusPosPicker,
     F4: () => setMoTimKhach(true),
+    F6: () => { if (!dangLuu && lines.length > 0) void luuDon(true) },
     F8: () => setRetLines((c) => [...c, emptyReturnLine(false)]),
-    F9: () => setRetLines((c) => [...c, emptyReturnLine(true)]),
+    F9: () => {
+      if (dangLuu || lines.length === 0 || !khach || coGiaXau) return
+      void luuDon(false)
+    },
     /* ⚠ `ProductPicker` tự xử `Esc` của nó; ở đây chỉ đóng ô tìm khách. */
     Escape: () => setMoTimKhach(false),
   })
@@ -773,40 +833,55 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           ? { label: "XUẤT MỘT PHẦN", tone: "mot-phan" }
           : { label: "PHIẾU TẠM", tone: "tam" }
 
-  const phuDe =
-    mode === "lap" ? (
-      "Tạo offline · chưa kiểm tồn"
-    ) : issuedCode ? (
-      <>
-        Đã xuất 1 lần ·{" "}
-        <Link href={`/sales-invoices`} className="font-semibold text-[var(--pos-primary)] underline">
-          {issuedCode}
-        </Link>
-      </>
-    ) : undefined
+  /**
+   * PHỤ ĐỀ DƯỚI TIÊU ĐỀ — bản thiết kế ghi `{{ orderLabel }} · {{ priceListName }}`.
+   *
+   * ⚠ BẢNG GIÁ PHẢI HIỆN RA, vì đơn này tính tiền theo nó. Khách nhóm
+   *   sỉ và khách lẻ ra hai giá khác nhau cho cùng một mã (xem
+   *   `unitPriceFor`); người lập đơn phải đọc được mình đang ở bảng
+   *   nào TRƯỚC khi gõ số, không phải sau khi khách thắc mắc.
+   *
+   * ⚠ CHƯA CHỌN KHÁCH THÌ NÓI "chưa chọn khách", không nói "Bảng giá
+   *   chung". Giá lúc ấy đúng là giá chung, nhưng nó sẽ ĐỔI ngay khi
+   *   chọn khách — hứa một bảng giá rồi đổi là tệ hơn im lặng.
+   */
+  const tenBangGia = !khach
+    ? "chưa chọn khách"
+    : groups.find((g) => g.id === groupId)?.name ?? "bảng giá chung"
+
+  /**
+   * SỐ TIỀN ĐƠN NÀY ĐƯA KHÁCH VƯỢT HẠN MỨC — `null` = không vượt, hoặc
+   * chưa đủ dữ kiện để nói.
+   *
+   * ⚠ CHƯA ĐỌC ĐƯỢC NỢ HIỆN TẠI THÌ IM, ĐỪNG ĐOÁN. `khach.debt` rỗng
+   *   nghĩa là chưa đọc được (xem `loadCustomerDebt` — nó trả `null`
+   *   khi lỗi hoặc khi danh sách bị PostgREST cắt). Coi rỗng là 0 rồi
+   *   kết luận "chưa vượt" là trấn an bằng một con số không có thật.
+   *
+   * ⚠ HẠN MỨC 0 NGHĨA LÀ KHÔNG ĐẶT, không phải "cấm nợ một đồng".
+   */
+  const vuotHanMuc: number | null = (() => {
+    const hanMuc = Number(customerById(khach?.id)?.credit_limit ?? 0)
+    if (!khach || hanMuc <= 0 || khach.debt == null) return null
+    const sauDon = khach.debt + Math.max(0, totals.due - traTien)
+    return sauDon > hanMuc ? sauDon - hanMuc : null
+  })()
+
+  /* ⚠ `issuedCode` PHẢI CÒN TRONG CÂU NÀY. Nó là mã hóa đơn đã xuất
+     của đơn đang sửa — thông tin duy nhất cho biết đơn này đã rời kho
+     một lần rồi. Bỏ nó đi là người sửa đơn không biết mình đang sửa
+     một tờ đã có hàng đi ra. */
+  const nhanDon = [
+    mode === "lap" ? "Tạo offline · chưa kiểm tồn" : orderCode || "Đơn mới",
+    badgeThat?.label ? badgeThat.label.toLowerCase() : null,
+    issuedCode ? `đã xuất ${issuedCode}` : null,
+    `bảng giá ${tenBangGia}`,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
   return (
     <>
-      <DocSubHeader
-        title={mode === "sua" ? "Sửa đơn hàng" : "Đơn đặt hàng"}
-        code={orderCode}
-        badge={badgeThat}
-        subtitle={phuDe}
-        right={
-          <>
-            <SubHeaderSelect
-              id="pos-nvbh"
-              label="NVBH"
-              value={nvbh}
-              onChange={setNvbh}
-              options={sellers.map((u) => ({ id: u.id, label: u.full_name }))}
-            />
-            {/* ⚠ Ngày đơn do máy chủ ghi lúc lưu — hiện, không mời sửa. */}
-            <SubHeaderDate value={thoiDiem} label="Ngày lập" readOnly />
-          </>
-        }
-      />
-
       <div className="flex min-h-0 flex-grow gap-4 p-4">
         {/*
           ---------------- cột trái ----------------
@@ -817,6 +892,64 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             cột có `minmax(0,1fr)` ở cột tên nên co được.
         */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/*
+            ⚠ KHỐI TIÊU ĐỀ NẰM TRONG CỘT TRÁI, KHÔNG PHẢI MỘT THANH
+              NGANG CẢ MÀN. Bản thiết kế chủ nhà đưa vẽ đúng như vậy:
+              `<h1>` 22px nằm trong `<section>` cột trái, cùng hàng với
+              hai nút "Thêm sản phẩm (F2)" và "Xoá tất cả".
+
+              Bản trước của tôi dùng `DocSubHeader` — một thanh 56px
+              chạy hết bề ngang phía trên hai cột. Nó không sai về chức
+              năng nhưng KHÁC bản vẽ, và chủ nhà đã chốt làm đúng bản vẽ.
+              Bốn màn còn lại (không có trong bản vẽ) vẫn dùng
+              `DocSubHeader`.
+          */}
+          <div className="flex min-w-0 shrink-0 items-end justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="whitespace-nowrap text-[22px] font-extrabold tracking-[-0.3px] text-[var(--pos-ink)]">
+                {mode === "sua" ? "Sửa đơn hàng" : "Đơn hàng"}{" "}
+                <span className="text-[15px] font-bold text-[var(--pos-muted)]">
+                  · <span className="n">{lines.length}</span> dòng
+                </span>
+              </h1>
+              <p className="mt-1 truncate text-[13px] font-semibold text-[var(--pos-muted)]">
+                {nhanDon}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* ⚠ Nút này KHÔNG phải ô tìm thứ hai — nó đưa tiêu điểm
+                  sang ô duy nhất ở cột phải. Xem `product-search-box`. */}
+              <button
+                type="button"
+                onClick={focusPosPicker}
+                className="h-9 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3.5 text-[13px] font-bold text-[var(--pos-ink)] hover:border-[var(--pos-primary-border)]"
+              >
+                Thêm sản phẩm (F2)
+              </button>
+              {/*
+                ⚠ XOÁ TẤT CẢ HỎI LẠI MỘT LẦN. Màn này không có bản nháp
+                  — không gì được ghi xuống cho tới nút cuối — nên một cú
+                  bấm nhầm là mất cả tờ đơn đã gõ tay.
+              */}
+              <button
+                type="button"
+                disabled={lines.length === 0}
+                onClick={() => {
+                  if (lines.length === 0) return
+                  if (!window.confirm(`Xoá cả ${lines.length} dòng hàng khỏi đơn này?`)) return
+                  setLines([])
+                }}
+                className={`h-9 rounded-[10px] px-3 text-[13px] font-extrabold ${
+                  lines.length === 0
+                    ? "cursor-not-allowed text-[var(--pos-dim)]"
+                    : "text-[var(--pos-danger)] hover:bg-[var(--pos-danger-soft)]"
+                }`}
+              >
+                Xoá tất cả
+              </button>
+            </div>
+          </div>
+
           {/*
             ⚠ NEO DROPDOWN TÌM HÀNG Ở ĐỈNH CỘT TRÁI. Bản đầu neo nó ở
               ĐÁY panel phải: dropdown mở XUỐNG từ mép dưới màn hình và
@@ -872,6 +1005,25 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     Có dòng đặt giá ngoài hạn mức của bạn — sửa lại trước khi lưu.
                   </div>
                 )}
+                {/*
+                  ⚠ CHÂN BẢNG CỦA BẢN THIẾT KẾ: một bên là gợi ý phím,
+                    một bên là TIỀN HÀNG. Con số này lặp lại "Tạm tính"
+                    ở cột phải, và đó là CHỦ Ý của bản vẽ — mắt người
+                    đang gõ số lượng ở cột trái không phải chạy sang cột
+                    kia để biết đơn đang bao nhiêu.
+                */}
+                <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 py-2.5">
+                  <span className="whitespace-nowrap text-[12px] font-bold text-[var(--pos-muted)]">
+                    Enter thêm dòng · F6 lưu nháp · F9 gửi đơn
+                  </span>
+                  <span className="flex items-baseline gap-2.5 whitespace-nowrap text-[13px] font-bold text-[var(--pos-muted)]">
+                    Tiền hàng
+                    <span className="n text-[18px] font-extrabold text-[var(--pos-ink)]">
+                      {/* Tiền hàng = tổng dòng ĐÃ trừ giảm giá dòng, CHƯA trừ giảm giá cả đơn. */}
+                      {formatCurrency(totals.gross - totals.lineDiscount)}
+                    </span>
+                  </span>
+                </div>
               </>
             }
           >
@@ -899,7 +1051,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       onClick={focusPosPicker}
                       className="mt-4 h-10 rounded-[10px] bg-[var(--pos-primary)] px-[18px] text-[14px] font-extrabold text-white"
                     >
-                      Thêm hàng <span className="n text-[12px] opacity-75">F3</span>
+                      Thêm hàng <span className="n text-[12px] opacity-75">F2</span>
                     </button>
                   </>
                 )}
@@ -919,14 +1071,48 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                   style={{ gridTemplateColumns: cot.cols, gap: POS_GRID.order.gap }}
                 >
                   {settings.colIndex && (
-                    <div className="n text-[12px] text-[var(--pos-dim)]">{i + 1}</div>
-                  )}
-                  {settings.colSku && (
-                    <div className="n truncate text-[11.5px] text-[var(--pos-muted)]">{l.sku}</div>
+                    <div className="n text-center text-[13px] font-bold text-[var(--pos-dim)]">{i + 1}</div>
                   )}
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-semibold leading-tight text-[var(--pos-ink)]">
+                    <div className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">
                       {l.name}
+                    </div>
+                    {/*
+                      ⚠ DẢI CHIP ĐƠN VỊ — bản thiết kế dùng chip bấm được,
+                        không dùng `<select>`. Lý do không phải thẩm mỹ:
+                        mặt hàng FMCG thường chỉ có hai đơn vị (thùng /
+                        hộp), và một `<select>` bắt người bán bấm hai lần
+                        (mở rồi chọn) cho việc đổi giữa hai thứ.
+
+                      ⚠ ĐỔI ĐƠN VỊ PHẢI TRA LẠI BẢNG GIÁ, không nhân chia
+                        hệ số — xem chú thích ở hàm dưới.
+                    */}
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
+                        {l.units.map((u) => {
+                          const dang = u.unit_name === l.unit
+                          return (
+                            <button
+                              key={u.unit_name}
+                              type="button"
+                              aria-pressed={dang}
+                              onClick={() => doiDonVi(l, u.unit_name)}
+                              className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
+                                dang
+                                  ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
+                                  : "text-[var(--pos-muted)]"
+                              }`}
+                            >
+                              {u.unit_name}
+                            </button>
+                          )
+                        })}
+                      </span>
+                      {settings.colSku && l.sku && (
+                        <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">
+                          {l.sku}
+                        </span>
+                      )}
                     </div>
                     {settings.colStock && (
                       <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
@@ -972,38 +1158,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       />
                     )}
                   </div>
-                  <select
-                    aria-label={`Đơn vị tính dòng ${i + 1}`}
-                    value={l.unit}
-                    onChange={(e) => {
-                      /**
-                       * ⚠ ĐỔI ĐƠN VỊ LÀ TRA LẠI BẢNG GIÁ, không nhân chia
-                       * hệ số. Bản đầu làm `giá / hệ số cũ × hệ số mới` —
-                       * đúng khi bảng giá tuyến tính, SAI ngay khi NPP đặt
-                       * giá thùng rẻ hơn 12 lần giá chai (chuyện thường
-                       * ngày của bán sỉ). `unitPriceFor` tra đúng dòng bảng
-                       * giá của đơn vị ấy.
-                       */
-                      const u = e.target.value
-                      const p = productById(l.productId)
-                      const gia = p ? unitPriceFor(p, u, groupId) : l.price
-                      patchLine(l.key, {
-                        unit: u,
-                        price: gia,
-                        listPrice: gia,
-                        units: p
-                          ? sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) }))
-                          : l.units,
-                      })
-                    }}
-                    className="h-[30px] w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[12px] text-[var(--pos-ink)]"
-                  >
-                    {l.units.map((u) => (
-                      <option key={u.unit_name} value={u.unit_name}>
-                        {u.unit_name}
-                      </option>
-                    ))}
-                  </select>
                   <QtyStepper
                     label={`số lượng dòng ${i + 1}`}
                     value={l.qty}
@@ -1107,8 +1261,21 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           )}
         </div>
 
-        {/* ---------------- panel phải ---------------- */}
-        <div className="flex min-h-0 w-[420px] shrink-0 flex-col gap-3">
+        {/*
+          ---------------- panel phải ----------------
+          ⚠ MỘT MẶT TRẮNG LIỀN, CHIA BẰNG VẠCH MẢNH — đúng bản thiết kế
+            chủ nhà đưa: `<aside>` nền trắng, `border-left`, chia làm
+            bốn hàng bằng `grid-template-rows`. Bản trước của tôi là bốn
+            THẺ RỜI trôi trên nền xám, mỗi thẻ một viền bo — nhìn ra một
+            màn khác hẳn.
+
+          ⚠ BỐN HÀNG, HAI HÀNG GIỮA CO ĐƯỢC. Hàng khách và hàng tổng tiền
+            giữ nguyên chiều cao; ô tìm và khối điều khoản chia nhau phần
+            còn lại và tự cuộn. Thiếu `min-h-0` ở hai hàng giữa là chúng
+            phình theo nội dung và đẩy hàng nút ra ngoài màn.
+        */}
+        <aside className="grid min-h-0 w-[420px] shrink-0 grid-rows-[max-content_max-content_minmax(0,1fr)_max-content] overflow-hidden border-l border-[var(--pos-line)] bg-white">
+          <div className="grid min-w-0 gap-2.5 border-b border-[var(--pos-line-soft)] px-4 pb-3 pt-3.5">
           <div className="relative">
             <PartnerCard
               partner={khach}
@@ -1127,7 +1294,45 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             />
           </div>
 
-          <PosProductSearchBox />
+          {/*
+            ⚠ CẢNH BÁO VƯỢT HẠN MỨC — bản thiết kế vẽ một dải vàng ngay
+              dưới thẻ khách. Nó phải nằm ở ĐÂY chứ không phải cạnh nút
+              lưu: người lập đơn cần biết TRƯỚC khi gõ hết đơn, không
+              phải lúc bấm gửi.
+          */}
+          {vuotHanMuc != null && (
+            <div className="min-w-0 rounded-[10px] bg-[var(--pos-warn-soft)] px-3 py-2.5 text-[12px] font-bold leading-relaxed text-[var(--pos-warn)]">
+              Đơn này đưa khách vượt hạn mức{" "}
+              <b className="n">{formatCurrency(vuotHanMuc)}</b> — cần quản lý duyệt.
+            </div>
+          )}
+
+          {/*
+            ⚠ GÁN ĐƠN CHO NVBH NẰM Ở CỘT PHẢI, đúng bản thiết kế. Bản
+              trước của tôi để nó thành một `<select>` nhỏ trên thanh
+              ngang phía trên — chỗ ấy không có trong bản vẽ.
+          */}
+          <div className="grid min-w-0 gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
+              Gán đơn cho NVBH
+            </span>
+            <select
+              aria-label="Gán đơn cho nhân viên bán hàng"
+              value={nvbh}
+              onChange={(e) => setNvbh(e.target.value)}
+              className="h-[38px] min-w-0 rounded-[12px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3 text-[13px] font-bold text-[var(--pos-ink)]"
+            >
+              <option value="">— chưa gán —</option>
+              {sellers.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </select>
+          </div>
+          </div>
+
+          <div className="border-b border-[var(--pos-line-soft)] px-4 py-3">
+            <PosProductSearchBox />
+          </div>
 
           <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <MoneyRow label="Tổng tiền hàng" value={totals.gross} />
@@ -1271,7 +1476,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               {dangLuu ? "Đang lưu…" : "Xuất hàng & lập HĐ"}
             </PanelButton>
           </PanelActions>
-        </div>
+        </aside>
       </div>
     </>
   )

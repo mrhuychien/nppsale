@@ -37,12 +37,22 @@ describe("Phiếu trả ra đời ở Phiếu tạm, không phải Hoàn thành"
    * `complete_return` đòi 'submitted', `cancel_return` ném
    * NO_IMPORT_TO_REVERSE.
    */
+  /**
+   * ⚠ NEO VÀO PHẦN THÂN CỦA PHIẾU, KHÔNG NEO VÀO LỜI GỌI `.insert`.
+   *   Bản trước neo vào `.from("returns")` rồi cắt 900 ký tự xuôi xuống;
+   *   22/09/2026 màn ấy tách thân phiếu ra một biến dựng TRƯỚC lời gọi
+   *   (mig 160 — chọn nhân viên đứng tên) và chốt đỏ lên dù luật không
+   *   suy suyển gì. `requested_by: user.id` là dòng chỉ có trong đúng
+   *   thân phiếu trả, dựng ở đâu cũng đi cùng nó.
+   */
   it("màn lập phiếu tay ghi 'submitted', không ghi thẳng 'completed'", () => {
-    const i = RET_NEW.indexOf('.from("returns")')
+    const i = RET_NEW.indexOf("requested_by: user.id")
     expect(i).toBeGreaterThan(0)
     const block = RET_NEW.slice(i, i + 900)
     expect(block).toContain('status: "submitted"')
     expect(block, "lại lập thẳng vào hoàn thành").not.toContain('status: "completed"')
+    /* Và cả màn không được có đường nào ghi thẳng 'completed'. */
+    expect(RET_NEW).not.toContain('status: "completed"')
   })
 
   /** Và đừng hứa đã trừ công nợ cho một việc chưa xảy ra. */

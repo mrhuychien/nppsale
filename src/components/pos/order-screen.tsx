@@ -777,6 +777,27 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   /* ---------------------------------------------------------------- */
 
   /**
+   * SỐ TIỀN ĐƠN NÀY ĐƯA KHÁCH VƯỢT HẠN MỨC — `null` = không vượt, hoặc
+   * chưa đủ dữ kiện để nói.
+   *
+   * ⚠ CHƯA ĐỌC ĐƯỢC NỢ HIỆN TẠI THÌ IM, ĐỪNG ĐOÁN. `khach.debt` rỗng
+   *   nghĩa là chưa đọc được (xem `loadCustomerDebt` — nó trả `null`
+   *   khi lỗi hoặc khi danh sách bị PostgREST cắt). Coi rỗng là 0 rồi
+   *   kết luận "chưa vượt" là trấn an bằng một con số không có thật.
+   *
+   * ⚠ HẠN MỨC 0 NGHĨA LÀ KHÔNG ĐẶT, không phải "cấm nợ một đồng".
+   */
+  const vuotHanMuc: number | null = (() => {
+    const hanMuc = Number(customerById(khach?.id)?.credit_limit ?? 0)
+    if (!khach || hanMuc <= 0 || khach.debt == null) return null
+    /* ⚠ ĐƠN CHƯA THU ĐỒNG NÀO. Màn này là màn ĐẶT HÀNG — tiền thu
+       lúc lập hóa đơn, không phải ở đây (chủ nhà chốt 22/09/2026, gỡ
+       hẳn khối thanh toán). Nên nợ sau đơn = nợ hiện tại + cả tờ đơn. */
+    const sauDon = khach.debt + totals.due
+    return sauDon > hanMuc ? sauDon - hanMuc : null
+  })()
+
+  /**
    * LƯU ĐƠN — đi qua `savePosOrder`, tức qua `createOrderRecords` /
    * `applyOrderEdit` đang chạy.
    *
@@ -816,6 +837,40 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
       setDangLuu(true)
       try {
         const cart = posLinesToCart(lines)
+        /**
+         * TIỀN GHI XUỐNG SỔ PHẢI LÀ ĐÚNG SỐ MÀN HÌNH VỪA HIỆN.
+         *
+         * ⚠ HAI PHÉP CỘNG TIỀN SONG SONG, VÀ BẢN TRƯỚC GỬI NHẦM CÁI KHÔNG
+         *   BIẾT GÌ. Panel bên phải tính bằng `posTotals` — có trừ hàng
+         *   trả, có trừ giảm giá đơn. Tải trọng thì dựng bằng
+         *   `cartTotals(cart)` trần, mà `cart` CHỈ có dòng bán. Hậu quả
+         *   đúng như chủ nhà báo 22/09/2026: đơn có hàng trả, panel ghi
+         *   "Khách cần trả 78.000" nhưng sổ ghi `total = 328.000`, và
+         *   màn chi tiết đơn không có dòng "Trừ hàng trả" nào — vì nó suy
+         *   khoản trừ ra từ `subtotal + vat − total`, mà hiệu ấy bằng 0.
+         *
+         * ⚠ GIẢM GIÁ ĐƠN CŨNG RƠI Ở ĐÚNG CHỖ NÀY. `cartTotals` không có
+         *   khái niệm giảm giá cấp chứng từ, nên ô "Giảm giá đơn" của
+         *   panel là một lời hứa suông: gõ vào, thấy tổng tụt, lưu xong
+         *   sổ không ghi đồng nào. Chủ nhà chưa báo, nhưng nó là CÙNG
+         *   một dòng mã và cùng một kiểu sai.
+         *
+         * ⚠ VAT TÍNH TRÊN GIÁ DÒNG, TRƯỚC GIẢM GIÁ ĐƠN. Chia khoản giảm
+         *   cấp chứng từ ngược về từng dòng để hạ chân thuế là một phép
+         *   phân bổ có nhiều cách làm; khoản giảm đơn ở đây đối xử như
+         *   một khoản trừ SAU thuế. Nói ra để không ai tưởng là sót.
+         */
+        const tongGoc = cartTotals(cart, totals.returnCredit)
+        const subtotalSauGiamDon = Math.max(0, tongGoc.subtotal - totals.docDiscount)
+        const tienDon = {
+          ...tongGoc,
+          subtotal: subtotalSauGiamDon,
+          discount: tongGoc.discount + totals.docDiscount,
+          grandTotal: Math.max(
+            0,
+            subtotalSauGiamDon + tongGoc.vat - tongGoc.returnCredit
+          ),
+        }
         const payload = buildOrderPayload({
           clientRequestId: clientRequestId.current,
           orderCode: orderCode || generateOrderCode(),
@@ -825,7 +880,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           expectedDelivery: ngayGiao || null,
           notes: "",
           cart,
-          totals: cartTotals(cart),
+          totals: tienDon,
           createdAt: new Date().toISOString(),
           /* ⚠ HÀNG TRẢ KÈM ĐƠN ĐI XUỐNG THẬT. Bản đầu gửi `[]` trong khi
              panel vẫn trừ "Trừ hàng trả" vào số khách cần trả — người
@@ -854,6 +909,13 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           salesUserId: nvbh || null,
           heldReturnId,
           productName: (id) => productById(id)?.name,
+          /* ⚠ RỖNG = ĐƠN SẠCH, và phải là chuỗi rỗng chứ không phải
+             `null` — xem `savePosOrder`. Đơn vượt hạn mức thì nói ra,
+             vì đó là thứ NPP phải ngó trước khi xuất hàng. */
+          approvalReason:
+            vuotHanMuc != null
+              ? `Vượt hạn mức công nợ ${formatCurrency(vuotHanMuc)} — cần quản lý duyệt`
+              : "",
         })
         setMocChuaLuu(chuKy)
         if (asDraft) {
@@ -884,7 +946,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         setDangLuu(false)
       }
     },
-    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast]
+    /* ⚠ `totals` VÀ `vuotHanMuc` PHẢI NẰM TRONG DANH SÁCH. Thiếu chúng
+       là `luuDon` giữ bản `totals` của lần vẽ trước: thêm một dòng
+       hàng trả rồi bấm F9 ngay là đơn ghi xuống bằng con số CŨ — sai
+       tiền, và sai đúng kiểu không ai nhìn ra. */
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.returnCredit, vuotHanMuc]
   )
 
   /**
@@ -919,26 +985,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     ? "chưa chọn khách"
     : groups.find((g) => g.id === groupId)?.name ?? "bảng giá chung"
 
-  /**
-   * SỐ TIỀN ĐƠN NÀY ĐƯA KHÁCH VƯỢT HẠN MỨC — `null` = không vượt, hoặc
-   * chưa đủ dữ kiện để nói.
-   *
-   * ⚠ CHƯA ĐỌC ĐƯỢC NỢ HIỆN TẠI THÌ IM, ĐỪNG ĐOÁN. `khach.debt` rỗng
-   *   nghĩa là chưa đọc được (xem `loadCustomerDebt` — nó trả `null`
-   *   khi lỗi hoặc khi danh sách bị PostgREST cắt). Coi rỗng là 0 rồi
-   *   kết luận "chưa vượt" là trấn an bằng một con số không có thật.
-   *
-   * ⚠ HẠN MỨC 0 NGHĨA LÀ KHÔNG ĐẶT, không phải "cấm nợ một đồng".
-   */
-  const vuotHanMuc: number | null = (() => {
-    const hanMuc = Number(customerById(khach?.id)?.credit_limit ?? 0)
-    if (!khach || hanMuc <= 0 || khach.debt == null) return null
-    /* ⚠ ĐƠN CHƯA THU ĐỒNG NÀO. Màn này là màn ĐẶT HÀNG — tiền thu
-       lúc lập hóa đơn, không phải ở đây (chủ nhà chốt 22/09/2026, gỡ
-       hẳn khối thanh toán). Nên nợ sau đơn = nợ hiện tại + cả tờ đơn. */
-    const sauDon = khach.debt + totals.due
-    return sauDon > hanMuc ? sauDon - hanMuc : null
-  })()
 
   /* ⚠ `issuedCode` PHẢI CÒN TRONG CÂU NÀY. Nó là mã hóa đơn đã xuất
      của đơn đang sửa — thông tin duy nhất cho biết đơn này đã rời kho

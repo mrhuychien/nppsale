@@ -132,6 +132,11 @@ export async function savePosOrder(
      */
     heldReturnId?: string | null
     productName?: (id: string) => string | undefined
+    /**
+     * Lý do NPP phải ngó trước khi xuất hàng (vượt hạn mức…). Chuỗi RỖNG
+     * nghĩa là đơn sạch — xem chỗ gọi `createOrderRecords` bên dưới.
+     */
+    approvalReason?: string
   }
 ): Promise<{ orderId: string; orderCode: string }> {
   const cart = posLinesToCart(o.lines)
@@ -153,10 +158,35 @@ export async function savePosOrder(
     })
     return { orderId: o.orderId, orderCode: o.payload.order.order_code }
   }
-  const r = await createOrderRecords(sb as never, o.payload, {
-    userId: o.userId,
-    orgId: o.orgId,
-  })
+  /**
+   * ⚠ TRẠNG THÁI PHẢI ĐI CÙNG TẢI TRỌNG, KHÔNG NẰM NGOÀI NÓ.
+   *
+   *   Đây là lỗi chủ nhà báo 22/09/2026: "khi tạo đơn ấn Gửi đơn thì ra
+   *   phiếu nháp, đúng ra phải ra phiếu tạm". Hàm này nhận `o.status`
+   *   rồi… vứt đi, chỉ truyền `o.payload` xuống. Mà
+   *   `createOrderRecords` đọc trạng thái từ `payload.targetStatus`, nên
+   *   MỌI đơn mới lập ở `/pos` đều rơi vào `draft` — bấm "Gửi đơn" cũng
+   *   thế. Màn `/sell` không dính vì nó đi qua `submitSellOrder`, và
+   *   hàm ấy có đặt `targetStatus`.
+   *
+   * ⚠ LÝ DO DUYỆT CHỈ GỬI KHI ĐÃ GỬI ĐƠN. Với đơn nháp,
+   *   `createOrderRecords` tự điền `DRAFT_APPROVAL_REASON`; truyền một
+   *   chuỗi rỗng vào là đè mất nó.
+   *
+   * ⚠ VÀ PHẢI LÀ CHUỖI RỖNG, KHÔNG PHẢI `null`, khi đơn sạch. Bên kia
+   *   dùng `??` nên `null` vẫn rơi xuống câu "Tạo offline — NPP kiểm
+   *   tồn/công nợ trước khi xuất hàng" — một câu SAI về một đơn lập khi
+   *   đang có mạng, và nó hiện lên huy hiệu cảnh báo ở danh sách đơn.
+   */
+  const r = await createOrderRecords(
+    sb as never,
+    {
+      ...o.payload,
+      targetStatus: o.status,
+      ...(o.status === "submitted" ? { approvalReason: o.approvalReason ?? "" } : {}),
+    },
+    { userId: o.userId, orgId: o.orgId }
+  )
   return { orderId: r.orderId, orderCode: r.orderCode }
 }
 

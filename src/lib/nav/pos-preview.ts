@@ -43,6 +43,18 @@ export function posEditOrderHref(orderId: string): string {
 }
 
 /**
+ * Sửa một hóa đơn đã ghi sổ trên màn POS.
+ *
+ * ⚠ SỬA HÓA ĐƠN KHÔNG PHẢI SỬA TẠI CHỖ. Cả hai màn — cũ lẫn POS — đều
+ *   HUỶ tờ cũ rồi lập một tờ mới mang số `-1`, qua cùng một RPC
+ *   `reissue_invoice`. Chuyển hướng ở đây chỉ đổi cái giao diện, không
+ *   đổi việc ghi sổ.
+ */
+export function posEditInvoiceHref(invoiceId: string): string {
+  return `/pos/hoa-don/${encodeURIComponent(invoiceId)}/sua`
+}
+
+/**
  * Máy tính đủ rộng để dùng màn POS chưa?
  *
  * ⚠ TRẢ `false` KHI KHÔNG CÓ `window`. Hàm này chạy cả lúc render trên

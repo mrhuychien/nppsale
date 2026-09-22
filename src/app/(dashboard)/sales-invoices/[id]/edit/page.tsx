@@ -19,6 +19,8 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { InvoiceEditor } from "@/components/orders/invoice-editor"
+import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posEditInvoiceHref } from "@/lib/nav/pos-preview"
 import type { ReissueSeedLine } from "@/lib/orders/invoice-editor"
 
 interface LineRow {
@@ -132,13 +134,20 @@ export default function EditSalesInvoicePage() {
   }
 
   return (
-    <InvoiceEditor
-      orderId={inv.order_id}
-      orderCode={inv.order?.order_code || ""}
-      priceGroupId={inv.customer?.group_id ?? null}
-      reissueOf={{ invoiceId: inv.id, invoiceCode: inv.invoice_code, lines: seed }}
-      priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
-      backHref={`/sales-invoices/${inv.id}`}
-    />
+    <>
+      {/* ⚠ Máy tính thì sửa hóa đơn trên màn `/pos` — chủ nhà chốt
+          22/09/2026 ("Sửa hóa đơn cũng phải ra pos chứ nhỉ"). Xem
+          `@/lib/nav/pos-preview` về việc vì sao chặn ở CỬA chứ không
+          sửa từng cái nút. */}
+      <PosDesktopRedirect to={posEditInvoiceHref(id)} />
+      <InvoiceEditor
+        orderId={inv.order_id}
+        orderCode={inv.order?.order_code || ""}
+        priceGroupId={inv.customer?.group_id ?? null}
+        reissueOf={{ invoiceId: inv.id, invoiceCode: inv.invoice_code, lines: seed }}
+        priceWarnPct={user?.price_edit_max_increase_pct ?? 10}
+        backHref={`/sales-invoices/${inv.id}`}
+      />
+    </>
   )
 }

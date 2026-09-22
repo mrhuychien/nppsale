@@ -5,7 +5,11 @@ import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "../src/lib/pos/vat"
 import { posTotals } from "../src/lib/pos/totals"
 import { cartTotals } from "../src/lib/sell/cart"
 import { posLinesToCart } from "../src/lib/pos/save"
-import { posNewOrderHref, posEditOrderHref } from "../src/lib/nav/pos-preview"
+import {
+  posNewOrderHref,
+  posEditOrderHref,
+  posEditInvoiceHref,
+} from "../src/lib/nav/pos-preview"
 import type { PosLine } from "../src/lib/pos/types"
 
 /**
@@ -34,6 +38,7 @@ const DON = code(read("src/components/pos/order-screen.tsx"))
 const BANG = code(read("src/components/pos/line-table.tsx"))
 const SELL = code(read("src/app/(dashboard)/sell/page.tsx"))
 const SUA = code(read("src/app/(dashboard)/sell/edit/[id]/page.tsx"))
+const SUA_HD = code(read("src/app/(dashboard)/sales-invoices/[id]/edit/page.tsx"))
 
 describe("bậc thuế bấm vòng 0 → 5 → 8 → 10 → 0", () => {
   it("đi đúng vòng chủ nhà chốt", () => {
@@ -149,6 +154,7 @@ describe("lối vào màn /pos trên máy tính", () => {
     expect(posNewOrderHref("kh-1")).toBe("/pos/don-hang/moi?customerId=kh-1")
     expect(posNewOrderHref("a&b"), "mã khách không được mã hoá").toContain("a%26b")
     expect(posEditOrderHref("dh-1")).toBe("/pos/don-hang/dh-1/sua")
+    expect(posEditInvoiceHref("hd-1")).toBe("/pos/hoa-don/hd-1/sua")
   })
 
   /**
@@ -161,6 +167,21 @@ describe("lối vào màn /pos trên máy tính", () => {
     expect(SELL).toContain("posNewOrderHref")
     expect(SUA, "màn sửa đơn không đưa máy tính sang POS").toContain("<PosDesktopRedirect")
     expect(SUA).toContain("posEditOrderHref")
+  })
+
+  /**
+   * ⚠ SỬA HÓA ĐƠN CŨNG QUA CỬA ẤY — chủ nhà chốt 22/09/2026 ("Sửa hóa
+   *   đơn cũng phải ra pos chứ nhỉ").
+   *
+   *   Nút "Sửa hóa đơn" có ở hai chỗ (màn chi tiết hóa đơn, và ngăn
+   *   xem nhanh ở danh sách — chỗ này còn mở TAB MỚI). Cả hai đều trỏ
+   *   `/sales-invoices/[id]/edit`, nên chặn ở đó là bắt được cả hai,
+   *   kể cả tab mới.
+   */
+  it("sửa hóa đơn trên máy tính cũng ra màn POS", () => {
+    expect(SUA_HD, "màn sửa hóa đơn không đưa máy tính sang POS")
+      .toContain("<PosDesktopRedirect")
+    expect(SUA_HD).toContain("posEditInvoiceHref")
   })
 
   /**

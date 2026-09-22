@@ -7,6 +7,7 @@ import {
   canSeeHref,
   filterByPermission,
   filterNavGroups,
+  duocVaoTrang,
 } from "../src/lib/nav/nav-permission"
 import {
   setPermissionsCache,
@@ -125,6 +126,7 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
     "/sell": "nút CTA \"Tạo đơn mới\"",
     "/inventory/stock-in": "nút \"Tạo phiếu → Nhập kho\" ở màn Phiếu kho",
     "/inventory/stock-issue": "nút \"Tạo phiếu → Xuất kho\" ở màn Phiếu kho",
+    "/inventory/stocktake-adjust": "nút \"Tạo phiếu → Kiểm kê\" ở màn Phiếu kho (và hai nút ở màn Điều chỉnh)",
     "/purchasing/invoices": "ô tra cứu trên trang Mua hàng (rời khỏi menu 20/09/2026)",
   }
 
@@ -138,7 +140,7 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
       resolve(__dirname, "..", "src/app/(dashboard)/inventory/entries/page.tsx"),
       "utf-8"
     )
-    for (const href of ["/inventory/stock-in", "/inventory/stock-issue"]) {
+    for (const href of ["/inventory/stock-in", "/inventory/stock-issue", "/inventory/stocktake-adjust"]) {
       expect(
         ENTRIES.includes(`router.push("${href}")`),
         `khai ${href} là đích của nút, nhưng màn Phiếu kho không có nút nào trỏ tới`
@@ -397,4 +399,36 @@ describe("Lưới Trang chủ lúc chờ và lúc rỗng", () => {
     expect(HOME).toContain("Liên hệ quản lý để được cấp quyền.")
     expect(HOME).toContain("Không tìm thấy tính năng")
   })
+})
+
+
+/**
+ * ⚠ MÀN LÀM ĐỔI TỒN KHO THẬT CHỈ MỞ CHO NGƯỜI GHI ĐƯỢC TỒN KHO.
+ *
+ *   Đo trên Postgres 16 (22/09/2026), lập phiếu kiểm kê nháp đúng như
+ *   màn `/inventory/stocktake-adjust` lập:
+ *     owner ĐƯỢC · warehouse ĐƯỢC · manager, accountant, sales: 42501
+ *
+ *   Trước khi khai `action: "create"` cho màn ấy, `duocVaoTrang` cho CẢ
+ *   NĂM VAI vào — người ta đếm xong cả kho rồi mới bị từ chối lúc lưu.
+ *
+ * ⚠ CHỐT CHẠY LUẬT CỬA VÀO, không soi bảng khai. Soi bảng khai thì một
+ *   đột biến đổi `create` thành `read` đi lọt nếu chốt chỉ hỏi "có khai
+ *   không".
+ */
+describe("cửa vào màn ghi kho khớp chính sách database", () => {
+  const VAI = ["owner", "manager", "accountant", "warehouse", "sales"] as const
+  const GHI_DUOC = new Set(["owner", "warehouse"])
+
+  it.each(["/inventory/stock-in", "/inventory/stock-issue", "/inventory/stocktake-adjust"])(
+    "%s chỉ mở cho owner và warehouse",
+    (href) => {
+      for (const v of VAI) {
+        expect(
+          duocVaoTrang(v, href, "inventory"),
+          `${v} ${GHI_DUOC.has(v) ? "không vào được" : "vào được — đếm xong mới bị từ chối lúc lưu"} ${href}`
+        ).toBe(GHI_DUOC.has(v))
+      }
+    }
+  )
 })

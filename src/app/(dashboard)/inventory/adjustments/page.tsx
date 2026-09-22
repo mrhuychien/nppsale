@@ -173,6 +173,22 @@ export default function AdjustmentsPage() {
     return { shrink, surplus }
   }, [drafts])
 
+  /**
+   * ⚠ ĐÚNG — ĐỪNG "SỬA" THEO CHÍNH SÁCH RLS CỦA `stock_entries`.
+   *
+   *   Rà soát 22/09/2026 suýt thu hẹp chỗ này thành chỉ `owner`, vì
+   *   chính sách `stock_entries` chỉ cho `owner` + `warehouse` ghi. Sai
+   *   tầng: nút Duyệt KHÔNG ghi thẳng bảng — nó gọi RPC
+   *   `post_stock_adjustment` (mig 123), là `SECURITY DEFINER`, nên RLS
+   *   không áp. RPC tự gác bằng `user_has_permission(…, 'inventory.approve')`.
+   *
+   *   Đo trên Postgres 16: quyền ấy thuộc đúng `owner` + `manager`
+   *   (kế toán, thủ kho, NVBH đều KHÔNG). Khớp từng vai với danh sách
+   *   dưới. Thu hẹp nó là tước quyền duyệt của quản lý đang làm được.
+   *
+   *   Luật soi: muốn biết ai làm được một nút, xem nút ấy ĐI QUA ĐÂU
+   *   trước — ghi thẳng thì hỏi RLS, gọi RPC thì hỏi chính RPC.
+   */
   const canApprove = user && ["owner", "manager"].includes(user.role)
 
   const handleApprove = async (a: Adjustment) => {

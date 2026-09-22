@@ -94,6 +94,23 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/inventory/stock-in": { module: "inventory", feature: "inventory", action: "create" },
   // Phiếu xuất kho TRỪ kho thật — cùng một mức quyền với phiếu nhập.
   "/inventory/stock-issue": { module: "inventory", feature: "inventory", action: "create" },
+  /**
+   * ⚠ KIỂM KÊ CŨNG ĐỔI TỒN KHO THẬT — cùng mức quyền với phiếu nhập/xuất,
+   *   và trước 22/09/2026 nó bị QUÊN KHAI ở đây.
+   *
+   *   Không khai thì `useRoleGuard` rơi về phép kiểm mô-đun, mà mọi vai
+   *   (kể cả NVBH, kế toán) đều có `inventory.read`. Đã đo bằng
+   *   `duocVaoTrang`: cả năm vai đều VÀO được. Người ta đếm xong cả kho
+   *   rồi bấm lưu, và chính sách `stock_entries` (chỉ owner + warehouse)
+   *   mới từ chối — bấy giờ công đếm đã mất.
+   *
+   * ⚠ HAI MÀN ANH EM `/inventory/stocktake` VÀ `/inventory/stocktake-check`
+   *   CỐ Ý KHÔNG KHAI: không một nút nào trong app dẫn tới chúng (đã quét
+   *   22/09/2026), nên khai quyền cho chúng là tạo khai báo chết — thứ
+   *   chốt "không có khai quyền thừa" sinh ra để chặn. Giữ hay gỡ hai màn
+   *   ấy là việc của chủ nhà.
+   */
+  "/inventory/stocktake-adjust": { module: "inventory", feature: "inventory", action: "create" },
   "/products": { module: "products", feature: "products" },
   "/deliveries": { module: "deliveries", feature: "deliveries" },
   "/returns": { module: "returns", feature: "returns" },

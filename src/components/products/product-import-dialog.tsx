@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ghiPhieuNhapKho } from "@/lib/inventory/post-import"
 import { formatCurrency } from "@/lib/utils"
 import { vnToday } from "@/lib/inventory/opening-stock"
 import {
@@ -157,46 +158,27 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
         lines: plan.lines,
       })
 
-      const { data: entry, error: entryErr } = await supabase
-        .from("stock_entries")
-        .insert(payload.entry)
-        .select("id")
-        .single()
-      if (entryErr || !entry) throw entryErr || new Error("không tạo được phiếu")
-
-      const { data: batchRows, error: batchErr } = await supabase
-        .from("batches")
-        .insert(payload.batches)
-        .select("id")
-      if (batchErr) throw batchErr
-
-      // Lô hàng trả về theo ĐÚNG thứ tự đã gửi, nên ghép được theo chỉ số.
-      // Thiếu lô thì để batch_id rỗng còn hơn gắn nhầm dòng này vào lô của
-      // mặt hàng khác — gắn nhầm là sai giá vốn mà không ai dò ra.
-      const ids = (batchRows as { id: string }[] | null) ?? []
-      const entryLines = plan.lines.map((l, i) => ({
-        entry_id: entry.id,
-        product_id: l.productId,
-        batch_id: ids[i]?.id ?? null,
-        unit_name: "",
-        quantity: l.qty,
-        qty_in_base_uom: l.qty,
-        qty_in_transaction_uom: l.qty,
-        transaction_uom: "",
-        conversion_factor_snapshot: 1,
-        unit_cost: l.unitCost,
-      }))
       // Tên đơn vị lấy từ chính dòng file — đơn vị tính của sản phẩm.
       const unitBySku: Record<string, string> = {}
       for (const r of grouped.baseRows) unitBySku[r.sku] = r.base_unit
-      for (let i = 0; i < entryLines.length; i++) {
-        const u = unitBySku[plan.lines[i].sku] || "cái"
-        entryLines[i].unit_name = u
-        entryLines[i].transaction_uom = u
-      }
 
-      const { error: lineErr } = await supabase.from("stock_entry_lines").insert(entryLines)
-      if (lineErr) throw lineErr
+      // ⚠ MỘT GIAO DỊCH (mig 168). Bản cũ ghi phiếu → lô → dòng bằng ba
+      //   lệnh rời: dòng hỏng là phiếu `posted` rỗng mà lô vẫn có tồn.
+      await ghiPhieuNhapKho(supabase, {
+        entry_code: payload.entry.entry_code,
+        posted_at: payload.entry.posted_at,
+        notes: payload.entry.notes,
+        lines: plan.lines.map((l, i) => ({
+          product_id: l.productId,
+          batch_code: payload.batches[i].batch_code,
+          expires_at: payload.batches[i].expires_at,
+          unit_name: unitBySku[l.sku] || "cái",
+          qty_tx: l.qty,
+          conv: 1,
+          base_qty: l.qty,
+          base_cost: l.unitCost,
+        })),
+      })
 
       const parts = [
         `tồn đầu kỳ ${plan.lines.length} mặt hàng (${formatCurrency(plan.totalValue)})`,

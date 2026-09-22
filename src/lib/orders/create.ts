@@ -107,6 +107,84 @@ export async function createOrderRecords(
   payload: OfflineOrderPayload,
   ctx: { userId: string; orgId: string }
 ): Promise<{ orderId: string; orderCode: string; alreadyExisted: boolean }> {
+  /**
+   * ⚠ MỘT GIAO DỊCH (mig 169). `create_order_with_lines` ghi đầu đơn +
+   *   dòng hàng + phiếu trả kèm cùng lúc; hỏng ở đâu cũng không còn gì
+   *   nằm lại. Hàm là SECURITY INVOKER — RLS và trigger lập đơn áp y như
+   *   khi trình duyệt tự ghi, không nới quyền nào.
+   *
+   * ⚠ MÁY CHỦ CHƯA CHẠY 169 THÌ RƠI VỀ ĐƯỜNG CŨ. Tạo đơn là việc không
+   *   được gãy; bản web mới lên trước khi chủ nhà chạy migration là
+   *   chuyện thường. Chỉ rơi khi máy chủ nói THIẾU HÀM — lỗi khác (RLS,
+   *   trigger, dữ liệu) thì ném, không thử lại theo đường khác.
+   */
+  const { data, error } = await supabase.rpc("create_order_with_lines", {
+    p: tachTaiTrongRpc(payload),
+  })
+  if (!error) {
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { order_id: string; order_code: string; already_existed: boolean }
+      | undefined
+    if (!row?.order_id) {
+      throw new Error("Máy chủ không trả về đơn vừa ghi — mở danh sách đơn để xem đã ghi chưa.")
+    }
+    return { orderId: row.order_id, orderCode: row.order_code, alreadyExisted: !!row.already_existed }
+  }
+  if (!thieuHamTaoDon(error as { code?: string; message?: string })) throw error
+  return createOrderRecordsLegacy(supabase, payload, ctx)
+}
+
+/** Máy chủ báo KHÔNG CÓ hàm `create_order_with_lines` (chưa chạy mig 169). */
+export function thieuHamTaoDon(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false
+  const m = (err.message || "").toLowerCase()
+  return (
+    err.code === "PGRST202" ||
+    (err.code === "42883" && m.includes("create_order_with_lines")) ||
+    (m.includes("could not find the function") && m.includes("create_order_with_lines"))
+  )
+}
+
+/** Tải trọng gửi cho `create_order_with_lines` — cùng các giá trị đường cũ ghi. */
+export function tachTaiTrongRpc(payload: OfflineOrderPayload): Record<string, unknown> {
+  return {
+    client_request_id: payload.clientRequestId,
+    order: {
+      order_code: payload.order.order_code,
+      customer_id: payload.order.customer_id,
+      sales_user_id: payload.order.sales_user_id || null,
+      payment_terms: payload.order.payment_terms || "COD",
+      expected_delivery: payload.order.expected_delivery,
+      subtotal: payload.order.subtotal,
+      vat: payload.order.vat,
+      total: payload.order.total,
+      notes: payload.order.notes,
+      status: payload.targetStatus ?? "draft",
+      approval_reason: lyDoDuyet(payload),
+    },
+    lines: payload.lines,
+    returns: payload.returns && payload.returnLines.length > 0 ? payload.returns : null,
+    return_lines: payload.returns ? payload.returnLines : [],
+  }
+}
+
+function lyDoDuyet(payload: OfflineOrderPayload): string {
+  return (
+    payload.approvalReason ??
+    (payload.targetStatus === "submitted"
+      ? "Tạo offline — NPP kiểm tồn/công nợ trước khi xuất hàng"
+      : DRAFT_APPROVAL_REASON)
+  )
+}
+
+/**
+ * Đường cũ: ba lệnh rời. Chỉ còn chạy khi máy chủ chưa có mig 169.
+ */
+async function createOrderRecordsLegacy(
+  supabase: Client,
+  payload: OfflineOrderPayload,
+  ctx: { userId: string; orgId: string }
+): Promise<{ orderId: string; orderCode: string; alreadyExisted: boolean }> {
   // 1) Đơn — idempotent trên client_request_id.
   const { data: inserted, error: orderErr } = await supabase
     .from("sales_orders")
@@ -125,11 +203,7 @@ export async function createOrderRecords(
       total: payload.order.total,
       notes: payload.order.notes,
       status: payload.targetStatus ?? "draft",
-      approval_reason:
-        payload.approvalReason ??
-        (payload.targetStatus === "submitted"
-          ? "Tạo offline — NPP kiểm tồn/công nợ trước khi xuất hàng"
-          : DRAFT_APPROVAL_REASON),
+      approval_reason: lyDoDuyet(payload),
     })
     .select("id, order_code")
     .single()
@@ -145,7 +219,21 @@ export async function createOrderRecords(
       if (existingErr) console.error("[orders] truy vấn lỗi:", existingErr.message)
       if (existing?.id) {
         const row = existing as { id: string; order_code: string }
-        return { orderId: row.id, orderCode: row.order_code, alreadyExisted: true }
+        /**
+         * ⚠ ĐÃ CÓ ĐƠN CHƯA CHẮC ĐÃ CÓ DÒNG. Lần trước có thể đã ghi xong
+         *   đầu đơn rồi rớt mạng trước lệnh dòng hàng — trả "đã có" ở đây
+         *   là báo "Đã gửi đơn" cho một đơn 0 dòng, và hàng trả mất luôn.
+         *   Đếm dòng; thiếu thì ghi bù phần còn lại.
+         */
+        const { count, error: cntErr } = await supabase
+          .from("sales_order_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("order_id", row.id)
+        if (cntErr) throw cntErr
+        if ((count ?? 0) > 0) {
+          return { orderId: row.id, orderCode: row.order_code, alreadyExisted: true }
+        }
+        return ghiPhanConLai(supabase, payload, ctx, row.id, row.order_code, true)
       }
     }
     throw orderErr
@@ -159,7 +247,18 @@ export async function createOrderRecords(
    *   nhân viên đọc số đó cho khách qua điện thoại.
    */
   const insertedRow = inserted as { id: string; order_code: string }
-  const orderId = insertedRow.id
+  return ghiPhanConLai(supabase, payload, ctx, insertedRow.id, insertedRow.order_code, false)
+}
+
+/** Dòng hàng + phiếu trả kèm của một đơn đã có đầu đơn (đường cũ). */
+async function ghiPhanConLai(
+  supabase: Client,
+  payload: OfflineOrderPayload,
+  ctx: { userId: string; orgId: string },
+  orderId: string,
+  orderCode: string,
+  alreadyExisted: boolean
+): Promise<{ orderId: string; orderCode: string; alreadyExisted: boolean }> {
 
   // 2) Dòng hàng — có fallback nếu DB thiếu cột note/conversion_factor.
   const lineRows = payload.lines.map((l) => ({
@@ -227,7 +326,7 @@ export async function createOrderRecords(
     await insertReturnLines(supabase, (retRow as { id: string }).id, payload.returnLines)
   }
 
-  return { orderId, orderCode: insertedRow.order_code, alreadyExisted: false }
+  return { orderId, orderCode, alreadyExisted }
 }
 
 /**

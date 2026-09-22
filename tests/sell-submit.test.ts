@@ -164,10 +164,16 @@ describe("Màn giỏ hàng", () => {
   /**
    * ⚠ Khoá nối phải sinh TRƯỚC khi gửi và BẤT BIẾN. Mạng chập chờn thì cú
    * gửi lặp lại; khoá đó là thứ giữ cho lần thứ hai không thành đơn thứ hai.
+   *
+   * ⚠ BẢN TRƯỚC CỦA CHỐT NÀY CANH ĐÚNG CÁI LỖI: nó đòi màn gọi
+   *   `crypto.randomUUID` ngay trong lúc gửi — tức sinh mã mới MỖI CÚ BẤM,
+   *   và bấm lại sau một lần rớt mạng ra đơn thứ hai. Luật mã giữ qua các
+   *   lần bấm nằm ở `layMaChongLap` và có chốt chạy ở
+   *   `tao-don-mot-giao-dich.test.ts`.
    */
   it("sinh khoá nối trước khi gửi", () => {
-    expect(CART_PAGE).toContain("clientRequestId:")
-    expect(CART_PAGE).toContain("crypto.randomUUID")
+    expect(CART_PAGE).toContain("clientRequestId: maChongLap.current.id")
+    expect(CART_PAGE).toContain("layMaChongLap(")
   })
 
   /** Bấm hai lần liên tiếp là hai đơn nếu không khoá nút. */

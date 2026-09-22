@@ -146,6 +146,33 @@ export type ExistingOpening = {
   paid: number
   dueDate: string | null
   note: string | null
+  /** Trạng thái đang ghi trong sổ (open / partial / paid / overdue). */
+  status?: string | null
+}
+
+/**
+ * Trạng thái phải ghi khi SỬA SỐ TIỀN một khoản đầu kỳ đã có.
+ *
+ * ⚠ SỬA `amount` MÀ KHÔNG TÍNH LẠI `status` LÀ GIẤU NỢ. Mọi hàm tổng
+ *   (`receivables_by_customer`, `receivables_summary`, `payables_*`,
+ *   `dashboard_summary`, `finance_balance_sheet`) lọc `status <> 'paid'`.
+ *   Đã đo: khoản 1tr đã thu đủ (`paid`), nhập lại thành 3tr → vẫn `paid`,
+ *   và 2tr nợ mới không hiện ở đâu cả.
+ *
+ * ⚠ CHỈ ĐỔI KHI VƯỢT RANH "ĐÃ TRẢ ĐỦ". Còn nợ mà trạng thái đang là
+ *   `overdue` / `partial` / `open` thì giữ nguyên — `overdue` là dấu quá
+ *   hạn mà các báo cáo tuổi nợ đọc, xoá nó đi là báo sai hướng khác.
+ *
+ * @returns trạng thái mới, hoặc `undefined` khi không cần đổi.
+ */
+export function trangThaiSauSuaSoTien(
+  cu: string | null | undefined,
+  paid: number,
+  amount: number
+): "paid" | "partial" | "open" | undefined {
+  if (paid >= amount) return cu === "paid" ? undefined : "paid"
+  if (cu === "paid") return paid > 0 ? "partial" : "open"
+  return undefined
 }
 
 export type PlanAction = "create" | "update" | "unchanged" | "delete" | "skip" | "error"
@@ -163,6 +190,8 @@ export type PlanRow = {
   note?: string | null
   /** Giá trị cũ, để bảng xem trước chỉ ra cái gì đổi thành cái gì. */
   before?: { amount: number; dueDate: string | null }
+  /** Trạng thái phải ghi kèm khi cập nhật (xem `trangThaiSauSuaSoTien`). */
+  status?: "paid" | "partial" | "open"
   /** Lý do lỗi hoặc lý do bỏ qua. */
   message?: string
   /**
@@ -375,6 +404,7 @@ export function buildPlan(
       note,
       before: { amount: current.amount, dueDate: current.dueDate },
       warning: overpayWarning,
+      status: same ? undefined : trangThaiSauSuaSoTien(current.status, current.paid, amt.value),
     })
   }
 

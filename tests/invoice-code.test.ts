@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest"
+import { createOrderRecords, type OfflineOrderPayload } from "../src/lib/orders/create"
+import { fakeOrderDb } from "./helpers/fake-order-db"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
@@ -536,6 +538,18 @@ describe("mã đơn hàng: cơ sở dữ liệu cấp, không phải trình duy�
   })
 })
 
+const TAI_TRONG: OfflineOrderPayload = {
+  clientRequestId: "11111111-1111-1111-1111-111111111111",
+  order: {
+    order_code: "TMP-9", customer_id: "c1", payment_terms: "COD", expected_delivery: null,
+    subtotal: 100, vat: 0, total: 100, notes: null,
+  },
+  lines: [{ product_id: "p1", unit_name: "hộp", quantity: 1, unit_price: 100, line_discount: 0, line_total: 100, conversion_factor: 1 }],
+  returns: null,
+  returnLines: [],
+  meta: { customerName: "", total: 100, createdAt: "", lineCount: 1 },
+}
+
 describe("ứng dụng đọc lại mã thật sau khi ghi", () => {
   const CREATE = read("src/lib/orders/create.ts")
   const SUBMIT = read("src/lib/sell/submit.ts")
@@ -545,25 +559,35 @@ describe("ứng dụng đọc lại mã thật sau khi ghi", () => {
    * về cho màn "Đặt hàng xong" là in ra một số không có trong sổ, và
    * nhân viên đọc số đó cho khách qua điện thoại.
    */
-  it("lệnh ghi lấy về cả order_code", () => {
-    /**
-     * ⚠ ĐẾM CẢ HAI CHỖ. Bản đầu của chốt này NÓI DỐI: `.select("id,
-     * order_code")` có ở hai đường — lệnh chèn và đường chống ghi trùng
-     * — nên bỏ cột khỏi lệnh chèn thì `toContain` vẫn tìm thấy ở đường
-     * kia và chốt vẫn xanh, trong khi màn "Đặt hàng xong" in ra mã tạm.
-     */
-    expect((CREATE.match(/\.select\("id, order_code"\)/g) ?? []).length).toBe(2)
-    expect(CREATE).toContain("orderCode: insertedRow.order_code")
-    // Neo đúng lệnh CHÈN, không chỉ "có ở đâu đó trong file".
-    const i = CREATE.indexOf(".insert({")
-    expect(i).toBeGreaterThan(0)
-    expect(CREATE.slice(i, CREATE.indexOf(".single()", i))).toContain('.select("id, order_code")')
+  /**
+   * ⚠ CHẠY HÀM, KHÔNG SOI CHỮ. Bản trước đếm số lần `.select("id,
+   *   order_code")` xuất hiện trong tệp — dời lệnh ghi vào RPC (mig 169) là
+   *   chốt đỏ dù hành vi đúng, còn đổi `orderCode:` sang mã tạm ở chỗ khác
+   *   thì chốt vẫn xanh. Nay gọi `createOrderRecords` với client giả mà
+   *   máy chủ cấp mã KHÁC mã tạm, và đòi hàm trả mã của máy chủ.
+   */
+  it("lệnh ghi lấy về cả order_code", async () => {
+    // Đường mới — RPC trả mã thật.
+    const moi = fakeOrderDb({
+      rpc: { data: [{ order_id: "o1", order_code: "DH-0100", already_existed: false }], error: null },
+    })
+    const a = await createOrderRecords(moi as never, TAI_TRONG, { userId: "u", orgId: "g" })
+    expect(a.orderCode).toBe("DH-0100")
+
+    // Đường cũ (máy chủ chưa có 169) — mã đọc lại từ dòng vừa chèn.
+    const cu = fakeOrderDb({ insertOrder: { data: { id: "o2", order_code: "DH-0101" }, error: null } })
+    const b = await createOrderRecords(cu as never, TAI_TRONG, { userId: "u", orgId: "g" })
+    expect(b.orderCode).toBe("DH-0101")
   })
 
-  it("đường chống ghi trùng cũng trả mã thật", () => {
-    const i = CREATE.indexOf('.eq("client_request_id"')
-    expect(i).toBeGreaterThan(0)
-    expect(CREATE.slice(i - 200, i + 400)).toContain("orderCode: row.order_code")
+  it("đường chống ghi trùng cũng trả mã thật", async () => {
+    const db = fakeOrderDb({
+      insertOrder: { data: null, error: { code: "23505", message: "duplicate key" } },
+      existing: { id: "o3", order_code: "DH-0102" },
+      existingLineCount: 2,
+    })
+    const r = await createOrderRecords(db as never, TAI_TRONG, { userId: "u", orgId: "g" })
+    expect(r).toEqual({ orderId: "o3", orderCode: "DH-0102", alreadyExisted: true })
   })
 
   it("submit trả mã từ dòng đã ghi, không từ tải trọng", () => {

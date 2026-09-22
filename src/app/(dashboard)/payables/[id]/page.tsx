@@ -18,11 +18,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck, Pencil } from "lucide-react"
 import type { Payable, PayablePayment, PayableStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { ghiTraTienNcc } from "@/lib/payables/record-payment"
 
 const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa trả", variant: "secondary" },
@@ -89,15 +90,6 @@ export default function PayableDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const recalcStatus = (rec: Payable, newPaid: number): PayableStatus => {
-    if (newPaid >= rec.amount) return "paid"
-    if (newPaid > 0) return "partial"
-    if (rec.due_date) {
-      const aging = getAgingStatus(rec.due_date)
-      if (aging !== "current") return "overdue"
-    }
-    return "open"
-  }
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,23 +106,12 @@ export default function PayableDetailPage() {
     }
     setActionLoading(true)
     try {
-      const { error: payErr } = await supabase.from("payable_payments").insert({
-        payable_id: payable.id,
-        paid_by: user.id,
+      await ghiTraTienNcc(supabase, {
+        payableId: payable.id,
         amount: amt,
         method: paymentForm.method,
-        notes: paymentForm.notes.trim() || null,
+        notes: paymentForm.notes,
       })
-      if (payErr) throw payErr
-
-      const newPaid = payable.paid + amt
-      const newStatus = recalcStatus(payable, newPaid)
-      await ghiPhaiTrungDong(
-        supabase
-          .from("payables")
-          .update({ paid: newPaid, status: newStatus })
-          .eq("id", payable.id)
-      )
 
       toast({ title: `Đã ghi nhận thanh toán ${formatCurrency(amt)}` })
       setPaymentForm({ amount: "", method: "transfer", notes: "" })

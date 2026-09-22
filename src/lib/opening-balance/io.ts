@@ -3,6 +3,7 @@ import type { Entity, ExistingOpening, PlanRow } from "./parse"
 import type { Kind } from "./schema"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 /**
  * Nạp dữ liệu và ghi kế hoạch công nợ đầu kỳ.
@@ -10,9 +11,6 @@ import { ghiPhaiTrungDong } from "@/lib/db/must-write"
  * Lớp mỏng cố ý: mọi quyết định "ghi cái gì" nằm ở `parse.ts` (thuần, có
  * test). Ở đây chỉ có truy vấn và vòng lặp ghi.
  */
-
-/** Trần số bản ghi nạp về một lượt. NPP lớn nhất đang có ~4.000 khách. */
-const FETCH_CAP = 5000
 
 export type LoadResult = {
   entities: Entity[]
@@ -23,35 +21,46 @@ export type LoadResult = {
   truncated: boolean
 }
 
+/**
+ * Đọc ĐỦ một bảng, theo trang.
+ *
+ * ⚠ `.limit(5000)` CŨ KHÔNG CÓ TÁC DỤNG. PostgREST có `db.max_rows = 1000`
+ *   — gửi limit lớn hơn thì máy chủ vẫn trả 1000 và KHÔNG báo gì, nên cờ
+ *   `truncated` (so với 5000) không bao giờ bật. Với số dư đầu kỳ, đó là
+ *   lỗi TIỀN: khách sau vị trí 1000 không thấy khoản đầu kỳ đã có, nên lần
+ *   nhập lại file tạo THÊM một khoản — công nợ nhân đôi.
+ *
+ * ⚠ SẮP THEO `id` để các trang không chồng / sót nhau (trang song song
+ *   mà thứ tự không duy nhất thì Postgres được phép trả mỗi lần một kiểu).
+ */
+async function docDu<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const r = await fetchAllForAggregate<T>(build)
+  if (r.error) throw new Error(r.error)
+  return { rows: r.rows, truncated: r.truncated }
+}
+
 export async function loadForKind(kind: Kind, orgId: string): Promise<LoadResult> {
   const supabase = createClient()
 
   if (kind === "customer") {
     const [custRes, openRes, assignRes] = await Promise.all([
-      supabase
-        .from("customers")
-        .select("id, store_name, phone")
-        .eq("org_id", orgId)
-        .order("store_name")
-        .limit(FETCH_CAP),
-      supabase
-        .from("receivables")
-        .select("id, customer_id, amount, paid, due_date, note")
-        .eq("org_id", orgId)
-        .eq("opening_balance", true)
-        .limit(FETCH_CAP),
-      supabase
-        .from("customer_assignments")
-        .select("customer_id, user_id, role, status")
-        .eq("role", "primary")
-        .limit(FETCH_CAP),
+      docDu<{ id: string; store_name: string; phone: string | null }>((from, to) =>
+        supabase.from("customers").select("id, store_name, phone", { count: "exact" })
+          .eq("org_id", orgId).order("id").range(from, to)),
+      docDu<{ id: string; customer_id: string; amount: number; paid: number; due_date: string | null; note: string | null; status: string | null }>(
+        (from, to) =>
+          supabase.from("receivables").select("id, customer_id, amount, paid, due_date, note, status", { count: "exact" })
+            .eq("org_id", orgId).eq("opening_balance", true).order("id").range(from, to)),
+      docDu<{ customer_id: string; user_id: string; status: string | null }>((from, to) =>
+        supabase.from("customer_assignments").select("customer_id, user_id, status", { count: "exact" })
+          .eq("role", "primary").order("id").range(from, to)),
     ])
-    const err = [custRes, openRes, assignRes].find((r) => r.error)?.error
-    if (err) throw new Error(err.message)
 
-    const customers = (custRes.data || []) as Array<{ id: string; store_name: string; phone: string | null }>
+    const customers = custRes.rows.slice().sort((a, b) => a.store_name.localeCompare(b.store_name, "vi"))
     const primaryRep: Record<string, string> = {}
-    for (const a of (assignRes.data || []) as Array<{ customer_id: string; user_id: string; status: string | null }>) {
+    for (const a of assignRes.rows) {
       // Chỉ lấy phân công còn hiệu lực. Gán nợ cho NVBH đã nghỉ thì khoản
       // đó biến mất khỏi màn của mọi người đang đi thu.
       if (a.status && a.status !== "active") continue
@@ -59,45 +68,34 @@ export async function loadForKind(kind: Kind, orgId: string): Promise<LoadResult
     }
     return {
       entities: customers.map((c) => ({ id: c.id, label: c.store_name, altKey: c.phone || "" })),
-      existing: ((openRes.data || []) as Array<{
-        id: string; customer_id: string; amount: number; paid: number; due_date: string | null; note: string | null
-      }>).map((r) => ({
+      existing: openRes.rows.map((r) => ({
         id: r.id, entityId: r.customer_id, amount: Number(r.amount || 0),
-        paid: Number(r.paid || 0), dueDate: r.due_date, note: r.note,
+        paid: Number(r.paid || 0), dueDate: r.due_date, note: r.note, status: r.status,
       })),
       primaryRep,
-      truncated: customers.length >= FETCH_CAP,
+      truncated: custRes.truncated || openRes.truncated || assignRes.truncated,
     }
   }
 
   const [supRes, openRes] = await Promise.all([
-    supabase
-      .from("suppliers")
-      .select("id, name, code")
-      .eq("org_id", orgId)
-      .order("name")
-      .limit(FETCH_CAP),
-    supabase
-      .from("payables")
-      .select("id, supplier_id, amount, paid, due_date, notes")
-      .eq("org_id", orgId)
-      .eq("opening_balance", true)
-      .limit(FETCH_CAP),
+    docDu<{ id: string; name: string; code: string | null }>((from, to) =>
+      supabase.from("suppliers").select("id, name, code", { count: "exact" })
+        .eq("org_id", orgId).order("id").range(from, to)),
+    docDu<{ id: string; supplier_id: string; amount: number; paid: number; due_date: string | null; notes: string | null; status: string | null }>(
+      (from, to) =>
+        supabase.from("payables").select("id, supplier_id, amount, paid, due_date, notes, status", { count: "exact" })
+          .eq("org_id", orgId).eq("opening_balance", true).order("id").range(from, to)),
   ])
-  const err = [supRes, openRes].find((r) => r.error)?.error
-  if (err) throw new Error(err.message)
 
-  const suppliers = (supRes.data || []) as Array<{ id: string; name: string; code: string | null }>
+  const suppliers = supRes.rows.slice().sort((a, b) => a.name.localeCompare(b.name, "vi"))
   return {
     entities: suppliers.map((s) => ({ id: s.id, label: s.name, altKey: s.code || "" })),
-    existing: ((openRes.data || []) as Array<{
-      id: string; supplier_id: string; amount: number; paid: number; due_date: string | null; notes: string | null
-    }>).map((r) => ({
+    existing: openRes.rows.map((r) => ({
       id: r.id, entityId: r.supplier_id, amount: Number(r.amount || 0),
-      paid: Number(r.paid || 0), dueDate: r.due_date, note: r.notes,
+      paid: Number(r.paid || 0), dueDate: r.due_date, note: r.notes, status: r.status,
     })),
     primaryRep: {},
-    truncated: suppliers.length >= FETCH_CAP,
+    truncated: supRes.truncated || openRes.truncated,
   }
 }
 
@@ -157,7 +155,14 @@ export async function commitPlan(
         await ghiPhaiTrungDong(
           supabase
             .from(table)
-            .update({ amount: r.amount, due_date: r.dueDate, [noteColumn]: r.note })
+            .update({
+              amount: r.amount,
+              due_date: r.dueDate,
+              [noteColumn]: r.note,
+              // Vượt ranh "đã trả đủ" thì trạng thái phải đổi theo — không
+              // thì phần nợ mới bị mọi hàm tổng (`status <> 'paid'`) bỏ qua.
+              ...(r.status ? { status: r.status } : {}),
+            })
             .eq("id", r.existingId as string)
         )
         res.updated++

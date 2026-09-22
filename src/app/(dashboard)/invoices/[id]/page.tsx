@@ -23,6 +23,7 @@ import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertC
 import type { Invoice, InvoiceStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { VAI_GHI_HOA_DON } from "@/lib/invoices/roles"
 
 type NextStatus = {
   value: InvoiceStatus
@@ -34,10 +35,15 @@ type NextStatus = {
 // Trạng thái nội bộ npp.sale, ĐỘC LẬP với MISA. Khi đẩy MISA thành công,
 // status tự động chuyển sang "issued" (xem publish/route.ts). User không
 // cần bấm "Khoá hoá đơn" tay nếu đã đẩy MISA.
+//
+// ⚠ VAI CHÉP ĐÚNG RLS "Owner/Accountant can manage invoices" — quản lý chỉ
+//   được XEM. Trước đây nút mở cho cả quản lý, bấm vào thì database lặng
+//   lẽ từ chối (0 dòng, không lỗi) mà màn hình vẫn báo "Đã chuyển trạng
+//   thái" — hoá đơn nháp sai vẫn nháp, và vẫn phát hành MISA được.
 const STATUS_FLOW: Record<InvoiceStatus, NextStatus[]> = {
   draft: [
-    { value: "issued", label: "Khoá hoá đơn (không cho sửa)", icon: CheckCircle2, roles: ["owner", "manager", "accountant"] },
-    { value: "cancelled", label: "Huỷ hoá đơn", icon: XCircle, roles: ["owner", "manager", "accountant"] },
+    { value: "issued", label: "Khoá hoá đơn (không cho sửa)", icon: CheckCircle2, roles: VAI_GHI_HOA_DON },
+    { value: "cancelled", label: "Huỷ hoá đơn", icon: XCircle, roles: VAI_GHI_HOA_DON },
   ],
   issued: [
     { value: "cancelled", label: "Huỷ hoá đơn", icon: XCircle, roles: ["owner"] },
@@ -115,8 +121,7 @@ export default function InvoiceDetailPage() {
       if (newStatus === "issued") {
         updates.issued_at = new Date().toISOString()
       }
-      const { error } = await supabase.from("invoices").update(updates).eq("id", invoice.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("invoices").update(updates).eq("id", invoice.id))
       toast({ title: `Đã chuyển trạng thái: ${statusLabel(newStatus)}` })
       setConfirmOpen(null)
       fetchData()
@@ -144,18 +149,19 @@ export default function InvoiceDetailPage() {
     if (!invoice) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("invoices")
-        .update({
-          customer_name: editForm.customer_name,
-          customer_address: editForm.customer_address || null,
-          customer_tax_code: editForm.customer_tax_code || null,
-          subtotal: editForm.subtotal,
-          vat: editForm.vat,
-          total: editForm.total,
-        })
-        .eq("id", invoice.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("invoices")
+          .update({
+            customer_name: editForm.customer_name,
+            customer_address: editForm.customer_address || null,
+            customer_tax_code: editForm.customer_tax_code || null,
+            subtotal: editForm.subtotal,
+            vat: editForm.vat,
+            total: editForm.total,
+          })
+          .eq("id", invoice.id)
+      )
       toast({ title: "Đã cập nhật hóa đơn" })
       setEditMode(false)
       fetchData()

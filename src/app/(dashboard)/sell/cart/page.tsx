@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -28,6 +28,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { canDeleteOrder, deleteOrder } from "@/lib/orders/delete"
 import { errorMessage } from "@/lib/errors"
+import { layMaChongLap, sinhMaChongLap, type MaChongLap } from "@/lib/sell/request-id"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn, formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, vatLabel } from "@/lib/constants"
@@ -317,6 +318,7 @@ export default function SellCartPage() {
    * gửi có thể lặp lại; `createOrderRecords` dựa vào khoá đó để lần thứ
    * hai không thành đơn thứ hai.
    */
+  const maChongLap = useRef<MaChongLap | null>(null)
   const submit = async (asDraft: boolean) => {
     if (submitting || !cart.customerId || !user?.id || !user.org_id) return
     setSubmitting(true)
@@ -348,11 +350,15 @@ export default function SellCartPage() {
        */
       const nguoiDungTen = canPickSeller ? sellerId || user.id : null
 
+      // Cùng nội dung → cùng mã: bấm lại sau một lần rớt mạng không ra đơn thứ hai.
+      maChongLap.current = layMaChongLap(
+        maChongLap.current,
+        JSON.stringify([asDraft, cart.customerId, cart.cart, cart.returnLines, cart.returnReason, cart.notes,
+          cart.paymentTerms, cart.expectedDelivery, nguoiDungTen]),
+        sinhMaChongLap
+      )
       const payload = buildOrderPayload({
-        clientRequestId:
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        clientRequestId: maChongLap.current.id,
         orderCode: editing?.orderCode || generateOrderCode(),
         customerId: cart.customerId,
         customerName: customer?.store_name ?? "",
@@ -376,7 +382,9 @@ export default function SellCartPage() {
           ? await loadApprovalContext(supabase, {
               orgId: user.org_id,
               customerId: cart.customerId,
-              salesUserId: user.id,
+              // ⚠ Nợ danh mục của NGƯỜI ĐỨNG TÊN ĐƠN, không phải người bấm —
+              //   NPP lập đơn hộ NVBH A thì quy tắc phải soi công nợ của A.
+              salesUserId: nguoiDungTen ?? user.id,
             })
           : EMPTY_APPROVAL_CONTEXT
 

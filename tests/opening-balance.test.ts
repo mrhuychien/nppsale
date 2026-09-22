@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import {
+  trangThaiSauSuaSoTien,
   parseAmount,
   parseDueDate,
   normalizeKey,
@@ -487,7 +488,7 @@ describe("Ghi xuống DB", () => {
    */
   it("gán NVBH phụ trách khi tạo công nợ đầu kỳ cho khách", () => {
     expect(IO).toContain("payload.sales_user_id = primaryRep[r.entityId]")
-    expect(IO).toContain('supabase\n        .from("customer_assignments")')
+    expect(IO).toContain('.from("customer_assignments")')
   })
 
   /** Phân công đã ngừng thì không gán — nợ sẽ rơi vào màn của người đã nghỉ. */
@@ -508,10 +509,18 @@ describe("Ghi xuống DB", () => {
     expect(IO).toContain("opening_balance: true")
   })
 
-  /** Chạm trần nạp mà im lặng thì file xuất ra thiếu khách mà không ai biết. */
+  /**
+   * Chạm trần nạp mà im lặng thì file xuất ra thiếu khách mà không ai biết.
+   *
+   * ⚠ VÀ `.limit(N)` VỚI N > 1000 LÀ NÓI DỐI. Máy chủ vẫn trả 1000 dòng
+   *   (`db.max_rows`), nên so với N không bao giờ thấy chạm trần — và lần
+   *   nhập lại file tạo THÊM khoản đầu kỳ cho mọi khách sau vị trí 1000.
+   *   Phải đọc theo trang và lấy cờ `truncated` từ chính lần đọc ấy.
+   */
   it("nói ra khi chạm trần nạp", () => {
     expect(IO).toContain("truncated:")
-    expect(IO).toMatch(/FETCH_CAP = \d+/)
+    expect(IO).not.toMatch(/\.limit\(/)
+    expect(IO).toContain("fetchAllForAggregate")
   })
 })
 
@@ -540,5 +549,42 @@ describe("Sổ chi tiết công nợ theo khách", () => {
 
   it("hiển thị dấu cộng cho đầu kỳ, dấu trừ chỉ cho khoản thu", () => {
     expect(LEDGER).toContain('entry.type === "payment" ? "-" : "+"')
+  })
+})
+
+/**
+ * ⚠ SỬA SỐ TIỀN PHẢI TÍNH LẠI TRẠNG THÁI "ĐÃ TRẢ ĐỦ".
+ *
+ *   Đã đo trên Postgres 16: khoản đầu kỳ 1tr đã thu đủ (`paid`), nhập lại
+ *   thành 3tr → cập nhật 1 dòng, trạng thái VẪN `paid`, và
+ *   `receivables_by_customer` không đổi một đồng — 2tr nợ mới vô hình vì
+ *   mọi hàm tổng lọc `status <> 'paid'`.
+ */
+describe("trạng thái khi sửa số tiền đầu kỳ", () => {
+  it.each([
+    // [trạng thái cũ, đã thu, số mới, cần ra]
+    ["paid", 1_000_000, 3_000_000, "partial"],
+    ["paid", 0, 3_000_000, "open"],
+    ["open", 1_000_000, 1_000_000, "paid"],
+    ["partial", 2_000_000, 1_000_000, "paid"],
+    ["paid", 1_000_000, 500_000, undefined],
+    ["overdue", 100, 3_000_000, undefined],
+    ["open", 0, 3_000_000, undefined],
+  ] as const)("%s, đã thu %d, số mới %d → %s", (cu, paid, amount, can) => {
+    expect(trangThaiSauSuaSoTien(cu, paid, amount)).toBe(can)
+  })
+
+  it("kế hoạch cập nhật mang theo trạng thái mới", () => {
+    const p = buildPlan([row({ rowNo: 2, id: "c2", amount: 3_000_000 })], ENTITIES, [
+      { id: "r1", entityId: "c2", amount: 1_000_000, paid: 1_000_000, dueDate: null, note: null, status: "paid" },
+    ])
+    expect(p.rows[0].action).toBe("update")
+    expect(p.rows[0].status).toBe("partial")
+  })
+
+  it("io ghi trạng thái ấy cùng lệnh cập nhật", () => {
+    const io = readFileSync(resolve(__dirname, "..", "src/lib/opening-balance/io.ts"), "utf-8")
+    const i = io.indexOf('r.action === "update"')
+    expect(io.slice(i, i + 700)).toContain("...(r.status ? { status: r.status } : {})")
   })
 })

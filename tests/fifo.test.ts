@@ -10,6 +10,8 @@ const ENTRY = read("src/app/(dashboard)/inventory/entries/[id]/page.tsx")
 const LIST = read("src/app/(dashboard)/inventory/entries/page.tsx")
 const STOCK_IN = read("src/app/(dashboard)/inventory/stock-in/page.tsx")
 const PLAN = read("src/lib/products/opening-stock-plan.ts")
+const DIALOG = read("src/components/products/product-import-dialog.tsx")
+const IMPORT_RPC = read("supabase/migrations/168_nhap_kho_mot_giao_dich.sql")
 
 /**
  * Hành vi thật của RPC đã được dựng lại và đo trên PostgreSQL 16 với dữ
@@ -190,10 +192,32 @@ describe("received_at — khoá thứ tự FIFO", () => {
     expect(MIG).toContain("ALTER COLUMN received_at SET DEFAULT now()")
   })
 
-  /** Màn nhập kho và phiếu tồn đầu kỳ đều phải đóng mốc này. */
+  /**
+   * Màn nhập kho và phiếu tồn đầu kỳ đều phải đóng mốc này.
+   *
+   * ⚠ TỪ MIG 168 LÔ DO MÁY CHỦ TẠO (`post_stock_import`, một giao dịch).
+   *   Mốc phải đi đúng đường: màn gửi `posted_at` của phiếu, và hàm ghi
+   *   ĐÚNG mốc ấy vào `received_at` của lô — không phải `now()`.
+   */
   it("hai chỗ tạo lô đều ghi received_at", () => {
-    expect(STOCK_IN).toContain("received_at: postedAt")
+    expect(STOCK_IN).toContain("posted_at: postedAt,")
+    expect(DIALOG).toContain("posted_at: payload.entry.posted_at,")
     expect(PLAN).toContain("received_at: postedAt")
+    const i = IMPORT_RPC.indexOf("INSERT INTO batches")
+    const ins = IMPORT_RPC.slice(i, IMPORT_RPC.indexOf(";", i))
+    const cols = ins.slice(ins.indexOf("(") + 1, ins.indexOf(")")).split(",").map((c) => c.trim())
+    const vals = ins.slice(ins.indexOf("VALUES")).replace(/--[^\n]*/g, "")
+    const inner = vals.slice(vals.indexOf("(") + 1, vals.lastIndexOf(")"))
+    // Tách theo dấu phẩy cấp ngoài cùng.
+    const parts: string[] = []
+    let depth = 0, cur = ""
+    for (const ch of inner) {
+      if (ch === "(") depth++
+      if (ch === ")") depth--
+      if (ch === "," && depth === 0) { parts.push(cur.trim()); cur = "" } else cur += ch
+    }
+    parts.push(cur.trim())
+    expect(parts[cols.indexOf("received_at")], "lô không mang mốc ghi sổ của phiếu").toBe("v_posted")
   })
 
   /**

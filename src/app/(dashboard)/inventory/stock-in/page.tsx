@@ -52,6 +52,7 @@ import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { ProductForm } from "@/components/products/product-form"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhieuNhapKho, type DongNhapKho } from "@/lib/inventory/post-import"
 
 interface LineItem {
   id: string
@@ -403,27 +404,6 @@ export default function StockInPage() {
       // khớp với ngày trên phiếu.
       const postedAt = postedAtFor(entryDate, new Date())
 
-      const insertPayload: Record<string, unknown> = {
-        org_id: user.org_id,
-        entry_code: entryCode,
-        type: "import",
-        status: "posted",
-        // Ngày người dùng chọn, không phải lúc bấm nút. Phiếu tồn ĐẦU KỲ
-        // ghi lùi ngày (chốt sổ 31/12) phải nằm đúng ngày đó — thẻ kho,
-        // báo cáo nhập xuất tồn và giá vốn hàng bán đều gom theo cột này.
-        posted_at: postedAt,
-        created_by: user.id,
-        notes,
-      }
-      if (supplierId) insertPayload.supplier_id = supplierId
-
-      const { data: entry, error: entryErr } = await supabase
-        .from("stock_entries")
-        .insert(insertPayload)
-        .select()
-        .single()
-      if (entryErr) throw entryErr
-
       // Helper: hệ số quy đổi của dòng từ unit_name → base unit.
       const lineConversion = (l: { product_id: string; unit_name: string }): { unit: string; conv: number } => {
         const product = productMap.get(l.product_id)
@@ -433,82 +413,43 @@ export default function StockInPage() {
         return { unit, conv }
       }
 
-      // Create batches in bulk - auto-generate batch_code if empty.
-      // Batch lưu theo BASE UNIT (qty_in_base_uom, unit_cost / base unit).
-      const batchPayload = validLines.map((l, idx) => {
-        const qty = parseFloat(l.quantity) || 0
-        const { conv } = lineConversion(l)
-        const baseQty = qty * conv
-        const batchCode = l.batch_code.trim() || `LOT-${entryCode}-${idx + 1}`
-        const expiresAt = l.expires_at || "2099-12-31"
-        const txCost = resolveUnitCost(l.unit_cost).cost
-        const baseCost = conv > 0 ? txCost / conv : txCost
-        const lineLocation = l.location.trim() || warehouse.trim() || null
-        return {
-          org_id: user.org_id,
-          product_id: l.product_id,
-          batch_code: batchCode,
-          manufactured_at: l.manufactured_at || null,
-          expires_at: expiresAt,
-          location: lineLocation,
-          qty_initial: baseQty,
-          qty_on_hand: baseQty,
-          unit_cost: baseCost,
-          // Khoá thứ tự FIFO (mig 107). Phải là ngày GHI SỔ của phiếu,
-          // không phải lúc dòng được tạo: phiếu tồn đầu kỳ ghi lùi ngày
-          // mà xếp theo lúc tạo thì hàng cũ nhất nằm sau hàng nhập tuần
-          // này, và FIFO lấy ngược.
-          received_at: postedAt,
-        }
-      })
-      const { data: insertedBatches, error: batchErr } = await supabase
-        .from("batches")
-        .insert(batchPayload)
-        .select()
-      if (batchErr) throw batchErr
-
-      // Create stock entry lines linked to the new batches (preserve order).
-      // qty_in_base_uom là NOT NULL (mig 039) — phải truyền đủ các cột split UOM.
-      const entryLines = validLines.map((l, idx) => {
+      // Lô và thẻ kho lưu theo ĐƠN VỊ GỐC (số lượng × hệ số, giá vốn ÷ hệ số).
+      // Mã lô để trống thì máy chủ tự đặt `LOT-<mã phiếu>-<thứ tự>`.
+      const dong: DongNhapKho[] = validLines.map((l) => {
         const qty = parseFloat(l.quantity) || 0
         const { unit, conv } = lineConversion(l)
-        const baseQty = qty * conv
         const txCost = resolveUnitCost(l.unit_cost).cost
-        const baseCost = conv > 0 ? txCost / conv : txCost
         return {
-          entry_id: entry.id,
           product_id: l.product_id,
-          batch_id: insertedBatches?.[idx]?.id ?? null,
+          batch_code: l.batch_code.trim() || null,
+          manufactured_at: l.manufactured_at || null,
+          expires_at: l.expires_at || null,
+          location: l.location.trim() || warehouse.trim() || null,
           unit_name: unit,
-          quantity: baseQty,
-          qty_in_base_uom: baseQty,
-          qty_in_transaction_uom: qty,
-          transaction_uom: unit,
-          conversion_factor_snapshot: conv,
-          unit_cost: baseCost,
+          qty_tx: qty,
+          conv,
+          base_qty: qty * conv,
+          base_cost: conv > 0 ? txCost / conv : txCost,
         }
       })
-      const { error: lineErr } = await supabase
-        .from("stock_entry_lines")
-        .insert(entryLines)
-      if (lineErr) throw lineErr
 
-      // Có NCC → ghi công nợ NCC (hoá đơn mua hàng) bằng tổng tiền nhập.
-      let payableCreated = false
-      if (supplierId && summary.total > 0) {
-        const { error: payErr } = await supabase.from("payables").insert({
-          org_id: user.org_id,
-          supplier_id: supplierId,
-          stock_entry_id: entry.id,
-          invoice_number: invoiceNo.trim() || null,
-          amount: summary.total,
-          paid: 0,
-          status: "open",
-          notes: `Nhập kho ${entryCode}`,
-        })
-        if (!payErr) payableCreated = true
-        else console.warn("[stock-in] không tạo được công nợ NCC:", payErr)
-      }
+      // ⚠ MỘT GIAO DỊCH (mig 168): phiếu + lô + dòng + công nợ NCC. Bản cũ
+      //   ghi bốn lệnh rời, và lệnh công nợ bị RLS chặn với thủ kho rồi bị
+      //   nuốt — hàng vào kho mà khoản phải trả NCC biến mất.
+      const ketQua = await ghiPhieuNhapKho(supabase, {
+        entry_code: entryCode,
+        // Ngày người dùng chọn, không phải lúc bấm nút — phiếu tồn đầu kỳ
+        // ghi lùi ngày phải nằm đúng ngày ấy trên thẻ kho và giá vốn.
+        posted_at: postedAt,
+        notes,
+        supplier_id: supplierId || null,
+        payable: supplierId && summary.total > 0
+          ? { amount: summary.total, invoice_number: invoiceNo.trim() || null }
+          : null,
+        lines: dong,
+      })
+      const payableCreated = !!ketQua.payableId
+      const entry = { id: ketQua.entryId }
 
       // Thiếu giá vốn không chặn phiếu — nhiều khi người ta thật sự chưa
       // có số. Nhưng cũng KHÔNG im lặng: giá vốn 0 sẽ kéo lãi gộp của

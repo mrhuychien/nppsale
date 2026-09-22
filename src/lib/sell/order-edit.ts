@@ -333,9 +333,16 @@ export async function applyOrderEdit(
     if (delErr) {
       /**
        * ⚠ DỊCH MÃ 23503 THÀNH CÂU NGƯỜI ĐỌC ĐƯỢC. Dòng bị bỏ khỏi giỏ
-       *   nhưng đã từng nằm trên một tờ hóa đơn; xoá nó là mất dấu vết
-       *   của tờ hóa đơn ấy, nên cơ sở dữ liệu từ chối và ĐÚNG. Việc
-       *   của chỗ này là nói ra mặt hàng nào, và lối đi tiếp.
+       *   nhưng đang nằm trên một hóa đơn CÒN HIỆU LỰC; xoá nó là mất
+       *   dấu vết của hàng đã rời kho, nên cơ sở dữ liệu từ chối và
+       *   ĐÚNG. Việc của chỗ này là nói ra mặt hàng nào, và lối đi tiếp.
+       *
+       * ⚠ CÂU NÀY TỪNG NÓI SAI MỘT VẾ, và chủ nhà bắt được 22/09/2026:
+       *   nó ghi "kể cả khi đã huỷ". Hồi ấy đúng — hóa đơn huỷ rồi mà
+       *   dòng hóa đơn vẫn trỏ vào dòng đơn, nên khoá ngoại chặn vĩnh
+       *   viễn. Migration 162 sửa chỗ ấy: huỷ hóa đơn là nhả móc nối.
+       *   Giữ nguyên câu cũ thì màn hình dạy người dùng một luật đã
+       *   chết, và họ đi huỷ hóa đơn xong vẫn tin là mình bó tay.
        */
       if ((delErr as { code?: string }).code === "23503") {
         const ten = plan.remove
@@ -344,9 +351,9 @@ export async function applyOrderEdit(
           .join(", ")
         throw new Error(
           `Không bỏ được ${ten ? `mặt hàng ${ten}` : "một mặt hàng"} khỏi đơn: ` +
-            "nó đã từng nằm trên một tờ hóa đơn của đơn này, và tờ ấy vẫn còn " +
-            "trong sổ (kể cả khi đã huỷ). Giữ dòng đó lại và đặt số lượng về 0, " +
-            "hoặc sửa các dòng khác rồi lưu."
+            "nó đang nằm trên một tờ hóa đơn CÒN HIỆU LỰC của đơn này, tức " +
+            "hàng đã rời kho. Giữ dòng đó lại và đặt số lượng về 0, sửa các " +
+            "dòng khác rồi lưu, hoặc huỷ tờ hóa đơn ấy trước rồi bỏ dòng."
         )
       }
       throw delErr

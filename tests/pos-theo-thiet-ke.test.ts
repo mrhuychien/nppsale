@@ -157,6 +157,60 @@ describe("cột trái — bảng dòng hàng", () => {
   })
 })
 
+describe("những khối chủ nhà bảo bỏ", () => {
+  /**
+   * ⚠ ĐÚNG MỘT NÚT "THÊM SẢN PHẨM", KHÔNG HAI. Bản trước của tôi để lại
+   * một HÀNG CÔNG CỤ ("Dòng hàng · N" + nút thêm) ngay trên bảng, bên
+   * dưới khối tiêu đề vốn ĐÃ có "· N dòng" và đúng cái nút ấy. Chủ nhà
+   * khoanh đỏ cả hai nửa của hàng đó (22/09/2026).
+   *
+   * Đây là lần thứ HAI cùng một lỗi: đợt 9 chủ nhà đã đếm được hai ô
+   * thêm hàng và bắt bỏ một. Chốt này để không có lần thứ ba.
+   */
+  it("cột trái chỉ có một nút thêm sản phẩm", () => {
+    expect(
+      DON.split("Thêm sản phẩm").length - 1,
+      "cột trái lại có hai chỗ thêm sản phẩm"
+    ).toBe(1)
+    expect(
+      /Dòng hàng <span className="n">/.test(DON),
+      "hàng công cụ trùng đã quay lại — khối tiêu đề vốn đã đếm số dòng"
+    ).toBe(false)
+  })
+
+  /**
+   * ⚠ MÀN ĐẶT HÀNG KHÔNG THU TIỀN. Chủ nhà khoanh đỏ cả khối thanh toán
+   * (22/09/2026), và bản thiết kế cũng không vẽ nó: tổng tiền kết thúc
+   * ở "Khách cần trả" rồi tới hai nút.
+   *
+   * ⚠ VÀ KHỐI ẤY CHƯA TỪNG ĐI XUỐNG SỔ. `traTien` / `pay` không có mặt
+   * trong tải trọng `savePosOrder` — chúng chỉ đổi con số trên màn. Tức
+   * người bán gõ "khách đưa 500.000" rồi lưu, và sổ không ghi đồng nào.
+   * Gỡ đi là bỏ một lời hứa suông, không phải bỏ một chức năng.
+   */
+  it("màn đơn không còn khối thanh toán", () => {
+    for (const chu of ["Khách thanh toán", "Tính vào công nợ", "Nợ sau đơn này"]) {
+      expect(DON.includes(chu), `khối thanh toán quay lại: "${chu}"`).toBe(false)
+    }
+    expect(/PaymentButtons|CashChips/.test(DON), "nút chọn hình thức trả quay lại").toBe(false)
+    expect(/traTien/.test(DON), "ô tiền khách đưa quay lại").toBe(false)
+  })
+
+  /**
+   * ⚠ VÀ TỔNG TIỀN KẾT THÚC ĐÚNG CHỖ BẢN VẼ ĐỂ: "Khách cần trả" rồi tới
+   * hàng nút. Không có con số nào chen giữa.
+   */
+  it("sau tổng tiền là tới hàng nút, không chen gì", () => {
+    const i = DON.indexOf("<TotalsHero")
+    expect(i, "mất khối tổng tiền").toBeGreaterThan(-1)
+    const j = DON.indexOf("<PanelActions", i)
+    expect(j, "mất hàng nút").toBeGreaterThan(i)
+    const giua = DON.slice(i, j)
+    expect(/<MoneyRow|PaymentButtons|CashChips/.test(giua), "có khối chen giữa tổng tiền và hàng nút")
+      .toBe(false)
+  })
+})
+
 describe("khối Hàng đổi trả kèm đơn", () => {
   /** ⚠ Bản vẽ: một thẻ RIÊNG dưới bảng bán, thu gọn được. */
   it("là thẻ riêng, thu gọn được, đúng tiêu đề bản vẽ", () => {

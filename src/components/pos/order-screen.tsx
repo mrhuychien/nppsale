@@ -75,9 +75,9 @@ import { savePosOrder, savePosInvoice, posLinesToCart, posLinesToReturnCart } fr
 import { invoiceWarnings } from "@/lib/orders/post-invoice"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
-import { posTotals, cashSuggestions } from "@/lib/pos/totals"
+import { posTotals } from "@/lib/pos/totals"
 import { posPrintHref } from "@/lib/pos/tabs"
-import type { PosBadge, PosLine, PosPayMethod } from "@/lib/pos/types"
+import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
@@ -88,10 +88,10 @@ import {
   LineAmountCell, LineMenu, NegativeStockStrip,
 } from "@/components/pos/line-table"
 import {
-  MoneyRow, DocDiscountRow, TotalsHero, PaymentButtons, CashChips,
+  MoneyRow, DocDiscountRow, TotalsHero,
   PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
-import { PosAddProductButton, PosProductSearchBox } from "@/components/pos/product-search-box"
+import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import type { SellProduct } from "@/lib/sell/ref-data"
@@ -155,8 +155,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [heldReturnId, setHeldReturnId] = useState<string | null | undefined>(orderId ? undefined : null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
   const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
-  const [traTien, setTraTien] = useState(0)
-  const [pay, setPay] = useState<PosPayMethod>("no")
   const [ngayGiao, setNgayGiao] = useState("")
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
@@ -195,7 +193,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   useEffect(() => {
     if (!settingsReady || orderId) return
     setDocDiscount((d) => (d.value === 0 ? { value: 0, unit: settings.defaultDiscountUnit } : d))
-    setPay(settings.defaultCreditAll ? "no" : "tien-mat")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsReady])
 
@@ -919,7 +916,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const vuotHanMuc: number | null = (() => {
     const hanMuc = Number(customerById(khach?.id)?.credit_limit ?? 0)
     if (!khach || hanMuc <= 0 || khach.debt == null) return null
-    const sauDon = khach.debt + Math.max(0, totals.due - traTien)
+    /* ⚠ ĐƠN CHƯA THU ĐỒNG NÀO. Màn này là màn ĐẶT HÀNG — tiền thu
+       lúc lập hóa đơn, không phải ở đây (chủ nhà chốt 22/09/2026, gỡ
+       hẳn khối thanh toán). Nên nợ sau đơn = nợ hiện tại + cả tờ đơn. */
+    const sauDon = khach.debt + totals.due
     return sauDon > hanMuc ? sauDon - hanMuc : null
   })()
 
@@ -1031,20 +1031,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             </DocBanner>
           )}
 
-          {/*
-            ⚠ HÀNG NÀY KHÔNG PHẢI Ô TÌM THỨ HAI. Chủ nhà chốt *"bấm vào
-              đó nhảy sang ô thêm sản phẩm bên phải"*: nút chỉ đưa tiêu
-              điểm sang ô duy nhất ở cột phải. Nó có mặt vì ô tìm nay
-              nằm ở cột kia — không có nó thì người mở đơn lần đầu không
-              biết thêm hàng ở đâu, đúng lý do bản thiết kế vẽ nó.
-          */}
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-[13px] font-bold text-[var(--pos-muted)]">
-              Dòng hàng <span className="n">· {lines.length}</span>
-            </span>
-            <div className="flex-grow" />
-            <PosAddProductButton />
-          </div>
 
           <LineTableFrame
             header={<LineTableHeader grid="order" cols={cot.cols} cells={cot.cells} />}
@@ -1624,50 +1610,6 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             )}
 
             <TotalsHero label="Khách cần trả" value={totals.due} />
-
-            <div className="mt-3.5 flex items-center justify-between gap-2.5">
-              <label htmlFor="pos-tra" className="text-[13px] text-[var(--pos-muted)]">
-                Khách thanh toán
-              </label>
-              <input
-                id="pos-tra"
-                className="n h-[34px] w-[150px] rounded-[7px] border border-[var(--pos-edge)] px-2.5 text-right text-[14px] font-semibold text-[var(--pos-ink)]"
-                inputMode="numeric"
-                value={traTien === 0 ? "0" : String(traTien)}
-                onChange={(e) => setTraTien(Number(e.target.value.replace(/\D/g, "")) || 0)}
-              />
-            </div>
-
-            <PaymentButtons
-              value={pay}
-              onChange={(m) => {
-                setPay(m)
-                // ⚠ "Ghi nợ hết" nghĩa là khách chưa đưa đồng nào.
-                if (m === "no") setTraTien(0)
-                else if (traTien === 0) setTraTien(totals.due)
-              }}
-            />
-
-            {settings.suggestCash && pay !== "no" && (
-              <CashChips values={cashSuggestions(totals.due)} onPick={setTraTien} />
-            )}
-
-            <div className="mt-3.5 flex items-center justify-between border-t border-[var(--pos-line-soft)] pt-3">
-              <span className="text-[13px] text-[var(--pos-muted)]">Tính vào công nợ</span>
-              <span className="n text-[14px] font-bold text-[var(--pos-warn)]">
-                {formatCurrency(Math.max(0, totals.due - traTien))}
-              </span>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[11.5px] text-[var(--pos-muted)]">Nợ sau đơn này</span>
-              <span className="n text-[11.5px] text-[var(--pos-muted)]">
-                {/* ⚠ CHƯA BIẾT NỢ HIỆN TẠI THÌ ĐỂ TRỐNG, đừng cộng từ 0 —
-                    xem `docs/pos-todo.md`. */}
-                {khach?.debt == null
-                  ? "chưa xác định"
-                  : formatCurrency(khach.debt + Math.max(0, totals.due - traTien))}
-              </span>
-            </div>
 
             <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[var(--pos-line-soft)] pt-3">
               <label htmlFor="pos-ngaygiao" className="text-[13px] text-[var(--pos-muted)]">

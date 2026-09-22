@@ -765,20 +765,23 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
    * KHÔNG được chứa ô nhập hay dải gợi ý nào ngoài ô dùng chung.
    */
   it("nút thêm sản phẩm chỉ nhảy sang ô bên phải, không tự tìm", () => {
-    const src = code(read("src/components/pos/product-search-box.tsx"))
-    const i = src.indexOf("export function PosAddProductButton")
-    expect(i, "không còn nút thêm sản phẩm").toBeGreaterThan(-1)
-    const nut = src.slice(i)
+    /**
+     * ⚠ CANH LUẬT, KHÔNG CANH TÊN COMPONENT. Bản đầu đòi màn đơn vẽ
+     * `<PosAddProductButton />`. Bản thiết kế chủ nhà đưa dựng nút ấy
+     * THẲNG trong khối tiêu đề, component dùng chung hết người gọi nên
+     * bị gỡ — chốt đỏ oan trong khi luật còn nguyên: màn đơn phải có
+     * một nút dẫn về ô tìm, và nút ấy không được tự mọc ô tìm riêng.
+     */
+    const i = ORDER.indexOf("Thêm sản phẩm (F2)")
+    expect(i, "màn đơn mất nút thêm sản phẩm của bản vẽ").toBeGreaterThan(-1)
+    const nut = ORDER.slice(Math.max(0, i - 500), i)
     expect(nut, "nút không đưa tiêu điểm về ô tìm").toMatch(/onClick=\{focusPosPicker\}/)
-    expect(/<input|<ProductPicker|<SearchDropdown/.test(nut),
-      "nút tự mọc ô tìm riêng — /pos lại có hai chỗ thêm hàng").toBe(false)
-    /* ⚠ Và nút phải NẤP ĐI ở màn không có gì để thêm (trang gốc, xem
-       hóa đơn) — một nút dẫn tới ô không tồn tại là ngõ cụt. */
-    expect(nut, "nút vẫn hiện ở màn không đăng ký ô tìm").toMatch(/if \(!reg\) return null/)
+    expect(
+      /<input|<ProductPicker|<SearchDropdown/.test(nut),
+      "nút tự mọc ô tìm riêng — /pos lại có hai chỗ thêm hàng"
+    ).toBe(false)
 
-    /* ⚠ Và màn đơn phải THẬT SỰ vẽ nút — bộ luật đúng mà không ai gọi
-       thì vô nghĩa, đúng cái bẫy đã sập ở `missingLotLines`. */
-    expect(ORDER, "màn đơn không vẽ nút thêm sản phẩm").toMatch(/<PosAddProductButton\s*\/>/)
+    /* ⚠ Và màn đơn phải THẬT SỰ vẽ ô tìm ở cột phải. */
     expect(ORDER, "màn đơn không vẽ ô tìm ở cột phải").toMatch(/<PosProductSearchBox\s*\/>/)
   })
 

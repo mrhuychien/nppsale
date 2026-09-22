@@ -15,10 +15,14 @@
  *   Vẫn là ĐÚNG MỘT ô trong cả `/pos`. Điều chủ nhà bác từ đợt 9 là
  *   HAI chỗ thêm hàng, không phải vị trí — và luật ấy còn nguyên.
  *
- * ⚠ NÚT "THÊM SẢN PHẨM" Ở CỘT TRÁI KHÔNG PHẢI Ô THỨ HAI. Chủ nhà chốt
- *   *"bấm vào đó nhảy sang ô thêm sản phẩm bên phải"*: nó không có ô
- *   nhập, không có danh sách, chỉ đưa tiêu điểm sang đúng ô duy nhất.
- *   Biến nó thành một ô tìm nữa là quay lại cái đã bị bác.
+ * ⚠ NÚT "THÊM SẢN PHẨM" Ở CỘT TRÁI KHÔNG NẰM Ở ĐÂY. Chủ nhà chốt
+ *   *"bấm vào đó nhảy sang ô thêm sản phẩm bên phải"*, và bản thiết kế
+ *   vẽ nút ấy TRONG khối tiêu đề của màn đơn — nên nó ở
+ *   `order-screen.tsx`, dựng thẳng, gọi `focusPosPicker`. Từng có một
+ *   component dùng chung ở đây; sau khi khối tiêu đề của bản vẽ vào thì
+ *   không màn nào gọi nữa nên đã gỡ. Nút ấy KHÔNG được có ô nhập hay
+ *   dải gợi ý riêng — làm thế là quay lại "hai chỗ thêm hàng" mà chủ
+ *   nhà đã bác.
  *
  * ⚠ SỔ ĐĂNG KÝ GIỮ NGUYÊN (`store/pos/product-search`). Ô vẽ ở đây,
  *   nhưng danh mục hàng và việc "thêm vào chứng từ" thuộc về MÀN đang
@@ -26,11 +30,13 @@
  */
 
 import { ProductPicker } from "@/components/ui/product-picker"
-import {
-  POS_PICKER_ID,
-  focusPosPicker,
-  usePosProductSearchHost,
-} from "@/store/pos/product-search"
+import { POS_PICKER_ID, usePosProductSearchHost } from "@/store/pos/product-search"
+
+/** Sắc của dải "đang thêm vào…" — khớp màu của chính khối bảng ấy. */
+const TONE = {
+  warn: "bg-[var(--pos-warn-soft)] text-[var(--pos-warn)]",
+  primary: "bg-[var(--pos-primary-soft)] text-[var(--pos-primary-deep)]",
+} as const
 
 /**
  * Ô tìm hàng ở đỉnh cột phải.
@@ -39,12 +45,6 @@ import {
  * vẽ gì — vẽ một ô rỗng ở đó là mời người dùng gõ vào một chỗ không
  * trả lời.
  */
-/** Sắc của dải "đang thêm vào…" — khớp màu của chính khối bảng ấy. */
-const TONE = {
-  warn: "bg-[var(--pos-warn-soft)] text-[var(--pos-warn)]",
-  primary: "bg-[var(--pos-primary-soft)] text-[var(--pos-primary-deep)]",
-} as const
-
 export function PosProductSearchBox({
   note,
 }: {
@@ -96,29 +96,5 @@ export function PosProductSearchBox({
         renderMeta={reg.renderMeta}
       />
     </div>
-  )
-}
-
-/**
- * Nút "Thêm sản phẩm" ở đỉnh cột trái — đưa tiêu điểm sang ô bên phải.
- *
- * ⚠ PHÍM VẪN LÀ `F3`, KHÔNG PHẢI `F2` NHƯ BẢN VẼ. `F3` là phím đã chạy
- *   ở cả năm màn, có trong câu gợi ý của bảng rỗng và trong `lib/pos/keys`.
- *   Đổi nhãn theo bản vẽ mà không đổi phím là nói dối người dùng; đổi cả
- *   phím là lấy đi thói quen tay của người đang dùng để đúng một con chữ
- *   trên bản vẽ. Đã báo cáo chỗ lệch này.
- */
-export function PosAddProductButton({ disabled }: { disabled?: boolean }) {
-  const { reg } = usePosProductSearchHost()
-  if (!reg) return null
-  return (
-    <button
-      type="button"
-      disabled={disabled ?? reg.disabled}
-      onClick={focusPosPicker}
-      className="h-9 shrink-0 rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3.5 text-[13px] font-bold text-[var(--pos-ink)] hover:border-[var(--pos-primary-border)] disabled:cursor-not-allowed disabled:text-[var(--pos-dim)]"
-    >
-      Thêm sản phẩm <span className="n text-[11px] opacity-70">F2</span>
-    </button>
   )
 }

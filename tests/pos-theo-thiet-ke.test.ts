@@ -31,6 +31,7 @@ const code = (s: string) =>
 const DON = code(doc("src/components/pos/order-screen.tsx"))
 const BAR = code(doc("src/components/pos/pos-top-bar.tsx"))
 const TAB = code(doc("src/components/pos/doc-tabs.tsx"))
+const BANG = code(doc("src/components/pos/line-table.tsx"))
 
 describe("thanh trên cùng", () => {
   /** ⚠ Bản vẽ: ô vuông xanh bo 9px, chữ "N", rồi tên màn. */
@@ -109,14 +110,74 @@ describe("cột trái — khối tiêu đề", () => {
 
 describe("cột trái — bảng dòng hàng", () => {
   /**
-   * ⚠ ĐÚNG TÁM CỘT VỚI ĐÚNG BỀ RỘNG CỦA BẢN VẼ:
-   *     34px · minmax(170px,1fr) · 100px · 108px · 128px · 74px · 120px · 34px
-   * Bản trước của tôi là CHÍN cột (tách "Mã hàng" và "ĐVT" ra riêng) và
-   * bề rộng khác hẳn.
+   * ⚠ ĐÚNG TÁM CỘT, ĐÚNG BỀ RỘNG, ĐÚNG THỨ TỰ. Bản trước của tôi là
+   *   CHÍN cột (tách "Mã hàng" và "ĐVT" ra riêng) và bề rộng khác hẳn.
+   *
+   * ⚠ BẢN ĐẦU CỦA CHỐT NÀY CHỈ HỎI "CÓ XUẤT HIỆN Ở ĐÂU ĐÓ KHÔNG", nên
+   *   nó nói dối: 22/09/2026 cột cuối đổi từ 34px sang 60px mà chốt vẫn
+   *   xanh, vì chuỗi `"34px"` còn nằm ở cột `#`. Nay so nguyên DÃY.
+   *
+   * ⚠ CỘT CUỐI 60px LÀ LỆCH BẢN VẼ CÓ CHỦ Ý. Bản vẽ ghi 34px cho cột
+   *   "(xoá)", nhưng ô ấy còn mang cả nút `⋮` với bốn thao tác khác —
+   *   hai nút không nhét vừa 34px. Chủ nhà chốt "thêm nút xóa dòng vào
+   *   chỉ cần dấu x to chút dễ bấm là được", và một vùng bấm bé thì
+   *   đúng thứ vừa bị kêu.
    */
-  it("bề rộng cột đúng bản vẽ", () => {
-    for (const w of ['"34px"', '"minmax(170px,1fr)"', '"100px"', '"108px"', '"128px"', '"74px"', '"120px"']) {
-      expect(DON, `thiếu cột bề rộng ${w}`).toContain(`w: ${w}`)
+  it("bề rộng cột đúng bản vẽ, đúng thứ tự", () => {
+    const i = DON.indexOf("const cot = useMemo")
+    expect(i, "màn đơn không còn khối dựng cột").toBeGreaterThan(-1)
+    const khoi = DON.slice(i, DON.indexOf("return {", i))
+    const rong = Array.from(khoi.matchAll(/w: "([^"]+)"/g)).map((m) => m[1])
+    expect(rong, "dãy cột lệch bản vẽ").toEqual([
+      "34px",
+      "minmax(170px,1fr)",
+      "100px",
+      "108px",
+      "128px",
+      "74px",
+      "120px",
+      "60px",
+    ])
+  })
+
+  /**
+   * ⚠ XOÁ DÒNG PHẢI LÀ MỘT CÚ BẤM. Chủ nhà chốt 22/09/2026: "thêm nút
+   *   xóa dòng vào chỉ cần dấu x to chút dễ bấm là được". Trước đó xoá
+   *   dòng nằm trong menu `⋮` — hai cú bấm và một menu năm mục, cho
+   *   việc làm nhiều nhất trên màn này.
+   */
+  it("mỗi dòng có nút xoá riêng, bấm một cái là xong", () => {
+    const i = BANG.indexOf("export function LineMenu")
+    expect(i, "không còn ô thao tác cuối dòng").toBeGreaterThan(-1)
+    const than = BANG.slice(i)
+    const j = than.indexOf("aria-label={`Xoá dòng")
+    expect(j, "dòng hàng không có nút xoá riêng — lại phải mở menu").toBeGreaterThan(-1)
+    const nut = than.slice(j, than.indexOf("</button>", j))
+    /* Gọi thẳng việc xoá, không mở menu rồi mới xoá. */
+    expect(nut, "nút xoá không gọi thẳng việc xoá").toMatch(/onClick=\{onRemove\}/)
+    /**
+     * ⚠ VÙNG BẤM, KHÔNG PHẢI CỠ CHỮ. Một dấu × to mà vùng bấm bé thì
+     *   vẫn khó trúng — đúng thứ chủ nhà vừa kêu. Đòi cả hai.
+     */
+    const m = nut.match(/h-\[(\d+)px\] w-\[(\d+)px\]/)
+    expect(m, "nút xoá không đặt vùng bấm cố định").not.toBeNull()
+    expect(Number(m![1]), "vùng bấm nút xoá quá bé").toBeGreaterThanOrEqual(28)
+    expect(Number(m![2]), "vùng bấm nút xoá quá bé").toBeGreaterThanOrEqual(28)
+  })
+
+  /**
+   * ⚠ MỤC "XOÁ DÒNG" TRONG MENU VẪN GIỮ. Bỏ đi là người đã quen tay với
+   *   menu mất đường cũ, mà chẳng được gì.
+   */
+  it("menu ⋮ vẫn còn đủ các thao tác khác, kể cả xoá dòng", () => {
+    for (const muc of [
+      "Xem giá bán gần nhất",
+      "Ghi chú dòng",
+      "Đổi lô & hạn sử dụng",
+      "Xem chi tiết hàng hóa",
+      "Xoá dòng",
+    ]) {
+      expect(BANG, `menu thao tác dòng mất mục: ${muc}`).toContain(muc)
     }
   })
 

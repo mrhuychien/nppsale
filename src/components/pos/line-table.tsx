@@ -19,14 +19,25 @@ import { discountAmount, lineGross, switchUnit, unitAriaLabel, unitLabel } from 
 import type { PosLine } from "@/lib/pos/types"
 import { formatCurrency } from "@/lib/utils"
 
-/** Cấu hình cột theo spec §4 — `grid-template-columns` và `gap`. */
+/**
+ * Cấu hình cột theo spec §4 — `grid-template-columns` và `gap`.
+ *
+ * ⚠ CỘT CUỐI RỘNG 60px VÌ NÓ CHỨA HAI NÚT: `⋮` và `×`. Trước
+ *   22/09/2026 cột ấy rộng 24–28px và chỉ có `⋮`, tức muốn xoá một dòng
+ *   phải bấm hai lần và đọc một menu năm mục. Chủ nhà chốt: "thêm nút
+ *   xóa dòng vào chỉ cần dấu x to chút dễ bấm là được."
+ *
+ * ⚠ HAI NÚT PHẢI NẰM TRONG MỘT Ô LƯỚI. Đặt chúng thành hai con trực
+ *   tiếp của lưới là bảng thừa một cột và MỌI dòng so le với đầu bảng —
+ *   xem `LineMenu`, nó tự bọc cả hai.
+ */
 export const POS_GRID = {
-  order: { cols: "28px 88px minmax(0,1fr) 76px 96px 100px 92px 116px 28px", gap: 8 },
+  order: { cols: "28px 88px minmax(0,1fr) 76px 96px 100px 92px 116px 60px", gap: 8 },
   invoiceView: { cols: "26px 84px minmax(0,1fr) 62px 66px 92px 92px 48px 104px 26px", gap: 8 },
-  invoiceEdit: { cols: "24px 80px minmax(0,1fr) 62px 98px 84px 88px 92px 96px 24px", gap: 7 },
+  invoiceEdit: { cols: "24px 80px minmax(0,1fr) 62px 98px 84px 88px 92px 96px 60px", gap: 7 },
   returnDoc: { cols: "24px 64px 80px minmax(0,1fr) 96px 56px 84px 84px 56px 92px 24px", gap: 7 },
-  purchase: { cols: "24px 80px minmax(0,1fr) 56px 92px 84px 96px 92px 108px 24px", gap: 7 },
-  supplierReturn: { cols: "24px 80px minmax(0,1fr) 92px 60px 84px 96px 92px 104px 24px", gap: 7 },
+  purchase: { cols: "24px 80px minmax(0,1fr) 56px 92px 84px 96px 92px 108px 60px", gap: 7 },
+  supplierReturn: { cols: "24px 80px minmax(0,1fr) 92px 60px 84px 96px 92px 104px 60px", gap: 7 },
 } as const
 
 export type PosGridKey = keyof typeof POS_GRID
@@ -256,17 +267,40 @@ export function LineMenu({
     { text: "Xoá dòng", fn: onRemove, danger: true },
   ]
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-0.5">
       <button
         type="button"
         aria-label={`Thao tác dòng ${index}`}
         aria-expanded={mo}
         onClick={() => setMo((v) => !v)}
-        className={`h-6 w-6 rounded-md text-[15px] leading-none ${
+        className={`h-6 w-6 shrink-0 rounded-md text-[15px] leading-none ${
           mo ? "bg-[var(--pos-line)] text-[var(--pos-muted)]" : "text-[var(--pos-dim)] hover:bg-[var(--pos-line-soft)]"
         }`}
       >
         ⋮
+      </button>
+      {/*
+        ⚠ XOÁ DÒNG PHẢI LÀ MỘT CÚ BẤM, KHÔNG PHẢI HAI. Chủ nhà chốt
+          22/09/2026: "thêm nút xóa dòng vào chỉ cần dấu x to chút dễ
+          bấm là được". Xoá một dòng gõ nhầm là việc làm nhiều nhất
+          trên màn này; chôn nó dưới `⋮` là bắt đọc một menu năm mục
+          mỗi lần.
+
+        ⚠ MỤC "XOÁ DÒNG" TRONG MENU VẪN GIỮ. Bỏ đi là người đã quen tay
+          với menu mất đường cũ, mà chẳng được gì — hai lối vào cùng
+          một việc không hại ai.
+
+        ⚠ VÙNG BẤM 30px, KHÔNG PHẢI CỠ CHỮ 30px. Một dấu × to mà vùng
+          bấm bé thì vẫn khó trúng — đây là thứ chủ nhà vừa kêu.
+      */}
+      <button
+        type="button"
+        aria-label={`Xoá dòng ${index}`}
+        title={`Xoá dòng ${index}`}
+        onClick={onRemove}
+        className="h-[30px] w-[30px] shrink-0 rounded-[8px] text-[20px] leading-none text-[var(--pos-dim)] hover:bg-[var(--pos-danger-soft)] hover:text-[var(--pos-danger)]"
+      >
+        ×
       </button>
       {mo && (
         <>

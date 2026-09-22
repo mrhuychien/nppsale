@@ -339,8 +339,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const cot = useMemo(() => {
     /**
      * ⚠ CỘT LẤY ĐÚNG BẢN THIẾT KẾ CHỦ NHÀ ĐƯA:
-     *     34px · minmax(170px,1fr) · 100px · 108px · 128px · 74px · 120px · 34px
+     *     34px · minmax(170px,1fr) · 100px · 108px · 128px · 74px · 120px · 60px
      *     #   · Sản phẩm / đơn vị · Số lượng · Đơn giá · Giảm giá · VAT · Thành tiền · (xoá)
+     *
+     * ⚠ CỘT CUỐI RỘNG HƠN BẢN VẼ (60px thay vì 34px) và đó là cố ý: bản
+     *   vẽ ghi nó là cột "(xoá)" nhưng ở đây nó còn mang cả nút `⋮` với
+     *   bốn thao tác khác. Hai nút không nhét vừa 34px.
      *
      * ⚠ MÃ HÀNG VÀ ĐƠN VỊ KHÔNG CÒN LÀ CỘT RIÊNG. Bản vẽ gộp cả hai vào
      *   ô "Sản phẩm / đơn vị": mã SKU nằm ở dòng phụ, còn đơn vị là một
@@ -361,7 +365,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     if (settings.colLineDiscount) c.push({ w: "128px", label: "Giảm giá", align: "center" })
     if (settings.colVat) c.push({ w: "74px", label: "VAT", align: "center" })
     c.push({ w: "120px", label: "Thành tiền", align: "right" })
-    c.push({ w: "34px", label: "" })
+    /* ⚠ 60px vì ô cuối chứa HAI nút (`⋮` và `×`) — xem `LineMenu`. Bản
+       vẽ ghi cột cuối là "(xoá)"; trước 22/09/2026 chỗ ấy chỉ có `⋮`
+       nên muốn xoá một dòng phải bấm hai lần. */
+    c.push({ w: "60px", label: "" })
     return {
       cols: c.map((x) => x.w).join(" "),
       cells: c.map((x) => ({ label: x.label, align: x.align })),

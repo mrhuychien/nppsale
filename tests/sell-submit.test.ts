@@ -171,9 +171,17 @@ describe("Màn giỏ hàng", () => {
   })
 
   /** Bấm hai lần liên tiếp là hai đơn nếu không khoá nút. */
+  /**
+   * ⚠ GỘP KHOẢNG TRẮNG TRƯỚC KHI DÒ — đúng cái bẫy mà chốt "hai nút
+   *   chặn giá…" ở ngay dưới đã ghi ra. Bản trước dò nguyên văn
+   *   `disabled={submitting ||`; 22/09/2026 điều kiện dài thêm một vế
+   *   (`donHo`), Prettier xuống dòng sau dấu `{`, và chốt đỏ dù luật
+   *   không suy suyển.
+   */
   it("khoá nút trong lúc đang gửi", () => {
-    expect(CART_PAGE).toContain("if (submitting ||")
-    expect(CART_PAGE).toContain("disabled={submitting ||")
+    const FLAT = CART_PAGE.replace(/\s+/g, " ")
+    expect(FLAT).toMatch(/if \( ?submitting \|\|/)
+    expect(FLAT).toMatch(/disabled=\{ ?submitting \|\|/)
   })
 
   /**
@@ -210,7 +218,11 @@ describe("Màn giỏ hàng", () => {
    * nhất — đang đứng ở quầy, ghi được tên khách thì khách bận.
    */
   it("nút Lưu nháp không khoá theo tồn kho và không đòi có hàng, vẫn khoá theo giá", () => {
-    const m = /disabled=\{submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(CART_PAGE)
+    /* ⚠ Gộp khoảng trắng trước khi dò — xem chốt "khoá nút trong lúc
+       đang gửi" ở trên về lý do. */
+    const m = /disabled=\{ ?submitting \|\| !cart\.customerId \|\| hasPriceBad[^}]*\}/.exec(
+      CART_PAGE.replace(/\s+/g, " ")
+    )
     expect(m, "không tìm thấy nút Lưu tạm").toBeTruthy()
     expect(m![0]).not.toContain("hasOver")
     expect(m![0]).not.toContain("cart.cart.length")

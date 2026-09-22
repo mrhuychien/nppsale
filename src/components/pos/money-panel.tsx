@@ -219,9 +219,21 @@ export function CashChips({
   )
 }
 
-/** Hàng nút đáy panel — cao 46px, spec §6. */
+/**
+ * Hàng nút đáy panel — cao 46px, spec §6.
+ *
+ * ⚠ HÀNG NÀY PHẢI TÁCH KHỎI NỀN (chủ nhà 22/09/2026: "Hai nút đấy cho
+ *   rõ ràng lên hiện tại lẫn luôn vào nền"). Panel nền trắng, nút cũng
+ *   nền trắng, viền nhạt — nhìn vào là một mảng trắng không có mép.
+ *   Một vạch trên cùng và một nền xám nhạt đủ để mắt biết "đây là chỗ
+ *   kết thúc, đây là hai việc cuối cùng phải làm".
+ */
 export function PanelActions({ children }: { children: ReactNode }) {
-  return <div className="flex shrink-0 gap-2">{children}</div>
+  return (
+    <div className="flex shrink-0 gap-2 border-t border-[var(--pos-line)] bg-[var(--pos-head)] p-3">
+      {children}
+    </div>
+  )
 }
 
 export function PanelButton({
@@ -240,12 +252,25 @@ export function PanelButton({
   /** ⚠ Nút mờ PHẢI nói vì sao — xem `QtyStepper`. */
   title?: string
 }) {
+  /**
+   * ⚠ NÚT PHỤ TỪNG LÀ TRẮNG-TRÊN-TRẮNG: nền trắng, viền `--pos-line`
+   *   mảnh, chữ `--pos-muted` xám — đặt trên panel trắng thì gần như
+   *   không thấy. Nay nó có nền riêng, viền 1.5px và chữ đậm màu mực.
+   *
+   * ⚠ VÀ TRẠNG THÁI MỜ PHẢI ĐỌC RA LÀ MỜ. Bản trước không có kiểu
+   *   `disabled` nào cho nút phụ, nên nút tắt trông y hệt nút bật —
+   *   người dùng bấm mãi không ăn mà không hiểu vì sao. Nút mờ cũng
+   *   PHẢI có `title` nói lý do (xem chỗ gọi).
+   */
   const v =
     variant === "primary"
-      ? "border-none bg-[var(--pos-primary)] text-[14px] font-bold text-white disabled:bg-[var(--pos-primary-border)]"
+      ? "border-[1.5px] border-[var(--pos-primary-deep)] bg-[var(--pos-primary)] text-[14px] font-extrabold text-white " +
+        "disabled:border-[var(--pos-line)] disabled:bg-[var(--pos-line-soft)] disabled:text-[var(--pos-dim)]"
       : variant === "warn"
-        ? "border border-[var(--pos-warn)] bg-white text-[13px] font-semibold text-[var(--pos-warn)]"
-        : "border border-[var(--pos-edge)] bg-white text-[13px] font-semibold text-[var(--pos-muted)]"
+        ? "border-[1.5px] border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] text-[13.5px] font-bold text-[var(--pos-warn)] " +
+          "disabled:border-[var(--pos-line)] disabled:bg-[var(--pos-line-soft)] disabled:text-[var(--pos-dim)]"
+        : "border-[1.5px] border-[var(--pos-edge)] bg-white text-[13.5px] font-bold text-[var(--pos-ink)] " +
+          "disabled:border-[var(--pos-line)] disabled:bg-[var(--pos-line-soft)] disabled:text-[var(--pos-dim)]"
   return (
     <button
       type="button"

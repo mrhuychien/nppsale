@@ -28088,73 +28088,55 @@ NOTIFY pgrst, 'reload schema';
 
 
 -- ####################################################################
--- # 161_npp_thay_don_minh_lap.sql
+-- # 161_giu_don_nhap_kin.sql
 -- ####################################################################
 
 -- ====================================================================
--- CHỦ NPP / QUẢN LÝ NHÌN THẤY CẢ ĐƠN NHÁP
+-- GIỮ NGUYÊN LUẬT "NHÁP LÀ SỔ TAY RIÊNG CỦA NVBH"
 --
--- Chủ nhà chốt 22/09/2026, nguyên văn: "chỉ chủ NPP mới được làm đơn
--- gán cho nhân viên bán hàng, chủ NPP đương nhiên nhìn thấy mọi đơn
--- rồi cần gì làm phức tạp vậy?"
+-- Chủ nhà chốt 22/09/2026, nguyên văn: "Tao vẫn muốn NPP ko thấy được
+-- đơn nháp của nhân viên."
 --
--- ⚠ CÂU "ĐƯƠNG NHIÊN NHÌN THẤY MỌI ĐƠN" HÔM NAY LÀ SAI, và đó chính là
---   lỗi chủ nhà đang báo. `sales_order_select` (mig 119) có vế
---       AND (status <> 'draft' OR sales_user_id = auth.uid())
---   nằm NGOÀI khối OR vai trò, tức nó áp cho MỌI vai trò — kể cả chủ
---   NPP. Chủ NPP không thấy một đơn nháp nào không đứng tên mình.
+-- ⚠ TỆP NÀY LÀ MỘT LỜI RÚT LẠI, KHÔNG PHẢI MỘT LUẬT MỚI. Số 161 đã đi
+--   qua hai bản trước đó và cả hai đều nới quyền đọc đơn nháp:
+--     · bản 1 — thêm cột `created_by` + trigger, cho NGƯỜI ĐÃ GÕ thấy
+--       nháp mình gõ;
+--     · bản 2 — nới thẳng cho vai trò `owner` / `manager`.
+--   Chủ nhà bác cả hai. Tệp này trả `sales_order_select` về ĐÚNG bản
+--   mig 119, và dọn mọi thứ hai bản kia có thể đã dựng lên.
 --
--- ⚠ VÀ NÓ NỔ RA ĐÚNG LÚC LẬP ĐƠN HỘ. Đo trên Postgres 16 thật, chủ NPP
---   lập đơn đứng tên nhân viên:
---     · "Gửi đơn"  (status submitted) → ghi được, đọc lại được. CHẠY.
---     · "Lưu nháp" (status draft)     → `INSERT … RETURNING` ném đúng
---       câu chủ nhà gặp:
---         new row violates row-level security policy for table
---         "sales_orders"  (42501)
---   Vì `RETURNING` phải đọc lại hàng vừa ghi, mà chính sách SELECT giấu
---   nó đi. Và `createOrderRecords` đọc lại bằng
---   `.select("id, order_code").single()` — đúng đường ấy.
+-- ⚠ VẪN GIỮ TỆP CHỨ KHÔNG XOÁ ĐI COI NHƯ CHƯA CÓ GÌ. Hai bản kia đã
+--   nằm trong lịch sử kho mã; ai đã chạy một trong hai thì cơ sở dữ
+--   liệu của họ đang mang một chính sách nới rộng mà không có gì gỡ ra.
+--   Một tệp chạy lại được nhiều lần (idempotent) là cách duy nhất chắc
+--   chắn mọi máy về cùng một chỗ.
 --
---   Sổ vẫn có đơn. Người vừa lập ra nó thì không. Đó là kiểu hỏng tệ
---   nhất: không mất dữ liệu, chỉ mất tầm nhìn.
+-- ⚠ VẬY CÒN LỖI 42501 THÌ SAO? Nó có thật, và nó vẫn còn:
+--       chủ NPP lập đơn đứng tên nhân viên rồi bấm "Lưu nháp"
+--       → `INSERT … RETURNING` phải đọc lại hàng vừa ghi
+--       → chính sách này giấu hàng ấy đi
+--       → new row violates row-level security policy (42501)
+--   Nay KHÔNG sửa ở cơ sở dữ liệu nữa mà sửa ở GIAO DIỆN: làm đơn hộ
+--   nhân viên thì nút "Lưu nháp" mờ đi, chỉ gửi đơn được. Đó là điều
+--   chủ nhà chốt trong cùng một câu, và nó đúng về nghiệp vụ: một tờ
+--   nháp đứng tên người khác thì người gõ không quản được nó nữa, nên
+--   đừng tạo ra nó.
 --
--- CÁCH SỬA — MỘT VẾ, KHÔNG THÊM CỘT
---
---   ⚠ BẢN ĐẦU CỦA TÔI THÊM HẲN MỘT CỘT `created_by` để "chỉ người đã gõ
---     mới thấy nháp mình gõ". Chủ nhà bác, và bác đúng: ở đây người gõ
---     đơn hộ LUÔN LÀ chủ NPP hoặc quản lý, nên một cột mới, một trigger
---     và một phép đối chiếu chỉ để nói lại đúng câu "chủ NPP thì thấy".
---     Giữ cột ấy là bắt mọi đường ghi đơn về sau phải nhớ tới nó.
---
---   Nên: nới vế nháp cho đúng hai vai trò ấy. Một dòng.
---
--- ⚠ LUẬT MIG 119 BỊ ĐẢO Ở ĐÂY, VÀ NÓI RA CHO RÕ. Mig 119 ghi "Nháp là
---   sổ tay riêng của NVBH: chưa gửi thì NPP không nhìn thấy", và có cả
---   một chốt canh "áp cho MỌI vai trò". Từ nay KHÔNG còn đúng: chủ NPP
---   và quản lý thấy cả nháp dở dang của nhân viên. Đó là điều chủ nhà
---   vừa chốt, không phải điều tôi tiện tay đổi.
---
--- ⚠ KHÔNG NỚI CHO `accountant` VÀ `warehouse`, dù hai vai trò ấy có mặt
---   trong khối OR bên dưới. Chủ nhà nói "chủ NPP"; kế toán và thủ kho
---   không lập đơn hộ ai, nên một đơn chưa gửi không phải việc của họ.
---
--- ⚠ DỌN LẠI BẢN ĐẦU CHO SẠCH. Nếu ai đã chạy bản 161 trước (có cột
---   `created_by` và trigger điền nó) thì gỡ trigger đi — để lại là một
---   cỗ máy chạy hoài cho một cột không ai đọc. Cột thì GIỮ: bỏ cột là
---   thao tác không lùi được, mà nó chỉ chiếm chỗ chứ không hại gì.
---
--- ⚠ ĐÁNH SỐ 161. `newdesign` giữ 156, 157, 159; `main` giữ 158, 160.
+-- ⚠ MỘT ĐƠN ĐÃ GỬI (`submitted`) THÌ KHÔNG DÍNH GÌ Ở ĐÂY. Vế nháp chỉ
+--   chặn `status = 'draft'`; gửi đơn hộ nhân viên đọc lại được bình
+--   thường, và đã đo trên Postgres 16 thật.
 -- ====================================================================
 
--- Dọn bản 161 đầu tiên, nếu có ai đã chạy nó.
+-- Dọn bản 161 thứ nhất, nếu có ai đã chạy nó.
+-- ⚠ GIỮ LẠI CỘT `created_by` nếu nó đã được thêm: bỏ cột là thao tác
+--   không lùi được, mà một cột rỗng thì chiếm chỗ chứ không hại gì.
 DROP TRIGGER IF EXISTS trg_orders_created_by ON sales_orders;
 DROP FUNCTION IF EXISTS public.set_order_created_by();
 
 -- ---------------------------------------------------------------------
--- ⚠ CHÉP LẠI NGUYÊN VĂN `sales_order_select` CỦA MIG 119, đổi đúng MỘT
---   vế. Chép thiếu một nhánh ở đây là âm thầm cắt quyền đọc của một vai
---   trò — và RLS từ chối thì màn hình chỉ thấy danh sách ngắn đi, không
---   thấy lỗi nào.
+-- ⚠ CHÉP LẠI NGUYÊN VĂN `sales_order_select` CỦA MIG 119. Chép thiếu
+--   một nhánh ở đây là âm thầm cắt quyền đọc của một vai trò — và RLS
+--   từ chối thì màn hình chỉ thấy danh sách ngắn đi, không thấy lỗi nào.
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS sales_order_select ON sales_orders;
 CREATE POLICY sales_order_select ON sales_orders
@@ -28162,10 +28144,10 @@ CREATE POLICY sales_order_select ON sales_orders
   USING (
     org_id = public.user_org_id()
     AND (
+      -- ⚠ ĐÚNG HAI VẾ, Y NHƯ MIG 119. Nháp chỉ người đứng tên đơn thấy,
+      --   áp cho MỌI vai trò — kể cả chủ nhà phân phối.
       status <> 'draft'
       OR sales_user_id = auth.uid()
-      -- ⚠ VẾ MỚI, VÀ LÀ VẾ DUY NHẤT ĐỔI.
-      OR public.user_role() IN ('owner', 'manager')
     )
     AND (
       public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
@@ -28189,21 +28171,31 @@ CREATE POLICY sales_order_select ON sales_orders
   );
 
 COMMENT ON POLICY sales_order_select ON sales_orders IS
-  'Đơn nháp: chủ NPP, quản lý, và người đứng tên đơn thấy được (mig 119 '
-  '+ 161 — mig 119 giấu nháp khỏi cả chủ NPP, và đó là lý do lập đơn hộ '
-  'nhân viên rồi lưu nháp bị 42501). Đơn đã gửi theo bộ quyền bên dưới.';
+  'Nháp là sổ tay riêng của NVBH: chưa gửi thì chỉ người đứng tên đơn '
+  'thấy, kể cả chủ nhà phân phối cũng không (mig 119, giữ nguyên ở mig '
+  '161). Vì vậy giao diện KHÔNG cho lưu nháp một đơn đứng tên người '
+  'khác — xem nút "Lưu nháp" ở màn /pos và /sell/cart.';
 
+-- ⚠ KIỂM BẰNG NGUYÊN VĂN VẾ NHÁP ĐÃ CHUẨN HOÁ, không kiểm bằng
+--   `NOT LIKE '%draft%owner%'`. Bản đầu của khối này dùng đúng kiểu ấy
+--   và nó BÁO SAI: chuỗi `qual` có chữ "draft" ở vế nháp rồi mới tới
+--   "owner" ở khối vai trò bên dưới, nên phép so luôn khớp dù vế nháp
+--   sạch. Một phép kiểm báo sai thì lần sau người ta bỏ qua nó.
 DO $$
-DECLARE v_pol int; v_nhap int;
+DECLARE v_qual text; v_trg int;
 BEGIN
-  SELECT count(*) INTO v_pol FROM pg_policies
-  WHERE tablename = 'sales_orders' AND policyname = 'sales_order_select'
-    AND qual LIKE '%status <> ''draft''%';
-  SELECT count(*) INTO v_nhap FROM sales_orders WHERE status = 'draft';
-  IF v_pol = 1 THEN
-    RAISE NOTICE '--- 161: chủ NPP / quản lý thấy được đơn nháp · % đơn nháp trong sổ ---', v_nhap;
-  ELSE
+  SELECT qual INTO v_qual FROM pg_policies
+  WHERE tablename = 'sales_orders' AND policyname = 'sales_order_select';
+  SELECT count(*) INTO v_trg FROM pg_trigger
+  WHERE tgname = 'trg_orders_created_by' AND NOT tgisinternal;
+  IF v_qual IS NULL THEN
     RAISE EXCEPTION '161: chính sách đọc đơn KHÔNG được dựng lại';
+  ELSIF position('((status <> ''draft''::text) OR (sales_user_id = auth.uid()))' in v_qual) = 0 THEN
+    RAISE EXCEPTION '161: vế nháp không phải đúng hai điều kiện của mig 119';
+  ELSIF v_trg <> 0 THEN
+    RAISE EXCEPTION '161: trigger thừa của bản 161 cũ vẫn còn';
+  ELSE
+    RAISE NOTICE '--- 161: nháp vẫn kín, kể cả với chủ nhà phân phối ---';
   END IF;
 END $$;
 

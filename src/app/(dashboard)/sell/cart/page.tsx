@@ -169,6 +169,21 @@ export default function SellCartPage() {
     setSellerId(editing?.salesUserId ?? "")
   }, [canPickSeller, editing?.orderId, editing?.salesUserId])
 
+  /**
+   * ĐANG LÀM ĐƠN HỘ NGƯỜI KHÁC — không lưu nháp được.
+   *
+   * ⚠ LUẬT CỦA CƠ SỞ DỮ LIỆU, KHÔNG PHẢI QUY ƯỚC GIAO DIỆN.
+   *   `sales_order_select` (mig 119) giấu mọi đơn NHÁP không đứng tên
+   *   mình, và chủ nhà chốt 22/09/2026 giữ nguyên luật ấy. Lưu một tờ
+   *   nháp đứng tên nhân viên là tự tay ném nó khỏi tầm nhìn của chính
+   *   mình; tệ hơn, `INSERT … RETURNING` đọc lại hàng vừa ghi nên máy
+   *   chủ ném thẳng 42501.
+   *
+   * ⚠ SO VỚI `user.id`, KHÔNG SO VỚI RỖNG: ô trống nghĩa là đơn đứng
+   *   tên chính mình, và đơn ấy lưu nháp bình thường.
+   */
+  const donHo = canPickSeller && !!sellerId && sellerId !== user?.id
+
   const sellerOptions = useMemo(
     () =>
       sellers.map((u) => ({
@@ -782,6 +797,17 @@ export default function SellCartPage() {
             {formatCurrency(cart.totals.grandTotal)}
           </span>
         </button>
+        {/*
+          ⚠ NÚT MỜ PHẢI NÓI VÌ SAO, VÀ TRÊN ĐIỆN THOẠI THÌ `title` KHÔNG
+            HIỆN RA. Một cái nút xám không lời giải thích là người dùng
+            bấm mãi không ăn rồi nghĩ máy hỏng.
+        */}
+        {donHo && (
+          <p className="rounded-2xl bg-surface-container-low px-3.5 py-2.5 text-xs font-semibold text-on-surface-variant">
+            Đơn này đứng tên nhân viên khác nên <b>không lưu nháp được</b> — nháp là sổ
+            tay riêng của người đứng tên, bạn sẽ không mở lại được. Bấm <b>Gửi đơn</b>.
+          </p>
+        )}
         <div className="flex gap-2.5">
           {/* Phiếu tạm VẪN có "Lưu nháp" — đó là cách RÚT ĐƠN VỀ khi nhà
               phân phối chưa xuất hàng. Nút phụ ở đây là thoát khỏi phần
@@ -801,8 +827,15 @@ export default function SellCartPage() {
           ) : (
             <button
               type="button"
-              disabled={submitting || !cart.customerId || hasPriceBad || returnPriceBad > 0}
+              disabled={
+                submitting || !cart.customerId || hasPriceBad || returnPriceBad > 0 || donHo
+              }
               onClick={() => submit(true)}
+              title={
+                donHo
+                  ? "Đơn đứng tên nhân viên khác thì không lưu nháp được — bấm Gửi đơn."
+                  : undefined
+              }
               className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
             >
               Lưu nháp

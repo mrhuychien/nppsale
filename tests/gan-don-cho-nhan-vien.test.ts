@@ -4,40 +4,38 @@ import { resolve } from "node:path"
 import { errorMessage } from "../src/lib/errors"
 
 /**
- * GÁN ĐƠN CHO NHÂN VIÊN — 42501.
+ * LÀM ĐƠN HỘ NHÂN VIÊN — 42501, và cách chủ nhà chọn để sửa.
  *
  * Chủ nhà báo 22/09/2026: gán đơn cho nhân viên thì màn hình ném
  *   "Bạn không có quyền thực hiện thao tác này — new row violates
  *    row-level security policy for table sales_orders (mã 42501)"
  *
- * ⚠ BẢN ĐẦU TÔI ĐOÁN SAI NGUYÊN NHÂN, ghi ra đây vì cái sai ấy dạy đúng
- *   một bài. Tôi đoán là NVBH sửa đơn của mình rồi gán sang đồng nghiệp
- *   (`"Sales can update own open orders"` có `WITH CHECK (… sales_user_id
- *   = auth.uid() …)`), rồi dừng lại ở đó. Đo tiếp mới ra chỗ thật.
- *
- * ⚠ NGUYÊN NHÂN THẬT: `INSERT … RETURNING` PHẢI ĐỌC LẠI HÀNG VỪA GHI.
+ * ⚠ NGUYÊN NHÂN: `INSERT … RETURNING` PHẢI ĐỌC LẠI HÀNG VỪA GHI.
  *   `sales_order_select` (mig 119) có vế
  *       AND (status <> 'draft' OR sales_user_id = auth.uid())
  *   nằm NGOÀI khối OR vai trò, tức áp cho MỌI vai trò — kể cả chủ NPP.
- *   Chủ NPP lập đơn đứng tên nhân viên rồi bấm "Lưu nháp":
- *     · ghi xuống được;
- *     · `RETURNING` đọc lại thì chính sách SELECT giấu hàng ấy đi;
- *     · Postgres ném đúng câu 42501 trên.
- *   Còn "Gửi đơn" (status submitted) thì chạy bình thường — nên nhìn từ
- *   ngoài, cơ chế "gán đơn" trông như đang dùng được.
+ *   Chủ NPP lập đơn đứng tên nhân viên rồi bấm "Lưu nháp": ghi xuống
+ *   được, nhưng `RETURNING` đọc lại thì chính sách giấu hàng ấy đi và
+ *   Postgres ném 42501. "Gửi đơn" (submitted) thì chạy bình thường.
  *
- * ⚠ VÀ MỘT CÂU HỎI TƯỞNG LÀ HIỂN NHIÊN THÌ KHÔNG HIỂN NHIÊN. Chủ nhà
- *   nói "chủ NPP đương nhiên nhìn thấy mọi đơn rồi" — hôm nay KHÔNG
- *   đúng, vì mig 119 cố ý giấu nháp khỏi mọi vai trò. Mig 161 làm cho
- *   câu ấy thành đúng, và đó là cách sửa đơn giản nhất.
+ * ⚠ TÔI ĐÃ ĐỀ XUẤT SỬA Ở CƠ SỞ DỮ LIỆU HAI LẦN, CHỦ NHÀ BÁC CẢ HAI —
+ *   ghi ra vì bộ chốt này canh đúng CÁI KHÔNG ĐƯỢC LÀM:
+ *     · bản 1 — thêm cột `created_by` + trigger, cho người đã gõ thấy
+ *       nháp mình gõ;
+ *     · bản 2 — nới quyền đọc nháp cho vai trò `owner` / `manager`.
+ *   Chủ nhà chốt: "Tao vẫn muốn NPP ko thấy được đơn nháp của nhân
+ *   viên. Khi làm đơn hộ nút lưu nháp cho mờ đi ko bấm được. chỉ gửi
+ *   được luôn."
  *
- * Đã kiểm trên Postgres 16 thật, đổi đúng một biến (có/không có 161):
- *   · không có 161 → chủ NPP "Gửi đơn" hộ nhân viên: CHẠY;
- *                    chủ NPP "Lưu nháp" hộ nhân viên: 42501;
- *                    danh sách của chủ NPP đếm 0 trong khi sổ có 2 nháp.
- *   · có 161      → lưu nháp ra 1 dòng; quản lý cũng thấy; kế toán VẪN
- *                    không thấy; NVBH vẫn chỉ thấy nháp của mình; NVBH
- *                    gán sang đồng nghiệp vẫn bị chặn.
+ *   Tức là: luật nháp GIỮ NGUYÊN, và giao diện phải nói ra luật ấy
+ *   TRƯỚC khi người ta bấm. Đúng về nghiệp vụ nữa — một tờ nháp đứng
+ *   tên người khác thì người gõ không quản được nó, nên đừng tạo ra.
+ *
+ * Đã kiểm trên Postgres 16 thật sau khi lùi:
+ *   · chủ NPP "Gửi đơn" hộ nhân viên  → đọc lại được
+ *   · chủ NPP "Lưu nháp" hộ nhân viên → vẫn 42501 (đúng ý chủ nhà)
+ *   · chủ NPP lưu nháp đơn đứng tên MÌNH → chạy
+ *   · nháp của nhân viên: sổ có 1, chủ NPP đếm 0
  */
 
 const ROOT = resolve(__dirname, "..")
@@ -47,7 +45,7 @@ const code = (s: string) =>
 const boChuThichSql = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*--.*$/gm, "")
 
-const MIG = boChuThichSql(read("supabase/migrations/161_npp_thay_don_minh_lap.sql"))
+const MIG = boChuThichSql(read("supabase/migrations/161_giu_don_nhap_kin.sql"))
 const DON = code(read("src/components/pos/order-screen.tsx"))
 const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
 
@@ -99,31 +97,36 @@ describe("giao diện không mời người ta bấm nút máy chủ sẽ từ c
   })
 })
 
-describe("migration 161 — chủ NPP / quản lý thấy được đơn nháp", () => {
-  it("nới ĐÚNG MỘT vế của luật nháp, và nới cho đúng hai vai trò", () => {
+describe("migration 161 — lùi lại, giữ nguyên luật nháp của mig 119", () => {
+  /**
+   * ⚠ CHỐT NÀY CANH MỘT LỜI RÚT LẠI. Số 161 đã đi qua hai bản đều nới
+   *   quyền đọc nháp; chủ nhà bác cả hai. Vế nháp phải về ĐÚNG hai điều
+   *   kiện của mig 119 — không thiếu một, không thừa một.
+   */
+  it("vế nháp về đúng hai điều kiện của mig 119", () => {
     const i = MIG.indexOf("CREATE POLICY sales_order_select")
     expect(i, "migration không dựng lại chính sách đọc đơn").toBeGreaterThan(-1)
-    const pol = MIG.slice(i)
-    /**
-     * ⚠ CẮT TỪ CHỖ MỞ VẾ, KHÔNG CẮT TỪ CHỮ `status <> 'draft'`. Bản
-     *   trước neo vào chính chữ ấy, nên một mutation chèn `true OR` vào
-     *   ĐẦU vế nằm ngoài lát cắt và chốt vẫn xanh — trong khi nó vừa mở
-     *   toang mọi đơn nháp cho cả đơn vị. Đã thử phá đúng kiểu đó.
-     *
-     * ⚠ VÀ SO BẰNG TẬP HỢP, KHÔNG SO BẰNG "CÓ CHỨA": vế nháp phải là
-     *   ĐÚNG ba điều kiện này, không thiếu một, không thừa một.
-     */
-    const veNhap = layVeNhap(pol)
-    const ve = veNhap
+    const ve = layVeNhap(MIG.slice(i))
       .replace(/\s*\)\s*$/, "")
       .split(/\bOR\b/)
       .map((x) => x.replace(/\s+/g, " ").trim())
       .filter(Boolean)
-    expect(ve, "vế nháp không còn là đúng ba điều kiện đã chốt").toEqual([
+    expect(ve, "vế nháp không còn là đúng hai điều kiện của mig 119").toEqual([
       "status <> 'draft'",
       "sales_user_id = auth.uid()",
-      "public.user_role() IN ('owner', 'manager')",
     ])
+  })
+
+  /**
+   * ⚠ DỌN SẠCH HAI BẢN TRƯỚC. Ai đã chạy một trong hai thì cơ sở dữ
+   *   liệu của họ đang mang thêm một trigger và một chính sách nới
+   *   rộng, mà không có gì gỡ ra.
+   */
+  it("dọn trigger của bản 161 đầu tiên, và không dựng lại gì", () => {
+    expect(MIG, "không dọn trigger của bản 161 đầu tiên")
+      .toContain("DROP TRIGGER IF EXISTS trg_orders_created_by")
+    expect(MIG, "lại thêm cột cho một luật vai trò").not.toMatch(/ADD COLUMN[^\n]*created_by/i)
+    expect(MIG, "lại dựng trigger điền cột ấy").not.toMatch(/CREATE TRIGGER trg_orders_created_by/)
   })
 
   /**
@@ -145,24 +148,73 @@ describe("migration 161 — chủ NPP / quản lý thấy được đơn nháp",
     }
   })
 
+  it("kết thúc bằng NOTIFY pgrst để PostgREST đọc lại chính sách", () => {
+    expect(read("supabase/migrations/161_giu_don_nhap_kin.sql").trimEnd()
+      .endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true)
+  })
+})
+
+describe("làm đơn hộ thì KHÔNG lưu nháp được", () => {
   /**
-   * ⚠ KHÔNG THÊM CỘT, KHÔNG THÊM TRIGGER. Bản đầu của migration này
-   *   dựng hẳn một cột `created_by` để "chỉ người đã gõ mới thấy nháp
-   *   mình gõ". Chủ nhà bác, và bác đúng: người gõ đơn hộ LUÔN LÀ chủ
-   *   NPP hoặc quản lý, nên cả bộ máy ấy chỉ để nói lại đúng câu "chủ
-   *   NPP thì thấy". Chốt canh cho nó đừng mọc lại.
+   * ⚠ ĐÂY LÀ CHỖ LUẬT CỦA CƠ SỞ DỮ LIỆU PHẢI NGẤM LÊN GIAO DIỆN. Nháp
+   *   đứng tên người khác thì người gõ không đọc lại được — nên đừng
+   *   bày ra cái nút tạo ra nó.
    */
-  it("không dựng thêm cột hay trigger cho một việc một dòng làm xong", () => {
-    expect(MIG, "lại thêm cột cho một luật vai trò").not.toMatch(/ADD COLUMN[^\n]*created_by/i)
-    expect(MIG, "lại dựng trigger điền cột ấy").not.toMatch(/CREATE TRIGGER trg_orders_created_by/)
-    /* Nhưng phải DỌN bản đầu, phòng ai đã chạy nó rồi. */
-    expect(MIG, "không dọn trigger của bản 161 đầu tiên")
-      .toContain("DROP TRIGGER IF EXISTS trg_orders_created_by")
+  for (const [ten, src] of [["/pos", DON], ["/sell/cart", CART]] as const) {
+    it(`${ten}: có cờ "đang làm đơn hộ", so với chính mình chứ không so với rỗng`, () => {
+      const m = src.match(/const donHo\s*=\s*([^\n]+)/)
+      expect(m, `${ten} không có cờ làm đơn hộ`).not.toBeNull()
+      /* Ô để TRỐNG nghĩa là đơn đứng tên mình — vẫn lưu nháp được. */
+      expect(m![1], `${ten} coi ô trống là làm đơn hộ`).toMatch(/!==\s*user\?\.id/)
+    })
+  }
+
+  it("/pos: nút Lưu nháp mờ đi, và nói vì sao", () => {
+    const i = DON.indexOf("Lưu nháp (F6)")
+    expect(i).toBeGreaterThan(-1)
+    const nut = DON.slice(Math.max(0, i - 900), i)
+    expect(nut, "nút Lưu nháp không tắt khi làm đơn hộ").toMatch(/disabled=\{[^}]*donHo/)
+    /* ⚠ Nút mờ PHẢI nói lý do — nếu không người ta bấm mãi không ăn. */
+    expect(nut, "nút mờ mà không nói vì sao").toMatch(/donHo\s*\n?\s*\?/)
   })
 
-  it("kết thúc bằng NOTIFY pgrst để PostgREST đọc lại chính sách", () => {
-    expect(read("supabase/migrations/161_npp_thay_don_minh_lap.sql").trimEnd()
-      .endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true)
+  /**
+   * ⚠ PHÍM PHẢI THEO ĐÚNG ĐIỀU KIỆN CỦA NÚT. Nút mờ mà `F6` vẫn chạy
+   *   thì cái mờ ấy chỉ là trang trí, và người dùng vẫn vấp 42501 —
+   *   chỉ khác là bằng bàn phím.
+   */
+  it("/pos: phím F6 cũng chặn, không chỉ cái nút", () => {
+    const i = DON.indexOf("F6: () =>")
+    expect(i).toBeGreaterThan(-1)
+    expect(DON.slice(i, DON.indexOf("\n", i)), "F6 vẫn lưu nháp được khi làm đơn hộ")
+      .toContain("donHo")
+  })
+
+  it("/sell/cart: nút Lưu nháp mờ đi, và có lời giải thích NHÌN THẤY ĐƯỢC", () => {
+    const i = CART.indexOf("Lưu nháp")
+    expect(i).toBeGreaterThan(-1)
+    const nut = CART.slice(Math.max(0, i - 900), i)
+    /**
+     * ⚠ `[^}]*` CHỨ KHÔNG `[\s\S]*?`. Bản trước dò lười qua nhiều dòng
+     *   nên nó nhảy khỏi biểu thức `disabled` rồi bắt trúng `donHo` của
+     *   thuộc tính `title` ngay bên cạnh — bỏ `donHo` khỏi `disabled`
+     *   mà chốt vẫn xanh. Đã thử phá đúng kiểu đó một lần.
+     */
+    expect(nut, "nút Lưu nháp không tắt khi làm đơn hộ").toMatch(/disabled=\{[^}]*donHo/)
+    /* ⚠ Trên điện thoại `title` KHÔNG hiện ra — phải có chữ trên màn. */
+    expect(CART, "màn điện thoại chỉ có tooltip, người dùng không đọc được")
+      .toMatch(/\{donHo && \(/)
+  })
+
+  /**
+   * ⚠ VÀ "GỬI ĐƠN" THÌ KHÔNG ĐƯỢC CHẶN. Chủ nhà chốt "chỉ gửi được
+   *   luôn" — chặn cả hai nút là khoá luôn việc lập đơn hộ.
+   */
+  it("nút Gửi đơn KHÔNG bị cờ làm đơn hộ chặn", () => {
+    const i = DON.indexOf('variant="primary"')
+    expect(i).toBeGreaterThan(-1)
+    const nut = DON.slice(i, i + 400)
+    expect(nut, "gửi đơn cũng bị chặn — hết đường lập đơn hộ").not.toContain("donHo")
   })
 })
 

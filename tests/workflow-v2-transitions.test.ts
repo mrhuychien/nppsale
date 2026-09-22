@@ -277,9 +277,11 @@ describe("119 — phân quyền hàng", () => {
   /**
    * ⚠ LUẬT NÀY ĐÃ BỊ ĐẢO MỘT PHẦN — ĐỪNG ĐỌC CHỐT NÀY LÀ LUẬT HIỆN HÀNH.
    *
-   * Mig 119 giấu đơn nháp khỏi MỌI vai trò, kể cả chủ NPP. Chủ nhà bỏ
-   * vế "kể cả chủ NPP" ngày 22/09/2026 (mig 161) vì nó làm chính việc
-   * chủ NPP lập đơn hộ nhân viên rồi lưu nháp nổ 42501.
+   * Mig 119 giấu đơn nháp khỏi MỌI vai trò, kể cả chủ NPP — và chủ nhà
+   * chốt 22/09/2026 GIỮ NGUYÊN luật ấy ("Tao vẫn muốn NPP ko thấy được
+   * đơn nháp của nhân viên"). Hệ quả: làm đơn hộ thì không lưu nháp
+   * được, và giao diện phải tắt nút ấy đi — xem
+   * `tests/gan-don-cho-nhan-vien.test.ts`.
    *
    * ⚠ CHỐT NÀY ĐỌC TỆP 119 — MỘT TỆP ĐÓNG BĂNG, nên nó xanh mãi mãi dù
    *   chính sách đang chạy có đổi thế nào. Giữ nó để canh đúng một
@@ -298,11 +300,13 @@ describe("119 — phân quyền hàng", () => {
    * ⚠ VÀ ĐÂY LÀ LUẬT ĐANG CHẠY — đọc bản ĐỊNH NGHĨA CUỐI CÙNG của
    *   `sales_order_select` trên mọi migration, không đọc riêng tệp 119.
    *
-   *   Không có chốt này thì bộ chốt của kho mã nói một đằng (nháp kín
-   *   với mọi vai trò) còn cơ sở dữ liệu làm một nẻo — và cái nói dối
-   *   ấy xanh vĩnh viễn vì nó soi một tệp không bao giờ đổi nữa.
+   *   Không có chốt này thì bộ chốt của kho mã nói một đằng còn cơ sở
+   *   dữ liệu làm một nẻo — và cái nói dối ấy xanh vĩnh viễn vì nó soi
+   *   một tệp không bao giờ đổi nữa. Đã suýt xảy ra thật: số 161 đi qua
+   *   hai bản đều nới quyền đọc nháp, chủ nhà bác cả hai và chốt cũ thì
+   *   không hề biết.
    */
-  it("luật ĐANG CHẠY: nháp kín với NVBH khác, hở cho chủ NPP và quản lý", () => {
+  it("luật ĐANG CHẠY vẫn là luật của mig 119: nháp chỉ chủ đơn thấy", () => {
     const DIR = resolve(ROOT, "supabase/migrations")
     let cuoi = ""
     for (const f of readdirSync(DIR).filter((x) => x.endsWith(".sql")).sort()) {
@@ -332,10 +336,9 @@ describe("119 — phân quyền hàng", () => {
       .split(/\bOR\b/)
       .map((x) => x.replace(/\s+/g, " ").trim())
       .filter(Boolean)
-    expect(ve, "vế nháp không còn là đúng ba điều kiện đã chốt").toEqual([
+    expect(ve, "vế nháp không còn là đúng hai điều kiện của mig 119").toEqual([
       "status <> 'draft'",
       "sales_user_id = auth.uid()",
-      "public.user_role() IN ('owner', 'manager')",
     ])
   })
 

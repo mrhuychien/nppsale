@@ -164,6 +164,25 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    *   người dùng không có cách nào đọc ra mình đã làm sai ở đâu.
    */
   const canPickSeller = user?.role === "owner" || user?.role === "manager"
+  /**
+   * ĐANG LÀM ĐƠN HỘ NGƯỜI KHÁC.
+   *
+   * ⚠ ĐƠN HỘ THÌ KHÔNG LƯU NHÁP ĐƯỢC, và đây là luật của cơ sở dữ liệu
+   *   chứ không phải một quy ước giao diện. `sales_order_select` (mig
+   *   119) giấu mọi đơn NHÁP không đứng tên mình — chủ nhà chốt
+   *   22/09/2026 giữ nguyên luật ấy: "Tao vẫn muốn NPP ko thấy được đơn
+   *   nháp của nhân viên."
+   *
+   *   Hệ quả: lưu một tờ nháp đứng tên nhân viên là tự tay ném nó ra
+   *   khỏi tầm nhìn của chính mình. Tệ hơn, `INSERT … RETURNING` phải
+   *   đọc lại hàng vừa ghi nên máy chủ ném thẳng 42501 — đúng lỗi chủ
+   *   nhà gặp. Nút mờ đi là cách nói ra luật ấy TRƯỚC khi người ta bấm.
+   *
+   * ⚠ SO VỚI `user.id`, KHÔNG PHẢI SO VỚI RỖNG. Ô để trống nghĩa là đơn
+   *   đứng tên chính mình, và đơn ấy lưu nháp bình thường. Chọn đúng
+   *   tên mình cũng vậy.
+   */
+  const donHo = !!nvbh && nvbh !== user?.id
   /* ⚠ TỪ KHOÁ TÌM HÀNG NẰM Ở KHUNG, không ở màn — ô nhập ở header. */
   const moTimHang = usePosSearchTerm()
   const [moTimKhach, setMoTimKhach] = useState(false)
@@ -628,7 +647,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     F2: focusPosPicker,
     F3: focusPosPicker,
     F4: () => setMoTimKhach(true),
-    F6: () => { if (!dangLuu && lines.length > 0) void luuDon(true) },
+    /* ⚠ PHÍM PHẢI THEO ĐÚNG ĐIỀU KIỆN CỦA NÚT. Nút mờ mà phím vẫn chạy
+       thì cái mờ ấy chỉ là trang trí — xem `donHo`. */
+    F6: () => { if (!dangLuu && lines.length > 0 && !donHo) void luuDon(true) },
     F8: () => setRetLines((c) => [...c, emptyReturnLine(false)]),
     F9: () => {
       if (dangLuu || lines.length === 0 || !khach || coGiaXau) return
@@ -1694,9 +1715,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           <PanelActions>
             <PanelButton
               width={150}
-              disabled={dangLuu || lines.length === 0}
+              disabled={dangLuu || lines.length === 0 || donHo}
               onClick={() => luuDon(true)}
-              title="Lưu lại để sửa tiếp, chưa gửi đi đâu"
+              title={
+                donHo
+                  ? "Đơn này đứng tên nhân viên khác nên không lưu nháp được — nháp là sổ tay riêng của người đứng tên, bạn sẽ không mở lại được. Bấm Gửi đơn."
+                  : lines.length === 0
+                    ? "Chưa có mặt hàng nào trong đơn"
+                    : "Lưu lại để sửa tiếp, chưa gửi đi đâu"
+              }
             >
               {dangLuu ? "Đang lưu…" : "Lưu nháp (F6)"}
             </PanelButton>

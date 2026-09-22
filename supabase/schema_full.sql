@@ -28246,8 +28246,8 @@ NOTIFY pgrst, 'reload schema';
 --
 -- ⚠ CÂU TRẢ LỜI: KHÔNG AI ĐƯA LOGIC ẤY VÀO. Câu tiếng Việt trên chỉ là
 --   bản dịch của một lời từ chối THẬT từ cơ sở dữ liệu — khoá ngoại
---   `sales_invoice_lines_order_line_id_fkey`, mã 23503. Giao diện chỉ
---   đang nói lại cho dễ hiểu. Chỗ sai nằm ở chính cái khoá ấy.
+--   `sales_invoice_lines_order_line_id_fkey`, mã 23503. Giao diện đang
+--   nói lại cho dễ hiểu. Chỗ sai nằm ở chính cái khoá ấy.
 --
 -- ĐÃ DỰNG LẠI TRÊN POSTGRES 16 THẬT
 --
@@ -28259,7 +28259,7 @@ NOTIFY pgrst, 'reload schema';
 --
 -- ⚠ CON TRỎ ẤY KHÔNG CÒN NUÔI CON SỐ NÀO. `sync_invoiced_qty` (mig 124)
 --   chỉ cộng những hóa đơn `status = 'posted'`; hóa đơn đã huỷ đóng góp
---   đúng 0 — phép đo ở trên cho thấy thế. Nên sau khi huỷ, `order_line_id`
+--   đúng 0 — phép đo trên cho thấy thế. Sau khi huỷ, `order_line_id`
 --   chỉ còn làm một việc duy nhất: CHẶN.
 --
 -- ⚠ VÀ HÓA ĐƠN ĐÃ HUỶ KHÔNG MẤT GÌ KHI NHẢ CON TRỎ. `sales_invoice_lines`
@@ -28269,12 +28269,12 @@ NOTIFY pgrst, 'reload schema';
 --   vốn đã cho phép NULL từ mig 124 (dòng hàng đổi và dòng NPP thêm
 --   ngoài đơn đều để rỗng).
 --
--- ⚠ CHỖ NÀY LÀ MỘT CÁI BẪY TỪNG LÀM HỎNG MỘT ĐƠN THẬT. Trước mig 149,
---   đường sửa đơn xoá sạch dòng rồi chèn lại, và chính khoá ngoại này
---   chặn — đơn từng xuất hàng rồi huỷ hết hóa đơn thì VĨNH VIỄN không
---   sửa được, trong khi màn hình vẫn mời bấm Sửa. Mig 149 sửa cách ghi
---   (so khớp thay vì xoá sạch) nhưng KHÔNG đụng tới khoá ngoại, nên ca
---   "bỏ hẳn một mặt hàng" vẫn kẹt nguyên. Đây là nửa còn lại.
+-- ⚠ ĐÂY LÀ NỬA CÒN LẠI CỦA MỘT LỖI CŨ. Trước mig 149, đường sửa đơn xoá
+--   sạch dòng rồi chèn lại, và chính khoá ngoại này chặn — đơn từng xuất
+--   hàng rồi huỷ hết hóa đơn thì VĨNH VIỄN không sửa được, trong khi màn
+--   hình vẫn mời bấm Sửa. Mig 149 sửa cách ghi (so khớp thay vì xoá
+--   sạch) nhưng KHÔNG đụng tới khoá ngoại, nên ca "bỏ hẳn một mặt hàng"
+--   vẫn kẹt nguyên.
 --
 -- CÁCH SỬA
 --
@@ -28282,212 +28282,139 @@ NOTIFY pgrst, 'reload schema';
 --   đơn là lúc tờ ấy thôi đòi hỏi gì ở đơn — nhả đúng lúc đó.
 --
 -- ⚠ CÒN KHOÁ NGOẠI THÌ GIỮ NGUYÊN, VÀ ĐÓ LÀ CỐ Ý. Hóa đơn `posted` vẫn
---   chặn việc bỏ dòng đơn, vì dòng ấy là hàng ĐÃ RỜI KHO. Đổi khoá
---   thành `ON DELETE SET NULL` sẽ mở luôn cả ca ấy — bỏ được một dòng
---   đã giao thật mà không ai chặn.
+--   chặn việc bỏ dòng đơn, vì dòng ấy là hàng ĐÃ RỜI KHO. Đổi khoá thành
+--   `ON DELETE SET NULL` là mở luôn cả ca ấy — bỏ được một dòng đã giao
+--   thật mà không ai chặn. Đã đo: sau mig này, hóa đơn posted VẪN chặn.
 --
--- ⚠ VÁ CẢ CÁC TỜ ĐÃ HUỶ TỪ TRƯỚC. Chủ nhà đang có đơn kẹt ngay bây giờ;
---   chỉ sửa hàm thì những tờ huỷ hôm qua vẫn kẹt mãi. Khối vá ở cuối
---   đếm và NÓI RA số dòng đã nhả.
+-- ⚠ VÁ BẰNG CÁCH THÊM MỘT CÂU, KHÔNG CHÉP LẠI CẢ HÀM — và đây không
+--   phải sở thích, nó là một lỗi tôi vừa suýt gây ra. Bản đầu của
+--   migration này chép nguyên thân `cancel_invoice` từ MIG 125 rồi thêm
+--   một khối. Chốt `migration-khong-de-mat-mieng-va` bắt được: mig 131
+--   đã VÁ CHUỖI chính hàm ấy sau mig 125, nên chép từ 125 là âm thầm
+--   xoá miếng vá của 131 — phiếu trả kèm đơn lại bị huỷ oan khi huỷ hóa
+--   đơn, đúng lỗi chủ nhà đã báo một lần rồi. Mig 131 cũng đã ghi sẵn lý
+--   do: hàm này dài ~150 dòng và phần hoàn kho theo lô là phần dễ chép
+--   sai nhất.
 --
 -- ⚠ KHÔNG ĐỤNG `reissue_invoice`. Hàm ấy gọi `cancel_invoice` rồi gọi
---   `post_invoice` với TẢI TRỌNG DO NGƯỜI GỌI ĐƯA (đã đọc từ trước),
---   chứ không đọc lại dòng của tờ cũ — nên nhả con trỏ không ảnh hưởng.
---   Đã đo: xuất lại hóa đơn sau mig này vẫn gắn đúng dòng đơn.
---
--- ⚠ CHÉP LẠI NGUYÊN VĂN THÂN HÀM CỦA MIG 125, thêm đúng MỘT khối. Chép
---   một bản cũ hơn là lặng lẽ nuốt mất những miếng vá ở giữa — kho mã
---   này có hẳn một bộ chốt canh chuyện đó
---   (`tests/migration-khong-de-mat-mieng-va.test.ts`).
+--   `post_invoice` với TẢI TRỌNG DO NGƯỜI GỌI ĐƯA, chứ không đọc lại
+--   dòng của tờ cũ — nên nhả con trỏ không ảnh hưởng. Đã đo: xuất lại
+--   hóa đơn sau mig này vẫn gắn đúng dòng đơn, `invoiced_qty` đúng, và
+--   tờ cũ đã huỷ vẫn đọc đủ dòng lẫn tiền.
 --
 -- ⚠ ĐÁNH SỐ 162. `main` giữ 158, 160; `newdesign` giữ 156, 157, 159, 161.
 -- ====================================================================
 
-CREATE OR REPLACE FUNCTION public.cancel_invoice(p_invoice_id uuid, p_reason text)
-RETURNS TABLE (import_entry_id uuid, order_status text)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- ---------------------------------------------------------------------
+-- 1. Vá `cancel_invoice`
+-- ---------------------------------------------------------------------
+DO $patch$
 DECLARE
-  v        record;
-  o        record;
-  v_imp    uuid;
-  d        record;
-  s        record;
-  v_need   numeric;
-  v_take   numeric;
-  v_status text;
+  v_oid  oid;
+  v_src  text;
+  v_stmt text;
+  v_new  text;
+  v_n    int;
+  v_re   text := 'UPDATE sales_invoices\s+SET status = ''cancelled''[^;]+;';
 BEGIN
-  SELECT si.id, si.org_id, si.invoice_code, si.status, si.order_id,
-         si.stock_entry_id, si.sales_user_id
-    INTO v
-  FROM sales_invoices si WHERE si.id = p_invoice_id FOR UPDATE;
+  SELECT p.oid INTO v_oid
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'cancel_invoice';
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'INVOICE_NOT_FOUND' USING ERRCODE = 'P0001';
-  END IF;
-  IF v.org_id <> public.user_org_id() THEN
-    RAISE EXCEPTION 'ORG_MISMATCH' USING ERRCODE = 'P0001';
-  END IF;
-  IF NOT public.user_has_permission(auth.uid(), 'orders.approve') THEN
-    RAISE EXCEPTION 'FORBIDDEN: bạn không có quyền huỷ hóa đơn' USING ERRCODE = 'P0001';
-  END IF;
-  IF v.status <> 'posted' THEN
-    RAISE EXCEPTION 'INVOICE_NOT_POSTED: hóa đơn % đang ở trạng thái %',
-      v.invoice_code, v.status USING ERRCODE = 'P0001';
-  END IF;
-  IF COALESCE(btrim(p_reason), '') = '' THEN
-    RAISE EXCEPTION 'REASON_REQUIRED: phải ghi lý do huỷ hóa đơn'
+  IF v_oid IS NULL THEN
+    RAISE EXCEPTION
+      'CANCEL_INVOICE_MISSING: chưa có hàm cancel_invoice — chạy migration 125 trước.'
       USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT so.id, so.org_id, so.order_code, so.sales_user_id INTO o
-  FROM sales_orders so WHERE so.id = v.order_id FOR UPDATE;
+  v_src := pg_get_functiondef(v_oid);
 
-  IF EXISTS (
-    SELECT 1 FROM receivables r
-    WHERE r.invoice_id = p_invoice_id AND COALESCE(r.paid, 0) > 0
-  ) OR EXISTS (
-    -- ⚠ NHÁNH THỨ HAI LÀ CHO PHIẾU THU CŨ. `create_cash_receipt` (mig
-    --   120) còn ghi `order_id`, chưa ghi `invoice_id` — P6 mới đổi. Chỉ
-    --   so theo `invoice_id` thì một hóa đơn đã thu tiền bằng phiếu cũ
-    --   vẫn huỷ được, và tiền khách đã trả treo vào một chứng từ không
-    --   còn. Thà chặn rộng: dòng phiếu thu chưa gắn hóa đơn mà trỏ đúng
-    --   đơn này thì coi như đã thu.
-    SELECT 1 FROM cash_receipt_lines crl
-    JOIN cash_receipts cr ON cr.id = crl.receipt_id
-    WHERE cr.status <> 'voided'
-      AND (crl.invoice_id = p_invoice_id
-           OR (crl.invoice_id IS NULL AND crl.order_id = v.order_id))
-  ) THEN
-    RAISE EXCEPTION 'LOCKED_HAS_PAYMENT: hóa đơn đã có tiền thu, huỷ phiếu thu trước'
-      USING ERRCODE = 'P0001';
-  END IF;
+  -- Đã vá rồi thì đứng yên. Migration phải chạy lại được mà không đổi gì.
+  IF position('SET order_line_id = NULL' in v_src) > 0 THEN
+    RAISE NOTICE '162: cancel_invoice đã vá từ trước — không đổi gì.';
+  ELSE
+    SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
 
-  -- "Đã phát hành" = hóa đơn nội bộ đã chốt, hoặc MISA đã cấp số / đã ký.
-  -- Điều kiện y nguyên mig 120, chỉ đổi cột nối.
-  IF EXISTS (
-    SELECT 1 FROM invoices i
-    WHERE i.sales_invoice_id = p_invoice_id
-      AND (i.status = 'issued'
-           OR i.misa_inv_no IS NOT NULL
-           OR i.misa_status IN ('signed', 'replaced'))
-  ) THEN
-    RAISE EXCEPTION 'LOCKED_EINVOICE: hóa đơn đã phát hành hóa đơn điện tử'
-      USING ERRCODE = 'P0001';
-  END IF;
+    IF v_n <> 1 THEN
+      -- ⚠ IN RA THỨ TÌM THẤY — bài học của mig 126, mig 131 nhắc lại:
+      --   báo "không đúng hình dạng" mà không nói hình dạng hiện tại là
+      --   gì thì người chạy migration không có đường nào sửa tay.
+      RAISE EXCEPTION
+        'CANCEL_INVOICE_SHAPE: tìm thấy % câu đổi trạng thái hóa đơn trong cancel_invoice (cần đúng 1). Thân hàm hiện tại:%',
+        v_n, E'\n' || v_src
+        USING ERRCODE = 'P0001';
+    END IF;
 
-  IF EXISTS (
-    SELECT 1 FROM returns r
-    WHERE r.invoice_id = p_invoice_id AND r.status = 'completed'
-  ) THEN
-    RAISE EXCEPTION 'LOCKED_RETURN_DONE: hóa đơn đã có phiếu trả hoàn thành'
-      USING ERRCODE = 'P0001';
+    v_stmt := substring(v_src from v_re);
+
+    v_new := v_stmt || E'\n\n'
+      || '  -- ⚠ NHẢ MÓC NỐI VỀ DÒNG ĐƠN (mig 162). Tờ đã huỷ giữ nguyên' || E'\n'
+      || '  --   bản chụp của nó (mã hàng, đơn vị, số lượng, đơn giá, thuế' || E'\n'
+      || '  --   suất đều nằm trên chính dòng hóa đơn), nên bỏ con trỏ' || E'\n'
+      || '  --   KHÔNG làm mất một chữ nào. Giữ lại thì nó chỉ còn chặn' || E'\n'
+      || '  --   người ta bỏ dòng ấy khỏi đơn, mãi mãi.' || E'\n'
+      || '  UPDATE sales_invoice_lines' || E'\n'
+      || '  SET order_line_id = NULL' || E'\n'
+      || '  WHERE invoice_id = p_invoice_id AND order_line_id IS NOT NULL;';
+
+    EXECUTE replace(v_src, v_stmt, v_new);
+    RAISE NOTICE '162: đã vá cancel_invoice — huỷ hóa đơn nay nhả móc nối về dòng đơn.';
   END IF;
+END;
+$patch$;
+
+-- ---------------------------------------------------------------------
+-- 2. Vá các tờ đã huỷ từ trước
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHỈ SỬA HÀM THÌ NHỮNG TỜ HUỶ HÔM QUA VẪN KẸT MÃI, và chủ nhà đang
+--   có đơn kẹt ngay bây giờ.
+--
+-- ⚠ CHỈ ĐỘNG VÀO TỜ ĐÃ HUỶ. Hóa đơn `posted` giữ nguyên con trỏ — đó là
+--   thứ nuôi `invoiced_qty` và là thứ chặn việc bỏ một dòng đã giao.
+--
+-- ⚠ KHỐI NÀY PHẢI MỞ `npp.via_rpc`, VÀ ĐÓ KHÔNG PHẢI MẸO LÁCH. Chủ nhà
+--   chạy bản đầu của migration này trên sổ thật và vấp:
+--
+--     ERROR: ORDER_LOCKED: đơn đã xuất hàng, không sửa dòng được.
+--     CONTEXT: guard_order_lines_locked() ← sync_invoiced_qty()
+--              ← UPDATE sales_invoice_lines SET order_line_id = NULL
+--
+--   Đường đi: nhả con trỏ → `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` → `guard_order_lines_locked` (mig 124) chặn, vì
+--   đơn đang `partially_invoiced`. MIG 124 ĐÃ GHI SẴN CÁI BẪY NÀY hai
+--   lần trong chính tệp của nó ("Migration tự vấp chốt chặn của chính
+--   mình") và né được bằng cách dựng trigger ở cuối file — nhưng mig 162
+--   chạy khi trigger ấy đã đứng sẵn, nên chỉ còn đúng một đường: cái cửa
+--   mà chính chốt ấy chừa cho các RPC.
+--
+-- ⚠ PHÉP ĐO CŨ CỦA TÔI QUÁ HẸP NÊN KHÔNG BẮT ĐƯỢC: mỗi đơn chỉ một hóa
+--   đơn, huỷ xong `_wf2b_sync_order_status` trả đơn về `confirmed` nên
+--   chốt chặn không có gì để kêu. Sổ thật có đơn mang HAI tờ — một
+--   `posted` giữ đơn ở `partially_invoiced`, một đã huỷ. Nay đã dựng
+--   đúng ca ấy trên Postgres 16 và thấy lại nguyên văn lỗi trên.
+--
+-- ⚠ VÀ PHÉP TÍNH LẠI ẤY LÀ MỘT LẦN GHI ĐÈ ĐÚNG BẰNG GIÁ TRỊ CŨ, không
+--   phải một thay đổi bị bịt miệng. `sync_invoiced_qty` chỉ cộng hóa đơn
+--   `status = 'posted'`; tờ đã huỷ vốn đóng góp 0, nhả con trỏ của nó
+--   thì tổng không đổi. Không nói suông: khối dưới chụp `invoiced_qty`
+--   TRƯỚC, so lại SAU, và NÉM nếu có một dòng nào lệch.
+DO $fix$
+DECLARE v_n int; v_lech int;
+BEGIN
+  -- Chạy lại lần hai trong CÙNG một giao dịch thì bảng tạm còn đó và
+  -- `CREATE` sẽ nổ. Migration phải chạy lại được. (Hỏi `to_regclass`
+  -- thay vì `DROP … IF EXISTS` để người chạy không phải đọc một dòng
+  -- NOTICE "does not exist, skipping" ở lần chạy bình thường.)
+  IF to_regclass('pg_temp._162_truoc') IS NOT NULL THEN
+    EXECUTE 'DROP TABLE _162_truoc';
+  END IF;
+  CREATE TEMP TABLE _162_truoc ON COMMIT DROP AS
+    SELECT id, invoiced_qty FROM sales_order_lines;
 
   PERFORM set_config('npp.via_rpc', 'on', true);
 
-  INSERT INTO stock_entries (org_id, entry_code, type, status, posted_at, created_by, notes)
-  VALUES (v.org_id,
-          'NK-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS'),
-          'import', 'posted', now(), auth.uid(),
-          'Hoàn kho do huỷ hóa đơn ' || v.invoice_code)
-  RETURNING id INTO v_imp;
-
-  -- ⚠ HOÀN THEO DÒNG HÓA ĐƠN NÀY, KHÔNG THEO DÒNG ĐƠN. Một đơn nay có
-  --   thể có nhiều hóa đơn; hoàn theo dòng đơn là trả về kho cả hàng của
-  --   hóa đơn khác vẫn đang có hiệu lực.
-  --
-  -- ⚠ ƯU TIÊN PHIẾU XUẤT CỦA CHÍNH HÓA ĐƠN NÀY (`stock_entry_id`). Hóa
-  --   đơn backfill không có phiếu xuất thì rơi về phiếu xuất của đơn —
-  --   và hóa đơn backfill mà `stock_entry_id` rỗng nghĩa là tồn kho chưa
-  --   từng bị trừ, nên không có gì để hoàn, vòng lặp chạy rỗng.
-  FOR d IN
-    SELECT sil.product_id, sil.unit_name,
-           sum(sil.quantity * COALESCE(sil.conversion_factor, 1)) AS qty
-    FROM sales_invoice_lines sil
-    WHERE sil.invoice_id = p_invoice_id
-    GROUP BY sil.product_id, sil.unit_name
-  LOOP
-    v_need := d.qty;
-    FOR s IN
-      SELECT sel.id,
-             COALESCE((SELECT sum(slc.qty_in_base_uom)
-                         FROM stock_line_consumptions slc
-                        WHERE slc.line_id = sel.id), sel.qty_in_base_uom) AS qty_left
-      FROM stock_entry_lines sel
-      JOIN stock_entries se ON se.id = sel.entry_id
-      WHERE se.type = 'export' AND se.status = 'posted'
-        AND (se.id = v.stock_entry_id
-             OR (v.stock_entry_id IS NULL
-                 AND se.ref_order_ids @> jsonb_build_array(v.order_id::text)))
-        AND sel.product_id = d.product_id
-        AND sel.unit_name = d.unit_name
-      ORDER BY se.posted_at DESC, sel.id DESC
-    LOOP
-      EXIT WHEN v_need <= 0;
-      CONTINUE WHEN COALESCE(s.qty_left, 0) <= 0;
-      v_take := LEAST(s.qty_left, v_need);
-      PERFORM public._wf2_restock(s.id, v_take,
-        'Hoàn kho do huỷ hóa đơn ' || v.invoice_code, v_imp);
-      v_need := v_need - v_take;
-    END LOOP;
-  END LOOP;
-
-  -- ⚠ Phiếu thu ĐÃ HUỶ vẫn để lại dòng trỏ vào công nợ (void chỉ đổi
-  --   trạng thái phiếu). Không gỡ trước thì DELETE dưới đây nổ 23503 và
-  --   phần hoàn kho vừa làm cũng rollback.
-  UPDATE cash_receipt_lines crl
-  SET receivable_id = NULL, payment_id = NULL
-  FROM receivables r
-  WHERE crl.receivable_id = r.id AND r.invoice_id = p_invoice_id;
-
-  DELETE FROM receivables WHERE invoice_id = p_invoice_id;
-
-  -- Phiếu trả đang chờ xử lý của hóa đơn này mất chỗ bám. Huỷ luôn và
-  -- ghi lý do — để lại là một phiếu trả trỏ vào chứng từ đã huỷ.
-  UPDATE returns
-  SET status = 'cancelled', cancelled_at = now(),
-      cancel_reason = 'Hóa đơn ' || v.invoice_code || ' bị huỷ'
-  WHERE invoice_id = p_invoice_id AND status IN ('draft', 'submitted');
-
-  UPDATE sales_invoices
-  SET status = 'cancelled', cancelled_at = now(),
-      cancelled_by = auth.uid(), cancel_reason = p_reason
-  WHERE id = p_invoice_id;
-
-  -- ⚠ NHẢ MÓC NỐI VỀ DÒNG ĐƠN — ĐÂY LÀ PHẦN DUY NHẤT MIG 162 THÊM VÀO.
-  --   Hóa đơn đã huỷ vẫn giữ nguyên bản chụp của nó (mã hàng, đơn vị,
-  --   số lượng, đơn giá, thuế suất đều nằm trên chính dòng hóa đơn), nên
-  --   bỏ con trỏ `order_line_id` KHÔNG làm mất một chữ nào của tờ đã
-  --   huỷ. Giữ con trỏ lại thì nó chỉ còn làm đúng một việc: chặn người
-  --   ta bỏ dòng ấy khỏi đơn, mãi mãi. Xem đầu tệp.
-  UPDATE sales_invoice_lines
-  SET order_line_id = NULL
-  WHERE invoice_id = p_invoice_id AND order_line_id IS NOT NULL;
-
-  v_status := public._wf2b_sync_order_status(v.order_id);
-
-  INSERT INTO order_activity_log (org_id, order_id, action, workflow_stage, changes, actor_id)
-  VALUES (v.org_id, v.order_id, 'invoice_cancelled', v_status,
-          jsonb_build_object('invoice_id', p_invoice_id,
-                             'invoice_code', v.invoice_code,
-                             'import_entry_id', v_imp,
-                             'reason', p_reason), auth.uid());
-
-  PERFORM public._wf2_notify(
-    COALESCE(v.sales_user_id, o.sales_user_id), 'invoice_cancelled',
-    'Hóa đơn ' || v.invoice_code || ' đã bị huỷ', p_reason,
-    '/orders/' || v.order_id::text);
-
-  RETURN QUERY SELECT v_imp, v_status;
-END;
-$$;
-
--- ---------------------------------------------------------------------
--- Vá các tờ đã huỷ từ trước
--- ---------------------------------------------------------------------
-DO $$
-DECLARE v_n int;
-BEGIN
   UPDATE sales_invoice_lines sil
   SET order_line_id = NULL
   FROM sales_invoices si
@@ -28495,8 +28422,53 @@ BEGIN
     AND si.status = 'cancelled'
     AND sil.order_line_id IS NOT NULL;
   GET DIAGNOSTICS v_n = ROW_COUNT;
-  RAISE NOTICE '--- 162: huỷ hóa đơn rồi sửa đơn được · đã nhả % dòng của hóa đơn đã huỷ ---', v_n;
-END $$;
+
+  -- ⚠ ĐÓNG CỬA LẠI NGAY. `set_config(..., true)` sống đến hết GIAO DỊCH
+  --   chứ không hết khối DO — để ngỏ là phần còn lại của migration chạy
+  --   mà không chốt nào canh.
+  PERFORM set_config('npp.via_rpc', '', true);
+
+  SELECT count(*) INTO v_lech
+  FROM sales_order_lines sol
+  JOIN _162_truoc t ON t.id = sol.id
+  WHERE COALESCE(t.invoiced_qty, 0) <> COALESCE(sol.invoiced_qty, 0);
+
+  IF v_lech > 0 THEN
+    RAISE EXCEPTION
+      '162: nhả con trỏ đã làm ĐỔI invoiced_qty của % dòng đơn — lẽ ra phải bằng 0. Dừng lại, không nuốt.',
+      v_lech
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RAISE NOTICE '--- 162: huỷ hóa đơn rồi sửa đơn được · đã nhả % dòng của hóa đơn đã huỷ · invoiced_qty không dòng nào đổi ---', v_n;
+END;
+$fix$;
+
+-- ---------------------------------------------------------------------
+-- 3. Tự kiểm — cả hai miếng vá phải còn sống
+-- ---------------------------------------------------------------------
+--
+-- ⚠ KIỂM CẢ MIẾNG VÁ CỦA MIG 131, không chỉ của chính mình. Hai miếng vá
+--   nằm trên CÙNG một hàm; nếu ai đó viết lại `cancel_invoice` từ một
+--   bản cũ thì mất cả hai, và không có tệp nào để đọc ra điều đó.
+DO $kiem$
+DECLARE v_src text;
+BEGIN
+  SELECT pg_get_functiondef(p.oid) INTO v_src
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'cancel_invoice';
+
+  IF position('SET order_line_id = NULL' in v_src) = 0 THEN
+    RAISE EXCEPTION '162: miếng vá của chính migration này KHÔNG có trong hàm đang chạy';
+  END IF;
+  IF position('SET invoice_id = NULL' in v_src) = 0
+     OR position('order_id IS NULL' in v_src) = 0 THEN
+    RAISE EXCEPTION
+      '162: miếng vá của mig 131 (phiếu trả kèm đơn chỉ gỡ liên kết, không huỷ) đã BIẾN MẤT khỏi cancel_invoice';
+  END IF;
+  RAISE NOTICE '162: cả miếng vá của mig 131 lẫn của mig 162 đều còn trong hàm đang chạy.';
+END;
+$kiem$;
 
 NOTIFY pgrst, 'reload schema';
 

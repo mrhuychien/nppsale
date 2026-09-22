@@ -135,9 +135,48 @@ $patch$;
 --
 -- ⚠ CHỈ ĐỘNG VÀO TỜ ĐÃ HUỶ. Hóa đơn `posted` giữ nguyên con trỏ — đó là
 --   thứ nuôi `invoiced_qty` và là thứ chặn việc bỏ một dòng đã giao.
+--
+-- ⚠ KHỐI NÀY PHẢI MỞ `npp.via_rpc`, VÀ ĐÓ KHÔNG PHẢI MẸO LÁCH. Chủ nhà
+--   chạy bản đầu của migration này trên sổ thật và vấp:
+--
+--     ERROR: ORDER_LOCKED: đơn đã xuất hàng, không sửa dòng được.
+--     CONTEXT: guard_order_lines_locked() ← sync_invoiced_qty()
+--              ← UPDATE sales_invoice_lines SET order_line_id = NULL
+--
+--   Đường đi: nhả con trỏ → `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` → `guard_order_lines_locked` (mig 124) chặn, vì
+--   đơn đang `partially_invoiced`. MIG 124 ĐÃ GHI SẴN CÁI BẪY NÀY hai
+--   lần trong chính tệp của nó ("Migration tự vấp chốt chặn của chính
+--   mình") và né được bằng cách dựng trigger ở cuối file — nhưng mig 162
+--   chạy khi trigger ấy đã đứng sẵn, nên chỉ còn đúng một đường: cái cửa
+--   mà chính chốt ấy chừa cho các RPC.
+--
+-- ⚠ PHÉP ĐO CŨ CỦA TÔI QUÁ HẸP NÊN KHÔNG BẮT ĐƯỢC: mỗi đơn chỉ một hóa
+--   đơn, huỷ xong `_wf2b_sync_order_status` trả đơn về `confirmed` nên
+--   chốt chặn không có gì để kêu. Sổ thật có đơn mang HAI tờ — một
+--   `posted` giữ đơn ở `partially_invoiced`, một đã huỷ. Nay đã dựng
+--   đúng ca ấy trên Postgres 16 và thấy lại nguyên văn lỗi trên.
+--
+-- ⚠ VÀ PHÉP TÍNH LẠI ẤY LÀ MỘT LẦN GHI ĐÈ ĐÚNG BẰNG GIÁ TRỊ CŨ, không
+--   phải một thay đổi bị bịt miệng. `sync_invoiced_qty` chỉ cộng hóa đơn
+--   `status = 'posted'`; tờ đã huỷ vốn đóng góp 0, nhả con trỏ của nó
+--   thì tổng không đổi. Không nói suông: khối dưới chụp `invoiced_qty`
+--   TRƯỚC, so lại SAU, và NÉM nếu có một dòng nào lệch.
 DO $fix$
-DECLARE v_n int;
+DECLARE v_n int; v_lech int;
 BEGIN
+  -- Chạy lại lần hai trong CÙNG một giao dịch thì bảng tạm còn đó và
+  -- `CREATE` sẽ nổ. Migration phải chạy lại được. (Hỏi `to_regclass`
+  -- thay vì `DROP … IF EXISTS` để người chạy không phải đọc một dòng
+  -- NOTICE "does not exist, skipping" ở lần chạy bình thường.)
+  IF to_regclass('pg_temp._162_truoc') IS NOT NULL THEN
+    EXECUTE 'DROP TABLE _162_truoc';
+  END IF;
+  CREATE TEMP TABLE _162_truoc ON COMMIT DROP AS
+    SELECT id, invoiced_qty FROM sales_order_lines;
+
+  PERFORM set_config('npp.via_rpc', 'on', true);
+
   UPDATE sales_invoice_lines sil
   SET order_line_id = NULL
   FROM sales_invoices si
@@ -145,7 +184,25 @@ BEGIN
     AND si.status = 'cancelled'
     AND sil.order_line_id IS NOT NULL;
   GET DIAGNOSTICS v_n = ROW_COUNT;
-  RAISE NOTICE '--- 162: huỷ hóa đơn rồi sửa đơn được · đã nhả % dòng của hóa đơn đã huỷ ---', v_n;
+
+  -- ⚠ ĐÓNG CỬA LẠI NGAY. `set_config(..., true)` sống đến hết GIAO DỊCH
+  --   chứ không hết khối DO — để ngỏ là phần còn lại của migration chạy
+  --   mà không chốt nào canh.
+  PERFORM set_config('npp.via_rpc', '', true);
+
+  SELECT count(*) INTO v_lech
+  FROM sales_order_lines sol
+  JOIN _162_truoc t ON t.id = sol.id
+  WHERE COALESCE(t.invoiced_qty, 0) <> COALESCE(sol.invoiced_qty, 0);
+
+  IF v_lech > 0 THEN
+    RAISE EXCEPTION
+      '162: nhả con trỏ đã làm ĐỔI invoiced_qty của % dòng đơn — lẽ ra phải bằng 0. Dừng lại, không nuốt.',
+      v_lech
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RAISE NOTICE '--- 162: huỷ hóa đơn rồi sửa đơn được · đã nhả % dòng của hóa đơn đã huỷ · invoiced_qty không dòng nào đổi ---', v_n;
 END;
 $fix$;
 

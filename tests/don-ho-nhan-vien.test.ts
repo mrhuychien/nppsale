@@ -53,6 +53,8 @@ const CREATE = code(read("src/lib/orders/create.ts"))
 const BUILD = code(read("src/lib/sell/create-order.ts"))
 const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
 const EDIT = code(read("src/lib/sell/order-edit.ts"))
+const HOOK = code(read("src/hooks/use-sell-cart.tsx"))
+const LOADER = code(read("src/app/(dashboard)/sell/edit/[id]/page.tsx"))
 
 describe("chỉ NPP mới lập được đơn đứng tên người khác", () => {
   /**
@@ -163,10 +165,20 @@ describe("gán nhân viên khi SỬA đơn", () => {
    * nghĩa "đơn đứng tên bạn"; để rỗng khi đang sửa đơn của nhân viên là
    * chỉ cần bấm Lưu một cái, đơn nhảy sang tên NPP — mà người sửa không
    * hề chọn gì nên cũng không có lý do nào để nghi ngờ.
+   *
+   * ⚠ CHỐT NÀY TRƯỚC ĐÂY GHIM ĐÚNG MỘT DÒNG MÃ (`setSellerId(… editing
+   *   ?.salesUserId …)`) ở màn giỏ, nên khi việc nạp ấy DỜI sang màn
+   *   `/sell/edit/[id]` — cùng luật, chỗ khác — chốt đỏ lên vì mã dời
+   *   chứ không vì luật sai. Nay soi LUẬT: bất kể nạp ở đâu, giá trị
+   *   khởi đầu của ô phải là `sales_user_id` của đơn đang mở.
    */
   it("mở đơn ra sửa thì ô chọn sẵn người đang đứng đơn", () => {
+    const iL = LOADER.indexOf("loadForEdit({")
+    const napODayKhiMoDon =
+      iL > -1 && /sellerId\s*:\s*head\.sales_user_id/.test(LOADER.slice(iL, LOADER.indexOf("})", iL)))
+    const napODayOManGio = /setSellerId\([^)]*editing\??\.\s*salesUserId/.test(CART)
     expect(
-      /setSellerId\([^)]*editing\??\.\s*salesUserId/.test(CART),
+      napODayKhiMoDon || napODayOManGio,
       "ô chọn không nạp người đang đứng đơn — bấm Lưu là đơn đổi chủ"
     ).toBe(true)
   })
@@ -183,6 +195,54 @@ describe("gán nhân viên khi SỬA đơn", () => {
       /typeof opts\.salesUserId === "string" && opts\.salesUserId/.test(EDIT),
       "mất phép kiểm rỗng — sửa đơn sẽ xoá tên người phụ trách"
     ).toBe(true)
+  })
+})
+
+describe("lựa chọn nhân viên sống sót qua việc đi sang màn khác", () => {
+  /**
+   * ⚠ CHỦ NHÀ BÁO 22/09/2026: "chọn nhân viên xong, khi chọn thêm hàng
+   *   hoặc chọn khách hàng xong quay lại thì mất tên nhân viên đã chọn".
+   *
+   * ⚠ LUỒNG BÁN HÀNG LÀ NHIỀU TRANG THẬT. `/sell`, `/sell/customer`,
+   *   `/sell/returns`, `/sell/terms` là các route riêng; đi sang là
+   *   React THÁO màn giỏ khỏi DOM và mọi `useState` trong nó về mặc
+   *   định. Chỉ `SellCartProvider` — nằm trên layout — sống qua được.
+   *   Giỏ hàng, khách, ghi chú đều đã ở đó; ô nhân viên bị bỏ quên lại.
+   *
+   * ⚠ VÀ NÓ MẤT LẶNG LẼ, nên chốt phải canh. Ô rỗng là một giá trị HỢP
+   *   LỆ ("đơn đứng tên bạn"), nên người dùng quay lại thấy ô rỗng, bấm
+   *   Lưu, đơn sang tên NPP — không có gì đỏ lên để họ biết.
+   *
+   * Chốt soi LUẬT chứ không soi kiểu viết: giá trị ô phải đi ra từ giỏ
+   * (thứ sống qua chuyển trang), và màn giỏ không được giữ một bản sao
+   * cục bộ của riêng nó.
+   */
+  it("tên nhân viên nằm trong giỏ, không nằm trong màn giỏ", () => {
+    expect(HOOK, "giỏ không mang tên người đứng đơn").toMatch(/^\s*sellerId: string$/m)
+    expect(HOOK, "xoá giỏ không xoá tên người đứng đơn").toMatch(
+      /const EMPTY: SellCartState = \{[\s\S]*?sellerId: "",[\s\S]*?\}/
+    )
+    expect(
+      /const \[sellerId, setSellerId\] = useState/.test(CART),
+      "màn giỏ lại giữ bản sao cục bộ — đi sang màn khác là mất"
+    ).toBe(false)
+    expect(CART, "màn giỏ không đọc tên người đứng đơn từ giỏ").toContain("cart.sellerId")
+  })
+
+  /**
+   * ⚠ BẢN LƯU CŨ TRONG MÁY KHÔNG CÓ KHOÁ NÀY, VÀ LẤY RỖNG LÀ SAI. Giỏ
+   *   lưu từ trước lần sửa này có thể đang mở dở một đơn của nhân viên
+   *   A; rỗng nghĩa là "đơn đứng tên bạn", nên chỉ cần mở máy lên bấm
+   *   Lưu là đơn nhảy sang tên NPP. Thiếu khoá thì phải lấy lại tên
+   *   đang đứng đơn, không được lấy rỗng.
+   */
+  it("bản lưu cũ thiếu khoá thì lấy lại tên đang đứng đơn", () => {
+    const i = HOOK.indexOf("sellerId:")
+    const khoi = HOOK.slice(HOOK.indexOf("const raw = localStorage.getItem"))
+    expect(i, "giỏ không đọc lại tên người đứng đơn từ bộ nhớ máy").toBeGreaterThan(-1)
+    expect(khoi, "thiếu khoá thì lấy rỗng — đơn của nhân viên sẽ đổi chủ").toMatch(
+      /sellerId:\s*[\s\S]{0,120}?editing\??\.\s*salesUserId/
+    )
   })
 })
 

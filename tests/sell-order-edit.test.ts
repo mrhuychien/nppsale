@@ -593,9 +593,24 @@ describe("Giỏ nhớ mình đang sửa đơn nào", () => {
     expect(CART_HOOK).toContain("const clear = useCallback(() => setState(EMPTY), [])")
   })
 
-  /** Bản lưu cũ không có khoá này; một `editing` méo mó là ghi đè nhầm đơn. */
+  /**
+   * Bản lưu cũ không có khoá này; một `editing` méo mó là ghi đè nhầm đơn.
+   *
+   * ⚠ SOI LUẬT, ĐỪNG GHIM DÒNG. Bản trước của chốt này ghim nguyên văn
+   *   `editing: validEditing(saved.editing),`; chỉ cần rút phép kiểm ấy
+   *   ra một biến (`const editing = validEditing(saved.editing)`) là
+   *   chốt đỏ lên trong khi luật không hề đổi. Luật là: thứ đọc từ bộ
+   *   nhớ máy phải đi QUA `validEditing`, và không chỗ nào được nhận
+   *   thẳng `saved.editing`.
+   */
   it("đọc lại từ bộ nhớ máy có kiểm", () => {
-    expect(CART_HOOK).toContain("editing: validEditing(saved.editing),")
+    expect(CART_HOOK, "không kiểm `editing` đọc từ bộ nhớ máy").toContain(
+      "validEditing(saved.editing)"
+    )
+    expect(
+      /editing:\s*saved\.editing/.test(CART_HOOK),
+      "nhận thẳng `editing` từ bộ nhớ máy — một bản méo mó sẽ ghi đè nhầm đơn"
+    ).toBe(false)
     expect(CART_HOOK).toContain('if (e.status !== "draft" && e.status !== "submitted") return null')
   })
 

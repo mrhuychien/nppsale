@@ -38,6 +38,17 @@ export interface SellCartState {
   expectedDelivery: string
   returnReason: string
   returnLines: ReturnCartLine[]
+  /**
+   * NVBH mà đơn này đứng tên. Rỗng = chính người đang lập đơn.
+   *
+   * ⚠ Ở TRONG GIỎ CHỨ KHÔNG Ở TRONG MÀN GIỎ, và đây là một lỗi chủ nhà
+   *   đã báo: "chọn nhân viên xong, khi chọn thêm hàng hoặc chọn khách
+   *   hàng xong quay lại thì mất tên nhân viên đã chọn". Luồng này là
+   *   NHIỀU TRANG thật; `/sell`, `/sell/customer`, `/sell/returns`,
+   *   `/sell/terms` đều tháo màn giỏ ra khỏi DOM. Mọi thứ người dùng gõ
+   *   vào đơn phải sống ở đây — chỗ duy nhất đi qua được các trang ấy.
+   */
+  sellerId: string
   /** Đang sửa đơn đã lưu hay đang soạn đơn mới. */
   editing: EditingOrder | null
 }
@@ -80,6 +91,8 @@ interface SellCartValue extends SellCartState {
   setNotes: (v: string) => void
   setPaymentTerms: (v: string) => void
   setExpectedDelivery: (v: string) => void
+  /** Chọn NVBH đứng tên đơn. Rỗng = chính người đang lập. */
+  setSellerId: (v: string) => void
   /** Xoá sạch giỏ — dùng sau khi tạo đơn xong hoặc khi người dùng huỷ. */
   clear: () => void
   /** Nạp một đơn đã lưu vào giỏ để sửa. Thay TOÀN BỘ giỏ hiện tại. */
@@ -100,6 +113,7 @@ const EMPTY: SellCartState = {
   expectedDelivery: "",
   returnReason: "damaged",
   returnLines: [],
+  sellerId: "",
   editing: null,
 }
 
@@ -141,6 +155,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SellCartState>
+        const editing = validEditing(saved.editing)
         setState({
           cart: Array.isArray(saved.cart) ? saved.cart : [],
           customerId: saved.customerId ?? null,
@@ -149,10 +164,20 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
           expectedDelivery: saved.expectedDelivery ?? "",
           returnReason: saved.returnReason ?? "damaged",
           returnLines: Array.isArray(saved.returnLines) ? saved.returnLines : [],
+          /**
+           * ⚠ BẢN LƯU CŨ KHÔNG CÓ KHOÁ NÀY — và lấy rỗng là SAI, không
+           *   phải là "chưa chọn". Giỏ lưu từ trước lần sửa này có thể
+           *   đang mở một đơn của nhân viên A; rỗng nghĩa là "đơn đứng
+           *   tên bạn", nên chỉ cần bấm Lưu một cái là đơn nhảy sang tên
+           *   NPP — doanh số và hoa hồng đi theo, mà người bấm không hề
+           *   chọn gì. Thiếu khoá thì lấy lại tên đang đứng đơn.
+           */
+          sellerId:
+            typeof saved.sellerId === "string" ? saved.sellerId : (editing?.salesUserId ?? ""),
           // ⚠ Đọc lại có kiểm: bản lưu cũ (trước khi có tính năng sửa đơn)
           // không có khoá này, và một `editing` méo mó thì mọi lần Lưu sau
           // đó ghi đè lên một đơn không ai biết là đơn nào.
-          editing: validEditing(saved.editing),
+          editing,
         })
       }
     } catch {
@@ -195,6 +220,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
     (v: string) => setState((s) => ({ ...s, expectedDelivery: v })),
     []
   )
+  const setSellerId = useCallback((v: string) => setState((s) => ({ ...s, sellerId: v })), [])
   // ⚠ `clear` phải trả cả `editing` về rỗng. Còn sót mã đơn thì đơn TIẾP
   // THEO người ta soạn sẽ ghi đè lên đơn vừa sửa xong.
   const clear = useCallback(() => setState(EMPTY), [])
@@ -228,6 +254,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setNotes,
       setPaymentTerms,
       setExpectedDelivery,
+      setSellerId,
       clear,
       loadForEdit,
       returnCredit,
@@ -247,6 +274,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setNotes,
       setPaymentTerms,
       setExpectedDelivery,
+      setSellerId,
       clear,
       loadForEdit,
       returnCredit,

@@ -104,6 +104,14 @@ export default function SellReorderLoaderPage() {
       expectedDelivery: "",
       returnReason: "damaged",
       returnLines: [],
+      /**
+       * ⚠ ĐẶT LẠI RA MỘT ĐƠN MỚI ĐỨNG TÊN NGƯỜI ĐANG BẤM, không kế thừa
+       *   NVBH của đơn cũ. Rỗng = chính người đang lập. Chép tên người
+       *   khác sang là ghi doanh số cho họ một đơn họ không hề bán; ai
+       *   muốn thế thì chọn tay ở màn giỏ. Đây cũng đúng nếp cũ: trước
+       *   lần sửa này ô ấy là state của màn giỏ, vào màn là rỗng.
+       */
+      sellerId: "",
       editing: null,
     })
     toast({ title: `Đã chép ${rows.length} dòng từ ${head.order_code} vào đơn mới` })

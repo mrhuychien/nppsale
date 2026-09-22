@@ -91,6 +91,67 @@ describe("migration 162 — nhả móc nối khi huỷ hóa đơn", () => {
   })
 
   /**
+   * ⚠ KHỐI VÁ DỮ LIỆU CŨ TỰ VẤP CHỐT CHẶN CỦA MIG 124 NẾU KHÔNG MỞ CỬA.
+   *
+   *   Chủ nhà chạy bản đầu trên sổ thật và vấp nguyên văn:
+   *     ORDER_LOCKED ← guard_order_lines_locked() ← sync_invoiced_qty()
+   *     ← UPDATE sales_invoice_lines SET order_line_id = NULL
+   *
+   *   Nhả con trỏ làm `trg_sync_invoiced_qty` chạy `UPDATE
+   *   sales_order_lines`, và `guard_order_lines_locked` chặn mọi lệnh ấy
+   *   khi đơn đang `partially_invoiced`. Mig 124 đã ghi sẵn cái bẫy này
+   *   trong chính tệp của nó.
+   *
+   * ⚠ THỨ TỰ LÀ TẤT CẢ. Mở cửa SAU lệnh UPDATE thì vô dụng; đóng cửa
+   *   TRƯỚC lệnh UPDATE cũng vô dụng. Nên chốt so VỊ TRÍ, không chỉ soi
+   *   xem hai chữ ấy có mặt hay không.
+   */
+  it("khối vá dữ liệu mở cửa `via_rpc` trước khi nhả, và đóng lại ngay sau", () => {
+    const i = MIG.indexOf("DO $fix$")
+    expect(i, "không còn khối vá dữ liệu cũ").toBeGreaterThan(-1)
+    const khoi = MIG.slice(i, MIG.indexOf("$fix$;", i + 8))
+
+    const mo = khoi.indexOf("set_config('npp.via_rpc', 'on'")
+    const sua = khoi.indexOf("UPDATE sales_invoice_lines sil")
+    const dong = khoi.indexOf("set_config('npp.via_rpc', ''")
+
+    expect(mo, "không mở `via_rpc` — migration sẽ tự vấp ORDER_LOCKED").toBeGreaterThan(-1)
+    expect(dong, "mở `via_rpc` rồi bỏ ngỏ đến hết giao dịch").toBeGreaterThan(-1)
+    expect(mo, "mở cửa SAU lệnh nhả con trỏ thì vô dụng").toBeLessThan(sua)
+    expect(dong, "đóng cửa TRƯỚC lệnh nhả con trỏ thì vô dụng").toBeGreaterThan(sua)
+  })
+
+  /**
+   * ⚠ MỞ `via_rpc` LÀ TẮT CHỐT CHẶN, NÊN PHẢI CHỨNG MINH CHỨ ĐỪNG HỨA.
+   *
+   *   Lý lẽ: `sync_invoiced_qty` chỉ cộng hóa đơn `posted`, nên nhả con
+   *   trỏ của một tờ ĐÃ HUỶ ghi lại đúng con số cũ. Lý lẽ ấy đúng hôm
+   *   nay; nếu mai `sync_invoiced_qty` đổi cách cộng thì migration này
+   *   thành một lệnh sửa tồn/công nợ chạy với chốt chặn đã tắt, và
+   *   không ai biết. Phải chụp TRƯỚC, so SAU, và NÉM khi lệch.
+   */
+  it("chứng minh nhả con trỏ không làm đổi invoiced_qty", () => {
+    const i = MIG.indexOf("DO $fix$")
+    const khoi = MIG.slice(i, MIG.indexOf("$fix$;", i + 8))
+
+    const chup = khoi.indexOf("CREATE TEMP TABLE _162_truoc")
+    const sua = khoi.indexOf("UPDATE sales_invoice_lines sil")
+    expect(chup, "không chụp lại invoiced_qty trước khi nhả").toBeGreaterThan(-1)
+    expect(chup, "chụp SAU khi đã sửa thì chụp phải chính kết quả của mình").toBeLessThan(sua)
+    expect(khoi, "chụp thiếu cột invoiced_qty").toMatch(
+      /SELECT id, invoiced_qty FROM sales_order_lines/
+    )
+
+    /* ⚠ So xong phải NÉM. Đếm được mà chỉ RAISE NOTICE là con số lệch
+       trôi qua giữa một trang đầy NOTICE, không ai đọc. */
+    const so = khoi.indexOf("_162_truoc t ON t.id = sol.id")
+    expect(so, "không so lại sau khi nhả").toBeGreaterThan(sua)
+    const duoi = khoi.slice(so)
+    expect(duoi, "so xong không ném khi lệch").toContain("RAISE EXCEPTION")
+    expect(duoi, "ném mà không nói lệch bao nhiêu dòng").toMatch(/v_lech/)
+  })
+
+  /**
    * ⚠ KHÔNG ĐỔI KHOÁ NGOẠI. `ON DELETE SET NULL` sẽ mở luôn cả ca hóa
    *   đơn `posted` — bỏ được một dòng đã giao thật mà không ai chặn.
    */

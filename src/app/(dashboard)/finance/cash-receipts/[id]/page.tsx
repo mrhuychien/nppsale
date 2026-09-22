@@ -30,6 +30,7 @@ import { errorMessage } from "@/lib/errors"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { voidCashReceipt } from "@/lib/finance/cash-receipt"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -159,15 +160,16 @@ export default function CashReceiptDetailPage() {
           .in("id", paymentIds)
           .throwOnError()
       }
-      const { error } = await supabase
-        .from("cash_receipts")
-        .update({
-          status: "received",
-          received_by: user.id,
-          received_at: new Date().toISOString(),
-        })
-        .eq("id", receipt.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("cash_receipts")
+          .update({
+            status: "received",
+            received_by: user.id,
+            received_at: new Date().toISOString(),
+          })
+          .eq("id", receipt.id)
+      )
       toast({ title: "Đã xác nhận đã nhận tiền" })
       fetchData()
     } catch (err) {

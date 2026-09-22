@@ -118,8 +118,8 @@ export default function UserDetailPage() {
           is_active: form.is_active,
           allow_price_edit: form.allow_price_edit,
           price_edit_max_increase_pct: form.allow_price_edit
-            ? Math.max(0, Math.min(100, Number(form.price_edit_max_increase_pct) || 0))
-            : 0,
+          ? Math.max(0, Math.min(100, Number(form.price_edit_max_increase_pct) || 0))
+          : 0,
         })
         .eq("id", target.id)
       if (error) {

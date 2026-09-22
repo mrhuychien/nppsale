@@ -125,11 +125,12 @@ export default function PayableDetailPage() {
 
       const newPaid = payable.paid + amt
       const newStatus = recalcStatus(payable, newPaid)
-      const { error: updErr } = await supabase
-        .from("payables")
-        .update({ paid: newPaid, status: newStatus })
-        .eq("id", payable.id)
-      if (updErr) throw updErr
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({ paid: newPaid, status: newStatus })
+          .eq("id", payable.id)
+      )
 
       toast({ title: `Đã ghi nhận thanh toán ${formatCurrency(amt)}` })
       setPaymentForm({ amount: "", method: "transfer", notes: "" })
@@ -167,15 +168,16 @@ export default function PayableDetailPage() {
     if (!payable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("payables")
-        .update({
-          invoice_number: editForm.invoice_number.trim() || null,
-          due_date: editForm.due_date || null,
-          notes: editForm.notes.trim() || null,
-        })
-        .eq("id", payable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({
+            invoice_number: editForm.invoice_number.trim() || null,
+            due_date: editForm.due_date || null,
+            notes: editForm.notes.trim() || null,
+          })
+          .eq("id", payable.id)
+      )
       toast({ title: "Đã cập nhật thông tin" })
       setEditing(false)
       fetchData()
@@ -190,11 +192,12 @@ export default function PayableDetailPage() {
     if (!payable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("payables")
-        .update({ status: newStatus })
-        .eq("id", payable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({ status: newStatus })
+          .eq("id", payable.id)
+      )
       toast({ title: `Đã chuyển trạng thái: ${PAYABLE_STATUS_MAP[newStatus].label}` })
       setStatusConfirm(null)
       fetchData()

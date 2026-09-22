@@ -233,13 +233,31 @@ describe("M5.1 mục 7 — màn xác nhận sau khi thu tiền", () => {
   })
 
   /**
-   * ⚠ Số phiếu SUY RA từ id dòng payments — màn này không lập
-   * cash_receipts, in ra một số thuộc dải của kế toán là đụng số thật.
+   * ⚠ LUẬT NÀY ĐÃ ĐỔI, VÀ ĐỔI CÓ LÝ DO.
+   *
+   *   Bản cũ: số phiếu SUY RA từ id dòng `payments`, vì màn này chỉ ghi
+   *   `payments` chứ không lập `cash_receipts` — in ra một số thuộc dải
+   *   của kế toán là đụng số thật.
+   *
+   *   Từ 22/09/2026 màn này đi qua RPC `create_cash_receipt` (vì bản cũ
+   *   ghi thẳng hai bảng và NVBH bị RLS chặn ở bảng thứ hai trong im
+   *   lặng — tiền thu rồi mà công nợ không trừ). Nó LẬP phiếu thu thật,
+   *   nên lý do cũ hết đúng: nay in một số bịa BÊN CẠNH một phiếu thu
+   *   có thật mới là thứ đụng nhau.
+   *
+   * ⚠ LUẬT MỚI: số in ra phải là `receipt_code` của đúng phiếu vừa lập,
+   *   và không được bịa.
    */
-  it("số phiếu suy ra từ id dòng payments, không tự sinh", () => {
-    expect(COLLECT).toContain('.select("id")')
-    expect(COLLECT).toContain("`PT-${done.paymentId.slice(0, 8).toUpperCase()}`")
-    expect(COLLECT).not.toContain("Math.random()")
+  it("số phiếu là mã thật của phiếu vừa lập, không bịa", () => {
+    expect(COLLECT, "không còn lập phiếu thu qua RPC").toContain("createCashReceipt(")
+    expect(COLLECT, "không đọc lại mã phiếu vừa lập").toContain('.select("receipt_code")')
+    expect(COLLECT, "số in ra không lấy từ mã phiếu thật").toContain("done.receiptCode")
+    expect(COLLECT, "bịa số phiếu").not.toContain("Math.random()")
+    /* ⚠ Và KHÔNG ĐƯỢC quay lại ghi thẳng hai bảng: đó là chính cái lỗi. */
+    expect(
+      /from\("receivables"\)[\s\S]{0,200}\.update\(/.test(COLLECT),
+      "màn thu tiền lại tự sửa `receivables` — RLS chặn NVBH trong im lặng"
+    ).toBe(false)
   })
 
   /**

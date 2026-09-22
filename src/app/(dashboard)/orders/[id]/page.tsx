@@ -66,6 +66,7 @@ import type { SalesOrder, SalesOrderLine, OrderStatus, OrderStatusHistory, Invoi
 import { errorMessage } from "@/lib/errors"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 type NextStatus = {
   value: OrderStatus
@@ -878,11 +879,12 @@ export default function OrderDetailPage() {
           update.product_id = l.swap_product_id
           update.batch_id = null
         }
-        const { error } = await supabase
-          .from("sales_order_lines")
-          .update(update)
-          .eq("id", l.id)
-        if (error) throw error
+        await ghiPhaiTrungDong(
+          supabase
+            .from("sales_order_lines")
+            .update(update)
+            .eq("id", l.id)
+        )
       }
 
       // Q5: insert new draft lines.

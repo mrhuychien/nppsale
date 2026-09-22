@@ -164,6 +164,70 @@ export async function fetchOrderLines(
   return (data as SalesOrderLineRow[]) || []
 }
 
+export interface StockEntryLineRow {
+  entry_id: string
+  product_id: string
+  quantity: number
+  /** ⚠ `NOT NULL` dưới database — đo bằng `pg_attribute`, không đoán. */
+  unit_cost: number
+}
+
+export interface ReturnLineRow {
+  return_id: string
+  product_id: string
+  quantity: number
+  line_total: number
+}
+
+/**
+ * Dòng phiếu kho của các phiếu đã chọn — PHÂN TRANG.
+ *
+ * ⚠ VÌ SAO PHẢI CÓ HÀM NÀY. Ba màn báo cáo (nhân viên, khách hàng, nhà
+ *   cung cấp) đọc bảng này bằng `.in("entry_id", …)` TRẦN, không phân
+ *   trang. `db.max_rows` của dự án là 1.000, và khi vượt trần API trả
+ *   200 kèm đúng 1.000 dòng, KHÔNG lỗi — xem `@/lib/supabase/aggregate`.
+ *   Một tháng của một NPP thật vượt 1.000 dòng phiếu kho rất dễ.
+ *
+ * ⚠ VÀ ĐÂY LÀ GIÁ VỐN. Thiếu dòng thì giá vốn thiếu → lợi nhuận cao giả
+ *   → hoa hồng tính trên một con số không có thật. Không có gì đỏ lên.
+ *
+ * ⚠ TRONG CHÍNH MỘT `Promise.all` CỦA `reports/employees`, dòng đơn đi
+ *   qua `fetchOrderLines` (có phân trang) còn dòng kho và dòng trả nằm
+ *   ngay cạnh thì không. Ba bảng, một chỗ, hai luật.
+ */
+export async function fetchStockEntryLines(
+  supabase: SupabaseClient,
+  entryIds: string[]
+): Promise<StockEntryLineRow[]> {
+  if (entryIds.length === 0) return []
+  const dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("stock_entry_lines")
+      .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+      .in("entry_id", entryIds)
+      .range(from, to)
+  )
+  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
+  return (dataRes.rows as StockEntryLineRow[]) || []
+}
+
+/** Dòng hàng trả của các phiếu đã chọn — PHÂN TRANG, cùng lý do trên. */
+export async function fetchReturnLines(
+  supabase: SupabaseClient,
+  returnIds: string[]
+): Promise<ReturnLineRow[]> {
+  if (returnIds.length === 0) return []
+  const dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("return_lines")
+      .select("return_id, product_id, quantity, line_total", { count: "exact" })
+      .in("return_id", returnIds)
+      .range(from, to)
+  )
+  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
+  return (dataRes.rows as ReturnLineRow[]) || []
+}
+
 /** Sum of approved/completed returns within the range. */
 export async function fetchReturnsValue(
   supabase: SupabaseClient,

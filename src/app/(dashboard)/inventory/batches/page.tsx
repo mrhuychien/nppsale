@@ -34,6 +34,7 @@ import {
   type BatchColumnKey,
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -108,15 +109,16 @@ export default function BatchesPage() {
     if (!user) return
     setMovingId(batch.id)
     try {
-      const { error } = await supabase
-        .from("batches")
-        .update({
-          warehouse_zone: target,
-          zone_moved_at: new Date().toISOString(),
-          zone_moved_by: user.id,
-        })
-        .eq("id", batch.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("batches")
+          .update({
+            warehouse_zone: target,
+            zone_moved_at: new Date().toISOString(),
+            zone_moved_by: user.id,
+          })
+          .eq("id", batch.id)
+      )
       setBatches((prev) =>
         prev.map((b) => (b.id === batch.id ? { ...b, warehouse_zone: target } : b))
       )

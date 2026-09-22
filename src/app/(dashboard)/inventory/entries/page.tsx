@@ -127,11 +127,12 @@ export default function StockEntriesPage() {
         fetchData()
         return
       }
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ status: "posted", posted_at: new Date().toISOString() })
-        .eq("id", e.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("stock_entries")
+          .update({ status: "posted", posted_at: new Date().toISOString() })
+          .eq("id", e.id)
+      )
       toast({ title: `Đã duyệt phiếu ${e.entry_code}` })
       fetchData()
     } catch (err) {

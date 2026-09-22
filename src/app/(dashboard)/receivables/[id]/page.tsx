@@ -19,11 +19,12 @@ import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABEL } from "@/lib/constants"
-import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck } from "lucide-react"
 import type { Receivable, Payment, ReceivableStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { createCashReceipt } from "@/lib/finance/cash-receipt"
 
 const RECEIVABLE_STATUS_MAP: Record<ReceivableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa thu", variant: "secondary" },
@@ -74,15 +75,12 @@ export default function ReceivableDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const recalcStatus = (rec: Receivable, newPaid: number): ReceivableStatus => {
-    if (newPaid >= rec.amount) return "paid"
-    if (newPaid > 0) return "partial"
-    if (rec.due_date) {
-      const aging = getAgingStatus(rec.due_date)
-      if (aging !== "current") return "overdue"
-    }
-    return "open"
-  }
+  /*
+   * ⚠ BỎ `recalcStatus`. Trạng thái công nợ nay do `create_cash_receipt`
+   *   quyết trong cùng giao dịch với số tiền. Giữ một bản tính song song
+   *   ở trình duyệt là dựng sẵn chỗ cho hai luật lệch nhau, mà bên lệch
+   *   sẽ là bên người dùng nhìn thấy.
+   */
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,21 +97,23 @@ export default function ReceivableDetailPage() {
     }
     setActionLoading(true)
     try {
-      const { error: payErr } = await supabase.from("payments").insert({
-        receivable_id: receivable.id,
-        collected_by: user.id,
-        amount: amt,
+      /**
+       * ⚠ LẬP PHIẾU THU QUA RPC, KHÔNG GHI THẲNG HAI BẢNG — xem chú
+       *   thích dài ở `/receivables/collect`. Tóm tắt: chính sách cho
+       *   `sales`/`driver` CHÈN `payments` nhưng chỉ cho
+       *   `owner`/`accountant` SỬA `receivables`, mà RLS từ chối là LỌC
+       *   chứ không ném. Đã đo: NVBH ghi phiếu thu được, trừ công nợ ra
+       *   0 dòng không lỗi, màn hình báo "Đã ghi nhận thanh toán" và
+       *   khách vẫn nợ nguyên số vừa trả.
+       *
+       * `create_cash_receipt` làm cả hai việc trong MỘT giao dịch và
+       * chặn thu vượt số còn nợ.
+       */
+      await createCashReceipt(supabase, {
+        customer_id: receivable.customer_id,
         method: paymentForm.method,
+        lines: [{ receivable_id: receivable.id, amount: amt }],
       })
-      if (payErr) throw payErr
-
-      const newPaid = receivable.paid + amt
-      const newStatus = recalcStatus(receivable, newPaid)
-      const { error: updErr } = await supabase
-        .from("receivables")
-        .update({ paid: newPaid, status: newStatus })
-        .eq("id", receivable.id)
-      if (updErr) throw updErr
 
       toast({ title: `Đã ghi nhận thanh toán ${formatCurrency(amt)}` })
       setPaymentForm({ amount: "", method: "cash" })
@@ -129,14 +129,15 @@ export default function ReceivableDetailPage() {
     if (!verifyTarget || !user) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("payments")
-        .update({
-          verified_by: user.id,
-          verified_at: new Date().toISOString(),
-        })
-        .eq("id", verifyTarget.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payments")
+          .update({
+            verified_by: user.id,
+            verified_at: new Date().toISOString(),
+          })
+          .eq("id", verifyTarget.id)
+      )
       toast({ title: "Đã xác nhận thanh toán" })
       setVerifyTarget(null)
       fetchData()
@@ -151,11 +152,12 @@ export default function ReceivableDetailPage() {
     if (!receivable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("receivables")
-        .update({ status: newStatus })
-        .eq("id", receivable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("receivables")
+          .update({ status: newStatus })
+          .eq("id", receivable.id)
+      )
       toast({ title: `Đã chuyển trạng thái: ${RECEIVABLE_STATUS_MAP[newStatus].label}` })
       setStatusConfirm(null)
       fetchData()

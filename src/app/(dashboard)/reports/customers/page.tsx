@@ -9,14 +9,7 @@ import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analyt
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import {
-  fetchDeliveredOrders,
-  fetchOrderLines,
-  fetchReturnsRows,
-  type SalesOrderLineRow,
-  type SalesOrderRow,
-  type ReturnSummaryRow as ReturnRowMeta,
-} from "@/lib/analytics/sales"
+import { fetchDeliveredOrders, fetchOrderLines, fetchReturnsRows, type SalesOrderLineRow, type SalesOrderRow, type ReturnSummaryRow as ReturnRowMeta, fetchStockEntryLines, fetchReturnLines } from "@/lib/analytics/sales"
 import {
   type DateRange,
   type PeriodPreset,
@@ -25,6 +18,7 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 type Variant = "sales" | "profit" | "receivables" | "products"
 
@@ -110,54 +104,52 @@ export default function CustomersReportPage() {
           .select("id, store_name, channel, credit_limit, phone")
           .eq("org_id", user.org_id),
         supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
-        supabase
-          .from("receivables")
-          .select("id, customer_id, amount, paid, due_date, status, created_at")
-          .eq("org_id", user.org_id)
-          .in("status", ["open", "partial", "overdue"]),
-        supabase
-          .from("stock_entries")
-          .select("id, type")
-          .eq("org_id", user.org_id)
-          .eq("status", "posted")
-          .eq("type", "export")
-          .gte("posted_at", fromIso)
-          .lte("posted_at", toIso),
+        fetchAllForAggregate<ReceivableRow>((from, to) =>
+          supabase
+            .from("receivables")
+            .select("id, customer_id, amount, paid, due_date, status, created_at", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .in("status", ["open", "partial", "overdue"])
+            .range(from, to)
+        ),
+        fetchAllForAggregate<StockEntry>((from, to) =>
+          supabase
+            .from("stock_entries")
+            .select("id, type", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .eq("status", "posted")
+            .eq("type", "export")
+            .gte("posted_at", fromIso)
+            .lte("posted_at", toIso)
+            .range(from, to)
+        ),
       ])
-    const qErr2 = ([customersRes, productsRes, receivablesRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr2 = ([customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr2) console.error("[reports/customers] truy vấn lỗi:", qErr2.message)
+    for (const e of [receivablesRes.error, stockEntriesRes.error]) {
+      if (e) console.error("[reports/customers] truy vấn lỗi:", e)
+    }
     const orderIds = orderList.map((o) => o.id)
     const returnIds = returnsRows.map((r) => r.id)
-    const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
-    const [linesList, retLinesRes, stockLinesRes] = await Promise.all([
+    const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
+    /* ⚠ PHÂN TRANG CẢ BA. Quá 1.000 dòng thì API trả đúng 1.000 kèm 200,
+       không lỗi — báo cáo cộng thiếu mà trông vẫn bình thường. */
+    const [linesList, retLinesList, stockLinesList] = await Promise.all([
       fetchOrderLines(supabase, orderIds),
-      returnIds.length === 0
-        ? Promise.resolve({ data: [] as ReturnLineRow[] })
-        : supabase
-            .from("return_lines")
-            .select("return_id, product_id, quantity, line_total")
-            .in("return_id", returnIds),
-      stockEntryIds.length === 0
-        ? Promise.resolve({ data: [] as StockEntryLine[] })
-        : supabase
-            .from("stock_entry_lines")
-            .select("entry_id, product_id, quantity, unit_cost")
-            .in("entry_id", stockEntryIds),
+      fetchReturnLines(supabase, returnIds),
+      fetchStockEntryLines(supabase, stockEntryIds),
     ])
-    const qErr = ([retLinesRes, stockLinesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/customers] truy vấn lỗi:", qErr.message)
 
     setOrders(orderList)
     setLines(linesList)
     setReturns(returnsRows)
-    setReturnLines((retLinesRes.data as ReturnLineRow[]) || [])
+    setReturnLines(retLinesList)
     setCustomers((customersRes.data as CustomerRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
-    setReceivables((receivablesRes.data as ReceivableRow[]) || [])
-    setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
-    setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
+    setReceivables(receivablesRes.rows)
+    setStockEntries(stockEntriesRes.rows)
+    setStockLines(stockLinesList)
     setLoading(false)
   }, [user?.org_id, range, supabase])
 

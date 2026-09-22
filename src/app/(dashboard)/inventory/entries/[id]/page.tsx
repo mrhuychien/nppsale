@@ -399,11 +399,12 @@ export default function StockEntryDetailPage() {
     if (!entry) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ notes: editNotes || null })
-        .eq("id", entry.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("stock_entries")
+          .update({ notes: editNotes || null })
+          .eq("id", entry.id)
+      )
       toast({ title: "Đã cập nhật phiếu kho" })
       setEditMode(false)
       fetchData()

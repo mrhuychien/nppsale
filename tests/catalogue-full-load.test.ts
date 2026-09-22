@@ -118,7 +118,22 @@ function laCauGhi(stmt: string): boolean {
 
 /** Câu đọc `products` ở `at` có bị cắt ở 1.000 dòng không. */
 function docBiCat(src: string, at: number): boolean {
-  const stmt = src.slice(at, at + 420)
+  /**
+   * ⚠ CỬA SỔ PHẢI DỪNG Ở CÂU TRUY VẤN KẾ TIẾP, KHÔNG CHẠY ĐỦ 420 KÝ TỰ.
+   *
+   *   Đo được 22/09/2026: `reports/customers` có một câu đọc danh mục
+   *   trơn, và ngay dòng dưới là một `fetchAllForAggregate(… .range(from,
+   *   to))` mới thêm cho bảng KHÁC. Cửa sổ 420 ký tự trùm sang đó, thấy
+   *   `.range(`, và kết luận câu đọc danh mục "đã an toàn" — chốt chuyển
+   *   sang đòi xoá tên tệp khỏi danh sách nợ, trong khi món nợ còn
+   *   nguyên. Một chốt báo xanh cho chỗ vẫn sai thì tệ hơn không có chốt.
+   *
+   *   Cắt ở `.from("` kế tiếp: mỗi câu truy vấn Supabase bắt đầu bằng
+   *   đúng chuỗi ấy, nên đó là ranh giới rẻ và đúng.
+   */
+  const ketTiep = src.indexOf('.from("', at + 7)
+  const het = ketTiep === -1 ? at + 420 : Math.min(ketTiep, at + 420)
+  const stmt = src.slice(at, het)
   const before = src.slice(Math.max(0, at - 300), at)
   if (laCauGhi(stmt)) return false
   const safe =

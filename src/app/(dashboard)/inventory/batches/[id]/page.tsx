@@ -89,18 +89,19 @@ export default function BatchDetailPage() {
     }
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("batches")
-        .update({
-          batch_code: editForm.batch_code.trim(),
-          manufactured_at: editForm.manufactured_at || null,
-          expires_at: editForm.expires_at,
-          location: editForm.location.trim() || null,
-          qty_on_hand: Number(editForm.qty_on_hand),
-          unit_cost: Number(editForm.unit_cost) || 0,
-        })
-        .eq("id", batch.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("batches")
+          .update({
+            batch_code: editForm.batch_code.trim(),
+            manufactured_at: editForm.manufactured_at || null,
+            expires_at: editForm.expires_at,
+            location: editForm.location.trim() || null,
+            qty_on_hand: Number(editForm.qty_on_hand),
+            unit_cost: Number(editForm.unit_cost) || 0,
+          })
+          .eq("id", batch.id)
+      )
       toast({ title: "Đã cập nhật lô hàng" })
       setEditMode(false)
       fetchData()

@@ -21,6 +21,7 @@ import { COMMISSION_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Power, PowerOff, Plus } from "lucide-react"
 import type { CommissionPolicy } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface TierForm {
   min: string
@@ -114,8 +115,7 @@ export default function CommissionPolicyDetailPage() {
     if (!policy) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("commission_policies").delete().eq("id", policy.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("commission_policies").delete().eq("id", policy.id))
       toast({ title: "Đã xóa chính sách hoa hồng" })
       router.push("/commissions/policies")
     } catch (error) {

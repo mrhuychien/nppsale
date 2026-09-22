@@ -23,6 +23,7 @@ import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck } from "lucide-react"
 import type { Receivable, Payment, ReceivableStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const RECEIVABLE_STATUS_MAP: Record<ReceivableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa thu", variant: "secondary" },
@@ -54,7 +55,7 @@ export default function ReceivableDetailPage() {
     const [recRes, payRes] = await Promise.all([
       supabase
         .from("receivables")
-        .select("id, org_id, order_id, customer_id, sales_user_id, amount, paid, due_date, status, created_at, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total)")
+        .select("id, org_id, order_id, customer_id, sales_user_id, amount, paid, due_date, status, opening_balance, created_at, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total)")
         .eq("id", id)
         .single(),
       supabase
@@ -169,8 +170,7 @@ export default function ReceivableDetailPage() {
     if (!receivable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("receivables").delete().eq("id", receivable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("receivables").delete().eq("id", receivable.id))
       toast({ title: "Đã xóa công nợ" })
       router.push("/receivables")
     } catch (err) {
@@ -202,7 +202,27 @@ export default function ReceivableDetailPage() {
   const canRecordPayment = user && ["owner", "accountant", "sales", "driver"].includes(user.role) && receivable.status !== "paid"
   const canVerify = user && ["owner", "accountant"].includes(user.role)
   const canOverrideStatus = user && ["owner", "accountant"].includes(user.role)
-  const canDelete = user && user.role === "owner" && hasPermission(user.role, "receivables", "delete") && receivable.paid === 0
+  /**
+   * ⚠ GÀI ĐÚNG THEO CHÍNH SÁCH DATABASE, KHÔNG RỘNG HƠN. Chính sách
+   *   `Accountant can delete opening receivables` (mig 102) chỉ cho xoá
+   *   công nợ `opening_balance` — số dư đầu kỳ NHẬP TAY từ sổ cũ. Công
+   *   nợ sinh từ hóa đơn thì không xoá được, và đó là ĐÚNG: xoá nó là
+   *   hóa đơn còn đó mà khoản phải thu biến mất.
+   *
+   * ⚠ CHỦ NHÀ BÁO KIỂU KHÁC: màn hình mời bấm, database từ chối, app
+   *   báo "Đã xóa công nợ" rồi đẩy về danh sách — công nợ vẫn nằm đó.
+   *   Đã đo trên Postgres 16, đăng nhập bằng chủ NPP, công nợ thường:
+   *     DELETE trả về 0 dòng, KHÔNG ném lỗi · công nợ còn trong sổ? 1
+   *   RLS từ chối là LỌC chứ không ném. Hai chỗ cùng phải sửa: nút này
+   *   đừng mời, và `handleDelete` đừng tin vào sự im lặng.
+   */
+  const laSoDuDauKy = receivable.opening_balance === true
+  const canDelete =
+    user &&
+    user.role === "owner" &&
+    hasPermission(user.role, "receivables", "delete") &&
+    receivable.paid === 0 &&
+    laSoDuDauKy
 
   // Available status overrides
   const overrides: { status: StatusOverride; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
@@ -475,9 +495,17 @@ export default function ReceivableDetailPage() {
                     <Trash2 className="h-4 w-4 mr-2" /> Xóa công nợ
                   </Button>
                 )}
-                {!canDelete && receivable.paid > 0 && user?.role === "owner" && (
+                {/* ⚠ NÓI RA LÝ DO, VÀ CHỈ ĐƯỜNG. Ẩn nút mà im lặng thì chủ
+                    NPP đi tìm nút Xoá không thấy và không biết vì sao. */}
+                {!canDelete && user?.role === "owner" && receivable.paid > 0 && (
                   <p className="text-xs text-muted-foreground text-center pt-1">
                     Không thể xóa công nợ đã có thanh toán
+                  </p>
+                )}
+                {!canDelete && user?.role === "owner" && receivable.paid === 0 && !laSoDuDauKy && (
+                  <p className="text-xs text-muted-foreground text-center pt-1">
+                    Công nợ này sinh từ hóa đơn nên không xoá rời được — huỷ tờ hóa đơn
+                    ấy thì công nợ tự mất theo. Chỉ số dư đầu kỳ nhập tay mới xoá được.
                   </p>
                 )}
               </CardContent>

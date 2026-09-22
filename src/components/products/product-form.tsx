@@ -22,6 +22,7 @@ import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 type Tab = "info" | "description" | "warranty"
 
@@ -325,7 +326,7 @@ export function ProductForm({
           .map((r) => r.id)
           .filter((id) => !incomingIds.has(id))
         if (removeIds.length > 0) {
-          await supabase.from("product_units").delete().in("id", removeIds).throwOnError()
+          await ghiPhaiTrungDong(supabase.from("product_units").delete().in("id", removeIds))
         }
         // Update các dòng có id, insert các dòng chưa có id
         for (const u of validUnits) {

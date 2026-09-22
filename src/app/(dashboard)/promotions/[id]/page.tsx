@@ -20,6 +20,7 @@ import { PROMOTION_TYPES } from "@/lib/constants"
 import { Pencil, Trash2, X, Power, PowerOff } from "lucide-react"
 import type { Promotion } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function PromotionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -85,8 +86,7 @@ export default function PromotionDetailPage() {
     if (!promotion) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("promotions").delete().eq("id", promotion.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("promotions").delete().eq("id", promotion.id))
       toast({ title: "Đã xóa chương trình khuyến mãi" })
       router.push("/promotions")
     } catch (error) {

@@ -46,6 +46,7 @@ import {
   type StockEntryFilterKey,
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function StockEntriesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
@@ -98,8 +99,7 @@ export default function StockEntriesPage() {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      const { error } = await supabase.from("stock_entries").delete().eq("id", deleteTarget.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("stock_entries").delete().eq("id", deleteTarget.id))
       toast({ title: `Đã xóa phiếu ${deleteTarget.entry_code}` })
       setDeleteTarget(null)
       fetchData()

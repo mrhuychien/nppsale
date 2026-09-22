@@ -41,6 +41,7 @@ import { ChevronLeft, Plus, Trash2 } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ROLE_LABELS } from "@/lib/permissions"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface UserRow {
   id: string
@@ -200,7 +201,7 @@ export default function UserSalaryPage() {
   const deleteTier = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("salary_kpi_tiers").delete().eq("id", rowId).throwOnError()
+      await ghiPhaiTrungDong(supabase.from("salary_kpi_tiers").delete().eq("id", rowId))
       await fetchData()
     } finally {
       setBusy(false)
@@ -233,7 +234,7 @@ export default function UserSalaryPage() {
   const deleteOc = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("salary_order_count_bonus_configs").delete().eq("id", rowId).throwOnError()
+      await ghiPhaiTrungDong(supabase.from("salary_order_count_bonus_configs").delete().eq("id", rowId))
       await fetchData()
     } finally {
       setBusy(false)
@@ -271,7 +272,7 @@ export default function UserSalaryPage() {
   const deleteActivity = async (rowId: string) => {
     setBusy(true)
     try {
-      await supabase.from("monthly_activity_bonuses").delete().eq("id", rowId).throwOnError()
+      await ghiPhaiTrungDong(supabase.from("monthly_activity_bonuses").delete().eq("id", rowId))
       await fetchData()
     } finally {
       setBusy(false)

@@ -22,6 +22,7 @@ import { misaRelationLabel, misaStatusBadge } from "@/lib/misa/labels"
 import { CheckCircle2, XCircle, Pencil, Trash2, X, ExternalLink, Printer, AlertCircle, FileText } from "lucide-react"
 import type { Invoice, InvoiceStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 type NextStatus = {
   value: InvoiceStatus
@@ -130,8 +131,7 @@ export default function InvoiceDetailPage() {
     if (!invoice) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("invoices").delete().eq("id", invoice.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("invoices").delete().eq("id", invoice.id))
       toast({ title: "Đã xóa hóa đơn" })
       router.push("/invoices")
     } catch (error) {

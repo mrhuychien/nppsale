@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { Trash2, Plus } from "lucide-react"
 import type { CustomerAssignment, User } from "@/types"
+import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface AssignmentManagerProps {
   customerId: string
@@ -54,10 +56,18 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
   }
 
   const handleRemove = async (id: string) => {
-    const { error } = await supabase.from("customer_assignments").delete().eq("id", id)
-    if (!error) {
+    /* ⚠ HAI LỖI TRONG BA DÒNG CŨ. `error` rỗng không có nghĩa là đã xoá
+       — RLS từ chối thì PostgREST trả 200 kèm mảng rỗng, nên nhánh
+       `if (!error)` chạy và màn hình báo "Đã xóa phân công" trong khi
+       phân công vẫn còn. Và khi CÓ lỗi thật thì không có nhánh `else`
+       nào cả: màn hình đứng im, không toast, không log. Người dùng bấm
+       Xoá, không thấy gì xảy ra, bấm lại. Xem `@/lib/db/must-write`. */
+    try {
+      await ghiPhaiTrungDong(supabase.from("customer_assignments").delete().eq("id", id))
       toast({ title: "Đã xóa phân công" })
       onUpdate()
+    } catch (err) {
+      toast({ title: "Không xoá được phân công", description: errorMessage(err), variant: "destructive" })
     }
   }
 

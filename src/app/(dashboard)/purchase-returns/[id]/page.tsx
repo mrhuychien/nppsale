@@ -16,6 +16,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { ratioToPercent } from "@/lib/purchasing/return-form"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const STATUS_LABEL: Record<string, { label: string; variant: "secondary" | "success" | "warning" }> = {
   draft: { label: "Nháp", variant: "warning" },
@@ -142,8 +143,7 @@ export default function PurchaseReturnDetailPage() {
     if (!window.confirm("Xoá phiếu nháp này?")) return
     setBusy(true)
     try {
-      const { error } = await supabase.from("supplier_returns").delete().eq("id", data.id)
-      if (error) throw new Error(error.message)
+      await ghiPhaiTrungDong(supabase.from("supplier_returns").delete().eq("id", data.id))
       toast({ title: "Đã xoá phiếu nháp" })
       router.push("/purchase-returns")
     } catch (err) {

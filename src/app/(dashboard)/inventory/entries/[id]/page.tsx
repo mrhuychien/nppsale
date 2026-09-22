@@ -28,6 +28,7 @@ import { DriverList, type DriverListOrder } from "@/components/printing/driver-l
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import type { StockEntry, StockEntryLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function StockEntryDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -417,8 +418,7 @@ export default function StockEntryDetailPage() {
     if (!entry) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("stock_entries").delete().eq("id", entry.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("stock_entries").delete().eq("id", entry.id))
       toast({ title: "Đã xóa phiếu kho" })
       router.push("/inventory/entries")
     } catch (err) {

@@ -47,6 +47,7 @@ import {
 import { cn } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const ACTION_ICONS: Record<Action, typeof Eye> = {
   read: Eye,
@@ -332,12 +333,13 @@ export function PermissionMatrix({
         if (error) throw error
       }
       if (deletes.length > 0) {
-        const { error } = await supabase
-          .from("user_permission_overrides")
-          .delete()
-          .eq("user_id", userId)
-          .in("permission_key", deletes)
-        if (error) throw error
+        await ghiPhaiTrungDong(
+          supabase
+            .from("user_permission_overrides")
+            .delete()
+            .eq("user_id", userId)
+            .in("permission_key", deletes)
+        )
       }
       toast({ title: `Đã lưu ${pending.size} thay đổi` })
       await fetchData()

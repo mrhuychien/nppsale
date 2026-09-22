@@ -21,6 +21,7 @@ import { formatDate, getExpiryStatus } from "@/lib/utils"
 import { Pencil, Trash2, X, Save } from "lucide-react"
 import type { Batch, Product, StockEntryLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const EXPIRY_LABEL: Record<"ok" | "warning" | "danger", string> = {
   ok: "Còn hạn dài",
@@ -114,8 +115,7 @@ export default function BatchDetailPage() {
     if (!batch) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("batches").delete().eq("id", batch.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("batches").delete().eq("id", batch.id))
       toast({ title: "Đã xóa lô hàng" })
       router.push("/inventory/batches")
     } catch (err) {

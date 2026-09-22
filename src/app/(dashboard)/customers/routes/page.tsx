@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Plus, Pencil, Trash2, Route, Info } from "lucide-react"
 import type { SalesRoute } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function SalesRoutesPage() {
   const { loading: authLoading } = useRoleGuard("customers")
@@ -166,8 +167,7 @@ export default function SalesRoutesPage() {
           .eq("channel", r.code)
           .throwOnError()
       }
-      const { error } = await supabase.from("sales_routes").delete().eq("id", r.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("sales_routes").delete().eq("id", r.id))
       toast({ title: `Đã xóa tuyến ${r.code}` })
       fetchData()
     } catch (err) {

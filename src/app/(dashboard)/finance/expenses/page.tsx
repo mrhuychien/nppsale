@@ -26,6 +26,7 @@ import { viIncludes, viNormalize } from "@/lib/search"
 import { Plus, Search, Trash2, Wallet, Receipt, Info } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -191,8 +192,7 @@ export default function ExpensesPage() {
     if (!confirm("Xóa chi phí này?")) return
     setDeleting(id)
     try {
-      const { error } = await supabase.from("expenses").delete().eq("id", id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("expenses").delete().eq("id", id))
       toast({ title: "Đã xóa" })
       setExpenses((prev) => prev.filter((e) => e.id !== id))
     } catch (err) {

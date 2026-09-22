@@ -17,6 +17,7 @@ import Link from "next/link"
 import { Trash2, ClipboardList } from "lucide-react"
 import type { Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -47,8 +48,7 @@ export default function ProductDetailPage() {
     if (!product) return
     setDeleting(true)
     try {
-      const { error } = await supabase.from("products").delete().eq("id", product.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("products").delete().eq("id", product.id))
       toast({ title: "Đã xóa sản phẩm" })
       router.push("/products")
     } catch (err) {

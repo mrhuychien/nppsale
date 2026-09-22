@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
 import type { User, Role } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 /**
  * Vai chọn được khi SỬA một người.
@@ -140,12 +141,13 @@ export default function UserDetailPage() {
       const toDelete = Array.from(currentIds).filter((sid) => !supplierIds.has(sid))
       const toInsert = Array.from(supplierIds).filter((sid) => !currentIds.has(sid))
       if (toDelete.length > 0) {
-        const { error: delErr } = await supabase
-          .from("user_suppliers")
-          .delete()
-          .eq("user_id", target.id)
-          .in("supplier_id", toDelete)
-        if (delErr) throw delErr
+        await ghiPhaiTrungDong(
+          supabase
+            .from("user_suppliers")
+            .delete()
+            .eq("user_id", target.id)
+            .in("supplier_id", toDelete)
+        )
       }
       if (toInsert.length > 0 && target.org_id) {
         const { error: insErr } = await supabase.from("user_suppliers").insert(

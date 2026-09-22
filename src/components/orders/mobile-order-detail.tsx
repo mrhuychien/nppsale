@@ -325,7 +325,10 @@ export function MobileOrderDetail({
                     ? `Tài xế ${deliveryLines[0].delivery.driver.full_name}`
                     : deliveryLines[0].delivery?.route_name || `${deliveryLines.length} chuyến`
                 }
-                href={deliveryLines[0].delivery ? `/deliveries/${deliveryLines[0].delivery.id}` : undefined}
+                /* ⚠ KHÔNG ĐƯA `href` NỮA — luồng giao hàng đã chặn hẳn
+                   (xem `laManLuongCu`), bấm vào chỉ bị đá về trang chủ.
+                   `LinkRow` không có href thì hiện thành một dòng thường,
+                   nên thông tin vẫn còn, chỉ mất cái ngõ cụt. */
               />
             )}
             {linkedReturns.map((r) => (

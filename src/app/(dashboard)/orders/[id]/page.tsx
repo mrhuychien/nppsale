@@ -2335,13 +2335,16 @@ export default function OrderDetailPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
+                              {/* ⚠ KHÔNG CÒN LINK SANG MÀN CHUYẾN GIAO. Luồng
+                                  giao hàng đã bị chặn hẳn (chủ nhà chốt
+                                  22/09/2026 — xem `laManLuongCu`), nên link
+                                  tới đó chỉ đá người dùng về trang chủ. Giữ
+                                  TÊN CHUYẾN vì nó vẫn là thông tin; bỏ cái
+                                  bấm được vì nó là ngõ cụt. */}
                               {dl.delivery && (
-                                <Link
-                                  href={`/deliveries/${dl.delivery.id}`}
-                                  className="text-sm font-semibold text-primary hover:underline"
-                                >
+                                <span className="text-sm font-semibold">
                                   {dl.delivery.route_name || "Chuyến giao"}
-                                </Link>
+                                </span>
                               )}
                               <Badge variant={st.variant}>{st.label}</Badge>
                             </div>

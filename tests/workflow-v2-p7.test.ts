@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { readFileSync, readdirSync, statSync } from "node:fs"
+import { resolve, join } from "node:path"
 import {
   canSeeHref,
   canEnterHref,
+  duocVaoTrang,
+  laManLuongCu,
   LEGACY_V2_HREFS,
   NAV_PERMISSION,
 } from "../src/lib/nav/nav-permission"
@@ -77,16 +79,134 @@ describe("Ẩn khỏi menu, nhưng vẫn mở được chứng từ cũ", () => 
   })
 
   /**
-   * ⚠ ẨN ≠ CHẶN. Dữ liệu luồng cũ là CHỨNG TỪ. Chặn luôn cửa vào là xoá
-   * lịch sử khỏi tầm với, mà ta chỉ định thôi dùng chứ không định vứt.
+   * ⚠ LUẬT NÀY ĐÃ ĐỔI 22/09/2026, chủ nhà chốt: CHẶN HẲN.
+   *
+   *   Luật cũ là "ẩn ≠ chặn": dữ liệu luồng cũ là chứng từ nên gõ thẳng
+   *   đường dẫn vẫn vào XEM được. Lý lẽ ấy đứng được khi màn chỉ để
+   *   xem. Nhưng `/inventory/stock-out` KHÔNG chỉ xem — đã đo trên
+   *   Postgres 16: nó chèn `stock_entries` và `swap_stock_movements`
+   *   xong mới đổi đơn sang `picking`, một trạng thái workflow v2 không
+   *   có, nên lệnh cuối ném và hai lệnh đầu đã ghi. Không cùng giao
+   *   dịch. Mỗi lần ai đó gõ vào rồi bấm là sổ kho thêm một phiếu mồ
+   *   côi.
+   *
+   *   Cái mất đã được cân nhắc và nói ra: không còn mở lại phiếu soạn
+   *   hàng / chuyến giao / biên bản bàn giao bằng đường dẫn nữa.
    */
-  it("vẫn vào xem được, không bị đá về trang chủ", () => {
-    expect(NAV_PERMISSION["/deliveries"]).toBeTruthy()
-    expect(canEnterHref("owner", "/deliveries")).toBe(true)
-    // ⚠ Không dùng `driver` làm ví dụ nữa: vai đó đã ngưng dùng (mig 122)
-    //   nên không còn quyền nào, và nó sẽ trả false vì lý do KHÁC HẲN —
-    //   chốt vẫn xanh nhưng hết nói về chuyện "ẩn ≠ chặn".
-    expect(canEnterHref("manager", "/deliveries")).toBe(true)
+  it("chặn cửa vào với mọi vai trò, kể cả chủ", () => {
+    expect(NAV_PERMISSION["/deliveries"], "bảng quyền mất mục này thì chốt soi chỗ trống").toBeTruthy()
+    for (const role of ["owner", "manager", "warehouse", "sales", "accountant"] as const) {
+      expect(canEnterHref(role, "/deliveries"), `${role} vẫn vào được`).toBe(false)
+    }
+  })
+
+  /**
+   * ⚠ MÀN CON MỚI LÀ CHỖ CÓ NÚT BẤM, và chúng KHÔNG khai trong
+   *   `NAV_PERMISSION` nên `useRoleGuard` rơi về phép kiểm mô-đun. Chặn
+   *   đúng ba đường gốc là bỏ ngỏ đúng phần nguy hiểm.
+   */
+  it("chặn cả màn con, không chỉ ba đường gốc", () => {
+    for (const href of [
+      "/deliveries/abc-123",
+      "/deliveries/abc-123/settle",
+      "/inventory/stock-out/collect/xyz-9",
+      "/inventory/pending/gi-do",
+    ]) {
+      expect(laManLuongCu(href), `${href} lọt lưới`).toBe(true)
+      expect(canEnterHref("owner", href), `${href} vẫn vào được`).toBe(false)
+    }
+  })
+
+  /** ⚠ Tiền tố phải kèm dấu `/` — nếu không, một màn mới tên gần giống bị chặn oan. */
+  it("không chặn nhầm đường dẫn chỉ trùng tiền tố", () => {
+    expect(laManLuongCu("/deliveries-v2"), "chặn oan một màn khác").toBe(false)
+    expect(laManLuongCu("/inventory"), "chặn oan cả màn kho").toBe(false)
+    expect(laManLuongCu("/inventory/entries"), "chặn oan phiếu kho").toBe(false)
+  })
+
+  /**
+   * ⚠ CHẠY LUẬT, ĐỪNG SOI CHỮ. Bản trước của chốt này đọc tệp
+   *   `use-role-guard.ts` và kiểm xem có chuỗi `laManLuongCu(` không.
+   *   Đã đột biến thử: đổi thành `false && laManLuongCu(...)` — chữ còn
+   *   nguyên, luật chết, chốt vẫn XANH. Vì thế luật đã được tách ra
+   *   thành `duocVaoTrang`, và chốt gọi thẳng nó.
+   *
+   * ⚠ CA QUAN TRỌNG NHẤT LÀ ĐƯỜNG DẪN ĐỘNG. `/deliveries/<id>/settle`
+   *   không khai trong `NAV_PERMISSION`, nên nếu luồng cũ không được
+   *   xét trước thì nó rơi về phép kiểm mô-đun `deliveries` — mà thủ
+   *   kho CÓ quyền ấy, tức vào được.
+   */
+  it("cửa vào chặn cả đường dẫn động của luồng cũ", () => {
+    expect(
+      duocVaoTrang("warehouse", "/deliveries/abc/settle", "deliveries"),
+      "thủ kho vẫn vào được màn đối soát của luồng đã bỏ"
+    ).toBe(false)
+    expect(
+      duocVaoTrang("owner", "/inventory/stock-out/collect/x1", "receivables"),
+      "chủ nhà vẫn vào được màn thu hộ của luồng đã bỏ"
+    ).toBe(false)
+    expect(duocVaoTrang("owner", "/deliveries", "deliveries")).toBe(false)
+  })
+
+  /** ⚠ Và KHÔNG được chặn lan sang màn còn dùng. */
+  it("cửa vào không chặn nhầm màn đang dùng", () => {
+    expect(duocVaoTrang("owner", "/inventory/entries", "inventory")).toBe(true)
+    expect(duocVaoTrang("owner", "/orders/abc-123", "orders")).toBe(true)
+  })
+
+  /** Chưa đăng nhập thì không vào đâu cả. */
+  it("chưa có vai trò thì không vào được", () => {
+    expect(duocVaoTrang(null, "/orders", "orders")).toBe(false)
+  })
+
+  /**
+   * ⚠ CHẶN Ở `canEnterHref` CHỈ ĂN KHI MÀN GỌI `useRoleGuard`. Thêm một
+   *   `page.tsx` mới dưới ba thư mục ấy mà quên gọi là cửa mở lại, và
+   *   không có gì báo — màn mới chỉ đơn giản là vào được.
+   */
+  it("mọi màn của luồng cũ đều có cửa gác", () => {
+    const thieu: string[] = []
+    const duyet = (dir: string) => {
+      for (const ten of readdirSync(dir)) {
+        const p = join(dir, ten)
+        if (statSync(p).isDirectory()) duyet(p)
+        else if (ten === "page.tsx" && !readFileSync(p, "utf-8").includes("useRoleGuard")) {
+          thieu.push(p.slice(ROOT.length + 1))
+        }
+      }
+    }
+    for (const goc of ["deliveries", "inventory/stock-out", "inventory/pending"]) {
+      duyet(resolve(ROOT, "src/app/(dashboard)", goc))
+    }
+    expect(thieu, "màn luồng cũ không gọi useRoleGuard — chặn không tới").toEqual([])
+  })
+
+  /**
+   * ⚠ LINK CÒN SÓT LÀ MỘT NGÕ CỤT. Chặn cửa vào mà để nguyên link ở màn
+   *   khác thì người dùng bấm và bị đá về trang chủ, không lời giải
+   *   thích. Ba chỗ từng có: chi tiết đơn (máy tính và điện thoại) và
+   *   chi tiết phiếu thu.
+   */
+  it("không màn nào còn link dẫn vào luồng cũ", () => {
+    const pham: string[] = []
+    const duyet = (dir: string) => {
+      for (const ten of readdirSync(dir)) {
+        const p = join(dir, ten)
+        if (statSync(p).isDirectory()) {
+          if (/(deliveries|stock-out|pending)$/.test(p)) continue
+          duyet(p)
+        } else if (/\.tsx?$/.test(ten)) {
+          const rel = p.slice(ROOT.length + 1)
+          if (/nav-permission|use-role-guard|mobile-nav|sidebar|header/.test(rel)) continue
+          const b = readFileSync(p, "utf-8").replace(/\/\*[\s\S]*?\*\//g, "")
+          if (/href=\{?["'`]?\/(deliveries|inventory\/stock-out|inventory\/pending)\//.test(b)) {
+            pham.push(rel)
+          }
+        }
+      }
+    }
+    duyet(resolve(ROOT, "src"))
+    expect(pham, "còn link dẫn vào màn đã chặn — bấm vào là bị đá về trang chủ").toEqual([])
   })
 
   /** Ẩn khỏi menu mà để lại ô trên màn kho thì vẫn bấm tới được. */

@@ -386,12 +386,11 @@ export default function CashReceiptDetailPage() {
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                       Chuyến giao
                     </Label>
-                    <Link
-                      href={`/deliveries/${delivery.id}`}
-                      className="font-semibold text-primary hover:underline block"
-                    >
+                    {/* ⚠ Bỏ link sang màn chuyến giao — luồng ấy đã chặn
+                        hẳn, link chỉ đá về trang chủ. Xem `laManLuongCu`. */}
+                    <span className="font-semibold block">
                       {delivery.route_name || "Chi tiết chuyến"}
-                    </Link>
+                    </span>
                   </div>
                 )}
                 {receipt.received_at && (

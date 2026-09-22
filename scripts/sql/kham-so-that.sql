@@ -128,4 +128,22 @@ FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.prosecdef AND p.proname LIKE '\_%'
   AND (has_function_privilege('anon', p.oid, 'EXECUTE')
        OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+UNION ALL
+-- 11. Mig 167–171 — tiền / kho / đơn / phiếu trả ghi trong một giao dịch
+SELECT 11, 'Mig 167–171 (ghi một giao dịch + khoá ghi thẳng sổ kho)',
+  CASE WHEN count(*) FILTER (WHERE f IS NULL) = 0 AND
+            (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal
+               AND tgname IN ('trg_khoa_ghi_thang_lo','trg_khoa_ghi_thang_phieu_kho','trg_khoa_ghi_thang_dong_kho')) = 3
+       THEN 'OK — đủ 6 hàm và 3 trigger'
+       ELSE 'THIẾU — ' || coalesce(string_agg(ten, ', ') FILTER (WHERE f IS NULL), 'trigger khoá sổ kho') END,
+  ''
+FROM (VALUES
+  ('record_payable_payment(uuid,numeric,text,text)'),
+  ('post_stock_import(jsonb)'),
+  ('create_order_with_lines(jsonb)'),
+  ('reject_stock_adjustment(uuid,text)'),
+  ('create_return_with_lines(jsonb,jsonb)'),
+  ('user_has_permission(uuid,text)')
+) v(ten)
+LEFT JOIN LATERAL (SELECT to_regprocedure('public.' || v.ten) AS f) x ON true
 ) t ORDER BY stt;

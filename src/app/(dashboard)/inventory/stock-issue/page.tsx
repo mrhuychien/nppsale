@@ -225,11 +225,19 @@ export default function StockIssuePage() {
           }))
         )
         .select("id")
-      if (lErr) throw new Error(lErr.message)
+      /* Dọn phiếu tạm vừa lập khi bước sau hỏng — xem chú thích ở nhánh RPC. */
+      const donPhieuTam = async (loi: string) => {
+        const { error: huyErr } = await supabase.rpc("cancel_stock_entry", {
+          p_entry_id: entryId,
+          p_reason: "Ghi sổ không thành — huỷ phiếu tạm",
+        })
+        return new Error(loi + (huyErr ? " (Phiếu tạm vừa lập CHƯA huỷ được — xoá ở danh sách phiếu kho.)" : ""))
+      }
+      if (lErr) throw await donPhieuTam(lErr.message)
       /* ⚠ RLS TỪ CHỐI = 0 DÒNG, HTTP 200, `error` null. Không đếm là
          một phiếu KHÔNG CÓ DÒNG NÀO được báo "đã lưu". */
       if (!ins || ins.length === 0) {
-        throw new Error("Không ghi được dòng hàng nào — nhiều khả năng bạn không có quyền lập phiếu xuất kho.")
+        throw await donPhieuTam("Không ghi được dòng hàng nào — nhiều khả năng bạn không có quyền lập phiếu xuất kho.")
       }
 
       /* ⚠ HAI RPC KHÁC NHAU. `post_stock_issue` chỉ TRỪ kho;
@@ -239,7 +247,13 @@ export default function StockIssuePage() {
         transfer ? "post_stock_transfer" : "post_stock_issue",
         { p_entry_id: entryId }
       )
-      if (rErr) throw new Error(friendlyIssueError(rErr.message))
+      /**
+       * ⚠ GHI SỔ HỎNG THÌ DỌN PHIẾU TẠM VỪA LẬP. Không dọn thì mỗi lần bấm
+       *   lại là thêm một phiếu nháp mồ côi ở danh sách phiếu kho — và ai
+       *   đó bấm "Duyệt" hàng loạt là ghi sổ cả chồng phiếu trùng. Phiếu
+       *   nháp chưa đụng tới kho, nên huỷ nó không hoàn gì cả.
+       */
+      if (rErr) throw await donPhieuTam(friendlyIssueError(rErr.message))
 
       toast({
         title: transfer ? "Đã chuyển kho" : "Đã xuất kho",

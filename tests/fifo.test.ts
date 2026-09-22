@@ -249,17 +249,25 @@ describe("Mọi nút ghi sổ phiếu xuất đều trừ tồn", () => {
     expect(ENTRY).toContain("postStockExport(supabase, entry.id)")
   })
 
+  /**
+   * ⚠ TỪ ĐỢT QA 22/09/2026 MỌI LOẠI PHIẾU đi qua `ghiSoPhieuNhap` — chọn
+   *   đúng RPC theo loại (xuất có vùng → `post_stock_issue`, chuyển kho →
+   *   `post_stock_transfer`, xuất cũ → `post_stock_export`). Bản trước chỉ
+   *   bắt phiếu XUẤT đi RPC; phiếu chuyển kho vẫn UPDATE thẳng và kho
+   *   đứng yên. Hành vi chọn RPC có chốt chạy ở `kho-dot3.test.ts`.
+   */
   it("duyệt một phiếu ở danh sách cũng gọi RPC", () => {
     const fn = LIST.slice(LIST.indexOf("const handleApprove"), LIST.indexOf("const handleCancel"))
-    expect(fn).toContain('e.type === "export"')
-    expect(fn).toContain("postStockExport(supabase, e.id)")
+    expect(fn).toContain("ghiSoPhieuNhap(supabase, e)")
+    expect(fn).not.toContain(".update(")
   })
 
   it("duyệt hàng loạt cũng gọi RPC cho phiếu xuất", () => {
     const fn = LIST.slice(LIST.indexOf("const approveBulk"), LIST.indexOf("const cancelBulk"))
-    expect(fn).toContain("postStockExport(supabase, id)")
+    expect(fn).toContain("ghiSoPhieuNhap(supabase, e)")
     // Từng phiếu một giao dịch riêng: một phiếu thiếu tồn không kéo đổ cả lô.
-    expect(fn).toContain("for (const id of exportIds)")
+    expect(fn).toContain("for (const e of selected)")
+    expect(fn).not.toContain(".update(")
   })
 
   /**

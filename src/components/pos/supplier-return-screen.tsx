@@ -30,7 +30,7 @@
  * `INSUFFICIENT_STOCK` trong khi kho bên kia đang đầy hàng.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -40,6 +40,7 @@ import {
   loadSupplierDebt, loadReceiptsOfSupplier, loadReceiptLinesForReturn,
   type PosReceiptRef,
 } from "@/lib/pos/load"
+import { donViNapLai } from "@/lib/pos/units"
 import { savePosSupplierReturn } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
@@ -112,6 +113,18 @@ export function SupplierReturnScreen({
   lotClosed = false,
 }: SupplierReturnScreenProps) {
   const { products, suppliers, loading, warnings } = usePosRefData()
+  /**
+   * Đơn vị trong danh mục của một mặt hàng — để dòng NẠP LẠI vẫn đổi được
+   * đơn vị. Đọc qua ref: phiếu có thể nạp xong TRƯỚC danh mục, và hệ số
+   * của đơn vị đã lưu lấy từ chính dòng chứ không từ đây (`donViNapLai`).
+   */
+  const productsRef = useRef(products)
+  productsRef.current = products
+  const danhMucDonVi = (id: string) =>
+    productsRef.current.find((x) => x.id === id)?.units?.map((u) => ({
+      unit_name: u.unit_name,
+      conversion: Number(u.conversion) || 1,
+    }))
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -269,7 +282,7 @@ export function SupplierReturnScreen({
           .select(
             "id, return_code, supplier_id, return_date, warehouse_zone, reason, discount, notes, status, " +
               "supplier:suppliers(name, code), " +
-              "lines:supplier_return_lines(product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))"
+              "lines:supplier_return_lines(product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, notes, product:products(name, sku))"
           )
           .eq("id", returnId)
           .maybeSingle()
@@ -281,7 +294,7 @@ export function SupplierReturnScreen({
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
-            line_discount: number; notes: string | null
+            line_discount: number; conversion_factor: number | null; notes: string | null
             product?: { name?: string | null; sku?: string | null } | null
           }> | null
         } | null
@@ -300,7 +313,7 @@ export function SupplierReturnScreen({
             sku: x.product?.sku ?? "",
             name: x.product?.name ?? "Sản phẩm đã xoá",
             unit: x.unit_name,
-            units: [{ unit_name: x.unit_name, conversion: 1 }],
+            units: donViNapLai(x.unit_name, x.conversion_factor, danhMucDonVi(x.product_id)),
             qty: Number(x.quantity) || 0,
             price: Number(x.unit_price) || 0,
             discount: { value: Number(x.line_discount) || 0, unit: "vnd" as const },
@@ -358,7 +371,7 @@ export function SupplierReturnScreen({
             sku: x.sku,
             name: x.name,
             unit: x.unitName,
-            units: [{ unit_name: x.unitName, conversion: 1 }],
+            units: donViNapLai(x.unitName, x.conversion, danhMucDonVi(x.productId)),
             /* ⚠ SỐ LƯỢNG VỀ 0, KHÔNG BẰNG SỐ ĐÃ NHẬP. Điền sẵn cả
                chuyến là một cú bấm Enter nhầm trả sạch phiếu nhập. */
             qty: 0,

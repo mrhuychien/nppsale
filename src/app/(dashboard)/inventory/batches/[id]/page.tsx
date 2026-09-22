@@ -97,8 +97,8 @@ export default function BatchDetailPage() {
             manufactured_at: editForm.manufactured_at || null,
             expires_at: editForm.expires_at,
             location: editForm.location.trim() || null,
-            qty_on_hand: Number(editForm.qty_on_hand),
-            unit_cost: Number(editForm.unit_cost) || 0,
+            // Giá vốn chỉ sửa được khi lô đang rỗng — xem trigger mig 170.
+            ...(Number(batch.qty_on_hand) === 0 ? { unit_cost: Number(editForm.unit_cost) || 0 } : {}),
           })
           .eq("id", batch.id)
       )
@@ -247,14 +247,15 @@ export default function BatchDetailPage() {
                         required
                       />
                     </div>
+                    {/* ⚠ SỐ TỒN KHÔNG SỬA Ở ĐÂY (mig 170). Gõ lại tồn là vượt qua
+                        bước duyệt điều chỉnh, không có dòng thẻ kho, không ghi
+                        hao hụt — lệch phải đi qua phiếu kiểm kê. */}
                     <div className="space-y-2">
                       <Label>Tồn hiện tại</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editForm.qty_on_hand}
-                        onChange={(e) => setEditForm({ ...editForm, qty_on_hand: Number(e.target.value) })}
-                      />
+                      <Input type="number" value={editForm.qty_on_hand} disabled readOnly />
+                      <p className="text-xs text-muted-foreground">
+                        Lệch tồn thì lập <Link href="/inventory/stocktake-adjust" className="underline">phiếu kiểm kê</Link>.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Giá vốn (trên ĐVT cơ bản)</Label>
@@ -264,6 +265,8 @@ export default function BatchDetailPage() {
                         value={editForm.unit_cost}
                         onChange={(e) => setEditForm({ ...editForm, unit_cost: Number(e.target.value) })}
                         placeholder="0"
+                        disabled={Number(batch.qty_on_hand) !== 0}
+                        title={Number(batch.qty_on_hand) !== 0 ? "Lô đang có tồn — giá vốn đã đi vào các phiếu xuất trước đó" : undefined}
                       />
                     </div>
                   </div>
@@ -364,7 +367,9 @@ export default function BatchDetailPage() {
             </CardContent>
           </Card>
 
-          {canDelete && (
+          {/* Chỉ xoá được lô RỖNG — lô còn hàng xoá đi là hàng biến khỏi kho
+              mà thẻ kho không có dòng nào (mig 170). */}
+          {canDelete && Number(batch.qty_on_hand) === 0 && (
             <Card>
               <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
               <CardContent>

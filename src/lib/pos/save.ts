@@ -408,6 +408,19 @@ export function posLinesToReceipt(lines: readonly PosLine[]): ReceiptLine[] {
   })
 }
 
+/** Trạng thái hiện tại của phiếu — đọc NGAY TRƯỚC khi ghi, không tin số lúc mở màn. */
+async function docTrangThai(
+  sb: SupabaseClient,
+  bang: "purchase_invoices" | "supplier_returns",
+  id: string
+): Promise<string> {
+  const { data, error } = await sb.from(bang).select("status").eq("id", id).maybeSingle()
+  if (error) throw error
+  const st = (data as { status?: string } | null)?.status
+  if (!st) throw new Error("Không đọc được phiếu — có thể đã bị xoá, hoặc bạn không có quyền với phiếu này.")
+  return st
+}
+
 export async function savePosPurchase(
   sb: SupabaseClient,
   o: {
@@ -461,7 +474,31 @@ export async function savePosPurchase(
     assertWrote(data as unknown[], "phiếu nhập")
     id = ((data as unknown) as Array<{ id: string }>)[0].id
   } else {
-    const { data, error } = await sb.from("purchase_invoices").update(head).eq("id", id).select("id")
+    /**
+     * ⚠ PHIẾU ĐÃ HOÀN THÀNH THÌ HUỶ TRƯỚC, hỏng thì DỪNG HẲN — đúng như
+     *   `/purchasing/receipts/[id]/edit`. Bản cũ ghi đè đầu phiếu và dòng
+     *   hàng lên phiếu `completed`, rồi `complete_purchase_invoice` gặp
+     *   `completed` thì đứng yên. Đã đo: phiếu báo 10 thùng / 500.000
+     *   trong khi kho vẫn 48 và công nợ NCC vẫn 96.000 — chứng từ nói một
+     *   đằng, kho và sổ nợ nói một nẻo.
+     */
+    const trangThai = await docTrangThai(sb, "purchase_invoices", id)
+    if (trangThai === "cancelled") {
+      throw new Error("Phiếu nhập này đã huỷ — không sửa được. Lập phiếu mới.")
+    }
+    if (trangThai === "completed") {
+      const { error } = await sb.rpc("cancel_purchase_invoice", { p_invoice_id: id, p_reason: "Sửa phiếu từ POS — lập lại" })
+      if (error) throw error
+    }
+    const { data, error } = await sb
+      .from("purchase_invoices")
+      .update(
+        trangThai === "completed"
+          ? { ...head, status: "draft", cancelled_at: null, cancelled_by: null, cancel_reason: null }
+          : head
+      )
+      .eq("id", id)
+      .select("id")
     if (error) throw error
     assertWrote(data as unknown[], "phiếu nhập")
   }
@@ -516,7 +553,21 @@ export async function savePosSupplierReturn(
     assertWrote(data as unknown[], "phiếu trả NCC")
     id = ((data as unknown) as Array<{ id: string }>)[0].id
   } else {
-    const { data, error } = await sb.from("supplier_returns").update(head).eq("id", id).select("id")
+    /* ⚠ Cùng luật với phiếu nhập ở trên: phiếu đã gửi thì huỷ trước
+       (hàng về lại kho, khoản giảm công nợ NCC bị xoá), hỏng thì dừng. */
+    const trangThai = await docTrangThai(sb, "supplier_returns", id)
+    if (trangThai === "cancelled") {
+      throw new Error("Phiếu trả NCC này đã huỷ — không sửa được. Lập phiếu mới.")
+    }
+    if (trangThai === "completed") {
+      const { error } = await sb.rpc("cancel_supplier_return", { p_return_id: id, p_reason: "Sửa phiếu từ POS — lập lại" })
+      if (error) throw error
+    }
+    const { data, error } = await sb
+      .from("supplier_returns")
+      .update(trangThai === "completed" ? { ...head, status: "draft", cancel_reason: null } : head)
+      .eq("id", id)
+      .select("id")
     if (error) throw error
     assertWrote(data as unknown[], "phiếu trả NCC")
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   explainAdjustmentError,
@@ -237,24 +237,26 @@ describe("Thư viện gọi RPC", () => {
 describe("NO_BATCH: lối thoát phải đi được", () => {
   const FORM = read("src/app/(dashboard)/inventory/batches/new/page.tsx")
 
+  /**
+   * ⚠ TỪ MIG 170 LÔ TẠO Ở MÀN NÀY LUÔN RỖNG — máy chủ từ chối lô có tồn
+   *   gửi thẳng từ trình duyệt. Lối thoát của NO_BATCH (tạo lô rỗng rồi để
+   *   phiếu kiểm kê ghi phần thừa vào) vẫn đi được; cái bẫy "gõ sẵn số
+   *   thừa ở đây rồi phiếu kiểm kê cộng thêm lần nữa" thì không còn cửa.
+   */
   it("màn tạo lô nhận số lượng ban đầu = 0", () => {
-    // Chặn `qty <= 0` là bịt đúng lối thoát duy nhất.
     expect(FORM).not.toContain("if (qty <= 0)")
-    expect(FORM).toContain("if (!Number.isFinite(qty) || qty < 0)")
-    expect(FORM).toContain("min={0}")
+    expect(FORM).toContain("const qty = 0")
+    expect(FORM).toMatch(/qty_initial: qty,\s*qty_on_hand: qty,/)
   })
 
   it("màn tạo lô cảnh báo cái bẫy cộng hai lần", () => {
-    expect(FORM).toContain("cộng hai lần")
+    expect(FORM).toContain("cộng thêm lần nữa")
   })
 
-  /**
-   * ⚠ CHUỖI RỖNG VÀ RÁC PHẢI BỊ CHẶN. `parseInt(" ")` ra NaN, mà
-   * `NaN < 0` là false — nới `qty <= 0` thành `qty < 0` mà quên
-   * `Number.isFinite` là thả NaN xuống thẳng cột NOT NULL.
-   */
-  it("vẫn chặn số lượng không phải số", () => {
-    expect(FORM).toContain("Number.isFinite(qty)")
+  it("máy chủ cũng chỉ nhận lô rỗng từ màn hình", () => {
+    const dir = resolve(__dirname, "..", "supabase/migrations")
+    const M = readFileSync(resolve(dir, readdirSync(dir).find((f) => f.startsWith("170_"))!), "utf-8")
+    expect(M).toContain("IF COALESCE(NEW.qty_on_hand, 0) <> 0 OR COALESCE(NEW.qty_initial, 0) <> 0 THEN")
   })
 })
 

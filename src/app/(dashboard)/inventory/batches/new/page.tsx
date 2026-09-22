@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -25,7 +26,6 @@ export default function NewBatchPage() {
   const [manufacturedAt, setManufacturedAt] = useState("")
   const [expiresAt, setExpiresAt] = useState("")
   const [location, setLocation] = useState("")
-  const [qtyInitial, setQtyInitial] = useState("")
   const [loading, setLoading] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
   const supabase = createClient()
@@ -59,23 +59,19 @@ export default function NewBatchPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!productId || !batchCode.trim() || !expiresAt || !qtyInitial) {
+    if (!productId || !batchCode.trim() || !expiresAt) {
       toast({ title: "Vui lòng nhập đầy đủ thông tin bắt buộc", variant: "destructive" })
       return
     }
     /**
-     * ⚠ 0 LÀ HỢP LỆ, ĐỪNG CHẶN LẠI. Mig 123 dừng phiếu kiểm kê khi sản
-     * phẩm thừa hàng mà chưa có lô nào ("NO_BATCH: … Tạo lô cho sản phẩm
-     * này trước."). Cách đi đúng là tạo một lô RỖNG rồi để phiếu kiểm kê
-     * ghi phần thừa vào đó. Chặn 0 thì lối thoát duy nhất còn lại là gõ
-     * sẵn số thừa vào đây — và phiếu kiểm kê sẽ cộng thêm lần nữa, kho
-     * thành GẤP ĐÔI. Cơ sở dữ liệu không hề cấm 0; chỉ màn này cấm.
+     * ⚠ LÔ RỖNG. Mig 123 dừng phiếu kiểm kê khi sản phẩm thừa hàng mà chưa
+     * có lô nào ("NO_BATCH: … Tạo lô cho sản phẩm này trước."). Cách đi
+     * đúng là tạo một lô RỖNG rồi để phiếu kiểm kê ghi phần thừa vào đó.
+     * Từ mig 170 máy chủ cũng chỉ nhận lô rỗng từ màn hình — gõ sẵn số ở
+     * đây là cộng kho mà không có dòng thẻ kho, và phiếu kiểm kê
+     * cộng thêm lần nữa.
      */
-    const qty = parseInt(qtyInitial, 10)
-    if (!Number.isFinite(qty) || qty < 0) {
-      toast({ title: "Số lượng không hợp lệ (0 trở lên)", variant: "destructive" })
-      return
-    }
+    const qty = 0
     if (!user?.org_id) {
       toast({ title: "Không xác định được tổ chức", variant: "destructive" })
       return
@@ -167,22 +163,15 @@ export default function NewBatchPage() {
                   placeholder="VD: T2-K3-05"
                 />
               </div>
+              {/* ⚠ LÔ TẠO Ở ĐÂY LUÔN RỖNG (mig 170). Hàng có tồn vào kho qua
+                  Nhập kho hoặc phiếu kiểm kê — có thẻ kho, có giá vốn. */}
               <div className="space-y-2">
-                <Label>Số lượng ban đầu *</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={qtyInitial}
-                  onChange={(e) => setQtyInitial(e.target.value)}
-                  required
-                  placeholder="Tồn ban đầu (= tồn hiện tại)"
-                />
-                <p className="text-xs text-muted-foreground">Tồn hiện tại sẽ được đặt bằng số lượng ban đầu.</p>
-                <p className="text-xs text-amber-600">
-                  Đang tạo lô để duyệt phiếu kiểm kê thừa hàng? Nhập <strong>0</strong>. Phiếu
-                  kiểm kê sẽ ghi phần thừa vào lô này — gõ sẵn số thừa ở đây thì kho bị
-                  cộng hai lần.
+                <Label>Số lượng ban đầu</Label>
+                <Input type="number" value={0} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  Lô tạo ở đây là lô <strong>rỗng</strong> — dùng khi phiếu kiểm kê cần ghi phần thừa vào
+                  một lô chưa có. Nhập hàng có số lượng thì dùng{" "}
+                  <Link href="/inventory/stock-in" className="underline">Nhập kho</Link>.
                 </p>
               </div>
             </div>

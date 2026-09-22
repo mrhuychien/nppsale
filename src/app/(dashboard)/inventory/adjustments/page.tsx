@@ -244,11 +244,19 @@ export default function AdjustmentsPage() {
     if (!confirm(`Hủy phiếu ${a.entry_code}? Không tác động đến kho.`)) return
     setRejectingId(a.id)
     try {
-      await supabase
-        .from("stock_entries")
-        .update({ status: "cancelled" })
-        .eq("id", a.id).throwOnError()
-      toast({ title: `Đã hủy ${a.entry_code}` })
+      /**
+       * ⚠ QUA RPC `reject_stock_adjustment` (mig 170), KHÔNG UPDATE THẲNG.
+       *   Người duyệt được (chủ + quản lý, `inventory.approve`) phải từ
+       *   chối được — nhưng RLS `stock_entries` chỉ cho chủ + thủ kho, nên
+       *   bản cũ để quản lý bấm Huỷ ra 0 dòng mà màn vẫn báo "Đã hủy".
+       *   `.throwOnError()` KHÔNG bắt được từ chối kiểu ấy — đã đo.
+       */
+      const { data, error } = await supabase.rpc("reject_stock_adjustment", {
+        p_entry_id: a.id,
+        p_reason: "Từ chối ở màn Điều chỉnh tồn kho",
+      })
+      if (error) throw error
+      toast({ title: data === false ? `${a.entry_code} đã huỷ từ trước` : `Đã hủy ${a.entry_code}` })
       await fetchData()
     } catch (err) {
       const msg = errorMessage(err, "Lỗi")

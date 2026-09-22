@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
+import { duocSuaPhieuTra, duocXoaPhieuTra } from "@/lib/sell/return-roles"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -329,14 +330,15 @@ export default function ReturnDetailPage() {
   })
   // Phiếu trả giờ chỉ là bản ghi tra cứu — không còn workflow duyệt.
   // Cho phép sửa ghi chú / credit note + (owner) xoá.
-  const canEdit = !!user && hasPermission(user.role, "returns", "update")
+  // Chép đúng RLS của `returns` — xem `duocSuaPhieuTra` / `duocXoaPhieuTra`.
+  const canEdit = !!user && duocSuaPhieuTra(user.role, user.id, ret)
   /**
    * ⚠ TÊN QUYỀN PHẢI KHỚP THỨ RPC KIỂM. `complete_return` và
    * `cancel_return` đều hỏi `returns.approve` (migration 120) — gài màn
    * hình bằng một quyền khác là nút hiện ra rồi RPC ném FORBIDDEN.
    */
   const canApprove = !!user && hasPermission(user.role, "returns", "approve")
-  const canDelete = !!user && user.role === "owner"
+  const canDelete = !!user && duocXoaPhieuTra(user.role, user.id, ret)
 
   return (
     <div className="space-y-4">

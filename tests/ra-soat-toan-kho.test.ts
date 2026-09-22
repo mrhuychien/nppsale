@@ -59,44 +59,29 @@ function moiTep(): string[] {
  */
 const CON_NO_GHI_KHONG_KIEM = [
   "src/app/(dashboard)/commissions/policies/[id]/page.tsx",
-  "src/app/(dashboard)/customers/[id]/page.tsx",
   "src/app/(dashboard)/customers/page.tsx",
   "src/app/(dashboard)/customers/routes/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/handover/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/settle/page.tsx",
   "src/app/(dashboard)/finance/cash-receipts/[id]/page.tsx",
-  "src/app/(dashboard)/finance/expenses/page.tsx",
   "src/app/(dashboard)/hr/bonus-config/page.tsx",
-  "src/app/(dashboard)/hr/payroll/[id]/page.tsx",
-  "src/app/(dashboard)/inventory/adjustments/page.tsx",
-  "src/app/(dashboard)/inventory/batches/[id]/page.tsx",
-  "src/app/(dashboard)/inventory/batches/page.tsx",
-  "src/app/(dashboard)/inventory/entries/[id]/page.tsx",
-  "src/app/(dashboard)/inventory/entries/page.tsx",
   "src/app/(dashboard)/inventory/pending/page.tsx",
   "src/app/(dashboard)/inventory/stock-out/collect/[entryId]/page.tsx",
   "src/app/(dashboard)/inventory/stock-out/page.tsx",
-  "src/app/(dashboard)/invoices/[id]/page.tsx",
   "src/app/(dashboard)/notifications/page.tsx",
-  "src/app/(dashboard)/orders/[id]/page.tsx",
   "src/app/(dashboard)/payables/[id]/page.tsx",
-  "src/app/(dashboard)/products/[id]/page.tsx",
   "src/app/(dashboard)/products/page.tsx",
   "src/app/(dashboard)/promotions/[id]/page.tsx",
   "src/app/(dashboard)/promotions/page.tsx",
-  "src/app/(dashboard)/purchase-returns/[id]/page.tsx",
   "src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx",
-  "src/app/(dashboard)/receivables/[id]/page.tsx",
   "src/app/(dashboard)/sales/pjp/page.tsx",
   "src/app/(dashboard)/settings/org/page.tsx",
   "src/app/(dashboard)/settings/users/[id]/page.tsx",
-  "src/app/(dashboard)/settings/users/[id]/salary/page.tsx",
   "src/app/(dashboard)/settings/users/page.tsx",
   "src/app/(dashboard)/setup/page.tsx",
   "src/app/(dashboard)/suppliers/[id]/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",
-  "src/components/customers/assignment-manager.tsx",
   "src/components/customers/customer-form.tsx",
   "src/components/customers/customer-photo-capture.tsx",
   "src/components/deliveries/pod-capture-sheet.tsx",
@@ -161,6 +146,10 @@ describe("rà soát: ghi từ trình duyệt phải kiểm số dòng", () => {
     const re = /\.from\("\w+"\)\s*\.(update|delete)\(/g
     let m: RegExpExecArray | null
     while ((m = re.exec(src))) {
+      // Bọc trong `ghiPhaiTrungDong(` là đã kiểm — hàm ấy tự `.select()` và
+      // ném khi 0 dòng. Tìm lùi tới đầu câu lệnh (dấu `;` hoặc `{` gần nhất).
+      const dau = Math.max(0, src.lastIndexOf(";", m.index), src.lastIndexOf("{", m.index))
+      if (src.slice(dau, m.index).includes("ghiPhaiTrungDong(")) continue
       if (!src.slice(m.index, m.index + 600).includes(".select(")) return true
     }
     return false
@@ -197,6 +186,13 @@ describe("rà soát: ghi từ trình duyệt phải kiểm số dòng", () => {
     expect(
       ghiKhongKiem('const { data } = await supabase.from("customers").delete().eq("id", id).select("id")')
     ).toBe(false)
+    expect(
+      ghiKhongKiem('await ghiPhaiTrungDong(\n  supabase.from("customers").delete().eq("id", id)\n)')
+    ).toBe(false)
+    // Bọc ở câu lệnh TRƯỚC không che được câu lệnh sau.
+    expect(
+      ghiKhongKiem('await ghiPhaiTrungDong(q); await supabase.from("customers").delete().eq("id", id)')
+    ).toBe(true)
   })
 })
 

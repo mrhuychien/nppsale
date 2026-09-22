@@ -28,8 +28,8 @@ import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
-import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
 import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
+import { ghiSoPhieuNhap } from "@/lib/inventory/approve-entry"
 import {
   ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
@@ -84,7 +84,7 @@ export default function StockEntriesPage() {
     setLoading(true)
     const { data, error: dataErr } = await supabase
       .from("stock_entries")
-      .select("id, entry_code, type, status, notes, created_at, creator:users!stock_entries_created_by_fkey(*)")
+      .select("id, entry_code, type, status, notes, created_at, warehouse_zone, creator:users!stock_entries_created_by_fkey(*)")
       .order("created_at", { ascending: false })
     if (dataErr) console.error("[inventory/entries] truy vấn lỗi:", dataErr.message)
     setEntries(((data as unknown) as StockEntry[]) || [])
@@ -99,7 +99,11 @@ export default function StockEntriesPage() {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      await ghiPhaiTrungDong(supabase.from("stock_entries").delete().eq("id", deleteTarget.id))
+      // Chỉ phiếu NHÁP — phiếu đã ghi sổ dùng Huỷ phiếu để hàng về lại kho (mig 170).
+      await ghiPhaiTrungDong(
+        supabase.from("stock_entries").delete().eq("id", deleteTarget.id).eq("status", "draft"),
+        "Chỉ xoá được phiếu NHÁP. Phiếu đã ghi sổ thì dùng Huỷ phiếu để hàng về lại kho."
+      )
       toast({ title: `Đã xóa phiếu ${deleteTarget.entry_code}` })
       setDeleteTarget(null)
       fetchData()
@@ -113,26 +117,17 @@ export default function StockEntriesPage() {
   const handleApprove = async (e: StockEntry) => {
     if (!confirm(`Duyệt phiếu ${e.entry_code}?`)) return
     try {
-      // Phiếu XUẤT phải đi qua RPC: duyệt bằng một lệnh update trạng thái
-      // là ghi sổ mà KHÔNG trừ tồn — đúng lỗi NPP-01 (tồn kho cao hơn
-      // thật, giá vốn không được ghi, lãi gộp ra 100%).
-      if (e.type === "export") {
-        const r = await postStockExport(supabase, e.id)
-        const warn = warningsFor(r)
-        toast({
-          title: r.posted ? `Đã duyệt phiếu ${e.entry_code}` : "Phiếu đã được ghi sổ từ trước",
-          description: warn ?? (r.posted ? "Đã trừ tồn kho theo FIFO." : undefined),
-          variant: warn ? "destructive" : undefined,
-        })
-        fetchData()
-        return
-      }
-      await ghiPhaiTrungDong(
-        supabase
-          .from("stock_entries")
-          .update({ status: "posted", posted_at: new Date().toISOString() })
-          .eq("id", e.id)
-      )
+      // ⚠ Đi qua RPC đúng loại phiếu — xem `ghiSoPhieuNhap`. Update thẳng
+      //   trạng thái là ghi sổ mà kho không đổi (lỗi NPP-01, và phiếu
+      //   chuyển kho đo được đúng như thế).
+      const r = await ghiSoPhieuNhap(supabase, e)
+      toast({
+        title: r.posted ? `Đã duyệt phiếu ${e.entry_code}` : "Phiếu đã được ghi sổ từ trước",
+        description: r.canhBao,
+        variant: r.canhBao ? "destructive" : undefined,
+      })
+      fetchData()
+      return
       toast({ title: `Đã duyệt phiếu ${e.entry_code}` })
       fetchData()
     } catch (err) {
@@ -266,11 +261,7 @@ export default function StockEntriesPage() {
       return
     }
     setBulkSaving(true)
-    // Tách hai loại: phiếu XUẤT phải đi qua RPC để trừ tồn theo FIFO,
-    // phiếu còn lại chỉ đổi trạng thái như cũ.
     const selected = entries.filter((e) => ids.includes(e.id))
-    const exportIds = selected.filter((e) => e.type === "export").map((e) => e.id)
-    const otherIds = selected.filter((e) => e.type !== "export").map((e) => e.id)
 
     let okCount = 0
     const failures: string[] = []
@@ -278,24 +269,15 @@ export default function StockEntriesPage() {
     // Từng phiếu một, KHÔNG gom thành một lệnh: mỗi phiếu là một giao
     // dịch riêng, nên một phiếu thiếu tồn chỉ làm hỏng chính nó. Gom lại
     // thì một phiếu hỏng kéo đổ cả lô, và người dùng không biết phiếu nào.
-    for (const id of exportIds) {
-      const code = selected.find((e) => e.id === id)?.entry_code || id.slice(0, 8)
+    for (const e of selected) {
+      const code = e.entry_code || e.id.slice(0, 8)
       try {
-        const r = await postStockExport(supabase, id)
+        const r = await ghiSoPhieuNhap(supabase, e)
         if (r.posted) okCount++
         else failures.push(`${code}: đã ghi sổ từ trước`)
       } catch (err) {
         failures.push(`${code}: ${errorMessage(err)}`)
       }
-    }
-
-    if (otherIds.length > 0) {
-      const { error } = await supabase
-        .from("stock_entries")
-        .update({ status: "posted", posted_at: new Date().toISOString() })
-        .in("id", otherIds)
-      if (error) failures.push(`${otherIds.length} phiếu nhập/chuyển: ${error.message}`)
-      else okCount += otherIds.length
     }
 
     setBulkSaving(false)
@@ -597,7 +579,7 @@ export default function StockEntriesPage() {
                               <CircleX className="mr-2 h-4 w-4 text-[#b54708]" /> Hủy phiếu
                             </DropdownMenuItem>
                           )}
-                          {canDelete && (
+                          {canDelete && (e.status || "posted") === "draft" && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem

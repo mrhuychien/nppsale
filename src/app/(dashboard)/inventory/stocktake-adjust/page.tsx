@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import type { Product, Batch, ExpenseCategory } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface AdjustRow {
   key: string
@@ -298,20 +299,39 @@ export default function StocktakeAdjustPage() {
 
       // 2. Insert lines ONLY — do NOT touch batches or expenses. The
       //    adjustment workflow will do that after approval.
-      for (const r of diffRows) {
-        await supabase.from("stock_entry_lines").insert({
-          entry_id: entry.id,
-          product_id: r.productId,
-          batch_id: r.batchId,
-          unit_name: r.baseUnit,
-          quantity: r.diff, // signed: negative = shrinkage, positive = surplus
-          qty_in_base_uom: r.diff,
-          qty_in_transaction_uom: r.diff,
-          transaction_uom: r.baseUnit,
-          conversion_factor_snapshot: 1,
-          unit_cost: r.batchCost,
-          notes: r.notes || null,
-        }).throwOnError()
+      //
+      // ⚠ MỘT LỆNH CHO CẢ BỘ DÒNG, hỏng thì XOÁ phiếu nháp vừa lập. Bản
+      //   cũ chèn từng dòng: dòng thứ k hỏng là phiếu nháp chỉ có k−1 dòng
+      //   nằm chờ duyệt; lưu lại thì ra phiếu thứ hai đủ dòng; duyệt cả hai
+      //   thì `post_stock_adjustment` áp chênh lệch HAI LẦN cho các dòng
+      //   trùng (nó cộng / trừ theo chênh lệch có dấu, không so tồn).
+      const { data: ins, error: lineErr } = await supabase
+        .from("stock_entry_lines")
+        .insert(
+          diffRows.map((r) => ({
+            entry_id: entry.id,
+            product_id: r.productId,
+            batch_id: r.batchId,
+            unit_name: r.baseUnit,
+            quantity: r.diff, // signed: negative = shrinkage, positive = surplus
+            qty_in_base_uom: r.diff,
+            qty_in_transaction_uom: r.diff,
+            transaction_uom: r.baseUnit,
+            conversion_factor_snapshot: 1,
+            unit_cost: r.batchCost,
+            notes: r.notes || null,
+          }))
+        )
+        .select("id")
+      if (lineErr || (ins?.length ?? 0) !== diffRows.length) {
+        // Dọn cũng phải đếm dòng: RLS từ chối xoá là 0 dòng, không lỗi.
+        const donDuoc = await ghiPhaiTrungDong(
+          supabase.from("stock_entries").delete().eq("id", entry.id).eq("status", "draft")
+        ).then(() => true, () => false)
+        throw new Error(
+          (lineErr ? errorMessage(lineErr) : `Chỉ ghi được ${ins?.length ?? 0}/${diffRows.length} dòng.`) +
+            (donDuoc ? " Chưa có gì được lưu — thử lại." : " Phiếu nháp vừa lập CHƯA xoá được — xoá ở màn Điều chỉnh trước khi lưu lại.")
+        )
       }
 
       toast({

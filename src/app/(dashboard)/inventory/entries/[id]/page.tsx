@@ -419,7 +419,11 @@ export default function StockEntryDetailPage() {
     if (!entry) return
     setActionLoading(true)
     try {
-      await ghiPhaiTrungDong(supabase.from("stock_entries").delete().eq("id", entry.id))
+      // Chỉ phiếu NHÁP — phiếu đã ghi sổ dùng Huỷ phiếu để hàng về lại kho (mig 170).
+      await ghiPhaiTrungDong(
+        supabase.from("stock_entries").delete().eq("id", entry.id).eq("status", "draft"),
+        "Chỉ xoá được phiếu NHÁP. Phiếu đã ghi sổ thì dùng Huỷ phiếu để hàng về lại kho."
+      )
       toast({ title: "Đã xóa phiếu kho" })
       router.push("/inventory/entries")
     } catch (err) {
@@ -964,7 +968,7 @@ export default function StockEntryDetailPage() {
             </CardContent>
           </Card>
 
-          {canDelete && (
+          {canDelete && entry.status === "draft" && (
             <Card>
               <CardHeader><CardTitle>Thao tác</CardTitle></CardHeader>
               <CardContent>

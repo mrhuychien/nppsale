@@ -277,6 +277,8 @@ export interface SourceReceiptLine {
   sku: string
   name: string
   unitName: string
+  /** Hệ số quy đổi của dòng phiếu nhập gốc — trả theo thùng thì phải trừ đúng số hộp. */
+  conversion: number
   /** Số đã nhập theo phiếu — trần của số được trả. */
   receivedQty: number
   unitPrice: number
@@ -312,7 +314,7 @@ export async function loadReceiptLinesForReturn(
     sb.from("purchase_invoices").select("id, receipt_code").eq("id", receiptId).maybeSingle(),
     sb
       .from("purchase_invoice_lines")
-      .select("product_id, unit_name, quantity, unit_price, product:products(name, sku)")
+      .select("product_id, unit_name, quantity, unit_price, conversion_factor, product:products(name, sku)")
       .eq("invoice_id", receiptId)
       .order("sort_order", { ascending: true }),
   ])
@@ -324,6 +326,7 @@ export async function loadReceiptLinesForReturn(
     unit_name: string
     quantity: number
     unit_price: number
+    conversion_factor: number | null
     product?: { name?: string | null; sku?: string | null } | null
   }>) ?? []
 
@@ -348,6 +351,7 @@ export async function loadReceiptLinesForReturn(
       sku: r.product?.sku ?? "",
       name: r.product?.name ?? "Sản phẩm đã xoá",
       unitName: r.unit_name,
+      conversion: Number(r.conversion_factor) || 1,
       receivedQty: Number(r.quantity) || 0,
       unitPrice: Number(r.unit_price) || 0,
       lots: lots

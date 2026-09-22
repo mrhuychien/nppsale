@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { lapPhieuTraMotLan } from "@/lib/sell/create-return"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import {
   RETURN_REASONS,
@@ -439,6 +440,18 @@ export default function NewReturnPage() {
        *   hộ một phiếu là thành một dòng trừ doanh số không ai nhận.
        */
       if (canPickSeller && sellerId) headRow.sales_user_id = sellerId
+
+      // ⚠ MỘT GIAO DỊCH (mig 171) — xem `lapPhieuTraMotLan`. `null` là máy
+      //   chủ chưa có hàm; khi ấy đi đường cũ ngay dưới.
+      const motLan = await lapPhieuTraMotLan(supabase, headRow, lines.map(toReturnLine))
+      if (motLan) {
+        toast({
+          title: "Đã lập phiếu trả hàng",
+          description: `Khoản có ${formatCurrency(credit)} — chờ bấm Hoàn thành để nhập kho và trừ công nợ.`,
+        })
+        router.push(`/returns/${motLan}`)
+        return
+      }
 
       let { data: head, error: headErr } = await supabase
         .from("returns")

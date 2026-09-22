@@ -28,13 +28,14 @@
  * bút toán, và không ai đối chiếu nổi kho sau đó.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { loadSupplierDebt } from "@/lib/pos/load"
+import { donViNapLai } from "@/lib/pos/units"
 import { savePosPurchase } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
@@ -88,6 +89,18 @@ export function PurchaseScreen({
   stockIssued = false,
 }: PurchaseScreenProps) {
   const { products, suppliers, loading, warnings } = usePosRefData()
+  /**
+   * Đơn vị trong danh mục của một mặt hàng — để dòng NẠP LẠI vẫn đổi được
+   * đơn vị. Đọc qua ref: phiếu có thể nạp xong TRƯỚC danh mục, và hệ số
+   * của đơn vị đã lưu lấy từ chính dòng chứ không từ đây (`donViNapLai`).
+   */
+  const productsRef = useRef(products)
+  productsRef.current = products
+  const danhMucDonVi = (id: string) =>
+    productsRef.current.find((x) => x.id === id)?.units?.map((u) => ({
+      unit_name: u.unit_name,
+      conversion: Number(u.conversion) || 1,
+    }))
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -240,7 +253,7 @@ export function PurchaseScreen({
         const sb = createClient()
         const { data, error } = await sb
           .from("purchase_invoices")
-          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, notes, product:products(name, sku))")
+          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, notes, product:products(name, sku))")
           .eq("id", receiptId)
           .maybeSingle()
         if (huy) return
@@ -251,7 +264,7 @@ export function PurchaseScreen({
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
-            line_discount: number; notes: string | null
+            line_discount: number; conversion_factor: number | null; notes: string | null
             product?: { name?: string | null; sku?: string | null } | null
           }> | null
         } | null
@@ -270,7 +283,7 @@ export function PurchaseScreen({
             sku: x.product?.sku ?? "",
             name: x.product?.name ?? "Sản phẩm đã xoá",
             unit: x.unit_name,
-            units: [{ unit_name: x.unit_name, conversion: 1 }],
+            units: donViNapLai(x.unit_name, x.conversion_factor, danhMucDonVi(x.product_id)),
             qty: Number(x.quantity) || 0,
             price: Number(x.unit_price) || 0,
             discount: { value: Number(x.line_discount) || 0, unit: "vnd" as const },

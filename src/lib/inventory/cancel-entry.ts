@@ -37,6 +37,7 @@ export function explainCancelEntryError(raw: string): string {
   const known = [
     "ENTRY_NOT_FOUND", "ORG_MISMATCH", "CANNOT_REVERSE_TYPE",
     "ENTRY_HAS_INVOICE", "NO_CONSUMPTION_TRACE", "NO_BATCH_LINK", "ALREADY_ISSUED",
+    "ENTRY_HAS_SOURCE", "FORBIDDEN",
   ]
   for (const code of known) {
     const i = m.indexOf(code + ": ")

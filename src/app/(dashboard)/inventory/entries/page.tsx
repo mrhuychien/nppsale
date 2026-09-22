@@ -567,7 +567,7 @@ export default function StockEntriesPage() {
                           >
                             <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
                           </DropdownMenuItem>
-                          {(e.status || "posted") === "draft" && e.type !== "stocktake" && (
+                          {canUpdate && (e.status || "posted") === "draft" && e.type !== "stocktake" && (
                             <DropdownMenuItem
                               onClick={(ev) => {
                                 ev.stopPropagation()
@@ -587,7 +587,7 @@ export default function StockEntriesPage() {
                               <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt tại trang điều chỉnh
                             </DropdownMenuItem>
                           )}
-                          {(e.status || "posted") === "posted" && (
+                          {canUpdate && (e.status || "posted") === "posted" && (
                             <DropdownMenuItem
                               onClick={(ev) => {
                                 ev.stopPropagation()

@@ -114,4 +114,18 @@ SELECT 9, 'Mig 165 (NVBH sửa đơn kèm hàng trả không để lại phiếu
 FROM pg_policy
 WHERE polrelid = 'returns'::regclass
   AND polname IN ('Sales can update own draft returns', 'Sales can delete own draft returns')
+UNION ALL
+-- 10. Mig 166 — RPC kho có cổng vai, hàm nội bộ không gọi thẳng được
+SELECT 10, 'Mig 166 (RPC kho kiểm vai, hàm nội bộ đã khoá)',
+  CASE WHEN (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'public' AND p.prosrc LIKE '%(mig 166)%') < 8
+         THEN 'CHƯA — NVBH còn gọi thẳng được RPC huỷ / xuất kho'
+       WHEN count(*) > 0
+         THEN 'HỞ — ' || count(*)::text || ' hàm nội bộ anon/authenticated gọi thẳng được'
+       ELSE 'OK — 8 RPC có cổng vai, 0 hàm nội bộ hở' END,
+  coalesce(string_agg(p.proname, ', '), '')
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prosecdef AND p.proname LIKE '\_%'
+  AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+       OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))
 ) t ORDER BY stt;

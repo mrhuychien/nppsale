@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { duocGhiMuaHang } from "@/lib/purchasing/roles"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -49,7 +50,8 @@ type Detail = Omit<SupplierReturn, "supplier" | "lines"> & {
 export default function PurchaseReturnDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { loading: authLoading } = useRoleGuard("inventory")
+  const { user, loading: authLoading } = useRoleGuard("inventory")
+  const ghiDuoc = duocGhiMuaHang(user?.role)
   const supabase = createClient()
   const { toast } = useToast()
   const [data, setData] = useState<Detail | null>(null)
@@ -168,7 +170,7 @@ export default function PurchaseReturnDetailPage() {
         backHref="/purchase-returns"
       >
         <Badge variant={st.variant}>{st.label}</Badge>
-        {isDraft && (
+        {ghiDuoc && isDraft && (
           <>
             <Button variant="outline" size="sm" asChild>
               <Link href={`/purchase-returns/${data.id}/edit`}>
@@ -189,14 +191,14 @@ export default function PurchaseReturnDetailPage() {
             phiếu đóng cứng — gửi nhầm một phiếu là hàng đã ra khỏi kho,
             công nợ đã giảm, và không có đường nào quay lại ngoài sửa
             tay trong cơ sở dữ liệu. */}
-        {data.status === "completed" && (
+        {ghiDuoc && data.status === "completed" && (
           <Button variant="outline" size="sm" asChild>
             <Link href={`/purchase-returns/${data.id}/edit`}>
               <Pencil className="h-4 w-4 mr-1.5" /> Sửa phiếu
             </Link>
           </Button>
         )}
-        {data.status !== "cancelled" && (
+        {ghiDuoc && data.status !== "cancelled" && (
           <Button variant="outline" size="sm" onClick={handleCancel} disabled={busy}>
             <XCircle className="h-4 w-4 mr-1.5" /> Huỷ phiếu
           </Button>

@@ -14,6 +14,7 @@ import Link from "next/link"
 import { Loader2, PackageCheck, Pencil, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { duocGhiMuaHang } from "@/lib/purchasing/roles"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,7 +64,8 @@ interface Line {
 
 export default function PurchaseReceiptDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { loading: authLoading } = useRoleGuard("inventory")
+  const { user, loading: authLoading } = useRoleGuard("inventory")
+  const ghiDuoc = duocGhiMuaHang(user?.role)
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -245,19 +247,19 @@ export default function PurchaseReceiptDetailPage() {
       </div>
 
       <div className="flex flex-wrap justify-end gap-2">
-        {isDraft && (
+        {ghiDuoc && isDraft && (
           <Button variant="outline" asChild>
             <Link href={`/purchasing/receipts/${head.id}/edit`}>
               <Pencil className="mr-1.5 h-4 w-4" /> Sửa
             </Link>
           </Button>
         )}
-        {head.status !== "cancelled" && (
+        {ghiDuoc && head.status !== "cancelled" && (
           <Button variant="outline" onClick={() => setAskCancel(true)} disabled={busy}>
             <XCircle className="mr-1.5 h-4 w-4" /> Huỷ phiếu
           </Button>
         )}
-        {isDraft && (
+        {ghiDuoc && isDraft && (
           <Button onClick={() => run("complete_purchase_invoice")} disabled={busy || lines.length === 0}>
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-1.5 h-4 w-4" />}
             Hoàn thành

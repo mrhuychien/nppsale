@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
+import { fetchStockEntryLines } from "../src/lib/analytics/sales"
+import { AGGREGATE_ROW_CAP } from "../src/lib/supabase/aggregate"
 
 /**
  * THU TIỀN PHẢI ĐI QUA MỘT GIAO DỊCH, VÀ BÁO CÁO PHẢI CỘNG ĐỦ.
@@ -178,6 +180,27 @@ const MIEN_TRU_BAO_CAO: Array<[string, string]> = [
   ],
 ]
 
+/**
+ * Một `supabase` giả đủ để chạy `fetchStockEntryLines` thật.
+ *
+ * ⚠ DỰNG THEO ĐÚNG CHUỖI GỌI CỦA MÃ THẬT (`from → select → in → range`)
+ *   rồi trả về một thenable như PostgREST. Có thế chốt mới ĐO được luật
+ *   thay vì đọc chữ trong tệp.
+ */
+function kho(kq: { rows?: unknown[]; count?: number; error?: { message: string } }) {
+  const ketQua = {
+    data: kq.error ? null : (kq.rows ?? []),
+    error: kq.error ?? null,
+    count: kq.count ?? (kq.rows ?? []).length,
+  }
+  const chuoi = {
+    select: () => chuoi,
+    in: () => chuoi,
+    range: () => ({ then: (r: (v: unknown) => unknown) => r(ketQua) }),
+  }
+  return { from: () => chuoi }
+}
+
 describe("màn báo cáo cộng đủ số dòng", () => {
   const BANG = new Set([
     "sales_orders", "sales_order_lines", "sales_invoices", "sales_invoice_lines",
@@ -228,6 +251,79 @@ describe("màn báo cáo cộng đủ số dòng", () => {
       expect(() => read(`src/app/(dashboard)/${t}`), `${t} không còn — bỏ miễn trừ đi`).not.toThrow()
       expect(lyDo.length, `${t}: miễn trừ không có lý do`).toBeGreaterThan(40)
     }
+  })
+
+  /**
+   * ⚠ PHÂN TRANG ĐẺ RA MỘT LỖ MỚI, VÀ ĐÚNG LỚP LỖ VỪA ĐI SỬA.
+   *
+   *   Trước khi phân trang, danh sách id bị `db.max_rows` cắt ở 1.000
+   *   nên câu `.in(...)` không bao giờ dài quá. Phân trang xong nó lên
+   *   tới `AGGREGATE_ROW_CAP` = 20.000 uuid — URL vài trăm KB, cổng
+   *   chặn, lỗi chỉ được `console.error`, hàm trả mảng rỗng, và giá vốn
+   *   đọc ra 0. Lợi nhuận cao giả, hoa hồng theo số giả, không gì đỏ.
+   *
+   *   Sửa một lỗ im lặng mà đào một lỗ im lặng khác thì chưa sửa gì cả.
+   */
+  it("mọi phép đọc theo danh sách id đều chia lô", () => {
+    const s = code(read("src/lib/analytics/sales.ts"))
+    expect(s, "không còn hàm chia lô").toContain("docTheoLoId")
+    /* Không hàm nào được nhét thẳng danh sách id vào `.in(...)`. */
+    for (const m of Array.from(s.matchAll(/\.in\("(\w+)", (\w+)\)/g))) {
+      expect(
+        m[2],
+        `\`.in("${m[1]}", ${m[2]})\` nhận cả danh sách — URL sẽ quá dài khi kỳ báo cáo lớn`
+      ).toBe("lo")
+    }
+  })
+
+  /**
+   * ⚠ ĐỌC HỎNG PHẢI NÉM, KHÔNG ĐƯỢC TRẢ MẢNG RỖNG. Một báo cáo tiền
+   *   thiếu dòng trông y hệt một báo cáo đúng.
+   *
+   * ⚠ CHỐT NÀY CHẠY HÀM THẬT. Bản trước chỉ soi xem thân hàm có chuỗi
+   *   `throw new Error` hay không — và một đột biến đổi nhánh lỗi thành
+   *   `continue` vẫn đi lọt, vì nhánh "chạm trần" bên dưới còn giữ
+   *   nguyên chữ ấy. Soi chữ là đếm chữ, không phải đo luật.
+   */
+  it("đọc hỏng thì NÉM, không nuốt thành mảng rỗng", async () => {
+    const sbHong = kho({ error: { message: "gateway từ chối: URI quá dài" } })
+    await expect(
+      fetchStockEntryLines(sbHong as never, ["a", "b"])
+    ).rejects.toThrow(/URI quá dài/)
+  })
+
+  /** ⚠ Và chạm trần gom dòng cũng là thiếu — không được im. */
+  it("chạm trần gom dòng cũng NÉM", async () => {
+    const sbTran = kho({ rows: [{ entry_id: "e" }], count: AGGREGATE_ROW_CAP + 1 })
+    await expect(fetchStockEntryLines(sbTran as never, ["a"])).rejects.toThrow(/trần/)
+  })
+
+  /** ⚠ Và đường bình thường vẫn phải chạy — chốt không được chỉ biết ca hỏng. */
+  it("đọc sạch thì trả đủ dòng của mọi lô", async () => {
+    const sbOk = kho({ rows: [{ entry_id: "e", product_id: "p", quantity: 1, unit_cost: 2 }] })
+    const ids = Array.from({ length: 301 }, (_, i) => `id-${i}`)
+    const rows = await fetchStockEntryLines(sbOk as never, ids)
+    /* 301 id ÷ 150 mỗi lô = 3 lô, mỗi lô trả 1 dòng. */
+    expect(rows).toHaveLength(3)
+  })
+
+  /**
+   * ⚠ VÀ NƠI GỌI PHẢI BẮT. Ném mà không ai bắt là vòng quay không bao
+   *   giờ dừng, không một chữ giải thích — đổi một con số sai lấy một
+   *   màn hình treo.
+   */
+  it.each([
+    ["nhân viên", "src/app/(dashboard)/reports/employees/page.tsx"],
+    ["khách hàng", "src/app/(dashboard)/reports/customers/page.tsx"],
+    ["nhà cung cấp", "src/app/(dashboard)/reports/suppliers/page.tsx"],
+  ])("báo cáo %s bắt lỗi và tắt vòng quay", (_ten, tep) => {
+    const s = code(read(tep))
+    const i = s.indexOf("const load = useCallback")
+    expect(i, "không còn hàm nạp").toBeGreaterThan(-1)
+    const than = s.slice(i, s.indexOf("}, [", i))
+    expect(than, "không bắt lỗi — màn quay mãi").toContain("catch")
+    expect(than, "không tắt vòng quay trong mọi nhánh").toContain("finally")
+    expect(than, "bắt lỗi mà không nói gì").toContain("toast(")
   })
 
   /**

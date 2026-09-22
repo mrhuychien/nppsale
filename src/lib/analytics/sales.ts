@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, AGGREGATE_ROW_CAP } from "@/lib/supabase/aggregate"
 import type { DateRange } from "./period"
 
 /**
@@ -152,16 +152,64 @@ export async function fetchOrderLines(
   orderIds: string[]
 ): Promise<SalesOrderLineRow[]> {
   if (orderIds.length === 0) return []
-  const dataRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("sales_order_lines")
-      .select("id, order_id, product_id, unit_name, quantity, unit_price, line_total", { count: "exact" })
-      .in("order_id", orderIds)
-      .range(from, to)
+  /* ⚠ CHIA LÔ NHƯ HAI HÀM DƯỚI. Hàm này nhận id từ một phép đọc ĐÃ
+     phân trang từ lâu, nên nó mang cái lỗ URL quá dài còn sớm hơn. */
+  return docTheoLoId<SalesOrderLineRow>(
+    orderIds,
+    (lo, from, to) =>
+      supabase
+        .from("sales_order_lines")
+        .select("id, order_id, product_id, unit_name, quantity, unit_price, line_total", { count: "exact" })
+        .in("order_id", lo)
+        .range(from, to),
+    "đọc dòng đơn hàng"
   )
-  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
-  const data = dataRes.rows
-  return (data as SalesOrderLineRow[]) || []
+}
+
+/**
+ * Trần số id nhét vào MỘT câu `.in(...)`.
+ *
+ * ⚠ VÌ SAO PHẢI CHIA LÔ — VÀ ĐÂY LÀ LỖI CHÍNH VIỆC PHÂN TRANG ĐẺ RA.
+ *   Trước khi phân trang, danh sách id lấy về bị `db.max_rows` cắt ở
+ *   1.000 nên câu `.in(...)` không bao giờ dài quá. Phân trang xong nó
+ *   lên tới `AGGREGATE_ROW_CAP` = 20.000 id, mỗi id là một uuid 36 ký
+ *   tự — câu truy vấn thành một URL vài trăm KB và cổng sẽ chặn.
+ *
+ * ⚠ VÀ NÓ HỎNG THEO ĐÚNG KIỂU ĐANG ĐI SỬA: lỗi chỉ được `console.error`
+ *   rồi trả mảng rỗng, nên giá vốn đọc ra 0 — lợi nhuận cao giả, hoa
+ *   hồng tính theo con số giả, không có gì đỏ lên. Sửa một lỗ im lặng
+ *   mà đào một lỗ im lặng khác thì chưa sửa gì cả.
+ *
+ * 150 uuid ≈ 6KB — nằm gọn dưới mọi trần URL thường gặp (8KB/16KB).
+ */
+const ID_MOI_LO = 150
+
+/**
+ * Đọc theo lô id, mỗi lô vẫn phân trang đầy đủ.
+ *
+ * ⚠ NÉM KHI ĐỌC HỎNG, KHÔNG TRẢ MẢNG RỖNG. Một báo cáo tiền thiếu dòng
+ *   trông y hệt một báo cáo đúng; thà không ra số còn hơn ra số sai.
+ */
+async function docTheoLoId<T>(
+  ids: string[],
+  dung: (lo: string[], from: number, to: number) => PromiseLike<{
+    data: unknown
+    error: { message: string } | null
+    count?: number | null
+  }>,
+  ten: string
+): Promise<T[]> {
+  const out: T[] = []
+  for (let i = 0; i < ids.length; i += ID_MOI_LO) {
+    const lo = ids.slice(i, i + ID_MOI_LO)
+    const res = await fetchAllForAggregate<T>((from, to) => dung(lo, from, to))
+    if (res.error) throw new Error(`${ten}: ${res.error}`)
+    if (res.truncated) {
+      throw new Error(`${ten}: một lô vượt trần ${AGGREGATE_ROW_CAP} dòng — con số sẽ thiếu`)
+    }
+    out.push(...res.rows)
+  }
+  return out
 }
 
 export interface StockEntryLineRow {
@@ -200,15 +248,16 @@ export async function fetchStockEntryLines(
   entryIds: string[]
 ): Promise<StockEntryLineRow[]> {
   if (entryIds.length === 0) return []
-  const dataRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("stock_entry_lines")
-      .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
-      .in("entry_id", entryIds)
-      .range(from, to)
+  return docTheoLoId<StockEntryLineRow>(
+    entryIds,
+    (lo, from, to) =>
+      supabase
+        .from("stock_entry_lines")
+        .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+        .in("entry_id", lo)
+        .range(from, to),
+    "đọc dòng phiếu kho"
   )
-  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
-  return (dataRes.rows as StockEntryLineRow[]) || []
 }
 
 /** Dòng hàng trả của các phiếu đã chọn — PHÂN TRANG, cùng lý do trên. */
@@ -217,15 +266,16 @@ export async function fetchReturnLines(
   returnIds: string[]
 ): Promise<ReturnLineRow[]> {
   if (returnIds.length === 0) return []
-  const dataRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("return_lines")
-      .select("return_id, product_id, quantity, line_total", { count: "exact" })
-      .in("return_id", returnIds)
-      .range(from, to)
+  return docTheoLoId<ReturnLineRow>(
+    returnIds,
+    (lo, from, to) =>
+      supabase
+        .from("return_lines")
+        .select("return_id, product_id, quantity, line_total", { count: "exact" })
+        .in("return_id", lo)
+        .range(from, to),
+    "đọc dòng hàng trả"
   )
-  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
-  return (dataRes.rows as ReturnLineRow[]) || []
 }
 
 /** Sum of approved/completed returns within the range. */
@@ -346,18 +396,26 @@ export async function fetchCogsForRange(
     postedAtMap.set(e.id, e.posted_at)
   }
 
-  const linesRes = await fetchAllForAggregate((from, to) =>
-    supabase
-      .from("stock_entry_lines")
-      .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
-      .in("entry_id", ids)
-      .range(from, to)
+  /* ⚠ CHIA LÔ. `ids` đi ra từ một phép đọc đã phân trang nên nó có thể
+     tới 20.000 uuid — nhét cả vào một `.in(...)` là URL vài trăm KB. */
+  const lines = await docTheoLoId<{
+    entry_id: string
+    product_id: string
+    quantity: number
+    unit_cost: number
+  }>(
+    ids,
+    (lo, from, to) =>
+      supabase
+        .from("stock_entry_lines")
+        .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+        .in("entry_id", lo)
+        .range(from, to),
+    "đọc dòng phiếu xuất để tính giá vốn"
   )
-  if (linesRes.error) console.error("[analytics/sales] truy vấn lỗi:", linesRes.error)
-  const lines = linesRes.rows
   let cogs = 0
   const enriched: StockExportLineRow[] = []
-  for (const l of (lines as Array<{ entry_id: string; product_id: string; quantity: number; unit_cost: number }>) || []) {
+  for (const l of lines) {
     const q = Math.abs(Number(l.quantity))
     const c = Number(l.unit_cost || 0)
     cogs += q * c

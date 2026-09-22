@@ -147,12 +147,26 @@ export default function NotificationsPage() {
        ⚠ VÀ 0 DÒNG CŨNG LÀ HỎNG. RLS chỉ cho xoá thông báo của CHÍNH
        mình (`notifications_delete_own`); từ chối thì trả 200 kèm mảng
        rỗng, `error` null. Xem `@/lib/db/must-write`. */
-    const before = items
+    /* ⚠ HOÀN TÁC PHẢI DỰNG LẠI ĐÚNG MỘT DÒNG, KHÔNG DỰNG LẠI CẢ ẢNH CŨ.
+       Bản trước chụp `items` lúc vẽ rồi `setItems(before)` khi hỏng. Xoá
+       nhanh hai dòng liền nhau mà dòng thứ hai hỏng là cả hai quay lại —
+       dòng thứ nhất đã xoá thật cũng sống dậy, và chỉ biến mất ở lần tải
+       trang sau. Chèn lại đúng dòng ấy, vào đúng chỗ cũ của nó. */
+    const viTri = items.findIndex((n) => n.id === id)
+    if (viTri < 0) return
+    const dong = items[viTri]
     setItems((prev) => prev.filter((n) => n.id !== id))
     try {
       await ghiPhaiTrungDong(supabase.from("notifications").delete().eq("id", id))
     } catch (err) {
-      setItems(before)
+      /* ⚠ Chèn lại đúng chỗ cũ, và chỉ khi nó chưa có. Kẹp vị trí theo
+         độ dài hiện tại — trong lúc chờ mạng, danh sách có thể đã ngắn
+         đi vì một cú xoá khác. */
+      setItems((prev) => {
+        if (prev.some((n) => n.id === id)) return prev
+        const v = Math.min(viTri, prev.length)
+        return [...prev.slice(0, v), dong, ...prev.slice(v)]
+      })
       toast({ title: "Không xoá được thông báo", description: errorMessage(err), variant: "destructive" })
     }
   }

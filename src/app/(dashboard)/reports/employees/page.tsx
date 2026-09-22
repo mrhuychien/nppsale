@@ -19,6 +19,8 @@ import {
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { toast } from "@/hooks/use-toast"
+import { errorMessage } from "@/lib/errors"
 
 type Variant = "sales" | "profit" | "by_customer" | "products" | "summary"
 
@@ -105,58 +107,76 @@ export default function EmployeesReportPage() {
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
 
   const load = useCallback(async () => {
+    /* ⚠ CHẶN SỚM NẰM NGOÀI `try`. Để trong thì `finally` tắt vòng quay
+       ngay cả khi chưa hề bắt đầu đọc — màn hiện một báo cáo rỗng trong
+       lúc phiên đăng nhập còn đang tải. */
     if (!user?.org_id) return
-    setLoading(true)
-    const fromIso = `${range.from}T00:00:00Z`
-    const toIso = `${range.to}T23:59:59Z`
-    const [orderList, returnsRows, usersRes, customersRes, productsRes, stockEntriesRes] =
-      await Promise.all([
-        fetchDeliveredOrders(supabase, user.org_id, range),
-        fetchReturnsRows(supabase, user.org_id, range),
-        supabase
-          .from("users")
-          .select("id, full_name, role, is_active")
-          .eq("org_id", user.org_id),
-        supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
-        supabase.from("products").select("id, sku, name, base_unit, sell_price, category, brand").eq("org_id", user.org_id),
-        fetchAllForAggregate<StockEntry>((from, to) =>
+    /**
+     * ⚠ ĐỌC HỎNG THÌ NÓI RA, ĐỪNG QUAY MÃI. Các hàm đọc dòng nay NÉM khi
+     *   truy vấn hỏng thay vì trả mảng rỗng — vì một báo cáo tiền thiếu
+     *   dòng trông y hệt một báo cáo đúng. Nhưng ném mà không ai bắt là
+     *   vòng quay không bao giờ dừng và không có chữ nào giải thích.
+     */
+    try {
+      setLoading(true)
+      const fromIso = `${range.from}T00:00:00Z`
+      const toIso = `${range.to}T23:59:59Z`
+      const [orderList, returnsRows, usersRes, customersRes, productsRes, stockEntriesRes] =
+        await Promise.all([
+          fetchDeliveredOrders(supabase, user.org_id, range),
+          fetchReturnsRows(supabase, user.org_id, range),
           supabase
-            .from("stock_entries")
-            .select("id, type", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .eq("status", "posted")
-            .eq("type", "export")
-            .gte("posted_at", fromIso)
-            .lte("posted_at", toIso)
-            .range(from, to)
-        ),
+            .from("users")
+            .select("id, full_name, role, is_active")
+            .eq("org_id", user.org_id),
+          supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
+          supabase.from("products").select("id, sku, name, base_unit, sell_price, category, brand").eq("org_id", user.org_id),
+          fetchAllForAggregate<StockEntry>((from, to) =>
+            supabase
+              .from("stock_entries")
+              .select("id, type", { count: "exact" })
+              .eq("org_id", user.org_id)
+              .eq("status", "posted")
+              .eq("type", "export")
+              .gte("posted_at", fromIso)
+              .lte("posted_at", toIso)
+              .range(from, to)
+          ),
+        ])
+      const qErr2 = ([usersRes, customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
+        .find((r) => r?.error)?.error
+      if (qErr2) console.error("[reports/employees] truy vấn lỗi:", qErr2.message)
+      if (stockEntriesRes.error) console.error("[reports/employees] truy vấn lỗi:", stockEntriesRes.error)
+      const orderIds = orderList.map((o) => o.id)
+      const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
+      const returnIds = returnsRows.map((r) => r.id)
+      /* ⚠ CẢ BA ĐỀU PHẢI PHÂN TRANG. Trước đây chỉ `fetchOrderLines` phân
+         trang, còn dòng kho và dòng trả nằm ngay cạnh trong cùng
+         `Promise.all` thì đọc trần — quá 1.000 dòng là API trả đúng 1.000,
+         không lỗi, và giá vốn thiếu kéo hoa hồng sai theo. */
+      const [linesList, stockLinesList, returnLinesList] = await Promise.all([
+        fetchOrderLines(supabase, orderIds),
+        fetchStockEntryLines(supabase, stockEntryIds),
+        fetchReturnLines(supabase, returnIds),
       ])
-    const qErr2 = ([usersRes, customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr2) console.error("[reports/employees] truy vấn lỗi:", qErr2.message)
-    if (stockEntriesRes.error) console.error("[reports/employees] truy vấn lỗi:", stockEntriesRes.error)
-    const orderIds = orderList.map((o) => o.id)
-    const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
-    const returnIds = returnsRows.map((r) => r.id)
-    /* ⚠ CẢ BA ĐỀU PHẢI PHÂN TRANG. Trước đây chỉ `fetchOrderLines` phân
-       trang, còn dòng kho và dòng trả nằm ngay cạnh trong cùng
-       `Promise.all` thì đọc trần — quá 1.000 dòng là API trả đúng 1.000,
-       không lỗi, và giá vốn thiếu kéo hoa hồng sai theo. */
-    const [linesList, stockLinesList, returnLinesList] = await Promise.all([
-      fetchOrderLines(supabase, orderIds),
-      fetchStockEntryLines(supabase, stockEntryIds),
-      fetchReturnLines(supabase, returnIds),
-    ])
-    setOrders(orderList)
-    setLines(linesList)
-    setReturns(returnsRows)
-    setUsers((usersRes.data as UserRow[]) || [])
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setProducts((productsRes.data as ProductRow[]) || [])
-    setStockEntries(stockEntriesRes.rows)
-    setStockLines(stockLinesList)
-    setReturnLines(returnLinesList)
-    setLoading(false)
+      setOrders(orderList)
+      setLines(linesList)
+      setReturns(returnsRows)
+      setUsers((usersRes.data as UserRow[]) || [])
+      setCustomers((customersRes.data as CustomerRow[]) || [])
+      setProducts((productsRes.data as ProductRow[]) || [])
+      setStockEntries(stockEntriesRes.rows)
+      setStockLines(stockLinesList)
+      setReturnLines(returnLinesList)
+    } catch (err) {
+      toast({
+        title: "Chưa dựng được báo cáo",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {

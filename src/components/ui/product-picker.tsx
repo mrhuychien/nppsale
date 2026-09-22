@@ -144,6 +144,13 @@ export function ProductPicker<T extends PickerItem>({
      * ⚠ KHÔNG MẤT ĐƯỜNG BÀN PHÍM. Gõ tiếp một chữ là `onChange` xổ lại;
      *   mũi tên xuống cũng xổ lại. Để thêm mặt hàng thứ hai thì đằng nào
      *   cũng phải gõ hoặc bấm, nên không có cú bấm nào thừa ra.
+     *
+     * ⚠ VÀ ĐỪNG GỘP BẢN CỦA MÀN POS VÀO ĐÂY. Ô tìm ở màn POS nằm trong
+     *   cột phải, KHÔNG che gì cả, nên nó cố ý mở suốt cho thao tác
+     *   nhanh — chủ nhà nói rõ 22/09/2026: "bên newdesign nó luôn hiện
+     *   vì nó ko che màn làm đơn". Hai bản khác nhau vì CHỖ ĐỨNG của
+     *   chúng khác nhau, không phải vì một bản bị quên sửa. Thấy hai
+     *   hành vi lệch nhau rồi thống nhất lại là phá đúng một trong hai.
      */
     setOpen(false)
     /**

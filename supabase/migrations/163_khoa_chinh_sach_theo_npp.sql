@@ -53,6 +53,12 @@
 -- ⚠ KHÔNG ĐỤNG VAI TRÒ NÀO. Migration này chỉ THÊM vế "và phải cùng
 --   NPP". Ai đang làm được gì thì vẫn làm được đúng thế, trong nhà mình.
 --
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE` — nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không đọc được kết quả quét rộng. Nay tệp KẾT THÚC BẰNG MỘT CÂU
+--   SELECT; NOTICE giữ nguyên cho người chạy bằng psql/CI.
+--
 -- ⚠ ĐÁNH SỐ 163. `main` giữ 158, 160, 162; `newdesign` giữ 156, 157,
 --   159, 161.
 -- ====================================================================
@@ -404,3 +410,24 @@ END;
 $soi$;
 
 NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN. Bảng này liệt kê MỌI chính
+--   sách GHI trong schema mà chỉ hỏi VAI TRÒ — không hỏi org, không hỏi
+--   `auth.uid()`, không đi qua `EXISTS` nào — tức đúng với MỌI dòng
+--   trong bảng của nó. Rỗng là tốt.
+SELECT c.relname AS bang, p.polname AS chinh_sach,
+       CASE p.polcmd WHEN '*' THEN 'ALL' WHEN 'a' THEN 'INSERT'
+                     WHEN 'w' THEN 'UPDATE' WHEN 'd' THEN 'DELETE' END AS lenh
+FROM pg_policy p
+JOIN pg_class c ON c.oid = p.polrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND p.polcmd IN ('*', 'a', 'w', 'd')
+  AND (coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+    || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''))
+      !~ 'org_id|auth\.uid|user_id|EXISTS|false'
+ORDER BY 1, 2;

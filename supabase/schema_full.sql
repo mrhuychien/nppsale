@@ -28532,6 +28532,12 @@ NOTIFY pgrst, 'reload schema';
 -- ⚠ KHÔNG ĐỤNG VAI TRÒ NÀO. Migration này chỉ THÊM vế "và phải cùng
 --   NPP". Ai đang làm được gì thì vẫn làm được đúng thế, trong nhà mình.
 --
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE` — nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không đọc được kết quả quét rộng. Nay tệp KẾT THÚC BẰNG MỘT CÂU
+--   SELECT; NOTICE giữ nguyên cho người chạy bằng psql/CI.
+--
 -- ⚠ ĐÁNH SỐ 163. `main` giữ 158, 160, 162; `newdesign` giữ 156, 157,
 --   159, 161.
 -- ====================================================================
@@ -28884,6 +28890,27 @@ $soi$;
 
 NOTIFY pgrst, 'reload schema';
 
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN. Bảng này liệt kê MỌI chính
+--   sách GHI trong schema mà chỉ hỏi VAI TRÒ — không hỏi org, không hỏi
+--   `auth.uid()`, không đi qua `EXISTS` nào — tức đúng với MỌI dòng
+--   trong bảng của nó. Rỗng là tốt.
+SELECT c.relname AS bang, p.polname AS chinh_sach,
+       CASE p.polcmd WHEN '*' THEN 'ALL' WHEN 'a' THEN 'INSERT'
+                     WHEN 'w' THEN 'UPDATE' WHEN 'd' THEN 'DELETE' END AS lenh
+FROM pg_policy p
+JOIN pg_class c ON c.oid = p.polrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND p.polcmd IN ('*', 'a', 'w', 'd')
+  AND (coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+    || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''))
+      !~ 'org_id|auth\.uid|user_id|EXISTS|false'
+ORDER BY 1, 2;
+
 
 -- ####################################################################
 -- # 164_doi_soat_tien_da_thu_ma_cong_no_chua_tru.sql
@@ -28948,6 +28975,14 @@ NOTIFY pgrst, 'reload schema';
 --   phần dư thành số dư có của khách; kẹp lại là nuốt mất phần ấy.
 --   Trạng thái tính lại bằng ĐÚNG khối CASE của `void_cash_receipt`,
 --   chép nguyên để hai chỗ không thể lệch nhau.
+--
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE`. Nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không biết sổ vừa được vá bao nhiêu đồng — con số ấy đi vào hư
+--   không, và chạy lại cũng không lấy lại được vì migration idempotent.
+--   Lỗi của tôi. Nay tệp KẾT THÚC BẰNG MỘT CÂU SELECT trả về bảng tóm
+--   tắt, còn NOTICE giữ nguyên cho người chạy bằng psql/CI.
 --
 -- ⚠ ĐÁNH SỐ 164. `main` giữ 158, 160, 162, 163; `newdesign` giữ 156,
 --   157, 159, 161.
@@ -29045,4 +29080,45 @@ END;
 $kiem$;
 
 NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN, và chạy lại là cách đọc
+--   được bảng này. Hai dòng đầu phải bằng 0 sau khi vá; dòng thứ ba là
+--   TRẦN TRÊN của thiệt hại lỗi có thể đã gây ra — số tiền NVBH / tài
+--   xế từng thu, tức đúng những lần mà bản cũ của màn Thu tiền sẽ ghi
+--   phiếu nhưng không trừ được công nợ.
+SELECT
+  'Còn lệch chiều THUẬN (tiền đã thu mà sổ chưa ghi)'      AS hang_muc,
+  count(*)::text                                           AS so_khoan,
+  coalesce(sum(x.tong - x.paid), 0)::text                  AS so_tien
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) > coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Còn lệch chiều NGƯỢC (sổ ghi nhiều hơn phiếu thu) — CẦN NGƯỜI XEM',
+  count(*)::text,
+  coalesce(sum(x.paid - x.tong), 0)::text
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) < coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Phiếu thu do NVBH / tài xế thu — TRẦN TRÊN của thiệt hại đã có',
+  count(DISTINCT p.receivable_id)::text,
+  coalesce(sum(p.amount), 0)::text
+FROM payments p JOIN users u ON u.id = p.collected_by
+WHERE u.role IN ('sales', 'driver')
+UNION ALL
+SELECT 'Tổng phiếu thu trong sổ', count(*)::text, coalesce(sum(amount), 0)::text
+FROM payments;
 

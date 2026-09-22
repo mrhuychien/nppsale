@@ -172,7 +172,21 @@ describe("migration 163 tự canh lấy mình", () => {
     expect(MA, "không quét rộng — lần sau lại phải tình cờ mới thấy").toContain("RAISE WARNING")
   })
 
-  it("kết thúc bằng NOTIFY pgrst", () => {
-    expect(MIG.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true)
+  /**
+   * ⚠ LUẬT LÀ "CÓ NẠP LẠI SCHEMA", KHÔNG PHẢI "ĐỨNG Ở DÒNG CUỐI". Bản
+   *   trước đòi tệp KẾT THÚC bằng câu ấy; khi tệp mọc thêm một câu
+   *   SELECT tóm tắt ở cuối (để trình soạn SQL của Supabase có gì mà
+   *   hiện) thì chốt đỏ oan — mã dời chỗ, luật không đổi.
+   *
+   * ⚠ NHƯNG `NOTIFY` PHẢI ĐỨNG SAU MỌI LỆNH ĐỔI CHÍNH SÁCH, nếu không
+   *   PostgREST nạp lại bản cũ. Chốt giữ đúng thứ tự ấy.
+   */
+  it("có nạp lại schema, và nạp SAU khi đã đổi xong chính sách", () => {
+    expect(MIG, "thiếu lệnh nạp lại schema").toContain("NOTIFY pgrst, 'reload schema';")
+    const cuoiPolicy = MA.lastIndexOf("CREATE POLICY")
+    const notify = MA.indexOf("NOTIFY pgrst")
+    expect(notify, "nạp lại schema TRƯỚC khi đổi xong — PostgREST giữ bản cũ").toBeGreaterThan(
+      cuoiPolicy
+    )
   })
 })

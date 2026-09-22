@@ -58,6 +58,14 @@
 --   Trạng thái tính lại bằng ĐÚNG khối CASE của `void_cash_receipt`,
 --   chép nguyên để hai chỗ không thể lệch nhau.
 --
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE`. Nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không biết sổ vừa được vá bao nhiêu đồng — con số ấy đi vào hư
+--   không, và chạy lại cũng không lấy lại được vì migration idempotent.
+--   Lỗi của tôi. Nay tệp KẾT THÚC BẰNG MỘT CÂU SELECT trả về bảng tóm
+--   tắt, còn NOTICE giữ nguyên cho người chạy bằng psql/CI.
+--
 -- ⚠ ĐÁNH SỐ 164. `main` giữ 158, 160, 162, 163; `newdesign` giữ 156,
 --   157, 159, 161.
 -- ====================================================================
@@ -154,3 +162,44 @@ END;
 $kiem$;
 
 NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN, và chạy lại là cách đọc
+--   được bảng này. Hai dòng đầu phải bằng 0 sau khi vá; dòng thứ ba là
+--   TRẦN TRÊN của thiệt hại lỗi có thể đã gây ra — số tiền NVBH / tài
+--   xế từng thu, tức đúng những lần mà bản cũ của màn Thu tiền sẽ ghi
+--   phiếu nhưng không trừ được công nợ.
+SELECT
+  'Còn lệch chiều THUẬN (tiền đã thu mà sổ chưa ghi)'      AS hang_muc,
+  count(*)::text                                           AS so_khoan,
+  coalesce(sum(x.tong - x.paid), 0)::text                  AS so_tien
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) > coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Còn lệch chiều NGƯỢC (sổ ghi nhiều hơn phiếu thu) — CẦN NGƯỜI XEM',
+  count(*)::text,
+  coalesce(sum(x.paid - x.tong), 0)::text
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) < coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Phiếu thu do NVBH / tài xế thu — TRẦN TRÊN của thiệt hại đã có',
+  count(DISTINCT p.receivable_id)::text,
+  coalesce(sum(p.amount), 0)::text
+FROM payments p JOIN users u ON u.id = p.collected_by
+WHERE u.role IN ('sales', 'driver')
+UNION ALL
+SELECT 'Tổng phiếu thu trong sổ', count(*)::text, coalesce(sum(amount), 0)::text
+FROM payments;

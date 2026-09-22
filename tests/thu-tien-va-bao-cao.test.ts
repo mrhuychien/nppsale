@@ -106,13 +106,61 @@ describe("migration 164 — đối soát tiền đã thu mà sổ chưa ghi", ()
    *   trong khi sổ không đổi một đồng — đúng loại im lặng đang đi sửa.
    */
   it("vá xong kiểm lại và NÉM nếu vẫn còn lệch", () => {
-    const i = MA.lastIndexOf("FROM receivables")
-    expect(i, "không kiểm lại sau khi vá").toBeGreaterThan(-1)
-    expect(MA.slice(i), "kiểm xong không ném").toContain("RAISE EXCEPTION")
+    /* ⚠ NEO VÀO KHỐI TỰ KIỂM, KHÔNG NEO VÀO "LẦN CUỐI". Bản trước dùng
+       `lastIndexOf("FROM receivables")`; khi tệp mọc thêm một câu SELECT
+       tóm tắt ở cuối thì "lần cuối" rơi vào câu ấy và chốt đỏ oan — cùng
+       cái bẫy đã gặp ở chốt mig 163. */
+    const i = MA.indexOf("$kiem$")
+    expect(i, "migration không còn khối tự kiểm").toBeGreaterThan(-1)
+    const khoi = MA.slice(i, MA.indexOf("$kiem$;", i + 6))
+    expect(khoi, "khối tự kiểm không soi lại công nợ").toContain("FROM receivables")
+    expect(khoi, "kiểm xong không ném").toContain("RAISE EXCEPTION")
   })
 
   it("kết thúc bằng NOTIFY pgrst", () => {
-    expect(MIG.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true)
+    expect(MIG, "thiếu lệnh nạp lại schema").toContain("NOTIFY pgrst, 'reload schema';")
+  })
+})
+
+/**
+ * MIGRATION BÁO CÁO PHẢI TRẢ VỀ BẢNG, KHÔNG CHỈ `RAISE NOTICE`.
+ *
+ * ⚠ ĐÂY LÀ MỘT LỖI CỦA TÔI, CHỦ NHÀ GẶP PHẢI. Mig 163 và 164 báo cáo
+ *   hoàn toàn bằng `RAISE NOTICE`. Trình soạn SQL của Supabase KHÔNG
+ *   hiện NOTICE — nó chỉ hiện BẢNG KẾT QUẢ. Chủ nhà chạy 164 xong chỉ
+ *   thấy "Success. No rows returned", nên không biết sổ vừa được vá bao
+ *   nhiêu đồng. Và vì migration idempotent, chạy lại cũng KHÔNG lấy lại
+ *   được con số ấy — nó mất hẳn.
+ *
+ * ⚠ LUẬT NÀY CHỈ RÀNG TỪ 163 TRỞ ĐI, và đó là cố ý. 42 migration trước
+ *   đó cũng báo bằng NOTICE; sửa lại cả 42 là đi sửa lịch sử đã chạy
+ *   xong trên máy thật, không được gì mà rủi ro thật. Luật buộc phần
+ *   còn viết tiếp.
+ */
+describe("migration báo cáo phải trả về bảng cho người chạy đọc", () => {
+  const DIR = resolve(ROOT, "supabase/migrations")
+  /** ⚠ Mốc có lý do, không phải con số tuỳ tiện — xem chú thích trên. */
+  const TU_SO = 163
+
+  it("mọi migration từ 163 kết thúc bằng một câu SELECT", () => {
+    const pham: string[] = []
+    for (const ten of readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort()) {
+      const so = Number(ten.slice(0, 3))
+      if (!Number.isFinite(so) || so < TU_SO) continue
+      const sql = readFileSync(join(DIR, ten), "utf-8")
+      /* Chỉ ràng những tệp CÓ báo cáo cho người chạy đọc — migration chỉ
+         dựng bảng/hàm thì không có gì để mà in ra. */
+      if (!/RAISE (NOTICE|WARNING) '-{3}/.test(sql)) continue
+      const than = sql
+        .split("\n")
+        .filter((l) => l.trim() && !l.trim().startsWith("--"))
+        .join("\n")
+      if (!/\bSELECT\b[\s\S]*;\s*$/.test(than)) pham.push(ten)
+    }
+    expect(
+      pham,
+      "báo cáo chỉ bằng RAISE NOTICE — trình soạn SQL của Supabase không hiện, người chạy không đọc được gì"
+    ).toEqual([])
   })
 })
 

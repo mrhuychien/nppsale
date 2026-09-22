@@ -1,115 +1,68 @@
 -- ====================================================================
--- NPP LẬP ĐƠN GIÚP NHÂN VIÊN THÌ PHẢI THẤY ĐƠN MÌNH VỪA LẬP
+-- CHỦ NPP / QUẢN LÝ NHÌN THẤY CẢ ĐƠN NHÁP
 --
--- Chủ nhà báo 22/09/2026: gán đơn cho nhân viên thì màn hình ném
---   "new row violates row-level security policy for table
---    sales_orders (mã 42501)"
+-- Chủ nhà chốt 22/09/2026, nguyên văn: "chỉ chủ NPP mới được làm đơn
+-- gán cho nhân viên bán hàng, chủ NPP đương nhiên nhìn thấy mọi đơn
+-- rồi cần gì làm phức tạp vậy?"
 --
--- ĐÃ DỰNG LẠI ĐƯỢC TRÊN POSTGRES 16 THẬT, và hoá ra là HAI lỗi khác
--- nhau đứng cạnh nhau, không phải một.
---
--- ⚠ LỖI 1 — 42501, VÀ NÓ KHÔNG PHẢI LỖI CỦA CƠ SỞ DỮ LIỆU.
---
---   Chính sách `"Sales can update own open orders"` (mig 119) có
---   `WITH CHECK (… AND sales_user_id = auth.uid() …)`. Một NVBH mở đơn
---   CỦA CHÍNH MÌNH rồi gán sang tên đồng nghiệp thì hàng cũ lọt `USING`
---   còn hàng mới trượt `WITH CHECK` — và Postgres ném đúng câu trên.
---
---   Đó là ĐÚNG LUẬT: mig 153 đã chốt "chỉ chủ nhà hoặc quản lý mới lập
---   đơn đứng tên nhân viên khác". Lỗi nằm ở GIAO DIỆN: màn `/pos` vẽ ô
---   "Gán đơn cho NVBH" cho MỌI vai trò, trong khi màn `/sell/cart` đã
---   che ô ấy khỏi NVBH từ mig 153. Mời người ta bấm một cái nút mà máy
---   chủ chắc chắn từ chối thì lỗi là của cái nút. Đã che ô ở màn `/pos`
---   trong cùng đợt này — migration không sửa gì cho lỗi 1.
---
--- ⚠ LỖI 2 — CÁI NÀY MỚI CẦN MIGRATION, VÀ NÓ CÒN IM HƠN.
---
---   Chính sách `sales_order_select` (mig 119) có:
+-- ⚠ CÂU "ĐƯƠNG NHIÊN NHÌN THẤY MỌI ĐƠN" HÔM NAY LÀ SAI, và đó chính là
+--   lỗi chủ nhà đang báo. `sales_order_select` (mig 119) có vế
 --       AND (status <> 'draft' OR sales_user_id = auth.uid())
---   với lý do ghi rõ: "Nháp là sổ tay riêng của NVBH: chưa gửi thì NPP
---   không nhìn thấy". Luật ấy ĐÚNG và giữ nguyên.
+--   nằm NGOÀI khối OR vai trò, tức nó áp cho MỌI vai trò — kể cả chủ
+--   NPP. Chủ NPP không thấy một đơn nháp nào không đứng tên mình.
 --
---   Nhưng mig 153 mở cho NPP lập đơn giúp nhân viên, và không ai soi
---   lại luật trên. Hậu quả: NPP bấm "Lưu nháp" cho một đơn đứng tên
---   nhân viên thì đơn ghi xuống được, nhưng chính NPP KHÔNG ĐỌC LẠI
---   ĐƯỢC. `createOrderRecords` chèn xong đọc lại bằng
---   `.select("id, order_code").single()` → 0 dòng → màn hình báo một
---   lỗi chẳng liên quan gì tới việc người ta vừa làm. Tệ hơn: đơn ấy có
---   thật trong sổ, nằm ngoài tầm nhìn của người vừa tạo ra nó.
+-- ⚠ VÀ NÓ NỔ RA ĐÚNG LÚC LẬP ĐƠN HỘ. Đo trên Postgres 16 thật, chủ NPP
+--   lập đơn đứng tên nhân viên:
+--     · "Gửi đơn"  (status submitted) → ghi được, đọc lại được. CHẠY.
+--     · "Lưu nháp" (status draft)     → `INSERT … RETURNING` ném đúng
+--       câu chủ nhà gặp:
+--         new row violates row-level security policy for table
+--         "sales_orders"  (42501)
+--   Vì `RETURNING` phải đọc lại hàng vừa ghi, mà chính sách SELECT giấu
+--   nó đi. Và `createOrderRecords` đọc lại bằng
+--   `.select("id, order_code").single()` — đúng đường ấy.
 --
---   Đây là chỗ hai migration mâu thuẫn nhau chứ không phải một lỗi gõ
---   nhầm, nên phải sửa bằng một luật mới, không phải bằng một cái vá.
+--   Sổ vẫn có đơn. Người vừa lập ra nó thì không. Đó là kiểu hỏng tệ
+--   nhất: không mất dữ liệu, chỉ mất tầm nhìn.
 --
--- CÁCH SỬA
+-- CÁCH SỬA — MỘT VẾ, KHÔNG THÊM CỘT
 --
---   Thêm `created_by` — NGƯỜI GÕ đơn, khác `sales_user_id` là người đơn
---   TÍNH CHO. Đúng cặp cột mà `returns` đã có (`requested_by` /
---   `sales_user_id`, mig 160), và đúng một lý do: hai câu hỏi khác
---   nhau, gộp làm một là mất dấu vết người thao tác.
+--   ⚠ BẢN ĐẦU CỦA TÔI THÊM HẲN MỘT CỘT `created_by` để "chỉ người đã gõ
+--     mới thấy nháp mình gõ". Chủ nhà bác, và bác đúng: ở đây người gõ
+--     đơn hộ LUÔN LÀ chủ NPP hoặc quản lý, nên một cột mới, một trigger
+--     và một phép đối chiếu chỉ để nói lại đúng câu "chủ NPP thì thấy".
+--     Giữ cột ấy là bắt mọi đường ghi đơn về sau phải nhớ tới nó.
 --
---   Rồi nới đúng MỘT vế của luật nháp: nháp còn hiện cho NGƯỜI ĐÃ GÕ
---   NÓ. Nháp của NVBH vẫn kín với NPP — NPP không gõ, không đứng tên,
---   nên hai vế đều sai và đơn vẫn khuất.
+--   Nên: nới vế nháp cho đúng hai vai trò ấy. Một dòng.
 --
--- ⚠ KHÔNG NỚI CHO CẢ VAI TRÒ `owner`/`manager`. Nới kiểu ấy là xoá
---   thẳng luật của mig 119: mọi nháp dở dang của mọi NVBH lại hiện ra
---   hết. Chủ nhà chưa bảo bỏ luật ấy, và nó có lý do riêng.
+-- ⚠ LUẬT MIG 119 BỊ ĐẢO Ở ĐÂY, VÀ NÓI RA CHO RÕ. Mig 119 ghi "Nháp là
+--   sổ tay riêng của NVBH: chưa gửi thì NPP không nhìn thấy", và có cả
+--   một chốt canh "áp cho MỌI vai trò". Từ nay KHÔNG còn đúng: chủ NPP
+--   và quản lý thấy cả nháp dở dang của nhân viên. Đó là điều chủ nhà
+--   vừa chốt, không phải điều tôi tiện tay đổi.
 --
--- ⚠ KHÔNG BACKFILL `created_by`. Đơn cũ để rỗng thì vế mới luôn sai,
---   tức hành xử y hệt hôm nay. Đoán ngược "đơn này chắc do ai gõ" là
---   ghi một phỏng đoán vào sổ rồi quên mất rằng nó là phỏng đoán.
+-- ⚠ KHÔNG NỚI CHO `accountant` VÀ `warehouse`, dù hai vai trò ấy có mặt
+--   trong khối OR bên dưới. Chủ nhà nói "chủ NPP"; kế toán và thủ kho
+--   không lập đơn hộ ai, nên một đơn chưa gửi không phải việc của họ.
 --
--- ⚠ ĐIỀN BẰNG TRIGGER, KHÔNG ĐỢI CLIENT GỬI. Đơn sinh ra ở nhiều
---   đường (màn `/sell`, màn `/pos`, hàng đợi ngoại tuyến, RPC). Bắt
---   từng đường nhớ gửi thêm một cột là chắc chắn sót một đường, và
---   đường sót ấy lại rơi đúng vào cái hố vừa lấp.
+-- ⚠ DỌN LẠI BẢN ĐẦU CHO SẠCH. Nếu ai đã chạy bản 161 trước (có cột
+--   `created_by` và trigger điền nó) thì gỡ trigger đi — để lại là một
+--   cỗ máy chạy hoài cho một cột không ai đọc. Cột thì GIỮ: bỏ cột là
+--   thao tác không lùi được, mà nó chỉ chiếm chỗ chứ không hại gì.
 --
 -- ⚠ ĐÁNH SỐ 161. `newdesign` giữ 156, 157, 159; `main` giữ 158, 160.
 -- ====================================================================
 
-ALTER TABLE sales_orders
-  ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES users(id);
-
-COMMENT ON COLUMN sales_orders.created_by IS
-  'Người GÕ đơn. Rỗng = đơn có trước mig 161. KHÁC sales_user_id (đơn '
-  'tính doanh số cho ai). Dùng để người lập còn thấy được đơn nháp mình '
-  'vừa lập hộ nhân viên.';
-
-CREATE INDEX IF NOT EXISTS idx_orders_created_by ON sales_orders(created_by);
-
--- ---------------------------------------------------------------------
--- Điền người gõ
--- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.set_order_created_by()
-RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  -- ⚠ CHỈ ĐIỀN KHI CÒN RỖNG. Ghi đè là xoá mất dấu vết người gõ thật
-  --   ở những đường có truyền sẵn (ví dụ đồng bộ hàng đợi ngoại tuyến
-  --   gõ từ hôm trước, người đăng nhập hôm nay là người khác).
-  IF NEW.created_by IS NULL THEN
-    NEW.created_by := auth.uid();
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
+-- Dọn bản 161 đầu tiên, nếu có ai đã chạy nó.
 DROP TRIGGER IF EXISTS trg_orders_created_by ON sales_orders;
-CREATE TRIGGER trg_orders_created_by
-  BEFORE INSERT ON sales_orders
-  FOR EACH ROW EXECUTE FUNCTION public.set_order_created_by();
+DROP FUNCTION IF EXISTS public.set_order_created_by();
 
-COMMENT ON FUNCTION public.set_order_created_by() IS
-  'Ghi người gõ đơn vào sales_orders.created_by. Chạy ở trigger vì đơn '
-  'sinh ra ở nhiều đường; bắt từng đường nhớ gửi là chắc chắn sót một.';
-
--- ---------------------------------------------------------------------
--- Nháp còn hiện cho người đã gõ nó
 -- ---------------------------------------------------------------------
 -- ⚠ CHÉP LẠI NGUYÊN VĂN `sales_order_select` CỦA MIG 119, đổi đúng MỘT
---   vế. Chép thiếu một nhánh ở đây là âm thầm cắt mất quyền đọc của
---   một vai trò nào đó — và RLS từ chối thì màn hình chỉ thấy danh sách
---   ngắn đi, không thấy lỗi nào.
+--   vế. Chép thiếu một nhánh ở đây là âm thầm cắt quyền đọc của một vai
+--   trò — và RLS từ chối thì màn hình chỉ thấy danh sách ngắn đi, không
+--   thấy lỗi nào.
+-- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS sales_order_select ON sales_orders;
 CREATE POLICY sales_order_select ON sales_orders
   FOR SELECT TO authenticated
@@ -118,8 +71,8 @@ CREATE POLICY sales_order_select ON sales_orders
     AND (
       status <> 'draft'
       OR sales_user_id = auth.uid()
-      -- ⚠ VẾ MỚI, VÀ LÀ VẾ DUY NHẤT ĐỔI: người gõ còn thấy nháp mình gõ.
-      OR created_by = auth.uid()
+      -- ⚠ VẾ MỚI, VÀ LÀ VẾ DUY NHẤT ĐỔI.
+      OR public.user_role() IN ('owner', 'manager')
     )
     AND (
       public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
@@ -143,24 +96,21 @@ CREATE POLICY sales_order_select ON sales_orders
   );
 
 COMMENT ON POLICY sales_order_select ON sales_orders IS
-  'Nháp là sổ tay riêng: chỉ người đứng tên đơn và người đã gõ đơn mới '
-  'thấy (mig 119 + 161). Đơn đã gửi thì theo bộ quyền bên dưới.';
+  'Đơn nháp: chủ NPP, quản lý, và người đứng tên đơn thấy được (mig 119 '
+  '+ 161 — mig 119 giấu nháp khỏi cả chủ NPP, và đó là lý do lập đơn hộ '
+  'nhân viên rồi lưu nháp bị 42501). Đơn đã gửi theo bộ quyền bên dưới.';
 
 DO $$
-DECLARE v_cot int; v_trg int; v_pol int; v_cu int;
+DECLARE v_pol int; v_nhap int;
 BEGIN
-  SELECT count(*) INTO v_cot FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = 'sales_orders' AND column_name = 'created_by';
-  SELECT count(*) INTO v_trg FROM pg_trigger
-  WHERE tgname = 'trg_orders_created_by' AND NOT tgisinternal;
   SELECT count(*) INTO v_pol FROM pg_policies
   WHERE tablename = 'sales_orders' AND policyname = 'sales_order_select'
-    AND qual LIKE '%created_by%';
-  SELECT count(*) INTO v_cu FROM sales_orders WHERE status = 'draft' AND created_by IS NULL;
-  IF v_cot = 1 AND v_trg = 1 AND v_pol = 1 THEN
-    RAISE NOTICE '--- 161: NPP thấy được đơn nháp mình lập hộ · % đơn nháp cũ chưa có người gõ ---', v_cu;
+    AND qual LIKE '%status <> ''draft''%';
+  SELECT count(*) INTO v_nhap FROM sales_orders WHERE status = 'draft';
+  IF v_pol = 1 THEN
+    RAISE NOTICE '--- 161: chủ NPP / quản lý thấy được đơn nháp · % đơn nháp trong sổ ---', v_nhap;
   ELSE
-    RAISE EXCEPTION '161: chưa đủ (cột %, trigger %, chính sách %)', v_cot, v_trg, v_pol;
+    RAISE EXCEPTION '161: chính sách đọc đơn KHÔNG được dựng lại';
   END IF;
 END $$;
 

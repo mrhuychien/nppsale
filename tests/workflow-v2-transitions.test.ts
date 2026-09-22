@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 
 const ROOT = resolve(__dirname, "..")
@@ -274,13 +274,69 @@ describe("119 — trần số lượng trả", () => {
 })
 
 describe("119 — phân quyền hàng", () => {
-  /** ⚠ Nháp là sổ tay riêng của NVBH: gửi rồi NPP mới được nhìn. */
-  it("nháp chỉ chủ đơn thấy, áp cho MỌI vai trò", () => {
+  /**
+   * ⚠ LUẬT NÀY ĐÃ BỊ ĐẢO MỘT PHẦN — ĐỪNG ĐỌC CHỐT NÀY LÀ LUẬT HIỆN HÀNH.
+   *
+   * Mig 119 giấu đơn nháp khỏi MỌI vai trò, kể cả chủ NPP. Chủ nhà bỏ
+   * vế "kể cả chủ NPP" ngày 22/09/2026 (mig 161) vì nó làm chính việc
+   * chủ NPP lập đơn hộ nhân viên rồi lưu nháp nổ 42501.
+   *
+   * ⚠ CHỐT NÀY ĐỌC TỆP 119 — MỘT TỆP ĐÓNG BĂNG, nên nó xanh mãi mãi dù
+   *   chính sách đang chạy có đổi thế nào. Giữ nó để canh đúng một
+   *   việc: tệp 119 còn nguyên như lúc viết. Luật ĐANG CHẠY do chốt
+   *   ngay dưới canh, và đó mới là chốt phải đọc.
+   */
+  it("tệp 119 còn nguyên: nháp chỉ chủ đơn thấy, áp cho mọi vai trò", () => {
     const i = at("CREATE POLICY sales_order_select ON sales_orders")
     const policy = SQL.slice(i, SQL.indexOf(");", SQL.indexOf("driver", i)))
     expect(policy).toContain("status <> 'draft' OR sales_user_id = auth.uid()")
     // Điều kiện nháp nằm NGOÀI khối OR vai trò, nếu không thì quản lý vẫn thấy.
     expect(policy.indexOf("status <> 'draft'")).toBeLessThan(policy.indexOf("public.user_role() IN ('owner'"))
+  })
+
+  /**
+   * ⚠ VÀ ĐÂY LÀ LUẬT ĐANG CHẠY — đọc bản ĐỊNH NGHĨA CUỐI CÙNG của
+   *   `sales_order_select` trên mọi migration, không đọc riêng tệp 119.
+   *
+   *   Không có chốt này thì bộ chốt của kho mã nói một đằng (nháp kín
+   *   với mọi vai trò) còn cơ sở dữ liệu làm một nẻo — và cái nói dối
+   *   ấy xanh vĩnh viễn vì nó soi một tệp không bao giờ đổi nữa.
+   */
+  it("luật ĐANG CHẠY: nháp kín với NVBH khác, hở cho chủ NPP và quản lý", () => {
+    const DIR = resolve(ROOT, "supabase/migrations")
+    let cuoi = ""
+    for (const f of readdirSync(DIR).filter((x) => x.endsWith(".sql")).sort()) {
+      const s = readFileSync(resolve(DIR, f), "utf-8")
+      const i = s.indexOf("CREATE POLICY sales_order_select ON sales_orders")
+      if (i < 0) continue
+      cuoi = s.slice(i, s.indexOf("\n  );", i))
+    }
+    expect(cuoi, "không migration nào định nghĩa chính sách đọc đơn").not.toBe("")
+    /**
+     * ⚠ CẮT TỪ CHỖ MỞ VẾ (khối `AND (` đầu tiên sau `USING (`), KHÔNG
+     *   cắt từ chữ `status <> 'draft'`: neo vào một chữ nằm giữa thì
+     *   mọi thứ chèn TRƯỚC nó đều tàng hình với chốt — và `true OR …`
+     *   chèn vào đầu là mở toang mọi đơn nháp cho cả đơn vị.
+     *
+     * ⚠ VÀ SO BẰNG TẬP HỢP, KHÔNG SO BẰNG "CÓ CHỨA".
+     */
+    const u = cuoi.indexOf("USING (")
+    const a1 = cuoi.indexOf("AND (", u)
+    const a2 = cuoi.indexOf("AND (", a1 + 5)
+    expect(a1, "mất hẳn luật nháp — mọi đơn nháp hở cho cả đơn vị").toBeGreaterThan(-1)
+    expect(a2, "chính sách mất khối quyền theo vai trò").toBeGreaterThan(a1)
+    const ve = cuoi
+      .slice(a1 + 5, a2)
+      .replace(/^\s*--.*$/gm, "")
+      .replace(/\s*\)\s*$/, "")
+      .split(/\bOR\b/)
+      .map((x) => x.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+    expect(ve, "vế nháp không còn là đúng ba điều kiện đã chốt").toEqual([
+      "status <> 'draft'",
+      "sales_user_id = auth.uid()",
+      "public.user_role() IN ('owner', 'manager')",
+    ])
   })
 
   /** Module giao hàng chỉ bị ẩn khỏi menu, chưa xoá — tài xế vẫn cần đọc đơn. */

@@ -4,35 +4,40 @@ import { resolve } from "node:path"
 import { errorMessage } from "../src/lib/errors"
 
 /**
- * GÁN ĐƠN CHO NHÂN VIÊN — hai lỗi đứng cạnh nhau.
+ * GÁN ĐƠN CHO NHÂN VIÊN — 42501.
  *
  * Chủ nhà báo 22/09/2026: gán đơn cho nhân viên thì màn hình ném
  *   "Bạn không có quyền thực hiện thao tác này — new row violates
  *    row-level security policy for table sales_orders (mã 42501)"
  *
- * Đã dựng lại trên Postgres 16 thật, và hoá ra là HAI lỗi:
+ * ⚠ BẢN ĐẦU TÔI ĐOÁN SAI NGUYÊN NHÂN, ghi ra đây vì cái sai ấy dạy đúng
+ *   một bài. Tôi đoán là NVBH sửa đơn của mình rồi gán sang đồng nghiệp
+ *   (`"Sales can update own open orders"` có `WITH CHECK (… sales_user_id
+ *   = auth.uid() …)`), rồi dừng lại ở đó. Đo tiếp mới ra chỗ thật.
  *
- * ⚠ LỖI 1 — máy chủ từ chối ĐÚNG. `"Sales can update own open orders"`
- *   (mig 119) có `WITH CHECK (… sales_user_id = auth.uid() …)`; NVBH mở
- *   đơn của chính mình rồi gán sang đồng nghiệp thì hàng cũ lọt `USING`
- *   còn hàng mới trượt `WITH CHECK`. Đó đúng là luật mig 153. Lỗi nằm ở
- *   GIAO DIỆN: màn `/pos` vẽ ô "Gán đơn cho NVBH" cho mọi vai trò,
- *   trong khi `/sell/cart` đã che khỏi NVBH từ mig 153.
+ * ⚠ NGUYÊN NHÂN THẬT: `INSERT … RETURNING` PHẢI ĐỌC LẠI HÀNG VỪA GHI.
+ *   `sales_order_select` (mig 119) có vế
+ *       AND (status <> 'draft' OR sales_user_id = auth.uid())
+ *   nằm NGOÀI khối OR vai trò, tức áp cho MỌI vai trò — kể cả chủ NPP.
+ *   Chủ NPP lập đơn đứng tên nhân viên rồi bấm "Lưu nháp":
+ *     · ghi xuống được;
+ *     · `RETURNING` đọc lại thì chính sách SELECT giấu hàng ấy đi;
+ *     · Postgres ném đúng câu 42501 trên.
+ *   Còn "Gửi đơn" (status submitted) thì chạy bình thường — nên nhìn từ
+ *   ngoài, cơ chế "gán đơn" trông như đang dùng được.
  *
- * ⚠ LỖI 2 — im hơn nhiều, và chỉ lộ ra khi lỗi 1 được sửa. Chủ nhà bấm
- *   "Lưu nháp" cho một đơn đứng tên nhân viên: đơn GHI XUỐNG ĐƯỢC nhưng
- *   chính người vừa lập KHÔNG ĐỌC LẠI ĐƯỢC, vì `sales_order_select`
- *   (mig 119) giấu mọi đơn nháp không đứng tên mình.
- *   `createOrderRecords` đọc lại bằng `.single()` → 0 dòng → một câu lỗi
- *   chẳng liên quan gì tới việc người ta vừa làm, còn đơn thì nằm thật
- *   trong sổ, ngoài tầm nhìn của người tạo ra nó.
+ * ⚠ VÀ MỘT CÂU HỎI TƯỞNG LÀ HIỂN NHIÊN THÌ KHÔNG HIỂN NHIÊN. Chủ nhà
+ *   nói "chủ NPP đương nhiên nhìn thấy mọi đơn rồi" — hôm nay KHÔNG
+ *   đúng, vì mig 119 cố ý giấu nháp khỏi mọi vai trò. Mig 161 làm cho
+ *   câu ấy thành đúng, và đó là cách sửa đơn giản nhất.
  *
- * Đã kiểm bốn nhánh trên Postgres 16 thật, đổi đúng một biến (có/không
- * có migration 161):
- *   · không có 161 → chủ nhà lưu nháp hộ nhân viên, `RETURNING` ra 0 dòng;
- *   · có 161      → ra 1 dòng; nhân viên đứng tên vẫn thấy; nháp riêng
- *                   của NVBH vẫn KÍN với NPP; NVBH gán sang đồng nghiệp
- *                   vẫn bị chặn.
+ * Đã kiểm trên Postgres 16 thật, đổi đúng một biến (có/không có 161):
+ *   · không có 161 → chủ NPP "Gửi đơn" hộ nhân viên: CHẠY;
+ *                    chủ NPP "Lưu nháp" hộ nhân viên: 42501;
+ *                    danh sách của chủ NPP đếm 0 trong khi sổ có 2 nháp.
+ *   · có 161      → lưu nháp ra 1 dòng; quản lý cũng thấy; kế toán VẪN
+ *                    không thấy; NVBH vẫn chỉ thấy nháp của mình; NVBH
+ *                    gán sang đồng nghiệp vẫn bị chặn.
  */
 
 const ROOT = resolve(__dirname, "..")
@@ -45,6 +50,23 @@ const boChuThichSql = (s: string) =>
 const MIG = boChuThichSql(read("supabase/migrations/161_npp_thay_don_minh_lap.sql"))
 const DON = code(read("src/components/pos/order-screen.tsx"))
 const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
+
+/**
+ * Lát cắt của VẾ NHÁP trong chính sách `sales_order_select`: khối
+ * `AND ( … )` ĐẦU TIÊN sau `USING (`.
+ *
+ * ⚠ CẮT THEO CẤU TRÚC, KHÔNG CẮT THEO MỘT CHỮ NẰM GIỮA. Neo vào một
+ *   chữ giữa vế là mọi thứ chèn trước nó đều tàng hình với chốt.
+ */
+function layVeNhap(pol: string): string {
+  const u = pol.indexOf("USING (")
+  const a1 = pol.indexOf("AND (", u)
+  const a2 = pol.indexOf("AND (", a1 + 5)
+  expect(u, "chính sách không còn khối USING").toBeGreaterThan(-1)
+  expect(a1, "mất hẳn luật nháp — mọi đơn nháp hở cho cả đơn vị").toBeGreaterThan(-1)
+  expect(a2, "chính sách mất khối quyền theo vai trò").toBeGreaterThan(a1)
+  return pol.slice(a1 + 5, a2)
+}
 
 describe("giao diện không mời người ta bấm nút máy chủ sẽ từ chối", () => {
   /**
@@ -77,44 +99,31 @@ describe("giao diện không mời người ta bấm nút máy chủ sẽ từ c
   })
 })
 
-describe("migration 161 — người gõ đơn còn thấy đơn nháp mình gõ", () => {
-  it("thêm cột người gõ, tách khỏi người đứng tên", () => {
-    expect(MIG).toMatch(/ALTER TABLE sales_orders\s+ADD COLUMN IF NOT EXISTS created_by uuid/)
-    /* ⚠ Hai cột trả lời hai câu khác nhau — gộp là mất dấu vết người
-       thao tác, thứ duy nhất lần ra được khi một đơn bị lập sai. */
-    expect(MIG).not.toMatch(/DROP COLUMN[^\n]*sales_user_id/i)
-    expect(MIG).not.toMatch(/RENAME COLUMN\s+sales_user_id/i)
-  })
-
-  it("điền bằng trigger, không đợi client gửi", () => {
-    /* Đơn sinh ra ở nhiều đường (/sell, /pos, hàng đợi ngoại tuyến,
-       RPC); bắt từng đường nhớ gửi là chắc chắn sót một đường. */
-    expect(MIG).toMatch(/CREATE TRIGGER trg_orders_created_by[\s\S]{0,120}BEFORE INSERT ON sales_orders/)
-    const i = MIG.indexOf("FUNCTION public.set_order_created_by")
-    const than = MIG.slice(i, MIG.indexOf("$$;", i))
-    expect(than).toMatch(/NEW\.created_by := auth\.uid\(\)/)
-    /* ⚠ CHỈ ĐIỀN KHI CÒN RỖNG — ghi đè là xoá dấu vết người gõ thật ở
-       những đường đã truyền sẵn. */
-    expect(than, "trigger ghi đè cả giá trị đã có").toMatch(/IF NEW\.created_by IS NULL THEN/)
-  })
-
-  it("nới ĐÚNG MỘT vế của luật nháp, và nới theo NGƯỜI chứ không theo VAI TRÒ", () => {
+describe("migration 161 — chủ NPP / quản lý thấy được đơn nháp", () => {
+  it("nới ĐÚNG MỘT vế của luật nháp, và nới cho đúng hai vai trò", () => {
     const i = MIG.indexOf("CREATE POLICY sales_order_select")
     expect(i, "migration không dựng lại chính sách đọc đơn").toBeGreaterThan(-1)
     const pol = MIG.slice(i)
-    const j = pol.indexOf("status <> 'draft'")
-    expect(j, "mất hẳn luật nháp").toBeGreaterThan(-1)
-    const veNhap = pol.slice(j, pol.indexOf("AND (", j))
-    expect(veNhap, "người gõ vẫn không thấy đơn nháp mình gõ").toContain("created_by = auth.uid()")
-    expect(veNhap, "vẫn phải giữ người đứng tên").toContain("sales_user_id = auth.uid()")
     /**
-     * ⚠ KHÔNG ĐƯỢC NỚI CHO CẢ VAI TRÒ. Nới kiểu ấy là xoá thẳng luật
-     *   mig 119 ("nháp là sổ tay riêng của NVBH"): mọi nháp dở dang của
-     *   mọi nhân viên lại hiện ra hết cho NPP. Chủ nhà chưa bảo bỏ luật
-     *   ấy — và một luật riêng tư bị bỏ thì không ai nhận ra.
+     * ⚠ CẮT TỪ CHỖ MỞ VẾ, KHÔNG CẮT TỪ CHỮ `status <> 'draft'`. Bản
+     *   trước neo vào chính chữ ấy, nên một mutation chèn `true OR` vào
+     *   ĐẦU vế nằm ngoài lát cắt và chốt vẫn xanh — trong khi nó vừa mở
+     *   toang mọi đơn nháp cho cả đơn vị. Đã thử phá đúng kiểu đó.
+     *
+     * ⚠ VÀ SO BẰNG TẬP HỢP, KHÔNG SO BẰNG "CÓ CHỨA": vế nháp phải là
+     *   ĐÚNG ba điều kiện này, không thiếu một, không thừa một.
      */
-    expect(veNhap, "nháp của NVBH lại hở ra cho cả vai trò owner/manager")
-      .not.toMatch(/user_role\(\)/)
+    const veNhap = layVeNhap(pol)
+    const ve = veNhap
+      .replace(/\s*\)\s*$/, "")
+      .split(/\bOR\b/)
+      .map((x) => x.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+    expect(ve, "vế nháp không còn là đúng ba điều kiện đã chốt").toEqual([
+      "status <> 'draft'",
+      "sales_user_id = auth.uid()",
+      "public.user_role() IN ('owner', 'manager')",
+    ])
   })
 
   /**
@@ -136,14 +145,22 @@ describe("migration 161 — người gõ đơn còn thấy đơn nháp mình gõ
     }
   })
 
-  it("không backfill — đơn cũ để rỗng", () => {
-    /* Đoán ngược "đơn này chắc do ai gõ" là ghi một phỏng đoán vào sổ
-       rồi quên mất rằng nó là phỏng đoán. Rỗng đọc đúng là "không rõ". */
-    expect(MIG).not.toMatch(/UPDATE\s+sales_orders\s+SET\s+created_by/i)
-    expect(MIG).not.toMatch(/created_by[^\n;]*NOT NULL/i)
+  /**
+   * ⚠ KHÔNG THÊM CỘT, KHÔNG THÊM TRIGGER. Bản đầu của migration này
+   *   dựng hẳn một cột `created_by` để "chỉ người đã gõ mới thấy nháp
+   *   mình gõ". Chủ nhà bác, và bác đúng: người gõ đơn hộ LUÔN LÀ chủ
+   *   NPP hoặc quản lý, nên cả bộ máy ấy chỉ để nói lại đúng câu "chủ
+   *   NPP thì thấy". Chốt canh cho nó đừng mọc lại.
+   */
+  it("không dựng thêm cột hay trigger cho một việc một dòng làm xong", () => {
+    expect(MIG, "lại thêm cột cho một luật vai trò").not.toMatch(/ADD COLUMN[^\n]*created_by/i)
+    expect(MIG, "lại dựng trigger điền cột ấy").not.toMatch(/CREATE TRIGGER trg_orders_created_by/)
+    /* Nhưng phải DỌN bản đầu, phòng ai đã chạy nó rồi. */
+    expect(MIG, "không dọn trigger của bản 161 đầu tiên")
+      .toContain("DROP TRIGGER IF EXISTS trg_orders_created_by")
   })
 
-  it("kết thúc bằng NOTIFY pgrst để PostgREST thấy cột mới", () => {
+  it("kết thúc bằng NOTIFY pgrst để PostgREST đọc lại chính sách", () => {
     expect(read("supabase/migrations/161_npp_thay_don_minh_lap.sql").trimEnd()
       .endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true)
   })

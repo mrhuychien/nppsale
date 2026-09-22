@@ -606,14 +606,20 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
    *   về danh sách rỗng là người dùng phải đoán từ khoá.
    */
   it("ô tìm hàng của /pos vẫn xổ danh sách khi còn trống", () => {
+    /**
+     * ⚠ NEO VÀO NHÁNH "CHƯA GÕ GÌ", KHÔNG NEO VÀO NGUYÊN VĂN CÂU
+     *   `return items`. 22/09/2026 nhánh ấy phải trả về hai thứ (danh
+     *   sách đã cắt + số khớp thật, để thôi ghi "50 kết quả" khi có tám
+     *   trăm) nên câu lệnh đổi hình, còn luật thì không suy suyển: chưa
+     *   gõ gì vẫn phải xổ ra `items`, không được xổ ra rỗng.
+     */
     const src = code(read("src/components/pos/search-dropdown.tsx"))
-    /* Không gõ gì → `words` rỗng → vẫn trả về danh sách, không trả rỗng. */
+    const i = src.indexOf("if (!words.length)")
+    expect(i, "không còn nhánh 'chưa gõ gì' — ô tìm hết xổ danh sách").toBeGreaterThan(-1)
+    const nhanh = src.slice(i, src.indexOf("\n", i))
+    expect(nhanh, "ô tìm của /pos thôi xổ danh sách khi ô còn trống").toContain("items")
     expect(
-      /if \(!words\.length\) return items/.test(src),
-      "ô tìm của /pos thôi xổ danh sách khi ô còn trống"
-    ).toBe(true)
-    expect(
-      /if \(!words\.length\) return \[\]/.test(src),
+      /return (\[\]|\{[^}]*:\s*\[\])/.test(nhanh),
       "ô tìm của /pos trả danh sách RỖNG khi chưa gõ"
     ).toBe(false)
   })
@@ -631,10 +637,27 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
    *   Thêm tệp thứ ba vào danh sách này là đang dựng ô tìm thứ hai —
    *   đừng nới danh sách, hãy dùng lại một trong hai.
    */
-  it("/pos chỉ có hai component ô tìm dùng chung", () => {
+  /**
+   * ⚠ ĐẾM THEO VIỆC TỆP LÀM, KHÔNG ĐẾM THEO TÊN TỆP. Bản trước lọc theo
+   *   `/search|picker|dropdown/` trong TÊN, và 22/09/2026 một tệp
+   *   `seller-picker.tsx` — ô chọn NHÂN VIÊN, chẳng tìm hàng gì cả —
+   *   làm chốt đỏ lên. Đỏ oan là chốt mất giá: lần sau người ta nới
+   *   danh sách cho qua, và lần nới thứ hai mới là lần có ô tìm hàng
+   *   thật lọt vào.
+   *
+   *   Câu hỏi đúng là: tệp này có phải một Ô TÌM không — tức nó nhận
+   *   một DANH SÁCH để chọn (`items`) và trả về mã đã chọn (`onPick`).
+   *   `seller-picker` nhận `sellers` và trả `onChange`, không có ô gõ
+   *   để lọc — nó là ô chọn, không phải ô tìm.
+   */
+  it("/pos chỉ có hai component ô tìm HÀNG dùng chung", () => {
+    /* Ô TÌM = có phép gõ-để-lọc: hoặc bọc `ProductPicker`, hoặc tự lọc
+       bằng bộ so tiếng Việt dùng chung. Ô CHỌN thì không có cái nào. */
+    const laOTim = (src: string) => /<ProductPicker|viQueryWords/.test(src)
     const pham = moiTsx(resolve(ROOT, "src/components/pos"))
       .map((p) => p.slice(ROOT.length + 1))
       .filter((rel) => /search|picker|dropdown/i.test(rel))
+      .filter((rel) => laOTim(code(readFileSync(resolve(ROOT, rel), "utf-8"))))
     expect(pham.sort()).toEqual([
       "src/components/pos/product-search-box.tsx",
       "src/components/pos/search-dropdown.tsx",

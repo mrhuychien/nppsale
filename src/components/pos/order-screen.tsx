@@ -92,6 +92,7 @@ import {
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
+import { SellerPicker } from "@/components/pos/seller-picker"
 import type { SellProduct } from "@/lib/sell/ref-data"
 
 export interface OrderScreenProps {
@@ -1335,23 +1336,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
 
             {moKhoiTra && (
               <div className="min-w-0 border-t border-[var(--pos-line-soft)]">
-                {/* ⚠ CHẾ ĐỘ ĐANG BẬT PHẢI HIỆN RA — xem `chonHang`. */}
-                {moThemTra && (
-                  <div className="flex min-w-0 items-center gap-2.5 border-b border-[var(--pos-ok-border)] bg-[var(--pos-ok-soft)] px-3.5 py-2.5">
-                    <span className="min-w-0 flex-1 text-[13px] font-bold leading-relaxed text-[var(--pos-ok)]">
-                      Đang ở <b>chế độ thêm hàng trả</b> — quét hoặc tìm sản phẩm ở khung bên
-                      phải, kết quả sẽ thêm vào danh sách trả.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setMoThemTra(false)}
-                      className="h-8 shrink-0 whitespace-nowrap rounded-[10px] border-[1.5px] border-[var(--pos-ok-edge)] bg-white px-3 text-[12px] font-extrabold text-[var(--pos-ok)]"
-                    >
-                      Xong
-                    </button>
-                  </div>
-                )}
-
+                {/*
+                  ⚠ DẢI BÁO CHẾ ĐỘ ĐÃ DỜI SANG Ô TÌM Ở CỘT PHẢI — xem
+                    `<PosProductSearchBox note=…>` bên dưới trong tệp
+                    này. Ở đây từng có một dải xanh nói y hệt; giữ cả hai
+                    là hai chỗ nói cùng một câu trên cùng một màn, và
+                    chỗ nói ở cột trái thì người đang quét mã không nhìn.
+                    Khối này vẫn tự nói được: viền đổi màu khi có hàng
+                    trả, và chân khối ghi số dòng.
+                */}
                 {retLines.length === 0 ? (
                   <p className="px-3.5 py-[22px] text-center text-[13px] font-semibold text-[var(--pos-muted)]">
                     Chưa có hàng đổi trả. Bấm <b>+ Thêm hàng trả</b> rồi quét/tìm sản phẩm ở
@@ -1573,22 +1566,36 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Gán đơn cho NVBH
             </span>
-            <select
-              aria-label="Gán đơn cho nhân viên bán hàng"
-              value={nvbh}
-              onChange={(e) => setNvbh(e.target.value)}
-              className="h-[38px] min-w-0 rounded-[12px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3 text-[13px] font-bold text-[var(--pos-ink)]"
-            >
-              <option value="">— chưa gán —</option>
-              {sellers.map((u) => (
-                <option key={u.id} value={u.id}>{u.full_name}</option>
-              ))}
-            </select>
+            {/* ⚠ CHỈ TÊN, KHÔNG THÔNG TIN KÈM — chủ nhà chốt 22/09/2026.
+                Xem `seller-picker.tsx` về lý do bỏ `<select>`. */}
+            <SellerPicker value={nvbh} onChange={setNvbh} sellers={sellers} />
           </div>
           </div>
 
+          {/*
+            ⚠ DẤU HIỆU "ĐANG THÊM HÀNG TRẢ" PHẢI Ở NGAY Ô TÌM (chủ nhà
+              chốt 22/09/2026). Bản trước để nó thành một dải xanh trong
+              khối hàng trả ở CỘT TRÁI, còn ô tìm ở cột phải thì trắng
+              trơn — mà lúc quét mã người ta nhìn vào ô tìm, không nhìn
+              sang cột kia. Gõ nhầm giỏ ở đây là một món khách MUA bị
+              ghi thành một món khách TRẢ: tổng đơn tụt xuống mà số dòng
+              vẫn đúng, nên không có gì để mà nghi.
+
+            ⚠ NÚT THOÁT ĐI KÈM DẤU HIỆU. Biết mình đang ở nhầm chế độ mà
+              phải đi tìm chỗ tắt là vẫn còn mấy mã gõ nhầm nữa.
+          */}
           <div className="border-b border-[var(--pos-line-soft)] px-4 py-3">
-            <PosProductSearchBox />
+            <PosProductSearchBox
+              note={
+                moThemTra
+                  ? {
+                      text: "Hàng trả",
+                      tone: "ok",
+                      action: { label: "Chuyển về bán", onClick: () => setMoThemTra(false) },
+                    }
+                  : undefined
+              }
+            />
           </div>
 
           <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[var(--pos-line)] bg-white p-3.5">

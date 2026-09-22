@@ -808,8 +808,16 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
       "nút tự mọc ô tìm riêng — /pos lại có hai chỗ thêm hàng"
     ).toBe(false)
 
-    /* ⚠ Và màn đơn phải THẬT SỰ vẽ ô tìm ở cột phải. */
-    expect(ORDER, "màn đơn không vẽ ô tìm ở cột phải").toMatch(/<PosProductSearchBox\s*\/>/)
+    /**
+     * ⚠ Và màn đơn phải THẬT SỰ vẽ ô tìm ở cột phải.
+     *
+     * ⚠ ĐỪNG GHIM THẺ RỖNG `<PosProductSearchBox />`. Bản trước ghim
+     *   đúng thẻ tự đóng không thuộc tính; 22/09/2026 ô tìm phải nhận
+     *   thêm `note` (báo đang gõ vào giỏ hàng trả) nên thẻ mọc thuộc
+     *   tính và chốt đỏ dù luật còn nguyên.
+     */
+    expect(ORDER.indexOf("<PosProductSearchBox"), "màn đơn không vẽ ô tìm ở cột phải")
+      .toBeGreaterThan(-1)
   })
 
   /**

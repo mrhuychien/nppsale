@@ -245,7 +245,27 @@ describe("khối Hàng đổi trả kèm đơn", () => {
     expect(khoi, "việc chọn không đọc chế độ — mọi mã rơi vào giỏ bán")
       .toMatch(/if \(!moThemTra\)/)
     expect(khoi, "chế độ bật mà không thêm vào giỏ trả").toMatch(/setRetLines/)
-    expect(DON, "chế độ đang bật không hiện ra").toContain("chế độ thêm hàng trả")
+
+    /**
+     * ⚠ CHẾ ĐỘ PHẢI HIỆN RA ĐÚNG CHỖ NGƯỜI TA ĐANG NHÌN — TỨC Ở Ô TÌM.
+     *
+     * Bản trước chốt bằng cách soi cả tệp tìm câu "chế độ thêm hàng
+     * trả", và câu ấy nằm trong một dải xanh ở CỘT TRÁI. Chủ nhà bắt
+     * đúng chỗ ấy 22/09/2026: lúc quét mã người ta nhìn ô tìm ở cột
+     * phải, dải báo ở cột kia thì không ai đọc. Nên chốt đổi sang canh
+     * chỗ đặt: ô tìm phải nhận `note`, và `note` ấy phải đọc `moThemTra`.
+     *
+     * ⚠ VÀ PHẢI CÓ ĐƯỜNG RA NGAY TRÊN DẢI. Biết mình đang ở nhầm giỏ
+     *   mà phải đi tìm chỗ tắt là vẫn còn mấy mã gõ nhầm nữa.
+     */
+    const k = DON.indexOf("<PosProductSearchBox")
+    expect(k, "màn đơn không vẽ ô tìm").toBeGreaterThan(-1)
+    const o = DON.slice(k, DON.indexOf("/>", k))
+    expect(o, "ô tìm không nói đang thêm vào giỏ nào").toMatch(/note=\{/)
+    expect(o, "dải báo không đọc chế độ — nó luôn hiện hoặc không bao giờ hiện")
+      .toMatch(/moThemTra/)
+    expect(o, "dải báo không có đường tắt chế độ").toMatch(/action:/)
+    expect(o, "nút tắt chế độ không thật sự tắt").toMatch(/setMoThemTra\(false\)/)
   })
 
   /** ⚠ Bản vẽ: mỗi dòng có nút Trả / Đổi, và chân khối ghi "Trừ vào đơn". */

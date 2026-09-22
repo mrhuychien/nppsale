@@ -32,10 +32,18 @@
 import { ProductPicker } from "@/components/ui/product-picker"
 import { POS_PICKER_ID, usePosProductSearchHost } from "@/store/pos/product-search"
 
-/** Sắc của dải "đang thêm vào…" — khớp màu của chính khối bảng ấy. */
+/** Sắc của dải "thêm vào…" — khớp màu của chính khối bảng ấy. */
 const TONE = {
   warn: "bg-[var(--pos-warn-soft)] text-[var(--pos-warn)]",
   primary: "bg-[var(--pos-primary-soft)] text-[var(--pos-primary-deep)]",
+  ok: "bg-[var(--pos-ok-soft)] text-[var(--pos-ok)]",
+} as const
+
+/** Viền của nút trên dải — cùng họ với sắc nền. */
+const TONE_NUT = {
+  warn: "border-[var(--pos-warn-border)] text-[var(--pos-warn)]",
+  primary: "border-[var(--pos-primary-border)] text-[var(--pos-primary-deep)]",
+  ok: "border-[var(--pos-ok-edge)] text-[var(--pos-ok)]",
 } as const
 
 /**
@@ -49,10 +57,20 @@ export function PosProductSearchBox({
   note,
 }: {
   /**
-   * Chứng từ có HAI giỏ (màn phiếu trả: hàng trả · hàng đổi) thì nói rõ
-   * mã sắp gõ sẽ rơi vào giỏ nào.
+   * Chứng từ có HAI giỏ (màn phiếu trả: hàng trả · hàng đổi; màn đơn:
+   * hàng bán · hàng khách trả kèm) thì nói rõ mã sắp gõ rơi vào giỏ nào.
+   *
+   * ⚠ `action` LÀ ĐƯỜNG RA, và nó phải nằm NGAY TRÊN DẢI. Màn đơn có
+   *   một chế độ bật/tắt ("đang thêm hàng trả"); người dùng đang nhìn
+   *   vào ô tìm, nên cái nút để thoát chế độ phải ở ngay đó — bắt họ đi
+   *   tìm một cái nút ở cột bên kia là lý do người ta gõ tiếp mấy mã nữa
+   *   vào nhầm giỏ.
    */
-  note?: { text: string; tone: keyof typeof TONE }
+  note?: {
+    text: string
+    tone: keyof typeof TONE
+    action?: { label: string; onClick: () => void }
+  }
 }) {
   const { term, setTerm, reg } = usePosProductSearchHost()
   if (!reg) return null
@@ -69,9 +87,20 @@ export function PosProductSearchBox({
       */}
       {note && (
         <div
-          className={`mb-2 rounded-[8px] px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] ${TONE[note.tone]}`}
+          className={`mb-2 flex min-w-0 items-center gap-2 rounded-[8px] px-2.5 py-1.5 ${TONE[note.tone]}`}
         >
-          Đang thêm vào: {note.text}
+          <span className="min-w-0 flex-grow truncate text-[11px] font-extrabold uppercase tracking-[0.06em]">
+            Thêm vào: {note.text}
+          </span>
+          {note.action && (
+            <button
+              type="button"
+              onClick={note.action.onClick}
+              className={`h-7 shrink-0 whitespace-nowrap rounded-[8px] border-[1.5px] bg-white px-2.5 text-[11.5px] font-extrabold ${TONE_NUT[note.tone]}`}
+            >
+              {note.action.label}
+            </button>
+          )}
         </div>
       )}
       {/*

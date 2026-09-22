@@ -71,12 +71,10 @@ import {
 import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
-import { savePosOrder, savePosInvoice, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
-import { invoiceWarnings } from "@/lib/orders/post-invoice"
+import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { posTotals } from "@/lib/pos/totals"
-import { posPrintHref } from "@/lib/pos/tabs"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -829,35 +827,18 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         }
 
         /**
-         * ⚠ HAI BƯỚC, VÀ NÓI RÕ KHI BƯỚC HAI HỎNG. Nút mang tên "Xuất
-         * hàng & lập HĐ" nên nó phải LÀM cả hai; nhưng ghi đơn và ghi
-         * hóa đơn là hai giao dịch riêng của hệ đang chạy, không có
-         * lệnh nào gộp chúng.
+         * ⚠ GỬI ĐƠN DỪNG Ở ĐÂY — KHÔNG LẬP HÓA ĐƠN. Bản trước gọi tiếp
+         *   `savePosInvoice` ngay sau khi ghi đơn, tức trừ kho và sinh
+         *   công nợ tại màn đặt hàng. Chủ nhà chốt 22/09/2026 làm theo
+         *   `/sell`: gửi đơn chỉ đưa đơn sang Phiếu tạm.
          *
-         * Bước 2 hỏng thì ĐƠN VẪN CÒN ở phiếu tạm — đó là một trạng
-         * thái hợp lệ, không phải hỏng. Im lặng ở đây là người dùng
-         * tưởng mất cả đơn và đi lập lại một đơn thứ hai.
+         * ⚠ ĐỪNG NỐI LẠI. Ghi đơn và ghi hóa đơn là HAI giao dịch riêng
+         *   của hệ đang chạy, không có lệnh nào gộp chúng — nối lại là
+         *   dựng lại đúng cảnh "đơn đã lưu nhưng hóa đơn hỏng", một
+         *   trạng thái nửa vời mà người dùng phải tự gỡ.
          */
-        try {
-          const hd = await savePosInvoice(createClient(), {
-            invoiceId: null,
-            orderId: r.orderId,
-            lines,
-            paymentTerms: dieuKhoan,
-          })
-          toast({
-            title: `Đã xuất hàng — hóa đơn ${hd.invoiceCode}`,
-            description: invoiceWarnings(hd) ?? undefined,
-          })
-          router.replace(`/pos/hoa-don/${hd.invoiceId}`)
-        } catch (e2) {
-          toast({
-            title: `Đã lưu đơn ${r.orderCode} nhưng CHƯA xuất được hàng`,
-            description: `${errorMessage(e2)} — đơn đang ở Phiếu tạm, mở lại để xuất.`,
-            variant: "destructive",
-          })
-          router.replace(`/pos/don-hang/${r.orderId}`)
-        }
+        toast({ title: `Đã gửi đơn ${r.orderCode}`, description: "Đơn đang ở Phiếu tạm — xuất hàng ở màn Xuất hàng." })
+        router.replace(`/pos/don-hang/${r.orderId}`)
       } catch (e) {
         /* ⚠ `errorMessage` — lỗi PostgREST là OBJECT THƯỜNG, không phải
            `Error`. `err instanceof Error ? … : "Lỗi không xác định"` nuốt
@@ -1156,6 +1137,27 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                         </span>
                       )}
                     </div>
+                    {/*
+                      ⚠ GHI CHÚ TỪNG DÒNG HÀNG — bản thiết kế có ô này
+                        trên MỌI dòng bán, không chỉ dòng trả. Nó là chỗ
+                        duy nhất người bán ghi được "giao chiều", "lấy
+                        lô mới", "khách dặn đổi vỏ" — những câu đi theo
+                        ĐÚNG một mặt hàng, không phải cả tờ đơn.
+
+                      ⚠ GẠCH CHÂN NÉT ĐỨT, KHÔNG PHẢI Ô CÓ VIỀN. Bản vẽ
+                        để nó chìm xuống: ô viền đầy đủ ở đây làm mỗi
+                        dòng hàng trông như một biểu mẫu con, và mắt
+                        người đang dò cột tiền bị nó kéo đi.
+                    */}
+                    <input
+                      aria-label={`Ghi chú dòng ${i + 1}`}
+                      value={l.note ?? ""}
+                      onChange={(e) => patchLine(l.key, { note: e.target.value })}
+                      placeholder="Ghi chú dòng…"
+                      className={`mt-1 h-[30px] w-full min-w-0 border-0 border-b border-dashed bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none placeholder:text-[var(--pos-dim)] ${
+                        l.note ? "border-[var(--pos-primary-border)]" : "border-[var(--pos-edge)]"
+                      }`}
+                    />
                     {settings.colStock && (
                       <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
                         {/*
@@ -1642,31 +1644,31 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             <div className="flex-grow" />
           </div>
 
+          {/*
+            ⚠ ĐÚNG HAI NÚT, VÀ CHÚNG LÀM ĐÚNG VIỆC CỦA MÀN `/sell`.
+              Chủ nhà chốt 22/09/2026: *"Hai nút ở cuối trang chuẩn theo
+              màn làm đơn hiện tại (/sell) là Lưu nháp và Gửi đơn"*.
+
+            ⚠ NÚT CHÍNH THÔI LẬP HÓA ĐƠN. Bản trước là "Xuất hàng & lập
+              HĐ" — nó lưu đơn RỒI gọi tiếp `savePosInvoice`, tức trừ
+              kho và sinh công nợ ngay tại màn ĐẶT HÀNG. `/sell` không
+              làm thế: gửi đơn chỉ đưa đơn sang Phiếu tạm, xuất hàng là
+              một cú bấm riêng ở màn khác, có người khác chịu trách
+              nhiệm. Giữ hai việc trong một nút là chỗ dễ lỡ tay nhất
+              của cả màn.
+
+            ⚠ VÀ `F9` ĐI THEO. Dòng gợi ý chân bảng ghi "F9 gửi đơn";
+              phím ấy gọi `luuDon(false)`, nay đúng là gửi đơn.
+          */}
           <PanelActions>
-            {mode === "sua" ? (
-              <>
-                <PanelButton width={62} onClick={() => router.back()}>Huỷ</PanelButton>
-                <PanelButton width={126} disabled={dangLuu} onClick={() => luuDon(true)}>
-                  {dangLuu ? "Đang lưu…" : "Lưu thay đổi"}
-                </PanelButton>
-              </>
-            ) : (
-              <>
-                {/* ⚠ In qua mẫu in của phần đang chạy — xem `posPrintHref`. */}
-                <PanelButton
-                  width={62}
-                  disabled={!orderId}
-                  title={orderId ? "Mở trang in đơn hàng" : "Lưu tạm trước rồi mới in được"}
-                  onClick={() => { const h = orderId && posPrintHref("SO", orderId); if (h) window.open(h, "_blank") }}
-                >
-                  In
-                </PanelButton>
-                <PanelButton width={104} disabled={dangLuu} onClick={() => luuDon(true)}>
-                  {dangLuu ? "Đang lưu…" : "Lưu tạm"}
-                </PanelButton>
-              </>
-            )}
-            {/* ⚠ Nút chính GIỮ NGUYÊN ở cả hai bản — spec §7.1. */}
+            <PanelButton
+              width={150}
+              disabled={dangLuu || lines.length === 0}
+              onClick={() => luuDon(true)}
+              title="Lưu lại để sửa tiếp, chưa gửi đi đâu"
+            >
+              {dangLuu ? "Đang lưu…" : "Lưu nháp (F6)"}
+            </PanelButton>
             <PanelButton
               variant="primary"
               disabled={lines.length === 0 || !khach || coGiaXau || dangLuu}
@@ -1678,13 +1680,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     ? "Chưa chọn khách hàng"
                     : coGiaXau
                       ? "Có dòng đặt giá ngoài hạn mức của bạn"
-                      : /* ⚠ NÚT NÀY LÀM ĐÚNG HAI VIỆC TÊN NÓ NÓI: lưu đơn
-                           rồi lập hóa đơn. Hai giao dịch riêng — xem
-                           `luuDon`, nhánh bước 2 hỏng. */
-                        "Lưu đơn rồi xuất hàng và lập hóa đơn"
+                      : "Gửi đơn sang Phiếu tạm — xuất hàng ở màn Xuất hàng"
               }
             >
-              {dangLuu ? "Đang lưu…" : "Xuất hàng & lập HĐ"}
+              {dangLuu ? "Đang gửi…" : mode === "sua" ? "Lưu thay đổi" : "Gửi đơn (F9)"}
             </PanelButton>
           </PanelActions>
         </aside>

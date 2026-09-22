@@ -71,6 +71,7 @@ export function ProductPicker<T extends PickerItem>({
   hideLabel = false,
   closeOnPick = false,
   className,
+  persistent = false,
 }: {
   /** Danh sách ĐÃ lọc theo `term` và đã bỏ mã có trên phiếu. */
   items: T[]
@@ -125,6 +126,19 @@ export function ProductPicker<T extends PickerItem>({
   closeOnPick?: boolean
   /** Lớp CSS của khung ngoài — để nơi gọi đặt bề rộng. */
   className?: string
+  /**
+   * DẢI GỢI Ý Ở LẠI SAU KHI CHỌN, và có nút đóng rõ ràng.
+   *
+   * ⚠ MẶC ĐỊNH TẮT. Năm màn ngoài `/pos` đang dùng component này với
+   *   hành vi cũ; bật mặc định là đổi cả năm màn mà không ai yêu cầu.
+   *
+   * ⚠ CHỦ NHÀ CHỐT 22/09/2026: *"phần tìm, quét mã sản phẩm khi bấm
+   *   thêm sản phẩm vào dòng nó không tự mất đi mà luôn ở đó. khi xong
+   *   có nút đóng/xong"*. Lý do rất cụ thể: người bán quét một loạt mã
+   *   liên tiếp, và dải gợi ý đóng lại sau mỗi lần quét là mỗi mã phải
+   *   mở lại ô một lần.
+   */
+  persistent?: boolean
 }) {
   /**
    * ⚠ LUẬT ĐÓNG/MỞ NẰM Ở `@/lib/ui/picker-open`, KHÔNG NẰM Ở ĐÂY. Nó có
@@ -217,9 +231,23 @@ export function ProductPicker<T extends PickerItem>({
           disabled={disabled}
           /* ⚠ Nhãn ẩn thì `aria-label` thay chỗ — xem prop `hideLabel`. */
           aria-label={hideLabel ? label : undefined}
-          className="pl-8"
+          className={persistent ? "pl-8 pr-[88px]" : "pl-8"}
           autoComplete="off"
         />
+        {/*
+          ⚠ NÚT ĐÓNG NẰM TRONG Ô, KHÔNG NẰM NGOÀI. Bản thiết kế vẽ nó
+            lọt trong khung ô nhập ở mép phải; để ra ngoài là ô tìm bị
+            đẩy hẹp lại đúng bằng bề ngang cái nút.
+        */}
+        {persistent && (
+          <button
+            type="button"
+            onClick={() => gui({ t: open ? "escape" : "click" })}
+            className="absolute right-1.5 top-1/2 h-8 -translate-y-1/2 rounded-md bg-muted px-2.5 text-xs font-extrabold text-muted-foreground"
+          >
+            {open ? "▲ Đóng" : "▼ Mở"}
+          </button>
+        )}
       </div>
 
       {hint}
@@ -262,6 +290,26 @@ export function ProductPicker<T extends PickerItem>({
             </ul>
           )}
           {footer}
+          {/*
+            ⚠ CHÂN DẢI GỢI Ý CHỈ CÓ Ở CHẾ ĐỘ "Ở LẠI". Dải tự đóng sau
+              khi chọn thì một nút "Xong" là thừa — nó đóng một thứ vừa
+              tự đóng. Ở chế độ này thì ngược lại: không có nút, người
+              dùng không có cách nào đóng ngoài bấm ra ngoài.
+          */}
+          {persistent && (
+            <div className="flex items-center justify-between gap-2 border-t bg-muted/40 px-3 py-2">
+              <span className="text-[11px] font-semibold text-muted-foreground">
+                Bấm để thêm · Esc đóng
+              </span>
+              <button
+                type="button"
+                onClick={() => gui({ t: "escape" })}
+                className="h-7 rounded-md bg-card px-2.5 text-xs font-extrabold text-primary"
+              >
+                Xong
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -731,17 +731,44 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
   })
 
   /**
-   * ⚠ THÊM XONG THÌ THU GỌN — chủ nhà chốt. Nhưng CHỈ cho ô trên
-   * header: năm màn khác đang chạy cố ý giữ danh sách mở để nhập hàng
-   * loạt, và đổi mặc định là đổi luôn cả năm mà không ai yêu cầu.
+   * ⚠ Ô TÌM Ở LẠI SAU KHI THÊM — VÀ ĐÂY LÀ MỘT CÂU CHỐT ĐÃ BỊ ĐẢO.
+   *
+   *   · Đợt 9 chủ nhà chốt: thêm xong thì dải gợi ý THU GỌN. Lúc ấy ô
+   *     tìm nằm trên header và dải của nó đè lên bảng hàng, nên người
+   *     vừa thêm không nhìn thấy dòng mình vừa thêm.
+   *   · 22/09/2026 chủ nhà đảo lại, nguyên văn: *"phần tìm, quét mã sản
+   *     phẩm khi bấm thêm sản phẩm vào dòng nó không tự mất đi mà luôn
+   *     ở đó. khi xong có nút đóng/xong"*. Ô tìm nay ở CỘT PHẢI, không
+   *     đè lên bảng nữa, và người bán quét một loạt mã liên tiếp.
+   *
+   *   Hai câu chốt không mâu thuẫn — chúng nói về hai vị trí khác nhau
+   *   của cùng một ô. Ghi cả hai ở đây để lần sau không ai lật ngược
+   *   một trong hai mà tưởng mình đang sửa lỗi.
+   *
+   * ⚠ Ở LẠI THÌ PHẢI CÓ ĐƯỜNG ĐÓNG. Một dải gợi ý không bao giờ tự đóng
+   *   và cũng không có nút đóng là một cái bẫy — nó che mất phần dưới
+   *   cột phải và người dùng không biết làm sao cho nó biến đi.
    */
-  it("ô tìm dùng chung đóng danh sách sau khi thêm", () => {
-    /* ⚠ Đọc TỆP ĐANG VẼ ô, không đọc header — ô đã chuyển sang cột phải. */
+  it("ô tìm dùng chung ở lại sau khi thêm, và có đường đóng rõ ràng", () => {
+    /* ⚠ Đọc TỆP ĐANG VẼ ô, không ghim tên tệp. */
     const veO = FILES.filter((f) => /<ProductPicker/.test(code(readFileSync(f, "utf-8"))))
     expect(veO).toHaveLength(1)
-    expect(code(readFileSync(veO[0], "utf-8"))).toMatch(/closeOnPick/)
+    const o = code(readFileSync(veO[0], "utf-8"))
+    expect(o, "ô tìm của /pos không bật chế độ ở lại").toMatch(/persistent/)
+    expect(
+      /closeOnPick/.test(o),
+      "ô tìm lại tự đóng sau khi thêm — chủ nhà đã bác điều đó 22/09/2026"
+    ).toBe(false)
+
     const picker = code(read("src/components/ui/product-picker.tsx"))
+    /* ⚠ MẶC ĐỊNH TẮT — năm màn ngoài `/pos` giữ nguyên hành vi cũ. */
+    expect(picker, "chế độ ở lại bị bật mặc định cho mọi màn").toMatch(/persistent = false/)
     expect(picker).toMatch(/closeOnPick = false/)
+    /* ⚠ Hai đường đóng bản thiết kế vẽ: nút trong ô, và nút ở chân dải. */
+    expect(picker, "mất nút đóng trong ô tìm").toContain("▲ Đóng")
+    expect(picker, "mất nút Xong ở chân dải gợi ý").toContain("Xong")
+    expect(picker, "mất câu nhắc Esc đóng").toContain("Esc đóng")
+
     /**
      * ⚠ HÀNH VI THẬT NẰM Ở `tests/picker-open.test.ts` — chạy đúng chuỗi
      * sự kiện. Bản đầu của chốt này ghim chuỗi `if (closeOnPick)

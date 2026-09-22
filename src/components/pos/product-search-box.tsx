@@ -84,7 +84,7 @@ export function PosProductSearchBox({
         id={POS_PICKER_ID}
         className="[&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[1.5px] [&_input]:text-[15px] [&_input]:font-semibold"
         hideLabel
-        closeOnPick
+        persistent
         label="Tìm hàng hóa"
         placeholder={reg.placeholder ?? "Tìm hàng hóa, mã SKU, mã vạch…"}
         emptyHint="Không tìm thấy mã nào khớp."

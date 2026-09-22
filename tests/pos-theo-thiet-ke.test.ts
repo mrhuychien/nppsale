@@ -287,6 +287,68 @@ describe("khối Hàng đổi trả kèm đơn", () => {
   })
 })
 
+describe("ba chỗ chủ nhà chỉ ra 22/09/2026", () => {
+  /**
+   * ⚠ GHI CHÚ TỪNG DÒNG HÀNG BÁN. Bản vẽ có ô này trên MỌI dòng, không
+   * chỉ dòng trả; tôi chỉ làm cho dòng trả. Nó là chỗ duy nhất ghi được
+   * câu đi theo ĐÚNG một mặt hàng ("giao chiều", "lấy lô mới").
+   *
+   * ⚠ VÀ NÓ PHẢI ĐI XUỐNG SỔ. Một ô ghi chú không lưu là đúng kiểu hỏng
+   * của khối thanh toán vừa bị gỡ: người dùng gõ vào, lưu, rồi mất.
+   */
+  it("dòng hàng bán có ô ghi chú, và ghi chú đi xuống sổ", () => {
+    const i = DON.indexOf('placeholder="Ghi chú dòng…"')
+    expect(i, "dòng hàng bán không có ô ghi chú").toBeGreaterThan(-1)
+    expect(DON.slice(Math.max(0, i - 400), i), "ô ghi chú không ghi vào dòng")
+      .toMatch(/patchLine\(l\.key, \{ note: e\.target\.value \}\)/)
+    const save = code(doc("src/lib/pos/save.ts"))
+    expect(save, "ghi chú dòng không vào giỏ").toMatch(/note: l\.note/)
+    /**
+     * ⚠ CẮT ĐÚNG KHỐI CHÈN DÒNG BÁN. `create.ts` có HAI chỗ viết y hệt
+     * `...(l.note ? { note: l.note } : {})` — một cho `sales_order_lines`,
+     * một cho `return_lines`. Bản đầu của chốt này soi cả tệp, và một
+     * đột biến gỡ hẳn chỗ dòng BÁN vẫn LỌT vì chỗ dòng TRẢ còn nguyên.
+     */
+    const create = code(doc("src/lib/orders/create.ts"))
+    const j = create.indexOf('from("sales_order_lines").insert')
+    expect(j, "không thấy chỗ chèn dòng đơn").toBeGreaterThan(-1)
+    const khoiDong = create.slice(Math.max(0, j - 900), j)
+    expect(khoiDong, "ghi chú dòng không xuống sales_order_lines")
+      .toMatch(/\.\.\.\(l\.note \? \{ note: l\.note \} : \{\}\)/)
+  })
+
+  /**
+   * ⚠ Ô TÌM Ở LẠI, VÀ CÓ ĐƯỜNG ĐÓNG. Chủ nhà: *"khi bấm thêm sản phẩm
+   * vào dòng nó không tự mất đi mà luôn ở đó. khi xong có nút đóng/xong"*.
+   * Người bán quét một loạt mã liên tiếp; dải đóng sau mỗi lần quét là
+   * mỗi mã phải mở lại ô một lần.
+   */
+  it("ô tìm ở lại sau khi thêm, có nút Đóng và nút Xong", () => {
+    const box = code(doc("src/components/pos/product-search-box.tsx"))
+    expect(box, "ô tìm của /pos không bật chế độ ở lại").toMatch(/persistent/)
+    expect(/closeOnPick/.test(box), "ô tìm lại tự đóng sau khi thêm").toBe(false)
+    const picker = code(doc("src/components/ui/product-picker.tsx"))
+    expect(picker, "chế độ ở lại bị bật mặc định cho mọi màn").toMatch(/persistent = false/)
+    expect(picker, "mất nút đóng trong ô tìm").toContain("▲ Đóng")
+    expect(picker, "mất nút Xong ở chân dải gợi ý").toContain("Xong")
+  })
+
+  /**
+   * ⚠ HAI NÚT CUỐI TRANG THEO `/sell`: Lưu nháp và Gửi đơn. Chi tiết
+   * và lý do ở `tests/pos-cau-truc.test.ts` — ở đây chỉ canh hai cái
+   * nhãn, vì chúng là thứ chủ nhà khoanh trên ảnh.
+   */
+  it("hai nút cuối trang là Lưu nháp và Gửi đơn", () => {
+    const hang = DON.slice(DON.indexOf("<PanelActions>"), DON.indexOf("</PanelActions>"))
+    expect(hang, "mất nút Lưu nháp").toContain("Lưu nháp (F6)")
+    expect(hang, "mất nút Gửi đơn").toContain("Gửi đơn (F9)")
+    expect(
+      hang.split("<PanelButton").length - 1,
+      "hàng nút cuối trang không còn đúng hai nút"
+    ).toBe(2)
+  })
+})
+
 describe("cột phải", () => {
   /**
    * ⚠ MỘT MẶT TRẮNG LIỀN CÓ VIỀN TRÁI, không phải các thẻ rời trôi trên

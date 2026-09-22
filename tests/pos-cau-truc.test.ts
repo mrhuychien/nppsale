@@ -209,21 +209,63 @@ describe("sửa đơn dùng đúng component của màn lập đơn", () => {
     expect(nghiNgo.map((f) => f.replace(ROOT, ""))).toEqual([])
   })
 
-  /** ⚠ Nút primary GIỮ NGUYÊN ở cả hai bản — spec §7.1 chốt riêng dòng này. */
-  it("nút chính vẫn là Xuất hàng & lập HĐ ở cả hai chế độ", () => {
+  /**
+   * ⚠ ĐÚNG HAI NÚT, VÀ NÚT CHÍNH LÀ "GỬI ĐƠN" — KHÔNG LẬP HÓA ĐƠN.
+   *
+   * Câu chốt này đã bị ĐẢO một lần, ghi lại để không ai lật ngược:
+   *   · Spec §7.1 ban đầu: nút chính là "Xuất hàng & lập HĐ", cùng một
+   *     nhãn ở cả hai chế độ.
+   *   · Chủ nhà chốt 22/09/2026: *"Hai nút ở cuối trang chuẩn theo màn
+   *     làm đơn hiện tại (/sell) là Lưu nháp và Gửi đơn"*.
+   *
+   * ⚠ ĐIỀU THAY ĐỔI KHÔNG CHỈ LÀ CÁI NHÃN. Nút cũ lưu đơn RỒI gọi tiếp
+   *   `savePosInvoice` — trừ kho và sinh công nợ ngay tại màn ĐẶT HÀNG.
+   *   `/sell` tách hai việc ấy ra hai màn, hai cú bấm, hai người chịu
+   *   trách nhiệm. Nên chốt canh cả việc màn này KHÔNG còn gọi tới hàm
+   *   lập hóa đơn nữa — đổi mỗi nhãn mà vẫn lập hóa đơn là tệ hơn cũ:
+   *   người dùng đọc "Gửi đơn" rồi kho bị trừ.
+   */
+  it("đúng hai nút, nút chính gửi đơn chứ không lập hóa đơn", () => {
     const s = code(read("src/components/pos/order-screen.tsx"))
     const i = s.indexOf('variant="primary"')
     expect(i, "không thấy nút chính").toBeGreaterThan(-1)
-    /* ⚠ QUÉT TỚI HẾT THẺ, ĐỪNG CẮT CỨNG SỐ KÝ TỰ. Bản đầu cắt 400 ký
-       tự và trượt khỏi nhãn ngay khi nút có thêm một `title` dài — chốt
-       đỏ vì độ dài chú thích, không vì luật nào sai. */
+    /* ⚠ QUÉT TỚI HẾT THẺ, ĐỪNG CẮT CỨNG SỐ KÝ TỰ — bản đầu cắt 400 ký
+       tự và trượt khỏi nhãn ngay khi nút có thêm một `title` dài. */
     const het = s.indexOf("</PanelButton>", i)
     expect(het, "không thấy thẻ đóng của nút chính").toBeGreaterThan(i)
     const nut = s.slice(i, het)
-    expect(nut).toContain("Xuất hàng")
-    /* Nút chính nằm NGOÀI nhánh `mode === "sua" ? … : …`, nên chỉ có
-       MỘT nhãn cho nó. */
-    expect(s.slice(0, i)).not.toContain("Xuất hàng")
+    /**
+     * ⚠ SOI PHẦN CHỮ HIỆN RA, KHÔNG SOI CẢ THẺ. Thuộc tính `title` của
+     * nút nhắc đường tới màn Xuất hàng — hợp lệ, và nó nằm trong thẻ.
+     * Chữ người dùng ĐỌC nằm sau dấu `>` cuối cùng của thẻ mở.
+     */
+    const nhan = nut.slice(nut.lastIndexOf(">") + 1)
+    expect(nhan, "nút chính không còn là Gửi đơn").toContain("Gửi đơn")
+    /**
+     * ⚠ CẤM ĐÚNG NHÃN NÚT, KHÔNG CẤM CẢ TỆP. Bản đầu của chốt này cấm
+     * chuỗi "Xuất hàng" ở mọi chỗ — và nó đỏ oan ngay, vì câu nhắc
+     * đường ("đơn đang ở Phiếu tạm, xuất hàng ở màn Xuất hàng") dùng
+     * đúng chữ ấy một cách hợp lệ. Cái cần cấm là nút MANG TÊN việc nó
+     * không còn làm.
+     */
+    expect(
+      /Xuất hàng/.test(nhan),
+      "nút chính lại mang tên việc lập hóa đơn"
+    ).toBe(false)
+
+    /* ⚠ VÀ MÀN NÀY THÔI LẬP HÓA ĐƠN — đổi nhãn mà giữ việc là tệ hơn. */
+    expect(
+      /savePosInvoice/.test(s),
+      "màn đặt hàng vẫn tự lập hóa đơn — kho bị trừ ngay khi bấm Gửi đơn"
+    ).toBe(false)
+
+    /* ⚠ Đúng HAI nút ở hàng cuối, không ba. */
+    const hang = s.slice(s.indexOf("<PanelActions>"), s.indexOf("</PanelActions>"))
+    expect(
+      hang.split("<PanelButton").length - 1,
+      "hàng nút cuối trang không còn đúng hai nút"
+    ).toBe(2)
+    expect(hang, "mất nút lưu nháp").toContain("Lưu nháp")
   })
 })
 

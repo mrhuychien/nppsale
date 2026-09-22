@@ -105,4 +105,13 @@ FROM (
   SELECT rc.id FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
   GROUP BY rc.id, rc.paid HAVING coalesce(sum(p.amount),0) > coalesce(rc.paid,0)
 ) x
+UNION ALL
+-- 9. Mig 165 — NVBH sửa / xoá được phiếu trả NHÁP của chính mình
+SELECT 9, 'Mig 165 (NVBH sửa đơn kèm hàng trả không để lại phiếu trả rỗng)',
+  CASE WHEN count(*) = 2 THEN 'OK — đủ hai chính sách'
+       WHEN count(*) = 0 THEN 'CHƯA — NVBH sửa đơn kèm hàng trả sẽ để lại phiếu trả rỗng'
+       ELSE 'THIẾU — chỉ có ' || count(*)::text || '/2 chính sách' END, ''
+FROM pg_policy
+WHERE polrelid = 'returns'::regclass
+  AND polname IN ('Sales can update own draft returns', 'Sales can delete own draft returns')
 ) t ORDER BY stt;

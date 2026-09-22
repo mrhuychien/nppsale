@@ -194,3 +194,16 @@ describe("Màn thêm khách hàng nói rõ hỏng ở đâu", () => {
     expect(TOASTER).toContain('className="select-text break-words"')
   })
 })
+
+/**
+ * ⚠ BẢN WEB LÊN TRƯỚC MIGRATION. Mig 167/168 đưa trả tiền NCC và nhập kho
+ *   sang RPC; máy chủ chưa chạy thì PostgREST báo "Could not find the
+ *   function" — câu ấy không nói với thủ kho phải làm gì.
+ */
+describe("máy chủ thiếu hàm RPC", () => {
+  it.each(["PGRST202", "42883"])("%s → nói là chưa chạy migration", (code) => {
+    const m = errorMessage({ code, message: "Could not find the function public.post_stock_import(p)" })
+    expect(m).toMatch(/chưa chạy migration mới/)
+    expect(m).toContain("post_stock_import")
+  })
+})

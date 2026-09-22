@@ -38,6 +38,9 @@ const CODE_VI: Record<string, string> = {
   "42703": "Cơ sở dữ liệu thiếu cột — nhiều khả năng chưa chạy migration mới",
   "42P01": "Cơ sở dữ liệu thiếu bảng — nhiều khả năng chưa chạy migration mới",
   PGRST204: "Cơ sở dữ liệu thiếu cột — nhiều khả năng chưa chạy migration mới",
+  // Hàm RPC chưa có trên máy chủ: bản web mới lên trước khi chạy migration.
+  PGRST202: "Máy chủ chưa có chức năng này — nhiều khả năng chưa chạy migration mới. Báo người quản trị chạy các file migration mới nhất rồi thử lại",
+  "42883": "Máy chủ chưa có chức năng này — nhiều khả năng chưa chạy migration mới. Báo người quản trị chạy các file migration mới nhất rồi thử lại",
   PGRST116: "Không tìm thấy bản ghi",
   PGRST301: "Phiên đăng nhập đã hết hạn. Đăng nhập lại rồi thử lại.",
 }

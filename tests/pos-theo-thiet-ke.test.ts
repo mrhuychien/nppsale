@@ -157,6 +157,82 @@ describe("cột trái — bảng dòng hàng", () => {
   })
 })
 
+describe("khối Hàng đổi trả kèm đơn", () => {
+  /** ⚠ Bản vẽ: một thẻ RIÊNG dưới bảng bán, thu gọn được. */
+  it("là thẻ riêng, thu gọn được, đúng tiêu đề bản vẽ", () => {
+    expect(DON, "mất tiêu đề khối của bản vẽ").toContain("Hàng đổi trả kèm đơn")
+    expect(DON, "khối không thu gọn được").toMatch(/moKhoiTra/)
+  })
+
+  /** ⚠ Bản vẽ: bảy cột với đúng bề rộng này. */
+  it("bảng hàng trả đúng bảy cột của bản vẽ", () => {
+    expect(DON, "bề rộng cột bảng hàng trả lệch bản vẽ").toContain(
+      '"minmax(170px,1fr) 140px 100px 108px 112px 120px 34px"'
+    )
+    for (const nhan of ["Lý do", "Xử lý", "Trừ đơn"]) {
+      expect(DON, `mất cột "${nhan}" của bản vẽ`).toContain(nhan)
+    }
+  })
+
+  /**
+   * ⚠ CHẾ ĐỘ THÊM HÀNG TRẢ — bản vẽ dựng đúng cơ chế hai giỏ một ô tìm:
+   * bấm "+ Thêm hàng trả" thì mã chọn từ khung bên phải rơi vào danh
+   * sách TRẢ, và có dải xanh nói ra điều đó.
+   *
+   * ⚠ GÕ NHẦM GIỎ LÀ LỆCH CHIỀU TIỀN — một món khách MUA bị ghi thành
+   * một món khách TRẢ. Nên chốt canh cả ba vế: có chế độ, chế độ ĐỔI
+   * đích của việc chọn, và chế độ HIỆN RA.
+   */
+  it("có chế độ thêm hàng trả, và nó đổi đích của ô tìm", () => {
+    expect(DON, "không có chế độ thêm hàng trả").toMatch(/moThemTra/)
+    const i = DON.indexOf("const chonHang")
+    expect(i, "không thấy việc chọn mã").toBeGreaterThan(-1)
+    const khoi = DON.slice(i, i + 700)
+    expect(khoi, "việc chọn không đọc chế độ — mọi mã rơi vào giỏ bán")
+      .toMatch(/if \(!moThemTra\)/)
+    expect(khoi, "chế độ bật mà không thêm vào giỏ trả").toMatch(/setRetLines/)
+    expect(DON, "chế độ đang bật không hiện ra").toContain("chế độ thêm hàng trả")
+  })
+
+  /** ⚠ Bản vẽ: mỗi dòng có nút Trả / Đổi, và chân khối ghi "Trừ vào đơn". */
+  it("mỗi dòng chọn Trả hoặc Đổi, chân khối ghi Trừ vào đơn", () => {
+    expect(DON, "mất nút Trả/Đổi theo dòng").toMatch(/isExchange: o\.doi/)
+    expect(DON, "mất chân khối của bản vẽ").toContain("Trừ vào đơn")
+    expect(DON, "mất câu nhắc dòng Đổi không trừ tiền").toContain("không trừ tiền")
+  })
+
+  /**
+   * ⚠ LÝ DO THEO TỪNG DÒNG, VÀ NÓ PHẢI ĐI XUỐNG SỔ. Bản vẽ vẽ ô chọn
+   * riêng trên mỗi dòng; sổ trước đây chỉ có lý do cho cả phiếu nên
+   * mig 159 thêm `return_lines.reason`. Vẽ ô mà không lưu là màn hình
+   * nói dối: đặt hai lý do khác nhau, lưu xong mở lại thấy một.
+   */
+  it("lý do theo dòng được ghi xuống sổ", () => {
+    expect(DON, "ô lý do không ghi vào dòng").toMatch(/sua\(\{ reason: e\.target\.value \}\)/)
+    const save = code(doc("src/lib/pos/save.ts"))
+    expect(save, "lý do dòng không đi vào giỏ trả").toMatch(/reason: l\.reason/)
+    const create = code(doc("src/lib/orders/create.ts"))
+    expect(create, "lý do dòng không đi xuống bảng return_lines").toMatch(/reason: l\.reason/)
+    const mig = doc("supabase/migrations/159_return_line_reason.sql")
+    expect(mig, "cột lý do theo dòng chưa có trong sổ").toMatch(
+      /ADD COLUMN IF NOT EXISTS reason text/
+    )
+  })
+
+  /**
+   * ⚠ LÝ DO CỦA CẢ PHIẾU KHÔNG ĐƯỢC GHIM CỨNG. `returns.reason` là con
+   * số các báo cáo đọc; để nguyên "damaged" là mọi phiếu trong sổ mang
+   * một lý do chưa ai chọn.
+   */
+  it("lý do của cả phiếu lấy từ dòng, không ghim cứng", () => {
+    const i = DON.indexOf("returnReason:")
+    expect(i, "không thấy chỗ gửi lý do phiếu").toBeGreaterThan(-1)
+    expect(DON.slice(i, i + 200), "lý do phiếu vẫn ghim cứng").toMatch(
+      /retLines\.find\(/
+    )
+  })
+})
+
 describe("cột phải", () => {
   /**
    * ⚠ MỘT MẶT TRẮNG LIỀN CÓ VIỀN TRÁI, không phải các thẻ rời trôi trên

@@ -279,18 +279,37 @@ describe("lý do trả hàng khớp CHECK của bảng", () => {
    * 'expired','refused')` (migration 001 dòng 334). Bản đầu gửi `wrong`
    * → Postgres từ chối cả phiếu khi chọn "Sai hàng".
    */
-  it("màn phiếu trả và bảng trả kèm đơn dùng RETURN_REASONS", () => {
-    /* ⚠ Canh chỗ DÙNG, không canh dòng import — import còn mà bộ riêng
-       quay lại thì `/RETURN_REASONS/` vẫn khớp. */
-    const man = code(read("src/components/pos/return-screen.tsx"))
-    expect(man).toMatch(/const LY_DO = RETURN_REASONS\b/)
-    expect(man).toMatch(/LY_DO\.map\(/)
-    const bang = code(read("src/components/pos/return-exchange-table.tsx"))
-    expect(bang).toMatch(/RETURN_REASONS\.map\(/)
-    for (const s of [man, bang]) {
-      expect(/value="wrong"|id: "wrong"|value: "wrong"/.test(s), "vẫn có mã 'wrong'").toBe(false)
-      expect(/<option value="damaged"/.test(s), "bộ lý do viết tay đã quay lại").toBe(false)
+  it("mọi ô chọn lý do trả đều lấy từ RETURN_REASONS", () => {
+    /**
+     * ⚠ CHỐT KHÔNG GHIM TỆP NỮA. Bản đầu soi thẳng
+     * `return-exchange-table.tsx`; bản thiết kế chủ nhà đưa dựng lại
+     * khối hàng trả ngay trong `order-screen.tsx` và tệp kia bị xoá —
+     * chốt đỏ oan trong khi LUẬT còn nguyên: `returns.reason` và
+     * `return_lines.reason` đều có CHECK năm giá trị, viết tay một bộ
+     * riêng là Postgres từ chối cả phiếu (đã xảy ra với mã `wrong`).
+     */
+    const dungBoLyDo: string[] = []
+    for (const f of FILES) {
+      const src = code(readFileSync(f, "utf-8"))
+      const ten = f.slice(ROOT.length + 1)
+      if (/RETURN_REASONS\.map\(|LY_DO\.map\(/.test(src)) dungBoLyDo.push(ten)
+      expect(
+        /value="wrong"|id: "wrong"|value: "wrong"/.test(src),
+        `${ten}: vẫn có mã 'wrong' — CHECK của bảng từ chối`
+      ).toBe(false)
+      expect(
+        /<option value="damaged"/.test(src),
+        `${ten}: bộ lý do viết tay đã quay lại`
+      ).toBe(false)
     }
+    /* ⚠ Chống mù: phải có ít nhất HAI chỗ thật sự vẽ ô chọn lý do —
+       màn phiếu trả, và khối hàng trả kèm đơn của màn đơn. */
+    expect(
+      dungBoLyDo.length,
+      "số chỗ dùng bộ lý do dùng chung tụt xuống dưới hai"
+    ).toBeGreaterThanOrEqual(2)
+    expect(dungBoLyDo).toContain("src/components/pos/order-screen.tsx")
+    expect(dungBoLyDo).toContain("src/components/pos/return-screen.tsx")
   })
 
   it("RETURN_REASONS đúng bộ CHECK của migration 001", () => {

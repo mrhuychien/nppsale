@@ -24,6 +24,14 @@ export interface OfflineReturnLine {
   line_total: number
   is_exchange: boolean
   note?: string
+  /**
+   * Lý do trả của RIÊNG dòng này — `return_lines.reason`, mig 159.
+   *
+   * ⚠ RỖNG LÀ "CHƯA GHI", không phải "không có lý do". Dòng lập trước
+   * mig 159 không có giá trị nào ở đây, và màn hình rơi về
+   * `returns.reason` của cả phiếu.
+   */
+  reason?: string
 }
 
 export interface OfflineOrderPayload {
@@ -254,6 +262,10 @@ export async function insertReturnLines(
     line_total: l.line_total,
     is_exchange: l.is_exchange,
     ...(l.note ? { note: l.note } : {}),
+    /* ⚠ Máy chủ chưa chạy mig 159 thì `reason` là cột lạ và PostgREST
+       từ chối cả lô — nhánh `isMissingColumn` dưới đây gỡ nó ra rồi
+       chèn lại. Cùng đường mà `note` đã đi. */
+    ...(l.reason ? { reason: l.reason } : {}),
   }))
   const { error } = await supabase.from("return_lines").insert(rows)
   if (error && isMissingColumn(error)) {

@@ -54,6 +54,7 @@ import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
+import { RETURN_REASONS } from "@/lib/constants"
 import { useToast } from "@/hooks/use-toast"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
@@ -94,7 +95,6 @@ import { PosAddProductButton, PosProductSearchBox } from "@/components/pos/produ
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import type { SellProduct } from "@/lib/sell/ref-data"
-import { ReturnExchangeTable } from "@/components/pos/return-exchange-table"
 
 export interface OrderScreenProps {
   /** `lap` = đơn mới hoặc phiếu tạm. `sua` = đơn đã lưu, mở ra sửa. */
@@ -121,6 +121,16 @@ function vatChoices(current: number): Array<{ value: number; label: string }> {
   return [...base, { value: cur, label: vatLabel(cur) }].sort((a, b) => a.value - b.value)
 }
 
+/**
+ * Bề rộng cột của bảng HÀNG ĐỔI TRẢ — lấy nguyên từ bản thiết kế:
+ *   minmax(170px,1fr) · 140 · 100 · 108 · 112 · 120 · 34
+ *   Sản phẩm/đơn vị · Lý do · Số lượng · Đơn giá · Xử lý · Trừ đơn · (xoá)
+ *
+ * ⚠ KHÁC BẢNG BÁN. Bảng bán không có cột "Lý do" và "Xử lý"; dùng chung
+ *   một bộ cột cho cả hai là một trong hai bảng lệch hẳn.
+ */
+const POS_RET_COLS = "minmax(170px,1fr) 140px 100px 108px 112px 120px 34px"
+
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
@@ -133,6 +143,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [lines, setLines] = useState<PosLine[]>([])
   const [retLines, setRetLines] = useState<PosLine[]>([])
   const [retReason, setRetReason] = useState("damaged")
+  /** Khối "Hàng đổi trả kèm đơn" đang mở hay đang thu gọn — bản vẽ có nút gập. */
+  const [moKhoiTra, setMoKhoiTra] = useState(false)
+  /** Đang ở *chế độ thêm hàng trả*: mã chọn từ ô tìm rơi vào giỏ TRẢ. */
+  const [moThemTra, setMoThemTra] = useState(false)
   /**
    * Phiếu trả nháp kèm đơn mà màn đang nắm — ba giá trị, xem
    * `applyOrderEdit`: `string` ghi đè, `null` chưa có, `undefined`
@@ -672,15 +686,49 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     },
     [stockByProduct, groupId]
   )
-  const chonHang = useCallback((p: SellProduct) => addProduct(p.id), [addProduct])
+  /**
+   * CHỌN MỘT MÃ TỪ Ô TÌM — rơi vào GIỎ NÀO là do `moThemTra` quyết.
+   *
+   * ⚠ MÀN NÀY CÓ HAI GIỎ VÀ MỘT Ô TÌM, y như màn phiếu trả. Bản thiết
+   *   kế dựng đúng cơ chế ấy: bấm "+ Thêm hàng trả" là vào *chế độ thêm
+   *   hàng trả*, rồi tìm ở khung bên phải, kết quả rơi vào danh sách
+   *   trả; bấm "Xong" thì về lại giỏ bán.
+   *
+   * ⚠ GÕ NHẦM GIỎ Ở ĐÂY LÀ LỆCH CHIỀU TIỀN: một món khách MUA bị ghi
+   *   thành một món khách TRẢ, và tổng đơn tụt xuống mà không ai thấy
+   *   vì số dòng vẫn đúng. Vì vậy chế độ đang bật phải HIỆN RA — dải
+   *   xanh trên khối hàng trả, và `note` trên chính ô tìm.
+   */
+  const chonHang = useCallback(
+    (p: SellProduct) => {
+      if (!moThemTra) { addProduct(p.id); return }
+      setRetLines((cu) => [
+        ...cu,
+        {
+          ...emptyReturnLine(false),
+          productId: p.id,
+          name: p.name,
+          sku: p.sku ?? "",
+          unit: sellableUnits(p)[0],
+          units: sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) })),
+          qty: 1,
+          price: unitPriceFor(p, sellableUnits(p)[0], groupId),
+          reason: retReason,
+        },
+      ])
+    },
+    [moThemTra, addProduct, groupId, retReason]
+  )
 
-  /* ⚠ Ô TÌM HÀNG VẼ Ở KHUNG — màn chỉ đưa danh mục và việc cần làm lên.
+  /* ⚠ Ô TÌM HÀNG VẼ Ở CỘT PHẢI — màn chỉ đưa danh mục và việc cần làm lên.
      Xem `src/store/pos/product-search.tsx`. */
   useRegisterPosProductSearch({
     items: mucHang,
     onPick: chonHang,
     disabled: loading,
-    placeholder: "Tên hàng, mã SKU hoặc mã vạch…",
+    placeholder: moThemTra
+      ? "Tìm hàng KHÁCH TRẢ LẠI…"
+      : "Tên hàng, mã SKU hoặc mã vạch…",
     renderMeta: veGoiY,
   })
 
@@ -751,7 +799,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           /* ⚠ HÀNG TRẢ KÈM ĐƠN ĐI XUỐNG THẬT. Bản đầu gửi `[]` trong khi
              panel vẫn trừ "Trừ hàng trả" vào số khách cần trả — người
              dùng thấy một tổng mà sổ không ghi. */
-          returnReason: retReason,
+          /**
+           * ⚠ LÝ DO CỦA CẢ PHIẾU LẤY TỪ DÒNG ĐẦU CÓ LÝ DO RIÊNG.
+           *   `returns.reason` là cột NOT-NULL-ish có CHECK, và từ mig
+           *   159 mỗi dòng đã có lý do của nó. Ghim cứng "damaged" như
+           *   bản trước là mọi phiếu trả trong sổ đều mang một lý do
+           *   chưa ai chọn — và đó chính là con số các báo cáo đọc.
+           */
+          returnReason:
+            retLines.find((l) => !l.isExchange && l.reason)?.reason ?? retReason,
           returnLines: posLinesToReturnCart(retLines),
           /* ⚠ ĐI TRONG TẢI TRỌNG, KHÔNG ĐI TRONG `ctx` — xem mig 153. */
           salesUserId: nvbh || null,
@@ -1244,21 +1300,234 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             })}
           </LineTableFrame>
 
-          {retLines.length > 0 && (
-            <ReturnExchangeTable
-              lines={retLines}
-              onChange={setRetLines}
-              products={products}
-              reason={retReason}
-              onReason={setRetReason}
-            />
-          )}
-          {/* ⚠ Không nắm được phiếu trả (nhiều phiếu nháp / đọc hỏng) thì nói ra. */}
-          {mode === "sua" && heldReturnId === undefined && retLines.length === 0 && (
-            <p className="shrink-0 text-[11px] text-[var(--pos-warn)]">
-              Hàng trả kèm đơn không nạp được ở đây — lưu đơn sẽ không làm nó đổi. Sửa ở màn Trả hàng.
-            </p>
-          )}
+          {/*
+            ====================================================
+            HÀNG ĐỔI TRẢ KÈM ĐƠN — dựng theo đúng bản thiết kế.
+            ====================================================
+
+            ⚠ MỘT THẺ RIÊNG, THU GỌN ĐƯỢC. Bản vẽ để nó gập lại mặc
+              định: phần lớn đơn KHÔNG có hàng trả, và một bảng rỗng
+              chiếm chỗ dưới bảng bán là thứ mắt phải bỏ qua mỗi lần.
+
+            ⚠ VIỀN ĐỔI MÀU KHI CÓ HÀNG TRẢ — `returnBlockBorder` của bản
+              vẽ. Một tờ đơn có trừ tiền hàng trả phải nhìn ra được từ
+              xa, vì nó là tờ dễ sai nhất.
+          */}
+          <div
+            className={`shrink-0 overflow-hidden rounded-[14px] border bg-white ${
+              retLines.length > 0 ? "border-[var(--pos-warn-border)]" : "border-[var(--pos-line)]"
+            }`}
+          >
+            <div className="flex min-w-0 items-center gap-3 px-3.5 py-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-extrabold text-[var(--pos-ink)]">
+                  Hàng đổi trả kèm đơn
+                </span>
+                <span className="mt-0.5 block truncate text-[12px] font-semibold text-[var(--pos-muted)]">
+                  {retLines.length === 0
+                    ? "Không có"
+                    : `${retLines.length} dòng · trừ ${formatCurrency(totals.returnCredit)}`}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => { setMoKhoiTra(true); setMoThemTra(true); focusPosPicker() }}
+                className="h-[34px] shrink-0 whitespace-nowrap rounded-[10px] border-[1.5px] border-[var(--pos-edge)] bg-white px-3 text-[13px] font-bold text-[var(--pos-ink)]"
+              >
+                + Thêm hàng trả
+              </button>
+              <button
+                type="button"
+                onClick={() => setMoKhoiTra((v) => !v)}
+                className="h-[34px] shrink-0 whitespace-nowrap px-2.5 text-[13px] font-extrabold text-[var(--pos-primary-deep)]"
+              >
+                {moKhoiTra ? "Thu gọn" : "Mở ra"}
+              </button>
+            </div>
+
+            {moKhoiTra && (
+              <div className="min-w-0 border-t border-[var(--pos-line-soft)]">
+                {/* ⚠ CHẾ ĐỘ ĐANG BẬT PHẢI HIỆN RA — xem `chonHang`. */}
+                {moThemTra && (
+                  <div className="flex min-w-0 items-center gap-2.5 border-b border-[var(--pos-ok-border)] bg-[var(--pos-ok-soft)] px-3.5 py-2.5">
+                    <span className="min-w-0 flex-1 text-[13px] font-bold leading-relaxed text-[var(--pos-ok)]">
+                      Đang ở <b>chế độ thêm hàng trả</b> — quét hoặc tìm sản phẩm ở khung bên
+                      phải, kết quả sẽ thêm vào danh sách trả.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMoThemTra(false)}
+                      className="h-8 shrink-0 whitespace-nowrap rounded-[10px] border-[1.5px] border-[var(--pos-ok-edge)] bg-white px-3 text-[12px] font-extrabold text-[var(--pos-ok)]"
+                    >
+                      Xong
+                    </button>
+                  </div>
+                )}
+
+                {retLines.length === 0 ? (
+                  <p className="px-3.5 py-[22px] text-center text-[13px] font-semibold text-[var(--pos-muted)]">
+                    Chưa có hàng đổi trả. Bấm <b>+ Thêm hàng trả</b> rồi quét/tìm sản phẩm ở
+                    khung bên phải.
+                  </p>
+                ) : (
+                  <>
+                    <div
+                      className="grid h-[38px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
+                      style={{ gridTemplateColumns: POS_RET_COLS, gap: "0 10px" }}
+                    >
+                      <span>Sản phẩm / đơn vị</span>
+                      <span>Lý do</span>
+                      <span className="text-center">Số lượng</span>
+                      <span className="text-right">Đơn giá</span>
+                      <span className="text-center">Xử lý</span>
+                      <span className="text-right">Trừ đơn</span>
+                      <span />
+                    </div>
+
+                    {retLines.map((l, i) => {
+                      const tien = l.isExchange ? 0 : Math.round(l.qty * l.price)
+                      const sua = (p: Partial<PosLine>) =>
+                        setRetLines((c) => c.map((x) => (x.key === l.key ? { ...x, ...p } : x)))
+                      return (
+                        <div
+                          key={l.key}
+                          className="grid min-h-[70px] items-center border-b border-[var(--pos-line-faint)] px-3.5 py-2.5"
+                          style={{ gridTemplateColumns: POS_RET_COLS, gap: "0 10px" }}
+                        >
+                          <span className="grid min-w-0 gap-1.5">
+                            <span className="truncate text-[14px] font-bold text-[var(--pos-ink)]">
+                              {l.name || "— chưa chọn mã —"}
+                            </span>
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="flex shrink-0 gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
+                                {l.units.map((u) => {
+                                  const dang = u.unit_name === l.unit
+                                  return (
+                                    <button
+                                      key={u.unit_name}
+                                      type="button"
+                                      aria-pressed={dang}
+                                      onClick={() => sua({ unit: u.unit_name })}
+                                      className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
+                                        dang
+                                          ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
+                                          : "text-[var(--pos-muted)]"
+                                      }`}
+                                    >
+                                      {u.unit_name}
+                                    </button>
+                                  )
+                                })}
+                              </span>
+                              {l.sku && (
+                                <span className="n shrink-0 text-[12px] font-semibold text-[var(--pos-muted)]">
+                                  {l.sku}
+                                </span>
+                              )}
+                            </span>
+                            <input
+                              aria-label={`Ghi chú dòng trả ${i + 1}`}
+                              value={l.note ?? ""}
+                              onChange={(e) => sua({ note: e.target.value })}
+                              placeholder="Ghi chú dòng trả…"
+                              className="h-[30px] w-full min-w-0 border-0 border-b border-dashed border-[var(--pos-edge)] bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none"
+                            />
+                          </span>
+
+                          {/* ⚠ LÝ DO THEO TỪNG DÒNG — `return_lines.reason`, mig 159.
+                              Sổ trước đây chỉ có lý do cho cả phiếu; vẽ ô này mà
+                              lưu chung một chỗ là màn hình nói dối. */}
+                          <select
+                            aria-label={`Lý do trả dòng ${i + 1}`}
+                            value={l.reason ?? retReason}
+                            onChange={(e) => sua({ reason: e.target.value })}
+                            className="h-[38px] min-w-0 rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-[12px] font-bold text-[var(--pos-ink)]"
+                          >
+                            {RETURN_REASONS.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+
+                          <div className="justify-self-center">
+                            <QtyStepper
+                              label={`số lượng trả dòng ${i + 1}`}
+                              value={l.qty}
+                              onChange={(v) => sua({ qty: v })}
+                            />
+                          </div>
+
+                          <input
+                            aria-label={`Đơn giá trả dòng ${i + 1}`}
+                            inputMode="numeric"
+                            value={l.price === 0 ? "0" : String(l.price)}
+                            onChange={(e) => sua({ price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                            className="n h-[38px] w-[104px] justify-self-end rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-right text-[14px] font-bold text-[var(--pos-ink)] outline-none"
+                          />
+
+                          {/* ⚠ TRẢ / ĐỔI LÀ HAI CHIỀU TIỀN KHÁC NHAU: dòng ĐỔI
+                              không trừ đồng nào. Hai nút cạnh nhau, nút đang
+                              chọn nổi lên — đọc được bằng mắt, không phải mở ra. */}
+                          <span className="flex justify-self-center gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
+                            {[
+                              { doi: false, nhan: "Trả" },
+                              { doi: true, nhan: "Đổi" },
+                            ].map((o) => {
+                              const dang = (l.isExchange === true) === o.doi
+                              return (
+                                <button
+                                  key={o.nhan}
+                                  type="button"
+                                  aria-pressed={dang}
+                                  onClick={() => sua({ isExchange: o.doi })}
+                                  className={`h-[30px] min-w-[46px] rounded-[7px] px-2.5 text-[12px] font-extrabold ${
+                                    dang
+                                      ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
+                                      : "text-[var(--pos-muted)]"
+                                  }`}
+                                >
+                                  {o.nhan}
+                                </button>
+                              )
+                            })}
+                          </span>
+
+                          <span
+                            className={`n whitespace-nowrap text-right text-[15px] font-extrabold ${
+                              l.isExchange ? "text-[var(--pos-dim)]" : "text-[var(--pos-warn)]"
+                            }`}
+                          >
+                            {l.isExchange ? "—" : `− ${formatCurrency(tien)}`}
+                          </span>
+
+                          <button
+                            type="button"
+                            aria-label={`Bỏ dòng trả ${i + 1}`}
+                            onClick={() => setRetLines((c) => c.filter((x) => x.key !== l.key))}
+                            className="h-[30px] w-[30px] justify-self-center rounded-[8px] text-[19px] leading-none text-[var(--pos-danger)] hover:bg-[var(--pos-danger-border)]"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    })}
+
+                    <div className="flex min-w-0 items-center justify-between gap-3 bg-[var(--pos-head)] px-3.5 py-2.5">
+                      <span className="text-[12px] font-bold text-[var(--pos-muted)]">
+                        Dòng “Đổi” không trừ tiền · phiếu trả chờ quản lý duyệt
+                      </span>
+                      <span className="flex items-baseline gap-2.5 whitespace-nowrap text-[13px] font-bold text-[var(--pos-muted)]">
+                        Trừ vào đơn
+                        <span className="n text-[18px] font-extrabold text-[var(--pos-warn)]">
+                          − {formatCurrency(totals.returnCredit)}
+                        </span>
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/*

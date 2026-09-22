@@ -84,6 +84,14 @@ export interface PosLine {
    * giảm công nợ của khách.
    */
   isExchange?: boolean
+  /**
+   * Lý do trả của RIÊNG dòng này — chỉ dùng cho dòng hàng trả.
+   *
+   * ⚠ BẢN THIẾT KẾ ĐÒI LÝ DO TỪNG DÒNG, sổ trước đây chỉ có lý do cho
+   * cả phiếu (`returns.reason`). Mig 159 thêm `return_lines.reason`.
+   * Rỗng = chưa ghi riêng, đọc theo lý do của phiếu.
+   */
+  reason?: string
 
   /* ---- màn sửa: số CŨ để gạch ngang, spec §7 ---- */
   /** Thành tiền trước khi sửa. `null`/thiếu = dòng mới thêm. */

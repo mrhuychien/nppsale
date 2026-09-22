@@ -109,6 +109,7 @@ export function posLinesToReturnCart(lines: readonly PosLine[]): ReturnCartLine[
       vatRate: 0,
       isExchange: l.isExchange === true,
       note: l.note ?? "",
+      ...(l.reason ? { reason: l.reason } : {}),
     }))
 }
 

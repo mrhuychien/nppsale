@@ -24,6 +24,8 @@ export interface ReturnCartLine {
   vatRate: number
   isExchange: boolean
   note: string
+  /** Lý do trả của riêng dòng — xem `OfflineReturnLine.reason`. */
+  reason?: string
 }
 
 /**
@@ -106,6 +108,7 @@ export function toReturnLine(l: ReturnCartLine): OfflineReturnLine {
     vat_rate: l.vatRate || 0,
     line_total: Math.round(l.qty * l.price * (1 + (l.vatRate || 0))),
     is_exchange: l.isExchange,
+    ...(l.reason ? { reason: l.reason } : {}),
     ...(note ? { note } : {}),
   }
 }

@@ -157,6 +157,13 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [ngayGiao, setNgayGiao] = useState("")
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
+  /**
+   * ⚠ ĐÚNG BỘ VAI TRÒ MÀ MÁY CHỦ CHO PHÉP — xem mig 153 và khối vẽ ô
+   *   "Gán đơn cho NVBH" bên dưới. Để rộng hơn là vẽ ra một ô mà
+   *   `WITH CHECK` của chính sách RLS sẽ từ chối bằng mã 42501, và
+   *   người dùng không có cách nào đọc ra mình đã làm sai ở đâu.
+   */
+  const canPickSeller = user?.role === "owner" || user?.role === "manager"
   /* ⚠ TỪ KHOÁ TÌM HÀNG NẰM Ở KHUNG, không ở màn — ô nhập ở header. */
   const moTimHang = usePosSearchTerm()
   const [moTimKhach, setMoTimKhach] = useState(false)
@@ -1561,15 +1568,32 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             ⚠ GÁN ĐƠN CHO NVBH NẰM Ở CỘT PHẢI, đúng bản thiết kế. Bản
               trước của tôi để nó thành một `<select>` nhỏ trên thanh
               ngang phía trên — chỗ ấy không có trong bản vẽ.
+
+            ⚠ CHỈ CHỦ NHÀ / QUẢN LÝ THẤY Ô NÀY, và đây là một lỗi đã
+              xảy ra thật: chủ nhà báo 22/09/2026 rằng gán đơn cho nhân
+              viên thì máy chủ ném
+              "new row violates row-level security policy for table
+               sales_orders (mã 42501)".
+
+              Máy chủ từ chối ĐÚNG. Chính sách `"Sales can update own
+              open orders"` (mig 119) có `WITH CHECK (… sales_user_id =
+              auth.uid() …)`, còn mig 153 đã chốt "chỉ chủ nhà hoặc
+              quản lý mới lập đơn đứng tên nhân viên khác". Màn
+              `/sell/cart` che ô này khỏi NVBH từ mig 153; màn `/pos`
+              thì quên, nên nó vẽ cho mọi vai trò. Mời người ta bấm một
+              cái nút mà máy chủ chắc chắn từ chối thì lỗi là của cái
+              nút, không phải của người bấm.
           */}
-          <div className="grid min-w-0 gap-1.5">
-            <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
-              Gán đơn cho NVBH
-            </span>
-            {/* ⚠ CHỈ TÊN, KHÔNG THÔNG TIN KÈM — chủ nhà chốt 22/09/2026.
-                Xem `seller-picker.tsx` về lý do bỏ `<select>`. */}
-            <SellerPicker value={nvbh} onChange={setNvbh} sellers={sellers} />
-          </div>
+          {canPickSeller && (
+            <div className="grid min-w-0 gap-1.5">
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
+                Gán đơn cho NVBH
+              </span>
+              {/* ⚠ CHỈ TÊN, KHÔNG THÔNG TIN KÈM — chủ nhà chốt 22/09/2026.
+                  Xem `seller-picker.tsx` về lý do bỏ `<select>`. */}
+              <SellerPicker value={nvbh} onChange={setNvbh} sellers={sellers} />
+            </div>
+          )}
           </div>
 
           {/*

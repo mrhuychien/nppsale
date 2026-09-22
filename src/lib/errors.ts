@@ -67,6 +67,35 @@ const CONSTRAINT_VI: Array<[RegExp, string]> = [
 const RLS_RE = /row-level security|violates row-level security policy/i
 
 /**
+ * RLS từ chối TRÊN MỘT BẢNG CỤ THỂ — nói được nhiều hơn "bạn không có
+ * quyền".
+ *
+ * ⚠ CHỦ NHÀ ĐỌC ĐÚNG CÂU NÀY 22/09/2026: "Bạn không có quyền thực hiện
+ *   thao tác này — new row violates row-level security policy for table
+ *   sales_orders (mã 42501)". Câu ấy không sai, nhưng nó không nói được
+ *   điều duy nhất người ta cần biết: phải làm gì bây giờ.
+ *
+ * ⚠ KỂ RA CÁC LÝ DO, ĐỪNG CHỌN HỘ MỘT LÝ DO. Một câu lỗi RLS không cho
+ *   biết vế nào của chính sách đã trượt; đoán đại một nguyên nhân rồi
+ *   nói chắc nịch là đổi một câu khó hiểu lấy một câu dễ hiểu nhưng
+ *   SAI — và người dùng đi sửa nhầm chỗ. Nguyên văn vẫn đi kèm phía
+ *   sau như mọi câu khác.
+ */
+const RLS_BANG_VI: Array<[RegExp, string]> = [
+  [
+    /table "?sales_orders"?/i,
+    "Máy chủ từ chối ghi đơn này. Hai lý do thường gặp: đơn đang đứng tên " +
+      "một nhân viên khác (chỉ chủ nhà phân phối hoặc quản lý mới gán được), " +
+      "hoặc đơn đã qua bước không cho sửa nữa.",
+  ],
+  [
+    /table "?returns"?/i,
+    "Máy chủ từ chối ghi phiếu trả này. Thường là do phiếu đang đứng tên " +
+      "một nhân viên khác — chỉ chủ nhà phân phối hoặc quản lý mới gán được.",
+  ],
+]
+
+/**
  * Tên bảng → tên người dùng gọi. Chỉ để câu lỗi khoá ngoại nói được
  * "đang được PHIẾU TRẢ HÀNG tham chiếu" thay vì "table returns".
  */
@@ -140,6 +169,19 @@ export function errorMessage(err: unknown, fallback = "Lỗi không xác định
     }
   }
   if (!vi && code === "23503") vi = foreignKeyMessage(haystack) ?? ""
+  /**
+   * ⚠ CÂU RLS THEO BẢNG ĐỨNG TRƯỚC CÂU THEO MÃ. Mã `42501` đã có câu
+   *   dịch chung ("bạn không có quyền"), nên để nó chạy trước là câu
+   *   riêng của bảng không bao giờ tới lượt.
+   */
+  if (!vi && RLS_RE.test(haystack)) {
+    for (const [re, msg] of RLS_BANG_VI) {
+      if (re.test(haystack)) {
+        vi = msg
+        break
+      }
+    }
+  }
   if (!vi && code && CODE_VI[code]) vi = CODE_VI[code]
   if (!vi && RLS_RE.test(haystack)) vi = CODE_VI["42501"]
 

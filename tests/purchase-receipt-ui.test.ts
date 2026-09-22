@@ -482,10 +482,49 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
    * `onClick` — Tab tới ô cũng phải xổ, đây là màn nhập liệu hàng loạt.
    */
   it("bấm hoặc Tab vào ô là xổ danh sách", () => {
-    expect(PICKER).toContain("onFocus={() => setOpen(true)}")
-    expect(PICKER).toContain("onClick={() => setOpen(true)}")
+    /**
+     * ⚠ SOI CẢ HAI TAY CẦM, KHÔNG SOI NGUYÊN VĂN MỘT DÒNG. Bản trước
+     *   ghim đúng chuỗi `onFocus={() => setOpen(true)}`; 22/09/2026
+     *   `onFocus` phải mọc thêm một cờ (nuốt đúng cú `focus()` mà `pick`
+     *   tự gọi) và chốt đỏ lên dù luật không suy suyển. Luật là: cả hai
+     *   tay cầm đều phải mở danh sách ra.
+     */
+    for (const tay of ["onFocus", "onClick"]) {
+      const i = PICKER.indexOf(`${tay}={`)
+      expect(i, `ô tìm không còn tay cầm ${tay}`).toBeGreaterThan(-1)
+      const than = PICKER.slice(i, PICKER.indexOf("\n          on", i + 10))
+      expect(than, `${tay} không mở danh sách`).toContain("setOpen(true)")
+    }
     expect(PICKER, "danh sách chỉ hiện khi đã gõ — đúng cái luật vừa bị đảo")
       .not.toContain("term.trim() !== \"\" && ")
+  })
+
+  /**
+   * ⚠ THÊM XONG THÌ ẨN DANH SÁCH (chủ nhà chốt 22/09/2026: "khi chọn sản
+   * phẩm xong thì ẩn list đi, muốn chọn tiếp lại bấm vào"). Đây là luật
+   * ĐẢO của bản trước — bản trước cố ý để mở để nhập liên tiếp — nên
+   * chốt phải canh, không thì lần refactor sau nó lặng lẽ mở lại.
+   */
+  it("thêm một mặt hàng xong thì đóng danh sách lại", () => {
+    const i = PICKER.indexOf("const pick = ")
+    expect(i).toBeGreaterThan(-1)
+    const than = PICKER.slice(i, PICKER.indexOf("\n  }", i))
+    expect(than, "thêm xong danh sách vẫn nằm đó che mất dòng vừa thêm")
+      .toContain("setOpen(false)")
+    /**
+     * ⚠ VÀ CON TRỎ PHẢI VỀ Ô TÌM. Bỏ `focus()` đi thì sau một cú bấm
+     *   chuột con trỏ nằm trên cái nút vừa biến mất, phím tiếp theo
+     *   không đi đâu cả.
+     */
+    expect(than, "thêm xong con trỏ không về ô tìm").toContain("focus()")
+    /**
+     * ⚠ CỜ NUỐT `onFocus` PHẢI LÀ MỘT LẦN, và chỉ bật khi thật sự sắp
+     *   gọi `focus()`. Bật vô điều kiện thì thêm bằng phím Enter (con
+     *   trỏ chưa rời ô, `focus()` không kích gì) để cờ nằm lại — và nó
+     *   nuốt mất cú Tab hợp lệ kế tiếp.
+     */
+    expect(than, "cờ nuốt onFocus bật vô điều kiện — sẽ kẹt sau khi thêm bằng Enter")
+      .toContain("document.activeElement !== inputRef.current")
   })
 
   /** ⚠ Bàn phím phải dùng được: mũi tên, Enter thêm, Esc đóng. */

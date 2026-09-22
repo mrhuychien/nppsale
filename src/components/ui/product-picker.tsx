@@ -98,6 +98,19 @@ export function ProductPicker<T extends PickerItem>({
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  /**
+   * ⚠ BỎ QUA ĐÚNG MỘT LẦN `onFocus`, ngay sau khi vừa thêm một mặt hàng.
+   *
+   * Thêm xong thì con trỏ phải quay về ô tìm — không thì nó đang nằm
+   * trên một cái nút vừa biến mất, và phím tiếp theo không đi đâu cả.
+   * Nhưng `focus()` lại kích `onFocus`, mà `onFocus` thì xổ danh sách —
+   * tức là đóng xong mở lại ngay trong cùng một nhịp, và người dùng
+   * thấy danh sách không bao giờ chịu tắt.
+   *
+   * ⚠ ĐÂY LÀ CỜ MỘT LẦN, KHÔNG PHẢI CÔNG TẮC. Để nó bật lâu là Tab vào ô
+   *   cũng không xổ nữa — mất đúng cái luật chủ nhà chốt 20/09/2026.
+   */
+  const boQuaMoLanToi = useRef(false)
 
   /** Bấm ra ngoài thì đóng — nếu không dải gợi ý che mất bảng hàng. */
   useEffect(() => {
@@ -118,12 +131,31 @@ export function ProductPicker<T extends PickerItem>({
     onPick(it)
     onTermChange("")
     /**
-     * ⚠ KHÔNG ĐÓNG SAU KHI THÊM. Người nhập một phiếu ba mươi dòng thêm
-     *   liên tiếp; đóng lại là mỗi dòng một lần bấm thừa. Mã vừa thêm
-     *   biến khỏi danh sách (nơi gọi đã loại mã có trên phiếu), nên
-     *   danh sách tự nói "đã nhận rồi".
+     * ĐÓNG DANH SÁCH SAU KHI THÊM (chủ nhà chốt 22/09/2026: "khi chọn
+     * sản phẩm xong thì ẩn list đi, muốn chọn tiếp lại bấm vào").
+     *
+     * ⚠ ĐÂY LÀ MỘT LUẬT BỊ ĐẢO, VÀ NÓI RA CHO RÕ. Bản trước cố ý để
+     *   nguyên, lý do đã ghi ở đây: "người nhập một phiếu ba mươi dòng
+     *   thêm liên tiếp; đóng lại là mỗi dòng một lần bấm thừa". Lý do ấy
+     *   không sai — nhưng nó đánh đổi lấy một dải gợi ý CHE MẤT dòng vừa
+     *   thêm, nên người dùng không thấy việc mình vừa làm có ăn hay
+     *   không. Chủ nhà chọn nhìn thấy kết quả.
+     *
+     * ⚠ KHÔNG MẤT ĐƯỜNG BÀN PHÍM. Gõ tiếp một chữ là `onChange` xổ lại;
+     *   mũi tên xuống cũng xổ lại. Để thêm mặt hàng thứ hai thì đằng nào
+     *   cũng phải gõ hoặc bấm, nên không có cú bấm nào thừa ra.
      */
-    inputRef.current?.focus()
+    setOpen(false)
+    /**
+     * ⚠ CHỈ BẬT CỜ KHI SẮP THẬT SỰ GỌI `focus()`. Thêm bằng phím Enter
+     *   thì con trỏ CHƯA HỀ rời ô, `focus()` không kích `onFocus` nữa —
+     *   cờ bật lên sẽ nằm lại đó và nuốt mất cú Tab hợp lệ kế tiếp. Lúc
+     *   ấy cờ một lần đã thành cái công tắc.
+     */
+    if (document.activeElement !== inputRef.current) {
+      boQuaMoLanToi.current = true
+      inputRef.current?.focus()
+    }
   }
 
   return (
@@ -138,8 +170,15 @@ export function ProductPicker<T extends PickerItem>({
           ref={inputRef}
           value={term}
           onChange={(e) => { onTermChange(e.target.value); setOpen(true) }}
-          /* ⚠ `onFocus` CHỨ KHÔNG CHỈ `onClick` — Tab tới ô cũng phải xổ. */
-          onFocus={() => setOpen(true)}
+          /* ⚠ `onFocus` CHỨ KHÔNG CHỈ `onClick` — Tab tới ô cũng phải xổ.
+             Cờ dưới đây chỉ nuốt ĐÚNG cú `focus()` mà `pick` vừa gọi. */
+          onFocus={() => {
+            if (boQuaMoLanToi.current) {
+              boQuaMoLanToi.current = false
+              return
+            }
+            setOpen(true)
+          }}
           onClick={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {

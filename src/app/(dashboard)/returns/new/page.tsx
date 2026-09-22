@@ -55,11 +55,12 @@ import type { Customer } from "@/types"
 /**
  * Hóa đơn bán của khách — thứ phiếu trả gắn vào từ workflow v2b.
  *
- * ⚠ GẮN VÀO HÓA ĐƠN, KHÔNG GẮN VÀO ĐƠN. Khách chỉ trả được thứ đã THỰC
- * XUẤT; đơn đặt 100 mà mới giao 40 thì trần trả là 40. Gắn vào đơn là
- * cho phép nhập kho 60 món chưa từng rời kho — và cả trigger lẫn RPC đều
- * đếm theo hóa đơn, nên phiếu gắn sai chỗ sẽ vấp lỗi ở màn Hoàn thành,
- * một chỗ chẳng liên quan gì tới việc người ta vừa làm.
+ * ⚠ GẮN VÀO HÓA ĐƠN, KHÔNG GẮN VÀO ĐƠN — nhưng KHÔNG CÒN VÌ LÝ DO CŨ.
+ * Trước 22/09/2026 hóa đơn là TRẦN của số được trả; chủ nhà đã bỏ trần
+ * ấy (migration 158) vì hàng khách mua trước khi dùng phần mềm không có
+ * dòng nào trong sổ. Nay hóa đơn chỉ còn là MỐC ĐỐI CHIẾU: nó cho biết
+ * khoản trừ công nợ này thuộc tờ nào, và cho ra giá đã bán để soi giá
+ * trả. Phiếu không gắn hóa đơn vẫn lập và hoàn thành được.
  */
 interface InvoiceLite {
   id: string

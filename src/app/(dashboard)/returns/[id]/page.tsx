@@ -550,10 +550,11 @@ export default function ReturnDetailPage() {
               )}
               {/*
                 ⚠ HÓA ĐƠN BÁN LÀ MỐC ĐỐI CHIẾU THẬT của khoản trừ này.
-                  Khách chỉ trả được thứ đã THỰC XUẤT, và cả trigger lẫn
-                  RPC đều đếm trần trả theo hóa đơn — nên khi đối chiếu
-                  công nợ, đây mới là tờ giấy phải mở ra, không phải đơn
-                  đặt hàng.
+                  Khoản trừ công nợ tính trên tờ hóa đơn, không trên đơn
+                  đặt hàng — nên khi đối chiếu, đây mới là tờ giấy phải
+                  mở ra. (Trần "chỉ trả được hàng đã xuất" đã bỏ từ
+                  22/09/2026, xem migration 158 — hóa đơn nay là mốc đối
+                  chiếu chứ không còn là giới hạn.)
               */}
               {inv.invoice_id && (
                 <Link

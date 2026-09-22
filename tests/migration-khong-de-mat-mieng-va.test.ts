@@ -107,6 +107,17 @@ const DAU_HIEU: Record<string, Array<{ chuoi: string; vi_sao: string }>> = {
         "invoice_id is ambiguous` ngay giữa giao dịch",
     },
   ],
+  complete_return: [
+    {
+      chuoi: "credit_with_invoice",
+      vi_sao:
+        "mig 134 — thêm `customer_id` + `credit_with_invoice` vào SELECT INTO r. " +
+        "Mig 158 bỏ khối trần trả hàng nên hiện KHÔNG ai đọc hai cột này, " +
+        "nhưng chép thân hàm từ bản 127 mà bỏ chúng là xoá một miếng vá của " +
+        "migration sau — và lần viết lại tới, khi có ai dùng lại `r.customer_id`, " +
+        "sẽ nổ `record r has no field customer_id` ở một chỗ chẳng liên quan",
+    },
+  ],
   post_invoice: [
     {
       chuoi: "reissue_of",

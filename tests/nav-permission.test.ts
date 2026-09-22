@@ -432,3 +432,30 @@ describe("cửa vào màn ghi kho khớp chính sách database", () => {
     }
   )
 })
+
+/**
+ * ⚠ HAI MÀN KHO ĐỜI ĐẦU BỊ CHẶN HẲN (chủ nhà chốt 22/09/2026).
+ *
+ *   `/inventory/stocktake` và `/inventory/stocktake-check` ghi phiếu
+ *   `posted` mà không động vào tồn lô — thẻ kho lệch tồn thật. Chặn với
+ *   MỌI vai, kể cả chủ, kể cả màn con. Và màn thay thế
+ *   `/inventory/stocktake-adjust` KHÔNG được dính theo — tiền tố so có
+ *   dấu `/` chính là để giữ điều ấy.
+ */
+describe("hai màn kho đời đầu: chặn hẳn", () => {
+  const VAI = ["owner", "manager", "accountant", "warehouse", "sales"] as const
+
+  it.each(["/inventory/stocktake", "/inventory/stocktake-check", "/inventory/stocktake/x"])(
+    "%s: không vai nào vào được",
+    (href) => {
+      for (const v of VAI) {
+        expect(duocVaoTrang(v, href, "inventory"), `${v} vẫn vào được ${href}`).toBe(false)
+      }
+    }
+  )
+
+  it("màn kiểm kê mới vẫn mở cho owner và warehouse", () => {
+    expect(duocVaoTrang("owner", "/inventory/stocktake-adjust", "inventory")).toBe(true)
+    expect(duocVaoTrang("warehouse", "/inventory/stocktake-adjust", "inventory")).toBe(true)
+  })
+})

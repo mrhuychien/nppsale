@@ -105,10 +105,7 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
    *   mới từ chối — bấy giờ công đếm đã mất.
    *
    * ⚠ HAI MÀN ANH EM `/inventory/stocktake` VÀ `/inventory/stocktake-check`
-   *   CỐ Ý KHÔNG KHAI: không một nút nào trong app dẫn tới chúng (đã quét
-   *   22/09/2026), nên khai quyền cho chúng là tạo khai báo chết — thứ
-   *   chốt "không có khai quyền thừa" sinh ra để chặn. Giữ hay gỡ hai màn
-   *   ấy là việc của chủ nhà.
+   *   KHÔNG KHAI Ở ĐÂY: chúng đã bị CHẶN HẲN qua `LEGACY_V2_HREFS`.
    */
   "/inventory/stocktake-adjust": { module: "inventory", feature: "inventory", action: "create" },
   "/products": { module: "products", feature: "products" },
@@ -228,6 +225,21 @@ export const LEGACY_V2_HREFS: ReadonlySet<string> = new Set([
   "/deliveries",
   "/inventory/stock-out",
   "/inventory/pending",
+  /*
+   * ⚠ HAI MÀN KHO ĐỜI ĐẦU — chặn 22/09/2026, chủ nhà chốt. Không nút nào
+   *   dẫn tới, nhưng gõ đường dẫn vẫn vào được, và cả hai ghi phiếu
+   *   `posted` mà KHÔNG động vào tồn lô:
+   *     /inventory/stocktake       — "xuất X" ghi −X vào thẻ kho, lô không
+   *                                  trừ; "nhập" không mã lô thì tồn không cộng.
+   *     /inventory/stocktake-check — lưu chênh lệch kiểm kê thẳng `posted`,
+   *                                  dòng không gắn lô, không qua duyệt
+   *                                  `post_stock_adjustment`.
+   *   Thẻ kho và tồn thật lệch nhau mà không ai thấy. Màn thay thế:
+   *   stock-in / stock-issue / stocktake-adjust (đi qua RPC).
+   *   So khớp có dấu `/` nên `/inventory/stocktake-adjust` KHÔNG bị dính.
+   */
+  "/inventory/stocktake",
+  "/inventory/stocktake-check",
 ])
 
 /**

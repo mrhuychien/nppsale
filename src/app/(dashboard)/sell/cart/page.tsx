@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -127,7 +127,23 @@ export default function SellCartPage() {
    *   `sales_orders` ghi trực tiếp từ trình duyệt.
    */
   const canPickSeller = user?.role === "owner" || user?.role === "manager"
-  const [sellerId, setSellerId] = useState("")
+  /**
+   * ⚠ TÊN NGƯỜI ĐỨNG ĐƠN NẰM TRONG GIỎ, KHÔNG NẰM TRONG MÀN NÀY — và đây
+   *   là một lỗi chủ nhà đã báo: "chọn nhân viên xong, khi chọn thêm hàng
+   *   hoặc chọn khách hàng xong quay lại thì mất tên nhân viên đã chọn".
+   *
+   *   `/sell`, `/sell/customer`, `/sell/returns`, `/sell/terms` là TRANG
+   *   THẬT, không phải state đổi trong một trang. Rời màn giỏ là React
+   *   tháo nó khỏi DOM và mọi `useState` ở đây về mặc định; chỉ
+   *   `SellCartProvider` (nằm trên layout) mới sống qua được. Giỏ hàng,
+   *   khách, ghi chú đều đã ở đó — ô này bị bỏ quên lại.
+   *
+   * ⚠ VÀ NÓ MẤT LẶNG LẼ. Ô rỗng nghĩa là "đơn đứng tên bạn", nên người
+   *   dùng quay lại thấy một ô rỗng hợp lệ, bấm Lưu, đơn sang tên NPP.
+   *   Không có gì đỏ lên để họ biết lựa chọn của mình đã bay.
+   */
+  const sellerId = cart.sellerId
+  const setSellerId = cart.setSellerId
   const [sellers, setSellers] = useState<Array<{ id: string; full_name: string; role: string }>>([])
 
   useEffect(() => {
@@ -150,24 +166,16 @@ export default function SellCartPage() {
   }, [canPickSeller, user?.org_id])
 
   /**
-   * ⚠ MỞ ĐƠN RA SỬA THÌ Ô NÀY PHẢI SẴN TÊN NGƯỜI ĐANG ĐỨNG ĐƠN.
+   * ⚠ MỞ ĐƠN RA SỬA THÌ Ô NÀY PHẢI SẴN TÊN NGƯỜI ĐANG ĐỨNG ĐƠN — việc ấy
+   *   nay làm ở `loadForEdit` (màn `/sell/edit/[id]`), một lần, lúc nạp
+   *   đơn vào giỏ. Trước đây nó là một `useEffect` ở đây, và chính cái
+   *   effect ấy là thứ phải canh "chỉ nạp một lần" bằng một `useRef`,
+   *   nếu không thì mỗi lần vẽ lại là đè lên lựa chọn người dùng vừa đổi.
    *
-   * Ô rỗng có nghĩa "đơn đứng tên bạn". Để nó rỗng khi đang sửa đơn của
-   * một nhân viên là chỉ cần bấm Lưu một cái, đơn nhảy sang tên NPP —
-   * doanh số và hoa hồng đi theo. Người sửa không hề chọn gì, nên cũng
-   * không có lý do nào để nghi ngờ.
-   *
-   * ⚠ CHỈ NẠP MỘT LẦN CHO MỖI ĐƠN. Nạp lại ở mỗi lần vẽ là đè lên đúng
-   *   lựa chọn người dùng vừa đổi — ô không bao giờ đổi được.
+   *   Ô rỗng có nghĩa "đơn đứng tên bạn". Để nó rỗng khi đang sửa đơn của
+   *   một nhân viên là chỉ cần bấm Lưu một cái, đơn nhảy sang tên NPP —
+   *   doanh số và hoa hồng đi theo, mà người sửa không hề chọn gì.
    */
-  const daNapNguoiBan = useRef<string | null | undefined>(undefined)
-  useEffect(() => {
-    if (!canPickSeller) return
-    const key = editing?.orderId ?? null
-    if (daNapNguoiBan.current === key) return
-    daNapNguoiBan.current = key
-    setSellerId(editing?.salesUserId ?? "")
-  }, [canPickSeller, editing?.orderId, editing?.salesUserId])
 
   /**
    * ĐANG LÀM ĐƠN HỘ NGƯỜI KHÁC — không lưu nháp được.

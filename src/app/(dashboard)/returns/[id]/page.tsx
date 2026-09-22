@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SearchSelect } from "@/components/ui/search-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -46,13 +47,30 @@ export default function ReturnDetailPage() {
   const [zone, setZone] = useState<ReturnZone>("sale")
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
+  /**
+   * Nhân viên phiếu này TÍNH CHO (mig 160) — khác `requester`, người GÕ.
+   *
+   * ⚠ HỎI RIÊNG MỘT CÂU, KHÔNG NHÉT VÀO CÂU LỚN Ở TRÊN. Mã nguồn lên
+   *   trước migration là chuyện thường ở đây; nhét vào là cột chưa có
+   *   thì CẢ màn chi tiết phiếu trả trắng bóc. Hỏi riêng thì hỏng riêng.
+   *
+   * ⚠ `coCot === false` NGHĨA LÀ CHƯA CHẠY MIG 160 — khác hẳn "chưa gán".
+   *   Chưa có cột mà vẫn vẽ ô chọn là mời người ta bấm một cái nút mà
+   *   máy chủ chắc chắn từ chối.
+   */
+  const [salesUserId, setSalesUserId] = useState<string | null>(null)
+  const [salesUserName, setSalesUserName] = useState<string | null>(null)
+  const [coCotNguoiDungTen, setCoCotNguoiDungTen] = useState(false)
+  const [sellers, setSellers] = useState<Array<{ id: string; full_name: string; role: string }>>([])
+  const [doiNguoiDungTen, setDoiNguoiDungTen] = useState(false)
+  const [nguoiDungTenMoi, setNguoiDungTenMoi] = useState("")
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [retRes, linesRes] = await Promise.all([
+    const [retRes, linesRes, nguoiRes] = await Promise.all([
       supabase
         .from("returns")
         .select(
@@ -72,6 +90,11 @@ export default function ReturnDetailPage() {
         .eq("id", id)
         .single(),
       supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(*)").eq("return_id", id),
+      supabase
+        .from("returns")
+        .select("sales_user_id, seller:users!returns_sales_user_id_fkey(id, full_name)")
+        .eq("id", id)
+        .maybeSingle(),
     ])
     const qErr = ([retRes, linesRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
@@ -85,10 +108,92 @@ export default function ReturnDetailPage() {
       })
     }
     setLines((linesRes.data as unknown as ReturnLine[]) || [])
+    if (nguoiRes.error) {
+      // Chưa chạy mig 160 — giấu hẳn khối "tính cho nhân viên" đi.
+      setCoCotNguoiDungTen(false)
+    } else {
+      const n = nguoiRes.data as unknown as {
+        sales_user_id: string | null
+        seller: { id: string; full_name: string } | null
+      } | null
+      setCoCotNguoiDungTen(true)
+      setSalesUserId(n?.sales_user_id ?? null)
+      setSalesUserName(n?.seller?.full_name ?? null)
+      setNguoiDungTenMoi(n?.sales_user_id ?? "")
+    }
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  /**
+   * ⚠ CHỈ CHỦ NHÀ / QUẢN LÝ ĐỔI ĐƯỢC NGƯỜI ĐỨNG TÊN — y như lúc lập
+   *   phiếu. Trigger mig 160 canh cả `UPDATE OF sales_user_id`, nên nhân
+   *   viên bấm cũng bị máy chủ từ chối; giấu ô đi là để họ không phải
+   *   gặp một lời từ chối không hiểu vì sao.
+   */
+  const canPickSeller = user?.role === "owner" || user?.role === "manager"
+
+  useEffect(() => {
+    if (!canPickSeller || !coCotNguoiDungTen || !user?.org_id) return
+    let cancelled = false
+    createClient()
+      .from("users")
+      .select("id, full_name, role")
+      .eq("org_id", user.org_id)
+      /* Đúng bộ vai trò trigger cho phép — hiện tên mà máy chủ từ chối
+         là bẫy người dùng. */
+      .in("role", ["sales", "manager", "owner"])
+      .order("full_name")
+      .then(({ data }) => {
+        if (!cancelled) {
+          setSellers((data as Array<{ id: string; full_name: string; role: string }>) || [])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canPickSeller, coCotNguoiDungTen, user?.org_id])
+
+  const sellerOptions = useMemo(
+    () =>
+      sellers.map((u) => ({
+        id: u.id,
+        label: u.full_name || "(chưa đặt tên)",
+        hint: u.id === user?.id ? "chính bạn" : u.role,
+      })),
+    [sellers, user?.id]
+  )
+
+  /**
+   * ⚠ RLS TỪ CHỐI = 0 DÒNG, HTTP 200, `error` null. Không đếm dòng thì
+   *   màn hiện "Đã đổi" trong khi cột trong sổ không nhúc nhích.
+   *
+   * ⚠ ĐỔI XONG ĐỌC LẠI TỪ SỔ, đừng vá state bằng thứ vừa gửi đi. Trigger
+   *   có quyền điền khác: để trống thì nó tự lấy nhân viên của đơn gốc.
+   */
+  const luuNguoiDungTen = async () => {
+    if (!ret) return
+    setActionLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from("returns")
+        .update({ sales_user_id: nguoiDungTenMoi || null })
+        .eq("id", ret.id)
+        .select("id")
+      if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error("Không đổi được người đứng tên — bạn không có quyền trên phiếu này.")
+      }
+      setDoiNguoiDungTen(false)
+      await fetchData()
+      toast({ title: "Đã đổi người đứng tên phiếu" })
+    } catch (err) {
+      toast({ title: "Không đổi được", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   /**
    * ⚠ BẢNG `returns` KHÔNG CÓ MỘT POLICY DELETE NÀO (002_rls_policies chỉ
@@ -550,10 +655,11 @@ export default function ReturnDetailPage() {
               )}
               {/*
                 ⚠ HÓA ĐƠN BÁN LÀ MỐC ĐỐI CHIẾU THẬT của khoản trừ này.
-                  Khách chỉ trả được thứ đã THỰC XUẤT, và cả trigger lẫn
-                  RPC đều đếm trần trả theo hóa đơn — nên khi đối chiếu
-                  công nợ, đây mới là tờ giấy phải mở ra, không phải đơn
-                  đặt hàng.
+                  Khoản trừ công nợ tính trên tờ hóa đơn, không trên đơn
+                  đặt hàng — nên khi đối chiếu, đây mới là tờ giấy phải
+                  mở ra. (Trần "chỉ trả được hàng đã xuất" đã bỏ từ
+                  22/09/2026, xem migration 158 — hóa đơn nay là mốc đối
+                  chiếu chứ không còn là giới hạn.)
               */}
               {inv.invoice_id && (
                 <Link
@@ -573,6 +679,68 @@ export default function ReturnDetailPage() {
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người tạo</Label>
                 <p>{ret.requester?.full_name || "—"}</p>
               </div>
+
+              {/*
+                ⚠ HAI DÒNG KHÁC NHAU, ĐỪNG GỘP. "Người tạo" là ai GÕ
+                  phiếu; dòng này là phiếu TÍNH CHO ai. NPP gõ hộ một
+                  phiếu của nhân viên đi tuyến thì hai cái tên khác nhau,
+                  và cái thứ hai mới là cái báo cáo nhân viên đọc.
+
+                ⚠ CHƯA GÁN THÌ NÓI "CHƯA GÁN", đừng để một gạch ngang.
+                  Gạch ngang đọc ra "không ai" — còn sự thật là phiếu lập
+                  trước khi sổ có cột này, và báo cáo vẫn đang đoán.
+              */}
+              {coCotNguoiDungTen && (
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Tính cho nhân viên
+                  </Label>
+                  {doiNguoiDungTen ? (
+                    <div className="mt-1 space-y-2">
+                      <SearchSelect
+                        id="ret-seller"
+                        options={sellerOptions}
+                        valueId={nguoiDungTenMoi}
+                        onPick={(o) => setNguoiDungTenMoi(o?.id ?? "")}
+                        placeholder="Gõ tên nhân viên…"
+                        emptyHint="Không tìm thấy nhân viên nào khớp."
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={luuNguoiDungTen} disabled={actionLoading}>
+                          Lưu
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setDoiNguoiDungTen(false)
+                            setNguoiDungTenMoi(salesUserId ?? "")
+                          }}
+                          disabled={actionLoading}
+                        >
+                          Huỷ
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={salesUserId ? "" : "text-muted-foreground"}>
+                        {salesUserName || (salesUserId ? "—" : "Chưa gán")}
+                      </p>
+                      {canPickSeller && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => setDoiNguoiDungTen(true)}
+                        >
+                          <Pencil className="mr-1 h-3 w-3" /> Đổi
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {ret.approver && (
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-muted-foreground">Người xử lý</Label>

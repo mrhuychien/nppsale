@@ -183,6 +183,14 @@ export default function SellEditLoaderPage() {
       //   (`heldReturnId`), nên nạp lên là an toàn.
       returnReason: heldReturn?.reason || "damaged",
       returnLines: heldReturn ? returnLinesToCart(heldReturn) : [],
+      /**
+       * ⚠ Ô CHỌN NVBH PHẢI SẴN TÊN NGƯỜI ĐANG ĐỨNG ĐƠN, NẠP NGAY TỪ ĐÂY.
+       *   Rỗng nghĩa là "đơn đứng tên người đang lập", nên mở đơn của
+       *   nhân viên A ra mà ô rỗng thì chỉ cần bấm Lưu một cái là đơn
+       *   nhảy sang tên NPP — doanh số và hoa hồng đi theo, không ai chọn
+       *   gì cả. Nạp ở đây, một lần, lúc đơn vào giỏ.
+       */
+      sellerId: head.sales_user_id ?? "",
       editing: {
         orderId: head.id,
         orderCode: head.order_code,

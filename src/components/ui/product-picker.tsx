@@ -110,20 +110,27 @@ export function ProductPicker<T extends PickerItem>({
    */
   hideLabel?: boolean
   /**
-   * Đóng danh sách sau khi chọn một mã.
+   * ĐÓNG DẢI GỢI Ý SAU KHI CHỌN.
    *
-   * ⚠ MẶC ĐỊNH `false`, VÀ ĐÓ LÀ HÀNH VI CŨ CỦA MỌI MÀN ĐANG CHẠY —
-   * xem `pick()`. Người nhập một phiếu ba mươi dòng thêm liên tiếp, nên
-   * đóng lại là mỗi dòng một cú bấm thừa.
+   * ⚠ MẶC ĐỊNH KHÔNG ĐÓNG, VÀ AI ĐỌC CŨNG NÊN BIẾT VÌ SAO: ô tìm của
+   *   `/pos` nằm ở CỘT PHẢI và KHÔNG che gì cả, nên để mở là thao tác
+   *   nhanh hơn. Chủ nhà nói thẳng 22/09/2026: *"bên newdesign nó luôn
+   *   hiện vì nó ko che màn làm đơn"*.
    *
-   * ⚠ NHƯNG Ô NẰM TRÊN THANH ĐẦU MÀN THÌ NGƯỢC LẠI: danh sách xổ ra đè
-   * lên bảng hàng, và người dùng vừa thêm xong cần NHÌN THẤY dòng mình
-   * vừa thêm. Chủ nhà chốt đợt 9 cho `/pos`: *"Khi ấn vào thêm hàng
-   * xong danh sách phải thu gọn lại"*. Đây là một tuỳ chọn chứ không
-   * phải đổi mặc định — đổi mặc định là đổi luôn sáu màn đang chạy mà
-   * không ai yêu cầu.
+   * ⚠ NĂM MÀN CHỨNG TỪ THÌ NGƯỢC LẠI và đều truyền cờ này: nhập kho,
+   *   xuất khác, phiếu trả, sửa hóa đơn, nhập mua. Ở đó dải gợi ý xổ ra
+   *   ĐÈ LÊN biểu mẫu, nên người dùng không thấy dòng mình vừa thêm.
+   *   Chủ nhà báo 22/09/2026: *"khi chọn xong product phải ẩn đi vì nó
+   *   đang che màn làm đơn, người dùng ko biết sản phẩm đã được thêm
+   *   vào list chưa"*.
+   *
+   * ⚠ CHÚ THÍCH CŨ Ở ĐÂY NÓI VỀ MỘT BỐ CỤC KHÔNG CÒN NỮA — nó bảo cờ
+   *   này sinh ra cho "ô nằm trên thanh đầu màn" của `/pos` (đợt 9).
+   *   Ô ấy đã dời xuống cột phải từ bản thiết kế 21/09, nên lý do cũ
+   *   hết đúng, còn MẶC ĐỊNH thì tình cờ vẫn đúng. Một chú thích đúng
+   *   kết quả nhưng sai lý do là thứ dẫn người sau đi nhầm đường.
    */
-  closeOnPick?: boolean
+    closeOnPick?: boolean
   /** Lớp CSS của khung ngoài — để nơi gọi đặt bề rộng. */
   className?: string
   /**
@@ -154,6 +161,22 @@ export function ProductPicker<T extends PickerItem>({
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  /*
+   * ⚠ CỜ NUỐT MỘT LƯỢT `focus` NAY NẰM TRONG BỘ LUẬT (`skipNextFocus`
+   *   của `pickerOpenReducer`), KHÔNG CÒN LÀ MỘT `useRef` Ở ĐÂY.
+   *
+   *   Lý do vẫn y nguyên và đáng đọc lại: chọn xong phải trả tiêu điểm
+   *   về ô, nếu không con trỏ nằm trên một cái nút vừa biến mất; nhưng
+   *   `focus()` lại kích `onFocus`, mà `onFocus` thì xổ danh sách — đóng
+   *   xong mở lại ngay trong cùng một nhịp, và người dùng thấy danh sách
+   *   không bao giờ chịu tắt. Và nó phải là cờ MỘT LẦN: bật lâu thì Tab
+   *   vào ô cũng không xổ nữa.
+   *
+   *   Để trong bộ luật thì chốt CHẠY được đúng chuỗi sự kiện ấy thay vì
+   *   đọc một dòng mã — xem `tests/picker-open.test.ts`. Bản `main` giữ
+   *   cờ ở đây dưới dạng `useRef`; lúc trộn hai nhánh 22/09/2026 giữ bản
+   *   bộ luật, và cái `useRef` thành thừa.
+   */
 
   /** Bấm ra ngoài thì đóng — nếu không dải gợi ý che mất bảng hàng. */
   useEffect(() => {

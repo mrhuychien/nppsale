@@ -896,9 +896,25 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
     expect(pham, "nút thêm hàng còn mở một dropdown không còn tồn tại").toEqual([])
   })
 
-  /** ⚠ Các màn cũ KHÔNG được đổi hành vi — không màn nào bật cờ ấy. */
-  it("năm màn đang chạy giữ nguyên hành vi mở", () => {
-    const pham: string[] = []
+  /**
+   * ⚠ LUẬT NÀY ĐÃ BỊ CHỦ NHÀ ĐẢO, VÀ ĐẢO CÓ LÝ DO.
+   *
+   *   Đợt 9 chốt ở đây: "các màn cũ KHÔNG được đổi hành vi — không màn
+   *   nào bật cờ ấy", vì `closeOnPick` sinh ra cho riêng ô trên header
+   *   của `/pos` và đổi mặc định là đổi luôn năm màn mà không ai yêu
+   *   cầu. Đúng ở thời điểm ấy.
+   *
+   *   22/09/2026 chủ nhà yêu cầu đúng năm màn ấy: *"khi chọn xong
+   *   product phải ẩn đi vì nó đang che màn làm đơn, người dùng ko biết
+   *   sản phẩm đã được thêm vào list chưa"*. Nên nay cả năm đều bật cờ.
+   *
+   * ⚠ VÀ Ô CỦA `/pos` THÌ KHÔNG, cũng lời chủ nhà cùng hôm: *"bên
+   *   newdesign nó luôn hiện vì nó ko che màn làm đơn"*. Hai hành vi
+   *   lệch nhau là CỐ Ý — chúng khác chỗ đứng, không phải một bên bị
+   *   quên sửa.
+   */
+  it("năm màn chứng từ đều đóng danh sách sau khi thêm", () => {
+    const thieu: string[] = []
     for (const rel of [
       "src/components/orders/invoice-editor.tsx",
       "src/components/purchasing/purchasing-lines-editor.tsx",
@@ -906,9 +922,20 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
       "src/app/(dashboard)/inventory/stock-in/page.tsx",
       "src/app/(dashboard)/returns/new/page.tsx",
     ]) {
-      if (/closeOnPick/.test(code(read(rel)))) pham.push(rel)
+      const src = code(read(rel))
+      const so = (src.match(/<ProductPicker\b/g) ?? []).length
+      const bat = (src.match(/^\s*closeOnPick\s*$/gm) ?? []).length
+      if (so === 0 || bat !== so) thieu.push(`${rel} (${bat}/${so})`)
     }
-    expect(pham, "một màn đang chạy bị đổi hành vi mở/đóng danh sách").toEqual([])
+    expect(thieu, "màn chứng từ còn để dải gợi ý che mất dòng vừa thêm").toEqual([])
+  })
+
+  /** ⚠ Và ô ở cột phải của `/pos` phải ở nguyên trạng MỞ. */
+  it("ô tìm của /pos không bật cờ đóng", () => {
+    expect(
+      /^\s*closeOnPick\s*$/m.test(code(read("src/components/pos/product-search-box.tsx"))),
+      "ô tìm ở cột phải lại đóng sau khi thêm — chủ nhà chốt nó phải luôn hiện"
+    ).toBe(false)
   })
 
   /**

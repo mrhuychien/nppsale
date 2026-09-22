@@ -37,12 +37,22 @@ describe("Phiếu trả ra đời ở Phiếu tạm, không phải Hoàn thành"
    * `complete_return` đòi 'submitted', `cancel_return` ném
    * NO_IMPORT_TO_REVERSE.
    */
+  /**
+   * ⚠ NEO VÀO PHẦN THÂN CỦA PHIẾU, KHÔNG NEO VÀO LỜI GỌI `.insert`.
+   *   Bản trước neo vào `.from("returns")` rồi cắt 900 ký tự xuôi xuống;
+   *   22/09/2026 màn ấy tách thân phiếu ra một biến dựng TRƯỚC lời gọi
+   *   (mig 160 — chọn nhân viên đứng tên) và chốt đỏ lên dù luật không
+   *   suy suyển gì. `requested_by: user.id` là dòng chỉ có trong đúng
+   *   thân phiếu trả, dựng ở đâu cũng đi cùng nó.
+   */
   it("màn lập phiếu tay ghi 'submitted', không ghi thẳng 'completed'", () => {
-    const i = RET_NEW.indexOf('.from("returns")')
+    const i = RET_NEW.indexOf("requested_by: user.id")
     expect(i).toBeGreaterThan(0)
     const block = RET_NEW.slice(i, i + 900)
     expect(block).toContain('status: "submitted"')
     expect(block, "lại lập thẳng vào hoàn thành").not.toContain('status: "completed"')
+    /* Và cả màn không được có đường nào ghi thẳng 'completed'. */
+    expect(RET_NEW).not.toContain('status: "completed"')
   })
 
   /** Và đừng hứa đã trừ công nợ cho một việc chưa xảy ra. */
@@ -335,62 +345,24 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
  * Bốn quyết định của chủ nhà sau lượt báo cáo P6 (sổ câu hỏi Q8, Q10,
  * Q11, Q12). Ba cái sửa migration TẠI CHỖ vì 118/119/120 chưa chạy ở đâu.
  */
-describe("Q8 — trần số lượng trả kiểm lại lúc hàng vào kho", () => {
-  const MIG118 = read("supabase/migrations/118_delete_order_cleans_returns.sql")
-
-  /**
-   * ⚠ LỖ CŨ, DỰNG LẠI ĐƯỢC BẰNG BA BƯỚC: trigger `enforce_return_line_cap`
-   * chạy lúc CHÈN DÒNG và phần "đã trả rồi" của nó chỉ đếm phiếu
-   * 'completed'. Đơn bán 10 → phiếu A 10 lọt (đã trả = 0) → phiếu B 10
-   * cũng lọt (vẫn = 0, vì A còn ở 'submitted') → hoàn thành cả hai →
-   * nhập kho 20 và trừ công nợ gấp đôi.
-   */
-  it("complete_return tự kiểm trần, không tin mỗi trigger lúc chèn dòng", () => {
-    const i = MIG120.indexOf("CREATE OR REPLACE FUNCTION public.complete_return")
-    const fn = MIG120.slice(i, MIG120.indexOf("\n$$;", i))
-    expect(fn).toContain("RETURN_QTY_EXCEEDS")
-    /**
-     * ⚠ NEO VÀO CHÍNH BIỂU THỨC SO SÁNH, không chỉ vào cái tên mã lỗi.
-     * Thử phá lần đầu: đổi `IF cap.need + v_returned > v_sold THEN` thành
-     * `IF false THEN` — phép kiểm chết hẳn mà chốt VẪN XANH, vì mọi chuỗi
-     * nó soi đều còn nguyên bên trong nhánh đã chết.
-     */
-    expect(fn, "phép kiểm trần không còn sống").toContain(
-      "IF cap.need + v_returned > v_sold THEN"
-    )
-    // Đếm phần "đã trả" từ phiếu ĐÃ hoàn thành của cùng đơn.
-    expect(fn).toContain("r2.status = 'completed'")
-    expect(fn).toContain("r2.order_id = r.order_id")
-    // Và phải kiểm TRƯỚC khi dựng phiếu nhập — chặn sau là đã cộng tồn rồi.
-    expect(fn.indexOf("RETURN_QTY_EXCEEDS")).toBeLessThan(fn.indexOf("INSERT INTO stock_entries"))
-  })
-
-  /**
-   * ⚠ DÒNG ĐỔI KHÔNG TÍNH VÀO TRẦN — hàng đổi không trừ công nợ và không
-   * bị chặn bởi số đã bán. Nhưng nó VẪN phải được nhập kho.
-   */
-  it("trần bỏ qua dòng đổi, còn vòng nhập kho thì không", () => {
-    const i = MIG120.indexOf("CREATE OR REPLACE FUNCTION public.complete_return")
-    const fn = MIG120.slice(i, MIG120.indexOf("\n$$;", i))
-    /**
-     * ⚠ NEO VÀO ĐÚNG DÒNG NGUỒN CỦA PHÉP TÍNH TRẦN. Thử phá lần đầu: bỏ
-     * `AND rl.is_exchange = false` khỏi vòng gom nhu cầu — chốt VẪN XANH,
-     * vì cửa sổ 2000 ký tự còn chứa một `is_exchange = false` KHÁC (của
-     * truy vấn đếm phần đã trả). Cùng một chuỗi, hai chỗ, hai ý nghĩa.
-     */
-    expect(fn, "phép tính trần đang tính cả dòng đổi").toContain(
-      "WHERE rl.return_id = p_return_id AND rl.is_exchange = false"
-    )
-    const loop = fn.slice(fn.indexOf("FOR l IN"), fn.indexOf("UPDATE returns"))
-    expect(loop).not.toContain("is_exchange = false")
-  })
-
-  it("dịch mã lỗi mới sang tiếng Việt", () => {
-    expect(
-      explainReturnError('… RETURN_QTY_EXCEEDS: "Sữa X" — đã bán 10, đã hoàn thành trả 10, phiếu này thêm 10 là vượt')
-    ).toBe('Trả quá số đã bán: "Sữa X" — đã bán 10, đã hoàn thành trả 10, phiếu này thêm 10 là vượt')
-  })
-})
+/*
+ * Q8 — TRẦN SỐ LƯỢNG TRẢ: ĐÃ BỎ HẲN 22/09/2026.
+ *
+ * ⚠ BỘ CHỐT CŨ Ở ĐÂY ĐÃ GỠ, CÓ CHỦ Ý. Nó canh rằng `complete_return`
+ *   TỰ kiểm trần "chỉ trả được hàng đã thực xuất" — một luật chủ nhà đã
+ *   bỏ (migration 158): nhà phân phối bật phần mềm giữa chừng nên hàng
+ *   khách mua từ trước không có dòng nào trong sổ, và cái trần ấy chặn
+ *   nhầm nhiều hơn chặn đúng.
+ *
+ *   Hai chốt cũ đọc thân hàm của migration 120 — một tệp lịch sử không
+ *   đổi — nên chúng VẪN XANH sau khi luật bị bỏ. Đó đúng là lý do phải
+ *   gỡ chứ không phải để lại: một chốt xanh mô tả một luật đã chết làm
+ *   người đọc tin rằng luật ấy còn sống.
+ *
+ *   Luật MỚI — "khách trả được mọi mặt hàng, kể cả món chưa từng xuất" —
+ *   có bộ chốt riêng ở `tests/return-any-product.test.ts`, và nó soi
+ *   bản MỚI NHẤT của hàm chứ không soi một tệp migration cố định.
+ */
 
 describe("Q10 — khoá hàng khi kiểm khoản có", () => {
   /**

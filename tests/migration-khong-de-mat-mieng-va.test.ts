@@ -107,6 +107,42 @@ const DAU_HIEU: Record<string, Array<{ chuoi: string; vi_sao: string }>> = {
         "invoice_id is ambiguous` ngay giữa giao dịch",
     },
   ],
+  complete_return: [
+    {
+      chuoi: "credit_with_invoice",
+      vi_sao:
+        "mig 134 — thêm `customer_id` + `credit_with_invoice` vào SELECT INTO r. " +
+        "Mig 158 bỏ khối trần trả hàng nên hiện KHÔNG ai đọc hai cột này, " +
+        "nhưng chép thân hàm từ bản 127 mà bỏ chúng là xoá một miếng vá của " +
+        "migration sau — và lần viết lại tới, khi có ai dùng lại `r.customer_id`, " +
+        "sẽ nổ `record r has no field customer_id` ở một chỗ chẳng liên quan",
+    },
+  ],
+  /**
+   * ⚠ `cancel_invoice` BỊ VÁ HAI LẦN, VÀ CẢ HAI ĐỀU LÀ VÁ CHUỖI — không
+   *   miếng nào nằm trong một tệp có thể đọc thẳng. Bản viết lại đầu
+   *   tiên của hàm này sẽ xoá sạch cả hai.
+   *
+   * ⚠ VÀ ĐIỀU ĐÓ SUÝT XẢY RA 22/09/2026. Bản đầu của mig 162 chép
+   *   nguyên thân hàm từ MIG 125 — tức bản có TRƯỚC mig 131 — rồi thêm
+   *   một khối. Chốt này bắt được, và mig 162 đổi sang vá chuỗi.
+   */
+  cancel_invoice: [
+    {
+      chuoi: "SET invoice_id = NULL",
+      vi_sao:
+        "mig 131 — phiếu trả KÈM ĐƠN chỉ gỡ liên kết, không huỷ theo hóa đơn. " +
+        "Mất nó là huỷ hóa đơn xong phiếu trả bị gắn 'Đã huỷ', tức ghi vào sổ " +
+        "rằng khách chưa từng trả hàng — trong khi hàng vẫn nằm đó ngoài đời",
+    },
+    {
+      chuoi: "SET order_line_id = NULL",
+      vi_sao:
+        "mig 162 — huỷ hóa đơn thì nhả móc nối về dòng đơn. Mất nó là khoá " +
+        "ngoại `sales_invoice_lines_order_line_id_fkey` chặn vĩnh viễn việc bỏ " +
+        "một mặt hàng khỏi đơn, dù hóa đơn đã huỷ và `invoiced_qty` đã về 0",
+    },
+  ],
   post_invoice: [
     {
       chuoi: "reissue_of",

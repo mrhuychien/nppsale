@@ -732,6 +732,7 @@ export default function StockInPage() {
                 và phiếu xuất kho.
             */}
             <ProductPicker
+              closeOnPick
               id="si-add-product"
               label="Thêm mặt hàng"
               term={productSearch}

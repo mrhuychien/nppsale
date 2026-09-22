@@ -21,6 +21,7 @@ import { formatDate, getExpiryStatus } from "@/lib/utils"
 import { Pencil, Trash2, X, Save } from "lucide-react"
 import type { Batch, Product, StockEntryLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const EXPIRY_LABEL: Record<"ok" | "warning" | "danger", string> = {
   ok: "Còn hạn dài",
@@ -88,18 +89,19 @@ export default function BatchDetailPage() {
     }
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("batches")
-        .update({
-          batch_code: editForm.batch_code.trim(),
-          manufactured_at: editForm.manufactured_at || null,
-          expires_at: editForm.expires_at,
-          location: editForm.location.trim() || null,
-          qty_on_hand: Number(editForm.qty_on_hand),
-          unit_cost: Number(editForm.unit_cost) || 0,
-        })
-        .eq("id", batch.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("batches")
+          .update({
+            batch_code: editForm.batch_code.trim(),
+            manufactured_at: editForm.manufactured_at || null,
+            expires_at: editForm.expires_at,
+            location: editForm.location.trim() || null,
+            qty_on_hand: Number(editForm.qty_on_hand),
+            unit_cost: Number(editForm.unit_cost) || 0,
+          })
+          .eq("id", batch.id)
+      )
       toast({ title: "Đã cập nhật lô hàng" })
       setEditMode(false)
       fetchData()
@@ -114,8 +116,7 @@ export default function BatchDetailPage() {
     if (!batch) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("batches").delete().eq("id", batch.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("batches").delete().eq("id", batch.id))
       toast({ title: "Đã xóa lô hàng" })
       router.push("/inventory/batches")
     } catch (err) {

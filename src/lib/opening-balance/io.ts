@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Entity, ExistingOpening, PlanRow } from "./parse"
 import type { Kind } from "./schema"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 /**
  * Nạp dữ liệu và ghi kế hoạch công nợ đầu kỳ.
@@ -153,14 +154,15 @@ export async function commitPlan(
         await supabase.from(table).insert(payload).throwOnError()
         res.created++
       } else if (r.action === "update") {
-        await supabase
-          .from(table)
-          .update({ amount: r.amount, due_date: r.dueDate, [noteColumn]: r.note })
-          .eq("id", r.existingId as string)
-          .throwOnError()
+        await ghiPhaiTrungDong(
+          supabase
+            .from(table)
+            .update({ amount: r.amount, due_date: r.dueDate, [noteColumn]: r.note })
+            .eq("id", r.existingId as string)
+        )
         res.updated++
       } else if (r.action === "delete") {
-        await supabase.from(table).delete().eq("id", r.existingId as string).throwOnError()
+        await ghiPhaiTrungDong(supabase.from(table).delete().eq("id", r.existingId as string))
         res.deleted++
       }
     } catch (e) {

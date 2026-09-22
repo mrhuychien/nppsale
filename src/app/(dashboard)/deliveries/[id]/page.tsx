@@ -39,6 +39,7 @@ import {
 } from "lucide-react"
 import type { Delivery, DeliveryLine, DeliveryStatus, SalesOrder, SalesOrderLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 type OrderDetail = SalesOrder & {
   customer?: SalesOrder["customer"] & { address?: string | null; ward?: string | null; district?: string | null; province?: string | null }
@@ -185,8 +186,7 @@ export default function DeliveryDetailPage() {
     if (!delivery) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("deliveries").delete().eq("id", delivery.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("deliveries").delete().eq("id", delivery.id))
       toast({ title: "Đã xoá phiếu giao" })
       router.push("/deliveries")
     } catch (error) {

@@ -215,9 +215,6 @@ export function explainInvoiceError(message: string): string {
   if (m.includes("RETURN_NEEDS_INVOICE")) {
     return m.replace(/^.*RETURN_NEEDS_INVOICE:\s*/, "")
   }
-  if (m.includes("RETURN_QTY_EXCEEDS")) {
-    return m.replace(/^.*RETURN_QTY_EXCEEDS:\s*/, "Trả quá số đã xuất: ")
-  }
   if (m.includes("REASON_REQUIRED")) {
     return m.replace(/^.*REASON_REQUIRED:\s*/, "")
   }

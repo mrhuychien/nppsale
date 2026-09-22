@@ -41,13 +41,17 @@ const RETURN_PERIOD_COL = "credited_at"
 
 /**
  * Mã lỗi PostgREST khi câu truy vấn nhắc tới một cột không tồn tại.
- * Xảy ra đúng một trường hợp: mã nguồn đã deploy nhưng migration 097 chưa
- * chạy. Khi đó lùi về `created_at` để trang báo cáo vẫn xem được thay vì
- * trắng màn hình — số chỉ lệch với đúng những phiếu duyệt khác tháng lập.
+ * Xảy ra đúng một trường hợp: mã nguồn đã deploy mà migration chưa chạy
+ * — `credited_at` là mig 097, `sales_user_id` là mig 160. Khi đó lùi về
+ * câu hỏi hẹp hơn để trang báo cáo vẫn xem được thay vì trắng màn hình.
  */
 function isMissingColumn(err: string | null | undefined): boolean {
   if (!err) return false
-  return err.includes("42703") || err.includes(RETURN_PERIOD_COL)
+  return (
+    err.includes("42703") ||
+    err.includes(RETURN_PERIOD_COL) ||
+    err.includes("sales_user_id")
+  )
 }
 
 export interface SalesAggregates {
@@ -160,6 +164,70 @@ export async function fetchOrderLines(
   return (data as SalesOrderLineRow[]) || []
 }
 
+export interface StockEntryLineRow {
+  entry_id: string
+  product_id: string
+  quantity: number
+  /** ⚠ `NOT NULL` dưới database — đo bằng `pg_attribute`, không đoán. */
+  unit_cost: number
+}
+
+export interface ReturnLineRow {
+  return_id: string
+  product_id: string
+  quantity: number
+  line_total: number
+}
+
+/**
+ * Dòng phiếu kho của các phiếu đã chọn — PHÂN TRANG.
+ *
+ * ⚠ VÌ SAO PHẢI CÓ HÀM NÀY. Ba màn báo cáo (nhân viên, khách hàng, nhà
+ *   cung cấp) đọc bảng này bằng `.in("entry_id", …)` TRẦN, không phân
+ *   trang. `db.max_rows` của dự án là 1.000, và khi vượt trần API trả
+ *   200 kèm đúng 1.000 dòng, KHÔNG lỗi — xem `@/lib/supabase/aggregate`.
+ *   Một tháng của một NPP thật vượt 1.000 dòng phiếu kho rất dễ.
+ *
+ * ⚠ VÀ ĐÂY LÀ GIÁ VỐN. Thiếu dòng thì giá vốn thiếu → lợi nhuận cao giả
+ *   → hoa hồng tính trên một con số không có thật. Không có gì đỏ lên.
+ *
+ * ⚠ TRONG CHÍNH MỘT `Promise.all` CỦA `reports/employees`, dòng đơn đi
+ *   qua `fetchOrderLines` (có phân trang) còn dòng kho và dòng trả nằm
+ *   ngay cạnh thì không. Ba bảng, một chỗ, hai luật.
+ */
+export async function fetchStockEntryLines(
+  supabase: SupabaseClient,
+  entryIds: string[]
+): Promise<StockEntryLineRow[]> {
+  if (entryIds.length === 0) return []
+  const dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("stock_entry_lines")
+      .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+      .in("entry_id", entryIds)
+      .range(from, to)
+  )
+  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
+  return (dataRes.rows as StockEntryLineRow[]) || []
+}
+
+/** Dòng hàng trả của các phiếu đã chọn — PHÂN TRANG, cùng lý do trên. */
+export async function fetchReturnLines(
+  supabase: SupabaseClient,
+  returnIds: string[]
+): Promise<ReturnLineRow[]> {
+  if (returnIds.length === 0) return []
+  const dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("return_lines")
+      .select("return_id, product_id, quantity, line_total", { count: "exact" })
+      .in("return_id", returnIds)
+      .range(from, to)
+  )
+  if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
+  return (dataRes.rows as ReturnLineRow[]) || []
+}
+
 /** Sum of approved/completed returns within the range. */
 export async function fetchReturnsValue(
   supabase: SupabaseClient,
@@ -195,6 +263,12 @@ export interface ReturnSummaryRow {
   customer_id: string
   credit_note_amount: number
   created_at: string
+  /**
+   * Nhân viên phiếu trả này tính cho (mig 160). `null` nghĩa là CHƯA
+   * GÁN — phiếu lập trước migration ấy — chứ không phải "không ai".
+   * Báo cáo phải đọc đúng nghĩa đó, đừng bỏ phiếu ra khỏi sổ.
+   */
+  sales_user_id: string | null
 }
 
 export async function fetchReturnsRows(
@@ -203,22 +277,34 @@ export async function fetchReturnsRows(
   range: DateRange
 ): Promise<ReturnSummaryRow[]> {
   const { fromIso, toIso } = vnDayRange(range)
-  const load = (col: string) =>
+  const load = (col: string, nguoiDungTen: boolean) =>
     fetchAllForAggregate((from, to) =>
       supabase
         .from("returns")
-        .select(`id, status, customer_id, credit_note_amount, created_at, ${col}`, { count: "exact" })
+        .select(
+          `id, status, customer_id, credit_note_amount, created_at, ${col}` +
+            (nguoiDungTen ? ", sales_user_id" : ""),
+          { count: "exact" }
+        )
         .eq("org_id", orgId)
         .in("status", ["approved", "completed"])
         .gte(col, fromIso)
         .lte(col, toIso)
         .range(from, to)
     )
-  let dataRes = await load(RETURN_PERIOD_COL)
-  if (isMissingColumn(dataRes.error)) dataRes = await load("created_at")
+  /**
+   * ⚠ HAI CỘT CÓ THỂ THIẾU, ĐỘC LẬP NHAU: `credited_at` (mig 097) và
+   *   `sales_user_id` (mig 160). Lỗi cột thiếu không nói cột nào thiếu,
+   *   nên lùi lần lượt qua đủ bốn tổ hợp thay vì đoán. Mỗi bước chỉ chạy
+   *   khi bước trước đúng là lỗi cột thiếu — không phải lỗi khác.
+   */
+  let dataRes = await load(RETURN_PERIOD_COL, true)
+  if (isMissingColumn(dataRes.error)) dataRes = await load("created_at", true)
+  if (isMissingColumn(dataRes.error)) dataRes = await load(RETURN_PERIOD_COL, false)
+  if (isMissingColumn(dataRes.error)) dataRes = await load("created_at", false)
   if (dataRes.error) console.error("[analytics/sales] truy vấn lỗi:", dataRes.error)
   const data = dataRes.rows
-  return ((data as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string; credited_at?: string | null }>) || []).map((r) => ({
+  return ((data as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string; credited_at?: string | null; sales_user_id?: string | null }>) || []).map((r) => ({
     id: r.id,
     status: r.status,
     customer_id: r.customer_id,
@@ -227,6 +313,7 @@ export async function fetchReturnsRows(
     // khớp với cách bảng lương gom (mig 097). Chưa chạy 097 thì không có
     // credited_at và lùi về created_at như cũ.
     created_at: r.credited_at || r.created_at,
+    sales_user_id: r.sales_user_id ?? null,
   }))
 }
 

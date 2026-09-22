@@ -24,6 +24,7 @@ import { CreditCard } from "lucide-react"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import type { Receivable } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { createCashReceipt } from "@/lib/finance/cash-receipt"
 
 /**
  * Nhãn hình thức thu.
@@ -62,7 +63,8 @@ export default function CollectPaymentPage() {
    * được suy ra từ nó chứ không phải một dãy số tự bịa (xem receiptNo).
    */
   const [done, setDone] = useState<{
-    paymentId: string
+    receiptId: string
+    receiptCode: string
     amount: number
     method: string
     storeName: string
@@ -161,30 +163,41 @@ export default function CollectPaymentPage() {
     setLoading(true)
 
     try {
-      // .select("id") để lấy id dòng vừa ghi — cần cho số phiếu thu ở màn
-      // xác nhận. Không có nó thì phải bịa số, mà bịa số trên chứng từ
-      // tiền mặt là thứ không được phép.
-      const { data: paymentRow, error } = await supabase
-        .from("payments")
-        .insert({
-          receivable_id: selectedId,
-          collected_by: user?.id,
-          amount: amountNum,
-          method,
-        })
-        .select("id")
-        .single()
-      if (error) throw error
+      /**
+       * ⚠ LẬP PHIẾU THU QUA RPC, KHÔNG GHI THẲNG HAI BẢNG.
+       *
+       * Bản trước ghi `payments` rồi `UPDATE receivables` ngay tại đây,
+       * và chú thích của chính nó đã đoán đúng hậu quả: "tiền đã thu
+       * nhưng công nợ vẫn nguyên → khách bị đòi lại số đã trả". Nó gác
+       * bằng `.throwOnError()`, mà `.throwOnError()` chỉ ném khi CÓ
+       * `error` — còn RLS từ chối thì trả 0 dòng và KHÔNG có lỗi.
+       *
+       * ⚠ VÀ ĐÚNG NVBH LÀ NGƯỜI VẤP. Chính sách cho `sales`/`driver`
+       *   CHÈN `payments` nhưng chỉ cho `owner`/`accountant` SỬA
+       *   `receivables`. Đã đo trên Postgres 16: NVBH ghi phiếu thu
+       *   100.000 → được; trừ vào công nợ → 0 dòng, không lỗi; công nợ
+       *   vẫn 800.000/0/open còn payments đã có 100.000.
+       *
+       * `create_cash_receipt` là `SECURITY DEFINER`, làm cả hai việc
+       * trong MỘT giao dịch, gác bằng quyền `receivables.create` mà NVBH
+       * có. Đã đo lại bằng chính NVBH: paid 0 → 200.000, trạng thái
+       * `partial`, và thu vượt số còn nợ bị chặn kèm câu đọc được.
+       */
+      const daTraHet = amountNum >= remaining
+      const receiptId = await createCashReceipt(supabase, {
+        customer_id: selected?.customer_id ?? customerIdParam ?? "",
+        method,
+        lines: [{ receivable_id: selectedId, amount: amountNum }],
+      })
 
-      const newPaid = (selected?.paid || 0) + amountNum
-      const newStatus = newPaid >= (selected?.amount || 0) ? "paid" : "partial"
-      // Payment đã ghi ở trên. Nếu bước này hỏng mà bỏ qua thì tiền đã thu
-      // nhưng công nợ vẫn nguyên → khách bị đòi lại số đã trả.
-      await supabase
-        .from("receivables")
-        .update({ paid: newPaid, status: newStatus })
-        .eq("id", selectedId)
-        .throwOnError()
+      /* ⚠ ĐỌC HỎNG KHÔNG ĐƯỢC LÀM HỎNG VIỆC ĐÃ XONG. Tiền đã ghi trong
+         một giao dịch rồi; không đọc ra mã thì hiện tạm theo id chứ
+         đừng ném, vì ném ở đây là người dùng tưởng chưa thu được. */
+      const { data: rcRow } = await supabase
+        .from("cash_receipts")
+        .select("receipt_code")
+        .eq("id", receiptId)
+        .maybeSingle()
 
       // Notify the sales rep who owns the receivable (if different from collector)
       if (selected && user?.org_id) {
@@ -203,7 +216,7 @@ export default function CollectPaymentPage() {
             userId: repId,
             type: "payment_received",
             title: `Đã thu ${formatCurrency(amountNum)}`,
-            body: `${storeName || "Khách hàng"}${newStatus === "paid" ? " — đã thanh toán đủ" : ""}`,
+            body: `${storeName || "Khách hàng"}${daTraHet ? " — đã thanh toán đủ" : ""}`,
             linkUrl: `/receivables/${selectedId}`,
             metadata: { receivable_id: selectedId, amount: amountNum, method },
           })
@@ -213,11 +226,14 @@ export default function CollectPaymentPage() {
       toast({ title: `Đã thu ${formatCurrency(amountNum)}` })
       // M5.1 mục 7 — dừng lại ở màn xác nhận, KHÔNG router.push ngay.
       setDone({
-        paymentId: (paymentRow as { id: string }).id,
+        receiptId,
+        receiptCode:
+          (rcRow as { receipt_code?: string } | null)?.receipt_code ||
+          `PT-${receiptId.slice(0, 8).toUpperCase()}`,
         amount: amountNum,
         method,
         storeName: selected?.customer?.store_name || customerName || "Khách hàng",
-        remainingAfter: Math.max(0, (selected?.amount || 0) - newPaid),
+        remainingAfter: Math.max(0, remaining - amountNum),
         at: new Date(),
       })
     } catch (err: unknown) {
@@ -244,13 +260,15 @@ export default function CollectPaymentPage() {
   }
 
   /**
-   * Số phiếu thu SUY RA từ id dòng payments, không phải một dãy tự tăng
-   * mới. Lý do: màn này ghi vào `payments`, không lập `cash_receipts` —
-   * in ra một số thuộc dải phiếu thu của phòng kế toán sẽ đụng số thật.
-   * Suy ra từ id thì bất biến (in lại vẫn ra đúng số đó) và tra ngược
-   * được về dòng đã ghi.
+   * ⚠ SỐ PHIẾU THU NAY LÀ SỐ THẬT, không còn suy ra từ id.
+   *
+   * Bản trước suy số từ id dòng `payments` và ghi rõ lý do: màn này ghi
+   * vào `payments` chứ không lập `cash_receipts`, nên in ra một số thuộc
+   * dải phiếu thu của kế toán sẽ đụng số thật. Từ khi màn này đi qua
+   * `create_cash_receipt` thì nó LẬP phiếu thu thật — lý do ấy hết đúng,
+   * và in một số bịa bên cạnh một phiếu thu có thật mới là thứ đụng nhau.
    */
-  const receiptNo = done ? `PT-${done.paymentId.slice(0, 8).toUpperCase()}` : ""
+  const receiptNo = done ? done.receiptCode : ""
 
   const printReceipt = () => {
     const html = document.documentElement

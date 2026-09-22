@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   canSeeHref,
+  duocVaoTrang,
   canEnterHref,
   NAV_PERMISSION,
   LEGACY_V2_HREFS,
@@ -196,37 +197,59 @@ describe("Giấu thì phải chặn", () => {
    * gõ thẳng `/payables` vào thanh địa chỉ thì vào được.
    */
   it("cửa vào trang dùng CHÍNH phép kiểm của menu", () => {
-    expect(GUARD).toContain("canEnterHref(user.role, pathname as string)")
-    expect(GUARD).toContain("NAV_PERMISSION[pathname]")
+    /* Đây đúng là ca trong chú thích trên: NVBH có mô-đun `receivables`
+       nhưng không có tính năng `payables`. Menu giấu mục ấy; cửa vào
+       phải giấu theo, nếu không thì giấu là trang trí. */
+    expect(
+      canAccessModule("sales", "receivables"),
+      "ví dụ hết hiệu lực — NVBH không còn mô-đun cha, chốt hết nói được gì"
+    ).toBe(true)
+    expect(canSeeHref("sales", "/payables"), "menu vẫn hiện Công nợ NCC cho NVBH").toBe(false)
+    expect(
+      duocVaoTrang("sales", "/payables", "receivables"),
+      "gõ thẳng /payables vẫn vào được — giấu mà không chặn"
+    ).toBe(false)
   })
 
   /**
-   * ⚠ ẨN KHỎI MENU VÀ CHẶN CỬA VÀO LÀ HAI VIỆC KHÁC NHAU — và P7 làm lộ
-   * ra điều đó. Dữ liệu luồng cũ là CHỨNG TỪ: phiếu soạn hàng, chuyến
-   * giao, biên bản bàn giao. Người ta vẫn phải mở lại được để tra, qua
-   * đường dẫn cũ hoặc qua thông báo. Nếu `useRoleGuard` gọi `canSeeHref`
-   * thì mọi đường dẫn luồng cũ đá người dùng về trang chủ, kể cả chủ nhà
-   * — xoá mất lịch sử khỏi tầm với, mà ta chỉ định thôi dùng chứ không
-   * định vứt.
+   * ⚠ LUẬT ĐÃ ĐỔI 22/09/2026 — chủ nhà chốt CHẶN HẲN màn luồng cũ.
+   *
+   *   Bản trước của chốt này khẳng định điều ngược lại: "ẩn khỏi menu
+   *   nhưng VẪN vào xem được", vì dữ liệu luồng cũ là chứng từ. Lý lẽ ấy
+   *   đứng được khi màn chỉ để xem; `/inventory/stock-out` thì ghi nửa
+   *   chừng rồi ném (đã đo), để lại phiếu kho mồ côi mỗi lần ai đó gõ
+   *   vào. Giữ cửa mở cho nó không còn là giữ lịch sử.
+   *
+   * ⚠ VÀ `useRoleGuard` VẪN KHÔNG ĐƯỢC GỌI `canSeeHref`. Hai hàm vẫn là
+   *   hai câu hỏi khác nhau; chúng chỉ tình cờ cùng trả false cho nhóm
+   *   đường dẫn này.
    */
-  it("màn luồng cũ: ẩn khỏi menu nhưng VẪN vào xem được", () => {
+  it("màn luồng cũ: chặn cả menu lẫn cửa vào", () => {
     for (const href of Array.from(LEGACY_V2_HREFS)) {
       expect(canSeeHref("owner", href), `${href} vẫn hiện trong menu`).toBe(false)
-      /**
-       * ⚠ Chỉ đường dẫn CÓ KHAI trong bảng mới đi qua `canEnterHref`;
-       * đường dẫn chưa khai rơi về phép kiểm mô-đun trong `useRoleGuard`
-       * (xem chốt ngay dưới), nên vào được sẵn. Khẳng định cho cả hai
-       * nhóm ở đây là khẳng định một điều hàm này không hứa.
-       */
-      if (!NAV_PERMISSION[href]) continue
-      expect(canEnterHref("owner", href), `${href} bị chặn cửa vào`).toBe(true)
+      expect(canEnterHref("owner", href), `${href} vẫn vào được`).toBe(false)
     }
     expect(GUARD, "cửa vào lại dùng phép kiểm của menu").not.toContain("canSeeHref(")
   })
 
-  /** Đường dẫn động chưa khai thì giữ nguyên phép kiểm cũ, không siết thêm. */
+  /**
+   * Đường dẫn động chưa khai thì giữ nguyên phép kiểm cũ, không siết thêm.
+   *
+   * ⚠ CHẠY LUẬT, ĐỪNG SOI CHỮ. Bản trước kiểm tệp hook có chứa
+   *   `canAccessModule(user.role, module)` hay không — một chốt như thế
+   *   đỏ lên khi luật DỜI CHỖ (đúng cái vừa xảy ra) và vẫn xanh khi
+   *   luật bị giết tại chỗ. Nay gọi thẳng `duocVaoTrang`.
+   */
   it("đường dẫn chưa khai vẫn tra theo mô-đun như cũ", () => {
-    expect(GUARD).toContain("canAccessModule(user.role, module)")
+    expect(NAV_PERMISSION["/orders/abc-123"], "đường dẫn động lại được khai").toBeUndefined()
+    expect(
+      duocVaoTrang("sales", "/orders/abc-123", "orders"),
+      "siết thêm chỗ chưa khai — NVBH không mở được đơn của mình"
+    ).toBe(true)
+    expect(
+      duocVaoTrang("sales", "/settings/users/abc-123", "settings"),
+      "đường dẫn động bỏ qua luôn phép kiểm mô-đun"
+    ).toBe(false)
   })
 })
 

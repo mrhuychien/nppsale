@@ -55,11 +55,12 @@ import type { Customer } from "@/types"
 /**
  * Hóa đơn bán của khách — thứ phiếu trả gắn vào từ workflow v2b.
  *
- * ⚠ GẮN VÀO HÓA ĐƠN, KHÔNG GẮN VÀO ĐƠN. Khách chỉ trả được thứ đã THỰC
- * XUẤT; đơn đặt 100 mà mới giao 40 thì trần trả là 40. Gắn vào đơn là
- * cho phép nhập kho 60 món chưa từng rời kho — và cả trigger lẫn RPC đều
- * đếm theo hóa đơn, nên phiếu gắn sai chỗ sẽ vấp lỗi ở màn Hoàn thành,
- * một chỗ chẳng liên quan gì tới việc người ta vừa làm.
+ * ⚠ GẮN VÀO HÓA ĐƠN, KHÔNG GẮN VÀO ĐƠN — nhưng KHÔNG CÒN VÌ LÝ DO CŨ.
+ * Trước 22/09/2026 hóa đơn là TRẦN của số được trả; chủ nhà đã bỏ trần
+ * ấy (migration 158) vì hàng khách mua trước khi dùng phần mềm không có
+ * dòng nào trong sổ. Nay hóa đơn chỉ còn là MỐC ĐỐI CHIẾU: nó cho biết
+ * khoản trừ công nợ này thuộc tờ nào, và cho ra giá đã bán để soi giá
+ * trả. Phiếu không gắn hóa đơn vẫn lập và hoàn thành được.
  */
 interface InvoiceLite {
   id: string
@@ -92,6 +93,22 @@ interface ProductLite {
  * người dùng thấy hai ô hành xử khác nhau mà không hiểu vì sao.
  */
 const PICK_CAP = PICKER_PEEK
+
+/**
+ * Lỗi "cơ sở dữ liệu chưa có cột `sales_user_id`" — tức mã nguồn đã lên
+ * mà migration 160 chưa chạy.
+ *
+ * ⚠ HẸP NHẤT CÓ THỂ, và phải NHẮC ĐÍCH DANH TÊN CỘT. Nới ra là nuốt
+ *   luôn hai lời từ chối của trigger (`PHIEU_TRA_HO_KHONG_DUOC_PHEP`,
+ *   `NHAN_VIEN_KHONG_BAN_HANG`) rồi lặng lẽ ghi lại phiếu KHÔNG có người
+ *   đứng tên — người dùng thấy "đã tạo" và tin là đã gán xong.
+ */
+function retryWithoutSalesUser(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false
+  const msg = err.message || ""
+  if (!msg.includes("sales_user_id")) return false
+  return err.code === "PGRST204" || err.code === "42703" || msg.includes("42703")
+}
 
 export default function NewReturnPage() {
   const { user } = useAuth()
@@ -149,6 +166,50 @@ export default function NewReturnPage() {
         keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
       })),
     [customers]
+  )
+
+  /**
+   * NPP LẬP PHIẾU TRẢ GIÚP NHÂN VIÊN (chủ nhà chốt 22/09/2026).
+   *
+   * ⚠ CHỈ CHỦ NHÀ / QUẢN LÝ THẤY Ô NÀY — y như màn lập đơn. Nhân viên
+   *   lập phiếu của chính mình; cho họ chọn tên người khác là mở đường
+   *   đẩy khoản TRỪ doanh số sang tên đồng nghiệp. Giao diện chỉ là lớp
+   *   đầu; trigger `trg_returns_guard_sales_user` (mig 160) mới là chỗ
+   *   chặn thật, vì `returns` ghi thẳng từ trình duyệt.
+   */
+  const canPickSeller = user?.role === "owner" || user?.role === "manager"
+  const [sellerId, setSellerId] = useState("")
+  const [sellers, setSellers] = useState<Array<{ id: string; full_name: string; role: string }>>([])
+
+  useEffect(() => {
+    if (!canPickSeller || !user?.org_id) return
+    let cancelled = false
+    createClient()
+      .from("users")
+      .select("id, full_name, role")
+      .eq("org_id", user.org_id)
+      /* ⚠ ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP — xem mig 160. Hiện ra một
+         cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
+      .in("role", ["sales", "manager", "owner"])
+      .order("full_name")
+      .then(({ data }) => {
+        if (!cancelled) {
+          setSellers((data as Array<{ id: string; full_name: string; role: string }>) || [])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canPickSeller, user?.org_id])
+
+  const sellerOptions = useMemo(
+    () =>
+      sellers.map((u) => ({
+        id: u.id,
+        label: u.full_name || "(chưa đặt tên)",
+        hint: u.id === user?.id ? "chính bạn" : u.role,
+      })),
+    [sellers, user?.id]
   )
 
   const [q, setQ] = useState("")
@@ -337,9 +398,7 @@ export default function NewReturnPage() {
     if (blocked || saving || !user?.org_id) return
     setSaving(true)
     try {
-      const { data: head, error: headErr } = await supabase
-        .from("returns")
-        .insert({
+      const headRow: Record<string, unknown> = {
           org_id: user.org_id,
           customer_id: customerId,
           /**
@@ -370,9 +429,36 @@ export default function NewReturnPage() {
           // Trigger `trg_return_lines_sync_credit` sẽ tính lại từ các dòng;
           // ghi sẵn ở đây để phiếu không có một khoảnh khắc nào mang số 0.
           credit_note_amount: credit,
-        })
+      }
+
+      /**
+       * ⚠ KHÔNG CÓ QUYỀN CHỌN THÌ KHÔNG GỬI CỘT. Bỏ trống để trigger
+       *   mig 160 tự điền: phiếu gắn đơn thì theo nhân viên của đơn,
+       *   không gắn đơn thì theo người gõ nếu người đó có bán hàng. Ghi
+       *   đè `user.id` ở đây là cướp mất luật ấy — tài khoản kế toán gõ
+       *   hộ một phiếu là thành một dòng trừ doanh số không ai nhận.
+       */
+      if (canPickSeller && sellerId) headRow.sales_user_id = sellerId
+
+      let { data: head, error: headErr } = await supabase
+        .from("returns")
+        .insert(headRow)
         .select("id")
         .single()
+      /**
+       * ⚠ CHƯA CHẠY MIG 160 THÌ VẪN PHẢI LẬP ĐƯỢC PHIẾU. Mã nguồn lên
+       *   trước migration là chuyện thường ở đây; để nguyên thì cả màn
+       *   Trả hàng chết vì một cột chưa có. Bỏ cột ra ghi lại — phiếu
+       *   mất người đứng tên, nhưng phiếu có.
+       */
+      if (headErr && "sales_user_id" in headRow && retryWithoutSalesUser(headErr)) {
+        delete headRow.sales_user_id
+        ;({ data: head, error: headErr } = await supabase
+          .from("returns")
+          .insert(headRow)
+          .select("id")
+          .single())
+      }
       if (headErr) throw headErr
       // ⚠ RLS từ chối thì 0 dòng, HTTP 200, không lỗi.
       if (!head?.id) {
@@ -498,6 +584,35 @@ export default function NewReturnPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/*
+              ⚠ Ô NÀY NÓI VỀ NGƯỜI, KHÔNG NÓI VỀ HÀNG — và nó ở ngay thẻ
+                đầu, cạnh khách hàng, chứ không lẫn xuống bảng dòng hàng.
+
+              ⚠ ĐỂ TRỐNG KHÔNG CÓ NGHĨA LÀ "KHÔNG AI". Trigger mig 160
+                điền hộ: có hóa đơn gốc thì theo nhân viên của đơn ấy,
+                không có thì theo bạn. Nói ra đúng câu đó, vì một ô rỗng
+                không nhãn là người dùng không biết phiếu sẽ tính cho ai.
+            */}
+            {canPickSeller && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Phiếu này tính cho nhân viên nào
+                </Label>
+                <SearchSelect
+                  id="ret-seller"
+                  options={sellerOptions}
+                  valueId={sellerId}
+                  onPick={(o) => setSellerId(o?.id ?? "")}
+                  placeholder="Gõ tên nhân viên…"
+                  emptyHint="Không tìm thấy nhân viên nào khớp."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Để trống thì phiếu theo nhân viên của hóa đơn gốc; không gắn hóa đơn
+                  thì đứng tên bạn. Báo cáo nhân viên trừ doanh số của người này.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -541,6 +656,7 @@ export default function NewReturnPage() {
                 ô tìm.
             */}
             <ProductPicker
+              closeOnPick
               id="ret-add-product"
               label="Tìm sản phẩm khác"
               placeholder="Tên hàng, mã hàng hoặc mã vạch…"

@@ -17,6 +17,8 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
+import { fetchStockEntryLines } from "@/lib/analytics/sales"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 type Variant = "purchase" | "payable" | "purchase_by_supplier"
 
@@ -117,50 +119,59 @@ export default function SuppliersReportPage() {
         .gte("invoice_date", range.from)
         .lte("invoice_date", range.to)
         .neq("status", "cancelled"),
-      supabase
-        .from("payables")
-        .select("id, supplier_id, amount, paid, due_date, status")
-        .eq("org_id", user.org_id),
-      supabase
-        .from("stock_entries")
-        .select("id, type, status, posted_at, entry_code, supplier_id")
-        .eq("org_id", user.org_id)
-        .eq("type", "import")
-        .eq("status", "posted")
-        .gte("posted_at", fromIso)
-        .lte("posted_at", toIso),
+      fetchAllForAggregate<PayableRow>((from, to) =>
+        supabase
+          .from("payables")
+          .select("id, supplier_id, amount, paid, due_date, status", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .range(from, to)
+      ),
+      fetchAllForAggregate<StockEntryRow>((from, to) =>
+        supabase
+          .from("stock_entries")
+          .select("id, type, status, posted_at, entry_code, supplier_id", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .eq("type", "import")
+          .eq("status", "posted")
+          .gte("posted_at", fromIso)
+          .lte("posted_at", toIso)
+          .range(from, to)
+      ),
     ])
-    const qErr2 = ([suppliersRes, productsRes, invoicesRes, payablesRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr2 = ([suppliersRes, productsRes, invoicesRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr2) console.error("[reports/suppliers] truy vấn lỗi:", qErr2.message)
+    for (const e of [payablesRes.error, stockEntriesRes.error]) {
+      if (e) console.error("[reports/suppliers] truy vấn lỗi:", e)
+    }
     const poIds = ((invoicesRes.data as PurchaseInvoiceRow[]) || [])
       .map((i) => i.po_id)
       .filter((x): x is string => Boolean(x))
-    const stockEntryIds = ((stockEntriesRes.data as StockEntryRow[]) || []).map((e) => e.id)
-    const [poLinesRes, stockLinesRes] = await Promise.all([
+    const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
+    /* ⚠ PHÂN TRANG CẢ HAI BẢNG DÒNG. Quá 1.000 dòng thì API trả đúng
+       1.000 kèm 200, không lỗi — giá nhập cộng thiếu mà trông vẫn bình
+       thường. Dòng đơn mua giữ `.select` riêng vì nó lấy thêm cột
+       `received_qty` mà hàm dùng chung không có. */
+    const [poLinesAgg, stockLinesList] = await Promise.all([
       poIds.length === 0
-        ? Promise.resolve({ data: [] as POLineRow[] })
-        : supabase
-            .from("purchase_order_lines")
-            .select("po_id, product_id, quantity, line_total, received_qty")
-            .in("po_id", poIds),
-      stockEntryIds.length === 0
-        ? Promise.resolve({ data: [] as StockEntryLineRow[] })
-        : supabase
-            .from("stock_entry_lines")
-            .select("entry_id, product_id, quantity, unit_cost")
-            .in("entry_id", stockEntryIds),
+        ? Promise.resolve({ rows: [] as POLineRow[], error: null })
+        : fetchAllForAggregate<POLineRow>((from, to) =>
+            supabase
+              .from("purchase_order_lines")
+              .select("po_id, product_id, quantity, line_total, received_qty", { count: "exact" })
+              .in("po_id", poIds)
+              .range(from, to)
+          ),
+      fetchStockEntryLines(supabase, stockEntryIds),
     ])
-    const qErr = ([poLinesRes, stockLinesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/suppliers] truy vấn lỗi:", qErr.message)
+    if (poLinesAgg.error) console.error("[reports/suppliers] truy vấn lỗi:", poLinesAgg.error)
     setSuppliers((suppliersRes.data as SupplierRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
     setInvoices((invoicesRes.data as PurchaseInvoiceRow[]) || [])
-    setPoLines((poLinesRes.data as POLineRow[]) || [])
-    setPayables((payablesRes.data as PayableRow[]) || [])
-    setStockEntries((stockEntriesRes.data as StockEntryRow[]) || [])
-    setStockLines((stockLinesRes.data as StockEntryLineRow[]) || [])
+    setPoLines(poLinesAgg.rows)
+    setPayables(payablesRes.rows)
+    setStockEntries(stockEntriesRes.rows)
+    setStockLines(stockLinesList)
     setLoading(false)
   }, [user?.org_id, range, supabase])
 

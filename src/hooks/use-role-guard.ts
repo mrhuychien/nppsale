@@ -3,8 +3,8 @@
 import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "./use-auth"
-import { canAccessModule, type Module } from "@/lib/permissions"
-import { NAV_PERMISSION, canEnterHref } from "@/lib/nav/nav-permission"
+import { type Module } from "@/lib/permissions"
+import { duocVaoTrang } from "@/lib/nav/nav-permission"
 
 /**
  * Chặn ở CỬA VÀO trang, khớp đúng với phép lọc menu.
@@ -24,12 +24,14 @@ export function useRoleGuard(module: Module) {
   const router = useRouter()
   const pathname = usePathname()
 
-  const declared = pathname ? NAV_PERMISSION[pathname] : undefined
-  const hasAccess = user
-    ? declared
-      ? canEnterHref(user.role, pathname as string)
-      : canAccessModule(user.role, module)
-    : false
+  /**
+   * ⚠ LUẬT NẰM Ở `duocVaoTrang`, KHÔNG NẰM TRONG HOOK NÀY. Hook chạy
+   *   trong React nên chốt không gọi được; luật để trong đây thì chốt
+   *   chỉ soi được CHỮ, và một đột biến `false && …` giữ nguyên chữ mà
+   *   giết luật vẫn đi lọt (đã thử, chốt xanh). Tách ra là để câu hỏi
+   *   "ai vào được trang nào" trả lời được bằng một lời gọi.
+   */
+  const hasAccess = duocVaoTrang(user?.role, pathname, module)
 
   useEffect(() => {
     if (!loading && user && !hasAccess) {

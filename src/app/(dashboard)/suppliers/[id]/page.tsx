@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import type { Supplier, StockEntry } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -141,8 +142,7 @@ export default function SupplierDetailPage() {
     if (!supplier) return
     setDeleting(true)
     try {
-      const { error } = await supabase.from("suppliers").delete().eq("id", supplier.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("suppliers").delete().eq("id", supplier.id))
       toast({ title: "Đã xóa nhà cung cấp" })
       router.push("/suppliers")
     } catch (err) {

@@ -28022,6 +28022,417 @@ NOTIFY pgrst, 'reload schema';
 
 
 -- ####################################################################
+-- # 158_return_any_product.sql
+-- ####################################################################
+
+-- ====================================================================
+-- BỎ TRẦN "CHỈ TRẢ ĐƯỢC HÀNG ĐÃ THỰC XUẤT"
+--
+-- Chủ nhà chốt 22/09/2026, nguyên văn:
+--     "Bỏ logic này đi, khách hàng được trả mọi loại mặt hàng dù chưa
+--      từng xuất. Vì phần mềm triển khai ngang xương, hàng người ta
+--      nhập từ trước đấy rồi có vào phần mềm đâu."
+--
+-- Câu chặn chủ nhà gặp, nguyên văn trên màn sửa hóa đơn:
+--     Chưa lưu được: bạn vừa bỏ "Trà thảo mộc 238g(18 gói/th)cty phương
+--     huyền" khỏi hóa đơn HD-0119, nhưng khách đang có phiếu trả chờ xử
+--     lý đòi trả lại đúng món đó.
+--
+-- VÌ SAO LUẬT CŨ TỒN TẠI, VÀ VÌ SAO NAY SAI
+--
+--   Luật cũ: khách chỉ trả được thứ đã THỰC XUẤT, và hóa đơn là TRẦN
+--   của số được trả. Nó chặn đúng một rủi ro: nhập kho khống và trừ
+--   công nợ khống.
+--
+--   Nhưng nó ngầm giả định MỌI hàng khách đang giữ đều có trong sổ. Nhà
+--   phân phối này bật phần mềm giữa chừng — hàng tồn ở cửa hàng khách
+--   mua từ trước đó không có dòng nào trong `sales_invoice_lines`. Với
+--   những món ấy `v_sold` luôn bằng 0, nên MỌI phiếu trả đều bị từ chối.
+--   Luật đúng trên một sổ đầy đủ, sai trên sổ thật của họ.
+--
+-- BỐN CHỖ CHẶN, PHẢI GỠ CẢ BỐN
+--
+--   Gỡ thiếu một chỗ là dời bức tường chứ không phá nó: người dùng lưu
+--   được hóa đơn rồi vấp đúng câu từ chối ấy ở bước sau.
+--     1. trigger `enforce_return_line_cap` (mig 119/124/134) — chặn
+--        ngay lúc CHÈN dòng phiếu trả, ném `RETURN_QTY_EXCEEDS`;
+--     2. `complete_return` (mig 127) — kiểm lại lúc hoàn thành phiếu;
+--     3. `reissue_invoice` (mig 152) — ném `REISSUE_BREAKS_RETURN` khi
+--        tờ hóa đơn sửa xong không còn bán một mã phiếu trả đang đòi;
+--     4. phía trình duyệt: `returnsBrokenBy` trong
+--        `src/lib/orders/invoice-editor.ts` và khối cảnh báo của
+--        `invoice-editor.tsx` — chính chỗ in ra câu chủ nhà chụp.
+--   Migration này gỡ ba chỗ đầu; chỗ thứ tư gỡ trong cùng commit.
+--
+-- ⚠ MẤT GÌ KHI GỠ. Nói thẳng để sau này không ai ngạc nhiên:
+--   · Phiếu trả nay nhập kho và trừ công nợ theo số người dùng gõ,
+--     KHÔNG còn con số nào của hệ thống đối chiếu lại.
+--   · Hai phiếu trả trùng nhau của cùng một hóa đơn sẽ đi qua cả hai —
+--     hàng vào kho hai lần, công nợ trừ hai lần. Trước đây phép kiểm ở
+--     `complete_return` chặn đúng ca này.
+--   Đây là đánh đổi chủ nhà đã chọn khi biết rõ: sổ không đầy đủ thì
+--   một cái trần dựng trên sổ ấy chặn nhầm nhiều hơn chặn đúng.
+--
+-- ⚠ GIỮ LẠI HAI PHÉP KIỂM KHÁC, và chúng KHÔNG phải luật này:
+--   · `INVOICE_NOT_POSTED` / `ORDER_NOT_COMPLETED` — phiếu trả gắn vào
+--     một chứng từ chưa ghi sổ. Đó là lỗi trạng thái chứng từ, không
+--     phải chuyện "món này chưa từng xuất". Phiếu trả ĐỘC LẬP (không
+--     gắn hóa đơn, không gắn đơn) vốn đã không bị hai phép này đụng tới.
+--
+-- ⚠ HÀNG TRẢ VỀ VẪN CÓ CHỖ ĐỂ NHẬP. Mặt hàng chưa từng bán thì có thể
+--   chưa có lô nào trong kho — `complete_return` đã tự tạo lô khi thiếu
+--   (xem nhánh `INSERT INTO batches` trong chính hàm dưới đây), nên bỏ
+--   trần không đẻ ra một bức tường mới ở bước nhập kho.
+--
+-- ⚠ CHÉP NGUYÊN VĂN HAI HÀM CỦA MIG 127 VÀ MIG 152, CẮT ĐÚNG HAI KHỐI.
+--   Không gõ lại tay: hai hàm này dài 256 và 121 dòng, và chúng giữ
+--   phép trừ công nợ, phép nhập kho, phép đánh số hóa đơn. Lấy nhầm một
+--   bản cũ hơn là mất những thứ ấy mà không có gì báo.
+--
+-- ⚠ ĐÁNH SỐ 158, KHÔNG PHẢI 156. Nhánh `newdesign` đang giữ 156 và 157
+--   cho hai bản vá khác; trùng số là hai tệp cùng số sau khi gộp, và
+--   `scripts/build-combined-migration.sh` hết cơ sở để xếp thứ tự.
+-- ====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. Trigger chặn lúc chèn dòng phiếu trả
+-- ---------------------------------------------------------------------
+--
+-- ⚠ GỠ HẲN, KHÔNG ĐỂ MỘT TRIGGER RỖNG. Một hàm chỉ `RETURN NEW` vẫn là
+--   một lời gọi cho mỗi dòng, và tệ hơn: người đọc sau sẽ tưởng còn một
+--   phép kiểm nào đó ở đây.
+DROP TRIGGER IF EXISTS trg_return_lines_cap ON return_lines;
+DROP FUNCTION IF EXISTS public.enforce_return_line_cap();
+
+
+-- ---------------------------------------------------------------------
+-- 2. `complete_return` — bỏ phép kiểm trần lúc hoàn thành phiếu
+-- ---------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.complete_return(p_return_id uuid, p_zone text)
+RETURNS TABLE (entry_id uuid)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  r          record;
+  v_entry    uuid;
+  v_code     text;
+  l          record;
+  v_conv     numeric;
+  v_base     numeric;
+  v_batch    uuid;
+  v_cost     numeric;
+  v_exp      date;
+  cap        record;
+  v_sold     numeric;
+  v_returned numeric;
+  v_pname    text;
+BEGIN
+  /* ⚠ HAI CỘT CUỐI LÀ MIẾNG VÁ CỦA MIG 134, GIỮ NGUYÊN DÙ TẠM THỜI
+     KHÔNG AI ĐỌC. Mig 134 thêm `customer_id` và `credit_with_invoice`
+     để tính trần trả theo KHÁCH; bản vá 158 bỏ hẳn khối trần ấy nên
+     hiện không còn chỗ nào dùng tới. Vẫn chép lại vì hai lý do: chép
+     thân hàm từ bản 127 mà bỏ dòng này là lặng lẽ xoá một miếng vá của
+     migration SAU nó — đúng cái bẫy `tests/migration-khong-de-mat-
+     mieng-va.test.ts` sinh ra để canh; và hàm này còn được viết lại
+     nhiều lần nữa, lần nào cũng phải mang theo. */
+  SELECT id, org_id, order_id, invoice_id, status, requested_by,
+         customer_id, credit_with_invoice INTO r
+  FROM returns WHERE id = p_return_id FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'RETURN_NOT_FOUND' USING ERRCODE = 'P0001';
+  END IF;
+  IF r.org_id <> public.user_org_id() THEN
+    RAISE EXCEPTION 'ORG_MISMATCH' USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT public.user_has_permission(auth.uid(), 'returns.approve') THEN
+    RAISE EXCEPTION 'FORBIDDEN: bạn không có quyền hoàn thành đơn trả'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF r.status <> 'submitted' THEN
+    RAISE EXCEPTION 'RETURN_NOT_SUBMITTED: phiếu trả không ở Phiếu tạm'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF p_zone NOT IN ('sale', 'date') THEN
+    RAISE EXCEPTION 'BAD_ZONE: kho nhận phải là sale hoặc date' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ⚠ Nhập lại hàng của một đơn CHƯA xuất là cộng khống tồn kho: số hàng
+  --   đó chưa bao giờ rời kho.
+  IF r.invoice_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM sales_invoices si
+      WHERE si.id = r.invoice_id AND si.status = 'posted'
+    ) THEN
+      RAISE EXCEPTION
+        'INVOICE_NOT_POSTED: hóa đơn gốc đã bị huỷ — hàng của nó đã hoàn về kho rồi, không nhập trả lần nữa'
+        USING ERRCODE = 'P0001';
+    END IF;
+  ELSIF r.order_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM sales_orders o2
+    WHERE o2.id = r.order_id AND public.is_revenue_status(o2.status)
+  ) THEN
+    RAISE EXCEPTION 'ORDER_NOT_COMPLETED: đơn gốc chưa xuất hàng, không nhập trả được'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  /* ⚠ TRẦN SỐ LƯỢNG TRẢ ĐÃ BỊ BỎ — xem đầu tệp migration 158. */
+
+  v_code := 'NL-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS');
+  INSERT INTO stock_entries (org_id, entry_code, type, status, posted_at, created_by, notes)
+  VALUES (r.org_id, v_code, 'import', 'posted', now(), auth.uid(),
+          'Nhập lại từ phiếu trả ' || p_return_id::text)
+  RETURNING id INTO v_entry;
+
+  -- Hàng ĐỔI cũng vào kho như hàng trả; khác nhau ở chỗ nó không ghi có
+  -- công nợ, và việc đó do credit_note_amount lo (mig 055).
+  FOR l IN
+    SELECT rl.id, rl.product_id, rl.unit_name, rl.quantity, rl.is_exchange
+    FROM return_lines rl WHERE rl.return_id = p_return_id
+  LOOP
+    CONTINUE WHEN COALESCE(l.quantity, 0) <= 0;
+
+    v_conv := COALESCE((SELECT pu.conversion FROM product_units pu
+                         WHERE pu.product_id = l.product_id
+                           AND pu.unit_name = l.unit_name), 1);
+    IF v_conv <= 0 THEN v_conv := 1; END IF;
+    v_base := l.quantity * v_conv;
+
+    -- ⚠ Giá vốn phải theo hàng THẬT. Để 0 thì lần bán sau FIFO ăn vào lô
+    --   này với giá vốn 0, lãi gộp báo cao hơn thực đúng bằng giá vốn số
+    --   hàng đã trả.
+    --
+    -- ⚠ ƯU TIÊN PHIẾU XUẤT CỦA CHÍNH HÓA ĐƠN. Đơn xuất hai đợt có thể lấy
+    --   từ hai lô giá vốn khác nhau; tra theo đơn là lấy phải giá của đợt
+    --   kia. Không có hóa đơn thì rơi về cách cũ (tra theo đơn), rồi tới
+    --   lô mới nhất cùng sản phẩm, rồi 0.
+    v_cost := COALESCE(
+      (SELECT slc.unit_cost
+         FROM stock_line_consumptions slc
+         JOIN stock_entry_lines sel ON sel.id = slc.line_id
+        WHERE sel.product_id = l.product_id
+          AND r.invoice_id IS NOT NULL
+          AND sel.entry_id = (SELECT si.stock_entry_id FROM sales_invoices si
+                               WHERE si.id = r.invoice_id)
+        ORDER BY slc.created_at DESC LIMIT 1),
+      (SELECT slc.unit_cost
+         FROM stock_line_consumptions slc
+         JOIN stock_entry_lines sel ON sel.id = slc.line_id
+         JOIN stock_entries se ON se.id = sel.entry_id
+        WHERE sel.product_id = l.product_id
+          AND r.order_id IS NOT NULL
+          AND se.ref_order_ids @> jsonb_build_array(r.order_id::text)
+        ORDER BY slc.created_at DESC LIMIT 1),
+      (SELECT b3.unit_cost FROM batches b3
+        WHERE b3.product_id = l.product_id AND COALESCE(b3.unit_cost, 0) > 0
+        ORDER BY b3.received_at DESC NULLS LAST LIMIT 1),
+      0);
+
+    SELECT b.id INTO v_batch
+    FROM batches b
+    WHERE b.org_id = r.org_id
+      AND b.product_id = l.product_id
+      AND b.warehouse_zone = p_zone
+      AND COALESCE(b.status, 'available') = 'available'
+    ORDER BY b.received_at DESC NULLS LAST, b.created_at DESC
+    LIMIT 1;
+
+    IF v_batch IS NULL THEN
+      -- Lô mới: hạn dùng lấy từ lô xa nhất cùng sản phẩm; không có thì
+      -- suy từ hạn sử dụng của sản phẩm; không có nữa thì một năm.
+      SELECT max(b2.expires_at) INTO v_exp FROM batches b2
+       WHERE b2.org_id = r.org_id AND b2.product_id = l.product_id;
+      IF v_exp IS NULL THEN
+        SELECT current_date + COALESCE(p.shelf_life_days, 365) INTO v_exp
+        FROM products p WHERE p.id = l.product_id;
+      END IF;
+
+      INSERT INTO batches (
+        org_id, product_id, batch_code, expires_at, qty_initial, qty_on_hand,
+        unit_cost, warehouse_zone, received_at
+      ) VALUES (
+        r.org_id, l.product_id, 'RESTOCK-' || v_code, COALESCE(v_exp, current_date + 365),
+        v_base, 0, v_cost, p_zone, now()
+      )
+      RETURNING id INTO v_batch;
+
+      -- ⚠ batches có trigger tự xếp kho: lô sắp hết hạn bị đẩy sang kho
+      --   date dù người dùng chọn kho bán. Ép lại đúng ý người duyệt.
+      UPDATE batches SET warehouse_zone = p_zone WHERE id = v_batch;
+    END IF;
+
+    UPDATE batches SET qty_on_hand = qty_on_hand + v_base WHERE id = v_batch;
+
+    INSERT INTO stock_entry_lines (
+      entry_id, product_id, batch_id, unit_name, quantity,
+      qty_in_transaction_uom, qty_in_base_uom, transaction_uom,
+      conversion_factor_snapshot, unit_cost, notes
+    ) VALUES (
+      v_entry, l.product_id, v_batch, l.unit_name, round(l.quantity)::int,
+      l.quantity, v_base, l.unit_name, v_conv, v_cost,
+      CASE WHEN l.is_exchange THEN 'Hàng đổi thu về' ELSE 'Nhập lại từ đơn trả' END
+    );
+  END LOOP;
+
+  UPDATE returns
+  SET status = 'completed', completed_at = now(),
+      completed_by = auth.uid(), destination_zone = p_zone
+  WHERE id = p_return_id;
+
+  -- ⚠ TÍNH LẠI THEO HÓA ĐƠN KHI CÓ. Đường qua `_wf2_recompute_receivable`
+  --   giữ lại cho phiếu trả chưa gắn hóa đơn — nó tự nhận nuôi khi đơn
+  --   chỉ có một hóa đơn, và DỪNG khi có nhiều hơn.
+  IF r.invoice_id IS NOT NULL THEN
+    PERFORM public._wf2b_recompute_receivable(r.invoice_id);
+  ELSIF r.order_id IS NOT NULL THEN
+    PERFORM public._wf2_recompute_receivable(r.order_id);
+  END IF;
+
+  PERFORM public._wf2_notify(
+    r.requested_by, 'return_completed',
+    'Phiếu trả đã hoàn thành', NULL, '/returns/' || p_return_id::text);
+
+  RETURN QUERY SELECT v_entry;
+END;
+$$;
+
+-- ---------------------------------------------------------------------
+-- 3. `reissue_invoice` — bỏ `REISSUE_BREAKS_RETURN`
+-- ---------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.reissue_invoice(p_invoice_id uuid, p jsonb)
+RETURNS TABLE (
+  invoice_id uuid, invoice_code text, entry_id uuid, receivable_id uuid,
+  short_qty numeric, near_expiry_skipped int, order_status text
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_old     record;
+  v_new     record;
+  v_missing text;
+  v_payload jsonb;
+  v_rets    uuid[];
+  v_edited  int;
+  v_added   int;
+BEGIN
+  SELECT si.id, si.org_id, si.order_id, si.invoice_code, si.status INTO v_old
+  FROM sales_invoices si WHERE si.id = p_invoice_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'INVOICE_NOT_FOUND' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_old.org_id <> public.user_org_id() THEN
+    RAISE EXCEPTION 'ORG_MISMATCH' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ⚠ SỬA/BỎ TRƯỚC (mig 149), THÊM SAU (mig 152) — rồi mới kiểm.
+  --   Thứ tự ấy có ý: một dòng vừa thêm KHÔNG được mang `line_id` nào
+  --   để bị chính lượt sửa này bỏ đi.
+  v_edited := public._apply_return_edits(p_invoice_id, p->'return_edits');
+  v_added  := public._apply_return_adds(v_old.order_id, p_invoice_id, p->'return_adds');
+
+  /* ⚠ PHÉP KIỂM `REISSUE_BREAKS_RETURN` ĐÃ BỊ BỎ — xem đầu tệp migration 158. */
+
+  -- ⚠ BÍ DANH `rr` — MIẾNG VÁ CỦA MIG 128, mục 6.2. Tên trần ở đây là
+  --   "column reference invoice_id is ambiguous" ngay giữa giao dịch.
+  SELECT COALESCE(array_agg(rr.id), '{}') INTO v_rets
+  FROM returns rr
+  WHERE rr.invoice_id = p_invoice_id AND rr.status IN ('draft', 'submitted');
+
+  UPDATE returns SET invoice_id = NULL WHERE id = ANY(v_rets);
+
+  PERFORM public.cancel_invoice(
+    p_invoice_id, 'Lập lại hóa đơn ' || v_old.invoice_code);
+
+  v_payload := jsonb_set(COALESCE(p, '{}'::jsonb), '{order_id}',
+                         to_jsonb(v_old.order_id::text));
+  -- ⚠ GỠ `return_adds` TRƯỚC KHI GỌI `post_invoice` — NẾU KHÔNG DÒNG
+  --   TRẢ BỊ THÊM HAI LẦN. `reissue_invoice` đã áp phần thêm ở trên (để
+  --   phép kiểm nhìn thấy), rồi nó gọi `post_invoice` với CÙNG tải
+  --   trọng ấy, mà `post_invoice` nay cũng áp `return_adds`. Đo trên
+  --   Postgres thật trước khi phát hành: thêm 1 dòng trả 216.000 và 1
+  --   dòng đổi thì sổ ghi thành hai bản mỗi loại, credit vọt từ
+  --   316.000 lên 532.000 — tiền trừ công nợ khách GẤP ĐÔI.
+  --
+  -- ⚠ CHỈ GỠ `return_adds`. `return_edits` thì `post_invoice` không
+  --   đụng tới, gỡ luôn là dọn một thứ không ai nhờ và che mất ý định
+  --   của tải trọng khi đọc lại sau này.
+  v_payload := v_payload - 'return_adds';
+  -- ⚠ MIẾNG VÁ CỦA MIG 128, mục 6 — giữ số gốc HD-xxxx-n.
+  v_payload := jsonb_set(v_payload, '{reissue_of}',
+                         to_jsonb(p_invoice_id::text));
+
+  SELECT * INTO v_new FROM public.post_invoice(v_payload);
+
+  UPDATE sales_invoices SET replaced_by   = v_new.invoice_id WHERE id = p_invoice_id;
+  UPDATE sales_invoices SET replaced_from = p_invoice_id     WHERE id = v_new.invoice_id;
+
+  UPDATE returns SET invoice_id = v_new.invoice_id WHERE id = ANY(v_rets);
+
+  -- ⚠ PHIẾU TRẢ RỖNG DÒNG THÌ HẠ VỀ PHIẾU TẠM — KHÔNG HUỶ NỮA.
+  --
+  -- ⚠ MIG 149 HUỶ HẲN, VÀ ĐÓ LÀ MỘT QUYẾT ĐỊNH SAI CỦA TÔI. Chủ nhà
+  --   báo 21/09/2026: "tại sao khi huỷ hoá đơn lại huỷ cả phần trả về
+  --   của Đơn hàng", kèm ảnh một phiếu trả mang nhãn "Đã huỷ · −0đ".
+  --   Huỷ là ghi vào sổ rằng khách CHƯA TỪNG trả hàng — trong khi hàng
+  --   có thể đang nằm đó thật, và không còn gì để người xử lý nhìn
+  --   thấy. Đúng cái sai mà migration 131 đã sửa một lần cho
+  --   `cancel_invoice`; tôi lặp lại nó ở chỗ khác.
+  --
+  -- ⚠ `draft` LÀ TRẠNG THÁI SẴN CÓ CHO ĐÚNG VIỆC NÀY — chủ nhà hỏi
+  --   "có cần để thêm 1 trạng thái phiếu tạm cho phiếu trả để còn back
+  --   trạng thái khi huỷ hoá đơn?". Không cần thêm: `cancel_invoice`
+  --   (mig 131 + 133) đã hạ phiếu về `draft` và gỡ `invoice_id` đúng
+  --   như vậy. Ở đây chỉ việc làm giống nó.
+  --
+  -- ⚠ VÀ CHỈ ĐỤNG KHI CHÍNH LƯỢT NÀY LÀM RỖNG NÓ (`v_edited > 0`).
+  --   Không có điều kiện ấy thì một phiếu vốn dĩ đã rỗng từ trước bị
+  --   hạ trạng thái ở lần sửa hóa đơn kế tiếp, dù người dùng không hề
+  --   chạm vào nó.
+  IF v_edited > 0 THEN
+    UPDATE returns
+    SET status = 'draft', invoice_id = NULL
+    WHERE id = ANY(v_rets)
+      AND status IN ('draft', 'submitted')
+      AND NOT EXISTS (SELECT 1 FROM return_lines rl WHERE rl.return_id = returns.id);
+  END IF;
+
+  RETURN QUERY SELECT v_new.invoice_id, v_new.invoice_code, v_new.entry_id,
+                      v_new.receivable_id, v_new.short_qty,
+                      v_new.near_expiry_skipped, v_new.order_status;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.reissue_invoice(uuid, jsonb) TO authenticated;
+
+-- ---------------------------------------------------------------------
+-- Đối chiếu: bao nhiêu phiếu trả đang kẹt vì cái trần vừa gỡ
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHỈ ĐẾM, KHÔNG TỰ HOÀN THÀNH PHIẾU NÀO. Hoàn thành một phiếu trả là
+--   đụng vào tồn kho và công nợ; đó phải là một cú bấm có người chịu
+--   trách nhiệm, không phải việc của một migration.
+DO $report$
+DECLARE v_n int;
+BEGIN
+  SELECT count(DISTINCT r.id) INTO v_n
+  FROM returns r
+  JOIN return_lines rl ON rl.return_id = r.id AND rl.is_exchange = false
+  WHERE r.status IN ('draft', 'submitted')
+    AND r.invoice_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM sales_invoice_lines sil
+      WHERE sil.invoice_id = r.invoice_id
+        AND sil.is_exchange = false
+        AND sil.product_id = rl.product_id
+    );
+  RAISE NOTICE '--- 158: bỏ trần trả hàng · % phiếu trả đang chờ có món không nằm trên hóa đơn gốc, nay hoàn thành được ---', v_n;
+END $report$;
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ####################################################################
 -- # 159_return_line_reason.sql
 -- ####################################################################
 
@@ -28082,6 +28493,193 @@ DECLARE v_n int;
 BEGIN
   SELECT count(*) INTO v_n FROM return_lines WHERE reason IS NULL;
   RAISE NOTICE '--- 159: lý do trả theo dòng · % dòng cũ chưa có lý do riêng, đọc theo lý do của phiếu ---', v_n;
+END $$;
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ####################################################################
+-- # 160_return_sales_user.sql
+-- ####################################################################
+
+-- ====================================================================
+-- PHIẾU TRẢ HÀNG ĐỨNG TÊN NHÂN VIÊN
+--
+-- Chủ nhà chốt 22/09/2026: "phần Trả hàng: phiếu do NPP lập có thể gán
+-- được cho nhân viên".
+--
+-- Đây là bản sao của mig 153 cho `returns`, và nó có cùng một lý do.
+--
+-- VÌ SAO CẦN
+--
+--   `returns` chỉ có `requested_by` — NGƯỜI BẤM NÚT, không phải NGƯỜI
+--   PHỤ TRÁCH KHÁCH. NPP ngồi văn phòng lập hộ một phiếu trả thì cả
+--   phiếu ấy mang tên NPP, còn nhân viên đi tuyến — người thật sự đứng
+--   ra nhận lại hàng — không có dòng nào.
+--
+-- ⚠ VÀ BÁO CÁO NHÂN VIÊN ĐANG PHẢI ĐOÁN. `reports/employees` hiện quy
+--   phiếu trả về nhân viên bằng đường VÒNG: tìm các đơn của cùng khách
+--   rồi lấy `sales_user_id` của đơn (xem `orderByCustomer` trong tệp
+--   ấy). Khách mua của hai nhân viên khác nhau là phép đoán ấy sai, và
+--   nó sai vào đúng con số trừ doanh số.
+--
+-- ⚠ KHÔNG ĐỤNG `requested_by`. Hai cột trả lời hai câu khác nhau: ai
+--   GÕ phiếu, và phiếu tính cho AI. Gộp làm một là mất dấu vết người
+--   thao tác — thứ duy nhất lần ra được khi một phiếu bị lập sai.
+--
+-- ⚠ RLS KHÔNG CANH CỘT NÀY, y như `sales_orders`. Chính sách INSERT của
+--   `returns` chỉ đòi đúng `org_id` và vai trò thuộc nhóm; nó không nói
+--   gì về việc phiếu đứng tên ai. Nghĩa là một nhân viên gửi thẳng
+--   PostgREST một phiếu mang tên đồng nghiệp thì cơ sở dữ liệu nhận —
+--   và đó là ghi khoản TRỪ doanh số sang tên người khác. Chặn ở
+--   TRIGGER, không chặn ở giao diện: giao diện chỉ là lớp trên cùng.
+--
+-- ⚠ ĐỂ TRỐNG THÌ THEO ĐƠN GỐC, KHÔNG THEO NGƯỜI GÕ. Đây là chỗ bản đầu
+--   của migration này SAI, và sai nặng hơn cả cái nó đi sửa.
+--
+--   Phiếu trả không chỉ sinh ra ở màn Trả hàng. Nó còn sinh ở:
+--     · `createOrderRecords` — hàng trả gõ kèm lúc lập đơn.
+--     · `order-edit.ts`      — hàng trả thêm vào lúc mở đơn ra sửa.
+--     · màn bàn giao chuyến  — tài xế ghi hàng khách trả tại cửa.
+--     · `reissue_invoice`    — mig 152 tự dựng phiếu trả khi xuất lại.
+--   Bốn chỗ ấy KHÔNG có ô chọn người, và người bấm nút ở đó thường
+--   không phải người phụ trách khách: NPP ngồi văn phòng, hay tài xế.
+--   Lấy người gõ làm người đứng tên thì đơn tính cho nhân viên còn
+--   phiếu trả tính cho NPP — doanh số một đằng, khoản trừ một nẻo.
+--   Phép đoán cũ ít ra còn quy được về đúng người.
+--
+--   Nên: phiếu có `order_id` thì THEO `sales_orders.sales_user_id` của
+--   đơn ấy. Đó không phải phỏng đoán — đơn đã ghi sẵn tên, phiếu chỉ
+--   đọc lại.
+--
+-- ⚠ KHÔNG CÓ ĐƠN GỐC THÌ LÀ CHÍNH MÌNH — nhưng chỉ khi mình có bán
+--   hàng. Mặc định sang một tài khoản kho hay kế toán là dựng ra đúng
+--   "dòng trừ doanh số không ai nhận" mà khối kiểm bên dưới đang chặn.
+--   Không ai nhận thì để rỗng, và rỗng đọc đúng là "chưa gán".
+--
+-- ⚠ PHIẾU CŨ ĐỂ RỖNG, KHÔNG BACKFILL. Đoán ngược "phiếu này chắc của
+--   nhân viên X" từ đơn của cùng khách là ghi một con số phỏng đoán vào
+--   sổ rồi quên mất rằng nó là phỏng đoán — đúng cái đường vòng mà
+--   migration này sinh ra để bỏ. Rỗng đọc đúng là "chưa gán".
+--
+-- ⚠ ĐÁNH SỐ 160. Nhánh `newdesign` đang giữ 156, 157 và 159; `main`
+--   giữ 158. Trùng số là hai tệp cùng số sau khi gộp.
+-- ====================================================================
+
+ALTER TABLE returns
+  ADD COLUMN IF NOT EXISTS sales_user_id uuid REFERENCES users(id);
+
+CREATE INDEX IF NOT EXISTS idx_returns_sales_user ON returns(sales_user_id);
+
+COMMENT ON COLUMN returns.sales_user_id IS
+  'Nhân viên phiếu trả này tính cho. Rỗng = chưa gán. KHÁC requested_by '
+  '(người gõ phiếu). Báo cáo nhân viên đếm theo cột này.';
+
+-- ---------------------------------------------------------------------
+-- Ai được đặt cột này, và đặt cho ai
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.guard_return_sales_user()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_me   uuid := auth.uid();
+  v_role text;
+  v_ord  uuid;
+  u      record;
+BEGIN
+  /**
+   * ĐIỀN MẶC ĐỊNH — LÀM TRƯỚC, VÀ LÀM CHO CẢ ĐƯỜNG RPC.
+   *
+   * ⚠ Cờ `npp.via_rpc` miễn phần KIỂM QUYỀN, không miễn phần điền. RPC
+   *   `SECURITY DEFINER` tự chịu trách nhiệm chọn ai đứng tên; nhưng
+   *   `reissue_invoice` (mig 152) dựng phiếu trả mà không truyền cột
+   *   này, và nếu khối điền nằm sau cờ thì phiếu ấy rỗng vĩnh viễn.
+   */
+  IF NEW.sales_user_id IS NULL THEN
+    IF NEW.order_id IS NOT NULL THEN
+      SELECT so.sales_user_id INTO v_ord
+      FROM sales_orders so WHERE so.id = NEW.order_id;
+      NEW.sales_user_id := v_ord;
+    END IF;
+    IF NEW.sales_user_id IS NULL
+       AND v_me IS NOT NULL
+       AND public.user_role() IN ('sales', 'manager', 'owner') THEN
+      NEW.sales_user_id := v_me;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- ⚠ RPC `SECURITY DEFINER` tự chịu trách nhiệm phần của nó; cờ này là
+  --   quy ước sẵn có của kho mã (xem mig 119/120).
+  IF COALESCE(current_setting('npp.via_rpc', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Không có phiên đăng nhập (seed, backfill, job) thì không canh được
+  -- gì có ý nghĩa — để nguyên.
+  IF v_me IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.sales_user_id = v_me THEN
+    RETURN NEW;
+  END IF;
+
+  v_role := public.user_role();
+  IF v_role NOT IN ('owner', 'manager') THEN
+    RAISE EXCEPTION
+      'PHIEU_TRA_HO_KHONG_DUOC_PHEP: chỉ chủ nhà phân phối hoặc quản lý mới lập phiếu trả đứng tên nhân viên khác.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT us.id, us.org_id, us.role INTO u
+  FROM users us WHERE us.id = NEW.sales_user_id;
+
+  IF NOT FOUND OR u.org_id <> NEW.org_id THEN
+    RAISE EXCEPTION
+      'NHAN_VIEN_KHONG_HOP_LE: nhân viên được chọn không thuộc đơn vị này.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  -- ⚠ CHỈ VAI TRÒ CÓ BÁN HÀNG. Gán cho tài khoản kho hay kế toán là
+  --   dựng ra một dòng trừ doanh số không ai nhận.
+  IF u.role NOT IN ('sales', 'manager', 'owner') THEN
+    RAISE EXCEPTION
+      'NHAN_VIEN_KHONG_BAN_HANG: % không phải vai trò bán hàng, không đứng tên phiếu trả được.',
+      u.role USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- ⚠ CANH CẢ `UPDATE`, KHÔNG CHỈ `INSERT` — bài học của mig 155. Chặn
+--   mỗi lúc chèn thì nhân viên lập phiếu đứng tên mình rồi `UPDATE` một
+--   phát sang tên đồng nghiệp, và cửa sau ấy rộng y như cửa trước.
+DROP TRIGGER IF EXISTS trg_returns_guard_sales_user ON returns;
+CREATE TRIGGER trg_returns_guard_sales_user
+  BEFORE INSERT OR UPDATE OF sales_user_id ON returns
+  FOR EACH ROW EXECUTE FUNCTION public.guard_return_sales_user();
+
+COMMENT ON FUNCTION public.guard_return_sales_user() IS
+  'Để trống thì điền theo sales_user_id của đơn gốc, không có đơn gốc '
+  'thì theo người đang gõ nếu người đó có vai trò bán hàng, không thì '
+  'để rỗng. Đặt tay một tên khác chính mình thì chỉ owner/manager được, '
+  'và người được gán phải cùng org, có vai trò bán hàng. Báo cáo nhân '
+  'viên đếm theo cột này nên RLS không canh là ghi khoản trừ doanh số '
+  'sang tên người khác.';
+
+DO $$
+DECLARE v_n int; v_cu int;
+BEGIN
+  SELECT count(*) INTO v_n FROM pg_trigger
+  WHERE tgname = 'trg_returns_guard_sales_user' AND NOT tgisinternal;
+  SELECT count(*) INTO v_cu FROM returns WHERE sales_user_id IS NULL;
+  IF v_n = 1 THEN
+    RAISE NOTICE '--- 160: phiếu trả gán được cho nhân viên · % phiếu cũ để rỗng, chưa gán ---', v_cu;
+  ELSE
+    RAISE EXCEPTION '160: trigger canh người đứng tên phiếu trả KHÔNG được tạo';
+  END IF;
 END $$;
 
 NOTIFY pgrst, 'reload schema';
@@ -28200,4 +28798,895 @@ BEGIN
 END $$;
 
 NOTIFY pgrst, 'reload schema';
+
+
+-- ####################################################################
+-- # 162_huy_hoa_don_roi_sua_don_duoc.sql
+-- ####################################################################
+
+-- ====================================================================
+-- HUỶ HÓA ĐƠN RỒI THÌ SỬA ĐƠN ĐƯỢC
+--
+-- Chủ nhà báo 22/09/2026, kèm ảnh chụp:
+--   "Không bỏ được mặt hàng … khỏi đơn: nó đã từng nằm trên một tờ hóa
+--    đơn của đơn này, và tờ ấy vẫn còn trong sổ (kể cả khi đã huỷ)."
+-- kèm câu hỏi: "ko hiểu đưa logic này vào làm gì?"
+--
+-- ⚠ CÂU TRẢ LỜI: KHÔNG AI ĐƯA LOGIC ẤY VÀO. Câu tiếng Việt trên chỉ là
+--   bản dịch của một lời từ chối THẬT từ cơ sở dữ liệu — khoá ngoại
+--   `sales_invoice_lines_order_line_id_fkey`, mã 23503. Giao diện đang
+--   nói lại cho dễ hiểu. Chỗ sai nằm ở chính cái khoá ấy.
+--
+-- ĐÃ DỰNG LẠI TRÊN POSTGRES 16 THẬT
+--
+--   đơn 2 dòng → `post_invoice` → `cancel_invoice` → xoá 1 dòng đơn:
+--     · trạng thái hóa đơn = cancelled
+--     · `invoiced_qty` của CẢ HAI dòng đơn = 0
+--     · nhưng 2 dòng hóa đơn VẪN trỏ vào 2 dòng đơn
+--     · và lệnh xoá bị ném 23503
+--
+-- ⚠ CON TRỎ ẤY KHÔNG CÒN NUÔI CON SỐ NÀO. `sync_invoiced_qty` (mig 124)
+--   chỉ cộng những hóa đơn `status = 'posted'`; hóa đơn đã huỷ đóng góp
+--   đúng 0 — phép đo trên cho thấy thế. Sau khi huỷ, `order_line_id`
+--   chỉ còn làm một việc duy nhất: CHẶN.
+--
+-- ⚠ VÀ HÓA ĐƠN ĐÃ HUỶ KHÔNG MẤT GÌ KHI NHẢ CON TRỎ. `sales_invoice_lines`
+--   giữ bản chụp đầy đủ ngay trên chính nó: `product_id`, `unit_name`,
+--   `conversion_factor`, `quantity`, `unit_price`, `line_discount`,
+--   `line_total`, `vat_rate`. Con trỏ chỉ là đường LIÊN KẾT, và cột ấy
+--   vốn đã cho phép NULL từ mig 124 (dòng hàng đổi và dòng NPP thêm
+--   ngoài đơn đều để rỗng).
+--
+-- ⚠ ĐÂY LÀ NỬA CÒN LẠI CỦA MỘT LỖI CŨ. Trước mig 149, đường sửa đơn xoá
+--   sạch dòng rồi chèn lại, và chính khoá ngoại này chặn — đơn từng xuất
+--   hàng rồi huỷ hết hóa đơn thì VĨNH VIỄN không sửa được, trong khi màn
+--   hình vẫn mời bấm Sửa. Mig 149 sửa cách ghi (so khớp thay vì xoá
+--   sạch) nhưng KHÔNG đụng tới khoá ngoại, nên ca "bỏ hẳn một mặt hàng"
+--   vẫn kẹt nguyên.
+--
+-- CÁCH SỬA
+--
+--   `cancel_invoice` nhả `order_line_id` của chính tờ vừa huỷ. Huỷ hóa
+--   đơn là lúc tờ ấy thôi đòi hỏi gì ở đơn — nhả đúng lúc đó.
+--
+-- ⚠ CÒN KHOÁ NGOẠI THÌ GIỮ NGUYÊN, VÀ ĐÓ LÀ CỐ Ý. Hóa đơn `posted` vẫn
+--   chặn việc bỏ dòng đơn, vì dòng ấy là hàng ĐÃ RỜI KHO. Đổi khoá thành
+--   `ON DELETE SET NULL` là mở luôn cả ca ấy — bỏ được một dòng đã giao
+--   thật mà không ai chặn. Đã đo: sau mig này, hóa đơn posted VẪN chặn.
+--
+-- ⚠ VÁ BẰNG CÁCH THÊM MỘT CÂU, KHÔNG CHÉP LẠI CẢ HÀM — và đây không
+--   phải sở thích, nó là một lỗi tôi vừa suýt gây ra. Bản đầu của
+--   migration này chép nguyên thân `cancel_invoice` từ MIG 125 rồi thêm
+--   một khối. Chốt `migration-khong-de-mat-mieng-va` bắt được: mig 131
+--   đã VÁ CHUỖI chính hàm ấy sau mig 125, nên chép từ 125 là âm thầm
+--   xoá miếng vá của 131 — phiếu trả kèm đơn lại bị huỷ oan khi huỷ hóa
+--   đơn, đúng lỗi chủ nhà đã báo một lần rồi. Mig 131 cũng đã ghi sẵn lý
+--   do: hàm này dài ~150 dòng và phần hoàn kho theo lô là phần dễ chép
+--   sai nhất.
+--
+-- ⚠ KHÔNG ĐỤNG `reissue_invoice`. Hàm ấy gọi `cancel_invoice` rồi gọi
+--   `post_invoice` với TẢI TRỌNG DO NGƯỜI GỌI ĐƯA, chứ không đọc lại
+--   dòng của tờ cũ — nên nhả con trỏ không ảnh hưởng. Đã đo: xuất lại
+--   hóa đơn sau mig này vẫn gắn đúng dòng đơn, `invoiced_qty` đúng, và
+--   tờ cũ đã huỷ vẫn đọc đủ dòng lẫn tiền.
+--
+-- ⚠ ĐÁNH SỐ 162. `main` giữ 158, 160; `newdesign` giữ 156, 157, 159, 161.
+-- ====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. Vá `cancel_invoice`
+-- ---------------------------------------------------------------------
+DO $patch$
+DECLARE
+  v_oid  oid;
+  v_src  text;
+  v_stmt text;
+  v_new  text;
+  v_n    int;
+  v_re   text := 'UPDATE sales_invoices\s+SET status = ''cancelled''[^;]+;';
+BEGIN
+  SELECT p.oid INTO v_oid
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'cancel_invoice';
+
+  IF v_oid IS NULL THEN
+    RAISE EXCEPTION
+      'CANCEL_INVOICE_MISSING: chưa có hàm cancel_invoice — chạy migration 125 trước.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  v_src := pg_get_functiondef(v_oid);
+
+  -- Đã vá rồi thì đứng yên. Migration phải chạy lại được mà không đổi gì.
+  IF position('SET order_line_id = NULL' in v_src) > 0 THEN
+    RAISE NOTICE '162: cancel_invoice đã vá từ trước — không đổi gì.';
+  ELSE
+    SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
+
+    IF v_n <> 1 THEN
+      -- ⚠ IN RA THỨ TÌM THẤY — bài học của mig 126, mig 131 nhắc lại:
+      --   báo "không đúng hình dạng" mà không nói hình dạng hiện tại là
+      --   gì thì người chạy migration không có đường nào sửa tay.
+      RAISE EXCEPTION
+        'CANCEL_INVOICE_SHAPE: tìm thấy % câu đổi trạng thái hóa đơn trong cancel_invoice (cần đúng 1). Thân hàm hiện tại:%',
+        v_n, E'\n' || v_src
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    v_stmt := substring(v_src from v_re);
+
+    v_new := v_stmt || E'\n\n'
+      || '  -- ⚠ NHẢ MÓC NỐI VỀ DÒNG ĐƠN (mig 162). Tờ đã huỷ giữ nguyên' || E'\n'
+      || '  --   bản chụp của nó (mã hàng, đơn vị, số lượng, đơn giá, thuế' || E'\n'
+      || '  --   suất đều nằm trên chính dòng hóa đơn), nên bỏ con trỏ' || E'\n'
+      || '  --   KHÔNG làm mất một chữ nào. Giữ lại thì nó chỉ còn chặn' || E'\n'
+      || '  --   người ta bỏ dòng ấy khỏi đơn, mãi mãi.' || E'\n'
+      || '  UPDATE sales_invoice_lines' || E'\n'
+      || '  SET order_line_id = NULL' || E'\n'
+      || '  WHERE invoice_id = p_invoice_id AND order_line_id IS NOT NULL;';
+
+    EXECUTE replace(v_src, v_stmt, v_new);
+    RAISE NOTICE '162: đã vá cancel_invoice — huỷ hóa đơn nay nhả móc nối về dòng đơn.';
+  END IF;
+END;
+$patch$;
+
+-- ---------------------------------------------------------------------
+-- 2. Vá các tờ đã huỷ từ trước
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHỈ SỬA HÀM THÌ NHỮNG TỜ HUỶ HÔM QUA VẪN KẸT MÃI, và chủ nhà đang
+--   có đơn kẹt ngay bây giờ.
+--
+-- ⚠ CHỈ ĐỘNG VÀO TỜ ĐÃ HUỶ. Hóa đơn `posted` giữ nguyên con trỏ — đó là
+--   thứ nuôi `invoiced_qty` và là thứ chặn việc bỏ một dòng đã giao.
+--
+-- ⚠ KHỐI NÀY PHẢI MỞ `npp.via_rpc`, VÀ ĐÓ KHÔNG PHẢI MẸO LÁCH. Chủ nhà
+--   chạy bản đầu của migration này trên sổ thật và vấp:
+--
+--     ERROR: ORDER_LOCKED: đơn đã xuất hàng, không sửa dòng được.
+--     CONTEXT: guard_order_lines_locked() ← sync_invoiced_qty()
+--              ← UPDATE sales_invoice_lines SET order_line_id = NULL
+--
+--   Đường đi: nhả con trỏ → `trg_sync_invoiced_qty` chạy `UPDATE
+--   sales_order_lines` → `guard_order_lines_locked` (mig 124) chặn, vì
+--   đơn đang `partially_invoiced`. MIG 124 ĐÃ GHI SẴN CÁI BẪY NÀY hai
+--   lần trong chính tệp của nó ("Migration tự vấp chốt chặn của chính
+--   mình") và né được bằng cách dựng trigger ở cuối file — nhưng mig 162
+--   chạy khi trigger ấy đã đứng sẵn, nên chỉ còn đúng một đường: cái cửa
+--   mà chính chốt ấy chừa cho các RPC.
+--
+-- ⚠ PHÉP ĐO CŨ CỦA TÔI QUÁ HẸP NÊN KHÔNG BẮT ĐƯỢC: mỗi đơn chỉ một hóa
+--   đơn, huỷ xong `_wf2b_sync_order_status` trả đơn về `confirmed` nên
+--   chốt chặn không có gì để kêu. Sổ thật có đơn mang HAI tờ — một
+--   `posted` giữ đơn ở `partially_invoiced`, một đã huỷ. Nay đã dựng
+--   đúng ca ấy trên Postgres 16 và thấy lại nguyên văn lỗi trên.
+--
+-- ⚠ VÀ PHÉP TÍNH LẠI ẤY LÀ MỘT LẦN GHI ĐÈ ĐÚNG BẰNG GIÁ TRỊ CŨ, không
+--   phải một thay đổi bị bịt miệng. `sync_invoiced_qty` chỉ cộng hóa đơn
+--   `status = 'posted'`; tờ đã huỷ vốn đóng góp 0, nhả con trỏ của nó
+--   thì tổng không đổi. Không nói suông: khối dưới chụp `invoiced_qty`
+--   TRƯỚC, so lại SAU, và NÉM nếu có một dòng nào lệch.
+DO $fix$
+DECLARE v_n int; v_lech int;
+BEGIN
+  -- Chạy lại lần hai trong CÙNG một giao dịch thì bảng tạm còn đó và
+  -- `CREATE` sẽ nổ. Migration phải chạy lại được. (Hỏi `to_regclass`
+  -- thay vì `DROP … IF EXISTS` để người chạy không phải đọc một dòng
+  -- NOTICE "does not exist, skipping" ở lần chạy bình thường.)
+  IF to_regclass('pg_temp._162_truoc') IS NOT NULL THEN
+    EXECUTE 'DROP TABLE _162_truoc';
+  END IF;
+  CREATE TEMP TABLE _162_truoc ON COMMIT DROP AS
+    SELECT id, invoiced_qty FROM sales_order_lines;
+
+  PERFORM set_config('npp.via_rpc', 'on', true);
+
+  UPDATE sales_invoice_lines sil
+  SET order_line_id = NULL
+  FROM sales_invoices si
+  WHERE si.id = sil.invoice_id
+    AND si.status = 'cancelled'
+    AND sil.order_line_id IS NOT NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+  -- ⚠ ĐÓNG CỬA LẠI NGAY. `set_config(..., true)` sống đến hết GIAO DỊCH
+  --   chứ không hết khối DO — để ngỏ là phần còn lại của migration chạy
+  --   mà không chốt nào canh.
+  PERFORM set_config('npp.via_rpc', '', true);
+
+  SELECT count(*) INTO v_lech
+  FROM sales_order_lines sol
+  JOIN _162_truoc t ON t.id = sol.id
+  WHERE COALESCE(t.invoiced_qty, 0) <> COALESCE(sol.invoiced_qty, 0);
+
+  IF v_lech > 0 THEN
+    RAISE EXCEPTION
+      '162: nhả con trỏ đã làm ĐỔI invoiced_qty của % dòng đơn — lẽ ra phải bằng 0. Dừng lại, không nuốt.',
+      v_lech
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RAISE NOTICE '--- 162: huỷ hóa đơn rồi sửa đơn được · đã nhả % dòng của hóa đơn đã huỷ · invoiced_qty không dòng nào đổi ---', v_n;
+END;
+$fix$;
+
+-- ---------------------------------------------------------------------
+-- 3. Tự kiểm — cả hai miếng vá phải còn sống
+-- ---------------------------------------------------------------------
+--
+-- ⚠ KIỂM CẢ MIẾNG VÁ CỦA MIG 131, không chỉ của chính mình. Hai miếng vá
+--   nằm trên CÙNG một hàm; nếu ai đó viết lại `cancel_invoice` từ một
+--   bản cũ thì mất cả hai, và không có tệp nào để đọc ra điều đó.
+DO $kiem$
+DECLARE v_src text;
+BEGIN
+  SELECT pg_get_functiondef(p.oid) INTO v_src
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'cancel_invoice';
+
+  IF position('SET order_line_id = NULL' in v_src) = 0 THEN
+    RAISE EXCEPTION '162: miếng vá của chính migration này KHÔNG có trong hàm đang chạy';
+  END IF;
+  IF position('SET invoice_id = NULL' in v_src) = 0
+     OR position('order_id IS NULL' in v_src) = 0 THEN
+    RAISE EXCEPTION
+      '162: miếng vá của mig 131 (phiếu trả kèm đơn chỉ gỡ liên kết, không huỷ) đã BIẾN MẤT khỏi cancel_invoice';
+  END IF;
+  RAISE NOTICE '162: cả miếng vá của mig 131 lẫn của mig 162 đều còn trong hàm đang chạy.';
+END;
+$kiem$;
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ####################################################################
+-- # 163_khoa_chinh_sach_theo_npp.sql
+-- ####################################################################
+
+-- ====================================================================
+-- MƯỜI BA BẢNG KHÔNG HỀ HỎI "THUỘC NPP NÀO"
+--
+-- Rơi ra trong lúc rà soát 22/09/2026 theo yêu cầu của chủ nhà ("rà
+-- soát lại xem còn rule nào ngớ ngẩn như rule vừa rồi ko").
+--
+-- ⚠ ĐÃ ĐO TRÊN POSTGRES 16 THẬT. Dựng NPP thứ hai, một nhà cung cấp của
+--   NPP ấy, rồi đăng nhập bằng QUẢN LÝ của NPP thứ nhất:
+--
+--     org người đăng nhập = a0000000-…-0001, vai = manager
+--     sửa NCC của NPP KHÁC: 1 dòng
+--     xoá NCC của NPP KHÁC: 1 dòng
+--
+--   Không phải suy đoán. Quản lý của nhà này sửa và xoá được dữ liệu
+--   của nhà khác.
+--
+-- ⚠ VÌ SAO LỌT: chính sách chỉ hỏi VAI TRÒ, không hỏi NPP —
+--   `USING (public.user_role() IN ('owner','manager','warehouse'))`.
+--   `user_role()` đọc vai của người đang đăng nhập và không nói gì về
+--   dòng đang bị đụng, nên nó đúng với MỌI dòng trong bảng.
+--
+-- ⚠ VÀ ĐÃ CÓ NGƯỜI THỬ VÁ RỒI, VÁ KHÔNG ĂN. `suppliers` có thêm
+--   `Authenticated can view suppliers USING (org_id = user_org_id())`;
+--   `payables`, `purchase_orders`, `purchase_invoices` cũng có một
+--   chính sách "view" hỏi đúng org. Nhưng CHÍNH SÁCH PERMISSIVE CỘNG
+--   VÀO NHAU BẰNG "HOẶC" — thêm một chính sách chặt hơn KHÔNG bao giờ
+--   thu hẹp được cái đang rộng. Chừng nào chính sách FOR ALL kia còn
+--   đó thì lỗ vẫn nguyên. Phải VIẾT LẠI chính sách rộng, không thêm
+--   chính sách hẹp.
+--
+-- ⚠ BỐN BẢNG NHÂN SỰ CÒN ĐỂ NGỎ CẢ ĐƯỜNG ĐỌC: `hr_salary_config`,
+--   `hr_monthly_bonus`, `hr_attendance` có chính sách đọc là
+--   `USING (true)`. Bất kỳ ai đăng nhập đọc được cấu hình lương và bảng
+--   chấm công của MỌI NPP. `hr_payroll` thì chủ/kế toán/quản lý đọc
+--   được bảng lương của mọi NPP.
+--
+-- ⚠ HÔM NAY TRONG SỔ CHỈ CÓ MỘT NPP THÌ CHƯA RÒ RA ĐÂU CẢ. Ngày có NPP
+--   thứ hai là rò ngay, và không có gì báo. Vá trước khi cần.
+--
+-- ⚠ QUÉT ĐẦU CỦA TÔI BỎ SÓT NĂM BẢNG, và lý do đáng ghi lại: tôi lọc
+--   "bảng nào CÓ cột org_id mà chính sách không nhắc org_id". Năm bảng
+--   CON (`purchase_invoice_lines`, `purchase_order_lines`,
+--   `supplier_return_lines`, `payable_payments`, `merged_orders`) không
+--   có cột ấy nên rơi khỏi lưới. Phép lọc tìm đúng thứ nó được bảo tìm
+--   và im lặng về phần còn lại. Xem mục 4.
+--
+-- ⚠ SIẾT CHÍNH SÁCH CÓ THỂ LÀM DÒNG BIẾN MẤT — NÊN KIỂM TRƯỚC. Nếu một
+--   bảng có dòng `org_id IS NULL` thì thêm vế `org_id = user_org_id()`
+--   là giấu dòng ấy khỏi tất cả mọi người, âm thầm. Mục 1 dưới đây
+--   DỪNG migration lại nếu gặp. (Đã đo: cả tám bảng có cột org_id đều
+--   NOT NULL; năm bảng con hỏi qua bảng cha nên không có chuyện ấy.)
+--
+-- ⚠ KHÔNG ĐỤNG VAI TRÒ NÀO. Migration này chỉ THÊM vế "và phải cùng
+--   NPP". Ai đang làm được gì thì vẫn làm được đúng thế, trong nhà mình.
+--
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE` — nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không đọc được kết quả quét rộng. Nay tệp KẾT THÚC BẰNG MỘT CÂU
+--   SELECT; NOTICE giữ nguyên cho người chạy bằng psql/CI.
+--
+-- ⚠ ĐÁNH SỐ 163. `main` giữ 158, 160, 162; `newdesign` giữ 156, 157,
+--   159, 161.
+-- ====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. Không bảng nào được có dòng mồ côi org_id
+-- ---------------------------------------------------------------------
+DO $kiem$
+DECLARE r record; v_bao text := '';
+BEGIN
+  FOR r IN
+    SELECT unnest(ARRAY['suppliers','payables','purchase_orders','purchase_invoices',
+                        'hr_payroll','hr_attendance','hr_monthly_bonus','hr_salary_config']) AS t
+  LOOP
+    -- ⚠ Bảng chưa tồn tại thì bỏ qua chứ đừng nổ: một bản cài cũ có thể
+    --   chưa chạy tới migration dựng bảng ấy.
+    IF to_regclass('public.' || r.t) IS NULL THEN CONTINUE; END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute a
+      WHERE a.attrelid = ('public.' || r.t)::regclass
+        AND a.attname = 'org_id' AND a.attnum > 0 AND NOT a.attisdropped
+        AND a.attnotnull
+    ) THEN
+      DECLARE v_n bigint;
+      BEGIN
+        EXECUTE format('SELECT count(*) FROM public.%I WHERE org_id IS NULL', r.t) INTO v_n;
+        IF v_n > 0 THEN
+          v_bao := v_bao || format(E'\n  · %s: %s dòng', r.t, v_n);
+        END IF;
+      END;
+    END IF;
+  END LOOP;
+
+  IF v_bao <> '' THEN
+    RAISE EXCEPTION
+      'ORG_NULL: có dòng không mang org_id. Siết chính sách bây giờ là GIẤU chúng khỏi mọi người. Điền org_id rồi chạy lại:%',
+      v_bao
+      USING ERRCODE = 'P0001';
+  END IF;
+  RAISE NOTICE '163: tám bảng đều có org_id đầy đủ — siết được mà không giấu dòng nào.';
+END;
+$kiem$;
+
+-- ---------------------------------------------------------------------
+-- 2. Nhà cung cấp / mua hàng / công nợ phải trả
+-- ---------------------------------------------------------------------
+--
+-- ⚠ VIẾT LẠI ĐÚNG CHÍNH SÁCH FOR ALL ĐANG RỘNG, không thêm cái mới.
+--   Thêm là "hoặc", và "hoặc" với một vế luôn đúng thì vẫn luôn đúng.
+--
+-- ⚠ CÓ CẢ `WITH CHECK`. Thiếu nó thì `USING` được dùng lại cho lệnh
+--   ghi, nhưng khi đã viết ra thì viết cả hai cho rõ: đọc/sửa/xoá phải
+--   là dòng của nhà mình, và ghi vào cũng phải ghi cho nhà mình —
+--   không ai chèn được một dòng mang `org_id` của NPP khác.
+
+DROP POLICY IF EXISTS "Owner/Manager can manage suppliers" ON suppliers;
+CREATE POLICY "Owner/Manager can manage suppliers"
+  ON suppliers FOR ALL TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'warehouse')
+  )
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'warehouse')
+  );
+
+DROP POLICY IF EXISTS "Manage payables" ON payables;
+CREATE POLICY "Manage payables"
+  ON payables FOR ALL TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'accountant')
+  )
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'accountant')
+  );
+
+DROP POLICY IF EXISTS "Manage POs" ON purchase_orders;
+CREATE POLICY "Manage POs"
+  ON purchase_orders FOR ALL TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'warehouse')
+  )
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'warehouse')
+  );
+
+DROP POLICY IF EXISTS "Manage purchase invoices" ON purchase_invoices;
+CREATE POLICY "Manage purchase invoices"
+  ON purchase_invoices FOR ALL TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+  )
+  WITH CHECK (
+    org_id = public.user_org_id()
+    AND public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+  );
+
+-- ---------------------------------------------------------------------
+-- 3. Bốn bảng nhân sự — cả đường ghi lẫn đường ĐỌC
+-- ---------------------------------------------------------------------
+--
+-- ⚠ ĐƯỜNG ĐỌC MỚI LÀ CHỖ ĐAU. `USING (true)` nghĩa là bất kỳ ai đăng
+--   nhập — kể cả NVBH của một NPP khác — đọc được cấu hình lương và
+--   bảng chấm công. Tiền lương là thứ người ta không muốn đồng nghiệp
+--   cùng nhà đọc, nói gì tới nhà khác.
+--
+-- ⚠ GIỮ NGUYÊN AI ĐỌC ĐƯỢC GÌ TRONG NHÀ. `hr_attendance` vẫn cho mọi
+--   người trong nhà xem (lưới chấm công cần thế — xem mig 007);
+--   `hr_payroll` vẫn là "phiếu của chính mình, hoặc chủ/kế toán/quản
+--   lý". Chỉ thêm vế "và phải cùng NPP".
+
+DROP POLICY IF EXISTS "View salary config" ON hr_salary_config;
+CREATE POLICY "View salary config"
+  ON hr_salary_config FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id());
+
+DROP POLICY IF EXISTS "Manage salary config" ON hr_salary_config;
+CREATE POLICY "Manage salary config"
+  ON hr_salary_config FOR ALL TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() = 'owner')
+  WITH CHECK (org_id = public.user_org_id() AND public.user_role() = 'owner');
+
+DROP POLICY IF EXISTS "View monthly bonus" ON hr_monthly_bonus;
+CREATE POLICY "View monthly bonus"
+  ON hr_monthly_bonus FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id());
+
+DROP POLICY IF EXISTS "Manage monthly bonus" ON hr_monthly_bonus;
+CREATE POLICY "Manage monthly bonus"
+  ON hr_monthly_bonus FOR ALL TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() = 'owner')
+  WITH CHECK (org_id = public.user_org_id() AND public.user_role() = 'owner');
+
+DROP POLICY IF EXISTS "View attendance" ON hr_attendance;
+CREATE POLICY "View attendance"
+  ON hr_attendance FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id());
+
+DROP POLICY IF EXISTS "Manage attendance" ON hr_attendance;
+CREATE POLICY "Manage attendance"
+  ON hr_attendance FOR ALL TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'manager'))
+  WITH CHECK (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'manager'));
+
+DROP POLICY IF EXISTS "View own payroll" ON hr_payroll;
+CREATE POLICY "View own payroll"
+  ON hr_payroll FOR SELECT TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND (
+      user_id = (SELECT auth.uid())
+      OR public.user_role() IN ('owner', 'accountant', 'manager')
+    )
+  );
+
+DROP POLICY IF EXISTS "Manage payroll" ON hr_payroll;
+CREATE POLICY "Manage payroll"
+  ON hr_payroll FOR ALL TO authenticated
+  USING (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'accountant'))
+  WITH CHECK (org_id = public.user_org_id() AND public.user_role() IN ('owner', 'accountant'));
+
+-- ---------------------------------------------------------------------
+-- 4. Năm bảng CON — không có cột org_id, phải hỏi qua bảng cha
+-- ---------------------------------------------------------------------
+--
+-- ⚠ QUÉT ĐẦU CỦA TÔI BỎ SÓT ĐÚNG NĂM BẢNG NÀY, và vì một lý do đáng ghi
+--   lại: tôi lọc "bảng nào CÓ cột org_id mà chính sách không nhắc tới
+--   org_id". Năm bảng dưới đây KHÔNG có cột ấy — chúng là bảng con —
+--   nên chúng rơi khỏi lưới. Phép lọc tìm đúng thứ nó được bảo tìm, và
+--   im lặng về phần còn lại. Quét lại bằng câu hỏi đúng ("chính sách
+--   GHI nào không hề nhắc org, auth.uid, user_id hay EXISTS") thì cả
+--   năm hiện ra.
+--
+-- ⚠ HỎI THẲNG `org_id` CỦA BẢNG CHA, đừng dựa vào việc "RLS của bảng
+--   cha sẽ tự lọc trong câu con". Nó có lọc thật, nhưng khi ấy sự an
+--   toàn của bảng con phụ thuộc vào chính sách của bảng cha đứng yên —
+--   một ràng buộc không ai đọc ra được khi sửa bảng cha. Viết thẳng.
+--
+-- ⚠ HÌNH DẠNG CHÉP TỪ CHÍNH CHÍNH SÁCH ĐỌC CỦA MỖI BẢNG, thứ đã làm
+--   đúng sẵn. Chỗ sai chỉ nằm ở chính sách GHI.
+
+DROP POLICY IF EXISTS "Manage pinv lines" ON purchase_invoice_lines;
+CREATE POLICY "Manage pinv lines"
+  ON purchase_invoice_lines FOR ALL TO authenticated
+  USING (
+    public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+    AND EXISTS (SELECT 1 FROM purchase_invoices pi
+                WHERE pi.id = purchase_invoice_lines.invoice_id
+                  AND pi.org_id = public.user_org_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+    AND EXISTS (SELECT 1 FROM purchase_invoices pi
+                WHERE pi.id = purchase_invoice_lines.invoice_id
+                  AND pi.org_id = public.user_org_id())
+  );
+
+DROP POLICY IF EXISTS "Manage PO lines" ON purchase_order_lines;
+CREATE POLICY "Manage PO lines"
+  ON purchase_order_lines FOR ALL TO authenticated
+  USING (
+    public.user_role() IN ('owner', 'manager', 'warehouse')
+    AND EXISTS (SELECT 1 FROM purchase_orders po
+                WHERE po.id = purchase_order_lines.po_id
+                  AND po.org_id = public.user_org_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('owner', 'manager', 'warehouse')
+    AND EXISTS (SELECT 1 FROM purchase_orders po
+                WHERE po.id = purchase_order_lines.po_id
+                  AND po.org_id = public.user_org_id())
+  );
+
+DROP POLICY IF EXISTS "Manage supplier return lines" ON supplier_return_lines;
+CREATE POLICY "Manage supplier return lines"
+  ON supplier_return_lines FOR ALL TO authenticated
+  USING (
+    public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+    AND EXISTS (SELECT 1 FROM supplier_returns r
+                WHERE r.id = supplier_return_lines.return_id
+                  AND r.org_id = public.user_org_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('owner', 'manager', 'accountant', 'warehouse')
+    AND EXISTS (SELECT 1 FROM supplier_returns r
+                WHERE r.id = supplier_return_lines.return_id
+                  AND r.org_id = public.user_org_id())
+  );
+
+DROP POLICY IF EXISTS "Manage payable payments" ON payable_payments;
+CREATE POLICY "Manage payable payments"
+  ON payable_payments FOR ALL TO authenticated
+  USING (
+    public.user_role() IN ('owner', 'accountant')
+    AND EXISTS (SELECT 1 FROM payables p
+                WHERE p.id = payable_payments.payable_id
+                  AND p.org_id = public.user_org_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('owner', 'accountant')
+    AND EXISTS (SELECT 1 FROM payables p
+                WHERE p.id = payable_payments.payable_id
+                  AND p.org_id = public.user_org_id())
+  );
+
+-- ⚠ `merged_orders` KIỂM CẢ HAI ĐẦU. Chính sách đọc chỉ hỏi đơn ĐÍCH
+--   (`merged_order_id`); với đường ghi mà chỉ hỏi một đầu thì gộp được
+--   đơn của NPP KHÁC vào đơn của mình — hàng và tiền của nhà người ta
+--   chạy sang sổ nhà mình.
+DROP POLICY IF EXISTS "Owner/Manager can manage merged orders" ON merged_orders;
+CREATE POLICY "Owner/Manager can manage merged orders"
+  ON merged_orders FOR ALL TO authenticated
+  USING (
+    public.user_role() IN ('owner', 'manager')
+    AND EXISTS (SELECT 1 FROM sales_orders so
+                WHERE so.id = merged_orders.merged_order_id
+                  AND so.org_id = public.user_org_id())
+    AND EXISTS (SELECT 1 FROM sales_orders so
+                WHERE so.id = merged_orders.source_order_id
+                  AND so.org_id = public.user_org_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('owner', 'manager')
+    AND EXISTS (SELECT 1 FROM sales_orders so
+                WHERE so.id = merged_orders.merged_order_id
+                  AND so.org_id = public.user_org_id())
+    AND EXISTS (SELECT 1 FROM sales_orders so
+                WHERE so.id = merged_orders.source_order_id
+                  AND so.org_id = public.user_org_id())
+  );
+
+-- ---------------------------------------------------------------------
+-- 5. Tự kiểm — không còn chính sách nào quên hỏi NPP
+-- ---------------------------------------------------------------------
+--
+-- ⚠ KIỂM TRÊN BẢN ĐANG CHẠY, KHÔNG KIỂM TRÊN TỆP. Chính sách là thứ
+--   migration sau ghi đè migration trước; đọc lại `pg_policy` mới biết
+--   thứ đang thật sự canh cửa là gì. Và một chính sách rộng SÓT LẠI thì
+--   không có gì báo — nó chỉ lặng lẽ cho qua.
+DO $soi$
+DECLARE r record; v_bao text := ''; v_khac text := ''; v_n int := 0;
+BEGIN
+  -- 5a. MƯỜI BA BẢNG MIGRATION NÀY ĐỤNG — sót một cái là ném.
+  FOR r IN
+    SELECT c.relname AS bang, p.polname AS ten
+    FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname IN ('suppliers','payables','purchase_orders','purchase_invoices',
+                        'hr_payroll','hr_attendance','hr_monthly_bonus','hr_salary_config',
+                        'purchase_invoice_lines','purchase_order_lines','supplier_return_lines',
+                        'payable_payments','merged_orders')
+      AND coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+        || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') NOT LIKE '%org_id%'
+    ORDER BY 1, 2
+  LOOP
+    v_bao := v_bao || format(E'\n  · %s → "%s"', r.bang, r.ten);
+  END LOOP;
+
+  IF v_bao <> '' THEN
+    RAISE EXCEPTION
+      '163: còn chính sách KHÔNG hỏi org_id. Chính sách permissive cộng bằng "hoặc" nên một cái sót là lỗ vẫn mở:%',
+      v_bao
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  -- 5b. QUÉT RỘNG CẢ SCHEMA — chỉ BÁO, không ném.
+  --
+  -- ⚠ ĐÂY LÀ CHÍNH PHÉP LỌC ĐÃ TÌM RA NĂM BẢNG CON, giữ lại làm cái
+  --   đèn. Một chính sách GHI không hề nhắc tới org, tới `auth.uid()`,
+  --   tới `user_id`, và cũng không đi qua `EXISTS` nào thì nó đúng với
+  --   MỌI dòng trong bảng — vai trò là thứ duy nhất nó hỏi.
+  --
+  -- ⚠ BÁO CHỨ KHÔNG NÉM. Ném là migration của người ta gãy vì một bảng
+  --   migration này không hứa gì; mà im lặng thì lần sau lại phải có ai
+  --   đó tình cờ đi tìm mới thấy.
+  FOR r IN
+    SELECT c.relname AS bang, p.polname AS ten
+    FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND p.polcmd IN ('*', 'a', 'w', 'd')
+      AND (coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+        || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''))
+          !~ 'org_id|auth\.uid|user_id|EXISTS|false'
+    ORDER BY 1, 2
+  LOOP
+    v_n := v_n + 1;
+    v_khac := v_khac || format(E'\n  · %s → "%s"', r.bang, r.ten);
+  END LOOP;
+
+  IF v_n > 0 THEN
+    RAISE WARNING
+      '163: còn % chính sách GHI chỉ hỏi vai trò, không hỏi dòng thuộc NPP nào (migration này không đụng tới chúng):%',
+      v_n, v_khac;
+  END IF;
+
+  RAISE NOTICE '--- 163: khoá theo NPP · 13 bảng đều hỏi org_id · quét rộng còn % chính sách cần xem ---', v_n;
+END;
+$soi$;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN. Bảng này liệt kê MỌI chính
+--   sách GHI trong schema mà chỉ hỏi VAI TRÒ — không hỏi org, không hỏi
+--   `auth.uid()`, không đi qua `EXISTS` nào — tức đúng với MỌI dòng
+--   trong bảng của nó. Rỗng là tốt.
+SELECT c.relname AS bang, p.polname AS chinh_sach,
+       CASE p.polcmd WHEN '*' THEN 'ALL' WHEN 'a' THEN 'INSERT'
+                     WHEN 'w' THEN 'UPDATE' WHEN 'd' THEN 'DELETE' END AS lenh
+FROM pg_policy p
+JOIN pg_class c ON c.oid = p.polrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND p.polcmd IN ('*', 'a', 'w', 'd')
+  AND (coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+    || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''))
+      !~ 'org_id|auth\.uid|user_id|EXISTS|false'
+ORDER BY 1, 2;
+
+
+-- ####################################################################
+-- # 164_doi_soat_tien_da_thu_ma_cong_no_chua_tru.sql
+-- ####################################################################
+
+-- ====================================================================
+-- TIỀN ĐÃ THU MÀ CÔNG NỢ CHƯA TRỪ — ĐỐI SOÁT VÀ VÁ SỔ
+--
+-- Rơi ra trong lúc rà soát toàn bộ workflow 22/09/2026.
+--
+-- ⚠ ĐÃ ĐO TRÊN POSTGRES 16 THẬT, đăng nhập bằng NVBH đúng người phụ
+--   trách đơn, chạy đúng hai lệnh mà màn Thu tiền chạy:
+--
+--     [1] NVBH ghi phiếu thu 100.000 → ĐƯỢC
+--     [2] trừ vào công nợ: UPDATE trả về 0 dòng, KHÔNG ném lỗi
+--
+--     phai_thu | da_thu | status | tien_da_ghi_phieu
+--       800000 |      0 |  open  |            100000
+--
+--   Khách trả 100.000đ. Phiếu thu có. Công nợ vẫn nguyên. Màn hình báo
+--   "Đã thu 100.000". Lần sau khách bị đòi lại đúng số đã trả.
+--
+-- ⚠ VÌ SAO LỌT: hai chính sách lệch nhau.
+--     · `payments` INSERT: owner, accountant, sales, driver
+--     · `receivables` UPDATE: owner, accountant
+--   NVBH chèn được phiếu thu nhưng không sửa được công nợ. Mà RLS từ
+--   chối là LỌC chứ không ném — 0 dòng, HTTP 200, `error` null. Màn
+--   hình gác bằng `.throwOnError()`, thứ chỉ ném khi CÓ `error`.
+--
+-- ⚠ CHÚ THÍCH TRONG CHÍNH ĐOẠN MÃ ẤY ĐÃ ĐOÁN ĐÚNG HẬU QUẢ: "Payment đã
+--   ghi ở trên. Nếu bước này hỏng mà bỏ qua thì tiền đã thu nhưng công
+--   nợ vẫn nguyên → khách bị đòi lại số đã trả." Người viết thấy rủi
+--   ro, chọn `.throwOnError()`, và `.throwOnError()` không làm việc ấy.
+--
+-- ĐƯỜNG ĐI TỚI ĐƯỢC: menu điện thoại của NVBH → Công nợ → Thu tiền;
+-- và màn chi tiết công nợ. Trang Trợ giúp còn dặn NVBH làm đúng thế.
+--
+-- ĐÃ SỬA Ở GIAO DIỆN: hai màn ấy nay đi qua RPC `create_cash_receipt`
+-- (`SECURITY DEFINER`, một giao dịch, gác bằng quyền `receivables.create`
+-- mà NVBH có). Đo lại bằng chính NVBH: paid 0 → 200.000, trạng thái
+-- `partial`, thu vượt số còn nợ bị chặn kèm câu đọc được.
+--
+-- ⚠ NHƯNG SỬA GIAO DIỆN KHÔNG VÁ ĐƯỢC SỔ ĐÃ SAI. Lỗi chạy bao lâu thì
+--   sổ lệch bấy nhiêu, và không có gì đánh dấu. Migration này đi tìm.
+--
+-- ─── BẤT BIẾN DÙNG ĐỂ TÌM ───────────────────────────────────────────
+--
+--   receivables.paid  ==  tổng payments.amount của chính nó
+--
+-- ⚠ BẤT BIẾN NÀY ĐÚNG VÌ `void_cash_receipt` XOÁ HẲN DÒNG `payments`
+--   rồi mới trừ `paid` — huỷ phiếu thu bỏ cả hai vế, không để lại dòng
+--   mồ côi. Đã đo trên bản dựng đủ 163 migration: đúng 1 dòng lệch, và
+--   đó là dòng tôi cố ý làm hỏng để dựng lại lỗi.
+--
+-- ⚠ CHỈ VÁ MỘT CHIỀU. `tổng phiếu thu > paid` là đúng dấu vết của lỗi
+--   này: tiền đã cầm, sổ chưa ghi. Chiều ngược lại (`paid > tổng phiếu
+--   thu`) KHÔNG phải dấu vết của nó — nó có nghĩa sổ đang ghi nhiều hơn
+--   số phiếu thu, mà migration này không biết vì sao. Đoán bừa ở đó là
+--   tự tay xoá tiền của ai đó. Báo ra, không đụng.
+--
+-- ⚠ KHÔNG KẸP `paid` THEO `amount`. Từ Q11 một khoản có thể thu dư và
+--   phần dư thành số dư có của khách; kẹp lại là nuốt mất phần ấy.
+--   Trạng thái tính lại bằng ĐÚNG khối CASE của `void_cash_receipt`,
+--   chép nguyên để hai chỗ không thể lệch nhau.
+--
+-- ⚠ TRÌNH SOẠN SQL CỦA SUPABASE KHÔNG HIỆN `RAISE NOTICE`. Nó chỉ hiện
+--   BẢNG KẾT QUẢ. Bản đầu của migration này báo cáo hoàn toàn bằng
+--   NOTICE, nên chủ nhà chạy xong chỉ thấy "Success. No rows returned"
+--   và không biết sổ vừa được vá bao nhiêu đồng — con số ấy đi vào hư
+--   không, và chạy lại cũng không lấy lại được vì migration idempotent.
+--   Lỗi của tôi. Nay tệp KẾT THÚC BẰNG MỘT CÂU SELECT trả về bảng tóm
+--   tắt, còn NOTICE giữ nguyên cho người chạy bằng psql/CI.
+--
+-- ⚠ ĐÁNH SỐ 164. `main` giữ 158, 160, 162, 163; `newdesign` giữ 156,
+--   157, 159, 161.
+-- ====================================================================
+
+DO $doi_soat$
+DECLARE
+  r        record;
+  v_vá     int := 0;
+  v_tien   numeric := 0;
+  v_nguoc  int := 0;
+  v_bao    text := '';
+BEGIN
+  -- ── Chiều NGƯỢC: báo, không đụng ──────────────────────────────────
+  FOR r IN
+    SELECT rc.id, rc.amount, rc.paid, COALESCE(sum(p.amount), 0) AS tong
+    FROM receivables rc
+    LEFT JOIN payments p ON p.receivable_id = rc.id
+    GROUP BY rc.id, rc.amount, rc.paid
+    HAVING COALESCE(sum(p.amount), 0) < COALESCE(rc.paid, 0)
+    ORDER BY rc.id
+  LOOP
+    v_nguoc := v_nguoc + 1;
+    IF v_nguoc <= 20 THEN
+      v_bao := v_bao || format(E'\n  · %s: sổ ghi đã thu %s nhưng phiếu thu chỉ có %s',
+                               r.id, r.paid, r.tong);
+    END IF;
+  END LOOP;
+
+  IF v_nguoc > 0 THEN
+    RAISE WARNING
+      '164: % khoản công nợ ghi ĐÃ THU NHIỀU HƠN tổng phiếu thu. Không phải dấu vết của lỗi này nên KHÔNG đụng tới — cần người xem:%',
+      v_nguoc, v_bao;
+  END IF;
+
+  -- ── Chiều THUẬN: tiền đã cầm, sổ chưa ghi. Vá. ────────────────────
+  FOR r IN
+    SELECT rc.id, rc.amount, rc.paid, rc.due_date, COALESCE(sum(p.amount), 0) AS tong
+    FROM receivables rc
+    LEFT JOIN payments p ON p.receivable_id = rc.id
+    GROUP BY rc.id, rc.amount, rc.paid, rc.due_date
+    HAVING COALESCE(sum(p.amount), 0) > COALESCE(rc.paid, 0)
+    ORDER BY rc.id
+  LOOP
+    UPDATE receivables
+    SET paid = r.tong,
+        status = CASE
+                   WHEN r.tong >= COALESCE(r.amount, 0) THEN 'paid'
+                   WHEN r.tong = 0
+                     THEN CASE WHEN r.due_date IS NOT NULL AND r.due_date < current_date
+                               THEN 'overdue' ELSE 'open' END
+                   ELSE 'partial'
+                 END
+    WHERE id = r.id;
+
+    v_vá   := v_vá + 1;
+    v_tien := v_tien + (r.tong - COALESCE(r.paid, 0));
+    RAISE NOTICE '164: công nợ % · đã thu % → % (thêm %)',
+      r.id, r.paid, r.tong, r.tong - COALESCE(r.paid, 0);
+  END LOOP;
+
+  RAISE NOTICE
+    '--- 164: đối soát tiền đã thu · vá % khoản, tổng % đồng khách đã trả mà sổ chưa ghi · % khoản lệch chiều ngược cần người xem ---',
+    v_vá, v_tien, v_nguoc;
+END;
+$doi_soat$;
+
+-- ---------------------------------------------------------------------
+-- Tự kiểm — sau khi vá, bất biến phải đúng ở chiều thuận
+-- ---------------------------------------------------------------------
+--
+-- ⚠ KIỂM LẠI TRÊN DỮ LIỆU THẬT, ĐỪNG TIN VÒNG LẶP VỪA CHẠY. Một
+--   trigger nào đó trên `receivables` có thể ghi đè lại giá trị vừa
+--   đặt, và khi ấy migration báo "đã vá N khoản" trong khi sổ không đổi
+--   một đồng — đúng loại im lặng mà migration này đang đi sửa.
+DO $kiem$
+DECLARE v_con int;
+BEGIN
+  SELECT count(*) INTO v_con FROM (
+    SELECT rc.id
+    FROM receivables rc
+    LEFT JOIN payments p ON p.receivable_id = rc.id
+    GROUP BY rc.id, rc.paid
+    HAVING COALESCE(sum(p.amount), 0) > COALESCE(rc.paid, 0)
+  ) x;
+
+  IF v_con > 0 THEN
+    RAISE EXCEPTION
+      '164: vá xong mà vẫn còn % khoản có tiền đã thu chưa ghi vào sổ — có thứ gì đó ghi đè lại. Dừng để người xem.',
+      v_con
+      USING ERRCODE = 'P0001';
+  END IF;
+  RAISE NOTICE '164: không còn khoản nào có phiếu thu vượt số đã ghi trong sổ.';
+END;
+$kiem$;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt — thứ DUY NHẤT trình soạn SQL của Supabase hiện ra
+-- ---------------------------------------------------------------------
+--
+-- ⚠ CHẠY LẠI TỆP NÀY LÚC NÀO CŨNG AN TOÀN, và chạy lại là cách đọc
+--   được bảng này. Hai dòng đầu phải bằng 0 sau khi vá; dòng thứ ba là
+--   TRẦN TRÊN của thiệt hại lỗi có thể đã gây ra — số tiền NVBH / tài
+--   xế từng thu, tức đúng những lần mà bản cũ của màn Thu tiền sẽ ghi
+--   phiếu nhưng không trừ được công nợ.
+SELECT
+  'Còn lệch chiều THUẬN (tiền đã thu mà sổ chưa ghi)'      AS hang_muc,
+  count(*)::text                                           AS so_khoan,
+  coalesce(sum(x.tong - x.paid), 0)::text                  AS so_tien
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) > coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Còn lệch chiều NGƯỢC (sổ ghi nhiều hơn phiếu thu) — CẦN NGƯỜI XEM',
+  count(*)::text,
+  coalesce(sum(x.paid - x.tong), 0)::text
+FROM (
+  SELECT rc.id, coalesce(rc.paid, 0) AS paid, coalesce(sum(p.amount), 0) AS tong
+  FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid
+  HAVING coalesce(sum(p.amount), 0) < coalesce(rc.paid, 0)
+) x
+UNION ALL
+SELECT
+  'Phiếu thu do NVBH / tài xế thu — TRẦN TRÊN của thiệt hại đã có',
+  count(DISTINCT p.receivable_id)::text,
+  coalesce(sum(p.amount), 0)::text
+FROM payments p JOIN users u ON u.id = p.collected_by
+WHERE u.role IN ('sales', 'driver')
+UNION ALL
+SELECT 'Tổng phiếu thu trong sổ', count(*)::text, coalesce(sum(amount), 0)::text
+FROM payments;
 

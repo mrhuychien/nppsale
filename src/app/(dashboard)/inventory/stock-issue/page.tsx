@@ -358,6 +358,7 @@ export default function StockIssuePage() {
       <Card>
         <CardContent className="pt-5">
           <ProductPicker
+            closeOnPick
             id="si-find"
             term={term}
             onTermChange={setTerm}

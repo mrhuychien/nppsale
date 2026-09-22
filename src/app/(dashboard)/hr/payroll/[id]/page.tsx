@@ -18,6 +18,8 @@ import { ROLE_LABELS } from "@/lib/constants"
 import { CheckCircle2, Printer, Trash2, Loader2, Banknote } from "lucide-react"
 import type { HrPayroll } from "@/types"
 import { useToast } from "@/hooks/use-toast"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { errorMessage } from "@/lib/errors"
 
 const STATUS_MAP: Record<string, { label: string; variant: "secondary" | "default" | "success" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -105,9 +107,13 @@ export default function PayrollDetailPage() {
 
   const handleDelete = async () => {
     if (!confirm("Xóa bảng lương này?")) return
-    const { error } = await supabase.from("hr_payroll").delete().eq("id", id)
-    if (error) {
-      toast({ title: "Xóa bảng lương thất bại", description: error.message, variant: "destructive" })
+    /* ⚠ PHẢI LẤY VỀ DÒNG ĐÃ XOÁ. RLS từ chối thì PostgREST trả 200 kèm
+       mảng rỗng, không lỗi — màn hình báo "Đã xóa" và bảng lương vẫn
+       nằm đó. Xem `@/lib/db/must-write`. */
+    try {
+      await ghiPhaiTrungDong(supabase.from("hr_payroll").delete().eq("id", id))
+    } catch (err) {
+      toast({ title: "Xóa bảng lương thất bại", description: errorMessage(err), variant: "destructive" })
       return
     }
     router.push("/hr/payroll")

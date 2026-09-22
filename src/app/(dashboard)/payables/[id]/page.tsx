@@ -22,6 +22,7 @@ import { formatCurrency, formatDate, getAgingStatus } from "@/lib/utils"
 import { CheckCircle2, AlertTriangle, RotateCcw, Trash2, ShieldCheck, Pencil } from "lucide-react"
 import type { Payable, PayablePayment, PayableStatus } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "default" | "secondary" | "success" | "warning" | "danger" | "outline" }> = {
   open: { label: "Chưa trả", variant: "secondary" },
@@ -124,11 +125,12 @@ export default function PayableDetailPage() {
 
       const newPaid = payable.paid + amt
       const newStatus = recalcStatus(payable, newPaid)
-      const { error: updErr } = await supabase
-        .from("payables")
-        .update({ paid: newPaid, status: newStatus })
-        .eq("id", payable.id)
-      if (updErr) throw updErr
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({ paid: newPaid, status: newStatus })
+          .eq("id", payable.id)
+      )
 
       toast({ title: `Đã ghi nhận thanh toán ${formatCurrency(amt)}` })
       setPaymentForm({ amount: "", method: "transfer", notes: "" })
@@ -166,15 +168,16 @@ export default function PayableDetailPage() {
     if (!payable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("payables")
-        .update({
-          invoice_number: editForm.invoice_number.trim() || null,
-          due_date: editForm.due_date || null,
-          notes: editForm.notes.trim() || null,
-        })
-        .eq("id", payable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({
+            invoice_number: editForm.invoice_number.trim() || null,
+            due_date: editForm.due_date || null,
+            notes: editForm.notes.trim() || null,
+          })
+          .eq("id", payable.id)
+      )
       toast({ title: "Đã cập nhật thông tin" })
       setEditing(false)
       fetchData()
@@ -189,11 +192,12 @@ export default function PayableDetailPage() {
     if (!payable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase
-        .from("payables")
-        .update({ status: newStatus })
-        .eq("id", payable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(
+        supabase
+          .from("payables")
+          .update({ status: newStatus })
+          .eq("id", payable.id)
+      )
       toast({ title: `Đã chuyển trạng thái: ${PAYABLE_STATUS_MAP[newStatus].label}` })
       setStatusConfirm(null)
       fetchData()
@@ -208,8 +212,7 @@ export default function PayableDetailPage() {
     if (!payable) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("payables").delete().eq("id", payable.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("payables").delete().eq("id", payable.id))
       toast({ title: "Đã xóa công nợ NCC" })
       router.push("/payables")
     } catch (err) {

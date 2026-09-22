@@ -17,6 +17,7 @@ import {
 } from "@/lib/customers/photos"
 import { formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 const BUCKET = "customer-photos"
 
@@ -178,7 +179,7 @@ export function CustomerPhotoCapture({
   const handleDelete = async () => {
     if (!deleting) return
     try {
-      await supabase.from("customer_photos").delete().eq("id", deleting.id).throwOnError()
+      await ghiPhaiTrungDong(supabase.from("customer_photos").delete().eq("id", deleting.id))
       toast({ title: "Đã xoá ảnh" })
       setDeleting(null)
       await load()

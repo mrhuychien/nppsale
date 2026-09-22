@@ -1,0 +1,108 @@
+-- ====================================================================
+-- PHIẾU KHÁM SỔ THẬT — chỉ ĐỌC, không sửa gì
+--
+-- ⚠ VÌ SAO CẦN. Preview (`newdesign`) và sản xuất (`main`) dùng CHUNG
+--   một Supabase, mà hai nhánh có hai bộ migration khác nhau. Nên
+--   không nhánh nào một mình nói được sổ thật đang ở trạng thái nào —
+--   phải hỏi chính sổ.
+--
+-- ⚠ ĐỌC KẾT QUẢ: cột `ket_luan` là thứ cần nhìn. "OK" là đúng, còn lại
+--   là việc cần làm. Chạy bao nhiêu lần cũng được.
+-- ====================================================================
+SELECT * FROM (
+
+-- 1. Nháp có còn kín không — luật chủ nhà chốt, và là thứ hai bản 161
+--    hỏng từng phá.
+SELECT 1 AS stt,
+  'Đơn nháp của NVBH có kín với NPP không' AS hang_muc,
+  CASE
+    WHEN qual IS NULL THEN 'KHÔNG CÓ chính sách đọc đơn — bất thường'
+    WHEN position('status <> ''draft''::text) OR (sales_user_id = auth.uid())' in qual) > 0
+      THEN 'OK — đúng luật mig 119 (nháp là sổ tay riêng của NVBH)'
+    WHEN position('draft' in qual) = 0
+      THEN 'LỆCH — chính sách không còn nhắc tới nháp, NPP nhiều khả năng thấy hết'
+    ELSE 'LỆCH — mệnh đề nháp đã bị sửa, cần chạy mig 161 của newdesign'
+  END AS ket_luan,
+  coalesce(left(regexp_replace(qual, '\s+', ' ', 'g'), 200), '(không có)') AS chi_tiet
+FROM (
+  SELECT pg_get_expr(p.polqual, p.polrelid) AS qual
+  FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+  WHERE c.relname = 'sales_orders' AND p.polname = 'sales_order_select'
+) q
+
+UNION ALL
+-- 2. Dấu vết của hai bản 161 HỎNG (cột + trigger chúng dựng lên)
+SELECT 2, 'Dấu vết của bản 161 hỏng (cột created_by trên sales_orders)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_attribute a
+                    WHERE a.attrelid='sales_orders'::regclass AND a.attname='created_by'
+                      AND a.attnum>0 AND NOT a.attisdropped)
+       THEN 'CÓ — sổ đã từng chạy một bản 161 cũ; cần mig 161 của newdesign để dọn'
+       ELSE 'OK — chưa bao giờ chạy bản 161 hỏng' END, ''
+
+UNION ALL
+-- 3. Mig 159 đã chạy chưa (cột lý do từng dòng trả hàng)
+SELECT 3, 'Cột return_lines.reason (mig 159, màn POS cần)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_attribute a
+                    WHERE a.attrelid='return_lines'::regclass AND a.attname='reason'
+                      AND a.attnum>0 AND NOT a.attisdropped)
+       THEN 'CÓ — mig 159 đã chạy' ELSE 'CHƯA — màn POS trả hàng sẽ lỗi khi ghi lý do từng dòng' END, ''
+
+UNION ALL
+-- 4. Mig 162 — huỷ hoá đơn có nhả móc nối về dòng đơn không
+SELECT 4, 'Mig 162 (huỷ hoá đơn rồi sửa đơn được)',
+  CASE WHEN position('SET order_line_id = NULL' in coalesce(src,'')) > 0
+       THEN 'OK — đã vá' ELSE 'CHƯA — huỷ hoá đơn xong vẫn không bỏ được dòng khỏi đơn' END, ''
+FROM (SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='cancel_invoice') f
+
+UNION ALL
+-- 5. Mig 131 — miếng vá phiếu trả kèm đơn còn sống trong cùng hàm ấy
+SELECT 5, 'Mig 131 (phiếu trả kèm đơn chỉ gỡ liên kết, không huỷ oan)',
+  CASE WHEN position('SET invoice_id = NULL' in coalesce(src,'')) > 0
+       THEN 'OK — còn nguyên' ELSE 'MẤT — ai đó đã chép đè cancel_invoice bằng bản cũ' END, ''
+FROM (SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='cancel_invoice') f
+
+UNION ALL
+-- 6. Mig 156 + 157 — hoàn kho theo mọi kho, và KHÔNG dựng lô ảo
+--
+-- ⚠ HAI DẤU HIỆU RIÊNG, KHÔNG PHẢI MỘT CÂU NÓI NƯỚC ĐÔI:
+--     · `v_untaken` — biến 157 dựng để nhớ phần bán âm không hoàn về
+--       đâu được, thay cho việc ném NO_BATCH_TO_RESTOCK;
+--     · `warehouse_zone` — nấc hoàn của 156, thôi ghim cứng kho bán.
+SELECT 6,
+  'Mig 156+157 (huỷ hoá đơn sau khi bán âm / hàng ở kho khác)',
+  CASE
+    WHEN src IS NULL THEN 'KHÔNG THẤY hàm _wf2_restock — bất thường'
+    WHEN position('v_untaken' in src) > 0 AND position('warehouse_zone' in src) > 0
+      THEN 'OK — cả 156 lẫn 157 đã chạy'
+    WHEN position('warehouse_zone' in src) > 0
+      THEN 'MỚI CÓ 156 — bán âm xong vẫn không huỷ được hoá đơn, chạy tiếp 157'
+    ELSE 'CHƯA CÓ 156/157 — huỷ hoá đơn sẽ báo NO_BATCH_TO_RESTOCK'
+  END,
+  CASE WHEN position('NO_BATCH_TO_RESTOCK' in coalesce(src,'')) > 0
+       THEN 'hàm còn ném NO_BATCH_TO_RESTOCK — 157 chưa chạy' ELSE '' END
+FROM (SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='_wf2_restock') f
+
+UNION ALL
+-- 7. Mig 163 — còn chính sách GHI nào chỉ hỏi vai trò không
+SELECT 7, 'Mig 163 (chính sách GHI còn quên hỏi org_id)',
+  CASE WHEN count(*) = 0 THEN 'OK — không còn cái nào'
+       ELSE count(*)::text || ' chính sách còn đúng với MỌI dòng — chạy lại mig 163' END,
+  coalesce(string_agg(c.relname || '.' || p.polname, ', '), '')
+FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND p.polcmd IN ('*','a','w','d')
+  AND (coalesce(pg_get_expr(p.polqual,p.polrelid),'')||coalesce(pg_get_expr(p.polwithcheck,p.polrelid),''))
+      !~ 'org_id|auth\.uid|user_id|EXISTS|false'
+
+UNION ALL
+-- 8. Mig 164 — sổ tiền còn lệch không
+SELECT 8, 'Tiền đã thu mà công nợ chưa trừ',
+  CASE WHEN count(*) = 0 THEN 'OK — không còn khoản nào'
+       ELSE count(*)::text || ' khoản còn lệch — chạy lại mig 164' END, ''
+FROM (
+  SELECT rc.id FROM receivables rc LEFT JOIN payments p ON p.receivable_id = rc.id
+  GROUP BY rc.id, rc.paid HAVING coalesce(sum(p.amount),0) > coalesce(rc.paid,0)
+) x
+) t ORDER BY stt;

@@ -167,13 +167,35 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
  *      với bảng này.
  */
 /**
- * Màn của LUỒNG CŨ, ẩn khỏi mọi menu từ P7 — soạn hàng, hàng chờ, và giao
- * hàng qua tài xế.
+ * Màn của LUỒNG CŨ — soạn hàng, hàng chờ, và giao hàng qua tài xế.
  *
- * ⚠ ẨN, KHÔNG XOÁ. Dữ liệu cũ của ba màn này là chứng từ: phiếu soạn
- * hàng, chuyến giao, biên bản bàn giao. Gõ thẳng đường dẫn vẫn vào XEM
- * được — chỉ không còn đường bấm tới từ menu, và các nút GHI trong đó đã
- * bị khoá riêng.
+ * ⚠ TỪ 22/09/2026: CHẶN HẲN, KHÔNG CHỈ ẨN. Chủ nhà chốt sau khi rà soát
+ * toàn bộ workflow. Trước đó ba màn này chỉ ẩn khỏi menu còn gõ thẳng
+ * đường dẫn vẫn vào được, với lý do "dữ liệu là chứng từ, thôi dùng chứ
+ * không vứt".
+ *
+ * ⚠ VÌ SAO ĐỔI: lý do ấy đứng được khi màn chỉ để XEM. Nhưng đã đo trên
+ * Postgres 16 và `/inventory/stock-out` KHÔNG chỉ xem — nó ghi, và ghi
+ * NỬA CHỪNG. Nó chèn `stock_entries` rồi `swap_stock_movements` xong mới
+ * `UPDATE sales_orders SET status = 'picking'`, mà workflow v2 không có
+ * trạng thái ấy:
+ *
+ *     >>> đổi sang picking BỊ CHẶN: Không thể chuyển đơn từ submitted
+ *         sang picking
+ *
+ * Lệnh cuối ném, hai lệnh đầu đã ghi và KHÔNG nằm chung giao dịch — mỗi
+ * lần ai đó gõ vào đây rồi bấm là sổ kho thêm một phiếu mồ côi. Một màn
+ * chỉ có thể làm hỏng chứ không làm xong thì giữ cửa mở cho nó không còn
+ * là giữ lịch sử, mà là giữ một cái bẫy.
+ *
+ * ⚠ CÁI MẤT, NÓI RÕ RA: từ nay không còn mở lại được phiếu soạn hàng,
+ * chuyến giao, biên bản bàn giao bằng đường dẫn. Dữ liệu vẫn nguyên
+ * trong cơ sở dữ liệu — cần tra thì tra bằng SQL, hoặc bỏ tên màn ấy
+ * khỏi danh sách dưới đây là cửa mở lại ngay.
+ *
+ * ⚠ ĐÂY LÀ CHẶN Ở LỚP GIAO DIỆN. Chốt chặn thật của dữ liệu vẫn là RLS
+ * và các trigger dưới database; danh sách này chỉ giữ người dùng khỏi đi
+ * nhầm vào một màn đã hỏng.
  *
  * ⚠ VÌ SAO LÀ MỘT DANH SÁCH RIÊNG chứ không gài bằng quyền: `owner` được
  * `canAccessFeature` trả true VÔ ĐIỀU KIỆN, mà chủ nhà đúng là người dùng
@@ -191,35 +213,73 @@ export const LEGACY_V2_HREFS: ReadonlySet<string> = new Set([
   "/inventory/pending",
 ])
 
+/**
+ * Đường dẫn này có thuộc một màn của luồng cũ không — KỂ CẢ MÀN CON.
+ *
+ * ⚠ SO KHỚP THEO TIỀN TỐ, KHÔNG SO BẰNG. Chặn đúng ba đường gốc là bỏ
+ *   ngỏ `/deliveries/<id>`, `/deliveries/<id>/settle`,
+ *   `/inventory/stock-out/collect/<id>` — mà màn con mới là chỗ có nút
+ *   bấm. Và những đường ấy KHÔNG khai trong `NAV_PERMISSION` nên
+ *   `useRoleGuard` rơi về phép kiểm mô-đun, tức vào được sẵn.
+ *
+ * ⚠ PHẢI CÓ DẤU `/` SAU GỐC. `startsWith("/deliveries")` trần còn khớp
+ *   cả một đường dẫn tương lai tên `/deliveries-v2`.
+ */
+export function laManLuongCu(href: string): boolean {
+  for (const goc of Array.from(LEGACY_V2_HREFS)) {
+    if (href === goc || href.startsWith(goc + "/")) return true
+  }
+  return false
+}
+
+/**
+ * Người vai `role` có được VÀO trang `pathname` không — luật đầy đủ của
+ * cửa vào, gồm cả đường dẫn ĐỘNG chưa khai trong `NAV_PERMISSION`.
+ *
+ * ⚠ TÁCH RA KHỎI `useRoleGuard` ĐỂ CHỐT GỌI ĐƯỢC. Trước đây luật này
+ *   nằm trong thân hook, nên chốt duy nhất có thể làm là soi xem tệp có
+ *   chứa chữ `laManLuongCu(` hay không. Đã đột biến thử: đổi thành
+ *   `false && laManLuongCu(...)` — chữ còn nguyên, luật chết, chốt vẫn
+ *   XANH. Một chốt soi chữ là một chốt nói dối; luật nào cần canh thì
+ *   phải gọi được.
+ *
+ * ⚠ BA NHÁNH, ĐÚNG THỨ TỰ NÀY:
+ *   1. Luồng cũ — chặn, kể cả chủ nhà, kể cả `always`.
+ *   2. Đường dẫn CÓ KHAI — theo `canEnterHref` (có xét quyền riêng).
+ *   3. Còn lại (đường dẫn động) — theo mô-đun, như cũ.
+ */
+export function duocVaoTrang(
+  role: Role | null | undefined,
+  pathname: string | null | undefined,
+  module: Module
+): boolean {
+  if (!role) return false
+  const p = pathname ?? ""
+  if (laManLuongCu(p)) return false
+  if (NAV_PERMISSION[p]) return canEnterHref(role, p)
+  return canAccessModule(role, module)
+}
+
 export function canSeeHref(role: Role | null | undefined, href: string): boolean {
-  /**
-   * ⚠ ĐẶT TRƯỚC CẢ `always` VÀ TRƯỚC MỌI PHÉP KIỂM QUYỀN. Module luồng cũ
-   * ẩn với MỌI vai trò, kể cả chủ.
-   *
-   * ⚠ NHƯNG CHỈ ẨN KHỎI MENU, KHÔNG CHẶN CỬA VÀO — xem `canEnterHref`.
-   */
-  if (LEGACY_V2_HREFS.has(href)) return false
+  /* Luồng cũ nay bị `canEnterHref` chặn thẳng, nên không cần lọc riêng
+     ở đây nữa — ẩn khỏi menu là hệ quả của việc không vào được. */
   return canEnterHref(role, href)
 }
 
 /**
  * Có được VÀO XEM trang `href` không.
  *
- * ⚠ ẨN KHỎI MENU VÀ CHẶN CỬA VÀO LÀ HAI VIỆC KHÁC NHAU. Dữ liệu của luồng
- * cũ là CHỨNG TỪ: phiếu soạn hàng, chuyến giao, biên bản bàn giao. Người
- * ta vẫn phải mở lại được để tra — qua đường dẫn cũ, qua thông báo, qua
- * thanh "việc đang dở". Chặn luôn cửa vào là xoá mất lịch sử khỏi tầm
- * với, mà chúng ta chỉ định thôi dùng chứ không định vứt.
- *
- * `useRoleGuard` gọi hàm NÀY, không gọi `canSeeHref`. Gọi nhầm là mọi
- * đường dẫn luồng cũ đá người dùng về trang chủ, kể cả chủ nhà.
- *
- * Việc chặn GHI thì nằm ở từng màn — các nút đụng kho và tiền đã bị khoá
- * riêng, vì cơ sở dữ liệu nay từ chối trạng thái cũ và màn chỉ ghi được
- * NỬA CHỪNG trước khi bị từ chối.
+ * `useRoleGuard` gọi hàm NÀY, không gọi `canSeeHref`.
  */
 export function canEnterHref(role: Role | null | undefined, href: string): boolean {
   if (!role) return false
+  /**
+   * ⚠ LUỒNG CŨ CHẶN TRƯỚC MỌI PHÉP KIỂM QUYỀN, kể cả `always`, kể cả
+   *   chủ nhà. `canAccessFeature` trả true vô điều kiện cho `owner`, mà
+   *   chủ nhà đúng là người hay gõ thẳng đường dẫn nhất — gài bằng
+   *   quyền là không chặn được đúng người cần chặn.
+   */
+  if (laManLuongCu(href)) return false
   const p = NAV_PERMISSION[href]
   if (!p) return false
   if (p.always) return true

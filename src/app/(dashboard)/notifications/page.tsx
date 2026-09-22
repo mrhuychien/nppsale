@@ -20,6 +20,9 @@ import {
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
+import { toast } from "@/hooks/use-toast"
+import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 /**
  * ⚠ Ô LỌC "LOẠI" DỰNG TỪ CHÍNH BẢNG NÀY (xem `Object.keys(ICON_MAP)` bên
@@ -137,9 +140,21 @@ export default function NotificationsPage() {
   }
 
   const deleteOne = async (id: string) => {
+    /* ⚠ XOÁ LẠC QUAN THÌ PHẢI TRẢ LẠI KHI HỎNG. Dòng biến khỏi màn hình
+       ngay, nên nếu database không xoá thật thì người dùng tin là xong
+       — đến lần tải trang sau nó hiện lại, không rõ vì sao.
+
+       ⚠ VÀ 0 DÒNG CŨNG LÀ HỎNG. RLS chỉ cho xoá thông báo của CHÍNH
+       mình (`notifications_delete_own`); từ chối thì trả 200 kèm mảng
+       rỗng, `error` null. Xem `@/lib/db/must-write`. */
+    const before = items
     setItems((prev) => prev.filter((n) => n.id !== id))
-    const { error } = await supabase.from("notifications").delete().eq("id", id)
-    if (error) console.error("[notifications] xoá thất bại:", error.message)
+    try {
+      await ghiPhaiTrungDong(supabase.from("notifications").delete().eq("id", id))
+    } catch (err) {
+      setItems(before)
+      toast({ title: "Không xoá được thông báo", description: errorMessage(err), variant: "destructive" })
+    }
   }
 
   const deleteAllRead = async () => {

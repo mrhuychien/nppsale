@@ -501,6 +501,61 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
       .not.toContain("term.trim() !== \"\" && ")
   })
 
+  /**
+   * THÊM XONG THÌ ẨN DANH SÁCH — Ở NĂM MÀN CHỨNG TỪ, VÀ CHỈ Ở ĐÓ.
+   *
+   * Chủ nhà chốt 22/09/2026 hai câu, và hai câu ấy NGƯỢC NHAU vì nói về
+   * hai chỗ đứng khác nhau:
+   *   · *"khi chọn xong product phải ẩn đi vì nó đang che màn làm đơn,
+   *     người dùng ko biết sản phẩm đã được thêm vào list chưa"* — năm
+   *     màn chứng từ, dải gợi ý đè lên biểu mẫu;
+   *   · *"bên newdesign nó luôn hiện vì nó ko che màn làm đơn nên luôn
+   *     hiện thao tác cho nhanh"* — ô của `/pos` ở cột phải.
+   *
+   * ⚠ CHỐT NÀY TỪNG GHIM `setOpen(false)` TRONG NGUỒN Ô TÌM, và lúc
+   *   trộn hai nhánh nó đỏ lên: bản `newdesign` đã dời luật đóng/mở vào
+   *   `pickerOpenReducer`, nên trong component không còn dòng ấy nữa —
+   *   luật còn nguyên, chỗ ở thì đổi. Nay chốt soi ĐÚNG chỗ luật đang
+   *   sống: bộ luật, và cờ ở từng nơi gọi.
+   *
+   * ⚠ HÀNH VI CỦA BỘ LUẬT đã có chốt chạy thật trong
+   *   `tests/picker-open.test.ts` (cả hai chiều của `closeOnPick`). Chốt
+   *   này chỉ canh phần còn lại: AI bật cờ, AI không.
+   */
+  it("năm màn chứng từ đều đóng danh sách sau khi thêm", () => {
+    const DONG = [
+      "src/app/(dashboard)/inventory/stock-in/page.tsx",
+      "src/app/(dashboard)/inventory/stock-issue/page.tsx",
+      "src/app/(dashboard)/returns/new/page.tsx",
+      "src/components/orders/invoice-editor.tsx",
+      "src/components/purchasing/purchasing-lines-editor.tsx",
+    ]
+    for (const tep of DONG) {
+      const src = readFileSync(resolve(ROOT, tep), "utf-8")
+      const so = (src.match(/<ProductPicker\b/g) ?? []).length
+      expect(so, `${tep} không còn dùng ProductPicker — chốt soi chỗ trống`).toBeGreaterThan(0)
+      const bat = (src.match(/^\s*closeOnPick\s*$/gm) ?? []).length
+      expect(
+        bat,
+        `${tep}: ${so} ô tìm nhưng chỉ ${bat} ô đóng sau khi thêm — dải gợi ý còn che mất dòng vừa thêm`
+      ).toBe(so)
+    }
+  })
+
+  /**
+   * ⚠ VÀ Ô CỦA `/pos` PHẢI Ở NGUYÊN TRẠNG MỞ. Thấy hai hành vi lệch nhau
+   *   rồi "thống nhất lại" là phá đúng một trong hai quyết định của chủ
+   *   nhà — mà cái bị phá sẽ là cái không ai đang nhìn.
+   */
+  it("ô tìm của /pos KHÔNG đóng sau khi thêm", () => {
+    const src = readFileSync(resolve(ROOT, "src/components/pos/product-search-box.tsx"), "utf-8")
+    expect(src, "ô tìm POS không còn dựng ProductPicker").toContain("<ProductPicker")
+    expect(
+      /^\s*closeOnPick\s*$/m.test(src),
+      "ô tìm ở cột phải của /pos lại đóng sau khi thêm — chủ nhà chốt nó phải luôn hiện"
+    ).toBe(false)
+  })
+
   /** ⚠ Bàn phím phải dùng được: mũi tên, Enter thêm, Esc đóng. */
   it("dùng được bằng bàn phím", () => {
     for (const k of ["ArrowDown", "ArrowUp", "Enter", "Escape"]) {

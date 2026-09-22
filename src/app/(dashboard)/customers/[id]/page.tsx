@@ -42,6 +42,7 @@ import {
 } from "lucide-react"
 import type { Customer, CustomerAssignment } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface OrderRow {
   id: string
@@ -510,8 +511,7 @@ export default function CustomerDetailPage() {
     if (!customer) return
     setDeleting(true)
     try {
-      const { error } = await supabase.from("customers").delete().eq("id", customer.id)
-      if (error) throw error
+      await ghiPhaiTrungDong(supabase.from("customers").delete().eq("id", customer.id))
       toast({ title: "Đã xóa khách hàng" })
       router.push("/customers")
     } catch (err) {

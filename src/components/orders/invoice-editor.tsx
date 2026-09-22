@@ -42,7 +42,6 @@ import {
 import {
   seedForNew, seedForReissue, makeAddedRow, withStock, toDraft,
   rowsOverOrdered, searchAddable, rowToCartLine, patchRowFromCart,
-  returnsBrokenBy, type PendingReturnLine,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { sellableUnits, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
@@ -130,7 +129,6 @@ export function InvoiceEditor({
    */
   const [retCredit, setRetCredit] = useState(0)
   /** Dòng hàng trả đang chờ — để cảnh báo TRƯỚC khi lưu. */
-  const [pendingReturns, setPendingReturns] = useState<PendingReturnLine[]>([])
   const [retLines, setRetLines] = useState<
     Array<{
       id: string; returnId: string; productId: string; name: string
@@ -251,20 +249,6 @@ export function InvoiceEditor({
             is_exchange?: boolean | null; product?: { name?: string | null } | null
           }> | null
         }>) ?? []
-        /* ⚠ GIỮ LẠI ĐỂ SOI XUNG ĐỘT — xem `returnsBrokenBy`. */
-        setPendingReturns(
-          rs.flatMap((r) =>
-            (r.lines ?? []).map((l) => ({
-              lineId: l.id,
-              returnId: r.id,
-              returnStatus: r.status,
-              invoiceId: r.invoice_id,
-              productId: l.product_id,
-              productName: l.product?.name || "Sản phẩm đã xoá",
-              isExchange: l.is_exchange === true,
-            }))
-          )
-        )
         setRetCredit(rs.reduce((s2, r) => s2 + Math.max(0, Number(r.credit_note_amount || 0)), 0))
         setRetLines(
           rs.flatMap((r) =>
@@ -348,14 +332,6 @@ export function InvoiceEditor({
   }
 
   const shortRows = rows.filter((r) => r.qty > 0 && r.stockKnown && shortageOf(r, r.qty) > 0)
-  /**
-   * Phiếu trả đang chờ sẽ vỡ nếu lưu tờ này — xem `returnsBrokenBy`.
-   *
-   * ⚠ CHỈ TÍNH KHI ĐANG SỬA LẠI. Lập hóa đơn LẦN ĐẦU thì phiếu trả kèm
-   *   đơn còn ở trạng thái `draft` và chưa gắn vào hóa đơn nào;
-   *   `post_invoice` mới là chỗ gắn. Cảnh báo ở đó là kêu oan cho một
-   *   xung đột chưa tồn tại.
-   */
   /** Số lượng trả ĐANG hiện của một dòng — phần sửa thắng số gốc. */
   const retQty = (l: { id: string; qty: number }) => retEdits[l.id] ?? l.qty
   /**
@@ -399,19 +375,6 @@ export function InvoiceEditor({
       ? retLines.reduce((sum, l) => sum + retCreditOf(l), 0)
       : retCredit) + retAdds.reduce((sum, a) => sum + addCreditOf(a), 0)
 
-  const returnConflicts = reissueOf
-    ? returnsBrokenBy(
-        rows,
-        /* ⚠ SOI TRẠNG THÁI SAU KHI SỬA. Người dùng vừa bỏ dòng trả của
-           món đã gỡ khỏi hóa đơn thì xung đột KHÔNG còn — cảnh báo phải
-           tắt ngay, nếu không họ sửa đúng rồi mà nút vẫn khoá. */
-        pendingReturns.filter((pr) => {
-          const l = retLines.find((x) => x.id === pr.lineId)
-          return !l || retQty(l) > 0
-        }),
-        reissueOf.invoiceId
-      )
-    : []
   const overRows = rowsOverOrdered(rows)
 
   const setQty = (key: string, v: number) =>
@@ -724,63 +687,6 @@ export function InvoiceEditor({
           </div>
 
           {/*
-            XUNG ĐỘT VỚI PHIẾU TRẢ ĐANG CHỜ — nói ra NGAY, không đợi máy
-            chủ từ chối.
-
-            ⚠ CHỦ NHÀ BÁO 21/09/2026: sửa hóa đơn có hàng đổi/trả thì
-              vấp "hóa đơn mới không còn bán … Huỷ phiếu trả trước, rồi
-              sửa lại hóa đơn" — sau khi đã sửa xong cả tờ.
-
-            ⚠ LUẬT Ở MÁY CHỦ ĐÚNG, CHỖ NÓI RA THÌ SAI. Trần số được trả
-              lại đếm theo HÓA ĐƠN; bỏ món khỏi hóa đơn mà giữ phiếu trả
-              là để khách trả một món chưa từng rời kho — nhập kho khống
-              và trừ công nợ khống. Nên không tự gỡ, không tự xoá; xem
-              `returnsBrokenBy`.
-
-            ⚠ VÀ CHỈ ĐƯỜNG THAY VÌ CHỈ CHẶN. Câu lỗi của máy chủ bảo
-              "huỷ phiếu trả" — huỷ CẢ phiếu là mất luôn những dòng
-              khác trên đó. Mở đúng phiếu ra là sửa được một dòng.
-          */}
-          {returnConflicts.length > 0 && (
-            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3">
-              {/*
-                ⚠ NÓI THEO THỨ TỰ NGƯỜI TA NGHĨ: vừa làm gì → hỏng ở đâu
-                  → làm gì tiếp. Bản đầu mở đầu bằng "Tờ hóa đơn này
-                  không còn bán X" — một câu nói từ phía hệ thống, và
-                  chủ nhà đọc xong hỏi lại "Đoạn này là sao?".
-              */}
-              <p className="flex items-start gap-1.5 text-sm font-bold text-destructive">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  Chưa lưu được: bạn vừa bỏ{" "}
-                  {returnConflicts.map((c) => `“${c.productName}”`).join(", ")} khỏi hóa
-                  đơn {reissueOf?.invoiceCode ?? ""}, nhưng khách đang có phiếu trả chờ
-                  xử lý đòi trả lại đúng món đó.
-                </span>
-              </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Khách chỉ trả được hàng đã thực xuất. Bỏ món khỏi hóa đơn nghĩa là hóa
-                đơn này chưa từng bán nó — phiếu trả kia thành đòi trả một món chưa rời
-                kho, nên máy chủ sẽ từ chối.
-              </p>
-              {/*
-                ⚠ CHỈ ĐƯỜNG TỚI CHỖ SỬA NGAY TRÊN MÀN NÀY. Bản trước bảo
-                  "mở phiếu trả ra bỏ dòng đó" và mở một tab mới — hai
-                  màn cho một việc. Từ 21/09/2026 khối "Hàng đổi / trả
-                  kèm đơn" ngay dưới sửa được tại chỗ, và phần sửa đi
-                  cùng một giao dịch với việc lập lại hóa đơn.
-              */}
-              <p className="mt-1.5 text-xs font-semibold">
-                Chọn một trong hai:{" "}
-                <span className="font-normal text-muted-foreground">
-                  giữ lại món trên hóa đơn (đặt số lượng về như cũ), hoặc kéo xuống khối
-                  “Hàng đổi / trả kèm đơn” và đưa số lượng dòng đó về 0.
-                </span>
-              </p>
-            </div>
-          )}
-
-          {/*
             ⚠ BỎ DÒNG PHẢI HOÀN TÁC ĐƯỢC. Màn này KHÔNG có bản nháp —
               không có gì được ghi xuống cho tới nút cuối. Bấm nhầm cái
               thùng rác mà cách duy nhất để lấy lại là tải lại trang thì
@@ -836,6 +742,7 @@ export function InvoiceEditor({
           <Card>
             <CardContent className="pt-5">
               <ProductPicker
+                closeOnPick
                 id="inv-add-find"
                 label="Thêm mã hàng không có trong đơn"
                 placeholder="Tên hàng, mã SKU hoặc mã vạch…"
@@ -1028,6 +935,7 @@ export function InvoiceEditor({
                 */}
                 <div className="mt-1 border-t pt-3">
                   <ProductPicker
+                    closeOnPick
                     id="inv-add-return"
                     label="Thêm hàng đổi / trả"
                     placeholder="Tên hàng, mã SKU hoặc mã vạch…"
@@ -1141,17 +1049,9 @@ export function InvoiceEditor({
               </Button>
               <Button
                 onClick={submit}
-                disabled={saving || picked.length === 0 || returnConflicts.length > 0}
-                /* ⚠ KHOÁ NÚT KÈM LÝ DO, đừng để họ bấm rồi mới biết.
-                   Máy chủ sẽ từ chối tờ này — bấm là mất công sửa cả
-                   màn để đổi lấy một câu lỗi. */
-                title={
-                  returnConflicts.length > 0
-                    ? "Phiếu trả đang chờ đòi trả món tờ này không còn bán — xử lý phiếu trả trước"
-                    : picked.length === 0
-                      ? "Nhập số lượng cho ít nhất một dòng"
-                      : undefined
-                }
+                disabled={saving || picked.length === 0}
+                /* ⚠ KHOÁ NÚT KÈM LÝ DO, đừng để họ bấm rồi mới biết. */
+                title={picked.length === 0 ? "Nhập số lượng cho ít nhất một dòng" : undefined}
               >
                 {saving
                   ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

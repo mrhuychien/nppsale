@@ -218,6 +218,7 @@ export function PurchasingLinesEditor({
       <Card>
         <CardContent className="pt-5">
           <ProductPicker
+            closeOnPick
             id="pr-find"
             term={term}
             onTermChange={setTerm}

@@ -9,14 +9,7 @@ import { ReportShell, FilterField, FilterSearchSelect, FilterMultiSelect } from 
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import {
-  fetchDeliveredOrders,
-  fetchOrderLines,
-  fetchReturnsRows,
-  type SalesOrderLineRow,
-  type SalesOrderRow,
-  type ReturnSummaryRow,
-} from "@/lib/analytics/sales"
+import { fetchDeliveredOrders, fetchOrderLines, fetchReturnsRows, type SalesOrderLineRow, type SalesOrderRow, type ReturnSummaryRow, fetchStockEntryLines, fetchReturnLines } from "@/lib/analytics/sales"
 import {
   type DateRange,
   type PeriodPreset,
@@ -25,6 +18,7 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 type Variant = "sales" | "profit" | "by_customer" | "products" | "summary"
 
@@ -125,48 +119,43 @@ export default function EmployeesReportPage() {
           .eq("org_id", user.org_id),
         supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
         supabase.from("products").select("id, sku, name, base_unit, sell_price, category, brand").eq("org_id", user.org_id),
-        supabase
-          .from("stock_entries")
-          .select("id, type")
-          .eq("org_id", user.org_id)
-          .eq("status", "posted")
-          .eq("type", "export")
-          .gte("posted_at", fromIso)
-          .lte("posted_at", toIso),
+        fetchAllForAggregate<StockEntry>((from, to) =>
+          supabase
+            .from("stock_entries")
+            .select("id, type", { count: "exact" })
+            .eq("org_id", user.org_id)
+            .eq("status", "posted")
+            .eq("type", "export")
+            .gte("posted_at", fromIso)
+            .lte("posted_at", toIso)
+            .range(from, to)
+        ),
       ])
-    const qErr2 = ([usersRes, customersRes, productsRes, stockEntriesRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr2 = ([usersRes, customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr2) console.error("[reports/employees] truy vấn lỗi:", qErr2.message)
+    if (stockEntriesRes.error) console.error("[reports/employees] truy vấn lỗi:", stockEntriesRes.error)
     const orderIds = orderList.map((o) => o.id)
-    const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
+    const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
     const returnIds = returnsRows.map((r) => r.id)
-    const [linesList, stockLinesRes, returnLinesRes] = await Promise.all([
+    /* ⚠ CẢ BA ĐỀU PHẢI PHÂN TRANG. Trước đây chỉ `fetchOrderLines` phân
+       trang, còn dòng kho và dòng trả nằm ngay cạnh trong cùng
+       `Promise.all` thì đọc trần — quá 1.000 dòng là API trả đúng 1.000,
+       không lỗi, và giá vốn thiếu kéo hoa hồng sai theo. */
+    const [linesList, stockLinesList, returnLinesList] = await Promise.all([
       fetchOrderLines(supabase, orderIds),
-      stockEntryIds.length === 0
-        ? Promise.resolve({ data: [] as StockEntryLine[] })
-        : supabase
-            .from("stock_entry_lines")
-            .select("entry_id, product_id, quantity, unit_cost")
-            .in("entry_id", stockEntryIds),
-      returnIds.length === 0
-        ? Promise.resolve({ data: [] as ReturnLineRow[] })
-        : supabase
-            .from("return_lines")
-            .select("return_id, product_id, quantity, line_total")
-            .in("return_id", returnIds),
+      fetchStockEntryLines(supabase, stockEntryIds),
+      fetchReturnLines(supabase, returnIds),
     ])
-    const qErr = ([stockLinesRes, returnLinesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/employees] truy vấn lỗi:", qErr.message)
     setOrders(orderList)
     setLines(linesList)
     setReturns(returnsRows)
     setUsers((usersRes.data as UserRow[]) || [])
     setCustomers((customersRes.data as CustomerRow[]) || [])
     setProducts((productsRes.data as ProductRow[]) || [])
-    setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
-    setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
-    setReturnLines((returnLinesRes.data as ReturnLineRow[]) || [])
+    setStockEntries(stockEntriesRes.rows)
+    setStockLines(stockLinesList)
+    setReturnLines(returnLinesList)
     setLoading(false)
   }, [user?.org_id, range, supabase])
 
@@ -219,7 +208,8 @@ export default function EmployeesReportPage() {
     return m
   }, [lines])
 
-  // Map customer_id -> total returns value (used to attribute returns to NV via order's sales_user)
+  // Map customer_id -> đơn của khách. Chỉ còn dùng cho phiếu trả CHƯA
+  // GÁN nhân viên (lập trước mig 160) — phiếu có ghi tên thì đọc tên.
   const orderByCustomer = useMemo(() => {
     const m = new Map<string, SalesOrderRow[]>()
     for (const o of orders) {
@@ -316,17 +306,31 @@ export default function EmployeesReportPage() {
       }
       m.set(o.sales_user_id, e)
     }
-    // attribute returns to the most recent sales_user that served the customer
+    /**
+     * Quy phiếu trả về nhân viên.
+     *
+     * ⚠ PHIẾU CÓ GHI TÊN THÌ ĐỌC TÊN, ĐỪNG ĐOÁN (mig 160). Đường vòng
+     *   dưới đây — lấy nhân viên của đơn GẦN NHẤT của cùng khách — sai
+     *   ngay khi một khách mua của hai nhân viên, và nó sai vào đúng con
+     *   số trừ doanh số.
+     *
+     * ⚠ PHIẾU CHƯA GÁN THÌ VẪN ĐOÁN NHƯ CŨ, KHÔNG BỎ RA NGOÀI SỔ. Mọi
+     *   phiếu lập trước mig 160 đều rỗng cột ấy; bỏ chúng đi là doanh số
+     *   thuần của cả năm ngoái tự nhiên tăng lên, không ai hiểu vì sao.
+     */
     for (const r of returns) {
-      const ords = orderByCustomer.get(r.customer_id) || []
-      if (ords.length === 0) continue
-      const ord = ords.reduce((a, b) => (a.order_date > b.order_date ? a : b))
-      if (!matchSearchUser(ord.sales_user_id)) continue
-      const u = userMap.get(ord.sales_user_id)
+      let uid = r.sales_user_id ?? ""
+      if (!uid) {
+        const ords = orderByCustomer.get(r.customer_id) || []
+        if (ords.length === 0) continue
+        uid = ords.reduce((a, b) => (a.order_date > b.order_date ? a : b)).sales_user_id
+      }
+      if (!matchSearchUser(uid)) continue
+      const u = userMap.get(uid)
       const e =
-        m.get(ord.sales_user_id) ||
+        m.get(uid) ||
         ({
-          id: ord.sales_user_id,
+          id: uid,
           name: u?.full_name || "—",
           role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
           revenue: 0,
@@ -345,7 +349,7 @@ export default function EmployeesReportPage() {
       } else {
         e.days.push({ date: d, label: lbl, revenue: 0, returnValue: amt, netRevenue: 0 })
       }
-      m.set(ord.sales_user_id, e)
+      m.set(uid, e)
     }
     return Array.from(m.values())
       .map((r) => ({
@@ -653,7 +657,14 @@ export default function EmployeesReportPage() {
       }
     }
 
-    // Returns → gán cho NV phục vụ KH gần nhất
+    /**
+     * Quy dòng hàng trả về nhân viên — CÙNG MỘT LUẬT với bảng doanh số
+     * phía trên, không được lệch. Phiếu có ghi tên thì đọc tên (mig
+     * 160); chưa gán thì mới đoán theo đơn gần nhất của cùng khách.
+     *
+     * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
+     *   MỘT TRANG, và không ai biết tin bảng nào.
+     */
     const lineByOrderId = linesByOrder
     const lastSalesUserByCustomer = new Map<string, string>()
     const sortedOrders = [...orders].sort((a, b) => b.order_date.localeCompare(a.order_date))
@@ -662,13 +673,14 @@ export default function EmployeesReportPage() {
         lastSalesUserByCustomer.set(o.customer_id, o.sales_user_id)
       }
     }
-    const returnIdToCustomer = new Map<string, string>()
-    for (const r of returns) returnIdToCustomer.set(r.id, r.customer_id)
+    const returnIdToSalesUser = new Map<string, string>()
+    for (const r of returns) {
+      const uid = r.sales_user_id || lastSalesUserByCustomer.get(r.customer_id)
+      if (uid) returnIdToSalesUser.set(r.id, uid)
+    }
 
     for (const rl of returnLines) {
-      const cid = returnIdToCustomer.get(rl.return_id)
-      if (!cid) continue
-      const uid = lastSalesUserByCustomer.get(cid)
+      const uid = returnIdToSalesUser.get(rl.return_id)
       if (!uid || !matchSearchUser(uid)) continue
       const row = ensureRow(uid)
       const qty = Number(rl.quantity || 0)

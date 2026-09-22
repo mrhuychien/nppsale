@@ -19,6 +19,8 @@ import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { cn, formatCurrency } from "@/lib/utils"
 import { toast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posNewOrderHref } from "@/lib/nav/pos-preview"
 
 /** Trần số thẻ vẽ một lúc — 1.700 thẻ thì điện thoại đứng hình. */
 const RENDER_CAP = 60
@@ -261,6 +263,19 @@ export default function SellPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-surface pb-nav">
+      {/*
+        ⚠ MÁY TÍNH THÌ ĐI THẲNG SANG MÀN `/pos` — chủ nhà chốt
+          22/09/2026 cho nhánh `newdesign`. Điện thoại giữ nguyên màn
+          này. Xem `@/lib/nav/pos-preview` về việc vì sao chặn ở đây
+          chứ không sửa sáu cái nút "Tạo đơn".
+
+        ⚠ CHỈ CHẶN KHI ĐANG LẬP ĐƠN BÁN. `/sell?mode=return` là bước
+          chọn hàng TRẢ của màn phiếu trả trên điện thoại; đẩy nó sang
+          màn lập đơn là cắt ngang một việc khác hẳn.
+      */}
+      {!returning && (
+        <PosDesktopRedirect to={posNewOrderHref(searchParams.get("customerId"))} />
+      )}
       <div className="shrink-0 px-4 pb-2.5 pt-1.5">
         <div className="flex h-10 items-center justify-between">
           <h1 className="text-2xl font-extrabold tracking-tight text-on-surface">

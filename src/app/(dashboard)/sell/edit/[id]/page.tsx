@@ -14,6 +14,8 @@ import {
   type OrderLineRow, type PendingReturnRow,
 } from "@/lib/sell/order-edit"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posEditOrderHref } from "@/lib/nav/pos-preview"
 import { toast } from "@/hooks/use-toast"
 import type { OrderStatus } from "@/types"
 
@@ -222,6 +224,9 @@ export default function SellEditLoaderPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-surface pb-nav">
+      {/* ⚠ Máy tính thì sửa đơn trên màn `/pos` — chủ nhà chốt
+          22/09/2026 cho nhánh `newdesign`. Xem `@/lib/nav/pos-preview`. */}
+      <PosDesktopRedirect to={posEditOrderHref(id)} />
       <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-0.5">
         <button
           type="button"

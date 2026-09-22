@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest"
+import { vatKeTiep } from "../src/lib/pos/vat"
+import { vatLabel } from "../src/lib/constants"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import { parsePosPath, posHref, posPrintHref } from "../src/lib/pos/tabs"
@@ -541,20 +543,37 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
    * tiết hàng trong đơn chưa có chỗ để tuỳ chọn VAT".
    */
   it("có ô thuế theo dòng, và thuế ấy đi xuống hóa đơn", () => {
-    expect(S).toMatch(/Thuế GTGT dòng/)
-    expect(S).toMatch(/vatChoices\(/)
+    /**
+     * ⚠ NEO VÀO VIỆC, KHÔNG NEO VÀO HÌNH DẠNG Ô. Bản trước đòi
+     *   `vatChoices(` — tên một hàm chỉ tồn tại vì ô thuế từng là
+     *   `<select>`. 22/09/2026 chủ nhà đổi nó thành NÚT BẤM VÒNG, hàm
+     *   ấy không còn ai gọi, và chốt đỏ dù luật ("dòng nào cũng đặt
+     *   được thuế, và thuế ấy đi xuống hóa đơn") còn nguyên.
+     */
+    expect(S, "dòng hàng không còn chỗ đặt thuế").toMatch(/Thuế GTGT dòng/)
+    expect(S, "đặt thuế dòng không đổi được giá trị nào").toMatch(/vatRate: vatKeTiep\(/)
     const save = code(read("src/lib/pos/save.ts"))
     expect(save).toMatch(/vatRate: l\.vatRate \?\? vatRate/)
     expect(save).toMatch(/vatRate: Number\(l\.vatRate\) \|\| 0/)
   })
 
-  /** ⚠ Thuế suất lạ (7%) của mặt hàng không bị ép về bậc gần nhất. */
-  it("giữ thuế suất lạ của dòng trong ô chọn", () => {
-    const i = S.indexOf("function vatChoices")
-    expect(i).toBeGreaterThan(-1)
-    const f = S.slice(i, i + 500)
-    expect(f).toMatch(/Math\.abs\(v\.value - cur\) < 1e-9/)
-    expect(f).toMatch(/vatLabel\(cur\)/)
+  /**
+   * ⚠ LUẬT NÀY ĐÃ ĐỔI, VÀ ĐỔI CÓ CHỦ Ý — ghi ra cho rõ.
+   *
+   * Hồi ô thuế còn là `<select>`, thuế suất lạ (7% nhập từ sổ cũ) được
+   * giữ nguyên làm một mục trong danh sách. Nút bấm vòng thì không có
+   * danh sách: bấm một cái phải ra MỘT bậc kế tiếp.
+   *
+   * Nay: 7% bấm một cái về 0%, KHÔNG nhảy sang 8%. Ép về bậc gần nhất
+   * là đổi tiền thuế của người ta bằng một phép đoán; về 0 thì người
+   * dùng thấy ngay mình vừa xoá, và bấm tiếp ba lần là có lại đủ bậc.
+   * Con số 7% vẫn HIỆN ĐÚNG trên nút cho tới khi họ bấm.
+   */
+  it("thuế suất lạ hiện đúng, và bấm một cái thì về 0 chứ không ép về bậc gần nhất", () => {
+    expect(vatKeTiep(0.07), "7% bị ép sang một bậc khác — đổi tiền thuế bằng phép đoán").toBe(0)
+    expect(vatLabel(0.07), "thuế suất lạ không hiện đúng trên nút").toBe("7%")
+    /* Và vòng bậc đúng thứ tự chủ nhà chốt: 0 → 5 → 8 → 10 → 0. */
+    expect([0, 0.05, 0.08, 0.1].map(vatKeTiep)).toEqual([0.05, 0.08, 0.1, 0])
   })
 
   /**

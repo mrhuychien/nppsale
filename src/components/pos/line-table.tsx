@@ -18,6 +18,7 @@ import { useState, type ReactNode } from "react"
 import { discountAmount, lineGross, switchUnit, unitAriaLabel, unitLabel } from "@/lib/pos/discount"
 import type { PosLine } from "@/lib/pos/types"
 import { formatCurrency } from "@/lib/utils"
+import { vatLabel } from "@/lib/constants"
 
 /**
  * Cấu hình cột theo spec §4 — `grid-template-columns` và `gap`.
@@ -219,6 +220,59 @@ export function DiscountCell({
         {unitLabel(line.discount.unit)}
       </button>
     </div>
+  )
+}
+
+/**
+ * NÚT BẬC THUẾ — bấm một cái nhảy bậc: 0% → 5% → 8% → 10% → 0%.
+ *
+ * Chủ nhà chốt 22/09/2026: "tạo 1 nút bấm như nút giảm giá, mặc định là
+ * 0 bấm vào -> 5 -> 8 -> 10 -> 0".
+ *
+ * ⚠ MỘT COMPONENT CHO CẢ DÒNG LẪN CẢ ĐƠN. Chủ nhà chốt "Đơn tổng cũng
+ *   thiếu VAT (làm tương tự)" — hai nút trông khác nhau cho cùng một
+ *   việc là người dùng phải học hai lần.
+ *
+ * ⚠ 0% VẪN PHẢI SÁNG RÕ, KHÔNG MỜ ĐI. Một nút mờ đọc ra là "chưa dùng
+ *   được"; ở đây 0% là một lựa chọn thật và là lựa chọn thường ngày.
+ *   Chỉ khác sắc: có thuế thì xanh, không thuế thì trung tính.
+ */
+export function VatChip({
+  rate,
+  onNext,
+  label,
+  ariaLabel,
+  mixed = false,
+}: {
+  /** Thuế suất theo TỈ LỆ (0.08 = 8%). */
+  rate: number
+  onNext: () => void
+  /** Chữ phụ đứng trước con số, ví dụ "VAT". */
+  label?: string
+  ariaLabel: string
+  /** Các dòng đang lệch thuế suất — hiện "—" thay vì một con số sai. */
+  mixed?: boolean
+}) {
+  const coThue = !mixed && (Number(rate) || 0) > 0
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      title={
+        mixed
+          ? "Các dòng đang có thuế suất khác nhau — bấm để đưa tất cả về 0%"
+          : "Bấm để đổi bậc thuế: 0% → 5% → 8% → 10%"
+      }
+      onClick={onNext}
+      className={`n h-[34px] w-full rounded-[10px] border-[1.5px] px-1 text-[12.5px] font-extrabold leading-none ${
+        coThue
+          ? "border-[var(--pos-primary)] bg-[var(--pos-primary-faint)] text-[var(--pos-primary-deep)]"
+          : "border-[var(--pos-edge)] bg-[var(--pos-head)] text-[var(--pos-muted)]"
+      }`}
+    >
+      {label ? `${label} ` : ""}
+      {mixed ? "—" : vatLabel(rate)}
+    </button>
   )
 }
 

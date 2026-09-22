@@ -30,6 +30,15 @@ export interface PosTotalLine {
   qty: number
   price: number
   discount: DiscountInput
+  /**
+   * Thuế suất của dòng, theo TỈ LỆ (0.08 = 8%). Rỗng = 0.
+   *
+   * ⚠ THUẾ Ở ĐÂY LÀ THUẾ THEO DÒNG, và đó là nguồn duy nhất. Nút thuế
+   *   cấp chứng từ chỉ là một phép ĐẶT HÀNG LOẠT lên các dòng — xem
+   *   `vatChungCuaDong`. Để hai ô thuế độc lập nhau là ngày nào đó
+   *   cộng cả hai vào một tờ.
+   */
+  vatRate?: number | null
 }
 
 export interface PosTotals {
@@ -43,6 +52,18 @@ export interface PosTotals {
   other: number
   /** Trừ hàng trả — chỉ dòng TRẢ, dòng ĐỔI không trừ tiền. */
   returnCredit: number
+  /**
+   * Thuế GTGT, cộng từ THUẾ SUẤT CỦA TỪNG DÒNG.
+   *
+   * ⚠ NỀN THUẾ LÀ TIỀN DÒNG SAU GIẢM GIÁ DÒNG — đúng nền mà
+   *   `cartTotals` dùng (`qty × giá đang áp`). Lệch nền là panel hiện
+   *   một số thuế, sổ ghi một số khác.
+   *
+   * ⚠ GIẢM GIÁ CẤP CHỨNG TỪ KHÔNG HẠ NỀN THUẾ. Phân bổ khoản giảm ấy
+   *   ngược về từng dòng có nhiều cách làm; ở đây nó là khoản trừ SAU
+   *   thuế. Nói ra để không ai tưởng là sót.
+   */
+  vat: number
   /** Số khách (hoặc NCC) cần trả. Kẹp về 0. */
   due: number
 }
@@ -60,11 +81,15 @@ export function posTotals(i: {
 }): PosTotals {
   let gross = 0
   let lineDiscount = 0
+  let vat = 0
   for (const l of i.lines) {
     const g = lineGross(l.qty, l.price)
+    const giam = discountAmount(l.discount, g)
     gross += g
-    lineDiscount += discountAmount(l.discount, g)
+    lineDiscount += giam
+    vat += (g - giam) * (Number(l.vatRate) || 0)
   }
+  vat = Math.round(vat)
   // ⚠ Trên TIỀN GỘP — xem đầu tệp.
   const docDiscount = i.docDiscount ? discountAmount(i.docDiscount, gross) : 0
   const other = Number(i.other) || 0
@@ -74,8 +99,14 @@ export function posTotals(i: {
    * lớn hơn đơn mới là chuyện có thật; hiện số âm ở ô "Khách cần trả"
    * là mời người thu ngân đi trả tiền cho khách ngay tại quầy.
    */
-  const due = Math.max(0, gross - lineDiscount - docDiscount + other - returnCredit)
-  return { gross, lineDiscount, docDiscount, other, returnCredit, due }
+  /**
+   * ⚠ THUẾ NẰM TRONG SỐ KHÁCH CẦN TRẢ. Bản trước bỏ hẳn thuế ra khỏi
+   *   phép cộng này, nên panel hiện một số còn `sales_orders.total` ghi
+   *   một số khác — chỉ chưa lộ vì cột VAT đang tắt và mọi dòng là 0%.
+   *   Bật cột lên là hai con số lệch nhau ngay, và lệch âm thầm.
+   */
+  const due = Math.max(0, gross - lineDiscount - docDiscount + vat + other - returnCredit)
+  return { gross, lineDiscount, docDiscount, other, returnCredit, vat, due }
 }
 
 /**

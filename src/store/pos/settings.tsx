@@ -42,14 +42,21 @@ export interface PosSettings {
   sortBy: "moi-nhat" | "ten" | "ma"
 }
 
-/** Mặc định đúng bảng trong spec §9 — `colLot`, `colVat`, `colImage` TẮT. */
+/**
+ * Mặc định đúng bảng trong spec §9 — `colLot` và `colImage` TẮT.
+ *
+ * ⚠ `colVat` ĐÃ BẬT LÊN 22/09/2026. Spec §9 để nó tắt, nhưng chủ nhà
+ *   báo "Các dòng mã hàng thiếu chọn VAT" — tắt mặc định thì cái nút
+ *   bậc thuế vừa dựng không ai thấy. Nút thuế CẢ ĐƠN ở panel vẫn luôn
+ *   hiện, nên người đã tắt cột vẫn đặt được thuế.
+ */
 export const POS_SETTINGS_DEFAULT: PosSettings = {
   colIndex: true,
   colSku: true,
   colStock: true,
   colLot: false,
   colLineDiscount: true,
-  colVat: false,
+  colVat: true,
   colImage: false,
   defaultDiscountUnit: "vnd",
   showLastPrice: true,

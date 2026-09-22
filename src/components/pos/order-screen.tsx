@@ -49,7 +49,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
@@ -64,7 +64,6 @@ import { userPriceRulesFrom } from "@/lib/pricing"
 import { isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { toStockLines } from "@/lib/sell/stock"
 import { viMatchAllWords } from "@/lib/search"
-import { VAT_RATES, vatLabel } from "@/lib/constants"
 import {
   useRegisterPosProductSearch, usePosSearchTerm, focusPosPicker,
 } from "@/store/pos/product-search"
@@ -72,6 +71,7 @@ import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
 import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
+import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { posTotals } from "@/lib/pos/totals"
@@ -83,7 +83,7 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocBanner } from "@/components/pos/doc-sub-header"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
-  LineAmountCell, LineMenu, NegativeStockStrip,
+  LineAmountCell, LineMenu, NegativeStockStrip, VatChip,
 } from "@/components/pos/line-table"
 import {
   MoneyRow, DocDiscountRow, TotalsHero,
@@ -105,20 +105,6 @@ export interface OrderScreenProps {
 let demDong = 0
 const newKey = () => `d${++demDong}`
 
-/**
- * Các bậc thuế cho ô chọn của dòng.
- *
- * ⚠ GIỮ ĐÚNG THUẾ SUẤT LẠ CỦA DÒNG. Sản phẩm khai 7% mà ép về bậc gần
- * nhất là lặng lẽ đổi số thuế người ta đã khai; mở ô ra không thấy bậc
- * nào sáng thì người dùng tưởng dòng chưa có thuế. Cùng luật với
- * `LineEditSheet` của màn đơn cũ.
- */
-function vatChoices(current: number): Array<{ value: number; label: string }> {
-  const cur = Number(current) || 0
-  const base: Array<{ value: number; label: string }> = [...VAT_RATES]
-  if (base.some((v) => Math.abs(v.value - cur) < 1e-9)) return base
-  return [...base, { value: cur, label: vatLabel(cur) }].sort((a, b) => a.value - b.value)
-}
 
 /**
  * Bề rộng cột của bảng HÀNG ĐỔI TRẢ — lấy nguyên từ bản thiết kế:
@@ -131,6 +117,7 @@ function vatChoices(current: number): Array<{ value: number; label: string }> {
 const POS_RET_COLS = "minmax(170px,1fr) 140px 100px 108px 112px 120px 34px"
 
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
+  const thamSo = useSearchParams()
   const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
   const { groups } = useCustomerGroups()
@@ -277,6 +264,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     () => posTotals({ lines, docDiscount, other: 0, returnCredit }),
     [lines, docDiscount, returnCredit]
   )
+
+  /** Bậc thuế chung của mọi dòng, `null` khi chúng lệch nhau. */
+  const vatChung = useMemo(() => vatChungCuaDong(lines), [lines])
 
   const vuotTon = useMemo(
     () =>
@@ -616,6 +606,39 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     })()
     return () => { huy = true }
   }, [khach?.id])
+
+  /**
+   * KHÁCH ĐI KÈM ĐƯỜNG DẪN — `/pos/don-hang/moi?customerId=…`.
+   *
+   * ⚠ ĐƯỜNG TẮT "TẠO ĐƠN CHO KHÁCH NÀY" PHẢI GIỮ ĐƯỢC KHÁCH. Nút ấy ở
+   *   hồ sơ khách, danh sách khách và tuyến thăm; mất tham số là bắt
+   *   nhân viên đang đứng trước cửa hàng đi tìm lại tên khách trong một
+   *   danh sách vài nghìn dòng. Chính vì thế màn `/sell` cũ mới mang
+   *   theo `customerId`, và cú chuyển hướng sang POS phải mang tiếp.
+   *
+   * ⚠ CHỈ NẠP MỘT LẦN, VÀ CHỈ CHO ĐƠN MỚI. Nạp lại ở mỗi lần vẽ là
+   *   người dùng đổi khách xong bị kéo ngược về khách cũ; nạp cho đơn
+   *   đã lưu là đè lên khách thật của đơn ấy.
+   *
+   * ⚠ CHỜ DANH MỤC VỀ RỒI MỚI ĐẶT. Đặt lúc `customers` còn rỗng thì
+   *   `customerById` trả rỗng, thẻ khách hiện một cái tên trống và
+   *   bảng giá rơi về bảng chung — sai giá ngay từ dòng đầu tiên.
+   */
+  const daNapKhachTheoLink = useRef(false)
+  useEffect(() => {
+    if (daNapKhachTheoLink.current) return
+    if (orderId || customers.length === 0) return
+    const id = (thamSo.get("customerId") ?? "").trim()
+    if (!id) return
+    const kh = customerById(id)
+    if (!kh) return
+    daNapKhachTheoLink.current = true
+    setKhach({
+      id: kh.id,
+      name: kh.store_name,
+      meta: [kh.phone, kh.address].filter(Boolean).join(" · "),
+    })
+  }, [orderId, customers.length, customerById, thamSo])
 
   /** Lô còn hàng của các mặt hàng đang có trong giỏ — spec §4. */
   useEffect(() => {
@@ -1348,16 +1371,18 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       có lúc không. Bật/tắt cột ở drawer thiết lập.
                   */}
                   {settings.colVat && (
-                    <select
-                      aria-label={`Thuế GTGT dòng ${i + 1}`}
-                      value={String(l.vatRate ?? 0)}
-                      onChange={(e) => patchLine(l.key, { vatRate: Number(e.target.value) })}
-                      className="h-[30px] w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[12px] text-[var(--pos-ink)]"
-                    >
-                      {vatChoices(l.vatRate ?? 0).map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
-                      ))}
-                    </select>
+                    /*
+                      ⚠ NÚT BẤM VÒNG, KHÔNG CÒN `<select>`. Chủ nhà chốt
+                        22/09/2026: "tạo 1 nút bấm như nút giảm giá, mặc
+                        định là 0 bấm vào -> 5 -> 8 -> 10 -> 0". Một
+                        `<select>` bốn mục là mở, rê, bấm — ba nhịp cho
+                        một việc mà đa số dòng chỉ cần một bậc.
+                    */
+                    <VatChip
+                      rate={l.vatRate ?? 0}
+                      ariaLabel={`Thuế GTGT dòng ${i + 1}`}
+                      onNext={() => patchLine(l.key, { vatRate: vatKeTiep(l.vatRate ?? 0) })}
+                    />
                   )}
                   <LineAmountCell line={l} />
                   <LineMenu
@@ -1711,6 +1736,44 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 )
               }
             />
+            {/*
+              THUẾ GTGT CẢ ĐƠN — chủ nhà chốt 22/09/2026: "Đơn tổng cũng
+              thiếu VAT (làm tương tự)".
+
+              ⚠ NÚT NÀY ĐẶT HÀNG LOẠT, KHÔNG PHẢI MỘT Ô THUẾ THỨ HAI.
+                Thuế suất chỉ có MỘT nguồn: từng dòng. Nút này bấm một
+                cái là đặt cùng bậc cho mọi dòng, còn con số bên phải
+                luôn là TỔNG cộng từ các dòng. Dựng thêm một ô thuế cấp
+                chứng từ độc lập là ngày nào đó cộng cả hai vào một tờ.
+
+              ⚠ CÁC DÒNG LỆCH NHAU THÌ HIỆN "—", ĐỪNG HIỆN MỘT CON SỐ.
+                Hiện "0%" trong khi có dòng đang chịu 10% là nói dối
+                đúng chỗ người ta tin nhất.
+
+              ⚠ VÀ DÒNG NÀY LUÔN VẼ, kể cả khi thuế bằng 0 — khác dòng
+                "Trừ hàng trả". Thuế là thứ người lập đơn phải CHỦ ĐỘNG
+                chọn; giấu đi khi bằng 0 là giấu luôn cái nút để chọn.
+            */}
+            <div className="flex items-center justify-between gap-2.5 py-[5px]">
+              <span className="flex items-center gap-2">
+                <span className="text-[13px] text-[var(--pos-muted)]">Thuế GTGT</span>
+                <span className="w-[74px]">
+                  <VatChip
+                    rate={vatChung ?? 0}
+                    mixed={vatChung === null}
+                    ariaLabel="Thuế GTGT cả đơn"
+                    onNext={() => {
+                      const moi = vatChungKeTiep(vatChung)
+                      setLines((c) => c.map((l) => ({ ...l, vatRate: moi })))
+                    }}
+                  />
+                </span>
+              </span>
+              <span className="n text-[13.5px] text-[var(--pos-ink)]">
+                {formatCurrency(totals.vat)}
+              </span>
+            </div>
+
             {/* ⚠ Chỉ vẽ khi có hàng trả — một dòng "− 0" thường trực là nhiễu. */}
             {totals.returnCredit > 0 && (
               <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(totals.returnCredit)}`} tone="warn" />

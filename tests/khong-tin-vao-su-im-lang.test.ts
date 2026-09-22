@@ -52,6 +52,38 @@ describe("ghiPhaiTrungDong — hàm chạy thật", () => {
     ).rejects.toBe(loi)
   })
 
+  /**
+   * ⚠ KHÔNG ĐƯỢC XIN ĐÍCH DANH CỘT `id`, và đây là một lỗi tôi đã gây ra
+   *   rồi mới thấy. Bản đầu xin `.select("id")`, PostgREST dựng
+   *   `RETURNING id`, và hai bảng trong repo KHÔNG có cột ấy:
+   *   `user_permission_overrides` (khoá chính `user_id, permission_key`)
+   *   và `user_suppliers` (khoá chính `user_id, supplier_id`).
+   *
+   *   Đo trên Postgres 16 bằng đúng câu lệnh mã sinh ra:
+   *     ERROR: column "id" does not exist
+   *
+   *   Nặng hơn lỗi nó đi sửa: ở màn Phân quyền phần cấp/thu quyền đã
+   *   `upsert` xong mới tới lệnh xoá, nên mỗi lần lưu có "trả về theo
+   *   vai trò" là ném GIỮA CHỪNG với một nửa đã ghi.
+   *
+   * ⚠ CHỐT NÀY GỌI HÀM THẬT VÀ XEM NÓ XIN GÌ, không đọc chữ trong tệp.
+   *   Đọc chữ thì một đột biến đổi hằng số ở chỗ khác vẫn đi lọt.
+   */
+  it("xin về MỌI cột, không xin đích danh `id`", async () => {
+    const daXin: string[] = []
+    await ghiPhaiTrungDong({
+      select: async (cols: string) => {
+        daXin.push(cols)
+        return { data: [{ user_id: "u", permission_key: "k" }], error: null }
+      },
+    })
+    expect(daXin, "gọi `select` nhiều hơn một lần").toHaveLength(1)
+    expect(
+      daXin[0],
+      "xin đích danh một cột — bảng nào không có cột ấy sẽ ném 42703 SAU khi phần ghi trước đã commit"
+    ).toBe("*")
+  })
+
   it("nhận câu riêng khi chỗ gọi muốn nói rõ hơn", async () => {
     await expect(ghiPhaiTrungDong(ok([]), "Không xoá được phiếu này")).rejects.toThrow(
       "Không xoá được phiếu này"

@@ -106,8 +106,26 @@ function orFn(v) {
   return (r) => fs.some((f) => f(r))
 }
 
+/**
+ * Trigger `tim_kd` của mig 177, chép sang đây: bảng → cột ghép, bỏ dấu
+ * theo đúng luật `viNormalize` / `khong_dau()`.
+ */
+const TIM_KD = {
+  products: ["sku", "name", "barcode"],
+  customers: ["store_name", "owner_name", "phone", "tax_code"],
+  suppliers: ["name", "code", "phone", "tax_code"],
+}
+const khongDau = (v) => String(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().replace(/\s+/g, " ").trim()
+function ganTimKd(table, row) {
+  const cot = TIM_KD[table]
+  if (cot && row && typeof row === "object") row.tim_kd = khongDau(cot.map((c) => row[c] ?? "").join(" "))
+  return row
+}
+
 export function createFakeSupabase({ tables, rpc = {}, users }) {
   const db = structuredClone(tables)
+  for (const t of Object.keys(TIM_KD)) for (const r of db[t] ?? []) ganTimKd(t, r)
   const requests = []
   let seq = 1
   const newId = () => `00000000-0000-4000-8000-${String(seq++).padStart(12, "0")}`
@@ -211,9 +229,9 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       const out = input.map((r) => {
         if (upsert && r.id) {
           const i = rows.findIndex((x) => x.id === r.id)
-          if (i >= 0) { rows[i] = { ...rows[i], ...r }; return rows[i] }
+          if (i >= 0) { rows[i] = ganTimKd(table, { ...rows[i], ...r }); return rows[i] }
         }
-        const row = { id: newId(), created_at: new Date().toISOString(), ...r }
+        const row = ganTimKd(table, { id: newId(), created_at: new Date().toISOString(), ...r })
         rows.push(row)
         return row
       })
@@ -222,7 +240,7 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     }
     if (req.method === "PATCH") {
       const hit = rows.filter(match)
-      for (const r of hit) Object.assign(r, json)
+      for (const r of hit) ganTimKd(table, Object.assign(r, json))
       const wantObj = (req.headers.accept || "").includes("vnd.pgrst.object")
       return send(res, 200, wantObj ? hit[0] ?? null : hit)
     }

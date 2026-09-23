@@ -49,7 +49,8 @@ describe("maTheoChuoi — tra theo chuỗi bảng", () => {
     const m = await maTheoChuoi(sb, HANG.chuoi![0].buoc, "sữa", "org1")
     expect(m).toEqual({ ids: ["o1", "o2"], truncated: false })
     expect(log[0]).toMatchObject({ bang: "products", eq: ["org_id", "org1"] })
-    expect(log[0].or).toBe('sku.ilike."%sữa%",name.ilike."%sữa%"')
+    // Bảng hàng hoá có `tim_kd` (mig 177) → thêm vế bỏ dấu.
+    expect(log[0].or).toBe('sku.ilike."%sữa%",name.ilike."%sữa%",tim_kd.ilike."%sua%"')
     // Bảng dòng không có org_id — RLS lo; không được lọc org ở đây.
     expect(log[1]).toMatchObject({ bang: "sales_order_lines", in: ["product_id", ["p1", "p2"]] })
     expect(log[1].eq).toBeUndefined()

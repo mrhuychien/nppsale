@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ilikeDk } from "@/lib/search/list-search"
+import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
@@ -110,7 +110,7 @@ export default function SuppliersPage() {
           .order("name")
           .range(pg.from, pg.to)
         if (debouncedSearch) {
-          q = q.or(["name", "code"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
+          q = q.or(dieuKienTim("suppliers", ["name", "code"], debouncedSearch))
         }
         if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { dieuKienTim } from "@/lib/search/list-search"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -105,7 +106,7 @@ export default function StocktakeAdjustPage() {
         .order("name")
         .limit(15)
       const { data, error } = await (q.length >= 2
-        ? base.or(`sku.ilike.%${q}%,name.ilike.%${q}%`)
+        ? base.or(dieuKienTim("products", ["sku", "name"], q))
         : base
       ).abortSignal(controller.signal)
       if (error) {

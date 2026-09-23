@@ -110,3 +110,27 @@ test("đơn hàng: chữ tìm có dấu phẩy, ngoặc không làm hỏng truy 
   await page.getByRole("button", { name: "Bỏ Theo mã đơn hàng" }).click()
   await expect(tongDon(page)).toContainText("4 đơn hàng")
 })
+
+/** Mig 177: gõ KHÔNG DẤU vẫn ra chữ có dấu — "tom" ra "Mì tôm", "dai ly" ra "Đại lý Minh". */
+test("đơn hàng: tìm không dấu theo tên hàng và tên khách", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/orders")
+  await expect(page.getByText("DH-0001").first()).toBeVisible()
+
+  await page.getByRole("button", { name: "Tìm theo từng trường" }).click()
+  await page.getByRole("textbox", { name: "Theo mã, tên hàng", exact: true }).fill("mi tom")
+  await page.getByRole("button", { name: "Tìm kiếm" }).click()
+  await expect(tongDon(page)).toContainText("2 đơn hàng")
+  await expect(page.getByText("DH-0001")).toHaveCount(0)
+  await expect(page.getByText("DH-0002").first()).toBeVisible()
+  await expect(page.getByText("DH-0003").first()).toBeVisible()
+})
+
+test("hàng hoá: gõ không dấu ra tên có dấu", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/products")
+  await expect(page.getByText("Sữa hộp").first()).toBeVisible()
+  await page.getByPlaceholder("Tìm theo tên, SKU, nhãn hàng...").fill("sua hop")
+  await expect(page.getByText("Mì tôm")).toHaveCount(0)
+  await expect(page.getByText("Sữa hộp").first()).toBeVisible()
+})

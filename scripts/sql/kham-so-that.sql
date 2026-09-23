@@ -173,4 +173,10 @@ UNION ALL
 SELECT 16, 'Mig 176 (mặt hàng bắt buộc có đơn vị cơ sở)',
   CASE WHEN EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_base_unit_khong_rong')
        THEN 'OK — đã chặn' ELSE 'CHƯA — lưu được mặt hàng không có đơn vị, đơn tạo ra sẽ trống đơn vị' END, ''
+UNION ALL
+-- 17. Mig 177 — tìm không dấu ở máy chủ
+SELECT 17, 'Mig 177 (tìm không dấu)',
+  CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_tim_kd') = 3
+            AND NOT EXISTS (SELECT 1 FROM products WHERE tim_kd IS NULL)
+       THEN 'OK — gõ không dấu tìm được' ELSE 'CHƯA — gõ "banh" không ra "Bánh" trên danh sách' END, ''
 ) t ORDER BY stt;

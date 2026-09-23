@@ -22,6 +22,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { ID_MOI_LO } from "@/lib/supabase/aggregate"
+import { viNormalize } from "@/lib/search"
 
 /**
  * Số mã tối đa kéo về cho một lượt tra cứu phụ.
@@ -67,6 +68,27 @@ export function ilikeDk(column: string, raw: string): string {
   return `${column}.ilike."${like}"`
 }
 
+/**
+ * Bảng có cột `tim_kd` — các cột tìm được, BỎ DẤU (mig 177).
+ *
+ * ⚠ LUẬT BỎ DẤU PHẢI TRÙNG `viNormalize`. Máy chủ tính `tim_kd` bằng
+ *   `khong_dau()`; chữ gõ bỏ dấu ở đây bằng `viNormalize`. Hai bên lệch
+ *   một chữ là "banh" không ra "Bánh" — chốt tests/tim-khong-dau.test.ts
+ *   và /tmp/pgtest/t177.sql giữ chúng cùng một luật.
+ */
+export const BANG_TIM_KHONG_DAU: ReadonlySet<string> = new Set(["products", "customers", "suppliers"])
+
+/**
+ * Mệnh đề `or` tìm `raw` trong `columns` của `table` — kèm `tim_kd` khi
+ * bảng có cột ấy, để gõ không dấu vẫn ra chữ có dấu.
+ */
+export function dieuKienTim(table: string, columns: string[], raw: string): string {
+  const parts = columns.map((c) => ilikeDk(c, raw))
+  const kd = viNormalize(raw)
+  if (BANG_TIM_KHONG_DAU.has(table) && kd) parts.push(ilikeDk("tim_kd", kd))
+  return parts.join(",")
+}
+
 export interface IdMatch {
   ids: string[]
   /** Chạm trần — kết quả đang THIẾU, và màn hình phải nói ra. */
@@ -105,7 +127,7 @@ export async function idsMatching(
   let q = supabase
     .from(table)
     .select(idColumn)
-    .or(columns.map((c) => ilikeDk(c, t)).join(","))
+    .or(dieuKienTim(table, columns, t))
     // ⚠ CÓ MỐC SẮP XẾP. Không có thì hai lần gọi cùng một từ khoá có thể
     //   trả về hai tập mã khác nhau, và danh sách nhấp nháy.
     .order(idColumn)

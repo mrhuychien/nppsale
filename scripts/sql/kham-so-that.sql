@@ -168,4 +168,9 @@ UNION ALL
 SELECT 15, 'Mig 175 (đơn vị rỗng thành đơn vị cơ sở)',
   CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_don_vi_rong_la_co_so') = 3
        THEN 'OK — đã chặn' ELSE 'CHƯA — màn gửi đơn vị rỗng vẫn ghi ô trống vào đơn / hóa đơn' END, ''
+UNION ALL
+-- 16. Mig 176 — mặt hàng bắt buộc có đơn vị cơ sở
+SELECT 16, 'Mig 176 (mặt hàng bắt buộc có đơn vị cơ sở)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_base_unit_khong_rong')
+       THEN 'OK — đã chặn' ELSE 'CHƯA — lưu được mặt hàng không có đơn vị, đơn tạo ra sẽ trống đơn vị' END, ''
 ) t ORDER BY stt;

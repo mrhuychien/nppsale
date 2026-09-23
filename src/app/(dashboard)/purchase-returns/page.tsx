@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { tongChungTu } from "@/lib/orders/list-summary"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -47,6 +50,8 @@ export default function PurchaseReturnsPage() {
   const supabase = createClient()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
+  const [canhBao, setCanhBao] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const {
     columns: visibleColumns,
@@ -65,19 +70,28 @@ export default function PurchaseReturnsPage() {
     async function fetch() {
       if (!user?.org_id) return
       setLoading(true)
-      let q = supabase
-        .from("supplier_returns")
-        .select("id, return_code, return_date, warehouse_zone, total, status, supplier:suppliers(id, name, code)")
-        .eq("org_id", user.org_id)
-        .order("created_at", { ascending: false })
-      if (filter !== "all") q = q.eq("status", filter)
-      const { data , error: qErr } = await q
-      if (qErr) console.error("[purchase-returns] truy vấn lỗi:", qErr.message)
-      setRows((data as unknown as Row[]) || [])
+      /* ⚠ ĐỌC ĐỦ. Bản cũ một lệnh đọc không phân trang — PostgREST cắt ngầm
+         ở 1.000 dòng, phiếu thứ 1.001 không hiện và tổng hụt theo. */
+      const res = await fetchAllForAggregate<Row>((from, to) => {
+        // audit-ok: lỗi đi vào `res.error` ngay dưới.
+        let q = supabase
+          .from("supplier_returns")
+          .select("id, return_code, return_date, warehouse_zone, total, status, supplier:suppliers(id, name, code)", { count: "exact" })
+          .eq("org_id", user.org_id)
+          .order("created_at", { ascending: false })
+          .order("id")
+        if (filter !== "all") q = q.eq("status", filter)
+        return q.range(from, to)
+      })
+      if (res.error) console.error("[purchase-returns] truy vấn lỗi:", res.error)
+      setCanhBao(res.error ? `Không đọc được danh sách phiếu trả NCC — ${res.error}` : res.truncated ? truncationWarning() : null)
+      setRows(res.rows)
       setLoading(false)
     }
     fetch()
   }, [user?.org_id, filter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const tongPhieu = tongChungTu(canhBao ? null : rows, (r) => r.total, (r) => r.status === "cancelled")
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -114,6 +128,17 @@ export default function PurchaseReturnsPage() {
         </CardContent>
       </Card>
 
+      {canhBao && (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
+      )}
+      {!loading && (
+        <DocListTotals
+          className="rounded-xl border"
+          label="Tổng tiền trả NCC"
+          countText={`${tongPhieu.soPhieu} phiếu trả${filter === "all" ? " · không tính phiếu huỷ" : ""}`}
+          total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
+        />
+      )}
       {loading ? (
         <Skeleton className="h-64" />
       ) : rows.length === 0 ? (

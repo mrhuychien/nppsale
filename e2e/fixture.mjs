@@ -18,6 +18,17 @@ export const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
 
 export const users = [{ id: OWNER, email: "chu@npp.test", password: "matkhau-e2e" }]
 
+const homNay = () => new Date().toISOString().slice(0, 10)
+function donMau(id, code, status, total, ngay) {
+  return {
+    id, org_id: ORG, order_code: code, customer_id: KHACH, sales_user_id: OWNER, status,
+    subtotal: total, vat: 0, total, order_date: ngay, created_at: `${ngay}T08:00:00Z`,
+    payment_terms: "COD", current_workflow_stage: null,
+    customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi", route_code: null },
+    sales_user: { full_name: "Chủ NPP" },
+  }
+}
+
 export function tables() {
   return {
     organizations: [{ id: ORG, name: "NPP Thử", setup_completed: true, settings: {} }],
@@ -63,7 +74,22 @@ export function tables() {
     ],
     suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
     role_permissions: [],
-    sales_orders: [], sales_order_lines: [], returns: [], return_lines: [],
+    /* Ba đơn: hai đơn tháng này, một đơn NĂM NGOÁI — máy tính chọn "Tất cả"
+       phải thấy cả ba (lỗi cũ: lọc ngầm còn tháng này). */
+    sales_orders: [
+      donMau("o-e2e-1", "DH-0001", "submitted", 1_000_000, homNay()),
+      donMau("o-e2e-2", "DH-0002", "completed", 2_000_000, homNay()),
+      donMau("o-e2e-3", "DH-0003", "completed", 5_000_000, "2025-06-15"),
+    ],
+    sales_order_lines: [],
+    /* 60 phiếu trả × 10.000 — danh sách hiện 50 dòng/trang; tổng phải là
+       600.000 của CẢ bộ lọc (lỗi cũ: cộng trang đang hiện → 500.000). */
+    returns: Array.from({ length: 60 }, (_, i) => ({
+      id: `r-e2e-${i}`, org_id: ORG, customer_id: KHACH, status: "submitted", reason: "damaged",
+      credit_note_amount: 10000, created_at: `2026-09-${String(1 + (i % 20)).padStart(2, "0")}T08:00:00Z`,
+      customer: { store_name: "Tạp hoá Cô Ba" }, requester: { full_name: "Chủ NPP" }, order: null, invoice: null,
+    })),
+    return_lines: [],
     /* Hóa đơn có một dòng "2 thùng" (hệ số 24) — để chốt màn Sửa hóa đơn
        giữ đúng hệ số khi lập lại (lỗi cũ: nạp lại thành hệ số 1). */
     sales_invoices: [{
@@ -78,7 +104,13 @@ export function tables() {
       product: { name: "Sữa hộp", sku: "SUA1" },
     }],
     receivables: [], payables: [],
-    purchase_invoices: [], purchase_invoice_lines: [], approval_rules: [],
+    /* Phiếu nhập: 300.000 + 700.000 hoàn thành, 9.000.000 ĐÃ HUỶ — tổng 1.000.000. */
+    purchase_invoices: [
+      { id: "pi1", org_id: ORG, receipt_code: "PN-1", invoice_number: "HD1", invoice_date: "2026-09-20", status: "completed", total: 300000, warehouse_zone: "sale", created_at: "2026-09-20T08:00:00Z", supplier: { name: "Vinamilk", code: "NCC1" } },
+      { id: "pi2", org_id: ORG, receipt_code: "PN-2", invoice_number: "HD2", invoice_date: "2026-09-21", status: "draft", total: 700000, warehouse_zone: "sale", created_at: "2026-09-21T08:00:00Z", supplier: { name: "Vinamilk", code: "NCC1" } },
+      { id: "pi3", org_id: ORG, receipt_code: "PN-3", invoice_number: "HD3", invoice_date: "2026-09-22", status: "cancelled", total: 9000000, warehouse_zone: "sale", created_at: "2026-09-22T08:00:00Z", supplier: { name: "Vinamilk", code: "NCC1" } },
+    ],
+    purchase_invoice_lines: [], approval_rules: [],
   }
 }
 

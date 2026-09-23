@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { MATCH_CAP } from "@/lib/search/list-search"
+import { useIsDesktop } from "@/hooks/use-is-desktop"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -27,10 +28,12 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
 import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { openInNewTab } from "@/components/ui/new-tab-link"
 import {
   periodFrom, nextPeriod, summariseDocLines,
   type ListPeriod, type DocLineSummary,
+  kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
 import { StatusChips } from "@/components/ui/status-chips"
@@ -256,6 +259,9 @@ export default function OrdersPage() {
    * nghĩa.
    */
   const [period, setPeriod] = useState<ListPeriod>("month")
+  /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
+  const laMayTinh = useIsDesktop()
+  const kyLoc = kyDangLoc(period, laMayTinh)
   /** Mặt hàng đại diện + số dòng của từng đơn đang hiện. */
   const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được — xem `DocListSummary`. */
@@ -487,7 +493,7 @@ export default function OrdersPage() {
      * tập, còn danh sách hiện một tập khác — hai con số cạnh nhau, không
      * khớp, không ai giải thích được.
      */
-    const pFrom = periodFrom(period)
+    const pFrom = periodFrom(kyLoc)
     if (pFrom) x = x.gte("order_date", pFrom)
     if (amountMin) x = x.gte("total", parseFloat(amountMin))
     if (amountMax) x = x.lte("total", parseFloat(amountMax))
@@ -606,12 +612,12 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, period]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, kyLoc]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -684,7 +690,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -787,7 +793,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, period, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
@@ -1598,6 +1604,12 @@ export default function OrdersPage() {
         </Card>
       )}
 
+        {/* Khối thống kê (máy tính) — điện thoại có `DocListSummary` bên dưới. */}
+        <DocListTotals
+          desktopOnly
+          countText={`${pg.total} đơn hàng`}
+          total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
+        />
         {bulkBar}
         {loading ? (
           <div className="space-y-2 p-4">

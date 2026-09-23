@@ -27,6 +27,7 @@ import { ChevronDown, ChevronUp, FileText, Filter, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { MATCH_CAP } from "@/lib/search/list-search"
+import { useIsDesktop } from "@/hooks/use-is-desktop"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -57,10 +58,12 @@ import {
 import { InvoiceDrawer } from "@/components/sales-invoices/invoice-drawer"
 import { MobileInvoiceList } from "@/components/sales-invoices/mobile-invoice-list"
 import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import {
   periodFrom, nextPeriod, summariseDocLines,
   type ListPeriod, type DocLineSummary,
+  kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { vnDateKey } from "@/lib/orders/status-tone"
 import { formatCurrency } from "@/lib/utils"
@@ -123,6 +126,9 @@ export default function SalesInvoicesPage() {
    * Mặc định "Tháng này" — xem cùng khối ở màn đơn hàng.
    */
   const [period, setPeriod] = useState<ListPeriod>("month")
+  /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
+  const laMayTinh = useIsDesktop()
+  const kyLoc = kyDangLoc(period, laMayTinh)
   /** Mặt hàng đại diện của từng hóa đơn đang hiện. */
   const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được. */
@@ -271,11 +277,11 @@ export default function SalesInvoicesPage() {
        * NGÀY. Lọc riêng ở trình duyệt là dải "Tổng tiền hàng" cộng trên
        * một tập còn danh sách hiện một tập khác.
        */
-      const pFrom = periodFrom(period)
+      const pFrom = periodFrom(kyLoc)
       if (pFrom) x = x.gte("invoice_date", pFrom)
       return x
     },
-    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, period,
+    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc,
      listSearch]
   )
 
@@ -407,7 +413,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch])
+  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -679,6 +685,13 @@ export default function SalesInvoicesPage() {
           </Card>
         )}
 
+        {/* Khối thống kê (máy tính) — điện thoại có `DocListSummary` bên dưới. */}
+        <DocListTotals
+          desktopOnly
+          label="Tổng tiền hóa đơn"
+          countText={`${pg.total} hóa đơn`}
+          total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
+        />
         {loading ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12" />)}

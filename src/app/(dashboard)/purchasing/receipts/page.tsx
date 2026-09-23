@@ -3,6 +3,10 @@
 /**
  * DANH SÁCH PHIẾU NHẬP HÀNG — ba trạng thái, lọc bằng dải viên thuốc.
  *
+ * (23/09/2026: chủ nhà xin thêm dòng "Tổng tiền · N phiếu" cho mọi danh
+ * sách chứng từ — đó là `DocListTotals`, một dòng, không phải khung thẻ
+ * thống kê cũ nói dưới đây.)
+ *
  * ⚠ DÙNG `StatusChips`, KHÔNG DỰNG KHUNG THỐNG KÊ RIÊNG. Chủ nhà đã
  * chốt dải viên thuốc cho danh sách đơn hàng (20/09/2026: "cho về đơn
  * giản dễ nhìn thôi, không cần làm khung như cũ nữa"), và bài học kèm
@@ -11,6 +15,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { tongChungTu } from "@/lib/orders/list-summary"
 import Link from "next/link"
 import { Plus, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -48,6 +55,8 @@ export default function PurchaseReceiptsPage() {
 
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
+  const [canhBao, setCanhBao] = useState<string | null>(null)
   const [q, setQ] = useState("")
   /** "" = chưa chạm tab nào → hiện tất cả. */
   const [tab, setTab] = useState("")
@@ -55,14 +64,22 @@ export default function PurchaseReceiptsPage() {
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from("purchase_invoices")
-      .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, supplier:suppliers(name, code)")
-      .eq("org_id", user.org_id)
-      .order("created_at", { ascending: false })
-      .limit(500)
-    if (error) console.error("[purchasing/receipts] truy vấn lỗi:", error.message)
-    setRows(((data as unknown) as Row[]) || [])
+    /* ⚠ ĐỌC ĐỦ, KHÔNG `.limit(500)`. Bản cũ cắt ngầm ở 500 phiếu: phiếu thứ
+       501 không hiện, không tìm được, và số đếm trên các nhãn trạng thái
+       hụt theo — không có gì báo. */
+    const res = await fetchAllForAggregate<Row>((from, to) =>
+      // audit-ok: lỗi đi vào `res.error` ngay dưới.
+      supabase
+        .from("purchase_invoices")
+        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, supplier:suppliers(name, code)", { count: "exact" })
+        .eq("org_id", user.org_id)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    )
+    if (res.error) console.error("[purchasing/receipts] truy vấn lỗi:", res.error)
+    setCanhBao(res.error ? `Không đọc được danh sách phiếu nhập — ${res.error}` : res.truncated ? truncationWarning() : null)
+    setRows(res.rows)
     setLoading(false)
   }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -83,6 +100,12 @@ export default function PurchaseReceiptsPage() {
       return viMatchAllWords(term, r.receipt_code, r.invoice_number, r.supplier?.name, r.supplier?.code)
     })
   }, [rows, q, tab])
+
+  const tongPhieu = tongChungTu(
+    canhBao ? null : shown,
+    (r) => r.total,
+    (r) => r.status === "cancelled"
+  )
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -113,6 +136,17 @@ export default function PurchaseReceiptsPage() {
         />
       </div>
 
+      {canhBao && (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
+      )}
+      {!loading && (
+        <DocListTotals
+          className="rounded-xl border"
+          label="Tổng tiền phiếu nhập"
+          countText={`${tongPhieu.soPhieu} phiếu nhập${tab === "" || tab === "all" ? " · không tính phiếu huỷ" : ""}`}
+          total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
+        />
+      )}
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14" />)}

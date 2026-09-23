@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { tongChungTu } from "@/lib/orders/list-summary"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -42,24 +45,38 @@ export default function CashReceiptsListPage() {
   const supabase = createClient()
   const [receipts, setReceipts] = useState<CashReceipt[]>([])
   const [loading, setLoading] = useState(true)
+  /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
+  const [canhBao, setCanhBao] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data, error: dataErr } = await supabase
-        .from("cash_receipts")
-        .select(
-          "id, receipt_code, receipt_date, status, expected_amount, submitted_amount, received_at, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)"
-        )
-        .order("created_at", { ascending: false })
-      if (dataErr) console.error("[finance/cash-receipts] truy vấn lỗi:", dataErr.message)
+      /* ⚠ ĐỌC ĐỦ. Bản cũ một lệnh đọc không phân trang — PostgREST cắt ngầm
+         ở 1.000 phiếu; phiếu thứ 1.001 không hiện và tổng hụt theo. */
+      const res = await fetchAllForAggregate<CashReceipt>((from, to) =>
+        // audit-ok: lỗi đi vào `res.error` ngay dưới.
+        supabase
+          .from("cash_receipts")
+          .select(
+            "id, receipt_code, receipt_date, status, expected_amount, submitted_amount, received_at, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)",
+            { count: "exact" }
+          )
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(from, to)
+      )
+      if (res.error) console.error("[finance/cash-receipts] truy vấn lỗi:", res.error)
       if (!cancelled) {
-        setReceipts((data as unknown as CashReceipt[]) || [])
+        setCanhBao(res.error ? `Không đọc được danh sách phiếu thu — ${res.error}` : res.truncated ? truncationWarning() : null)
+        setReceipts(res.rows)
         setLoading(false)
       }
     })()
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Phiếu đã huỷ (`voided`) không vào tổng. */
+  const tongPhieu = tongChungTu(canhBao ? null : receipts, (r) => r.expected_amount, (r) => r.status === "voided")
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
@@ -79,6 +96,17 @@ export default function CashReceiptsListPage() {
         )}
       </PageHeader>
 
+      {canhBao && (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
+      )}
+      {receipts.length > 0 && (
+        <DocListTotals
+          className="rounded-xl border"
+          label="Tổng tiền phiếu thu"
+          countText={`${tongPhieu.soPhieu} phiếu thu · không tính phiếu huỷ`}
+          total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
+        />
+      )}
       {receipts.length === 0 ? (
         <EmptyState
           icon={<Receipt className="h-8 w-8 text-muted-foreground" />}

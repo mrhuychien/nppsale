@@ -336,7 +336,9 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
   /** Hàng đợi việc thì mở ra ở việc phải làm, không phải ở sổ tra cứu. */
   it("danh sách mở ra ở tab Chờ xử lý và lọc theo trạng thái ở máy chủ", () => {
     expect(RET_LIST).toContain('useState<string>("submitted")')
-    expect(RET_LIST).toContain('q = q.eq("status", statusFilter)')
+    // Lọc trạng thái nằm trong `apDungLoc` — MỘT bộ lọc cho cả danh sách lẫn
+    // phép cộng tổng khoản có (23/09/2026).
+    expect(RET_LIST).toMatch(/(q|x) = \1\.eq\("status", statusFilter\)/)
     expect(RET_LIST).toContain("RETURN_TABS.map(")
   })
 })

@@ -42,6 +42,8 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { RETURN_REASONS } from "@/lib/constants"
 import { RotateCcw, PieChart, Search, Info, Plus } from "lucide-react"
 import Link from "next/link"
@@ -155,6 +157,19 @@ export default function ReturnsPage() {
     ]
   )
 
+  /**
+   * MỘT bộ lọc cho cả danh sách lẫn phép cộng tổng — hai đường lọc riêng là
+   * hai con số cạnh nhau không khớp nhau.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any }>(q: Q): Q => {
+    let x = q
+    if (listSearch.filter) x = x.or(listSearch.filter)
+    if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
+    if (statusFilter !== "all") x = x.eq("status", statusFilter)
+    return x
+  }
+
   useEffect(() => {
     let cancelled = false
     async function fetch() {
@@ -176,13 +191,7 @@ export default function ReturnsPage() {
        *   `pg.setTotal(count)` vẫn ghi tổng của phép đếm CHƯA lọc, nên
        *   phân trang hứa 8 trang trong khi chỉ có vài dòng hiện ra.
        */
-      if (listSearch.filter) q = q.or(listSearch.filter)
-      if (filterActive("reason") && reasonFilter !== "all") {
-        q = q.eq("reason", reasonFilter)
-      }
-      if (statusFilter !== "all") {
-        q = q.eq("status", statusFilter)
-      }
+      q = apDungLoc(q)
       const { data, count , error: qErr } = await q
       if (qErr) console.error("[returns] truy vấn lỗi:", qErr.message)
       if (cancelled) return
@@ -197,6 +206,40 @@ export default function ReturnsPage() {
     return () => { cancelled = true }
   }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
+   *   Bản cũ cộng 50 dòng đang hiện rồi gọi là "Tổng credit" — một con số
+   *   nhỏ hơn sự thật mà không có gì báo. Nay cộng bằng truy vấn riêng,
+   *   cùng bộ lọc với danh sách; chạm trần hoặc lỗi thì `null` → "—".
+   */
+  const [tongKhoanCo, setTongKhoanCo] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!listSearch.ready) return
+      setTongKhoanCo(null)
+      const res = await fetchAllForAggregate<{ credit_note_amount: number | string | null }>((from, to) =>
+        // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
+        apDungLoc(
+          supabase
+            .from("returns")
+            .select("credit_note_amount", { count: "exact" })
+            .order("created_at", { ascending: false })
+            .order("id")
+            .range(from, to)
+        )
+      )
+      if (cancelled) return
+      if (res.error || res.truncated) {
+        console.warn("[returns] không cộng được tổng khoản có:", res.error ?? "vượt trần")
+        setTongKhoanCo(null)
+        return
+      }
+      setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
+    })()
+    return () => { cancelled = true }
+  }, [debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
 
@@ -205,10 +248,6 @@ export default function ReturnsPage() {
   const getReasonLabel = (reason: string | null) =>
     RETURN_REASONS.find((r) => r.value === reason)?.label || reason || "—"
 
-  const totalCredit = filtered.reduce(
-    (s, r) => s + Number(r.credit_note_amount || 0),
-    0
-  )
 
   return (
     <div className="space-y-4">
@@ -344,13 +383,13 @@ export default function ReturnsPage() {
                 onReset={resetColumns}
               />
             </div>
-            <span className="text-xs text-muted-foreground sm:ml-2">
-              {pg.total} • Tổng credit{" "}
-              <span className="font-semibold text-foreground">
-                {formatCurrency(totalCredit)}
-              </span>
-            </span>
           </div>
+          <DocListTotals
+            className="mb-3 rounded-xl border"
+            label="Tổng tiền trả hàng"
+            countText={`${pg.total} phiếu trả`}
+            total={tongKhoanCo === null ? null : formatCurrency(tongKhoanCo)}
+          />
 
           {loading ? (
             <Skeleton className="h-64" />

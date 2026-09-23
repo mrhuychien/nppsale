@@ -178,3 +178,38 @@ export function shortTermLabel(terms: string | null | undefined): string {
 export function isCreditTerm(terms: string | null | undefined): boolean {
   return !!terms && terms !== "COD"
 }
+
+/**
+ * KHOẢNG THỜI GIAN THỰC SỰ ĐANG LỌC.
+ *
+ * ⚠ VIÊN THUỐC KHOẢNG THỜI GIAN CHỈ CÓ Ở ĐIỆN THOẠI. Máy tính có bộ lọc
+ *   riêng (Hôm nay / 7 ngày / 30 ngày / Tất cả). Bản trước áp viên thuốc
+ *   — mặc định "Tháng này" — cho cả máy tính: danh sách đơn / hóa đơn trên
+ *   máy tính bị lọc NGẦM còn tháng này, chọn "Tất cả" vẫn chỉ ra tháng
+ *   này, và không có nút nào nói ra. Tìm ra khi làm khối thống kê
+ *   (23/09/2026).
+ */
+export function kyDangLoc(period: ListPeriod, laMayTinh: boolean): ListPeriod {
+  return laMayTinh ? "all" : period
+}
+
+/**
+ * Cộng tổng tiền một danh sách chứng từ ĐÃ TẢI ĐỦ — cho các màn tải hết rồi
+ * lọc ở trình duyệt (phiếu nhập, trả NCC, phiếu thu).
+ *
+ * ⚠ PHIẾU ĐÃ HUỶ KHÔNG VÀO TỔNG. Phiếu huỷ là chứng từ không còn hiệu lực;
+ *   cộng nó vào "Tổng tiền" ở tab Tất cả là thổi phồng con số. Số phiếu
+ *   thì vẫn đếm cả, đúng như danh sách đang hiện.
+ * ⚠ Chỉ đúng khi danh sách ĐÃ ĐỦ — nơi gọi phải tải bằng
+ *   `fetchAllForAggregate` và truyền `null` khi chạm trần.
+ */
+export function tongChungTu<T>(
+  rows: readonly T[] | null,
+  tien: (r: T) => number | string | null | undefined,
+  daHuy: (r: T) => boolean
+): { soPhieu: number; tong: number | null } {
+  if (!rows) return { soPhieu: 0, tong: null }
+  let tong = 0
+  for (const r of rows) if (!daHuy(r)) tong += Number(tien(r)) || 0
+  return { soPhieu: rows.length, tong: Math.round(tong) }
+}

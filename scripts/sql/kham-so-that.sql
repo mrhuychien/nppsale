@@ -163,4 +163,9 @@ UNION ALL
 SELECT 14, 'Mig 174 (hóa đơn tự tra hệ số quy đổi)',
   CASE WHEN position('_chuan_he_so_dong_hoa_don' in pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
        THEN 'OK — máy chủ tự tra' ELSE 'CHƯA — màn gửi sai hệ số là kho trừ sai' END, ''
+UNION ALL
+-- 15. Mig 175 — dòng hàng không được có đơn vị rỗng
+SELECT 15, 'Mig 175 (đơn vị rỗng thành đơn vị cơ sở)',
+  CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_don_vi_rong_la_co_so') = 3
+       THEN 'OK — đã chặn' ELSE 'CHƯA — màn gửi đơn vị rỗng vẫn ghi ô trống vào đơn / hóa đơn' END, ''
 ) t ORDER BY stt;

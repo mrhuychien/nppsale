@@ -124,6 +124,15 @@ export function StockBalanceTable() {
         supabase
           .from("v_stock_balance_by_zone")
           .select("product_id, warehouse_zone, qty_in_base_uom, value", { count: "exact" })
+          // ⚠ VIEW GROUP BY KHÔNG CÓ THỨ TỰ CỐ ĐỊNH. `fetchAllForAggregate`
+          // gọi các trang SONG SONG; không `.order()` thì Postgres được phép
+          // trả mỗi trang một thứ tự (nhất là khi `batches` đang bị ghi) —
+          // dòng tồn lặp hoặc sót. Khoá của view là (org_id, product_id,
+          // warehouse_zone) — đúng cột GROUP BY (mig 107) — nên xếp theo đủ
+          // bộ ba ấy là duy nhất.
+          .order("org_id")
+          .order("product_id")
+          .order("warehouse_zone")
           .range(from, to)
       ),
       fetchAllForAggregate<ProductMeta>((from, to) =>
@@ -133,6 +142,8 @@ export function StockBalanceTable() {
             count: "exact",
           })
           .eq("status", "active")
+          // ⚠ Mốc `id` duy nhất — cùng lý do với truy vấn trên.
+          .order("id")
           .range(from, to)
       ),
     ]).then(([balRes, prodRes]) => {

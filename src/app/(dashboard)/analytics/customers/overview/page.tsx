@@ -17,6 +17,10 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { demHoacNem } from "../../_shared/doc-du"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface CustomerRow {
   id: string
@@ -38,25 +42,73 @@ export default function CustomersOverviewPage() {
   const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
 
+  const [totalCustomers, setTotalCustomers] = useState(0)
+  const [newCustomers, setNewCustomers] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
+    setLoadError(null)
     const prev = previousRange(range)
-    const [orderList, prevOrderList, customersRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchDeliveredOrders(supabase, user.org_id, prev),
-      supabase
-        .from("customers")
-        .select("id, store_name, channel, group_id, created_at, status")
-        .eq("org_id", user.org_id),
-    ])
-    const qErr = ([customersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[customers/overview] truy vấn lỗi:", qErr.message)
-    setOrders(orderList)
-    setPrevOrders(prevOrderList)
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setLoading(false)
+    const fromIso = new Date(range.from + "T00:00:00").toISOString()
+    const toIso = new Date(range.to + "T23:59:59").toISOString()
+    /**
+     * ⚠ MỘT `try/catch` CHO CẢ LƯỢT. Bản cũ đọc `customers` bằng
+     *   `.select()` trơn: "Tổng khách hàng" dừng ở 1.000 và "Khách mới"
+     *   đếm thiếu mà không có dòng lỗi nào. Nay:
+     *   - HAI CON SỐ ĐẾM đi bằng `count: "exact", head: true` — đúng tuyệt
+     *     đối, không tải dòng nào, không phụ thuộc trần 20.000.
+     *   - DANH SÁCH (để tra tên và tìm khách Active không mua) đọc đủ theo
+     *     trang, mốc `id` duy nhất; chạm trần thì nói ra.
+     *   - Đọc hỏng ở BẤT KỲ đâu (kể cả `fetchDeliveredOrders`) → màn hình
+     *     báo lỗi, không vẽ số 0.
+     */
+    try {
+      const [orderList, prevOrderList, cust, total, moi] = await Promise.all([
+        fetchDeliveredOrders(supabase, orgId, range),
+        fetchDeliveredOrders(supabase, orgId, prev),
+        docDuHoacNem<CustomerRow>(
+          (from, to) =>
+            supabase
+              .from("customers")
+              .select("id, store_name, channel, group_id, created_at, status", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh sách khách hàng"
+        ),
+        demHoacNem(
+          supabase
+            .from("customers")
+            .select("id", { count: "exact", head: true })
+            .eq("org_id", orgId),
+          "đếm khách hàng"
+        ),
+        demHoacNem(
+          supabase
+            .from("customers")
+            .select("id", { count: "exact", head: true })
+            .eq("org_id", orgId)
+            .gte("created_at", fromIso)
+            .lte("created_at", toIso),
+          "đếm khách hàng mới"
+        ),
+      ])
+      setOrders(orderList)
+      setPrevOrders(prevOrderList)
+      setCustomers(cust.rows)
+      setTruncated(cust.truncated)
+      setTotalCustomers(total)
+      setNewCustomers(moi)
+    } catch (e) {
+      console.error("[customers/overview] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu khách hàng"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -74,13 +126,8 @@ export default function CustomersOverviewPage() {
     const prevBuyers = new Set(prevOrders.map((o) => o.customer_id))
     const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0)
     const prevRevenue = prevOrders.reduce((s, o) => s + Number(o.total || 0), 0)
-    const fromIso = new Date(range.from + "T00:00:00").toISOString()
-    const toIso = new Date(range.to + "T23:59:59").toISOString()
-    const newCustomers = customers.filter(
-      (c) => c.created_at >= fromIso && c.created_at <= toIso
-    ).length
     return {
-      totalCustomers: customers.length,
+      totalCustomers,
       activeCustomers: buyers.size,
       prevActive: prevBuyers.size,
       newCustomers,
@@ -89,7 +136,7 @@ export default function CustomersOverviewPage() {
       arpu: buyers.size > 0 ? revenue / buyers.size : 0,
       prevArpu: prevBuyers.size > 0 ? prevRevenue / prevBuyers.size : 0,
     }
-  }, [orders, prevOrders, customers, range])
+  }, [orders, prevOrders, totalCustomers, newCustomers])
 
   const topCustomers = useMemo(() => {
     const cur = new Map<string, { revenue: number; orders: number }>()
@@ -139,22 +186,36 @@ export default function CustomersOverviewPage() {
     )
   }
 
+  const header = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Tổng quan khách hàng</h1>
+        <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
+      </div>
+      <DateRangePicker
+        value={range}
+        preset={preset}
+        onChange={(p, r) => {
+          setPreset(p)
+          setRange(r)
+        }}
+      />
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Tổng quan khách hàng</h1>
-          <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
-        </div>
-        <DateRangePicker
-          value={range}
-          preset={preset}
-          onChange={(p, r) => {
-            setPreset(p)
-            setRange(r)
-          }}
-        />
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard

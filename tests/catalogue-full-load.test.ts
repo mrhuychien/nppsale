@@ -73,19 +73,19 @@ const MIEN_TRU = [
  *
  * ⚠ CÓ TÊN, KHÔNG GIẤU. Chủ nhà báo lỗi ở màn Đề xuất đặt hàng
  * (21/09/2026); tôi sửa nốt sáu màn phiếu và màn Tra soát vì chúng
- * cùng một gốc và hỏng trong IM LẶNG. Chín màn dưới đây — phân tích,
+ * cùng một gốc và hỏng trong IM LẶNG. Các màn dưới đây —
  * cấu hình thưởng, và mấy màn luồng cũ — chưa được yêu cầu, nên ghi nợ chứ
  * không sửa lén.
+ *
+ * ⚠ 23/09/2026: bốn màn Phân tích (Tổng quan kinh doanh, Hàng hóa tổng
+ * quan / nhóm hàng / tồn kho) đã đọc đủ theo trang — xoá tên. Chốt chạy
+ * mã thật cho chúng ở `tests/phan-tich-doc-du.test.ts`.
  *
  * ⚠ SỬA MÀN NÀO THÌ XOÁ TÊN MÀN ẤY. Chốt ngay dưới đòi mỗi tên ở đây
  * phải THẬT SỰ còn đọc kiểu cũ — nên không nhét được một màn đã sửa
  * vào đây để né, và sửa xong mà quên xoá thì cũng đỏ.
  */
 const CON_NO_DOC_DANH_MUC = [
-  "src/app/(dashboard)/analytics/business/overview/page.tsx",
-  "src/app/(dashboard)/analytics/products/categories/page.tsx",
-  "src/app/(dashboard)/analytics/products/overview/page.tsx",
-  "src/app/(dashboard)/analytics/products/stock/page.tsx",
   "src/app/(dashboard)/hr/bonus-config/page.tsx",
   "src/app/(dashboard)/inventory/batches/new/page.tsx",
   "src/app/(dashboard)/inventory/stock-out/page.tsx",

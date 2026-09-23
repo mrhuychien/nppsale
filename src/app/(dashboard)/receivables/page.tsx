@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
+import { errorMessage } from "@/lib/errors"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -66,6 +67,9 @@ export default function ReceivablesPage() {
   // dữ liệu về trình duyệt nữa.
   const [summary, setSummary] = useState<AgingSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // ⚠ Lỗi RIÊNG của phần tổng, tách khỏi `loadError` (lỗi danh sách): hai
+  // lượt đọc độc lập, gộp chung thì lượt này xoá lỗi của lượt kia.
+  const [summaryError, setSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const pg = usePagination(50)
   const supabase = createClient()
@@ -82,7 +86,17 @@ export default function ReceivablesPage() {
   useEffect(() => {
     async function loadSummary() {
       const { data, error } = await supabase.rpc("receivables_summary").maybeSingle()
-      if (error) console.error("[app/receivables] receivables_summary lỗi:", error.message)
+      /* ⚠ LỖI THÌ NÓI RA, KHÔNG VẼ 0đ. Bản cũ chỉ `console.error` rồi để
+         `summary` null — tiêu đề ghi "Tổng công nợ: 0 ₫" và bốn ô tuổi nợ
+         đều 0, trông y hệt một sổ sạch nợ. Máy chủ chưa chạy migration 093
+         (PGRST202) cũng rơi đúng vào đây. */
+      if (error) {
+        console.error("[app/receivables] receivables_summary lỗi:", error.message)
+        setSummary(null)
+        setSummaryError(errorMessage(error, "Không tải được tổng công nợ"))
+        return
+      }
+      setSummaryError(null)
       setSummary((data as AgingSummary | null) ?? null)
     }
     loadSummary()
@@ -103,6 +117,9 @@ export default function ReceivablesPage() {
           // nullsFirst: false để khoản KHÔNG đặt hạn xuống cuối — không có
           // hạn thì không thể là khoản gấp nhất.
           .order("due_date", { ascending: true, nullsFirst: false })
+          // ⚠ Mốc phụ `id`: nhiều khoản cùng một hạn — thiếu nó thì ranh
+          // giới trang do máy chủ tự quyết, khoản nợ lặp / sót giữa hai trang.
+          .order("id")
           .range(pg.from, pg.to)
       const res = await selectResilient<Receivable>(
         build,
@@ -168,7 +185,7 @@ export default function ReceivablesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={isSales ? "Công nợ của tôi" : "Công nợ"} description={`Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
+      <PageHeader title={isSales ? "Công nợ của tôi" : "Công nợ"} description={summaryError ? "Tổng công nợ: không tải được" : `Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link href="/receivables/aging">Sổ chi tiết</Link></Button>
           <Button variant="outline" asChild><Link href="/receivables/collect">Thu tiền</Link></Button>
@@ -184,8 +201,18 @@ export default function ReceivablesPage() {
         </div>
       )}
 
-      {/* Aging Chart */}
-      <Card>
+      {summaryError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
+        >
+          <p className="font-semibold">Không tải được tổng công nợ và tuổi nợ</p>
+          <p className="mt-0.5 break-words">{summaryError}</p>
+        </div>
+      )}
+
+      {/* Aging Chart — ẩn khi phần tổng đọc hỏng: bốn ô 0đ là số sai. */}
+      <Card className={summaryError ? "hidden" : undefined}>
         <CardContent className="p-4 lg:p-6">
           <div className="mb-4 flex items-end justify-between">
             <div>

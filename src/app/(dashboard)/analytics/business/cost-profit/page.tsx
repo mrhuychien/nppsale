@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -68,60 +70,84 @@ export default function CostProfitPage() {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [prevExpenses, setPrevExpenses] = useState<ExpenseRow[]>([])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
+  /**
+   * ⚠ CHI PHÍ ĐỌC HỎNG THÌ NÉM. Bản cũ `console.error` rồi trả mảng rỗng —
+   *   một lần rớt mạng thành "Chi phí 0đ" và lợi nhuận ròng phồng lên đúng
+   *   bằng tổng chi phí thật.
+   * ⚠ MỐC PHÂN TRANG `expense_date` + `id`. Các trang chạy SONG SONG; không
+   *   có thứ tự duy nhất thì Postgres trả mỗi trang một kiểu — khoản chi
+   *   lặp ở hai trang, khoản khác không ở trang nào.
+   */
   const fetchExpenses = useCallback(
-    async (orgId: string, r: DateRange): Promise<ExpenseRow[]> => {
-      const res = await fetchAllForAggregate((from, to) =>
-        supabase
-          .from("expenses")
-          .select("amount, expense_date, category:expense_categories(bucket)", { count: "exact" })
-          .eq("org_id", orgId)
-          .gte("expense_date", r.from)
-          .lte("expense_date", r.to)
-          .range(from, to)
-      )
-      if (res.error) console.error("[business/cost-profit] truy vấn lỗi:", res.error)
-      const data = res.rows
+    async (orgId: string, r: DateRange): Promise<{ rows: ExpenseRow[]; truncated: boolean }> => {
       type Row = {
         amount: number
         expense_date: string
         category?: { bucket?: string } | null
       }
-      return ((data as unknown) as Row[] || []).map((e) => ({
-        amount: Number(e.amount || 0),
-        expense_date: e.expense_date,
-        bucket: e.category?.bucket || "other",
-      }))
+      const res = await docDuHoacNem<Row>(
+        (from, to) =>
+          supabase
+            .from("expenses")
+            .select("amount, expense_date, category:expense_categories(bucket)", { count: "exact" })
+            .eq("org_id", orgId)
+            .gte("expense_date", r.from)
+            .lte("expense_date", r.to)
+            .order("expense_date")
+            .order("id")
+            .range(from, to),
+        "đọc chi phí"
+      )
+      return {
+        rows: res.rows.map((e) => ({
+          amount: Number(e.amount || 0),
+          expense_date: e.expense_date,
+          bucket: e.category?.bucket || "other",
+        })),
+        truncated: res.truncated,
+      }
     },
     [supabase]
   )
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
+    setLoadError(null)
     const prev = previousRange(range)
-    const [orders, prevOrders, retVal, prevRetVal, cogsRes, prevCogsRes, exp, prevExp] =
-      await Promise.all([
-        fetchDeliveredOrders(supabase, user.org_id, range),
-        fetchDeliveredOrders(supabase, user.org_id, prev),
-        fetchReturnsValue(supabase, user.org_id, range),
-        fetchReturnsValue(supabase, user.org_id, prev),
-        fetchCogsForRange(supabase, user.org_id, range),
-        fetchCogsForRange(supabase, user.org_id, prev),
-        fetchExpenses(user.org_id, range),
-        fetchExpenses(user.org_id, prev),
-      ])
-    const qErr = ([cogsRes, prevCogsRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[business/cost-profit] truy vấn lỗi:", qErr.message)
-    setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
-    setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
-    setReturnsValue(retVal)
-    setPrevReturnsValue(prevRetVal)
-    setCogs(cogsRes.cogs)
-    setPrevCogs(prevCogsRes.cogs)
-    setExpenses(exp)
-    setPrevExpenses(prevExp)
-    setLoading(false)
+    /* ⚠ MỘT `try/catch` CHO CẢ LƯỢT — kể cả các hàm ở `lib/analytics/sales`
+       (đang chuyển sang NÉM khi đọc hỏng). Bắt để BÁO, không phải để nuốt. */
+    try {
+      const [orders, prevOrders, retVal, prevRetVal, cogsRes, prevCogsRes, exp, prevExp] =
+        await Promise.all([
+          fetchDeliveredOrders(supabase, orgId, range),
+          fetchDeliveredOrders(supabase, orgId, prev),
+          fetchReturnsValue(supabase, orgId, range),
+          fetchReturnsValue(supabase, orgId, prev),
+          fetchCogsForRange(supabase, orgId, range),
+          fetchCogsForRange(supabase, orgId, prev),
+          fetchExpenses(orgId, range),
+          fetchExpenses(orgId, prev),
+        ])
+      setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
+      setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
+      setReturnsValue(retVal)
+      setPrevReturnsValue(prevRetVal)
+      setCogs(cogsRes.cogs)
+      setPrevCogs(prevCogsRes.cogs)
+      setExpenses(exp.rows)
+      setPrevExpenses(prevExp.rows)
+      setTruncated(exp.truncated || prevExp.truncated)
+    } catch (e) {
+      console.error("[business/cost-profit] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase, fetchExpenses])
 
   useEffect(() => {
@@ -197,22 +223,36 @@ export default function CostProfitPage() {
     )
   }
 
+  const header = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Chi phí - Lợi nhuận</h1>
+        <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
+      </div>
+      <DateRangePicker
+        value={range}
+        preset={preset}
+        onChange={(p, r) => {
+          setPreset(p)
+          setRange(r)
+        }}
+      />
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Chi phí - Lợi nhuận</h1>
-          <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
-        </div>
-        <DateRangePicker
-          value={range}
-          preset={preset}
-          onChange={(p, r) => {
-            setPreset(p)
-            setRange(r)
-          }}
-        />
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard

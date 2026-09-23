@@ -18,6 +18,30 @@ export interface PnlData {
 }
 
 /**
+ * Lỗi của một hàm cộng sổ phía database.
+ *
+ * ⚠ NÉM, KHÔNG TRẢ SỐ 0. Bản cũ `if (error) console.error` rồi đọc
+ *   `data || {}` — một lần rớt mạng, hay máy chủ CHƯA CHẠY migration 093
+ *   (PGRST202 "Could not find the function"), là báo cáo Lãi lỗ / Cân đối /
+ *   Dòng tiền hiện toàn 0đ, trông y hệt một kỳ không phát sinh. Với báo cáo
+ *   tài chính, con số sai im lặng tệ hơn không có số.
+ *
+ * ⚠ GIỮ `code` / `details` / `hint` của PostgREST trên lỗi ném ra, để
+ *   `errorMessage()` ở màn hình dịch được đúng câu (vd. PGRST202 → "máy chủ
+ *   chưa chạy migration mới").
+ */
+function loiRpc(
+  ten: string,
+  error: { message: string; code?: string; details?: string; hint?: string }
+): Error {
+  return Object.assign(new Error(`${ten}: ${error.message}`), {
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  })
+}
+
+/**
  * Profit & Loss for a date range. Revenue = sum of delivered sales orders.
  * COGS = sum of absolute export quantity × unit_cost from posted
  * stock_entry_lines of type 'export' (same period). Expenses pulled from
@@ -38,7 +62,7 @@ export async function fetchPnl(
   const { data, error } = await supabase
     .rpc("finance_pnl", { p_from: period.from, p_to: period.to })
     .maybeSingle()
-  if (error) console.error("[lib/finance] finance_pnl lỗi:", error.message)
+  if (error) throw loiRpc("finance_pnl", error)
 
   const r = (data || {}) as Partial<Record<string, number>>
   const num = (k: string) => Number(r[k] ?? 0)
@@ -120,7 +144,7 @@ export async function fetchBalanceSheet(
   const { data, error } = await supabase
     .rpc("finance_balance_sheet", { p_as_of: asOf })
     .maybeSingle()
-  if (error) console.error("[lib/finance] finance_balance_sheet lỗi:", error.message)
+  if (error) throw loiRpc("finance_balance_sheet", error)
 
   const r = (data || {}) as Partial<Record<string, number>>
   const cash = Number(r.cash ?? 0)
@@ -175,7 +199,7 @@ export async function fetchCashFlow(
   const { data, error } = await supabase
     .rpc("finance_cash_flow", { p_from: period.from, p_to: period.to })
     .maybeSingle()
-  if (error) console.error("[lib/finance] finance_cash_flow lỗi:", error.message)
+  if (error) throw loiRpc("finance_cash_flow", error)
 
   const r = (data || {}) as Partial<Record<string, number>>
   const cashFromCustomers = Number(r.cash_from_customers ?? 0)

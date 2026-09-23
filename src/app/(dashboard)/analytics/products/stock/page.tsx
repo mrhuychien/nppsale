@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -35,34 +37,59 @@ export default function ProductsStockPage() {
   const [batches, setBatches] = useState<BatchRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
-    const [batchesRes, productsRes] = await Promise.all([
-      // Cộng giá trị tồn → phải lấy đủ, server chỉ trả 1.000 dòng mỗi lần.
-      fetchAllForAggregate((from, to) =>
-        supabase
-          .from("batches")
-          .select(
-            "id, product_id, batch_code, expires_at, qty_on_hand, unit_cost, status",
-            { count: "exact" }
-          )
-          .eq("org_id", user.org_id)
-          .gt("qty_on_hand", 0)
-          .range(from, to)
-      ),
-      supabase
-        .from("products")
-        .select("id, sku, name, category, shelf_life_days")
-        .eq("org_id", user.org_id),
-    ])
-    if (batchesRes.error) console.error("[products/stock] truy vấn lỗi:", batchesRes.error)
-    const qErr = ([productsRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[products/stock] truy vấn lỗi:", qErr.message)
-    setBatches(batchesRes.rows as BatchRow[])
-    setProducts((productsRes.data as ProductRow[]) || [])
-    setLoading(false)
+    setLoadError(null)
+    /**
+     * ⚠ LÔ HÀNG: MỐC `id` DUY NHẤT. `batches` là bảng bị ghi LIÊN TỤC (mỗi
+     *   lần xuất / nhập đổi `qty_on_hand`). Bản cũ phân trang song song mà
+     *   không `.order()` — mỗi trang một thứ tự, lô lặp hoặc sót, và "Giá
+     *   trị tồn" lệch mà không ai biết.
+     * ⚠ DANH MỤC HÀNG: ĐỌC ĐỦ. `.select()` trơn cắt ở 1.000 mã; lô của mã
+     *   thứ 1.001 trở đi hiện không tên, không nhóm.
+     * ⚠ Đọc hỏng → báo lỗi, không vẽ "Giá trị tồn 0đ".
+     */
+    try {
+      const [batchesRes, productsRes] = await Promise.all([
+        docDuHoacNem<BatchRow>(
+          (from, to) =>
+            supabase
+              .from("batches")
+              .select(
+                "id, product_id, batch_code, expires_at, qty_on_hand, unit_cost, status",
+                { count: "exact" }
+              )
+              .eq("org_id", orgId)
+              .gt("qty_on_hand", 0)
+              .order("id")
+              .range(from, to),
+          "đọc lô hàng tồn"
+        ),
+        docDuHoacNem<ProductRow>(
+          (from, to) =>
+            supabase
+              .from("products")
+              .select("id, sku, name, category, shelf_life_days", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh mục hàng"
+        ),
+      ])
+      setBatches(batchesRes.rows)
+      setProducts(productsRes.rows)
+      setTruncated(batchesRes.truncated || productsRes.truncated)
+    } catch (e) {
+      console.error("[products/stock] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu tồn kho"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, supabase])
 
   useEffect(() => {
@@ -147,12 +174,26 @@ export default function ProductsStockPage() {
     )
   }
 
+  const header = (
+    <div>
+      <h1 className="text-2xl font-bold text-foreground">Tồn kho</h1>
+      <p className="text-sm text-muted-foreground">Số liệu tức thời tại thời điểm hiện tại</p>
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Tồn kho</h1>
-        <p className="text-sm text-muted-foreground">Số liệu tức thời tại thời điểm hiện tại</p>
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="SKU đang tồn" value={stats.skuOnHand} format="number" changePct={null} avgLabel="Số lô" avgValue={stats.batchCount} />

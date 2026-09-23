@@ -17,6 +17,9 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { fetchDeliveredOrders, fetchOrderLines, type SalesOrderLineRow } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface ProductRow {
   id: string
@@ -36,26 +39,52 @@ export default function ProductsCategoriesPage() {
   const [prevLines, setPrevLines] = useState<SalesOrderLineRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
+    setLoadError(null)
     const prev = previousRange(range)
-    const [orders, prevOrders, productsRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchDeliveredOrders(supabase, user.org_id, prev),
-      supabase.from("products").select("id, name, category, brand").eq("org_id", user.org_id),
-    ])
-    const qErr = ([productsRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[products/categories] truy vấn lỗi:", qErr.message)
-    const [lineList, prevLineList] = await Promise.all([
-      fetchOrderLines(supabase, orders.map((o) => o.id)),
-      fetchOrderLines(supabase, prevOrders.map((o) => o.id)),
-    ])
-    setLines(lineList)
-    setPrevLines(prevLineList)
-    setProducts((productsRes.data as ProductRow[]) || [])
-    setLoading(false)
+    /**
+     * ⚠ DANH MỤC HÀNG PHẢI ĐỦ. Đây là bảng TRA TÊN / NHÓM cho từng dòng
+     *   đơn. Bản cũ đọc `products` bằng `.select()` trơn — PostgREST cắt ở
+     *   1.000 mã, dòng đơn của mã thứ 1.001 trở đi hiện "—" / "Chưa phân
+     *   nhóm". Nay đọc đủ theo trang, mốc `id` duy nhất.
+     * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, kể cả hàm ở `lib/analytics/sales`
+     *   (`fetchOrderLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
+     */
+    try {
+      const [orders, prevOrders, productsRes] = await Promise.all([
+        fetchDeliveredOrders(supabase, orgId, range),
+        fetchDeliveredOrders(supabase, orgId, prev),
+        docDuHoacNem<ProductRow>(
+          (from, to) =>
+            supabase
+              .from("products")
+              .select("id, name, category, brand", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh mục hàng"
+        ),
+      ])
+      const [lineList, prevLineList] = await Promise.all([
+        fetchOrderLines(supabase, orders.map((o) => o.id)),
+        fetchOrderLines(supabase, prevOrders.map((o) => o.id)),
+      ])
+      setLines(lineList)
+      setPrevLines(prevLineList)
+      setProducts(productsRes.rows)
+      setTruncated(productsRes.truncated)
+    } catch (e) {
+      console.error("[products/categories] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu nhóm hàng"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -130,22 +159,36 @@ export default function ProductsCategoriesPage() {
     )
   }
 
+  const header = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Phân loại hàng hóa</h1>
+        <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
+      </div>
+      <DateRangePicker
+        value={range}
+        preset={preset}
+        onChange={(p, r) => {
+          setPreset(p)
+          setRange(r)
+        }}
+      />
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Phân loại hàng hóa</h1>
-          <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
-        </div>
-        <DateRangePicker
-          value={range}
-          preset={preset}
-          onChange={(p, r) => {
-            setPreset(p)
-            setRange(r)
-          }}
-        />
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard

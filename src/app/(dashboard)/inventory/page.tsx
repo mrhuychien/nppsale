@@ -134,6 +134,11 @@ export default function InventoryPage() {
               { count: "exact" }
             )
             .gt("qty_on_hand", 0)
+            // ⚠ MỐC `id` DUY NHẤT. `batches` bị ghi liên tục (mỗi phiếu
+            // xuất / nhập đổi `qty_on_hand`), các trang lại chạy SONG SONG —
+            // không `.order()` thì mỗi trang một thứ tự, lô lặp hoặc sót và
+            // "Tổng giá trị tồn kho" lệch mà trông vẫn như số thật.
+            .order("id")
             .range(from, to)
         ),
         supabase
@@ -186,6 +191,9 @@ export default function InventoryPage() {
           .select(select, { count: "exact" })
           .gt("qty_on_hand", 0)
           .order("expires_at")
+          // ⚠ Mốc phụ `id`: hàng chục lô cùng hạn dùng (hoặc cùng NULL) —
+          // thiếu nó thì một lô hiện ở cả trang 1 lẫn trang 2, lô khác mất.
+          .order("id")
           .range(pg.from, pg.to)
         /**
          * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).

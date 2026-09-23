@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { fetchCashFlow, type CashFlowData, type FinancePeriod } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
 import { Printer, ArrowDownCircle, ArrowUpCircle, TrendingUp, TrendingDown } from "lucide-react"
 
 export default function CashFlowPage() {
@@ -27,14 +28,24 @@ export default function CashFlowPage() {
   const [to, setTo] = useState(today.toISOString().slice(0, 10))
   const [data, setData] = useState<CashFlowData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
     const period: FinancePeriod = { from, to }
-    const result = await fetchCashFlow(supabase, user.org_id, period)
-    setData(result)
-    setLoading(false)
+    setLoadError(null)
+    /* ⚠ `lib/finance` NÉM khi hàm cộng sổ lỗi (thay vì trả 0đ). Bắt để
+       BÁO: không bắt thì màn kẹt ở khung xương mãi; nuốt thì ra số 0. */
+    try {
+      setData(await fetchCashFlow(supabase, user.org_id, period))
+    } catch (e) {
+      console.error("[reports/finance] tải lỗi:", e)
+      setData(null)
+      setLoadError(errorMessage(e, "Không tải được báo cáo"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
@@ -91,7 +102,16 @@ export default function CashFlowPage() {
         </CardContent>
       </Card>
 
-      {loading || !data ? (
+      {loadError && !loading ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
+        >
+          <p className="font-semibold">Không tải được báo cáo</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+          <p className="mt-1 text-xs">Các con số KHÔNG được hiển thị để tránh đọc nhầm thành 0đ.</p>
+        </div>
+      ) : loading || !data ? (
         <Skeleton className="h-96" />
       ) : (
         <>

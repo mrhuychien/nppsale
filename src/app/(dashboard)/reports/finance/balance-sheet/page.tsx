@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { fetchBalanceSheet, type BalanceSheetData } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
 import { Printer, Wallet, Receipt, Boxes, Scale } from "lucide-react"
 
 export default function BalanceSheetPage() {
@@ -24,13 +25,23 @@ export default function BalanceSheetPage() {
   const [asOf, setAsOf] = useState(today)
   const [data, setData] = useState<BalanceSheetData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
     setLoading(true)
-    const result = await fetchBalanceSheet(supabase, user.org_id, asOf)
-    setData(result)
-    setLoading(false)
+    setLoadError(null)
+    /* ⚠ `lib/finance` NÉM khi hàm cộng sổ lỗi (thay vì trả 0đ). Bắt để
+       BÁO: không bắt thì màn kẹt ở khung xương mãi; nuốt thì ra số 0. */
+    try {
+      setData(await fetchBalanceSheet(supabase, user.org_id, asOf))
+    } catch (e) {
+      console.error("[reports/finance] tải lỗi:", e)
+      setData(null)
+      setLoadError(errorMessage(e, "Không tải được báo cáo"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, asOf]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
@@ -70,7 +81,16 @@ export default function BalanceSheetPage() {
         </CardContent>
       </Card>
 
-      {loading || !data ? (
+      {loadError && !loading ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
+        >
+          <p className="font-semibold">Không tải được báo cáo</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+          <p className="mt-1 text-xs">Các con số KHÔNG được hiển thị để tránh đọc nhầm thành 0đ.</p>
+        </div>
+      ) : loading || !data ? (
         <Skeleton className="h-96" />
       ) : (
         <>

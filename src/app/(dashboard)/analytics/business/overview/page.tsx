@@ -28,6 +28,9 @@ import {
   type SalesOrderRow,
   type SalesOrderLineRow,
 } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 type TabKey = "revenue" | "returns" | "net" | "profit" | "invoices"
 
@@ -82,53 +85,101 @@ export default function BusinessOverviewPage() {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
+    setLoadError(null)
     const prev = previousRange(range)
-    const [
-      orderList,
-      prevOrderList,
-      retVal,
-      prevRetVal,
-      cogsRes,
-      prevCogsRes,
-      customersRes,
-      productsRes,
-      usersRes,
-    ] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchDeliveredOrders(supabase, user.org_id, prev),
-      fetchReturnsValue(supabase, user.org_id, range),
-      fetchReturnsValue(supabase, user.org_id, prev),
-      fetchCogsForRange(supabase, user.org_id, range),
-      fetchCogsForRange(supabase, user.org_id, prev),
-      supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
-      supabase.from("products").select("id, name, category").eq("org_id", user.org_id),
-      supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
-    ])
-    const qErr = ([cogsRes, prevCogsRes, customersRes, productsRes, usersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[business/overview] truy vấn lỗi:", qErr.message)
-    const orderIds = orderList.map((o) => o.id)
-    const prevOrderIds = prevOrderList.map((o) => o.id)
-    const [lineList, prevLineList] = await Promise.all([
-      fetchOrderLines(supabase, orderIds),
-      fetchOrderLines(supabase, prevOrderIds),
-    ])
+    /**
+     * ⚠ BA DANH MỤC TRA CỨU PHẢI ĐỦ. `customers`, `products`, `users` ở
+     *   đây là bảng TRA TÊN / NHÓM / KÊNH cho từng đơn và từng dòng hàng.
+     *   Bản cũ đọc bằng `.select()` trơn: quá 1.000 dòng là doanh thu của
+     *   phần còn lại dồn vào "Chưa phân nhóm", "Bán trực tiếp", "—" — tổng
+     *   vẫn khớp nên không ai nghi. Nay đọc đủ theo trang, mốc `id`.
+     *
+     * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, KỂ CẢ CÁC HÀM Ở `lib/analytics/sales`.
+     *   `fetchOrderLines` đã NÉM từ trước (đọc theo lô id); các hàm còn lại
+     *   cũng đang chuyển sang ném. Không bắt thì màn hình kẹt ở khung xương
+     *   mãi; bắt rồi nuốt thì ra "Doanh thu 0đ". Cả hai đều sai — phải báo.
+     */
+    try {
+      const [
+        orderList,
+        prevOrderList,
+        retVal,
+        prevRetVal,
+        cogsRes,
+        prevCogsRes,
+        customersRes,
+        productsRes,
+        usersRes,
+      ] = await Promise.all([
+        fetchDeliveredOrders(supabase, orgId, range),
+        fetchDeliveredOrders(supabase, orgId, prev),
+        fetchReturnsValue(supabase, orgId, range),
+        fetchReturnsValue(supabase, orgId, prev),
+        fetchCogsForRange(supabase, orgId, range),
+        fetchCogsForRange(supabase, orgId, prev),
+        docDuHoacNem<CustomerRow>(
+          (from, to) =>
+            supabase
+              .from("customers")
+              .select("id, store_name, group_id, channel", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh sách khách hàng"
+        ),
+        docDuHoacNem<ProductRow>(
+          (from, to) =>
+            supabase
+              .from("products")
+              .select("id, name, category", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh mục hàng"
+        ),
+        docDuHoacNem<UserRow>(
+          (from, to) =>
+            supabase
+              .from("users")
+              .select("id, full_name", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh sách nhân viên"
+        ),
+      ])
+      const orderIds = orderList.map((o) => o.id)
+      const prevOrderIds = prevOrderList.map((o) => o.id)
+      const [lineList, prevLineList] = await Promise.all([
+        fetchOrderLines(supabase, orderIds),
+        fetchOrderLines(supabase, prevOrderIds),
+      ])
 
-    setOrders(orderList)
-    setPrevOrders(prevOrderList)
-    setLines(lineList)
-    setPrevLines(prevLineList)
-    setReturnsValue(retVal)
-    setPrevReturnsValue(prevRetVal)
-    setCogs(cogsRes.cogs)
-    setPrevCogs(prevCogsRes.cogs)
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setProducts((productsRes.data as ProductRow[]) || [])
-    setUsers((usersRes.data as UserRow[]) || [])
-    setLoading(false)
+      setOrders(orderList)
+      setPrevOrders(prevOrderList)
+      setLines(lineList)
+      setPrevLines(prevLineList)
+      setReturnsValue(retVal)
+      setPrevReturnsValue(prevRetVal)
+      setCogs(cogsRes.cogs)
+      setPrevCogs(prevCogsRes.cogs)
+      setCustomers(customersRes.rows)
+      setProducts(productsRes.rows)
+      setUsers(usersRes.rows)
+      setTruncated(customersRes.truncated || productsRes.truncated || usersRes.truncated)
+    } catch (e) {
+      console.error("[business/overview] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu kinh doanh"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -351,22 +402,36 @@ export default function BusinessOverviewPage() {
     )
   }
 
+  const header = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Tổng quan kinh doanh</h1>
+        <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
+      </div>
+      <DateRangePicker
+        value={range}
+        preset={preset}
+        onChange={(p, r) => {
+          setPreset(p)
+          setRange(r)
+        }}
+      />
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Tổng quan kinh doanh</h1>
-          <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
-        </div>
-        <DateRangePicker
-          value={range}
-          preset={preset}
-          onChange={(p, r) => {
-            setPreset(p)
-            setRange(r)
-          }}
-        />
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard

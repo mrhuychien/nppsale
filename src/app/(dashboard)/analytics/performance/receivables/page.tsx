@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -57,33 +59,74 @@ export default function ReceivablesAnalyticsPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
-    const [recvRes, custRes, usersRes] = await Promise.all([
-      // Cộng công nợ → phải lấy đủ.
-      fetchAllForAggregate<ReceivableRow>((from, to) =>
-        supabase
-          .from("receivables")
-          .select(
-            "id, customer_id, sales_user_id, amount, paid, due_date, status, created_at",
-            { count: "exact" }
-          )
-          .eq("org_id", user.org_id)
-          .in("status", ["open", "partial", "overdue"])
-          .range(from, to)
-      ),
-      supabase.from("customers").select("id, store_name, channel, credit_limit").eq("org_id", user.org_id),
-      supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
-    ])
-    if (recvRes.error) console.error("[performance/receivables] truy vấn lỗi:", recvRes.error)
-    const qErr = ([custRes, usersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[performance/receivables] truy vấn lỗi:", qErr.message)
-    setReceivables(recvRes.rows)
-    setCustomers((custRes.data as CustomerRow[]) || [])
-    setUsers((usersRes.data as UserRow[]) || [])
-    setLoading(false)
+    setLoadError(null)
+    /**
+     * ⚠ CÔNG NỢ: ĐỌC ĐỦ, MỐC `id`, HỎNG THÌ NÉM. Bản cũ phân trang song song
+     *   mà không `.order()` — Postgres được phép trả mỗi trang một thứ tự,
+     *   nên một khoản nợ có thể có mặt ở hai trang (cộng hai lần) còn khoản
+     *   khác vắng mặt. Và đọc hỏng thì `console.error` rồi vẽ "Tổng công nợ 0đ".
+     *
+     * ⚠ KHÁCH: CHỈ ĐỌC NHỮNG KHÁCH ĐANG NỢ, THEO LÔ ID. Bản cũ đọc cả bảng
+     *   `customers` bằng `.select()` trơn — quá 1.000 khách là phần còn lại
+     *   hiện tên "—", hạn mức 0. Đọc theo đúng danh sách id đang nợ vừa đủ
+     *   vừa nhẹ; `docTheoLoId` chia lô 150 id để URL không vượt trần.
+     */
+    try {
+      const [recvRes, usersRes] = await Promise.all([
+        docDuHoacNem<ReceivableRow>(
+          (from, to) =>
+            supabase
+              .from("receivables")
+              .select(
+                "id, customer_id, sales_user_id, amount, paid, due_date, status, created_at",
+                { count: "exact" }
+              )
+              .eq("org_id", orgId)
+              .in("status", ["open", "partial", "overdue"])
+              .order("id")
+              .range(from, to),
+          "đọc công nợ"
+        ),
+        docDuHoacNem<UserRow>(
+          (from, to) =>
+            supabase
+              .from("users")
+              .select("id, full_name", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh sách nhân viên"
+        ),
+      ])
+      const customerIds = recvRes.rows.map((r) => r.customer_id).filter(Boolean)
+      const custRows = await docTheoLoId<CustomerRow>(
+        customerIds,
+        (lo, from, to) =>
+          supabase
+            .from("customers")
+            .select("id, store_name, channel, credit_limit", { count: "exact" })
+            .in("id", lo)
+            .order("id")
+            .range(from, to),
+        "đọc khách hàng đang nợ"
+      )
+      setReceivables(recvRes.rows)
+      setCustomers(custRows)
+      setUsers(usersRes.rows)
+      setTruncated(recvRes.truncated || usersRes.truncated)
+    } catch (e) {
+      console.error("[performance/receivables] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu công nợ"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, supabase])
 
   useEffect(() => {
@@ -193,12 +236,26 @@ export default function ReceivablesAnalyticsPage() {
     )
   }
 
+  const header = (
+    <div>
+      <h1 className="text-2xl font-bold text-foreground">Công nợ khách hàng</h1>
+      <p className="text-sm text-muted-foreground">Số liệu tức thời tại thời điểm hiện tại</p>
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Công nợ khách hàng</h1>
-        <p className="text-sm text-muted-foreground">Số liệu tức thời tại thời điểm hiện tại</p>
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Tổng công nợ" value={stats.totalOutstanding} format="compactCurrency" changePct={null} />

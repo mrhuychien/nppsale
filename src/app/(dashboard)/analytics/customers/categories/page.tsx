@@ -18,6 +18,9 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface CustomerRow {
   id: string
@@ -44,25 +47,49 @@ export default function CustomersCategoriesPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const { groups } = useCustomerGroups()
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
+
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const orgId = user.org_id
     setLoading(true)
+    setLoadError(null)
     const prev = previousRange(range)
-    const [orderList, prevOrderList, customersRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchDeliveredOrders(supabase, user.org_id, prev),
-      supabase
-        .from("customers")
-        .select("id, store_name, channel, group_id, province")
-        .eq("org_id", user.org_id),
-    ])
-    const qErr = ([customersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[customers/categories] truy vấn lỗi:", qErr.message)
-    setOrders(orderList)
-    setPrevOrders(prevOrderList)
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setLoading(false)
+    /**
+     * ⚠ DANH SÁCH KHÁCH PHẢI ĐỦ. Màn này gán doanh thu của từng đơn vào
+     *   nhóm / kênh / tỉnh BẰNG CÁCH TRA KHÁCH. Bản cũ đọc `customers` bằng
+     *   `.select()` trơn — PostgREST cắt ở 1.000 dòng, nên đơn của khách thứ
+     *   1.001 trở đi không tra ra ai và rơi hết vào "Chưa phân nhóm" /
+     *   "Không xác định". Tổng vẫn đúng, phân bổ thì sai — loại sai khó
+     *   thấy nhất.
+     * ⚠ Đọc hỏng ở bất kỳ đâu → báo lỗi, không vẽ bảng số 0.
+     */
+    try {
+      const [orderList, prevOrderList, cust] = await Promise.all([
+        fetchDeliveredOrders(supabase, orgId, range),
+        fetchDeliveredOrders(supabase, orgId, prev),
+        docDuHoacNem<CustomerRow>(
+          (from, to) =>
+            supabase
+              .from("customers")
+              .select("id, store_name, channel, group_id, province", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc danh sách khách hàng"
+        ),
+      ])
+      setOrders(orderList)
+      setPrevOrders(prevOrderList)
+      setCustomers(cust.rows)
+      setTruncated(cust.truncated)
+    } catch (e) {
+      console.error("[customers/categories] tải lỗi:", e)
+      setLoadError(errorMessage(e, "Không tải được số liệu phân loại khách hàng"))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -154,22 +181,36 @@ export default function CustomersCategoriesPage() {
     )
   }
 
+  const header = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Phân loại khách hàng</h1>
+        <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
+      </div>
+      <DateRangePicker
+        value={range}
+        preset={preset}
+        onChange={(p, r) => {
+          setPreset(p)
+          setRange(r)
+        }}
+      />
+    </div>
+  )
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoiTaiBaoCao loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Phân loại khách hàng</h1>
-          <p className="text-sm text-muted-foreground">{formatRangeLabel(range)}</p>
-        </div>
-        <DateRangePicker
-          value={range}
-          preset={preset}
-          onChange={(p, r) => {
-            setPreset(p)
-            setRange(r)
-          }}
-        />
-      </div>
+      {header}
+      {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard label="Tổng doanh thu" value={totalRevenue} format="compactCurrency" changePct={pctChange(totalRevenue, prevTotalRevenue)} />

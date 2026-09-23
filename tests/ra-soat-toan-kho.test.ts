@@ -117,7 +117,6 @@ const CON_NO_MOC_PHAN_TRANG = [
   "src/app/(dashboard)/finance/cash-receipts/new/page.tsx",
   "src/app/(dashboard)/finance/expenses/page.tsx",
   "src/app/(dashboard)/hr/payroll/runs/page.tsx",
-  "src/app/(dashboard)/inventory/page.tsx",
   "src/app/(dashboard)/inventory/stocktake-check/page.tsx",
   "src/app/(dashboard)/invoices/page.tsx",
   "src/app/(dashboard)/notifications/page.tsx",
@@ -128,7 +127,6 @@ const CON_NO_MOC_PHAN_TRANG = [
   "src/app/(dashboard)/receivables/aging/page.tsx",
   "src/app/(dashboard)/receivables/by-customer/[customerId]/page.tsx",
   "src/app/(dashboard)/receivables/by-rep/[userId]/page.tsx",
-  "src/app/(dashboard)/receivables/page.tsx",
   "src/app/(dashboard)/returns/new/page.tsx",
   "src/app/(dashboard)/returns/page.tsx",
   "src/app/(dashboard)/sell/drafts/page.tsx",
@@ -193,11 +191,34 @@ describe("rà soát: ghi từ trình duyệt phải kiểm số dòng", () => {
 })
 
 describe("rà soát: mốc phân trang phải duy nhất", () => {
+  /**
+   * Khoá GHÉP đã biết là duy nhất — cột cuối cùng không phải `id` nhưng
+   * cả bộ thì duy nhất.
+   *
+   * ⚠ CHỈ GHI KHOÁ CÓ THẬT TRONG SCHEMA. `v_stock_balance_by_zone` là view
+   *   GROUP BY (org_id, product_id, warehouse_zone) (mig 107) — view không
+   *   có cột `id`, nên bộ ba ấy là mốc duy nhất DUY NHẤT có được. Phép quét
+   *   đòi đủ các cột đứng trước ngay trong chuỗi `.order()` ấy; thiếu một
+   *   cột là vẫn đỏ.
+   */
+  const KHOA_GHEP: Record<string, string[]> = {
+    warehouse_zone: ["org_id", "product_id"],
+  }
+
   function mocKhongDuyNhat(src: string): boolean {
     const re = /\.order\("(\w+)"[^)]*\)\s*\.range\(|\.range\([^)]*\)\s*\.order\("(\w+)"/g
     let m: RegExpExecArray | null
     while ((m = re.exec(src))) {
-      if ((m[1] || m[2]) !== "id") return true
+      const cot = m[1] || m[2]
+      if (cot === "id") continue
+      const truoc = KHOA_GHEP[cot]
+      if (truoc && m[1]) {
+        // Chỉ xét chuỗi `.order()` liền ngay trước — không mượn cột của câu khác.
+        const lui = src.slice(Math.max(0, m.index - 200), m.index)
+        const chuoi = lui.slice(lui.search(/(\s*\.order\("\w+"[^)]*\))*\s*$/))
+        if (truoc.every((c) => chuoi.includes(`.order("${c}")`))) continue
+      }
+      return true
     }
     return false
   }
@@ -229,5 +250,15 @@ describe("rà soát: mốc phân trang phải duy nhất", () => {
   it("phép quét còn nhận ra được mẫu ấy", () => {
     expect(mocKhongDuyNhat('.order("due_date").range(a, b)')).toBe(true)
     expect(mocKhongDuyNhat('.order("id").range(a, b)')).toBe(false)
+    // Khoá ghép: đủ bộ thì lành, thiếu một cột là đỏ.
+    expect(
+      mocKhongDuyNhat('.order("org_id")\n  .order("product_id")\n  .order("warehouse_zone")\n  .range(a, b)')
+    ).toBe(false)
+    expect(mocKhongDuyNhat('.order("product_id").order("warehouse_zone").range(a, b)')).toBe(true)
+    expect(mocKhongDuyNhat('.order("warehouse_zone").range(a, b)')).toBe(true)
+    // Không mượn cột của câu truy vấn khác nằm gần đó.
+    expect(
+      mocKhongDuyNhat('.order("org_id").order("product_id").limit(1); q.order("warehouse_zone").range(a, b)')
+    ).toBe(true)
   })
 })

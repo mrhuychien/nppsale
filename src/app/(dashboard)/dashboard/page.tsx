@@ -143,9 +143,18 @@ export default function DashboardPage() {
             .order("created_at", { ascending: false })
             .limit(5),
         ])
+        /**
+         * ⚠ LỖI THÌ NÉM, KHÔNG ĐI TIẾP VỚI SỐ 0. Bản cũ `console.error` rồi
+         *   đọc `sumRes.data || {}` — một lần rớt mạng, hay máy chủ chưa chạy
+         *   migration 093 (PGRST202), là thẻ "Doanh thu" và "Công nợ" hiện
+         *   0đ, trông y hệt một tháng không bán được gì. Ném ra thì `catch`
+         *   bên dưới dựng màn báo lỗi sẵn có (kèm nút Thử lại).
+         * ⚠ Ném NGUYÊN đối tượng lỗi của PostgREST (còn `code`) để
+         *   `errorMessage()` dịch đúng câu.
+         */
         const qErr = ([sumRes, topCustRes, channelRes, lowStockRes, expiringRes, recentRes] as Array<{ error?: { message?: string } | null }>)
           .find((r) => r?.error)?.error
-        if (qErr) console.error("[app/dashboard] truy vấn lỗi:", qErr.message)
+        if (qErr) throw qErr
 
         const sum = (sumRes.data || {}) as {
           period_revenue?: number

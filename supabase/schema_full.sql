@@ -31435,7 +31435,7 @@ $$;
 -- Hàm nội bộ: chỉ `post_invoice` (chủ sở hữu) gọi.
 REVOKE ALL ON FUNCTION public._chuan_he_so_dong_hoa_don(jsonb) FROM PUBLIC, anon, authenticated;
 
-DO $vá$
+DO $patch$
 DECLARE
   v_oid  oid;
   v_n    int;
@@ -31467,7 +31467,7 @@ BEGIN
                                        || E'\n  v_lines := public._chuan_he_so_dong_hoa_don(v_lines);');
   EXECUTE v_src;
 END;
-$vá$;
+$patch$;
 
 DO $kiem$
 DECLARE v_src text; v_def boolean;

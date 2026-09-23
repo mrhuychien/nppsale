@@ -210,6 +210,12 @@ export function VisitCheckinDialog({
         .select("user_id")
         .eq("customer_id", customerId)
         .eq("role", "primary")
+        // ⚠ Chỉ phân công CÒN HIỆU LỰC. Có lịch sử phân công (người cũ
+        //   đã nghỉ) là nhiều dòng → `.maybeSingle()` lỗi → bỏ qua thông báo.
+        //   Dòng cũ để trống `status` vẫn là còn hiệu lực (cùng luật với
+        //   `lib/opening-balance/io.ts`).
+        .or("status.is.null,status.eq.active")
+        .limit(1)
         .maybeSingle()
       if (primaryAssignmentErr) console.error("[customers/visit-checkin-dialog] truy vấn lỗi:", primaryAssignmentErr.message)
       const primaryRepId = (primaryAssignment as { user_id?: string } | null)?.user_id

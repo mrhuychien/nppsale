@@ -135,6 +135,13 @@ export default function SalesInvoiceDetailPage() {
         .from("invoices")
         .select("id, misa_inv_no, misa_status")
         .eq("sales_invoice_id", id)
+        /* ⚠ `sales_invoice_id` KHÔNG UNIQUE — hai lượt phát hành chạy đua
+           sinh hai dòng, và `.maybeSingle()` trên hai dòng là PGRST116 →
+           màn báo "chưa có hoá đơn điện tử". Lấy tờ ĐÃ CÓ SỐ trước, rồi
+           tờ mới nhất. */
+        .order("misa_inv_no", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       /**
        * ⚠ NẠP CẢ PHIẾU CHƯA HOÀN THÀNH, rồi lọc ở phép cộng. Hỏi thẳng

@@ -122,3 +122,32 @@ describe("nút mảng tiền khớp RLS", () => {
     }
   )
 })
+
+describe("đọc một dòng từ cột không unique", () => {
+  // Bỏ chú thích: lời giải thích nhắc `.maybeSingle()` thì phép cắt dừng nhầm chỗ.
+  const doc = (p: string) =>
+    readFileSync(resolve(__dirname, "..", p), "utf-8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+  /**
+   * ⚠ `.maybeSingle()` trên nhiều dòng là PGRST116 — không phải "không có".
+   *   `invoices.sales_invoice_id` và phân công chính của khách đều có thể
+   *   nhiều dòng; phải thu về đúng một dòng trước khi `.maybeSingle()`.
+   */
+  it.each([
+    "src/app/(dashboard)/sales-invoices/[id]/page.tsx",
+    "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx",
+    "src/components/pos/invoice-edit-screen.tsx",
+  ])("%s: hoá đơn điện tử lấy đúng một tờ", (p) => {
+    const s = doc(p)
+    const i = s.indexOf('.eq("sales_invoice_id"')
+    const doan = s.slice(i, s.indexOf(".maybeSingle()", i))
+    expect(doan).toContain(".limit(1)")
+  })
+
+  it("phân công chính khi check-in: chỉ dòng còn hiệu lực, một dòng", () => {
+    const s = doc("src/components/customers/visit-checkin-dialog.tsx")
+    const i = s.indexOf('.from("customer_assignments")')
+    const doan = s.slice(i, s.indexOf(".maybeSingle()", i))
+    expect(doan).toContain('.or("status.is.null,status.eq.active")')
+    expect(doan).toContain(".limit(1)")
+  })
+})

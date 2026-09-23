@@ -147,7 +147,15 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
          */
         sb.from("invoices")
           .select("id, status, misa_inv_no, misa_status")
-          .eq("sales_invoice_id", invoiceId).maybeSingle(),
+          .eq("sales_invoice_id", invoiceId)
+          /* ⚠ `sales_invoice_id` KHÔNG UNIQUE — hai lượt phát hành chạy đua
+             sinh hai dòng, và `.maybeSingle()` trên hai dòng là PGRST116 →
+             màn báo "chưa có hoá đơn điện tử". Lấy tờ ĐÃ CÓ SỐ trước, rồi
+             tờ mới nhất. */
+          .order("misa_inv_no", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ])
       if (huy) return
       const err = h.error || l.error || r.error

@@ -85,11 +85,18 @@ export const ProductCard = memo(function ProductCard({
   const sd = stockDisplayFor(stock, committedUnit)
   const outOfStock = sd.out
   const image = product.images?.[0]
+  /**
+   * ⚠ THẺ ĐÃ CHỌN PHẢI NHÌN RA NGAY (chủ nhà yêu cầu 23/09/2026: "sản phẩm
+   *   nào được chọn thì tô màu cho dễ nhìn"). Chế độ chọn nhiều thì "chọn" là
+   *   ô số lượng > 0 — kể cả số chưa vào giỏ; chế độ thường là đã có trong giỏ.
+   */
+  const daChon = pickQty !== undefined ? pickQty > 0 : inCartQty > 0
 
   return (
     <div
       role="button"
       tabIndex={0}
+      data-chon={daChon ? "" : undefined}
       onClick={() => onAdd(product)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -116,7 +123,7 @@ export const ProductCard = memo(function ProductCard({
         // mỗi thẻ, đẩy tên hàng dài xuống thêm một dòng, mà không nói được
         // điều gì. Thẻ không ảnh nay dùng trọn bề ngang.
         image ? "grid grid-cols-[56px_minmax(0,1fr)] gap-3" : "block",
-        inCartQty > 0 ? "border-primary/35" : "border-transparent"
+        daChon ? "border-primary bg-primary/[0.1]" : "border-transparent"
       )}
     >
       {image && (

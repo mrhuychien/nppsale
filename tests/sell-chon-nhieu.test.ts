@@ -62,3 +62,30 @@ describe("setLinesQty — đặt số lượng cho nhiều mặt hàng một l�
     expect(gio).toEqual([L("a", "hộp", 2)])
   })
 })
+
+import { setReturnLinesQty, type ReturnCartLine } from "../src/lib/sell/returns"
+
+const R = (productId: string, unit: string, qty: number, extra: Partial<ReturnCartLine> = {}): ReturnCartLine => ({
+  productId, unit, qty, price: 10_000, vatRate: 0, isExchange: false, note: "", ...extra,
+})
+
+/** Màn CHỌN HÀNG TRẢ cũng chọn nhiều được (chủ nhà yêu cầu 23/09/2026). */
+describe("setReturnLinesQty — chọn nhiều ở màn hàng trả", () => {
+  it("dòng đã có: lấy đúng số mới, giữ giá sửa tay / đổi hàng / ghi chú / lý do", () => {
+    const cu = [R("a", "gói", 2, { price: 9_000, isExchange: true, note: "móp", reason: "damaged" })]
+    const moi = setReturnLinesQty(cu, [R("a", "gói", 5)])
+    expect(moi).toEqual([{ ...cu[0], qty: 5 }])
+  })
+  it("số 0 là bỏ dòng; dòng mới lên đầu, mặc định trả tiền", () => {
+    const cu = [R("a", "gói", 2), R("b", "hộp", 1)]
+    const moi = setReturnLinesQty(cu, [R("a", "gói", 0), R("c", "thùng", 3)])
+    expect(moi.map((l) => `${l.productId}:${l.qty}:${l.isExchange}`)).toEqual(["c:3:false", "b:1:false"])
+  })
+  it("chọn 0 cho mặt hàng chưa có thì không thêm dòng rỗng", () => {
+    expect(setReturnLinesQty([], [R("a", "gói", 0)])).toEqual([])
+  })
+  it("cùng mặt hàng khác đơn vị là hai dòng; trùng thì lựa chọn sau thắng", () => {
+    const moi = setReturnLinesQty([], [R("a", "gói", 1), R("a", "thùng", 2), R("a", "gói", 4)])
+    expect(moi.map((l) => `${l.unit}:${l.qty}`).sort()).toEqual(["gói:4", "thùng:2"])
+  })
+})

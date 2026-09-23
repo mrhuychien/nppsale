@@ -89,6 +89,24 @@ export default function SellPage() {
    */
   const [chonNhieu, setChonNhieu] = useState(false)
   const [nhap, setNhap] = useState<Record<string, { productId: string; unit: string; qty: number }>>({})
+  /**
+   * ⚠ MÀN HÀNG TRẢ CŨNG CHỌN NHIỀU ĐƯỢC (chủ nhà yêu cầu 23/09/2026). Số
+   *   "đang có" lấy từ PHIẾU TRẢ khi đang chọn hàng trả, từ GIỎ khi đặt hàng
+   *   — trộn hai nguồn là ô số lượng hiện số của việc kia.
+   */
+  const soDangCo = (productId: string, unit: string) => {
+    if (returning) {
+      const j = findReturnLine(cart.returnLines, productId, unit)
+      return j >= 0 ? cart.returnLines[j].qty : 0
+    }
+    const j = findLine(cart.cart, productId, unit)
+    return j >= 0 ? cart.cart[j].qty : 0
+  }
+  // Chuyển giữa đặt hàng ↔ chọn hàng trả thì bỏ số đang gõ dở của việc kia.
+  useEffect(() => {
+    setNhap({})
+    setChonNhieu(false)
+  }, [returning])
   useEffect(() => {
     listMemory.current.q = q
     listMemory.current.tab = tab
@@ -196,11 +214,10 @@ export default function SellPage() {
     const unit = unitOf(p)
     const price = unitPriceFor(p, unit, groupId)
 
-    // Chọn nhiều: chạm thẻ là +1 vào ô số lượng, chưa đụng tới giỏ.
-    if (chonNhieu && !returning) {
+    // Chọn nhiều: chạm thẻ là +1 vào ô số lượng, chưa đụng tới giỏ / phiếu trả.
+    if (chonNhieu) {
       const k = lineKey(p.id, unit)
-      const j = findLine(cart.cart, p.id, unit)
-      const dangCo = j >= 0 ? cart.cart[j].qty : 0
+      const dangCo = soDangCo(p.id, unit)
       setNhap((s) => ({ ...s, [k]: { productId: p.id, unit, qty: (s[k]?.qty ?? dangCo) + 1 } }))
       return
     }
@@ -335,6 +352,20 @@ export default function SellPage() {
     setChonNhieu(false)
   }
   const xacNhanChonNhieu = () => {
+    /* Màn hàng trả: đặt số vào PHIẾU TRẢ, mặc định TRẢ TIỀN — cùng luật với
+       chạm từng món; không so tồn kho (khách đưa hàng LẠI cho mình). */
+    if (returning) {
+      cart.setManyReturnQty(
+        dongChon.map((l) => ({
+          productId: l.productId, unit: l.unit, qty: l.qty, price: l.price,
+          vatRate: l.vatRate, isExchange: false, note: "",
+        }))
+      )
+      tatChonNhieu()
+      clearSearchMemory()
+      backToReturnSlip(router)
+      return
+    }
     /* ⚠ Vượt số còn bán được: CẢNH BÁO RỒI VẪN THÊM — cùng luật với chạm
        từng món. So SỐ LƯỢNG (quy về đơn vị cơ sở, cộng các đơn vị của cùng
        mặt hàng) với số còn bán được — không chỉ "hết hàng hay chưa". */
@@ -358,6 +389,21 @@ export default function SellPage() {
   }
 
   const cartCount = cart.cart.length
+  const nutChonNhieu = (
+    <button
+      type="button"
+      onClick={() => (chonNhieu ? tatChonNhieu() : setChonNhieu(true))}
+      aria-label="Chọn nhiều sản phẩm"
+      aria-pressed={chonNhieu}
+      title={chonNhieu ? "Tắt chọn nhiều (bỏ các số vừa gõ)" : "Chọn nhiều sản phẩm một lúc"}
+      className={cn(
+        "tap grid h-11 w-11 place-items-center rounded-xl",
+        chonNhieu ? "bg-primary text-on-primary" : "text-on-surface"
+      )}
+    >
+      <ListChecks className="h-[22px] w-[22px]" />
+    </button>
+  )
   const showTabs = frequentIds.length > 0 && !q.trim()
 
   return (
@@ -389,29 +435,20 @@ export default function SellPage() {
           {/* Đang chọn hàng trả thì hai nút của luồng ĐẶT hàng không có việc
               gì ở đây — nhường chỗ cho đường quay lại phiếu trả. */}
           {returning ? (
-            <button
-              type="button"
-              onClick={() => backToReturnSlip(router)}
-              className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-extrabold text-primary"
-            >
-              <RotateCcw className="h-[18px] w-[18px]" />
-              Xong
-            </button>
-          ) : (
             <div className="flex gap-1">
+              {nutChonNhieu}
               <button
                 type="button"
-                onClick={() => (chonNhieu ? tatChonNhieu() : setChonNhieu(true))}
-                aria-label="Chọn nhiều sản phẩm"
-                aria-pressed={chonNhieu}
-                title={chonNhieu ? "Tắt chọn nhiều (bỏ các số vừa gõ)" : "Chọn nhiều sản phẩm một lúc"}
-                className={cn(
-                  "tap grid h-11 w-11 place-items-center rounded-xl",
-                  chonNhieu ? "bg-primary text-on-primary" : "text-on-surface"
-                )}
+                onClick={() => backToReturnSlip(router)}
+                className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-extrabold text-primary"
               >
-                <ListChecks className="h-[22px] w-[22px]" />
+                <RotateCcw className="h-[18px] w-[18px]" />
+                Xong
               </button>
+            </div>
+          ) : (
+            <div className="flex gap-1">
+              {nutChonNhieu}
               <button
                 type="button"
                 onClick={() => router.push("/sell/drafts")}
@@ -600,8 +637,9 @@ export default function SellPage() {
                 showStock={!returning}
                 badgeLabel={returning ? "Đã trả" : "Trong giỏ"}
                 pickQty={
-                  chonNhieu && !returning
-                    ? nhap[lineKey(p.id, unit)]?.qty ?? (i >= 0 ? cart.cart[i].qty : 0)
+                  chonNhieu
+                    ? nhap[lineKey(p.id, unit)]?.qty ??
+                      (i >= 0 ? (returning ? cart.returnLines[i].qty : cart.cart[i].qty) : 0)
                     : undefined
                 }
                 onPickQty={onPickQty}
@@ -613,7 +651,7 @@ export default function SellPage() {
 
       {/* Đang chọn hàng trả thì nút nổi đưa về phiếu trả, kèm số dòng đã
           chọn — không phải về giỏ hàng bán. */}
-      {returning && cart.returnLines.length > 0 && (
+      {returning && !chonNhieu && cart.returnLines.length > 0 && (
         <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"
@@ -632,7 +670,7 @@ export default function SellPage() {
       )}
 
       {/* Chọn nhiều: thanh nổi xác nhận thay cho thanh "Xem đơn". */}
-      {chonNhieu && !returning ? (
+      {chonNhieu ? (
         <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 flex gap-2 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"
@@ -655,7 +693,7 @@ export default function SellPage() {
               {formatCurrency(tienChon)}
             </span>
             <span className="flex h-10 shrink-0 items-center gap-1 rounded-xl bg-white px-3 text-sm font-extrabold text-primary">
-              Vào đơn <ChevronRight className="h-3.5 w-3.5" />
+              {returning ? "Vào phiếu trả" : "Vào đơn"} <ChevronRight className="h-3.5 w-3.5" />
             </span>
           </button>
         </div>

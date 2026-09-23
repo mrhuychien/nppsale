@@ -95,7 +95,7 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
 
   /** Đang chọn hàng trả thì đường quay lại phải về PHIẾU TRẢ, không về giỏ. */
   it("có đường quay lại phiếu trả", () => {
-    expect(POS).toContain("{returning && cart.returnLines.length > 0 && (")
+    expect(POS).toContain("{returning && !chonNhieu && cart.returnLines.length > 0 && (")
     expect(POS).toContain("dòng hàng trả")
     // Chế độ chọn nhiều (23/09/2026) có thanh riêng nên thêm `!chonNhieu`.
     expect(POS).toContain("{!chonNhieu && !returning && cartCount > 0 && (")

@@ -260,7 +260,8 @@ describe("Về danh sách thì thấy lại đúng chỗ vừa đứng", () => {
     // Ba đường rời màn sau khi thêm: giỏ hàng, phiếu trả, và "Thêm vào
     // đơn" của chế độ chọn nhiều (23/09/2026). Dòng khai báo không khớp
     // mẫu này (`= () =>`), nên đúng bằng số nơi GỌI.
-    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(3)
+    // + "Vào phiếu trả" của chọn nhiều ở màn hàng trả (23/09/2026).
+    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(4)
   })
 
   /**

@@ -46,7 +46,8 @@ describe("Chọn hàng trả xong thì ĐÓNG màn đó, không mở thêm một
   it("màn chọn hàng không còn đường nào push phiếu trả", () => {
     expect(POS, "còn push phiếu trả").not.toContain('router.push("/sell/returns")')
     const calls = POS.match(/backToReturnSlip\(router\)/g) ?? []
-    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(3)
+    // 4: chạm một món, nút "Xong", thanh nổi, và "Vào phiếu trả" của chọn nhiều (23/09/2026).
+    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(4)
   })
 
   /** Giỏ hàng MỞ phiếu trả nên nó vẫn `push` — đó là tầng đúng. */

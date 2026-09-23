@@ -15,6 +15,7 @@ import {
   patchReturnLine as patchReturnLineIn,
   returnCreditOf,
   setReturnQty as setReturnQtyIn,
+  setReturnLinesQty,
   type ReturnCartLine,
 } from "@/lib/sell/returns"
 import { SELL_CART_STORAGE_KEY } from "@/lib/sell/cart-storage"
@@ -106,6 +107,8 @@ interface SellCartValue extends SellCartState {
   setReturnReason: (v: string) => void
   addReturnLine: (line: ReturnCartLine) => void
   setReturnQty: (index: number, qty: number) => void
+  /** Chọn nhiều ở màn hàng trả — xem `setReturnLinesQty`. */
+  setManyReturnQty: (picks: ReturnCartLine[]) => void
   patchReturnLine: (index: number, patch: Partial<ReturnCartLine>) => void
 }
 
@@ -239,6 +242,9 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const addReturnLine = useCallback((line: ReturnCartLine) => {
     setState((s) => ({ ...s, returnLines: addReturnLineTo(s.returnLines, line) }))
   }, [])
+  const setManyReturnQty = useCallback((picks: ReturnCartLine[]) => {
+    setState((s) => ({ ...s, returnLines: setReturnLinesQty(s.returnLines, picks) }))
+  }, [])
   const setReturnQty = useCallback((index: number, qty: number) => {
     setState((s) => ({ ...s, returnLines: setReturnQtyIn(s.returnLines, index, qty) }))
   }, [])
@@ -269,6 +275,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setReturnReason,
       addReturnLine,
       setReturnQty,
+      setManyReturnQty,
       patchReturnLine,
     }),
     [
@@ -290,6 +297,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setReturnReason,
       addReturnLine,
       setReturnQty,
+      setManyReturnQty,
       patchReturnLine,
     ]
   )

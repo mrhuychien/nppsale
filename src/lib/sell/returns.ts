@@ -67,6 +67,30 @@ export function addReturnLine(lines: ReturnCartLine[], line: ReturnCartLine): Re
   return [line, ...lines]
 }
 
+/**
+ * CHỌN NHIỀU Ở MÀN HÀNG TRẢ (chủ nhà yêu cầu 23/09/2026) — đặt số lượng
+ * TUYỆT ĐỐI cho nhiều mặt hàng một lần, cùng luật với `setLinesQty` của
+ * giỏ bán: dòng đã có giữ giá (có thể đã sửa tay), trả/đổi, ghi chú, lý do
+ * và vị trí; `qty <= 0` là bỏ dòng; dòng mới lên đầu, mặc định TRẢ TIỀN.
+ * Hai lựa chọn trùng (sản phẩm + đơn vị): lựa chọn sau thắng.
+ */
+export function setReturnLinesQty(lines: ReturnCartLine[], picks: ReturnCartLine[]): ReturnCartLine[] {
+  const cuoi = new Map<string, ReturnCartLine>()
+  for (const p of picks) cuoi.set(`${p.productId}|${p.unit}`, p)
+  let next = [...lines]
+  const moi: ReturnCartLine[] = []
+  cuoi.forEach((p) => {
+    const i = findReturnLine(next, p.productId, p.unit)
+    if (i >= 0) {
+      if (p.qty <= 0) next = next.filter((_, k) => k !== i)
+      else next[i] = { ...next[i], qty: p.qty }
+    } else if (p.qty > 0) {
+      moi.push(p)
+    }
+  })
+  return [...moi, ...next]
+}
+
 export function setReturnQty(
   lines: ReturnCartLine[],
   index: number,

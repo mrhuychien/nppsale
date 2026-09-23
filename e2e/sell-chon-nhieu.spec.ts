@@ -72,3 +72,54 @@ test("/sell: chọn nhiều quá số còn bán được thì cảnh báo, vẫn
   await expect(page.getByText(/vượt số còn bán được/).first()).toBeVisible()
   await expect(page).toHaveURL(/\/sell\/cart/)
 })
+
+/** "Sản phẩm nào được chọn thì tô màu cho dễ nhìn" (chủ nhà, 23/09/2026). */
+test("/sell: thẻ có số lượng > 0 được tô màu, về 0 thì bỏ tô", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  await page.getByRole("button", { name: "Chọn nhiều sản phẩm" }).click()
+  const theSua = page.locator('[role="button"]', { hasText: "Sữa hộp" })
+  const theMi = page.locator('[role="button"]', { hasText: "Mì tôm" })
+  await expect(theSua).not.toHaveAttribute("data-chon")
+  await page.getByLabel("Số lượng Sữa hộp", { exact: true }).fill("2")
+  await expect(theSua).toHaveAttribute("data-chon", "")
+  await expect(theMi).not.toHaveAttribute("data-chon")
+  // Tô màu thật trên màn — nền khác thẻ chưa chọn.
+  const nen = (l: typeof theSua) => l.evaluate((e) => getComputedStyle(e).backgroundColor)
+  expect(await nen(theSua)).not.toBe(await nen(theMi))
+  await page.getByRole("button", { name: "Bớt Số lượng Sữa hộp", exact: true }).click()
+  await page.getByRole("button", { name: "Bớt Số lượng Sữa hộp", exact: true }).click()
+  await expect(theSua).not.toHaveAttribute("data-chon")
+})
+
+type PhieuTra = { returnLines: Array<{ productId: string; unit: string; qty: number; price: number; isExchange: boolean }> }
+const docTra = async (page: import("@playwright/test").Page): Promise<PhieuTra> =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("npp.sell.cart.v1") || '{"returnLines":[]}'))
+
+/** Màn Chọn hàng trả cũng chọn nhiều được — số vào PHIẾU TRẢ, không vào giỏ bán. */
+test("/sell?mode=return: chọn nhiều mặt hàng trả rồi vào phiếu trả", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell?mode=return")
+  await expect(page.getByRole("heading", { name: "Chọn hàng trả" })).toBeVisible()
+  await page.getByRole("button", { name: "Chọn nhiều sản phẩm" }).click()
+
+  await page.getByLabel("Số lượng Sữa hộp", { exact: true }).fill("3")
+  const theMi = page.locator('[role="button"]', { hasText: "Mì tôm" })
+  await theMi.getByText("Mì tôm").click()
+  await expect(page.getByLabel("Số lượng Mì tôm", { exact: true })).toHaveValue("1")
+  await expect(theMi).toHaveAttribute("data-chon", "")
+  // Chưa xác nhận thì phiếu trả chưa có gì, và màn không nhảy đi.
+  expect((await docTra(page)).returnLines ?? []).toHaveLength(0)
+  await expect(page).toHaveURL(/mode=return/)
+
+  const nut = page.getByRole("button", { name: /Vào phiếu trả/ })
+  await expect(nut).toContainText("2")
+  await expect(nut).toContainText("65.000") // 3 × 20.000 + 1 × 5.000
+  await nut.click()
+  await expect(page).toHaveURL(/\/sell\/returns/)
+
+  const s = await docTra(page)
+  expect(s.returnLines.map((l) => `${l.unit}:${l.qty}:${l.price}:${l.isExchange}`).sort())
+    .toEqual(["gói:1:5000:false", "hộp:3:20000:false"])
+  expect((s as unknown as { cart: unknown[] }).cart ?? [], "hàng trả lọt vào giỏ bán").toHaveLength(0)
+})

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { fetchAllForAggregate, AGGREGATE_ROW_CAP } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, docTheoLoId } from "@/lib/supabase/aggregate"
 import type { DateRange } from "./period"
 
 /**
@@ -164,52 +164,6 @@ export async function fetchOrderLines(
         .range(from, to),
     "đọc dòng đơn hàng"
   )
-}
-
-/**
- * Trần số id nhét vào MỘT câu `.in(...)`.
- *
- * ⚠ VÌ SAO PHẢI CHIA LÔ — VÀ ĐÂY LÀ LỖI CHÍNH VIỆC PHÂN TRANG ĐẺ RA.
- *   Trước khi phân trang, danh sách id lấy về bị `db.max_rows` cắt ở
- *   1.000 nên câu `.in(...)` không bao giờ dài quá. Phân trang xong nó
- *   lên tới `AGGREGATE_ROW_CAP` = 20.000 id, mỗi id là một uuid 36 ký
- *   tự — câu truy vấn thành một URL vài trăm KB và cổng sẽ chặn.
- *
- * ⚠ VÀ NÓ HỎNG THEO ĐÚNG KIỂU ĐANG ĐI SỬA: lỗi chỉ được `console.error`
- *   rồi trả mảng rỗng, nên giá vốn đọc ra 0 — lợi nhuận cao giả, hoa
- *   hồng tính theo con số giả, không có gì đỏ lên. Sửa một lỗ im lặng
- *   mà đào một lỗ im lặng khác thì chưa sửa gì cả.
- *
- * 150 uuid ≈ 6KB — nằm gọn dưới mọi trần URL thường gặp (8KB/16KB).
- */
-const ID_MOI_LO = 150
-
-/**
- * Đọc theo lô id, mỗi lô vẫn phân trang đầy đủ.
- *
- * ⚠ NÉM KHI ĐỌC HỎNG, KHÔNG TRẢ MẢNG RỖNG. Một báo cáo tiền thiếu dòng
- *   trông y hệt một báo cáo đúng; thà không ra số còn hơn ra số sai.
- */
-async function docTheoLoId<T>(
-  ids: string[],
-  dung: (lo: string[], from: number, to: number) => PromiseLike<{
-    data: unknown
-    error: { message: string } | null
-    count?: number | null
-  }>,
-  ten: string
-): Promise<T[]> {
-  const out: T[] = []
-  for (let i = 0; i < ids.length; i += ID_MOI_LO) {
-    const lo = ids.slice(i, i + ID_MOI_LO)
-    const res = await fetchAllForAggregate<T>((from, to) => dung(lo, from, to))
-    if (res.error) throw new Error(`${ten}: ${res.error}`)
-    if (res.truncated) {
-      throw new Error(`${ten}: một lô vượt trần ${AGGREGATE_ROW_CAP} dòng — con số sẽ thiếu`)
-    }
-    out.push(...res.rows)
-  }
-  return out
 }
 
 export interface StockEntryLineRow {

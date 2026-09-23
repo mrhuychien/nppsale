@@ -132,3 +132,66 @@ export async function fetchAllForAggregate<T>(
 export function truncationWarning(cap: number = AGGREGATE_ROW_CAP): string {
   return `Dữ liệu vượt ${cap.toLocaleString("vi-VN")} dòng nên số tổng đang THIẾU. Hãy lọc hẹp lại (theo thời gian hoặc trạng thái) để có số đúng.`
 }
+
+/**
+ * Số id tối đa trong MỘT lệnh `.in(...)`.
+ *
+ * ⚠ URL CÓ TRẦN. `.in("id", ids)` nhét cả danh sách vào query string; một
+ *   uuid ~37 ký tự sau khi mã hoá, nên 1.000 id là ~37 KB — cổng API trả
+ *   lỗi. 150 id ≈ 5,5 KB, nằm xa dưới mọi trần thường gặp.
+ */
+export const ID_MOI_LO = 150
+
+type Trang = PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>
+
+/**
+ * Đọc ĐỦ (theo trang) hoặc NÉM.
+ *
+ * ⚠ LỖI THÌ NÉM, KHÔNG TRẢ MẢNG RỖNG. Một báo cáo tiền thiếu dòng trông y
+ *   hệt một báo cáo đúng; `if (error) console.error` rồi dùng `data || []`
+ *   là biến một lần rớt mạng thành "doanh thu 0" trên màn hình.
+ *
+ * ⚠ `truncated` VẪN TRẢ VỀ để màn hình NÓI RA (xem `truncationWarning`) —
+ *   chạm trần 20.000 dòng là chuyện có thật với preset "Năm nay".
+ *
+ * ⚠ HÀM DỰNG TRANG PHẢI `.order(...)` THEO MỘT KHOÁ DUY NHẤT (thường là
+ *   `id`, hoặc thêm `.order("id")` sau cột chính). Các trang chạy SONG
+ *   SONG; không có thứ tự duy nhất thì Postgres được phép trả mỗi trang
+ *   một kiểu — dòng lặp, dòng sót.
+ */
+export async function docDuHoacNem<T>(
+  build: (from: number, to: number) => Trang,
+  ten: string,
+  cap: number = AGGREGATE_ROW_CAP
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const r = await fetchAllForAggregate<T>(build, cap)
+  if (r.error) throw new Error(`${ten}: ${r.error}`)
+  return { rows: r.rows, truncated: r.truncated }
+}
+
+/**
+ * Đọc theo lô id, mỗi lô vẫn phân trang đầy đủ.
+ *
+ * ⚠ NÉM KHI ĐỌC HỎNG, KHÔNG TRẢ MẢNG RỖNG — cùng lý do với `docDuHoacNem`.
+ * ⚠ Một lô mà vượt trần thì cũng ném: tổng của nhiều lô không có chỗ để
+ *   gắn cờ "thiếu" cho đúng lô ấy.
+ */
+export async function docTheoLoId<T>(
+  ids: readonly string[],
+  dung: (lo: string[], from: number, to: number) => Trang,
+  ten: string
+): Promise<T[]> {
+  const out: T[] = []
+  const duy = Array.from(new Set(ids))
+  for (let i = 0; i < duy.length; i += ID_MOI_LO) {
+    const lo = duy.slice(i, i + ID_MOI_LO)
+    const res = await fetchAllForAggregate<T>((from, to) => dung(lo, from, to))
+    if (res.error) throw new Error(`${ten}: ${res.error}`)
+    if (res.truncated) {
+      throw new Error(`${ten}: một lô vượt trần ${AGGREGATE_ROW_CAP} dòng — con số sẽ thiếu`)
+    }
+    out.push(...res.rows)
+  }
+  return out
+}
+

@@ -36,7 +36,7 @@ import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { loadSupplierDebt } from "@/lib/pos/load"
-import { donViNapLai } from "@/lib/pos/units"
+import { donViNapLai, donViCuaSanPham, doiDonViTheoHeSo } from "@/lib/pos/units"
 import { savePosPurchase } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
@@ -97,11 +97,10 @@ export function PurchaseScreen({
    */
   const productsRef = useRef(products)
   productsRef.current = products
-  const danhMucDonVi = (id: string) =>
-    productsRef.current.find((x) => x.id === id)?.units?.map((u) => ({
-      unit_name: u.unit_name,
-      conversion: Number(u.conversion) || 1,
-    }))
+  const danhMucDonVi = (id: string) => {
+    const p = productsRef.current.find((x) => x.id === id)
+    return p ? donViCuaSanPham(p) : null
+  }
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -168,10 +167,7 @@ export function PurchaseScreen({
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: (p.units ?? []).map((u) => ({
-            unit_name: u.unit_name,
-            conversion: Number(u.conversion) || 1,
-          })),
+          units: donViCuaSanPham(p),
           qty: 1,
           /* ⚠ GIÁ NHẬP KHÔNG LẤY GIÁ BÁN. `sell_price` là giá mình bán
              ra; điền nó vào ô giá nhập là ghi giá vốn bằng giá bán, và
@@ -499,7 +495,7 @@ export function PurchaseScreen({
                   <select
                     aria-label={`Đơn vị tính dòng ${i + 1}`}
                     value={l.unit}
-                    onChange={(e) => patchLine(l.key, { unit: e.target.value })}
+                    onChange={(e) => patchLine(l.key, doiDonViTheoHeSo(l, e.target.value))}
                     className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11.5px]"
                   >
                     {l.units.map((u) => (

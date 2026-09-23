@@ -31,6 +31,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { donViCuaSanPham, donViHienThi, doiDonViDong } from "@/lib/pos/units"
+import { unitPriceFor } from "@/lib/sell/pricing"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { loadCustomerDebt, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
@@ -85,6 +87,7 @@ interface SrcLine {
   product_id: string
   quantity: number
   unit_name: string
+  conversion_factor: number | null
   unit_price: number
   line_discount: number | null
   vat_rate: number | null
@@ -104,7 +107,7 @@ let dem = 0
 const newKey = () => `e${++dem}`
 
 export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
-  const { products, stockByProduct, warnings } = usePosRefData()
+  const { products, stockByProduct, warnings, productById, customerById } = usePosRefData()
   const { toast } = useToast()
   const router = useRouter()
   const [dangLuu, setDangLuu] = useState(false)
@@ -118,6 +121,8 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   const [dangTai, setDangTai] = useState(true)
 
   const [khach, setKhach] = useState<PosPartner | null>(null)
+  /* ⚠ Giá tra bảng giá THEO NHÓM KHÁCH của hóa đơn, như màn đơn hàng. */
+  const groupId = customerById(khach?.id)?.group_id ?? null
   const [vatRate, setVatRate] = useState(0)
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [ghiChu, setGhiChu] = useState("")
@@ -135,7 +140,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           .select("id, invoice_code, status, subtotal, vat, total, payment_terms, due_date, notes, customer_id, customer:customers(store_name, phone, address)")
           .eq("id", invoiceId).maybeSingle(),
         sb.from("sales_invoice_lines")
-          .select("id, product_id, quantity, unit_name, unit_price, line_discount, vat_rate, line_total, product:products(name, sku)")
+          .select("id, product_id, quantity, unit_name, conversion_factor, unit_price, line_discount, vat_rate, line_total, product:products(name, sku)")
           .eq("invoice_id", invoiceId).order("sort_order", { ascending: true }),
         sb.from("returns")
           .select("id, status, credit_note_amount, credit_with_invoice")
@@ -182,7 +187,11 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           sku: x.product?.sku ?? "",
           name: x.product?.name ?? "Sản phẩm đã xoá",
           unit: x.unit_name,
-          units: [{ unit_name: x.unit_name, conversion: 1 }],
+          /* ⚠ HỆ SỐ CỦA DÒNG HÓA ĐƠN CŨ, KHÔNG PHẢI 1. `post_invoice` trừ kho
+             `quantity × conversion_factor` đúng như màn gửi lên — đặt 1 là
+             lập lại một dòng "2 thùng" (×24) thì kho chỉ trừ 2 hộp. Các
+             đơn vị khác của mặt hàng ghép vào lúc vẽ (`donViHienThi`). */
+          units: [{ unit_name: x.unit_name, conversion: Number(x.conversion_factor) || 1 }],
           qty: Number(x.quantity) || 0,
           price: Number(x.unit_price) || 0,
           /* ⚠ GIẢM THEO DÒNG CỦA TỜ CŨ LÊN MÀN. Bản đầu để 0: mở tờ có
@@ -303,12 +312,10 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: (p.units ?? []).map((u) => ({
-            unit_name: u.unit_name,
-            conversion: Number(u.conversion) || 1,
-          })),
+          units: donViCuaSanPham(p),
           qty: 1,
-          price: Number(p.sell_price) || 0,
+          price: unitPriceFor(p, p.base_unit, groupId),
+          listPrice: unitPriceFor(p, p.base_unit, groupId),
           discount: { value: 0, unit: "vnd" },
           stock: stockByProduct[p.id] ?? null,
           /* ⚠ Dòng MỚI thêm thì không có số cũ — `prevAmount` để trống,
@@ -317,7 +324,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         },
       ])
     },
-    [products, stockByProduct]
+    [products, stockByProduct, groupId]
   )
 
   /* ⚠ Từ khoá thuộc về ô tìm dùng chung — màn chỉ ĐỌC để tự lọc. */
@@ -345,13 +352,13 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
           title: p.name,
           subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
           ton: stockByProduct[p.id] ?? 0,
-          gia: Number(p.sell_price) || 0,
+          gia: unitPriceFor(p, p.base_unit, groupId),
         })
         if (out.length >= 60) break
       }
       return out
     },
-    [products, stockByProduct, tuKhoa]
+    [products, stockByProduct, tuKhoa, groupId]
   )
 
   /**
@@ -567,10 +574,14 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                 <select
                   aria-label={`Đơn vị tính dòng ${i + 1}`}
                   value={l.unit}
-                  onChange={(e) => patchLine(l.key, { unit: e.target.value })}
+                  onChange={(e) => {
+                    /* ⚠ Đổi đơn vị là đổi giá — tra bảng giá, xem `doiDonViDong`. */
+                    const p = productById(l.productId)
+                    patchLine(l.key, doiDonViDong({ ...l, units: donViHienThi(l, p) }, e.target.value, p, groupId))
+                  }}
                   className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11.5px]"
                 >
-                  {l.units.map((u) => (
+                  {donViHienThi(l, productById(l.productId)).map((u) => (
                     <option key={u.unit_name} value={u.unit_name}>{u.unit_name}</option>
                   ))}
                 </select>

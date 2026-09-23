@@ -75,7 +75,7 @@ import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/sa
 import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
-import { doiDonViDong } from "@/lib/pos/units"
+import { doiDonViDong, doiDonViDongTra, donViHienThi } from "@/lib/pos/units"
 import { posTotals } from "@/lib/pos/totals"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
@@ -550,11 +550,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 sku: productById(l.product_id)?.sku ?? "",
                 name: productById(l.product_id)?.name ?? "",
                 unit: l.unit_name,
-                units: [{ unit_name: l.unit_name, conversion: 1 }],
+                /* ⚠ `return_lines` không lưu hệ số — lúc vẽ lấy của danh mục
+                   (`donViHienThi`), đừng đặt 1. Giá đã chốt trên phiếu: đổi
+                   đơn vị thì đi theo hệ số (`doiDonViDongTra`). */
+                units: [],
                 qty: Number(l.quantity) || 0,
                 price: Number(l.unit_price) || 0,
                 discount: { value: 0, unit: "vnd" as const },
                 isExchange: l.is_exchange === true,
+                giaTheoHoaDon: true,
                 note: l.note ?? undefined,
               }))
             )
@@ -1210,7 +1214,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     */}
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
                       <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
-                        {l.units.map((u) => {
+                        {donViHienThi(l, productById(l.productId)).map((u) => {
                           const dang = u.unit_name === l.unit
                           return (
                             <button
@@ -1478,7 +1482,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                             </span>
                             <span className="flex min-w-0 flex-wrap items-center gap-2">
                               <span className="flex shrink-0 gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
-                                {l.units.map((u) => {
+                                {donViHienThi(l, productById(l.productId)).map((u) => {
                                   const dang = u.unit_name === l.unit
                                   return (
                                     <button
@@ -1488,7 +1492,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                                       onClick={() => {
                                         if (u.unit_name === l.unit) return
                                         /* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDong`. */
-                                        sua(doiDonViDong(l, u.unit_name, productById(l.productId), groupId))
+                                        sua(doiDonViDongTra(l, u.unit_name, productById(l.productId), groupId))
                                       }}
                                       className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
                                         dang

@@ -20,6 +20,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { PosUnitSelect } from "@/components/pos/unit-select"
+import { donViCuaSanPham, donViHienThi, doiDonViDongTra } from "@/lib/pos/units"
+import { unitPriceFor } from "@/lib/sell/pricing"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -90,7 +93,7 @@ let dem = 0
 const newKey = () => `r${++dem}`
 
 export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = null }: ReturnScreenProps) {
-  const { products, customers, stockByProduct, loading, warnings } = usePosRefData()
+  const { products, customers, stockByProduct, loading, warnings, productById, customerById } = usePosRefData()
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -98,6 +101,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const [traLines, setTraLines] = useState<PosLine[]>([])
   const [doiLines, setDoiLines] = useState<PosLine[]>([])
   const [khach, setKhach] = useState<PosPartner | null>(null)
+  /* ⚠ Giá hàng trả thêm tay tra bảng giá THEO NHÓM KHÁCH, như màn đơn hàng. */
+  const groupId = customerById(khach?.id)?.group_id ?? null
   const [hoan, setHoan] = useState<HoanTien>("cong-no")
   const [lyDo, setLyDo] = useState("damaged")
   const [ghiChu, setGhiChu] = useState("")
@@ -155,10 +160,11 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     for (const l of traLines) {
       const g = giaGoc[l.productId]
       if (g == null) return null
-      s += lineGross(l.qty, g)
+      const heSo = donViHienThi(l, productById(l.productId)).find((u) => u.unit_name === l.unit)?.conversion || 1
+      s += lineGross(l.qty, Math.round(g * heSo))
     }
     return s
-  }, [traLines, giaGoc])
+  }, [traLines, giaGoc, productById])
 
   usePosDocLabel("RET", returnId, slipCode)
   const chuKy = useMemo(
@@ -189,9 +195,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         sku: p.sku ?? "",
         name: p.name,
         unit: p.base_unit,
-        units: [{ unit_name: p.base_unit, conversion: 1 }],
+        units: donViCuaSanPham(p),
         qty: 1,
-        price: Number(p.sell_price) || 0,
+        price: unitPriceFor(p, p.base_unit, groupId),
         discount: { value: 0, unit: "vnd" },
         isExchange: doi,
         stock: stockByProduct[p.id] ?? null,
@@ -199,7 +205,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
       if (doi) setDoiLines((c) => [...c, moi])
       else setTraLines((c) => [...c, moi])
     },
-    [products, stockByProduct]
+    [products, stockByProduct, groupId]
   )
 
   /** Nạp phiếu trả đã lưu. */
@@ -238,11 +244,14 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           sku: x.product?.sku ?? "",
           name: x.product?.name ?? "Sản phẩm đã xoá",
           unit: x.unit_name,
-          units: [{ unit_name: x.unit_name, conversion: 1 }],
+          /* ⚠ `return_lines` không lưu hệ số — để trống, lúc vẽ lấy của
+             danh mục (`donViHienThi`). Đặt 1 là thùng thành hộp. */
+          units: [],
           qty: Number(x.quantity) || 0,
           price: Number(x.unit_price) || 0,
           discount: { value: 0, unit: "vnd" as const },
           isExchange: x.is_exchange === true,
+          giaTheoHoaDon: true,
           note: x.note ?? undefined,
         }))
         setTraLines(ds.filter((x) => !x.isExchange))
@@ -316,7 +325,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             meta: [head.customer?.phone, head.customer?.address].filter(Boolean).join(" · "),
           })
         }
-        setGiaGoc(Object.fromEntries(ds.map((x) => [x.productId, x.unitPrice])))
+        /* ⚠ GIÁ GỐC THEO ĐƠN VỊ CƠ SỞ — dòng trả đổi được đơn vị. */
+        setGiaGoc(Object.fromEntries(ds.map((x) => [x.productId, x.unitPrice / (x.conversion || 1)])))
         setTraLines(
           ds.map((x) => ({
             key: newKey(),
@@ -324,7 +334,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             sku: x.sku,
             name: x.name,
             unit: x.unitName,
-            units: [{ unit_name: x.unitName, conversion: 1 }],
+            units: [{ unit_name: x.unitName, conversion: x.conversion }],
+            giaTheoHoaDon: true,
             /* ⚠ SỐ LƯỢNG VỀ 0, KHÔNG BẰNG SỐ ĐÃ BÁN. Nạp sẵn cả số là
                một phiếu trả TOÀN BỘ đơn hàng chỉ sau một cú bấm — và
                người dùng phải sửa từng dòng xuống. Hướng an toàn là
@@ -421,12 +432,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
           right: (
             <span className="n text-[12.5px] font-semibold text-[var(--pos-ink)]">
-              {formatCurrency(Number(p.sell_price) || 0)}
+              {formatCurrency(unitPriceFor(p, p.base_unit, groupId))}
             </span>
           ),
         }
       }),
-    [products, stockByProduct]
+    [products, stockByProduct, groupId]
   )
 
   /**
@@ -564,8 +575,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
               <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
               <div className="min-w-0">
-                <div className="truncate text-[12.5px] font-medium leading-tight text-[var(--pos-ink)]">
-                  {l.name}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[12.5px] font-medium leading-tight text-[var(--pos-ink)]">
+                    {l.name}
+                  </span>
+                  {/* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDongTra`. */}
+                  <PosUnitSelect
+                    className="shrink-0"
+                    label={`Đơn vị ${doi ? "đổi" : "trả"} dòng ${i + 1}`}
+                    value={l.unit}
+                    units={donViHienThi(l, productById(l.productId))}
+                    onChange={(u) => patch(l.key, doiDonViDongTra(l, u, productById(l.productId), groupId))}
+                  />
                 </div>
                 <div className="mt-px truncate text-[11px] text-[var(--pos-muted)]">
                   {l.stock == null ? (

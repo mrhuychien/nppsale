@@ -41,7 +41,7 @@ import {
   loadSupplierDebt, loadReceiptsOfSupplier, loadReceiptLinesForReturn,
   type PosReceiptRef,
 } from "@/lib/pos/load"
-import { donViNapLai } from "@/lib/pos/units"
+import { donViNapLai, donViCuaSanPham } from "@/lib/pos/units"
 import { savePosSupplierReturn } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
@@ -121,11 +121,10 @@ export function SupplierReturnScreen({
    */
   const productsRef = useRef(products)
   productsRef.current = products
-  const danhMucDonVi = (id: string) =>
-    productsRef.current.find((x) => x.id === id)?.units?.map((u) => ({
-      unit_name: u.unit_name,
-      conversion: Number(u.conversion) || 1,
-    }))
+  const danhMucDonVi = (id: string) => {
+    const p = productsRef.current.find((x) => x.id === id)
+    return p ? donViCuaSanPham(p) : null
+  }
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -189,10 +188,7 @@ export function SupplierReturnScreen({
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: (p.units ?? []).map((u) => ({
-            unit_name: u.unit_name,
-            conversion: Number(u.conversion) || 1,
-          })),
+          units: donViCuaSanPham(p),
           qty: 1,
           price: 0,
           discount: { value: 0, unit: "vnd" },

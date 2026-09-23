@@ -92,6 +92,11 @@ export interface PosLine {
    * Rỗng = chưa ghi riêng, đọc theo lý do của phiếu.
    */
   reason?: string
+  /**
+   * Giá của dòng lấy từ chứng từ (hóa đơn gốc, phiếu đã lưu), không từ bảng
+   * giá — đổi đơn vị thì giá đi theo hệ số (`doiDonViTheoHeSo`).
+   */
+  giaTheoHoaDon?: boolean
 
   /* ---- màn sửa: số CŨ để gạch ngang, spec §7 ---- */
   /** Thành tiền trước khi sửa. `null`/thiếu = dòng mới thêm. */

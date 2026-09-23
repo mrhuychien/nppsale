@@ -185,6 +185,8 @@ export interface SourceInvoiceLine {
   sku: string
   name: string
   unitName: string
+  /** Hệ số quy đổi đã chụp trên dòng hóa đơn. */
+  conversion: number
   quantity: number
   unitPrice: number
   isExchange: boolean
@@ -207,13 +209,14 @@ export async function loadInvoiceLinesForReturn(
 ): Promise<SourceInvoiceLine[]> {
   const { data, error } = await sb
     .from("sales_invoice_lines")
-    .select("product_id, unit_name, quantity, unit_price, is_exchange, product:products(name, sku)")
+    .select("product_id, unit_name, conversion_factor, quantity, unit_price, is_exchange, product:products(name, sku)")
     .eq("invoice_id", invoiceId)
     .order("sort_order", { ascending: true })
   if (error) throw error
   const rows = ((data as unknown) as Array<{
     product_id: string
     unit_name: string
+    conversion_factor: number | null
     quantity: number
     unit_price: number
     is_exchange: boolean
@@ -226,6 +229,7 @@ export async function loadInvoiceLinesForReturn(
       sku: r.product?.sku ?? "",
       name: r.product?.name ?? "Sản phẩm đã xoá",
       unitName: r.unit_name,
+      conversion: Number(r.conversion_factor) || 1,
       quantity: Number(r.quantity) || 0,
       unitPrice: Number(r.unit_price) || 0,
       isExchange: false,

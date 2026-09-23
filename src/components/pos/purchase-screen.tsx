@@ -29,6 +29,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { MoneyInput } from "@/components/ui/money-input"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -521,13 +522,13 @@ export function PurchaseScreen({
                     value={l.qty}
                     onChange={(v) => patchLine(l.key, { qty: v })}
                   />
-                  <input
-                    className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px]"
+                  <MoneyInput
+                    showSuffix={false}
+                    inputClassName="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] py-0 lg:h-7 focus-visible:ring-1 focus-visible:ring-offset-0"
                     aria-label={`Giá nhập dòng ${i + 1}`}
-                    inputMode="numeric"
-                    value={l.price === 0 ? "" : String(l.price)}
+                    value={l.price || ""}
                     placeholder="0"
-                    onChange={(e) => patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                    onChange={(v) => patchLine(l.key, { price: v })}
                   />
                   <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: d })} />
                   <LineAmountCell line={l} />

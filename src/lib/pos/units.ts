@@ -1,4 +1,5 @@
-import type { PosUnitOption } from "./types"
+import type { PosLine, PosUnitOption } from "./types"
+import { unitPriceFor, conversionFor, sellableUnits, type PricedProduct } from "@/lib/sell/pricing"
 
 /**
  * Bộ đơn vị của một dòng NẠP LẠI từ phiếu đã lưu.
@@ -24,4 +25,32 @@ export function donViNapLai(
   if (i >= 0) ds[i] = { unit_name: unitName, conversion: heSo }
   else ds.push({ unit_name: unitName, conversion: heSo })
   return ds
+}
+
+/**
+ * ĐỔI ĐƠN VỊ CỦA MỘT DÒNG — dòng bán lẫn dòng hàng đổi trả.
+ *
+ * ⚠ ĐỔI ĐƠN VỊ LÀ ĐỔI GIÁ. Chủ nhà báo 23/09/2026: ở khối "Hàng đổi trả
+ *   kèm đơn", bấm hộp → thùng mà đơn giá vẫn là giá hộp — "Trừ đơn" hụt
+ *   đúng bằng hệ số. Dòng bán thì tra lại bảng giá; dòng trả chỉ đổi
+ *   nhãn. Nay cả hai đi qua đây.
+ *
+ * ⚠ TRA LẠI BẢNG GIÁ, KHÔNG NHÂN CHIA HỆ SỐ — bảng giá thùng có thể rẻ
+ *   hơn 12 lần giá chai. Chỉ khi danh mục không còn mặt hàng (đã ngừng
+ *   bán) mới giữ giá cũ: không có gì để tra.
+ */
+export function doiDonViDong(
+  l: Pick<PosLine, "price" | "units">,
+  donVi: string,
+  p: PricedProduct | null | undefined,
+  groupId: string | null | undefined
+): Pick<PosLine, "unit" | "price" | "listPrice" | "units"> {
+  if (!p) return { unit: donVi, price: l.price, listPrice: l.price, units: l.units }
+  const gia = unitPriceFor(p, donVi, groupId)
+  return {
+    unit: donVi,
+    price: gia,
+    listPrice: gia,
+    units: sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) })),
+  }
 }

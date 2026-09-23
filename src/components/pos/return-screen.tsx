@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { MoneyInput } from "@/components/ui/money-input"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -597,12 +598,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 value={l.qty}
                 onChange={(v) => patch(l.key, { qty: v })}
               />
-              <input
-                className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] text-[var(--pos-ink)]"
+              <MoneyInput
+                showSuffix={false}
+                inputClassName="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] text-[var(--pos-ink)] py-0 lg:h-7 focus-visible:ring-1 focus-visible:ring-offset-0"
                 aria-label={`Đơn giá dòng ${i + 1}`}
-                inputMode="numeric"
-                value={l.price === 0 ? "0" : String(l.price)}
-                onChange={(e) => patch(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                value={l.price}
+                onChange={(v) => patch(l.key, { price: v })}
               />
               <div className="text-right">
                 {doi ? (

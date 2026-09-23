@@ -30,6 +30,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { MoneyInput } from "@/components/ui/money-input"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { loadCustomerDebt, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
@@ -593,12 +594,12 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                   value={l.qty}
                   onChange={(v) => patchLine(l.key, { qty: v })}
                 />
-                <input
-                  className="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px]"
+                <MoneyInput
+                  showSuffix={false}
+                  inputClassName="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] py-0 lg:h-7 focus-visible:ring-1 focus-visible:ring-offset-0"
                   aria-label={`Đơn giá dòng ${i + 1}`}
-                  inputMode="numeric"
-                  value={l.price === 0 ? "0" : String(l.price)}
-                  onChange={(e) => patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                  value={l.price}
+                  onChange={(v) => patchLine(l.key, { price: v })}
                 />
                 <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: d })} />
                 <LineAmountCell line={l} />

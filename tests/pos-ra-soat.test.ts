@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { vatKeTiep } from "../src/lib/pos/vat"
+import { doiDonViDong } from "../src/lib/pos/units"
 import { vatLabel } from "../src/lib/constants"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve } from "node:path"
@@ -483,21 +484,27 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
      * biến mất, và chốt đỏ oan trong khi LUẬT — "đổi đơn vị là tra lại
      * bảng giá" — còn nguyên trong `doiDonVi`.
      */
-    const i = S.search(/const doiDonVi = useCallback\(/)
-    expect(i, "không thấy phép đổi đơn vị của dòng hàng").toBeGreaterThan(-1)
-    const o = S.slice(i, S.indexOf("addProduct", i))
-    expect(o, "đổi đơn vị không tra bảng giá theo nhóm khách")
-      .toMatch(/unitPriceFor\(p, u, groupId\)/)
-    /* ⚠ Và phép đổi phải THẬT SỰ ghi giá mới xuống dòng. */
-    expect(o, "tra giá rồi không ghi xuống dòng").toMatch(/price: gia/)
-    expect(o, "tra giá rồi không cập nhật giá bảng").toMatch(/listPrice: gia/)
-    expect(
-      /price: Math\.round\(\(l\.price \/ cu\) \* moi\)/.test(S),
-      "đổi đơn vị lại nhân chia hệ số thay vì tra bảng giá"
-    ).toBe(false)
+    /* Chạy thật phép đổi (`doiDonViDong`): thùng rẻ hơn 12 lần giá chai. */
+    const sp = {
+      id: "p", base_unit: "chai", sell_price: 10_000,
+      units: [{ unit_name: "thùng", conversion: 12 }],
+      price_lists: [
+        { unit_name: "thùng", group_id: null, price: 110_000 },
+        { unit_name: "thùng", group_id: "g1", price: 100_000 },
+      ],
+    }
+    const dong = { price: 10_000, units: [{ unit_name: "chai", conversion: 1 }] }
+    const moi = doiDonViDong(dong, "thùng", sp as never, "g1")
+    expect(moi.price, "đổi đơn vị không tra bảng giá theo nhóm khách").toBe(100_000)
+    expect(moi.listPrice, "tra giá rồi không cập nhật giá bảng").toBe(100_000)
+    expect(moi.units.map((u) => u.conversion)).toEqual([1, 12])
+    expect(doiDonViDong(dong, "thùng", sp as never, null).price).toBe(110_000)
+    /* Mặt hàng đã ngừng bán (không có trong danh mục): giữ giá cũ. */
+    expect(doiDonViDong(dong, "thùng", null, "g1").price).toBe(10_000)
     /* ⚠ Và dải chip phải nối vào chính phép ấy — bộ luật đúng mà không
        ai gọi thì vô nghĩa. */
     expect(S, "chip đơn vị không gọi phép đổi").toMatch(/doiDonVi\(l, u\.unit_name\)/)
+    expect(S, "phép đổi của dòng hàng không đi qua doiDonViDong").toMatch(/patchLine\(l\.key, doiDonViDong\(/)
   })
 
   /**

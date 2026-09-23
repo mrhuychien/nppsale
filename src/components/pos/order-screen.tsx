@@ -49,6 +49,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { MoneyInput } from "@/components/ui/money-input"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -74,6 +75,7 @@ import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/sa
 import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
+import { doiDonViDong } from "@/lib/pos/units"
 import { posTotals } from "@/lib/pos/totals"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
@@ -376,16 +378,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    */
   const doiDonVi = useCallback(
     (l: PosLine, u: string) => {
-      const p = productById(l.productId)
-      const gia = p ? unitPriceFor(p, u, groupId) : l.price
-      patchLine(l.key, {
-        unit: u,
-        price: gia,
-        listPrice: gia,
-        units: p
-          ? sellableUnits(p).map((x) => ({ unit_name: x, conversion: conversionFor(p, x) }))
-          : l.units,
-      })
+      patchLine(l.key, doiDonViDong(l, u, productById(l.productId), groupId))
     },
     [productById, groupId, patchLine]
   )
@@ -1320,20 +1313,18 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       bán sửa mò.
                   */}
                   <div>
-                    <input
-                      className={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] ${
+                    <MoneyInput
+                      showSuffix={false}
+                      inputClassName={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] ${
                         r?.xauGia
                           ? "border-[var(--pos-danger)] bg-[var(--pos-danger-soft)] text-[var(--pos-danger)]"
                           : "border-[var(--pos-edge)] text-[var(--pos-ink)]"
-                      } disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)]`}
+                      } disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0`}
                       aria-label={`Đơn giá dòng ${i + 1}`}
-                      inputMode="numeric"
                       disabled={!canEditPrice}
                       title={canEditPrice ? undefined : "Bạn không có quyền sửa giá"}
-                      value={l.price === 0 ? "0" : String(l.price)}
-                      onChange={(e) =>
-                        patchLine(l.key, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })
-                      }
+                      value={l.price}
+                      onChange={(v) => patchLine(l.key, { price: v })}
                     />
                     {r?.xauGia === "below_list" && (
                       <div className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
@@ -1494,7 +1485,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                                       key={u.unit_name}
                                       type="button"
                                       aria-pressed={dang}
-                                      onClick={() => sua({ unit: u.unit_name })}
+                                      onClick={() => {
+                                        if (u.unit_name === l.unit) return
+                                        /* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDong`. */
+                                        sua(doiDonViDong(l, u.unit_name, productById(l.productId), groupId))
+                                      }}
                                       className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
                                         dang
                                           ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
@@ -1543,12 +1538,13 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                             />
                           </div>
 
-                          <input
+                          <MoneyInput
+                            showSuffix={false}
+                            className="w-[104px] justify-self-end"
+                            inputClassName="n h-[38px] rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-right text-[14px] font-bold text-[var(--pos-ink)] outline-none py-0 lg:h-[38px] focus-visible:ring-1 focus-visible:ring-offset-0"
                             aria-label={`Đơn giá trả dòng ${i + 1}`}
-                            inputMode="numeric"
-                            value={l.price === 0 ? "0" : String(l.price)}
-                            onChange={(e) => sua({ price: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                            className="n h-[38px] w-[104px] justify-self-end rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-right text-[14px] font-bold text-[var(--pos-ink)] outline-none"
+                            value={l.price}
+                            onChange={(v) => sua({ price: v })}
                           />
 
                           {/* ⚠ TRẢ / ĐỔI LÀ HAI CHIỀU TIỀN KHÁC NHAU: dòng ĐỔI

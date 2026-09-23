@@ -20,6 +20,7 @@
 WITH dong_nghi AS (
   SELECT
     si.id              AS invoice_id,
+    si.org_id,
     si.invoice_code,
     si.invoice_date,
     goc.invoice_code   AS lap_lai_tu,
@@ -39,14 +40,16 @@ WITH dong_nghi AS (
   JOIN products p              ON p.id = sil.product_id
   JOIN product_units pu        ON pu.product_id = sil.product_id AND pu.unit_name = sil.unit_name
   LEFT JOIN sales_invoices goc ON goc.id = si.replaced_from
-  WHERE si.org_id = public.user_org_id()
-    AND si.status = 'posted'
+  -- ⚠ KHÔNG lọc `public.user_org_id()`: SQL Editor không có phiên đăng
+  --   nhập, hàm ấy trả rỗng và câu luôn ra 0 dòng. Cột `org_id` nói NPP.
+  WHERE si.status = 'posted'
     AND si.replaced_from IS NOT NULL          -- chỉ hóa đơn LẬP LẠI
     AND sil.unit_name <> p.base_unit
     AND pu.conversion > 1
     AND sil.conversion_factor <> pu.conversion
 )
 SELECT
+  d.org_id,
   d.invoice_code                          AS hoa_don,
   d.invoice_date                          AS ngay,
   d.lap_lai_tu,
@@ -64,4 +67,4 @@ SELECT
   trim_scale(d.le_ra_phai_tru - d.da_tru_theo_hoa_don) AS thieu_tru,
   d.base_unit                             AS don_vi_co_so
 FROM dong_nghi d
-ORDER BY d.invoice_date DESC, d.invoice_code, d.sku;
+ORDER BY d.org_id, d.invoice_date DESC, d.invoice_code, d.sku;

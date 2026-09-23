@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "audit:db": "python3 scripts/audit-unchecked-db.py --strict",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build && python3 scripts/audit-unchecked-db.py --strict"
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build && python3 scripts/audit-unchecked-db.py --strict",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.6",
+    "@playwright/test": "^1.56.1",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18",

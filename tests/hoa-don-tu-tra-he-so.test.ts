@@ -21,7 +21,7 @@ describe("mig 174: xuất hóa đơn tự tra hệ số quy đổi", () => {
   })
 
   it("chuẩn hoá chạy TRƯỚC phiếu xuất (vá ngay sau chỗ đọc v_lines)", () => {
-    expect(M174).toMatch(/replace\(v_src, v_neo, v_neo \|\| .*_chuan_he_so_dong_hoa_don\(v_lines\)/s)
+    expect(M174).toMatch(/replace\(v_src, v_neo, v_neo \|\| [\s\S]*_chuan_he_so_dong_hoa_don\(v_lines\)/)
   })
 
   it("thứ tự tra: đơn vị cơ sở → product_units → số gửi lên", () => {

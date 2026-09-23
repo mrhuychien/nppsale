@@ -38,19 +38,19 @@ export function quetDoiDonVi(tep: string, s: string): ViPham[] {
 
   // Luật 1 — lệnh vá dòng mà đối tượng mở đầu bằng `unit:`.
   const cam = /\b(patch\w*|sua|set\w*Lines)\(\s*(?:[\w.]+,\s*)?(?:\([^()]*=>\s*[^{]*)?\{\s*(?:\.\.\.[\w.]+,\s*)?unit\s*:/g
-  for (const m of s.matchAll(cam)) {
+  for (const m of Array.from(s.matchAll(cam))) {
     out.push({ tep, dong: soDong(s, m.index!), luat: 1, trich: m[0] })
   }
   // Trải một dòng CÓ SẴN rồi ghi đè `unit:` ngay sau — cũng là đổi nhãn.
-  for (const m of s.matchAll(/\{\s*\.\.\.(?:x|l|d|dong|line|cu)\s*,\s*unit\s*:/g)) {
+  for (const m of Array.from(s.matchAll(/\{\s*\.\.\.(?:x|l|d|dong|line|cu)\s*,\s*unit\s*:/g))) {
     if (out.some((v) => v.dong === soDong(s, m.index!))) continue
     out.push({ tep, dong: soDong(s, m.index!), luat: 1, trich: m[0] })
   }
 
   // Luật 2 — ô chọn / chip đơn vị phải gọi phép đổi dùng chung.
   const oChon: number[] = []
-  for (const m of s.matchAll(/<PosUnitSelect\b/g)) oChon.push(m.index!)
-  for (const m of s.matchAll(/<select\b/g)) {
+  for (const m of Array.from(s.matchAll(/<PosUnitSelect\b/g))) oChon.push(m.index!)
+  for (const m of Array.from(s.matchAll(/<select\b/g))) {
     const the = s.slice(m.index!, s.indexOf(">", m.index!) + 1)
     if (/value=\{l\.unit\}/.test(the)) oChon.push(m.index!)
   }
@@ -61,7 +61,7 @@ export function quetDoiDonVi(tep: string, s: string): ViPham[] {
       out.push({ tep, dong: soDong(s, i), luat: 2, trich: than.slice(0, 80) || "(không có onChange)" })
     }
   }
-  for (const m of s.matchAll(/onClick=\{/g)) {
+  for (const m of Array.from(s.matchAll(/onClick=\{/g))) {
     const than = thanNgoac(s, m.index! + "onClick=".length)
     if (/\bu\.unit_name\b/.test(than) && !/\bdoiDonVi\w*\(/.test(than)) {
       out.push({ tep, dong: soDong(s, m.index!), luat: 2, trich: than.slice(0, 80) })

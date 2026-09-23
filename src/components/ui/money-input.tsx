@@ -65,17 +65,29 @@ export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
       const raw = e.target.value
       // Đếm digit trước caret để khôi phục vị trí sau khi format lại.
       const caret = e.target.selectionStart ?? raw.length
-      const digitsBeforeCaret = raw.slice(0, caret).replace(/\D/g, "").length
-
       const digitsOnly = raw.replace(/\D/g, "")
       const parsed = digitsOnly === "" ? 0 : parseInt(digitsOnly, 10)
       onChange(Number.isFinite(parsed) ? parsed : 0)
+      // Số 0 đứng đầu bị bỏ khi định dạng lại — đừng đếm chúng.
+      const leadingZeros = digitsOnly.length - digitsOnly.replace(/^0+/, "").length
+      const digitsBeforeCaret = Math.max(
+        0,
+        raw.slice(0, caret).replace(/\D/g, "").length - leadingZeros
+      )
 
       // Đặt caret sau khi React render xong giá trị mới.
       requestAnimationFrame(() => {
         const node = innerRef.current
         if (!node) return
         const formatted = node.value
+        /* ⚠ GIÁ TRỊ 0 THÌ CON TRỎ VỀ CUỐI. Xoá trắng ô là ô hiện "0"; đếm
+           chữ số trước con trỏ ra 0 nên con trỏ đứng TRƯỚC số 0 ấy, và gõ
+           "220000" thành 2.200.000 — gấp mười. Bắt được bằng chốt bấm màn
+           hình POS (e2e/pos-doi-don-vi.spec.ts), 23/09/2026. */
+        if (parsed === 0) {
+          node.setSelectionRange(formatted.length, formatted.length)
+          return
+        }
         let pos = 0
         let seen = 0
         while (pos < formatted.length && seen < digitsBeforeCaret) {

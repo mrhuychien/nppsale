@@ -36,3 +36,7 @@ yarn-error.log*
 next-env.d.ts
 _design-source/
 __pycache__/
+
+# Chốt bấm màn hình (Playwright)
+/test-results/
+/playwright-report/

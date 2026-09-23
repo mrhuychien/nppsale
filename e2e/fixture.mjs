@@ -1,0 +1,77 @@
+/**
+ * DỮ LIỆU MẪU CHO CHỐT BẤM MÀN HÌNH. Một NPP, một chủ, một khách, một mặt
+ * hàng hai đơn vị — đủ để bắt lỗi đổi đơn vị:
+ *   Sữa hộp: hộp 20.000 · thùng 24 hộp, BẢNG GIÁ thùng 450.000 (rẻ hơn
+ *   24 × 20.000 = 480.000 — nếu ra 480.000 là màn đã nhân hệ số thay vì
+ *   tra bảng giá).
+ */
+export const ORG = "00000000-0000-4000-8000-0000000000a1"
+export const OWNER = "00000000-0000-4000-8000-0000000000b1"
+export const KHACH = "00000000-0000-4000-8000-0000000000c1"
+/** Khách thuộc nhóm giá G1: hộp 19.000 (khác `sell_price` 20.000). */
+export const KHACH_NHOM = "00000000-0000-4000-8000-0000000000c2"
+export const NHOM = "00000000-0000-4000-8000-0000000000a9"
+export const SUA = "00000000-0000-4000-8000-0000000000d1"
+export const NCC = "00000000-0000-4000-8000-0000000000e1"
+export const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
+
+export const users = [{ id: OWNER, email: "chu@npp.test", password: "matkhau-e2e" }]
+
+export function tables() {
+  return {
+    organizations: [{ id: ORG, name: "NPP Thử", setup_completed: true, settings: {} }],
+    users: [{
+      id: OWNER, org_id: ORG, full_name: "Chủ NPP", role: "owner", phone: "0900000000",
+      is_active: true, created_at: "2026-01-01T00:00:00Z", allow_price_edit: true,
+      price_edit_max_increase_pct: 100,
+    }],
+    customers: [{
+      id: KHACH, org_id: ORG, customer_code: "KH001", store_name: "Tạp hoá Cô Ba", owner_name: "Cô Ba",
+      phone: "0911111111", address: "1 Lê Lợi", status: "active", group_id: null, debt: 0, credit_limit: 0,
+      payment_terms: "COD", sales_user_id: OWNER,
+    }, {
+      id: KHACH_NHOM, org_id: ORG, customer_code: "KH002", store_name: "Đại lý Minh", owner_name: "Minh",
+      phone: "0922222222", address: "2 Trần Phú", status: "active", group_id: NHOM, debt: 0, credit_limit: 0,
+      payment_terms: "COD", sales_user_id: OWNER,
+    }],
+    products: [{
+      id: SUA, org_id: ORG, sku: "SUA1", barcode: "8930000000011", name: "Sữa hộp", base_unit: "hộp",
+      sell_price: 20000, cost_price: 15000, vat_rate: 0, status: "active", category: "Sữa",
+      units: [{ id: "u1", product_id: SUA, unit_name: "thùng", conversion: 24 }],
+      price_lists: [
+        { id: "pl1", product_id: SUA, unit_name: "hộp", group_id: null, price: 20000 },
+        { id: "pl2", product_id: SUA, unit_name: "thùng", group_id: null, price: 450000 },
+        { id: "pl3", product_id: SUA, unit_name: "hộp", group_id: NHOM, price: 19000 },
+      ],
+    }],
+    product_units: [{ id: "u1", product_id: SUA, unit_name: "thùng", conversion: 24 }],
+    batches: [{ id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expiry_date: "2027-12-31" }],
+    suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
+    role_permissions: [],
+    sales_orders: [], sales_order_lines: [], returns: [], return_lines: [],
+    /* Hóa đơn có một dòng "2 thùng" (hệ số 24) — để chốt màn Sửa hóa đơn
+       giữ đúng hệ số khi lập lại (lỗi cũ: nạp lại thành hệ số 1). */
+    sales_invoices: [{
+      id: HOA_DON, org_id: ORG, invoice_code: "HD-E2E-1", order_id: "00000000-0000-4000-8000-0000000000f9",
+      customer_id: KHACH, status: "posted", subtotal: 900000, vat: 0, total: 900000,
+      payment_terms: "COD", due_date: "2026-09-30", notes: null, invoice_date: "2026-09-23",
+      customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" },
+    }],
+    sales_invoice_lines: [{
+      id: "sil1", invoice_id: HOA_DON, product_id: SUA, quantity: 2, unit_name: "thùng", conversion_factor: 24,
+      unit_price: 450000, line_discount: 0, vat_rate: 0, line_total: 900000, is_exchange: false, sort_order: 0,
+      product: { name: "Sữa hộp", sku: "SUA1" },
+    }],
+    receivables: [], payables: [],
+    purchase_invoices: [], purchase_invoice_lines: [], approval_rules: [],
+  }
+}
+
+/** RPC mà các màn POS gọi. Hàm lưu ghi lại tải trọng để chốt đọc. */
+export const rpc = {
+  user_has_permission: () => true,
+  lookup_email_by_identifier: () => "chu@npp.test",
+  create_order_with_lines: (_a) => [{ order_id: "00000000-0000-4000-8000-00000000f001", order_code: "DH-E2E-1", already_existed: false }],
+  create_return_with_lines: () => "00000000-0000-4000-8000-00000000f002",
+  reissue_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f003", invoice_code: "HD-E2E-1-1", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "completed" }],
+}

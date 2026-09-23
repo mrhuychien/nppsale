@@ -124,8 +124,12 @@ export default function CashReceiptDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  /* ⚠ XÁC NHẬN GHI HAI BẢNG: `cash_receipts` (chủ, quản lý, kế toán) VÀ
+     `payments` ("Accountant can verify payments": chỉ chủ + kế toán). Mở
+     cho quản lý là `payments` bị RLS lặng lẽ bỏ qua (0 dòng) trong khi
+     phiếu đã thành `received` — đã đo. Vai = giao của hai chính sách. */
   const canConfirm =
-    !!user && ["owner", "manager", "accountant"].includes(user.role) && receipt?.status === "pending"
+    !!user && ["owner", "accountant"].includes(user.role) && receipt?.status === "pending"
 
   /**
    * HUỶ PHIẾU LÀ MỘT QUYỀN RIÊNG, KHÔNG ĐI KÈM QUYỀN XÁC NHẬN.

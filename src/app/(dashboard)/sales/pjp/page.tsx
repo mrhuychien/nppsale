@@ -25,6 +25,8 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { newOrderHref } from "@/lib/nav/new-order"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { errorMessage } from "@/lib/errors"
 
 interface PjpRoute {
   id?: string
@@ -253,12 +255,15 @@ export default function PjpPage() {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const visit = todayVisits.find((v) => v.customer_id === customerId && !v.check_out_at)
     if (!visit) return
-    const { error: outErr } = await supabase
-      .from("visit_logs")
-      .update({ check_out_at: new Date().toISOString() })
-      .eq("id", visit.id)
-    if (outErr) {
-      toast({ title: "Không ghi được giờ rời điểm", description: outErr.message, variant: "destructive" })
+    try {
+      await ghiPhaiTrungDong(
+        supabase
+          .from("visit_logs")
+          .update({ check_out_at: new Date().toISOString() })
+          .eq("id", visit.id)
+      )
+    } catch (err) {
+      toast({ title: "Không ghi được giờ rời điểm", description: errorMessage(err), variant: "destructive" })
       return
     }
     await fetchTodayVisits()
@@ -269,11 +274,20 @@ export default function PjpPage() {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const visit = todayVisits.find((v) => v.customer_id === customerId)
     if (!visit) return
-    await supabase
-      .from("visit_logs")
-      .update({ result, check_out_at: new Date().toISOString() })
-      .eq("id", visit.id)
-      .throwOnError()
+    /* ⚠ BẮT LỖI VÀ ĐẾM DÒNG. Bản cũ `.throwOnError()` mà không có
+       try/catch: hỏng là một lời hứa bị bỏ rơi, màn không báo gì; còn
+       RLS từ chối thì 0 dòng, không lỗi, và `.throwOnError()` không bắt. */
+    try {
+      await ghiPhaiTrungDong(
+        supabase
+          .from("visit_logs")
+          .update({ result, check_out_at: new Date().toISOString() })
+          .eq("id", visit.id)
+      )
+    } catch (err) {
+      toast({ title: "Không ghi được kết quả ghé thăm", description: errorMessage(err), variant: "destructive" })
+      return
+    }
     await fetchTodayVisits()
   }
 

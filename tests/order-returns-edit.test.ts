@@ -246,11 +246,34 @@ describe("ghi hàng trả khi lưu bản sửa", () => {
    * null` vì màn giỏ không có ô ghi chú cho phiếu trả; ghi nó xuống là mỗi
    * lần sửa đơn lại xoá trắng ghi chú viết ở màn Trả hàng.
    */
-  it("không đụng tới ghi chú của phiếu trả", () => {
-    const src = readFileSync("src/lib/sell/order-edit.ts", "utf8")
-    const fn = src.slice(src.indexOf("export async function syncOrderReturn"))
-    expect(fn).toContain('.update({ reason: o.reason })')
-    expect(fn).not.toContain("notes: o.notes,\n      })")
+  /**
+   * ⚠ CHẠY HÀM, KHÔNG SOI CHỮ. Lệnh sửa đầu phiếu trả chỉ được mang lý do
+   *   và KHÁCH (đổi khách khi sửa đơn thì phiếu trả đổi theo — đợt QA
+   *   22/09/2026), KHÔNG mang ghi chú.
+   */
+  it("không đụng tới ghi chú của phiếu trả", async () => {
+    const { syncOrderReturn } = await import("../src/lib/sell/order-edit")
+    const sua: Array<Record<string, unknown>> = []
+    const chuoi = (kq: unknown) => {
+      const c: Record<string, unknown> = {}
+      for (const k of ["eq", "select", "limit"]) c[k] = () => c
+      c.then = (a: (v: unknown) => unknown) => Promise.resolve(kq).then(a)
+      return c
+    }
+    const sb = {
+      from: (t: string) => ({
+        update: (v: Record<string, unknown>) => { if (t === "returns") sua.push(v); return chuoi({ data: [{ id: "r1" }], error: null }) },
+        delete: () => chuoi({ data: null, error: null }),
+        select: () => chuoi({ data: [], error: null }),
+        insert: () => chuoi({ data: null, error: null }),
+      }),
+    }
+    await syncOrderReturn(sb as never, {
+      orderId: "o1", customerId: "kh-moi", orgId: "g", userId: "u", heldReturnId: "r1",
+      reason: "damaged", notes: "ghi chú mới",
+      lines: [{ product_id: "p", unit_name: "hộp", quantity: 1, unit_price: 1, vat_rate: 0, line_total: 1, is_exchange: false }],
+    })
+    expect(sua).toEqual([{ reason: "damaged", customer_id: "kh-moi" }])
   })
 })
 

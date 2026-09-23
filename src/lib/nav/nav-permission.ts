@@ -66,6 +66,22 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   // thấy nút lập phiếu nhập hàng của nhà cung cấp. Với phiếu nhập hàng
   // thì còn nặng hơn: hoàn thành một phiếu là cộng kho VÀ ghi công nợ.
   "/purchasing/receipts": { module: "inventory", feature: "purchasing.invoices", action: "create" },
+  /**
+   * ⚠ CÁC MÀN `/new` PHẢI KHAI `action: "create"`. Không khai thì đường dẫn
+   *   động rơi về phép kiểm MÔ-ĐUN (ai đọc được là vào được), và người
+   *   không có quyền tạo gõ xong cả phiếu mới bị từ chối lúc lưu — đã đo
+   *   từng màn (đợt QA 22/09/2026). Nút "Tạo" ở danh sách vốn đã ẩn; đây
+   *   là cửa vào qua URL.
+   */
+  /* ⚠ `/purchasing/receipts/new` và `/purchase-returns/new` KHÔNG khai ở
+     đây: vai được ghi mua hàng (RLS + cổng vai mig 166: chủ, quản lý, kế
+     toán, thủ kho) không khớp ma trận `inventory.create` (chỉ chủ + thủ
+     kho). Hai màn ấy tự gác bằng `duocGhiMuaHang`. */
+  "/suppliers/new": { module: "inventory", action: "create" },
+  "/promotions/new": { module: "promotions", feature: "promotions", action: "create" },
+  "/commissions/policies/new": { module: "commissions", feature: "commissions", action: "create" },
+  "/payables/new": { module: "receivables", feature: "payables", action: "create" },
+  "/invoices/new": { module: "invoices", feature: "invoices", action: "create" },
   "/purchasing/invoices": { module: "inventory", feature: "purchasing.invoices" },
   /**
    * ⚠ CHỈ ĐỌC, NÊN CHỈ CẦN QUYỀN XEM. Màn đề xuất đặt hàng không lập
@@ -114,7 +130,13 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
 
   // Kế toán
   "/receivables": { module: "receivables", feature: "receivables" },
-  "/receivables/collect": { module: "receivables", feature: "receivables" },
+  /**
+   * ⚠ THU TIỀN LÀ PHÉP GHI (`create_cash_receipt` đòi `receivables.create`).
+   *   Chỉ khai mô-đun thì quản lý — vốn chỉ được ĐỌC công nợ — vẫn thấy
+   *   mục "Thu tiền", chọn khoản nợ, gõ số tiền, bấm Xác nhận rồi mới gặp
+   *   "FORBIDDEN: bạn không có quyền lập phiếu thu" (đã đo).
+   */
+  "/receivables/collect": { module: "receivables", feature: "receivables", action: "create" },
   "/receivables/by-customer": { module: "receivables", feature: "receivables.by_customer" },
   "/receivables/by-rep": { module: "receivables", feature: "receivables.by_rep" },
   "/finance/opening-balances": { module: "receivables", feature: "finance.opening_balances" },

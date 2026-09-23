@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
-import { hasPermission } from "@/lib/permissions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -201,7 +200,9 @@ export default function CommissionPolicyDetailPage() {
   if (!policy) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy chính sách hoa hồng</div>
 
   const typeLabel = COMMISSION_TYPES.find((t) => t.value === policy.type)?.label || policy.type
-  const canEdit = user && hasPermission(user.role, "commissions", "update")
+  // ⚠ Chép RLS `commission_policies` (chỉ chủ NPP) — kế toán có
+  //   `commissions.update` trong ma trận nên thấy nút, bấm lưu là 0 dòng.
+  const canEdit = user && user.role === "owner"
   const canDelete = user && user.role === "owner"
 
   const renderTiersDisplay = () => {

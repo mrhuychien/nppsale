@@ -18,6 +18,7 @@ import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { duocGhiMuaHang } from "@/lib/purchasing/roles"
 import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -158,6 +159,16 @@ export default function NewPurchaseReturnPage() {
   }
 
   if (authLoading) return <Skeleton className="h-96" />
+  /* ⚠ ĐƯỜNG DẪN ĐỘNG NÊN `useRoleGuard` CHỈ KIỂM MÔ-ĐUN KHO, mà NVBH cũng
+     đọc được kho: không gác ở đây là NVBH gõ xong cả phiếu mới bị RLS từ
+     chối lúc lưu (đã đo). Vai được ghi: `duocGhiMuaHang` — chép RLS. */
+  if (!duocGhiMuaHang(user?.role)) {
+    return (
+      <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">
+        Vai trò của bạn không lập được phiếu trả NCC. Nhờ chủ NPP, quản lý, kế toán hoặc thủ kho lập giúp.
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4 pb-28">

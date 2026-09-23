@@ -146,4 +146,9 @@ FROM (VALUES
   ('user_has_permission(uuid,text)')
 ) v(ten)
 LEFT JOIN LATERAL (SELECT to_regprocedure('public.' || v.ten) AS f) x ON true
+UNION ALL
+-- 12. Mig 172 — đơn đã huỷ không thêm / sửa dòng được nữa
+SELECT 12, 'Mig 172 (đơn đã huỷ khoá dòng hàng)',
+  CASE WHEN position('ORDER_CANCELLED' in pg_get_functiondef('public.guard_order_lines_locked()'::regprocedure)) > 0
+       THEN 'OK — đã khoá' ELSE 'CHƯA — sửa dòng đơn đã huỷ vẫn ghi được' END, ''
 ) t ORDER BY stt;

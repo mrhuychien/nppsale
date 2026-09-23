@@ -333,13 +333,23 @@ export function PermissionMatrix({
         if (error) throw error
       }
       if (deletes.length > 0) {
-        await ghiPhaiTrungDong(
-          supabase
-            .from("user_permission_overrides")
-            .delete()
-            .eq("user_id", userId)
-            .in("permission_key", deletes)
-        )
+        /* ⚠ HAI LỆNH RỜI — phần cấp/thu ở trên đã GHI XONG. Hỏng ở đây thì
+           nói đúng phần nào chưa lưu và nạp lại bảng từ database, đừng để
+           người dùng tưởng cả lượt đã hỏng (hay đã xong). */
+        try {
+          await ghiPhaiTrungDong(
+            supabase
+              .from("user_permission_overrides")
+              .delete()
+              .eq("user_id", userId)
+              .in("permission_key", deletes)
+          )
+        } catch (e) {
+          await fetchData()
+          throw new Error(
+            `Đã lưu ${upserts.length} quyền cấp/thu, nhưng CHƯA trả ${deletes.length} quyền về theo vai trò: ${errorMessage(e)}. Bảng đã nạp lại đúng trạng thái trong database.`
+          )
+        }
       }
       toast({ title: `Đã lưu ${pending.size} thay đổi` })
       await fetchData()

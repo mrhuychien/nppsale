@@ -1,3 +1,5 @@
+import { quenGioSuaDon } from "@/lib/sell/cart-storage"
+
 /**
  * Xoá đơn — MỘT chỗ cho ba màn (chi tiết đơn, Đơn tạm, màn sửa đơn).
  *
@@ -69,4 +71,6 @@ export async function deleteOrder(supabase: unknown, orderId: string): Promise<v
   const { data, error } = await sb.from("sales_orders").delete().eq("id", orderId).select("id")
   if (error) throw error
   if (!Array.isArray(data) || data.length === 0) throw new Error(DELETE_REFUSED_MSG)
+  // Giỏ đang sửa chính đơn này thì quên đi — xem `quenGioSuaDon`.
+  quenGioSuaDon(orderId)
 }

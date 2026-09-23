@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { listOutbox, removeEntry, type OutboxEntry } from "@/lib/offline/outbox"
 import { useAuth } from "@/hooks/use-auth"
+import { useSellCart } from "@/hooks/use-sell-cart"
 import { deleteOrder } from "@/lib/orders/delete"
 import { errorMessage } from "@/lib/errors"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -29,6 +30,7 @@ interface DraftOrder {
 }
 
 export default function SellDraftsPage() {
+  const cart = useSellCart()
   const router = useRouter()
   const { user } = useAuth()
   const [queued, setQueued] = useState<OutboxEntry[]>([])
@@ -138,6 +140,10 @@ export default function SellDraftsPage() {
       toast({ title: "Không xoá được đơn này", description: errorMessage(err), variant: "destructive" })
       return
     }
+    /* ⚠ Giỏ đang sửa chính đơn vừa xoá thì dọn luôn trạng thái trong bộ
+       nhớ — `deleteOrder` chỉ dọn được bản lưu, còn provider của /sell sẽ
+       ghi đè bản lưu bằng trạng thái đang giữ ở lần thay đổi kế tiếp. */
+    if (cart.editing?.orderId === o.id) cart.clear()
     toast({ title: `Đã xoá đơn ${o.order_code}` })
     void load()
   }

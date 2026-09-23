@@ -387,6 +387,14 @@ export async function applyOrderEdit(
   }
 
   const header: Record<string, unknown> = {
+    /**
+     * ⚠ KHÁCH HÀNG PHẢI ĐI THEO BẢN SỬA. Cả `/sell/customer` lẫn POS cho
+     *   đổi khách lúc đang sửa đơn, và giá đã tính lại theo nhóm của khách
+     *   MỚI — nhưng đầu đơn trước đây không có cột này. Kết quả: báo "đã
+     *   lưu", đơn vẫn đứng tên khách cũ với giá của bảng giá khách mới, còn
+     *   phiếu trả tạo kèm lại thuộc khách mới.
+     */
+    customer_id: opts.payload.order.customer_id,
     payment_terms: opts.payload.order.payment_terms,
     expected_delivery: opts.payload.order.expected_delivery,
     subtotal: opts.payload.order.subtotal,
@@ -501,7 +509,8 @@ export async function syncOrderReturn(
      */
     const { data: upd, error: updErr } = await supabase
       .from("returns")
-      .update({ reason: o.reason })
+      // Phiếu trả kèm đơn thuộc CÙNG khách với đơn — đổi khách thì đổi theo.
+      .update({ reason: o.reason, customer_id: o.customerId })
       .eq("id", o.heldReturnId)
       .select("id")
     if (updErr) throw updErr

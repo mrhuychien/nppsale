@@ -204,6 +204,9 @@ export default function ExpensesPage() {
   }
 
   const canEdit = user && ["owner", "manager", "accountant"].includes(user.role)
+  // ⚠ XOÁ hẹp hơn SỬA: `expenses_delete` chỉ cho chủ + quản lý. Kế toán
+  //   thấy nút xoá là bị mời bấm vào một thao tác chắc chắn bị từ chối.
+  const canDelete = user && ["owner", "manager"].includes(user.role)
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -348,7 +351,7 @@ export default function ExpensesPage() {
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-2">
                       <p className="text-lg font-black">{formatCurrency(e.amount)}</p>
-                      {canEdit && e.source_type === null && (
+                      {canDelete && e.source_type === null && (
                         <Button
                           size="icon"
                           variant="ghost"

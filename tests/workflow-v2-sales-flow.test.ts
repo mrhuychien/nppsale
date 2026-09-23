@@ -290,14 +290,20 @@ describe("lỗi soi chéo bắt được sau P4, không được quay lại", ()
    * rồi tự vá state cho cả 12 — chín đơn hiện "Đã huỷ" cho tới khi tải
    * lại trang.
    */
+  /**
+   * ⚠ TỪ ĐỢT QA 22/09/2026 huỷ hàng loạt đi TỪNG ĐƠN qua RPC `cancel_order`
+   *   (UPDATE thẳng để phiếu trả nháp nằm lại mãi mãi và mất người huỷ /
+   *   lý do). Luật đếm vẫn y nguyên: chỉ đơn RPC NHẬN mới vào `done`, và
+   *   vá state / toast theo `done`, không theo danh sách id.
+   */
   it("huỷ hàng loạt đếm đúng số dòng ghi được, không tin vào danh sách id", () => {
-    const i = LIST.indexOf('.update({ status: "cancelled" })')
-    expect(i, "không tìm thấy lệnh huỷ hàng loạt").toBeGreaterThan(0)
-    const block = LIST.slice(i, i + 700)
-    expect(block, "huỷ hàng loạt không lấy lại dòng đã ghi").toContain('.select("id")')
-    expect(block).toContain("const done = new Set(")
+    const i = LIST.indexOf('rpc("cancel_order"')
+    expect(i, "không tìm thấy lệnh huỷ hàng loạt qua RPC").toBeGreaterThan(0)
+    expect(LIST).not.toContain('.update({ status: "cancelled" })')
+    const block = LIST.slice(i - 400, i + 700)
+    expect(block).toContain("const done = new Set<string>()")
+    expect(block).toContain("else done.add(o.id)")
     expect(block).toContain("done.size === 0")
-    // Vá state và đếm trong toast đều phải theo `done`, không theo `ids`.
     const after = LIST.slice(i, i + 2200)
     expect(after).toContain("done.has(o.id) ? { ...o, status: \"cancelled\" as const }")
     expect(after, "toast vẫn đếm theo danh sách id").not.toContain("Đã hủy ${ids.length} đơn")

@@ -77,7 +77,6 @@ const CON_NO_GHI_KHONG_KIEM = [
   "src/app/(dashboard)/purchasing/receipts/[id]/edit/page.tsx",
   "src/app/(dashboard)/sales/pjp/page.tsx",
   "src/app/(dashboard)/settings/org/page.tsx",
-  "src/app/(dashboard)/settings/users/[id]/page.tsx",
   "src/app/(dashboard)/settings/users/page.tsx",
   "src/app/(dashboard)/setup/page.tsx",
   "src/app/(dashboard)/suppliers/[id]/page.tsx",

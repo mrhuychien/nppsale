@@ -22,7 +22,7 @@ interface UserRow {
   id: string
   org_id: string
   full_name: string | null
-  email: string
+  phone: string | null
   role: Role
   is_active: boolean
 }
@@ -40,7 +40,10 @@ export default function UserPermissionsPage() {
     let cancelled = false
     supabase
       .from("users")
-      .select("id, org_id, full_name, email, role, is_active")
+      /* ⚠ BẢNG `users` KHÔNG CÓ CỘT `email` (email nằm ở auth.users, trình
+         duyệt không đọc được). Bản cũ xin cột ấy → 42703 → màn luôn báo
+         "Không tìm thấy user", trên CẢ HAI nhánh, từ 26/05. */
+      .select("id, org_id, full_name, phone, role, is_active")
       .eq("id", id)
       .single()
       .then(({ data, error }) => {
@@ -66,7 +69,7 @@ export default function UserPermissionsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Phân quyền: ${user.full_name || user.email}`}
+        title={`Phân quyền: ${user.full_name || user.phone || "—"}`}
         description={`Vai trò: ${ROLE_LABELS[user.role]}`}
         backHref={`/settings/users/${user.id}`}
       >

@@ -109,7 +109,7 @@ export default function UserDetailPage() {
     if (!target) return
     setSaving(true)
     try {
-      const { error } = await supabase
+      const { data: savedRows, error } = await supabase
         .from("users")
         .update({
           full_name: form.full_name,
@@ -122,11 +122,19 @@ export default function UserDetailPage() {
           : 0,
         })
         .eq("id", target.id)
+        .select("id")
       if (error) {
         if (/idx_users_phone_unique/i.test(error.message)) {
           throw new Error("Số điện thoại đã được dùng. Chọn số khác.")
         }
         throw error
+      }
+      /* ⚠ RLS TỪ CHỐI = 0 DÒNG, KHÔNG LỖI. Chính sách sửa `users` chỉ cho
+         chủ NPP; chủ bật `settings.update` cho quản lý thì quản lý vào được
+         đây, hồ sơ KHÔNG lưu mà phần nhà cung cấp bên dưới vẫn ghi và màn
+         báo "Đã cập nhật". Dừng ngay tại đây. */
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error("Không lưu được hồ sơ — chỉ chủ NPP được sửa hồ sơ nhân viên.")
       }
 
       // Sync user_suppliers — diff state Set vs DB: delete cũ-không-còn, insert mới.
@@ -134,7 +142,8 @@ export default function UserDetailPage() {
         .from("user_suppliers")
         .select("supplier_id")
         .eq("user_id", target.id)
-      if (currentRowsErr) console.error("[users/id] truy vấn lỗi:", currentRowsErr.message)
+      // Đọc hỏng mà đi tiếp là coi như "chưa gán NCC nào" rồi chèn trùng.
+      if (currentRowsErr) throw currentRowsErr
       const currentIds = new Set(
         ((currentRows as { supplier_id: string }[]) || []).map((r) => r.supplier_id)
       )

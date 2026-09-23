@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { duocQuaCongSettings } from "@/lib/nav/settings-gate"
 import {
   classifyAuthFailure,
   isSupabaseAuthCookie,
@@ -121,7 +122,7 @@ export async function updateSession(request: NextRequest) {
         .eq("id", user.id)
         .maybeSingle()
       if (profileErr) console.error("[supabase/middleware] truy vấn lỗi:", profileErr.message)
-      if (profile && !["owner", "manager"].includes(profile.role)) {
+      if (profile && !duocQuaCongSettings(profile.role)) {
         const url = request.nextUrl.clone()
         url.pathname = "/dashboard"
         return NextResponse.redirect(url)

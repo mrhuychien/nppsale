@@ -294,6 +294,21 @@ describe("Ghi bản sửa xuống đơn đã có", () => {
   const cart = [line()]
 
   /**
+   * ⚠ ĐỔI KHÁCH KHI SỬA ĐƠN PHẢI XUỐNG SỔ (đợt QA 22/09/2026). Bản cũ
+   *   không có `customer_id` trong đầu đơn: báo "đã lưu", đơn vẫn đứng tên
+   *   khách cũ với giá của khách mới.
+   */
+  it("đầu đơn mang khách của bản sửa", async () => {
+    const { client, dauDon } = fakeClient({})
+    const p = payload(cart)
+    p.order.customer_id = "kh-moi"
+    await applyOrderEdit(client, {
+      orderId: "o1", payload: p, cart, status: "submitted", reason: "", userId: "u1", orgId: "org1",
+    })
+    expect(dauDon[0]?.customer_id).toBe("kh-moi")
+  })
+
+  /**
    * ⚠ ĐỌC TRƯỚC, XOÁ SAU, RỒI MỚI SỬA/CHÈN, ĐẦU ĐƠN CUỐI CÙNG. Xoá là
    * phép duy nhất có thể bị từ chối — cả bởi RLS (0 dòng, HTTP 200,
    * `error` null) lẫn bởi khoá ngoại. Để nó chạy trước thì khi hỏng,

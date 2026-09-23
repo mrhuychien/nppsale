@@ -102,17 +102,20 @@ export default function SalesRoutesPage() {
     setSaving(true)
     try {
       if (editing) {
-        const { error } = await supabase
-          .from("sales_routes")
-          .update({
-            code,
-            name,
-            description: form.description.trim() || null,
-            sort_order: form.sort_order,
-            is_active: form.is_active,
-          })
-          .eq("id", editing.id)
-        if (error) throw error
+        // RLS từ chối = 0 dòng, không lỗi — đếm dòng trước khi đổi mã tuyến
+        // ở hàng nghìn khách theo sau.
+        await ghiPhaiTrungDong(
+          supabase
+            .from("sales_routes")
+            .update({
+              code,
+              name,
+              description: form.description.trim() || null,
+              sort_order: form.sort_order,
+              is_active: form.is_active,
+            })
+            .eq("id", editing.id)
+        )
         // If the code changed, update every customer row that referenced the old code
         if (editing.code !== code) {
           // Nếu bước này hỏng mà bỏ qua: tuyến đã đổi mã nhưng khách hàng
@@ -158,16 +161,24 @@ export default function SalesRoutesPage() {
     }
     setDeleting(r.id)
     try {
-      // Clear channel on customers pointing at this route
+      /* ⚠ XOÁ TUYẾN TRƯỚC, GỠ KHÁCH SAU. Bản cũ gỡ tuyến khỏi khách trước:
+         xoá tuyến hỏng (RLS 0 dòng, khoá ngoại) là khách đã mất tuyến mà
+         tuyến vẫn còn. Ngược lại thì hỏng ở bước gỡ chỉ để lại khách trỏ
+         vào một mã tuyến không còn — tạo lại tuyến cùng mã là khôi phục. */
+      await ghiPhaiTrungDong(supabase.from("sales_routes").delete().eq("id", r.id))
       if (count > 0) {
-        await supabase
+        const { error: goErr } = await supabase
           .from("customers")
           .update({ channel: null })
           .eq("org_id", r.org_id)
           .eq("channel", r.code)
-          .throwOnError()
+          .select("id")
+        if (goErr) {
+          throw new Error(
+            `Đã xoá tuyến ${r.code} nhưng chưa gỡ được tuyến khỏi ${count} khách: ${errorMessage(goErr)}`
+          )
+        }
       }
-      await ghiPhaiTrungDong(supabase.from("sales_routes").delete().eq("id", r.id))
       toast({ title: `Đã xóa tuyến ${r.code}` })
       fetchData()
     } catch (err) {

@@ -128,7 +128,29 @@ describe("Ba menu tra chung MỘT bảng quyền", () => {
     "/inventory/stock-issue": "nút \"Tạo phiếu → Xuất kho\" ở màn Phiếu kho",
     "/inventory/stocktake-adjust": "nút \"Tạo phiếu → Kiểm kê\" ở màn Phiếu kho (và hai nút ở màn Điều chỉnh)",
     "/purchasing/invoices": "ô tra cứu trên trang Mua hàng (rời khỏi menu 20/09/2026)",
+    /* ⚠ Các màn TẠO MỚI khai `action: "create"` (đợt QA 22/09/2026): không
+       khai thì đường dẫn động chỉ kiểm mô-đun, và người không có quyền tạo
+       gõ URL vào, làm xong cả phiếu mới bị từ chối lúc lưu. */
+    "/suppliers/new": "nút \"Tạo mới\" ở màn Nhà cung cấp",
+    "/promotions/new": "nút tạo ở màn Khuyến mãi",
+    "/commissions/policies/new": "nút \"Tạo chính sách\" ở màn Chính sách hoa hồng",
+    "/payables/new": "nút \"Tạo công nợ NCC\" ở màn Công nợ NCC",
+    "/invoices/new": "nút \"Tạo hóa đơn\" ở màn Hóa đơn",
   }
+
+  it("mỗi màn tạo mới đều có nút thật trỏ tới", () => {
+    const NUT: Array<[string, string]> = [
+      ["/suppliers/new", "src/app/(dashboard)/suppliers/page.tsx"],
+      ["/promotions/new", "src/app/(dashboard)/promotions/page.tsx"],
+      ["/commissions/policies/new", "src/app/(dashboard)/commissions/policies/page.tsx"],
+      ["/payables/new", "src/app/(dashboard)/payables/page.tsx"],
+      ["/invoices/new", "src/app/(dashboard)/invoices/page.tsx"],
+    ]
+    for (const [href, tep] of NUT) {
+      const s = readFileSync(resolve(__dirname, "..", tep), "utf-8")
+      expect(s.includes(`router.push("${href}")`) || s.includes(`href="${href}"`), `${tep} không còn nút tới ${href}`).toBe(true)
+    }
+  })
 
   /**
    * ⚠ KHAI LÀ "ĐÍCH CỦA NÚT" THÌ PHẢI CÓ NÚT THẬT. Không kiểm điều này

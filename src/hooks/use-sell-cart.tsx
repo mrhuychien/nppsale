@@ -16,6 +16,7 @@ import {
   setReturnQty as setReturnQtyIn,
   type ReturnCartLine,
 } from "@/lib/sell/returns"
+import { SELL_CART_STORAGE_KEY } from "@/lib/sell/cart-storage"
 
 /**
  * Giỏ hàng dùng chung cho cả luồng bán hàng trên điện thoại.
@@ -117,7 +118,7 @@ const EMPTY: SellCartState = {
   editing: null,
 }
 
-const STORAGE_KEY = "npp.sell.cart.v1"
+const STORAGE_KEY = SELL_CART_STORAGE_KEY
 
 const Ctx = createContext<SellCartValue | null>(null)
 

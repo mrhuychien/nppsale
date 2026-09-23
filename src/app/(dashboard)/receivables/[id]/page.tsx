@@ -229,7 +229,9 @@ export default function ReceivableDetailPage() {
   // Available status overrides
   const overrides: { status: StatusOverride; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
     { status: "overdue", label: "Đánh dấu quá hạn", icon: AlertTriangle, show: ["open", "partial"].includes(receivable.status) },
-    { status: "open", label: "Đặt lại trạng thái mở", icon: RotateCcw, show: receivable.status !== "open" && receivable.status !== "paid" },
+    // ⚠ Đã thu / đã trả một phần thì "mở" là sai: trạng thái phải là
+    //   `partial`. Chỉ cho đặt lại khi chưa có đồng nào (paid = 0).
+    { status: "open", label: "Đặt lại trạng thái mở", icon: RotateCcw, show: receivable.status !== "open" && receivable.status !== "paid" && Number(receivable.paid || 0) === 0 },
   ]
 
   return (

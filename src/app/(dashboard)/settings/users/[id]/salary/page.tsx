@@ -47,7 +47,7 @@ interface UserRow {
   id: string
   org_id: string
   full_name: string | null
-  email: string
+  phone: string | null
   role: string
 }
 
@@ -134,7 +134,10 @@ export default function UserSalaryPage() {
     const [uRes, tRes, oRes, aRes] = await Promise.all([
       supabase
         .from("users")
-        .select("id, org_id, full_name, email, role")
+        /* ⚠ BẢNG `users` KHÔNG CÓ CỘT `email` (email nằm ở auth.users, trình
+         duyệt không đọc được). Bản cũ xin cột ấy → 42703 → màn luôn báo
+         "Không tìm thấy user", trên CẢ HAI nhánh, từ 26/05. */
+      .select("id, org_id, full_name, phone, role")
         .eq("id", id)
         .single(),
       supabase
@@ -203,6 +206,10 @@ export default function UserSalaryPage() {
     try {
       await ghiPhaiTrungDong(supabase.from("salary_kpi_tiers").delete().eq("id", rowId))
       await fetchData()
+    } catch (e) {
+      // ⚠ Không bắt thì RLS từ chối (quản lý vào được màn này nhưng chính
+      //   sách chỉ cho chủ + kế toán) là một lời hứa bị bỏ rơi, không báo gì.
+      toast({ title: "Không xoá được", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -236,6 +243,10 @@ export default function UserSalaryPage() {
     try {
       await ghiPhaiTrungDong(supabase.from("salary_order_count_bonus_configs").delete().eq("id", rowId))
       await fetchData()
+    } catch (e) {
+      // ⚠ Không bắt thì RLS từ chối (quản lý vào được màn này nhưng chính
+      //   sách chỉ cho chủ + kế toán) là một lời hứa bị bỏ rơi, không báo gì.
+      toast({ title: "Không xoá được", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -274,6 +285,10 @@ export default function UserSalaryPage() {
     try {
       await ghiPhaiTrungDong(supabase.from("monthly_activity_bonuses").delete().eq("id", rowId))
       await fetchData()
+    } catch (e) {
+      // ⚠ Không bắt thì RLS từ chối (quản lý vào được màn này nhưng chính
+      //   sách chỉ cho chủ + kế toán) là một lời hứa bị bỏ rơi, không báo gì.
+      toast({ title: "Không xoá được", description: errorMessage(e), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -291,7 +306,7 @@ export default function UserSalaryPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Lương: ${user.full_name || user.email}`}
+        title={`Lương: ${user.full_name || user.phone || "—"}`}
         description={`Vai trò ${ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || user.role}`}
         backHref={`/settings/users/${user.id}`}
       >

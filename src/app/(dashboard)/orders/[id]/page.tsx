@@ -67,6 +67,7 @@ import { errorMessage } from "@/lib/errors"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { tongSauSuaTaiCho } from "@/lib/orders/inline-totals"
 
 type NextStatus = {
   value: OrderStatus
@@ -255,7 +256,7 @@ export default function OrderDetailPage() {
   const [savingLines, setSavingLines] = useState(false)
   // Catalog of swappable products (loaded on first open of edit mode)
   const [swapCatalog, setSwapCatalog] = useState<
-    { id: string; name: string; sku: string; sell_price: number; base_unit: string }[]
+    { id: string; name: string; sku: string; sell_price: number; base_unit: string; vat_rate?: number | null }[]
   >([])
   /** Danh mục đọc chưa hết — cả hai ô dùng nó phải nói ra. */
   const [swapTruncated, setSwapTruncated] = useState(false)
@@ -541,6 +542,25 @@ export default function OrderDetailPage() {
     if (!order || !user) return
     setActionLoading(true)
     try {
+      /**
+       * ⚠ HUỶ ĐƠN ĐI QUA RPC `cancel_order`, KHÔNG UPDATE THẲNG. Bản cũ ghi
+       *   thẳng `status = 'cancelled'`: `cancelled_by` / `cancel_reason` để
+       *   trống, và phiếu trả nháp kèm đơn vẫn `draft` — gắn vào một đơn đã
+       *   huỷ, không bao giờ hoàn thành được (`complete_return` báo
+       *   ORDER_NOT_COMPLETED). Đã đo. RPC huỷ cả phiếu trả nháp và tự gửi
+       *   thông báo cho người đứng tên.
+       */
+      if (newStatus === "cancelled") {
+        const { error: huyErr } = await supabase.rpc("cancel_order", {
+          p_order_id: order.id,
+          p_reason: `Huỷ ở màn chi tiết đơn — ${user.full_name || "người dùng"}`,
+        })
+        if (huyErr) throw huyErr
+        toast({ title: `Đã chuyển trạng thái: ${ORDER_STATUS_MAP[newStatus]?.label ?? newStatus}` })
+        setConfirmOpen(null)
+        fetchData()
+        return
+      }
       const { data: statusRows, error } = await supabase
         .from("sales_orders")
         .update({ status: newStatus })
@@ -554,24 +574,6 @@ export default function OrderDetailPage() {
         throw new Error(
           "Không đổi được trạng thái đơn — bạn không có quyền ở bước này. Tải lại trang để xem trạng thái mới."
         )
-      }
-
-      if (
-        newStatus === "cancelled" &&
-        user.org_id &&
-        order.sales_user_id &&
-        order.sales_user_id !== user.id
-      ) {
-        const { createNotification } = await import("@/lib/notifications")
-        createNotification(supabase, {
-          orgId: user.org_id,
-          userId: order.sales_user_id,
-          type: "order_cancelled",
-          title: `Đơn ${order.order_code} đã bị hủy`,
-          body: `Bởi ${user.full_name || "Quản lý"}`,
-          linkUrl: `/orders/${order.id}`,
-          metadata: { order_id: order.id, order_code: order.order_code },
-        })
       }
 
       toast({ title: `Đã chuyển trạng thái: ${ORDER_STATUS_MAP[newStatus]?.label ?? newStatus}` })
@@ -638,8 +640,8 @@ export default function OrderDetailPage() {
     if (swapCatalog.length === 0) {
       try {
         const res = await loadCatalogue<{
-          id: string; name: string; sku: string; sell_price: number; base_unit: string
-        }>(supabase, "id, name, sku, sell_price, base_unit", { activeOnly: true })
+          id: string; name: string; sku: string; sell_price: number; base_unit: string; vat_rate: number | null
+        }>(supabase, "id, name, sku, sell_price, base_unit, vat_rate", { activeOnly: true })
         setSwapCatalog(res.rows)
         setSwapTruncated(res.truncated)
       } catch (e) {
@@ -907,13 +909,31 @@ export default function OrderDetailPage() {
         }
       }
 
-      // Tính lại tổng đơn — subtotal = existing edited + new added.
-      const subtotal = editedLinesTotal + addedLinesTotal
-      const total = Math.max(0, subtotal - Number(order.discount || 0) + Number(order.vat || 0))
+      // Tính lại tổng đơn — cùng công thức với lúc tạo đơn, xem
+      // `tongSauSuaTaiCho`. Thuế suất lấy theo mặt hàng ĐANG nằm trên dòng
+      // (đã đổi thì theo mặt hàng mới).
+      const thueCua = (productId: string | null | undefined) =>
+        Number(
+          (lines.find((x) => x.product_id === productId)?.product as { vat_rate?: number } | undefined)?.vat_rate ??
+            swapCatalog.find((x) => x.id === productId)?.vat_rate ??
+            0
+        )
+      const { subtotal, vat, total } = tongSauSuaTaiCho(
+        [
+          ...editedLines.map((l) => ({
+            line_total: lineTotalOf({ qty: l.quantity, price: l.unit_price }),
+            vat_rate: thueCua(l.swap_product_id ?? lines.find((x) => x.id === l.id)?.product_id),
+          })),
+          ...addedLines
+            .filter((l) => l.quantity > 0)
+            .map((l) => ({ line_total: Math.max(0, l.quantity * l.unit_price), vat_rate: thueCua(l.product_id) })),
+        ],
+        orderReturnCredit
+      )
 
       // Workflow v2 không còn bước duyệt, nên sửa dòng chỉ cập nhật lại
       // tổng. Đơn đã xuất hàng thì không đi đường này — nó có RPC riêng.
-      const headerUpdate: Record<string, unknown> = { subtotal, total }
+      const headerUpdate: Record<string, unknown> = { subtotal, vat, total }
 
       const { data: headerRows, error: orderErr } = await supabase
         .from("sales_orders")
@@ -1025,7 +1045,18 @@ export default function OrderDetailPage() {
   // phải cuộn 3.400px mới thấy nút "Duyệt đơn". Gom lại thành MỘT thanh
   // dính đáy: hành động chính hiện thành nút, phần còn lại vào menu ⋮.
   const roleTransitions = availableTransitions.filter(
-    (t) => !!user && t.roles.includes(user.role)
+    (t) =>
+      !!user &&
+      t.roles.includes(user.role) &&
+      /**
+       * ⚠ "RÚT VỀ NHÁP" CHỈ CHO NGƯỜI ĐỨNG TÊN ĐƠN. Nháp là sổ tay riêng
+       *   của người đứng tên (mig 119: `sales_order_select` giấu nháp của
+       *   người khác), nên chủ / quản lý rút đơn của NVBH về nháp thì
+       *   dòng sau khi sửa không còn nhìn thấy được — đã đo: 42501 "new row
+       *   violates row-level security policy", LUÔN LUÔN. Màn `/sell` đã
+       *   chặn đúng kiểu này qua `donHo`.
+       */
+      (t.value !== "draft" || order.sales_user_id === user.id)
   )
   // Hành động chính = bước TIẾN của luồng. Bước LÙI (rút về nháp, huỷ
   // đơn) không bao giờ là hành động chính — để nó ở nút to là mời người

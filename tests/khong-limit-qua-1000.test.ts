@@ -102,10 +102,7 @@ export function limitVuotTran(src: string, toanCuc: Map<string, string> = new Ma
  *   dòng ở đây phải CÒN mắc lỗi (chốt dưới canh): sửa xong mà quên xoá tên
  *   thì chốt đỏ, để danh sách không mục thành chỗ trú ẩn.
  */
-const CON_NO: Record<string, string> = {
-  // `LINE_CAP = 2000` — "hàng hay mua" của khách đọc thiếu dòng hàng.
-  "src/lib/orders/frequent-products.ts": "LINE_CAP",
-}
+const CON_NO: Record<string, string> = {}
 
 describe("máy quét `.limit()` tự kiểm", () => {
   it("bắt số trơn, hằng số đặt tên, biểu thức, hằng số tệp khác", () => {

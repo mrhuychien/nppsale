@@ -2,10 +2,21 @@ import { createClient } from "@/lib/supabase/client"
 
 /** Cửa sổ nhìn lại — 90 ngày. Xa hơn thì thói quen mua đã đổi. */
 const LOOKBACK_DAYS = 90
-/** Trần số đơn nạp về; đủ cho một khách trong 90 ngày. */
-const ORDER_CAP = 300
-/** Trần số dòng hàng nạp về. */
-const LINE_CAP = 2000
+/**
+ * Trần số đơn nạp về — 150 đơn gần nhất, đủ cho một khách trong 90 ngày.
+ *
+ * ⚠ ĐỪNG NÂNG QUÁ 150. Danh sách id này đi thẳng vào `.in("order_id", …)`;
+ *   300 uuid ≈ 11 KB URL, quá mốc an toàn `ID_MOI_LO` của dự án.
+ */
+const ORDER_CAP = 150
+/**
+ * Trần số dòng hàng nạp về.
+ *
+ * ⚠ 1.000 LÀ TRẦN THẬT (`db.max_rows`). Bản cũ ghi 2.000 nhưng máy chủ vẫn
+ *   trả 1.000 — con số nói dối. Đây là gợi ý "hay lấy", không phải sổ
+ *   sách: một mẫu 1.000 dòng của 150 đơn gần nhất đủ để xếp hạng.
+ */
+const LINE_CAP = 1000
 
 /**
  * Sản phẩm khách này hay lấy, xếp theo số LẦN MUA giảm dần.

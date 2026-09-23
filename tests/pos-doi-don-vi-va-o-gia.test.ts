@@ -5,7 +5,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { doiDonViDong, doiDonViTheoHeSo, doiDonViDongTra, donViHienThi, donViCuaSanPham } from "../src/lib/pos/units"
 import { posLinesToReturnCart } from "../src/lib/pos/save"
-import { seedForReissue, toDraft } from "../src/lib/orders/invoice-editor"
+import { seedForReissue, seedForNew, toDraft, rowsOverOrdered } from "../src/lib/orders/invoice-editor"
 import { returnCreditOf } from "../src/lib/sell/returns"
 import { MoneyInput } from "../src/components/ui/money-input"
 import type { PosLine } from "../src/lib/pos/types"
@@ -214,5 +214,31 @@ describe("màn đơn hàng: dòng nạp lại đổi được đơn vị", () =>
     expect(S.match(/donViHienThi\(l, productById\(l\.productId\)\)\.map/g)).toHaveLength(2)
     expect(S).not.toMatch(/units: \[\{ unit_name: l\.unit_name, conversion: 1 \}\]/)
     expect(S).toMatch(/giaTheoHoaDon: true/)
+  })
+})
+
+/**
+ * ⚠ ĐỔI ĐƠN VỊ DÒNG CỦA ĐƠN (chủ nhà chốt 23/09/2026). "Còn lại" theo đơn vị
+ *   ĐƠN; so phải quy về đơn vị cơ sở — máy chủ cộng "đã xuất" y như vậy (mig 179).
+ */
+describe("xuất khác đơn vị với đơn", () => {
+  const dongDon = {
+    orderLineId: "ol1", returnLineId: null, productId: "p1", productName: "Sữa", sku: "S1",
+    unitName: "hộp", conversionFactor: 1, orderedQty: 50, invoicedQty: 0, remainingQty: 50,
+    unitPrice: 20000, listPrice: 20000, lineDiscount: 0, vatRate: 0, availableBase: 1000,
+    isExchange: false, note: null,
+  }
+  it("seed nhớ đơn vị và hệ số của đơn", () => {
+    expect(seedForNew([dongDon])[0]).toMatchObject({ orderUnit: "hộp", orderConversion: 1 })
+  })
+  it("2 thùng (48 hộp) không vượt 50 hộp; 3 thùng (72) thì vượt", () => {
+    const r = { ...seedForNew([dongDon])[0], unitName: "thùng", conversionFactor: 24 }
+    expect(rowsOverOrdered([{ ...r, qty: 2 }])).toHaveLength(0)
+    expect(rowsOverOrdered([{ ...r, qty: 3 }])).toHaveLength(1)
+  })
+  it("cùng đơn vị thì như cũ", () => {
+    const r = seedForNew([dongDon])[0]
+    expect(rowsOverOrdered([{ ...r, qty: 50 }])).toHaveLength(0)
+    expect(rowsOverOrdered([{ ...r, qty: 51 }])).toHaveLength(1)
   })
 })

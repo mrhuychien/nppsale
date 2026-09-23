@@ -579,7 +579,7 @@ export function InvoiceEditor({
             ) : (
               rows.map((r) => {
                 const short = r.qty > 0 && r.stockKnown ? shortageOf(r, r.qty) : 0
-                const over = !!r.orderLineId && r.qty > r.remainingQty
+                const over = rowsOverOrdered([r]).length > 0
                 return (
                   <div
                     key={r.key}

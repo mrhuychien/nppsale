@@ -30,12 +30,21 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   const dong = page.getByTestId("dong-hoa-don")
   await expect(dong).toHaveCount(1)
   await expect(dong.first()).toContainText("Sữa hộp")
-  await expect(dong.first()).toContainText("đặt 50 · đã xuất 0")
+  await expect(dong.first()).toContainText("đặt 50 hộp · đã xuất 0 hộp")
   await expect(soLuong(page, "số lượng dòng 1")).toHaveText("50")
 
   // Xuất một phần: 30 hộp.
   await datSo(page, "số lượng dòng 1", 30)
   await expect(soLuong(page, "số lượng dòng 1")).toHaveText("30")
+
+  /* Đổi đơn vị NGAY TRÊN DÒNG CỦA ĐƠN (chủ nhà chốt 23/09/2026: "toàn
+     quyền… ko giới hạn cái nào cả"): giá tra bảng giá thùng, và phép so
+     "vượt phần còn lại" quy về hộp — 30 thùng = 720 hộp > 50 hộp đặt. */
+  await page.getByRole("button", { name: "Đơn vị thùng dòng 1" }).click()
+  await expect(page.getByLabel("Đơn giá dòng 1")).toHaveValue("450.000")
+  await expect(dong.first()).toContainText("vượt phần còn lại")
+  await datSo(page, "số lượng dòng 1", 2)
+  await expect(dong.first(), "2 thùng = 48 hộp ≤ 50 mà vẫn báo vượt").not.toContainText("vượt phần còn lại")
 
   // Hàng khách trả kèm: bật chế độ thêm hàng trả rồi tìm ở ô bên phải.
   await page.getByRole("button", { name: /Thêm hàng trả/ }).click()
@@ -51,7 +60,9 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   }
   expect(p.order_id).toBe("o-e2e-1")
   expect(p.lines).toHaveLength(1)
-  expect(p.lines[0], "dòng hóa đơn rời khỏi dòng đơn").toMatchObject({ order_line_id: "sol1", quantity: 30, unit_name: "hộp" })
+  expect(p.lines[0], "dòng hóa đơn rời khỏi dòng đơn").toMatchObject({
+    order_line_id: "sol1", quantity: 2, unit_name: "thùng", conversion_factor: 24, unit_price: 450000,
+  })
   expect(p.return_adds[0]).toMatchObject({ product_id: "00000000-0000-4000-8000-0000000000d2", quantity: 1, is_exchange: false })
   await expect(page).toHaveURL(/\/pos\/hoa-don\/00000000-0000-4000-8000-00000000f004/)
 })

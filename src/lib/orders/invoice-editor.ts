@@ -63,6 +63,16 @@ export interface EditorRow extends InvoiceableLine {
    * được cách bỏ qua màu vàng — đúng lúc nó kêu thật thì không ai nhìn.
    */
   stockKnown: boolean
+  /**
+   * ĐƠN VỊ VÀ HỆ SỐ CỦA DÒNG ĐƠN — mốc của "đặt / đã xuất / còn lại".
+   *
+   * ⚠ CHỦ NHÀ CHỐT 23/09/2026: sửa / xuất hóa đơn đổi được đơn vị của CẢ
+   *   dòng lấy từ đơn. Khi ấy `unitName` / `conversionFactor` là của dòng
+   *   hóa đơn, còn các số của đơn vẫn theo đơn vị đơn — so phải quy về đơn
+   *   vị cơ sở (máy chủ làm y như vậy, mig 179).
+   */
+  orderUnit?: string
+  orderConversion?: number
 }
 
 /**
@@ -75,6 +85,8 @@ export function seedForNew(lines: InvoiceableLine[]): EditorRow[] {
   return lines.map((l, i) => ({
     ...l,
     key: l.orderLineId ?? l.returnLineId ?? `x${i}`,
+    orderUnit: l.unitName,
+    orderConversion: l.conversionFactor,
     qty: l.remainingQty,
     price: l.unitPrice,
     discountBase: l.remainingQty,
@@ -124,6 +136,8 @@ export function seedForReissue(
       isExchange: sd.isExchange,
       note: sd.note,
       key: sd.orderLineId ?? `seed${i}`,
+      orderUnit: info?.unitName ?? sd.unitName,
+      orderConversion: info?.conversionFactor ?? sd.conversionFactor,
       qty: sd.quantity,
       price: sd.unitPrice,
       discountBase: sd.quantity,
@@ -224,7 +238,12 @@ export function toDraft(rows: EditorRow[]): InvoiceDraftLine[] {
  * tay đều hiện cảnh báo, tức cảnh báo mất hết ý nghĩa.
  */
 export function rowsOverOrdered(rows: EditorRow[]): EditorRow[] {
-  return rows.filter((r) => !!r.orderLineId && r.qty > r.remainingQty)
+  /* ⚠ SO THEO ĐƠN VỊ CƠ SỞ — dòng có thể đã đổi đơn vị so với đơn. */
+  return rows.filter(
+    (r) =>
+      !!r.orderLineId &&
+      r.qty * (r.conversionFactor || 1) > r.remainingQty * (r.orderConversion ?? r.conversionFactor ?? 1)
+  )
 }
 
 /**

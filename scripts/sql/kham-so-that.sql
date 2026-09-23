@@ -185,4 +185,9 @@ SELECT 18, 'Mig 178 (người tạo đơn + gán người phụ trách HĐ / phi
   CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_don_nguoi_tao')
             AND to_regprocedure('public.assign_doc_seller(text, uuid, uuid)') IS NOT NULL
        THEN 'OK — đã có' ELSE 'CHƯA — màn POS hiện "chưa rõ" người tạo đơn, gán lại HĐ / phiếu trả báo lỗi' END, ''
+UNION ALL
+-- 19. Mig 179 — số đã xuất quy đổi theo đơn vị
+SELECT 19, 'Mig 179 (đã xuất quy đổi đơn vị — xuất khác đơn vị với đơn)',
+  CASE WHEN to_regprocedure('public._da_xuat_cua_dong_don(uuid)') IS NOT NULL
+       THEN 'OK — đã quy đổi' ELSE 'CHƯA — xuất 30 hộp cho dòng 2 thùng bị tính là 30 thùng' END, ''
 ) t ORDER BY stt;

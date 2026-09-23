@@ -356,9 +356,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   }, [])
 
   /**
-   * ⚠ CHỈ DÒNG THÊM TAY ĐỔI ĐƯỢC ĐƠN VỊ. Dòng bám dòng đơn mang "còn lại /
-   *   đã xuất" theo ĐƠN VỊ CỦA ĐƠN; xuất theo đơn vị khác là cộng hai đơn vị
-   *   vào một `invoiced_qty`. Muốn đổi thì sửa đơn trước.
+   * ĐỔI ĐƠN VỊ — MỌI DÒNG, kể cả dòng lấy từ đơn (chủ nhà chốt 23/09/2026:
+   * "khi sửa toàn quyền được thay đổi mọi thông tin như khi tạo").
+   *
+   * ⚠ GIÁ TRA BẢNG GIÁ THEO NHÓM KHÁCH, HỆ SỐ THEO DANH MỤC. Số "đặt / đã
+   *   xuất / còn lại" của dòng đơn vẫn theo đơn vị ĐƠN; máy chủ quy về đơn
+   *   vị cơ sở khi cộng "đã xuất" (mig 179), màn này so cũng như vậy
+   *   (`rowsOverOrdered`).
    */
   const doiDonVi = useCallback(
     (r: EditorRow, u: string) => {
@@ -589,8 +593,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           {rows.map((r, i) => {
             const p = productById(r.productId)
             const thieu = r.qty > 0 && r.stockKnown ? shortageOf(r, r.qty) : 0
-            const vuot = !!r.orderLineId && r.qty > r.remainingQty
-            const donVi = r.addedByHand && p ? sellableUnits(p) : [r.unitName]
+            const vuot = rowsOverOrdered([r]).length > 0
+            const donVi = p ? sellableUnits(p) : [r.unitName]
             const thanhTien = Math.round(r.qty * r.price)
             return (
               <div
@@ -625,8 +629,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                             key={u}
                             type="button"
                             aria-pressed={dang}
-                            disabled={!r.addedByHand}
-                            title={r.addedByHand ? undefined : "Dòng của đơn giữ đơn vị của đơn — sửa đơn nếu cần đổi"}
+                            aria-label={`Đơn vị ${u} dòng ${i + 1}`}
                             onClick={() => doiDonVi(r, u)}
                             className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
                               dang ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
@@ -640,7 +643,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     {r.sku && <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{r.sku}</span>}
                   </div>
                   <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
-                    {r.orderLineId && <>đặt {r.orderedQty} · đã xuất {r.invoicedQty} · </>}
+                    {r.orderLineId && (
+                      <>
+                        đặt {r.orderedQty} {r.orderUnit ?? r.unitName} · đã xuất {r.invoicedQty.toLocaleString("vi-VN", { maximumFractionDigits: 2 })}{" "}
+                        {r.orderUnit ?? r.unitName} ·{" "}
+                      </>
+                    )}
                     <span className={thieu > 0 ? "font-semibold text-[var(--pos-warn)]" : undefined}>
                       {r.stockKnown ? `tồn ${r.availableBase.toLocaleString("vi-VN")}` : "tồn chưa xác định"}
                     </span>

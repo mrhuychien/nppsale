@@ -113,6 +113,13 @@ export function toReturnLine(l: ReturnCartLine): OfflineReturnLine {
   }
 }
 
+/** Dòng trả bỏ cột `reason` (mig 159) — cho máy chủ chưa chạy migration ấy. */
+export function boCotMoiCuaDongTra(l: OfflineReturnLine): OfflineReturnLine {
+  const con = { ...l }
+  delete con.reason
+  return con
+}
+
 /**
  * Giá của một dòng hàng trả có hợp lệ không.
  *

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { DRAFT_APPROVAL_REASON } from "@/lib/orders/save-gate"
+import { mayChuThieuCot } from "@/lib/db/co-rpc"
 
 /** Payload đơn hàng dạng tuần tự hoá — lưu được vào IndexedDB (outbox)
  *  và phát lại khi đồng bộ. Mọi giá trị đã tính sẵn tại thời điểm tạo
@@ -130,7 +131,11 @@ export async function createOrderRecords(
     }
     return { orderId: row.order_id, orderCode: row.order_code, alreadyExisted: !!row.already_existed }
   }
-  if (!thieuHamTaoDon(error as { code?: string; message?: string })) throw error
+  /* ⚠ THIẾU CỘT (vd. `return_lines.reason` khi chưa chạy mig 159) cũng
+     rơi về đường cũ: hàm lui cả giao dịch nên không còn gì nằm lại, còn
+     đường cũ tự bỏ cột lạ ra ghi lại. Để nguyên thì POS không gửi được
+     đơn nào có hàng trả. */
+  if (!thieuHamTaoDon(error as { code?: string; message?: string }) && !mayChuThieuCot(error)) throw error
   return createOrderRecordsLegacy(supabase, payload, ctx)
 }
 

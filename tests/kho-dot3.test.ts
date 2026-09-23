@@ -157,6 +157,17 @@ describe("lập phiếu trả một giao dịch", () => {
     expect(await lapPhieuTraMotLan(sb as never, {}, [])).toBeNull()
   })
 
+  it("máy chủ thiếu cột (chưa chạy mig 159) → null, đi đường cũ", async () => {
+    const sb = rpcGia({ code: "42703", message: 'column "reason" of relation "return_lines" does not exist' }, null)
+    expect(await lapPhieuTraMotLan(sb as never, {}, [])).toBeNull()
+  })
+
+  it("đường cũ bỏ được lý do từng dòng", async () => {
+    const { boCotMoiCuaDongTra } = await import("../src/lib/sell/returns")
+    const l = { product_id: "p", unit_name: "hộp", quantity: 1, unit_price: 1, vat_rate: 0, line_total: 1, is_exchange: false, reason: "damaged", note: "x" }
+    expect(boCotMoiCuaDongTra(l as never)).toEqual({ product_id: "p", unit_name: "hộp", quantity: 1, unit_price: 1, vat_rate: 0, line_total: 1, is_exchange: false, note: "x" })
+  })
+
   it("lỗi khác thì ném", async () => {
     const sb = rpcGia({ code: "42501", message: "new row violates row-level security policy" }, null)
     await expect(lapPhieuTraMotLan(sb as never, {}, [])).rejects.toMatchObject({ code: "42501" })

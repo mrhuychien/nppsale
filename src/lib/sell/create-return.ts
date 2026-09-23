@@ -1,4 +1,5 @@
 import type { OfflineReturnLine } from "@/lib/orders/create"
+import { mayChuThieuCot } from "@/lib/db/co-rpc"
 
 /**
  * Lập phiếu trả hàng (đầu phiếu + dòng) qua `create_return_with_lines`.
@@ -34,6 +35,7 @@ export async function lapPhieuTraMotLan(
     e.code === "PGRST202" ||
     (e.code === "42883" && m.includes("create_return_with_lines")) ||
     (m.includes("could not find the function") && m.includes("create_return_with_lines"))
-  if (thieuHam) return null
+  // Thiếu cột (chưa chạy mig 159 / 160): hàm đã lui cả giao dịch — đi đường cũ.
+  if (thieuHam || mayChuThieuCot(error)) return null
   throw error
 }

@@ -21,6 +21,7 @@ import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { lapPhieuTraMotLan } from "@/lib/sell/create-return"
+import { mayChuThieuCot } from "@/lib/db/co-rpc"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import {
   RETURN_REASONS,
@@ -31,6 +32,7 @@ import {
   searchReturnable,
   setReturnQty,
   toReturnLine,
+  boCotMoiCuaDongTra,
   type ReturnCartLine,
 } from "@/lib/sell/returns"
 import type { Customer } from "@/types"
@@ -482,10 +484,17 @@ export default function NewReturnPage() {
         throw new Error("Không tạo được phiếu trả — bạn không có quyền trên đơn vị này.")
       }
 
-      const { data: inserted, error: lineErr } = await supabase
+      let { data: inserted, error: lineErr } = await supabase
         .from("return_lines")
         .insert(lines.map((l) => ({ return_id: head.id, ...toReturnLine(l) })))
         .select("id")
+      // ⚠ Chưa chạy mig 159 thì `reason` là cột lạ — bỏ lý do từng dòng ra ghi lại.
+      if (lineErr && mayChuThieuCot(lineErr)) {
+        ;({ data: inserted, error: lineErr } = await supabase
+          .from("return_lines")
+          .insert(lines.map((l) => ({ return_id: head.id, ...boCotMoiCuaDongTra(toReturnLine(l)) })))
+          .select("id"))
+      }
       if (lineErr) throw lineErr
       /**
        * ⚠ ĐẦU PHIẾU GHI ĐƯỢC MÀ DÒNG HÀNG BỊ TỪ CHỐI thì sinh ra đúng thứ

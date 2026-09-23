@@ -68,6 +68,25 @@ describe("đường mới: một RPC", () => {
   })
 })
 
+/**
+ * ⚠ LỖI THẬT 23/09/2026 — POS: "column \"reason\" of relation \"return_lines\"
+ *   does not exist (mã 42703)". DB chưa chạy mig 159; hàm 169 chèn cột ấy.
+ *   Hàm đã lui cả giao dịch, nên rơi về đường cũ (biết bỏ cột lạ) là an toàn.
+ */
+describe("máy chủ thiếu cột: vẫn tạo được đơn", () => {
+  it.each([
+    { code: "42703", message: 'column "reason" of relation "return_lines" does not exist' },
+    { code: "PGRST204", message: "Could not find the 'reason' column of 'return_lines' in the schema cache" },
+  ])("%j → đường cũ, đơn có đủ dòng và phiếu trả", async (err) => {
+    const db = fakeOrderDb({ rpc: { data: null, error: err }, insertOrder: { data: { id: "o5", order_code: "DH-5" }, error: null } })
+    const r = await createOrderRecords(db as never, P, CTX)
+    expect(r.orderCode).toBe("DH-5")
+    expect(db.log.filter((x) => x.op === "insert").map((x) => x.table)).toEqual([
+      "sales_orders", "sales_order_lines", "returns", "return_lines",
+    ])
+  })
+})
+
 describe("máy chủ chưa có mig 169: đường cũ", () => {
   it.each([
     [{ code: "PGRST202", message: "Could not find the function public.create_order_with_lines(p) in the schema cache" }, true],

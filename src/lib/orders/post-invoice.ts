@@ -339,7 +339,7 @@ export async function postInvoice(
       })),
       ...returnAddsPayload(payload.returnAdds),
       ...(payload.returnEdits && payload.returnEdits.length > 0
-        ? { return_edits: payload.returnEdits.map((e) => ({ line_id: e.lineId, quantity: e.quantity })) }
+        ? { return_edits: payload.returnEdits.map((e) => ({ line_id: e.lineId, quantity: e.quantity, ...(e.unitName ? { unit_name: e.unitName } : {}) })) }
         : {}),
     },
   })
@@ -419,6 +419,8 @@ export interface ReturnLineEdit {
   lineId: string
   /** 0 nghĩa là BỎ HẲN dòng đó. */
   quantity: number
+  /** Quy cách mới (mig 181) — giá máy chủ tự quy theo hệ số. */
+  unitName?: string
 }
 
 /**
@@ -498,6 +500,7 @@ export async function reissueInvoice(
             return_edits: payload.returnEdits.map((e) => ({
               line_id: e.lineId,
               quantity: e.quantity,
+              ...(e.unitName ? { unit_name: e.unitName } : {}),
             })),
           }
         : {}),

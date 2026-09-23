@@ -97,9 +97,10 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     await page.goto(`/pos/hoa-don/${HOA_DON}/sua`)
     await expect(page.getByRole("heading", { name: /Sửa hóa đơn/ })).toBeVisible()
     const dong = page.getByTestId("dong-hoa-don")
-    await expect(dong).toHaveCount(2)
-    await expect(dong.nth(1), "dòng hàng đổi mất nhãn").toContainText("Hàng đổi")
-    await expect(page.getByLabel("Bỏ dòng 2"), "hàng đổi bỏ được").toBeDisabled()
+    await expect(dong).toHaveCount(1)
+    /* Hàng đổi cũ (không có dòng phiếu trả tương ứng) vẫn đi theo tờ mới. */
+    await expect(page.getByTestId("dong-hang-doi"), "dòng hàng đổi mất").toHaveCount(1)
+    await expect(page.getByTestId("dong-hang-doi")).toContainText("1 gói")
 
     // Khối hàng đổi trả hiện phiếu đang bám hóa đơn, sửa được số lượng.
     await expect(page.getByTestId("dong-tra-cu")).toHaveCount(1)
@@ -168,6 +169,78 @@ test("xuất hàng: người tạo là người đang xuất; sửa được hà
     }).toEqual([{ line_id: "rl-don1", quantity: 1 }])
   } finally {
     await fetch(`${FAKE}/rest/v1/returns?id=eq.r-don1`, { method: "DELETE" })
+  }
+})
+
+/**
+ * ⚠ CHỦ NHÀ BÁO 23/09/2026: sửa hàng ĐỔI (số lượng, quy cách, xoá) thì dòng
+ *   hàng đổi trên hóa đơn phải đổi theo — một nguồn.
+ */
+test("xuất hàng: hàng đổi trên hóa đơn đi theo khối hàng đổi trả", async ({ page }) => {
+  const chen = (bang: string, rows: unknown[]) =>
+    fetch(`${FAKE}/rest/v1/${bang}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rows) })
+  await chen("returns", [{
+    id: "r-doi1", org_id: "khong-hien-trong-danh-sach", order_id: "o-e2e-1", invoice_id: null,
+    customer_id: "00000000-0000-4000-8000-0000000000c1", status: "draft", credit_note_amount: 0,
+    lines: [
+      { id: "rl-doi1", product_id: "00000000-0000-4000-8000-0000000000d2", unit_name: "gói", quantity: 2, unit_price: 5000, vat_rate: 0, is_exchange: true, product: { name: "Mì tôm", sku: "MI1" } },
+    ],
+  }])
+  try {
+    await dangNhap(page)
+    await page.goto("/pos/hoa-don/moi?order=o-e2e-1")
+    const doi = page.getByTestId("dong-hang-doi")
+    await expect(doi).toHaveCount(1)
+    await expect(doi).toContainText("2 gói")
+
+    await datSo(page, "số lượng trả dòng 1", 3)
+    await expect(doi, "sửa số lượng hàng đổi mà dòng hóa đơn đứng yên").toContainText("3 gói")
+    await page.getByRole("button", { name: "Đơn vị thùng trả dòng 1" }).click()
+    await expect(doi, "sửa quy cách hàng đổi mà dòng hóa đơn đứng yên").toContainText("3 thùng")
+
+    // Hàng đổi THÊM MỚI cũng phải có dòng xuất kho.
+    await page.getByRole("button", { name: /Thêm hàng trả/ }).click()
+    await oTim(page).fill("Sữa")
+    await oTim(page).press("Enter")
+    await page.getByTestId("dong-tra-moi").getByRole("button", { name: "Đổi", exact: true }).click()
+    await expect(doi).toHaveCount(2)
+
+    await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
+    await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
+    const p = ((await goiCuoi("post_invoice"))!.body as { p: { lines: Array<Record<string, unknown>>; return_edits: unknown[] } }).p
+    const hangDoi = p.lines.filter((l) => l.is_exchange)
+    expect(hangDoi.map((l) => `${l.unit_name}:${l.quantity}:${l.unit_price}`).sort()).toEqual(["hộp:1:0", "thùng:3:0"])
+    expect(p.return_edits).toEqual([{ line_id: "rl-doi1", quantity: 3, unit_name: "thùng" }])
+  } finally {
+    await fetch(`${FAKE}/rest/v1/returns?id=eq.r-doi1`, { method: "DELETE" })
+  }
+})
+
+test("xuất hàng: xoá dòng hàng đổi thì dòng hóa đơn hàng đổi biến mất", async ({ page }) => {
+  const chen = (bang: string, rows: unknown[]) =>
+    fetch(`${FAKE}/rest/v1/${bang}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rows) })
+  await chen("returns", [{
+    id: "r-doi2", org_id: "khong-hien-trong-danh-sach", order_id: "o-e2e-1", invoice_id: null,
+    customer_id: "00000000-0000-4000-8000-0000000000c1", status: "draft", credit_note_amount: 0,
+    lines: [
+      { id: "rl-doi2", product_id: "00000000-0000-4000-8000-0000000000d2", unit_name: "gói", quantity: 2, unit_price: 5000, vat_rate: 0, is_exchange: true, product: { name: "Mì tôm", sku: "MI1" } },
+    ],
+  }])
+  try {
+    await dangNhap(page)
+    await page.goto("/pos/hoa-don/moi?order=o-e2e-1")
+    await expect(page.getByTestId("dong-hang-doi")).toHaveCount(1)
+    await page.getByRole("button", { name: "Bỏ dòng trả 1" }).click()
+    await expect(page.getByTestId("dong-hang-doi")).toHaveCount(0)
+    await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
+    await expect.poll(async () => {
+      const g = await goiCuoi("post_invoice")
+      return (g?.body as { p?: { return_edits?: unknown } } | undefined)?.p?.return_edits ?? null
+    }).toEqual([{ line_id: "rl-doi2", quantity: 0 }])
+    const p = ((await goiCuoi("post_invoice"))!.body as { p: { lines: Array<Record<string, unknown>> } }).p
+    expect(p.lines.filter((l) => l.is_exchange)).toHaveLength(0)
+  } finally {
+    await fetch(`${FAKE}/rest/v1/returns?id=eq.r-doi2`, { method: "DELETE" })
   }
 })
 

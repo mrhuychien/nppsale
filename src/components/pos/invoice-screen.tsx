@@ -45,6 +45,7 @@ import {
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
 import { reissueLock } from "@/lib/pos/invoice-edit"
+import { dongHangDoi, giaTheoHeSo } from "@/lib/pos/invoice-exchange"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { viMatchAllWords } from "@/lib/search"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -113,6 +114,31 @@ const tienTru = (qty: number, gia: number, vat: number, doi: boolean) =>
 let dem = 0
 const keyMoi = () => `iv${++dem}`
 
+/** Dải chip quy cách — cùng dáng chip của bảng bán. */
+function ChipDonVi({
+  ds, dang, nhan, onChon,
+}: { ds: string[]; dang: string; nhan: string; onChon: (u: string) => void }) {
+  if (ds.length <= 1) return <span className="n text-[11.5px] font-semibold text-[var(--pos-muted)]">{dang}</span>
+  return (
+    <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
+      {ds.map((u) => (
+        <button
+          key={u}
+          type="button"
+          aria-pressed={u === dang}
+          aria-label={`Đơn vị ${u} ${nhan}`}
+          onClick={() => onChon(u)}
+          className={`h-6 min-w-[42px] rounded-[6px] px-1.5 text-[11.5px] font-extrabold ${
+            u === dang ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
+          }`}
+        >
+          {u}
+        </button>
+      ))}
+    </span>
+  )
+}
+
 export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }: InvoiceScreenProps) {
   const sua = !!invoiceId
   const router = useRouter()
@@ -133,6 +159,14 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [rows, setRows] = useState<EditorRow[]>([])
   const [traCu, setTraCu] = useState<DongTraCu[]>([])
   const [traSua, setTraSua] = useState<Record<string, number>>({})
+  /** Quy cách mới của dòng trả đã có (mig 181) — theo `id` dòng. */
+  const [traDv, setTraDv] = useState<Record<string, string>>({})
+  /**
+   * Dòng hàng đổi CŨ trên tờ đang sửa mà KHÔNG có dòng phiếu trả tương ứng
+   * (dữ liệu trước khi hai nơi được nối) — giữ nguyên để hàng đã rời kho
+   * không bị "hoàn" lặng lẽ khi lập lại.
+   */
+  const [hangDoiCu, setHangDoiCu] = useState<EditorRow[]>([])
   const [traMoi, setTraMoi] = useState<DongTraMoi[]>([])
   const [moThemTra, setMoThemTra] = useState(false)
 
@@ -243,7 +277,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           loadInvoiceableLines(sb, oid),
           sb.from("returns")
             .select("id, status, invoice_id, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, product:products(name, sku))")
-            .eq("order_id", oid)
+            /* ⚠ Theo đơn VÀ theo tờ đang sửa — phiếu trả độc lập chỉ có `invoice_id`. */
+            .or(invoiceId ? `order_id.eq.${oid},invoice_id.eq.${invoiceId}` : `order_id.eq.${oid}`)
             .neq("status", "cancelled"),
         ])
         if (huy) return
@@ -266,7 +301,18 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           name: don.customer?.store_name || "Khách lẻ",
           meta: [don.customer?.phone, don.customer?.address].filter(Boolean).join(" · "),
         })
-        setRows(seed ? seedForReissue(ds, seed) : seedForNew(ds))
+        /**
+         * ⚠ DÒNG HÀNG ĐỔI KHÔNG NẰM TRONG BẢNG BÁN NỮA — nó dựng lại từ khối
+         *   hàng đổi trả lúc lưu (`dongHangDoi`). Xem @/lib/pos/invoice-exchange.
+         */
+        const tatCa = seed ? seedForReissue(ds, seed) : seedForNew(ds)
+        setRows(tatCa.filter((r) => !r.isExchange))
+        const doiTuPhieu = new Set(
+          ((rt.data as unknown as Array<{ status: string; invoice_id: string | null; lines?: Array<{ product_id: string; is_exchange: boolean | null }> | null }>) ?? [])
+            .filter((r) => (r.status === "draft" || r.status === "submitted") && (invoiceId ? r.invoice_id === invoiceId : r.invoice_id === null))
+            .flatMap((r) => (r.lines ?? []).filter((l) => l.is_exchange).map((l) => l.product_id))
+        )
+        setHangDoiCu(seed ? tatCa.filter((r) => r.isExchange && !doiTuPhieu.has(r.productId)) : [])
 
         /**
          * ⚠ PHIẾU TRẢ ĐỌC HỎNG THÌ NÓI RA, KHÔNG CHẶN XUẤT HÀNG — và KHÔNG
@@ -323,11 +369,40 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   /* TIỀN                                                                */
   /* ------------------------------------------------------------------ */
 
-  const draft = useMemo(() => toDraft(rows), [rows])
-  const tong = useMemo(() => invoiceTotals(draft), [draft])
   const soTraCu = (l: DongTraCu) => traSua[l.id] ?? l.qty
+  const dvTraCu = (l: DongTraCu) => traDv[l.id] ?? l.unit
+  /** Hệ số theo danh mục (đơn vị cơ sở = 1). */
+  const heSo = useCallback(
+    (productId: string, unit: string) => {
+      const p = productById(productId)
+      return p ? conversionFor(p, unit) || 1 : 1
+    },
+    [productById]
+  )
+  /** Giá dòng trả cũ theo quy cách đang chọn — CÙNG phép máy chủ (mig 181). */
+  const giaTraCu = (l: DongTraCu) =>
+    dvTraCu(l) === l.unit ? l.unitPrice : giaTheoHeSo(l.unitPrice, heSo(l.productId, l.unit), heSo(l.productId, dvTraCu(l)))
+  /**
+   * Hàng đổi xuất theo tờ này = dòng ĐỔI của phiếu trả đi cùng tờ (đã sửa) +
+   * dòng đổi vừa thêm + dòng đổi cũ không có phiếu tương ứng.
+   */
+  const hangDoiXuat = useMemo(
+    () => [
+      ...dongHangDoi(
+        [
+          ...traCu.filter((l) => l.isExchange && l.suaDuoc).map((l) => ({ productId: l.productId, unit: traDv[l.id] ?? l.unit, qty: traSua[l.id] ?? l.qty })),
+          ...traMoi.filter((a) => a.isExchange).map((a) => ({ productId: a.productId, unit: a.unit, qty: a.qty })),
+        ],
+        heSo
+      ),
+      ...toDraft(hangDoiCu),
+    ],
+    [traCu, traMoi, traSua, traDv, hangDoiCu, heSo]
+  )
+  const draft = useMemo(() => [...toDraft(rows), ...hangDoiXuat], [rows, hangDoiXuat])
+  const tong = useMemo(() => invoiceTotals(draft), [draft])
   const truHangTra =
-    traCu.reduce((s, l) => s + tienTru(soTraCu(l), l.unitPrice, l.vatRate, l.isExchange), 0) +
+    traCu.reduce((s, l) => s + tienTru(soTraCu(l), giaTraCu(l), l.vatRate, l.isExchange), 0) +
     traMoi.reduce((s, a) => s + tienTru(a.qty, a.price, a.vatRate, a.isExchange), 0)
   const khachTra = Math.max(0, tong.total - truHangTra)
   const daThu = receipts.reduce((s, r) => s + r.amount, 0)
@@ -347,10 +422,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const chuKy = useMemo(
     () => JSON.stringify([
       rows.map((r) => [r.key, r.unitName, r.qty, r.price]),
-      traSua, traMoi.map((a) => [a.productId, a.unit, a.qty, a.price, a.isExchange]), ghiChu, ngay, dieuKhoan,
+      traSua, traDv, traMoi.map((a) => [a.productId, a.unit, a.qty, a.price, a.isExchange]), ghiChu, ngay, dieuKhoan,
       rows.map((r) => r.vatRate),
     ]),
-    [rows, traSua, traMoi, ghiChu, ngay, dieuKhoan]
+    [rows, traSua, traDv, traMoi, ghiChu, ngay, dieuKhoan]
   )
   useEffect(() => {
     if (!dangTai && mocChuaLuu === null) setMocChuaLuu(chuKy)
@@ -480,8 +555,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         }))
       /* ⚠ CHỈ GỬI DÒNG THẬT SỰ ĐỔI — gửi cả dòng không đổi là ghi đè `line_total` của chúng. */
       const returnEdits = traCu
-        .filter((l) => l.suaDuoc && traSua[l.id] !== undefined && traSua[l.id] !== l.qty)
-        .map((l) => ({ lineId: l.id, quantity: traSua[l.id] }))
+        .filter((l) => l.suaDuoc && ((traSua[l.id] ?? l.qty) !== l.qty || (traDv[l.id] ?? l.unit) !== l.unit))
+        .map((l) => ({
+          lineId: l.id,
+          quantity: traSua[l.id] ?? l.qty,
+          ...((traDv[l.id] ?? l.unit) !== l.unit ? { unitName: traDv[l.id] } : {}),
+        }))
       const r: PostInvoiceResult = invoiceId
         ? await reissueInvoice(createClient(), invoiceId, {
             lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
@@ -526,7 +605,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     } finally {
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon])
+  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, traDv, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon])
 
   usePosKeys({
     F2: () => { setMoThemTra(false); focusPosPicker() },
@@ -708,6 +787,39 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
               </div>
             )
           })}
+          {/*
+            ⚠ HÀNG ĐỔI XUẤT THEO TỜ NÀY — CHỈ ĐỌC, dựng từ khối Hàng đổi trả
+              bên dưới (một nguồn). Sửa số lượng / quy cách / xoá ở khối ấy là
+              dòng ở đây đổi theo — chủ nhà báo lỗi 23/09/2026.
+          */}
+          {hangDoiXuat.map((d, i) => {
+            const p = productById(d.productId)
+            return (
+              <div
+                key={`doi${i}`}
+                data-testid="dong-hang-doi"
+                className="grid min-h-[48px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-warn-soft)]/30 px-4 py-1.5"
+                style={{ gridTemplateColumns: COT_BAN, gap: 10 }}
+              >
+                <div className="n text-center text-[12px] font-bold text-[var(--pos-dim)]">↺</div>
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-bold text-[var(--pos-ink)]">
+                    {p?.name ?? "Sản phẩm"}
+                    <span className="ml-2 rounded-md bg-[var(--pos-warn-soft)] px-1.5 py-px text-[11px] font-extrabold text-[var(--pos-warn)]">
+                      Hàng đổi
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[var(--pos-muted)]">xuất kho cho khách · sửa ở khối Hàng đổi trả</div>
+                </div>
+                <div className="n text-center text-[14px] font-bold text-[var(--pos-ink)]">
+                  {d.quantity} {d.unitName}
+                </div>
+                <div className="n text-right text-[13px] text-[var(--pos-dim)]">0</div>
+                <div className="n text-right text-[13px] text-[var(--pos-dim)]">—</div>
+                <span />
+              </div>
+            )
+          })}
         </LineTableFrame>
 
         {/* ---------------- HÀNG ĐỔI TRẢ ---------------- */}
@@ -765,9 +877,21 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{l.name}</span>
-                      <span className="n block truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
-                        {l.unit}{l.sku ? ` · ${l.sku}` : ""}
-                        {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
+                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                        {l.suaDuoc ? (
+                          <ChipDonVi
+                            ds={(() => { const p = productById(l.productId); return p ? sellableUnits(p) : [l.unit] })()}
+                            dang={dvTraCu(l)}
+                            nhan={`trả dòng ${i + 1}`}
+                            onChon={(u) => setTraDv((d) => ({ ...d, [l.id]: u }))}
+                          />
+                        ) : (
+                          <span className="n text-[11.5px] font-semibold text-[var(--pos-muted)]">{l.unit}</span>
+                        )}
+                        <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
+                          {l.sku}
+                          {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
+                        </span>
                       </span>
                     </span>
                     <span className="justify-self-center text-[12px] font-extrabold text-[var(--pos-muted)]">
@@ -785,9 +909,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                         <span className="n text-[14px] font-bold text-[var(--pos-ink)]">{sl}</span>
                       )}
                     </div>
-                    <span className="n text-right text-[13px] text-[var(--pos-ink)]">{formatCurrency(l.unitPrice)}</span>
+                    <span className="n text-right text-[13px] text-[var(--pos-ink)]" aria-label={`Đơn giá trả dòng ${i + 1}`}>{formatCurrency(giaTraCu(l))}</span>
                     <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
-                      {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, l.unitPrice, l.vatRate, false))}`}
+                      {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, giaTraCu(l), l.vatRate, false))}`}
                     </span>
                     {l.suaDuoc ? (
                       <button
@@ -814,8 +938,20 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{a.name}</span>
-                      <span className="n block truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
-                        {a.unit}{a.sku ? ` · ${a.sku}` : ""} · mới thêm
+                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                        <ChipDonVi
+                          ds={(() => { const p = productById(a.productId); return p ? sellableUnits(p) : [a.unit] })()}
+                          dang={a.unit}
+                          nhan={`trả mới ${i + 1}`}
+                          onChon={(u) => {
+                            /* Dòng MỚI: giá tra bảng giá theo nhóm khách, như lúc thêm. */
+                            const p = productById(a.productId)
+                            doiA({ unit: u, price: p ? unitPriceFor(p, u, groupId) : a.price })
+                          }}
+                        />
+                        <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
+                          {a.sku} · mới thêm
+                        </span>
                       </span>
                     </span>
                     <span className="flex justify-self-center gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">

@@ -32190,3 +32190,244 @@ SELECT 'post_invoice nhận return_edits lúc xuất lần đầu' AS hang_muc,
        CASE WHEN position('(mig 180)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
             THEN 'có' ELSE 'CHƯA' END AS trang_thai;
 
+
+-- ####################################################################
+-- # 181_sua_hang_tra_doi_quy_cach.sql
+-- ####################################################################
+
+-- ====================================================================
+-- SỬA HÀNG TRẢ KÈM HÓA ĐƠN: ĐỔI ĐƯỢC QUY CÁCH (ĐƠN VỊ)
+--
+-- Chủ nhà báo 23/09/2026: "khi thay đổi hàng đổi, phần hàng đổi tự thêm
+-- trên hoá đơn ko thay đổi cùng (sửa số lượng, sửa quy cách (hiện tại chưa
+-- sửa được quy cách), xoá dòng…)".
+--
+-- ⚠ `_apply_return_edits` (mig 149) CHỈ NHẬN SỐ LƯỢNG. Nay nhận thêm
+--   `unit_name`. Màn hóa đơn POS dựng dòng HÀNG ĐỔI trên hóa đơn từ chính
+--   dòng phiếu trả (một nguồn — xem invoice-screen), nên đổi quy cách ở đây
+--   là đổi luôn quy cách hàng xuất đổi.
+--
+-- ⚠ ĐƠN GIÁ MỚI DO MÁY CHỦ TÍNH, KHÔNG NHẬN TỪ TRÌNH DUYỆT. Dòng trả là
+--   tiền trừ công nợ khách (`line_total` → `credit_note_amount`); nhận giá
+--   gửi lên là mở một đường ghi tiền tuỳ ý — đúng lý do mig 149 không nhận
+--   `line_total`. Giá đi theo HỆ SỐ (chủ nhà chốt 23/09/2026 cho dòng trả:
+--   "giá đã chốt trên phiếu, đổi đơn vị thì đi theo hệ số" — cùng luật
+--   `doiDonViDongTra` ở màn): giá mới = giá cũ × hệ số mới / hệ số cũ.
+--   Đơn vị lạ (không phải cơ sở, không có trong `product_units`) thì TỪ
+--   CHỐI — không đoán hệ số.
+--
+-- ⚠ CÙNG CHỮ KÝ, CHỈ ĐỔI THÂN. Hàm này chỉ có thân ở mig 149 (mig 166 chỉ
+--   thu quyền); `CREATE OR REPLACE` giữ nguyên quyền đã thu.
+-- ====================================================================
+
+CREATE OR REPLACE FUNCTION public._apply_return_edits(
+  p_invoice_id uuid,
+  p_edits      jsonb
+)
+RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+DECLARE
+  e        jsonb;
+  v_line   record;
+  v_qty    numeric;
+  v_unit   text;
+  v_hs_cu  numeric;
+  v_hs_moi numeric;
+  v_gia    numeric;
+  v_count  int := 0;
+BEGIN
+  IF p_edits IS NULL OR jsonb_typeof(p_edits) <> 'array' THEN
+    RETURN 0;
+  END IF;
+
+  FOR e IN SELECT * FROM jsonb_array_elements(p_edits)
+  LOOP
+    SELECT rl.id, rl.product_id, rl.unit_name, rl.unit_price, rl.vat_rate, p.base_unit
+      INTO v_line
+    FROM return_lines rl
+    JOIN returns r ON r.id = rl.return_id
+    JOIN products p ON p.id = rl.product_id
+    WHERE rl.id = (e->>'line_id')::uuid
+      AND r.invoice_id = p_invoice_id
+      AND r.status IN ('draft', 'submitted');
+
+    IF NOT FOUND THEN
+      CONTINUE;
+    END IF;
+
+    v_qty := COALESCE((e->>'quantity')::numeric, 0);
+
+    IF v_qty <= 0 THEN
+      DELETE FROM return_lines WHERE id = v_line.id;
+      v_count := v_count + 1;
+      CONTINUE;
+    END IF;
+
+    v_unit := NULLIF(btrim(COALESCE(e->>'unit_name', '')), '');
+    v_gia  := COALESCE(v_line.unit_price, 0);
+
+    IF v_unit IS NOT NULL AND v_unit IS DISTINCT FROM v_line.unit_name THEN
+      v_hs_cu := CASE WHEN v_line.unit_name = v_line.base_unit THEN 1
+                      ELSE (SELECT pu.conversion FROM product_units pu
+                            WHERE pu.product_id = v_line.product_id AND pu.unit_name = v_line.unit_name) END;
+      v_hs_moi := CASE WHEN v_unit = v_line.base_unit THEN 1
+                       ELSE (SELECT pu.conversion FROM product_units pu
+                             WHERE pu.product_id = v_line.product_id AND pu.unit_name = v_unit) END;
+      IF v_hs_moi IS NULL OR v_hs_moi <= 0 THEN
+        RAISE EXCEPTION 'RETURN_UNIT_UNKNOWN: đơn vị "%" không có trong danh mục của mặt hàng', v_unit
+          USING ERRCODE = 'P0001';
+      END IF;
+      -- Đơn vị cũ đã bị gỡ khỏi danh mục thì không quy được giá — giữ giá, báo rõ.
+      IF v_hs_cu IS NULL OR v_hs_cu <= 0 THEN
+        RAISE EXCEPTION 'RETURN_UNIT_UNKNOWN: đơn vị cũ "%" không còn trong danh mục — không quy được giá', v_line.unit_name
+          USING ERRCODE = 'P0001';
+      END IF;
+      v_gia := round(v_gia * v_hs_moi / v_hs_cu, 2);
+    ELSE
+      v_unit := v_line.unit_name;
+    END IF;
+
+    UPDATE return_lines
+    SET quantity   = v_qty,
+        unit_name  = v_unit,
+        unit_price = v_gia,
+        line_total = round(v_qty * v_gia * (1 + COALESCE(vat_rate, 0)))
+    WHERE id = v_line.id;
+
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN v_count;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public._apply_return_edits(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Sửa hàng trả nhận đổi quy cách (_apply_return_edits)' AS hang_muc,
+       CASE WHEN position('RETURN_UNIT_UNKNOWN' IN pg_get_functiondef('public._apply_return_edits(uuid, jsonb)'::regprocedure)) > 0
+            THEN 'có' ELSE 'CHƯA' END AS trang_thai;
+
+
+-- ####################################################################
+-- # 182_nguoi_duoc_gan_theo_hoa_don.sql
+-- ####################################################################
+
+-- ====================================================================
+-- NGƯỜI ĐƯỢC GÁN CỦA HÓA ĐƠN KÉO THEO PHIẾU TRẢ, VÀ GIỮ QUA LẬP LẠI
+--
+-- Chủ nhà báo 23/09/2026: "Lúc đầu lập hoá đơn gán cho nv A, sau đó sửa sang
+-- nv B thì phiếu trả vẫn ko cập nhật theo thành nv B mà vẫn ở nv A".
+--
+-- ⚠ HAI CHỖ HỞ, CÙNG MỘT GỐC:
+--   1. `assign_doc_seller('invoice', …)` (mig 178) đổi hóa đơn + công nợ
+--      nhưng KHÔNG đổi phiếu trả đang bám hóa đơn. Khoản trừ hàng trả là
+--      một phần của CÙNG tờ ấy — doanh số / hoa hồng tính ròng theo người
+--      đứng tên thì phiếu trả phải đi theo, nếu không B được cả tờ mà A
+--      gánh phần khách trả.
+--   2. `reissue_invoice` (sửa hóa đơn = huỷ + lập lại) gọi `post_invoice`,
+--      và hàm ấy chép `sales_user_id` từ ĐƠN — tờ mới quay về người của đơn,
+--      mất người vừa được gán. Nay tờ mới giữ người đứng tên của tờ cũ, kèm
+--      công nợ và phiếu trả.
+--
+-- ⚠ BÍ DANH BẢNG TRONG `reissue_invoice` LÀ BẮT BUỘC. Hàm ấy `RETURNS TABLE(
+--   invoice_id …)` — tên trần `invoice_id` trong câu chèn thêm là "column
+--   reference is ambiguous" giữa giao dịch (cùng bài học mig 128, mục 6.2).
+--
+-- ⚠ ĐIỀN LẠI: phiếu trả KÈM hóa đơn (`credit_with_invoice`) còn hiệu lực
+--   đang lệch người với hóa đơn nó bám → theo hóa đơn. Phiếu trả độc lập
+--   (không kèm) có thể được gán riêng có chủ ý — chỉ ĐẾM, không sửa.
+-- ====================================================================
+
+-- 1. assign_doc_seller: hóa đơn kéo theo phiếu trả đang bám nó.
+DO $patch$
+DECLARE
+  v_src text;
+  v_neo text := E'    UPDATE receivables SET sales_user_id = p_user WHERE invoice_id = p_id;\n';
+BEGIN
+  v_src := pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure);
+  IF position('(mig 182)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 182: assign_doc_seller đã kéo phiếu trả, bỏ qua ---';
+  ELSE
+    IF (length(v_src) - length(replace(v_src, v_neo, ''))) / length(v_neo) <> 1 THEN
+      RAISE EXCEPTION '182: không thấy đúng MỘT chỗ cập nhật công nợ trong assign_doc_seller' USING ERRCODE = 'P0001';
+    END IF;
+    v_src := replace(v_src, v_neo, v_neo
+      || E'    -- (mig 182) Phiếu trả đang bám tờ này đi theo người đứng tên tờ.\n'
+      || E'    UPDATE returns SET sales_user_id = p_user\n'
+      || E'     WHERE invoice_id = p_id AND status <> ''cancelled'';\n');
+    EXECUTE v_src;
+  END IF;
+END;
+$patch$;
+
+-- 2. reissue_invoice: tờ mới giữ người đứng tên của tờ cũ.
+DO $patch2$
+DECLARE
+  v_src text;
+  v_neo text := E'  UPDATE returns SET invoice_id = v_new.invoice_id WHERE id = ANY(v_rets);\n';
+BEGIN
+  v_src := pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure);
+  IF position('(mig 182)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 182: reissue_invoice đã giữ người đứng tên, bỏ qua ---';
+    RETURN;
+  END IF;
+  IF (length(v_src) - length(replace(v_src, v_neo, ''))) / length(v_neo) <> 1 THEN
+    RAISE EXCEPTION '182: không thấy đúng MỘT chỗ gắn lại phiếu trả trong reissue_invoice' USING ERRCODE = 'P0001';
+  END IF;
+  v_src := replace(v_src, v_neo, v_neo
+    || E'\n  -- (mig 182) Tờ mới GIỮ người đứng tên của tờ cũ — `post_invoice` chép\n'
+    || E'  --   người của ĐƠN, nên người vừa được gán ở tờ cũ sẽ mất nếu không chép lại.\n'
+    || E'  PERFORM set_config(''npp.via_rpc'', ''on'', true);\n'
+    || E'  UPDATE sales_invoices si182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
+    || E'   WHERE si182.id = v_new.invoice_id;\n'
+    || E'  UPDATE receivables rc182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
+    || E'   WHERE rc182.invoice_id = v_new.invoice_id;\n'
+    || E'  UPDATE returns rt182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
+    || E'   WHERE rt182.invoice_id = v_new.invoice_id AND rt182.status <> ''cancelled'';\n');
+  EXECUTE v_src;
+END;
+$patch2$;
+
+DO $kiem$
+BEGIN
+  IF position('(mig 182)' IN pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure)) = 0
+     OR position('(mig 182)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION '182: chưa vá đủ hai hàm' USING ERRCODE = 'P0001';
+  END IF;
+  -- Miếng vá cũ của reissue phải còn nguyên.
+  IF position('_apply_return_edits' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION '182: reissue_invoice mất miếng vá mig 149' USING ERRCODE = 'P0001';
+  END IF;
+END;
+$kiem$;
+
+-- 3. Điền lại phiếu trả KÈM hóa đơn đang lệch người.
+DO $dien$
+DECLARE v_n int;
+BEGIN
+  PERFORM set_config('npp.via_rpc', 'on', true);
+  UPDATE returns r
+     SET sales_user_id = si.sales_user_id
+    FROM sales_invoices si
+   WHERE si.id = r.invoice_id
+     AND r.credit_with_invoice
+     AND r.status <> 'cancelled'
+     AND r.sales_user_id IS DISTINCT FROM si.sales_user_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  PERFORM set_config('npp.via_rpc', '', true);
+  RAISE NOTICE '--- 182: đưa % phiếu trả kèm hóa đơn về đúng người đứng tên ---', v_n;
+END;
+$dien$;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Phiếu trả KÈM hóa đơn lệch người đứng tên (mong đợi 0)' AS hang_muc, count(*)::text AS so_luong
+FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
+WHERE r.credit_with_invoice AND r.status <> 'cancelled' AND r.sales_user_id IS DISTINCT FROM si.sales_user_id
+UNION ALL
+SELECT 'Phiếu trả ĐỘC LẬP lệch người với hóa đơn (chỉ đếm, không sửa)', count(*)::text
+FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
+WHERE NOT r.credit_with_invoice AND r.status <> 'cancelled' AND r.sales_user_id IS DISTINCT FROM si.sales_user_id;
+

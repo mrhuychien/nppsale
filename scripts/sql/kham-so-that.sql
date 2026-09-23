@@ -195,4 +195,15 @@ UNION ALL
 SELECT 20, 'Mig 180 (xuất hàng sửa được hàng trả kèm đơn)',
   CASE WHEN position('(mig 180)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
        THEN 'OK — đã nhận' ELSE 'CHƯA — sửa hàng trả lúc xuất hàng bị máy chủ bỏ qua' END, ''
+UNION ALL
+-- 21. Mig 181 — sửa hàng trả đổi được quy cách
+SELECT 21, 'Mig 181 (sửa hàng trả đổi quy cách, giá theo hệ số)',
+  CASE WHEN position('RETURN_UNIT_UNKNOWN' IN pg_get_functiondef('public._apply_return_edits(uuid, jsonb)'::regprocedure)) > 0
+       THEN 'OK — đã nhận' ELSE 'CHƯA — đổi quy cách hàng trả / hàng đổi bị bỏ qua' END, ''
+UNION ALL
+-- 22. Mig 182 — người được gán của hóa đơn kéo theo phiếu trả, giữ qua lập lại
+SELECT 22, 'Mig 182 (gán HĐ kéo theo phiếu trả; lập lại giữ người)',
+  CASE WHEN position('(mig 182)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
+            AND position('(mig 182)' IN pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure)) > 0
+       THEN 'OK — đã vá' ELSE 'CHƯA — gán lại HĐ thì phiếu trả vẫn đứng tên người cũ' END, ''
 ) t ORDER BY stt;

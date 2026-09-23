@@ -4,7 +4,8 @@ import { resolve } from "node:path"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { doiDonViDong, doiDonViTheoHeSo, doiDonViDongTra, donViHienThi, donViCuaSanPham } from "../src/lib/pos/units"
-import { posLinesToInvoice, posLinesToReturnCart } from "../src/lib/pos/save"
+import { posLinesToReturnCart } from "../src/lib/pos/save"
+import { seedForReissue, toDraft } from "../src/lib/orders/invoice-editor"
 import { returnCreditOf } from "../src/lib/sell/returns"
 import { MoneyInput } from "../src/components/ui/money-input"
 import type { PosLine } from "../src/lib/pos/types"
@@ -67,7 +68,7 @@ describe("ô đơn giá ở POS chia khối nghìn", () => {
   it.each([
     "src/components/pos/order-screen.tsx",
     "src/components/pos/return-screen.tsx",
-    "src/components/pos/invoice-edit-screen.tsx",
+    "src/components/pos/invoice-screen.tsx",
     "src/components/pos/purchase-screen.tsx",
     "src/components/pos/supplier-return-screen.tsx",
   ])("%s: mọi ô giá dùng MoneyInput, không còn ô số trần", (f) => {
@@ -130,20 +131,40 @@ describe("sửa hóa đơn", () => {
     const ds = donViHienThi(l, SP as never)
     expect(ds.map((u) => u.unit_name)).toEqual(["hộp", "thùng"])
     expect(ds.find((u) => u.unit_name === "thùng")?.conversion).toBe(24)
-    expect(posLinesToInvoice([l])[0].conversionFactor).toBe(24)
+  })
+
+  /**
+   * ⚠ Lập lại giữ HỆ SỐ và LIÊN KẾT DÒNG ĐƠN. Bản POS cũ (`savePosInvoice`)
+   *   gửi `orderLineId: null` cho mọi dòng — tờ mới rời khỏi dòng đơn, số
+   *   "đã xuất" của đơn lệch sau mỗi lần sửa.
+   */
+  it("lập lại: hệ số 24 và order_line_id đi xuống tờ mới", () => {
+    const seed = [{
+      orderLineId: "ol1", productId: "p1", unitName: "thùng", quantity: 2, unitPrice: 450_000,
+      lineDiscount: 0, vatRate: 0.1, isExchange: false, conversionFactor: 24,
+      productName: "Sữa", sku: "S1", note: null,
+    }, {
+      orderLineId: null, productId: "p2", unitName: "gói", quantity: 1, unitPrice: 0,
+      lineDiscount: 0, vatRate: 0, isExchange: true, conversionFactor: 1,
+      productName: "Mì", sku: "M1", note: null,
+    }]
+    const d = toDraft(seedForReissue([], seed))
+    expect(d[0]).toMatchObject({ orderLineId: "ol1", conversionFactor: 24, quantity: 2 })
+    expect(d[1], "dòng hàng ĐỔI thành dòng bán").toMatchObject({ isExchange: true })
   })
 
   it("màn đọc conversion_factor của dòng cũ, không đặt 1", () => {
-    const S = read("src/components/pos/invoice-edit-screen.tsx")
-    expect(S).toMatch(/conversion_factor, unit_price/)
-    expect(S).not.toMatch(/units: \[\{ unit_name: x\.unit_name, conversion: 1 \}\]/)
+    const S = read("src/components/pos/invoice-screen.tsx")
+    expect(S).toMatch(/unit_name, conversion_factor, quantity, unit_price/)
+    expect(S).toMatch(/conversionFactor: Number\(x\.conversion_factor\) \|\| 1/)
   })
 
-  it("đổi đơn vị tra bảng giá theo nhóm khách; dòng mới cũng thế", () => {
-    const S = read("src/components/pos/invoice-edit-screen.tsx")
-    expect(S).toMatch(/doiDonViDong\(\{ \.\.\.l, units: donViHienThi\(l, p\) \}, e\.target\.value, p, groupId\)/)
-    expect(S, "dòng mới lấy sell_price phẳng").not.toMatch(/price: Number\(p\.sell_price\)/)
-    expect(S).toMatch(/price: unitPriceFor\(p, p\.base_unit, groupId\)/)
+  it("đổi đơn vị tra bảng giá theo nhóm khách, hệ số theo danh mục; dòng mới cũng thế", () => {
+    const S = read("src/components/pos/invoice-screen.tsx")
+    expect(S).toMatch(/const gia = unitPriceFor\(p, u, groupId\)/)
+    expect(S).toMatch(/conversionFactor: conversionFor\(p, u\)/)
+    expect(S, "dòng mới lấy sell_price phẳng").not.toMatch(/Number\(p\.sell_price\)/)
+    expect(S).toMatch(/makeAddedRow\(p, sellableUnits\(p\)\[0\], groupId/)
   })
 })
 

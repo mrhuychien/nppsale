@@ -25,8 +25,8 @@
  * hành thật đang nằm); Trả hàng → mở phiếu trả mới nạp sẵn tờ này.
  */
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -39,6 +39,10 @@ import { DocSubHeader } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, LineTableHeader, POS_GRID } from "@/components/pos/line-table"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton } from "@/components/pos/money-panel"
 import { PartnerCard } from "@/components/pos/partner-card"
+import { InvoiceScreen } from "@/components/pos/invoice-screen"
+import { DocPeople } from "@/components/pos/doc-people"
+import { assignDocSeller } from "@/lib/pos/save"
+import { useToast } from "@/hooks/use-toast"
 
 interface Head {
   id: string
@@ -51,6 +55,8 @@ interface Head {
   payment_terms: string | null
   due_date: string | null
   customer_id: string
+  posted_by?: string | null
+  sales_user_id?: string | null
   customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
 }
 
@@ -65,9 +71,33 @@ interface Line {
   product?: { name?: string | null; sku?: string | null } | null
 }
 
+/**
+ * `/pos/hoa-don/moi?order=<id>` — XUẤT HÀNG: lập hóa đơn từ đơn (chủ nhà chốt
+ * 23/09/2026 "Màn xuất hàng → POS"). Mọi mã khác là XEM một tờ đã có.
+ *
+ * ⚠ `useSearchParams` bọc trong `<Suspense>` — Next 14 đòi thế cho trang client.
+ */
+function XuatHang() {
+  const q = useSearchParams()
+  return <InvoiceScreen orderId={q.get("order")} />
+}
+
 export default function PosInvoicePage() {
   const { id } = useParams<{ id: string }>()
+  if (id === "moi") {
+    return (
+      <Suspense fallback={null}>
+        <XuatHang />
+      </Suspense>
+    )
+  }
+  return <XemHoaDon id={id} />
+}
+
+function XemHoaDon({ id }: { id: string }) {
   const router = useRouter()
+  const { toast } = useToast()
+  const [dangGan, setDangGan] = useState(false)
   const [head, setHead] = useState<Head | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [rets, setRets] = useState<InvoiceReturnRow[]>([])
@@ -85,7 +115,7 @@ export default function PosInvoicePage() {
       const sb = createClient()
       const [h, l, r, p] = await Promise.all([
         sb.from("sales_invoices")
-          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, customer:customers(store_name, phone, address)")
+          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, posted_by, sales_user_id, customer:customers(store_name, phone, address)")
           .eq("id", id).maybeSingle(),
         sb.from("sales_invoice_lines")
           .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
@@ -203,6 +233,27 @@ export default function PosInvoicePage() {
                     meta: [head.customer.phone, head.customer.address].filter(Boolean).join(" · "),
                   }
                 : null
+            }
+          />
+          <DocPeople
+            createdById={head?.posted_by}
+            assignedId={head?.sales_user_id}
+            busy={dangGan}
+            onAssign={
+              head?.status === "posted"
+                ? async (uid) => {
+                    setDangGan(true)
+                    try {
+                      await assignDocSeller(createClient(), "invoice", id, uid)
+                      setHead((h) => (h ? { ...h, sales_user_id: uid } : h))
+                      toast({ title: "Đã gán lại người phụ trách hóa đơn" })
+                    } catch (e) {
+                      toast({ title: "Chưa gán được", description: errorMessage(e), variant: "destructive" })
+                    } finally {
+                      setDangGan(false)
+                    }
+                  }
+                : undefined
             }
           />
 

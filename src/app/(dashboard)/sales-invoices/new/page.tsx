@@ -19,6 +19,8 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { InvoiceEditor } from "@/components/orders/invoice-editor"
+import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posNewInvoiceHref } from "@/lib/nav/pos-preview"
 
 interface OrderHead {
   id: string
@@ -82,11 +84,17 @@ export default function NewSalesInvoicePage() {
   }
 
   return (
-    <InvoiceEditor
-      orderId={order.id}
-      orderCode={order.order_code}
-      priceGroupId={order.customer?.group_id ?? null}
-      backHref={`/orders/${order.id}`}
-    />
+    <>
+      {/* ⚠ Máy tính thì xuất hàng trên màn `/pos` — chủ nhà chốt 23/09/2026
+          ("Màn xuất hàng → POS"). Chặn ở CỬA như `/sell` và Sửa hóa đơn:
+          mọi nút "Xuất hàng" (chi tiết đơn, danh sách đơn) đều đi qua đây. */}
+      <PosDesktopRedirect to={posNewInvoiceHref(order.id)} />
+      <InvoiceEditor
+        orderId={order.id}
+        orderCode={order.order_code}
+        priceGroupId={order.customer?.group_id ?? null}
+        backHref={`/orders/${order.id}`}
+      />
+    </>
   )
 }

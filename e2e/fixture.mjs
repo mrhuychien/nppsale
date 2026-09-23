@@ -112,6 +112,7 @@ export function tables() {
       stock_entry_id: "se1", created_at: "2026-09-23T08:00:00Z",
       customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" },
       order: { order_code: "DH-0002" }, sales_user: { full_name: "Chủ NPP" },
+      posted_by: OWNER, sales_user_id: OWNER,
     }, {
       id: "00000000-0000-4000-8000-0000000000f2", org_id: ORG, invoice_code: "HD-E2E-2", order_id: "o-e2e-1",
       customer_id: KHACH, status: "posted", subtotal: 300000, vat: 0, total: 300000,
@@ -128,7 +129,14 @@ export function tables() {
     sales_invoice_lines: [{
       id: "sil1", invoice_id: HOA_DON, product_id: SUA, quantity: 2, unit_name: "thùng", conversion_factor: 24,
       unit_price: 450000, line_discount: 0, vat_rate: 0, line_total: 900000, is_exchange: false, sort_order: 0,
+      order_line_id: "sol9", note: null,
       product: { name: "Sữa hộp", sku: "SUA1" },
+    }, {
+      /* Dòng HÀNG ĐỔI — lỗi cũ: lập lại là thành dòng bán (is_exchange mất). */
+      id: "sil2", invoice_id: HOA_DON, product_id: MI, quantity: 1, unit_name: "gói", conversion_factor: 1,
+      unit_price: 0, line_discount: 0, vat_rate: 0, line_total: 0, is_exchange: true, sort_order: 1,
+      order_line_id: null, note: null,
+      product: { name: "Mì tôm", sku: "MI1" },
     }],
     receivables: [], payables: [],
     /* Phiếu nhập: 300.000 + 700.000 hoàn thành, 9.000.000 ĐÃ HUỶ — tổng 1.000.000. */
@@ -142,7 +150,34 @@ export function tables() {
 }
 
 /** RPC mà các màn POS gọi. Hàm lưu ghi lại tải trọng để chốt đọc. */
+
+/**
+ * `get_invoiceable_lines` giả — dựng từ `sales_order_lines` của đơn, đủ cột
+ * `loadInvoiceableLines` đọc. Còn lại = đặt − đã xuất.
+ */
+function invoiceableLines({ p_order_id }, { db }) {
+  const sp = Object.fromEntries((db.products ?? []).map((p) => [p.id, p]))
+  return (db.sales_order_lines ?? [])
+    .filter((l) => l.order_id === p_order_id)
+    .map((l) => {
+      const qty = Number(l.quantity) || 0
+      const inv = Number(l.invoiced_qty) || 0
+      const gia = Number(l.unit_price ?? (qty ? l.line_total / qty : 0))
+      return {
+        order_line_id: l.id, return_line_id: null, product_id: l.product_id,
+        product_name: sp[l.product_id]?.name ?? "—", sku: sp[l.product_id]?.sku ?? null,
+        unit_name: l.unit_name, conversion_factor: Number(l.conversion_factor) || 1,
+        ordered_qty: qty, invoiced_qty: inv, remaining_qty: Math.max(0, qty - inv),
+        unit_price: gia, list_price: gia, line_discount: 0, vat_rate: 0,
+        available_base: 1000, is_exchange: false, note: null,
+      }
+    })
+}
+
 export const rpc = {
+  get_invoiceable_lines: invoiceableLines,
+  post_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f004", invoice_code: "HD-E2E-3", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "partially_invoiced" }],
+  assign_doc_seller: () => null,
   user_has_permission: () => true,
   lookup_email_by_identifier: () => "chu@npp.test",
   create_order_with_lines: (_a) => [{ order_id: "00000000-0000-4000-8000-00000000f001", order_code: "DH-E2E-1", already_existed: false }],

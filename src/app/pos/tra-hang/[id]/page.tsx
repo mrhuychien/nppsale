@@ -26,6 +26,7 @@ function Trang() {
       mode="lap"
       returnId={moi ? null : id}
       sourceInvoiceId={moi ? q.get("invoice") : null}
+      sourceCustomerId={moi ? q.get("customerId") : null}
     />
   )
 }

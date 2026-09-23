@@ -78,11 +78,15 @@ describe("giao diện không mời người ta bấm nút máy chủ sẽ từ c
     expect(m![1]).toContain('"manager"')
     expect(m![1]).not.toContain('"sales"')
 
-    /* Và ô ấy phải THẬT SỰ nằm sau cái cổng. */
-    const i = DON.indexOf("<SellerPicker")
-    expect(i, "màn /pos không vẽ ô gán NVBH").toBeGreaterThan(-1)
-    expect(DON.slice(Math.max(0, i - 500), i), "ô gán NVBH vẽ ngoài cổng vai trò")
-      .toContain("canPickSeller &&")
+    /* Và ô ấy phải THẬT SỰ nằm sau cái cổng. Từ 23/09/2026 ô gán nằm trong
+       khối `DocPeople` (Người tạo · Người được gán): màn chỉ đưa `onAssign`
+       khi `canPickSeller`, và khối tự che ô khỏi vai trò không phải chủ /
+       quản lý. */
+    expect(DON, "màn /pos không vẽ ô gán NVBH").toMatch(/<DocPeople[\s\S]*?onAssign=\{canPickSeller \? setNvbh : undefined\}/)
+    const KHOI = readFileSync(resolve(__dirname, "../src/components/pos/doc-people.tsx"), "utf-8")
+    expect(KHOI).toMatch(/role === "owner" \|\| role === "manager"/)
+    expect(KHOI).toMatch(/const choGan = !!onAssign && coQuyenGan\(user\?\.role\)/)
+    expect(KHOI).toMatch(/choGan \? \([\s\S]*?<SellerPicker/)
   })
 
   /**

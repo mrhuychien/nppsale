@@ -135,7 +135,7 @@ describe("đọc một dòng từ cột không unique", () => {
   it.each([
     "src/app/(dashboard)/sales-invoices/[id]/page.tsx",
     "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx",
-    "src/components/pos/invoice-edit-screen.tsx",
+    "src/components/pos/invoice-screen.tsx",
   ])("%s: hoá đơn điện tử lấy đúng một tờ", (p) => {
     const s = doc(p)
     const i = s.indexOf('.eq("sales_invoice_id"')

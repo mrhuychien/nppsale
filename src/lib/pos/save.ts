@@ -29,7 +29,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createOrderRecords, type OfflineOrderPayload } from "@/lib/orders/create"
 import { applyOrderEdit } from "@/lib/sell/order-edit"
-import { postInvoice, reissueInvoice, type InvoiceDraftLine } from "@/lib/orders/post-invoice"
 import { completeReturn, type ReturnZone } from "@/lib/returns/complete-return"
 import { saveReceiptLines, saveReturnLines } from "@/lib/purchasing/save-receipt"
 import { percentToRatio } from "@/lib/purchasing/return-form"
@@ -193,72 +192,6 @@ export async function savePosOrder(
 /* ==================================================================
  * HÓA ĐƠN — màn 2 / 7
  * ================================================================== */
-
-/**
- * Dòng POS → dòng hóa đơn.
- *
- * @param vatRate thuế suất theo TỈ LỆ (0.1 = 10%) áp cho MỌI dòng.
- *
- * ⚠ THUẾ CỦA MÀN SỬA HÓA ĐƠN ĐẶT Ở CẤP CHỨNG TỪ (ô `Thuế GTGT` trên
- * panel), nhưng `sales_invoices` KHÔNG có cột thuế suất — RPC cộng thuế
- * từ `vat_rate` của TỪNG DÒNG. Nên ô cấp chứng từ được đẩy xuống mọi
- * dòng. Bản đầu gửi 0 ở đây trong khi panel vẫn vẽ số thuế: người dùng
- * thấy tổng có thuế, lưu xong hóa đơn không thuế.
- *
- * ⚠ THUẾ RIÊNG CỦA DÒNG THẮNG. Màn đơn hàng có ô thuế trên TỪNG dòng
- * (đúng như màn đơn cũ) — cùng một mặt hàng có lúc xuất có hóa đơn, có
- * lúc không. Đè nó bằng một thuế suất cấp chứng từ là xoá lựa chọn
- * người lập đơn vừa làm.
- */
-export function posLinesToInvoice(lines: readonly PosLine[], vatRate = 0): InvoiceDraftLine[] {
-  return lines.map((l) => {
-    const g = lineGross(l.qty, l.price)
-    return {
-      orderLineId: null,
-      productId: l.productId,
-      unitName: l.unit,
-      conversionFactor: l.units.find((u) => u.unit_name === l.unit)?.conversion || 1,
-      quantity: l.qty,
-      unitPrice: l.price,
-      /* ⚠ HÓA ĐƠN CÓ CỘT GIẢM THEO DÒNG — gửi số tiền đã quy, đừng nhét
-         vào đơn giá như bên đơn hàng. */
-      lineDiscount: discountAmount(l.discount, g),
-      vatRate: l.vatRate ?? vatRate,
-      isExchange: l.isExchange === true,
-      note: l.note ?? null,
-    }
-  })
-}
-
-export async function savePosInvoice(
-  sb: SupabaseClient,
-  o: {
-    /** `null` = lập hóa đơn mới cho đơn `orderId`. */
-    invoiceId: string | null
-    orderId?: string
-    lines: PosLine[]
-    paymentTerms?: string | null
-    notes?: string | null
-    /** Thuế suất theo tỉ lệ (0.1 = 10%), áp cho mọi dòng. */
-    vatRate?: number
-  }
-) {
-  const lines = posLinesToInvoice(o.lines, o.vatRate ?? 0)
-  if (o.invoiceId) {
-    return reissueInvoice(sb, o.invoiceId, {
-      lines,
-      paymentTerms: o.paymentTerms ?? null,
-      notes: o.notes ?? null,
-    })
-  }
-  if (!o.orderId) throw new Error("Chưa có đơn hàng để lập hóa đơn.")
-  return postInvoice(sb, {
-    orderId: o.orderId,
-    lines,
-    paymentTerms: o.paymentTerms ?? null,
-    notes: o.notes ?? null,
-  })
-}
 
 /* ==================================================================
  * PHIẾU TRẢ HÀNG — màn 3 / 8
@@ -579,4 +512,25 @@ export async function savePosSupplierReturn(
     if (error) throw error
   }
   return { returnId: id }
+}
+
+/* ==================================================================
+ * NGƯỜI ĐƯỢC GÁN — hóa đơn / phiếu trả
+ * ================================================================== */
+
+/**
+ * Gán lại người đứng tên hóa đơn / phiếu trả — RPC `assign_doc_seller` (mig 178).
+ *
+ * ⚠ QUA RPC, KHÔNG `update` THẲNG. Đổi người đứng tên hóa đơn phải đổi cả
+ *   công nợ của nó trong cùng một giao dịch; và quyền (chỉ chủ / quản lý)
+ *   nằm ở máy chủ, không ở cái nút.
+ */
+export async function assignDocSeller(
+  sb: SupabaseClient,
+  kind: "invoice" | "return",
+  docId: string,
+  userId: string
+): Promise<void> {
+  const { error } = await sb.rpc("assign_doc_seller", { p_kind: kind, p_id: docId, p_user: userId })
+  if (error) throw error
 }

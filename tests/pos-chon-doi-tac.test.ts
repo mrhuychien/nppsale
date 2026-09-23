@@ -118,11 +118,11 @@ describe("chọn khách là một hộp giữa màn", () => {
 
 describe("ô gán nhân viên: chỉ tên, không thông tin kèm", () => {
   it("màn đơn dùng ô chọn riêng, không còn select trần", () => {
-    expect(DON, "màn đơn chưa dùng ô chọn nhân viên mới").toMatch(/<SellerPicker/)
-    const i = DON.indexOf("Gán đơn cho NVBH")
-    expect(i).toBeGreaterThan(-1)
-    const khoi = DON.slice(i, i + 700)
-    expect(khoi, "vẫn là <select> trần — không theo bản vẽ").not.toContain("<select")
+    /* Ô gán nằm trong `DocPeople` (23/09/2026) — khối ấy dùng `SellerPicker`. */
+    expect(DON).toMatch(/<DocPeople/)
+    const KHOI = readFileSync(resolve(__dirname, "../src/components/pos/doc-people.tsx"), "utf-8")
+    expect(KHOI, "khối người được gán chưa dùng ô chọn nhân viên mới").toMatch(/<SellerPicker/)
+    expect(KHOI, "vẫn là <select> trần — không theo bản vẽ").not.toContain("<select")
   })
 
   /**

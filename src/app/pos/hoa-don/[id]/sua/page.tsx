@@ -10,9 +10,9 @@
  */
 
 import { useParams } from "next/navigation"
-import { InvoiceEditScreen } from "@/components/pos/invoice-edit-screen"
+import { InvoiceScreen } from "@/components/pos/invoice-screen"
 
 export default function PosInvoiceEditPage() {
   const { id } = useParams<{ id: string }>()
-  return <InvoiceEditScreen invoiceId={id} />
+  return <InvoiceScreen invoiceId={id} />
 }

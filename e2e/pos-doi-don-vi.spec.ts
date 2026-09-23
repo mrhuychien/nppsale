@@ -89,19 +89,4 @@ test("trả hàng: giá theo bảng giá nhóm khách, chọn được thùng", 
   await expect(gia, "đổi sang thùng mà giá trả vẫn là giá hộp").toHaveValue("450.000")
 })
 
-/**
- * ⚠ LỖI CŨ: màn nạp lại dòng hóa đơn với hệ số 1; `post_invoice` trừ kho
- *   `quantity × conversion_factor` đúng như màn gửi — lập lại "2 thùng" chỉ
- *   trừ 2 hộp. Chốt đọc tải trọng `reissue_invoice` thật màn gửi đi.
- */
-test("sửa hóa đơn: lập lại giữ hệ số 24 của dòng thùng", async ({ page }) => {
-  await dangNhap(page)
-  await page.goto("/pos/hoa-don/00000000-0000-4000-8000-0000000000f1/sua")
-  await expect(page.getByLabel("Đơn vị tính dòng 1")).toHaveValue("thùng")
-  await expect(page.getByLabel("Đơn giá dòng 1")).toHaveValue("450.000")
-  await page.getByRole("button", { name: "Huỷ HĐ & lập lại" }).click()
-  await expect.poll(async () => (await nhatKy()).some((r) => r.path.endsWith("/rpc/reissue_invoice"))).toBe(true)
-  const goi = (await nhatKy()).filter((r) => r.path.endsWith("/rpc/reissue_invoice")).at(-1)!
-  const lines = (goi.body as { p: { lines: Array<Record<string, unknown>> } }).p.lines
-  expect(lines[0]).toMatchObject({ unit_name: "thùng", quantity: 2, conversion_factor: 24 })
-})
+/* Chốt "sửa hóa đơn giữ hệ số 24" dời sang e2e/pos-hoa-don.spec.ts — màn mới. */

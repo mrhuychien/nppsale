@@ -37,7 +37,7 @@ const FILES = [
 const MAN = [
   "src/components/pos/order-screen.tsx",
   "src/components/pos/return-screen.tsx",
-  "src/components/pos/invoice-edit-screen.tsx",
+  "src/components/pos/invoice-screen.tsx",
   "src/components/pos/purchase-screen.tsx",
   "src/components/pos/supplier-return-screen.tsx",
   "src/app/pos/hoa-don/[id]/page.tsx",
@@ -332,7 +332,7 @@ describe("ô không có cột thì không vẽ", () => {
    * từ, thu khác — không có cổng nào nhận. Ô nào ở đó là ô nói dối.
    */
   it("màn sửa hóa đơn không vẽ ô reissue_invoice không nhận", () => {
-    const s = code(read("src/components/pos/invoice-edit-screen.tsx"))
+    const s = code(read("src/components/pos/invoice-screen.tsx"))
     for (const id of ["e-giam", "e-thukhac", "e-han", "e-kho", "e-nvbh"]) {
       expect(s.includes(`id="${id}"`), `ô ${id} đã quay lại`).toBe(false)
     }
@@ -342,10 +342,9 @@ describe("ô không có cột thì không vẽ", () => {
 
   /** ⚠ Nhưng THUẾ thì lưu được — qua `vat_rate` của từng dòng. */
   it("thuế của màn sửa hóa đơn đi xuống dòng", () => {
-    const s = code(read("src/components/pos/invoice-edit-screen.tsx"))
-    expect(s).toMatch(/vatRate: vatRate \/ 100/)
-    const save = code(read("src/lib/pos/save.ts"))
-    expect(save).toMatch(/posLinesToInvoice\(o\.lines, o\.vatRate \?\? 0\)/)
+    const s = code(read("src/components/pos/invoice-screen.tsx"))
+    expect(s).toMatch(/const v = Number\(e\.target\.value\) \/ 100/)
+    expect(s).toMatch(/setRows\(\(c\) => c\.map\(\(r\) => \(\{ \.\.\.r, vatRate: v \}\)\)\)/)
   })
 
   /** ⚠ `returns` không có cột phí. */
@@ -561,8 +560,11 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
     expect(S, "dòng hàng không còn chỗ đặt thuế").toMatch(/Thuế GTGT dòng/)
     expect(S, "đặt thuế dòng không đổi được giá trị nào").toMatch(/vatRate: vatKeTiep\(/)
     const save = code(read("src/lib/pos/save.ts"))
-    expect(save).toMatch(/vatRate: l\.vatRate \?\? vatRate/)
     expect(save).toMatch(/vatRate: Number\(l\.vatRate\) \|\| 0/)
+    /* Đơn → hóa đơn: thuế đi theo dòng đơn (`get_invoiceable_lines`), màn
+       hóa đơn POS nạp đúng bộ ấy — không tự đặt lại. */
+    const hd = code(read("src/components/pos/invoice-screen.tsx"))
+    expect(hd).toMatch(/seedForReissue\(ds, seed\) : seedForNew\(ds\)/)
   })
 
   /**

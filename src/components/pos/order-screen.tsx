@@ -95,7 +95,7 @@ import {
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
-import { SellerPicker } from "@/components/pos/seller-picker"
+import { DocPeople } from "@/components/pos/doc-people"
 import type { SellProduct } from "@/lib/sell/ref-data"
 
 export interface OrderScreenProps {
@@ -124,7 +124,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const { settings, ready: settingsReady } = usePosSettings()
   const { user } = useAuth()
   const { groups } = useCustomerGroups()
-  const { products, customers, sellers, stockByProduct, loading, warnings, productById, customerById } =
+  const { products, customers, stockByProduct, loading, warnings, productById, customerById } =
     usePosRefData()
   const { toast } = useToast()
   const router = useRouter()
@@ -177,6 +177,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const moTimHang = usePosSearchTerm()
   const [moTimKhach, setMoTimKhach] = useState(false)
   const [orderCode, setOrderCode] = useState<string | null>(null)
+  /** Người lập đơn — `sales_orders.created_by` (mig 178). `null` = chưa rõ. */
+  const [nguoiTao, setNguoiTao] = useState<string | null>(null)
   const [orderStatus, setOrderStatus] = useState<"draft" | "submitted" | string>("draft")
   const [issuedCode, setIssuedCode] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
@@ -447,6 +449,19 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    * `sales_order_lines` thì không có số ấy, và ràng buộc duy nhất của
    * màn này mất tác dụng trong im lặng.
    */
+  /**
+   * ⚠ NGƯỜI TẠO ĐỌC RIÊNG, HỎNG THÌ BỎ QUA. Cột `created_by` do mig 178
+   *   thêm; gộp vào câu nạp đơn là quên chạy migration một lần thì cả màn
+   *   sửa đơn không mở được — chỉ vì một dòng chữ "Người tạo".
+   */
+  useEffect(() => {
+    if (!orderId) return
+    let huy = false
+    createClient().from("sales_orders").select("created_by").eq("id", orderId).maybeSingle()
+      .then(({ data }) => { if (!huy) setNguoiTao((data as { created_by?: string | null } | null)?.created_by ?? null) })
+    return () => { huy = true }
+  }, [orderId])
+
   useEffect(() => {
     if (!orderId) return
     let huy = false
@@ -1681,16 +1696,18 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               cái nút mà máy chủ chắc chắn từ chối thì lỗi là của cái
               nút, không phải của người bấm.
           */}
-          {canPickSeller && (
-            <div className="grid min-w-0 gap-1.5">
-              <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
-                Gán đơn cho NVBH
-              </span>
-              {/* ⚠ CHỈ TÊN, KHÔNG THÔNG TIN KÈM — chủ nhà chốt 22/09/2026.
-                  Xem `seller-picker.tsx` về lý do bỏ `<select>`. */}
-              <SellerPicker value={nvbh} onChange={setNvbh} sellers={sellers} />
-            </div>
-          )}
+          {/*
+            ⚠ NGƯỜI TẠO · NGƯỜI ĐƯỢC GÁN (chủ nhà yêu cầu 23/09/2026). Ô gán
+              chỉ hiện cho chủ / quản lý — cùng luật `canPickSeller` ở trên;
+              người khác đọc được tên, không đổi được. Gán ở đây ghi xuống
+              lúc bấm Lưu / Gửi đơn (trigger mig 153 canh).
+          */}
+          <DocPeople
+            createdById={orderId ? nguoiTao : user?.id}
+            assignedId={nvbh || (orderId ? null : user?.id)}
+            onAssign={canPickSeller ? setNvbh : undefined}
+            note="Ghi xuống khi bấm Lưu / Gửi đơn."
+          />
           </div>
 
           {/*

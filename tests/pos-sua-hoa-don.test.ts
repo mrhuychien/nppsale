@@ -132,7 +132,7 @@ describe("cộng tiền màn sửa hóa đơn", () => {
  * "Nội dung banner mô tả cơ chế đang có, không phải cơ chế mới."
  */
 describe("câu chữ màn 7 không hứa điều phần mềm không làm", () => {
-  const SCREEN = read("src/components/pos/invoice-edit-screen.tsx")
+  const SCREEN = read("src/components/pos/invoice-screen.tsx")
   const code = SCREEN.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
   /**

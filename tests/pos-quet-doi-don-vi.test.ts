@@ -103,7 +103,9 @@ describe("mọi màn POS đổi đơn vị qua hàm dùng chung", () => {
   it("quét được các màn có ô đơn vị (không quét hụt thư mục)", () => {
     const coODonVi = tep.filter((f) => /value=\{l\.unit\}|<PosUnitSelect|u\.unit_name\)/.test(readFileSync(resolve(GOC, f), "utf-8")))
     expect(coODonVi.map((f) => f.split("/").pop()).sort()).toEqual(
-      ["invoice-edit-screen.tsx", "order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx"]
+      /* `invoice-screen.tsx` đổi đơn vị bằng chip riêng (chỉ dòng thêm tay) — chốt ở
+         tests/pos-doi-don-vi-va-o-gia.test.ts. */
+      ["order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx"]
     )
   })
 

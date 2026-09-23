@@ -28,9 +28,10 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
+import { DocPeople } from "@/components/pos/doc-people"
 import { useToast } from "@/hooks/use-toast"
 import { loadCustomerDebt, loadInvoiceLinesForReturn, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
-import { savePosReturn } from "@/lib/pos/save"
+import { savePosReturn, assignDocSeller } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
 import { lineGross } from "@/lib/pos/discount"
@@ -84,6 +85,8 @@ export interface ReturnScreenProps {
   badge?: PosBadge | null
   /** Hóa đơn gốc mở kèm từ màn hóa đơn (`?invoice=`) — nạp sẵn dòng. */
   sourceInvoiceId?: string | null
+  /** Khách mở kèm (`?customerId=`) — nút "Trả hàng" ở hồ sơ khách dẫn tới đây. */
+  sourceCustomerId?: string | null
 }
 
 /** Lưới hai bảng — spec §4 hàng "Trả hàng (3, 8)". */
@@ -93,7 +96,7 @@ const GRID_DOI = "24px 84px minmax(0,1fr) 96px 104px 120px 24px"
 let dem = 0
 const newKey = () => `r${++dem}`
 
-export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = null }: ReturnScreenProps) {
+export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = null, sourceCustomerId = null }: ReturnScreenProps) {
   const { products, customers, stockByProduct, loading, warnings, productById, customerById } = usePosRefData()
   const { user } = useAuth()
   const { toast } = useToast()
@@ -102,6 +105,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const [traLines, setTraLines] = useState<PosLine[]>([])
   const [doiLines, setDoiLines] = useState<PosLine[]>([])
   const [khach, setKhach] = useState<PosPartner | null>(null)
+  /** Người lập phiếu (`requested_by`) · người đứng tên (`sales_user_id`). */
+  const [nguoi, setNguoi] = useState<{ taoId: string | null; ganId: string | null }>({ taoId: null, ganId: null })
+  const [dangGan, setDangGan] = useState(false)
   /* ⚠ Giá hàng trả thêm tay tra bảng giá THEO NHÓM KHÁCH, như màn đơn hàng. */
   const groupId = customerById(khach?.id)?.group_id ?? null
   const [hoan, setHoan] = useState<HoanTien>("cong-no")
@@ -218,7 +224,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         const sb = createClient()
         const { data, error } = await sb
           .from("returns")
-          .select("id, customer_id, invoice_id, reason, notes, status, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
+          .select("id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
           .eq("id", returnId)
           .maybeSingle()
         if (huy) return
@@ -226,6 +232,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         const r = (data as unknown) as {
           customer_id: string; invoice_id: string | null
           reason: string | null; notes: string | null
+          requested_by?: string | null; sales_user_id?: string | null
           customer?: { store_name?: string | null; phone?: string | null } | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
@@ -243,6 +250,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setLyDo(r.reason || "damaged")
         setGhiChu(r.notes || "")
         setKhach({ id: r.customer_id, name: r.customer?.store_name || "Khách lẻ", meta: r.customer?.phone ?? "" })
+        setNguoi({ taoId: r.requested_by ?? null, ganId: r.sales_user_id ?? null })
         const ds = (r.lines ?? []).map((x) => ({
           key: newKey(),
           productId: x.product_id,
@@ -366,6 +374,20 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     daNapTuUrl.current = true
     void napTuHoaDon(sourceInvoiceId)
   }, [returnId, sourceInvoiceId, napTuHoaDon])
+
+  /**
+   * ⚠ KHÁCH ĐI KÈM ĐƯỜNG DẪN — chỉ khi KHÔNG có hóa đơn (hóa đơn tự mang
+   *   khách của nó), chỉ cho phiếu mới, một lần, và chờ danh mục khách về
+   *   rồi mới đặt — cùng luật với màn đơn (`daNapKhachTheoLink`).
+   */
+  const daNapKhach = useRef(false)
+  useEffect(() => {
+    if (daNapKhach.current || returnId || sourceInvoiceId || !sourceCustomerId) return
+    const kh = customerById(sourceCustomerId)
+    if (!kh) return
+    daNapKhach.current = true
+    setKhach({ id: kh.id, name: kh.store_name, meta: [kh.phone, kh.address].filter(Boolean).join(" · ") })
+  }, [returnId, sourceInvoiceId, sourceCustomerId, customerById, customers.length])
 
   /** Lưu phiếu trả — ghi kho đi qua `complete_return`, một giao dịch. */
   const luuPhieu = useCallback(
@@ -769,6 +791,34 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               emptyHint="Không tìm thấy khách nào khớp."
             />
           </div>
+
+          {/*
+            ⚠ NGƯỜI ĐƯỢC GÁN CỦA PHIẾU ĐÃ LƯU ĐỔI QUA `assign_doc_seller`
+              (mig 178) — gán ngay, không cần lưu lại phiếu. Phiếu MỚI thì
+              máy chủ tự điền người của đơn / người lập (trigger mig 153).
+          */}
+          <DocPeople
+            createdById={returnId ? nguoi.taoId : user?.id}
+            assignedId={returnId ? nguoi.ganId : null}
+            busy={dangGan}
+            onAssign={
+              returnId
+                ? async (uid) => {
+                    setDangGan(true)
+                    try {
+                      await assignDocSeller(createClient(), "return", returnId, uid)
+                      setNguoi((n) => ({ ...n, ganId: uid }))
+                      toast({ title: "Đã gán lại người phụ trách phiếu trả" })
+                    } catch (e) {
+                      toast({ title: "Chưa gán được", description: errorMessage(e), variant: "destructive" })
+                    } finally {
+                      setDangGan(false)
+                    }
+                  }
+                : undefined
+            }
+            note="Gán ngay — không cần lưu lại phiếu."
+          />
 
           <PosProductSearchBox
             note={

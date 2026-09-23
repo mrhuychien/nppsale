@@ -455,10 +455,12 @@ describe("cột phải", () => {
    */
   it("có cảnh báo vượt hạn mức và ô gán NVBH", () => {
     expect(DON, "mất cảnh báo vượt hạn mức").toContain("vượt hạn mức")
-    expect(DON, "mất ô gán đơn cho NVBH").toContain("Gán đơn cho NVBH")
-    expect(DON, "nhãn NVBH không phải chữ in hoa nhỏ như bản vẽ").toMatch(
-      /text-\[11px\] font-extrabold uppercase tracking-\[0\.06em\]/
-    )
+    /* Từ 23/09/2026 ô gán NVBH là vế "Người được gán" của khối `DocPeople`
+       (chủ nhà: "các phiếu có Người tạo, Người được gán"). */
+    expect(DON, "mất ô gán đơn cho NVBH").toMatch(/<DocPeople[\s\S]*?onAssign=/)
+    const KHOI = readFileSync(resolve(__dirname, "../src/components/pos/doc-people.tsx"), "utf-8")
+    expect(KHOI).toContain("Người tạo")
+    expect(KHOI).toContain("Người được gán")
   })
 })
 

@@ -179,4 +179,10 @@ SELECT 17, 'Mig 177 (tìm không dấu)',
   CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_tim_kd') = 3
             AND NOT EXISTS (SELECT 1 FROM products WHERE tim_kd IS NULL)
        THEN 'OK — gõ không dấu tìm được' ELSE 'CHƯA — gõ "banh" không ra "Bánh" trên danh sách' END, ''
+UNION ALL
+-- 18. Mig 178 — người tạo / người được gán
+SELECT 18, 'Mig 178 (người tạo đơn + gán người phụ trách HĐ / phiếu trả)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_don_nguoi_tao')
+            AND to_regprocedure('public.assign_doc_seller(text, uuid, uuid)') IS NOT NULL
+       THEN 'OK — đã có' ELSE 'CHƯA — màn POS hiện "chưa rõ" người tạo đơn, gán lại HĐ / phiếu trả báo lỗi' END, ''
 ) t ORDER BY stt;

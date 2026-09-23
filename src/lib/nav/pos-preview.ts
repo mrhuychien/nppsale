@@ -55,6 +55,27 @@ export function posEditInvoiceHref(invoiceId: string): string {
 }
 
 /**
+ * Xuất hàng (lập hóa đơn từ đơn) trên màn POS — chủ nhà chốt 23/09/2026.
+ *
+ * ⚠ CÙNG MỘT RPC `post_invoice` với màn Xuất hàng cũ; chỉ đổi giao diện.
+ */
+export function posNewInvoiceHref(orderId: string): string {
+  return `/pos/hoa-don/moi?order=${encodeURIComponent(orderId)}`
+}
+
+/**
+ * Phiếu trả hàng mới trên màn POS — chủ nhà báo 23/09/2026 "Tạo phiếu trả
+ * hàng → chưa chuyển sang pos". Mang theo hóa đơn gốc và khách nếu có.
+ */
+export function posNewReturnHref(o: { invoiceId?: string | null; customerId?: string | null } = {}): string {
+  const q = new URLSearchParams()
+  if (o.invoiceId) q.set("invoice", o.invoiceId)
+  if (o.customerId) q.set("customerId", o.customerId)
+  const s = q.toString()
+  return s ? `/pos/tra-hang/moi?${s}` : "/pos/tra-hang/moi"
+}
+
+/**
  * Máy tính đủ rộng để dùng màn POS chưa?
  *
  * ⚠ TRẢ `false` KHI KHÔNG CÓ `window`. Hàm này chạy cả lúc render trên

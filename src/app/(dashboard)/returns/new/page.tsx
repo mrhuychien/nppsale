@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posNewReturnHref } from "@/lib/nav/pos-preview"
 import { Plus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -531,6 +533,12 @@ export default function NewReturnPage() {
 
   return (
     <div className="space-y-4">
+      {/* ⚠ Máy tính thì lập phiếu trả trên màn `/pos` — chủ nhà báo 23/09/2026
+          "Tạo phiếu trả hàng → chưa chuyển sang pos". Chặn ở CỬA: nút "Tạo
+          phiếu trả" ở danh sách và nút "Trả hàng" ở hóa đơn đều vào đây. */}
+      <PosDesktopRedirect
+        to={posNewReturnHref({ invoiceId: params.get("invoiceId"), customerId: params.get("customerId") })}
+      />
       <PageHeader title="Lập phiếu trả hàng" backHref="/returns" />
 
       {loadError && (

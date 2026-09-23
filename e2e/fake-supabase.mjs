@@ -8,7 +8,8 @@
  *   bấm có gọi đúng phép tính không, và app gửi xuống máy chủ con số gì —
  *   đúng loại lỗi đã lọt qua 4.000 chốt đơn vị (đổi đơn vị không đổi giá).
  *
- * Nói tập con cú pháp PostgREST đủ cho các màn POS: lọc eq / in / is,
+ * Nói tập con cú pháp PostgREST đủ cho các màn đang chốt: lọc eq / in / is /
+ * ilike, `or=(…)` (nhiều `or` ghép bằng VÀ, như PostgREST),
  * order, limit / Range, Accept object, Prefer count, HEAD; ghi insert /
  * patch / delete vào bộ nhớ; RPC theo bảng xử lý. Mọi yêu cầu được ghi
  * vào `requests` — chốt đọc qua GET /__log.
@@ -49,6 +50,18 @@ function filterFn(col, expr) {
   else if (op === "in") {
     const set = new Set(raw.replace(/^\(|\)$/g, "").split(",").map((x) => x.replace(/^"|"$/g, "")))
     f = (r) => set.has(String(get(r)))
+  } else if (op === "ilike" || op === "like") {
+    // PostgREST: `%` (hoặc `*`) là ký tự đại diện; `\%` / `\_` là ký tự thật.
+    let mau = ""
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i]
+      if (ch === "\\" && i + 1 < raw.length) { mau += raw[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); continue }
+      if (ch === "%" || ch === "*") mau += ".*"
+      else if (ch === "_") mau += "."
+      else mau += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    }
+    const re = new RegExp(`^${mau}$`, op === "ilike" ? "is" : "s")
+    f = (r) => get(r) != null && re.test(String(get(r)))
   } else if (op === "gt") f = (r) => Number(get(r)) > Number(raw)
   else if (op === "gte") f = (r) => (get(r) ?? "") >= raw
   else if (op === "lt") f = (r) => Number(get(r)) < Number(raw)
@@ -58,6 +71,31 @@ function filterFn(col, expr) {
 }
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns"])
+
+/** Tách `a.eq.1,b.in.(x,y)` ở dấu phẩy NGOÀI ngoặc. */
+function tachOr(v) {
+  const out = []
+  let sau = 0, dau = 0
+  for (let i = 0; i < v.length; i++) {
+    if (v[i] === "(") sau++
+    else if (v[i] === ")") sau--
+    else if (v[i] === "," && sau === 0) { out.push(v.slice(dau, i)); dau = i + 1 }
+  }
+  out.push(v.slice(dau))
+  return out.filter(Boolean)
+}
+/** `or=(a.eq.1,b.ilike.%x%)` → hàm kiểm dòng; điều kiện lạ thì `null` (ghi log). */
+function orFn(v) {
+  const trong = v.replace(/^\(/, "").replace(/\)$/, "")
+  const fs = []
+  for (const dk of tachOr(trong)) {
+    const i = dk.indexOf(".")
+    const f = filterFn(dk.slice(0, i), dk.slice(i + 1))
+    if (!f) return null
+    fs.push(f)
+  }
+  return (r) => fs.some((f) => f(r))
+}
 
 export function createFakeSupabase({ tables, rpc = {}, users }) {
   const db = structuredClone(tables)
@@ -145,7 +183,13 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     const filters = []
     for (const [k, v] of url.searchParams) {
       if (RESERVED.has(k)) continue
-      if (k === "or" || k === "and") { entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]; continue }
+      if (k === "or") {
+        const f = orFn(v)
+        if (f) filters.push(f)
+        else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]
+        continue
+      }
+      if (k === "and") { entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]; continue }
       const f = filterFn(k, v)
       if (f) filters.push(f)
       else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]

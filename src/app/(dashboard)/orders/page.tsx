@@ -29,6 +29,10 @@ import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrderList } from "@/components/orders/mobile-order-list"
 import { DocListSummary } from "@/components/ui/doc-list-summary"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
+import { useFieldSearch } from "@/hooks/use-field-search"
+import { TRUONG_DON_HANG } from "@/lib/search/doc-fields"
+import { soTruongDangTim } from "@/lib/search/field-search"
 import { openInNewTab } from "@/components/ui/new-tab-link"
 import {
   periodFrom, nextPeriod, summariseDocLines,
@@ -80,7 +84,6 @@ import {
   FileText,
   Filter,
   Plus,
-  Search,
   ShoppingCart,
   X,
   XCircle,
@@ -470,7 +473,19 @@ export default function OrdersPage() {
     supabase, debouncedSearch, user?.org_id, ["order_code"],
     [{ column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] }]
   )
-  const searchReady = listSearch.ready
+  /**
+   * ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu chủ nhà 23/09/2026) — mã đơn, mã/tên hàng,
+   *   khách. Ghép "VÀ" với nhau và với ô tìm nhanh; xem `useFieldSearch`.
+   *   Trễ 350 ms: tấm lọc điện thoại áp ngay khi gõ.
+   */
+  const [truongTim, setTruongTim] = useState<Record<string, string>>({})
+  const [truongTimTre, setTruongTimTre] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const t = setTimeout(() => setTruongTimTre(truongTim), 350)
+    return () => clearTimeout(t)
+  }, [truongTim])
+  const fieldSearch = useFieldSearch(supabase, user?.org_id, TRUONG_DON_HANG, truongTimTre)
+  const searchReady = listSearch.ready && fieldSearch.ready
 
   const applyCommonFilters = <T,>(q: T): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -478,6 +493,8 @@ export default function OrdersPage() {
       /* ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM — xem `listSearch`. */
       if (listSearch.filter) x = x.or(listSearch.filter)
     }
+    // Mỗi trường là MỘT `.or` — PostgREST ghép các `or=` bằng "VÀ".
+    for (const f of fieldSearch.filters) x = x.or(f)
     // ⚠ Tuyến của đơn = tuyến của ĐIỂM BÁN, và nó nằm ở `customers.channel`
     // (cột lưu MÃ tuyến — xem migration 018). Lọc trên bảng nhúng thì phần
     // nhúng phải là `!inner`, nếu không PostgREST vẫn trả đơn về nhưng bỏ
@@ -612,12 +629,12 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, kyLoc]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, kyLoc, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -690,7 +707,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (search/status/customer/sales/date/amount).
   // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
@@ -793,7 +810,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!pipelineStep) return orders
@@ -1137,7 +1154,8 @@ export default function OrdersPage() {
     (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
-    (amountMin ? 1 : 0) + (amountMax ? 1 : 0)
+    (amountMin ? 1 : 0) + (amountMax ? 1 : 0) +
+    soTruongDangTim(truongTim)
   /**
    * Danh sách đang bị thu hẹp bởi MỘT thao tác nào đó của người dùng —
    * tab, ô tìm hay bộ lọc. Dùng để phân biệt "lọc trượt" với "chưa có
@@ -1156,6 +1174,7 @@ export default function OrdersPage() {
     setDateFrom(""); setDateTo("")
     setCustomerFilter("all"); setSalesFilter("all")
     setAmountMin(""); setAmountMax("")
+    setTruongTim({})
   }
 
   // Các ô lọc nâng cao — DÙNG CHUNG cho thẻ desktop và sheet mobile.
@@ -1504,6 +1523,7 @@ export default function OrdersPage() {
         onOpenChange={setFilterSheet}
       >
         <div className="grid gap-4">
+          <DocFieldInputs fields={TRUONG_DON_HANG} values={truongTim} onChange={setTruongTim} />
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
@@ -1526,15 +1546,16 @@ export default function OrdersPage() {
       <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
       <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
         {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm mã đơn, tên khách, số điện thoại…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+          <DocSearchBox
+            className="flex-1 min-w-[260px] max-w-md"
+            value={search}
+            onChange={setSearch}
+            placeholder="Tìm mã đơn, tên khách, số điện thoại…"
+            fields={TRUONG_DON_HANG}
+            applied={truongTim}
+            onApply={setTruongTim}
+            onExpand={() => setShowAdvanced(true)}
+          />
         )}
         {routes.length > 0 && (
           <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
@@ -1660,7 +1681,7 @@ export default function OrdersPage() {
           chỉ đổi chỗ sang "300 khách đầu". Im lặng ở đây là đi lại đúng
           con đường cũ.
       */}
-      {listSearch.truncated && !loading && (
+      {(listSearch.truncated || fieldSearch.truncated) && !loading && (
         <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
           <p className="font-semibold">Kết quả tìm đang thiếu</p>
           <p className="mt-0.5">

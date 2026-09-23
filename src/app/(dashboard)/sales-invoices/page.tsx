@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ChevronDown, ChevronUp, FileText, Filter, Search } from "lucide-react"
+import { ChevronDown, ChevronUp, FileText, Filter } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { MATCH_CAP } from "@/lib/search/list-search"
@@ -59,6 +59,10 @@ import { InvoiceDrawer } from "@/components/sales-invoices/invoice-drawer"
 import { MobileInvoiceList } from "@/components/sales-invoices/mobile-invoice-list"
 import { DocListSummary } from "@/components/ui/doc-list-summary"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
+import { useFieldSearch } from "@/hooks/use-field-search"
+import { TRUONG_HOA_DON } from "@/lib/search/doc-fields"
+import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import {
   periodFrom, nextPeriod, summariseDocLines,
@@ -245,8 +249,17 @@ export default function SalesInvoicesPage() {
       { column: "order_id", table: "sales_orders", columns: ["order_code"] },
     ]
   )
-  const searchReady = listSearch.ready
-  const searchTruncated = listSearch.truncated
+  /* ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu 23/09/2026) — mã hóa đơn/đơn, hàng, số lô,
+     khách; ghép "VÀ". Xem `useFieldSearch`. Trễ 350 ms cho tấm lọc điện thoại. */
+  const [truongTim, setTruongTim] = useState<Record<string, string>>({})
+  const [truongTimTre, setTruongTimTre] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const t = setTimeout(() => setTruongTimTre(truongTim), 350)
+    return () => clearTimeout(t)
+  }, [truongTim])
+  const fieldSearch = useFieldSearch(supabase, user?.org_id, TRUONG_HOA_DON, truongTimTre)
+  const searchReady = listSearch.ready && fieldSearch.ready
+  const searchTruncated = listSearch.truncated || fieldSearch.truncated
 
   const applyFilters = useCallback(
     <T extends {
@@ -265,6 +278,8 @@ export default function SalesInvoicesPage() {
        *   hiện một tập khác.
        */
       if (listSearch.filter) x = x.or(listSearch.filter)
+      // Mỗi trường là MỘT `.or` — PostgREST ghép các `or=` bằng "VÀ".
+      for (const f of fieldSearch.filters) x = x.or(f)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
       if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
@@ -282,7 +297,7 @@ export default function SalesInvoicesPage() {
       return x
     },
     [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc,
-     listSearch]
+     listSearch, fieldSearch]
   )
 
   const fetchData = useCallback(async () => {
@@ -413,7 +428,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc])
+  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -463,11 +478,12 @@ export default function SalesInvoicesPage() {
   const clearAdvanced = () => {
     setCustomerFilter("all"); setSalesFilter("all"); setRouteFilter("all")
     setDateFrom(""); setDateTo(""); setAmountMin(""); setAmountMax("")
+    setTruongTim({})
   }
   const activeFilterCount =
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (routeFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) +
-    (amountMin || amountMax ? 1 : 0)
+    (amountMin || amountMax ? 1 : 0) + soTruongDangTim(truongTim)
 
   const advancedFilterFields = (
     <>
@@ -608,6 +624,7 @@ export default function SalesInvoicesPage() {
         onOpenChange={setFilterSheet}
       >
         <div className="grid gap-4">
+          <DocFieldInputs fields={TRUONG_HOA_DON} values={truongTim} onChange={setTruongTim} />
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
@@ -623,15 +640,16 @@ export default function SalesInvoicesPage() {
       <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
         <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
           {filterActive("search") && (
-            <div className="relative min-w-[220px] max-w-sm flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <DocSearchBox
+              className="min-w-[260px] max-w-md flex-1"
+              value={search}
+              onChange={setSearch}
+              placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
+              fields={TRUONG_HOA_DON}
+              applied={truongTim}
+              onApply={setTruongTim}
+              onExpand={() => setShowAdvanced(true)}
+            />
           )}
           <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
           <Select value={rangePreset} onValueChange={applyRangePreset}>

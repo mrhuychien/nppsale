@@ -81,7 +81,13 @@ export function tables() {
       donMau("o-e2e-2", "DH-0002", "completed", 2_000_000, homNay()),
       donMau("o-e2e-3", "DH-0003", "completed", 5_000_000, "2025-06-15"),
     ],
-    sales_order_lines: [],
+    // DH-0001 có Sữa, DH-0002 có Mì, DH-0003 có cả hai.
+    sales_order_lines: [
+      { id: "sol1", order_id: "o-e2e-1", product_id: SUA, unit_name: "hộp", quantity: 50, line_total: 1000000, product: { name: "Sữa hộp" } },
+      { id: "sol2", order_id: "o-e2e-2", product_id: MI, unit_name: "thùng", quantity: 14, line_total: 2000000, product: { name: "Mì tôm" } },
+      { id: "sol3", order_id: "o-e2e-3", product_id: SUA, unit_name: "thùng", quantity: 5, line_total: 2500000, product: { name: "Sữa hộp" } },
+      { id: "sol4", order_id: "o-e2e-3", product_id: MI, unit_name: "thùng", quantity: 18, line_total: 2500000, product: { name: "Mì tôm" } },
+    ],
     /* 60 phiếu trả × 10.000 — danh sách hiện 50 dòng/trang; tổng phải là
        600.000 của CẢ bộ lọc (lỗi cũ: cộng trang đang hiện → 500.000). */
     returns: Array.from({ length: 60 }, (_, i) => ({
@@ -89,15 +95,34 @@ export function tables() {
       credit_note_amount: 10000, created_at: `2026-09-${String(1 + (i % 20)).padStart(2, "0")}T08:00:00Z`,
       customer: { store_name: "Tạp hoá Cô Ba" }, requester: { full_name: "Chủ NPP" }, order: null, invoice: null,
     })),
-    return_lines: [],
+    // Chỉ hai phiếu trả đầu có dòng Mì.
+    return_lines: [
+      { id: "rl1", return_id: "r-e2e-0", product_id: MI, unit_name: "gói", quantity: 2 },
+      { id: "rl2", return_id: "r-e2e-1", product_id: MI, unit_name: "gói", quantity: 1 },
+      { id: "rl3", return_id: "r-e2e-2", product_id: SUA, unit_name: "hộp", quantity: 1 },
+    ],
     /* Hóa đơn có một dòng "2 thùng" (hệ số 24) — để chốt màn Sửa hóa đơn
        giữ đúng hệ số khi lập lại (lỗi cũ: nạp lại thành hệ số 1). */
     sales_invoices: [{
       id: HOA_DON, org_id: ORG, invoice_code: "HD-E2E-1", order_id: "00000000-0000-4000-8000-0000000000f9",
       customer_id: KHACH, status: "posted", subtotal: 900000, vat: 0, total: 900000,
       payment_terms: "COD", due_date: "2026-09-30", notes: null, invoice_date: "2026-09-23",
+      stock_entry_id: "se1", created_at: "2026-09-23T08:00:00Z",
       customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" },
+      order: { order_code: "DH-0002" }, sales_user: { full_name: "Chủ NPP" },
+    }, {
+      id: "00000000-0000-4000-8000-0000000000f2", org_id: ORG, invoice_code: "HD-E2E-2", order_id: "o-e2e-1",
+      customer_id: KHACH, status: "posted", subtotal: 300000, vat: 0, total: 300000,
+      payment_terms: "COD", due_date: "2026-09-30", notes: null, invoice_date: "2026-09-22",
+      stock_entry_id: "se2", created_at: "2026-09-22T08:00:00Z",
+      customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" },
+      order: { order_code: "DH-0001" }, sales_user: { full_name: "Chủ NPP" },
     }],
+    /* HD-E2E-1 xuất từ lô L1 (Sữa), HD-E2E-2 từ lô L2 (Mì). */
+    stock_entry_lines: [
+      { id: "sel1", entry_id: "se1", product_id: SUA, batch_id: "b1", quantity: 48 },
+      { id: "sel2", entry_id: "se2", product_id: MI, batch_id: "b2", quantity: 60 },
+    ],
     sales_invoice_lines: [{
       id: "sil1", invoice_id: HOA_DON, product_id: SUA, quantity: 2, unit_name: "thùng", conversion_factor: 24,
       unit_price: 450000, line_discount: 0, vat_rate: 0, line_total: 900000, is_exchange: false, sort_order: 0,

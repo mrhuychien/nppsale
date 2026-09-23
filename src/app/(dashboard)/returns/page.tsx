@@ -30,7 +30,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -44,8 +43,11 @@ import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
+import { DocSearchBox } from "@/components/ui/doc-search-box"
+import { useFieldSearch } from "@/hooks/use-field-search"
+import { TRUONG_TRA_HANG } from "@/lib/search/doc-fields"
 import { RETURN_REASONS } from "@/lib/constants"
-import { RotateCcw, PieChart, Search, Info, Plus } from "lucide-react"
+import { RotateCcw, PieChart, Info, Plus } from "lucide-react"
 import Link from "next/link"
 import type { Return } from "@/types"
 
@@ -138,10 +140,15 @@ export default function ReturnsPage() {
 
   const maxReasonCount = Math.max(1, ...Object.values(reasonCounts))
 
+  /* ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu 23/09/2026) — mã đơn / hóa đơn gốc, hàng,
+     khách; ghép "VÀ". Xem `useFieldSearch`. */
+  const [truongTim, setTruongTim] = useState<Record<string, string>>({})
+  const fieldSearch = useFieldSearch(supabase, authUser?.org_id, TRUONG_TRA_HANG, truongTim)
+
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
@@ -157,6 +164,9 @@ export default function ReturnsPage() {
     ]
   )
 
+  /* Chờ cả hai lượt tra — ô tìm nhanh và các trường. */
+  const searchReady = listSearch.ready && fieldSearch.ready
+
   /**
    * MỘT bộ lọc cho cả danh sách lẫn phép cộng tổng — hai đường lọc riêng là
    * hai con số cạnh nhau không khớp nhau.
@@ -165,6 +175,7 @@ export default function ReturnsPage() {
   const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any }>(q: Q): Q => {
     let x = q
     if (listSearch.filter) x = x.or(listSearch.filter)
+    for (const f of fieldSearch.filters) x = x.or(f)
     if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
     if (statusFilter !== "all") x = x.eq("status", statusFilter)
     return x
@@ -175,7 +186,7 @@ export default function ReturnsPage() {
     async function fetch() {
       setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
-      if (!listSearch.ready) return
+      if (!searchReady) return
       let q = supabase
         .from("returns")
         .select(
@@ -204,7 +215,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -216,7 +227,7 @@ export default function ReturnsPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!listSearch.ready) return
+      if (!searchReady) return
       setTongKhoanCo(null)
       const res = await fetchAllForAggregate<{ credit_note_amount: number | string | null }>((from, to) =>
         // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
@@ -238,7 +249,7 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -272,7 +283,7 @@ export default function ReturnsPage() {
         ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
           lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
       */}
-      {listSearch.truncated && !loading && (
+      {(listSearch.truncated || fieldSearch.truncated) && !loading && (
         <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
           <p className="font-semibold">Kết quả tìm đang thiếu</p>
           <p className="mt-0.5">
@@ -331,15 +342,15 @@ export default function ReturnsPage() {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {filterActive("search") && (
-              <div className="relative sm:max-w-xs">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Tìm khách / đơn / NV…"
-                  className="pl-8 h-9"
-                />
-              </div>
+              <DocSearchBox
+                className="w-full sm:max-w-sm"
+                value={search}
+                onChange={setSearch}
+                placeholder="Tìm khách / đơn / NV…"
+                fields={TRUONG_TRA_HANG}
+                applied={truongTim}
+                onApply={setTruongTim}
+              />
             )}
             {filterActive("reason") && (
               <Select value={reasonFilter} onValueChange={setReasonFilter}>

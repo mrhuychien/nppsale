@@ -12,6 +12,7 @@ export const KHACH = "00000000-0000-4000-8000-0000000000c1"
 export const KHACH_NHOM = "00000000-0000-4000-8000-0000000000c2"
 export const NHOM = "00000000-0000-4000-8000-0000000000a9"
 export const SUA = "00000000-0000-4000-8000-0000000000d1"
+export const MI = "00000000-0000-4000-8000-0000000000d2"
 export const NCC = "00000000-0000-4000-8000-0000000000e1"
 export const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
 
@@ -43,9 +44,23 @@ export function tables() {
         { id: "pl2", product_id: SUA, unit_name: "thùng", group_id: null, price: 450000 },
         { id: "pl3", product_id: SUA, unit_name: "hộp", group_id: NHOM, price: 19000 },
       ],
+    }, {
+      id: MI, org_id: ORG, sku: "MI1", barcode: "8930000000028", name: "Mì tôm", base_unit: "gói",
+      sell_price: 5000, cost_price: 4000, vat_rate: 0, status: "active", category: "Mì",
+      units: [{ id: "u2", product_id: MI, unit_name: "thùng", conversion: 30 }],
+      price_lists: [
+        { id: "pl4", product_id: MI, unit_name: "gói", group_id: null, price: 5000 },
+        { id: "pl5", product_id: MI, unit_name: "thùng", group_id: null, price: 140000 },
+      ],
     }],
-    product_units: [{ id: "u1", product_id: SUA, unit_name: "thùng", conversion: 24 }],
-    batches: [{ id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expiry_date: "2027-12-31" }],
+    product_units: [
+      { id: "u1", product_id: SUA, unit_name: "thùng", conversion: 24 },
+      { id: "u2", product_id: MI, unit_name: "thùng", conversion: 30 },
+    ],
+    batches: [
+      { id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expiry_date: "2027-12-31" },
+      { id: "b2", org_id: ORG, product_id: MI, qty_on_hand: 900, warehouse_zone: "sale", batch_code: "L2", expiry_date: "2027-12-31" },
+    ],
     suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
     role_permissions: [],
     sales_orders: [], sales_order_lines: [], returns: [], return_lines: [],

@@ -56,6 +56,39 @@ export function addLine(cart: CartLine[], line: CartLine): CartLine[] {
   return [line, ...cart]
 }
 
+/**
+ * ĐẶT SỐ LƯỢNG CHO NHIỀU MẶT HÀNG MỘT LẦN — chế độ "chọn nhiều" ở /sell
+ * (chủ nhà yêu cầu 23/09/2026).
+ *
+ * ⚠ SỐ TUYỆT ĐỐI, KHÔNG CỘNG DỒN. Ô số lượng của chế độ ấy hiện sẵn số
+ *   đang có trong giỏ; người dùng sửa thành 5 nghĩa là giỏ có 5, không
+ *   phải 2 + 5. `qty <= 0` là bỏ dòng.
+ *
+ * ⚠ MỘT PHÉP, KHÔNG PHẢI VÒNG `addLine` + `setQty(index)`. `addLine` đẩy
+ *   dòng mới lên đầu nên chỉ số của các dòng sau lệch đi — `setQty` theo
+ *   chỉ số đã tính trước là sửa nhầm dòng.
+ *
+ * Dòng đã có giữ nguyên giá (có thể đã sửa tay), ghi chú và vị trí; dòng
+ * mới lên đầu theo thứ tự chọn. Hai lựa chọn trùng (sản phẩm + đơn vị):
+ * lựa chọn sau thắng.
+ */
+export function setLinesQty(cart: CartLine[], picks: CartLine[]): CartLine[] {
+  const cuoi = new Map<string, CartLine>()
+  for (const p of picks) cuoi.set(lineKey(p.productId, p.unit), p)
+  let next = [...cart]
+  const moi: CartLine[] = []
+  cuoi.forEach((p) => {
+    const i = findLine(next, p.productId, p.unit)
+    if (i >= 0) {
+      if (p.qty <= 0) next = next.filter((_, k) => k !== i)
+      else next[i] = { ...next[i], qty: p.qty }
+    } else if (p.qty > 0) {
+      moi.push(p)
+    }
+  })
+  return [...moi, ...next]
+}
+
 /** Đặt số lượng. `qty <= 0` là XOÁ dòng — nút − ở số 1 hiện hình thùng rác. */
 export function setQty(cart: CartLine[], index: number, qty: number): CartLine[] {
   if (index < 0 || index >= cart.length) return cart

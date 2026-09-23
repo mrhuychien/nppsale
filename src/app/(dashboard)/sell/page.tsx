@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw } from "lucide-react"
+import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw, ListChecks, X } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
@@ -10,7 +10,7 @@ import { addOverstockWarning, availableMapFrom } from "@/lib/sell/committed"
 import { ProductCard } from "@/components/sell/product-card"
 import { SellCustomerDeepLink } from "@/components/sell/customer-deeplink"
 import { conversionFor, selectedUnitOf, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
-import { findLine } from "@/lib/sell/cart"
+import { findLine, lineKey, type CartLine } from "@/lib/sell/cart"
 import { findReturnLine } from "@/lib/sell/returns"
 import { backToReturnSlip } from "@/lib/nav/sell-nav"
 import { fetchFrequentProducts } from "@/lib/orders/frequent-products"
@@ -47,6 +47,7 @@ export default function SellPage() {
     warnings: loadWarnings,
     reload,
     customerById,
+    productById,
     filterProducts,
     listMemory,
   } = useSellData()
@@ -80,6 +81,14 @@ export default function SellPage() {
   const [tab, setTab] = useState<"freq" | "all">(() => listMemory.current.tab)
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
   const [frequentIds, setFrequentIds] = useState<string[]>([])
+  /**
+   * ⚠ CHẾ ĐỘ CHỌN NHIỀU (chủ nhà yêu cầu 23/09/2026): gõ số lượng cho
+   *   nhiều mặt hàng rồi mới sang đơn. `nhap` chỉ giữ những ô người dùng
+   *   ĐÃ CHẠM, theo (sản phẩm + đơn vị); ô chưa chạm hiện số đang có trong
+   *   giỏ. Bấm "Thêm vào đơn" thì giỏ lấy ĐÚNG số trong ô (`setLinesQty`).
+   */
+  const [chonNhieu, setChonNhieu] = useState(false)
+  const [nhap, setNhap] = useState<Record<string, { productId: string; unit: string; qty: number }>>({})
   useEffect(() => {
     listMemory.current.q = q
     listMemory.current.tab = tab
@@ -187,6 +196,15 @@ export default function SellPage() {
     const unit = unitOf(p)
     const price = unitPriceFor(p, unit, groupId)
 
+    // Chọn nhiều: chạm thẻ là +1 vào ô số lượng, chưa đụng tới giỏ.
+    if (chonNhieu && !returning) {
+      const k = lineKey(p.id, unit)
+      const j = findLine(cart.cart, p.id, unit)
+      const dangCo = j >= 0 ? cart.cart[j].qty : 0
+      setNhap((s) => ({ ...s, [k]: { productId: p.id, unit, qty: (s[k]?.qty ?? dangCo) + 1 } }))
+      return
+    }
+
     if (returning) {
       // ⚠ KHÔNG chặn theo tồn kho khi chọn hàng TRẢ. Khách đưa hàng LẠI cho
       // mình; trả một mặt hàng đang hết tồn là chuyện hoàn toàn bình thường.
@@ -257,6 +275,57 @@ export default function SellPage() {
     (productId: string, u: string) => setUnitSel((s) => ({ ...s, [productId]: u })),
     []
   )
+  const onPickQty = useCallback(
+    (productId: string, unit: string, qty: number) =>
+      setNhap((s) => ({ ...s, [lineKey(productId, unit)]: { productId, unit, qty } })),
+    []
+  )
+
+  /** Các dòng sẽ đi vào giỏ — giá tra đúng như lúc chạm thêm từng món. */
+  const dongChon = useMemo(() => {
+    const out: CartLine[] = []
+    for (const d of Object.values(nhap)) {
+      const p = productById(d.productId)
+      if (!p) continue
+      const price = unitPriceFor(p, d.unit, groupId)
+      out.push({
+        productId: p.id,
+        unit: d.unit,
+        qty: d.qty,
+        price,
+        listPrice: price,
+        note: "",
+        conversion: conversionFor(p, d.unit),
+        vatRate: Number(p.vat_rate ?? 0),
+      })
+    }
+    return out
+  }, [nhap, productById, groupId])
+  const soMatHangChon = dongChon.filter((l) => l.qty > 0).length
+  const tienChon = dongChon.reduce((t, l) => t + (l.qty > 0 ? l.qty * l.price : 0), 0)
+
+  const tatChonNhieu = () => {
+    setNhap({})
+    setChonNhieu(false)
+  }
+  const xacNhanChonNhieu = () => {
+    /* ⚠ Vượt tồn: CẢNH BÁO RỒI VẪN THÊM — cùng luật với chạm từng món. */
+    const vuot = dongChon
+      .filter((l) => l.qty > 0)
+      .map((l) => productById(l.productId)!)
+      .filter((p) => addOverstockWarning(p.name, stockByProduct[p.id] ?? 0, availableByProduct[p.id] ?? 0, p.base_unit))
+      .map((p) => p.name)
+    cart.setManyQty(dongChon)
+    if (vuot.length) {
+      toast({
+        title: `${vuot.length} mặt hàng vượt số còn bán được`,
+        description: `${vuot.slice(0, 3).join(", ")}${vuot.length > 3 ? "…" : ""} — vẫn thêm vào đơn; kho sẽ báo lại lúc xuất hàng.`,
+      })
+    }
+    tatChonNhieu()
+    clearSearchMemory()
+    router.push("/sell/cart")
+  }
 
   const cartCount = cart.cart.length
   const showTabs = frequentIds.length > 0 && !q.trim()
@@ -300,6 +369,19 @@ export default function SellPage() {
             </button>
           ) : (
             <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => (chonNhieu ? tatChonNhieu() : setChonNhieu(true))}
+                aria-label="Chọn nhiều sản phẩm"
+                aria-pressed={chonNhieu}
+                title={chonNhieu ? "Tắt chọn nhiều (bỏ các số vừa gõ)" : "Chọn nhiều sản phẩm một lúc"}
+                className={cn(
+                  "tap grid h-11 w-11 place-items-center rounded-xl",
+                  chonNhieu ? "bg-primary text-on-primary" : "text-on-surface"
+                )}
+              >
+                <ListChecks className="h-[22px] w-[22px]" />
+              </button>
               <button
                 type="button"
                 onClick={() => router.push("/sell/drafts")}
@@ -487,6 +569,12 @@ export default function SellPage() {
                    nhân viên sẽ không dám bấm. */
                 showStock={!returning}
                 badgeLabel={returning ? "Đã trả" : "Trong giỏ"}
+                pickQty={
+                  chonNhieu && !returning
+                    ? nhap[lineKey(p.id, unit)]?.qty ?? (i >= 0 ? cart.cart[i].qty : 0)
+                    : undefined
+                }
+                onPickQty={onPickQty}
               />
             )
           })
@@ -513,7 +601,37 @@ export default function SellPage() {
         </div>
       )}
 
-      {!returning && cartCount > 0 && (
+      {/* Chọn nhiều: thanh nổi xác nhận thay cho thanh "Xem đơn". */}
+      {chonNhieu && !returning ? (
+        <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 flex gap-2 lg:left-[calc(15rem+1rem)]">
+          <button
+            type="button"
+            onClick={tatChonNhieu}
+            aria-label="Huỷ chọn nhiều"
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-surface-container-lowest text-on-surface shadow-card"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            disabled={dongChon.length === 0}
+            onClick={xacNhanChonNhieu}
+            className="flex h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl bg-primary pl-4 pr-2 text-on-primary shadow-[0_12px_28px_-8px_rgba(37,99,235,.55)] disabled:opacity-50"
+          >
+            <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-white/20 px-1.5 text-sm font-extrabold">
+              {soMatHangChon}
+            </span>
+            <span className="min-w-0 flex-1 whitespace-nowrap text-left text-base font-extrabold tabular-data">
+              {formatCurrency(tienChon)}
+            </span>
+            <span className="flex h-10 shrink-0 items-center gap-1 rounded-xl bg-white px-3 text-sm font-extrabold text-primary">
+              Vào đơn <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        </div>
+      ) : null}
+
+      {!chonNhieu && !returning && cartCount > 0 && (
         <div className="fixed inset-x-4 bottom-[calc(var(--bottom-nav-h)+var(--safe-b)+12px)] z-30 lg:left-[calc(15rem+1rem)]">
           <button
             type="button"

@@ -257,9 +257,10 @@ describe("Về danh sách thì thấy lại đúng chỗ vừa đứng", () => {
    */
   it("thêm vào giỏ thì xoá ô tìm, ở cả đường bán lẫn đường trả", () => {
     expect(POS).toContain("const clearSearchMemory = () => {")
-    // Hai đường rời màn sau khi thêm: giỏ hàng và phiếu trả. Dòng khai
-    // báo không khớp mẫu này (`= () =>`), nên đúng bằng số nơi GỌI.
-    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(2)
+    // Ba đường rời màn sau khi thêm: giỏ hàng, phiếu trả, và "Thêm vào
+    // đơn" của chế độ chọn nhiều (23/09/2026). Dòng khai báo không khớp
+    // mẫu này (`= () =>`), nên đúng bằng số nơi GỌI.
+    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(3)
   })
 
   /**

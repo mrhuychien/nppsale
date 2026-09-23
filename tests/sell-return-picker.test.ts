@@ -97,7 +97,8 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
   it("có đường quay lại phiếu trả", () => {
     expect(POS).toContain("{returning && cart.returnLines.length > 0 && (")
     expect(POS).toContain("dòng hàng trả")
-    expect(POS).toContain("{!returning && cartCount > 0 && (")
+    // Chế độ chọn nhiều (23/09/2026) có thanh riêng nên thêm `!chonNhieu`.
+    expect(POS).toContain("{!chonNhieu && !returning && cartCount > 0 && (")
   })
 
   it("thẻ mặc định VẪN hiện tồn — tắt phải là lựa chọn có chủ đích", () => {

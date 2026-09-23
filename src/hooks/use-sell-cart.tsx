@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import {
   addLine as addLineTo,
+  setLinesQty,
   cartTotals,
   patchLine as patchLineIn,
   setQty as setQtyIn,
@@ -86,6 +87,8 @@ interface SellCartValue extends SellCartState {
   /** Đã đọc xong bản lưu chưa — chưa đọc thì đừng vẽ "giỏ trống". */
   ready: boolean
   addLine: (line: CartLine) => void
+  /** Đặt số lượng TUYỆT ĐỐI cho nhiều mặt hàng một lần — xem `setLinesQty`. */
+  setManyQty: (picks: CartLine[]) => void
   setQty: (index: number, qty: number) => void
   patchLine: (index: number, patch: Partial<CartLine>) => void
   setCustomerId: (id: string | null) => void
@@ -200,6 +203,9 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const addLine = useCallback((line: CartLine) => {
     setState((s) => ({ ...s, cart: addLineTo(s.cart, line) }))
   }, [])
+  const setManyQty = useCallback((picks: CartLine[]) => {
+    setState((s) => ({ ...s, cart: setLinesQty(s.cart, picks) }))
+  }, [])
   const setQty = useCallback((index: number, qty: number) => {
     setState((s) => ({ ...s, cart: setQtyIn(s.cart, index, qty) }))
   }, [])
@@ -249,6 +255,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       totals,
       ready,
       addLine,
+      setManyQty,
       setQty,
       patchLine,
       setCustomerId,
@@ -269,6 +276,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       totals,
       ready,
       addLine,
+      setManyQty,
       setQty,
       patchLine,
       setCustomerId,

@@ -50,6 +50,13 @@ export interface ProductCardProps {
   showStock?: boolean
   /** Nhãn của huy hiệu đếm. Màn hàng trả gọi là "Đã trả". */
   badgeLabel?: string
+  /**
+   * CHẾ ĐỘ CHỌN NHIỀU (chủ nhà yêu cầu 23/09/2026). Có giá trị thì thẻ hiện
+   * ô số lượng — số TUYỆT ĐỐI sẽ vào giỏ ở đơn vị đang chọn. `undefined` =
+   * chế độ thường, thẻ không đổi gì.
+   */
+  pickQty?: number
+  onPickQty?: (productId: string, unit: string, qty: number) => void
 }
 
 export const ProductCard = memo(function ProductCard({
@@ -63,6 +70,8 @@ export const ProductCard = memo(function ProductCard({
   inCartQty,
   showStock = true,
   badgeLabel = "Trong giỏ",
+  pickQty,
+  onPickQty,
 }: ProductCardProps) {
   const units = sellableUnits(product)
   const price = unitPriceFor(product, unit, groupId)
@@ -207,7 +216,77 @@ export const ProductCard = memo(function ProductCard({
             {price > 0 ? formatCurrency(price) : "chưa có giá"}
           </span>
         </div>
+
+        {pickQty !== undefined && onPickQty && (
+          <PickQty
+            qty={pickQty}
+            unit={unit}
+            label={`Số lượng ${product.name}`}
+            onChange={(q) => onPickQty(product.id, unit, q)}
+          />
+        )}
       </div>
     </div>
   )
 })
+
+/**
+ * Ô số lượng của chế độ chọn nhiều.
+ *
+ * ⚠ CHẶN SỰ KIỆN NỔI LÊN THẺ — cùng lý do với nút đơn vị: chạm vào ô mà
+ *   thẻ cũng nhận là mỗi lần gõ số lại cộng thêm một.
+ * ⚠ CHO PHÉP 0 / TRỐNG. 0 nghĩa là "không lấy" (bỏ khỏi giỏ nếu đang có) —
+ *   khác `Stepper` của giỏ hàng, nơi 0 không có nghĩa.
+ */
+function PickQty({
+  qty,
+  unit,
+  label,
+  onChange,
+}: {
+  qty: number
+  unit: string
+  label: string
+  onChange: (qty: number) => void
+}) {
+  const chan = (e: { stopPropagation: () => void }) => e.stopPropagation()
+  return (
+    <div
+      className="flex items-center gap-2"
+      onClick={chan}
+      onKeyDown={chan}
+    >
+      <button
+        type="button"
+        aria-label={`Bớt ${label}`}
+        disabled={qty <= 0}
+        onClick={() => onChange(Math.max(0, qty - 1))}
+        className="tap grid h-10 w-10 place-items-center rounded-xl bg-surface-container text-xl font-extrabold text-on-surface disabled:opacity-40"
+      >
+        −
+      </button>
+      <input
+        aria-label={label}
+        inputMode="numeric"
+        enterKeyHint="done"
+        value={qty > 0 ? String(qty) : ""}
+        placeholder="0"
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
+        className={cn(
+          "h-10 w-20 rounded-xl border-[1.5px] bg-surface-container-lowest text-center text-lg font-extrabold tabular-data outline-none focus:border-primary",
+          qty > 0 ? "border-primary/50 text-primary" : "border-outline-variant text-on-surface"
+        )}
+      />
+      <button
+        type="button"
+        aria-label={`Thêm ${label}`}
+        onClick={() => onChange(qty + 1)}
+        className="tap grid h-10 w-10 place-items-center rounded-xl bg-surface-container text-xl font-extrabold text-on-surface"
+      >
+        +
+      </button>
+      <span className="text-sm font-bold text-on-surface-variant">{unit}</span>
+    </div>
+  )
+}

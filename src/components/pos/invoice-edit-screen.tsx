@@ -31,6 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { CompactSelect } from "@/components/ui/compact-select"
 import { donViCuaSanPham, donViHienThi, doiDonViDong } from "@/lib/pos/units"
 import { unitPriceFor } from "@/lib/sell/pricing"
 import { useRouter } from "next/navigation"
@@ -585,20 +586,18 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
                     <option key={u.unit_name} value={u.unit_name}>{u.unit_name}</option>
                   ))}
                 </select>
-                <select
-                  aria-label={`Lô hàng dòng ${i + 1}`}
+                <CompactSelect
+                  ariaLabel={`Lô hàng dòng ${i + 1}`}
                   value={l.lotId ?? ""}
-                  onChange={(e) => patchLine(l.key, { lotId: e.target.value || null })}
-                  className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[10.5px]"
-                >
-                  {/* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */}
-                  <option value="">chưa chọn lô</option>
-                  {(l.lots ?? []).map((lo) => (
-                    <option key={lo.id} value={lo.id}>
-                      {lo.code}{lo.expiry ? ` · ${lo.expiry}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => patchLine(l.key, { lotId: v || null })}
+                  /* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */
+                  emptyLabel="chưa chọn lô"
+                  options={(l.lots ?? []).map((lo) => ({
+                    value: lo.id,
+                    label: `${lo.code}${lo.expiry ? ` · ${lo.expiry}` : ""}`,
+                  }))}
+                  className="w-full border-[var(--pos-edge)] bg-white text-[10.5px]"
+                />
                 <QtyStepper
                   compact
                   label={`số lượng dòng ${i + 1}`}

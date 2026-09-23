@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { CompactSelect } from "@/components/ui/compact-select"
 import { PosUnitSelect } from "@/components/pos/unit-select"
 import { donViCuaSanPham, donViHienThi, doiDonViDongTra } from "@/lib/pos/units"
 import { unitPriceFor } from "@/lib/sell/pricing"
@@ -598,20 +599,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 </div>
               </div>
               {!doi && (
-                <select
-                  aria-label={`Lô hàng trả dòng ${i + 1}`}
+                <CompactSelect
+                  ariaLabel={`Lô hàng trả dòng ${i + 1}`}
                   value={l.lotId ?? ""}
-                  onChange={(e) => patch(l.key, { lotId: e.target.value || null })}
-                  className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11px] text-[var(--pos-ink)]"
-                >
-                  {/* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */}
-                  <option value="">chưa chọn lô</option>
-                  {(l.lots ?? []).map((lo) => (
-                    <option key={lo.id} value={lo.id}>
-                      {lo.code}{lo.expiry ? ` · ${lo.expiry}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => patch(l.key, { lotId: v || null })}
+                  /* ⚠ Chưa có danh sách lô — xem `docs/pos-todo.md` mục 4. */
+                  emptyLabel="chưa chọn lô"
+                  options={(l.lots ?? []).map((lo) => ({
+                    value: lo.id,
+                    label: `${lo.code}${lo.expiry ? ` · ${lo.expiry}` : ""}`,
+                  }))}
+                  className="w-full border-[var(--pos-edge)] bg-white text-[11px] text-[var(--pos-ink)]"
+                />
               )}
               <QtyStepper
                 compact
@@ -863,16 +862,14 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             <label htmlFor="pos-lydo" className="mt-3.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Lý do trả hàng
             </label>
-            <select
+            <CompactSelect
               id="pos-lydo"
+              ariaLabel="Lý do trả hàng"
               value={lyDo}
-              onChange={(e) => setLyDo(e.target.value)}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] text-[var(--pos-ink)]"
-            >
-              {LY_DO.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
+              onChange={setLyDo}
+              options={LY_DO}
+              className="mt-1 h-8 w-full rounded-[7px] border-[var(--pos-edge)] bg-white px-2 text-[12.5px] text-[var(--pos-ink)]"
+            />
 
             <label htmlFor="pos-ghichu" className="mt-2.5 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Ghi chú

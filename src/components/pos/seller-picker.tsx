@@ -22,6 +22,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { chuCaiDau } from "@/lib/pos/avatar"
+import { viMatchAllWords } from "@/lib/search"
+import { NGUONG_O_TIM } from "@/components/ui/select"
 
 export interface SellerOption {
   id: string
@@ -40,7 +42,12 @@ export function SellerPicker({
   emptyLabel?: string
 }) {
   const [open, setOpen] = useState(false)
+  const [q, setQ] = useState("")
   const boxRef = useRef<HTMLDivElement>(null)
+  /* Cùng ngưỡng với mọi danh sách thả xuống — xem `NGUONG_O_TIM`. */
+  const coTim = sellers.length + 1 >= NGUONG_O_TIM
+  const hien = q.trim() ? sellers.filter((u) => viMatchAllWords(q, u.full_name)) : sellers
+  useEffect(() => { if (!open) setQ("") }, [open])
 
   /* Bấm ra ngoài thì đóng — nếu không dải chọn che mất khối tiền. */
   useEffect(() => {
@@ -74,6 +81,19 @@ export function SellerPicker({
 
       {open && (
         <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-[12px] border-[1.5px] border-[var(--pos-edge)] bg-white shadow-[0_12px_28px_rgba(15,23,42,.16)]">
+          {coTim && (
+            <div className="border-b border-[var(--pos-line-soft)] p-2">
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
+                placeholder="Tìm nhân viên…"
+                aria-label="Tìm nhân viên bán hàng"
+                className="h-9 w-full rounded-[9px] border-[1.5px] border-[var(--pos-edge)] px-2.5 text-[13px] font-semibold text-[var(--pos-ink)] outline-none focus:border-[var(--pos-primary)]"
+              />
+            </div>
+          )}
           <ul className="max-h-[260px] overflow-y-auto">
             {/* ⚠ Dòng "chưa gán" đứng đầu, và nó chọn được như mọi dòng
                 khác — gán nhầm rồi phải gỡ ra được. */}
@@ -83,7 +103,7 @@ export function SellerPicker({
               chon={!dangChon}
               onClick={() => { onChange(""); setOpen(false) }}
             />
-            {sellers.map((u) => (
+            {hien.map((u) => (
               <Dong
                 key={u.id}
                 ten={u.full_name || "(chưa đặt tên)"}
@@ -92,6 +112,9 @@ export function SellerPicker({
                 onClick={() => { onChange(u.id); setOpen(false) }}
               />
             ))}
+            {hien.length === 0 && (
+              <li className="px-3 py-3 text-center text-[12.5px] text-[var(--pos-muted)]">Không có nhân viên nào khớp</li>
+            )}
           </ul>
         </div>
       )}

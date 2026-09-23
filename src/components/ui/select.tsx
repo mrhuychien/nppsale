@@ -2,8 +2,41 @@
 
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { Check, ChevronDown, ChevronUp } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { viMatchAllWords } from "@/lib/search"
+
+/**
+ * ⚠ Ô TÌM TRONG MỌI DANH SÁCH THẢ XUỐNG (chủ nhà yêu cầu 23/09/2026: "Rà
+ *   soát các droplist đều phải kèm ô tìm kiếm"). Đặt ở ĐÂY — thành phần
+ *   dùng chung — thì 90 chỗ dùng `<Select>` có ô tìm cùng một lúc, và chỗ
+ *   thứ 91 viết sau cũng có luôn.
+ *
+ * Chỉ hiện khi danh sách có từ `NGUONG_O_TIM` lựa chọn: ô tìm cho danh
+ * sách hai dòng "Có / Không" là thêm một bước chứ không bớt.
+ */
+export const NGUONG_O_TIM = 5
+const TimCtx = React.createContext("")
+
+/** Chữ của một lựa chọn — để lọc; lựa chọn có thể là chuỗi hoặc JSX lồng. */
+function chuCua(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") return ""
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(chuCua).join(" ")
+  if (React.isValidElement(node)) return chuCua((node.props as { children?: React.ReactNode }).children)
+  return ""
+}
+
+/** Đếm `SelectItem` trong cây con (qua map, Fragment, SelectGroup…). */
+function demLuaChon(node: React.ReactNode): number {
+  let n = 0
+  React.Children.forEach(node, (c) => {
+    if (!React.isValidElement(c)) return
+    if (c.type === SelectItem) n++
+    else n += demLuaChon((c.props as { children?: React.ReactNode }).children)
+  })
+  return n
+}
 
 const Select = SelectPrimitive.Root
 const SelectGroup = SelectPrimitive.Group
@@ -64,17 +97,93 @@ const SelectContent = React.forwardRef<
       position={position}
       {...props}
     >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
-        className={cn("p-1", position === "popper" && "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]")}
-      >
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
+      {/* ⚠ Trạng thái tìm nằm TRONG `Content`: Radix gỡ phần này khi đóng,
+          nên mở lại là ô tìm trống và đủ lựa chọn. Đặt ở vỏ ngoài thì chữ
+          tìm lần trước còn nguyên. */}
+      <KhungTim position={position}>{children}</KhungTim>
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
 ))
 SelectContent.displayName = SelectPrimitive.Content.displayName
+
+function KhungTim({ children, position }: { children: React.ReactNode; position: string }) {
+  const [q, setQ] = React.useState("")
+  const coTim = demLuaChon(children) >= NGUONG_O_TIM
+  const oTimRef = React.useRef<HTMLInputElement>(null)
+  /**
+   * ⚠ TRẢ TIÊU ĐIỂM VỀ Ô TÌM SAU KHI RADIX ĐỊNH VỊ XONG. Lúc mở, Radix đưa
+   *   tiêu điểm về lựa chọn đang chọn sau bước định vị khung; trả ngay
+   *   trong lượt vẽ thì bị giật lại. Hai khung hình là sau bước ấy.
+   */
+  React.useEffect(() => {
+    if (!coTim) return
+    /* Máy cảm ứng: đừng tự bật bàn phím che nửa danh sách — chạm vào ô
+       tìm mới gõ. Chuột / bàn phím: gõ được ngay. */
+    if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) return
+    let a = 0, b = 0
+    a = requestAnimationFrame(() => {
+      b = requestAnimationFrame(() => oTimRef.current?.focus())
+    })
+    return () => { cancelAnimationFrame(a); cancelAnimationFrame(b) }
+  }, [coTim])
+  const khop = coTim && q.trim() ? demKhop(children, q) : null
+  return (
+    <>
+      {coTim && (
+        <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
+          <Search className="h-3.5 w-3.5 shrink-0 opacity-50" aria-hidden />
+          <input
+            ref={oTimRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Tìm…"
+            aria-label="Tìm trong danh sách"
+            autoComplete="off"
+            className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            onKeyDown={(e) => {
+              /* ⚠ Chặn phím nổi lên `Content` — thiếu vế này thì Radix
+                 bắt chữ gõ để nhảy tới lựa chọn ("typeahead") và ô tìm
+                 không nhận được chữ nào. ↓ / Enter: vào lựa chọn đầu còn
+                 hiện. */
+              if (e.key === "ArrowDown" || e.key === "Enter") {
+                e.preventDefault()
+                e.currentTarget
+                  .closest('[role="listbox"]')
+                  ?.querySelector<HTMLElement>('[role="option"]:not([data-disabled]):not([hidden])')
+                  ?.focus()
+                return
+              }
+              if (e.key !== "Escape" && e.key !== "Tab") e.stopPropagation()
+            }}
+          />
+        </div>
+      )}
+      <SelectScrollUpButton />
+      <SelectPrimitive.Viewport
+        className={cn("p-1", position === "popper" && "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]")}
+      >
+        <TimCtx.Provider value={coTim ? q : ""}>{children}</TimCtx.Provider>
+        {khop === 0 && (
+          <div className="px-2 py-3 text-center text-sm text-muted-foreground">Không có lựa chọn nào khớp</div>
+        )}
+      </SelectPrimitive.Viewport>
+      <SelectScrollDownButton />
+    </>
+  )
+}
+
+/** Số lựa chọn khớp chữ tìm — để nói "không có lựa chọn nào khớp". */
+function demKhop(node: React.ReactNode, q: string): number {
+  let n = 0
+  React.Children.forEach(node, (c) => {
+    if (!React.isValidElement(c)) return
+    const p = c.props as { children?: React.ReactNode; textValue?: string; value?: string }
+    if (c.type === SelectItem) {
+      if (viMatchAllWords(q, p.textValue ?? chuCua(p.children), String(p.value))) n++
+    } else n += demKhop(p.children, q)
+  })
+  return n
+}
 
 const SelectLabel = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Label>,
@@ -87,10 +196,20 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => {
+  const q = React.useContext(TimCtx)
+  /* ⚠ ẨN, KHÔNG GỠ. Gỡ lựa chọn khỏi cây là đổi tập lựa chọn của Radix, và
+     Radix chạy lại bước đưa tiêu điểm về lựa chọn đang chọn — ô tìm mất
+     tiêu điểm sau mỗi phím (gõ "don" chỉ còn "d"). Ẩn thì tập không đổi;
+     phím mũi tên của Radix tự bỏ qua phần tử không nhận tiêu điểm. */
+  const an = !!q.trim() && !viMatchAllWords(q, props.textValue ?? chuCua(children), String(props.value))
+  return (
   <SelectPrimitive.Item
     ref={ref}
+    hidden={an}
+    aria-hidden={an || undefined}
     className={cn(
+      an && "hidden",
       "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
@@ -103,7 +222,8 @@ const SelectItem = React.forwardRef<
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
-))
+  )
+})
 SelectItem.displayName = SelectPrimitive.Item.displayName
 
 const SelectSeparator = React.forwardRef<

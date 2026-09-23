@@ -295,7 +295,8 @@ describe("lý do trả hàng khớp CHECK của bảng", () => {
     for (const f of FILES) {
       const src = code(readFileSync(f, "utf-8"))
       const ten = f.slice(ROOT.length + 1)
-      if (/RETURN_REASONS\.map\(|LY_DO\.map\(/.test(src)) dungBoLyDo.push(ten)
+      // `<select>` gốc (`.map(`) hoặc ô chọn có tìm (`options={…}`, 23/09/2026).
+      if (/RETURN_REASONS\.map\(|LY_DO\.map\(|options=\{(RETURN_REASONS|LY_DO)\}/.test(src)) dungBoLyDo.push(ten)
       expect(
         /value="wrong"|id: "wrong"|value: "wrong"/.test(src),
         `${ten}: vẫn có mã 'wrong' — CHECK của bảng từ chối`

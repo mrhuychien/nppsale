@@ -50,6 +50,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { CompactSelect } from "@/components/ui/compact-select"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -1523,16 +1524,13 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                           {/* ⚠ LÝ DO THEO TỪNG DÒNG — `return_lines.reason`, mig 159.
                               Sổ trước đây chỉ có lý do cho cả phiếu; vẽ ô này mà
                               lưu chung một chỗ là màn hình nói dối. */}
-                          <select
-                            aria-label={`Lý do trả dòng ${i + 1}`}
+                          <CompactSelect
+                            ariaLabel={`Lý do trả dòng ${i + 1}`}
                             value={l.reason ?? retReason}
-                            onChange={(e) => sua({ reason: e.target.value })}
+                            onChange={(v) => sua({ reason: v })}
+                            options={RETURN_REASONS}
                             className="h-[38px] min-w-0 rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-[12px] font-bold text-[var(--pos-ink)]"
-                          >
-                            {RETURN_REASONS.map((r) => (
-                              <option key={r.value} value={r.value}>{r.label}</option>
-                            ))}
-                          </select>
+                          />
 
                           <div className="justify-self-center">
                             <QtyStepper

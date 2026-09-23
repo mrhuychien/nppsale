@@ -42,13 +42,18 @@ test("đơn hàng: đổi đơn vị ở dòng bán và dòng hàng trả đều
   await giaTra.pressSequentially("220000")
   await expect(giaTra).toHaveValue("220.000")
 
+  // Lý do theo dòng: ô chọn có tìm (thay `<select>` gốc, 23/09/2026).
+  await page.getByLabel("Lý do trả dòng 1").click()
+  await page.getByRole("option", { name: "Sai hàng" }).click()
+  await expect(page.getByLabel("Lý do trả dòng 1")).toContainText("Sai hàng")
+
   // Lưu nháp → tải trọng gửi xuống máy chủ mang đúng đơn vị và giá
   await page.getByRole("button", { name: /Lưu nháp/ }).click()
   await expect.poll(async () => (await nhatKy()).some((r) => r.path.endsWith("/rpc/create_order_with_lines"))).toBe(true)
   const goi = (await nhatKy()).filter((r) => r.path.endsWith("/rpc/create_order_with_lines")).at(-1)!
   const p = (goi.body as { p: { lines: Array<Record<string, unknown>>; return_lines: Array<Record<string, unknown>> } }).p
   expect(p.lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 450_000, conversion_factor: 24 })
-  expect(p.return_lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 220_000, line_total: 220_000 })
+  expect(p.return_lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 220_000, line_total: 220_000, reason: "wrong_item" })
 })
 
 /** Giá vốn không có bảng giá: thùng 480.000 thì hộp 20.000 (chủ nhà chốt 23/09/2026). */

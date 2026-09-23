@@ -27,6 +27,7 @@ import Link from "next/link"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { errorMessage } from "@/lib/errors"
+import { CompactSelect } from "@/components/ui/compact-select"
 
 interface PjpRoute {
   id?: string
@@ -326,17 +327,13 @@ export default function PjpPage() {
       {isManager && (
         <div className="flex items-center gap-3">
           <label className="text-sm font-semibold text-foreground">Nhân viên:</label>
-          <select
-            className="border border-border rounded-lg px-3 py-2 text-sm bg-card"
+          <CompactSelect
+            ariaLabel="Nhân viên"
             value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-          >
-            {salesUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedUserId}
+            options={salesUsers.map((u) => ({ value: u.id, label: u.full_name ?? "" }))}
+            className="h-10 w-64 rounded-lg bg-card px-3 text-sm"
+          />
         </div>
       )}
 
@@ -520,23 +517,17 @@ export default function PjpPage() {
               <CardTitle className="text-base">Thêm khách hàng</CardTitle>
             </CardHeader>
             <CardContent>
-              <select
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card"
-                onChange={(e) => {
-                  if (e.target.value) addCustomerToDay(e.target.value)
-                  e.target.value = ""
-                }}
-                defaultValue=""
-              >
-                <option value="">-- Chọn khách hàng --</option>
-                {customers
+              {/* Chọn xong là thêm vào ngày và ô trở về trống — như bản cũ. */}
+              <CompactSelect
+                ariaLabel="Thêm khách hàng"
+                value=""
+                onChange={(v) => { if (v) addCustomerToDay(v) }}
+                emptyLabel="-- Chọn khách hàng --"
+                options={customers
                   .filter((c) => !dayRoutes.some((r) => r.customer_id === c.id))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.store_name}
-                    </option>
-                  ))}
-              </select>
+                  .map((c) => ({ value: c.id, label: c.store_name }))}
+                className="h-10 w-full rounded-lg bg-card px-3 text-sm"
+              />
             </CardContent>
           </Card>
 

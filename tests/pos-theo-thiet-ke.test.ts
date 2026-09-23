@@ -343,7 +343,8 @@ describe("khối Hàng đổi trả kèm đơn", () => {
    * nói dối: đặt hai lý do khác nhau, lưu xong mở lại thấy một.
    */
   it("lý do theo dòng được ghi xuống sổ", () => {
-    expect(DON, "ô lý do không ghi vào dòng").toMatch(/sua\(\{ reason: e\.target\.value \}\)/)
+    // Ô chọn có tìm (23/09/2026) đưa thẳng giá trị: `(v) => sua({ reason: v })`.
+    expect(DON, "ô lý do không ghi vào dòng").toMatch(/sua\(\{ reason: (e\.target\.value|v) \}\)/)
     const save = code(doc("src/lib/pos/save.ts"))
     expect(save, "lý do dòng không đi vào giỏ trả").toMatch(/reason: l\.reason/)
     const create = code(doc("src/lib/orders/create.ts"))

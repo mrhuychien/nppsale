@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { useClientNow } from "@/hooks/use-client-now"
+import { CompactSelect } from "@/components/ui/compact-select"
 
 export interface VariantOption<T extends string> {
   key: T
@@ -92,17 +93,13 @@ export function ReportShell<T extends string>({
             <p className="mb-1.5 text-xs font-semibold text-foreground">
               Mối quan tâm <span className="text-primary">•</span>
             </p>
-            <select
+            <CompactSelect
+              ariaLabel="Mối quan tâm"
               value={variant}
-              onChange={(e) => onVariantChange(e.target.value as T)}
-              className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-            >
-              {variants.map((v) => (
-                <option key={v.key} value={v.key}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => onVariantChange(v as T)}
+              options={variants.map((v) => ({ value: v.key, label: v.label }))}
+              className="h-9 w-full rounded-md border-border/60 bg-card px-2 text-sm"
+            />
           </div>
 
           {extraOptions}
@@ -187,21 +184,17 @@ export function FilterSelect<T extends string>({
   placeholder?: string
 }) {
   return (
-    <select
+    <CompactSelect
+      ariaLabel={placeholder || "Lọc"}
       value={value}
-      onChange={(e) => onChange(e.target.value as T | "")}
+      onChange={(v) => onChange(v as T | "")}
+      emptyLabel={placeholder || "Tất cả"}
+      options={options.map((o) => ({ value: o.key, label: o.label }))}
       className={cn(
-        "h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm",
+        "h-9 w-full rounded-md border-border/60 bg-card px-2 text-sm",
         value === "" ? "text-muted-foreground" : "text-foreground"
       )}
-    >
-      <option value="">{placeholder || "Tất cả"}</option>
-      {options.map((o) => (
-        <option key={o.key} value={o.key}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    />
   )
 }
 

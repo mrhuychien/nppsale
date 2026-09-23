@@ -32,6 +32,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
+import { CompactSelect } from "@/components/ui/compact-select"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -677,24 +678,22 @@ export function SupplierReturnScreen({
             <label htmlFor="sr-goc" className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
               Phiếu nhập gốc
             </label>
-            <select
+            <CompactSelect
               id="sr-goc"
+              ariaLabel="Phiếu nhập gốc"
               value={phieuGocId}
-              onChange={(e) => napTuPhieuGoc(e.target.value)}
+              onChange={napTuPhieuGoc}
               disabled={!ncc}
-              className="mt-1 h-8 w-full rounded-[7px] border border-[var(--pos-edge)] bg-white px-2 text-[12.5px] disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)]"
-            >
-              <option value="">
-                {!ncc
+              emptyLabel={
+                !ncc
                   ? "chọn nhà cung cấp trước"
                   : phieuGoc.length === 0
                     ? "NCC này chưa có phiếu nhập nào đã hoàn thành"
-                    : "Không nạp từ phiếu nào"}
-              </option>
-              {phieuGoc.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} · {p.date}</option>
-              ))}
-            </select>
+                    : "Không nạp từ phiếu nào"
+              }
+              options={phieuGoc.map((p) => ({ value: p.id, label: `${p.code} · ${p.date}` }))}
+              className="mt-1 h-8 w-full rounded-[7px] border-[var(--pos-edge)] bg-white px-2 text-[12.5px] disabled:bg-[var(--pos-head)] disabled:text-[var(--pos-dim)]"
+            />
             <p className="mt-1 text-[11px] text-[var(--pos-dim)]">
               Nạp sẵn dòng hàng, giá nhập và số đã nhập. Đường nối này{" "}
               <strong>không lưu vào phiếu</strong> — mở lại phiếu sẽ không còn cột

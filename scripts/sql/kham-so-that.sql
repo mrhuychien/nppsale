@@ -158,4 +158,9 @@ SELECT 13, 'Mig 173 (bảng lương: kế toán + lương thực nhận tính �
             AND EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'payroll_runs' AND policyname = 'org_iso_pr'
                         AND qual LIKE '%accountant%')
        THEN 'OK — đã vá' ELSE 'CHƯA — kế toán không đọc được kỳ lương / lương thực nhận tính ở trình duyệt' END, ''
+UNION ALL
+-- 14. Mig 174 — xuất hóa đơn tự tra hệ số quy đổi, không tin trình duyệt
+SELECT 14, 'Mig 174 (hóa đơn tự tra hệ số quy đổi)',
+  CASE WHEN position('_chuan_he_so_dong_hoa_don' in pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
+       THEN 'OK — máy chủ tự tra' ELSE 'CHƯA — màn gửi sai hệ số là kho trừ sai' END, ''
 ) t ORDER BY stt;

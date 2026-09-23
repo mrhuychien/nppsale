@@ -313,28 +313,31 @@ describe("reports/**: các phép quét còn nhìn thấy lỗi", () => {
 })
 
 /**
- * DANH SÁCH NỢ — ba màn tài chính con nuốt lỗi Ở TẦNG THƯ VIỆN.
+ * Ba màn tài chính con chỉ đọc SỐ TỔNG từ RPC cộng sổ phía máy chủ
+ * (`finance_pnl`, `finance_balance_sheet`, `finance_cash_flow` qua
+ * `src/lib/finance.ts`) — không đọc dòng nào, nên không có chuyện chạm
+ * trần 1.000 dòng và không cần dải "số liệu chưa đầy đủ".
  *
- * ⚠ LỖI KHÔNG NẰM Ở MÀN MÀ Ở `src/lib/finance.ts` (ngoài phạm vi đợt sửa
- *   này): `fetchPnl` / `fetchBalanceSheet` / `fetchCashFlow` gặp lỗi RPC thì
- *   `console.error` rồi trả mọi con số bằng 0. Màn có bắt lỗi cũng vô ích
- *   vì không có gì được ném ra. Sửa thư viện cho NÉM rồi thêm dải báo, và
- *   xoá tên ở đây — chốt dưới đòi mỗi tên phải THẬT SỰ còn mắc lỗi.
+ * ⚠ 23/09/2026: `lib/finance` đã thôi nuốt lỗi (trước đó lỗi RPC thành mọi
+ *   số bằng 0) — đợt sửa phân tích. Ba màn bắt lỗi và vẽ dải báo lỗi.
+ * ⚠ Chốt dưới đòi chúng THẬT SỰ không đọc bảng nào: thêm một `.from(...)`
+ *   là phải ra khỏi danh sách này và đi đúng luật đọc đủ + báo thiếu.
  */
-const CON_NO_LIB_FINANCE = [
+const MAN_CHI_DOC_TONG_RPC = [
   "src/app/(dashboard)/reports/finance/balance-sheet/page.tsx",
   "src/app/(dashboard)/reports/finance/cash-flow/page.tsx",
   "src/app/(dashboard)/reports/finance/pnl/page.tsx",
 ]
 
 describe("reports/**: mọi màn đọc đủ và nói ra khi hỏng", () => {
-  it("mỗi tên trong danh sách nợ đều thật sự còn mắc lỗi", () => {
+  it("lib/finance không nuốt lỗi; ba màn chỉ đọc tổng thì không đọc bảng nào", () => {
     const lib = code(readFileSync(resolve(ROOT, "src/lib/finance.ts"), "utf-8"))
-    expect(lib, "lib/finance đã thôi nuốt lỗi — sửa ba màn rồi xoá danh sách nợ").toMatch(/if \(error\) console\.error/)
-    for (const rel of CON_NO_LIB_FINANCE) {
+    expect(lib, "lib/finance lại nuốt lỗi thành số 0").not.toMatch(/if \(error\) console\.error/)
+    for (const rel of MAN_CHI_DOC_TONG_RPC) {
       const t = TEP.find((x) => x.rel === rel)
       expect(t, `${rel} không còn`).toBeTruthy()
-      expect(t!.src, `${rel} đã vẽ dải báo — xoá tên nó khỏi CON_NO_LIB_FINANCE`).not.toMatch(/ReportLoadNotice/)
+      expect(t!.src, `${rel} đọc bảng — ra khỏi MAN_CHI_DOC_TONG_RPC`).not.toMatch(/\.from\(/)
+      expect(t!.src, `${rel} không vẽ dải báo lỗi`).toMatch(/<ReportLoadNotice error=\{loadError\}/)
     }
   })
 
@@ -372,7 +375,7 @@ describe("reports/**: mọi màn đọc đủ và nói ra khi hỏng", () => {
    */
   it("mọi màn nạp dữ liệu đều vẽ dải báo lỗi và báo thiếu", () => {
     const man = TEP.filter(
-      (t) => t.rel.endsWith("page.tsx") && /createClient\(\)/.test(t.src) && !CON_NO_LIB_FINANCE.includes(t.rel)
+      (t) => t.rel.endsWith("page.tsx") && /createClient\(\)/.test(t.src) && !MAN_CHI_DOC_TONG_RPC.includes(t.rel)
     )
     expect(man.length).toBeGreaterThanOrEqual(10)
     for (const t of man) {

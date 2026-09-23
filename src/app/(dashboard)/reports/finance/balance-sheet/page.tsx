@@ -15,6 +15,7 @@ import { fetchBalanceSheet, type BalanceSheetData } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { Printer, Wallet, Receipt, Boxes, Scale } from "lucide-react"
+import { ReportLoadNotice } from "../../_components/report-load-notice"
 
 export default function BalanceSheetPage() {
   const { loading: authLoading } = useRoleGuard("reports")
@@ -36,7 +37,6 @@ export default function BalanceSheetPage() {
     try {
       setData(await fetchBalanceSheet(supabase, user.org_id, asOf))
     } catch (e) {
-      console.error("[reports/finance] tải lỗi:", e)
       setData(null)
       setLoadError(errorMessage(e, "Không tải được báo cáo"))
     } finally {
@@ -82,14 +82,7 @@ export default function BalanceSheetPage() {
       </Card>
 
       {loadError && !loading ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
-        >
-          <p className="font-semibold">Không tải được báo cáo</p>
-          <p className="mt-0.5 break-words">{loadError}</p>
-          <p className="mt-1 text-xs">Các con số KHÔNG được hiển thị để tránh đọc nhầm thành 0đ.</p>
-        </div>
+        <ReportLoadNotice error={loadError} />
       ) : loading || !data ? (
         <Skeleton className="h-96" />
       ) : (

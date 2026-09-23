@@ -229,9 +229,9 @@ export default function ReturnsPage() {
     ;(async () => {
       if (!searchReady) return
       setTongKhoanCo(null)
-      const res = await fetchAllForAggregate<{ credit_note_amount: number | string | null }>((from, to) =>
+      const res = await fetchAllForAggregate<{ credit_note_amount: number | string | null }>((from, to) => {
         // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
-        apDungLoc(
+        const q = apDungLoc(
           supabase
             .from("returns")
             .select("credit_note_amount", { count: "exact" })
@@ -239,7 +239,9 @@ export default function ReturnsPage() {
             .order("id")
             .range(from, to)
         )
-      )
+        // Tab "Tất cả": phiếu đã huỷ không vào tổng khoản có.
+        return statusFilter === "all" ? q.neq("status", "cancelled") : q
+      })
       if (cancelled) return
       if (res.error || res.truncated) {
         console.warn("[returns] không cộng được tổng khoản có:", res.error ?? "vượt trần")

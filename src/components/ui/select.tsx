@@ -38,7 +38,39 @@ function demLuaChon(node: React.ReactNode): number {
   return n
 }
 
-const Select = SelectPrimitive.Root
+/**
+ * ⚠ BÀN PHÍM ĐIỆN THOẠI KHÔNG ĐƯỢC ĐÓNG DANH SÁCH.
+ *
+ * Radix Select đóng danh sách mỗi khi cửa sổ đổi kích thước. Trang đặt
+ * `interactiveWidget: "resizes-content"` (src/app/layout.tsx), nên trên
+ * Android bàn phím bật lên LÀ đổi kích thước cửa sổ: chạm vào ô "Tìm…"
+ * là danh sách đóng ngay — ô tìm vô dụng trên đúng loại máy dùng nhiều
+ * nhất. Bỏ qua lệnh đóng CHỈ KHI ô tìm đang có tiêu điểm VÀ cửa sổ vừa
+ * đổi kích thước; chạm ra ngoài, Escape, chọn một dòng vẫn đóng như cũ.
+ * Tìm ra khi rà đợt 23/09/2026; chốt e2e/select-co-o-tim.spec.ts.
+ */
+let lanDoiCoCuaSo = 0
+if (typeof window !== "undefined") {
+  // `capture` để chạy TRƯỚC lệnh đóng của Radix cho cùng sự kiện ấy.
+  window.addEventListener("resize", () => { lanDoiCoCuaSo = Date.now() }, true)
+}
+export function laDongDoBanPhim(): boolean {
+  if (typeof document === "undefined") return false
+  const a = document.activeElement
+  // Radix đóng NGAY TẠI sự kiện đổi kích thước — 200 ms là đủ, và cú bấm ra ngoài thật gần như không bao giờ rơi vào đó.
+  return !!a && a.hasAttribute("data-o-tim-select") && Date.now() - lanDoiCoCuaSo < 200
+}
+
+function Select({ open, defaultOpen, onOpenChange, ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  const [tuMo, setTuMo] = React.useState(defaultOpen ?? false)
+  const dangMo = open ?? tuMo
+  const doi = (v: boolean) => {
+    if (!v && laDongDoBanPhim()) return
+    if (open === undefined) setTuMo(v)
+    onOpenChange?.(v)
+  }
+  return <SelectPrimitive.Root {...props} open={dangMo} onOpenChange={doi} />
+}
 const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
 
@@ -138,6 +170,7 @@ function KhungTim({ children, position }: { children: React.ReactNode; position:
             onChange={(e) => setQ(e.target.value)}
             placeholder="Tìm…"
             aria-label="Tìm trong danh sách"
+            data-o-tim-select=""
             autoComplete="off"
             className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             onKeyDown={(e) => {
@@ -179,7 +212,7 @@ function demKhop(node: React.ReactNode, q: string): number {
     if (!React.isValidElement(c)) return
     const p = c.props as { children?: React.ReactNode; textValue?: string; value?: string }
     if (c.type === SelectItem) {
-      if (viMatchAllWords(q, p.textValue ?? chuCua(p.children), String(p.value))) n++
+      if (viMatchAllWords(q, p.textValue ?? chuCua(p.children))) n++
     } else n += demKhop(p.children, q)
   })
   return n
@@ -202,7 +235,9 @@ const SelectItem = React.forwardRef<
      Radix chạy lại bước đưa tiêu điểm về lựa chọn đang chọn — ô tìm mất
      tiêu điểm sau mỗi phím (gõ "don" chỉ còn "d"). Ẩn thì tập không đổi;
      phím mũi tên của Radix tự bỏ qua phần tử không nhận tiêu điểm. */
-  const an = !!q.trim() && !viMatchAllWords(q, props.textValue ?? chuCua(children), String(props.value))
+  /* Chỉ khớp CHỮ ĐANG HIỆN — không khớp `value` (hay là uuid: gõ "ba" khớp
+     cả đống mã ẩn, lọc không ra gì). */
+  const an = !!q.trim() && !viMatchAllWords(q, props.textValue ?? chuCua(children))
   return (
   <SelectPrimitive.Item
     ref={ref}

@@ -41,7 +41,9 @@ function filterFn(col, expr) {
   const e = neg ? expr.slice(4) : expr
   const dot = e.indexOf(".")
   const op = e.slice(0, dot)
-  const raw = e.slice(dot + 1)
+  let raw = e.slice(dot + 1)
+  // Giá trị trong ngoặc kép: `\"` / `\\` là ký tự thật.
+  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1).replace(/\\(.)/g, "$1")
   const get = (row) => col.split("->>").reduce((o, k) => (o == null ? undefined : o[k]), row)
   let f = null
   if (op === "eq") f = (r) => String(get(r)) === raw
@@ -76,8 +78,15 @@ const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "
 function tachOr(v) {
   const out = []
   let sau = 0, dau = 0
+  let trongNhay = false
   for (let i = 0; i < v.length; i++) {
-    if (v[i] === "(") sau++
+    if (trongNhay) {
+      if (v[i] === "\\") i++
+      else if (v[i] === '"') trongNhay = false
+      continue
+    }
+    if (v[i] === '"') trongNhay = true
+    else if (v[i] === "(") sau++
     else if (v[i] === ")") sau--
     else if (v[i] === "," && sau === 0) { out.push(v.slice(dau, i)); dau = i + 1 }
   }

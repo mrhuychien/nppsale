@@ -46,7 +46,7 @@ describe("phép dựng mệnh đề tìm", () => {
     const r = buildOrFilter("abc", ["order_code"], [
       { column: "customer_id", match: { ids: ["c1", "c2"], truncated: false } },
     ])
-    expect(r.filter).toBe("order_code.ilike.%abc%,customer_id.in.(c1,c2)")
+    expect(r.filter).toBe('order_code.ilike."%abc%",customer_id.in.(c1,c2)')
     expect(r.truncated).toBe(false)
   })
 
@@ -56,7 +56,7 @@ describe("phép dựng mệnh đề tìm", () => {
    */
   it("không có mã nào khớp thì bỏ hẳn vế đó", () => {
     const r = buildOrFilter("abc", ["order_code"], [{ column: "customer_id", match: NO_MATCH }])
-    expect(r.filter).toBe("order_code.ilike.%abc%")
+    expect(r.filter).toBe('order_code.ilike."%abc%"')
     expect(r.filter).not.toContain("in.()")
   })
 

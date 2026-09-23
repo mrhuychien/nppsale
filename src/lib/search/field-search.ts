@@ -13,7 +13,7 @@
  *   trần thì `truncated` để màn nói "kết quả đang thiếu", không im lặng.
  */
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { idsMatching, likeTerm, MATCH_CAP, NO_MATCH, type IdMatch } from "@/lib/search/list-search"
+import { idsMatching, ilikeDk, MATCH_CAP, NO_MATCH, type IdMatch } from "@/lib/search/list-search"
 
 /** Một bước tra: bước đầu tìm chữ trong `cotTim`; các bước sau lọc `theoCot` trong mã của bước trước. */
 export interface BuocTra {
@@ -85,8 +85,7 @@ export async function maTheoChuoi(
 export function dieuKienTruong(truong: TruongTim, term: string, khop: IdMatch[]): string | null {
   const t = term.trim()
   if (!t) return null
-  const like = likeTerm(t)
-  const phan = (truong.cotRieng ?? []).map((c) => `${c}.ilike.${like}`)
+  const phan = (truong.cotRieng ?? []).map((c) => ilikeDk(c, t))
   ;(truong.chuoi ?? []).forEach((c, i) => {
     const m = khop[i] ?? NO_MATCH
     if (m.ids.length > 0) phan.push(`${c.cotDich}.in.(${m.ids.join(",")})`)
@@ -97,4 +96,30 @@ export function dieuKienTruong(truong: TruongTim, term: string, khop: IdMatch[])
 /** Số trường đang có chữ — để nút lọc hiện huy hiệu. */
 export function soTruongDangTim(values: Record<string, string>): number {
   return Object.values(values).filter((v) => v.trim()).length
+}
+
+/**
+ * ⚠ NGÂN SÁCH MÃ CHUNG CHO MỌI TRƯỜNG. Mỗi trường được tới `MATCH_CAP`
+ *   mã thì hai trường cùng chạm trần là 300+ uuid (~11 KB) trong MỖI câu
+ *   danh sách / đếm / cộng tiền — đường dẫn quá dài, cổng API trả lỗi và
+ *   danh sách rỗng (xem chú thích `ID_MOI_LO`). Chia chung một ngân sách;
+ *   bị cắt thì `truncated` để màn nói "kết quả đang thiếu".
+ */
+export function chiaNganSach(
+  khop: Record<string, IdMatch[]>,
+  thuTu: readonly string[],
+  tong: number = MATCH_CAP
+): Record<string, IdMatch[]> {
+  let con = tong
+  const out: Record<string, IdMatch[]> = {}
+  for (const k of thuTu) {
+    const ms = khop[k]
+    if (!ms) continue
+    out[k] = ms.map((m) => {
+      const lay = m.ids.slice(0, Math.max(0, con))
+      con -= lay.length
+      return { ids: lay, truncated: m.truncated || lay.length < m.ids.length }
+    })
+  }
+  return out
 }

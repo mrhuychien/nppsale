@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { ilikeDk } from "@/lib/search/list-search"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -147,10 +148,7 @@ export default function InvoicesPage() {
         .order("created_at", { ascending: false })
         .range(pg.from, pg.to)
       if (filterActive("search") && debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.or(
-          `invoice_number.ilike.${term},customer_name.ilike.${term},misa_inv_no.ilike.${term},misa_invoice_id.ilike.${term}`
-        )
+        q = q.or(["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
       }
       if (filterActive("status") && statusFilter !== "all") {
         q = q.eq("status", statusFilter)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { maTheoChuoi, dieuKienTruong, soTruongDangTim, KHONG_DONG_NAO, type TruongTim } from "../src/lib/search/field-search"
+import { maTheoChuoi, dieuKienTruong, soTruongDangTim, chiaNganSach, KHONG_DONG_NAO, type TruongTim } from "../src/lib/search/field-search"
 import { MATCH_CAP } from "../src/lib/search/list-search"
 
 /** Client giả: mỗi bảng trả các dòng đã định; ghi lại lệnh để chốt đọc. */
@@ -49,7 +49,7 @@ describe("maTheoChuoi — tra theo chuỗi bảng", () => {
     const m = await maTheoChuoi(sb, HANG.chuoi![0].buoc, "sữa", "org1")
     expect(m).toEqual({ ids: ["o1", "o2"], truncated: false })
     expect(log[0]).toMatchObject({ bang: "products", eq: ["org_id", "org1"] })
-    expect(log[0].or).toBe("sku.ilike.%sữa%,name.ilike.%sữa%")
+    expect(log[0].or).toBe('sku.ilike."%sữa%",name.ilike."%sữa%"')
     // Bảng dòng không có org_id — RLS lo; không được lọc org ở đây.
     expect(log[1]).toMatchObject({ bang: "sales_order_lines", in: ["product_id", ["p1", "p2"]] })
     expect(log[1].eq).toBeUndefined()
@@ -73,7 +73,7 @@ describe("maTheoChuoi — tra theo chuỗi bảng", () => {
 describe("dieuKienTruong", () => {
   const MA: TruongTim = { key: "ma", nhan: "Theo mã đơn", cotRieng: ["order_code"] }
   it("cột riêng → ilike", () => {
-    expect(dieuKienTruong(MA, "DH-01", [])).toBe("order_code.ilike.%DH-01%")
+    expect(dieuKienTruong(MA, "DH-01", [])).toBe('order_code.ilike."%DH-01%"')
   })
   it("chuỗi khớp → id.in.(…)", () => {
     expect(dieuKienTruong(HANG, "sữa", [{ ids: ["o1", "o2"], truncated: false }])).toBe("id.in.(o1,o2)")
@@ -86,9 +86,36 @@ describe("dieuKienTruong", () => {
     expect(dieuKienTruong(HANG, "  ", [])).toBeNull()
   })
   it("ký tự đại diện trong chữ gõ được thoát", () => {
-    expect(dieuKienTruong(MA, "50%", [])).toBe("order_code.ilike.%50\\%%")
+    expect(dieuKienTruong(MA, "50%", [])).toBe('order_code.ilike."%50\\\\%%"')
+  })
+  /**
+   * ⚠ DẤU PHẨY / NGOẶC TRONG CHỮ GÕ. `or=` của PostgREST tách ở `,` và
+   *   `(`/`)` — không đặt giá trị trong ngoặc kép thì "DH,01 (x)" làm vỡ
+   *   cả câu truy vấn. `"` và `\` trong ngoặc kép phải thoát.
+   */
+  it("giá trị đặt trong ngoặc kép; \" và \\ được thoát", () => {
+    expect(dieuKienTruong(MA, "DH,01 (x)", [])).toBe('order_code.ilike."%DH,01 (x)%"')
+    expect(dieuKienTruong(MA, 'a"b', [])).toBe('order_code.ilike."%a\\"b%"')
   })
   it("đếm trường đang tìm", () => {
     expect(soTruongDangTim({ ma: "x", hang: " ", khach: "Minh" })).toBe(2)
+  })
+})
+
+/** ⚠ Hai trường cùng chạm trần → đường dẫn quá dài. Ngân sách mã là CHUNG. */
+describe("chiaNganSach", () => {
+  const ids = (n: number, p: string) => Array.from({ length: n }, (_, i) => `${p}${i}`)
+  it("tổng mã mọi trường không vượt ngân sách; trường bị cắt đánh dấu thiếu", () => {
+    const out = chiaNganSach(
+      { hang: [{ ids: ids(100, "o"), truncated: false }], khach: [{ ids: ids(100, "c"), truncated: false }] },
+      ["ma", "hang", "khach"], 150
+    )
+    expect(out.hang[0]).toEqual({ ids: ids(100, "o"), truncated: false })
+    expect(out.khach[0].ids).toHaveLength(50)
+    expect(out.khach[0].truncated).toBe(true)
+  })
+  it("dưới ngân sách thì giữ nguyên", () => {
+    const k = { hang: [{ ids: ["a"], truncated: false }] }
+    expect(chiaNganSach(k, ["hang"], 150)).toEqual(k)
   })
 })

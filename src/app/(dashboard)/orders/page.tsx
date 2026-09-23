@@ -587,6 +587,8 @@ export default function OrdersPage() {
   useEffect(() => {
     let cancelled = false
     async function loadCounts() {
+      /* Chờ lượt tra — đếm với bộ lọc "chưa xong" là nháy các tab về 0. */
+      if (!searchReady) return
       // audit-ok: lỗi của CẢ chùm truy vấn được gộp lại ở `countErr` ngay
       // bên dưới; không kiểm từng chỗ vì một phép đếm hỏng hay tất cả hỏng
       // đều dẫn tới cùng một việc phải làm.
@@ -789,8 +791,10 @@ export default function OrdersPage() {
     let cancelled = false
     ;(async () => {
       setFilteredTotal(null)
-      const res = await fetchAllForAggregate<{ total: number | string }>((from, to) =>
-        applyStatusFilter(
+      /* Chờ lượt tra — cộng với bộ lọc "chưa xong" là nháy ra 0. */
+      if (!searchReady) return
+      const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
+        const q = applyStatusFilter(
           applyCommonFilters(
             // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
             supabase
@@ -800,7 +804,9 @@ export default function OrdersPage() {
           ),
           effectiveStatus
         )
-      )
+        // Tab "Tất cả": đơn đã huỷ không vào tổng tiền (số đơn vẫn đếm cả).
+        return effectiveStatus === "all" ? q.neq("status", "cancelled") : q
+      })
       if (cancelled) return
       if (res.error || res.truncated) {
         console.warn("[orders] không cộng được tổng tiền:", res.error ?? "vượt trần")

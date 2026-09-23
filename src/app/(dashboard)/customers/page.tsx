@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { ilikeDk } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
@@ -315,8 +316,7 @@ export default function CustomersPage() {
         if (idSlice) q = q.in("id", idSlice)
         else q = q.range(pg.from, pg.to)
         if (debouncedSearch) {
-          const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-          q = q.or(`store_name.ilike.${term},owner_name.ilike.${term},phone.ilike.${term}`)
+          q = q.or(["store_name", "owner_name", "phone"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
         }
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         if (channelFilter !== "all") q = q.eq("channel", channelFilter)

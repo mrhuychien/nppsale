@@ -271,9 +271,35 @@ export default function SellPage() {
   const addRef = useRef(addToCart)
   addRef.current = addToCart
   const onAdd = useCallback((p: PricedProduct) => addRef.current(p), [])
+  /**
+   * ⚠ CHỌN NHIỀU: ĐỔI ĐƠN VỊ THÌ SỐ ĐÃ GÕ ĐI THEO. Số nháp giữ theo (sản
+   *   phẩm + đơn vị); bản đầu đổi đơn vị là số của đơn vị cũ nằm ẩn — thẻ chỉ
+   *   hiện đơn vị mới, mà "Vào đơn" vẫn thêm cả đơn vị cũ (chạm 1 thùng, đổi
+   *   hộp gõ 2 → vào đơn 1 thùng + 2 hộp). Nay số nháp dời sang đơn vị mới,
+   *   trừ khi đơn vị mới đã có số riêng.
+   */
+  const chonNhieuRef = useRef(chonNhieu)
+  chonNhieuRef.current = chonNhieu
+  const unitSelRef = useRef(unitSel)
+  unitSelRef.current = unitSel
   const onPickUnit = useCallback(
-    (productId: string, u: string) => setUnitSel((s) => ({ ...s, [productId]: u })),
-    []
+    (productId: string, u: string) => {
+      if (chonNhieuRef.current) {
+        const p = productById(productId)
+        const cu = p ? selectedUnitOf(unitSelRef.current, p) : unitSelRef.current[productId]
+        if (cu && cu !== u) {
+          setNhap((n) => {
+            const kCu = lineKey(productId, cu)
+            const kMoi = lineKey(productId, u)
+            if (!n[kCu] || n[kMoi]) return n
+            const { [kCu]: nhapCu, ...con } = n
+            return { ...con, [kMoi]: { ...nhapCu, unit: u } }
+          })
+        }
+      }
+      setUnitSel((s) => ({ ...s, [productId]: u }))
+    },
+    [productById]
   )
   const onPickQty = useCallback(
     (productId: string, unit: string, qty: number) =>
@@ -309,12 +335,16 @@ export default function SellPage() {
     setChonNhieu(false)
   }
   const xacNhanChonNhieu = () => {
-    /* ⚠ Vượt tồn: CẢNH BÁO RỒI VẪN THÊM — cùng luật với chạm từng món. */
-    const vuot = dongChon
-      .filter((l) => l.qty > 0)
-      .map((l) => productById(l.productId)!)
-      .filter((p) => addOverstockWarning(p.name, stockByProduct[p.id] ?? 0, availableByProduct[p.id] ?? 0, p.base_unit))
-      .map((p) => p.name)
+    /* ⚠ Vượt số còn bán được: CẢNH BÁO RỒI VẪN THÊM — cùng luật với chạm
+       từng món. So SỐ LƯỢNG (quy về đơn vị cơ sở, cộng các đơn vị của cùng
+       mặt hàng) với số còn bán được — không chỉ "hết hàng hay chưa". */
+    const canCoSo = new Map<string, number>()
+    for (const l of dongChon) {
+      if (l.qty > 0) canCoSo.set(l.productId, (canCoSo.get(l.productId) ?? 0) + l.qty * (l.conversion || 1))
+    }
+    const vuot = Array.from(canCoSo.entries())
+      .filter(([id, can]) => can > (availableByProduct[id] ?? 0))
+      .map(([id]) => productById(id)?.name ?? "")
     cart.setManyQty(dongChon)
     if (vuot.length) {
       toast({

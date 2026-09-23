@@ -11,8 +11,9 @@ describe("tongChungTu — khối thống kê danh sách", () => {
   it("cộng mọi phiếu trừ phiếu huỷ; số phiếu đếm cả", () => {
     expect(tongChungTu(rows, (r) => r.total, (r) => r.status === "cancelled")).toEqual({ soPhieu: 4, tong: 350_001 })
   })
-  it("danh sách chưa đủ (null) → tổng null, hiện '—'", () => {
-    expect(tongChungTu(null, () => 0, () => false)).toEqual({ soPhieu: 0, tong: null })
+  /** ⚠ Chưa đủ thì tổng "—", nhưng số phiếu vẫn là số đang hiện — không phải "0 phiếu". */
+  it("danh sách chưa đủ → số phiếu vẫn đúng, tổng null", () => {
+    expect(tongChungTu(rows, (r) => r.total, () => false, false)).toEqual({ soPhieu: 4, tong: null })
   })
 })
 

@@ -9,14 +9,15 @@ import { dangNhap } from "./helpers"
 const khoi = (page: import("@playwright/test").Page, nhan: string) =>
   page.locator("div", { has: page.getByText(nhan, { exact: true }) }).last()
 
-test("đơn hàng — máy tính: 'Tất cả' ra cả đơn năm ngoái, tổng 8.000.000", async ({ page }) => {
+test("đơn hàng — máy tính: 'Tất cả' ra cả đơn năm ngoái; đơn huỷ không vào tổng", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/orders")
   // ⚠ LỖI CŨ: viên thuốc "Tháng này" của điện thoại lọc ngầm cả máy tính —
   //   đơn DH-0003 (06/2025) không bao giờ hiện trên máy tính.
   await expect(page.getByText("DH-0003").first()).toBeVisible()
   const k = khoi(page, "Tổng tiền hàng")
-  await expect(k).toContainText("3 đơn hàng")
+  // DH-0004 (huỷ, 9.000.000) đếm vào 4 đơn nhưng KHÔNG vào tổng.
+  await expect(k).toContainText("4 đơn hàng")
   await expect(k).toContainText("8.000.000")
 })
 

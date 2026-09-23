@@ -76,7 +76,7 @@ export default function CashReceiptsListPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Phiếu đã huỷ (`voided`) không vào tổng. */
-  const tongPhieu = tongChungTu(canhBao ? null : receipts, (r) => r.expected_amount, (r) => r.status === "voided")
+  const tongPhieu = tongChungTu(receipts, (r) => r.expected_amount, (r) => r.status === "voided", !canhBao)
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 

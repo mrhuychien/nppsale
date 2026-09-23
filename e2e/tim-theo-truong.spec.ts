@@ -51,7 +51,7 @@ test("đơn hàng: tìm theo mã, tên hàng — ghép VÀ với khách; tổng 
   await page.getByRole("button", { name: "Bỏ Theo mã đơn hàng" }).click()
   await page.getByRole("button", { name: "Bỏ Theo mã, tên hàng" }).click()
   await expect(page.getByText("DH-0001").first()).toBeVisible()
-  await expect(tongDon(page)).toContainText("3 đơn hàng")
+  await expect(tongDon(page)).toContainText("4 đơn hàng")
 })
 
 /** "Serial/IMEI" của mẫu → "Theo số lô": hóa đơn nối tới lô qua phiếu xuất kho. */
@@ -91,4 +91,22 @@ test("đơn hàng — điện thoại: các ô theo trường nằm trong tấm 
   // Tháng này: DH-0001 (Sữa) và DH-0002 (Mì) → còn 1 đơn.
   await expect(page.getByText("1 đơn hàng").locator("visible=true")).toHaveCount(1)
   await ctx.close()
+})
+
+/**
+ * ⚠ DẤU PHẨY / NGOẶC trong chữ gõ làm vỡ cú pháp `or=` của PostgREST nếu giá
+ *   trị không nằm trong ngoặc kép — danh sách báo lỗi. Chốt: gõ vào ô tìm
+ *   theo mã và ô tìm nhanh, danh sách vẫn đọc được (0 kết quả, không lỗi).
+ */
+test("đơn hàng: chữ tìm có dấu phẩy, ngoặc không làm hỏng truy vấn", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/orders")
+  await expect(page.getByText("DH-0001").first()).toBeVisible()
+  await page.getByRole("button", { name: "Tìm theo từng trường" }).click()
+  await page.getByRole("textbox", { name: "Theo mã đơn hàng", exact: true }).fill("DH,00 (1)")
+  await page.getByRole("button", { name: "Tìm kiếm" }).click()
+  await expect(tongDon(page)).toContainText("0 đơn hàng")
+  await expect(page.getByText(/Không tải được|lỗi/i)).toHaveCount(0)
+  await page.getByRole("button", { name: "Bỏ Theo mã đơn hàng" }).click()
+  await expect(tongDon(page)).toContainText("4 đơn hàng")
 })

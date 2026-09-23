@@ -53,6 +53,20 @@ export function likeTerm(raw: string): string {
   return `%${raw.trim().replace(/[%_]/g, "\\$&")}%`
 }
 
+/**
+ * MỘT ĐIỀU KIỆN `ilike` ĐỂ ĐẶT TRONG `.or(...)`.
+ *
+ * ⚠ GIÁ TRỊ PHẢI NẰM TRONG NGOẶC KÉP. Cú pháp `or=` của PostgREST tách ở
+ *   dấu phẩy và ngoặc: người dùng gõ "DH,01" hay "(x)" là `.or()` vỡ — danh
+ *   sách báo lỗi, hoặc lượt tra mã hỏng rồi bị hiểu là "chạm trần". Trong
+ *   ngoặc kép, `"` và `\` phải thoát bằng `\` (tức dấu `\` thoát ký tự đại
+ *   diện của `likeTerm` thành `\\`). Tìm ra 23/09/2026 khi rà đợt ô tìm.
+ */
+export function ilikeDk(column: string, raw: string): string {
+  const like = likeTerm(raw).replace(/["\\]/g, "\\$&")
+  return `${column}.ilike."${like}"`
+}
+
 export interface IdMatch {
   ids: string[]
   /** Chạm trần — kết quả đang THIẾU, và màn hình phải nói ra. */
@@ -88,11 +102,10 @@ export async function idsMatching(
 ): Promise<IdMatch> {
   const t = term.trim()
   if (!t || columns.length === 0) return NO_MATCH
-  const like = likeTerm(t)
   let q = supabase
     .from(table)
     .select(idColumn)
-    .or(columns.map((c) => `${c}.ilike.${like}`).join(","))
+    .or(columns.map((c) => ilikeDk(c, t)).join(","))
     // ⚠ CÓ MỐC SẮP XẾP. Không có thì hai lần gọi cùng một từ khoá có thể
     //   trả về hai tập mã khác nhau, và danh sách nhấp nháy.
     .order(idColumn)
@@ -159,8 +172,7 @@ export function buildOrFilter(
 ): OrClause {
   const t = term.trim()
   if (!t) return { filter: null, truncated: false }
-  const like = likeTerm(t)
-  const parts = ownColumns.map((c) => `${c}.ilike.${like}`)
+  const parts = ownColumns.map((c) => ilikeDk(c, t))
   let truncated = false
   for (const f of idFilters) {
     if (f.match.truncated) truncated = true

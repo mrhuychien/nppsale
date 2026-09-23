@@ -102,9 +102,11 @@ export default function PurchaseReceiptsPage() {
   }, [rows, q, tab])
 
   const tongPhieu = tongChungTu(
-    canhBao ? null : shown,
+    shown,
     (r) => r.total,
-    (r) => r.status === "cancelled"
+    // Đang xem tab "Đã huỷ" thì cộng chính các phiếu huỷ ấy.
+    (r) => tab !== "cancelled" && r.status === "cancelled",
+    !canhBao
   )
 
   if (authLoading) return <Skeleton className="h-96" />
@@ -143,7 +145,7 @@ export default function PurchaseReceiptsPage() {
         <DocListTotals
           className="rounded-xl border"
           label="Tổng tiền phiếu nhập"
-          countText={`${tongPhieu.soPhieu} phiếu nhập${tab === "" || tab === "all" ? " · không tính phiếu huỷ" : ""}`}
+          countText={`${tongPhieu.soPhieu} phiếu nhập${tab !== "cancelled" && tab !== "draft" && tab !== "completed" ? " · không tính phiếu huỷ" : ""}`}
           total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
         />
       )}

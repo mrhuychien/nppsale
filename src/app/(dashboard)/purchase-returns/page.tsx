@@ -91,7 +91,7 @@ export default function PurchaseReturnsPage() {
     fetch()
   }, [user?.org_id, filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tongPhieu = tongChungTu(canhBao ? null : rows, (r) => r.total, (r) => r.status === "cancelled")
+  const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => filter !== "cancelled" && r.status === "cancelled", !canhBao)
 
   if (authLoading) return <Skeleton className="h-96" />
 

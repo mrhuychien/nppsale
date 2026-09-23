@@ -49,3 +49,27 @@ test("danh sách ngắn (3 lựa chọn) không có ô tìm", async ({ page }) =
   await expect(page.getByRole("option")).toHaveCount(3)
   await expect(page.getByLabel("Tìm trong danh sách")).toHaveCount(0)
 })
+
+/**
+ * ⚠ ANDROID: bàn phím bật lên là cửa sổ đổi kích thước, và Radix đóng
+ *   danh sách khi cửa sổ đổi kích thước — ô tìm vô dụng. Chốt: đang gõ ở
+ *   ô tìm mà cửa sổ co lại (như bàn phím bật) thì danh sách VẪN MỞ; bấm
+ *   ra ngoài thì vẫn đóng như thường.
+ */
+test("bàn phím điện thoại (cửa sổ co lại) không đóng danh sách đang tìm", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/notifications")
+  await page.getByRole("combobox").first().click()
+  const oTim = page.getByLabel("Tìm trong danh sách")
+  await oTim.click()
+  await oTim.pressSequentially("đơn")
+  await page.setViewportSize({ width: 1440, height: 520 }) // bàn phím chiếm nửa dưới
+  await page.waitForTimeout(300)
+  await expect(oTim, "cửa sổ co lại mà danh sách đóng mất").toBeVisible()
+  await oTim.pressSequentially(" trả")
+  await expect(page.getByRole("option")).toHaveCount(1)
+  // Bấm ra ngoài: vẫn đóng.
+  await page.waitForTimeout(300)
+  await page.mouse.click(5, 5)
+  await expect(oTim).toHaveCount(0)
+})

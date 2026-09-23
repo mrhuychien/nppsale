@@ -197,18 +197,22 @@ export function kyDangLoc(period: ListPeriod, laMayTinh: boolean): ListPeriod {
  * Cộng tổng tiền một danh sách chứng từ ĐÃ TẢI ĐỦ — cho các màn tải hết rồi
  * lọc ở trình duyệt (phiếu nhập, trả NCC, phiếu thu).
  *
- * ⚠ PHIẾU ĐÃ HUỶ KHÔNG VÀO TỔNG. Phiếu huỷ là chứng từ không còn hiệu lực;
+ * ⚠ PHIẾU ĐÃ HUỶ KHÔNG VÀO TỔNG — trừ khi người dùng đang xem ĐÚNG tab
+ *   "Đã huỷ" (khi ấy "N phiếu · 0đ" là nói sai); nơi gọi quyết qua `daHuy`. Phiếu huỷ là chứng từ không còn hiệu lực;
  *   cộng nó vào "Tổng tiền" ở tab Tất cả là thổi phồng con số. Số phiếu
  *   thì vẫn đếm cả, đúng như danh sách đang hiện.
  * ⚠ Chỉ đúng khi danh sách ĐÃ ĐỦ — nơi gọi phải tải bằng
  *   `fetchAllForAggregate` và truyền `null` khi chạm trần.
  */
 export function tongChungTu<T>(
-  rows: readonly T[] | null,
+  rows: readonly T[],
   tien: (r: T) => number | string | null | undefined,
-  daHuy: (r: T) => boolean
+  daHuy: (r: T) => boolean,
+  /** `false` = danh sách CHƯA ĐỦ (chạm trần / lỗi): số phiếu vẫn đúng số
+   *  đang hiện, nhưng tổng tiền là "—" — không phải "0 phiếu". */
+  du = true
 ): { soPhieu: number; tong: number | null } {
-  if (!rows) return { soPhieu: 0, tong: null }
+  if (!du) return { soPhieu: rows.length, tong: null }
   let tong = 0
   for (const r of rows) if (!daHuy(r)) tong += Number(tien(r)) || 0
   return { soPhieu: rows.length, tong: Math.round(tong) }

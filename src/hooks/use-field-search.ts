@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { IdMatch } from "@/lib/search/list-search"
-import { dieuKienTruong, maTheoChuoi, type TruongTim } from "@/lib/search/field-search"
+import { chiaNganSach, dieuKienTruong, maTheoChuoi, type TruongTim } from "@/lib/search/field-search"
 
 export interface FieldSearch {
   /** Mỗi phần tử là MỘT `.or(...)` — nơi gọi áp lần lượt, PostgREST ghép bằng AND. */
@@ -48,10 +48,11 @@ export function useFieldSearch(
 
   const ready = kq.key === key
   return useMemo(() => {
+    const khop = chiaNganSach(kq.khop, truong.map((t) => t.key))
     const filters = truong
-      .map((t) => dieuKienTruong(t, values[t.key] ?? "", kq.khop[t.key] ?? []))
+      .map((t) => dieuKienTruong(t, values[t.key] ?? "", khop[t.key] ?? []))
       .filter((f): f is string => !!f)
-    const truncated = Object.values(kq.khop).some((ms) => ms.some((m) => m.truncated))
+    const truncated = Object.values(khop).some((ms) => ms.some((m) => m.truncated))
     return { filters, ready, truncated, key: ready ? filters.join("|") : "…" }
   }, [kq, ready, key]) // eslint-disable-line react-hooks/exhaustive-deps
 }

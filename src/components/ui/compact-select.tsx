@@ -43,7 +43,10 @@ export function CompactSelect({
 }) {
   return (
     <Select
-      value={value === "" ? (emptyLabel !== undefined ? RONG : undefined) : value}
+      /* ⚠ Luôn CÓ ĐIỀU KHIỂN: "" (Radix hiện chữ mờ) chứ không `undefined` —
+         `undefined` là Select tự giữ giá trị, và nơi gọi đặt lại "" sau khi
+         người dùng đã chọn thì ô vẫn hiện lựa chọn cũ. */
+      value={value === "" ? (emptyLabel !== undefined ? RONG : "") : value}
       onValueChange={(v) => onChange(v === RONG ? "" : v)}
       disabled={disabled}
     >

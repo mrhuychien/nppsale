@@ -80,6 +80,8 @@ export function tables() {
       donMau("o-e2e-1", "DH-0001", "submitted", 1_000_000, homNay()),
       donMau("o-e2e-2", "DH-0002", "completed", 2_000_000, homNay()),
       donMau("o-e2e-3", "DH-0003", "completed", 5_000_000, "2025-06-15"),
+      // Đơn ĐÃ HUỶ: đếm vào "Tất cả" nhưng KHÔNG vào tổng tiền.
+      donMau("o-e2e-4", "DH-0004", "cancelled", 9_000_000, "2025-01-10"),
     ],
     // DH-0001 có Sữa, DH-0002 có Mì, DH-0003 có cả hai.
     sales_order_lines: [

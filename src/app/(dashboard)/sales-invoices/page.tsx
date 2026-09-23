@@ -21,7 +21,7 @@
  * nói thẳng điều đó.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { ChevronDown, ChevronUp, FileText, Filter } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -300,11 +300,21 @@ export default function SalesInvoicesPage() {
      listSearch, fieldSearch]
   )
 
+  /**
+   * ⚠ LƯỢT GỌI CŨ KHÔNG ĐƯỢC GHI ĐÈ LƯỢT MỚI. Ba phép đọc (danh sách, tổng,
+   *   số đếm) chạy lại mỗi khi bộ lọc đổi — trên máy tính còn chạy HAI lần
+   *   lúc mở (khổ màn hình đọc xong sau lượt vẽ đầu, `kyLoc` đổi). Lượt cũ
+   *   về sau cùng thì tổng "tháng này" nằm lại dưới danh sách "tất cả".
+   *   Mỗi phép giữ một số thứ tự; kết quả của lượt không còn mới nhất bị bỏ.
+   */
+  const luotRef = useRef({ ds: 0, tong: 0, dem: 0 })
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     /* ⚠ CHỜ LƯỢT TRA MÃ. Giữ "đang nạp" chứ không vẽ một danh sách
        thiếu rồi tự sửa vài trăm mili giây sau. */
     if (!searchReady) return
+    const luot = ++luotRef.current.ds
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     let q = supabase
       .from("sales_invoices")
@@ -315,6 +325,7 @@ export default function SalesInvoicesPage() {
     q = applyFilters(q as never) as typeof q
 
     const { data, error, count } = await q.range(pg.from, pg.to)
+    if (luot !== luotRef.current.ds) return
     if (error) console.error("[sales-invoices] truy vấn lỗi:", error.message)
     const list = ((data as unknown) as InvoiceRow[]) || []
     setRows(list)
@@ -365,14 +376,19 @@ export default function SalesInvoicesPage() {
    */
   const fetchTotal = useCallback(async () => {
     setFilteredTotal(null)
+    if (!searchReady) return
+    const luot = ++luotRef.current.tong
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
       let q = supabase
         .from("sales_invoices")
         .select(routeFilter !== "all" ? `total, ${cust}` : "total", { count: "exact" })
       if (status !== "all") q = q.eq("status", status)
+      // Tab "Tất cả": hóa đơn đã huỷ không vào tổng tiền.
+      else q = q.neq("status", "cancelled")
       return (applyFilters(q as never) as typeof q).range(from, to)
     })
+    if (luot !== luotRef.current.tong) return
     if (res.error || res.truncated) {
       console.warn("[sales-invoices] không cộng được tổng tiền:", res.error ?? "vượt trần")
       setFilteredTotal(null)
@@ -380,7 +396,7 @@ export default function SalesInvoicesPage() {
     }
     setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, applyFilters, routeFilter])
+  }, [status, applyFilters, routeFilter, searchReady])
 
   /**
    * ⚠ ĐẾM Ở MÁY CHỦ, KHÔNG ĐẾM TỪ `rows`. `rows` chỉ là một trang 50
@@ -398,10 +414,13 @@ export default function SalesInvoicesPage() {
       if (error) console.error("[sales-invoices] đếm lỗi")
       return count ?? 0
     }
+    if (!searchReady) return
+    const luot = ++luotRef.current.dem
     const [posted, cancelled, all] = await Promise.all([one("posted"), one("cancelled"), one(null)])
+    if (luot !== luotRef.current.dem) return
     setCounts({ posted, cancelled, all })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyFilters, routeFilter])
+  }, [applyFilters, routeFilter, searchReady])
 
   /**
    * ⚠ QUAY VỀ TAB NÀY THÌ ĐỌC LẠI — cùng lý do với màn đơn hàng. Nút

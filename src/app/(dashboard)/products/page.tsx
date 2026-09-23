@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { ilikeDk } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
@@ -123,8 +124,7 @@ export default function ProductsPage() {
         .order("name")
         .range(pg.from, pg.to)
       if (debouncedSearch) {
-        const term = `%${debouncedSearch.replace(/[%_]/g, "\\$&")}%`
-        q = q.or(`name.ilike.${term},sku.ilike.${term}`)
+        q = q.or(["name", "sku"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
       }
       if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
       if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)

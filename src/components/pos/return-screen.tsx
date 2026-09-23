@@ -218,13 +218,13 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         const sb = createClient()
         const { data, error } = await sb
           .from("returns")
-          .select("id, return_code, customer_id, invoice_id, reason, notes, status, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
+          .select("id, customer_id, invoice_id, reason, notes, status, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
           .eq("id", returnId)
           .maybeSingle()
         if (huy) return
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
-          return_code?: string | null; customer_id: string; invoice_id: string | null
+          customer_id: string; invoice_id: string | null
           reason: string | null; notes: string | null
           customer?: { store_name?: string | null; phone?: string | null } | null
           lines?: Array<{
@@ -234,7 +234,11 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu trả này."); return }
-        setSlipCode(r.return_code ?? null)
+        /* ⚠ PHIẾU TRẢ CỦA KHÁCH KHÔNG CÓ MÃ — bảng `returns` không có cột
+           `return_code` (chỉ `supplier_returns` có). Bản trước đọc cột ấy:
+           mở lại một phiếu đã lưu là câu đọc hỏng 42703 và màn không tải
+           được phiếu. Tìm ra 23/09/2026 khi dựng ô tìm theo mã phiếu. */
+        setSlipCode(null)
         setInvoiceId(r.invoice_id)
         setLyDo(r.reason || "damaged")
         setGhiChu(r.notes || "")

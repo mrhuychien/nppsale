@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -527,12 +527,14 @@ export default function DeliverySettlePage() {
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-1.5 justify-end">
-                                <Input
-                                  type="number"
-                                  inputMode="decimal"
-                                  className={`h-9 w-32 text-right tabular-nums font-semibold ${matched ? "" : "border-[#fdb022]/40"}`}
-                                  value={v}
-                                  onChange={(e) => setLineAmount(l.id, e.target.value)}
+                                {/* Đưa số (không phải chuỗi) — tổng đơn từ DB có thể là
+                                    "150000.00", MoneyInput sẽ gộp phần lẻ nếu nhận chuỗi. */}
+                                <MoneyInput
+                                  showSuffix={false}
+                                  className="w-32"
+                                  inputClassName={`h-9 lg:h-9 text-right font-semibold ${matched ? "" : "border-[#fdb022]/40"}`}
+                                  value={v === "" ? "" : Number(parseFloat(v) || 0)}
+                                  onChange={(n) => setLineAmount(l.id, String(n))}
                                 />
                                 <Button
                                   size="sm"

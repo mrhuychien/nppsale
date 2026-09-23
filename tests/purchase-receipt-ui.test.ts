@@ -616,8 +616,12 @@ describe("ô giảm giá đổi được tiền / phần trăm", () => {
    * một khoản giảm quá 100 đồng. Đã thử phá đúng như vậy.
    */
   it("trần 100 chỉ áp cho chế độ phần trăm, ở CẢ hai bản", () => {
-    const n = (EDITOR.match(/max=\{l\.discount_mode === "percent" \? 100 : undefined\}/g) ?? []).length
+    // Chế độ % và chế độ tiền nay là HAI Ô RIÊNG (tiền dùng MoneyInput để
+    // hiện 220.000) — trần 100 phải nằm trong nhánh % và chỉ ở đó.
+    const n = (EDITOR.match(/\{l\.discount_mode === "percent" \? \(\s*<Input\s+type="number" step="any" min=\{0\} max=\{100\}/g) ?? []).length
     expect(n, `mới ${n}/2 ô — bản còn lại đang chặn oan chế độ tiền`).toBe(2)
+    const amountBranches = (EDITOR.match(/\) : \(\s*<MoneyInput\s+value=\{l\.line_discount\}/g) ?? []).length
+    expect(amountBranches, "nhánh giảm theo tiền phải là MoneyInput, không mang trần 100").toBe(2)
   })
 })
 
@@ -641,10 +645,12 @@ describe("bấm vào ô số là chọn hết nội dung", () => {
    * đúng cái phiền cũ ở nửa số ô — và không hiểu vì sao lúc được lúc
    * không. Sáu ô: số lượng ×2 (bảng + thẻ), đơn giá ×2, giảm giá ×2,
    * thuế suất trong modal, giảm giá đầu phiếu, tiền thuế đầu phiếu.
+   * Ô giảm giá dòng nay tách hai nhánh (% và tiền) ở cả bảng lẫn thẻ,
+   * mỗi nhánh gắn riêng — nên 9 thành 11.
    */
   it("gắn cho MỌI ô số, không sót ô nào", () => {
     const n = (EDITOR.match(/onFocus=\{selectOnFocus\}/g) ?? []).length
-    expect(n, `mới gắn ${n} ô — còn ô số chưa có`).toBe(9)
+    expect(n, `mới gắn ${n} ô — còn ô số chưa có`).toBe(11)
   })
 })
 

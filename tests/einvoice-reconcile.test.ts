@@ -344,7 +344,7 @@ describe("⚠ trạng thái đối soát — vòng đời đọc từ cờ THẬ
     const book = new Map([["inv-1", bk({ id: "inv-1", total: 1_100_000 })]])
     const r = decideStatus({ relation: "new", is_deleted: false, total_amount: 2_000_000 }, hit, book)
     expect(r.match_status).toBe("amount_diff")
-    expect(r.match_note).toContain("sổ 1100000, MISA 2000000")
+    expect(r.match_note).toContain("sổ 1.100.000đ, MISA 2.000.000đ")
   })
 
   it("dung sai 1đ", () => {

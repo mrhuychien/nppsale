@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -494,7 +495,7 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
             </div>
             <div className="space-y-2">
               <Label>Hạn mức công nợ (VND)</Label>
-              <Input type="number" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} />
+              <MoneyInput value={form.credit_limit} onChange={(v) => setForm({ ...form, credit_limit: String(v) })} />
             </div>
             <div className="space-y-2">
               <Label>Điều khoản thanh toán</Label>

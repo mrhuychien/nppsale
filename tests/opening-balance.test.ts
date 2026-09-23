@@ -300,7 +300,7 @@ describe("Lập kế hoạch — tạo / sửa / xoá", () => {
     expect(down.rows[0].action).toBe("update")
     expect(down.rows[0].warning, "ghi mà không nói gì là tệ nhất").toBeTruthy()
     // Phải nêu SỐ DƯ SẼ SINH RA, không chỉ nói "bất thường".
-    expect(down.rows[0].warning).toContain("800000")
+    expect(down.rows[0].warning).toContain("800.000đ")
     expect(down.rows[0].message, "cảnh báo không được giả làm lỗi").toBeUndefined()
 
     // Bằng đúng số đã thu thì không có gì bất thường.

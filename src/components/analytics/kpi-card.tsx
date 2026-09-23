@@ -9,24 +9,29 @@ interface KpiCardProps {
   /** Percent change vs previous period. Positive = green, negative = red. */
   changePct?: number | null
   changeLabel?: string
+  /**
+   * `compactCurrency` được giữ lại cho tương thích nơi gọi, nhưng giờ hiện
+   * ĐỦ SỐ như `currency` (9.000.000đ). Chủ nhà chốt: "Các hiển thị số tiền
+   * thêm dấu . tách khối 3 số VD 9.000.000" — bản rút gọn "9.00 triệu" /
+   * "500K" vừa sai dấu thập phân kiểu Việt vừa không đối chiếu được.
+   */
   format?: "currency" | "number" | "compactCurrency" | "raw"
 }
 
-function formatCompactCurrency(n: number): string {
-  const abs = Math.abs(n)
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)} tỷ`
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)} triệu`
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`
-  return new Intl.NumberFormat("vi-VN").format(Math.round(n))
+/** Cỡ chữ theo độ dài: số tiền đủ chữ số (1.234.567.890đ) không được tràn
+ *  thẻ ở lưới 4 cột. */
+function valueSizeClass(text: string): string {
+  if (text.length <= 11) return "text-3xl"
+  if (text.length <= 14) return "text-2xl"
+  return "text-xl"
 }
 
 function format(value: number | string, kind?: KpiCardProps["format"]): string {
   if (typeof value === "string") return value
   switch (kind) {
     case "currency":
-      return formatCurrency(value)
     case "compactCurrency":
-      return formatCompactCurrency(value)
+      return formatCurrency(value)
     case "raw":
       return String(value)
     case "number":
@@ -45,17 +50,24 @@ export function KpiCard({
   format: fmt = "compactCurrency",
 }: KpiCardProps) {
   const change = typeof changePct === "number" ? changePct : null
+  const shown = format(value, fmt)
   return (
     <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-4 shadow-card">
       <p className="text-label-md uppercase text-on-surface-variant">{label}</p>
-      <p className="mt-1 text-3xl font-bold tracking-tight text-on-surface tabular-data">
-        {format(value, fmt)}
+      <p
+        title={shown}
+        className={cn(
+          "mt-1 font-bold tracking-tight text-on-surface tabular-data tabular-nums [overflow-wrap:anywhere]",
+          valueSizeClass(shown)
+        )}
+      >
+        {shown}
       </p>
       <div className="mt-3 flex items-baseline justify-between gap-2 text-xs">
         <div>
           <p className="text-on-surface-variant">{avgLabel}</p>
           <p className="font-semibold text-on-surface tabular-data">
-            {avgValue !== undefined ? format(avgValue, fmt === "compactCurrency" ? "number" : fmt) : "—"}
+            {avgValue !== undefined ? format(avgValue, fmt) : "—"}
           </p>
         </div>
         <div className="text-right">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, formatInt } from "@/lib/utils"
 
 /**
  * Ô sửa ĐƠN GIÁ của một dòng hàng trả, nằm THẲNG trên dòng.
@@ -33,7 +33,8 @@ export function ReturnPriceInput({
 
   return (
     <input
-      value={text}
+      // Hiển thị nhóm nghìn (9.000.000); state vẫn chỉ là chữ số.
+      value={text === "" ? "" : formatInt(parseInt(text, 10))}
       disabled={disabled}
       inputMode="numeric"
       aria-label="Đơn giá trả"

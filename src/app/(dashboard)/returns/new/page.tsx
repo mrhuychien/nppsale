@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -751,19 +752,16 @@ export default function NewReturnPage() {
                           <Label className="text-[10px] uppercase text-muted-foreground">
                             Đơn giá
                           </Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={l.price}
-                            onChange={(e) =>
+                          <MoneyInput
+                            value={Math.round(l.price)}
+                            onChange={(n) =>
                               setLines((prev) =>
                                 patchReturnLine(prev, i, {
-                                  price: Math.max(0, parseFloat(e.target.value) || 0),
+                                  price: Math.max(0, n),
                                 })
                               )
                             }
-                            className={cn("h-9 tabular-nums", bad && "border-destructive")}
+                            inputClassName={cn("h-9 lg:h-9", bad && "border-destructive")}
                           />
                         </div>
                         <div className="w-36 space-y-1">

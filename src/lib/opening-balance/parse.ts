@@ -7,6 +7,8 @@
  * một dòng hiểu sai âm thầm sẽ sống trong sổ nhiều năm.
  */
 
+import { formatCurrency } from "@/lib/utils"
+
 /** Kết quả đọc một ô số tiền. */
 export type AmountResult =
   | { ok: true; value: number }
@@ -346,7 +348,7 @@ export function buildPlan(
         continue
       }
       if (current.paid > 0) {
-        out.push(err(`đã thu ${current.paid} trên khoản đầu kỳ này — không xoá được`, label))
+        out.push(err(`đã thu ${formatCurrency(current.paid)} trên khoản đầu kỳ này — không xoá được`, label))
         continue
       }
       out.push({
@@ -385,9 +387,9 @@ export function buildPlan(
      */
     const overpayWarning =
       amt.value < current.paid
-        ? `số mới ${amt.value} nhỏ hơn số đã thu ${current.paid} — sẽ thành số dư có ${
+        ? `số mới ${formatCurrency(amt.value)} nhỏ hơn số đã thu ${formatCurrency(current.paid)} — sẽ thành số dư có ${formatCurrency(
             current.paid - amt.value
-          } của khách`
+          )} của khách`
         : undefined
     const same =
       current.amount === amt.value &&

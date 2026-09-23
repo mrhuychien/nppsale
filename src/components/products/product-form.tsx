@@ -7,6 +7,7 @@ import { DEFAULT_VAT_RATE, VAT_RATES } from "@/lib/constants"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -740,24 +741,26 @@ function InfoTab({
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="cost">Giá vốn</Label>
-            <Input
+            {/* Làm tròn khi hiển thị: MoneyInput bỏ mọi ký tự không phải số, nên
+                một giá vốn lẻ (vd 12.345,67) mà hiện nguyên sẽ bị ghép thành
+                1234567 ngay khi sửa. Form state vẫn giữ nguyên giá trị gốc
+                cho tới khi người dùng gõ. */}
+            <MoneyInput
               id="cost"
-              type="number"
-              min={0}
-              step="any"
-              value={String(form.cost_price)}
-              onChange={(e) => setField("cost_price", e.target.value)}
+              value={Math.round(parseFloat(form.cost_price) || 0)}
+              onChange={(v) => setField("cost_price", String(v))}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sell">Giá bán</Label>
-            <Input
+            {/* Làm tròn khi hiển thị: MoneyInput bỏ mọi ký tự không phải số, nên
+                một giá vốn lẻ (vd 12.345,67) mà hiện nguyên sẽ bị ghép thành
+                1234567 ngay khi sửa. Form state vẫn giữ nguyên giá trị gốc
+                cho tới khi người dùng gõ. */}
+            <MoneyInput
               id="sell"
-              type="number"
-              min={0}
-              step="any"
-              value={String(form.sell_price)}
-              onChange={(e) => setField("sell_price", e.target.value)}
+              value={Math.round(parseFloat(form.sell_price) || 0)}
+              onChange={(v) => setField("sell_price", String(v))}
             />
           </div>
           <div className="space-y-1.5">

@@ -45,6 +45,9 @@ interface BonusTier {
   bonus: number
 }
 
+/** Chỉ số KPI có ngưỡng tính bằng TIỀN — ô ngưỡng hiện nhóm nghìn. */
+const MONEY_KPI_KEYS = new Set<string>(["aov"])
+
 const DEFAULT_KPI_METRICS: KpiMetricConfig[] = [
   {
     key: "new_customers",
@@ -655,17 +658,33 @@ export default function BonusConfigPage() {
                       <Label className="text-[10px]">
                         {m.higher_is_better ? "≥" : "≤"} ngưỡng
                       </Label>
-                      <Input
-                        type="number"
-                        value={t.min}
-                        onChange={(e) => {
-                          const next = [...kpiMetrics]
-                          const tiers = [...m.tiers]
-                          tiers[ti] = { ...t, min: Number(e.target.value) || 0 }
-                          next[mi] = { ...m, tiers }
-                          setKpiMetrics(next)
-                        }}
-                      />
+                      {/* Ngưỡng là TIỀN (AOV) thì nhóm nghìn 800.000; các chỉ số
+                          khác là số đếm / phần trăm nên giữ ô số thường. */}
+                      {MONEY_KPI_KEYS.has(m.key) ? (
+                        <MoneyInput
+                          value={t.min}
+                          showSuffix={false}
+                          onChange={(v) => {
+                            const next = [...kpiMetrics]
+                            const tiers = [...m.tiers]
+                            tiers[ti] = { ...t, min: v }
+                            next[mi] = { ...m, tiers }
+                            setKpiMetrics(next)
+                          }}
+                        />
+                      ) : (
+                        <Input
+                          type="number"
+                          value={t.min}
+                          onChange={(e) => {
+                            const next = [...kpiMetrics]
+                            const tiers = [...m.tiers]
+                            tiers[ti] = { ...t, min: Number(e.target.value) || 0 }
+                            next[mi] = { ...m, tiers }
+                            setKpiMetrics(next)
+                          }}
+                        />
+                      )}
                     </div>
                     <div className="col-span-5">
                       <Label className="text-[10px]">Thưởng</Label>

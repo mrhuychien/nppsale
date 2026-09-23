@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -165,23 +166,21 @@ export default function NewInvoicePage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label>Tạm tính</Label>
-                <Input
-                  type="number"
-                  value={subtotal}
-                  onChange={(e) => recalcTotal(parseFloat(e.target.value) || 0, vat)}
+                <MoneyInput
+                  value={Number(subtotal)}
+                  onChange={(n) => recalcTotal(n, vat)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>VAT</Label>
-                <Input
-                  type="number"
-                  value={vat}
-                  onChange={(e) => recalcTotal(subtotal, parseFloat(e.target.value) || 0)}
+                <MoneyInput
+                  value={Number(vat)}
+                  onChange={(n) => recalcTotal(subtotal, n)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Tổng cộng</Label>
-                <Input type="number" value={total} disabled className="font-bold" />
+                <MoneyInput value={Number(total)} onChange={() => {}} disabled inputClassName="font-bold" />
               </div>
             </div>
             <div className="text-right text-lg font-bold">

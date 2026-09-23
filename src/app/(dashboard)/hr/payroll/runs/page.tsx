@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
@@ -40,6 +41,28 @@ import {
   type PayrollRunItem,
 } from "@/lib/payroll/run"
 import { errorMessage } from "@/lib/errors"
+
+/**
+ * Ô "Điều chỉnh" (manual_adjustment) nhận cả số ÂM — điều chỉnh có thể là
+ * khoản trừ (bảng phiếu lương tô đỏ khi < 0). `MoneyInput` bỏ dấu "-" nên
+ * không dùng được ở đây; hai hàm dưới giữ dấu "-" đứng đầu và nhóm hàng
+ * nghìn kiểu vi-VN ("-1.500.000"). State vẫn là chuỗi thô "-1500000" để
+ * `Number(...)` ở saveAdjust / dirty-check đọc như cũ.
+ */
+function formatSignedVndInput(raw: string): string {
+  if (raw === "" || raw === "-") return raw
+  const m = /^(-?)(\d+)$/.exec(raw)
+  if (m) return m[1] + new Intl.NumberFormat("vi-VN").format(Number(m[2]))
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return ""
+  return new Intl.NumberFormat("vi-VN").format(Math.round(n))
+}
+
+function parseSignedVndInput(text: string): string {
+  const neg = text.trim().startsWith("-")
+  const digits = text.replace(/\D/g, "").replace(/^0+(?=\d)/, "")
+  return (neg ? "-" : "") + digits
+}
 
 interface UserRow {
   id: string
@@ -621,26 +644,35 @@ export default function PayrollRunsPage() {
                                 {formatCurrency(it.activity_bonus)}
                               </td>
                               <td className="px-2 py-2 text-right">
-                                <Input
-                                  type="number"
-                                  value={siVal}
-                                  onChange={(e) =>
-                                    setPendingSi((p) => ({ ...p, [it.id]: e.target.value }))
+                                {/* BHXH mặc định 10,5% lương CB có thể lẻ — làm tròn để
+                                    hiển thị; gõ vào thì lưu số nguyên. */}
+                                <MoneyInput
+                                  value={siVal === "" ? "" : Math.round(Number(siVal) || 0)}
+                                  onChange={(n) =>
+                                    setPendingSi((p) => ({ ...p, [it.id]: String(n) }))
                                   }
-                                  className="h-8 w-28 text-right tabular-nums text-destructive"
+                                  showSuffix={false}
+                                  className="ml-auto w-28"
+                                  inputClassName="h-8 lg:h-8 text-right text-destructive"
                                   disabled={isLocked}
                                   title="BHXH/BHYT/BHTN — sửa tay nếu cần (mặc định 10,5% lương CB)"
                                 />
                               </td>
                               <td className="px-2 py-2 text-right">
                                 <Input
-                                  type="number"
-                                  value={adjVal}
+                                  type="text"
+                                  autoComplete="off"
+                                  value={formatSignedVndInput(adjVal)}
                                   onChange={(e) =>
-                                    setPendingAdjust((p) => ({ ...p, [it.id]: e.target.value }))
+                                    setPendingAdjust((p) => ({
+                                      ...p,
+                                      [it.id]: parseSignedVndInput(e.target.value),
+                                    }))
                                   }
                                   className="h-8 w-28 text-right tabular-nums"
                                   disabled={isLocked}
+                                  placeholder="VD: -500.000"
+                                  title="Số dương là cộng thêm, số âm (gõ dấu -) là khấu trừ"
                                 />
                               </td>
                               <td className="px-2 py-2">

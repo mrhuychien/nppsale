@@ -10,6 +10,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -560,13 +561,12 @@ export default function CollectPaymentPage() {
                         {formatCurrency(r.outstanding)}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          max={r.outstanding}
-                          step="any"
-                          value={r.collect}
-                          onChange={(e) => {
+                        <MoneyInput
+                          showSuffix={false}
+                          // Làm tròn khi HIỂN THỊ: chuỗi "12345.5" mà đưa thẳng vào
+                          // MoneyInput sẽ bị đọc thành 123.455 (bỏ dấu chấm).
+                          value={r.collect === "" ? "" : Math.round(parseFloat(r.collect) || 0)}
+                          onChange={(n) => {
                             // `max` của HTML chỉ ảnh hưởng nút tăng/giảm và
                             // validation, KHÔNG chặn người dùng gõ. Trước đây
                             // gõ 99.999.999.999 thì các ô tổng bên dưới kẹp
@@ -574,14 +574,13 @@ export default function CollectPaymentPage() {
                             // cảnh báo gì — kế toán không biết số nào được
                             // dùng. Kẹp ngay tại đây để cái nhìn thấy và cái
                             // được ghi luôn là một.
-                            const raw = e.target.value
-                            if (raw === "") return setRowField(idx, "collect", "")
-                            const n = parseFloat(raw)
-                            if (Number.isNaN(n)) return
+                            // MoneyInput chỉ phát số nguyên ≥ 0 (xoá trắng → 0).
                             const clamped = Math.max(0, Math.min(n, r.outstanding))
                             setRowField(idx, "collect", String(clamped))
                           }}
-                          className="h-9 w-32 rounded-md border border-border/60 bg-background px-2 text-right tabular-nums text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
+                          aria-label={`Số tiền thu ${r.customerName}`}
+                          className="ml-auto w-32"
+                          inputClassName="h-9 lg:h-9 border-border/60 px-2 text-right focus-visible:ring-primary/10"
                         />
                       </td>
                       <td className="px-3 py-3 text-center">

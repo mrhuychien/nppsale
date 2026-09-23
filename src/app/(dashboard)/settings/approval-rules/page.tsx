@@ -8,7 +8,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
@@ -80,11 +80,6 @@ export default function ApprovalRulesPage() {
 
   const update = <K extends keyof ApprovalRules>(key: K, value: ApprovalRules[K]) => {
     setRules((prev) => (prev ? { ...prev, [key]: value } : prev))
-  }
-
-  const parseMoney = (value: string): number => {
-    const n = parseFloat(value.replace(/[^\d]/g, ""))
-    return isNaN(n) ? 0 : n
   }
 
   const handleSave = async () => {
@@ -199,10 +194,9 @@ export default function ApprovalRulesPage() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Không cảnh báo khi đơn &lt;</Label>
-            <Input
-              type="number"
+            <MoneyInput
               value={rules.auto_approve_max || ""}
-              onChange={(e) => update("auto_approve_max", parseMoney(e.target.value))}
+              onChange={(n) => update("auto_approve_max", n)}
               disabled={!canEdit}
             />
             <p className="text-xs text-muted-foreground">
@@ -211,10 +205,9 @@ export default function ApprovalRulesPage() {
           </div>
           <div className="space-y-2">
             <Label>Ngưỡng cảnh báo cao</Label>
-            <Input
-              type="number"
+            <MoneyInput
               value={rules.manager_approve_max || ""}
-              onChange={(e) => update("manager_approve_max", parseMoney(e.target.value))}
+              onChange={(n) => update("manager_approve_max", n)}
               disabled={!canEdit}
             />
             <p className="text-xs text-muted-foreground">
@@ -232,10 +225,9 @@ export default function ApprovalRulesPage() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Tổng công nợ KH vượt</Label>
-            <Input
-              type="number"
+            <MoneyInput
               value={rules.customer_debt_max || ""}
-              onChange={(e) => update("customer_debt_max", parseMoney(e.target.value))}
+              onChange={(n) => update("customer_debt_max", n)}
               placeholder="0 = không áp dụng"
               disabled={!canEdit}
             />
@@ -247,10 +239,9 @@ export default function ApprovalRulesPage() {
           </div>
           <div className="space-y-2">
             <Label>Công nợ quá hạn vượt</Label>
-            <Input
-              type="number"
+            <MoneyInput
               value={rules.customer_overdue_max || ""}
-              onChange={(e) => update("customer_overdue_max", parseMoney(e.target.value))}
+              onChange={(n) => update("customer_overdue_max", n)}
               placeholder="0 = không áp dụng"
               disabled={!canEdit}
             />
@@ -284,10 +275,9 @@ export default function ApprovalRulesPage() {
         <CardContent>
           <div className="space-y-2">
             <Label>Tổng công nợ KH do NV phụ trách vượt</Label>
-            <Input
-              type="number"
+            <MoneyInput
               value={rules.rep_portfolio_debt_max || ""}
-              onChange={(e) => update("rep_portfolio_debt_max", parseMoney(e.target.value))}
+              onChange={(n) => update("rep_portfolio_debt_max", n)}
               placeholder="0 = không áp dụng"
               disabled={!canEdit}
             />

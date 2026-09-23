@@ -37,6 +37,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -512,11 +513,11 @@ export default function SalesInvoicesPage() {
         <>
           <div className="space-y-2">
             <label className="text-xs font-semibold text-muted-foreground">Tổng tiền từ</label>
-            <Input type="number" placeholder="0" value={amountMin} onChange={(e) => setAmountMin(e.target.value)} />
+            <MoneyInput placeholder="0" value={amountMin} onChange={(n) => setAmountMin(n ? String(n) : "")} />
           </div>
           <div className="space-y-2">
             <label className="text-xs font-semibold text-muted-foreground">Tổng tiền đến</label>
-            <Input type="number" placeholder="VD: 50000000" value={amountMax} onChange={(e) => setAmountMax(e.target.value)} />
+            <MoneyInput placeholder="VD: 50.000.000" value={amountMax} onChange={(n) => setAmountMax(n ? String(n) : "")} />
           </div>
         </>
       )}

@@ -1,5 +1,6 @@
 import { normalizeInvNo, normalizeSeries } from "./normalize"
 import { AMOUNT_TOLERANCE } from "./status"
+import { formatCurrency } from "@/lib/utils"
 
 /**
  * Khớp snapshot hoá đơn MISA với hoá đơn trong sổ — BỐN TẦNG.
@@ -279,7 +280,7 @@ export function decideStatus(
     if (Math.abs(Math.abs(s.total_amount) - Math.abs(bookRow.total)) > AMOUNT_TOLERANCE) {
       return {
         match_status: "amount_diff",
-        match_note: `Lệch tiền — sổ ${bookRow.total}, MISA ${s.total_amount}.`,
+        match_note: `Lệch tiền — sổ ${formatCurrency(bookRow.total)}, MISA ${formatCurrency(s.total_amount)}.`,
       }
     }
   }

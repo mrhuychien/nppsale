@@ -10,6 +10,7 @@ import { hasPermission } from "@/lib/permissions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
@@ -356,23 +357,21 @@ export default function InvoiceDetailPage() {
                 <div className="grid gap-4 sm:grid-cols-3 border-t border-border/40 pt-4">
                   <div className="space-y-1">
                     <Label>Tạm tính</Label>
-                    <Input
-                      type="number"
-                      value={editForm.subtotal}
-                      onChange={(e) => recalcTotal(parseFloat(e.target.value) || 0, editForm.vat)}
+                    <MoneyInput
+                      value={Number(editForm.subtotal)}
+                      onChange={(n) => recalcTotal(n, editForm.vat)}
                     />
                   </div>
                   <div className="space-y-1">
                     <Label>VAT</Label>
-                    <Input
-                      type="number"
-                      value={editForm.vat}
-                      onChange={(e) => recalcTotal(editForm.subtotal, parseFloat(e.target.value) || 0)}
+                    <MoneyInput
+                      value={Number(editForm.vat)}
+                      onChange={(n) => recalcTotal(editForm.subtotal, n)}
                     />
                   </div>
                   <div className="space-y-1">
                     <Label>Tổng cộng</Label>
-                    <Input type="number" value={editForm.total} disabled className="font-bold" />
+                    <MoneyInput value={Number(editForm.total)} onChange={() => {}} disabled inputClassName="font-bold" />
                   </div>
                 </div>
                 <Button onClick={handleSaveEdit} disabled={actionLoading} className="w-full">

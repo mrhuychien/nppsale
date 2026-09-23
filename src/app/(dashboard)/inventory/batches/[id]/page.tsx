@@ -23,6 +23,59 @@ import type { Batch, Product, StockEntryLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
+/**
+ * Ô giá vốn trên ĐVT cơ bản — nhóm hàng nghìn bằng dấu chấm, CHO PHÉP phần
+ * lẻ sau dấu phẩy (VD 10.416,6667).
+ *
+ * ⚠ KHÔNG DÙNG MoneyInput Ở ĐÂY. `batches.unit_cost` là `numeric` không giới
+ * hạn và thường có phần lẻ: phiếu nhập ghi giá thùng chia hệ số quy đổi
+ * (250.000 / 24 = 10.416,67đ một chai). MoneyInput chỉ phát số nguyên và bỏ
+ * mọi ký tự không phải số — dấu phẩy thập phân bị xoá, 10.416,67 thành
+ * 1.041.667, giá vốn gấp trăm lần.
+ */
+const VI_DECIMAL = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 6 })
+
+function UnitCostInput({
+  value,
+  onChange,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: number
+  onChange: (n: number) => void
+}) {
+  // Chuỗi đang gõ dở (VD "10.416," còn chờ phần lẻ). null = không gõ, hiện số đã định dạng.
+  const [draft, setDraft] = useState<string | null>(null)
+  const display = draft ?? (Number.isFinite(value) ? VI_DECIMAL.format(value) : "")
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    const commaAt = raw.indexOf(",")
+    const intDigits = (commaAt === -1 ? raw : raw.slice(0, commaAt)).replace(/\D/g, "").replace(/^0+(?=\d)/, "")
+    const fracDigits = commaAt === -1 ? "" : raw.slice(commaAt + 1).replace(/\D/g, "").slice(0, 6)
+    const grouped = intDigits === "" ? "" : VI_DECIMAL.format(Number(intDigits))
+    const text = commaAt === -1 ? grouped : `${grouped || "0"},${fracDigits}`
+    setDraft(text)
+    const n = Number(`${intDigits || "0"}.${fracDigits || "0"}`)
+    onChange(Number.isFinite(n) ? n : 0)
+  }
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      {...props}
+      value={display}
+      onChange={handleChange}
+      onBlur={(e) => {
+        setDraft(null)
+        props.onBlur?.(e)
+      }}
+      className={`text-right tabular-nums ${props.className ?? ""}`}
+    />
+  )
+}
+
 const EXPIRY_LABEL: Record<"ok" | "warning" | "danger", string> = {
   ok: "Còn hạn dài",
   warning: "Sắp hết hạn",
@@ -259,11 +312,9 @@ export default function BatchDetailPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Giá vốn (trên ĐVT cơ bản)</Label>
-                      <Input
-                        type="number"
-                        min={0}
+                      <UnitCostInput
                         value={editForm.unit_cost}
-                        onChange={(e) => setEditForm({ ...editForm, unit_cost: Number(e.target.value) })}
+                        onChange={(n) => setEditForm({ ...editForm, unit_cost: n })}
                         placeholder="0"
                         disabled={Number(batch.qty_on_hand) !== 0}
                         title={Number(batch.qty_on_hand) !== 0 ? "Lô đang có tồn — giá vốn đã đi vào các phiếu xuất trước đó" : undefined}

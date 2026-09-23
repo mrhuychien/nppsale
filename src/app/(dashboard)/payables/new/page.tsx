@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -184,11 +185,9 @@ export default function NewPayablePage() {
 
               <div className="space-y-2">
                 <Label>Số tiền *</Label>
-                <Input
-                  type="number"
-                  min={1}
+                <MoneyInput
                   value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  onChange={(n) => setForm({ ...form, amount: n > 0 ? String(n) : "" })}
                   required
                   placeholder="Nhập số tiền"
                 />

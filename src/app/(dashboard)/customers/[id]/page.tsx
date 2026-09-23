@@ -29,7 +29,7 @@ import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { fullCustomerAddress } from "@/lib/customers/address"
 import {
-  customerInitial, shortMoney, daysSinceVN, todayVN,
+  customerInitial, daysSinceVN, todayVN,
 } from "@/lib/customers/list-view"
 import {
   debtBuckets, frequentProducts, revenueCompareText, customerTodos, mergeActivity,
@@ -694,16 +694,16 @@ export default function CustomerDetailPage() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard
           label="Doanh thu tháng này"
-          value={shortMoney(monthRevenue)}
+          value={formatCurrency(monthRevenue)}
           sub={revenueCompareText(monthRevenue, lastMonthRevenue)}
         />
         <KpiCard
           label="Công nợ hiện tại"
-          value={shortMoney(currentDebt)}
+          value={formatCurrency(currentDebt)}
           tone={overdueAmount > 0 ? "danger" : "default"}
           sub={
             limit > 0
-              ? `Hạn mức ${shortMoney(limit)} · dùng ${usedPct}%`
+              ? `Hạn mức ${formatCurrency(limit)} · dùng ${usedPct}%`
               : "Chưa đặt hạn mức công nợ"
           }
           bar={limit > 0 ? usedPct : null}
@@ -714,7 +714,7 @@ export default function CustomerDetailPage() {
           unit="đơn"
           sub={
             totalOrders > 0
-              ? `TB ${shortMoney(allOrders.reduce((s, o) => s + (o.total || 0), 0) / totalOrders)}/đơn`
+              ? `TB ${formatCurrency(allOrders.reduce((s, o) => s + (o.total || 0), 0) / totalOrders)}/đơn`
               : "Chưa có đơn nào"
           }
         />
@@ -1401,7 +1401,7 @@ function KpiCard({
     <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card lg:p-4">
       <p className="truncate text-xs font-bold text-on-surface-variant">{label}</p>
       <p
-        className={`mt-1 text-xl font-black tabular-data lg:text-2xl ${
+        className={`mt-1 text-lg font-black tabular-data tabular-nums [overflow-wrap:anywhere] sm:text-xl lg:text-2xl ${
           tone === "danger" ? "text-error" : "text-on-surface"
         }`}
       >

@@ -27,8 +27,8 @@ interface MoneyInputProps
 }
 
 /**
- * Input chuyên cho tiền VND. Tự động chèn dấu phẩy nhóm hàng nghìn khi
- * user gõ ("1500000" → "1,500,000") và emit số nguyên thuần qua onChange.
+ * Input chuyên cho tiền VND. Tự động chèn dấu chấm nhóm hàng nghìn (vi-VN) khi
+ * user gõ ("1500000" → "1.500.000") và emit số nguyên thuần qua onChange.
  *
  * Nguyên tắc:
  *  - Mọi ký tự không phải số đều bị strip ngay khi parse.
@@ -52,7 +52,18 @@ export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
 
     const numericValue = (() => {
       if (value === null || value === undefined || value === "") return ""
-      const n = typeof value === "number" ? value : Number(String(value).replace(/[^\d-]/g, ""))
+      /* ⚠ CHUỖI SỐ THẬP PHÂN CHUẨN ("1234.5") LÀ MỘT CON SỐ, KHÔNG PHẢI CHỮ
+         SỐ ĐỂ GHÉP. PostgREST trả cột `numeric` về dạng số JSON; nơi gọi
+         hay giữ trong state bằng `String(r.x)`. Bỏ ký tự không phải số là
+         "1234.5" thành 12.345 — gấp mười. Chỉ chuỗi đã định dạng
+         ("1.500.000") mới bỏ dấu. */
+      const s = String(value).trim()
+      const n =
+        typeof value === "number"
+          ? Math.round(value) // VND không có phần lẻ — xem trên.
+          : /^-?\d+(\.\d+)?$/.test(s)
+            ? Math.round(Number(s))
+            : Number(s.replace(/[^\d-]/g, ""))
       if (!Number.isFinite(n)) return ""
       return n
     })()

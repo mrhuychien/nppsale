@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -181,14 +182,11 @@ export default function NewCommissionPolicyPage() {
             {type === "fixed" && (
               <div className="space-y-2">
                 <Label>Số tiền cố định (VND) *</Label>
-                <Input
-                  type="number"
-                  step="1"
-                  min="0"
+                <MoneyInput
                   value={fixedAmount}
-                  onChange={(e) => setFixedAmount(e.target.value)}
+                  onChange={(n) => setFixedAmount(n ? String(n) : "")}
                   required
-                  placeholder="VD: 100000"
+                  placeholder="VD: 100.000"
                 />
               </div>
             )}
@@ -200,26 +198,20 @@ export default function NewCommissionPolicyPage() {
                   <div key={index} className="flex items-end gap-2">
                     <div className="space-y-1 flex-1">
                       {index === 0 && <Label className="text-xs text-muted-foreground">Giá trị min</Label>}
-                      <Input
-                        type="number"
-                        step="1"
-                        min="0"
+                      <MoneyInput
                         value={tier.min}
-                        onChange={(e) => updateTier(index, "min", e.target.value)}
+                        onChange={(n) => updateTier(index, "min", String(n))}
                         required
                         placeholder="0"
                       />
                     </div>
                     <div className="space-y-1 flex-1">
                       {index === 0 && <Label className="text-xs text-muted-foreground">Giá trị max</Label>}
-                      <Input
-                        type="number"
-                        step="1"
-                        min="0"
+                      <MoneyInput
                         value={tier.max}
-                        onChange={(e) => updateTier(index, "max", e.target.value)}
+                        onChange={(n) => updateTier(index, "max", n ? String(n) : "")}
                         required
-                        placeholder="10000000"
+                        placeholder="10.000.000"
                       />
                     </div>
                     <div className="space-y-1 flex-1">

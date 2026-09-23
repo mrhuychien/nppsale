@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/lib/utils"
@@ -214,10 +214,9 @@ export default function PayrollDetailPage() {
           <CardContent className="space-y-4">
             <div>
               <Label>Khấu trừ</Label>
-              <Input
-                type="number"
-                value={deductions}
-                onChange={(e) => setDeductions(Number(e.target.value))}
+              <MoneyInput
+                value={Number(deductions)}
+                onChange={setDeductions}
               />
             </div>
             <div>

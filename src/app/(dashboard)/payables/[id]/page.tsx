@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -431,12 +432,9 @@ export default function PayableDetailPage() {
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Số tiền trả *</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={balance}
+                      <MoneyInput
                         value={paymentForm.amount}
-                        onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                        onChange={(n) => setPaymentForm({ ...paymentForm, amount: n > 0 ? String(n) : "" })}
                         required
                         placeholder="Nhập số tiền"
                       />

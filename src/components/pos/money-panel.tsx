@@ -12,6 +12,7 @@
 
 import type { ReactNode } from "react"
 import { formatCurrency } from "@/lib/utils"
+import { MoneyInput } from "@/components/ui/money-input"
 import { unitLabel, type DiscountInput } from "@/lib/pos/discount"
 import { POS_PAY_LABEL, type PosPayMethod } from "@/lib/pos/types"
 
@@ -73,16 +74,29 @@ export function DocDiscountRow({
       <label htmlFor={id} className="flex-grow text-[13px] text-[var(--pos-muted)]">
         {label}
       </label>
-      <input
-        id={id}
-        className="n h-[34px] w-[78px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2 text-right text-[14px] font-bold text-[var(--pos-ink)]"
-        type="text"
-        inputMode="decimal"
-        value={discount.value === 0 ? "0" : String(discount.value)}
-        onChange={(e) =>
-          onChange({ value: Number(e.target.value.replace(/[^\d.]/g, "")) || 0, unit: discount.unit })
-        }
-      />
+      {/* Giảm theo đồng: nhóm nghìn (220.000) bằng MoneyInput. Giảm theo %:
+          cần dấu thập phân mà MoneyInput lọc mất, nên giữ ô chữ thường. */}
+      {discount.unit === "vnd" ? (
+        <MoneyInput
+          id={id}
+          showSuffix={false}
+          className="w-[78px] shrink-0"
+          inputClassName="n h-[34px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2 py-0 text-right text-[14px] font-bold text-[var(--pos-ink)] lg:h-[34px] focus-visible:ring-1 focus-visible:ring-offset-0"
+          value={discount.value}
+          onChange={(v) => onChange({ value: v, unit: discount.unit })}
+        />
+      ) : (
+        <input
+          id={id}
+          className="n h-[34px] w-[78px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2 text-right text-[14px] font-bold text-[var(--pos-ink)]"
+          type="text"
+          inputMode="decimal"
+          value={discount.value === 0 ? "0" : String(discount.value)}
+          onChange={(e) =>
+            onChange({ value: Number(e.target.value.replace(/[^\d.]/g, "")) || 0, unit: discount.unit })
+          }
+        />
+      )}
       <div className="flex shrink-0 gap-0.5 rounded-[7px] bg-[var(--pos-line-soft)] p-0.5">
         {(["vnd", "pct"] as const).map((u) => {
           const dang = discount.unit === u

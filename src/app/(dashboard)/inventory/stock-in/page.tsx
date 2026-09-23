@@ -8,6 +8,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -69,6 +70,20 @@ interface LineItem {
   expires_at: string
   location: string
   available_units: string[]
+}
+
+/**
+ * Giá trị đưa vào MoneyInput từ chuỗi đang giữ trong state.
+ *
+ * ⚠ ĐỪNG ĐƯA THẲNG CHUỖI CÓ PHẦN LẺ. Giá vốn gợi sẵn (`seedUnitCost`) có
+ * thể là "29629.6"; MoneyInput bỏ mọi ký tự không phải số nên sẽ đọc
+ * thành 296296 — gấp mười. Làm tròn tới đồng để HIỂN THỊ; state vẫn giữ
+ * số gốc cho tới khi người dùng gõ lại.
+ */
+function moneyDisplay(raw: string): number | "" {
+  if (raw === "") return ""
+  const n = parseFloat(raw)
+  return Number.isFinite(n) ? Math.round(n) : ""
 }
 
 function newLine(): LineItem {
@@ -798,28 +813,26 @@ export default function StockInPage() {
                     </div>
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Đơn giá</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={line.unit_price}
-                        onChange={(e) => updateLine(line.id, { unit_price: e.target.value })}
+                      <MoneyInput
+                        value={moneyDisplay(line.unit_price)}
+                        onChange={(n) => updateLine(line.id, { unit_price: n > 0 ? String(n) : "" })}
                         placeholder="0"
-                        className="h-9 text-right tabular-nums"
+                        inputClassName="h-9 lg:h-9"
                         disabled={!hasProduct}
                       />
                     </div>
                     <div>
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Giá vốn</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={line.unit_cost}
-                        onChange={(e) => updateLine(line.id, { unit_cost: e.target.value })}
+                      <MoneyInput
+                        value={moneyDisplay(line.unit_cost)}
+                        // 0 và trống cùng nghĩa "chưa biết" (resolveUnitCost) —
+                        // quy 0 về "" để việc gợi lại giá vốn khi đổi ĐVT vẫn chạy.
+                        onChange={(n) => updateLine(line.id, { unit_cost: n > 0 ? String(n) : "" })}
                         // Placeholder cũ là giá BÁN, đọc như thể bỏ trống
                         // thì hệ thống lấy giá bán làm giá vốn — mà đúng
                         // là nó đã làm thế thật.
                         placeholder="Chưa biết"
-                        className={`h-9 text-right tabular-nums${
+                        inputClassName={`h-9 lg:h-9${
                           hasProduct && costMissing ? " border-amber-300 bg-amber-50/50" : ""
                         }`}
                         disabled={!hasProduct}

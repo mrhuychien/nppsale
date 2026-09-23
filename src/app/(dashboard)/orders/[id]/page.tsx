@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -28,7 +29,7 @@ import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
@@ -152,6 +153,29 @@ const STATUS_FLOW: Record<OrderStatus, NextStatus[]> = {
   completed: [],
   closed: [],
   cancelled: [],
+}
+
+/**
+ * Nhật ký sửa dòng (trigger `log_sales_order_line_change`, mig 114) ghi
+ * `changes` theo tên cột: unit_price / line_discount / line_total là TIỀN,
+ * quantity là SỐ LƯỢNG, còn product_id / unit_name là chữ. In số tiền trần
+ * "1500000" trái yêu cầu tách nhóm 3 số — định dạng theo tên khoá.
+ */
+const AUDIT_MONEY_KEYS = new Set(["unit_price", "line_discount", "line_total", "total", "subtotal", "discount", "vat"])
+function formatAuditValue(key: string, v: unknown): string {
+  const n =
+    typeof v === "number"
+      ? v
+      : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))
+        ? Number(v)
+        : null
+  if (n === null) return String(v)
+  if (AUDIT_MONEY_KEYS.has(key)) return formatCurrency(n)
+  if (key === "quantity") {
+    // Số lượng có thể lẻ (kg) — formatInt làm tròn nên chỉ dùng khi nguyên.
+    return Number.isInteger(n) ? formatInt(n) : n.toLocaleString("vi-VN", { maximumFractionDigits: 3 })
+  }
+  return String(v)
 }
 
 export default function OrderDetailPage() {
@@ -1763,16 +1787,14 @@ export default function OrderDetailPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {inEdit ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={livePrice}
-                              onChange={(e) =>
-                                setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
-                              }
-                              className="ml-auto h-8 w-32 text-right tabular-nums"
+                            <MoneyInput
+                              value={Number(livePrice)}
+                              onChange={(n) => setEditedLineField(line.id, "unit_price", n)}
+                              showSuffix={false}
+                              className="ml-auto w-32"
+                              inputClassName="h-8 lg:h-8 text-right"
                               disabled={lockReadonly}
+                              aria-label="Đơn giá"
                             />
                           ) : (
                             formatCurrency(line.unit_price)
@@ -1822,17 +1844,13 @@ export default function OrderDetailPage() {
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={al.unit_price}
-                            onChange={(e) =>
-                              updateAddedLine(al.key, {
-                                unit_price: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="ml-auto h-8 w-32 text-right tabular-nums"
+                          <MoneyInput
+                            value={Number(al.unit_price)}
+                            onChange={(n) => updateAddedLine(al.key, { unit_price: n })}
+                            showSuffix={false}
+                            className="ml-auto w-32"
+                            inputClassName="h-8 lg:h-8 text-right"
+                            aria-label="Đơn giá"
                           />
                         </TableCell>
                         <TableCell className="text-right">
@@ -1929,16 +1947,13 @@ export default function OrderDetailPage() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Đơn giá</p>
-                            <Input
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={livePrice}
-                              onChange={(e) =>
-                                setEditedLineField(line.id, "unit_price", parseFloat(e.target.value) || 0)
-                              }
-                              className="mt-0.5 h-11"
+                            <MoneyInput
+                              value={Number(livePrice)}
+                              onChange={(n) => setEditedLineField(line.id, "unit_price", n)}
+                              className="mt-0.5"
+                              inputClassName="h-11 lg:h-11"
                               disabled={lockReadonly}
+                              aria-label="Đơn giá"
                             />
                           </div>
                           <div className="flex items-baseline justify-between border-t pt-2">
@@ -2709,8 +2724,8 @@ export default function OrderDetailPage() {
                           if (!c || c.from === undefined) return null
                           return (
                             <div key={k}>
-                              <span className="font-mono">{k}</span>: {String(c.from)}{" "}
-                              <span className="text-foreground">→</span> {String(c.to)}
+                              <span className="font-mono">{k}</span>: {formatAuditValue(k, c.from)}{" "}
+                              <span className="text-foreground">→</span> {formatAuditValue(k, c.to)}
                             </div>
                           )
                         })}

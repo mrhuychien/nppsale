@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
@@ -32,6 +33,17 @@ import {
   ArrowLeft, ArrowRight, Check, CheckCircle2, Rocket,
   Building2, Tag, Wallet, Users, Package, Factory, FileText, Trophy,
 } from "lucide-react"
+
+/**
+ * Chuỗi lương đọc từ DB (`String(numeric)`) có thể mang phần lẻ, VD
+ * "3700000.5". MoneyInput bỏ mọi ký tự không phải số nên sẽ đọc thành
+ * 37.000.005 — làm tròn tới đồng trước khi đưa vào ô.
+ */
+const moneyValue = (v: string): number | "" => {
+  if (v === "") return ""
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? Math.round(n) : ""
+}
 
 const STEPS = ["welcome", "org", "warehouse", "salary", "done"] as const
 type Step = (typeof STEPS)[number]
@@ -412,7 +424,7 @@ export default function SetupWizardPage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Lương cơ bản (VND/tháng)</Label>
-              <Input type="number" min={0} value={salary.base_salary} onChange={(e) => setSalary({ ...salary, base_salary: e.target.value })} />
+              <MoneyInput value={moneyValue(salary.base_salary)} onChange={(n) => setSalary({ ...salary, base_salary: String(n) })} />
             </div>
             <div className="space-y-2">
               <Label>Ngày công chuẩn / tháng</Label>
@@ -420,15 +432,15 @@ export default function SetupWizardPage() {
             </div>
             <div className="space-y-2">
               <Label>Phụ cấp xăng (VND)</Label>
-              <Input type="number" min={0} value={salary.gas_allowance} onChange={(e) => setSalary({ ...salary, gas_allowance: e.target.value })} />
+              <MoneyInput value={moneyValue(salary.gas_allowance)} onChange={(n) => setSalary({ ...salary, gas_allowance: String(n) })} />
             </div>
             <div className="space-y-2">
               <Label>Phụ cấp điện thoại (VND)</Label>
-              <Input type="number" min={0} value={salary.phone_allowance} onChange={(e) => setSalary({ ...salary, phone_allowance: e.target.value })} />
+              <MoneyInput value={moneyValue(salary.phone_allowance)} onChange={(n) => setSalary({ ...salary, phone_allowance: String(n) })} />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Mức doanh số chung A (VND)</Label>
-              <Input type="number" min={0} value={salary.kpi_target_revenue} onChange={(e) => setSalary({ ...salary, kpi_target_revenue: e.target.value })} />
+              <MoneyInput value={moneyValue(salary.kpi_target_revenue)} onChange={(n) => setSalary({ ...salary, kpi_target_revenue: String(n) })} />
               <p className="text-[10px] text-muted-foreground">
                 Mức KPI dùng cho mọi NV bán hàng. Bậc thưởng cộng dồn theo % của A
                 (mặc định 70/80/90/100). Để 0 = chưa áp dụng thưởng KPI.

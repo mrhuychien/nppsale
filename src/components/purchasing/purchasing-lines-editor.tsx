@@ -414,14 +414,26 @@ export function PurchasingLinesEditor({
                               thành một ô chọn riêng là thêm một cột nữa
                               vào bảng chín cột đã chật. */}
                           <div className="flex items-center gap-1">
-                            <Input
-                              type="number" step="any" min={0}
-                              max={l.discount_mode === "percent" ? 100 : undefined}
-                              value={l.line_discount}
-                              onFocus={selectOnFocus}
-                              onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
-                              className="h-9 text-right tabular-nums"
-                            />
+                            {/* Giảm theo tiền: nhóm nghìn (220.000). Giảm theo %: cần thập
+                                phân mà MoneyInput lọc mất, nên giữ ô số thường. */}
+                            {l.discount_mode === "percent" ? (
+                              <Input
+                                type="number" step="any" min={0} max={100}
+                                value={l.line_discount}
+                                onFocus={selectOnFocus}
+                                onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
+                                className="h-9 text-right tabular-nums"
+                              />
+                            ) : (
+                              <MoneyInput
+                                value={l.line_discount}
+                                onChange={(v) => patchLine(l.id, { line_discount: String(v) })}
+                                onFocus={selectOnFocus}
+                                showSuffix={false}
+                                className="min-w-0 flex-1"
+                                inputClassName="h-9 text-right tabular-nums"
+                              />
+                            )}
                             <button
                               type="button"
                               onClick={() => toggleDiscountMode(l)}
@@ -539,14 +551,26 @@ export function PurchasingLinesEditor({
                           )}
                         </Label>
                         <div className="flex items-center gap-1">
-                          <Input
-                            type="number" step="any" min={0}
-                            max={l.discount_mode === "percent" ? 100 : undefined}
-                            value={l.line_discount}
-                            onFocus={selectOnFocus}
-                            onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
-                            className="h-9 text-right tabular-nums"
-                          />
+                          {/* Giảm theo tiền: nhóm nghìn (220.000). Giảm theo %: cần thập
+                              phân mà MoneyInput lọc mất, nên giữ ô số thường. */}
+                          {l.discount_mode === "percent" ? (
+                            <Input
+                              type="number" step="any" min={0} max={100}
+                              value={l.line_discount}
+                              onFocus={selectOnFocus}
+                              onChange={(e) => patchLine(l.id, { line_discount: e.target.value })}
+                              className="h-9 text-right tabular-nums"
+                            />
+                          ) : (
+                            <MoneyInput
+                              value={l.line_discount}
+                              onChange={(v) => patchLine(l.id, { line_discount: String(v) })}
+                              onFocus={selectOnFocus}
+                              showSuffix={false}
+                              className="min-w-0 flex-1"
+                              inputClassName="h-9 text-right tabular-nums"
+                            />
+                          )}
                           <button
                             type="button"
                             onClick={() => toggleDiscountMode(l)}

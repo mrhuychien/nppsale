@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import {
   returnCeilingFor,
   returnPriceViolation,
@@ -131,8 +131,11 @@ export function ReturnLineSheet({
             </div>
             <div className="min-w-0">
               <Label>Đơn giá trả</Label>
+              {/* Chuỗi state chỉ giữ CHỮ SỐ (để xoá trắng được); khi vẽ thì nhóm
+                    hàng nghìn bằng dấu chấm (9.000.000). onChange lọc \D nên
+                    dấu chấm hiển thị không bao giờ lọt vào giá. */}
               <input
-                value={priceText}
+                value={priceText === "" ? "" : formatInt(parseInt(priceText, 10))}
                 disabled={!canEditPrice}
                 inputMode="numeric"
                 aria-label="Đơn giá trả"

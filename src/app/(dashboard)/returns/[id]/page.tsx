@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -11,7 +11,7 @@ import { duocSuaPhieuTra, duocXoaPhieuTra } from "@/lib/sell/return-roles"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchSelect } from "@/components/ui/search-select"
@@ -43,6 +43,10 @@ export default function ReturnDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({ notes: "", credit_note_amount: "" })
+  /* ⚠ TRỐNG KHÁC 0. credit_note_amount = null nghĩa là "chưa xác định" và
+     màn hình lấy tổng dòng trả thay vào; 0 là số thật. MoneyInput phát 0 cả
+     khi xoá trắng, nên đọc chữ thô trong ô để giữ "" (→ null) cho ô trống. */
+  const creditInputRef = useRef<HTMLInputElement>(null)
   const [actionLoading, setActionLoading] = useState(false)
   /** Kho nhận hàng trả — người duyệt phải chọn, không đoán hộ. */
   const [zone, setZone] = useState<ReturnZone>("sale")
@@ -604,10 +608,13 @@ export default function ReturnDetailPage() {
                   ) : (
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wider text-muted-foreground">Credit Note (VND)</Label>
-                      <Input
-                        type="number"
+                      <MoneyInput
+                        ref={creditInputRef}
                         value={editForm.credit_note_amount}
-                        onChange={(e) => setEditForm({ ...editForm, credit_note_amount: e.target.value })}
+                        onChange={(n) => {
+                          const empty = (creditInputRef.current?.value ?? "").replace(/\D/g, "") === ""
+                          setEditForm({ ...editForm, credit_note_amount: empty ? "" : String(n) })
+                        }}
                         placeholder="0"
                       />
                     </div>

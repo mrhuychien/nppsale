@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Lock } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { VAT_RATES, vatLabel } from "@/lib/constants"
 import { ceilingFor, priceViolation, type CartLine } from "@/lib/sell/cart"
 import {
@@ -169,8 +169,11 @@ export function LineEditSheet({
             </div>
             <div className="min-w-0">
               <Label>Đơn giá</Label>
+              {/* Chuỗi state chỉ giữ CHỮ SỐ (để xoá trắng được); khi vẽ thì nhóm
+                    hàng nghìn bằng dấu chấm (9.000.000). onChange lọc \D nên
+                    dấu chấm hiển thị không bao giờ lọt vào giá. */}
               <input
-                value={priceText}
+                value={priceText === "" ? "" : formatInt(parseInt(priceText, 10))}
                 disabled={!canEditPrice}
                 inputMode="numeric"
                 onFocus={(e) => e.currentTarget.select()}

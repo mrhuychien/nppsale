@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 export interface TrendSeries {
   key: string
@@ -14,24 +14,38 @@ interface TrendChartProps {
   labels: string[]
   series: TrendSeries[]
   height?: number
-  /** Format for tooltip values. */
+  /**
+   * Định dạng cho CẢ trục Y lẫn tooltip. Bỏ trống thì trục Y rút gọn
+   * ("1,5 tr") còn tooltip hiện đủ số tiền (1.500.000đ).
+   */
   valueFormatter?: (n: number) => string
 }
 
-function defaultFormatter(n: number): string {
+/** vi-VN: dấu phẩy thập phân ("1,5 tr"), dấu chấm hàng nghìn. */
+const VI_1 = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 })
+const VI_2 = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 })
+
+/**
+ * Nhãn trục Y — chỗ hẹp nên rút gọn, nhưng theo kiểu Việt: "1,5 tr",
+ * "2,25 tỷ", "500K". Tooltip thì KHÔNG dùng hàm này mà hiện đủ số
+ * (formatCurrency → 1.500.000đ).
+ */
+export function compactAxisFormatter(n: number): string {
   const abs = Math.abs(n)
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)} tỷ`
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)} tr`
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`
-  return String(Math.round(n))
+  if (abs >= 1e9) return `${VI_2.format(n / 1e9)} tỷ`
+  if (abs >= 1e6) return `${VI_1.format(n / 1e6)} tr`
+  if (abs >= 1e3) return `${VI_1.format(Math.round(n / 1e3))}K`
+  return VI_1.format(Math.round(n))
 }
 
 export function TrendChart({
   labels,
   series,
   height = 240,
-  valueFormatter = defaultFormatter,
+  valueFormatter,
 }: TrendChartProps) {
+  const axisFormatter = valueFormatter ?? compactAxisFormatter
+  const tooltipFormatter = valueFormatter ?? formatCurrency
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const W = 1000
   const H = height
@@ -87,7 +101,7 @@ export function TrendChart({
               textAnchor="end"
               className="fill-muted-foreground text-[11px]"
             >
-              {valueFormatter(t.v)}
+              {axisFormatter(t.v)}
             </text>
           </g>
         ))}
@@ -174,7 +188,7 @@ export function TrendChart({
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
                 <span className="text-muted-foreground">{s.label}:</span>
                 <span className="font-semibold text-foreground">
-                  {valueFormatter(s.data[hoverIdx] || 0)}
+                  {tooltipFormatter(s.data[hoverIdx] || 0)}
                 </span>
               </li>
             ))}

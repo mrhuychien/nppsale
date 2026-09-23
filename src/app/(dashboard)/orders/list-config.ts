@@ -28,7 +28,6 @@ export const DEFAULT_ORDER_COLUMNS: OrderColumnKey[] = [
 
 export const ORDER_FILTERS = [
   { key: "search", label: "Tìm mã đơn", required: true },
-  { key: "pipeline", label: "Pipeline 7 bước" },
   { key: "specialStatus", label: "Lọc trạng thái đặc biệt" },
   { key: "date", label: "Ngày đặt" },
   { key: "customer", label: "Khách hàng" },
@@ -40,6 +39,5 @@ export type OrderFilterKey = (typeof ORDER_FILTERS)[number]["key"]
 
 export const DEFAULT_ORDER_FILTERS: OrderFilterKey[] = [
   "search",
-  "pipeline",
   "specialStatus",
 ]

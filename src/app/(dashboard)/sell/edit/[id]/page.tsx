@@ -15,7 +15,7 @@ import {
 } from "@/lib/sell/order-edit"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
-import { posEditOrderHref } from "@/lib/nav/pos-preview"
+import { posEditOrderHref, manDuRong } from "@/lib/nav/pos-preview"
 import { toast } from "@/hooks/use-toast"
 import type { OrderStatus } from "@/types"
 
@@ -157,6 +157,14 @@ export default function SellEditLoaderPage() {
     if (!head || !lines || openedRef.current) return
     openedRef.current = true
     const customer = customerById(head.customer_id)
+    /**
+     * ⚠ MÁY TÍNH THÌ KHÔNG NẠP GIỎ, KHÔNG ĐẨY SANG `/sell/cart`. Chủ nhà báo
+     *   23/09/2026: "Xem nhanh Đơn hàng → Bấm sửa đơn ko ra pos". Hai cú
+     *   chuyển trang chạy đua: `PosDesktopRedirect` đi `/pos/…/sua`, rồi
+     *   lệnh này đi `/sell/cart` SAU nó — và thắng, vì `/sell/cart` không
+     *   có cửa chặn nào. Nhường hẳn cho cửa chặn.
+     */
+    if (manDuRong()) return
     const rows = orderLinesToCart(lines, products, customer?.group_id ?? null)
 
     // ⚠ Mặt hàng không còn trong danh mục thì KHÔNG có giá gốc để đối

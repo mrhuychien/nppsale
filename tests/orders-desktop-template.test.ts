@@ -26,8 +26,8 @@ describe("Thẻ trạng thái (StatusChips) — cùng số với bảng bên dư
     expect(block).toContain("tabKeys.map(")
     expect(block).toContain("count: statusCounts[k] ?? 0")
     expect(block).toContain("orderTone(")
-    // Chọn thẻ thì buông bước pipeline — hai bộ lọc loại trừ nhau.
-    expect(block).toContain("setPipelineStep(null)")
+    // Bộ lọc pipeline đã bỏ (chủ nhà 23/09/2026) — thẻ chỉ đặt trạng thái.
+    expect(block).toContain("onPick={(k) => setStatusFilter(k)}")
   })
 
   /**

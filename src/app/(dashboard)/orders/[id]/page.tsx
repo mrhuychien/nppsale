@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -1108,7 +1109,7 @@ export default function OrderDetailPage() {
     hasPermission(user.role, "orders", "approve") &&
     (order.status === "submitted" || order.status === "partially_invoiced")
   const invoiceAction = canInvoice
-    ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => router.push(`/sales-invoices/new?order=${order.id}`), busy: false }
+    ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => diHoacMoPos(router.push, `/sales-invoices/new?order=${order.id}`), busy: false }
     : null
   /**
    * ĐÓNG ĐƠN — chốt không giao nốt phần còn lại.
@@ -1135,7 +1136,7 @@ export default function OrderDetailPage() {
   const sellEdit = canEdit && isSellEditable(order.status)
   const canReorder = !!user && hasPermission(user.role, "orders", "create")
   const editAction = sellEdit
-    ? { label: "Sửa đơn", icon: Pencil, onClick: () => router.push(`/sell/edit/${order.id}`), busy: false }
+    ? { label: "Sửa đơn", icon: Pencil, onClick: () => diHoacMoPos(router.push, `/sell/edit/${order.id}`), busy: false }
     : null
   const reorderAction = canReorder
     ? { label: "Đặt lại đơn này", icon: RefreshCw, onClick: () => router.push(`/sell/reorder/${order.id}`), busy: false }
@@ -1623,7 +1624,7 @@ export default function OrderDetailPage() {
                       size="sm"
                       variant="outline"
                       className="md:hidden"
-                      onClick={() => router.push(`/sell/edit/${order.id}`)}
+                      onClick={() => diHoacMoPos(router.push, `/sell/edit/${order.id}`)}
                     >
                       <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa bằng màn bán hàng
                     </Button>
@@ -2189,10 +2190,13 @@ export default function OrderDetailPage() {
                 <CardTitle>Hóa đơn bán ({salesInvoices.length})</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                {/* ⚠ Mỗi hóa đơn là một LIÊN KẾT (chủ nhà 23/09/2026: "chi tiết
+                    đơn hàng có liên kết đến các chứng từ liên quan"). */}
                 {salesInvoices.map((si) => (
-                  <div
+                  <Link
                     key={si.id}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 p-3"
+                    href={`/sales-invoices/${si.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0">
                       <p className="font-mono text-sm font-semibold">{si.invoice_code}</p>
@@ -2207,7 +2211,7 @@ export default function OrderDetailPage() {
                         {INVOICE_STATUS_MAP[si.status]?.label ?? si.status}
                       </Badge>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </CardContent>
             </Card>

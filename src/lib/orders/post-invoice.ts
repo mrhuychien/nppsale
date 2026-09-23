@@ -309,7 +309,11 @@ export interface PostInvoicePayload {
  */
 export async function postInvoice(
   supabase: SupabaseClient,
-  payload: PostInvoicePayload & { returnAdds?: ReturnLineAdd[] }
+  /**
+   * `returnEdits` — sửa hàng trả KÈM ĐƠN ngay lúc xuất lần đầu (mig 180): máy
+   * chủ áp sau khi gắn phiếu vào tờ mới, trước khi tính công nợ.
+   */
+  payload: PostInvoicePayload & { returnAdds?: ReturnLineAdd[]; returnEdits?: ReturnLineEdit[] }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
   if (lines.length === 0) {
@@ -334,6 +338,9 @@ export async function postInvoice(
         note: l.note,
       })),
       ...returnAddsPayload(payload.returnAdds),
+      ...(payload.returnEdits && payload.returnEdits.length > 0
+        ? { return_edits: payload.returnEdits.map((e) => ({ line_id: e.lineId, quantity: e.quantity })) }
+        : {}),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))

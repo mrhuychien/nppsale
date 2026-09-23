@@ -96,6 +96,7 @@ import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { DocPeople } from "@/components/pos/doc-people"
+import { RelatedDocs } from "@/components/orders/related-docs"
 import type { SellProduct } from "@/lib/sell/ref-data"
 
 export interface OrderScreenProps {
@@ -1627,6 +1628,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               </div>
             )}
           </div>
+
+          {/* ⚠ Hóa đơn và phiếu trả của đơn này — chủ nhà 23/09/2026. Hàng trả
+              đã có khối riêng ở trên nên tắt bảng hàng đổi trả của khối này. */}
+          {orderId && <RelatedDocs orderId={orderId} pos hienHangTra={false} />}
 
         </div>
 

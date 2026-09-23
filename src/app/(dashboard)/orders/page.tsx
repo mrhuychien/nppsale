@@ -69,12 +69,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  OrderPipeline,
-  STEPS,
-  classifyOrder,
-  type PipelineStepKey,
-} from "@/components/orders/order-pipeline"
 import { formatCurrency } from "@/lib/utils"
 import {
   CheckCircle2,
@@ -250,7 +244,6 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("")
   /** "" = chưa chạm tab nào — xem `effectiveStatus`, KHÔNG đổi thành "all". */
   const [statusFilter, setStatusFilter] = useState("")
-  const [pipelineStep, setPipelineStep] = useState<PipelineStepKey | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
   /**
@@ -551,7 +544,7 @@ export default function OrdersPage() {
   const searching = debouncedSearch.trim().length > 0
   const effectiveStatus =
     statusFilter === ""
-      ? pipelineStep || searching
+      ? searching
         ? "all"
         : DEFAULT_ORDER_TAB
       : statusFilter
@@ -636,7 +629,7 @@ export default function OrdersPage() {
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, pipelineStep, kyLoc, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -711,10 +704,6 @@ export default function OrdersPage() {
     return () => { cancelled = true }
   }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Đã filter server-side (search/status/customer/sales/date/amount).
-  // Chỉ còn pipelineStep filter client-side vì cần tổng hợp receivable+invoice.
-  // Note: pipeline filter chỉ áp dụng trên trang hiện tại — chấp nhận trade-off
-  // để khỏi phải replicate classifyOrder() trong SQL.
   useEffect(() => {
     try {
       setShowScopeHint(localStorage.getItem(SCOPE_HINT_KEY) !== "1")
@@ -818,12 +807,8 @@ export default function OrdersPage() {
     return () => { cancelled = true }
   }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    if (!pipelineStep) return orders
-    return orders.filter(
-      (o) => classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id]) === pipelineStep
-    )
-  }, [orders, pipelineStep, receivablesByOrder, invoiceMap])
+  /* ⚠ Bộ lọc pipeline đã bỏ (chủ nhà chốt 23/09/2026) — mọi lọc chạy ở máy chủ. */
+  const filtered = orders
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -1157,7 +1142,7 @@ export default function OrdersPage() {
    * trượt" với "chưa có đơn nào".
    */
   const activeFilterCount =
-    (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) + (pipelineStep ? 1 : 0) +
+    (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
     (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (amountMin ? 1 : 0) + (amountMax ? 1 : 0) +
@@ -1176,7 +1161,7 @@ export default function OrdersPage() {
    * muốn bỏ bộ lọc tuyến hay khoảng ngày.
    */
   const clearAdvancedFilters = () => {
-    setRouteFilter("all"); setPipelineStep(null)
+    setRouteFilter("all")
     setDateFrom(""); setDateTo("")
     setCustomerFilter("all"); setSalesFilter("all")
     setAmountMin(""); setAmountMax("")
@@ -1353,50 +1338,6 @@ export default function OrdersPage() {
       })()
 
 
-  /**
-   * Bước xử lý (pipeline) cho sheet lọc điện thoại — cùng phép phân loại
-   * `classifyOrder` với thanh pipeline desktop, đếm trên trang đang xem.
-   */
-  const pipelineChips = (() => {
-    const counts: Record<string, number> = {}
-    for (const o of orders) {
-      const k = classifyOrder(o, receivablesByOrder[o.id], invoiceMap[o.id])
-      if (k) counts[k] = (counts[k] || 0) + 1
-    }
-    return (
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {STEPS.map((st) => {
-          const active = pipelineStep === st.key
-          return (
-            <button
-              key={st.key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                const next = active ? null : st.key
-                setPipelineStep(next)
-                // ⚠ Trả tab về "chưa chọn", KHÔNG đặt "all". Từ khi "Tất
-                // cả" là một tab thật, đặt "all" ở đây là bỏ bước xử lý
-                // xong thì người dùng bị bỏ lại ở tab Tất cả — một tab
-                // họ chưa từng chạm.
-                if (next) setStatusFilter("")
-              }}
-              className={`flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold ${
-                active
-                  ? "border-on-surface bg-on-surface text-surface"
-                  : "border-outline-variant bg-surface-container-lowest text-on-surface-variant"
-              }`}
-            >
-              {st.label}
-              <span className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${active ? "bg-surface/20 text-surface" : "bg-surface-container text-on-surface-variant"}`}>
-                {counts[st.key] ?? 0}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    )
-  })()
 
   return (
     <div className="space-y-4">
@@ -1487,11 +1428,8 @@ export default function OrdersPage() {
           biến mất khỏi mọi tab. Hàng cuộn ngang thì không có trần.
       */}
       <StatusChips
-        active={pipelineStep ? "" : effectiveStatus}
-        onPick={(k) => {
-          setStatusFilter(k)
-          setPipelineStep(null)
-        }}
+        active={effectiveStatus}
+        onPick={(k) => setStatusFilter(k)}
         chips={tabKeys.map((k) => ({
           key: k,
           label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]],
@@ -1499,25 +1437,6 @@ export default function OrdersPage() {
           accent: k === "all" ? "#181c1e" : orderTone(k).accent,
         }))}
       />
-
-      {/* Pipeline 7-step status bar (Update #2 v2 §8) — máy tính. */}
-      {filterActive("pipeline") && (
-        <div className="hidden lg:block">
-          <OrderPipeline
-            orders={orders}
-            receivables={receivablesByOrder}
-            invoices={invoiceMap}
-            active={pipelineStep}
-            onChange={(next) => {
-              setPipelineStep(next)
-              // Chọn một bước xử lý thì buông tab trạng thái để hai bộ lọc
-              // không đánh nhau. ⚠ "" = chưa chọn tab, không phải "all" —
-              // xem chú thích cùng việc ở hàng chip trên điện thoại.
-              if (next) setStatusFilter("")
-            }}
-          />
-        </div>
-      )}
 
       <MobileFilterBar
         value={search}
@@ -1534,12 +1453,6 @@ export default function OrdersPage() {
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
               <RouteFilter inline routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
-            </div>
-          )}
-          {filterActive("pipeline") && (
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Bước xử lý</p>
-              {pipelineChips}
             </div>
           )}
           {advancedFilterFields}

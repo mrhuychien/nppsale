@@ -118,10 +118,56 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     expect(lines[0], "mất hệ số / mất liên kết dòng đơn").toMatchObject({ order_line_id: "sol9", unit_name: "thùng", quantity: 2, conversion_factor: 24 })
     expect(lines[1], "hàng ĐỔI thành dòng bán").toMatchObject({ unit_name: "gói", is_exchange: true })
     expect((p.p as { return_edits: unknown[] }).return_edits).toEqual([{ line_id: "rl-hd1", quantity: 1 }])
+
+    /* Chi tiết hóa đơn: có đơn gốc, phiếu trả và hàng đổi trả (chủ nhà 23/09/2026). */
+    await page.goto(`/pos/hoa-don/${HOA_DON}`)
+    const lq = page.getByTestId("chung-tu-lien-quan")
+    await expect(lq).toContainText("DH-0009")
+    await expect(lq).toContainText("Phiếu trả")
+    await expect(lq.getByRole("link", { name: /DH-0009/ })).toHaveAttribute("href", `/pos/don-hang/${DON_HD}`)
+    await expect(page.getByTestId("hang-doi-tra")).toContainText("Sữa hộp")
+    await expect(page.getByTestId("hang-doi-tra")).toContainText("Trả")
   } finally {
     await fetch(`${FAKE}/rest/v1/returns?id=eq.r-hd`, { method: "DELETE" })
     await fetch(`${FAKE}/rest/v1/sales_order_lines?id=eq.sol9`, { method: "DELETE" })
     await fetch(`${FAKE}/rest/v1/sales_orders?id=eq.${DON_HD}`, { method: "DELETE" })
+  }
+})
+
+/**
+ * ⚠ CHỦ NHÀ 23/09/2026: "Khi xuất hàng màn tạo Hoá đơn: Mất thông tin người tạo,
+ *   ko sửa được người gán; Không sửa được thông tin Hàng đổi trả".
+ */
+test("xuất hàng: người tạo là người đang xuất; sửa được hàng trả kèm đơn", async ({ page }) => {
+  const chen = (bang: string, rows: unknown[]) =>
+    fetch(`${FAKE}/rest/v1/${bang}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rows) })
+  await chen("returns", [{
+    id: "r-don1", org_id: "khong-hien-trong-danh-sach", order_id: "o-e2e-1", invoice_id: null,
+    customer_id: "00000000-0000-4000-8000-0000000000c1", status: "draft", credit_note_amount: 60000,
+    lines: [
+      { id: "rl-don1", product_id: "00000000-0000-4000-8000-0000000000d1", unit_name: "hộp", quantity: 3, unit_price: 20000, vat_rate: 0, is_exchange: false, product: { name: "Sữa hộp", sku: "SUA1" } },
+    ],
+  }])
+  try {
+    await dangNhap(page)
+    await page.goto("/pos/hoa-don/moi?order=o-e2e-1")
+    await expect(page.getByTestId("dong-hoa-don")).toHaveCount(1)
+    await expect(page.getByTestId("nguoi-tao"), "xuất hàng mất người tạo").toHaveText("Chủ NPP")
+    // Người được gán: chủ NPP thấy ô chọn (không phải chữ chỉ đọc).
+    await expect(page.getByTestId("nguoi-duoc-gan")).toHaveCount(0)
+
+    await expect(page.getByTestId("dong-tra-cu")).toHaveCount(1)
+    await expect(page.getByTestId("khoi-hang-tra")).toContainText("trừ 60.000")
+    await datSo(page, "số lượng trả dòng 1", 1)
+    await expect(page.getByTestId("khoi-hang-tra")).toContainText("trừ 20.000")
+
+    await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
+    await expect.poll(async () => {
+      const g = await goiCuoi("post_invoice")
+      return (g?.body as { p?: { return_edits?: unknown } } | undefined)?.p?.return_edits ?? null
+    }).toEqual([{ line_id: "rl-don1", quantity: 1 }])
+  } finally {
+    await fetch(`${FAKE}/rest/v1/returns?id=eq.r-don1`, { method: "DELETE" })
   }
 })
 

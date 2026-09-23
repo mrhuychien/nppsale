@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { PosNewTab } from "@/components/sell/pos-new-tab"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -79,6 +80,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
       <PageTitleProvider>
         <OrderSyncProvider>
           <PermissionsLoader />
+          <PosNewTab />
           <div className="flex min-h-screen bg-surface">
             <Sidebar role={role} />
             <div className="min-w-0 flex-1">{children}</div>
@@ -94,6 +96,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
     <OrderSyncProvider>
     <div className="flex min-h-screen bg-surface">
       <PermissionsLoader />
+      <PosNewTab />
       <Sidebar role={role} />
 
       {menuSheet}

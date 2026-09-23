@@ -56,7 +56,6 @@ const FILTER_BAR = read("src/components/ui/mobile-filter-bar.tsx")
 const SCROLLER = read("src/components/ui/segmented-scroller.tsx")
 const LOAD_MORE = read("src/components/ui/load-more.tsx")
 const CARD = read("src/components/ui/mobile-record-card.tsx")
-const PIPELINE = read("src/components/orders/order-pipeline.tsx")
 const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
 const ORDERS_CODE = strip(ORDERS)
 const RESILIENT = read("src/lib/supabase/resilient.ts")
@@ -220,31 +219,12 @@ describe("M2.1 — MobileRecordCard", () => {
 })
 
 describe("M2.2 — /orders", () => {
-  /**
-   * ⚠ `STEPS` và `StepDef` phải export, nếu không file khác import sẽ
-   * không build.
-   */
-  it("STEPS và StepDef đã export", () => {
-    expect(PIPELINE).toContain("export const STEPS")
-    expect(PIPELINE).toContain("export interface StepDef")
+  /** ⚠ Chủ nhà chốt 23/09/2026: "Danh sách đơn hàng bỏ bộ lọc pipeline". */
+  it("không còn bộ lọc pipeline", () => {
+    expect(ORDERS_CODE).not.toMatch(/pipelineStep|OrderPipeline|classifyOrder|pipelineChips/)
+    expect(read("src/app/(dashboard)/orders/list-config.ts")).not.toContain('"pipeline"')
   })
 
-  /**
-   * ⚠ `sticky top-14` = 56px trong khi app bar cao 64px → dãy pipeline bị
-   * header đè mất 8px. Nay neo theo token.
-   */
-  it("không còn sticky top-14", () => {
-    expect(strip(PIPELINE)).not.toContain("top-14")
-    expect(PIPELINE).toContain("top-below-appbar")
-  })
-
-  /** Chỉ lớp trình bày đổi — phân loại đơn có ý nghĩa nghiệp vụ. */
-  it("classifyOrder không bị đụng", () => {
-    expect(PIPELINE).toContain("export function classifyOrder")
-    const i = PIPELINE.indexOf("export function classifyOrder")
-    const fn = PIPELINE.slice(i, PIPELINE.indexOf("\n}", i))
-    expect(fn).not.toContain("SegmentedScroller")
-  })
 
   /**
    * ⚠ MỘT HÀNG CHIP, KHÔNG PHẢI HAI — và hàng đó phải HIỆN TRÊN MỌI KHỔ
@@ -284,21 +264,6 @@ describe("M2.2 — /orders", () => {
     expect(CHIPS).toContain("whitespace-nowrap")
   })
 
-  /**
-   * ⚠ Một hàng chip phục vụ HAI bộ lọc loại trừ nhau — phải định tuyến
-   * theo khoá, chọn bước pipeline thì xoá lọc trạng thái và ngược lại.
-   */
-  it("hai bộ lọc không đánh nhau", () => {
-    const p = strip(PIPELINE)
-    expect(p).toContain("stepKeys.has(k)")
-    // Chọn chip trạng thái thì buông bước pipeline…
-    expect(ORDERS_CODE).toMatch(/setStatusFilter\(k\)[\s\S]{0,200}?setPipelineStep\(null\)/)
-    // …và chọn bước pipeline thì buông chip trạng thái.
-    // ⚠ BUÔNG VỀ "", KHÔNG VỀ "all". Từ 19/09/2026 "Tất cả" là một tab
-    // thật, nên đặt "all" ở đây là bỏ bước xử lý xong người dùng bị bỏ
-    // lại ở tab Tất cả — một tab họ chưa từng chạm.
-    expect(ORDERS_CODE).toMatch(/setPipelineStep\(next\)[\s\S]{0,400}?setStatusFilter\(""\)/)
-  })
 
   /**
    * Banner phạm vi dữ liệu là thông tin MỘT LẦN. Đọc localStorage ngay lúc

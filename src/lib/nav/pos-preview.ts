@@ -76,6 +76,36 @@ export function posNewReturnHref(o: { invoiceId?: string | null; customerId?: st
 }
 
 /**
+ * Đường dẫn web → màn POS tương ứng; `null` = không phải lối vào POS.
+ *
+ * ⚠ ĐÚNG BỘ CỬA MÀ `PosDesktopRedirect` ĐANG CHẶN: `/sell` (trừ bước chọn
+ *   hàng trả `?mode=return`), `/sell/edit/:id`, `/sales-invoices/new?order=`,
+ *   `/sales-invoices/:id/edit`, `/returns/new`. Thêm cửa mới thì thêm ở đây,
+ *   nếu không nút ấy lại chuyển trang ngay trong tab cũ.
+ */
+export function posTargetFor(href: string): string | null {
+  let u: URL
+  try {
+    u = new URL(href, "http://x")
+  } catch {
+    return null
+  }
+  const p = u.pathname.replace(/\/+$/, "") || "/"
+  const q = u.searchParams
+  if (p === "/sell") return q.get("mode") ? null : posNewOrderHref(q.get("customerId"))
+  let m = /^\/sell\/edit\/([^/]+)$/.exec(p)
+  if (m) return posEditOrderHref(decodeURIComponent(m[1]))
+  if (p === "/sales-invoices/new") {
+    const o = q.get("order")
+    return o ? posNewInvoiceHref(o) : null
+  }
+  m = /^\/sales-invoices\/([^/]+)\/edit$/.exec(p)
+  if (m) return posEditInvoiceHref(decodeURIComponent(m[1]))
+  if (p === "/returns/new") return posNewReturnHref({ invoiceId: q.get("invoiceId"), customerId: q.get("customerId") })
+  return null
+}
+
+/**
  * Máy tính đủ rộng để dùng màn POS chưa?
  *
  * ⚠ TRẢ `false` KHI KHÔNG CÓ `window`. Hàm này chạy cả lúc render trên

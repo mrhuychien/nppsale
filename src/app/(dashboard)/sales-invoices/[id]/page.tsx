@@ -29,6 +29,7 @@ import {
 } from "@/components/detail/detail-chrome"
 import { CustomerQuickView } from "@/components/customers/customer-quick-view"
 import { InvoiceMoneySummary } from "@/components/orders/invoice-money-summary"
+import { RelatedDocs } from "@/components/orders/related-docs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -541,6 +542,10 @@ export default function SalesInvoiceDetailPage() {
           <DetailCard title="Tiến trình">
             <DetailTimeline steps={timeline} />
           </DetailCard>
+
+          {/* ⚠ Phiếu trả + hàng đổi trả của tờ này, và hóa đơn khác của cùng đơn
+              (chủ nhà 23/09/2026). Khối dùng chung — xem `RelatedDocs`. */}
+          <RelatedDocs orderId={inv.order_id} invoiceId={inv.id} anDon tieuDe="Phiếu trả · hóa đơn khác của đơn" />
 
           <DetailCard title="Chứng từ liên quan" bodyClassName="space-y-2 px-4 py-3.5 text-sm">
               <Link

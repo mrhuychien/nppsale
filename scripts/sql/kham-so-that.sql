@@ -190,4 +190,9 @@ UNION ALL
 SELECT 19, 'Mig 179 (đã xuất quy đổi đơn vị — xuất khác đơn vị với đơn)',
   CASE WHEN to_regprocedure('public._da_xuat_cua_dong_don(uuid)') IS NOT NULL
        THEN 'OK — đã quy đổi' ELSE 'CHƯA — xuất 30 hộp cho dòng 2 thùng bị tính là 30 thùng' END, ''
+UNION ALL
+-- 20. Mig 180 — xuất hàng sửa được hàng trả kèm đơn
+SELECT 20, 'Mig 180 (xuất hàng sửa được hàng trả kèm đơn)',
+  CASE WHEN position('(mig 180)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
+       THEN 'OK — đã nhận' ELSE 'CHƯA — sửa hàng trả lúc xuất hàng bị máy chủ bỏ qua' END, ''
 ) t ORDER BY stt;

@@ -118,7 +118,8 @@ describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
    */
   it("bỏ bước xử lý thì trả về tab mặc định, không kẹt ở Tất cả", () => {
     expect(LIST).not.toContain('setStatusFilter("all")')
-    expect(LIST.match(/setStatusFilter\(""\)/g)?.length, "hai chỗ chọn bước xử lý").toBe(2)
+    /* Bộ lọc bước xử lý đã bỏ (chủ nhà 23/09/2026) — không còn chỗ nào buông tab. */
+    expect(LIST).not.toMatch(/setPipelineStep/)
   })
 
   /**

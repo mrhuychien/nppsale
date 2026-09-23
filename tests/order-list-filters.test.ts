@@ -69,7 +69,6 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
    */
   it.each([
     ["ô chọn tuyến", "<RouteFilter inline routes={routes}"],
-    ["bước xử lý", "{pipelineChips}"],
   ])("điện thoại: %s nằm TRONG sheet lọc", (_label, needle) => {
     const sheet = ORDERS.indexOf("<MobileFilterBar")
     const end = ORDERS.indexOf("</MobileFilterBar>", sheet)
@@ -133,10 +132,9 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
     expect(cnt).toContain("(statusIsFiltered ? 1 : 0)")
     expect(ORDERS).toContain("const statusIsFiltered = effectiveStatus !== DEFAULT_ORDER_TAB")
     expect(cnt).toContain('(routeFilter !== "all" ? 1 : 0)')
-    expect(cnt).toContain("(pipelineStep ? 1 : 0)")
     const j = ORDERS.indexOf("const clearAdvancedFilters = () => {")
     const clr = ORDERS.slice(j, ORDERS.indexOf("\n  }", j))
-    expect(clr).toContain('setRouteFilter("all"); setPipelineStep(null)')
+    expect(clr).toContain('setRouteFilter("all")')
     /**
      * ⚠ "XOÁ LỌC" KHÔNG ĐƯỢC ĐỤNG TỚI TAB. Nó âm thầm ném người dùng từ
      * viên họ đang đứng về viên mặc định, trong khi họ chỉ muốn bỏ bộ

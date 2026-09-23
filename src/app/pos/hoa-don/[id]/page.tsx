@@ -41,6 +41,7 @@ import { MoneyRow, TotalsHero, PanelActions, PanelButton } from "@/components/po
 import { PartnerCard } from "@/components/pos/partner-card"
 import { InvoiceScreen } from "@/components/pos/invoice-screen"
 import { DocPeople } from "@/components/pos/doc-people"
+import { RelatedDocs } from "@/components/orders/related-docs"
 import { assignDocSeller } from "@/lib/pos/save"
 import { useToast } from "@/hooks/use-toast"
 
@@ -56,6 +57,7 @@ interface Head {
   due_date: string | null
   customer_id: string
   posted_by?: string | null
+  order_id?: string | null
   sales_user_id?: string | null
   customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
 }
@@ -115,7 +117,7 @@ function XemHoaDon({ id }: { id: string }) {
       const sb = createClient()
       const [h, l, r, p] = await Promise.all([
         sb.from("sales_invoices")
-          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, posted_by, sales_user_id, customer:customers(store_name, phone, address)")
+          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, order_id, posted_by, sales_user_id, customer:customers(store_name, phone, address)")
           .eq("id", id).maybeSingle(),
         sb.from("sales_invoice_lines")
           .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
@@ -219,6 +221,9 @@ function XemHoaDon({ id }: { id: string }) {
               </div>
             ))}
           </LineTableFrame>
+
+          {/* ⚠ Đơn gốc, phiếu trả, hàng đổi trả của tờ này — chủ nhà 23/09/2026. */}
+          {head && <RelatedDocs orderId={head.order_id} invoiceId={id} pos />}
         </div>
 
         <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">

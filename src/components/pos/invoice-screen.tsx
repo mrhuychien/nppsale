@@ -61,6 +61,7 @@ import {
 } from "@/store/pos/product-search"
 import { DocPeople } from "@/components/pos/doc-people"
 import { assignDocSeller } from "@/lib/pos/save"
+import { useAuth } from "@/hooks/use-auth"
 
 export interface InvoiceScreenProps {
   /** Xuất hàng: đơn cần lập hóa đơn. */
@@ -117,6 +118,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const router = useRouter()
   const { toast } = useToast()
   const { products, stockByProduct, warnings, productById, customerById } = usePosRefData()
+  const { user } = useAuth()
 
   const [orderId, setOrderId] = useState<string | null>(orderIdProp)
   const [orderCode, setOrderCode] = useState<string | null>(null)
@@ -143,6 +145,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [loiTra, setLoiTra] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
   const [dangGan, setDangGan] = useState(false)
+  /** Người đứng tên ĐƠN — hóa đơn mới mặc định đứng tên người này. */
+  const [ganCuaDon, setGanCuaDon] = useState<string | null>(null)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   const seq = useRef(0)
 
@@ -253,7 +257,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         setOrderCode(don.order_code)
         if (!invoiceId) setDieuKhoan(don.payment_terms)
         setGhiChuDon((don.notes ?? "").trim() || null)
-        if (!invoiceId) setNguoi((n) => ({ ...n, ganId: don.sales_user_id }))
+        if (!invoiceId) {
+          setNguoi((n) => ({ ...n, ganId: don.sales_user_id }))
+          setGanCuaDon(don.sales_user_id)
+        }
         setKhach({
           id: don.customer_id,
           name: don.customer?.store_name || "Khách lẻ",
@@ -287,12 +294,17 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 vatRate: Number(l.vat_rate ?? 0),
                 isExchange: l.is_exchange === true,
                 /**
-                 * ⚠ ĐÚNG ĐIỀU KIỆN CỦA `_apply_return_edits`: phiếu đang
-                 *   bám CHÍNH hóa đơn này và còn nháp / chờ xử lý. Ngoài
-                 *   điều kiện ấy máy chủ BỎ QUA lặng lẽ — cho sửa ở đây là
-                 *   người dùng gõ số rồi sổ không đổi.
+                 * ⚠ ĐÚNG ĐIỀU KIỆN CỦA `_apply_return_edits`: phiếu còn nháp /
+                 *   chờ xử lý, và bám ĐÚNG tờ sẽ ghi sổ —
+                 *     · sửa hóa đơn: phiếu đang bám chính tờ này;
+                 *     · xuất hàng: phiếu kèm đơn CHƯA bám tờ nào — `post_invoice`
+                 *       gắn nó vào tờ mới rồi áp phần sửa (mig 180).
+                 *   Ngoài điều kiện ấy máy chủ BỎ QUA lặng lẽ — cho sửa ở đây
+                 *   là người dùng gõ số rồi sổ không đổi.
                  */
-                suaDuoc: !!invoiceId && r.invoice_id === invoiceId && (r.status === "draft" || r.status === "submitted"),
+                suaDuoc:
+                  (r.status === "draft" || r.status === "submitted") &&
+                  (invoiceId ? r.invoice_id === invoiceId : r.invoice_id === null),
               }))
             )
           )
@@ -477,8 +489,25 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           })
         : await postInvoice(createClient(), {
             orderId, lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
-            paymentTerms: dieuKhoan, returnAdds,
+            paymentTerms: dieuKhoan, returnAdds, returnEdits,
           })
+      /**
+       * ⚠ XUẤT HÀNG MÀ ĐỔI NGƯỜI ĐƯỢC GÁN: `post_invoice` đứng tên người của
+       *   ĐƠN, nên gán lại ngay sau khi có tờ. Hai lệnh, không một giao dịch
+       *   — gán hỏng thì hóa đơn VẪN đã xuất, và phải nói ra như vậy để
+       *   người dùng gán lại ở màn hóa đơn, đừng bấm xuất lần nữa.
+       */
+      if (!invoiceId && r.invoiceId && nguoi.ganId && nguoi.ganId !== ganCuaDon) {
+        try {
+          await assignDocSeller(createClient(), "invoice", r.invoiceId, nguoi.ganId)
+        } catch (e) {
+          toast({
+            title: `Đã xuất ${r.invoiceCode ?? ""} nhưng chưa gán được người phụ trách`,
+            description: `${errorMessage(e)} — gán lại ở màn hóa đơn, KHÔNG xuất lại.`,
+            variant: "destructive",
+          })
+        }
+      }
       setMocChuaLuu(chuKy)
       toast({
         title: invoiceId
@@ -497,7 +526,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     } finally {
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast])
+  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon])
 
   usePosKeys({
     F2: () => { setMoThemTra(false); focusPosPicker() },
@@ -738,7 +767,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                       <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{l.name}</span>
                       <span className="n block truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
                         {l.unit}{l.sku ? ` · ${l.sku}` : ""}
-                        {!l.suaDuoc && (sua ? " · phiếu không thuộc tờ này — chỉ xem" : " · sửa ở đơn hàng hoặc phiếu trả")}
+                        {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
                       </span>
                     </span>
                     <span className="justify-self-center text-[12px] font-extrabold text-[var(--pos-muted)]">
@@ -838,12 +867,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         {/* ⚠ Khách của đơn đi theo hóa đơn — RPC không nhận khách khác. */}
         <PartnerCard partner={khach} readOnly />
         {/*
-          ⚠ XUẤT HÀNG THÌ CHƯA GÁN ĐƯỢC — hóa đơn đứng tên người của ĐƠN
-            (`post_invoice` chép `sales_user_id` từ đơn). Đổi thì đổi ở
-            đơn, hoặc gán lại hóa đơn sau khi xuất.
+          ⚠ XUẤT HÀNG: NGƯỜI TẠO LÀ NGƯỜI ĐANG XUẤT (`posted_by` = phiên này),
+            NGƯỜI ĐƯỢC GÁN mặc định là người của đơn và đổi được — ghi xuống
+            ngay sau khi xuất (xem `luu`). Sửa hóa đơn thì gán ngay.
         */}
         <DocPeople
-          createdById={nguoi.taoId}
+          createdById={invoiceId ? nguoi.taoId : user?.id}
           assignedId={nguoi.ganId}
           busy={dangGan}
           onAssign={
@@ -860,9 +889,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     setDangGan(false)
                   }
                 }
-              : undefined
+              : (id) => setNguoi((n) => ({ ...n, ganId: id }))
           }
-          note="Gán ngay — không cần lập lại hóa đơn."
+          note={invoiceId ? "Gán ngay — không cần lập lại hóa đơn." : "Ghi xuống khi bấm Xuất hàng."}
         />
         <PosProductSearchBox
           note={

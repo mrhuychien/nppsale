@@ -172,9 +172,11 @@ describe("Danh sách đơn mobile theo mẫu", () => {
   })
 
   it("chip trạng thái theo mẫu: 34px, chọn = nền tối, số đếm trong viên", () => {
-    expect(LIST).toContain('"border-on-surface bg-on-surface text-surface"')
-    expect(LIST).toContain("h-[34px]")
-    expect(LIST).toContain("aria-pressed={active}")
+    /* Chip bước xử lý (pipeline) đã bỏ cùng bộ lọc (chủ nhà 23/09/2026);
+       viên trạng thái dùng `StatusChips` chung. */
+    const CHIPS = readFileSync(resolve(__dirname, "../src/components/ui/status-chips.tsx"), "utf-8")
+    expect(LIST).toContain("<StatusChips")
+    expect(CHIPS).toContain("rounded-full")
   })
 
   /**

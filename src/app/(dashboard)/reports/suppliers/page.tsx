@@ -17,8 +17,9 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { fetchStockEntryLines } from "@/lib/analytics/sales"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchStockEntryLines, fetchPostedStockEntries, fetchOrgRows } from "@/lib/analytics/sales"
+import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 
@@ -105,6 +106,8 @@ export default function SuppliersReportPage() {
   const [payables, setPayables] = useState<PayableRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const load = useCallback(async () => {
     /* ⚠ CHẶN SỚM NẰM NGOÀI `try`. Để trong thì `finally` tắt vòng quay
@@ -119,72 +122,75 @@ export default function SuppliersReportPage() {
      */
     try {
       setLoading(true)
-      const fromIso = `${range.from}T00:00:00Z`
-      const toIso = `${range.to}T23:59:59Z`
+      setLoadError(null)
+      const orgId = user.org_id
+      /* ⚠ HOÁ ĐƠN MUA TRONG KỲ ĐỌC ĐỦ. Preset "Năm nay" là hàng nghìn hoá
+         đơn; đọc trần thì cắt ở 1.000 và tổng tiền mua thiếu mà không ai
+         biết. Mọi phép đọc phân trang đều có mốc duy nhất `id` — các trang
+         chạy song song, không có mốc thì dòng lặp/sót. */
       const [suppliersRes, productsRes, invoicesRes, payablesRes, stockEntriesRes] = await Promise.all([
-        supabase.from("suppliers").select("id, name, code, category, phone").eq("org_id", user.org_id),
-        supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
-        supabase
-          .from("purchase_invoices")
-          .select("id, supplier_id, invoice_number, invoice_date, total, status, po_id")
-          .eq("org_id", user.org_id)
-          .gte("invoice_date", range.from)
-          .lte("invoice_date", range.to)
-          .neq("status", "cancelled"),
-        fetchAllForAggregate<PayableRow>((from, to) =>
-          supabase
-            .from("payables")
-            .select("id, supplier_id, amount, paid, due_date, status", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .range(from, to)
+        fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name, code, category, phone", "đọc nhà cung cấp"),
+        fetchOrgRows<ProductRow>(supabase, "products", orgId, "id, sku, name", "đọc mặt hàng"),
+        docDuHoacNem<PurchaseInvoiceRow>(
+          (from, to) =>
+            supabase
+              .from("purchase_invoices")
+              .select("id, supplier_id, invoice_number, invoice_date, total, status, po_id", { count: "exact" })
+              .eq("org_id", orgId)
+              .gte("invoice_date", range.from)
+              .lte("invoice_date", range.to)
+              .neq("status", "cancelled")
+              .order("id")
+              .range(from, to),
+          "đọc hoá đơn mua"
         ),
-        fetchAllForAggregate<StockEntryRow>((from, to) =>
-          supabase
-            .from("stock_entries")
-            .select("id, type, status, posted_at, entry_code, supplier_id", { count: "exact" })
-            .eq("org_id", user.org_id)
-            .eq("type", "import")
-            .eq("status", "posted")
-            .gte("posted_at", fromIso)
-            .lte("posted_at", toIso)
-            .range(from, to)
+        docDuHoacNem<PayableRow>(
+          (from, to) =>
+            supabase
+              .from("payables")
+              .select("id, supplier_id, amount, paid, due_date, status", { count: "exact" })
+              .eq("org_id", orgId)
+              .order("id")
+              .range(from, to),
+          "đọc công nợ nhà cung cấp"
         ),
+        fetchPostedStockEntries(supabase, orgId, range, "import"),
       ])
-      const qErr2 = ([suppliersRes, productsRes, invoicesRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr2) console.error("[reports/suppliers] truy vấn lỗi:", qErr2.message)
-      for (const e of [payablesRes.error, stockEntriesRes.error]) {
-        if (e) console.error("[reports/suppliers] truy vấn lỗi:", e)
-      }
-      const poIds = ((invoicesRes.data as PurchaseInvoiceRow[]) || [])
+      const poIds = invoicesRes.rows
         .map((i) => i.po_id)
         .filter((x): x is string => Boolean(x))
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
-      /* ⚠ PHÂN TRANG CẢ HAI BẢNG DÒNG. Quá 1.000 dòng thì API trả đúng
-         1.000 kèm 200, không lỗi — giá nhập cộng thiếu mà trông vẫn bình
-         thường. Dòng đơn mua giữ `.select` riêng vì nó lấy thêm cột
-         `received_qty` mà hàm dùng chung không có. */
-      const [poLinesAgg, stockLinesList] = await Promise.all([
-        poIds.length === 0
-          ? Promise.resolve({ rows: [] as POLineRow[], error: null })
-          : fetchAllForAggregate<POLineRow>((from, to) =>
-              supabase
-                .from("purchase_order_lines")
-                .select("po_id, product_id, quantity, line_total, received_qty", { count: "exact" })
-                .in("po_id", poIds)
-                .range(from, to)
-            ),
+      /* ⚠ PHÂN TRANG CẢ HAI BẢNG DÒNG, VÀ CHIA LÔ ID. Dòng đơn mua giữ
+         `.select` riêng vì nó lấy thêm cột `received_qty` mà hàm dùng chung
+         không có — nhưng `.in("po_id", …)` cả danh sách là URL quá dài khi
+         kỳ lớn, nên đi qua `docTheoLoId` như mọi bảng dòng khác. */
+      const [poLinesList, stockLinesList] = await Promise.all([
+        docTheoLoId<POLineRow>(
+          poIds,
+          (lo, from, to) =>
+            supabase
+              .from("purchase_order_lines")
+              .select("po_id, product_id, quantity, line_total, received_qty", { count: "exact" })
+              .in("po_id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc dòng đơn mua"
+        ),
         fetchStockEntryLines(supabase, stockEntryIds),
       ])
-      if (poLinesAgg.error) console.error("[reports/suppliers] truy vấn lỗi:", poLinesAgg.error)
-      setSuppliers((suppliersRes.data as SupplierRow[]) || [])
-      setProducts((productsRes.data as ProductRow[]) || [])
-      setInvoices((invoicesRes.data as PurchaseInvoiceRow[]) || [])
-      setPoLines(poLinesAgg.rows)
+      setTruncated(
+        suppliersRes.truncated || productsRes.truncated || invoicesRes.truncated ||
+          payablesRes.truncated || stockEntriesRes.truncated
+      )
+      setSuppliers(suppliersRes.rows)
+      setProducts(productsRes.rows)
+      setInvoices(invoicesRes.rows)
+      setPoLines(poLinesList)
       setPayables(payablesRes.rows)
       setStockEntries(stockEntriesRes.rows)
       setStockLines(stockLinesList)
     } catch (err) {
+      setLoadError(errorMessage(err))
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
@@ -479,7 +485,10 @@ export default function SuppliersReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "purchase" ? (
         <ReportTable

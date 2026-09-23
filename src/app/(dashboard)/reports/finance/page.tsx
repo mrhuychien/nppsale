@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,8 +17,8 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchDeliveredOrders,
-  fetchReturnsValue,
+  fetchDeliveredOrdersDu,
+  fetchReturnsValueDu,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
 import { formatCurrency } from "@/lib/utils"
@@ -36,6 +38,13 @@ interface ExpenseRow {
   expense_date: string
   is_paid: boolean
   category: { id: string; code: string; name: string; bucket: string } | null
+}
+
+type ExpRowRaw = {
+  amount: number
+  expense_date: string
+  is_paid: boolean
+  category?: { id: string; code: string; name: string; bucket: string } | null
 }
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -73,6 +82,8 @@ export default function FinanceReportPage() {
   // Cash flow
   const [cashIn, setCashIn] = useState(0)
   const [cashOutPaid, setCashOutPaid] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const effectiveRange: DateRange = useMemo(() => {
     if (yearMode) {
@@ -83,75 +94,83 @@ export default function FinanceReportPage() {
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const r = effectiveRange
-    const [orderList, retVal, cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] =
-      await Promise.all([
-        fetchDeliveredOrders(supabase, user.org_id, r),
-        fetchReturnsValue(supabase, user.org_id, r),
-        fetchCogsForRange(supabase, user.org_id, r),
-        // Năm truy vấn dưới đây đều là TỔNG TIỀN. Server chỉ trả 1.000 dòng
-        // mỗi request nên phải lấy đủ qua nhiều trang, nếu không báo cáo
-        // tài chính sẽ thiếu số mà vẫn trông bình thường.
-        fetchAllForAggregate((from, to) =>
-          supabase
-            .from("expenses")
-            .select(
-              "amount, expense_date, is_paid, category:expense_categories(id, code, name, bucket)",
-              { count: "exact" }
-            )
-            .eq("org_id", user.org_id)
-            .gte("expense_date", r.from)
-            .lte("expense_date", r.to)
-            .range(from, to)
-        ),
-        // Bốn con số dưới đây do DATABASE cộng (migration 093) — mỗi cái
-        // một lời gọi trả về đúng một số, thay cho việc tải cả bảng về.
-        supabase.rpc("receivables_summary").maybeSingle(),
-        supabase.rpc("payables_summary", { p_since: `${r.from}T00:00:00` }).maybeSingle(),
-        supabase.rpc("stock_value_summary").maybeSingle(),
-        supabase.rpc("cash_received_total", { p_from: r.from, p_to: r.to }),
-      ])
-    if (expensesRes.error) console.error("[reports/finance] truy vấn lỗi:", expensesRes.error)
-    const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
-      .find((x) => x?.error)?.error
-    if (rpcErr) console.error("[reports/finance] truy vấn lỗi:", rpcErr.message)
+    /**
+     * ⚠ HỎNG MỘT CÂU LÀ KHÔNG HIỆN BÁO CÁO. Bản cũ chỉ `console.error` lỗi
+     *   của bốn hàm RPC và của bảng chi phí rồi đọc `data ?? 0` — công nợ
+     *   phải thu, phải trả, giá trị kho, tiền thu, lãi ròng đều hiện 0
+     *   trông y như số thật. Bảng cân đối mà ra 0 thì còn tệ hơn trống.
+     */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const r = effectiveRange
+      const orgId = user.org_id
+      const [orderRes, retRes, cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] =
+        await Promise.all([
+          fetchDeliveredOrdersDu(supabase, orgId, r),
+          fetchReturnsValueDu(supabase, orgId, r),
+          fetchCogsForRange(supabase, orgId, r),
+          docDuHoacNem<ExpRowRaw>(
+            (from, to) =>
+              supabase
+                .from("expenses")
+                .select(
+                  "amount, expense_date, is_paid, category:expense_categories(id, code, name, bucket)",
+                  { count: "exact" }
+                )
+                .eq("org_id", orgId)
+                .gte("expense_date", r.from)
+                .lte("expense_date", r.to)
+                .order("id")
+                .range(from, to),
+            "đọc chi phí"
+          ),
+          // Bốn con số dưới đây do DATABASE cộng (migration 093) — mỗi cái
+          // một lời gọi trả về đúng một số, thay cho việc tải cả bảng về.
+          supabase.rpc("receivables_summary").maybeSingle(),
+          supabase.rpc("payables_summary", { p_since: `${r.from}T00:00:00` }).maybeSingle(),
+          supabase.rpc("stock_value_summary").maybeSingle(),
+          supabase.rpc("cash_received_total", { p_from: r.from, p_to: r.to }),
+        ])
+      const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
+        .find((x) => x?.error)?.error
+      if (rpcErr) throw new Error(`tính số tổng ở máy chủ: ${errorMessage(rpcErr)}`)
+      setTruncated(orderRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
+      const orderList = orderRes.rows
+      const retVal = retRes.total
 
-    let totalRevenue = 0
-    let totalDiscount = 0
-    for (const o of orderList) {
-      totalRevenue += Number(o.total || 0)
-      totalDiscount += Number(o.discount || 0)
+      let totalRevenue = 0
+      let totalDiscount = 0
+      for (const o of orderList) {
+        totalRevenue += Number(o.total || 0)
+        totalDiscount += Number(o.discount || 0)
+      }
+      setRevenue(totalRevenue)
+      setDiscount(totalDiscount)
+      setReturnsValue(retVal)
+      setCogs(cogsRes.cogs)
+
+      const exps = expensesRes.rows.map((e) => ({
+        amount: Number(e.amount || 0),
+        expense_date: e.expense_date,
+        is_paid: !!e.is_paid,
+        category: e.category || null,
+      }))
+      setExpenses(exps)
+
+      setRecvOpen(Number((recvRes.data as { total_outstanding?: number } | null)?.total_outstanding ?? 0))
+      setPayOpen(Number((payRes.data as { open_payables?: number } | null)?.open_payables ?? 0))
+      setInventoryValue(Number((batchesRes.data as { inventory_value?: number } | null)?.inventory_value ?? 0))
+      setCashIn(Number(cashRes.data ?? 0))
+
+      let co = 0
+      for (const e of exps) if (e.is_paid) co += e.amount
+      setCashOutPaid(co)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
     }
-    setRevenue(totalRevenue)
-    setDiscount(totalDiscount)
-    setReturnsValue(retVal)
-    setCogs(cogsRes.cogs)
-
-    type ExpRowRaw = {
-      amount: number
-      expense_date: string
-      is_paid: boolean
-      category?: { id: string; code: string; name: string; bucket: string } | null
-    }
-    const exps = ((expensesRes.rows as unknown) as ExpRowRaw[] || []).map((e) => ({
-      amount: Number(e.amount || 0),
-      expense_date: e.expense_date,
-      is_paid: !!e.is_paid,
-      category: e.category || null,
-    }))
-    setExpenses(exps)
-
-    setRecvOpen(Number((recvRes.data as { total_outstanding?: number } | null)?.total_outstanding ?? 0))
-    setPayOpen(Number((payRes.data as { open_payables?: number } | null)?.open_payables ?? 0))
-    setInventoryValue(Number((batchesRes.data as { inventory_value?: number } | null)?.inventory_value ?? 0))
-    setCashIn(Number(cashRes.data ?? 0))
-
-    let co = 0
-    for (const e of exps) if (e.is_paid) co += e.amount
-    setCashOutPaid(co)
-
-    setLoading(false)
   }, [user?.org_id, effectiveRange, supabase])
 
   useEffect(() => {
@@ -291,7 +310,10 @@ export default function FinanceReportPage() {
           {formatRangeLabel(effectiveRange).split(" - ")[1]}
         </p>
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "income_statement" ? (
         <IncomeStatement

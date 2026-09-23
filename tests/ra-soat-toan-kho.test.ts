@@ -129,13 +129,10 @@ const CON_NO_MOC_PHAN_TRANG = [
   "src/app/(dashboard)/receivables/by-customer/[customerId]/page.tsx",
   "src/app/(dashboard)/receivables/by-rep/[userId]/page.tsx",
   "src/app/(dashboard)/receivables/page.tsx",
-  "src/app/(dashboard)/reports/inventory/page.tsx",
-  "src/app/(dashboard)/reports/page.tsx",
   "src/app/(dashboard)/returns/new/page.tsx",
   "src/app/(dashboard)/returns/page.tsx",
   "src/app/(dashboard)/sell/drafts/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",
-  "src/lib/analytics/sales.ts",
 ]
 
 // =====================================================================

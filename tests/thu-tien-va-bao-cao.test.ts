@@ -196,6 +196,8 @@ function kho(kq: { rows?: unknown[]; count?: number; error?: { message: string }
   const chuoi = {
     select: () => chuoi,
     in: () => chuoi,
+    /* Mã thật nay `.order("id")` trước `.range` — mốc chia trang duy nhất. */
+    order: () => chuoi,
     range: () => ({ then: (r: (v: unknown) => unknown) => r(ketQua) }),
   }
   return { from: () => chuoi }

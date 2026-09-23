@@ -16,12 +16,19 @@ import {
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
-  fetchDeliveredOrders,
+  fetchDeliveredOrdersDu,
   fetchOrderLines,
-  fetchReturnsRows,
+  fetchReturnsRowsDu,
+  fetchReturnLines,
+  fetchStockEntryLines,
+  fetchPostedStockEntries,
+  fetchOrgRows,
   type SalesOrderLineRow,
   type SalesOrderRow,
 } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -118,76 +125,73 @@ export default function ProductsReportPage() {
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const catalogs = useFilterCatalogs(user?.org_id)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const fromIso = `${range.from}T00:00:00Z`
-    const toIso = `${range.to}T23:59:59Z`
-    const [
-      orderList,
-      productsRes,
-      batchesRes,
-      returnsRows,
-      stockEntriesRes,
-      customersRes,
-      suppliersRes,
-    ] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      supabase.from("products").select("id, sku, name, category, brand, base_unit, primary_supplier_id").eq("org_id", user.org_id),
-      supabase
-        .from("batches")
-        .select("id, product_id, qty_on_hand, unit_cost")
-        .eq("org_id", user.org_id),
-      fetchReturnsRows(supabase, user.org_id, range),
-      supabase
-        .from("stock_entries")
-        .select("id, type, status, posted_at, entry_code")
-        .eq("org_id", user.org_id)
-        .eq("status", "posted")
-        .gte("posted_at", fromIso)
-        .lte("posted_at", toIso),
-      supabase.from("customers").select("id, store_name").eq("org_id", user.org_id),
-      supabase.from("suppliers").select("id, name").eq("org_id", user.org_id).order("name"),
-    ])
-    const qErr2 = ([productsRes, batchesRes, stockEntriesRes, customersRes, suppliersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr2) console.error("[reports/products] truy vấn lỗi:", qErr2.message)
+    /**
+     * ⚠ MỌI BẢNG ĐỀU ĐỌC ĐỦ, HỎNG THÌ NÉM. Bản cũ đọc mặt hàng, lô, phiếu
+     *   kho trần (cắt ở 1.000 dòng) và `.in(...)` cả danh sách id phiếu
+     *   trả / phiếu kho (URL quá dài) — lỗi chỉ `console.error`. Mặt hàng
+     *   thứ 1.001 không có trong map thì mọi view `if (!p) continue` bỏ
+     *   luôn doanh số và giá vốn của nó, không một dấu vết.
+     */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const orgId = user.org_id
+      const [orderRes, productsRes, batchesRes, returnsRes, entriesRes, customersRes, suppliersRes] =
+        await Promise.all([
+          fetchDeliveredOrdersDu(supabase, orgId, range),
+          fetchOrgRows<ProductRow>(
+            supabase, "products", orgId,
+            "id, sku, name, category, brand, base_unit, primary_supplier_id", "đọc mặt hàng"
+          ),
+          /* ⚠ CHỈ LÔ CÒN HÀNG. Lô đã hết vẫn nằm trong bảng mãi mãi; đọc cả
+             chúng thì trần 1.000 dòng cạn nhanh gấp mấy lần, mà giá trị kho
+             và tồn cuối của chúng đều là 0. */
+          docDuHoacNem<BatchRow>(
+            (from, to) =>
+              supabase
+                .from("batches")
+                .select("id, product_id, qty_on_hand, unit_cost", { count: "exact" })
+                .eq("org_id", orgId)
+                .gt("qty_on_hand", 0)
+                .order("id")
+                .range(from, to),
+            "đọc lô tồn kho"
+          ),
+          fetchReturnsRowsDu(supabase, orgId, range),
+          fetchPostedStockEntries(supabase, orgId, range, null),
+          fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name", "đọc khách hàng"),
+          fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
+        ])
 
-    const orderIds = orderList.map((o) => o.id)
-    const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
-    const [lineList, returnLineRes, stockLinesRes] = await Promise.all([
-      fetchOrderLines(supabase, orderIds),
-      returnsRows.length === 0
-        ? Promise.resolve({ data: [] as ReturnLineRow[] })
-        : supabase
-            .from("return_lines")
-            .select("return_id, product_id, quantity, line_total")
-            .in(
-              "return_id",
-              returnsRows.map((r) => r.id)
-            ),
-      stockEntryIds.length === 0
-        ? Promise.resolve({ data: [] as StockEntryLine[] })
-        : supabase
-            .from("stock_entry_lines")
-            .select("entry_id, product_id, quantity, unit_cost")
-            .in("entry_id", stockEntryIds),
-    ])
-    const qErr = ([returnLineRes, stockLinesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/products] truy vấn lỗi:", qErr.message)
+      const [lineList, returnLineList, stockLineList] = await Promise.all([
+        fetchOrderLines(supabase, orderRes.rows.map((o) => o.id)),
+        fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id)),
+        fetchStockEntryLines(supabase, entriesRes.rows.map((e) => e.id)),
+      ])
 
-    setOrders(orderList)
-    setLines(lineList)
-    setReturnLines((returnLineRes.data as ReturnLineRow[]) || [])
-    setProducts((productsRes.data as ProductRow[]) || [])
-    setBatches((batchesRes.data as BatchRow[]) || [])
-    setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
-    setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setSuppliers((suppliersRes.data as SupplierRow[]) || [])
-    setLoading(false)
+      setTruncated(
+        orderRes.truncated || productsRes.truncated || batchesRes.truncated || returnsRes.truncated ||
+          entriesRes.truncated || customersRes.truncated || suppliersRes.truncated
+      )
+      setOrders(orderRes.rows)
+      setLines(lineList)
+      setReturnLines(returnLineList)
+      setProducts(productsRes.rows)
+      setBatches(batchesRes.rows)
+      setStockEntries(entriesRes.rows)
+      setStockLines(stockLineList)
+      setCustomers(customersRes.rows)
+      setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -565,7 +569,10 @@ export default function ProductsReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "sales" ? (
         <SalesByProductView rows={salesRows} orderLines={lines} orderMap={orderMap} />

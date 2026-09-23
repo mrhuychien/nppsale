@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "./_components/report-load-notice"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -60,6 +62,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   // true = mọi con số trên trang này đang cộng thiếu vì dữ liệu bị cắt ở trần.
   const [truncated, setTruncated] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>("month")
   const [activeTab, setActiveTab] = useState<TabKey>("sales")
   const [data, setData] = useState<ReportStats>({
@@ -73,52 +76,78 @@ export default function ReportsPage() {
 
   useEffect(() => {
     async function fetchAll() {
-      setLoading(true)
-      const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
-        // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
-        // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
-        // báo cáo thiếu số còn tệ hơn báo cáo chậm.
-        fetchAllForAggregate<SalesOrder>((from, to) =>
-          supabase
-            .from("sales_orders")
-            .select("id, order_date, status, total, sales_user_id", { count: "exact" })
-            .order("order_date", { ascending: false })
-            .range(from, to)
-        ),
-        fetchAllForAggregate<Receivable>((from, to) =>
-          supabase
-            .from("receivables")
-            .select("id, status, amount, paid, created_at", { count: "exact" })
-            .range(from, to)
-        ),
-        // Không ràng buộc kiểu ở đây: Supabase suy luận join `product` thành
-        // mảng, ép kiểu ở chỗ dùng cho khớp với mã sẵn có.
-        fetchAllForAggregate((from, to) =>
-          supabase
-            .from("batches")
-            .select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)", {
-              count: "exact",
-            })
-            .gt("qty_on_hand", 0)
-            .range(from, to)
-        ),
-        supabase.from("users").select("id, full_name, role, is_active, created_at"),
-        supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
-      ])
-      const aggErr = [ordersRes.error, recvRes.error, batchesRes.error].find(Boolean)
-      if (aggErr) console.error("[app/reports] truy vấn lỗi:", aggErr)
-      const qErr = ([usersRes, prodRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[app/reports] truy vấn lỗi:", qErr.message)
-      setTruncated(ordersRes.truncated || recvRes.truncated || batchesRes.truncated)
-      setData({
-        salesOrders: ordersRes.rows,
-        receivables: recvRes.rows,
-        batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
-        users: (usersRes.data as User[]) || [],
-        productCount: prodRes.count || 0,
-      })
-      setLoading(false)
+      /**
+       * ⚠ HỎNG THÌ NÓI, KHÔNG HIỆN 0. Bản cũ `console.error` rồi dựng
+       *   trang từ `rows` rỗng — doanh thu, công nợ, tồn kho đều 0 trông
+       *   như một doanh nghiệp vừa mở. Mọi phép đọc có mốc `id`: các trang
+       *   chạy song song, sắp theo `order_date` thôi thì đơn cùng ngày
+       *   lặp/sót giữa hai trang.
+       */
+      try {
+        setLoading(true)
+        setLoadError(null)
+        const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
+          // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
+          // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
+          // báo cáo thiếu số còn tệ hơn báo cáo chậm.
+          docDuHoacNem<SalesOrder>(
+            (from, to) =>
+              supabase
+                .from("sales_orders")
+                .select("id, order_date, status, total, sales_user_id", { count: "exact" })
+                .order("order_date", { ascending: false })
+                .order("id")
+                .range(from, to),
+            "đọc đơn hàng"
+          ),
+          docDuHoacNem<Receivable>(
+            (from, to) =>
+              supabase
+                .from("receivables")
+                .select("id, status, amount, paid, created_at", { count: "exact" })
+                .order("id")
+                .range(from, to),
+            "đọc công nợ"
+          ),
+          // Không ràng buộc kiểu ở đây: Supabase suy luận join `product` thành
+          // mảng, ép kiểu ở chỗ dùng cho khớp với mã sẵn có.
+          docDuHoacNem(
+            (from, to) =>
+              supabase
+                .from("batches")
+                .select("id, product_id, qty_on_hand, expires_at, product:products(shelf_life_days)", {
+                  count: "exact",
+                })
+                .gt("qty_on_hand", 0)
+                .order("id")
+                .range(from, to),
+            "đọc lô tồn kho"
+          ),
+          docDuHoacNem<User>(
+            (from, to) =>
+              supabase
+                .from("users")
+                .select("id, full_name, role, is_active, created_at", { count: "exact" })
+                .order("id")
+                .range(from, to),
+            "đọc nhân viên"
+          ),
+          supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
+        ])
+        if (prodRes.error) throw new Error(`đếm mặt hàng: ${errorMessage(prodRes.error)}`)
+        setTruncated(ordersRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
+        setData({
+          salesOrders: ordersRes.rows,
+          receivables: recvRes.rows,
+          batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
+          users: usersRes.rows,
+          productCount: prodRes.count || 0,
+        })
+      } catch (err) {
+        setLoadError(errorMessage(err))
+      } finally {
+        setLoading(false)
+      }
     }
     fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,6 +203,7 @@ export default function ReportsPage() {
   }
 
   if (authLoading || loading) return <Skeleton className="h-[600px]" />
+  if (loadError) return <ReportLoadNotice error={loadError} />
 
   // KPI calculations
   const totalRevenue = filteredOrders

@@ -300,7 +300,7 @@ describe("báo cáo nhân viên — đọc cột thay vì đoán", () => {
 
   it("câu hỏi phiếu trả có kéo cột về, và sống sót khi cột chưa có", () => {
     expect(at).toContain("sales_user_id")
-    const i = at.indexOf("export async function fetchReturnsRows")
+    const i = at.indexOf("export async function fetchReturnsRowsDu")
     const than = at.slice(i, at.indexOf("\n}", i))
     /* Hai cột có thể thiếu ĐỘC LẬP nhau (`credited_at` mig 097,
        `sales_user_id` mig 160) — phải lùi qua đủ bốn tổ hợp. */

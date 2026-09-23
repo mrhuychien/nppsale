@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { FilterSearchSelect } from "@/components/analytics/report-shell"
@@ -45,40 +47,70 @@ export default function InventoryReportPage() {
   const [brandFilter, setBrandFilter] = useState<string>("")
   const [productFilter, setProductFilter] = useState<string>("")
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const supabase = createClient()
   const catalogs = useFilterCatalogs(user?.org_id)
 
   useEffect(() => {
     async function fetch() {
-      const [batchesRes, linesRes, suppliersRes] = await Promise.all([
-        // Hai truy vấn này để cộng tồn kho và sản lượng bán → phải lấy đủ.
-        fetchAllForAggregate((from, to) =>
-          supabase
-            .from("batches")
-            .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)", {
-              count: "exact",
-            })
-            .gt("qty_on_hand", 0)
-            .order("expires_at")
-            .range(from, to)
-        ),
-        fetchAllForAggregate<SalesOrderLine>((from, to) =>
-          supabase
-            .from("sales_order_lines")
-            .select("id, product_id, quantity", { count: "exact" })
-            .range(from, to)
-        ),
-        supabase.from("suppliers").select("id, name").order("name"),
-      ])
-      const aggErr = [batchesRes.error, linesRes.error].find(Boolean)
-      if (aggErr) console.error("[reports/inventory] truy vấn lỗi:", aggErr)
-      const qErr = ([suppliersRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[reports/inventory] truy vấn lỗi:", qErr.message)
-      setBatchesAll(batchesRes.rows as unknown as (Batch & { product?: Product })[])
-      setSalesLines(linesRes.rows)
-      setSuppliers((suppliersRes.data as SupplierOption[]) || [])
-      setLoading(false)
+      /**
+       * ⚠ HỎNG THÌ NÓI, CHẠM TRẦN THÌ CŨNG NÓI. Bản cũ `console.error` rồi
+       *   dựng trang từ `rows` rỗng, và bỏ qua cờ `truncated`.
+       *
+       * ⚠ DÒNG BÁN ĐỌC CẢ LỊCH SỬ, CỐ Ý GIỮ PHẠM VI. Nhãn "Bán chậm" ở màn
+       *   này chưa từng hứa một khoảng thời gian nào; tự đặt 30 hay 90 ngày
+       *   là đổi luật nghiệp vụ mà chủ nhà chưa chốt. Nhưng cả lịch sử thì
+       *   sớm muộn vượt 20.000 dòng — lúc ấy dải cảnh báo hiện ra, thay vì
+       *   lặng lẽ đếm thiếu rồi gắn nhầm "Bán chậm" cho hàng bán chạy.
+       *
+       * ⚠ Mốc duy nhất `id` sau `expires_at`: nhiều lô cùng hạn dùng thì các
+       *   trang song song được phép trùng/sót nhau.
+       */
+      try {
+        setLoadError(null)
+        const [batchesRes, linesRes, suppliersRes] = await Promise.all([
+          docDuHoacNem(
+            (from, to) =>
+              supabase
+                .from("batches")
+                .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)", {
+                  count: "exact",
+                })
+                .gt("qty_on_hand", 0)
+                .order("expires_at")
+                .order("id")
+                .range(from, to),
+            "đọc lô tồn kho"
+          ),
+          docDuHoacNem<SalesOrderLine>(
+            (from, to) =>
+              supabase
+                .from("sales_order_lines")
+                .select("id, product_id, quantity", { count: "exact" })
+                .order("id")
+                .range(from, to),
+            "đọc dòng bán"
+          ),
+          docDuHoacNem<SupplierOption>(
+            (from, to) =>
+              supabase
+                .from("suppliers")
+                .select("id, name", { count: "exact" })
+                .order("id")
+                .range(from, to),
+            "đọc nhà cung cấp"
+          ),
+        ])
+        setTruncated(batchesRes.truncated || linesRes.truncated || suppliersRes.truncated)
+        setBatchesAll(batchesRes.rows as unknown as (Batch & { product?: Product })[])
+        setSalesLines(linesRes.rows)
+        setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
+      } catch (err) {
+        setLoadError(errorMessage(err))
+      } finally {
+        setLoading(false)
+      }
     }
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -209,6 +241,7 @@ export default function InventoryReportPage() {
   }, [batches, salesLines])
 
   if (authLoading || loading) return <Skeleton className="h-[500px]" />
+  if (loadError) return <ReportLoadNotice error={loadError} />
 
   const donutColors = ["bg-primary", "bg-primary/60", "bg-primary/40", "bg-secondary", "bg-muted"]
 
@@ -226,6 +259,8 @@ export default function InventoryReportPage() {
           <Download className="h-4 w-4" /> Xuất báo cáo
         </button>
       </PageHeader>
+
+      <ReportLoadNotice truncated={truncated} />
 
       {/* Bộ lọc — NCC + Ngành hàng (§3.2) */}
       <Card className="rounded-2xl border-dashed print:hidden">

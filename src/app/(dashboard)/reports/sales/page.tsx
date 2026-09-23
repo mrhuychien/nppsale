@@ -10,13 +10,19 @@ import { ReportShell, FilterField, FilterMultiSelect, FilterSelect } from "@/com
 import { useFilterCatalogs, SALES_METHOD_OPTIONS } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
-  fetchDeliveredOrders,
+  fetchDeliveredOrdersDu,
   fetchOrderLines,
-  fetchReturnsRows,
+  fetchReturnsRowsDu,
+  fetchCogsForRange,
+  fetchOrgRows,
+  vnDateOf,
   type SalesOrderLineRow,
   type SalesOrderRow,
+  type StockExportLineRow,
   type ReturnSummaryRow as ReturnRowMeta,
 } from "@/lib/analytics/sales"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -48,19 +54,6 @@ interface UserRow {
   full_name: string
   role: string
 }
-interface StockEntry {
-  id: string
-  type: string
-  status: string
-  posted_at: string | null
-}
-interface StockEntryLine {
-  entry_id: string
-  product_id: string
-  quantity: number
-  unit_cost: number
-}
-
 const ROLE_LABEL: Record<string, string> = {
   owner: "Chủ DN",
   manager: "Quản lý",
@@ -85,8 +78,9 @@ export default function SalesReportPage() {
   const [returns, setReturns] = useState<ReturnRowMeta[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
-  const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
-  const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [stockLines, setStockLines] = useState<StockExportLineRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [productSupplierMap, setProductSupplierMap] = useState<Map<string, string | null>>(new Map())
   const [supplierFilter, setSupplierFilter] = useState<string[]>([])
@@ -100,64 +94,60 @@ export default function SalesReportPage() {
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const fromIso = `${range.from}T00:00:00Z`
-    const toIso = `${range.to}T23:59:59Z`
-    const [orderList, returnsRows, customersRes, usersRes, stockEntriesRes, suppliersRes, productsRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchReturnsRows(supabase, user.org_id, range),
-      supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
-      supabase.from("users").select("id, full_name, role").eq("org_id", user.org_id),
-      supabase
-        .from("stock_entries")
-        .select("id, type, status, posted_at")
-        .eq("org_id", user.org_id)
-        .eq("status", "posted")
-        .eq("type", "export")
-        .gte("posted_at", fromIso)
-        .lte("posted_at", toIso),
-      supabase.from("suppliers").select("id, name").eq("org_id", user.org_id).order("name"),
-      supabase.from("products").select("id, primary_supplier_id").eq("org_id", user.org_id),
-    ])
-    const qErr2 = ([customersRes, usersRes, stockEntriesRes, suppliersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr2) console.error("[reports/sales] truy vấn lỗi:", qErr2.message)
-    const orderIds = orderList.map((o) => o.id)
-    const stockEntryIds = ((stockEntriesRes.data as StockEntry[]) || []).map((e) => e.id)
-    const [linesList, stockLinesRes] = await Promise.all([
-      fetchOrderLines(supabase, orderIds),
-      stockEntryIds.length === 0
-        ? Promise.resolve({ data: [] as StockEntryLine[] })
-        : supabase
-            .from("stock_entry_lines")
-            .select("entry_id, product_id, quantity, unit_cost")
-            .in("entry_id", stockEntryIds),
-    ])
-    const qErr = ([stockLinesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/sales] truy vấn lỗi:", qErr.message)
-    setOrders(orderList)
-    setLines(linesList)
-    setReturns(returnsRows)
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    const groupMap = new Map<string, string | null>()
-    const routeMap = new Map<string, string | null>()
-    for (const c of (customersRes.data as Array<{ id: string; group_id: string | null; channel: string | null }>) || []) {
-      groupMap.set(c.id, c.group_id)
-      routeMap.set(c.id, c.channel)
+    /**
+     * ⚠ ĐỌC HỎNG THÌ NÓI RA. Bản cũ đọc phiếu xuất và dòng phiếu kho trần
+     *   (1.000 dòng, `.in` cả danh sách id — URL quá dài), lỗi chỉ
+     *   `console.error`, dòng kho thành [] → giá vốn 0, lãi 100% ở tab
+     *   Lợi nhuận và Nhân viên. Nay đi chung đường giá vốn với màn Tài
+     *   chính (`fetchCogsForRange`), hỏng thì ném và dải báo thay bảng số.
+     */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const orgId = user.org_id
+      const [orderRes, returnsRes, customersRes, usersRes, cogsRes, suppliersRes, productsRes] = await Promise.all([
+        fetchDeliveredOrdersDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchOrgRows<CustomerRow & { group_id: string | null; channel: string | null }>(
+          supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"
+        ),
+        fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role", "đọc nhân viên"),
+        fetchCogsForRange(supabase, orgId, range),
+        fetchOrgRows<{ id: string; name: string }>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
+        fetchOrgRows<{ id: string; primary_supplier_id: string | null }>(
+          supabase, "products", orgId, "id, primary_supplier_id", "đọc mặt hàng"
+        ),
+      ])
+      const linesList = await fetchOrderLines(supabase, orderRes.rows.map((o) => o.id))
+      setTruncated(
+        orderRes.truncated || returnsRes.truncated || customersRes.truncated || usersRes.truncated ||
+          cogsRes.truncated || suppliersRes.truncated || productsRes.truncated
+      )
+      setOrders(orderRes.rows)
+      setLines(linesList)
+      setReturns(returnsRes.rows)
+      setCustomers(customersRes.rows)
+      const groupMap = new Map<string, string | null>()
+      const routeMap = new Map<string, string | null>()
+      for (const c of customersRes.rows) {
+        groupMap.set(c.id, c.group_id)
+        routeMap.set(c.id, c.channel)
+      }
+      setCustomerGroupMap(groupMap)
+      setCustomerRouteMap(routeMap)
+      setUsers(usersRes.rows)
+      setStockLines(cogsRes.lines)
+      setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
+      const psMap = new Map<string, string | null>()
+      for (const p of productsRes.rows) {
+        psMap.set(p.id, p.primary_supplier_id)
+      }
+      setProductSupplierMap(psMap)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
     }
-    setCustomerGroupMap(groupMap)
-    setCustomerRouteMap(routeMap)
-    setUsers((usersRes.data as UserRow[]) || [])
-    setStockEntries((stockEntriesRes.data as StockEntry[]) || [])
-    setStockLines((stockLinesRes.data as StockEntryLine[]) || [])
-    setSuppliers((suppliersRes.data as { id: string; name: string }[]) || [])
-    const psMap = new Map<string, string | null>()
-    for (const p of (productsRes.data as { id: string; primary_supplier_id: string | null }[]) || []) {
-      psMap.set(p.id, p.primary_supplier_id)
-    }
-    setProductSupplierMap(psMap)
-    setLoading(false)
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -227,12 +217,6 @@ export default function SalesReportPage() {
     return m
   }, [users])
 
-  const stockEntryMap = useMemo(() => {
-    const m = new Map<string, StockEntry>()
-    for (const e of stockEntries) m.set(e.id, e)
-    return m
-  }, [stockEntries])
-
   // -------------------- Thời gian --------------------
   const timeBuckets: DayBucket[] = useMemo(() => {
     const map = new Map<string, DayBucket>()
@@ -284,10 +268,11 @@ export default function SalesReportPage() {
       map.set(d, e)
     }
     // cogs per day from posted export entries
+    // Dòng từ `fetchCogsForRange` đều là phiếu XUẤT đã ghi sổ; xếp cột theo
+    // ngày Việt Nam, cùng mốc với kỳ đã đọc.
     for (const l of stockLines) {
-      const entry = stockEntryMap.get(l.entry_id)
-      if (!entry || entry.type !== "export" || !entry.posted_at) continue
-      const d = entry.posted_at.slice(0, 10)
+      if (!l.posted_at) continue
+      const d = vnDateOf(l.posted_at)
       const dd = d.split("-")
       const label = `${dd[2]}/${dd[1]}/${dd[0]}`
       const e = map.get(d) || { date: d, label, revenue: 0, cogs: 0, profit: 0, margin: 0 }
@@ -300,7 +285,7 @@ export default function SalesReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => a.date.localeCompare(b.date))
-  }, [filteredOrders, stockLines, stockEntryMap])
+  }, [filteredOrders, stockLines])
 
   // -------------------- Giảm giá HĐ --------------------
   const discountRows: DiscountRow[] = useMemo(() => {
@@ -378,8 +363,6 @@ export default function SalesReportPage() {
     }
     const productCogs = new Map<string, { qty: number; value: number }>()
     for (const l of stockLines) {
-      const entry = stockEntryMap.get(l.entry_id)
-      if (!entry || entry.type !== "export") continue
       const e = productCogs.get(l.product_id) || { qty: 0, value: 0 }
       e.qty += Math.abs(Number(l.quantity || 0))
       e.value += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
@@ -410,7 +393,7 @@ export default function SalesReportPage() {
         return viIncludes(r.name, viNormalize(search))
       })
       .sort((a, b) => b.revenue - a.revenue)
-  }, [filteredOrders, filteredLines, stockLines, stockEntryMap, userMap, search])
+  }, [filteredOrders, filteredLines, stockLines, userMap, search])
 
   const handleExport = () => {
     if (variant === "time") {
@@ -505,7 +488,10 @@ export default function SalesReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "time" ? (
         <ByTimeView buckets={timeBuckets} />

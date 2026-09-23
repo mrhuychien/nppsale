@@ -9,7 +9,19 @@ import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analyt
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import { fetchDeliveredOrders, fetchOrderLines, fetchReturnsRows, type SalesOrderLineRow, type SalesOrderRow, type ReturnSummaryRow as ReturnRowMeta, fetchStockEntryLines, fetchReturnLines } from "@/lib/analytics/sales"
+import {
+  fetchDeliveredOrdersDu,
+  fetchOrderLines,
+  fetchReturnsRowsDu,
+  fetchPostedStockEntries,
+  fetchOrgRows,
+  type SalesOrderLineRow,
+  type SalesOrderRow,
+  type ReturnSummaryRow as ReturnRowMeta,
+  fetchStockEntryLines,
+  fetchReturnLines,
+} from "@/lib/analytics/sales"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -18,7 +30,7 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 
@@ -91,6 +103,8 @@ export default function CustomersReportPage() {
   const [receivables, setReceivables] = useState<ReceivableRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const load = useCallback(async () => {
     /* ⚠ CHẶN SỚM NẰM NGOÀI `try`. Để trong thì `finally` tắt vòng quay
@@ -105,43 +119,39 @@ export default function CustomersReportPage() {
      */
     try {
       setLoading(true)
-      const fromIso = `${range.from}T00:00:00Z`
-      const toIso = `${range.to}T23:59:59Z`
-      const [orderList, returnsRows, customersRes, productsRes, receivablesRes, stockEntriesRes] =
+      setLoadError(null)
+      const orgId = user.org_id
+      /* ⚠ CÔNG NỢ VÀ PHIẾU XUẤT HỎNG THÌ NÉM. Bản cũ chỉ `console.error`
+         rồi đọc `rows` rỗng → giá vốn 0 (lãi phồng) và công nợ 0. Khách
+         hàng cũng đọc đủ theo trang: khách thứ 1.001 không có trong map
+         thì dòng của họ mất tên, mất kênh. */
+      const [orderRes, returnsRes, customersRes, productsRes, receivablesRes, stockEntriesRes] =
         await Promise.all([
-          fetchDeliveredOrders(supabase, user.org_id, range),
-          fetchReturnsRows(supabase, user.org_id, range),
-          supabase
-            .from("customers")
-            .select("id, store_name, channel, credit_limit, phone")
-            .eq("org_id", user.org_id),
-          supabase.from("products").select("id, sku, name").eq("org_id", user.org_id),
-          fetchAllForAggregate<ReceivableRow>((from, to) =>
-            supabase
-              .from("receivables")
-              .select("id, customer_id, amount, paid, due_date, status, created_at", { count: "exact" })
-              .eq("org_id", user.org_id)
-              .in("status", ["open", "partial", "overdue"])
-              .range(from, to)
+          fetchDeliveredOrdersDu(supabase, orgId, range),
+          fetchReturnsRowsDu(supabase, orgId, range),
+          fetchOrgRows<CustomerRow>(
+            supabase, "customers", orgId, "id, store_name, channel, credit_limit, phone", "đọc khách hàng"
           ),
-          fetchAllForAggregate<StockEntry>((from, to) =>
-            supabase
-              .from("stock_entries")
-              .select("id, type", { count: "exact" })
-              .eq("org_id", user.org_id)
-              .eq("status", "posted")
-              .eq("type", "export")
-              .gte("posted_at", fromIso)
-              .lte("posted_at", toIso)
-              .range(from, to)
+          fetchOrgRows<ProductRow>(supabase, "products", orgId, "id, sku, name", "đọc mặt hàng"),
+          docDuHoacNem<ReceivableRow>(
+            (from, to) =>
+              supabase
+                .from("receivables")
+                .select("id, customer_id, amount, paid, due_date, status, created_at", { count: "exact" })
+                .eq("org_id", orgId)
+                .in("status", ["open", "partial", "overdue"])
+                .order("id")
+                .range(from, to),
+            "đọc công nợ"
           ),
+          fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
-      const qErr2 = ([customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr2) console.error("[reports/customers] truy vấn lỗi:", qErr2.message)
-      for (const e of [receivablesRes.error, stockEntriesRes.error]) {
-        if (e) console.error("[reports/customers] truy vấn lỗi:", e)
-      }
+      const orderList = orderRes.rows
+      const returnsRows = returnsRes.rows
+      setTruncated(
+        orderRes.truncated || returnsRes.truncated || customersRes.truncated ||
+          productsRes.truncated || receivablesRes.truncated || stockEntriesRes.truncated
+      )
       const orderIds = orderList.map((o) => o.id)
       const returnIds = returnsRows.map((r) => r.id)
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
@@ -157,12 +167,13 @@ export default function CustomersReportPage() {
       setLines(linesList)
       setReturns(returnsRows)
       setReturnLines(retLinesList)
-      setCustomers((customersRes.data as CustomerRow[]) || [])
-      setProducts((productsRes.data as ProductRow[]) || [])
+      setCustomers(customersRes.rows)
+      setProducts(productsRes.rows)
       setReceivables(receivablesRes.rows)
       setStockEntries(stockEntriesRes.rows)
       setStockLines(stockLinesList)
     } catch (err) {
+      setLoadError(errorMessage(err))
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
@@ -508,7 +519,10 @@ export default function CustomersReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "sales" ? (
         <SalesView rows={salesRows} />

@@ -8,7 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
 import { FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
-import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchDeliveredOrdersDu, fetchOrgRows, type SalesOrderRow } from "@/lib/analytics/sales"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -32,23 +34,32 @@ export default function ChannelsReportPage() {
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [routeFilter, setRouteFilter] = useState<string[]>([])
   const [customerFilter, setCustomerFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const [orderList, customersRes] = await Promise.all([
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      supabase.from("customers").select("id, store_name, channel").eq("org_id", user.org_id),
-    ])
-    const qErr = ([customersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/channels] truy vấn lỗi:", qErr.message)
-    setOrders(orderList)
-    setCustomers((customersRes.data as CustomerRow[]) || [])
-    setLoading(false)
+    /* ⚠ KHÁCH ĐỌC ĐỦ THEO TRANG. Đọc trần thì khách thứ 1.001 trở đi không
+       có trong map, và doanh số của họ lặng lẽ dồn sang kênh mặc định
+       "Bán trực tiếp" — con số từng kênh sai mà tổng vẫn khớp. */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const [orderRes, customersRes] = await Promise.all([
+        fetchDeliveredOrdersDu(supabase, user.org_id, range),
+        fetchOrgRows<CustomerRow>(supabase, "customers", user.org_id, "id, store_name, channel", "đọc khách hàng"),
+      ])
+      setTruncated(orderRes.truncated || customersRes.truncated)
+      setOrders(orderRes.rows)
+      setCustomers(customersRes.rows)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, supabase])
 
   useEffect(() => {
@@ -149,7 +160,10 @@ export default function ChannelsReportPage() {
         </>
       }
     >
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : (
         <table className="w-full border border-border/40 text-sm">

@@ -19,12 +19,15 @@ import {
 } from "@/lib/analytics/filter-catalogs"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
-  fetchAllOrders,
-  fetchDeliveredOrders,
-  fetchReturnsValue,
+  fetchAllOrdersDu,
+  fetchDeliveredOrdersDu,
+  fetchReturnsValueDu,
   fetchCogsForRange,
   type SalesOrderRow,
 } from "@/lib/analytics/sales"
+import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import { type DateRange, rangeFromPreset } from "@/lib/analytics/period"
 
 interface CashReceiptRow {
@@ -56,6 +59,8 @@ export default function EndOfDayPage() {
   const [cogs, setCogs] = useState(0)
   const [cashReceipts, setCashReceipts] = useState<CashReceiptRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   // Filters
   const [customerFilter, setCustomerFilter] = useState<string[]>([])
@@ -68,33 +73,57 @@ export default function EndOfDayPage() {
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const [allOrders, delivList, retVal, cogsRes, cashRes, expRes] = await Promise.all([
-      fetchAllOrders(supabase, user.org_id, range),
-      fetchDeliveredOrders(supabase, user.org_id, range),
-      fetchReturnsValue(supabase, user.org_id, range),
-      fetchCogsForRange(supabase, user.org_id, range),
-      supabase
-        .from("cash_receipts")
-        .select("id, receipt_code, submitted_amount, expected_amount, status, received_at, source_type")
-        .eq("org_id", user.org_id)
-        .eq("receipt_date", date),
-      supabase
-        .from("expenses")
-        .select("amount, description, expense_date")
-        .eq("org_id", user.org_id)
-        .eq("expense_date", date),
-    ])
-    const qErr = ([cogsRes, cashRes, expRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/end-of-day] truy vấn lỗi:", qErr.message)
-    setOrders(allOrders)
-    setDelivered(delivList)
-    setReturnsValue(retVal)
-    setCogs(cogsRes.cogs)
-    setCashReceipts((cashRes.data as CashReceiptRow[]) || [])
-    setExpenses((expRes.data as ExpenseRow[]) || [])
-    setLoading(false)
+    /* ⚠ HỎNG THÌ NÓI, KHÔNG HIỆN 0. Các hàm đọc đơn / trả / giá vốn nay
+       NÉM khi truy vấn hỏng; không bắt thì trang treo. Phiếu thu và chi
+       phí cũng thôi `console.error` rồi đọc `data || []` — "tiền thu 0đ"
+       trên báo cáo cuối ngày là thứ người ta đem đi đối chiếu két. */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const orgId = user.org_id
+      const [allRes, delivRes, retRes, cogsRes, cashRes, expRes] = await Promise.all([
+        fetchAllOrdersDu(supabase, orgId, range),
+        fetchDeliveredOrdersDu(supabase, orgId, range),
+        fetchReturnsValueDu(supabase, orgId, range),
+        fetchCogsForRange(supabase, orgId, range),
+        docDuHoacNem<CashReceiptRow>(
+          (from, to) =>
+            supabase
+              .from("cash_receipts")
+              .select("id, receipt_code, submitted_amount, expected_amount, status, received_at, source_type", { count: "exact" })
+              .eq("org_id", orgId)
+              .eq("receipt_date", date)
+              .order("id")
+              .range(from, to),
+          "đọc phiếu thu"
+        ),
+        docDuHoacNem<ExpenseRow>(
+          (from, to) =>
+            supabase
+              .from("expenses")
+              .select("amount, description, expense_date", { count: "exact" })
+              .eq("org_id", orgId)
+              .eq("expense_date", date)
+              .order("id")
+              .range(from, to),
+          "đọc chi phí"
+        ),
+      ])
+      setTruncated(
+        allRes.truncated || delivRes.truncated || retRes.truncated || cogsRes.truncated ||
+          cashRes.truncated || expRes.truncated
+      )
+      setOrders(allRes.rows)
+      setDelivered(delivRes.rows)
+      setReturnsValue(retRes.total)
+      setCogs(cogsRes.cogs)
+      setCashReceipts(cashRes.rows)
+      setExpenses(expRes.rows)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, date, supabase])
 
   useEffect(() => {
@@ -199,6 +228,10 @@ export default function EndOfDayPage() {
         </>
       }
     >
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
           <SmallStat label="Đơn tạo trong ngày" value={String(filteredOrders.length)} />
@@ -298,6 +331,7 @@ export default function EndOfDayPage() {
           </table>
         </div>
       </div>
+      )}
     </ReportFrame>
   )
 }

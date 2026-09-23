@@ -73,7 +73,7 @@ const MIEN_TRU = [
  *
  * ⚠ CÓ TÊN, KHÔNG GIẤU. Chủ nhà báo lỗi ở màn Đề xuất đặt hàng
  * (21/09/2026); tôi sửa nốt sáu màn phiếu và màn Tra soát vì chúng
- * cùng một gốc và hỏng trong IM LẶNG. Mười bảy màn dưới đây — báo cáo, phân tích,
+ * cùng một gốc và hỏng trong IM LẶNG. Chín màn dưới đây — phân tích,
  * cấu hình thưởng, và mấy màn luồng cũ — chưa được yêu cầu, nên ghi nợ chứ
  * không sửa lén.
  *
@@ -91,13 +91,6 @@ const CON_NO_DOC_DANH_MUC = [
   "src/app/(dashboard)/inventory/stock-out/page.tsx",
   "src/app/(dashboard)/inventory/stocktake/page.tsx",
   "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
-  "src/app/(dashboard)/reports/page.tsx",
-  "src/app/(dashboard)/reports/customers/page.tsx",
-  "src/app/(dashboard)/reports/employees/page.tsx",
-  "src/app/(dashboard)/reports/orders/page.tsx",
-  "src/app/(dashboard)/reports/products/page.tsx",
-  "src/app/(dashboard)/reports/sales/page.tsx",
-  "src/app/(dashboard)/reports/suppliers/page.tsx",
 ]
 
 /**
@@ -142,6 +135,9 @@ function docBiCat(src: string, at: number): boolean {
     /\.range\(/.test(stmt) ||
     /\.limit\(/.test(stmt) ||
     /\.maybeSingle\(\)/.test(stmt) ||
+    /* `head: true` chỉ ĐẾM, không trả dòng nào — không có danh mục nào
+       để bị cắt (vd. `reports/page.tsx` đếm số mã đang bán). */
+    /head: true/.test(stmt) ||
     before.includes("fetchAllForAggregate")
   return !safe
 }
@@ -175,6 +171,14 @@ function allScanned(): string[] {
 }
 
 describe("không màn nào nạp danh mục kiểu bị cắt", () => {
+  /** ⚠ Phép quét phải còn nhận ra mẫu — và không báo oan câu chỉ đếm. */
+  it("phép quét phân biệt đọc trơn với câu chỉ đếm", () => {
+    const tron = 'supabase.from("products").select("id, name").eq("org_id", o)'
+    expect(docBiCat(tron, tron.indexOf(".from("))).toBe(true)
+    const dem = 'supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active")'
+    expect(docBiCat(dem, dem.indexOf(".from("))).toBe(false)
+  })
+
   it("mọi câu đọc cả danh mục đều đi qua loadCatalogue", () => {
     const bad: string[] = []
     for (const abs of allScanned()) {

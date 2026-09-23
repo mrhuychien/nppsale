@@ -9,7 +9,19 @@ import { ReportShell, FilterField, FilterSearchSelect, FilterMultiSelect } from 
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import { fetchDeliveredOrders, fetchOrderLines, fetchReturnsRows, type SalesOrderLineRow, type SalesOrderRow, type ReturnSummaryRow, fetchStockEntryLines, fetchReturnLines } from "@/lib/analytics/sales"
+import {
+  fetchDeliveredOrdersDu,
+  fetchOrderLines,
+  fetchReturnsRowsDu,
+  fetchPostedStockEntries,
+  fetchOrgRows,
+  type SalesOrderLineRow,
+  type SalesOrderRow,
+  type ReturnSummaryRow,
+  fetchStockEntryLines,
+  fetchReturnLines,
+} from "@/lib/analytics/sales"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -18,7 +30,6 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 
@@ -105,6 +116,8 @@ export default function EmployeesReportPage() {
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const load = useCallback(async () => {
     /* ⚠ CHẶN SỚM NẰM NGOÀI `try`. Để trong thì `finally` tắt vòng quay
@@ -119,34 +132,29 @@ export default function EmployeesReportPage() {
      */
     try {
       setLoading(true)
-      const fromIso = `${range.from}T00:00:00Z`
-      const toIso = `${range.to}T23:59:59Z`
-      const [orderList, returnsRows, usersRes, customersRes, productsRes, stockEntriesRes] =
+      setLoadError(null)
+      const orgId = user.org_id
+      /* ⚠ PHIẾU XUẤT HỎNG THÌ NÉM. Bản cũ chỉ `console.error` rồi đọc
+         `rows` rỗng → giá vốn 0 → lợi nhuận và hoa hồng phồng lên. Bảng
+         tra cứu (khách, mặt hàng, người dùng) cũng đọc đủ theo trang. */
+      const [orderRes, returnsRes, usersRes, customersRes, productsRes, stockEntriesRes] =
         await Promise.all([
-          fetchDeliveredOrders(supabase, user.org_id, range),
-          fetchReturnsRows(supabase, user.org_id, range),
-          supabase
-            .from("users")
-            .select("id, full_name, role, is_active")
-            .eq("org_id", user.org_id),
-          supabase.from("customers").select("id, store_name, group_id, channel").eq("org_id", user.org_id),
-          supabase.from("products").select("id, sku, name, base_unit, sell_price, category, brand").eq("org_id", user.org_id),
-          fetchAllForAggregate<StockEntry>((from, to) =>
-            supabase
-              .from("stock_entries")
-              .select("id, type", { count: "exact" })
-              .eq("org_id", user.org_id)
-              .eq("status", "posted")
-              .eq("type", "export")
-              .gte("posted_at", fromIso)
-              .lte("posted_at", toIso)
-              .range(from, to)
+          fetchDeliveredOrdersDu(supabase, orgId, range),
+          fetchReturnsRowsDu(supabase, orgId, range),
+          fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role, is_active", "đọc nhân viên"),
+          fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
+          fetchOrgRows<ProductRow>(
+            supabase, "products", orgId,
+            "id, sku, name, base_unit, sell_price, category, brand", "đọc mặt hàng"
           ),
+          fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
-      const qErr2 = ([usersRes, customersRes, productsRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr2) console.error("[reports/employees] truy vấn lỗi:", qErr2.message)
-      if (stockEntriesRes.error) console.error("[reports/employees] truy vấn lỗi:", stockEntriesRes.error)
+      const orderList = orderRes.rows
+      const returnsRows = returnsRes.rows
+      setTruncated(
+        orderRes.truncated || returnsRes.truncated || usersRes.truncated ||
+          customersRes.truncated || productsRes.truncated || stockEntriesRes.truncated
+      )
       const orderIds = orderList.map((o) => o.id)
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
       const returnIds = returnsRows.map((r) => r.id)
@@ -162,13 +170,14 @@ export default function EmployeesReportPage() {
       setOrders(orderList)
       setLines(linesList)
       setReturns(returnsRows)
-      setUsers((usersRes.data as UserRow[]) || [])
-      setCustomers((customersRes.data as CustomerRow[]) || [])
-      setProducts((productsRes.data as ProductRow[]) || [])
+      setUsers(usersRes.rows)
+      setCustomers(customersRes.rows)
+      setProducts(productsRes.rows)
       setStockEntries(stockEntriesRes.rows)
       setStockLines(stockLinesList)
       setReturnLines(returnLinesList)
     } catch (err) {
+      setLoadError(errorMessage(err))
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
@@ -937,7 +946,10 @@ export default function EmployeesReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "sales" ? (
         <ReportTable

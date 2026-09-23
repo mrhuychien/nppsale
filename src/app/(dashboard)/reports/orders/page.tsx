@@ -12,7 +12,9 @@ import {
   ReportTable,
   TotalsRow,
 } from "@/components/analytics/report-table"
-import { fetchAllOrders, fetchOrderLines, type SalesOrderLineRow, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchAllOrdersDu, fetchOrderLines, fetchOrgRows, type SalesOrderLineRow, type SalesOrderRow } from "@/lib/analytics/sales"
+import { errorMessage } from "@/lib/errors"
+import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
   type PeriodPreset,
@@ -86,29 +88,39 @@ export default function OrdersReportPage() {
   const [products, setProducts] = useState<ProductMeta[]>([])
   const [customers, setCustomers] = useState<CustomerMeta[]>([])
   const [users, setUsers] = useState<UserMeta[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
-    setLoading(true)
-    const [orderList, productsRes, customersRes, usersRes] = await Promise.all([
-      fetchAllOrders(supabase, user.org_id, range),
-      supabase.from("products").select("id, sku, name, category, brand").eq("org_id", user.org_id),
-      supabase.from("customers").select("id, store_name, group_id").eq("org_id", user.org_id),
-      supabase.from("users").select("id, full_name").eq("org_id", user.org_id),
-    ])
-    const qErr = ([productsRes, customersRes, usersRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[reports/orders] truy vấn lỗi:", qErr.message)
-    const orderIds = orderList
-      .filter((o) => (status ? o.status === status : true))
-      .map((o) => o.id)
-    const linesList = await fetchOrderLines(supabase, orderIds)
-    setOrders(orderList)
-    setLines(linesList)
-    setProducts((productsRes.data as ProductMeta[]) || [])
-    setCustomers((customersRes.data as CustomerMeta[]) || [])
-    setUsers((usersRes.data as UserMeta[]) || [])
-    setLoading(false)
+    /* ⚠ BẢNG TRA CỨU ĐỌC ĐỦ, HỎNG THÌ NÓI. Đọc trần thì khách / mặt hàng
+       thứ 1.001 trở đi mất tên trên báo cáo; lỗi chỉ `console.error` thì
+       cả trang trống mà không ai biết vì sao. */
+    try {
+      setLoading(true)
+      setLoadError(null)
+      const orgId = user.org_id
+      const [orderRes, productsRes, customersRes, usersRes] = await Promise.all([
+        fetchAllOrdersDu(supabase, orgId, range),
+        fetchOrgRows<ProductMeta>(supabase, "products", orgId, "id, sku, name, category, brand", "đọc mặt hàng"),
+        fetchOrgRows<CustomerMeta>(supabase, "customers", orgId, "id, store_name, group_id", "đọc khách hàng"),
+        fetchOrgRows<UserMeta>(supabase, "users", orgId, "id, full_name", "đọc nhân viên"),
+      ])
+      const orderIds = orderRes.rows
+        .filter((o) => (status ? o.status === status : true))
+        .map((o) => o.id)
+      const linesList = await fetchOrderLines(supabase, orderIds)
+      setTruncated(orderRes.truncated || productsRes.truncated || customersRes.truncated || usersRes.truncated)
+      setOrders(orderRes.rows)
+      setLines(linesList)
+      setProducts(productsRes.rows)
+      setCustomers(customersRes.rows)
+      setUsers(usersRes.rows)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }, [user?.org_id, range, status, supabase])
 
   useEffect(() => {
@@ -359,7 +371,10 @@ export default function OrdersReportPage() {
       <div className="hidden print:block mb-3 text-center text-xs text-muted-foreground">
         {VARIANTS.find((v) => v.key === variant)?.label} · {formatRangeLabel(range)}
       </div>
-      {loading ? (
+      {!loadError && <ReportLoadNotice truncated={truncated} />}
+      {loadError ? (
+        <ReportLoadNotice error={loadError} />
+      ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "by_product" ? (
         <ReportTable

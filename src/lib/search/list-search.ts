@@ -21,19 +21,26 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { ID_MOI_LO } from "@/lib/supabase/aggregate"
 
 /**
  * Số mã tối đa kéo về cho một lượt tra cứu phụ.
  *
  * ⚠ CÓ TRẦN VÌ URL CÓ TRẦN. `customer_id.in.(...)` đi trong chuỗi truy
- * vấn; vài nghìn mã UUID là một URL vỡ trước khi máy chủ kịp đọc — và
+ * vấn; vài trăm mã UUID là một URL vỡ trước khi máy chủ kịp đọc — và
  * nó vỡ bằng một lỗi mạng khó hiểu, không phải một câu nói được.
  *
  * ⚠ VÀ VÌ CÓ TRẦN NÊN PHẢI BÁO KHI CHẠM TRẦN. Cắt im lặng là ô tìm trả
  * về thiếu kết quả mà trông y hệt lúc trả đủ — đúng cái lỗi tệp này
- * sinh ra để dọn, chỉ đổi chỗ từ "trang 1" sang "300 khách đầu".
+ * sinh ra để dọn, chỉ đổi chỗ từ "trang 1" sang "150 khách đầu".
+ *
+ * ⚠ 150, KHÔNG PHẢI 300 NHƯ TRƯỚC (đợt QA 23/09/2026). 300 uuid trong một
+ * `in.(…)` đi qua `.or()` là ~11 KB chuỗi truy vấn — sát/vượt trần URL
+ * của cổng API, và vỡ bằng đúng cái lỗi mạng khó hiểu nói ở trên. Dùng
+ * CHUNG con số với `ID_MOI_LO` (mức cả kho đã đo là an toàn cho một
+ * `.in()`), để hai nơi không trôi lệch nhau.
  */
-export const MATCH_CAP = 300
+export const MATCH_CAP = ID_MOI_LO
 
 /**
  * Chuỗi cho `ilike`, đã bọc `%` và ĐÃ THOÁT ký tự đại diện.
@@ -87,7 +94,7 @@ export async function idsMatching(
     .select(idColumn)
     .or(columns.map((c) => `${c}.ilike.${like}`).join(","))
     // ⚠ CÓ MỐC SẮP XẾP. Không có thì hai lần gọi cùng một từ khoá có thể
-    //   trả về hai tập 300 mã khác nhau, và danh sách nhấp nháy.
+    //   trả về hai tập mã khác nhau, và danh sách nhấp nháy.
     .order(idColumn)
     .limit(MATCH_CAP + 1)
   if (orgId) q = q.eq("org_id", orgId)

@@ -4,7 +4,9 @@ import { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { docThanhToanCuaPhieu } from "../../by-customer/doc-so-cong-no"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -53,6 +55,8 @@ export default function RepDebtDetailPage() {
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [payments, setPayments] = useState<PaymentWithJoin[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -67,14 +71,19 @@ export default function RepDebtDetailPage() {
               { count: "exact" }
             )
             .eq("sales_user_id", userId)
+            // ⚠ Khoá phụ `id`: nhiều phiếu cùng giờ tạo, các trang song
+            //   song thiếu khoá duy nhất là lặp / sót phiếu.
             .order("created_at", { ascending: false })
+            .order("id")
             .range(from, to)
         ),
       ])
-      if (recRes.error) console.error("[by-rep/userId] truy vấn lỗi:", recRes.error)
       const qErr = ([userRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[by-rep/userId] truy vấn lỗi:", qErr.message)
+      // ⚠ Công nợ đọc hỏng / chạm trần thì NÓI RA.
+      if (recRes.error) setLoadError(`Công nợ: ${recRes.error}`)
+      setTruncated(recRes.truncated)
 
       setRepUser(userRes.data as User | null)
       const recs = recRes.rows as unknown as Receivable[]
@@ -82,20 +91,16 @@ export default function RepDebtDetailPage() {
 
       // Fetch payments for all receivables of this rep
       const recIds = recs.map((r) => r.id)
-      if (recIds.length > 0) {
-        const payRes = await fetchAllForAggregate((from, to) =>
-          supabase
-            .from("payments")
-            .select(
-              "id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))",
-              { count: "exact" }
-            )
-            .in("receivable_id", recIds)
-            .order("collected_at", { ascending: false })
-            .range(from, to)
+      // ⚠ CHIA LÔ 150 ID, lỗi thì HIỆN — xem `docThanhToanCuaPhieu`.
+      try {
+        const pays = await docThanhToanCuaPhieu<PaymentWithJoin>(
+          supabase,
+          recIds,
+          "id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))"
         )
-        if (payRes.error) console.error("[by-rep/userId] truy vấn lỗi:", payRes.error)
-        setPayments(payRes.rows as unknown as PaymentWithJoin[])
+        setPayments(pays.sort((a, b) => (b.collected_at ?? "").localeCompare(a.collected_at ?? "")))
+      } catch (err) {
+        setLoadError(errorMessage(err))
       }
 
       setLoading(false)
@@ -164,6 +169,20 @@ export default function RepDebtDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={repUser.full_name} backHref="/receivables/by-rep" />
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải đủ sổ công nợ của nhân viên</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Rep info */}
       <Card>

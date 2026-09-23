@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { demTheoTrangThai } from "./dem-trang-thai"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -100,19 +101,19 @@ export default function ReconcilePage() {
       q = q.eq("match_status", filter)
     }
 
+    // ⚠ Số trên thẻ lọc đếm ở database — xem `dem-trang-thai.ts`. Lỗi
+    //   (danh sách hay số đếm) thì BÁO RA, không hiện bảng trống / số 0.
     const [{ data, error }, countRes] = await Promise.all([
       q,
-      supabase.from("misa_invoice_snapshots").select("match_status").limit(5000),
+      demTheoTrangThai(supabase).then(
+        (c) => ({ counts: c, error: null as string | null }),
+        (e: unknown) => ({ counts: {} as Record<string, number>, error: errorMessage(e) })
+      ),
     ])
-    if (error) console.error("[invoices/reconcile] truy vấn lỗi:", error.message)
+    const loi = error ? errorMessage(error) : countRes.error
+    if (loi) toast({ title: "Không tải đủ dữ liệu đối soát", description: loi, variant: "destructive" })
     setRows((data as SnapshotRow[]) || [])
-
-    const tally: Record<string, number> = {}
-    for (const r of (countRes.data as { match_status: string | null }[]) || []) {
-      const k = r.match_status || "unknown"
-      tally[k] = (tally[k] || 0) + 1
-    }
-    setCounts(tally)
+    setCounts(countRes.counts)
     setLoading(false)
   }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
 

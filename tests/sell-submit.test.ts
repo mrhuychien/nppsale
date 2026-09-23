@@ -7,6 +7,8 @@ import { cartTotals, type CartLine } from "../src/lib/sell/cart"
 import { DRAFT_APPROVAL_REASON } from "../src/lib/orders/save-gate"
 import { DEFAULT_APPROVAL_RULES } from "../src/lib/approval"
 import type { ApprovalRules } from "../src/types"
+import { loadApprovalContext } from "../src/lib/sell/approval-context"
+import { fakePostgrest } from "./helpers/fake-postgrest"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -16,7 +18,6 @@ const code = (s: string) =>
 const SUBMIT = code(read("src/lib/sell/submit.ts"))
 const CART_PAGE = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
 const POS_PAGE = code(read("src/app/(dashboard)/sell/page.tsx"))
-const CTX = code(read("src/lib/sell/approval-context.ts"))
 
 const rules = { ...DEFAULT_APPROVAL_RULES } as unknown as ApprovalRules
 
@@ -374,8 +375,16 @@ describe("Đọc hỏng ngữ cảnh thì phải NÓI RA", () => {
    * đơn nháp — nên phép đọc gom về `loadApprovalContext`. Cờ hỏng phải bật ở
    * ĐÓ, và màn giỏ phải chuyển tiếp nó đi.
    */
-  it("phép đọc ngữ cảnh gắn cờ khi bất kỳ truy vấn nào hỏng", () => {
-    expect(CTX).toContain("failed: !!(rulesRes.error || recRes.error || repRes.error)")
+  it("phép đọc ngữ cảnh gắn cờ khi bất kỳ truy vấn nào hỏng", async () => {
+    // ⚠ CHẠY HÀM THẬT trên Supabase giả, thay vì ghim nguyên văn một dòng
+    //   mã (bản cũ) — phép đọc nay phân trang nên dòng ấy đã đổi hình.
+    for (const bang of ["approval_rules", "receivables"]) {
+      const { client } = fakePostgrest({}, { failOn: (c) => c.table === bang })
+      const ctx = await loadApprovalContext(client, { orgId: "o", customerId: "c", salesUserId: "u" })
+      expect(ctx.failed, bang).toBe(true)
+    }
+    const { client } = fakePostgrest({})
+    expect((await loadApprovalContext(client, { orgId: "o", customerId: "c", salesUserId: "u" })).failed).toBe(false)
   })
 
   it("màn giỏ hàng chuyển tiếp cờ hỏng vào phép quyết trạng thái", () => {

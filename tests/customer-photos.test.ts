@@ -369,7 +369,14 @@ describe("Cron nhắc nhở", () => {
   it("mọi truy vấn tự lọc org_id", () => {
     const i = CRON.indexOf("for (const org of")
     const body = CRON.slice(i)
-    expect(body.match(/\.eq\("org_id", org\.id\)/g)?.length).toBeGreaterThanOrEqual(3)
+    // Ba phép đọc nay đi qua `doc-anh.ts` (đọc đủ, không `.limit`), và
+    // PHẢI được trao `org.id` — hàm ấy chỉ lọc org khi được trao. Việc
+    // chúng lọc ĐÚNG được chạy thật ở tests/doc-du-khong-cat-1000.test.ts.
+    expect(body).toMatch(/docKhachDangBan<[\s\S]*?>\(admin, "[^"]+", org\.id\)/)
+    expect(body).toContain("demAnhTheoKhach(admin, org.id")
+    expect(body).toContain("docPhuTrachChinh(admin, org.id)")
+    // Lệnh ghi đóng dấu vẫn tự lọc org.
+    expect(body.match(/\.eq\("org_id", org\.id\)/g)?.length).toBeGreaterThanOrEqual(1)
   })
 
   /**
@@ -428,7 +435,9 @@ describe("Màn danh sách còn thiếu", () => {
   })
 
   it("nói ra khi chạm trần nạp", () => {
-    expect(PAGE).toContain("setTruncated(customers.length >= CAP)")
+    // ⚠ Luật mới: chạm trần của CẢ bảng ảnh cũng phải nói (0 ảnh có thể sai);
+    //   `customers.length >= CAP` cũ không bao giờ bật vì `.limit` bị cắt ở 1.000.
+    expect(PAGE).toContain("setTruncated(custRes.truncated || photoRes.truncated)")
     expect(PAGE).toContain("chạm trần")
   })
 

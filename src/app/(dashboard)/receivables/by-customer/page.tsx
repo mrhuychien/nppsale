@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
+import { truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { docCongNoTheoKhach } from "./doc-so-cong-no"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { Users, Search } from "lucide-react"
 
@@ -50,6 +53,8 @@ export default function ReceivablesByCustomerPage() {
   // toàn bộ công nợ + bảng phân công về trình duyệt để gộp.
   const [rows, setRows] = useState<CustomerDebtRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const supabase = createClient()
@@ -57,9 +62,17 @@ export default function ReceivablesByCustomerPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data, error } = await supabase.rpc("receivables_by_customer")
-      if (error) console.error("[receivables/by-customer] receivables_by_customer lỗi:", error.message)
-      const raw = (data as CustomerDebtRowRaw[] | null) || []
+      // ⚠ ĐỌC ĐỦ MỌI TRANG CỦA RPC — gọi trơn thì `max_rows` cắt ở 1.000
+      //   khách, và bốn ô tổng bên dưới (cộng ở trình duyệt) THIẾU mà im.
+      //   Đọc hỏng thì HIỆN LỖI, không ra bảng trống như "không ai nợ".
+      let raw: CustomerDebtRowRaw[] = []
+      try {
+        const res = await docCongNoTheoKhach<CustomerDebtRowRaw>(supabase)
+        raw = res.rows
+        setTruncated(res.truncated)
+      } catch (err) {
+        setLoadError(errorMessage(err))
+      }
       setRows(
         raw.map((r) => {
           const remaining = Number(r.remaining || 0)
@@ -127,6 +140,20 @@ export default function ReceivablesByCustomerPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo khách hàng" backHref="/receivables" />
+
+      {/* Lỗi tải / số thiếu — nói ra thay vì để bốn ô tổng trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được công nợ theo khách hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -200,7 +227,13 @@ export default function ReceivablesByCustomerPage() {
         <EmptyState
           icon={<Users className="h-8 w-8 text-muted-foreground" />}
           title="Không có dữ liệu"
-          description={search || filter !== "all" ? "Thử thay đổi bộ lọc" : "Chưa có khách hàng nào đang nợ"}
+          description={
+            loadError
+              ? "Không tải được dữ liệu — xem lỗi phía trên"
+              : search || filter !== "all"
+                ? "Thử thay đổi bộ lọc"
+                : "Chưa có khách hàng nào đang nợ"
+          }
         />
       ) : (
         <>

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -45,6 +45,7 @@ export default function BatchesPage() {
   const { toast } = useToast()
   const [batches, setBatches] = useState<(Batch & { product?: Product })[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState("all")
@@ -64,18 +65,37 @@ export default function BatchesPage() {
   )
   const show = (k: BatchColumnKey) => visibleColumns.includes(k)
 
-  // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.
+  /**
+   * ⚠ ĐỌC ĐỦ MỌI TRANG. Bản cũ đọc trơn, sắp `expires_at` tăng dần —
+   *   PostgREST cắt ở 1.000 dòng, nên chỉ 1.000 lô CŨ NHẤT (phần lớn đã
+   *   xuất hết, tồn 0) hiện ra; lô mới nhập không thấy đâu, và mọi bộ đếm
+   *   ("Tất cả (N)", "Sắp hết hạn") sai mà không báo.
+   * ⚠ Khoá phụ `id`: cả trăm lô cùng hạn dùng, trang song song thiếu khoá
+   *   duy nhất là lặp / sót lô.
+   * ⚠ Vẫn giữ đường dự phòng `*` như `selectResilient` cũ: DB thiếu cột
+   *   (migration chưa chạy) thì thử lại thay vì ra danh sách rỗng.
+   */
   async function loadBatches() {
-    const build = (select: string) =>
-      supabase.from("batches").select(select).order("expires_at")
-    const res = await selectResilient<Batch & { product?: Product }>(
-      build,
-      "id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)",
-      // eslint-disable-next-line no-restricted-syntax
-      "*, product:products(*)"
+    const load = (select: string) =>
+      fetchAllForAggregate<Batch & { product?: Product }>((from, to) =>
+        supabase
+          .from("batches")
+          .select(select, { count: "exact" })
+          .order("expires_at")
+          .order("id")
+          .range(from, to)
+      )
+    let res = await load(
+      "id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)"
     )
-    setBatches(res.data)
+    if (res.error) {
+      // eslint-disable-next-line no-restricted-syntax
+      const fb = await load("*, product:products(*)")
+      if (!fb.error) res = fb
+    }
+    setBatches(res.rows)
     setLoadError(res.error)
+    setTruncated(res.truncated)
   }
 
   useEffect(() => {
@@ -389,6 +409,12 @@ export default function BatchesPage() {
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách lô hàng</p>
           <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Danh sách lô chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
         </div>
       )}
 

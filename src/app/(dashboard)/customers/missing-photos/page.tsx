@@ -13,9 +13,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { Camera, MapPin, Navigation, CheckCircle2, AlertTriangle } from "lucide-react"
 import { MAX_PHOTOS } from "@/lib/customers/photos"
-
-/** Trần nạp. Trên trần thì NÓI RA, không cắt im lặng. */
-const CAP = 2000
+import { truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { demAnhTheoKhach, docKhachDangBan } from "./doc-anh"
 
 type Row = {
   id: string
@@ -64,28 +64,26 @@ export default function MissingPhotosPage() {
     // PostgREST không diễn đạt được "khách CHƯA có ảnh nào" một cách
     // chắc chắn, và một embed hiểu sai sẽ trả ra danh sách rỗng trông y
     // như "đã làm xong hết".
-    const [custRes, photoRes] = await Promise.all([
-      supabase
-        .from("customers")
-        .select("id, store_name, address, phone, gps_lat, gps_lng")
-        .eq("status", "active")
-        .order("store_name")
-        .limit(CAP),
-      supabase.from("customer_photos").select("customer_id").limit(CAP * MAX_PHOTOS),
-    ])
-    const qErr = [custRes, photoRes].find((r) => r.error)?.error
-    if (qErr) {
-      setError(qErr.message)
+    //
+    // ⚠ ĐỌC ĐỦ CẢ HAI BẢNG (xem `doc-anh.ts`) — `.limit(CAP)` cũ bị trần
+    //   1.000 dòng cắt, khách đã có ảnh bị đếm 0 ảnh.
+    let customers: Array<Omit<Row, "photoCount">> = []
+    let counts = new Map<string, number>()
+    try {
+      const [custRes, photoRes] = await Promise.all([
+        docKhachDangBan<Omit<Row, "photoCount">>(supabase, "id, store_name, address, phone, gps_lat, gps_lng", null),
+        demAnhTheoKhach(supabase, null),
+      ])
+      customers = custRes.rows
+      counts = photoRes.counts
+      // ⚠ Bảng ảnh chạm trần thì "0 ảnh" có thể là SAI — cũng phải nói ra.
+      setTruncated(custRes.truncated || photoRes.truncated)
+    } catch (err) {
+      setError(errorMessage(err))
       setRows([])
       setLoading(false)
       return
     }
-    const counts = new Map<string, number>()
-    for (const p of (photoRes.data || []) as Array<{ customer_id: string }>) {
-      counts.set(p.customer_id, (counts.get(p.customer_id) ?? 0) + 1)
-    }
-    const customers = (custRes.data || []) as Array<Omit<Row, "photoCount">>
-    setTruncated(customers.length >= CAP)
     setRows(
       customers
         .map((c) => ({ ...c, photoCount: counts.get(c.id) ?? 0 }))
@@ -135,7 +133,7 @@ export default function MissingPhotosPage() {
       {truncated && (
         <p className="flex items-start gap-1.5 text-xs font-semibold text-error">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Danh sách chạm trần {CAP} điểm bán — còn nữa nhưng chưa nạp hết.
+          Danh sách chạm trần nạp — còn nữa nhưng chưa nạp hết. {truncationWarning()}
         </p>
       )}
 

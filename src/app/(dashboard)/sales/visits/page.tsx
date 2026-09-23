@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -61,6 +62,8 @@ export default function VisitsHistoryPage() {
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name" | "role">[]>([])
   const [visits, setVisits] = useState<VisitRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   const isManagerLike = authUser && ["owner", "manager", "accountant"].includes(authUser.role)
 
@@ -89,23 +92,31 @@ export default function VisitsHistoryPage() {
   const fetchVisits = useCallback(async () => {
     if (!selectedUserId) return
     setLoading(true)
-    let query = supabase
-      .from("visit_logs")
-      .select(
-        "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user_id, customer_id, sales_user:users!visit_logs_sales_user_id_fkey(full_name), customer:customers(id, store_name, phone)"
-      )
-      .gte("visit_date", dateFrom)
-      .lte("visit_date", dateTo)
-      .order("visit_date", { ascending: false })
-      .order("check_in_at", { ascending: false })
-
-    if (selectedUserId !== "all") {
-      query = query.eq("sales_user_id", selectedUserId)
-    }
-
-    const { data , error: qErr } = await query
-    if (qErr) console.error("[sales/visits] truy vấn lỗi:", qErr.message)
-    setVisits(((data as unknown) as VisitRow[]) || [])
+    // ⚠ ĐỌC ĐỦ MỌI TRANG. 7 ngày toàn NPP (vài chục NVBH × vài chục điểm
+    //   mỗi ngày) vượt 1.000 lần ghé là chuyện thường — đọc trơn thì các
+    //   ngày cũ trong khung biến mất và bốn ô thống kê đếm thiếu, im lặng.
+    //   Khoá phụ `id` duy nhất vì các trang chạy song song.
+    const res = await fetchAllForAggregate<VisitRow>((from, to) => {
+      let query = supabase
+        .from("visit_logs")
+        .select(
+          "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user_id, customer_id, sales_user:users!visit_logs_sales_user_id_fkey(full_name), customer:customers(id, store_name, phone)",
+          { count: "exact" }
+        )
+        .gte("visit_date", dateFrom)
+        .lte("visit_date", dateTo)
+      if (selectedUserId !== "all") {
+        query = query.eq("sales_user_id", selectedUserId)
+      }
+      return query
+        .order("visit_date", { ascending: false })
+        .order("check_in_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    })
+    setLoadError(res.error)
+    setTruncated(res.truncated)
+    setVisits(res.rows)
     setLoading(false)
   }, [selectedUserId, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -146,6 +157,20 @@ export default function VisitsHistoryPage() {
           </Link>
         </Button>
       </PageHeader>
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được lịch sử đi tuyến</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>

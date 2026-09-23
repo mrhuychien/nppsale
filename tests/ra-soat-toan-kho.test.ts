@@ -112,22 +112,14 @@ const CON_NO_GHI_KHONG_KIEM = [
  * người dùng thấy không đổi, nhưng ranh giới trang thành xác định.
  */
 const CON_NO_MOC_PHAN_TRANG = [
-  "src/app/(dashboard)/commissions/page.tsx",
   "src/app/(dashboard)/deliveries/page.tsx",
-  "src/app/(dashboard)/finance/cash-receipts/new/page.tsx",
   "src/app/(dashboard)/finance/expenses/page.tsx",
-  "src/app/(dashboard)/hr/payroll/runs/page.tsx",
   "src/app/(dashboard)/inventory/stocktake-check/page.tsx",
   "src/app/(dashboard)/invoices/page.tsx",
   "src/app/(dashboard)/notifications/page.tsx",
   "src/app/(dashboard)/orders/page.tsx",
-  "src/app/(dashboard)/payables/page.tsx",
   "src/app/(dashboard)/products/page.tsx",
   "src/app/(dashboard)/purchasing/invoices/page.tsx",
-  "src/app/(dashboard)/receivables/aging/page.tsx",
-  "src/app/(dashboard)/receivables/by-customer/[customerId]/page.tsx",
-  "src/app/(dashboard)/receivables/by-rep/[userId]/page.tsx",
-  "src/app/(dashboard)/returns/new/page.tsx",
   "src/app/(dashboard)/returns/page.tsx",
   "src/app/(dashboard)/sell/drafts/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",
@@ -218,6 +210,12 @@ describe("rà soát: mốc phân trang phải duy nhất", () => {
         const chuoi = lui.slice(lui.search(/(\s*\.order\("\w+"[^)]*\))*\s*$/))
         if (truoc.every((c) => chuoi.includes(`.order("${c}")`))) continue
       }
+      // ⚠ NGOẠI LỆ: RPC `receivables_by_customer` GROUP BY theo khách, nên
+      //   `customer_id` là khoá duy nhất của KẾT QUẢ — và kết quả ấy không
+      //   có cột `id` để sắp.
+      const phiaTruoc = src.slice(0, m.index)
+      const rpc = phiaTruoc.lastIndexOf('.rpc("receivables_by_customer"')
+      if (cot === "customer_id" && rpc >= 0 && rpc > phiaTruoc.lastIndexOf(".from(")) continue
       return true
     }
     return false
@@ -260,5 +258,8 @@ describe("rà soát: mốc phân trang phải duy nhất", () => {
     expect(
       mocKhongDuyNhat('.order("org_id").order("product_id").limit(1); q.order("warehouse_zone").range(a, b)')
     ).toBe(true)
+    expect(mocKhongDuyNhat('.rpc("receivables_by_customer", {}).order("customer_id").range(a, b)')).toBe(false)
+    // Ngoại lệ ấy KHÔNG lan sang bảng thường: `customer_id` ở đó lặp.
+    expect(mocKhongDuyNhat('.from("receivables").order("customer_id").range(a, b)')).toBe(true)
   })
 })

@@ -8,13 +8,23 @@ import {
   type ReminderCandidate,
 } from "@/lib/customers/photos"
 import { errorMessage } from "@/lib/errors"
+import {
+  demAnhTheoKhach,
+  docKhachDangBan,
+  docPhuTrachChinh,
+} from "@/app/(dashboard)/customers/missing-photos/doc-anh"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-/** Trần bản ghi nạp mỗi lượt. */
-const CAP = 5000
+/**
+ * Trần số ẢNH nạp mỗi NPP. Mỗi khách tối đa `MAX_PHOTOS` ảnh nên bảng ảnh
+ * lớn gấp mấy lần bảng khách; để trần mặc định 20.000 thì NPP 4.000 điểm
+ * bán đủ ảnh đã chạm. Đây là cron chạy phía máy chủ, 50 lệnh song song
+ * chấp nhận được.
+ */
+const PHOTO_CAP = 50000
 
 /**
  * Nhắc NVBH cập nhật ảnh / vị trí cho điểm bán còn thiếu.
@@ -70,41 +80,36 @@ async function handle(req: Request) {
   for (const org of (orgs || []) as Array<{ id: string }>) {
     report.orgs++
     try {
+      // ⚠ ĐỌC ĐỦ, KHÔNG `.limit(CAP)` — xem `doc-anh.ts`: `.limit(5000)`
+      //   vẫn bị trần 1.000 dòng cắt, khách đã có ảnh bị đếm 0 ảnh và NVBH
+      //   nhận lời nhắc sai. Phân công đọc QUA khách để lọc được org
+      //   (bảng ấy không có `org_id`; bản cũ đọc của mọi NPP).
       const [custRes, photoRes, assignRes] = await Promise.all([
-        admin
-          .from("customers")
-          .select("id, store_name, gps_lat, gps_lng, photo_reminder_sent_at")
-          .eq("org_id", org.id)
-          .eq("status", "active")
-          .limit(CAP),
-        admin.from("customer_photos").select("customer_id").eq("org_id", org.id).limit(CAP),
-        admin
-          .from("customer_assignments")
-          .select("customer_id, user_id, role, status")
-          .eq("role", "primary")
-          .eq("status", "active")
-          .limit(CAP),
+        docKhachDangBan<{
+          id: string; store_name: string; gps_lat: number | null; gps_lng: number | null
+          photo_reminder_sent_at: string | null
+        }>(admin, "id, store_name, gps_lat, gps_lng, photo_reminder_sent_at", org.id),
+        demAnhTheoKhach(admin, org.id, PHOTO_CAP),
+        docPhuTrachChinh(admin, org.id),
       ])
-      const qErr = [custRes, photoRes, assignRes].find((r) => r.error)?.error
-      if (qErr) {
-        report.errors.push({ org_id: org.id, message: qErr.message })
+
+      // ⚠ ẢNH hoặc PHÂN CÔNG đọc thiếu thì KHÔNG NHẮC lượt này: "0 ảnh"
+      //   có thể là sai, "chưa ai phụ trách" có thể là sai — gửi đi là
+      //   trách nhầm người. Báo ra để người vận hành biết.
+      if (photoRes.truncated || assignRes.truncated) {
+        report.hit_cap = true
+        report.errors.push({
+          org_id: org.id,
+          message: "Ảnh / phân công vượt trần đọc — bỏ qua lượt nhắc để khỏi nhắc sai.",
+        })
         continue
       }
+      const customers = custRes.rows
+      // Khách chạm trần: phần đã đọc vẫn đúng, nhưng phải nói là còn thiếu.
+      if (custRes.truncated) report.hit_cap = true
 
-      const customers = (custRes.data || []) as Array<{
-        id: string; store_name: string; gps_lat: number | null; gps_lng: number | null
-        photo_reminder_sent_at: string | null
-      }>
-      if (customers.length >= CAP) report.hit_cap = true
-
-      const counts = new Map<string, number>()
-      for (const p of (photoRes.data || []) as Array<{ customer_id: string }>) {
-        counts.set(p.customer_id, (counts.get(p.customer_id) ?? 0) + 1)
-      }
-      const repOf = new Map<string, string>()
-      for (const a of (assignRes.data || []) as Array<{ customer_id: string; user_id: string }>) {
-        if (!repOf.has(a.customer_id)) repOf.set(a.customer_id, a.user_id)
-      }
+      const counts = photoRes.counts
+      const repOf = assignRes.repOf
 
       const candidates: ReminderCandidate[] = customers.map((c) => ({
         id: c.id,

@@ -40,6 +40,10 @@ async function loadDebtByCustomer(): Promise<Record<string, number> | null> {
           .from("receivables")
           .select("customer_id, amount, paid", { count: "exact" })
           .neq("status", "paid")
+          // ⚠ THỨ TỰ DUY NHẤT. Các trang chạy SONG SONG; không `.order`
+          //   thì Postgres trả mỗi trang một kiểu — một phiếu nợ bị cộng
+          //   hai lần, phiếu khác rơi mất, nợ của khách lệch mà không báo.
+          .order("id")
           .range(from, to)
     )
     if (res.error || res.truncated) {

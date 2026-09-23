@@ -3,10 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { decryptSecret } from "@/lib/crypto"
 import { listInvoices } from "@/lib/misa/client"
 import { readRelation, readSnapshot } from "@/lib/misa/status"
-import {
-  buildIndex, decideStatus, matchDate, matchOne,
-  type BookRow, type SnapshotRow,
-} from "@/lib/misa/reconcile"
+import { reconcileOrg } from "./reconcile-org"
 import { isoDateOnly } from "@/lib/misa/apply"
 import { requireCronSecret } from "@/lib/misa/cron-auth"
 import type { MisaConfig } from "@/lib/misa/types"
@@ -79,6 +76,13 @@ async function handle(req: Request) {
     matched: 0,
     misa_only: 0,
     needs_review: 0,
+    /**
+     * Số snapshot KHÔNG khớp được nhưng cũng KHÔNG bị cắt liên kết / gắn
+     * `misa_only`, vì sổ đọc chưa đủ để kết luận (xem `reconcile-org.ts`).
+     */
+    skipped_unlink: 0,
+    /** Các NPP mà sổ hoá đơn hoặc snapshot chạm trần đọc — số đang thiếu. */
+    read_truncated: [] as Array<{ org_id: string; book: boolean; snapshots: boolean }>,
     hit_page_cap: false,
     short_pull: [] as Array<{ org_id: string; expected: number; got: number }>,
     errors: [] as Array<{ org_id?: string; message: string }>,
@@ -157,6 +161,14 @@ async function handle(req: Request) {
       report.matched += stats.matched
       report.misa_only += stats.misaOnly
       report.needs_review += stats.needsReview
+      report.skipped_unlink += stats.skippedUnlink
+      if (stats.bookTruncated || stats.snapTruncated) {
+        report.read_truncated.push({
+          org_id: cfg.org_id,
+          book: stats.bookTruncated,
+          snapshots: stats.snapTruncated,
+        })
+      }
     } catch (e) {
       report.errors.push({ org_id: cfg.org_id, message: `Đối soát lỗi: ${errorMessage(e)}` })
     }
@@ -200,79 +212,4 @@ function toSnapshotRow(orgId: string, raw: Record<string, unknown>) {
     raw: raw as Record<string, unknown>,
     pulled_at: new Date().toISOString(),
   }
-}
-
-/** Khớp snapshot chưa chốt tay với hoá đơn trong sổ. */
-async function reconcileOrg(
-  admin: ReturnType<typeof createAdminClient>,
-  orgId: string,
-  from: string,
-  to: string
-) {
-  const { data: bookRows, error: bookErr } = await admin
-    .from("invoices")
-    .select(
-      "id, misa_ref_id, misa_lookup_code, misa_inv_series, misa_inv_no, misa_inv_date, customer_tax_code, issued_at, subtotal, vat, total"
-    )
-    .eq("org_id", orgId)
-    .gte("issued_at", `${from}T00:00:00+07:00`)
-    .lte("issued_at", `${to}T23:59:59+07:00`)
-    .limit(20000)
-  if (bookErr) throw new Error(bookErr.message)
-
-  const book: BookRow[] = (bookRows || []).map((r) => ({
-    id: r.id as string,
-    misa_ref_id: r.misa_ref_id as string | null,
-    misa_lookup_code: r.misa_lookup_code as string | null,
-    misa_inv_series: r.misa_inv_series as string | null,
-    misa_inv_no: r.misa_inv_no as string | null,
-    customer_tax_code: r.customer_tax_code as string | null,
-    // Ngày phát hành MISA đúng hơn ngày ghi sổ cho việc khớp; không có
-    // thì lùi về issued_at.
-    match_date: (r.misa_inv_date as string | null) || matchDate(r.issued_at as string | null),
-    total: r.total as number | null,
-  }))
-  const idx = buildIndex(book)
-  const bookById = new Map(book.map((b) => [b.id, b]))
-
-  // `match_method = 'manual'` là người đã chốt tay — vòng khớp tự động
-  // KHÔNG được đụng vào, kể cả khi nó nghĩ mình tìm được tờ khác.
-  const { data: snaps, error: snapErr } = await admin
-    .from("misa_invoice_snapshots")
-    .select(
-      "id, ref_id, transaction_id, inv_series, inv_no, inv_date, buyer_tax_code, total_amount, relation, is_deleted, invoice_id, match_method"
-    )
-    .eq("org_id", orgId)
-    .gte("inv_date", from)
-    .lte("inv_date", to)
-    .or("match_method.is.null,match_method.neq.manual")
-    .limit(30000)
-  if (snapErr) throw new Error(snapErr.message)
-
-  let matched = 0
-  let misaOnly = 0
-  let needsReview = 0
-  const now = new Date().toISOString()
-
-  for (const s of snaps || []) {
-    const hit = matchOne(s as SnapshotRow, idx)
-    const status = decideStatus(s, hit, bookById)
-    if (status.match_status === "misa_only") misaOnly++
-    else if (status.match_status === "needs_review") needsReview++
-    else if (status.match_status === "matched" || status.match_status === "amount_diff") matched++
-
-    const { error: updErr } = await admin
-      .from("misa_invoice_snapshots")
-      .update({
-        invoice_id: hit?.invoiceId ?? null,
-        match_method: hit?.method ?? null,
-        match_confidence: hit?.confidence ?? null,
-        matched_at: now,
-        ...status,
-      })
-      .eq("id", s.id)
-    if (updErr) console.error("[pull-snapshots] cập nhật khớp lỗi:", updErr.message)
-  }
-
-  return { matched, misaOnly, needsReview }
 }

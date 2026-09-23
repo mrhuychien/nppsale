@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
 import { UserCog } from "lucide-react"
 
 /** Một dòng trả về của hàm SQL `receivables_by_rep()` (migration 093). */
@@ -54,13 +55,15 @@ export default function ReceivablesByRepPage() {
   // JavaScript. Chính xác tuyệt đối và không phụ thuộc `db.max_rows`.
   const [rows, setRows] = useState<RepDebtRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
       const { data, error } = await supabase.rpc("receivables_by_rep")
-      if (error) console.error("[receivables/by-rep] receivables_by_rep lỗi:", error.message)
+      // ⚠ Lỗi thì HIỆN, không để bảng trống trông như "không ai nợ".
+      if (error) setLoadError(errorMessage(error))
       const raw = (data as RepDebtRowRaw[] | null) || []
       setRows(
         raw.map((r) => ({
@@ -108,6 +111,14 @@ export default function ReceivablesByRepPage() {
         title={isSales ? "Công nợ của bạn" : "Công nợ theo nhân viên bán hàng"}
         backHref="/receivables"
       />
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được công nợ theo nhân viên</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className={`grid grid-cols-1 gap-3 ${isSales ? "" : "sm:grid-cols-3"}`}>

@@ -1,4 +1,5 @@
 import type { ApprovalRules } from "@/types"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 /**
  * Ngữ cảnh để chấm quy tắc duyệt: quy tắc của NPP + công nợ.
@@ -43,24 +44,39 @@ export async function loadApprovalContext(
   // audit-ok: cả ba lỗi được gộp vào cờ `failed` ở cuối hàm, và nơi gọi
   // dùng cờ đó để KHÔNG tự duyệt. Không kiểm từng chỗ vì một truy vấn hỏng
   // hay cả ba hỏng đều dẫn tới cùng một việc phải làm.
+  //
+  // ⚠ HAI PHÉP ĐỌC CÔNG NỢ PHẢI ĐỌC ĐỦ (phân trang), KHÔNG ĐỌC TRƠN.
+  //   PostgREST có `db.max_rows = 1000`: đọc trơn danh mục nợ của một nhân
+  //   viên chỉ nhận 1.000 dòng tuỳ ý, KHÔNG báo lỗi — tổng nợ danh mục ra
+  //   thấp hơn thật, quy tắc "nợ danh mục vượt ngưỡng" không bao giờ bật mà
+  //   cờ `failed` cũng không biết. Thứ tự `id` là khoá duy nhất để các trang
+  //   chạy song song không lặp / sót dòng.
+  // ⚠ CHẠM TRẦN (`truncated`) CŨNG TÍNH LÀ HỎNG: tổng đang thiếu, mà tổng
+  //   thiếu thì chấm ngưỡng nào cũng lọt.
   const [rulesRes, recRes, repRes] = await Promise.all([
     // audit-ok: xem chú thích ngay trên — gộp vào cờ `failed`.
     supabase.from("approval_rules").select(RULE_COLS).eq("org_id", opts.orgId).maybeSingle(),
-    // audit-ok: xem chú thích ngay trên — gộp vào cờ `failed`.
-    supabase
-      .from("receivables")
-      .select("amount, paid, due_date")
-      .eq("customer_id", opts.customerId)
-      .neq("status", "paid"),
-    // audit-ok: xem chú thích ngay trên — gộp vào cờ `failed`.
-    supabase
-      .from("receivables")
-      .select("amount, paid")
-      .eq("sales_user_id", opts.salesUserId)
-      .neq("status", "paid"),
+    fetchAllForAggregate<{ amount: number; paid: number; due_date: string | null }>((from, to) =>
+      supabase
+        .from("receivables")
+        .select("amount, paid, due_date", { count: "exact" })
+        .eq("customer_id", opts.customerId)
+        .neq("status", "paid")
+        .order("id")
+        .range(from, to)
+    ),
+    fetchAllForAggregate<{ amount: number; paid: number }>((from, to) =>
+      supabase
+        .from("receivables")
+        .select("amount, paid", { count: "exact" })
+        .eq("sales_user_id", opts.salesUserId)
+        .neq("status", "paid")
+        .order("id")
+        .range(from, to)
+    ),
   ])
 
-  const rows = (recRes.data as Array<{ amount: number; paid: number; due_date: string | null }>) || []
+  const rows = recRes.rows
   const now = opts.now ?? Date.now()
   return {
     rules: (rulesRes.data as ApprovalRules) ?? null,
@@ -68,10 +84,13 @@ export async function loadApprovalContext(
     customerOverdue: rows
       .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
       .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
-    repPortfolioDebt: ((repRes.data as Array<{ amount: number; paid: number }>) || []).reduce(
-      (s, r) => s + (Number(r.amount) - Number(r.paid)),
-      0
+    repPortfolioDebt: repRes.rows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
+    failed: !!(
+      rulesRes.error ||
+      recRes.error ||
+      repRes.error ||
+      recRes.truncated ||
+      repRes.truncated
     ),
-    failed: !!(rulesRes.error || recRes.error || repRes.error),
   }
 }

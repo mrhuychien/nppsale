@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -52,6 +53,8 @@ export default function StockEntriesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
   const [entries, setEntries] = useState<StockEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -82,12 +85,25 @@ export default function StockEntriesPage() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data, error: dataErr } = await supabase
-      .from("stock_entries")
-      .select("id, entry_code, type, status, notes, created_at, warehouse_zone, creator:users!stock_entries_created_by_fkey(*)")
-      .order("created_at", { ascending: false })
-    if (dataErr) console.error("[inventory/entries] truy vấn lỗi:", dataErr.message)
-    setEntries(((data as unknown) as StockEntry[]) || [])
+    // ⚠ ĐỌC ĐỦ MỌI TRANG. Đọc trơn thì PostgREST cắt ở 1.000 phiếu MỚI
+    //   NHẤT: phiếu nháp cũ hơn biến mất khỏi danh sách (không ai duyệt /
+    //   xoá được nữa) và ô "N chờ duyệt" đếm thiếu mà không báo.
+    // ⚠ Khoá phụ `id` — nhiều phiếu cùng giờ tạo, trang song song thiếu
+    //   khoá duy nhất là lặp / sót. Lỗi thì HIỆN, không ra danh sách rỗng.
+    const res = await fetchAllForAggregate<StockEntry>((from, to) =>
+      supabase
+        .from("stock_entries")
+        .select(
+          "id, entry_code, type, status, notes, created_at, warehouse_zone, creator:users!stock_entries_created_by_fkey(*)",
+          { count: "exact" }
+        )
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    )
+    setLoadError(res.error)
+    setTruncated(res.truncated)
+    setEntries(res.rows)
     setLoading(false)
   }
 
@@ -398,6 +414,20 @@ export default function StockEntriesPage() {
           </DropdownMenu>
         )}
       </PageHeader>
+
+      {/* Lỗi tải / số thiếu — nói ra, không để danh sách trông như đủ. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách phiếu kho</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Danh sách phiếu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/*
         ⚠ VIÊN THUỐC ĐIỀU KHIỂN CHÍNH `typeFilter` mà ô chọn "Tất cả

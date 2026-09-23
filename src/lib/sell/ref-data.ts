@@ -64,7 +64,9 @@ export function stockMapFrom(
 type Client = {
   from: (t: string) => {
     select: (cols: string, opts?: unknown) => {
-      eq: (c: string, v: unknown) => { order: (c: string) => { range: (a: number, b: number) => unknown } }
+      eq: (c: string, v: unknown) => {
+        order: (c: string) => { order: (c: string) => { range: (a: number, b: number) => unknown } }
+      }
       // ⚠ `.order(...)` PHẢI CÓ TRONG KIỂU NÀY. Xem chỗ đọc `batches`:
       //   chia trang mà không sắp thứ tự thì các trang lặp và sót dòng.
       gt: (c: string, v: unknown) => {
@@ -199,10 +201,17 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
     if (c) return c
   }
 
+  /**
+   * ⚠ KHOÁ PHỤ `id` SAU CỘT TÊN. Hai cửa hàng / hai mặt hàng trùng tên là
+   *   chuyện thường; các trang chạy SONG SONG, sắp theo tên không duy nhất
+   *   thì Postgres được trả mỗi trang một kiểu — một khách lặp hai lần,
+   *   khách khác biến mất khỏi bộ nhớ đệm, và nhân viên gõ đúng tên mà
+   *   không tìm ra (cùng lý do với lô hàng bên dưới).
+   */
   const pageAll = <T,>(cols: string, table: "customers" | "products", orderBy: string) =>
     fetchAllForAggregate<T>((from, to) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).range(from, to)) as any
+      (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).order("id").range(from, to)) as any
     )
 
   const [custRes0, prodRes0, batchRes] = await Promise.all([

@@ -4,7 +4,9 @@ import { useEffect, useState, useMemo } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { docThanhToanCuaPhieu } from "../doc-so-cong-no"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -48,6 +50,8 @@ export default function CustomerDebtDetailPage() {
   const [payments, setPayments] = useState<(Payment & { receivable?: Receivable & { order?: SalesOrder } })[]>([])
   const [assignment, setAssignment] = useState<CustomerAssignment | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -62,7 +66,11 @@ export default function CustomerDebtDetailPage() {
               { count: "exact" }
             )
             .eq("customer_id", customerId)
+            // ⚠ `due_date` KHÔNG DUY NHẤT (cả chục phiếu cùng hạn). Các
+            //   trang chạy song song — thiếu khoá phụ `id` thì một phiếu
+            //   có thể lặp ở hai trang hoặc rơi mất.
             .order("due_date")
+            .order("id")
             .range(from, to)
         ),
         supabase
@@ -72,10 +80,13 @@ export default function CustomerDebtDetailPage() {
           .eq("role", "primary")
           .limit(1),
       ])
-      if (recRes.error) console.error("[by-customer/customerId] truy vấn lỗi:", recRes.error)
       const qErr = ([custRes, assignRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[by-customer/customerId] truy vấn lỗi:", qErr.message)
+      // ⚠ Công nợ đọc hỏng / chạm trần thì NÓI RA — sổ thiếu dòng trông y
+      //   hệt sổ đúng.
+      if (recRes.error) setLoadError(`Công nợ: ${recRes.error}`)
+      setTruncated(recRes.truncated)
 
       setCustomer(custRes.data as Customer | null)
       const recs = recRes.rows as unknown as Receivable[]
@@ -84,20 +95,18 @@ export default function CustomerDebtDetailPage() {
 
       // Fetch payments for all receivables of this customer
       const recIds = recs.map((r) => r.id)
-      if (recIds.length > 0) {
-        const payRes = await fetchAllForAggregate((from, to) =>
-          supabase
-            .from("payments")
-            .select(
-              "id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))",
-              { count: "exact" }
-            )
-            .in("receivable_id", recIds)
-            .order("collected_at", { ascending: false })
-            .range(from, to)
+      // ⚠ CHIA LÔ 150 ID, lỗi thì HIỆN. Bản cũ nhét cả nghìn id vào một
+      //   `.in()` → URL quá dài → lỗi bị nuốt thành `[]` → cột "Có" trống,
+      //   số dư đội lên bằng đúng số khách đã trả.
+      try {
+        const pays = await docThanhToanCuaPhieu<(typeof payments)[number]>(
+          supabase,
+          recIds,
+          "id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))"
         )
-        if (payRes.error) console.error("[by-customer/customerId] truy vấn lỗi:", payRes.error)
-        setPayments(payRes.rows as unknown as typeof payments)
+        setPayments(pays.sort((a, b) => (b.collected_at ?? "").localeCompare(a.collected_at ?? "")))
+      } catch (err) {
+        setLoadError(errorMessage(err))
       }
 
       setLoading(false)
@@ -196,6 +205,20 @@ export default function CustomerDebtDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={customer.store_name} backHref="/receivables/by-customer" />
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải đủ sổ công nợ của khách</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Customer info card */}
       <Card>

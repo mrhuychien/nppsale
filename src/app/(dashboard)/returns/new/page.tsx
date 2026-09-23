@@ -226,7 +226,10 @@ export default function NewReturnPage() {
             .from("customers")
             .select("id, store_name, owner_name, phone", { count: "exact" })
             .eq("status", "active")
+            // ⚠ Khoá phụ `id`: trùng tên cửa hàng là chuyện thường, các
+            //   trang song song thiếu khoá duy nhất là lặp / sót khách.
             .order("store_name")
+            .order("id")
             .range(from, to)
         ),
         fetchAllForAggregate<ProductLite>((from, to) =>
@@ -235,6 +238,7 @@ export default function NewReturnPage() {
             .select("id, name, sku, barcode, base_unit, vat_rate, sell_price", { count: "exact" })
             .eq("status", "active")
             .order("name")
+            .order("id")
             .range(from, to)
         ),
       ])

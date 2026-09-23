@@ -255,6 +255,10 @@ export default function NewCashReceiptPage() {
           .select(DEBT_SELECT, { count: "exact" })
           .in("status", ["open", "partial", "overdue"])
           .order("due_date", { ascending: true, nullsFirst: false })
+          // ⚠ Khoá phụ `id`: cả trăm khoản cùng hạn, các trang chạy song
+          //   song — thiếu khoá duy nhất là một khoản nợ lặp hai lần hoặc
+          //   biến mất khỏi ô tìm.
+          .order("id")
           .range(from, to)
       )
       if (cancelled) return

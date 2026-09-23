@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { docThanhToanCuaPhieu } from "../by-customer/doc-so-cong-no"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { SearchSelect } from "@/components/ui/search-select"
 import { PageHeader } from "@/components/ui/page-header"
@@ -46,6 +48,8 @@ export default function AccountantLedgerPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(true)
   const [loadingLedger, setLoadingLedger] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
 
   useEffect(() => {
     async function fetchCustomers() {
@@ -70,7 +74,7 @@ export default function AccountantLedgerPage() {
           .order("id")
           .range(from, to)
       )
-      if (res.error) console.error("[receivables/aging] truy vấn lỗi:", res.error)
+      if (res.error) setLoadError(`Danh sách khách: ${res.error}`)
       setCustomers(
         res.rows.slice().sort((a, b) => (a.store_name ?? "").localeCompare(b.store_name ?? ""))
       )
@@ -87,40 +91,56 @@ export default function AccountantLedgerPage() {
     }
     async function fetchLedger() {
       setLoadingLedger(true)
-      const { data: orderData, error: orderDataErr } = await supabase
-        .from("sales_orders")
-        .select("id, order_code, order_date, total")
-        .eq("customer_id", selectedId)
-        .eq("status", "completed")
-        .order("order_date")
-      if (orderDataErr) console.error("[receivables/aging] truy vấn lỗi:", orderDataErr.message)
-
-      // fetch payments via receivables for this customer
-      const { data: recData, error: recDataErr } = await supabase
-        .from("receivables")
-        .select("id")
-        .eq("customer_id", selectedId)
-      if (recDataErr) console.error("[receivables/aging] truy vấn lỗi:", recDataErr.message)
-      const receivableIds = ((recData || []) as { id: string }[]).map((r) => r.id)
-
-      let paymentData: Payment[] = []
-      if (receivableIds.length > 0) {
-        // Cộng tiền đã thu → phải lấy đủ; khách lâu năm có thể vượt 1.000
-        // lần thu và khi đó sổ chi tiết sẽ thiếu giao dịch.
-        const payRes = await fetchAllForAggregate<Payment>((from, to) =>
-          supabase
-            .from("payments")
-            .select("id, amount, collected_at", { count: "exact" })
-            .in("receivable_id", receivableIds)
-            .order("collected_at")
-            .range(from, to)
+      setLoadError(null)
+      setTruncated(false)
+      /**
+       * ⚠ SỔ CHI TIẾT PHẢI ĐỌC ĐỦ CẢ BA PHẦN, lỗi thì HIỆN. Bản cũ:
+       *   · đơn hàng và danh sách phiếu công nợ đọc TRƠN → khách lâu năm
+       *     quá 1.000 đơn thì sổ thiếu dòng "Nợ" mà không báo;
+       *   · lần thu tiền `.in("receivable_id", <mọi phiếu>)` một lệnh → quá
+       *     ~150 id là URL quá dài → lỗi bị nuốt thành `[]` → cột "Có"
+       *     trống, số dư cuối đội lên bằng mọi khoản khách đã trả.
+       * ⚠ Mọi phép đọc phân trang có khoá phụ `id` (xem `docDuHoacNem`).
+       */
+      try {
+        const [orderRes, recRes] = await Promise.all([
+          docDuHoacNem<SalesOrder>(
+            (from, to) =>
+              supabase
+                .from("sales_orders")
+                .select("id, order_code, order_date, total", { count: "exact" })
+                .eq("customer_id", selectedId)
+                .eq("status", "completed")
+                .order("order_date")
+                .order("id")
+                .range(from, to),
+            "Đơn hàng"
+          ),
+          docDuHoacNem<{ id: string }>(
+            (from, to) =>
+              supabase
+                .from("receivables")
+                .select("id", { count: "exact" })
+                .eq("customer_id", selectedId)
+                .order("id")
+                .range(from, to),
+            "Phiếu công nợ"
+          ),
+        ])
+        const paymentData = await docThanhToanCuaPhieu<Payment>(
+          supabase,
+          recRes.rows.map((r) => r.id),
+          "id, amount, collected_at"
         )
-        if (payRes.error) console.error("[receivables/aging] truy vấn lỗi:", payRes.error)
-        paymentData = payRes.rows
+        setTruncated(orderRes.truncated || recRes.truncated)
+        setOrders(orderRes.rows)
+        setPayments(paymentData)
+      } catch (err) {
+        // ⚠ Không vẽ nửa sổ: thiếu một phần là số dư sai.
+        setOrders([])
+        setPayments([])
+        setLoadError(errorMessage(err))
       }
-
-      setOrders((orderData as SalesOrder[]) || [])
-      setPayments(paymentData)
       setLoadingLedger(false)
     }
     fetchLedger()
@@ -181,6 +201,20 @@ export default function AccountantLedgerPage() {
           In bản kê
         </Button>
       </PageHeader>
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải đủ sổ chi tiết công nợ</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-6">

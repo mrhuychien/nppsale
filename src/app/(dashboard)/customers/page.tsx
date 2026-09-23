@@ -77,6 +77,45 @@ interface LastVisitInfo {
  */
 const QUICK_FILTERS: QuickFilter[] = ["today", "overdue", "all"]
 
+/**
+ * Dòng MỚI NHẤT của từng khách trong `ids` (đơn gần nhất, lần ghé gần nhất).
+ *
+ * ⚠ VÌ SAO KHÔNG ĐỌC MỘT LỆNH `.in(ids)` NHƯ TRƯỚC. Lệnh ấy trả MỌI đơn /
+ *   lần ghé của cả trang khách, sắp mới → cũ, và PostgREST cắt ở 1.000
+ *   dòng TRONG IM LẶNG. Vài khách đặt hàng dày là lấp đầy 1.000 dòng ấy —
+ *   khách còn lại hiện ô "Đơn gần nhất" / "Ghé gần nhất" TRỐNG như thể
+ *   chưa từng mua, trong khi họ vẫn đang mua đều.
+ *
+ * CÁCH LÀM: đọc một trang đầu (≤1.000 dòng). Trang ấy chưa đầy → đã thấy
+ *   hết, khách nào vắng là thật sự không có. Trang ấy ĐẦY → khách nào
+ *   chưa thấy thì hỏi riêng từng người `.limit(1)` (tối đa bằng số khách
+ *   trên trang, song song). Kết quả luôn đúng, và thường chỉ tốn 1 lệnh.
+ *
+ * ⚠ Lỗi thì trả `error` để nơi gọi HIỆN RA, không đổ về "chưa có đơn".
+ */
+type TrangMoiNhat = PromiseLike<{ data: unknown; error: { message: string } | null }>
+async function moiNhatTheoKhach<T extends { customer_id: string }>(
+  ids: string[],
+  dung: (lo: string[]) => { range: (a: number, b: number) => TrangMoiNhat; limit: (n: number) => TrangMoiNhat }
+): Promise<{ map: Record<string, T>; error: string | null }> {
+  const map: Record<string, T> = {}
+  const dau = await dung(ids).range(0, 999)
+  if (dau.error) return { map, error: dau.error.message }
+  const rows = (dau.data as T[] | null) || []
+  for (const r of rows) if (r.customer_id && !map[r.customer_id]) map[r.customer_id] = r
+  // Máy chủ trả ít hơn trần → đã thấy hết, không cần hỏi thêm.
+  if (rows.length < 1000) return { map, error: null }
+  const thieu = ids.filter((id) => !map[id])
+  const rieng = await Promise.all(thieu.map((id) => dung([id]).limit(1)))
+  const loi = rieng.find((r) => r.error)?.error
+  if (loi) return { map, error: loi.message }
+  for (const r of rieng) {
+    const row = ((r.data as T[] | null) || [])[0]
+    if (row) map[row.customer_id] = row
+  }
+  return { map, error: null }
+}
+
 export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
   const { user: authUser } = useAuth()
@@ -306,18 +345,32 @@ export default function CustomersPage() {
         setLoading(false)
         return
       }
+      type LastOrderRow = Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">
+      type LastVisitRow = {
+        customer_id: string
+        visit_date: string
+        check_in_at: string | null
+        result: string | null
+        sales_user?: { full_name?: string } | null
+      }
       const [lastOrdersRes, lastVisitsRes, assignsRes] = await Promise.all([
-        supabase
-          .from("sales_orders")
-          .select("customer_id, order_code, order_date, total")
-          .in("customer_id", ids)
-          .order("order_date", { ascending: false }),
-        supabase
-          .from("visit_logs")
-          .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
-          .in("customer_id", ids)
-          .order("visit_date", { ascending: false })
-          .order("check_in_at", { ascending: false }),
+        moiNhatTheoKhach<LastOrderRow>(ids, (lo) =>
+          supabase
+            .from("sales_orders")
+            .select("customer_id, order_code, order_date, total")
+            .in("customer_id", lo)
+            .order("order_date", { ascending: false })
+            .order("id")
+        ),
+        moiNhatTheoKhach<LastVisitRow>(ids, (lo) =>
+          supabase
+            .from("visit_logs")
+            .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
+            .in("customer_id", lo)
+            .order("visit_date", { ascending: false })
+            .order("check_in_at", { ascending: false })
+            .order("id")
+        ),
         // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
         // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
         // vẫn chỉ lấy người CHÍNH — xem repMap.
@@ -327,26 +380,24 @@ export default function CustomersPage() {
           .in("customer_id", ids)
           .eq("status", "active"),
       ])
-      const qErr = ([lastOrdersRes, lastVisitsRes, assignsRes] as Array<{ error?: { message?: string } | null }>)
-        .find((r) => r?.error)?.error
-      if (qErr) console.error("[app/customers] truy vấn lỗi:", qErr.message)
+      if (assignsRes.error) console.error("[app/customers] truy vấn lỗi:", assignsRes.error.message)
+      // ⚠ Đơn / lần ghé gần nhất đọc hỏng thì NÓI RA — ô trống ở đây đọc
+      //   thành "khách chưa từng mua", một kết luận sai về người thật.
+      const aggErr = lastOrdersRes.error ?? lastVisitsRes.error
+      if (aggErr) setLoadError((prev) => prev ?? `Đơn / lần ghé gần nhất: ${aggErr}`)
       if (cancelled) return
       const orderMap: Record<string, LastOrderInfo> = {}
-      for (const o of (lastOrdersRes.data as Array<Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">>) || []) {
-        if (o.customer_id && !orderMap[o.customer_id]) {
-          orderMap[o.customer_id] = { order_code: o.order_code, order_date: o.order_date, total: o.total }
-        }
+      for (const [cid, o] of Object.entries(lastOrdersRes.map)) {
+        orderMap[cid] = { order_code: o.order_code, order_date: o.order_date, total: o.total }
       }
       setLastOrders(orderMap)
       const visitMap: Record<string, LastVisitInfo> = {}
-      for (const v of (lastVisitsRes.data as Array<{ customer_id: string; visit_date: string; check_in_at: string | null; result: string | null; sales_user?: { full_name?: string } | null }>) || []) {
-        if (v.customer_id && !visitMap[v.customer_id]) {
-          visitMap[v.customer_id] = {
-            visit_date: v.visit_date,
-            check_in_at: v.check_in_at,
-            result: v.result,
-            sales_user_name: v.sales_user?.full_name || null,
-          }
+      for (const [cid, v] of Object.entries(lastVisitsRes.map)) {
+        visitMap[cid] = {
+          visit_date: v.visit_date,
+          check_in_at: v.check_in_at,
+          result: v.result,
+          sales_user_name: v.sales_user?.full_name || null,
         }
       }
       setLastVisits(visitMap)

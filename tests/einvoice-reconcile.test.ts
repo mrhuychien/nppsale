@@ -65,7 +65,12 @@ function migration(namePart: string): string {
 }
 
 const MIG = migration("misa_invoice_snapshots")
-const PULL = read("src/app/api/einvoice/pull-snapshots/route.ts")
+// ⚠ Vòng khớp đã tách sang `reconcile-org.ts` (để chốt CHẠY được nó —
+//   xem tests/doc-du-khong-cat-1000.test.ts). Soi cả hai tệp như một.
+const PULL =
+  read("src/app/api/einvoice/pull-snapshots/route.ts") +
+  "\n" +
+  read("src/app/api/einvoice/pull-snapshots/reconcile-org.ts")
 const CLIENT = read("src/lib/misa/client.ts")
 
 function bk(over: Partial<BookRow> = {}): BookRow {
@@ -444,7 +449,8 @@ describe("⚠ chốt tay của người phải sống sót", () => {
   it("upsert theo khoá tự nhiên, và KHÔNG đụng cột đối soát", () => {
     expect(c).toContain('onConflict: "org_id,ref_id"')
     const i = c.indexOf("function toSnapshotRow")
-    const fn = c.slice(i, c.indexOf("\nasync function reconcileOrg", i))
+    // Hết tệp route = đầu tệp `reconcile-org.ts` (dòng import đầu tiên của nó).
+    const fn = c.slice(i, c.indexOf("buildIndex, decideStatus", i))
     for (const col of ["invoice_id", "match_method", "match_status", "match_confidence"]) {
       expect(fn, `toSnapshotRow ghi đè ${col}`).not.toContain(col)
     }

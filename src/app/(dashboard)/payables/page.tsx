@@ -6,6 +6,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
@@ -42,6 +43,9 @@ export default function PayablesPage() {
   const { user, loading: authLoading } = useRoleGuard("receivables")
   const [payables, setPayables] = useState<Payable[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  /** Lỗi / chạm trần của phép đọc cho bốn ô tổng đầu trang. */
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [statsTruncated, setStatsTruncated] = useState(false)
   const [allOpen, setAllOpen] = useState<Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -64,12 +68,25 @@ export default function PayablesPage() {
   // Stats: load all UNPAID light fields cho aging summary.
   useEffect(() => {
     async function loadOpen() {
-      const { data, error: dataErr } = await supabase
-        .from("payables")
-        .select("amount, paid, due_date, supplier_id, status")
-        .neq("status", "paid")
-      if (dataErr) console.error("[app/payables] truy vấn lỗi:", dataErr.message)
-      setAllOpen((data as Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>) || [])
+      /**
+       * ⚠ ĐỌC ĐỦ MỌI TRANG. Bản cũ đọc trơn: quá 1.000 khoản chưa trả là
+       *   PostgREST cắt im lặng, bốn ô tổng THIẾU; đọc hỏng thì `[]` → cả
+       *   bốn ô hiện 0 như "không nợ NCC nào". Nay lỗi / chạm trần đều hiện.
+       * ⚠ Không có RPC nào chia sẵn "trong hạn / quá hạn" theo `due_date`
+       *   (`payables_summary` chỉ trả tổng) nên vẫn phải cộng ở đây.
+       */
+      const res = await fetchAllForAggregate<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>(
+        (from, to) =>
+          supabase
+            .from("payables")
+            .select("amount, paid, due_date, supplier_id, status", { count: "exact" })
+            .neq("status", "paid")
+            .order("id")
+            .range(from, to)
+      )
+      setStatsError(res.error)
+      setStatsTruncated(res.truncated)
+      setAllOpen(res.rows)
     }
     loadOpen()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -102,6 +119,9 @@ export default function PayablesPage() {
           .from("payables")
           .select(select, { count: "exact" })
           .order("due_date")
+          // ⚠ Mốc phụ `id`: cả chục khoản cùng hạn, thiếu mốc duy nhất
+          //   là một dòng hiện ở hai trang, dòng khác không trang nào.
+          .order("id")
           .range(pg.from, pg.to)
         /**
          * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
@@ -141,13 +161,20 @@ export default function PayablesPage() {
 
   if (authLoading) return <Skeleton className="h-96" />
 
-  const totalOutstanding = allOpen.reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+  /**
+   * ⚠ KẸP VỀ 0 TỪNG DÒNG. Một khoản trả dư (`paid > amount`) mà chưa kịp
+   *   sang `paid` thì hiệu âm TRỪ THẲNG vào nợ của khoản khác — tổng nhỏ
+   *   hơn thật, không lỗi nào bắn ra. Cùng quy tắc với `payables_summary`
+   *   (`GREATEST(0, amount - paid)`).
+   */
+  const conNo = (p: { amount: number; paid: number }) => Math.max(0, Number(p.amount) - Number(p.paid))
+  const totalOutstanding = allOpen.reduce((sum, p) => sum + conNo(p), 0)
   const totalInTerm = allOpen
     .filter((p) => !p.due_date || getAgingStatus(p.due_date) === "current")
-    .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+    .reduce((sum, p) => sum + conNo(p), 0)
   const totalOverdue = allOpen
     .filter((p) => p.due_date && getAgingStatus(p.due_date) !== "current")
-    .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paid)), 0)
+    .reduce((sum, p) => sum + conNo(p), 0)
   const suppliersWithDebt = new Set(allOpen.map((p) => p.supplier_id)).size
 
   const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
@@ -261,6 +288,20 @@ export default function PayablesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Bốn ô tổng đọc hỏng / thiếu — nói ra, không để 0 trông như "không nợ". */}
+      {statsError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tính được tổng công nợ nhà cung cấp</p>
+          <p className="mt-0.5 break-words">{statsError}</p>
+        </div>
+      )}
+      {statsTruncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số tổng chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (

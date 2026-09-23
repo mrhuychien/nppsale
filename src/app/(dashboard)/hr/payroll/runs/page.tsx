@@ -186,6 +186,9 @@ export default function PayrollRunsPage() {
               .gte("invoice_date", ps)
               .lte("invoice_date", pe)
               .order("invoice_date", { ascending: false })
+              // ⚠ Khoá phụ `id`: nhiều hoá đơn cùng ngày, trang song song
+              //   thiếu khoá duy nhất là lặp / sót → "Tổng doanh số" sai.
+              .order("id")
               .range(from, to)
           )
           if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)
@@ -345,6 +348,8 @@ export default function PayrollRunsPage() {
             .gte("invoice_date", ps)
             .lte("invoice_date", pe)
             .order("invoice_date", { ascending: false })
+            // ⚠ Khoá phụ `id` — cùng lý do như bảng chi tiết phía trên.
+            .order("id")
             .range(from, to)
         )
         if (res.error) console.error("[payroll/runs] truy vấn lỗi:", res.error)

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -111,6 +112,9 @@ export default function CustomerDetailPage() {
   // không nằm trong danh sách đang phụ trách, nên không lấy ké được từ
   // bảng phân công.
   const [creatorName, setCreatorName] = useState<string | null>(null)
+  /** Lỗi / chạm trần khi đọc đơn và công nợ — phải HIỆN, không để số trông như đúng. */
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [statsTruncated, setStatsTruncated] = useState(false)
   /** Ai phụ trách điểm bán này + mỗi người bán ngành hàng gì. */
   const [managers, setManagers] = useState<Manager[]>([])
   const [routeLabel, setRouteLabel] = useState<string | null>(null)
@@ -243,18 +247,30 @@ export default function CustomerDetailPage() {
         .eq("status", "completed")
         .gte("order_date", prevMonthStart)
         .lt("order_date", monthStart),
-      supabase
-        .from("sales_orders")
-        .select("id, order_code, order_date, total, status")
-        .eq("customer_id", id)
-        .order("order_date", { ascending: false }),
+      // ⚠ ĐỌC ĐỦ MỌI TRANG. Đọc trơn thì khách lâu năm dừng ở đúng 1.000
+      //   đơn: "Tất cả đơn hàng (1000)", "TB …/đơn" chia sai, mà không báo.
+      //   Khoá phụ `id` vì nhiều đơn cùng ngày (trang chạy song song).
+      fetchAllForAggregate<OrderRow>((from, to) =>
+        supabase
+          .from("sales_orders")
+          .select("id, order_code, order_date, total, status", { count: "exact" })
+          .eq("customer_id", id)
+          .order("order_date", { ascending: false })
+          .order("id")
+          .range(from, to)
+      ),
       // ⚠ KÉO CẢ `due_date`: ba ô chia tuổi nợ đọc chính cột này. Thiếu
       //   nó thì mọi khoản rơi hết vào ô "Trong hạn" mà không ai biết.
-      supabase
-        .from("receivables")
-        .select("amount, paid, due_date, status")
-        .eq("customer_id", id)
-        .neq("status", "paid"),
+      // ⚠ Đọc đủ — cùng lý do với đơn hàng ngay trên.
+      fetchAllForAggregate<ReceivableRow>((from, to) =>
+        supabase
+          .from("receivables")
+          .select("amount, paid, due_date, status", { count: "exact" })
+          .eq("customer_id", id)
+          .neq("status", "paid")
+          .order("id")
+          .range(from, to)
+      ),
       supabase
         .from("sales_orders")
         .select("id", { count: "exact", head: true })
@@ -291,9 +307,17 @@ export default function CustomerDetailPage() {
         .eq("is_active", true)
         .order("day_of_week"),
     ])
-    const qErr = ([monthOrdersRes, prevMonthOrdersRes, allOrdersRes, receivablesRes, last90Res, invoicesRes, paymentsRes, photosRes, pjpRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr = ([monthOrdersRes, prevMonthOrdersRes, last90Res, invoicesRes, paymentsRes, photosRes, pjpRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[customers/id] truy vấn lỗi:", qErr.message)
+    setStatsError(
+      allOrdersRes.error
+        ? `Đơn hàng: ${allOrdersRes.error}`
+        : receivablesRes.error
+          ? `Công nợ: ${receivablesRes.error}`
+          : null
+    )
+    setStatsTruncated(allOrdersRes.truncated || receivablesRes.truncated)
 
     const sumTotal = (rows: Array<{ total: number }> | null) =>
       (rows || []).reduce((s, o) => s + (o.total || 0), 0)
@@ -303,12 +327,12 @@ export default function CustomerDetailPage() {
     setAllInvoices(((invoicesRes.data as unknown) as typeof allInvoices) || [])
     setAllPayments(((paymentsRes.data as unknown) as typeof allPayments) || [])
 
-    const orders = (allOrdersRes.data || []) as OrderRow[]
+    const orders = allOrdersRes.rows
     setAllOrders(orders)
     setTotalOrders(orders.length)
     setRecentOrders(orders.slice(0, 5))
 
-    setReceivables(((receivablesRes.data as unknown) as ReceivableRow[]) || [])
+    setReceivables(receivablesRes.rows)
 
     const photos = (photosRes.data as Array<{ gps_accuracy: number | null }>) || []
     setPhotoCount(photos.length)
@@ -553,6 +577,19 @@ export default function CustomerDetailPage() {
        thì thanh dính đáy che mất phần cuối trang, đúng chỗ có Vùng nguy
        hiểm và nút xoá. */
     <div className="space-y-4 pb-nav-action lg:pb-0">
+      {/* Lỗi tải / số thiếu — nói ra, không để số đơn / công nợ trông như đúng. */}
+      {statsError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải đủ đơn hàng / công nợ của khách</p>
+          <p className="mt-0.5 break-words">{statsError}</p>
+        </div>
+      )}
+      {statsTruncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
       {/* ===== Thẻ danh tính ===== */}
       <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-4 shadow-card">
         <div className="flex items-start gap-3">

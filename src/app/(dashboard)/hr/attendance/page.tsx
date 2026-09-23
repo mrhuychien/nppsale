@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
@@ -79,14 +80,33 @@ export default function AttendancePage() {
     const end = dateStr(year, month, daysInMonth)
     const [usersRes, attendRes] = await Promise.all([
       supabase.from("users").select("id, full_name, role").eq("org_id", authUser.org_id).eq("is_active", true).order("full_name"),
-      supabase.from("hr_attendance").select("id, org_id, user_id, work_date, status").eq("org_id", authUser.org_id).gte("work_date", start).lte("work_date", end),
+      // ⚠ ĐỌC ĐỦ MỌI TRANG. 33 nhân viên × 31 ngày đã vượt 1.000 dòng —
+      //   đọc trơn thì PostgREST cắt im lặng, các ô cuối bảng hiện TRỐNG
+      //   như chưa chấm, và người chấm công chấm đè lên ngày đã có.
+      //   Khoá thứ tự `id` duy nhất vì các trang chạy song song.
+      fetchAllForAggregate<HrAttendance>((from, to) =>
+        supabase
+          .from("hr_attendance")
+          .select("id, org_id, user_id, work_date, status", { count: "exact" })
+          .eq("org_id", authUser.org_id)
+          .gte("work_date", start)
+          .lte("work_date", end)
+          .order("id")
+          .range(from, to)
+      ),
     ])
-    const qErr = ([usersRes, attendRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[hr/attendance] truy vấn lỗi:", qErr.message)
+    if (usersRes.error) console.error("[hr/attendance] truy vấn lỗi:", usersRes.error.message)
+    // ⚠ Bảng công đọc hỏng / thiếu thì NÓI RA — ô trống đọc thành "chưa chấm".
+    if (attendRes.error || attendRes.truncated) {
+      toast({
+        title: "Không tải đủ bảng chấm công",
+        description: attendRes.error ?? truncationWarning(),
+        variant: "destructive",
+      })
+    }
     setEmployees((usersRes.data as User[]) || [])
     const map: Record<string, HrAttendance> = {}
-    for (const row of (attendRes.data as HrAttendance[]) || []) {
+    for (const row of attendRes.rows) {
       map[`${row.user_id}_${row.work_date}`] = row
     }
     setAttendance(map)

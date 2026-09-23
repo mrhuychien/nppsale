@@ -43,6 +43,9 @@ export default function CommissionsPage() {
             count: "exact",
           })
           .order("earned", { ascending: false })
+          // ⚠ Khoá phụ `id`: nhiều ví cùng số "earned" (nhất là 0), trang
+          //   song song thiếu khoá duy nhất là lặp / sót ví → tổng sai.
+          .order("id")
           .range(from, to)
       )
       if (res.error) console.error("[app/commissions] truy vấn lỗi:", res.error)

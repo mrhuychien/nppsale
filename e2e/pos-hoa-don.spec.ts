@@ -53,7 +53,12 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   await expect(page.getByTestId("dong-tra-moi")).toHaveCount(1)
   await expect(page.getByTestId("khoi-hang-tra")).toContainText("trừ 5.000")
 
+  /* ⚠ CHỦ NHÀ 23/09/2026: bấm "Xuất hàng & lập HĐ" là bật luôn cửa sổ in hoá đơn. */
+  const moIn = page.context().waitForEvent("page")
   await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
+  const cuaIn = await moIn
+  await expect(cuaIn).toHaveURL(/\/sales-invoices\/00000000-0000-4000-8000-00000000f004\/print\?auto=1/)
+  await cuaIn.close()
   await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
   const p = ((await goiCuoi("post_invoice"))!.body as { p: Record<string, unknown> }).p as {
     order_id: string; lines: Array<Record<string, unknown>>; return_adds: Array<Record<string, unknown>>
@@ -111,7 +116,11 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     // Người tạo · người được gán.
     await expect(page.getByTestId("nguoi-tao")).toHaveText("Chủ NPP")
 
+    const moIn = page.context().waitForEvent("page")
     await page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }).click()
+    const cuaIn = await moIn
+    await expect(cuaIn, "lập lại xong không bật cửa sổ in tờ MỚI").toHaveURL(/\/sales-invoices\/00000000-0000-4000-8000-00000000f003\/print\?auto=1/)
+    await cuaIn.close()
     await expect.poll(async () => !!(await goiCuoi("reissue_invoice"))).toBe(true)
     const p = ((await goiCuoi("reissue_invoice"))!.body as { p_invoice_id: string; p: Record<string, unknown> })
     expect(p.p_invoice_id).toBe(HOA_DON)

@@ -21,7 +21,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
-import { PosUnitSelect } from "@/components/pos/unit-select"
 import { donViCuaSanPham, donViHienThi, doiDonViDongTra } from "@/lib/pos/units"
 import { unitPriceFor } from "@/lib/sell/pricing"
 import { useRouter } from "next/navigation"
@@ -90,8 +89,11 @@ export interface ReturnScreenProps {
 }
 
 /** Lưới hai bảng — spec §4 hàng "Trả hàng (3, 8)". */
-const GRID_TRA = "24px 84px minmax(0,1fr) 108px 96px 104px 110px 24px"
-const GRID_DOI = "24px 84px minmax(0,1fr) 96px 104px 120px 24px"
+/* ⚠ CÙNG KHUÔN DÒNG VỚI MÀN ĐƠN HÀNG (chủ nhà 23/09/2026: "Trả hàng phần dòng
+   hàng các chi tiết ko giống làm đơn hàng, làm cho giống"): # · sản phẩm +
+   chip đơn vị + mã + ghi chú dòng · số lượng · đơn giá · thành tiền · xoá. */
+const GRID_TRA = "34px minmax(170px,1fr) 128px 100px 108px 120px 34px"
+const GRID_DOI = "34px minmax(170px,1fr) 100px 108px 120px 34px"
 
 let dem = 0
 const newKey = () => `r${++dem}`
@@ -410,6 +412,19 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           complete,
           zone,
         })
+        /* ⚠ Phiếu MỚI có người được gán chọn trước: gán sau khi có mã phiếu.
+           Hai lệnh, không một giao dịch — gán hỏng thì phiếu VẪN đã lưu, nói rõ. */
+        if (!returnId && nguoi.ganId) {
+          try {
+            await assignDocSeller(createClient(), "return", r.returnId, nguoi.ganId)
+          } catch (e) {
+            toast({
+              title: "Đã lưu phiếu nhưng chưa gán được người phụ trách",
+              description: `${errorMessage(e)} — mở lại phiếu để gán, KHÔNG lưu lại.`,
+              variant: "destructive",
+            })
+          }
+        }
         setMocChuaLuu(chuKy)
         toast({
           title: complete ? `Đã ghi nhận — hàng vào ${tenKhoNhan}` : "Đã lưu phiếu nháp",
@@ -421,7 +436,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setDangLuu(false)
       }
     },
-    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, zone, tenKhoNhan, chuKy, router, toast]
+    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId]
   )
 
   /**
@@ -575,7 +590,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           className="grid h-[34px] shrink-0 items-center border-b border-[var(--pos-line)] bg-[var(--pos-head)] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--pos-muted)]"
           style={{ gridTemplateColumns: g, gap: 8 }}
         >
-          <div>#</div><div>Mã hàng</div><div>Tên hàng</div>
+          <div className="text-center">#</div><div>Sản phẩm / đơn vị</div>
           {!doi && <div>Lô / HSD</div>}
           <div style={{ textAlign: "center" }}>Số lượng</div>
           <div style={{ textAlign: "right" }}>Đơn giá</div>
@@ -596,26 +611,52 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           return (
             <div
               key={l.key}
-              className="grid min-h-[52px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
+              data-testid={doi ? "dong-doi" : "dong-tra"}
+              className="grid min-h-[70px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2"
               style={{ gridTemplateColumns: g, gap: 8 }}
             >
-              <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
-              <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
+              <div className="n text-center text-[13px] font-bold text-[var(--pos-dim)]">{i + 1}</div>
               <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-[12.5px] font-medium leading-tight text-[var(--pos-ink)]">
-                    {l.name}
-                  </span>
-                  {/* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDongTra`. */}
-                  <PosUnitSelect
-                    className="shrink-0"
-                    label={`Đơn vị ${doi ? "đổi" : "trả"} dòng ${i + 1}`}
-                    value={l.unit}
-                    units={donViHienThi(l, productById(l.productId))}
-                    onChange={(u) => patch(l.key, doiDonViDongTra(l, u, productById(l.productId), groupId))}
-                  />
+                <div className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">
+                  {l.name}
                 </div>
-                <div className="mt-px truncate text-[11px] text-[var(--pos-muted)]">
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                  {/* ⚠ Chip đơn vị như màn đơn hàng. Đổi đơn vị là đổi giá — xem `doiDonViDongTra`. */}
+                  <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
+                    {donViHienThi(l, productById(l.productId)).map((u) => {
+                      const dang = u.unit_name === l.unit
+                      return (
+                        <button
+                          key={u.unit_name}
+                          type="button"
+                          aria-pressed={dang}
+                          aria-label={`Đơn vị ${u.unit_name} dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
+                          onClick={() => { if (!dang) patch(l.key, doiDonViDongTra(l, u.unit_name, productById(l.productId), groupId)) }}
+                          className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
+                            dang
+                              ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
+                              : "text-[var(--pos-muted)]"
+                          }`}
+                        >
+                          {u.unit_name}
+                        </button>
+                      )
+                    })}
+                  </span>
+                  {l.sku && (
+                    <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{l.sku}</span>
+                  )}
+                </div>
+                <input
+                  aria-label={`Ghi chú dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
+                  value={l.note ?? ""}
+                  onChange={(e) => patch(l.key, { note: e.target.value })}
+                  placeholder="Ghi chú dòng…"
+                  className={`mt-1 h-[30px] w-full min-w-0 border-0 border-b border-dashed bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none placeholder:text-[var(--pos-dim)] ${
+                    l.note ? "border-[var(--pos-primary-border)]" : "border-[var(--pos-edge)]"
+                  }`}
+                />
+                <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
                   {l.stock == null ? (
                     <span className="text-[var(--pos-dim)]">tồn chưa xác định</span>
                   ) : (
@@ -639,14 +680,13 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 />
               )}
               <QtyStepper
-                compact
                 label={`số lượng ${doi ? "đổi" : "trả"} dòng ${i + 1}`}
                 value={l.qty}
                 onChange={(v) => patch(l.key, { qty: v })}
               />
               <MoneyInput
                 showSuffix={false}
-                inputClassName="n h-7 w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[12px] text-[var(--pos-ink)] py-0 lg:h-7 focus-visible:ring-1 focus-visible:ring-offset-0"
+                inputClassName="n h-[30px] w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[13px] text-[var(--pos-ink)] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0"
                 aria-label={`Đơn giá dòng ${i + 1}`}
                 value={l.price}
                 onChange={(v) => patch(l.key, { price: v })}
@@ -665,14 +705,14 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                     <div className="text-[9.5px] font-semibold text-[var(--pos-primary)]">không trừ tiền</div>
                   </>
                 ) : (
-                  <div className="n text-[13px] font-bold text-[var(--pos-warn)]">{formatCurrency(tien)}</div>
+                  <div className="n text-[14px] font-extrabold text-[var(--pos-warn)]">{formatCurrency(tien)}</div>
                 )}
               </div>
               <button
                 type="button"
                 aria-label={`Xoá dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
                 onClick={() => setLines(lines.filter((x) => x.key !== l.key))}
-                className="flex h-[22px] w-[22px] items-center justify-center rounded hover:bg-[var(--pos-line-soft)]"
+                className="flex h-[30px] w-[30px] items-center justify-center justify-self-center rounded-[8px] hover:bg-[var(--pos-line-soft)]"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pos-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden>
                   <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
@@ -793,13 +833,14 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           </div>
 
           {/*
-            ⚠ NGƯỜI ĐƯỢC GÁN CỦA PHIẾU ĐÃ LƯU ĐỔI QUA `assign_doc_seller`
-              (mig 178) — gán ngay, không cần lưu lại phiếu. Phiếu MỚI thì
-              máy chủ tự điền người của đơn / người lập (trigger mig 153).
+            ⚠ NGƯỜI ĐƯỢC GÁN ĐỔI QUA `assign_doc_seller` (mig 178). Phiếu ĐÃ LƯU
+              gán ngay. Phiếu MỚI trước đây không có ô gán (chủ nhà báo
+              23/09/2026 "chưa gán được nhân viên") — nay chọn trước, lưu
+              xong mới gán, vì RPC cần mã phiếu.
           */}
           <DocPeople
             createdById={returnId ? nguoi.taoId : user?.id}
-            assignedId={returnId ? nguoi.ganId : null}
+            assignedId={nguoi.ganId}
             busy={dangGan}
             onAssign={
               returnId
@@ -815,9 +856,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                       setDangGan(false)
                     }
                   }
-                : undefined
+                : (uid) => setNguoi((n) => ({ ...n, ganId: uid }))
             }
-            note="Gán ngay — không cần lưu lại phiếu."
+            note={returnId ? "Gán ngay — không cần lưu lại phiếu." : "Gán khi lưu phiếu."}
           />
 
           <PosProductSearchBox

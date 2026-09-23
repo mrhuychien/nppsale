@@ -194,8 +194,9 @@ describe("trả hàng: dòng thêm tay vs dòng theo hóa đơn gốc", () => {
 
   it("màn trả hàng có ô đơn vị nối vào phép đổi, và thêm hàng tra bảng giá", () => {
     const S = read("src/components/pos/return-screen.tsx")
-    expect(S).toMatch(/<PosUnitSelect/)
-    expect(S).toMatch(/patch\(l\.key, doiDonViDongTra\(l, u, productById\(l\.productId\), groupId\)\)/)
+    /* Chip đơn vị như màn đơn hàng (chủ nhà 23/09/2026: "làm cho giống"). */
+    expect(S).toMatch(/donViHienThi\(l, productById\(l\.productId\)\)\.map/)
+    expect(S).toMatch(/patch\(l\.key, doiDonViDongTra\(l, u\.unit_name, productById\(l\.productId\), groupId\)\)/)
     expect(S).not.toMatch(/price: Number\(p\.sell_price\)/)
     expect(S).not.toMatch(/units: \[\{ unit_name: (p\.base_unit|x\.unit_name|x\.unitName), conversion: 1 \}\]/)
   })

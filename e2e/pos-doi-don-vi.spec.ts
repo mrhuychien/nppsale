@@ -85,7 +85,7 @@ test("trả hàng: giá theo bảng giá nhóm khách, chọn được thùng", 
   await tim.press("Enter")
   const gia = page.getByLabel("Đơn giá dòng 1")
   await expect(gia, "thêm hàng trả bỏ qua bảng giá nhóm khách").toHaveValue("19.000")
-  await page.getByLabel("Đơn vị trả dòng 1").selectOption("thùng")
+  await page.getByRole("button", { name: "Đơn vị thùng dòng trả 1" }).click()
   await expect(gia, "đổi sang thùng mà giá trả vẫn là giá hộp").toHaveValue("450.000")
 })
 

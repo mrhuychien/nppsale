@@ -197,6 +197,29 @@ export async function savePosOrder(
  * PHIẾU TRẢ HÀNG — màn 3 / 8
  * ================================================================== */
 
+/**
+ * Dòng POS → một hàng `return_lines`.
+ *
+ * ⚠ `line_total` LÀ NOT NULL — bản trước không gửi, và lưu phiếu trả POS
+ *   gãy 23502 (chủ nhà báo 23/09/2026). Cùng công thức với `toReturnLine`
+ *   và mig 152: làm tròn SL × giá × (1 + VAT). Dòng ĐỔI cũng mang số ấy —
+ *   máy chủ tự bỏ dòng đổi khỏi khoản trừ công nợ.
+ */
+export function dongTraGhiSo(returnId: string, l: PosLine) {
+  const vat = l.vatRate || 0
+  return {
+    return_id: returnId,
+    product_id: l.productId,
+    unit_name: l.unit,
+    quantity: l.qty,
+    unit_price: l.price,
+    vat_rate: vat,
+    line_total: Math.round(l.qty * l.price * (1 + vat)),
+    is_exchange: l.isExchange === true,
+    note: l.note?.trim() || null,
+  }
+}
+
 export async function savePosReturn(
   sb: SupabaseClient,
   o: {
@@ -276,16 +299,7 @@ export async function savePosReturn(
 
   const rows = o.lines
     .filter((l) => l.productId && l.qty > 0)
-    .map((l) => ({
-      return_id: id,
-      product_id: l.productId,
-      unit_name: l.unit,
-      quantity: l.qty,
-      unit_price: l.price,
-      vat_rate: 0,
-      is_exchange: l.isExchange === true,
-      note: l.note || null,
-    }))
+    .map((l) => dongTraGhiSo(id!, l))
   if (rows.length > 0) {
     const { data, error } = await sb.from("return_lines").insert(rows).select("id")
     if (error) throw error

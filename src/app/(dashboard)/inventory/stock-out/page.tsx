@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
+import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -851,7 +853,17 @@ export default function StockOutPage() {
               </div>
 
               {showFilter && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-4 rounded-xl bg-surface-low">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 p-4 rounded-xl bg-surface-low">
+                  {/* ⚠ HÀNG ĐỢI VIỆC — mặc định vẫn "Tất cả": lọc tháng này là giấu
+                      phiếu chờ từ tháng trước khỏi người phải xử lý nó. */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Kỳ</label>
+                    <PeriodSelect
+                      className="h-9 w-full"
+                      value={kyCuaKhoang(dateFrom, dateTo)}
+                      onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+                    />
+                  </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">
                       Từ ngày

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
   periodFrom,
+  khoangKy,
+  kyCuaKhoang,
   nextPeriod,
   LIST_PERIODS,
   LIST_PERIOD_LABEL,
@@ -27,8 +29,15 @@ describe("periodFrom", () => {
     expect(periodFrom("today", lateNight)).toBe("2026-09-18")
   })
 
-  it("7 ngày qua GỒM cả hôm nay — hôm nay và sáu ngày trước", () => {
-    expect(periodFrom("week", new Date("2026-09-17T05:00:00Z"))).toBe("2026-09-11")
+  /** Chủ nhà chốt 23/09/2026: "Tuần này" — từ thứ Hai, không phải 7 ngày qua. */
+  it("Tuần này bắt đầu từ thứ Hai (thứ Năm 17/09 → thứ Hai 14/09)", () => {
+    expect(periodFrom("week", new Date("2026-09-17T05:00:00Z"))).toBe("2026-09-14")
+  })
+  it("Chủ Nhật vẫn thuộc tuần bắt đầu từ thứ Hai trước đó", () => {
+    expect(periodFrom("week", new Date("2026-09-20T05:00:00Z"))).toBe("2026-09-14")
+  })
+  it("thứ Hai là ngày đầu của chính tuần ấy", () => {
+    expect(periodFrom("week", new Date("2026-09-21T05:00:00Z"))).toBe("2026-09-21")
   })
 
   it("Tháng này bắt đầu từ mùng 1 của tháng VIỆT NAM", () => {
@@ -41,7 +50,7 @@ describe("periodFrom", () => {
   })
 
   it("qua tháng và qua năm vẫn ra mốc đúng", () => {
-    expect(periodFrom("week", new Date("2026-01-03T05:00:00Z"))).toBe("2025-12-28")
+    expect(periodFrom("week", new Date("2026-01-03T05:00:00Z"))).toBe("2025-12-29")
   })
 })
 
@@ -174,5 +183,21 @@ describe("shortTermLabel", () => {
     expect(isCreditTerm("COD")).toBe(false)
     expect(isCreditTerm("NET15")).toBe(true)
     expect(isCreditTerm(null)).toBe(false)
+  })
+})
+
+describe("khoangKy / kyCuaKhoang — cho danh sách lọc bằng hai ô ngày", () => {
+  const now = new Date("2026-09-23T05:00:00Z")
+  it("tháng này: mùng 1 → hôm nay", () => {
+    expect(khoangKy("month", now)).toEqual({ from: "2026-09-01", to: "2026-09-23" })
+  })
+  it("tất cả: bỏ trống hai ô", () => expect(khoangKy("all", now)).toEqual({ from: "", to: "" }))
+  it("nhận lại đúng kỳ từ hai ô, khoảng lạ là tự chọn", () => {
+    expect(kyCuaKhoang("2026-09-21", "2026-09-23", now)).toBe("week")
+    expect(kyCuaKhoang("", "", now)).toBe("all")
+    expect(kyCuaKhoang("2026-08-01", "2026-09-23", now)).toBe("custom")
+  })
+  it("nhãn đúng bộ chủ nhà chốt", () => {
+    expect(LIST_PERIODS.map((k) => LIST_PERIOD_LABEL[k])).toEqual(["Hôm nay", "Tuần này", "Tháng này", "Tất cả"])
   })
 })

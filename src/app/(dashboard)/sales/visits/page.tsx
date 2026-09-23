@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
+import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
@@ -52,12 +54,10 @@ export default function VisitsHistoryPage() {
   const { user: authUser } = useAuth()
   const supabase = createClient()
 
-  const today = new Date()
-  const weekAgo = new Date(today)
-  weekAgo.setDate(today.getDate() - 7)
 
-  const [dateFrom, setDateFrom] = useState(weekAgo.toISOString().slice(0, 10))
-  const [dateTo, setDateTo] = useState(today.toISOString().slice(0, 10))
+  /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
+  const [dateFrom, setDateFrom] = useState(() => khoangKy("month").from)
+  const [dateTo, setDateTo] = useState(() => khoangKy("month").to)
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name" | "role">[]>([])
   const [visits, setVisits] = useState<VisitRow[]>([])
@@ -174,7 +174,15 @@ export default function VisitsHistoryPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Kỳ</Label>
+            <PeriodSelect
+              className="w-full"
+              value={kyCuaKhoang(dateFrom, dateTo)}
+              onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+            />
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Từ ngày</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import { dangNhap } from "./helpers"
+import { dangNhap, chonKy } from "./helpers"
 
 /**
  * ⚠ YÊU CẦU 23/09/2026: "Phần tìm trong các danh sách (đơn hàng, hóa đơn,
@@ -12,6 +12,7 @@ const tongDon = (page: Page) =>
 test("đơn hàng: tìm theo mã, tên hàng — ghép VÀ với khách; tổng theo đúng bộ lọc", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/orders")
+  await chonKy(page, "Tất cả")
   await expect(page.getByText("DH-0001").first()).toBeVisible()
 
   await page.getByRole("button", { name: "Tìm theo từng trường" }).click()
@@ -101,6 +102,7 @@ test("đơn hàng — điện thoại: các ô theo trường nằm trong tấm 
 test("đơn hàng: chữ tìm có dấu phẩy, ngoặc không làm hỏng truy vấn", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/orders")
+  await chonKy(page, "Tất cả")
   await expect(page.getByText("DH-0001").first()).toBeVisible()
   await page.getByRole("button", { name: "Tìm theo từng trường" }).click()
   await page.getByRole("textbox", { name: "Theo mã đơn hàng", exact: true }).fill("DH,00 (1)")
@@ -115,6 +117,7 @@ test("đơn hàng: chữ tìm có dấu phẩy, ngoặc không làm hỏng truy 
 test("đơn hàng: tìm không dấu theo tên hàng và tên khách", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/orders")
+  await chonKy(page, "Tất cả")
   await expect(page.getByText("DH-0001").first()).toBeVisible()
 
   await page.getByRole("button", { name: "Tìm theo từng trường" }).click()

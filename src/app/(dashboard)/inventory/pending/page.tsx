@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
+import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -445,7 +447,7 @@ export default function PendingStockPage() {
 
           {/* Shared filter bar (applies to both tabs) */}
           <Card className="mt-4">
-            <CardContent className="grid gap-2 p-3 sm:grid-cols-4">
+            <CardContent className="grid gap-2 p-3 sm:grid-cols-5">
               <div className="relative sm:col-span-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -468,6 +470,12 @@ export default function PendingStockPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {/* ⚠ HÀNG ĐỢI VIỆC — mặc định vẫn "Tất cả", xem màn Xuất kho. */}
+              <PeriodSelect
+                className="h-9 w-full"
+                value={kyCuaKhoang(dateFrom, dateTo)}
+                onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+              />
               <Input
                 type="date"
                 value={dateFrom}

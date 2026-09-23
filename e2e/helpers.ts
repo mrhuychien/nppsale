@@ -21,3 +21,9 @@ export async function chonKhach(page: Page, ten: string) {
   await page.getByText(ten, { exact: false }).last().click()
   await expect(page.getByRole("button", { name: /Chọn khách hàng/ })).toHaveCount(0)
 }
+
+/** Máy tính: chọn kỳ ở ô "Khoảng thời gian" (mặc định Tháng này, chủ nhà chốt 23/09/2026). */
+export async function chonKy(page: Page, nhan: "Hôm nay" | "Tuần này" | "Tháng này" | "Tất cả") {
+  await page.getByRole("combobox", { name: "Khoảng thời gian" }).first().click()
+  await page.getByRole("option", { name: nhan, exact: true }).click()
+}

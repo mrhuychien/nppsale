@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap } from "./helpers"
+import { dangNhap, chonKy } from "./helpers"
 
 /**
  * ⚠ YÊU CẦU 23/09/2026: "Thêm phần thống kê này vào các danh sách Đơn hàng
@@ -12,6 +12,7 @@ const khoi = (page: import("@playwright/test").Page, nhan: string) =>
 test("đơn hàng — máy tính: 'Tất cả' ra cả đơn năm ngoái; đơn huỷ không vào tổng", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/orders")
+  await chonKy(page, "Tất cả")
   // ⚠ LỖI CŨ: viên thuốc "Tháng này" của điện thoại lọc ngầm cả máy tính —
   //   đơn DH-0003 (06/2025) không bao giờ hiện trên máy tính.
   await expect(page.getByText("DH-0003").first()).toBeVisible()
@@ -19,6 +20,16 @@ test("đơn hàng — máy tính: 'Tất cả' ra cả đơn năm ngoái; đơn 
   // DH-0004 (huỷ, 9.000.000) đếm vào 4 đơn nhưng KHÔNG vào tổng.
   await expect(k).toContainText("4 đơn hàng")
   await expect(k).toContainText("8.000.000")
+})
+
+test("đơn hàng — máy tính: mặc định 'Tháng này', đơn năm ngoái ẩn", async ({ page }) => {
+  // ⚠ YÊU CẦU 23/09/2026: "Các danh sách có bộ lọc thời gian: Mặc định để tháng này".
+  await dangNhap(page)
+  await page.goto("/orders")
+  await expect(page.getByRole("combobox", { name: "Khoảng thời gian" }).first()).toContainText("Tháng này")
+  await expect(page.getByText("DH-0001").first()).toBeVisible()
+  await expect(page.getByText("DH-0003")).toHaveCount(0)
+  await expect(khoi(page, "Tổng tiền hàng")).toContainText("2 đơn hàng")
 })
 
 test("đơn hàng — điện thoại: khối tóm tắt theo viên thuốc", async ({ browser }) => {

@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
+import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
@@ -45,15 +47,15 @@ export default function ExpensesPage() {
   const { toast } = useToast()
 
   const today = new Date()
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
 
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
-  const [dateFrom, setDateFrom] = useState(monthStart)
-  const [dateTo, setDateTo] = useState(today.toISOString().slice(0, 10))
+  /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
+  const [dateFrom, setDateFrom] = useState(() => khoangKy("month").from)
+  const [dateTo, setDateTo] = useState(() => khoangKy("month").to)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -223,7 +225,15 @@ export default function ExpensesPage() {
 
       {/* Period filter */}
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Kỳ</Label>
+            <PeriodSelect
+              className="w-full"
+              value={kyCuaKhoang(dateFrom, dateTo)}
+              onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+            />
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Từ ngày</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />

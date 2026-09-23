@@ -74,7 +74,7 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
   it("thanh công cụ có tuyến, NVBH (trừ NVBH tự xem), khoảng ngày, Xoá lọc", () => {
     expect(PAGE).toContain("<RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />")
     expect(PAGE).toContain("{!isSales && salesUsers.length > 0 && (")
-    expect(PAGE).toContain('<Select value={rangePreset} onValueChange={applyRangePreset}>')
+    expect(PAGE).toContain("<PeriodSelect")
     expect(PAGE).toContain("Xoá lọc")
   })
 
@@ -84,9 +84,10 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
    * được hiện "Hôm nay" cho một khoảng không phải hôm nay.
    */
   it("khoảng ngày nhận ra khoảng tuỳ chọn, không gán bừa", () => {
-    expect(PAGE).toContain('if (!dateFrom && !dateTo) return "all"')
-    expect(PAGE).toContain('return "custom"')
-    expect(PAGE).toContain('{rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}')
+    /* Từ 23/09/2026: ô chọn kỳ chung (Hôm nay / Tuần này / Tháng này / Tất cả). */
+    expect(PAGE).toContain('value={dateFrom || dateTo ? "custom" : period}')
+    const O = readFileSync(resolve(__dirname, "../src/components/ui/period-select.tsx"), "utf-8")
+    expect(O).toContain('{value === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}')
   })
 
   /**

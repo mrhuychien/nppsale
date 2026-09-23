@@ -22,12 +22,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
 import Link from "next/link"
 import { ChevronDown, ChevronUp, FileText, Filter } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { MATCH_CAP } from "@/lib/search/list-search"
-import { useIsDesktop } from "@/hooks/use-is-desktop"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -69,7 +69,6 @@ import {
   type ListPeriod, type DocLineSummary,
   kyDangLoc,
 } from "@/lib/orders/list-summary"
-import { vnDateKey } from "@/lib/orders/status-tone"
 import { formatCurrency } from "@/lib/utils"
 import {
   INVOICE_COLUMNS, INVOICE_FILTERS,
@@ -131,8 +130,6 @@ export default function SalesInvoicesPage() {
    */
   const [period, setPeriod] = useState<ListPeriod>("month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
-  const laMayTinh = useIsDesktop()
-  const kyLoc = kyDangLoc(period, laMayTinh)
   /** Mặt hàng đại diện của từng hóa đơn đang hiện. */
   const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được. */
@@ -155,6 +152,8 @@ export default function SalesInvoicesPage() {
   const [salesFilter, setSalesFilter] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /* Kỳ áp cho cả máy tính và điện thoại; hai ô ngày tự chọn thì ô ngày thắng. */
+  const kyLoc = kyDangLoc(period, !!(dateFrom || dateTo))
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -473,26 +472,6 @@ export default function SalesInvoicesPage() {
    */
   const filtered = rows
 
-  const rangeOf = (days: number) => {
-    const to = vnDateKey(new Date())
-    const from = vnDateKey(new Date(Date.now() - (days - 1) * 86_400_000))
-    return { from, to }
-  }
-  const rangePreset = (() => {
-    if (!dateFrom && !dateTo) return "all"
-    for (const [k, d] of [["today", 1], ["7d", 7], ["30d", 30]] as const) {
-      const r = rangeOf(d)
-      if (dateFrom === r.from && dateTo === r.to) return k
-    }
-    return "custom"
-  })()
-  const applyRangePreset = (k: string) => {
-    if (k === "all") { setDateFrom(""); setDateTo(""); return }
-    if (k === "custom") return
-    const d = k === "today" ? 1 : k === "7d" ? 7 : 30
-    const r = rangeOf(d)
-    setDateFrom(r.from); setDateTo(r.to)
-  }
 
   const clearAdvanced = () => {
     setCustomerFilter("all"); setSalesFilter("all"); setRouteFilter("all")
@@ -671,18 +650,10 @@ export default function SalesInvoicesPage() {
             />
           )}
           <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
-          <Select value={rangePreset} onValueChange={applyRangePreset}>
-            <SelectTrigger className="h-10 w-[130px] rounded-xl font-semibold">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hôm nay</SelectItem>
-              <SelectItem value="7d">7 ngày</SelectItem>
-              <SelectItem value="30d">30 ngày</SelectItem>
-              <SelectItem value="all">Tất cả</SelectItem>
-              {rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}
-            </SelectContent>
-          </Select>
+          <PeriodSelect
+            value={dateFrom || dateTo ? "custom" : period}
+            onChange={(k) => { setDateFrom(""); setDateTo(""); setPeriod(k) }}
+          />
           {activeFilterCount + (search ? 1 : 0) > 0 && (
             <Button
               variant="ghost"

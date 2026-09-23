@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { PeriodSelect } from "@/components/ui/period-select"
 import { usePagination } from "@/hooks/use-pagination"
 import { MATCH_CAP } from "@/lib/search/list-search"
-import { useIsDesktop } from "@/hooks/use-is-desktop"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -256,8 +256,6 @@ export default function OrdersPage() {
    */
   const [period, setPeriod] = useState<ListPeriod>("month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
-  const laMayTinh = useIsDesktop()
-  const kyLoc = kyDangLoc(period, laMayTinh)
   /** Mặt hàng đại diện + số dòng của từng đơn đang hiện. */
   const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được — xem `DocListSummary`. */
@@ -274,6 +272,8 @@ export default function OrdersPage() {
   const [showScopeHint, setShowScopeHint] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /* Kỳ áp cho cả máy tính và điện thoại; hai ô ngày tự chọn thì ô ngày thắng. */
+  const kyLoc = kyDangLoc(period, !!(dateFrom || dateTo))
   const [customerFilter, setCustomerFilter] = useState("all")
   const [salesFilter, setSalesFilter] = useState("all")
   /**
@@ -1254,31 +1254,6 @@ export default function OrdersPage() {
   const onSort = (key: OrderSortKey) =>
     setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))
 
-  /**
-   * Khoảng ngày theo mẫu: Hôm nay / 7 ngày / 30 ngày / Tất cả — chỉ là
-   * cách đặt nhanh `dateFrom`/`dateTo`; ô ngày trong bộ lọc nâng cao vẫn
-   * là nguồn thật, nên chọn tay một khoảng lạ thì ô này hiện "Tuỳ chọn".
-   */
-  const rangeOf = (days: number) => {
-    const to = vnDateKey(new Date())
-    const from = vnDateKey(new Date(Date.now() - (days - 1) * 86_400_000))
-    return { from, to }
-  }
-  const rangePreset = (() => {
-    if (!dateFrom && !dateTo) return "all"
-    for (const [k, d] of [["today", 1], ["7d", 7], ["30d", 30]] as const) {
-      const r = rangeOf(d)
-      if (dateFrom === r.from && dateTo === r.to) return k
-    }
-    return "custom"
-  })()
-  const applyRangePreset = (k: string) => {
-    if (k === "all") { setDateFrom(""); setDateTo(""); return }
-    if (k === "custom") return
-    const d = k === "today" ? 1 : k === "7d" ? 7 : 30
-    const r = rangeOf(d)
-    setDateFrom(r.from); setDateTo(r.to)
-  }
 
   const bulkBar = selectedIds.size > 0 && (() => {
         const selectedOrders = orders.filter((o) => selectedIds.has(o.id))
@@ -1492,18 +1467,10 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         )}
-        <Select value={rangePreset} onValueChange={applyRangePreset}>
-          <SelectTrigger className="h-10 w-[130px] rounded-xl font-semibold">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hôm nay</SelectItem>
-            <SelectItem value="7d">7 ngày</SelectItem>
-            <SelectItem value="30d">30 ngày</SelectItem>
-            <SelectItem value="all">Tất cả</SelectItem>
-            {rangePreset === "custom" && <SelectItem value="custom">Tuỳ chọn</SelectItem>}
-          </SelectContent>
-        </Select>
+        <PeriodSelect
+          value={dateFrom || dateTo ? "custom" : period}
+          onChange={(k) => { setDateFrom(""); setDateTo(""); setPeriod(k) }}
+        />
         {activeFilterCount + (search ? 1 : 0) > 0 && (
           <Button variant="ghost" size="sm" className="font-extrabold text-primary" onClick={() => { clearAdvancedFilters(); setSearch("") }}>
             Xoá lọc

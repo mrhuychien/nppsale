@@ -25,7 +25,7 @@ export const LIST_PERIODS: ListPeriod[] = ["today", "week", "month", "all"]
 
 export const LIST_PERIOD_LABEL: Record<ListPeriod, string> = {
   today: "Hôm nay",
-  week: "7 ngày qua",
+  week: "Tuần này",
   month: "Tháng này",
   all: "Tất cả",
 }
@@ -43,9 +43,9 @@ function vnDay(d: Date): string {
  * máy chủ (UTC) là suốt bảy tiếng đầu mỗi ngày "Hôm nay" mất sạch đơn
  * của hôm nay.
  *
- * ⚠ "7 NGÀY QUA" GỒM CẢ HÔM NAY — tức là hôm nay và sáu ngày trước, chứ
- * không phải hôm nay trừ đi bảy. Người bán đọc "7 ngày qua" là nghĩ tới
- * một tuần tính cả hôm nay.
+ * ⚠ "TUẦN NÀY" TÍNH TỪ THỨ HAI (chủ nhà chốt 23/09/2026: "Hôm nay, Tuần này,
+ *   Tháng này, Tất cả"). Bản trước là "7 ngày qua" — hôm nay và sáu ngày
+ *   trước. Chủ Nhật thì tuần này là thứ Hai → Chủ Nhật vừa qua.
  */
 export function periodFrom(period: ListPeriod, now: Date = new Date()): string | null {
   if (period === "all") return null
@@ -53,9 +53,29 @@ export function periodFrom(period: ListPeriod, now: Date = new Date()): string |
   const [y, m, d] = today.split("-").map(Number)
   if (period === "today") return today
   if (period === "month") return `${y}-${String(m).padStart(2, "0")}-01`
-  // week
-  const ms = Date.UTC(y, m - 1, d) - 6 * 86_400_000
-  return new Date(ms).toISOString().slice(0, 10)
+  // week — thứ Hai của tuần chứa hôm nay
+  const utc = Date.UTC(y, m - 1, d)
+  const thu = new Date(utc).getUTCDay() // 0 = Chủ Nhật
+  const lui = thu === 0 ? 6 : thu - 1
+  return new Date(utc - lui * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * Khoảng ngày [từ, đến] của một kỳ — cho các danh sách lọc bằng hai ô ngày
+ * (chi phí, xuất kho…). `all` là không giới hạn cả hai đầu.
+ */
+export function khoangKy(period: ListPeriod, now: Date = new Date()): { from: string; to: string } {
+  const from = periodFrom(period, now)
+  return from ? { from, to: vnDay(now) } : { from: "", to: "" }
+}
+
+/** Hai ô ngày đang khớp kỳ nào — không khớp kỳ nào thì là khoảng tự chọn. */
+export function kyCuaKhoang(from: string, to: string, now: Date = new Date()): ListPeriod | "custom" {
+  for (const k of LIST_PERIODS) {
+    const r = khoangKy(k, now)
+    if (r.from === from && r.to === to) return k
+  }
+  return "custom"
 }
 
 /** Bấm vào viên thuốc là sang khoảng kế tiếp, quay vòng. */
@@ -182,15 +202,14 @@ export function isCreditTerm(terms: string | null | undefined): boolean {
 /**
  * KHOẢNG THỜI GIAN THỰC SỰ ĐANG LỌC.
  *
- * ⚠ VIÊN THUỐC KHOẢNG THỜI GIAN CHỈ CÓ Ở ĐIỆN THOẠI. Máy tính có bộ lọc
- *   riêng (Hôm nay / 7 ngày / 30 ngày / Tất cả). Bản trước áp viên thuốc
- *   — mặc định "Tháng này" — cho cả máy tính: danh sách đơn / hóa đơn trên
- *   máy tính bị lọc NGẦM còn tháng này, chọn "Tất cả" vẫn chỉ ra tháng
- *   này, và không có nút nào nói ra. Tìm ra khi làm khối thống kê
- *   (23/09/2026).
+ * ⚠ TỪ 23/09/2026 MÁY TÍNH VÀ ĐIỆN THOẠI CÙNG MỘT KỲ (chủ nhà chốt: "Mặc định
+ *   để tháng này. Tuỳ chọn: Hôm nay, Tuần này, Tháng này, Tất cả"). Trước đó
+ *   máy tính bỏ qua kỳ vì nó không có ô nào hiện kỳ — lọc ngầm còn tháng này
+ *   là nói dối. Nay máy tính có ô chọn kỳ thật (`PeriodSelect`), nên kỳ áp
+ *   cho cả hai. Hai ô ngày tự chọn thì kỳ là "Tất cả" (ô ngày thắng).
  */
-export function kyDangLoc(period: ListPeriod, laMayTinh: boolean): ListPeriod {
-  return laMayTinh ? "all" : period
+export function kyDangLoc(period: ListPeriod, coNgayTuChon: boolean): ListPeriod {
+  return coNgayTuChon ? "all" : period
 }
 
 /**

@@ -23,12 +23,13 @@ describe("tongChungTu — khối thống kê danh sách", () => {
  *   tính — danh sách đơn / hóa đơn trên máy tính bị lọc ngầm còn tháng này.
  */
 describe("kyDangLoc", () => {
-  it("máy tính: không lọc theo viên thuốc", () => {
-    expect(kyDangLoc("month", true)).toBe("all")
-    expect(kyDangLoc("today", true)).toBe("all")
-  })
-  it("điện thoại: đúng viên thuốc đang chọn", () => {
+  /* Từ 23/09/2026 máy tính có ô chọn kỳ thật — kỳ áp cho cả hai khổ màn. */
+  it("không có ô ngày tự chọn: đúng kỳ đang chọn", () => {
     expect(kyDangLoc("month", false)).toBe("month")
     expect(kyDangLoc("week", false)).toBe("week")
+  })
+  it("có ô ngày tự chọn: ô ngày thắng, kỳ thành Tất cả", () => {
+    expect(kyDangLoc("month", true)).toBe("all")
+    expect(kyDangLoc("today", true)).toBe("all")
   })
 })

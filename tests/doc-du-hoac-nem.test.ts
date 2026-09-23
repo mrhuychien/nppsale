@@ -61,3 +61,26 @@ describe("docTheoLoId", () => {
     ).rejects.toThrow(/giá vốn: URL quá dài/)
   })
 })
+
+describe("kỳ mặc định 'Bán chậm'", async () => {
+  const { lastNDays } = await import("../src/lib/analytics/period")
+  it("90 ngày tính cả hôm nay", () => {
+    expect(lastNDays(90, new Date(2026, 8, 23))).toEqual({ from: "2026-06-26", to: "2026-09-23" })
+    expect(lastNDays(1, new Date(2026, 0, 1))).toEqual({ from: "2026-01-01", to: "2026-01-01" })
+  })
+
+  /**
+   * ⚠ CHỦ NHÀ CHỐT 23/09/2026: "tuỳ chỉnh được ngày". Dòng bán chỉ đọc
+   *   trong kỳ đã chọn, theo ngày đơn, bỏ đơn huỷ — và đổi kỳ là đọc lại.
+   */
+  it("báo cáo tồn kho đọc dòng bán theo kỳ", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const s = readFileSync(resolve(__dirname, "..", "src/app/(dashboard)/reports/inventory/page.tsx"), "utf-8")
+    expect(s).toContain('.gte("don.order_date", range.from)')
+    expect(s).toContain('.lte("don.order_date", range.to)')
+    expect(s).toContain('.neq("don.status", "cancelled")')
+    expect(s).toContain("}, [range.from, range.to])")
+    expect(s).toContain("<DateRangePicker")
+  })
+})

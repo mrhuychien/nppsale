@@ -162,3 +162,17 @@ describe("lập phiếu trả một giao dịch", () => {
     await expect(lapPhieuTraMotLan(sb as never, {}, [])).rejects.toMatchObject({ code: "42501" })
   })
 })
+
+/**
+ * ⚠ NÚT "→ Date / → Bán" ĐÃ GỠ (chủ nhà chốt 23/09/2026: "bỏ cái đó. Đã
+ *   có phiếu chuyển kho rồi"). Nó dời cả lô sang vùng khác bằng một lệnh
+ *   sửa thẳng, không có phiếu — thẻ kho theo vùng lệch tồn thật.
+ */
+describe("danh sách lô không còn chuyển vùng bằng lệnh sửa thẳng", () => {
+  it("không còn UPDATE warehouse_zone từ màn danh sách lô", () => {
+    const s = readFileSync(resolve(__dirname, "..", "src/app/(dashboard)/inventory/batches/page.tsx"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(s).not.toMatch(/\.from\("batches"\)\s*\.update\(/)
+    expect(s).not.toContain("moveZone")
+  })
+})

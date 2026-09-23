@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { FilterSearchSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
+import { DateRangePicker } from "@/components/analytics/date-range-picker"
+import { lastNDays, type DateRange, type PeriodPreset } from "@/lib/analytics/period"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -49,6 +51,14 @@ export default function InventoryReportPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
+  /**
+   * Kỳ tính "Bán chậm" — chủ nhà chốt 23/09/2026: "tuỳ chỉnh được ngày".
+   * Mặc định 90 ngày gần nhất. Bản trước đọc CẢ LỊCH SỬ dòng bán: vừa sai
+   * nghĩa (hàng bán chạy năm ngoái mà nay không ai lấy vẫn không bị gắn
+   * "Bán chậm"), vừa sớm muộn vượt trần 20.000 dòng.
+   */
+  const [preset, setPreset] = useState<PeriodPreset>("custom")
+  const [range, setRange] = useState<DateRange>(() => lastNDays(90))
   const supabase = createClient()
   const catalogs = useFilterCatalogs(user?.org_id)
 
@@ -58,16 +68,14 @@ export default function InventoryReportPage() {
        * ⚠ HỎNG THÌ NÓI, CHẠM TRẦN THÌ CŨNG NÓI. Bản cũ `console.error` rồi
        *   dựng trang từ `rows` rỗng, và bỏ qua cờ `truncated`.
        *
-       * ⚠ DÒNG BÁN ĐỌC CẢ LỊCH SỬ, CỐ Ý GIỮ PHẠM VI. Nhãn "Bán chậm" ở màn
-       *   này chưa từng hứa một khoảng thời gian nào; tự đặt 30 hay 90 ngày
-       *   là đổi luật nghiệp vụ mà chủ nhà chưa chốt. Nhưng cả lịch sử thì
-       *   sớm muộn vượt 20.000 dòng — lúc ấy dải cảnh báo hiện ra, thay vì
-       *   lặng lẽ đếm thiếu rồi gắn nhầm "Bán chậm" cho hàng bán chạy.
+       * ⚠ DÒNG BÁN CHỈ ĐỌC TRONG KỲ ĐÃ CHỌN, theo NGÀY ĐƠN, bỏ đơn đã huỷ
+       *   (đơn huỷ không phải một lần bán). Đổi kỳ là đọc lại.
        *
        * ⚠ Mốc duy nhất `id` sau `expires_at`: nhiều lô cùng hạn dùng thì các
        *   trang song song được phép trùng/sót nhau.
        */
       try {
+        setLoading(true)
         setLoadError(null)
         const [batchesRes, linesRes, suppliersRes] = await Promise.all([
           docDuHoacNem(
@@ -87,7 +95,10 @@ export default function InventoryReportPage() {
             (from, to) =>
               supabase
                 .from("sales_order_lines")
-                .select("id, product_id, quantity", { count: "exact" })
+                .select("id, product_id, quantity, don:sales_orders!inner(order_date, status)", { count: "exact" })
+                .gte("don.order_date", range.from)
+                .lte("don.order_date", range.to)
+                .neq("don.status", "cancelled")
                 .order("id")
                 .range(from, to),
             "đọc dòng bán"
@@ -113,7 +124,7 @@ export default function InventoryReportPage() {
       }
     }
     fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -252,6 +263,14 @@ export default function InventoryReportPage() {
         description="Phân tích chuyên sâu hiệu suất và giá trị hàng tồn (Module M12)"
         backHref="/reports"
       >
+        <DateRangePicker
+          value={range}
+          preset={preset}
+          onChange={(p, r) => {
+            setPreset(p)
+            setRange(r)
+          }}
+        />
         <button
           onClick={() => typeof window !== "undefined" && window.print()}
           className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-md hover:brightness-110 transition-all print:hidden"
@@ -517,7 +536,7 @@ export default function InventoryReportPage() {
             <div>
               <h3 className="text-lg font-bold text-foreground">Danh sách SKU cần chú ý</h3>
               <p className="text-sm text-muted-foreground">
-                Sản phẩm tồn thấp, bán chậm hoặc sắp hết hạn sử dụng
+                Sản phẩm tồn thấp, bán chậm (bán dưới 5 trong kỳ đã chọn) hoặc sắp hết hạn sử dụng
               </p>
             </div>
           </div>

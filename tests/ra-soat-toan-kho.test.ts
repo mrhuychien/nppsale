@@ -88,7 +88,6 @@ const CON_NO_GHI_KHONG_KIEM = [
   "src/components/products/product-form.tsx",
   "src/components/settings/permission-matrix.tsx",
   "src/lib/misa/mark-replaced.ts",
-  "src/lib/payroll/run.ts",
   "src/lib/returns.ts",
   "src/lib/workflow/sessions.ts",
 ]

@@ -24,7 +24,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, getExpiryStatus } from "@/lib/utils"
-import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, ArrowRightLeft, RefreshCw } from "lucide-react"
+import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, RefreshCw } from "lucide-react"
 import type { Batch, Product } from "@/types"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
@@ -34,7 +34,6 @@ import {
   type BatchColumnKey,
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
-import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -49,7 +48,6 @@ export default function BatchesPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState("all")
-  const [movingId, setMovingId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
   const {
@@ -125,36 +123,10 @@ export default function BatchesPage() {
     [batches]
   )
 
-  const moveZone = async (batch: Batch, target: "sale" | "date") => {
-    if (!user) return
-    setMovingId(batch.id)
-    try {
-      await ghiPhaiTrungDong(
-        supabase
-          .from("batches")
-          .update({
-            warehouse_zone: target,
-            zone_moved_at: new Date().toISOString(),
-            zone_moved_by: user.id,
-          })
-          .eq("id", batch.id)
-      )
-      setBatches((prev) =>
-        prev.map((b) => (b.id === batch.id ? { ...b, warehouse_zone: target } : b))
-      )
-      toast({
-        title: target === "date" ? "Đã chuyển sang Kho hàng date" : "Đã chuyển sang Kho hàng bán",
-      })
-    } catch (err) {
-      toast({
-        title: "Lỗi",
-        description: errorMessage(err, "Không thể chuyển kho"),
-        variant: "destructive",
-      })
-    } finally {
-      setMovingId(null)
-    }
-  }
+  /* ⚠ ĐÃ GỠ NÚT "→ Date / → Bán" (chủ nhà chốt 23/09/2026: "bỏ cái đó.
+     Đã có phiếu chuyển kho rồi"). Nút ấy dời cả lô sang vùng khác bằng một
+     lệnh sửa thẳng, không có phiếu chuyển kho — thẻ kho theo vùng lệch tồn
+     thật. Chuyển vùng đi qua `/inventory/stock-issue` (phiếu chuyển kho). */
 
   const refreshZones = async () => {
     if (!user?.org_id) return
@@ -208,7 +180,6 @@ export default function BatchesPage() {
               const days = daysUntil(b.expires_at)
               const isCritical = days < 30
               const isDateZone = b.warehouse_zone === "date"
-              const target = isDateZone ? "sale" : "date"
               return (
                 <TableRow
                   key={b.id}
@@ -262,16 +233,6 @@ export default function BatchesPage() {
                   )}
                   <TableCell className="text-right">
                     <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs"
-                        disabled={movingId === b.id}
-                        onClick={() => moveZone(b, target)}
-                      >
-                        <ArrowRightLeft className="h-3 w-3 mr-1" />
-                        {target === "date" ? "→ Date" : "→ Bán"}
-                      </Button>
                       <Eye className="h-4 w-4 text-muted-foreground" />
                     </div>
                   </TableCell>
@@ -289,7 +250,6 @@ export default function BatchesPage() {
           const days = daysUntil(b.expires_at)
           const isCritical = days < 30
           const isDateZone = b.warehouse_zone === "date"
-          const target = isDateZone ? "sale" : "date"
           return (
             <div
               key={b.id}
@@ -357,18 +317,6 @@ export default function BatchesPage() {
                       {b.manufactured_at ? formatDate(b.manufactured_at) : "-"}
                     </p>
                   </div>
-                </div>
-                <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    disabled={movingId === b.id}
-                    onClick={() => moveZone(b, target)}
-                  >
-                    <ArrowRightLeft className="h-3.5 w-3.5 mr-2" />
-                    Chuyển sang {target === "date" ? "Kho hàng date" : "Kho hàng bán"}
-                  </Button>
                 </div>
               </div>
             </div>

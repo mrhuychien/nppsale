@@ -136,3 +136,16 @@ export function dailyBuckets(r: DateRange): { date: string; label: string }[] {
   }
   return out
 }
+
+/**
+ * `n` ngày gần nhất, TÍNH CẢ HÔM NAY: `lastNDays(90)` là 90 ngày lịch, từ
+ * (hôm nay − 89) tới hôm nay. Dùng làm kỳ mặc định cho các nhãn theo thời
+ * gian như "Bán chậm".
+ */
+export function lastNDays(n: number, now: Date = new Date()): DateRange {
+  const to = new Date(now)
+  const from = new Date(now)
+  from.setDate(from.getDate() - Math.max(1, Math.floor(n)) + 1)
+  return { from: fmt(from), to: fmt(to) }
+}
+

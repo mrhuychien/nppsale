@@ -122,47 +122,29 @@ export async function setManualAdjustment(
     social_insurance?: number
   }
 ): Promise<{ error: string | null }> {
-  // Re-compute net_salary with the new adjustment in a single round-trip.
-  // Cột allowances có từ mig 064.
-  const { data: row, error: readErr } = await supabase
-    .from("payroll_run_items")
-    .select("prorated_base, allowances, kpi_bonus, order_count_bonus, activity_bonus, overtime, deductions, social_insurance")
-    .eq("id", itemId)
-    .single()
-  if (readErr || !row) return { error: readErr?.message ?? "Not found" }
-  const r = row as {
-    prorated_base: number
-    allowances?: number | null
-    kpi_bonus: number
-    order_count_bonus: number
-    activity_bonus: number
-    overtime: number
-    deductions: number
-    social_insurance: number
+  /**
+   * ⚠ KHÔNG TỰ TÍNH `net_salary` Ở ĐÂY NỮA (mig 173). Trigger
+   *   `trg_tinh_luong_thuc_nhan` tính lại lương thực nhận trên mọi lần sửa,
+   *   bằng đúng công thức của `compute_payroll_run` — bản cũ cộng trừ ở
+   *   trình duyệt rồi ghi thẳng, nên ai sửa được dòng lương là ghi được
+   *   một con số bất kỳ vào cột ấy.
+   *
+   * ⚠ ĐẾM DÒNG: RLS từ chối (vai không được làm lương) là 0 dòng, không lỗi.
+   */
+  const update: Record<string, unknown> = {
+    manual_adjustment: patch.manual_adjustment,
+    notes: patch.notes ?? null,
+    updated_at: new Date().toISOString(),
   }
-  const si =
-    patch.social_insurance !== undefined
-      ? Number(patch.social_insurance) || 0
-      : Number(r.social_insurance || 0)
-  const net =
-    Number(r.prorated_base || 0) +
-    Number(r.allowances || 0) +
-    Number(r.kpi_bonus || 0) +
-    Number(r.order_count_bonus || 0) +
-    Number(r.activity_bonus || 0) +
-    Number(r.overtime || 0) +
-    Number(patch.manual_adjustment || 0) -
-    Number(r.deductions || 0) -
-    si
-  const { error } = await supabase
+  if (patch.social_insurance !== undefined) update.social_insurance = Number(patch.social_insurance) || 0
+  const { data, error } = await supabase
     .from("payroll_run_items")
-    .update({
-      manual_adjustment: patch.manual_adjustment,
-      notes: patch.notes ?? null,
-      social_insurance: si,
-      net_salary: net,
-      updated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", itemId)
-  return { error: error?.message ?? null }
+    .select("id")
+  if (error) return { error: payrollError(error.message) }
+  if (!data || data.length === 0) {
+    return { error: "Không lưu được — bạn không có quyền sửa bảng lương, hoặc kỳ lương đã khoá." }
+  }
+  return { error: null }
 }

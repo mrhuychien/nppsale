@@ -11,9 +11,8 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  * Bảng lương — tầng TypeScript.
  *
  * Phép tính lương THẬT nằm trong SQL (`compute_payroll_run`, migration 067).
- * Tầng này chỉ bọc RPC, TRỪ một chỗ: `setManualAdjustment` tự tính lại
- * `net_salary` bằng JavaScript. Đó là chỗ duy nhất ở đây chạm thẳng vào số
- * tiền nhân viên nhận, nên là trọng tâm của file test này.
+ * Tầng này chỉ bọc RPC. Từ mig 173 `setManualAdjustment` KHÔNG còn tự
+ * tính `net_salary` — trigger dưới database làm việc ấy (xem chốt cuối).
  *
  * Công thức phải khớp với v_net trong SQL 067:
  *     net = lương CB hiệu lực + phụ cấp + KPI + thưởng số đơn
@@ -39,6 +38,8 @@ interface FakeOpts {
   insertError?: { message: string } | null
   rpcData?: unknown
   rpcError?: { message: string } | null
+  /** RLS từ chối lệnh sửa: 0 dòng, không lỗi. */
+  zeroRows?: boolean
 }
 
 function fakeClient(o: FakeOpts = {}) {
@@ -61,8 +62,13 @@ function fakeClient(o: FakeOpts = {}) {
       updates.push(patch)
       // `.update(...).eq(...)` được await trực tiếp → phải là thenable.
       return {
-        eq: () =>
-          Promise.resolve({ data: null, error: o.writeError ?? null }),
+        eq: () => ({
+          select: () =>
+            Promise.resolve({
+              data: o.writeError ? null : o.zeroRows ? [] : [{ id: "x" }],
+              error: o.writeError ?? null,
+            }),
+        }),
       }
     },
     maybeSingle: () =>
@@ -98,129 +104,74 @@ const FULL_ROW = {
   social_insurance: 1_050_000,
 }
 
-/** Cùng công thức với v_net trong SQL 067 — viết độc lập để đối chiếu. */
-const expectedNet = (r: typeof FULL_ROW, adj: number, si = r.social_insurance) =>
-  r.prorated_base +
-  r.allowances +
-  r.kpi_bonus +
-  r.order_count_bonus +
-  r.activity_bonus +
-  r.overtime +
-  adj -
-  r.deductions -
-  si
-
-describe("setManualAdjustment — tính lại lương thực nhận", () => {
-  it("cộng đủ mọi khoản cộng và trừ đủ mọi khoản trừ", async () => {
+/**
+ * ⚠ TỪ MIG 173 LƯƠNG THỰC NHẬN DO MÁY CHỦ TÍNH (trigger
+ *   `trg_tinh_luong_thuc_nhan`). Bản cũ cộng trừ ở đây rồi ghi thẳng
+ *   `net_salary` — ai sửa được dòng lương là ghi được một con số bất kỳ.
+ *   Đã đo: gửi net = 999.999.999, máy chủ ghi 10.600.000 đúng các khoản.
+ */
+describe("setManualAdjustment — không tự tính lương thực nhận", () => {
+  it("KHÔNG gửi net_salary — máy chủ tính", async () => {
     const f = fakeClient({ row: FULL_ROW })
     const r = await setManualAdjustment(f.client, "item-1", { manual_adjustment: 250_000 })
     expect(r.error).toBeNull()
-    expect(f.updates[0].net_salary).toBe(expectedNet(FULL_ROW, 250_000))
-  })
-
-  it("KHÔNG bỏ sót khoản nào — thử đổi từng khoản một", async () => {
-    // Nếu ai đó lỡ xoá một dòng khỏi biểu thức net, test này chỉ ra đúng khoản đó.
-    const keys = Object.keys(FULL_ROW) as Array<keyof typeof FULL_ROW>
-    for (const k of keys) {
-      const base = fakeClient({ row: FULL_ROW })
-      await setManualAdjustment(base.client, "i", { manual_adjustment: 0 })
-      const netBase = Number(base.updates[0].net_salary)
-
-      const bumped = { ...FULL_ROW, [k]: FULL_ROW[k] + 1_000_000 }
-      const f = fakeClient({ row: bumped })
-      await setManualAdjustment(f.client, "i", { manual_adjustment: 0 })
-      const netBumped = Number(f.updates[0].net_salary)
-
-      const delta = netBumped - netBase
-      const isDeduction = k === "deductions" || k === "social_insurance"
-      expect(delta, `khoản "${k}" không ảnh hưởng tới net_salary`).toBe(
-        isDeduction ? -1_000_000 : 1_000_000
-      )
-    }
-  })
-
-  it("điều chỉnh tay ÂM làm giảm lương đúng bằng số đó", async () => {
-    const f = fakeClient({ row: FULL_ROW })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: -500_000 })
-    expect(f.updates[0].net_salary).toBe(expectedNet(FULL_ROW, -500_000))
-  })
-
-  it("ghi đè BHXH khi được truyền vào", async () => {
-    const f = fakeClient({ row: FULL_ROW })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: 0, social_insurance: 0 })
-    expect(f.updates[0].social_insurance).toBe(0)
-    expect(f.updates[0].net_salary).toBe(expectedNet(FULL_ROW, 0, 0))
-  })
-
-  it("KHÔNG truyền BHXH thì giữ nguyên giá trị cũ, không về 0", async () => {
-    // Về 0 nhầm là mỗi lần sửa ghi chú lại làm lương tăng thêm 1 triệu.
-    const f = fakeClient({ row: FULL_ROW })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: 0 })
-    expect(f.updates[0].social_insurance).toBe(FULL_ROW.social_insurance)
+    expect(f.updates[0]).not.toHaveProperty("net_salary")
+    expect(f.updates[0].manual_adjustment).toBe(250_000)
   })
 
   it("truyền BHXH = 0 phân biệt được với KHÔNG truyền", async () => {
-    // `patch.social_insurance !== undefined` chứ không phải `|| r.social_insurance`.
     const a = fakeClient({ row: FULL_ROW })
     await setManualAdjustment(a.client, "i", { manual_adjustment: 0, social_insurance: 0 })
     const b = fakeClient({ row: FULL_ROW })
     await setManualAdjustment(b.client, "i", { manual_adjustment: 0 })
     expect(a.updates[0].social_insurance).toBe(0)
-    expect(b.updates[0].social_insurance).toBe(FULL_ROW.social_insurance)
+    // Không truyền thì KHÔNG đụng cột — về 0 nhầm là lương tăng thêm cả khoản BHXH.
+    expect(b.updates[0]).not.toHaveProperty("social_insurance")
   })
 
-  it("cột allowances thiếu (DB chưa chạy migration 064) được coi là 0, không thành NaN", async () => {
-    const noAllowance = { ...FULL_ROW, allowances: null }
-    const f = fakeClient({ row: noAllowance })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: 0 })
-    const net = Number(f.updates[0].net_salary)
-    expect(Number.isNaN(net)).toBe(false)
-    expect(net).toBe(expectedNet({ ...FULL_ROW, allowances: 0 }, 0))
+  it("RLS từ chối (0 dòng) thì báo lỗi, không báo đã lưu", async () => {
+    const f = fakeClient({ row: FULL_ROW, zeroRows: true })
+    const r = await setManualAdjustment(f.client, "i", { manual_adjustment: 1 })
+    expect(r.error).toMatch(/không có quyền|đã khoá/)
   })
 
-  it("mọi khoản null đều quy về 0, lương ra 0 chứ không NaN", async () => {
-    const allNull = Object.fromEntries(
-      Object.keys(FULL_ROW).map((k) => [k, null])
-    ) as unknown as typeof FULL_ROW
-    const f = fakeClient({ row: allNull })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: 0 })
-    expect(f.updates[0].net_salary).toBe(0)
-  })
-
-  it("ghi chú trống được lưu thành null chứ không phải chuỗi rỗng", async () => {
-    const f = fakeClient({ row: FULL_ROW })
-    await setManualAdjustment(f.client, "i", { manual_adjustment: 0 })
-    expect(f.updates[0].notes).toBeNull()
-  })
-
-  it("ghi chú có nội dung thì được lưu nguyên văn", async () => {
-    const f = fakeClient({ row: FULL_ROW })
-    await setManualAdjustment(f.client, "i", {
-      manual_adjustment: 0,
-      notes: "Thưởng thêm theo quyết định giám đốc",
-    })
-    expect(f.updates[0].notes).toBe("Thưởng thêm theo quyết định giám đốc")
-  })
-
-  it("đọc dòng lỗi thì KHÔNG ghi gì cả", async () => {
-    // Ghi khi chưa đọc được là ghi đè lương bằng số tính từ dữ liệu rỗng.
-    const f = fakeClient({ row: null, readError: { message: "permission denied" } })
-    const r = await setManualAdjustment(f.client, "i", { manual_adjustment: 100 })
-    expect(r.error).toBe("permission denied")
-    expect(f.updates).toHaveLength(0)
-  })
-
-  it("không tìm thấy dòng thì báo lỗi và không ghi", async () => {
-    const f = fakeClient({ row: null })
-    const r = await setManualAdjustment(f.client, "i", { manual_adjustment: 100 })
+  it("lỗi ghi thì trả lỗi", async () => {
+    const f = fakeClient({ row: FULL_ROW, writeError: { message: "PAYROLL_RUN_LOCKED" } })
+    const r = await setManualAdjustment(f.client, "i", { manual_adjustment: 1 })
     expect(r.error).toBeTruthy()
-    expect(f.updates).toHaveLength(0)
   })
+})
 
-  it("ghi lỗi thì trả lỗi ra ngoài, không nuốt", async () => {
-    const f = fakeClient({ row: FULL_ROW, writeError: { message: "row is locked" } })
-    const r = await setManualAdjustment(f.client, "i", { manual_adjustment: 100 })
-    expect(r.error).toBe("row is locked")
+/**
+ * ⚠ CÔNG THỨC CỦA TRIGGER PHẢI KHỚP `compute_payroll_run` TỪNG KHOẢN. Lệch
+ *   một khoản là mỗi lần kế toán sửa một ô, lương thực nhận nhảy khác với
+ *   lúc bấm "Tính lương". Chốt đọc cả hai công thức từ migration và so
+ *   tập (khoản, dấu).
+ */
+describe("công thức lương thực nhận: trigger = compute_payroll_run", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs")
+  const { resolve } = await import("node:path")
+  const dir = resolve(__dirname, "..", "supabase/migrations")
+  const tep = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()
+  const doc = (f: string) => readFileSync(resolve(dir, f), "utf-8")
+
+  const khoan = (bieuThuc: string, tienTo: RegExp) =>
+    Array.from(bieuThuc.matchAll(tienTo), (m) => `${m[1]}${m[2]}`).sort()
+
+  it("cùng tập khoản, cùng dấu", () => {
+    const m173 = doc(tep.find((f) => f.startsWith("173_"))!)
+    const trg = m173.slice(m173.indexOf("NEW.net_salary :="), m173.indexOf(";", m173.indexOf("NEW.net_salary :=")))
+    const tuTrigger = khoan("+" + trg.slice(trg.indexOf(":=") + 2), /([+-])\s*COALESCE\(NEW\.(\w+)/g)
+
+    const coCompute = tep.map(doc).filter((s) => s.includes("FUNCTION public.compute_payroll_run") || s.includes("FUNCTION compute_payroll_run"))
+    const src = coCompute[coCompute.length - 1]
+    const i = src.lastIndexOf("net_salary         = EXCLUDED.prorated_base")
+    expect(i, "không tìm thấy công thức trong compute_payroll_run").toBeGreaterThan(0)
+    const bt = src.slice(i + "net_salary         =".length, src.indexOf(";", i))
+    const tuCompute = khoan("+" + bt, /([+-])\s*(?:EXCLUDED|payroll_run_items)\.(\w+)/g)
+
+    expect(tuTrigger).toEqual(tuCompute)
+    expect(tuTrigger).toHaveLength(9)
   })
 })
 
@@ -334,5 +285,27 @@ describe("computePayrollRun / lockPayrollRun — bọc RPC", () => {
     expect((await lockPayrollRun(f.client, "run-1")).error).toContain(
       "Không tìm thấy kỳ lương"
     )
+  })
+})
+
+/**
+ * ⚠ KẾ TOÁN LÀM ĐƯỢC BẢNG LƯƠNG Ở MỌI LỚP (mig 173). Hai RPC và middleware
+ *   `/hr` cho owner / manager / accountant; RLS cũ chỉ owner / manager —
+ *   kế toán bấm Tính lương được mà không đọc lại được kỳ lương.
+ */
+describe("vai làm bảng lương khớp giữa RLS và RPC", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs")
+  const { resolve } = await import("node:path")
+  const dir = resolve(__dirname, "..", "supabase/migrations")
+  const tat = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort().map((f) => readFileSync(resolve(dir, f), "utf-8"))
+  const cuoi = (neo: string) => {
+    const s = tat.filter((x) => x.includes(neo)).pop()!
+    return s.slice(s.lastIndexOf(neo), s.indexOf(";", s.lastIndexOf(neo)))
+  }
+  const vai = (sql: string) =>
+    Array.from((sql.match(/user_role\(\)\s+IN\s*\(([^)]*)\)/) ?? ["", ""])[1].matchAll(/'(\w+)'/g), (m) => m[1]).sort()
+
+  it.each(["CREATE POLICY org_iso_pr ON", "CREATE POLICY org_iso_pri ON"])("%s", (neo) => {
+    expect(vai(cuoi(neo))).toEqual(["accountant", "manager", "owner"])
   })
 })

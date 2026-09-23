@@ -151,4 +151,11 @@ UNION ALL
 SELECT 12, 'Mig 172 (đơn đã huỷ khoá dòng hàng)',
   CASE WHEN position('ORDER_CANCELLED' in pg_get_functiondef('public.guard_order_lines_locked()'::regprocedure)) > 0
        THEN 'OK — đã khoá' ELSE 'CHƯA — sửa dòng đơn đã huỷ vẫn ghi được' END, ''
+UNION ALL
+-- 13. Mig 173 — kế toán làm được bảng lương, lương thực nhận do máy chủ tính
+SELECT 13, 'Mig 173 (bảng lương: kế toán + lương thực nhận tính ở máy chủ)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_tinh_luong_thuc_nhan')
+            AND EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'payroll_runs' AND policyname = 'org_iso_pr'
+                        AND qual LIKE '%accountant%')
+       THEN 'OK — đã vá' ELSE 'CHƯA — kế toán không đọc được kỳ lương / lương thực nhận tính ở trình duyệt' END, ''
 ) t ORDER BY stt;

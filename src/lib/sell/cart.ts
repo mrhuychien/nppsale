@@ -14,6 +14,7 @@ import { vatChungCuaDong } from "@/lib/pos/vat"
    đây, không import thẳng `@/lib/pos` (chốt tách store, tests/pos-cau-truc). */
 export { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 export { switchUnit, unitLabel, lineGross, type DiscountInput } from "@/lib/pos/discount"
+export { giamCuaChungTu } from "@/lib/pos/invoice-discount"
 
 export interface CartLine {
   productId: string
@@ -173,6 +174,11 @@ export function baseQtyOf(cart: CartLine[], productId: string): number {
 }
 
 export interface CartTotals {
+  /**
+   * Giảm giá CẢ ĐƠN, quy ra đồng (chủ nhà 24/09/2026: "sell mobile, làm đơn
+   * chưa có giảm giá tổng đơn"). Đã trừ trong `subtotal` và gộp vào `discount`.
+   */
+  docDiscount: number
   /** Tổng theo giá BẢNG, trước khi ai sửa giá. */
   gross: number
   /** Tổng theo giá đang áp dụng. */
@@ -195,17 +201,26 @@ export interface CartTotals {
  * ⚠ `discount` chỉ nhận phần GIẢM. Nhân viên được phép nâng giá trong hạn
  * mức, và một "chiết khấu âm" hiện trên màn hình thì không ai hiểu là gì.
  */
-export function cartTotals(cart: CartLine[], returnCredit = 0): CartTotals {
+export function cartTotals(cart: CartLine[], returnCredit = 0, docDiscount?: DiscountInput | null): CartTotals {
   const gross = cart.reduce((s, l) => s + l.qty * l.listPrice, 0)
   /* ⚠ Giá SAU giảm dòng — xem `netPriceOf`. */
-  const subtotal = cart.reduce((s, l) => s + l.qty * netPriceOf(l), 0)
+  const tienHang = round(cart.reduce((s, l) => s + l.qty * netPriceOf(l), 0))
   const vat = cart.reduce((s, l) => s + l.qty * netPriceOf(l) * (l.vatRate || 0), 0)
-  const discount = Math.max(0, gross - subtotal)
+  /**
+   * ⚠ GIẢM GIÁ ĐƠN NHƯ POS (`order-screen`, mig 183): tính trên tiền hàng sau
+   *   giảm dòng, kẹp [0, tiền hàng]; `subtotal` ghi SAU giảm đơn — hóa đơn suy
+   *   lại khoản giảm bằng `Σ(SL × giá) − subtotal` (`giamCuaChungTu`).
+   * ⚠ THUẾ VẪN TRÊN GIÁ DÒNG, trước giảm đơn — đúng như máy chủ và POS.
+   */
+  const giamDon = docDiscount ? discountAmount(docDiscount, tienHang) : 0
+  const subtotal = tienHang - giamDon
+  const discount = Math.max(0, round(gross) - tienHang) + giamDon
   const credit = Math.max(0, returnCredit)
   return {
     gross: round(gross),
-    subtotal: round(subtotal),
+    subtotal,
     discount: round(discount),
+    docDiscount: giamDon,
     vat: round(vat),
     returnCredit: round(credit),
     grandTotal: Math.max(0, round(subtotal + vat - credit)),

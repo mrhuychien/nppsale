@@ -109,3 +109,39 @@ describe("/sell: giảm giá từng dòng theo % hoặc theo đồng", () => {
     expect(CART).toContain("formatCurrency(r.line.qty * netPriceOf(r.line))")
   })
 })
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "Màn sell mobile, làm đơn chưa có giảm giá tổng đơn". */
+describe("/sell: giảm giá cả đơn", () => {
+  const EDIT = code(read("src/app/(dashboard)/sell/edit/[id]/page.tsx"))
+  it("subtotal ghi SAU giảm đơn; thuế vẫn trên giá dòng; kẹp và % như POS", () => {
+    const g = [l({ qty: 2, vatRate: 0.1 })] // tiền hàng 200.000, thuế 20.000
+    expect(cartTotals(g, 0, { value: 30_000, unit: "vnd" })).toMatchObject({
+      subtotal: 170_000, docDiscount: 30_000, vat: 20_000, grandTotal: 190_000, discount: 30_000,
+    })
+    expect(cartTotals(g, 0, { value: 10, unit: "pct" }).docDiscount).toBe(20_000)
+    expect(cartTotals(g, 0, { value: 9_999_999, unit: "vnd" }).subtotal).toBe(0)
+    expect(cartTotals(g, 0).docDiscount).toBe(0)
+  })
+  it("giảm đơn tính trên tiền hàng SAU giảm dòng", () => {
+    const g = [l({ qty: 2, discount: { value: 50, unit: "pct" } })] // 100.000
+    expect(cartTotals(g, 0, { value: 10, unit: "pct" }).docDiscount).toBe(10_000)
+  })
+  it("gói đơn gửi subtotal / total đã trừ giảm đơn", async () => {
+    const { buildOrderPayload } = await import("../src/lib/sell/create-order")
+    const cart = [l({ qty: 2 })]
+    const p = buildOrderPayload({
+      clientRequestId: "c", orderCode: "DH", customerId: "k", customerName: "", paymentTerms: "COD",
+      expectedDelivery: null, notes: "", cart, totals: cartTotals(cart, 0, { value: 30_000, unit: "vnd" }),
+      createdAt: "2026-09-24T00:00:00Z", returnReason: "damaged", returnLines: [],
+    })
+    expect(p.order).toMatchObject({ subtotal: 170_000, total: 170_000 })
+  })
+  it("màn giỏ có ô giảm đơn, khoá khi không có quyền sửa giá; khoá chống lặp đổi theo giảm đơn", () => {
+    expect(CART).toMatch(/<GiamGiaDon[\s\S]*?disabled=\{!canEditPrice\}[\s\S]*?onChange=\{cart\.setDocDiscount\}/)
+    expect(CART).toContain("nguoiDungTen, cart.docDiscount ?? null]")
+  })
+  it("sửa đơn đã lưu nạp lại giảm đơn; không đọc được subtotal thì 0", () => {
+    expect(EDIT).toContain("subtotal\"")
+    expect(EDIT).toMatch(/docDiscount: \{\s*value: head\.subtotal == null \? 0 : giamCuaChungTu\(/)
+  })
+})

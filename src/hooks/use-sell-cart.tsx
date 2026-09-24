@@ -10,6 +10,7 @@ import {
   setQty as setQtyIn,
   type CartLine,
   type CartTotals,
+  type DiscountInput,
 } from "@/lib/sell/cart"
 import {
   addReturnLine as addReturnLineTo,
@@ -53,6 +54,8 @@ export interface SellCartState {
    *   vào đơn phải sống ở đây — chỗ duy nhất đi qua được các trang ấy.
    */
   sellerId: string
+  /** Giảm giá cả đơn (% / đồng) — xem `cartTotals`. Vắng = không giảm. */
+  docDiscount?: DiscountInput
   /** Đang sửa đơn đã lưu hay đang soạn đơn mới. */
   editing: EditingOrder | null
 }
@@ -95,6 +98,7 @@ interface SellCartValue extends SellCartState {
   patchLine: (index: number, patch: Partial<CartLine>) => void
   /** Thuế cả đơn — đặt cho MỌI dòng (không còn ô thuế từng dòng). */
   setVatAll: (rate: number) => void
+  setDocDiscount: (d: DiscountInput) => void
   setCustomerId: (id: string | null) => void
   setNotes: (v: string) => void
   setPaymentTerms: (v: string) => void
@@ -218,6 +222,9 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const patchLine = useCallback((index: number, patch: Partial<CartLine>) => {
     setState((s) => ({ ...s, cart: patchLineIn(s.cart, index, patch) }))
   }, [])
+  const setDocDiscount = useCallback((d: DiscountInput) => {
+    setState((s) => ({ ...s, docDiscount: d }))
+  }, [])
   const setVatAll = useCallback((rate: number) => {
     setState((s) => ({ ...s, cart: setVatAllIn(s.cart, rate) }))
   }, [])
@@ -259,7 +266,10 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const returnCredit = useMemo(() => returnCreditOf(state.returnLines), [state.returnLines])
-  const totals = useMemo(() => cartTotals(state.cart, returnCredit), [state.cart, returnCredit])
+  const totals = useMemo(
+    () => cartTotals(state.cart, returnCredit, state.docDiscount),
+    [state.cart, returnCredit, state.docDiscount]
+  )
 
   const value = useMemo<SellCartValue>(
     () => ({
@@ -271,6 +281,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setQty,
       patchLine,
       setVatAll,
+      setDocDiscount,
       setCustomerId,
       setNotes,
       setPaymentTerms,
@@ -294,6 +305,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setQty,
       patchLine,
       setVatAll,
+      setDocDiscount,
       setCustomerId,
       setNotes,
       setPaymentTerms,

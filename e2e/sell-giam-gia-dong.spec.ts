@@ -52,3 +52,26 @@ test("/sell: giảm giá dòng theo % và theo đồng, không còn ô VAT từn
   const g = (await docGio(page)).cart[0]
   expect(g).toMatchObject({ unit: "hộp", qty: 2, price: 20000, discount: { value: 5000, unit: "vnd" } })
 })
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "Màn sell mobile, làm đơn chưa có giảm giá tổng đơn". */
+test("/sell: giảm giá cả đơn theo đồng và %, tổng tiền trừ theo", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  await page.locator('[role="button"]', { hasText: "Sữa hộp" }).getByText("Sữa hộp").click()
+  await expect(page).toHaveURL(/\/sell\/cart/)
+  const tong = page.getByRole("button", { name: /Tổng tiền/ })
+  await expect(tong).toContainText("20.000")
+
+  const o = page.getByLabel("Giảm giá đơn", { exact: true })
+  await o.fill("5000")
+  await expect(tong, "gõ giảm đơn mà tổng không trừ").toContainText("15.000")
+  await tong.click()
+  await expect(page.getByText(/^−5\.000đ?$/).first()).toBeVisible()
+
+  // Lật sang %: số tiền giữ nguyên (25%), rồi gõ 10% → 2.000.
+  await page.getByRole("button", { name: /^Đơn vị giảm đơn — đang là đồng/ }).click()
+  await expect(o).toHaveValue("25")
+  await o.fill("10")
+  await expect(tong).toContainText("18.000")
+  expect((await docGio(page) as unknown as { docDiscount?: unknown }).docDiscount).toEqual({ value: 10, unit: "pct" })
+})

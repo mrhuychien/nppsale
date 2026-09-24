@@ -1,5 +1,6 @@
 "use client"
 
+import { giamCuaChungTu } from "@/lib/sell/cart"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ChevronLeft, TriangleAlert } from "lucide-react"
@@ -38,6 +39,8 @@ interface OrderHead {
   expected_delivery: string | null
   notes: string | null
   sales_user_id: string | null
+  /** SAU giảm giá đơn (mig 183) — để suy ngược khoản giảm cả đơn. */
+  subtotal?: number | null
 }
 
 export default function SellEditLoaderPage() {
@@ -69,7 +72,7 @@ export default function SellEditLoaderPage() {
         supabase
           .from("sales_orders")
           .select(
-            "id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id"
+            "id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, subtotal"
           )
           .eq("id", id)
           .maybeSingle(),
@@ -206,6 +209,16 @@ export default function SellEditLoaderPage() {
        *   gì cả. Nạp ở đây, một lần, lúc đơn vào giỏ.
        */
       sellerId: head.sales_user_id ?? "",
+      /* ⚠ GIẢM GIÁ ĐƠN ĐÃ LƯU phải nạp lại — không thì sửa đơn rồi lưu là mất
+         khoản giảm, khách bị ghi nợ cao hơn. Suy từ Σ(SL × giá) − subtotal. */
+      docDiscount: {
+        /* Không đọc được subtotal thì 0 — `giamCuaChungTu(…, null)` ra CẢ tiền hàng. */
+        value: head.subtotal == null ? 0 : giamCuaChungTu(
+          lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unit_price) })),
+          head.subtotal
+        ),
+        unit: "vnd",
+      },
       editing: {
         orderId: head.id,
         orderCode: head.order_code,

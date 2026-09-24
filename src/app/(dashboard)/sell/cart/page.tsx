@@ -16,7 +16,10 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
-import { lineDiscountAmountOf, netPriceOf, priceViolation, vatChungCuaDong, vatChungKeTiep } from "@/lib/sell/cart"
+import {
+  lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, unitLabel, vatChungCuaDong, vatChungKeTiep,
+  type DiscountInput,
+} from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
@@ -30,7 +33,7 @@ import { canDeleteOrder, deleteOrder } from "@/lib/orders/delete"
 import { errorMessage } from "@/lib/errors"
 import { layMaChongLap, sinhMaChongLap, type MaChongLap } from "@/lib/sell/request-id"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { cn, formatCurrency, formatDate, generateOrderCode } from "@/lib/utils"
+import { cn, formatCurrency, formatDate, formatInt, generateOrderCode } from "@/lib/utils"
 import { PAYMENT_TERMS, vatLabel } from "@/lib/constants"
 import { createClient } from "@/lib/supabase/client"
 import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-order"
@@ -355,7 +358,7 @@ export default function SellCartPage() {
       maChongLap.current = layMaChongLap(
         maChongLap.current,
         JSON.stringify([asDraft, cart.customerId, cart.cart, cart.returnLines, cart.returnReason, cart.notes,
-          cart.paymentTerms, cart.expectedDelivery, nguoiDungTen]),
+          cart.paymentTerms, cart.expectedDelivery, nguoiDungTen, cart.docDiscount ?? null]),
         sinhMaChongLap
       )
       const payload = buildOrderPayload({
@@ -690,6 +693,18 @@ export default function SellCartPage() {
           )}
         </div>
 
+        {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chủ nhà 24/09/2026: "làm đơn chưa có giảm giá tổng
+            đơn". Như POS; khoá khi không có quyền sửa giá (cùng luật giảm dòng). */}
+        {cart.cart.length > 0 && (
+          <GiamGiaDon
+            value={cart.docDiscount ?? { value: 0, unit: "vnd" }}
+            base={cart.totals.subtotal + cart.totals.docDiscount}
+            amount={cart.totals.docDiscount}
+            disabled={!canEditPrice}
+            onChange={cart.setDocDiscount}
+          />
+        )}
+
         {/*
           LẬP ĐƠN GIÚP NHÂN VIÊN — chủ nhà chốt 21/09/2026: "NPP tạo đơn
           xong chọn nhân viên -> thành đơn hàng của nhân viên".
@@ -776,9 +791,16 @@ export default function SellCartPage() {
       <SellBottomBar className="flex flex-col gap-2.5">
         {breakdownOpen && (
           <div className="flex flex-col gap-1.5 border-b border-outline-variant/40 pb-1.5 text-[13px] font-semibold text-on-surface-variant">
+            {cart.totals.docDiscount > 0 && (
+              <Row label="Tiền hàng" value={formatCurrency(cart.totals.subtotal + cart.totals.docDiscount)} />
+            )}
+            {cart.totals.docDiscount > 0 && (
+              <Row label="Giảm giá đơn" value={`−${formatCurrency(cart.totals.docDiscount)}`} />
+            )}
             <Row label="Tạm tính" value={formatCurrency(cart.totals.subtotal)} />
-            {cart.totals.discount > 0 && (
-              <Row label="Chiết khấu" value={`−${formatCurrency(cart.totals.discount)}`} error />
+            {/* Chiết khấu dòng (so với giá bảng) — giảm giá đơn đã có dòng riêng ở trên. */}
+            {cart.totals.discount - cart.totals.docDiscount > 0 && (
+              <Row label="Chiết khấu" value={`−${formatCurrency(cart.totals.discount - cart.totals.docDiscount)}`} error />
             )}
             {/* ⚠ THUẾ CẢ ĐƠN — bấm vòng 0 → 5 → 8 → 10%, đặt cho mọi dòng (như
                 POS). Các dòng đang lệch nhau thì nút nói "nhiều mức". */}
@@ -941,6 +963,72 @@ function Row({ label, value, error }: { label: string; value: string; error?: bo
     <div className="flex justify-between">
       <span>{label}</span>
       <span className={cn("tabular-data", error ? "text-error" : "text-on-surface")}>{value}</span>
+    </div>
+  )
+}
+
+/** Ô giảm giá cả đơn (₫ / %). Lật đơn vị giữ nguyên số tiền — quy tắc POS. */
+function GiamGiaDon({
+  value, base, amount, disabled, onChange,
+}: {
+  value: DiscountInput
+  /** Tiền hàng sau giảm dòng, trước giảm đơn — nền của phần trăm. */
+  base: number
+  amount: number
+  disabled: boolean
+  onChange: (d: DiscountInput) => void
+}) {
+  const pct = value.unit === "pct"
+  const [pctText, setPctText] = useState(pct && value.value ? String(value.value) : "")
+  return (
+    <div className="mt-3 rounded-2xl bg-surface-container-lowest p-3">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 text-sm font-extrabold">Giảm giá đơn</span>
+        <input
+          aria-label="Giảm giá đơn"
+          disabled={disabled}
+          inputMode={pct ? "decimal" : "numeric"}
+          placeholder="0"
+          value={pct ? pctText : value.value === 0 ? "" : formatInt(value.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => {
+            if (pct) {
+              const t = e.target.value.replace(",", ".").replace(/[^\d.]/g, "")
+              setPctText(t)
+              onChange({ value: Math.min(100, Number(t) || 0), unit: "pct" })
+            } else {
+              const d = e.target.value.replace(/\D/g, "")
+              onChange({ value: d === "" ? 0 : parseInt(d, 10), unit: "vnd" })
+            }
+          }}
+          className={cn(
+            "h-11 w-32 rounded-xl border-[1.5px] px-3 text-right text-base font-extrabold tabular-data outline-none",
+            amount > 0 ? "border-primary" : "border-outline-variant",
+            disabled ? "bg-surface-container" : "bg-surface-container-lowest"
+          )}
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={pct ? "Đơn vị giảm đơn — đang là phần trăm, bấm để đổi sang đồng" : "Đơn vị giảm đơn — đang là đồng, bấm để đổi sang phần trăm"}
+          onClick={() => {
+            const moi = switchUnit(value, base)
+            if (moi.unit === "pct") setPctText(moi.value === 0 ? "" : String(moi.value))
+            onChange(moi)
+          }}
+          className={cn(
+            "h-11 w-12 shrink-0 rounded-xl border-[1.5px] text-base font-extrabold",
+            pct ? "border-primary bg-primary/10 text-primary" : "border-outline-variant text-on-surface-variant"
+          )}
+        >
+          {unitLabel(value.unit)}
+        </button>
+      </div>
+      {(disabled || amount > 0) && (
+        <p className="mt-1.5 text-xs font-bold text-on-surface-variant">
+          {disabled ? "Bạn không có quyền sửa giá nên không giảm giá đơn được." : `Giảm ${formatCurrency(amount)} trên tiền hàng ${formatCurrency(base)}`}
+        </p>
+      )}
     </div>
   )
 }

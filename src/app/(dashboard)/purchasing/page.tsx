@@ -51,7 +51,7 @@ export default function PurchasingHubPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const cards = [
-    { title: "Tạo phiếu nhập kho", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/inventory/stock-in", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
+    { title: "Tạo phiếu nhập hàng", description: "Nhập hàng → tăng tồn kho + ghi công nợ NCC", href: "/purchasing/receipts/new", icon: PackagePlus, color: "text-primary", bg: "bg-primary/10" },
     { title: "Đề xuất đặt hàng", description: "So đơn hàng đang treo với tồn kho — cần đặt gì, của NCC nào", href: "/purchasing/reorder", icon: PackageSearch, color: "text-[#b54708]", bg: "bg-[#fff4ed]" },
     /* ⚠ RỜI KHỎI MENU NHƯNG KHÔNG BỊ XOÁ (chủ nhà chốt 20/09/2026).
        Đây là cửa vào duy nhất còn lại của trang tra cứu — gỡ nốt ô này
@@ -67,7 +67,8 @@ export default function PurchasingHubPage() {
       <PageHeader title="Mua hàng" description="Nhập hàng từ nhà cung cấp & quản lý công nợ">
         {canCreate && (
           <Button asChild>
-            <Link href="/inventory/stock-in"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập kho</Link>
+            {/* Cửa phiếu nhập hàng — máy tính mở POS (`posTargetFor`). */}
+            <Link href="/purchasing/receipts/new"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập hàng</Link>
           </Button>
         )}
       </PageHeader>

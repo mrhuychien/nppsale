@@ -76,11 +76,23 @@ export function posNewReturnHref(o: { invoiceId?: string | null; customerId?: st
 }
 
 /**
+ * NHẬP HÀNG / TRẢ HÀNG NCC trên màn POS — chủ nhà 24/09/2026: "Bấm tạo phiếu
+ * nhập hàng/trả hàng ncc từ danh sách ko ra pos ? … tạo phiếu nhập hàng / trả
+ * hàng ncc trên desktop trên pos hết". Cùng RPC với màn cũ; chỉ đổi giao diện.
+ */
+export const posNewPurchaseHref = () => "/pos/nhap-hang/moi"
+export const posEditPurchaseHref = (receiptId: string) => `/pos/nhap-hang/${encodeURIComponent(receiptId)}/sua`
+export const posNewSupplierReturnHref = () => "/pos/tra-ncc/moi"
+export const posEditSupplierReturnHref = (returnId: string) => `/pos/tra-ncc/${encodeURIComponent(returnId)}/sua`
+
+/**
  * Đường dẫn web → màn POS tương ứng; `null` = không phải lối vào POS.
  *
  * ⚠ ĐÚNG BỘ CỬA MÀ `PosDesktopRedirect` ĐANG CHẶN: `/sell` (trừ bước chọn
  *   hàng trả `?mode=return`), `/sell/edit/:id`, `/sales-invoices/new?order=`,
- *   `/sales-invoices/:id/edit`, `/returns/new`. Thêm cửa mới thì thêm ở đây,
+ *   `/sales-invoices/:id/edit`, `/returns/new`, `/purchasing/receipts/new`,
+ *   `/purchasing/receipts/:id/edit`, `/purchase-returns/new`, `/purchase-returns/:id/edit`.
+ *   Thêm cửa mới thì thêm ở đây,
  *   nếu không nút ấy lại chuyển trang ngay trong tab cũ.
  */
 export function posTargetFor(href: string): string | null {
@@ -102,6 +114,12 @@ export function posTargetFor(href: string): string | null {
   m = /^\/sales-invoices\/([^/]+)\/edit$/.exec(p)
   if (m) return posEditInvoiceHref(decodeURIComponent(m[1]))
   if (p === "/returns/new") return posNewReturnHref({ invoiceId: q.get("invoiceId"), customerId: q.get("customerId") })
+  if (p === "/purchasing/receipts/new") return posNewPurchaseHref()
+  m = /^\/purchasing\/receipts\/([^/]+)\/edit$/.exec(p)
+  if (m) return posEditPurchaseHref(decodeURIComponent(m[1]))
+  if (p === "/purchase-returns/new") return posNewSupplierReturnHref()
+  m = /^\/purchase-returns\/([^/]+)\/edit$/.exec(p)
+  if (m) return posEditSupplierReturnHref(decodeURIComponent(m[1]))
   return null
 }
 

@@ -22,6 +22,8 @@
  * ghi ra đây để lần sau không phải suy lại.
  */
 
+import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posEditPurchaseHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
@@ -49,6 +51,8 @@ import { errorMessage } from "@/lib/errors"
 
 export default function EditPurchaseReceiptPage() {
   const { id } = useParams<{ id: string }>()
+  /* Máy tính → màn POS (chủ nhà 24/09/2026: "tạo phiếu nhập hàng / trả hàng ncc trên desktop trên pos hết"). */
+  usePosDesktopRedirect(posEditPurchaseHref(id))
   const { loading: authLoading } = useRoleGuard("inventory")
   const { user } = useAuth()
   const router = useRouter()

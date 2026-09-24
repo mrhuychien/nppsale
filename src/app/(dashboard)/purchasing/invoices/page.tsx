@@ -242,7 +242,8 @@ export default function PurchaseInvoicesLookupPage() {
       >
         {canCreate && (
           <Button asChild>
-            <Link href="/inventory/stock-in"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập kho</Link>
+            {/* Cửa phiếu nhập hàng — máy tính mở POS (`posTargetFor`). */}
+            <Link href="/purchasing/receipts/new"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập hàng</Link>
           </Button>
         )}
       </PageHeader>

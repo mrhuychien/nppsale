@@ -1,5 +1,6 @@
 "use client"
 
+import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -225,7 +226,8 @@ export default function SupplierDetailPage() {
               <Button
                 size="sm"
                 className="bg-primary text-on-primary shadow-card gap-1.5"
-                onClick={() => router.push("/inventory/stock-in")}
+                /* Máy tính mở POS nhập hàng ở tab mới; điện thoại đi màn thường. */
+                onClick={() => diHoacMoPos(router.push, "/purchasing/receipts/new")}
               >
                 <FileDown className="h-4 w-4" />
                 Tạo phiếu nhập

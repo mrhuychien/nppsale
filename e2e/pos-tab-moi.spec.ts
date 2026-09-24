@@ -41,3 +41,38 @@ test.describe("điện thoại", () => {
     await expect(page).toHaveURL(/\/sell/)
   })
 })
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "Bấm tạo phiếu nhập hàng/trả hàng ncc từ danh sách ko ra
+ *   pos ? … tạo phiếu nhập hàng / trả hàng ncc trên desktop trên pos hết".
+ */
+test("danh sách phiếu nhập hàng: Tạo phiếu mở POS nhập hàng ở tab mới", async ({ page, context }) => {
+  await dangNhap(page)
+  await page.goto("/purchasing/receipts")
+  const [tab] = await Promise.all([
+    context.waitForEvent("page"),
+    page.getByRole("link", { name: "Tạo phiếu" }).first().click(),
+  ])
+  await tab.waitForLoadState()
+  await expect(tab).toHaveURL(/\/pos\/nhap-hang\/moi/)
+  await expect(page).toHaveURL(/\/purchasing\/receipts$/)
+})
+
+test("danh sách trả hàng NCC: tạo phiếu mở POS trả NCC ở tab mới", async ({ page, context }) => {
+  await dangNhap(page)
+  await page.goto("/purchase-returns")
+  const [tab] = await Promise.all([
+    context.waitForEvent("page"),
+    page.locator('a[href="/purchase-returns/new"]').first().click(),
+  ])
+  await tab.waitForLoadState()
+  await expect(tab).toHaveURL(/\/pos\/tra-ncc\/moi/)
+})
+
+test("mở thẳng màn tạo cũ trên máy tính → chuyển sang POS", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/purchasing/receipts/new")
+  await expect(page).toHaveURL(/\/pos\/nhap-hang\/moi/)
+  await page.goto("/purchase-returns/new")
+  await expect(page).toHaveURL(/\/pos\/tra-ncc\/moi/)
+})

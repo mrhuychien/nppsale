@@ -29,6 +29,16 @@ import { useRouter } from "next/navigation"
 import { manDuRong } from "@/lib/nav/pos-preview"
 
 export function PosDesktopRedirect({ to }: { to: string }) {
+  usePosDesktopRedirect(to)
+  return null
+}
+
+/**
+ * Bản hook — gọi ở ĐẦU trang, trước mọi `return` sớm (đang tải / lỗi): đặt
+ * `<PosDesktopRedirect>` trong nhánh chính thì trang còn đang tải là chưa
+ * chuyển, người dùng thấy màn cũ nháy lên.
+ */
+export function usePosDesktopRedirect(to: string) {
   const router = useRouter()
   const daChay = useRef(false)
 
@@ -37,6 +47,4 @@ export function PosDesktopRedirect({ to }: { to: string }) {
     daChay.current = true
     if (manDuRong()) router.replace(to)
   }, [router, to])
-
-  return null
 }

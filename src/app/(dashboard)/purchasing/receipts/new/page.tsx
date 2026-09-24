@@ -10,6 +10,8 @@
  * chừng là kho đã cộng mà công nợ chưa ghi.
  */
 
+import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
+import { posNewPurchaseHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
@@ -36,6 +38,8 @@ import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
 export default function NewPurchaseReceiptPage() {
+  /* Máy tính → màn POS (chủ nhà 24/09/2026: "tạo phiếu nhập hàng / trả hàng ncc trên desktop trên pos hết"). */
+  usePosDesktopRedirect(posNewPurchaseHref())
   const { loading: authLoading } = useRoleGuard("inventory")
   const { user } = useAuth()
   const router = useRouter()

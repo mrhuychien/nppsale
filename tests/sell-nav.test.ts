@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
+  backFromOrder,
+  HOME_HREF,
   backToOrder,
   backToReturnSlip,
   SELL_ORDER_HREF,
@@ -100,5 +102,45 @@ describe("Nút hứa 'về đơn hàng' thì phải tới đơn hàng", () => {
     expect(RET, "router.back() đoán đích, không biết đích").not.toContain("router.back()")
     const calls = RET.match(/backToOrder\(router\)/g) ?? []
     expect(calls.length, "thiếu đường về đơn hàng").toBe(2)
+  })
+})
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "từ Đơn hàng ấn nút back < thì lại quay về thêm hàng.
+ *   Đơn hàng quay lại thì ra Trang chủ chứ".
+ */
+describe("nút lùi ở màn Đơn hàng", () => {
+  it("đơn mới → Trang chủ (replace), kể cả khi còn lịch sử để lùi", () => {
+    vi.stubGlobal("window", { history: { length: 5 } })
+    const r = fakeRouter()
+    backFromOrder(r, false)
+    expect(r.replace).toHaveBeenCalledWith(HOME_HREF)
+    expect(r.back).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("đang sửa đơn có sẵn → về chỗ đã mở nó", () => {
+    vi.stubGlobal("window", { history: { length: 5 } })
+    const r = fakeRouter()
+    backFromOrder(r, true)
+    expect(r.back).toHaveBeenCalled()
+    expect(r.replace).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("đang sửa mà không có gì để lùi → Trang chủ", () => {
+    vi.stubGlobal("window", { history: { length: 1 } })
+    const r = fakeRouter()
+    backFromOrder(r, true)
+    expect(r.replace).toHaveBeenCalledWith(HOME_HREF)
+    vi.unstubAllGlobals()
+  })
+
+  it("màn Đơn hàng dùng đúng hàm này, không còn mở lại Thêm hàng", () => {
+    const i = CART.indexOf('aria-label="Quay lại"')
+    const nut = CART.slice(CART.lastIndexOf("<button", i), i)
+    expect(nut).toContain("onClick={() => backFromOrder(router, !!editing)}")
+    expect(nut).not.toContain('router.push("/sell")')
+    expect(HOME_HREF).toBe("/home")
   })
 })

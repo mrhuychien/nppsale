@@ -1,5 +1,6 @@
 "use client"
 
+import { backFromOrder } from "@/lib/nav/sell-nav"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2, TriangleAlert, X } from "lucide-react"
@@ -491,7 +492,7 @@ export default function SellCartPage() {
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-container-lowest px-4 pb-3 pt-3.5">
         <button
           type="button"
-          onClick={() => router.push("/sell")}
+          onClick={() => backFromOrder(router, !!editing)}
           aria-label="Quay lại"
           className="-ml-2 grid h-9 w-9 place-items-center text-on-surface"
         >

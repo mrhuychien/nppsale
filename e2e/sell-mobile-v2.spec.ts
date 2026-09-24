@@ -141,3 +141,15 @@ test("1a → 1b: chọn hàng trả trên thẻ, Tiếp tục về phiếu trả
   await dong.getByRole("button", { name: "Đổi hàng" }).click()
   await expect(dong).toContainText("Đổi 1:1, không trừ tiền")
 })
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "Đơn hàng quay lại thì ra Trang chủ chứ" (trước: về lại Thêm hàng). */
+test("2b: nút lùi ở màn Đơn hàng về Trang chủ, giỏ vẫn giữ", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  await page.getByRole("button", { name: "Thêm Sữa hộp", exact: true }).click()
+  await page.getByRole("button", { name: "Xem đơn" }).click()
+  await expect(page).toHaveURL(/\/sell\/cart/)
+  await page.getByRole("button", { name: "Quay lại" }).click()
+  await expect(page).toHaveURL(/\/home$/)
+  expect((await docGio(page)).cart, "về Trang chủ mà mất giỏ").toHaveLength(1)
+})

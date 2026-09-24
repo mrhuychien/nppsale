@@ -53,3 +53,23 @@ export function backToOrder(router: SellRouter): void {
   if (canGoBack) router.back()
   else router.replace(SELL_ORDER_HREF)
 }
+
+/** Trang chủ — đích của nút lùi ở màn Đơn hàng. */
+export const HOME_HREF = "/home"
+
+/**
+ * Nút lùi (‹) ở màn Đơn hàng.
+ *
+ * ⚠ CHỦ NHÀ 24/09/2026: "từ Đơn hàng ấn nút back < thì lại quay về thêm hàng.
+ *   Đơn hàng quay lại thì ra Trang chủ chứ". Bản cũ `push("/sell")` — mở lại màn
+ *   Thêm hàng, và nút lùi ở đó lại về đơn: một vòng không ra được.
+ *   · Đơn MỚI → Trang chủ (`replace`: không chồng thêm tầng). Giỏ vẫn giữ
+ *     trong máy — lần sau bấm "Tạo đơn" là soạn tiếp.
+ *   · Đang SỬA một đơn có sẵn → về đúng chỗ đã mở nó (chi tiết / danh sách);
+ *     không có gì để lùi thì về Trang chủ.
+ */
+export function backFromOrder(router: SellRouter, dangSua: boolean): void {
+  const canGoBack = typeof window !== "undefined" && window.history.length > 1
+  if (dangSua && canGoBack) router.back()
+  else router.replace(HOME_HREF)
+}

@@ -67,11 +67,18 @@ describe("Thêm xong phải NHÌN THẤY dòng vừa thêm", () => {
    * đề đó: chạm một cái là đi thẳng vào giỏ, nơi dòng vừa thêm nằm trên
    * cùng kèm bộ đếm số lượng.
    */
-  it("chạm vào thẻ hàng là mở giỏ ngay", () => {
-    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
-    expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
-    const body = POS.slice(i, POS.indexOf("\n  }", i))
-    expect(body).toContain('router.push("/sell/cart")')
+  /**
+   * Thiết kế 24/09/2026 (2a): ở lại màn chọn hàng, NHƯNG thẻ vừa thêm đổi
+   * ngay thành bộ đếm xanh có số lượng và viền xanh — và thanh đáy đếm
+   * "N mặt hàng trong đơn". Đó là phản hồi thấy được, không phải bấm hụt.
+   */
+  it("chạm + là thẻ đổi thành bộ đếm, số lượng lấy từ giỏ", () => {
+    const CARD = read("src/components/sell/product-card.tsx")
+    expect(CARD).toContain("const co = qty > 0")
+    expect(CARD).toMatch(/\{co \? \(\s*<div className="flex h-9 shrink-0 items-center rounded-\[10px\] bg-primary/)
+    expect(CARD).toContain('co ? "border-primary" : "border-transparent"')
+    expect(POS).toContain("qty={i >= 0 ? (returning ? cart.returnLines[i].qty : cart.cart[i].qty) : 0}")
+    expect(POS).toContain("mặt hàng trong đơn")
   })
 
   /**

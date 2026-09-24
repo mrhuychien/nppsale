@@ -26,10 +26,16 @@ describe("nút tạo khách trên màn chọn khách", () => {
     expect(PICKER.indexOf("</div>", btn)).toBeLessThan(PICKER.indexOf("Tìm khách hàng"))
   })
 
-  /** ⚠ Điện thoại chỉ còn dấu + — hàng tiêu đề không đủ chỗ cho chữ. */
-  it("điện thoại chỉ hiện dấu +, màn rộng mới hiện chữ", () => {
-    expect(PICKER).toContain("<Plus className=\"h-6 w-6\" />")
-    expect(PICKER).toContain('className="hidden text-[15px] sm:inline">Tạo khách mới')
+  /**
+   * Thiết kế 24/09/2026 (2c): nút viên "+ Khách mới" — chữ NGẮN nên vừa hàng
+   * tiêu đề trên điện thoại; không để chữ dài "Tạo khách mới" đẩy tràn.
+   */
+  it("nút viên ngắn '+ Khách mới', không ẩn chữ trên điện thoại", () => {
+    const btn = PICKER.indexOf('aria-label="Tạo khách hàng mới"')
+    const body = PICKER.slice(btn, PICKER.indexOf("</button>", btn))
+    expect(body).toContain("<Plus")
+    expect(body).toContain("Khách mới")
+    expect(body).not.toContain("hidden")
   })
 
   /**

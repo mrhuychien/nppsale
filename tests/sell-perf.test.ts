@@ -20,6 +20,7 @@ const code = (s: string) =>
 const POS = code(read("src/app/(dashboard)/sell/page.tsx"))
 const CUST = code(read("src/app/(dashboard)/sell/customer/page.tsx"))
 const CARD = code(read("src/components/sell/product-card.tsx"))
+const DEBT = code(read("src/lib/sell/debt.ts"))
 const HOOK = code(read("src/hooks/use-sell-data.tsx"))
 const LAYOUT = code(read("src/app/(dashboard)/sell/layout.tsx"))
 const NAV = code(read("src/components/layout/mobile-nav.tsx"))
@@ -110,17 +111,18 @@ describe("60 thẻ sản phẩm KHÔNG vẽ lại theo mỗi phím gõ", () => {
     expect(calls.length).toBe(1)
     const c = calls[0]
     expect(c).toContain("onPickUnit={onPickUnit}")
-    expect(c).toContain("onAdd={onAdd}")
-    expect(c, "closure mới ở mỗi lần vẽ là memo vô dụng").not.toMatch(/on(Add|PickUnit)=\{\(/)
-    expect(POS).toContain("const onAdd = useCallback((p: PricedProduct) => addRef.current(p), [])")
-    expect(CARD).toContain("onClick={() => onAdd(product)}")
+    // Thiết kế 24/09/2026: thẻ có nút + / bộ đếm ngay trên thẻ → một callback `onStep`.
+    expect(c).toContain("onStep={onStep}")
+    expect(c, "closure mới ở mỗi lần vẽ là memo vô dụng").not.toMatch(/on(Step|PickUnit)=\{\(/)
+    expect(POS).toContain("const onStep = useCallback((p: PricedProduct, unit: string, delta: number) => stepRef.current(p, unit, delta), [])")
+    expect(CARD).toContain("onClick={() => onStep(product, unit, 1)}")
     expect(CARD).toContain("onPickUnit(product.id, u)")
   })
 
   /** Thẻ ngoài màn hình không dựng bố cục, không vẽ. */
   it("thẻ ngoài màn hình được bỏ qua khi cuộn", () => {
     expect(CARD).toContain("[content-visibility:auto]")
-    expect(CARD).toContain("[contain-intrinsic-size:auto_116px]")
+    expect(CARD).toContain("[contain-intrinsic-size:auto_112px]")
   })
 
   /** Ngón tay đặt xuống là thẻ phản hồi ngay — không đợi nhả. */
@@ -182,10 +184,12 @@ describe("Danh mục: hiện-cũ-tải-mới, không tải lại từ đầu ở
   it("khách hay lấy và công nợ có bộ nhớ theo phiên", () => {
     expect(FREQ).toContain("const freqCache = new Map<string, { ids: string[]; at: number }>()")
     expect(FREQ).toContain("if (hit && Date.now() - hit.at < FREQ_TTL_MS) return hit.ids")
-    expect(CUST).toContain("if (debtMemo && Date.now() - debtMemo.at < DEBT_TTL_MS) return debtMemo.map")
+    // Công nợ nay ở lib/sell/debt.ts — dùng chung màn chọn khách (2c) và màn đơn (2b).
+    expect(CUST).toContain('from "@/lib/sell/debt"')
+    expect(DEBT).toContain("if (debtMemo && Date.now() - debtMemo.at < DEBT_TTL_MS) return debtMemo.map")
     // ⚠ Đọc hỏng thì KHÔNG ghi nhớ — lần sau phải thử lại.
-    const i = CUST.indexOf("if (res.error || res.truncated) {")
-    const j = CUST.indexOf("debtMemo = { map: m, at: Date.now() }")
+    const i = DEBT.indexOf("if (res.error || res.truncated) {")
+    const j = DEBT.indexOf("debtMemo = { map: m, at: Date.now() }")
     expect(i).toBeGreaterThan(0)
     expect(j).toBeGreaterThan(i)
   })
@@ -257,11 +261,11 @@ describe("Về danh sách thì thấy lại đúng chỗ vừa đứng", () => {
    */
   it("thêm vào giỏ thì xoá ô tìm, ở cả đường bán lẫn đường trả", () => {
     expect(POS).toContain("const clearSearchMemory = () => {")
-    // Ba đường rời màn sau khi thêm: giỏ hàng, phiếu trả, và "Thêm vào
-    // đơn" của chế độ chọn nhiều (23/09/2026). Dòng khai báo không khớp
-    // mẫu này (`= () =>`), nên đúng bằng số nơi GỌI.
-    // + "Vào phiếu trả" của chọn nhiều ở màn hàng trả (23/09/2026).
-    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(4)
+    // Hai đường rời màn sau khi thêm: "Xem đơn" (giỏ) và "Tiếp tục" (phiếu
+    // trả). Thiết kế 24/09/2026 bỏ chế độ chọn nhiều — thẻ có bộ đếm ngay
+    // trên thẻ. Dòng khai báo không khớp mẫu này (`= () =>`), nên đúng bằng
+    // số nơi GỌI.
+    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(2)
   })
 
   /**

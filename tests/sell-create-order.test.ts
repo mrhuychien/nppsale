@@ -160,9 +160,8 @@ describe("Thẻ sản phẩm gọn lại khi chưa có ảnh", () => {
   })
 
   it("chỉ chia hai cột khi THẬT SỰ có ảnh", () => {
-    expect(CARD_CODE).toMatch(
-      /image \? "grid grid-cols-\[56px_minmax\(0,1fr\)\] gap-3" : "block"/
-    )
+    // Thiết kế 24/09/2026: ảnh 48px đứng đầu hàng tên — CHỈ khi có ảnh.
+    expect(CARD_CODE).toContain("const image = product.images?.[0]")
     expect(CARD_CODE).toContain("{image && (")
   })
 

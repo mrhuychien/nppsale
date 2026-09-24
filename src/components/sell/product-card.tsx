@@ -1,62 +1,41 @@
 "use client"
 
 import { memo } from "react"
+import { Plus } from "lucide-react"
 import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { sellableUnits, stockInUnit, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { stockDisplayFor } from "@/lib/sell/committed"
 
 /**
- * Thẻ sản phẩm trên màn bán hàng.
+ * Thẻ sản phẩm trên màn bán hàng — theo bản thiết kế "2a Thêm hàng" / "1a Chọn
+ * hàng trả" (chủ nhà 24/09/2026, docs/design/sell-mobile-v2.html).
  *
- * MỘT CHẠM = THÊM MỘT. Chạm vào thẻ là thêm 1 đơn vị ĐANG CHỌN vào giỏ —
- * không mở hộp thoại, không hỏi số lượng. NVBH đứng ở quầy khách đọc
- * "hai thùng mì" thì chạm hai lần, nhanh hơn mở hộp thoại rồi gõ số 2.
- *
- * ⚠ Nút đổi đơn vị phải CHẶN sự kiện nổi lên thẻ. Thiếu vế đó thì bấm
- * "thùng" vừa đổi đơn vị vừa thêm luôn một dòng — mỗi lần đổi đơn vị là
- * một dòng rác trong giỏ.
- *
- * ⚠ THẺ ĐƯỢC `memo`, VÀ HAI CALLBACK NHẬN SẢN PHẨM LÀM THAM SỐ. Bản đầu
- * nhận `onAdd={() => addToCart(p)}` — closure MỚI ở mỗi lần vẽ, nên mỗi
- * phím gõ ở ô tìm là 60 thẻ vẽ lại toàn bộ dù chẳng thẻ nào đổi. Nay màn
- * truyền một hàm ổn định, thẻ tự đưa `product` vào, và `memo` chỉ vẽ lại
- * thẻ có prop đổi thật.
+ * ⚠ THÊM NGAY TRÊN THẺ, KHÔNG RỜI MÀN. Nút "+" thêm 1 đơn vị đang chọn; đã có
+ *   thì hiện bộ − số + nền xanh. Trước đây chạm thẻ là nhảy sang giỏ (và có
+ *   chế độ "chọn nhiều" riêng để gõ số cho nhiều món) — bộ tăng giảm trên thẻ
+ *   làm cả hai việc ấy trong một cách, nên chế độ riêng không còn.
+ * ⚠ THẺ KHÔNG PHẢI NÚT. Cả thẻ bấm được là mỗi lần chạm nhầm lúc cuộn thêm một
+ *   món; nay chỉ nút thêm / bộ tăng giảm / pill đơn vị nhận chạm.
+ * ⚠ THẺ ĐƯỢC `memo`, callback nhận sản phẩm làm tham số — màn truyền hàm ổn
+ *   định, 60 thẻ không vẽ lại mỗi phím gõ ở ô tìm.
  */
 export interface ProductCardProps {
   product: PricedProduct
   /** Tồn kho theo đơn vị CƠ SỞ. */
   baseOnHand: number
-  /**
-   * Hàng đã hứa trong các Phiếu tạm khác, theo đơn vị CƠ SỞ.
-   *
-   * ⚠ `null` = CHƯA ĐỌC ĐƯỢC, không phải "không ai đặt". Hai thứ này
-   * dẫn tới hai câu khác nhau trên thẻ, và gộp lại là nói với người bán
-   * rằng kho còn nguyên trong khi ta không biết.
-   */
+  /** Hàng đã hứa trong Phiếu tạm khác (đơn vị cơ sở); `null` = chưa đọc được. */
   baseCommitted?: number | null
   groupId: string | null | undefined
   unit: string
   onPickUnit: (productId: string, unit: string) => void
-  onAdd: (product: PricedProduct) => void
-  /** Số lượng đang có trong giỏ ở ĐÚNG đơn vị này. */
-  inCartQty: number
-  /**
-   * Hiện dòng tồn kho không.
-   *
-   * ⚠ Màn HÀNG TRẢ phải tắt. Khách đưa hàng lại cho mình, nên "Hết hàng"
-   * tô đỏ ở đó là câu trả lời cho một câu hỏi không ai hỏi — tệ hơn, nó
-   * trông như đang chặn, và nhân viên sẽ không dám bấm.
-   */
+  /** +1 / −1 ở ĐÚNG đơn vị đang chọn; về 0 là bỏ dòng. */
+  onStep: (product: PricedProduct, unit: string, delta: number) => void
+  /** Số đang có trong giỏ / phiếu trả ở đơn vị này. */
+  qty: number
+  /** Màn HÀNG TRẢ tắt: "Hết hàng" ở đó là câu trả lời cho câu hỏi không ai hỏi. */
   showStock?: boolean
-  /** Nhãn của huy hiệu đếm. Màn hàng trả gọi là "Đã trả". */
-  badgeLabel?: string
-  /**
-   * CHẾ ĐỘ CHỌN NHIỀU (chủ nhà yêu cầu 23/09/2026). Có giá trị thì thẻ hiện
-   * ô số lượng — số TUYỆT ĐỐI sẽ vào giỏ ở đơn vị đang chọn. `undefined` =
-   * chế độ thường, thẻ không đổi gì.
-   */
-  pickQty?: number
-  onPickQty?: (productId: string, unit: string, qty: number) => void
+  /** Chữ trên nút thêm — màn hàng trả là "Trả"; rỗng = chỉ dấu +. */
+  addLabel?: string
 }
 
 export const ProductCard = memo(function ProductCard({
@@ -66,234 +45,133 @@ export const ProductCard = memo(function ProductCard({
   groupId,
   unit,
   onPickUnit,
-  onAdd,
-  inCartQty,
+  onStep,
+  qty,
   showStock = true,
-  badgeLabel = "Trong giỏ",
-  pickQty,
-  onPickQty,
+  addLabel = "",
 }: ProductCardProps) {
   const units = sellableUnits(product)
   const price = unitPriceFor(product, unit, groupId)
   const stock = stockInUnit(product, unit, baseOnHand)
-  /**
-   * ⚠ QUY ĐỔI SỐ ĐÃ ĐẶT BẰNG ĐÚNG PHÉP QUY ĐỔI CỦA TỒN. Lấy tồn theo
-   * "thùng" rồi trừ số đã đặt theo "gói" là trừ nhầm mười hai lần.
-   */
-  const committedUnit =
-    baseCommitted === null ? null : stockInUnit(product, unit, baseCommitted)
+  /* ⚠ Quy đổi số đã đặt bằng ĐÚNG phép quy đổi của tồn. */
+  const committedUnit = baseCommitted === null ? null : stockInUnit(product, unit, baseCommitted)
   const sd = stockDisplayFor(stock, committedUnit)
-  const outOfStock = sd.out
+  const co = qty > 0
   const image = product.images?.[0]
-  /**
-   * ⚠ THẺ ĐÃ CHỌN PHẢI NHÌN RA NGAY (chủ nhà yêu cầu 23/09/2026: "sản phẩm
-   *   nào được chọn thì tô màu cho dễ nhìn"). Chế độ chọn nhiều thì "chọn" là
-   *   ô số lượng > 0 — kể cả số chưa vào giỏ; chế độ thường là đã có trong giỏ.
-   */
-  const daChon = pickQty !== undefined ? pickQty > 0 : inCartQty > 0
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      data-chon={daChon ? "" : undefined}
-      onClick={() => onAdd(product)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onAdd(product)
-        }
-      }}
+      data-testid="the-san-pham"
+      data-chon={co ? "" : undefined}
       className={cn(
-        "cursor-pointer select-none rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 shadow-card",
-        // Phản hồi lúc CHẠM — ngón tay đặt xuống là thẻ tối đi ngay, không
-        // đợi đến lúc nhả. Thiếu nó thì chạm trên điện thoại cảm giác
-        // "không ăn" dù đã ăn.
-        "transition-[background-color,transform] duration-100 active:scale-[0.985] active:bg-surface-container",
-        // ⚠ Thẻ ngoài màn hình KHÔNG dựng bố cục, không vẽ. 60 thẻ là
-        // ~7.000 px chiều cao; không có dòng này thì cuộn là trình duyệt
-        // tính lại cả 60 dù chỉ 5 thẻ đang hiện. Kích thước ước lượng
-        // giữ thanh cuộn không nhảy.
-        "[content-visibility:auto] [contain-intrinsic-size:auto_116px]",
-        // ⚠ CHƯA CÓ ẢNH THÌ KHÔNG CHỪA CHỖ CHO ẢNH.
-        //
-        // Bản đầu để một ô xám 56px ghi "ảnh SP" cho mọi mặt hàng chưa có
-        // ảnh. Danh mục hiện gần như chưa mặt hàng nào có ảnh, nên cả màn
-        // hình thành một cột ô xám giống hệt nhau: chiếm 68px bề ngang của
-        // mỗi thẻ, đẩy tên hàng dài xuống thêm một dòng, mà không nói được
-        // điều gì. Thẻ không ảnh nay dùng trọn bề ngang.
-        image ? "grid grid-cols-[56px_minmax(0,1fr)] gap-3" : "block",
-        daChon ? "border-primary bg-primary/[0.1]" : "border-transparent"
+        "flex flex-col gap-2.5 rounded-[14px] border-[1.5px] bg-surface-container-lowest p-3",
+        /* ⚠ Thẻ ngoài màn hình không dựng bố cục — 60 thẻ ~7.000px. */
+        "[content-visibility:auto] [contain-intrinsic-size:auto_112px]",
+        co ? "border-primary" : "border-transparent"
       )}
     >
-      {image && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={image}
-          alt=""
-          className="h-14 w-14 shrink-0 rounded-xl object-cover"
-          loading="lazy"
-          decoding="async"
-        />
-      )}
-
-      <div className="flex min-w-0 flex-col gap-2.5">
-        <div>
-          <p className="text-[15px] font-bold leading-snug text-on-surface">{product.name}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] font-semibold text-on-surface-variant">
-            <span>{product.sku}</span>
-            {/* ⚠ Hết hàng tô ĐỎ, sắp hết tô hổ phách. Biết trước khi thêm
-                rẻ hơn nhiều so với biết lúc bấm lưu đơn. */}
+      <div className="flex items-start gap-3">
+        {/* ⚠ Ảnh chỉ khi CÓ — danh mục gần như chưa có ảnh, ô giữ chỗ là phí bề ngang. */}
+        {image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={image} alt="" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" loading="lazy" decoding="async" />
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <p className="line-clamp-2 text-[14px] font-semibold leading-[1.35] text-on-surface">{product.name}</p>
+          <p className="text-[12px] text-muted-foreground">
+            {product.sku}
             {showStock && (
               <>
-                {/* ⚠ "ĐÃ CÓ NGƯỜI ĐẶT HẾT" KHÁC "HẾT HÀNG". Hết hàng thì
-                    người bán đi gọi nhập; đã có người đặt hết thì họ đi
-                    hỏi đơn nào đang giữ. Gộp hai câu là để họ làm sai
-                    việc — kho vẫn đầy mà bảo nhau đi nhập thêm. */}
+                {" · "}
+                {/* ⚠ "ĐÃ ĐẶT HẾT" KHÁC "HẾT HÀNG"; chưa đọc được hàng đã đặt thì nói ra. */}
                 <span
                   className={cn(
-                    outOfStock
-                      ? "font-extrabold text-error"
-                      : sd.available < 20
-                        ? "font-extrabold text-[#8a5a00]"
-                        : ""
+                    sd.out ? "font-semibold text-error" : sd.available < 20 ? "font-semibold text-[#8a5a00]" : ""
                   )}
                 >
                   {sd.reservedOut
                     ? `Đã đặt hết (tồn ${formatInt(stock)} ${unit})`
-                    : outOfStock
+                    : sd.out
                       ? "Hết hàng"
-                      : `Tồn ${formatInt(stock)} ${unit}`}
+                      : `Còn ${formatInt(sd.committed === null ? stock : sd.available)} ${unit}`}
                 </span>
-                {/* Phần đã hứa trong Phiếu tạm khác — chỉ hiện khi có. */}
+                {/* Phần đã hứa trong Phiếu tạm khác — một cụm "Còn …" (2a), kèm số đã đặt khi có. */}
                 {!sd.reservedOut && sd.committed !== null && sd.committed > 0 && (
-                  <span className="font-extrabold text-[#8a5a00]">
-                    đã đặt {formatInt(sd.committed)} · còn {formatInt(sd.available)}
-                  </span>
+                  <span className="text-[#8a5a00]"> (đã đặt {formatInt(sd.committed)})</span>
                 )}
-                {/* ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI RA. Im lặng ở đây là để người
-                    bán tin con số tồn đã trừ phần người khác đặt. */}
-                {sd.committed === null && (
-                  <span className="text-on-surface-variant">chưa rõ hàng đã đặt</span>
-                )}
+                {sd.committed === null && <span> · chưa rõ hàng đã đặt</span>}
               </>
             )}
-            {inCartQty > 0 && (
-              <span className="rounded-md bg-primary/10 px-1.5 py-px font-extrabold text-primary">
-                {badgeLabel}: {inCartQty} {unit}
-              </span>
-            )}
-          </div>
+          </p>
         </div>
-
-        <div className="flex items-center justify-between gap-2">
-          {/* ⚠ Nhóm nút đơn vị phải CO ĐƯỢC và cuộn ngang khi chật. Mặt
-              hàng khai ba đơn vị (chai · lốc · thùng) thì ba nút cộng lại
-              rộng hơn phần còn lại của thẻ, và nếu nhóm này không co thì
-              nó đẩy GIÁ ra ngoài mép phải — đúng kiểu tràn vừa phải sửa ở
-              màn hàng trả. */}
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-surface-container p-[3px]">
-            {units.map((u) => {
-              const active = u === unit
-              return (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={(e) => {
-                    // ⚠ Xem chú thích đầu file — thiếu dòng này là mỗi lần
-                    // đổi đơn vị lại thêm một dòng rác vào giỏ.
-                    e.stopPropagation()
-                    onPickUnit(product.id, u)
-                  }}
-                  className={cn(
-                    "h-10 min-w-[64px] shrink-0 rounded-[9px] px-3.5 text-sm font-extrabold transition-colors",
-                    active
-                      ? "bg-surface-container-lowest text-primary shadow-sm"
-                      : "text-on-surface-variant"
-                  )}
-                >
-                  {u}
-                </button>
-              )
-            })}
-          </div>
-          {/* ⚠ Giá 0 nghĩa là CHƯA CÓ GIÁ, không phải miễn phí. In "0đ" ở
-              đây là mời nhân viên bán không công. */}
-          <span className="shrink-0 whitespace-nowrap text-[18px] font-extrabold tabular-data text-primary">
+        <div className="whitespace-nowrap text-right">
+          {/* ⚠ Giá 0 là CHƯA CÓ GIÁ, không phải miễn phí. */}
+          <p className="text-[15px] font-bold tabular-data text-on-surface">
             {price > 0 ? formatCurrency(price) : "chưa có giá"}
-          </span>
+          </p>
+          <p className="text-[11px] text-muted-foreground">/ {unit}</p>
         </div>
+      </div>
 
-        {pickQty !== undefined && onPickQty && (
-          <PickQty
-            qty={pickQty}
-            unit={unit}
-            label={`Số lượng ${product.name}`}
-            onChange={(q) => onPickQty(product.id, unit, q)}
-          />
+      <div className="flex items-center gap-2">
+        {/* Pill đơn vị — co được và cuộn ngang khi mặt hàng có ba đơn vị. */}
+        <div className="flex min-w-0 gap-0.5 overflow-x-auto rounded-[10px] bg-surface-container-low p-[3px]">
+          {units.map((u) => {
+            const active = u === unit
+            return (
+              <button
+                key={u}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onPickUnit(product.id, u)}
+                className={cn(
+                  "h-[30px] shrink-0 rounded-lg px-3 text-[13px]",
+                  active ? "bg-surface-container-lowest font-semibold text-primary shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "font-medium text-on-surface-variant"
+                )}
+              >
+                {u}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex-1" />
+        {co ? (
+          <div className="flex h-9 shrink-0 items-center rounded-[10px] bg-primary text-primary-foreground [&>button]:active:bg-black/10">
+            <button
+              type="button"
+              aria-label={`Bớt ${product.name}`}
+              onClick={() => onStep(product, unit, -1)}
+              className="h-9 w-9 text-[18px]"
+            >
+              −
+            </button>
+            <span aria-label={`Số lượng ${product.name}`} className="min-w-6 text-center text-[14px] font-bold tabular-data">
+              {qty}
+            </span>
+            <button
+              type="button"
+              aria-label={`Thêm ${product.name}`}
+              onClick={() => onStep(product, unit, 1)}
+              className="h-9 w-9 text-[18px]"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            aria-label={`${addLabel || "Thêm"} ${product.name}`}
+            onClick={() => onStep(product, unit, 1)}
+            className={cn(
+              "flex h-9 shrink-0 items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-primary bg-surface-container-lowest text-[13px] font-semibold text-primary active:scale-95",
+              addLabel ? "px-3.5" : "w-10"
+            )}
+          >
+            <Plus className={addLabel ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.6} aria-hidden />
+            {addLabel}
+          </button>
         )}
       </div>
     </div>
   )
 })
-
-/**
- * Ô số lượng của chế độ chọn nhiều.
- *
- * ⚠ CHẶN SỰ KIỆN NỔI LÊN THẺ — cùng lý do với nút đơn vị: chạm vào ô mà
- *   thẻ cũng nhận là mỗi lần gõ số lại cộng thêm một.
- * ⚠ CHO PHÉP 0 / TRỐNG. 0 nghĩa là "không lấy" (bỏ khỏi giỏ nếu đang có) —
- *   khác `Stepper` của giỏ hàng, nơi 0 không có nghĩa.
- */
-function PickQty({
-  qty,
-  unit,
-  label,
-  onChange,
-}: {
-  qty: number
-  unit: string
-  label: string
-  onChange: (qty: number) => void
-}) {
-  const chan = (e: { stopPropagation: () => void }) => e.stopPropagation()
-  return (
-    <div
-      className="flex items-center gap-2"
-      onClick={chan}
-      onKeyDown={chan}
-    >
-      <button
-        type="button"
-        aria-label={`Bớt ${label}`}
-        disabled={qty <= 0}
-        onClick={() => onChange(Math.max(0, qty - 1))}
-        className="tap grid h-10 w-10 place-items-center rounded-xl bg-surface-container text-xl font-extrabold text-on-surface disabled:opacity-40"
-      >
-        −
-      </button>
-      <input
-        aria-label={label}
-        inputMode="numeric"
-        enterKeyHint="done"
-        value={qty > 0 ? String(qty) : ""}
-        placeholder="0"
-        onFocus={(e) => e.currentTarget.select()}
-        onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
-        className={cn(
-          "h-10 w-20 rounded-xl border-[1.5px] bg-surface-container-lowest text-center text-lg font-extrabold tabular-data outline-none focus:border-primary",
-          qty > 0 ? "border-primary/50 text-primary" : "border-outline-variant text-on-surface"
-        )}
-      />
-      <button
-        type="button"
-        aria-label={`Thêm ${label}`}
-        onClick={() => onChange(qty + 1)}
-        className="tap grid h-10 w-10 place-items-center rounded-xl bg-surface-container text-xl font-extrabold text-on-surface"
-      >
-        +
-      </button>
-      <span className="text-sm font-bold text-on-surface-variant">{unit}</span>
-    </div>
-  )
-}

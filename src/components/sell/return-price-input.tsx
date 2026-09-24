@@ -20,18 +20,24 @@ export function ReturnPriceInput({
   disabled,
   bad,
   onChange,
+  suffix,
+  dim = false,
 }: {
   price: number
   disabled?: boolean
   /** Giá vi phạm (cao hơn trần) — viền đỏ. */
   bad?: boolean
   onChange: (price: number) => void
+  /** Có thì vẽ kiểu ô gọn của bản thiết kế 1b, kèm chữ đuôi ("đ/hộp"). */
+  suffix?: string
+  /** Dòng "Đổi hàng": giá không trừ tiền — mờ đi (1b). */
+  dim?: boolean
 }) {
   const [text, setText] = useState(String(price))
   // Giá đổi từ nơi khác (đổi đơn vị, sửa trong tấm trượt) thì ô phải theo.
   useEffect(() => setText(String(price)), [price])
 
-  return (
+  const input = (
     <input
       // Hiển thị nhóm nghìn (9.000.000); state vẫn chỉ là chữ số.
       value={text === "" ? "" : formatInt(parseInt(text, 10))}
@@ -45,11 +51,29 @@ export function ReturnPriceInput({
         setText(digits)
         onChange(digits === "" ? 0 : parseInt(digits, 10))
       }}
-      className={cn(
-        "h-12 w-full rounded-xl border-[1.5px] px-3 text-right text-[15px] font-extrabold tabular-data outline-none",
-        bad ? "border-error text-error" : "border-outline-variant",
-        disabled ? "bg-surface-container text-on-surface-variant" : "bg-surface-container-lowest"
-      )}
+      className={
+        suffix !== undefined
+          ? cn("min-w-0 flex-1 border-0 bg-transparent text-right text-[15px] font-semibold tabular-data outline-none", bad && "text-error")
+          : cn(
+              "h-12 w-full rounded-xl border-[1.5px] px-3 text-right text-[15px] font-extrabold tabular-data outline-none",
+              bad ? "border-error text-error" : "border-outline-variant",
+              disabled ? "bg-surface-container text-on-surface-variant" : "bg-surface-container-lowest"
+            )
+      }
     />
+  )
+  if (suffix === undefined) return input
+  return (
+    <div
+      className={cn(
+        "flex h-10 items-center gap-1 rounded-[10px] px-2.5",
+        bad ? "border-[1.5px] border-error" : "border border-border",
+        disabled ? "bg-surface-container-low" : "",
+        dim ? "opacity-45" : ""
+      )}
+    >
+      {input}
+      <span className="shrink-0 text-[12px] text-muted-foreground">{suffix}</span>
+    </div>
   )
 }

@@ -103,7 +103,6 @@ describe("Nút − không bao giờ xoá dòng", () => {
 
 describe("Nút xoá LUÔN có mặt trên mỗi dòng", () => {
   it("dòng giỏ hàng có nút xoá riêng", () => {
-    expect(CART).toContain("<Trash2")
     expect(CART).toMatch(/onClick=\{\(\) => cart\.setQty\(r\.i, 0\)\}/)
     // Có nhãn cho trình đọc màn hình, và nhãn nói rõ xoá cái gì.
     expect(CART).toContain('aria-label={`Xoá ${r.product?.name ?? "dòng"}`}')
@@ -115,7 +114,8 @@ describe("Nút xoá LUÔN có mặt trên mỗi dòng", () => {
    */
   it("nút xoá nằm ngoài nút mở sheet sửa dòng", () => {
     const i = CART.indexOf("onClick={() => setEditIdx(r.i)}")
-    const j = CART.indexOf("<Trash2", i)
+    // Thiết kế 24/09/2026: nút xoá là dấu X góc phải dòng.
+    const j = CART.indexOf('aria-label={`Xoá ${r.product?.name ?? "dòng"}`}', i)
     expect(j).toBeGreaterThan(i)
     // Giữa hai chỗ phải có thẻ đóng của nút mở sheet.
     expect(CART.slice(i, j)).toContain("</button>")
@@ -151,7 +151,8 @@ describe("Màn hàng trả không tràn ngang", () => {
 
   /** Hai nút chia đều bề ngang thay vì rộng theo chữ bên trong. */
   it("nút trả/đổi dùng flex-1, không phải padding cố định", () => {
-    expect(RET).toContain('"h-10 flex-1 rounded-lg text-[13px] font-extrabold"')
+    // Thiết kế 24/09/2026 (1b): segmented cao 32px, hai nút chia đều.
+    expect(RET).toContain('"h-8 flex-1 rounded-lg text-[13px]"')
     expect(RET).not.toContain('"h-9 rounded-lg px-3 text-[13px] font-extrabold"')
   })
 
@@ -159,15 +160,15 @@ describe("Màn hàng trả không tràn ngang", () => {
    * Bộ đếm không được co lại méo mó khi khối bên cạnh dài ra.
    *
    * Khối cạnh nó nay là Ô GIÁ — nó phải là phần CO, còn bộ đếm giữ nguyên
-   * 164px. Ngược lại thì gõ một con số dài là bộ đếm bị bóp và bấm không
+   * bề ngang (shrink-0; thiết kế 24/09/2026 bỏ số cứng 164px). Ngược lại thì gõ một con số dài là bộ đếm bị bóp và bấm không
    * tới nút +.
    */
   it("bộ đếm giữ nguyên bề ngang, ô giá mới là phần co", () => {
-    expect(RET).toContain('<div className="w-[164px] shrink-0">')
+    expect(RET).toContain('<div className="flex shrink-0 flex-col gap-1">')
     expect(RET).not.toContain('w-[152px]')
     const row = enclosingRowOf(RET, RET.indexOf("<Stepper"))
     expect(row, "không tìm được hàng chứa bộ đếm").toBeTruthy()
-    expect(row).toContain('className="min-w-0 flex-1"')
+    expect(row).toMatch(/className="[^"]*\bmin-w-0 flex-1\b/)
     expect(row).toContain("<ReturnPriceInput")
   })
 })

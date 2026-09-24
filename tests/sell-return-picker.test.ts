@@ -34,9 +34,9 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
     expect(RET).not.toContain("Hàng trong đơn này")
   })
 
-  it("chạm vào ô tìm là mở màn tìm hàng ở chế độ chọn hàng trả", () => {
-    expect(RET).toContain('router.push("/sell?mode=return")')
-    expect(RET).toContain("Tìm hàng để trả")
+  /* 24/09/2026 (bản thiết kế 1b): ô tìm trùng lặp thành nút "Thêm hàng" về 1a. */
+  it("nút Thêm hàng mở màn tìm hàng ở chế độ chọn hàng trả", () => {
+    expect(RET).toMatch(/onClick=\{\(\) => router\.push\("\/sell\?mode=return"\)\}[\s\S]{0,300}Thêm hàng/)
   })
 
   it("màn tìm hàng nhận ra chế độ đó", () => {
@@ -48,19 +48,20 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
    * ⚠ Đơn vị chọn trên thẻ phải là đơn vị được THÊM. Thẻ hiện giá theo
    * thùng mà dòng trả lại ghi theo chai thì số tiền trừ lệch mười mấy lần.
    */
+  /* 24/09/2026 (1a): thêm bằng nút "+ Trả" / bộ tăng giảm trên thẻ — ĐÚNG đơn vị thẻ đang hiện. */
   it("thêm dòng trả dùng đúng đơn vị và giá đang hiện trên thẻ", () => {
-    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
-    expect(i, "không tìm thấy addToCart").toBeGreaterThanOrEqual(0)
-    const body = POS.slice(i, POS.indexOf("\n  }", i))
-    expect(body).toContain("const unit = unitOf(p)")
+    const i = POS.indexOf("const step = (p: PricedProduct, unit: string, delta: number) => {")
+    expect(i, "không tìm thấy step").toBeGreaterThanOrEqual(0)
+    const body = POS.slice(i, POS.indexOf("\n  }\n", i))
     expect(body).toContain("const price = unitPriceFor(p, unit, groupId)")
-    // Nhánh trả dùng chính hai biến đó, không tự tra lại.
     const branch = body.slice(body.indexOf("if (returning) {"))
     expect(branch).toContain("unit,")
     expect(branch).toContain("price,")
-    // ⚠ `replace`, không `push` — xem tests/sell-nav.test.ts. Đẩy thêm một
-    // tầng phiếu trả là bấm "Xong · về đơn hàng" lại rơi vào màn chọn hàng.
-    expect(branch).toContain("backToReturnSlip(router)")
+    // Thẻ truyền ĐÚNG đơn vị đang chọn.
+    expect(POS).toContain("const unit = unitOf(p)")
+    expect(POS).toContain("onStep={onStep}")
+    // ⚠ Rời màn bằng `backToReturnSlip` (replace), không `push` — xem sell-nav.
+    expect(POS).toContain("backToReturnSlip(router)")
   })
 
   /**
@@ -69,8 +70,8 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
    * "Hết hàng" tô đỏ trông như đang chặn nên nhân viên sẽ không dám bấm.
    */
   it("chọn hàng trả thì không chặn theo tồn và không hiện tồn", () => {
-    const i = POS.indexOf("const addToCart = (p: PricedProduct) => {")
-    const body = POS.slice(i, POS.indexOf("\n  }", i))
+    const i = POS.indexOf("const step = (p: PricedProduct, unit: string, delta: number) => {")
+    const body = POS.slice(i, POS.indexOf("\n  }\n", i))
     /**
      * ⚠ Cắt nhánh theo DẤU ĐÓNG NGOẶC của chính nó, không cắt tới chỗ
      * `const onHand` đầu tiên. Thử phá: nhét `const onHand` NGAY TRONG
@@ -80,11 +81,11 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
      */
     const at = body.indexOf("if (returning) {")
     expect(at, "không tìm thấy nhánh chọn hàng trả").toBeGreaterThanOrEqual(0)
-    const branch = body.slice(at, body.indexOf("\n    }", at))
-    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("onHand")
-    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("Hết hàng")
+    const branch = body.slice(at, body.indexOf("\n      return\n", at))
+    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("available")
+    expect(branch, "nhánh trả bị chặn theo tồn kho").not.toContain("stockByProduct")
     expect(POS).toContain("showStock={!returning}")
-    expect(POS).toContain('badgeLabel={returning ? "Đã trả" : "Trong giỏ"}')
+    expect(POS).toContain('addLabel={returning ? "Trả" : ""}')
   })
 
   /** Huy hiệu đếm phải đếm ĐÚNG rổ — dòng trả, không phải dòng bán. */
@@ -94,16 +95,16 @@ describe("Chọn hàng trả dùng CHÍNH màn tìm hàng của luồng bán hà
   })
 
   /** Đang chọn hàng trả thì đường quay lại phải về PHIẾU TRẢ, không về giỏ. */
+  /* 1a: thanh tổng dính đáy "N mặt hàng · M đơn vị · −tiền · Tiếp tục" thay nút "Xong" góc trên. */
   it("có đường quay lại phiếu trả", () => {
-    expect(POS).toContain("{returning && !chonNhieu && cart.returnLines.length > 0 && (")
-    expect(POS).toContain("dòng hàng trả")
-    // Chế độ chọn nhiều (23/09/2026) có thanh riêng nên thêm `!chonNhieu`.
-    expect(POS).toContain("{!chonNhieu && !returning && cartCount > 0 && (")
+    expect(POS).toMatch(/\{returning \? \(\s*<SellBottomBar/)
+    expect(POS).toContain("{cart.returnLines.length} mặt hàng · {formatInt(soDonViTra)} đơn vị")
+    expect(POS).toMatch(/clearSearchMemory\(\)\s*backToReturnSlip\(router\)[\s\S]{0,400}Tiếp tục/)
+    expect(POS).toMatch(/onClick=\{\(\) => \(returning \? backToReturnSlip\(router\) : router\.back\(\)\)\}/)
   })
 
   it("thẻ mặc định VẪN hiện tồn — tắt phải là lựa chọn có chủ đích", () => {
     expect(CARD).toContain("showStock = true")
-    expect(CARD).toContain('badgeLabel = "Trong giỏ"')
     expect(CARD).toContain("{showStock && (")
   })
 })
@@ -122,10 +123,10 @@ describe("Sửa giá dòng trả: ô giá phải NHÌN THẤY được", () => {
     expect(RET).toContain("onChange={(price) => cart.patchReturnLine(i, { price })}")
     // Ngang hàng với ô số lượng, không nằm ở đâu khác.
     const i = RET.indexOf("<ReturnPriceInput")
-    const j = RET.indexOf("<Stepper qty={r.qty}")
+    const j = RET.indexOf("<Stepper size=\"md\" qty={r.qty} onChange={(q) => cart.setReturnQty(i, q)} />")
     expect(i, "không tìm thấy ô giá").toBeGreaterThan(0)
     expect(j, "không tìm thấy ô số lượng").toBeGreaterThan(0)
-    expect(Math.abs(i - j), "ô giá và ô số lượng không cùng một hàng").toBeLessThan(900)
+    expect(Math.abs(i - j), "ô giá và ô số lượng không cùng một hàng").toBeLessThan(1400)
   })
 
   it("ô giá có nhãn, không phải một ô trống không tên", () => {
@@ -134,9 +135,9 @@ describe("Sửa giá dòng trả: ô giá phải NHÌN THẤY được", () => {
   })
 
   /** Dòng bấm được thì phải TRÔNG như bấm được. */
-  it("dòng mở được phần sửa thì có mũi tên", () => {
-    expect(RET).toContain("<ChevronRight")
-    expect(RET).toContain("onClick={() => setEditIdx(i)}")
+  /* 1b: tên hàng là nút mở sheet sửa dòng trả (ghi chú, đơn vị). */
+  it("tên hàng mở phần sửa dòng trả", () => {
+    expect(RET).toMatch(/<button type="button" onClick=\{\(\) => setEditIdx\(i\)\}[^>]*>\s*\{p\?\.name \?\? "—"\}/)
   })
 
   /**
@@ -217,14 +218,15 @@ describe("Thẻ sản phẩm không tràn khi mặt hàng có nhiều đơn vị
    * rộng hơn phần còn lại của thẻ. Nhóm nút không co được sẽ đẩy GIÁ ra
    * ngoài mép phải — đúng kiểu tràn vừa phải sửa ở màn hàng trả.
    */
+  /* 24/09/2026 (2a): giá lên góc phải hàng tên; hàng dưới là pill đơn vị + nút thêm / bộ tăng giảm. */
   it("nhóm nút đơn vị co được và cuộn ngang", () => {
-    expect(CARD).toContain("flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl")
-    expect(CARD).not.toContain('"flex gap-1 rounded-xl bg-surface-container p-[3px]"')
+    expect(CARD).toContain("flex min-w-0 gap-0.5 overflow-x-auto rounded-[10px]")
   })
 
-  it("giá không bị bóp, nút đơn vị không bị bóp", () => {
-    expect(CARD).toContain("shrink-0 whitespace-nowrap text-[18px]")
-    expect(CARD).toContain("h-10 min-w-[64px] shrink-0 rounded-[9px]")
+  it("giá không bị bóp, nút đơn vị và nút thêm không bị bóp", () => {
+    expect(CARD).toContain('<div className="whitespace-nowrap text-right">')
+    expect(CARD).toContain('"h-[30px] shrink-0 rounded-lg px-3 text-[13px]"')
+    expect(CARD).toMatch(/"flex h-9 shrink-0 items-center rounded-\[10px\] bg-primary/)
   })
 })
 

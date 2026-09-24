@@ -46,9 +46,9 @@ describe("Chọn hàng trả xong thì ĐÓNG màn đó, không mở thêm một
   it("màn chọn hàng không còn đường nào push phiếu trả", () => {
     expect(POS, "còn push phiếu trả").not.toContain('router.push("/sell/returns")')
     const calls = POS.match(/backToReturnSlip\(router\)/g) ?? []
-    // 5: chạm một món, nút "Xong", thanh nổi, "Vào phiếu trả" của chọn nhiều (23/09/2026),
-    //    và "Xem phiếu trả" khi chế độ chọn nhiều giữ mà chưa gõ số nào (24/09/2026).
-    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(5)
+    // Thiết kế 24/09/2026 (1a): hai đường ra — nút lùi ở đầu và "Tiếp tục" ở
+    // thanh đáy (thẻ +/− ngay tại chỗ, không rời màn; bỏ chế độ chọn nhiều).
+    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(2)
   })
 
   /** Giỏ hàng MỞ phiếu trả nên nó vẫn `push` — đó là tầng đúng. */

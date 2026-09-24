@@ -179,10 +179,11 @@ describe("màn bán hàng đọc và dùng số đã đặt", () => {
    */
   it("chạm thẻ để thêm hàng vẫn so với khả dụng, nhưng để cảnh báo", () => {
     expect(LIST).toContain("availableMapFrom(stockByProduct, committedByProduct)")
+    /* 24/09/2026 (bản thiết kế 2a): thêm bằng nút +/bộ tăng giảm trên thẻ — vẫn so khả dụng. */
     const at = LIST.indexOf("const available = availableByProduct[p.id] ?? 0")
     expect(at, "màn danh sách không tính khả dụng").toBeGreaterThan(0)
-    expect(LIST.slice(at, at + 300)).toContain(
-      "addOverstockWarning(p.name, onHand, available, p.base_unit)"
+    expect(LIST.slice(at, at + 400)).toContain(
+      "addOverstockWarning(p.name, stockByProduct[p.id] ?? 0, available, p.base_unit)"
     )
     // Quét mã cũng là một đường thêm hàng — không được bỏ sót.
     expect(SCAN).toContain("availableByProduct[p.id] ?? 0")
@@ -214,7 +215,7 @@ describe("màn bán hàng đọc và dùng số đã đặt", () => {
       return src.slice(a, b)
     }
     expect(
-      span(LIST, "const onHand = stockByProduct[p.id] ?? 0", "cart.addLine({"),
+      span(LIST, "const available = availableByProduct[p.id] ?? 0", "cart.addLine({"),
       "màn danh sách vẫn chặn đặt hàng khi hết hàng"
     ).not.toMatch(/\breturn\b/)
     expect(
@@ -262,17 +263,19 @@ describe("màn bán hàng đọc và dùng số đã đặt", () => {
     const FLAT = CARD.replace(/\s+/g, " ")
     expect(FLAT).toContain("stockDisplayFor(stock, committedUnit)")
     expect(FLAT).toContain("{sd.reservedOut ? `Đã đặt hết (tồn ${formatInt(stock)} ${unit})`")
-    expect(FLAT).toContain(": outOfStock ? \"Hết hàng\"")
+    expect(FLAT).toContain(": sd.out ? \"Hết hàng\"")
+    /* 2a: MỘT cụm "Còn …" = khả dụng (tồn − đã đặt), kèm "(đã đặt N)" khi có. */
+    expect(FLAT).toContain("`Còn ${formatInt(sd.committed === null ? stock : sd.available)} ${unit}`")
     expect(FLAT).toContain(
       "{!sd.reservedOut && sd.committed !== null && sd.committed > 0 && ("
     )
-    expect(FLAT).toContain("đã đặt {formatInt(sd.committed)} · còn {formatInt(sd.available)}")
+    expect(FLAT).toContain("(đã đặt {formatInt(sd.committed)})")
     // ⚠ Quy đổi số đã đặt bằng ĐÚNG phép quy đổi của tồn.
     expect(FLAT).toContain(
       "baseCommitted === null ? null : stockInUnit(product, unit, baseCommitted)"
     )
     // Chưa đọc được thì nói ra ngay trên thẻ.
-    expect(FLAT).toContain("{sd.committed === null && (")
+    expect(FLAT).toContain("{sd.committed === null && <span> · chưa rõ hàng đã đặt</span>}")
     expect(FLAT).toContain("chưa rõ hàng đã đặt")
   })
 })

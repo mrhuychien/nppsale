@@ -756,7 +756,7 @@ describe("Hàng ĐỔI cũng ăn tồn kho", () => {
     expect(CART).toContain("{exchangeOver > 0 && (")
     expect(CART).toContain("dòng đổi hàng vượt tồn kho")
     expect(RET).toContain("const over = isReturnLineOverstock(")
-    expect(RET).toContain("{over && (")
+    expect(RET).toContain("{over && <span")
     expect(RET).toContain("kho không đủ hàng để đổi")
     // Màn hàng trả cũng phải trừ phần đã đặt, không chỉ màn giỏ.
     expect(RET).toContain("availableMapFrom(stockByProduct, committedByProduct)")

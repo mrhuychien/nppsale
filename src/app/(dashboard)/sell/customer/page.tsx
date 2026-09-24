@@ -2,9 +2,9 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronLeft, Plus } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { Check, ChevronLeft, Plus, Search } from "lucide-react"
+import { DEBT_TTL_MS, debtMemo, loadDebtByCustomer } from "@/lib/sell/debt"
+import { viNormalize } from "@/lib/search"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
@@ -12,57 +12,6 @@ import { cn, formatCurrency } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const RENDER_CAP = 60
-
-/**
- * Công nợ theo khách — MỘT bản cho cả phiên, làm mới sau `DEBT_TTL_MS`.
- *
- * ⚠ VÌ SAO. Màn này mở ở MỖI lần chọn khách, và bản đầu kéo về TOÀN BỘ
- * công nợ chưa tất toán của cả đơn vị ở mỗi lần mở — hàng nghìn dòng, phân
- * trang nhiều request, cho một con số đã có cách đây 30 giây. Công nợ đổi
- * theo ngày, không theo cú chạm.
- *
- * `null` = chưa đọc được → hiện "—", không hiện 0.
- */
-const DEBT_TTL_MS = 2 * 60_000
-let debtMemo: { map: Record<string, number> | null; at: number } | null = null
-let debtInflight: Promise<Record<string, number> | null> | null = null
-
-async function loadDebtByCustomer(): Promise<Record<string, number> | null> {
-  if (debtMemo && Date.now() - debtMemo.at < DEBT_TTL_MS) return debtMemo.map
-  if (debtInflight) return debtInflight
-  debtInflight = (async () => {
-    // ⚠ PHẢI phân trang. Nhà phân phối có hơn 1.000 công nợ chưa tất
-    // toán là chuyện thường, mà server cắt ở 1.000 dòng và KHÔNG báo —
-    // khách nằm sau dòng đó sẽ hiện "nợ 0" trong khi đang nợ thật.
-    const res = await fetchAllForAggregate<{ customer_id: string; amount: number; paid: number }>(
-      (from, to) =>
-        createClient()
-          .from("receivables")
-          .select("customer_id, amount, paid", { count: "exact" })
-          .neq("status", "paid")
-          // ⚠ THỨ TỰ DUY NHẤT. Các trang chạy SONG SONG; không `.order`
-          //   thì Postgres trả mỗi trang một kiểu — một phiếu nợ bị cộng
-          //   hai lần, phiếu khác rơi mất, nợ của khách lệch mà không báo.
-          .order("id")
-          .range(from, to)
-    )
-    if (res.error || res.truncated) {
-      // Không biết thì để TRỐNG, đừng hiện 0 — 0 ở đây nghĩa là "không
-      // nợ gì", và đó là câu trả lời sai cho một câu hỏi chưa đọc được.
-      // ⚠ Và KHÔNG ghi nhớ lần đọc hỏng: lần mở sau phải thử lại.
-      return null
-    }
-    const m: Record<string, number> = {}
-    for (const r of res.rows) {
-      m[r.customer_id] = (m[r.customer_id] || 0) + (Number(r.amount) - Number(r.paid))
-    }
-    debtMemo = { map: m, at: Date.now() }
-    return m
-  })().finally(() => {
-    debtInflight = null
-  })
-  return debtInflight
-}
 
 export default function SellCustomerPage() {
   const router = useRouter()
@@ -130,128 +79,128 @@ export default function SellCustomerPage() {
     [deferredQ, filterCustomers]
   )
 
-  return (
-    <div className="flex min-h-screen flex-col bg-surface pb-nav">
-      <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-0.5">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          aria-label="Quay lại"
-          className="tap grid h-11 w-11 place-items-center text-on-surface"
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-        <h1 className="flex-1 text-[22px] font-extrabold">Chọn khách hàng</h1>
-        {/*
-          ⚠ TẠO KHÁCH NGAY TỪ ĐÂY. Cửa hàng chưa có trong danh mục là
-            chuyện xảy ra giữa lúc bán; bắt NVBH thoát ra, vào Khách hàng,
-            tạo, rồi tự tìm đường về giỏ là đủ lâu để họ bỏ luôn đơn.
-          ⚠ `?next=` để tạo xong quay lại ĐÂY và chọn sẵn khách vừa tạo.
-        */}
-        <button
-          type="button"
-          onClick={() => router.push("/customers/new?next=/sell/customer")}
-          aria-label="Tạo khách hàng mới"
-          className="tap flex h-11 items-center gap-1.5 rounded-xl px-3 font-extrabold text-primary"
-        >
-          <Plus className="h-6 w-6" />
-          {/* Điện thoại chỉ còn dấu + — hàng tiêu đề không đủ chỗ cho chữ. */}
-          <span className="hidden text-[15px] sm:inline">Tạo khách mới</span>
-        </button>
-      </div>
+  /* Nhóm theo chữ cái đầu (2c) — bỏ dấu để "Ánh" nằm cùng "Anh". */
+  const nhom = useMemo(() => {
+    const m = new Map<string, typeof list>()
+    for (const c of list) {
+      const L = (viNormalize(c.store_name.trim()).charAt(0) || "#").toUpperCase()
+      const k = /[A-Z]/.test(L) ? L : "#"
+      m.set(k, [...(m.get(k) ?? []), c])
+    }
+    return Array.from(m.entries())
+  }, [list])
 
-      <div className="px-4 pb-2.5">
+  return (
+    <div className="flex min-h-screen flex-col bg-surface-container-low pb-6">
+      <div className="flex shrink-0 flex-col gap-2.5 border-b border-border bg-surface-container-lowest px-4 pb-3 pt-3.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Quay lại"
+            className="-ml-2 grid h-9 w-9 place-items-center text-on-surface"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <h1 className="min-w-0 flex-1 text-[19px] font-bold">Chọn khách hàng</h1>
+          {/*
+            ⚠ TẠO KHÁCH NGAY TỪ ĐÂY (cửa hàng mới giữa lúc bán); `?next=` để tạo
+              xong quay lại ĐÂY và chọn sẵn khách vừa tạo.
+          */}
+          <button
+            type="button"
+            onClick={() => router.push("/customers/new?next=/sell/customer")}
+            aria-label="Tạo khách hàng mới"
+            className="flex h-9 items-center gap-1 rounded-[10px] bg-primary/10 px-3 text-[13px] font-semibold text-primary"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.6} />
+            Khách mới
+          </button>
+        </div>
         <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Tên cửa hàng, SĐT, chủ quán…"
+            placeholder="Tên cửa hàng, SĐT, địa chỉ…"
             aria-label="Tìm khách hàng"
             {...SEARCH_FIELD_PROPS}
             className={cn(
-              "h-11 w-full rounded-xl border-0 bg-surface-container px-3.5 text-base font-semibold outline-none",
+              "h-11 w-full rounded-xl border-0 bg-surface-container-low pl-[38px] pr-3 text-[14px] outline-none",
               HIDE_NATIVE_CLEAR
             )}
           />
         </div>
       </div>
 
-      <div className="grid content-start gap-2 px-3 pb-6">
+      <div className="flex flex-col px-3 pt-1">
         {pickWait ? (
-          <p className="py-10 text-center text-sm font-semibold text-on-surface-variant">
-            Đang nạp khách vừa tạo…
-          </p>
+          <p className="py-10 text-center text-sm font-semibold text-muted-foreground">Đang nạp khách vừa tạo…</p>
         ) : loading ? (
-          Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)
+          Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="mt-2 h-16 rounded-[14px]" />)
         ) : list.length === 0 ? (
-          <p className="py-10 text-center text-sm text-on-surface-variant">
+          <p className="py-10 text-center text-sm text-muted-foreground">
             {q.trim() ? `Không tìm thấy khách khớp “${q.trim()}”` : "Chưa có khách hàng nào"}
           </p>
         ) : (
-          list.map((c) => {
-            const picked = c.id === cart.customerId
-            const debt = debtByCustomer?.[c.id]
-            const limit = Number(c.credit_limit || 0)
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  cart.setCustomerId(c.id)
-                  // Điều khoản mặc định lấy theo khách — nhân viên không
-                  // phải chọn lại thứ đã thoả thuận từ trước.
-                  if (!cart.paymentTerms && c.payment_terms) cart.setPaymentTerms(c.payment_terms)
-                  router.back()
-                }}
-                className={cn(
-                  "flex items-center gap-3 rounded-2xl border-[1.5px] bg-surface-container-lowest p-3 text-left shadow-sm",
-                  picked ? "border-primary" : "border-transparent"
-                )}
-              >
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-[15px] font-extrabold text-primary">
-                  {c.store_name.trim().charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-extrabold">{c.store_name}</span>
-                  <span className="mt-0.5 block truncate text-xs font-semibold text-on-surface-variant">
-                    {[c.owner_name, c.phone].filter(Boolean).join(" · ") || "—"}
-                  </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  {/* ⚠ Chưa đọc được công nợ thì hiện "—", không hiện 0. */}
-                  <span
-                    className={cn(
-                      "block text-[13px] font-extrabold tabular-data",
-                      debt === undefined
-                        ? "text-on-surface-variant"
-                        : limit > 0 && debt >= limit
-                          ? "text-error"
-                          : "text-on-surface"
-                    )}
-                  >
-                    {debt === undefined ? "—" : formatCurrency(debt)}
-                  </span>
-                  <span className="block text-[11px] font-semibold text-on-surface-variant">
-                    {limit > 0 ? `HM ${formatCurrency(limit)}` : "không hạn mức"}
-                  </span>
-                  {/* ⚠ CÒN ĐƯỢC NỢ mới là con số quyết định đơn sắp ghi có
-                      phải chờ duyệt hay không. Hạn mức và dư nợ đứng cạnh
-                      nhau bắt nhân viên trừ nhẩm ngay lúc khách đang đứng
-                      đợi — và trừ nhẩm sai thì biết vào lúc bấm gửi. */}
-                  {limit > 0 && debt !== undefined && (
-                    <span
+          nhom.map(([chu, ds]) => (
+            <div key={chu} className="flex flex-col">
+              <p className="px-1 pb-1.5 pt-3 text-[12px] font-bold text-muted-foreground">{chu}</p>
+              <div className="flex flex-col overflow-hidden rounded-[14px] bg-surface-container-lowest">
+                {ds.map((c) => {
+                  const dangChon = c.id === cart.customerId
+                  const debt = debtByCustomer?.[c.id]
+                  const limit = Number(c.credit_limit || 0)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      aria-pressed={dangChon}
+                      onClick={() => {
+                        cart.setCustomerId(c.id)
+                        // Điều khoản mặc định lấy theo khách.
+                        if (!cart.paymentTerms && c.payment_terms) cart.setPaymentTerms(c.payment_terms)
+                        router.back()
+                      }}
                       className={cn(
-                        "block text-[11px] font-extrabold tabular-data",
-                        limit - debt <= 0 ? "text-error" : "text-on-surface-variant"
+                        "flex items-center gap-3 border-b border-border/60 p-3 text-left last:border-0",
+                        dangChon ? "bg-primary/[0.05]" : ""
                       )}
                     >
-                      Còn được nợ {formatCurrency(Math.max(0, limit - debt))}
-                    </span>
-                  )}
-                </span>
-              </button>
-            )
-          })
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-primary/10 text-[14px] font-bold text-primary">
+                        {c.store_name.trim().charAt(0).toUpperCase()}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="truncate text-[14px] font-semibold text-on-surface">{c.store_name}</span>
+                        <span className="truncate text-[12px] text-muted-foreground">
+                          {c.address || [c.owner_name, c.phone].filter(Boolean).join(" · ") || "—"}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 flex-col items-end gap-0.5">
+                        <span className="text-[11px] text-muted-foreground">Công nợ</span>
+                        {/* ⚠ Chưa đọc được công nợ thì "—", không hiện 0. */}
+                        <span
+                          className={cn(
+                            "text-[14px] font-semibold tabular-data",
+                            debt !== undefined && limit > 0 && debt >= limit ? "text-error" : "text-on-surface"
+                          )}
+                        >
+                          {debt === undefined || debt === 0 ? "—" : formatCurrency(debt)}
+                        </span>
+                        {/* ⚠ CÒN ĐƯỢC NỢ quyết định đơn có phải chờ duyệt — chỉ khi có hạn mức. */}
+                        {limit > 0 && debt !== undefined && (
+                          <span className={cn("text-[11px] font-semibold tabular-data", limit - debt <= 0 ? "text-error" : "text-muted-foreground")}>
+                            Còn được nợ {formatCurrency(Math.max(0, limit - debt))}
+                          </span>
+                        )}
+                      </span>
+                      {dangChon && <Check aria-label="Đang chọn" className="h-[18px] w-[18px] shrink-0 text-primary" strokeWidth={2.6} />}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>

@@ -39,7 +39,8 @@ describe("/sell: thuế đặt cả đơn, không đặt từng dòng", () => {
   it("giỏ không gắn nhãn VAT trên từng dòng; có MỘT nút thuế cả đơn", () => {
     expect(CART).not.toMatch(/VAT \{vatLabel\(r\.line\.vatRate\)\}/)
     expect(CART).toContain('aria-label="Thuế VAT cả đơn"')
-    expect(CART).toContain("cart.setVatAll(vatChungKeTiep(vatChung))")
+    // Thiết kế 24/09/2026: chọn thẳng mức thuế (nút phân đoạn) thay vì bấm-nhảy vòng.
+    expect(CART).toMatch(/VAT_RATES\.map\(\(v\) =>[\s\S]*?onClick=\{\(\) => cart\.setVatAll\(v\.value\)\}/)
   })
 
   it("nút cả đơn đặt thuế cho MỌI dòng", () => {
@@ -105,7 +106,8 @@ describe("/sell: giảm giá từng dòng theo % hoặc theo đồng", () => {
     expect(SHEET).toContain("switchUnit(d, lineGross(line.qty, line.price))")
     expect(CART).toMatch(/<LineEditSheet[\s\S]*?lineDiscount=\{quyenGiam\.allowed\}[\s\S]*?discountRules=\{quyenGiam\}[\s\S]*?\/>/)
     // Thành tiền trên sheet và trên giỏ đọc giá SAU giảm.
-    expect(SHEET).toContain("formatCurrency(line.qty * netPriceOf(line))")
+    expect(SHEET).toContain("const thanhTien = line.qty * netPriceOf(line)")
+    expect(SHEET).toContain("Cập nhật · {formatCurrency(thanhTien)}")
     expect(CART).toContain("formatCurrency(r.line.qty * netPriceOf(r.line))")
   })
 })

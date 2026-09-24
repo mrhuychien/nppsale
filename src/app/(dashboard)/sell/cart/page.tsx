@@ -2,22 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  ScanBarcode,
-  Trash2,
-  TriangleAlert,
-} from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2, TriangleAlert, X } from "lucide-react"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import {
-  kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, unitLabel, vatChungCuaDong, vatChungKeTiep,
+  kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, vatChungCuaDong,
   type DiscountInput,
 } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
@@ -34,7 +25,8 @@ import { errorMessage } from "@/lib/errors"
 import { layMaChongLap, sinhMaChongLap, type MaChongLap } from "@/lib/sell/request-id"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn, formatCurrency, formatDate, formatInt, generateOrderCode } from "@/lib/utils"
-import { PAYMENT_TERMS, vatLabel } from "@/lib/constants"
+import { PAYMENT_TERMS, VAT_RATES } from "@/lib/constants"
+import { loadDebtByCustomer } from "@/lib/sell/debt"
 import { createClient } from "@/lib/supabase/client"
 import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-order"
 import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
@@ -209,6 +201,14 @@ export default function SellCartPage() {
   )
   const canEditPrice = !isSales || rules.allow_price_edit
   const vatChung = useMemo(() => vatChungCuaDong(cart.cart), [cart.cart])
+  /* Công nợ của khách (2b: "Nợ …") — cùng bộ nhớ đệm với màn Chọn khách. */
+  const [noKhach, setNoKhach] = useState<Record<string, number> | null>(null)
+  useEffect(() => {
+    let huy = false
+    loadDebtByCustomer().then((m) => { if (!huy) setNoKhach(m) })
+    return () => { huy = true }
+  }, [])
+  const debt = cart.customerId ? noKhach?.[cart.customerId] : undefined
   const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
 
   // Nhu cầu xuất kho gồm CẢ dòng bán lẫn dòng ĐỔI — xem `@/lib/sell/stock`.
@@ -484,78 +484,67 @@ export default function SellCartPage() {
   const edit = editIdx != null ? cart.cart[editIdx] : null
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface pb-[210px]">
-      <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-0.5">
+    <div className="flex min-h-screen flex-col bg-surface-container-low pb-[190px]">
+      {/* ---------- ĐẦU MÀN (2b): bỏ ô tìm khỏi màn đơn → nút "Thêm hàng" ---------- */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-container-lowest px-4 pb-3 pt-3.5">
         <button
           type="button"
           onClick={() => router.push("/sell")}
           aria-label="Quay lại"
-          className="tap grid h-11 w-11 place-items-center text-on-surface"
+          className="-ml-2 grid h-9 w-9 place-items-center text-on-surface"
         >
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5" />
         </button>
-        <h1 className="min-w-0 flex-1 truncate text-[22px] font-extrabold">
-          {editing ? `Sửa ${editing.orderCode}` : "Đơn hàng"}{" "}
-          <span className="text-[15px] font-bold text-on-surface-variant">
-            · {cart.cart.length} mặt hàng
-          </span>
+        <h1 className="min-w-0 flex-1 truncate text-[19px] font-bold">
+          {editing ? `Sửa ${editing.orderCode}` : "Đơn hàng"}
         </h1>
-      </div>
-
-      <div className="flex shrink-0 gap-2 px-4 pb-2.5">
         <button
           type="button"
           onClick={() => router.push("/sell")}
-          className="flex h-11 flex-1 items-center gap-2.5 rounded-xl bg-surface-container px-3 text-left text-base font-semibold text-on-surface-variant"
+          className="flex h-9 items-center gap-1 rounded-[10px] bg-primary/10 px-3 text-[13px] font-semibold text-primary"
         >
-          <Search className="h-[18px] w-[18px]" />
-          <span className="flex-1 truncate">Tên, mã hàng, mã vạch…</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/sell/scan")}
-          aria-label="Quét mã"
-          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-container text-on-surface"
-        >
-          <ScanBarcode className="h-[22px] w-[22px]" />
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.6} />
+          Thêm hàng
         </button>
       </div>
 
-      <div className="grid content-start gap-2.5 px-3">
+      <div className="flex min-w-0 flex-col gap-2.5 p-3">
+        {/* Khách: tên + bảng giá + công nợ (2b). */}
         <button
           type="button"
           onClick={() => router.push("/sell/customer")}
-          className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest p-3 text-left shadow-card"
+          className="flex items-center gap-3 rounded-[14px] bg-surface-container-lowest p-3 text-left"
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-[15px] font-extrabold text-primary">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-primary/10 font-bold text-primary">
             {(customer?.store_name ?? "?").trim().charAt(0).toUpperCase()}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-extrabold text-on-surface">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-[15px] font-semibold text-on-surface">
               {customer?.store_name ?? "Chọn khách hàng"}
             </span>
-            <span className="mt-0.5 block truncate text-xs font-semibold text-on-surface-variant">
+            <span className="truncate text-[12px] text-muted-foreground">
               {customer
-                ? customer.credit_limit
-                  ? `Hạn mức ${formatCurrency(customer.credit_limit)} · ${customer.group?.name ?? "Bảng giá chung"}`
-                  : (customer.group?.name ?? "Bảng giá chung")
+                ? [
+                    customer.group?.name ?? "Bảng giá chung",
+                    /* ⚠ Chưa đọc được công nợ thì không in "Nợ 0". */
+                    debt === undefined ? null : `Nợ ${formatCurrency(debt)}`,
+                    customer.credit_limit ? `HM ${formatCurrency(customer.credit_limit)}` : null,
+                  ].filter(Boolean).join(" · ")
                 : "Đơn nào cũng phải có khách"}
             </span>
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
 
-        {/* ⚠ Nói TRƯỚC đơn đang ở đâu và sửa được tới đâu. Biết sau khi
-            bấm Lưu là quá muộn — nhân viên đã hứa với khách là hàng ra
-            trong hôm nay. */}
+        {/* ⚠ Nói TRƯỚC đơn đang ở đâu và sửa được tới đâu. */}
         {editing && (
-          <div className="flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
+          <div className="flex items-start gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-[13px] font-semibold leading-snug text-primary">
             <span className="min-w-0 flex-1">{editHint(editing.status)}</span>
             {canDeleteDraft && (
               <button
                 type="button"
                 onClick={() => setDeleteOpen(true)}
-                className="tap flex shrink-0 items-center gap-1 rounded-lg px-2 font-extrabold text-error"
+                className="flex shrink-0 items-center gap-1 rounded-lg px-2 font-semibold text-error"
               >
                 <Trash2 className="h-4 w-4" /> Xoá nháp
               </button>
@@ -572,133 +561,103 @@ export default function SellCartPage() {
             </span>
           </div>
         )}
-
         {staleCount > 0 && (
           <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
-            {staleCount} dòng đang giữ giá của bảng giá cũ. Mở từng dòng để lấy giá mới của khách
-            này.
+            {staleCount} dòng đang giữ giá của bảng giá cũ. Mở từng dòng để lấy giá mới của khách này.
           </div>
         )}
-
-        {/* ⚠ CHƯA ĐỌC ĐƯỢC HÀNG ĐÃ ĐẶT THÌ NÓI RA TRƯỚC KHI NGƯỜI TA GỬI.
-            Không có câu này thì phép chặn bên dưới đang so với một con số
-            tồn CHƯA trừ phần các Phiếu tạm khác giữ, mà màn hình trông
-            như mọi thứ đã được kiểm. */}
+        {/* ⚠ CHƯA ĐỌC ĐƯỢC HÀNG ĐÃ ĐẶT THÌ NÓI RA TRƯỚC KHI GỬI. */}
         {committedWarning && (
           <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
             {committedWarning}
           </div>
         )}
-
         {/*
-          ⚠ CHỈ CẢNH BÁO, KHÔNG CHẶN — VÀ ĐÃ LẬT BA LẦN, GHI LẠI CẢ BA ĐỂ
-          KHÔNG AI LẬT MÙ LẦN THỨ TƯ.
-
-          1. Bản đầu: chỉ cảnh báo. Lý do: số tồn trên máy có thể đã cũ
-             vài giờ, chặn là mất đơn thật vì một số liệu không chắc.
-          2. Chủ nhà chốt "số lượng đặt hoặc đổi ko được lớn hơn tồn kho
-             − hàng đã đặt" → đổi thành CHẶN, với lý do phần "đã đặt" là
-             lời hứa do chính công ty ghi ra nên đọc lại được.
-          3. Chủ nhà chốt lại 20/09/2026: "cho nhân viên đặt hàng vượt số
-             tồn và đặt, kèm cảnh báo (để tính được nhu cầu)" → về lại
-             CẢNH BÁO.
-
-          Lý do mới nặng hơn cả hai lý do cũ, và nó không phải về kho:
-          một đơn bị chặn là một nhu cầu KHÔNG ĐƯỢC GHI LẠI. Nhà phân
-          phối mất luôn con số "khách muốn mua bao nhiêu" — thứ duy nhất
-          để biết phải nhập thêm bao nhiêu.
-
-          ⚠ CẢNH BÁO PHẢI ĐI TỚI TẬN NGƯỜI XUẤT HÀNG, không dừng ở màn
-          này. Nó đi tiếp: dòng tô đỏ ở giỏ → "Thiếu N đơn vị cơ sở" ở
-          ngăn xem nhanh đơn → từng dòng ở màn Xuất hàng. NPP là người
-          quyết cuối, và `post_stock_export` vẫn là chốt chặn thật.
+          ⚠ CHỈ CẢNH BÁO, KHÔNG CHẶN (chủ nhà chốt 20/09/2026: "cho nhân viên đặt
+            hàng vượt số tồn và đặt, kèm cảnh báo (để tính được nhu cầu)"). Chốt
+            chặn thật vẫn là `post_stock_export` lúc xuất hàng.
         */}
         {hasOver && (
           <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
-            Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở
-            các Phiếu tạm khác. <strong>Vẫn gửi đơn được</strong> để nhà phân
-            phối biết nhu cầu thật; khi xuất hàng sẽ chỉ giao được phần có
-            trong kho.
+            Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở các Phiếu tạm khác.{" "}
+            <strong>Vẫn gửi đơn được</strong> để nhà phân phối biết nhu cầu thật; khi xuất hàng sẽ chỉ
+            giao được phần có trong kho.
           </div>
         )}
 
-        <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
+        {/* ---------- DÒNG HÀNG (2b) ---------- */}
+        <div className="flex flex-col rounded-[14px] bg-surface-container-lowest">
           {cart.cart.length === 0 ? (
-            <p className="p-7 text-center text-sm font-semibold text-on-surface-variant">
-              {loading
-                ? "Đang tải danh mục…"
-                : "Chưa có sản phẩm. Gõ tên/mã hàng ở ô tìm kiếm hoặc quét mã để thêm."}
+            <p className="p-7 text-center text-sm text-muted-foreground">
+              {loading ? "Đang tải danh mục…" : "Chưa có sản phẩm. Bấm “Thêm hàng” để chọn."}
             </p>
           ) : (
             rows.map((r) => (
               <div
                 key={`${r.line.productId}|${r.line.unit}`}
-                className="flex flex-col gap-2 border-b border-outline-variant/30 p-3 last:border-0"
+                data-testid="dong-gio"
+                className="flex flex-col gap-2.5 border-b border-border/60 p-3"
               >
-                <div className="flex items-start gap-1">
-                <button
-                  type="button"
-                  onClick={() => setEditIdx(r.i)}
-                  className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-bold leading-snug">
-                      {r.product?.name ?? "Sản phẩm không còn trong danh mục"}{" "}
-                      <span className="font-semibold text-on-surface-variant">({r.line.unit})</span>
+                <div className="flex items-start gap-2">
+                  {/* Chạm tên / giá là mở sheet sửa dòng (3a). */}
+                  <button
+                    type="button"
+                    onClick={() => setEditIdx(r.i)}
+                    className="flex min-w-0 flex-1 flex-col gap-1 text-left"
+                  >
+                    <span className="text-[14px] font-semibold leading-[1.35] text-on-surface">
+                      {r.product?.name ?? "Sản phẩm không còn trong danh mục"}
                     </span>
-                    <span className="mt-1 flex flex-wrap gap-x-2.5 gap-y-1 text-xs font-semibold text-on-surface-variant">
-                      <span>
-                        {formatCurrency(netPriceOf(r.line))} × {r.line.qty}
+                    <span className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
+                      <span className="whitespace-nowrap">
+                        {formatCurrency(netPriceOf(r.line))} / {r.line.unit}
                       </span>
                       {lineDiscountAmountOf(r.line) > 0 && (
-                        <span className="rounded-md bg-primary/10 px-1.5 py-px font-bold text-primary">
+                        <span className="whitespace-nowrap rounded-[5px] bg-[#ecfdf3] px-1.5 py-px font-semibold text-[#067647]">
                           Giảm {r.line.discount?.unit === "pct"
                             ? `${String(r.line.discount.value).replace(".", ",")}%`
                             : formatCurrency(lineDiscountAmountOf(r.line))}
                         </span>
                       )}
-                      {r.over && (
-                        <span className="font-extrabold text-error">Vượt phần còn đặt được ({r.stockText})</span>
-                      )}
-                      {r.priceBad && <span className="font-extrabold text-error">Giá ngoài hạn mức</span>}
                       {r.line.price !== r.line.listPrice && !r.priceBad && (
-                        <span className="rounded-md bg-primary/10 px-1.5 py-px font-bold text-primary">
-                          Giá sửa
-                        </span>
+                        <span className="rounded-[5px] bg-primary/10 px-1.5 py-px font-semibold text-primary">Giá sửa</span>
                       )}
-                      {/* Chủ nhà 24/09/2026: "Bỏ VAT từng dòng" — thuế nói MỘT lần ở
-                          nút thuế cả đơn dưới thanh tổng, không lặp trên từng dòng. */}
+                      {r.priceBad && <span className="font-semibold text-error">Giá ngoài hạn mức</span>}
+                      {r.over && <span className="font-semibold text-error">Vượt phần còn đặt được ({r.stockText})</span>}
                       {r.line.note && <span className="italic">“{r.line.note}”</span>}
                     </span>
-                  </span>
-                </button>
-                {/* ⚠ NÚT XOÁ LUÔN CÓ MẶT, không nấp sau nút − ở số 1: muốn
-                    bỏ một dòng đang để 8 thùng thì không phải bấm − bảy
-                    lần mới thấy nó. */}
-                <button
-                  type="button"
-                  onClick={() => cart.setQty(r.i, 0)}
-                  aria-label={`Xoá ${r.product?.name ?? "dòng"}`}
-                  className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl text-on-surface-variant active:bg-error/10 active:text-error"
-                >
-                  <Trash2 className="h-[18px] w-[18px]" />
-                </button>
+                  </button>
+                  {/* ⚠ NÚT XOÁ LUÔN CÓ MẶT — bỏ một dòng 8 thùng không phải bấm − bảy lần. */}
+                  <button
+                    type="button"
+                    onClick={() => cart.setQty(r.i, 0)}
+                    aria-label={`Xoá ${r.product?.name ?? "dòng"}`}
+                    className="-mr-1 -mt-1 grid h-8 w-8 shrink-0 place-items-center text-muted-foreground"
+                  >
+                    <X className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[17px] font-extrabold tabular-data">
+                <div className="flex items-center justify-between">
+                  {/* ⚠ Nút − dừng ở 1 — xoá là nút riêng (xem `Stepper`). */}
+                  <Stepper size="sm" qty={r.line.qty} unit={r.line.unit} onChange={(q) => cart.setQty(r.i, q)} />
+                  <span className="text-[15px] font-bold tabular-data">
                     {formatCurrency(r.line.qty * netPriceOf(r.line))}
                   </span>
-                  <div className="w-[164px]">
-                    <Stepper qty={r.line.qty} onChange={(q) => cart.setQty(r.i, q)} />
-                  </div>
                 </div>
               </div>
             ))
           )}
+          {cart.cart.length > 0 && (
+            <div className="flex justify-between p-3 text-[13px] text-muted-foreground">
+              <span>Tạm tính</span>
+              <span className="font-semibold tabular-data text-on-surface">
+                {formatCurrency(cart.totals.subtotal + cart.totals.docDiscount)}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chủ nhà 24/09/2026: "làm đơn chưa có giảm giá tổng
-            đơn". Như POS; khoá khi không có quyền sửa giá (cùng luật giảm dòng). */}
+        {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chỉ khi có quyền giảm giá (mig 185), kẹp trần. */}
         {cart.cart.length > 0 && quyenGiam.allowed && (
           <GiamGiaDon
             value={cart.docDiscount ?? { value: 0, unit: "vnd" }}
@@ -709,173 +668,157 @@ export default function SellCartPage() {
           />
         )}
 
-        {/*
-          LẬP ĐƠN GIÚP NHÂN VIÊN — chủ nhà chốt 21/09/2026: "NPP tạo đơn
-          xong chọn nhân viên -> thành đơn hàng của nhân viên".
-
-          ⚠ CHỈ HIỆN CHO CHỦ NHÀ / QUẢN LÝ. Nhân viên bán hàng lập đơn
-            của chính mình; cho họ chọn tên người khác là mở đường ghi
-            doanh số sang tên đồng nghiệp.
-
-          ⚠ ĐỨNG NGAY TRƯỚC KHỐI HÀNG TRẢ, TRÊN THANH LƯU. Đây là một
-            quyết định về NGƯỜI, không phải về hàng — nhét lẫn vào bảng
-            dòng hàng là nó chìm mất giữa lúc người ta đang gõ số lượng.
-
-          ⚠ ĐỂ TRỐNG LÀ CHÍNH MÌNH, và nói ra chứ không để đoán. Một ô
-            rỗng không nhãn là người dùng không biết đơn sẽ đứng tên ai.
-        */}
-        {canPickSeller && (
-          <div className="rounded-2xl bg-surface-container-lowest p-3.5 shadow-card">
-            <p className="text-sm font-extrabold">Đơn này của nhân viên nào</p>
-            <p className="mb-2 mt-px text-xs font-semibold text-on-surface-variant">
-              Để trống là đơn đứng tên bạn. Chọn nhân viên thì doanh số và hoa hồng
-              tính cho người đó.
-            </p>
-            <SearchSelect
-              id="cart-seller"
-              options={sellerOptions}
-              valueId={sellerId}
-              onPick={(o) => setSellerId(o?.id ?? "")}
-              placeholder="Gõ tên nhân viên…"
-              emptyHint="Không tìm thấy nhân viên nào khớp."
+        {/* ---------- TUỲ CHỌN PHỤ GOM MỘT NHÓM (2b) ---------- */}
+        <div className="flex flex-col rounded-[14px] bg-surface-container-lowest">
+          <button
+            type="button"
+            onClick={() => router.push("/sell/returns")}
+            className="flex items-center gap-2 border-b border-border/60 p-3 text-left"
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[14px] font-semibold">Hàng trả / đổi kèm đơn</span>
+              <span className="truncate text-[12px] text-muted-foreground">
+                {cart.returnLines.length ? `${cart.returnLines.length} dòng` : "Chưa có"}
+              </span>
+              {exchangeOver > 0 && (
+                <span className="text-[12px] font-semibold text-error">{exchangeOver} dòng đổi hàng vượt tồn kho</span>
+              )}
+              {returnPriceBad > 0 && (
+                <span className="text-[12px] font-semibold text-error">{returnPriceBad} dòng trả vượt trần giá</span>
+              )}
+            </span>
+            {cart.returnCredit > 0 && (
+              <span className="text-[14px] font-semibold tabular-data text-error">−{formatCurrency(cart.returnCredit)}</span>
+            )}
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/sell/terms")}
+            className="flex items-center gap-2 border-b border-border/60 p-3 text-left"
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[14px] font-semibold">Giao hàng &amp; thanh toán</span>
+              <span className="truncate text-[12px] text-muted-foreground">{termsSummary}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+          {/*
+            LẬP ĐƠN GIÚP NHÂN VIÊN (chủ nhà chốt 21/09/2026) — CHỈ chủ NPP / quản lý;
+            để trống = chính mình ("Tôi (mặc định)" của bản thiết kế).
+          */}
+          {canPickSeller && (
+            <div className="flex flex-col gap-1.5 border-b border-border/60 p-3">
+              <span className="text-[14px] font-semibold">Nhân viên bán</span>
+              <SearchSelect
+                id="cart-seller"
+                options={sellerOptions}
+                valueId={sellerId}
+                onPick={(o) => setSellerId(o?.id ?? "")}
+                placeholder="Tôi (mặc định) — gõ tên để chọn nhân viên khác…"
+                emptyHint="Không tìm thấy nhân viên nào khớp."
+              />
+              <span className="text-[11.5px] text-muted-foreground">Doanh số và hoa hồng tính cho người được chọn.</span>
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5 p-3">
+            <span className="text-[14px] font-semibold">Ghi chú</span>
+            <textarea
+              value={cart.notes}
+              onChange={(e) => cart.setNotes(e.target.value)}
+              aria-label="Ghi chú đơn"
+              placeholder="VD: giao trước 10h, để hàng sau quầy"
+              rows={2}
+              className="w-full resize-none rounded-[10px] border border-border px-2.5 py-2 text-[14px] outline-none"
             />
           </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => router.push("/sell/returns")}
-          className="flex min-h-14 items-center gap-2.5 rounded-2xl bg-surface-container-lowest px-3.5 text-left shadow-card"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-extrabold">Hàng trả / đổi kèm đơn</span>
-            <span className="mt-px block truncate text-xs font-semibold text-on-surface-variant">
-              {cart.returnLines.length
-                ? `${cart.returnLines.length} dòng · trừ ${formatCurrency(cart.returnCredit)}`
-                : "Chưa có"}
-            </span>
-            {exchangeOver > 0 && (
-              <span className="mt-0.5 block text-xs font-extrabold text-error">
-                {exchangeOver} dòng đổi hàng vượt tồn kho
-              </span>
-            )}
-            {returnPriceBad > 0 && (
-              <span className="mt-0.5 block text-xs font-extrabold text-error">
-                {returnPriceBad} dòng trả vượt trần giá
-              </span>
-            )}
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
-        </button>
-
-        <div className="rounded-2xl bg-surface-container-lowest px-3 py-2 shadow-card">
-          <input
-            value={cart.notes}
-            onChange={(e) => cart.setNotes(e.target.value)}
-            placeholder="Ghi chú đơn (giao trước 10h, để hàng sau quầy…)"
-            className="h-10 w-full border-0 bg-transparent text-sm font-semibold outline-none"
-          />
         </div>
-
-        <button
-          type="button"
-          onClick={() => router.push("/sell/terms")}
-          className="flex min-h-14 items-center gap-2.5 rounded-2xl bg-surface-container-lowest px-3.5 text-left shadow-card"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-extrabold">Điều khoản &amp; giao hàng</span>
-            <span className="mt-px block truncate text-xs font-semibold text-on-surface-variant">
-              {termsSummary}
-            </span>
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
-        </button>
       </div>
 
-      <SellBottomBar className="flex flex-col gap-2.5">
+      {/* ---------- TỔNG DƯỚI ĐÁY, BẤM LÀ MỞ CHI TIẾT THANH TOÁN (2b) ---------- */}
+      {breakdownOpen && (
+        <div aria-hidden onClick={() => setBreakdownOpen(false)} className="fixed inset-0 z-20 bg-on-surface/45" />
+      )}
+      <SellBottomBar className={cn("flex flex-col gap-3", breakdownOpen && "rounded-t-[20px]")}>
         {breakdownOpen && (
-          <div className="flex flex-col gap-1.5 border-b border-outline-variant/40 pb-1.5 text-[13px] font-semibold text-on-surface-variant">
+          <div className="flex flex-col gap-3 border-b border-border pb-3 text-[15px] text-on-surface-variant">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-semibold text-muted-foreground">Chi tiết thanh toán</span>
+              <button
+                type="button"
+                aria-label="Đóng chi tiết thanh toán"
+                onClick={() => setBreakdownOpen(false)}
+                className="grid h-7 w-7 place-items-center rounded-full bg-surface-container-low"
+              >
+                <X className="h-3 w-3" strokeWidth={2.6} />
+              </button>
+            </div>
+            <Row label={`Tạm tính · ${cart.cart.length} mặt hàng`} value={formatCurrency(cart.totals.subtotal + cart.totals.docDiscount)} />
             {cart.totals.docDiscount > 0 && (
-              <Row label="Tiền hàng" value={formatCurrency(cart.totals.subtotal + cart.totals.docDiscount)} />
+              <Row label="Giảm giá đơn" value={`−${formatCurrency(cart.totals.docDiscount)}`} tone="ok" />
             )}
-            {cart.totals.docDiscount > 0 && (
-              <Row label="Giảm giá đơn" value={`−${formatCurrency(cart.totals.docDiscount)}`} />
-            )}
-            <Row label="Tạm tính" value={formatCurrency(cart.totals.subtotal)} />
-            {/* Chiết khấu dòng (so với giá bảng) — giảm giá đơn đã có dòng riêng ở trên. */}
+            {/* Chiết khấu so với giá bảng (sửa giá / giảm dòng) — đã nằm trong tạm tính. */}
             {cart.totals.discount - cart.totals.docDiscount > 0 && (
-              <Row label="Chiết khấu" value={`−${formatCurrency(cart.totals.discount - cart.totals.docDiscount)}`} error />
+              <Row label="Chiết khấu dòng (đã trừ)" value={formatCurrency(cart.totals.discount - cart.totals.docDiscount)} />
             )}
-            {/* ⚠ THUẾ CẢ ĐƠN — bấm vòng 0 → 5 → 8 → 10%, đặt cho mọi dòng (như
-                POS). Các dòng đang lệch nhau thì nút nói "nhiều mức". */}
+            {/* ⚠ THUẾ CẢ ĐƠN — đặt cho MỌI dòng (như POS); dòng lệch nhau thì không nút nào sáng. */}
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2">
                 VAT
-                <button
-                  type="button"
-                  aria-label="Thuế VAT cả đơn"
-                  disabled={cart.cart.length === 0}
-                  onClick={() => cart.setVatAll(vatChungKeTiep(vatChung))}
-                  className="h-7 rounded-lg border-[1.5px] border-outline-variant px-2 text-xs font-extrabold text-primary disabled:opacity-40"
-                >
-                  {vatChung === null ? "nhiều mức" : vatLabel(vatChung)}
-                </button>
+                <span role="group" aria-label="Thuế VAT cả đơn" className="flex rounded-lg bg-surface-container-low p-0.5">
+                  {VAT_RATES.map((v) => {
+                    const on = vatChung !== null && Math.abs(vatChung - v.value) < 1e-9
+                    return (
+                      <button
+                        key={v.value}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={cart.cart.length === 0}
+                        onClick={() => cart.setVatAll(v.value)}
+                        className={cn(
+                          "h-[26px] rounded-md px-2 text-[12px]",
+                          on ? "bg-surface-container-lowest font-semibold text-primary shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "font-medium text-on-surface-variant"
+                        )}
+                      >
+                        {v.label}
+                      </button>
+                    )
+                  })}
+                </span>
               </span>
-              <span className="tabular-data text-on-surface">{formatCurrency(cart.totals.vat)}</span>
+              <span className="font-semibold tabular-data text-on-surface">+{formatCurrency(cart.totals.vat)}</span>
             </div>
             {cart.totals.returnCredit > 0 && (
-              <Row label="Trừ hàng trả" value={`−${formatCurrency(cart.totals.returnCredit)}`} />
+              <Row label="Trừ hàng trả" value={`−${formatCurrency(cart.totals.returnCredit)}`} tone="bad" />
             )}
-            <button
-              type="button"
-              onClick={() => {
-                cart.clear()
-                // ⚠ Đang sửa đơn thì "Bỏ sửa" KHÔNG được xoá đơn — nó chỉ
-                // buông giỏ ra. Đơn cũ vẫn nằm nguyên trên máy chủ.
-                router.push(editing ? `/orders/${editing.orderId}` : "/sell")
-              }}
-              className="h-8 self-start text-[13px] font-extrabold text-error"
-            >
-              {editing ? "Bỏ sửa, giữ nguyên đơn cũ" : "Huỷ đơn"}
-            </button>
           </div>
         )}
         <button
           type="button"
           onClick={() => setBreakdownOpen((v) => !v)}
           aria-expanded={breakdownOpen}
-          className="flex min-h-8 w-full items-center justify-between"
+          className="flex items-center justify-between text-left"
         >
-          <span className="flex items-center gap-2 text-[15px] font-extrabold">
-            Tổng tiền
-            <span className="grid h-[22px] min-w-[22px] place-items-center rounded-full border-[1.5px] border-primary px-1 text-xs text-primary">
+          <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <span className="text-[18px] font-bold text-on-surface">Tổng tiền</span>
+            <span className="grid h-[22px] min-w-[22px] place-items-center rounded-full border-[1.5px] border-primary px-1 text-[12px] font-bold text-primary">
               {cart.cart.length}
             </span>
-            {breakdownOpen ? (
-              <ChevronDown className="h-3.5 w-3.5 text-on-surface-variant" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5 text-on-surface-variant" />
-            )}
+            <ChevronUp className={cn("h-4 w-4 text-on-surface-variant transition-transform", breakdownOpen && "rotate-180")} />
           </span>
-          <span className="text-[22px] font-extrabold tabular-data">
+          <span className="whitespace-nowrap text-[24px] font-bold tabular-data text-on-surface">
             {formatCurrency(cart.totals.grandTotal)}
           </span>
         </button>
-        {/*
-          ⚠ NÚT MỜ PHẢI NÓI VÌ SAO, VÀ TRÊN ĐIỆN THOẠI THÌ `title` KHÔNG
-            HIỆN RA. Một cái nút xám không lời giải thích là người dùng
-            bấm mãi không ăn rồi nghĩ máy hỏng.
-        */}
+        {/* ⚠ NÚT MỜ PHẢI NÓI VÌ SAO — trên điện thoại `title` không hiện. */}
         {donHo && (
-          <p className="rounded-2xl bg-surface-container-low px-3.5 py-2.5 text-xs font-semibold text-on-surface-variant">
-            Đơn này đứng tên nhân viên khác nên <b>không lưu nháp được</b> — nháp là sổ
-            tay riêng của người đứng tên, bạn sẽ không mở lại được. Bấm <b>Gửi đơn</b>.
+          <p className="rounded-xl bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface-variant">
+            Đơn này đứng tên nhân viên khác nên <b>không lưu nháp được</b> — nháp là sổ tay riêng của
+            người đứng tên. Bấm <b>Gửi đơn</b>.
           </p>
         )}
-        <div className="flex gap-2.5">
-          {/* Phiếu tạm VẪN có "Lưu nháp" — đó là cách RÚT ĐƠN VỀ khi nhà
-              phân phối chưa xuất hàng. Nút phụ ở đây là thoát khỏi phần
-              sửa mà không đụng gì tới đơn. */}
+        <div className="flex gap-2">
+          {/* Phiếu tạm vẫn có "Lưu nháp" — đó là cách RÚT ĐƠN VỀ khi NPP chưa xuất hàng. */}
           {editing?.status === "submitted" ? (
             <button
               type="button"
@@ -884,44 +827,32 @@ export default function SellCartPage() {
                 cart.clear()
                 router.replace(`/orders/${editing.orderId}`)
               }}
-              className="h-13 flex-1 rounded-2xl border-[1.5px] border-outline-variant bg-surface-container-lowest py-3.5 text-base font-extrabold text-on-surface-variant disabled:opacity-40"
+              className="h-[50px] flex-1 rounded-xl border border-border bg-surface-container-lowest text-[15px] font-semibold text-on-surface-variant disabled:opacity-40"
             >
               Bỏ sửa
             </button>
           ) : (
             <button
               type="button"
-              disabled={
-                submitting || !cart.customerId || hasPriceBad || returnPriceBad > 0 || donHo
-              }
+              disabled={submitting || !cart.customerId || hasPriceBad || returnPriceBad > 0 || donHo}
               onClick={() => submit(true)}
-              title={
-                donHo
-                  ? "Đơn đứng tên nhân viên khác thì không lưu nháp được — bấm Gửi đơn."
-                  : undefined
-              }
-              className="h-13 flex-1 rounded-2xl border-[1.5px] border-primary bg-surface-container-lowest py-3.5 text-base font-extrabold text-primary disabled:opacity-40"
+              title={donHo ? "Đơn đứng tên nhân viên khác thì không lưu nháp được — bấm Gửi đơn." : undefined}
+              className="h-[50px] flex-1 rounded-xl border border-border bg-surface-container-lowest text-[15px] font-semibold text-on-surface-variant disabled:opacity-40"
             >
               Lưu nháp
             </button>
           )}
           <button
             type="button"
-            disabled={
-              submitting ||
-              cart.cart.length === 0 ||
-              !cart.customerId ||
-              hasPriceBad ||
-              returnPriceBad > 0
-            }
+            disabled={submitting || cart.cart.length === 0 || !cart.customerId || hasPriceBad || returnPriceBad > 0}
             onClick={() => submit(false)}
-            className="h-13 flex-[1.3] rounded-2xl bg-primary py-3.5 text-base font-extrabold text-on-primary disabled:opacity-40"
+            className="h-[50px] flex-[2] rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground disabled:opacity-40"
           >
             {submitting
               ? "Đang gửi…"
               : !cart.customerId
-              ? "Chọn khách"
-              : hasPriceBad
+                ? "Chọn khách"
+                : hasPriceBad
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
                     ? "Giá hàng trả quá cao"
@@ -930,6 +861,19 @@ export default function SellCartPage() {
                       : "Gửi đơn"}
           </button>
         </div>
+        {breakdownOpen && (
+          <button
+            type="button"
+            onClick={() => {
+              cart.clear()
+              // ⚠ Đang sửa đơn thì KHÔNG xoá đơn — chỉ buông giỏ; đơn cũ nguyên trên máy chủ.
+              router.push(editing ? `/orders/${editing.orderId}` : "/sell")
+            }}
+            className="h-9 text-[14px] font-semibold text-error"
+          >
+            {editing ? "Bỏ sửa, giữ nguyên đơn cũ" : "Huỷ đơn này"}
+          </button>
+        )}
       </SellBottomBar>
 
       <ConfirmDialog
@@ -963,16 +907,21 @@ export default function SellCartPage() {
   )
 }
 
-function Row({ label, value, error }: { label: string; value: string; error?: boolean }) {
+function Row({ label, value, tone }: { label: string; value: string; tone?: "ok" | "bad" }) {
   return (
     <div className="flex justify-between">
       <span>{label}</span>
-      <span className={cn("tabular-data", error ? "text-error" : "text-on-surface")}>{value}</span>
+      <span className={cn("font-semibold tabular-data", tone === "ok" ? "text-[#067647]" : tone === "bad" ? "text-error" : "text-on-surface")}>
+        {value}
+      </span>
     </div>
   )
 }
 
-/** Ô giảm giá cả đơn (₫ / %). Lật đơn vị giữ nguyên số tiền — quy tắc POS. */
+/**
+ * Ô giảm giá cả đơn (2b) — ô nhập + cặp %/đ. Đổi cách nhập GIỮ nguyên số tiền
+ * (quy tắc POS `switchUnit`). Nơi gọi kẹp theo trần quyền giảm giá.
+ */
 function GiamGiaDon({
   value, base, amount, rules, onChange,
 }: {
@@ -983,59 +932,62 @@ function GiamGiaDon({
   rules: UserDiscountRules
   onChange: (d: DiscountInput) => void
 }) {
-  const disabled = !rules.allowed
-  const tran = nhanTranGiamGia(rules)
   const pct = value.unit === "pct"
+  const tran = nhanTranGiamGia(rules)
   const [pctText, setPctText] = useState(pct && value.value ? String(value.value) : "")
+  const doi = (u: "pct" | "vnd") => {
+    if (u === value.unit) return
+    const moi = switchUnit(value, base)
+    if (moi.unit === "pct") setPctText(moi.value === 0 ? "" : String(moi.value))
+    onChange(moi)
+  }
   return (
-    <div className="mt-3 rounded-2xl bg-surface-container-lowest p-3">
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 text-sm font-extrabold">Giảm giá đơn</span>
-        <input
-          aria-label="Giảm giá đơn"
-          disabled={disabled}
-          inputMode={pct ? "decimal" : "numeric"}
-          placeholder="0"
-          value={pct ? pctText : value.value === 0 ? "" : formatInt(value.value)}
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => {
-            if (pct) {
-              const t = e.target.value.replace(",", ".").replace(/[^\d.]/g, "")
-              setPctText(t)
-              onChange({ value: Math.min(100, Number(t) || 0), unit: "pct" })
-            } else {
-              const d = e.target.value.replace(/\D/g, "")
-              onChange({ value: d === "" ? 0 : parseInt(d, 10), unit: "vnd" })
-            }
-          }}
-          className={cn(
-            "h-11 w-32 rounded-xl border-[1.5px] px-3 text-right text-base font-extrabold tabular-data outline-none",
-            amount > 0 ? "border-primary" : "border-outline-variant",
-            disabled ? "bg-surface-container" : "bg-surface-container-lowest"
-          )}
-        />
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label={pct ? "Đơn vị giảm đơn — đang là phần trăm, bấm để đổi sang đồng" : "Đơn vị giảm đơn — đang là đồng, bấm để đổi sang phần trăm"}
-          onClick={() => {
-            const moi = switchUnit(value, base)
-            if (moi.unit === "pct") setPctText(moi.value === 0 ? "" : String(moi.value))
-            onChange(moi)
-          }}
-          className={cn(
-            "h-11 w-12 shrink-0 rounded-xl border-[1.5px] text-base font-extrabold",
-            pct ? "border-primary bg-primary/10 text-primary" : "border-outline-variant text-on-surface-variant"
-          )}
-        >
-          {unitLabel(value.unit)}
-        </button>
+    <div className="flex flex-col gap-2 rounded-[14px] bg-surface-container-lowest p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] font-semibold">Giảm giá đơn</span>
+        {amount > 0 && <span className="text-[14px] font-semibold tabular-data text-[#067647]">−{formatCurrency(amount)}</span>}
       </div>
-      {(amount > 0 || tran) && (
-        <p className="mt-1.5 text-xs font-bold text-on-surface-variant">
-          {[amount > 0 ? `Giảm ${formatCurrency(amount)} trên tiền hàng ${formatCurrency(base)}` : "", tran].filter(Boolean).join(" · ")}
-        </p>
-      )}
+      <div className="flex gap-2">
+        <div className="flex h-11 min-w-0 flex-1 items-center gap-1 rounded-[10px] border border-border px-3">
+          <input
+            aria-label="Giảm giá đơn"
+            inputMode={pct ? "decimal" : "numeric"}
+            placeholder="0"
+            value={pct ? pctText : value.value === 0 ? "" : formatInt(value.value)}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => {
+              if (pct) {
+                const t = e.target.value.replace(",", ".").replace(/[^\d.]/g, "")
+                setPctText(t)
+                onChange({ value: Math.min(100, Number(t) || 0), unit: "pct" })
+              } else {
+                const d = e.target.value.replace(/\D/g, "")
+                onChange({ value: d === "" ? 0 : parseInt(d, 10), unit: "vnd" })
+              }
+            }}
+            className="w-full min-w-0 flex-1 border-0 bg-transparent text-right text-[16px] font-semibold tabular-data outline-none"
+          />
+          <span className="text-[13px] text-muted-foreground">{pct ? "%" : "đ"}</span>
+        </div>
+        <div role="group" aria-label="Cách giảm giá đơn" className="flex rounded-[10px] bg-surface-container-low p-[3px]">
+          {(["pct", "vnd"] as const).map((u) => (
+            <button
+              key={u}
+              type="button"
+              aria-pressed={value.unit === u}
+              aria-label={u === "pct" ? "Giảm đơn theo %" : "Giảm đơn theo đồng"}
+              onClick={() => doi(u)}
+              className={cn(
+                "h-[38px] rounded-lg px-3.5 text-[14px]",
+                value.unit === u ? "bg-surface-container-lowest font-semibold text-primary shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "font-medium text-on-surface-variant"
+              )}
+            >
+              {u === "pct" ? "%" : "đ"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tran && <p className="text-[12px] text-muted-foreground">{tran}</p>}
     </div>
   )
 }

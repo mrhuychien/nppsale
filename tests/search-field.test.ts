@@ -129,8 +129,10 @@ describe("Tấm trượt đáy phải nằm TRÊN bàn phím", () => {
 
   it("tấm trượt đặt cả hai giá trị, không chỉ chiều cao", () => {
     expect(SHEET_USER).toContain("bottomSheetBox(vp, 0.92)")
+    // Thiết kế 24/09/2026 (3a): tấm trượt cao theo nội dung, TRẦN là phần
+    // trên bàn phím — nên đặt maxHeight, không ép cao cố định.
     expect(SHEET_USER).toContain(
-      "style={box ? { height: box.height, bottom: box.bottom } : undefined}"
+      "style={box ? { maxHeight: box.height, bottom: box.bottom } : undefined}"
     )
   })
 

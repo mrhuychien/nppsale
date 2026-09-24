@@ -29,7 +29,15 @@ export const OWN_ACTION_BAR_ROUTES = [
   "/sell/scan",
 ] as const
 
+/**
+ * Màn luồng tác vụ theo bản thiết kế /sell mới (chủ nhà 24/09/2026: "Ẩn tab bar:
+ * đây là luồng tác vụ, có nút back rõ ràng") — so ĐÚNG đường dẫn, không tiền tố:
+ * `/sell/drafts`, `/sell/done` vẫn có thanh nav.
+ */
+export const TASK_FLOW_ROUTES = ["/sell", "/sell/customer"] as const
+
 export function showsBottomNav(pathname: string): boolean {
+  if ((TASK_FLOW_ROUTES as readonly string[]).includes(pathname)) return false
   return !OWN_ACTION_BAR_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
 }
 

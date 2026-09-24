@@ -213,9 +213,11 @@ describe("Thanh dính đáy của luồng bán hàng không đè lên menu trái
     }
   })
 
-  it("nút giỏ nổi ở màn tìm hàng cũng chừa menu trái", () => {
-    expect(code(read("src/app/(dashboard)/sell/page.tsx"))).toContain(
-      "lg:left-[calc(15rem+1rem)]"
-    )
+  /** Thiết kế 24/09/2026: nút giỏ nổi thay bằng thanh đáy chung "Xem đơn" — chừa menu trái nhờ `SellBottomBar`. */
+  it("màn tìm hàng dùng thanh đáy chung, không nút nổi riêng", () => {
+    const src = code(read("src/app/(dashboard)/sell/page.tsx"))
+    expect(src).toContain("<SellBottomBar")
+    expect(src).not.toMatch(/fixed (bottom|right)-/)
+    expect(code(read("src/components/sell/bottom-bar.tsx"))).toContain("lg:left-60")
   })
 })

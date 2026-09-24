@@ -327,8 +327,9 @@ describe("sổ lỗi bàn giao — kho & phiếu", () => {
   it("thẻ khách hiện đủ hạn mức / đang nợ / còn được nợ", () => {
     const f = TSX.find((t) => t.file === "app/(dashboard)/sell/customer/page.tsx")!
     expect(f.src).toContain("debtByCustomer")
-    expect(f.src).toContain("HM ${formatCurrency(limit)}")
-    expect(f.src).toContain("Còn được nợ")
+    // Thiết kế 24/09/2026 (2c): cột phải "Công nợ" + "Còn được nợ" khi có hạn mức.
+    expect(f.src).toContain("Công nợ")
+    expect(f.src).toContain("Còn được nợ {formatCurrency(Math.max(0, limit - debt))}")
   })
 
   /** NPP-11: phụ đề in số dòng của trang hiện tại, không phải tổng. */

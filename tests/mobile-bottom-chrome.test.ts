@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { resolve, join } from "node:path"
-import { showsBottomNav, OWN_ACTION_BAR_ROUTES } from "../src/lib/nav/mobile-chrome"
+import { showsBottomNav, OWN_ACTION_BAR_ROUTES, TASK_FLOW_ROUTES } from "../src/lib/nav/mobile-chrome"
+
+const isTaskFlow = (route: string) => (TASK_FLOW_ROUTES as readonly string[]).includes(route)
 
 const ROOT = resolve(__dirname, "..")
 const SELL_DIR = resolve(ROOT, "src/app/(dashboard)/sell")
@@ -59,7 +61,9 @@ describe("Không màn nào có HAI thanh dính đáy chồng nhau", () => {
   })
 
   it.each(sellScreens())("$route: có thanh riêng thì KHÔNG hiện nav", ({ route, src }) => {
-    const own = hasOwnBottomChrome(src)
+    // Màn luồng tác vụ (thiết kế 24/09/2026) cố ý ẩn nav dù không có thanh
+    // riêng — có nút lùi rõ ràng; xem `TASK_FLOW_ROUTES`.
+    const own = hasOwnBottomChrome(src) || isTaskFlow(route)
     // Hai chiều, không chỉ một: có thanh riêng thì phải tắt nav, và tắt
     // nav thì phải vì có thanh riêng — tắt thừa là lấy mất đường đi của
     // người dùng mà chẳng đổi lấy gì.
@@ -67,7 +71,7 @@ describe("Không màn nào có HAI thanh dính đáy chồng nhau", () => {
   })
 
   /** Màn không có thanh riêng phải chừa đệm cho nav, nếu không nội dung cuối bị che. */
-  it.each(sellScreens().filter((s) => !hasOwnBottomChrome(s.src)))(
+  it.each(sellScreens().filter((s) => !hasOwnBottomChrome(s.src) && !isTaskFlow(s.route)))(
     "$route: chừa đệm đáy cho thanh nav",
     ({ src }) => {
       expect(src).toContain("pb-nav")
@@ -112,6 +116,26 @@ describe("Vỏ trang thật sự có dùng phép quyết định này", () => {
   })
 })
 
+describe("Luồng tác vụ /sell ẩn nav (thiết kế 24/09/2026)", () => {
+  it("màn Thêm hàng và Chọn khách không có nav", () => {
+    expect(showsBottomNav("/sell")).toBe(false)
+    expect(showsBottomNav("/sell/customer")).toBe(false)
+  })
+
+  /** So đúng đường dẫn — tiền tố "/sell" mà khớp là tắt nav ở MỌI màn bán hàng. */
+  it("so đúng đường dẫn, không theo tiền tố", () => {
+    expect(showsBottomNav("/sell/drafts")).toBe(true)
+    expect(showsBottomNav("/sellx")).toBe(true)
+  })
+
+  it("màn luồng tác vụ có nút lùi", () => {
+    for (const r of TASK_FLOW_ROUTES) {
+      const src = read(join(SELL_DIR, r.replace(/^\/sell\/?/, ""), "page.tsx"))
+      expect(src, `${r} thiếu nút lùi`).toContain("<ChevronLeft")
+    }
+  })
+})
+
 describe("Danh sách màn tự dựng thanh đáy", () => {
   it("mọi đường dẫn khai trong danh sách đều là route có thật", () => {
     for (const r of OWN_ACTION_BAR_ROUTES) {
@@ -121,9 +145,8 @@ describe("Danh sách màn tự dựng thanh đáy", () => {
   })
 
   it("màn ngoài danh sách vẫn có nav", () => {
-    expect(showsBottomNav("/sell")).toBe(true)
     expect(showsBottomNav("/sell/drafts")).toBe(true)
-    expect(showsBottomNav("/sell/customer")).toBe(true)
+    expect(showsBottomNav("/sell/done")).toBe(true)
     expect(showsBottomNav("/orders")).toBe(true)
     expect(showsBottomNav("/home")).toBe(true)
   })
